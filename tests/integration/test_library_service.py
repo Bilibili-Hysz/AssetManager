@@ -250,10 +250,17 @@ def test_closed_session_still_exposes_resources(tmp_path):
     session.close()
 
     assert session.root == root.resolve()
-    assert session.db_conn is not None
-    assert session.tag_store is not None
-    assert session.project_data is not None
-    assert session.connection_for(root) is session.db_conn
+    assert session.is_closed is True
+
+    import pytest
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = session.db_conn
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = session.tag_store
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = session.project_data
+    with pytest.raises(RuntimeError, match="closed"):
+        session.connection_for(root)
 
 
 def test_session_close_does_not_affect_other_sessions(tmp_path):

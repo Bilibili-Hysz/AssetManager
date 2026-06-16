@@ -79,6 +79,11 @@ class TagStore:
         key = self._resolve(filepath)
         self._repo.remove_file(key)
 
+    def clear_cache(self) -> None:
+        """Drop the resolve cache. Called on session close."""
+        with self._resolve_cache_lock:
+            self._resolve_cache.clear()
+
     def save(self):
         """Persist pending changes. No-op for SQLite (auto-commit per operation)."""
         with db_write_lock():
