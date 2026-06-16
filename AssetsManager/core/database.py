@@ -189,18 +189,18 @@ def get_manager() -> DatabaseManager:
 @contextmanager
 def db_write_lock():
     """Return the process-wide database write lock context."""
-    with get_manager().write_lock():
+    with ThreadSafeSingleton.get(DatabaseManager).write_lock():
         yield
 
 
 # ── Legacy API (backward-compatible) ──────────────────────────────
 
 def get_lib_db(library_root: str) -> sqlite3.Connection:
-    return get_manager().connection_for(library_root)
+    return ThreadSafeSingleton.get(DatabaseManager).connection_for(library_root)
 
 
 def get_library_dir(library_root: str) -> Path:
-    return get_manager().data_dir_for(library_root)
+    return ThreadSafeSingleton.get(DatabaseManager).data_dir_for(library_root)
 
 
 def migrate_path_metadata(library_root: str, old_path: str, new_path: str):
@@ -211,7 +211,7 @@ def migrate_path_metadata(library_root: str, old_path: str, new_path: str):
         return
     conn = get_lib_db(library_root)
     old_prefix = old + os.sep
-    mgr = get_manager()
+    mgr = ThreadSafeSingleton.get(DatabaseManager)
     thumbs = mgr.thumb_dir_for(library_root)
 
     def remap(path: str) -> str:
@@ -298,7 +298,7 @@ def _thumbnail_cache_key(path: str) -> str:
 
 
 def close_all_dbs():
-    get_manager().close()
+    ThreadSafeSingleton.get(DatabaseManager).close()
 
 
 def clean_orphan_dirs(known_roots: list[str]):

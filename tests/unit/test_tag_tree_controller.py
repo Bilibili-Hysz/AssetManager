@@ -51,8 +51,8 @@ def test_rename_tag(lib_env):
     ctrl = _make_controller(lib_root)
     file_path = str(os.path.join(lib_root, "file.txt"))
     open(file_path, "w").close()
-    from AssetsManager.core.tag_store import get_store
-    store = get_store(lib_root)
+    from AssetsManager.core.tag_store import TagStore
+    store = TagStore(lib_root)
     store.add_tag(file_path, "old_name")
     ctrl.rename_tag("old_name", "new_name")
     tags = ctrl.get_all_tags()
@@ -65,8 +65,8 @@ def test_delete_tag(lib_env):
     ctrl = _make_controller(lib_root)
     file_path = str(os.path.join(lib_root, "file.txt"))
     open(file_path, "w").close()
-    from AssetsManager.core.tag_store import get_store
-    store = get_store(lib_root)
+    from AssetsManager.core.tag_store import TagStore
+    store = TagStore(lib_root)
     store.add_tag(file_path, "temp")
     count = ctrl.delete_tag("temp")
     assert count >= 0
@@ -90,8 +90,8 @@ def test_get_tag_with_files(lib_env):
     ctrl = _make_controller(lib_root)
     file_path = str(os.path.join(lib_root, "file.txt"))
     open(file_path, "w").close()
-    from AssetsManager.core.tag_store import get_store
-    store = get_store(lib_root)
+    from AssetsManager.core.tag_store import TagStore
+    store = TagStore(lib_root)
     store.add_tag(file_path, "hero")
     store.add_tag(file_path, "villain")
     result = ctrl.get_tag_with_files()

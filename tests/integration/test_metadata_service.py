@@ -13,8 +13,8 @@ def _memory_conn() -> sqlite3.Connection:
 
 def test_metadata_service_reads_notes_urls_and_tags(tmp_path):
     from AssetsManager.application import MetadataService
-    from AssetsManager.core.project_data import get_project_data
-    from AssetsManager.core.tag_store import get_store
+    from AssetsManager.core.project_data import ProjectData
+    from AssetsManager.core.tag_store import TagStore
 
     library = tmp_path / "library"
     library.mkdir()
@@ -24,10 +24,10 @@ def test_metadata_service_reads_notes_urls_and_tags(tmp_path):
     conn = _memory_conn()
     try:
         root = str(library.resolve())
-        project = get_project_data(root, db_conn=conn)
+        project = ProjectData(root, db_conn=conn)
         project.set_notes(str(asset), "note")
         project.add_url(str(asset), "https://example.com")
-        store = get_store(root, db_conn=conn)
+        store = TagStore(root, db_conn=conn)
         store.add_tag(str(asset), "hero")
 
         meta = MetadataService(connection_provider=lambda _root: conn).get_metadata(library, asset)
@@ -103,7 +103,7 @@ def test_metadata_service_uses_connection_provider_for_notes_and_urls(tmp_path):
 
 def test_metadata_service_get_metadata_uses_provider_for_tag_store(tmp_path):
     from AssetsManager.application import MetadataService
-    from AssetsManager.core.tag_store import get_store
+    from AssetsManager.core.tag_store import TagStore
 
     conn = _memory_conn()
     try:
@@ -115,7 +115,7 @@ def test_metadata_service_get_metadata_uses_provider_for_tag_store(tmp_path):
         root = str(library.resolve())
         service = MetadataService(connection_provider=lambda _root: conn)
         service.set_notes(library, asset, "provider note")
-        get_store(root, db_conn=conn).add_tag(str(asset.resolve()), "provider-tag")
+        TagStore(root, db_conn=conn).add_tag(str(asset.resolve()), "provider-tag")
 
         meta = service.get_metadata(library, asset)
 

@@ -4,12 +4,12 @@ import pytest
 
 
 def test_open_library_returns_context(tmp_path):
-    from AssetsManager.application import get_library_service
+    from AssetsManager.application.library_service import LibraryService
 
     root = tmp_path / "library"
     root.mkdir()
 
-    service = get_library_service()
+    service = LibraryService()
     context = service.open_library(root)
 
     assert context.root == root.resolve()
@@ -43,12 +43,12 @@ def test_current_context_remains_legacy_compatibility_api(tmp_path):
 
 
 def test_open_library_reuses_context(tmp_path):
-    from AssetsManager.application import get_library_service
+    from AssetsManager.application.library_service import LibraryService
 
     root = tmp_path / "library"
     root.mkdir()
 
-    service = get_library_service()
+    service = LibraryService()
     first = service.open_library(str(root))
     second = service.open_library(Path(root))
 

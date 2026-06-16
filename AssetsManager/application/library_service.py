@@ -8,9 +8,9 @@ from pathlib import Path
 
 from AssetsManager.application.context import LibraryContext, LibrarySession
 from AssetsManager.core.database import DatabaseManager
-from AssetsManager.core.project_data import get_project_data
+from AssetsManager.core.project_data import ProjectData
 from AssetsManager.core.singleton import ThreadSafeSingleton
-from AssetsManager.core.tag_store import get_store
+from AssetsManager.core.tag_store import TagStore
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import LibraryOpened
 
@@ -56,8 +56,8 @@ class LibraryService:
                 data_dir=mgr.data_dir_for(key),
                 thumb_dir=mgr.thumb_dir_for(key),
                 db_conn=conn,
-                tag_store=get_store(key, db_conn=conn),
-                project_data=get_project_data(key, db_conn=conn),
+                tag_store=TagStore(key, db_conn=conn),
+                project_data=ProjectData(key, db_conn=conn),
             )
             self._contexts[key] = context
             self._current = context
