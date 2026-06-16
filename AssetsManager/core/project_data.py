@@ -1,0 +1,179 @@
+"""ProjectData — per-library metadata via SQLite (one DB per library)."""
+import json
+import os
+import re
+import threading
+import warnings
+from pathlib import Path
+from sqlite3 import Connection
+
+from AssetsManager.core.database import db_write_lock, get_lib_db
+
+
+class ProjectData:
+    def __init__(self, library_root: str, db_conn: Connection | None = None):
+        self._root = str(Path(library_root).resolve())
+        self._db = db_conn or get_lib_db(self._root)
+
+    def _key(self, path: str) -> str:
+        return str(Path(path).resolve())
+
+    # ── Notes ────────────────────────────────────────────────────
+
+    def get_notes(self, path: str) -> str:
+        row = self._db.execute(
+            "SELECT notes FROM file_meta WHERE file_path=?", (self._key(path),)
+        ).fetchone()
+        return row[0] if row else ""
+
+    def set_notes(self, path: str, text: str):
+        key = self._key(path)
+        text = text.strip()
+        with db_write_lock():
+            if text:
+                self._db.execute(
+                    "INSERT INTO file_meta (file_path, notes) VALUES (?,?) "
+                    "ON CONFLICT(file_path) DO UPDATE SET notes=excluded.notes",
+                    (key, text))
+            else:
+                self._db.execute(
+                    "UPDATE file_meta SET notes='' WHERE file_path=?", (key,))
+            self._db.commit()
+
+    def has_notes(self, path: str) -> bool:
+        row = self._db.execute(
+            "SELECT notes FROM file_meta WHERE file_path=? AND notes!=''",
+            (self._key(path),)
+        ).fetchone()
+        return row is not None
+
+    # ── URLs ─────────────────────────────────────────────────────
+
+    _url_pattern = re.compile(r'^https?://', re.IGNORECASE)
+
+    def get_urls(self, path: str) -> list[str]:
+        row = self._db.execute(
+            "SELECT urls FROM file_meta WHERE file_path=?",
+            (self._key(path),)
+        ).fetchone()
+        if not row:
+            return []
+        try:
+            return json.loads(row[0] or "[]")
+        except json.JSONDecodeError:
+            return []
+
+    def add_url(self, path: str, url: str):
+        url = url.strip()
+        if not self._url_pattern.match(url):
+            raise ValueError(f"URL must start with http:// or https://: {url}")
+        with db_write_lock():
+            urls = self.get_urls(path)
+            if url not in urls:
+                urls.append(url)
+                self._save_urls(path, urls)
+
+    def remove_url(self, path: str, url: str):
+        with db_write_lock():
+            urls = self.get_urls(path)
+            if url in urls:
+                urls.remove(url)
+                self._save_urls(path, urls)
+
+    def _save_urls(self, path: str, urls: list[str]):
+        key = self._key(path)
+        data = json.dumps(urls, ensure_ascii=False)
+        with db_write_lock():
+            self._db.execute(
+                "INSERT INTO file_meta (file_path, urls) VALUES (?,?) "
+                "ON CONFLICT(file_path) DO UPDATE SET urls=excluded.urls",
+                (key, data))
+            self._db.commit()
+
+    # ── Directory size cache ─────────────────────────────────────
+
+    @staticmethod
+    def compute_dir_size(dir_path: str) -> int:
+        total = 0
+        try:
+            for entry in os.scandir(dir_path):
+                try:
+                    if entry.is_file(follow_symlinks=False):
+                        total += entry.stat(follow_symlinks=False).st_size
+                    elif entry.is_dir(follow_symlinks=False):
+                        total += ProjectData.compute_dir_size(entry.path)
+                except OSError:
+                    pass
+        except OSError:
+            pass
+        return total
+
+    def get_dir_size(self, dir_path: str, force: bool = False) -> tuple[int, bool]:
+        if not os.path.isdir(dir_path):
+            return (0, False)
+        if not force:
+            row = self._db.execute(
+                "SELECT cached_size, cached_mtime FROM file_meta WHERE file_path=?",
+                (self._key(dir_path),)
+            ).fetchone()
+            if row and row[0] is not None and row[1] is not None:
+                try:
+                    current_mtime = os.path.getmtime(dir_path)
+                except OSError:
+                    return (0, False)
+                if row[1] >= current_mtime:
+                    return (row[0], True)
+        size = self.compute_dir_size(dir_path)
+        self._set_cached_size(dir_path, size)
+        return (size, False)
+
+    def _set_cached_size(self, path: str, size: int):
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            return
+        with db_write_lock():
+            self._db.execute(
+                "INSERT INTO file_meta (file_path, cached_size, cached_mtime) VALUES (?,?,?) "
+                "ON CONFLICT(file_path) DO UPDATE SET cached_size=excluded.cached_size, cached_mtime=excluded.cached_mtime",
+                (self._key(path), size, mtime))
+            self._db.commit()
+
+    def invalidate_size_cache(self, dir_path: str):
+        prefix = self._key(dir_path)
+        escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        with db_write_lock():
+            self._db.execute(
+                "UPDATE file_meta SET cached_size=NULL, cached_mtime=NULL, cached_file_count=NULL "
+                "WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
+                (prefix, escaped + "%"))
+            self._db.commit()
+
+    def prune_missing(self):
+        rows = self._db.execute("SELECT file_path FROM file_meta").fetchall()
+        removed = 0
+        with db_write_lock():
+            for (path,) in rows:
+                if not os.path.exists(path):
+                    self._db.execute("DELETE FROM file_meta WHERE file_path=?", (path,))
+                    removed += 1
+            if removed:
+                self._db.commit()
+
+
+_stores: dict[str, ProjectData] = {}
+_stores_lock = threading.Lock()
+
+
+def get_project_data(library_root: str, db_conn: Connection | None = None) -> ProjectData:
+    warnings.warn("get_project_data() is deprecated, use ProjectDataService instead", DeprecationWarning, stacklevel=2)
+    key = str(Path(library_root).resolve())
+    store = _stores.get(key)
+    if store is not None:
+        return store
+    with _stores_lock:
+        store = _stores.get(key)
+        if store is None:
+            store = ProjectData(key, db_conn=db_conn)
+            _stores[key] = store
+        return store

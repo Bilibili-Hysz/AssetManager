@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import warnings
 from pathlib import Path
 
 from AssetsManager.application.context import LibraryContext, LibrarySession
@@ -110,5 +111,6 @@ def get_library_service() -> LibraryService:
     directly. This helper remains as a non-Qt fallback for tests and legacy
     callers that still need a process-wide singleton.
     """
+    warnings.warn("get_library_service() is deprecated, use Bootstrap.library_service instead", DeprecationWarning, stacklevel=2)
     _log.debug("LibraryService singleton fallback used")
     return ThreadSafeSingleton.get(LibraryService)
