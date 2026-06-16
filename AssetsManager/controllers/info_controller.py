@@ -64,7 +64,7 @@ class InfoController:
         self._library_root = library_root
         self._db_conn = db_conn
         self._metadata_svc = metadata_svc or MetadataService(connection_provider=lambda _root: db_conn)
-        self._tag_svc = tag_svc or TagService()
+        self._tag_svc = tag_svc or TagService(connection_provider=lambda _root: db_conn)
         self._plugin_mgr = PluginManagerService.get()
         self._plugin_repo = PluginMetadataRepository(db_conn)
 
