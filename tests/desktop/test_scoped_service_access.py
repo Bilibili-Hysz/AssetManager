@@ -18,9 +18,10 @@ from AssetsManager.panels._service_access import (
 )
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def qapp():
     app = QApplication.instance() or QApplication([])
+    app.setProperty("bootstrap", None)
     yield app
     app.setProperty("bootstrap", None)
     app.processEvents()
