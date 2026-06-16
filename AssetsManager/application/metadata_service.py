@@ -2,16 +2,17 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from sqlite3 import Connection
 
 from AssetsManager.application.context import ConnectionProvider
-from AssetsManager.core.project_data import get_project_data
-from AssetsManager.core.tag_store import get_store
+from AssetsManager.core.project_data import ProjectData
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import NotesChanged, UrlsChanged
 from AssetsManager.repositories.metadata_repository import MetadataRepository
+from AssetsManager.repositories.tag_repository import TagRepository
 
 _log = logging.getLogger(__name__)
 
@@ -27,8 +28,8 @@ class AssetMetadata:
 class MetadataService:
     """Read and write per-asset metadata.
 
-    Uses MetadataRepository for file_meta operations and delegates
-    tag reads to the existing TagStore.
+    Uses MetadataRepository for file_meta operations and
+    TagRepository for tag reads.
     """
 
     def __init__(self, connection_provider: ConnectionProvider | None = None):
@@ -51,13 +52,13 @@ class MetadataService:
         root = str(Path(library_root).resolve())
         target = Path(path).resolve()
         conn = self._connection(root)
-        repo = MetadataRepository(conn)
-        store = get_store(root, db_conn=conn)
+        meta_repo = MetadataRepository(conn)
+        tag_repo = TagRepository(conn)
         return AssetMetadata(
             path=target,
-            tags=tuple(store.get_tags(str(target))),
-            notes=repo.get_notes(str(target)),
-            urls=tuple(repo.get_urls(str(target))),
+            tags=tuple(tag_repo.get_tags(str(target))),
+            notes=meta_repo.get_notes(str(target)),
+            urls=tuple(meta_repo.get_urls(str(target))),
         )
 
     def get_notes(self, library_root: str | Path, path: str | Path) -> str:
@@ -93,17 +94,32 @@ class MetadataService:
         target = str(Path(dir_path).resolve())
         conn = self._connection(root)
         repo = MetadataRepository(conn)
-        # For the root library, check library_stats first
         if not force and target == root:
             total = repo.get_library_total_size(root)
             if total > 0:
                 return (total, True)
-        return get_project_data(root, db_conn=conn).get_dir_size(target, force)
+        if not os.path.isdir(target):
+            return (0, False)
+        if not force:
+            cached = repo.get_cached_size(target)
+            if cached is not None:
+                try:
+                    current_mtime = os.path.getmtime(target)
+                except OSError:
+                    return (0, False)
+                if cached[1] >= current_mtime:
+                    return (cached[0], True)
+        size = ProjectData.compute_dir_size(target)
+        try:
+            mtime = os.path.getmtime(target)
+        except OSError:
+            mtime = 0.0
+        repo.set_cached_size(target, size, mtime)
+        return (size, False)
 
     def set_dir_size(self, library_root: str | Path, dir_path: str | Path, size: int) -> None:
         root = str(Path(library_root).resolve())
         target = str(Path(dir_path).resolve())
-        import os
         mtime = os.path.getmtime(target) if os.path.exists(target) else 0.0
         self._repo(root).set_cached_size(target, size, mtime)
 
