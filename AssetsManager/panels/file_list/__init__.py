@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from AssetsManager.core import themes
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.color_utils import alpha
+from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager import i18n
 from AssetsManager.panels.file_list._base import FileListPanel
 from AssetsManager.panels.file_list._model import FileSystemModel
@@ -141,7 +142,7 @@ class QWidgetFileListPanel(FileListPanel):
         super().__init__(parent)
 
         # Remove top margin for header alignment; keep side/bottom margins matching dock panels
-        self.content_layout.setContentsMargins(2, 0, 2, 4)
+        self.content_layout.setContentsMargins(scaled_px(2), 0, scaled_px(2), scaled_px(4))
         self._header.setProperty("central", True)
 
         # Thumbnail batch processing
@@ -397,6 +398,7 @@ class QWidgetFileListPanel(FileListPanel):
         self._grid_widget.update_layout(self._model.rowCount(), self._grid_widget.width())
         self._restore_grid_selection()
         self._grid_widget._start_entrance_stagger()
+        QTimer.singleShot(80, self._load_visible)
 
     def _apply_list_theme(self):
         pass
@@ -408,7 +410,7 @@ class QWidgetFileListPanel(FileListPanel):
             f"QHeaderView::section {{"
             f"  background: {t['header']}; color: {t['heading']}; "
             f"  border: none; border-right: 1px solid {alpha(t['border'], 0.25)}; "
-            f"  padding: 4px 8px; font-size: 12px; font-weight: bold; "
+            f"  padding: 4px 8px; font-size: {scaled_pt(12)}px; font-weight: bold; "
             f"}}"
             f"QHeaderView::down-arrow, QHeaderView::up-arrow {{ "
             f"  width: 10px; height: 10px; "
@@ -416,7 +418,7 @@ class QWidgetFileListPanel(FileListPanel):
         self._detail_view.setStyleSheet(
             f"QTreeView {{"
             f"  background: {t['panel']}; color: {t['body']}; "
-            f"  border: none; font-size: 12px; "
+            f"  border: none; font-size: {scaled_pt(12)}px; "
             f"}}"
             f"QTreeView::item {{"
             f"  padding: 3px 6px; border: none; "
@@ -434,13 +436,13 @@ class QWidgetFileListPanel(FileListPanel):
             f"background: {themes.header_for_dock()}; border: 1px solid {t['border']}; "
             f"border-top-left-radius: 7px; border-top-right-radius: 7px; ")
         self._header_title.setStyleSheet(
-            f"color: {t['heading']}; font-size: 12px; font-weight: bold; "
+            f"color: {t['heading']}; font-size: {scaled_pt(12)}px; font-weight: bold; "
             f"background: transparent; border: none; padding: 2px 4px;")
         self._fst_status_style()
         for btn in self._nav_buttons:
             btn.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {t['body']}; "
-                f"border: none; padding: 0; font-size: 10px; }} "
+                f"border: none; padding: 0; font-size: {scaled_pt(10)}px; }} "
                 f"QPushButton:hover {{ background: {alpha(t['panel'], 0.50)}; border-radius: 3px; "
                 f"color: {t['heading']}; }}")
         self._grid_widget.refresh_theme()

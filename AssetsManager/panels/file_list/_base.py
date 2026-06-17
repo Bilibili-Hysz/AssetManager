@@ -30,7 +30,7 @@ from AssetsManager.panels.base import PanelContent
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core import themes
 from AssetsManager.core.color_utils import alpha
-from AssetsManager.core.ui_scale import scaled_px
+from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager import i18n
 
 from AssetsManager.panels.file_list._model import FileSystemModel
@@ -90,12 +90,12 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             f"border: 1px solid {t['border']}; "
             f"border-top-left-radius: 7px; border-top-right-radius: 7px; ")
         header_layout = QHBoxLayout(self._header)
-        header_layout.setContentsMargins(10, 3, 6, 3)
-        header_layout.setSpacing(4)
+        header_layout.setContentsMargins(scaled_px(10), scaled_px(3), scaled_px(6), scaled_px(3))
+        header_layout.setSpacing(scaled_px(4))
 
         self._header_title = QLabel(tr("filelist.header"))
         self._header_title.setStyleSheet(
-            f"color: {t['heading']}; font-size: 12px; font-weight: bold; "
+            f"color: {t['heading']}; font-size: {scaled_pt(12)}px; font-weight: bold; "
             f"background: transparent; border: none; padding: 2px 4px;")
         header_layout.addWidget(self._header_title)
         header_layout.addStretch()
@@ -104,8 +104,8 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         # ── Toolbar ─────────────────────────────────────────────
 
         tb = QHBoxLayout()
-        tb.setContentsMargins(4, 4, 4, 2)
-        tb.setSpacing(3)
+        tb.setContentsMargins(scaled_px(4), scaled_px(4), scaled_px(4), scaled_px(2))
+        tb.setSpacing(scaled_px(3))
 
         self._nav_buttons = []
         self._nav_buttons.append(self._make_nav_button("◀", tr("filelist.back"), self._go_back, font_size=10))
@@ -169,7 +169,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._breadcrumb = QWidget()
         self._breadcrumb.setStyleSheet("background: transparent;")
         self._bc_layout = QHBoxLayout(self._breadcrumb)
-        self._bc_layout.setContentsMargins(4, 0, 4, 0)
+        self._bc_layout.setContentsMargins(scaled_px(4), 0, scaled_px(4), 0)
         self._bc_layout.setSpacing(0)
         self.content_layout.addWidget(self._breadcrumb)
 
@@ -191,8 +191,8 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._status_bar = QWidget()
         self._status_bar.setFixedHeight(scaled_px(28))
         sl = QHBoxLayout(self._status_bar)
-        sl.setContentsMargins(10, 4, 10, 4)
-        sl.setSpacing(8)
+        sl.setContentsMargins(scaled_px(10), scaled_px(4), scaled_px(10), scaled_px(4))
+        sl.setSpacing(scaled_px(8))
         self._status = QLabel("")
         sl.addWidget(self._status)
         sl.addStretch()
@@ -200,9 +200,8 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self.content_layout.addWidget(self._status_bar)
 
     def initialize_navigation(self):
-        """Start filesystem watching and load the initial directory after views exist."""
+        """Start filesystem watching after views exist."""
         self._start_fs_watcher()
-        self.navigate_to(str(self._current))
 
     def _fst_status_style(self):
         t = themes.get()
@@ -210,7 +209,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             f"background: transparent; "
             f"border-top: 1px solid {t['border']};")
         self._status.setStyleSheet(
-            f"color: {t['muted']}; font-size: 11px; background: transparent;")
+            f"color: {t['muted']}; font-size: {scaled_pt(11)}px; background: transparent;")
 
     def _get_tag_service(self):
         if not self._lib_root:
@@ -261,13 +260,13 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             f"border: 1px solid {t['border']}; "
             f"border-top-left-radius: 7px; border-top-right-radius: 7px; ")
         self._header_title.setStyleSheet(
-            f"color: {t['heading']}; font-size: 12px; font-weight: bold; "
+            f"color: {t['heading']}; font-size: {scaled_pt(12)}px; font-weight: bold; "
             f"background: transparent; border: none; padding: 2px 4px;")
         self._fst_status_style()
         for btn in self._nav_buttons:
             btn.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {t['body']}; "
-                f"border: none; padding: 0; font-size: 10px; }} "
+                f"border: none; padding: 0; font-size: {scaled_pt(10)}px; }} "
                 f"QPushButton:hover {{ background: {alpha(t['panel'], 0.50)}; border-radius: 3px; color: {t['heading']}; }}")
 
     def _update_thumb_cache_dir(self):
@@ -836,7 +835,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         text_x = icon_rect.right() + 10
         title_font = QFont(p.font())
         title_font.setBold(True)
-        title_font.setPointSize(9)
+        title_font.setPointSize(scaled_pt(9))
         p.setFont(title_font)
         p.setPen(QColor(t["heading"]))
         fm = p.fontMetrics()
@@ -845,7 +844,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         # Subtitle
         sub_font = QFont(p.font())
         sub_font.setBold(False)
-        sub_font.setPointSize(8)
+        sub_font.setPointSize(scaled_pt(8))
         p.setFont(sub_font)
         p.setPen(QColor(t["muted"]))
         fm2 = p.fontMetrics()
@@ -854,7 +853,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         p.drawText(sub_rect, Qt.AlignmentFlag.AlignLeft, fm2.elidedText(sub_text, Qt.TextElideMode.ElideRight, sub_rect.width()))
         # Path
         path_font = QFont(p.font())
-        path_font.setPointSize(7)
+        path_font.setPointSize(scaled_pt(7))
         p.setFont(path_font)
         p.setPen(QColor(t["muted"]))
         fm3 = p.fontMetrics()
@@ -869,7 +868,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             p.drawEllipse(badge_rect)
             badge_font = QFont(p.font())
             badge_font.setBold(True)
-            badge_font.setPointSize(8)
+            badge_font.setPointSize(scaled_pt(8))
             p.setFont(badge_font)
             p.setPen(QColor("white"))
             p.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, str(count))
@@ -904,7 +903,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(
             f"QPushButton {{ background: transparent; color: {t['body']}; "
-            f"border: none; padding: 0; font-size: {font_size}px; }} "
+            f"border: none; padding: 0; font-size: {scaled_pt(font_size)}px; }} "
             f"QPushButton:hover {{ background: {t['panel']}80; border-radius: 3px; color: {t['heading']}; }}")
         btn.clicked.connect(callback)
         return btn
