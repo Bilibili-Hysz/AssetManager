@@ -28,46 +28,12 @@ from AssetsManager.domain.auth import (  # noqa: F401
     verify_user_token,
 )
 
-# ── Schema constants (used by init_users_table) ───────────────
-
-USERS_SCHEMA = """
-CREATE TABLE IF NOT EXISTS users (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    username    TEXT UNIQUE NOT NULL,
-    password    TEXT NOT NULL,
-    email       TEXT,
-    role        TEXT DEFAULT 'viewer',
-    created_at  REAL DEFAULT (strftime('%s','now')),
-    last_login  REAL,
-    is_active   INTEGER DEFAULT 1
-);
-"""
-
-INVITE_CODES_SCHEMA = """
-CREATE TABLE IF NOT EXISTS invite_codes (
-    code        TEXT PRIMARY KEY,
-    created_by  TEXT,
-    used_by     TEXT,
-    created_at  REAL DEFAULT (strftime('%s','now')),
-    used_at     REAL,
-    is_active   INTEGER DEFAULT 1
-);
-"""
-
-SHARE_LINKS_SCHEMA = """
-CREATE TABLE IF NOT EXISTS share_links (
-    id              TEXT PRIMARY KEY,
-    paths           TEXT NOT NULL,
-    password_hash   TEXT,
-    expires_at      REAL,
-    max_downloads   INTEGER,
-    download_count  INTEGER DEFAULT 0,
-    allow_preview   INTEGER DEFAULT 1,
-    created_by      TEXT,
-    created_at      REAL DEFAULT (strftime('%s','now')),
-    is_active       INTEGER DEFAULT 1
-);
-"""
+# Re-export schema constants from repository layer
+from AssetsManager.repositories.auth_repository import (  # noqa: F401
+    INVITE_CODES_SCHEMA,
+    SHARE_LINKS_SCHEMA,
+    USERS_SCHEMA,
+)
 
 
 def init_users_table(db_conn):

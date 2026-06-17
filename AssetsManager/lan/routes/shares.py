@@ -7,6 +7,7 @@ from aiohttp import web
 
 from AssetsManager.application.share_service import ShareService
 from AssetsManager.domain.share import ShareLink
+from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.lan.routes._helpers import get_auth_service, get_lan, get_auth_token, get_request_user, validate_path
 from AssetsManager.lan.utils import get_local_ip
 
@@ -260,7 +261,6 @@ async def handle_share_preview(request):
     if not target:
         return web.json_response({"error": "File not found in share"}, status=404)
 
-    IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".svg"}
     if target.suffix.lower() not in IMAGE_EXTS:
         return web.json_response({"error": "Not an image"}, status=400)
 
