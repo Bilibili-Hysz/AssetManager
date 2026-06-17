@@ -20,7 +20,6 @@ tr = i18n.tr
 
 class TagTreePanel(PanelContent):
     directory_selected = Signal(str)
-    tags_changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -52,7 +51,6 @@ class TagTreePanel(PanelContent):
 
         self._connect_bus(bus().library_opened, self._on_library_changed)
         self._connect_bus(bus().directory_changed, self._on_directory_changed)
-        self._connect_bus(bus().tags_changed, self._populate)
         self._populate()
 
         # Subscribe to domain events through a Qt bridge for UI-safe delivery.
@@ -141,15 +139,12 @@ class TagTreePanel(PanelContent):
         if ok and tag.strip() and self._controller:
             self._controller.add_tag(tag.strip())
             self._populate()
-            self.tags_changed.emit()
-            bus().tags_changed.emit()
 
     def _rename_tag(self, old_tag):
         new_tag, ok = QInputDialog.getText(self, tr("tagtree.dialog.rename"), tr("tagtree.dialog.rename_label"), text=old_tag)
         if ok and new_tag.strip() and new_tag.strip().lower() != old_tag.lower() and self._controller:
             self._controller.rename_tag(old_tag, new_tag.strip())
             self._populate()
-            bus().tags_changed.emit()
 
     def _delete_tag(self, tag):
         files = self._controller.get_files_for_tag(tag) if self._controller else []
@@ -162,13 +157,11 @@ class TagTreePanel(PanelContent):
         if self._controller:
             self._controller.delete_tag(tag)
             self._populate()
-            bus().tags_changed.emit()
 
     def _remove_tag(self, filepath, tag):
         if self._controller:
             self._controller.remove_tag_from_file(filepath, tag)
             self._populate()
-            bus().tags_changed.emit()
 
     def _on_search(self, text):
         search = text.lower()

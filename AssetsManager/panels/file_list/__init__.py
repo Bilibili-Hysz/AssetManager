@@ -237,7 +237,7 @@ class QWidgetFileListPanel(FileListPanel):
         if path:
             info = QFileInfo(path)
             self.file_selected.emit(info)
-            bus().file_focused.emit(info)
+            bus().file_focused.emit(str(path))
 
     def _on_grid_double_click(self, row: int):
         ent = self._model.entry_at(row)
@@ -346,7 +346,7 @@ class QWidgetFileListPanel(FileListPanel):
             if path:
                 info = QFileInfo(path)
                 self.file_selected.emit(info)
-                bus().file_focused.emit(info)
+                bus().file_focused.emit(str(path))
 
     def _selected_detail_paths(self) -> list[str]:
         sel = self._detail_view.selectionModel().selectedRows()

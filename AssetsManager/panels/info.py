@@ -340,7 +340,6 @@ class InfoPanel(PanelContent):
         self._connect_bus(bus().library_opened, self._on_library_changed)
         self._connect_bus(bus().sidebar_depth_changed, self._on_sidebar_depth_changed)
         self._connect_bus(bus().theme_changed, self._refresh_theme)
-        self._connect_bus(bus().tags_changed, self._on_tags_changed)
         self._load_sidebar_depth_cfg()
 
         # Subscribe to domain events through a Qt bridge for UI-safe delivery.
@@ -782,7 +781,6 @@ class InfoPanel(PanelContent):
             new_tags = self._controller.add_tag(self._current_path, tag.strip())
             self._tags_widgets_texts = set(new_tags)
             self._render_tags(new_tags)
-            bus().tags_changed.emit()
 
     def _open_tag_editor(self):
         if not self._current_path or not os.path.exists(self._current_path) or not self._controller:
@@ -797,20 +795,11 @@ class InfoPanel(PanelContent):
             new_tags = self._controller.get_tags(self._current_path)
             self._tags_widgets_texts = set(new_tags)
             self._render_tags(new_tags)
-            bus().tags_changed.emit()
 
     def _remove_tag(self, tag: str):
         if not self._current_path or not self._controller:
             return
         new_tags = self._controller.remove_tag(self._current_path, tag)
-        self._render_tags(new_tags)
-        bus().tags_changed.emit()
-
-    def _on_tags_changed(self):
-        """Refresh tags for the current file when tags are changed externally."""
-        if not self._current_path or not self._controller:
-            return
-        new_tags = self._controller.get_tags(self._current_path)
         self._render_tags(new_tags)
 
     def _on_domain_tags_changed(self, event):

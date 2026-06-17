@@ -41,7 +41,7 @@ class ActionsMixin:
         path = self._model.path_at(idx.row())
         if path:
             self.file_selected.emit(QFileInfo(path))
-            bus().file_focused.emit(QFileInfo(path))
+            bus().file_focused.emit(str(path))
 
     def _on_double_click(self, idx):
         path = self._model.path_at(idx.row())
@@ -68,7 +68,7 @@ class ActionsMixin:
             return
         self._last_tree_item = index
         self.file_selected.emit(QFileInfo(path))
-        bus().file_focused.emit(QFileInfo(path))
+        bus().file_focused.emit(str(path))
 
     def _on_tree_double_click(self, index, col=0):
         path = self._detail_model.data(index, Qt.ItemDataRole.UserRole)
@@ -424,7 +424,6 @@ class ActionsMixin:
             svc = self._get_tag_service()
             for p in paths:
                 svc.add_tag(self._lib_root, p, tag.strip())
-            bus().tags_changed.emit()
             self._post_refresh()
 
     def _remove_tag_dialog(self, paths):
@@ -435,7 +434,6 @@ class ActionsMixin:
             svc = self._get_tag_service()
             for p in paths:
                 svc.remove_tag(self._lib_root, p, tag.strip())
-            bus().tags_changed.emit()
             self._post_refresh()
 
     def _manage_tags_dialog(self, paths):
@@ -447,7 +445,6 @@ class ActionsMixin:
         adapter = TagServiceAdapter(self._lib_root, scoped.tag_service if scoped is not None else None)
         dlg = TagEditorDialog(adapter, paths[0] if paths else str(self._current), self)
         dlg.exec()
-        bus().tags_changed.emit()
         self._post_refresh()
 
     # ── Properties ───────────────────────────────────────────────
