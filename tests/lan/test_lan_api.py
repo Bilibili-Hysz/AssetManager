@@ -791,6 +791,110 @@ class TestShareSecurity:
         finally:
             conn.close()
 
+
+class TestMiddlewarePrecedenceRegression:
+    """Regression: operator precedence in auth middleware skip list."""
+
+    @pytest.mark.anyio
+    async def test_share_info_get_accessible_without_auth(self, tmp_path):
+        """GET /api/shares/{id}/info must be accessible without auth (public endpoint)."""
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("content", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            create = await client.post("/api/shares", json={"paths": ["file.txt"], "allow_preview": True})
+            assert create.status == 200
+            share_id = (await create.json())["id"]
+
+            info = await client.get(f"/api/shares/{share_id}/info")
+            assert info.status == 200
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_non_get_share_endpoints_require_auth(self, tmp_path):
+        """POST /api/shares/{id}/verify must require auth (not skipped by precedence bug)."""
+        from AssetsManager.lan.server import _LanServerImpl
+        from AssetsManager.lan.auth import hash_password, init_users_table
+        from AssetsManager.core import database
+
+        library = tmp_path / "library"
+        library.mkdir()
+        (library / "file.txt").write_text("content", encoding="utf-8")
+
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        try:
+            conn.executescript(database._SCHEMA)
+            init_users_table(conn)
+            conn.commit()
+
+            server = _LanServerImpl(
+                library_root=str(library),
+                thumbnail_dir=str(tmp_path / "thumbs"),
+                db_conn=conn,
+                password=hash_password("Test@1234"),
+                access_key=None,
+            )
+
+            from aiohttp.test_utils import TestClient, TestServer
+            client = TestClient(TestServer(server._app))
+            await client.start_server()
+            try:
+                resp = await client.get("/api/shares/nonexistent/info")
+                assert resp.status != 401  # bypassed auth middleware
+
+                resp2 = await client.post("/api/shares/nonexistent/verify", json={"password": "x"})
+                assert resp2.status == 401  # blocked by auth middleware
+            finally:
+                await client.close()
+        finally:
+            conn.close()
+
+
+class TestPasswordHashLeakRegression:
+    """Regression: password_hash must not appear in API responses."""
+
+    @pytest.mark.anyio
+    async def test_users_endpoint_strips_password_hash(self, tmp_path):
+        from AssetsManager.lan.server import _LanServerImpl
+        from AssetsManager.lan.auth import hash_password, init_users_table
+        from AssetsManager.core import database
+
+        library = tmp_path / "library"
+        library.mkdir()
+
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        try:
+            conn.executescript(database._SCHEMA)
+            init_users_table(conn)
+            conn.execute(
+                "INSERT INTO users (username, password, role, is_active) VALUES (?, ?, 'admin', 1)",
+                ("admin", hash_password("Admin@1234")),
+            )
+            conn.commit()
+
+            server = _LanServerImpl(
+                library_root=str(library),
+                thumbnail_dir=str(tmp_path / "thumbs"),
+                db_conn=conn,
+                access_key="admin-key",
+            )
+
+            from aiohttp.test_utils import TestClient, TestServer
+            client = TestClient(TestServer(server._app))
+            await client.start_server()
+            try:
+                resp = await client.get("/api/users?key=admin-key")
+                assert resp.status == 200
+                data = await resp.json()
+                for u in data["users"]:
+                    assert "password_hash" not in u
+            finally:
+                await client.close()
+        finally:
+            conn.close()
+
     @pytest.mark.anyio
     async def test_share_info_does_not_leak_password_protected_paths(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
