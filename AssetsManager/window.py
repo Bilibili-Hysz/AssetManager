@@ -286,13 +286,13 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
         # Share status indicator
         self._share_status_label = QLabel(tr("sharing.off"))
-        self._share_status_label.setStyleSheet("color: gray; padding: 0 8px;")
+        t = themes.get()
+        self._share_status_label.setStyleSheet(f"color: {t['muted']}; padding: 0 8px;")
         self._share_status_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self._share_status_label.mousePressEvent = self._on_share_status_clicked
         status_bar.addPermanentWidget(self._share_status_label)
 
         # Apply theme
-        t = themes.get()
         status_bar.setStyleSheet(
             f"QStatusBar {{ background: {t['header']}; color: {t['body']}; "
             f"border-top: 1px solid {t['border']}; font-size: {scaled_pt(11)}px; }}"

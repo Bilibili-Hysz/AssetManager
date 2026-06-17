@@ -63,7 +63,7 @@ class TitleBarWidget(QWidget):
         close_style = (
             f"QPushButton {{ background: transparent; color: {t['body']}; border: none; "
             f"font-size: {scaled_pt(14)}px; padding: 0; margin: 0; }} "
-            f"QPushButton:hover {{ background: #c42b1c; color: white; }} "
+            f"QPushButton:hover {{ background: {t['danger']}; color: white; }} "
         )
 
         for text, slot, style in [
