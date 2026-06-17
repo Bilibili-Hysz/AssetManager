@@ -6,7 +6,10 @@ import pytest
 # Set QT_QPA_PLATFORM before any Qt imports
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtWidgets import QApplication
 from AssetsManager.panels.file_list._model import FileSystemModel
+
+_app = QApplication.instance() or QApplication([])
 
 
 @pytest.fixture
@@ -30,21 +33,25 @@ def model():
 class TestFileSystemModel:
     def test_set_directory(self, model, tmp_dir):
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         # 3 files (excl .hidden) + 1 folder = 4 items
         assert model.rowCount() == 4
 
     def test_set_directory_includes_hidden(self, model, tmp_dir):
         model._show_hidden = True
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         assert model.rowCount() == 5  # 4 files + 1 folder
 
     def test_filter_by_category(self, model, tmp_dir):
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         model.set_filter(category="images")
         assert model.rowCount() >= 1  # at least image.png
 
     def test_filter_accepts_legacy_category_label(self, model, tmp_dir):
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         model.set_filter(category="images")
         internal_key_paths = [model.path_at(i) for i in range(model.rowCount())]
 
@@ -55,11 +62,13 @@ class TestFileSystemModel:
 
     def test_filter_by_text(self, model, tmp_dir):
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         model.set_filter(text="image")
         assert model.rowCount() == 1
 
     def test_sort_by_name(self, model, tmp_dir):
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         model.set_sort("name", asc=True)
         first = model.data(model.index(0, 0))
         # Folders come first, then files alphabetically
@@ -67,23 +76,27 @@ class TestFileSystemModel:
 
     def test_sort_accepts_legacy_label(self, model, tmp_dir):
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         model.set_sort("Name", asc=True)
         assert model.data(model.index(0, 0)) == "subfolder"
 
     def test_entry_at(self, model, tmp_dir):
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         entry = model.entry_at(0)
         assert entry is not None
         assert entry.name in ["image.png", "model.fbx", "readme.txt", ".hidden", "subfolder"]
 
     def test_path_at(self, model, tmp_dir):
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         path = model.path_at(0)
         assert path is not None
         assert os.path.exists(path)
 
     def test_subtitle_file(self, model, tmp_dir):
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         # Find a file entry
         for i in range(model.rowCount()):
             entry = model.entry_at(i)
@@ -94,6 +107,7 @@ class TestFileSystemModel:
 
     def test_subtitle_dir(self, model, tmp_dir):
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         for i in range(model.rowCount()):
             entry = model.entry_at(i)
             if entry and entry.is_dir():
@@ -103,6 +117,7 @@ class TestFileSystemModel:
 
     def test_stat_cache(self, model, tmp_dir):
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         entry = model.entry_at(0)
         st1 = model._cached_stat(entry)
         st2 = model._cached_stat(entry)
@@ -110,6 +125,7 @@ class TestFileSystemModel:
 
     def test_is_dir_role(self, model, tmp_dir):
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         for i in range(model.rowCount()):
             entry = model.entry_at(i)
             is_dir = model.data(model.index(i, 0), FileSystemModel.IS_DIR_ROLE)
@@ -117,18 +133,22 @@ class TestFileSystemModel:
 
     def test_subtitle_cache_invalidation(self, model, tmp_dir):
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         entry = model.entry_at(0)
         model._subtitle(entry)
         assert entry.path in model._subtitle_cache
         model.set_directory(tmp_dir)  # Re-set clears cache
+        model._wait_for_scan()
         assert entry.path not in model._subtitle_cache
 
     def test_stat_cache_invalidation(self, model, tmp_dir):
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         entry = model.entry_at(0)
         model._cached_stat(entry)
         assert entry.path in model._stat_cache
         model.set_directory(tmp_dir)
+        # Cache is cleared immediately by set_directory(), then repopulated by async scan
         assert entry.path not in model._stat_cache
 
     def test_cached_dir_size_returns_and_caches_size(self, tmp_path):
@@ -159,6 +179,7 @@ class TestFileSystemModel:
 class TestFilterAccepts:
     def test_hidden_files(self, model, tmp_dir):
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         # _show_hidden is False by default, so hidden files are filtered out
         # filter_accepts doesn't check _show_hidden — that's done in _apply_sort
         visible = [e for e in model._raw_entries if model.filter_accepts(e) and not e.name.startswith(".")]
@@ -168,6 +189,7 @@ class TestFilterAccepts:
 
     def test_category_filter(self, model, tmp_dir):
         model.set_directory(tmp_dir)
+        model._wait_for_scan()
         model._filter_cat = "Images"
         for entry in model._raw_entries:
             if entry.name.endswith(".png"):
