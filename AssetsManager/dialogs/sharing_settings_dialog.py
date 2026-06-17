@@ -142,7 +142,7 @@ class SharingSettingsDialog(TabbedDialog):
         self._qr_label = QLabel()
         self._qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._qr_label.setFixedSize(scaled_px(200), scaled_px(200))
-        self._qr_label.setStyleSheet("background: white; border-radius: 10px; padding: 8px;")
+        self._qr_label.setStyleSheet(f"background: {_t()['input_bg']}; border-radius: 10px; padding: 8px;")
         self._qr_label.setVisible(False)
         share_layout.addWidget(self._qr_label, 0, Qt.AlignmentFlag.AlignCenter)
 

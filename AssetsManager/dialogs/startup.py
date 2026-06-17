@@ -125,6 +125,7 @@ class _DetailPanel(QFrame):
                            Path(self._path_data).exists())
 
     def show_detail(self, name: str, path: str, exists: bool):
+        t = themes.get()
         self._path_data = path
         self._header.show()
         self._name.setText(name)
@@ -136,14 +137,14 @@ class _DetailPanel(QFrame):
             self._status.setText(tr("startup.ready"))
             self._status.setStyleSheet(
                 f"font-size: {scaled_pt(11)}px; font-weight: bold; padding: 2px 8px; "
-                f"border-radius: 4px; color: #44aa99; "
-                f"background: {_interpolate_color('#44aa99', -0.75)};")
+                f"border-radius: 4px; color: {t['success']}; "
+                f"background: {_interpolate_color(t['success'], -0.75)};")
         else:
             self._status.setText(tr("startup.missing"))
             self._status.setStyleSheet(
                 f"font-size: {scaled_pt(11)}px; font-weight: bold; padding: 2px 8px; "
-                f"border-radius: 4px; color: #c66; "
-                f"background: {_interpolate_color('#c66', -0.75)};")
+                f"border-radius: 4px; color: {t['danger']}; "
+                f"background: {_interpolate_color(t['danger'], -0.75)};")
         self._status.show()
 
         self._open_btn.setEnabled(exists)
