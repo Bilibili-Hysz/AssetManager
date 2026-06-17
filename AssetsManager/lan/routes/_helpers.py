@@ -162,7 +162,9 @@ def get_auth_token(request) -> str:
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         return auth_header[7:]
-    # Accept both ?token= and ?key= for access key compatibility
+    # Accept both ?token= and ?key= for access key compatibility.
+    # Note: query parameters may appear in server logs, browser history,
+    # and HTTP referer headers. Prefer Authorization: Bearer header.
     token = request.query.get("token", "")
     if token:
         return token
