@@ -94,6 +94,49 @@ class _LoadTask(QRunnable):
             self._loader._mark_failed(self._path)
 
 
+class _BakeTask(QRunnable):
+    def __init__(self, loader, key, source_path, bake_size):
+        super().__init__()
+        self._loader = loader
+        self._key = key
+        self._source_path = source_path
+        self._bake_size = bake_size
+
+    def run(self):
+        try:
+            reader = QImageReader(self._source_path)
+            reader.setAutoTransform(True)
+            sz = reader.size()
+            if sz.isValid() and (sz.width() > self._bake_size or sz.height() > self._bake_size):
+                reader.setScaledSize(sz.scaled(QSize(self._bake_size, self._bake_size),
+                                                Qt.AspectRatioMode.KeepAspectRatio))
+            with _suppress_libpng_warnings():
+                img = reader.read()
+            if img.isNull():
+                return
+            tmp = os.path.join(self._loader._cache_dir, f"{self._key}.webp.tmp")
+            final = os.path.join(self._loader._cache_dir, f"{self._key}.webp")
+            os.makedirs(self._loader._cache_dir, exist_ok=True)
+            img.save(tmp, b"WEBP", quality=85)
+            os.replace(tmp, final)
+            self._loader._db_mutex.lock()
+            try:
+                if self._loader._repo:
+                    mtime = os.path.getmtime(self._source_path)
+                    sz_bytes = os.path.getsize(self._source_path)
+                    cache_sz = os.path.getsize(final)
+                    self._loader._repo.upsert_entry(
+                        self._key, self._source_path,
+                        mtime, sz_bytes, self._bake_size, cache_sz,
+                    )
+            except Exception:
+                _log.exception("Bake DB insert failed")
+            finally:
+                self._loader._db_mutex.unlock()
+        except Exception:
+            _log.exception("Bake task failed: %s", self._source_path)
+
+
 class ThumbnailLoader(QObject):
     thumbnail_ready = Signal(int, str, QImage)  # (model_row, source_path, QImage)
 
@@ -322,42 +365,8 @@ class ThumbnailLoader(QObject):
         bs = get_bake_size()
         if bs < 0:
             return
-        loader = self
-        class _BakeTask(QRunnable):
-            def run(s):
-                try:
-                    reader = QImageReader(source_path)
-                    reader.setAutoTransform(True)
-                    sz = reader.size()
-                    if sz.isValid() and (sz.width() > bs or sz.height() > bs):
-                        reader.setScaledSize(sz.scaled(QSize(bs, bs),
-                                                        Qt.AspectRatioMode.KeepAspectRatio))
-                    with _suppress_libpng_warnings():
-                        img = reader.read()
-                    if img.isNull():
-                        return
-                    tmp = os.path.join(loader._cache_dir, f"{key}.webp.tmp")
-                    final = os.path.join(loader._cache_dir, f"{key}.webp")
-                    os.makedirs(loader._cache_dir, exist_ok=True)
-                    img.save(tmp, b"WEBP", quality=85)
-                    os.replace(tmp, final)
-                    loader._db_mutex.lock()
-                    try:
-                        if loader._repo:
-                            mtime = os.path.getmtime(source_path)
-                            sz_bytes = os.path.getsize(source_path)
-                            cache_sz = os.path.getsize(final)
-                            loader._repo.upsert_entry(
-                                key, source_path,
-                                mtime, sz_bytes, bs, cache_sz,
-                            )
-                    except Exception:
-                        _log.exception("Bake DB insert failed")
-                    finally:
-                        loader._db_mutex.unlock()
-                except Exception:
-                    _log.exception("Bake task failed: %s", source_path)
-        self._pool.start(_BakeTask())
+        task = _BakeTask(self, key, source_path, bs)
+        self._pool.start(task)
 
     # ── Utility ──────────────────────────────────────────────────
 
