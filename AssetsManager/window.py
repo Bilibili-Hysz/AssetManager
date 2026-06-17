@@ -329,6 +329,8 @@ class MainWindow(LanSharingMixin, QMainWindow):
         """Switch all panels to a different library root."""
         if self._library_session is not None:
             self._library_service().close_session(self._library_session)
+        if _alive(self.file_list) and hasattr(self.file_list, '_undo_svc'):
+            self.file_list._undo_svc.clear()
         session = self._open_library_session(path)
         if _alive(self.sidebar):
             self.sidebar.navigate_to(session.root_str)
