@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QPixmap, QDrag
 
 from AssetsManager.panels.base import PanelContent
+from AssetsManager.core.cache import LRUCache
 from AssetsManager.core.constants import IMAGE_EXTS
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
@@ -764,7 +765,7 @@ class InfoPanel(PanelContent):
     def _classify_dir(self, dir_path: str) -> str:
         from AssetsManager.panels.file_list._common import FILTER_CATEGORIES
         if not hasattr(self, '_classify_cache'):
-            self._classify_cache: dict[str, str] = {}
+            self._classify_cache = LRUCache(500)
         if dir_path in self._classify_cache:
             return self._classify_cache[dir_path]
         emoji_map = {
@@ -1142,7 +1143,7 @@ class InfoPanel(PanelContent):
 
         # Start async load
         if not hasattr(self, '_classify_cache'):
-            self._classify_cache: dict[str, str] = {}
+            self._classify_cache = LRUCache(500)
 
         task = _FileInfoTask(
             path=self._current_path,
