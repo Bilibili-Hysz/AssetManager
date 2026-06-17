@@ -6,7 +6,7 @@ import logging
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QRect, QSize, QPoint, QMimeData, QUrl, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import Qt, Signal, QRect, QSize, QPoint, QMimeData, QUrl, QPropertyAnimation, QEasingCurve, QRunnable, QThreadPool, QObject
 from PySide6.QtWidgets import (
     QLabel, QPushButton, QHBoxLayout, QVBoxLayout, QTextEdit,
     QGroupBox, QWidget, QInputDialog, QSplitter, QScrollArea, QFrame,
@@ -149,6 +149,141 @@ def format_info_size(size):
     return f"{size:.2f} TB"
 
 
+class _FileInfoSignals(QObject):
+    result_ready = Signal(object)
+    preview_ready = Signal(str, object)
+
+
+class _FileInfoTask(QRunnable):
+    """Background task for heavy file-info operations."""
+
+    def __init__(self, path, controller, library_root,
+                 sidebar_depth, branch_depths, classify_cache):
+        super().__init__()
+        self._path = path
+        self._controller = controller
+        self._library_root = library_root
+        self._sidebar_depth = sidebar_depth
+        self._branch_depths = branch_depths
+        self._classify_cache = classify_cache
+        self.signals = _FileInfoSignals()
+        self.setAutoDelete(True)
+
+    def _is_deepest_folder(self, path):
+        if not self._library_root or self._sidebar_depth < 1:
+            return False
+        try:
+            rel = os.path.relpath(path, self._library_root)
+        except ValueError:
+            return False
+        if rel in (".", ""):
+            return False
+        parts = rel.replace(os.sep, "/").rstrip("/").split("/")
+        if not parts or parts == [""]:
+            return False
+        level = len(parts)
+        branch = parts[0]
+        effective = self._branch_depths.get(branch, self._sidebar_depth)
+        return level >= effective
+
+    def _classify_dir(self, dir_path):
+        from AssetsManager.panels.file_list._common import FILTER_CATEGORIES
+        if dir_path in self._classify_cache:
+            return self._classify_cache[dir_path]
+        emoji_map = {
+            "Images": "🖼", "3D Models": "🔷", "Videos": "🎬",
+            "Documents": "📄", "Archives": "🗜",
+        }
+        try:
+            counts: dict[str, int] = {}
+            for entry in os.scandir(dir_path):
+                if not entry.is_file():
+                    continue
+                ext = Path(entry.name).suffix.lower()
+                for cat, exts in FILTER_CATEGORIES.items():
+                    if ext in exts:
+                        emoji = emoji_map.get(cat, "📄")
+                        counts[emoji] = counts.get(emoji, 0) + 1
+                        break
+                if ext == ".blend":
+                    counts["🧊"] = counts.get("🧊", 0) + 1
+            if counts:
+                result = "  ".join(f"{k} {v}" for k, v in sorted(counts.items(), key=lambda x: -x[1]))
+                self._classify_cache[dir_path] = result
+                return result
+        except OSError:
+            pass
+        self._classify_cache[dir_path] = ""
+        return ""
+
+    def _load_preview(self, path, is_dir):
+        if is_dir:
+            img_path = InfoPanel._first_image_in_dir(path)
+            if img_path:
+                return InfoPanel._load_preview_pixmap(img_path)
+            return None
+        suffix = Path(path).suffix.lower()
+        if suffix in IMAGE_EXTS:
+            return InfoPanel._load_preview_pixmap(path)
+        return None
+
+    def run(self):
+        try:
+            path = self._path
+            is_dir = os.path.isdir(path)
+            is_project = is_dir and self._is_deepest_folder(path)
+
+            if is_project and self._controller:
+                existing = self._controller.get_urls(path)
+                if not existing:
+                    discovered = self._controller.discover_urls_in_dir(path)
+                    for u in discovered:
+                        try:
+                            self._controller.add_url(path, u)
+                        except ValueError:
+                            pass
+
+            dir_summary = self._classify_dir(path) if is_dir else None
+
+            if is_dir:
+                display_type = tr("info.project") if is_project else tr("info.folder")
+                display_size = tr("info.calculating") if os.path.exists(path) else "—"
+            else:
+                display_type = tr("info.file", ext=Path(path).suffix.lstrip('.').upper())
+                try:
+                    size = os.path.getsize(path)
+                except OSError:
+                    size = 0
+                display_size = format_info_size(size) if size else "—"
+
+            try:
+                from datetime import datetime
+                mtime = os.path.getmtime(path)
+                modified_display = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+            except OSError:
+                modified_display = "—"
+
+            parent_path = str(Path(path).parent)
+
+            file_info = self._controller.get_file_info(
+                path,
+                is_dir=is_dir,
+                file_type=display_type,
+                size_display=display_size,
+                modified_display=modified_display,
+                parent_path=parent_path,
+                dir_summary=dir_summary,
+                is_project=is_project,
+            )
+
+            self.signals.result_ready.emit(file_info)
+
+            preview = self._load_preview(path, is_dir)
+            self.signals.preview_ready.emit(path, preview)
+        except Exception:
+            _log.exception("FileInfoTask failed for %s", self._path)
+
+
 class InfoPanel(PanelContent):
     open_requested = Signal(str)
     copy_path_requested = Signal(str)
@@ -166,6 +301,7 @@ class InfoPanel(PanelContent):
         self._sidebar_depth = 2
         self._branch_depths: dict[str, int] = {}
         self._urls_scanned: set[str] = set()  # avoid re-scanning URL discovery
+        self._pending_task: _FileInfoTask | None = None
 
         # ── Splitter ──────────────────────────────────────────
 
@@ -804,6 +940,7 @@ class InfoPanel(PanelContent):
         self._library_root = os.path.normpath(path)
         self._current_path = ""
         self._urls_scanned.clear()
+        self._pending_task = None
         if hasattr(self, '_classify_cache'):
             self._classify_cache.clear()
         try:
@@ -967,49 +1104,61 @@ class InfoPanel(PanelContent):
         self._current_path = fi.absoluteFilePath()
         is_dir = fi.isDir()
 
-        # Pre-discover URLs for project folders before calling get_file_info
+        # Mark as scanned for URL discovery (async task does the actual work)
         if is_dir and self._controller and self._is_deepest_folder(self._current_path):
-            if self._current_path not in self._urls_scanned:
-                self._urls_scanned.add(self._current_path)
-                existing = self._controller.get_urls(self._current_path)
-                if not existing:
-                    discovered = self._controller.discover_urls_in_dir(self._current_path)
-                    for u in discovered:
-                        try:
-                            self._controller.add_url(self._current_path, u)
-                        except ValueError:
-                            pass
+            self._urls_scanned.add(self._current_path)
 
-        # Compute display values
-        is_project = is_dir and self._is_deepest_folder(self._current_path)
+        # Show placeholders immediately
+        self._name.setText(fi.fileName())
         if is_dir:
-            display_type = tr("info.project") if is_project else tr("info.folder")
-            display_size = tr("info.calculating") if fi.exists() else "—"
-            dir_summary = self._classify_dir(self._current_path) if fi.exists() else None
+            is_project = self._is_deepest_folder(self._current_path)
+            self._set_field_text(self._fields["type"],
+                                 tr("info.project") if is_project else tr("info.folder"))
+            self._set_field_text(self._fields["size"],
+                                 tr("info.calculating") if fi.exists() else "—")
         else:
-            display_type = tr("info.file", ext=fi.suffix().upper())
+            self._set_field_text(self._fields["type"],
+                                 tr("info.file", ext=fi.suffix().upper()) if fi.suffix() else "—")
             size = fi.size()
-            display_size = format_info_size(size) if size else "—"
-            dir_summary = None
+            self._set_field_text(self._fields["size"], format_info_size(size) if size else "—")
+        self._set_field_text(self._fields["date"],
+                             fi.lastModified().toString("yyyy-MM-dd HH:mm:ss"))
+        self._set_field_text(self._fields["path"], fi.absolutePath())
+        self._fields["summary"].hide()
+        self._set_link_field("")
+        self._clear_tags()
+        self._notes.blockSignals(True)
+        self._notes.setPlainText("")
+        self._notes.blockSignals(False)
+        self._clear_preview()
+        self._preview.setText("...")
+        self._preview.setStyleSheet(f"color: {themes.get()['muted']}; font-size: 24px;")
 
-        # Fetch all data via controller
+        # Cancel previous pending task (stale detection handles in-flight results)
+        self._pending_task = None
+
         if not self._controller:
             return
-        file_info = self._controller.get_file_info(
-            self._current_path,
-            is_dir=is_dir,
-            file_type=display_type,
-            size_display=display_size,
-            modified_display=fi.lastModified().toString("yyyy-MM-dd HH:mm:ss"),
-            parent_path=fi.absolutePath(),
-            dir_summary=dir_summary,
-            is_project=is_project,
+
+        # Start async load
+        if not hasattr(self, '_classify_cache'):
+            self._classify_cache: dict[str, str] = {}
+
+        task = _FileInfoTask(
+            path=self._current_path,
+            controller=self._controller,
+            library_root=self._library_root,
+            sidebar_depth=self._sidebar_depth,
+            branch_depths=self._branch_depths,
+            classify_cache=self._classify_cache,
         )
+        task.signals.result_ready.connect(self._on_file_info_ready)
+        task.signals.preview_ready.connect(self._on_preview_ready)
+        self._pending_task = task
+        QThreadPool.globalInstance().start(task)
 
-        self._render_file_info(file_info, fi)
-
-    def _render_file_info(self, file_info, fi):
-        """Render FileInfo dataclass to widgets."""
+    def _render_file_info(self, file_info):
+        """Render FileInfo dataclass to widgets (no preview — handled async)."""
         self._name.setText(file_info.name)
 
         self._set_field_text(self._fields["type"], file_info.file_type)
@@ -1025,7 +1174,7 @@ class InfoPanel(PanelContent):
             self._fields["summary"].hide()
 
         # Async dir size
-        if file_info.is_dir and fi.exists():
+        if file_info.is_dir and os.path.exists(self._current_path):
             self._start_async_dir_size(self._current_path)
 
         # Plugin fields
@@ -1034,28 +1183,35 @@ class InfoPanel(PanelContent):
         # URLs
         self._set_link_field(file_info.urls[0] if file_info.urls else "")
 
-        # Preview
-        suffix = Path(fi.fileName()).suffix.lower()
-        if file_info.is_dir and fi.exists():
-            self._clear_preview()
-            img_path = self._first_image_in_dir(self._current_path)
-            if img_path:
-                self._preview_pixmap = self._load_preview_pixmap(img_path)
-                if self._preview_pixmap:
-                    self._apply_scaled_preview()
-                    return
-            self._preview.setText("📁")
-            self._preview.setStyleSheet(f"color: {themes.get()['muted']}; font-size: 40px;")
+        # Tags
+        self._tags_widgets_texts = set(file_info.tags)
+        self._render_tags(list(file_info.tags))
+
+        # Notes
+        self._notes.blockSignals(True)
+        self._notes.setPlainText(file_info.notes)
+        self._notes.blockSignals(False)
+
+    def _on_file_info_ready(self, file_info):
+        """Called on main thread when async file-info load completes."""
+        if file_info.path != self._current_path:
             return
+        self._render_file_info(file_info)
 
-        if suffix in IMAGE_EXTS and fi.exists():
-            self._clear_preview()
-            self._preview_pixmap = self._load_preview_pixmap(self._current_path)
-            if self._preview_pixmap:
-                self._apply_scaled_preview()
-                return
+    def _on_preview_ready(self, path, pixmap):
+        """Called on main thread when async preview load completes."""
+        if path != self._current_path:
+            return
+        if pixmap:
+            self._preview_pixmap = pixmap
+            self._apply_scaled_preview()
+        else:
+            self._show_preview_fallback()
 
-        self._clear_preview()
+    def _show_preview_fallback(self):
+        """Show emoji hint when no preview image is available."""
+        suffix = Path(self._current_path).suffix.lower()
+        is_dir = os.path.isdir(self._current_path)
         hints = {
             "png": "🖼", "jpg": "🖼", "jpeg": "🖼", "gif": "🖼", "bmp": "🖼",
             "webp": "🖼", "svg": "🖼",
@@ -1065,7 +1221,7 @@ class InfoPanel(PanelContent):
             "zip": "🗜", "rar": "🗜", "7z": "🗜", "tar": "🗜", "gz": "🗜",
         }
         muted = themes.get()['muted']
-        self._preview.setText(hints.get(suffix, "📄" if not file_info.is_dir else "📁"))
+        self._preview.setText(hints.get(suffix, "📄" if not is_dir else "📁"))
         self._preview.setStyleSheet(f"color: {muted}; font-size: 40px;")
 
     def _render_plugin_fields(self, plugin_fields):
@@ -1093,6 +1249,7 @@ class InfoPanel(PanelContent):
         self._flush_notes_save()
         if self._notes_timer:
             self._notes_timer.stop()
+        self._pending_task = None
         super().shutdown()
 
     def closeEvent(self, event):
