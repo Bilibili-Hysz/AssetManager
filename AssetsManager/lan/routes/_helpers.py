@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
-import fnmatch
 import logging
 import os
 import zipfile
@@ -13,6 +12,7 @@ from typing import Any
 
 from aiohttp import web
 
+from AssetsManager.application.asset_service import matches_exclude
 from AssetsManager.core.format_utils import CATEGORY_MAP, format_size
 from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.lan.path_guard import MissingPathError, PathEscapeError, PathGuard
@@ -186,15 +186,6 @@ def find_first_image(dir_path: Path) -> str | None:
 def batch_cached_stats(lib_root: str, file_paths: list[str], connection_provider=None) -> dict[str, tuple[int, float]]:
     from AssetsManager.application import MetadataService
     return MetadataService(connection_provider=connection_provider).get_cached_stats(lib_root, file_paths)
-
-
-def matches_exclude(name: str, patterns: list[str]) -> bool:
-    for pattern in patterns:
-        if fnmatch.fnmatch(name, pattern):
-            return True
-        if fnmatch.fnmatch(name.lstrip("."), pattern.lstrip(".")):
-            return True
-    return False
 
 
 def build_zip_sync(target_paths: list[tuple[Path, str | None]], zip_path: str) -> str | None:

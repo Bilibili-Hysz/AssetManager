@@ -29,15 +29,6 @@ def get_local_ip() -> str:
         return "127.0.0.1"
 
 
-def format_size(size: int) -> str:
-    """Format bytes to human readable string.
-
-    .. deprecated:: Use ``AssetsManager.core.format_utils.format_size`` instead.
-    """
-    from AssetsManager.core.format_utils import format_size as _fmt
-    return _fmt(size)
-
-
 def generate_auth_token(token_secret: str) -> str:
     """Generate a simple auth token for API requests.
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -183,7 +184,7 @@ def _scan_dir_summary(dir_path: Path) -> tuple[Path | None, int]:
     return preview, count
 
 
-def matches_exclude(name: str, patterns: tuple[str, ...]) -> bool:
+def matches_exclude(name: str, patterns: Sequence[str]) -> bool:
     import fnmatch
     for pattern in patterns:
         if fnmatch.fnmatch(name, pattern):
