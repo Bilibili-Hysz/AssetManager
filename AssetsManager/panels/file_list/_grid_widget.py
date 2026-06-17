@@ -639,7 +639,7 @@ class FileListGridWidget(QWidget):
         self._scrollbar.setStyleSheet(
             f"QScrollBar:vertical {{ background: {t['panel']}; width:{scaled_px(8)}px; }}"
             f"QScrollBar::handle:vertical {{ background: {t['border']}; "
-            f"border-radius:4px; min-height:30px; }}"
+            f"border-radius:{scaled_px(4)}px; min-height:30px; }}"
             f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}")
 
     def refresh_theme(self):

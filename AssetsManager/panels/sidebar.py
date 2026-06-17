@@ -145,7 +145,7 @@ class SidebarPanel(PanelContent):
             btn.setFlat(True)
             btn.setStyleSheet(
                 f"color: {t['body']}; padding: 0; font-size: {scaled_pt(14)}px; font-weight: bold; "
-                f"background: transparent; border-radius: 6px; "
+                f"background: transparent; border-radius: {scaled_px(6)}px; "
                 f"border: 1px solid {alpha(t['border'], 0.375)};")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             bar.addWidget(btn)
@@ -781,7 +781,7 @@ class SidebarPanel(PanelContent):
         gear.setFlat(True)
         gear.setStyleSheet(
             f"color: {t['heading']}; font-size: {scaled_pt(13)}px; font-weight: bold; "
-            f"padding: 0; background: transparent; border: none; border-radius: 3px;")
+            f"padding: 0; background: transparent; border: none; border-radius: {scaled_px(3)}px;")
         gear.setCursor(Qt.CursorShape.PointingHandCursor)
         gear.clicked.connect(self._show_settings_menu)
         return [gear]

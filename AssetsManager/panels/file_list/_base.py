@@ -88,7 +88,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._header.setStyleSheet(
             f"background: {themes.header_for_dock()}; "
             f"border: 1px solid {t['border']}; "
-            f"border-top-left-radius: 7px; border-top-right-radius: 7px; ")
+            f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
         header_layout = QHBoxLayout(self._header)
         header_layout.setContentsMargins(scaled_px(10), scaled_px(3), scaled_px(6), scaled_px(3))
         header_layout.setSpacing(scaled_px(4))
@@ -236,7 +236,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._header.setStyleSheet(
             f"background: {themes.header_for_dock()}; "
             f"border: 1px solid {t['border']}; "
-            f"border-top-left-radius: 7px; border-top-right-radius: 7px; ")
+            f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
 
     # ── View switching ──────────────────────────────────────────
 
@@ -258,7 +258,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._header.setStyleSheet(
             f"background: {themes.header_for_dock()}; "
             f"border: 1px solid {t['border']}; "
-            f"border-top-left-radius: 7px; border-top-right-radius: 7px; ")
+            f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
         self._header_title.setStyleSheet(
             f"color: {t['heading']}; font-size: {scaled_pt(12)}px; font-weight: bold; "
             f"background: transparent; border: none; padding: 2px 4px;")
@@ -267,7 +267,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             btn.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {t['body']}; "
                 f"border: none; padding: 0; font-size: {scaled_pt(10)}px; }} "
-                f"QPushButton:hover {{ background: {alpha(t['panel'], 0.50)}; border-radius: 3px; color: {t['heading']}; }}")
+                f"QPushButton:hover {{ background: {alpha(t['panel'], 0.50)}; border-radius: {scaled_px(3)}px; color: {t['heading']}; }}")
 
     def _update_thumb_cache_dir(self):
         if self._root:
@@ -904,7 +904,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         btn.setStyleSheet(
             f"QPushButton {{ background: transparent; color: {t['body']}; "
             f"border: none; padding: 0; font-size: {scaled_pt(font_size)}px; }} "
-            f"QPushButton:hover {{ background: {t['panel']}80; border-radius: 3px; color: {t['heading']}; }}")
+            f"QPushButton:hover {{ background: {t['panel']}80; border-radius: {scaled_px(3)}px; color: {t['heading']}; }}")
         btn.clicked.connect(callback)
         return btn
 

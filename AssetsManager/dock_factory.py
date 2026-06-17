@@ -86,7 +86,7 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
     bar.setStyleSheet(
         f"background: {themes.header_for_dock()}; "
         f"border: 1px solid {t['border']}; "
-        f"border-top-left-radius: 7px; border-top-right-radius: 7px; ")
+        f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
 
     layout = QHBoxLayout(bar)
     layout.setContentsMargins(scaled_px(10), scaled_px(3), scaled_px(6), scaled_px(3))
@@ -112,7 +112,7 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
 
     btn_style = (
         f"color: {t['heading']}; font-size: {scaled_pt(14)}px; font-weight: bold; "
-        f"padding: 0; background: transparent; border: none; border-radius: 3px;")
+        f"padding: 0; background: transparent; border: none; border-radius: {scaled_px(3)}px;")
 
     _dock = dock
     float_btn = QPushButton("⛶")

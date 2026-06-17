@@ -81,7 +81,7 @@ class TagEditorDialog(QDialog):
         del_unused = QPushButton(tr("tageditor.delete_unused"))
         del_unused.setStyleSheet(
             f"color: {t['muted']}; background: transparent; "
-            f"border: 1px solid {t['border']}; border-radius: 4px; padding: 4px 12px;")
+            f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; padding: 4px 12px;")
         del_unused.clicked.connect(self._delete_unused)
         danger_layout.addWidget(del_unused)
         danger_layout.addStretch()

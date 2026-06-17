@@ -106,7 +106,7 @@ class _CollapsibleSection(QWidget):
         self._header.setStyleSheet(
             f"QPushButton {{ text-align: left; font-weight: bold; font-size: {scaled_pt(12)}px; "
             f"color: {t['heading']}; background: {bg}; border: 1px solid {t['border']}40; "
-            f"border-radius: 4px; padding: 4px 8px; }}"
+            f"border-radius: {scaled_px(4)}px; padding: 4px 8px; }}"
             f"QPushButton:hover {{ background: {hover_bg}; }}")
 
     def _on_toggle(self, checked):
@@ -189,33 +189,33 @@ class TabbedDialog(QDialog):
             f"QLabel {{ color: {t['body']}; background: transparent; }}"
             f"QLineEdit, QTextEdit, QSpinBox {{ "
             f"background: {t['input_bg']}; color: {t['input_text']}; "
-            f"border: 1px solid {t['border']}; border-radius: 4px; padding: 3px 6px; }}"
+            f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; padding: 3px 6px; }}"
             f"QComboBox {{ "
             f"background: {t['input_bg']}; color: {t['input_text']}; "
-            f"border: 1px solid {t['border']}; border-radius: 4px; padding: 3px 6px; }}"
+            f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; padding: 3px 6px; }}"
             f"QComboBox::drop-down {{ border: none; }}"
             f"QRadioButton, QCheckBox {{ color: {t['body']}; background: transparent; }}"
             f"QRadioButton:checked {{ color: {t['accent']}; font-weight: bold; }}"
             f"QRadioButton::indicator:checked {{ background: {t['accent']}; border: 2px solid {t['accent']}; "
-            f"border-radius: 7px; width: 14px; height: 14px; }}"
+            f"border-radius: {scaled_px(7)}px; width: 14px; height: 14px; }}"
             f"QGroupBox {{ color: {t['heading']}; border: 1px solid {t['border']}; "
-            f"border-radius: 6px; margin-top: 8px; padding-top: 12px; "
+            f"border-radius: {scaled_px(6)}px; margin-top: 8px; padding-top: 12px; "
             f"background: transparent; }}"
             f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 5px; }}"
             f"QPushButton {{ background: {t['accent']}; color: {t['on_accent']}; "
-            f"border: none; border-radius: 4px; padding: 6px 16px; }}"
+            f"border: none; border-radius: {scaled_px(4)}px; padding: 6px 16px; }}"
             f"QPushButton:hover {{ background: {hover}; }}"
             f"QScrollBar:vertical {{ background: {t['scrollbar_track']}; width: 8px; }}"
             f"QScrollBar::handle:vertical {{ background: {t['scrollbar_thumb']}; "
-            f"border-radius: 4px; min-height: 20px; }}"
+            f"border-radius: {scaled_px(4)}px; min-height: 20px; }}"
             f"QPushButton[objectName^=\"__td_secondary_\"] {{ "
             f"background: {t['panel']}; color: {t['heading']}; "
-            f"border: 1px solid {t['border']}; border-radius: 6px; padding: 8px 16px; }}"
+            f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px; padding: 8px 16px; }}"
             f"QPushButton[objectName^=\"__td_secondary_\"]:hover {{ "
             f"background: {hover}; }}"
             f"QPushButton[objectName^=\"__td_primary_\"] {{ "
             f"background: {t['accent']}; color: {t['on_accent']}; "
-            f"border: none; border-radius: 6px; padding: 8px 16px; font-weight: bold; }}"
+            f"border: none; border-radius: {scaled_px(6)}px; padding: 8px 16px; font-weight: bold; }}"
             f"QPushButton[objectName^=\"__td_primary_\"]:hover {{ "
             f"background: {alpha(t['accent'], 0.85)}; }}"
         )
@@ -224,10 +224,10 @@ class TabbedDialog(QDialog):
         t = self._t
         return (
             f"QTabWidget::pane {{ border: 1px solid {t['border']}; "
-            f"border-radius: 6px; background: {t['panel']}; }}"
+            f"border-radius: {scaled_px(6)}px; background: {t['panel']}; }}"
             f"QTabBar::tab {{ background: {t['base']}; color: {t['muted']}; "
             f"border: 1px solid {t['border']}; padding: 8px 16px; margin-right: 2px; "
-            f"border-top-left-radius: 6px; border-top-right-radius: 6px; }}"
+            f"border-top-left-radius: {scaled_px(6)}px; border-top-right-radius: {scaled_px(6)}px; }}"
             f"QTabBar::tab:selected {{ background: {t['panel']}; color: {t['heading']}; "
             f"border-bottom-color: {t['panel']}; }}"
             f"QTabBar::tab:hover:!selected {{ background: {alpha(t['hover_overlay'], 0.13)}; color: {t['body']}; }}"
@@ -371,7 +371,7 @@ class TabbedDialog(QDialog):
         btn.setFlat(True)
         btn.setStyleSheet(
             f"color: {t['heading']}; font-size: {scaled_pt(13)}px; font-weight: bold; "
-            f"padding: 0; background: transparent; border: none; border-radius: 3px;")
+            f"padding: 0; background: transparent; border: none; border-radius: {scaled_px(3)}px;")
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         if callback:
             btn.clicked.connect(callback)
@@ -426,22 +426,22 @@ class TabbedDialog(QDialog):
     def primary_btn_style(self):
         t = self._t
         return (f"QPushButton {{ background: {t['accent']}; color: {t['on_accent']}; border: none; "
-                f"border-radius: 6px; padding: 8px 16px; font-size: {scaled_pt(13)}px; font-weight: bold; }}"
+                f"border-radius: {scaled_px(6)}px; padding: 8px 16px; font-size: {scaled_pt(13)}px; font-weight: bold; }}"
                 f"QPushButton:hover {{ background: {alpha(t['accent'], 0.85)}; }}")
 
     def status_style(self, active):
         t = self._t
         c = t["accent"] if active else t["panel"]
         return (f"QFrame {{ background: {alpha(c, 0.13)}; border: 1px solid {alpha(c, 0.38)}; "
-                f"border-radius: 6px; padding: 8px; }}")
+                f"border-radius: {scaled_px(6)}px; padding: 8px; }}")
 
     def toggle_btn_style(self, active):
         t = self._t
         if active:
             return (f"QPushButton {{ background: {t['danger']}; color: {t['on_accent']}; border: none; "
-                    f"border-radius: 6px; padding: 8px 16px; font-size: {scaled_pt(13)}px; font-weight: bold; }}"
+                    f"border-radius: {scaled_px(6)}px; padding: 8px 16px; font-size: {scaled_pt(13)}px; font-weight: bold; }}"
                     f"QPushButton:hover {{ background: {alpha(t['danger'], 0.87)}; }}")
         else:
             return (f"QPushButton {{ background: {t['accent']}; color: {t['on_accent']}; border: none; "
-                    f"border-radius: 6px; padding: 8px 16px; font-size: {scaled_pt(13)}px; font-weight: bold; }}"
+                    f"border-radius: {scaled_px(6)}px; padding: 8px 16px; font-size: {scaled_pt(13)}px; font-weight: bold; }}"
                     f"QPushButton:hover {{ background: {alpha(t['accent'], 0.85)}; }}")

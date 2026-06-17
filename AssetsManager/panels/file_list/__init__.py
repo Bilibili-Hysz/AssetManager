@@ -434,7 +434,7 @@ class QWidgetFileListPanel(FileListPanel):
         t = themes.get()
         self._header.setStyleSheet(
             f"background: {themes.header_for_dock()}; border: 1px solid {t['border']}; "
-            f"border-top-left-radius: 7px; border-top-right-radius: 7px; ")
+            f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
         self._header_title.setStyleSheet(
             f"color: {t['heading']}; font-size: {scaled_pt(12)}px; font-weight: bold; "
             f"background: transparent; border: none; padding: 2px 4px;")
@@ -443,7 +443,7 @@ class QWidgetFileListPanel(FileListPanel):
             btn.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {t['body']}; "
                 f"border: none; padding: 0; font-size: {scaled_pt(10)}px; }} "
-                f"QPushButton:hover {{ background: {alpha(t['panel'], 0.50)}; border-radius: 3px; "
+                f"QPushButton:hover {{ background: {alpha(t['panel'], 0.50)}; border-radius: {scaled_px(3)}px; "
                 f"color: {t['heading']}; }}")
         self._grid_widget.refresh_theme()
         self._apply_detail_theme()

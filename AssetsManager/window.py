@@ -139,7 +139,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
                 bar.setStyleSheet(
                     f"background: {themes.header_for_dock()}; "
                     f"border: 1px solid {themes.get()['border']}; "
-                    f"border-top-left-radius: 7px; border-top-right-radius: 7px; ")
+                    f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
         self._workspace._apply_style()
         if hasattr(self.file_list, 'refresh_header') and callable(getattr(self.file_list, 'refresh_header', None)):
             self.file_list.refresh_header()
@@ -404,11 +404,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._menu_bar.setStyleSheet(
             f"QMenuBar {{ background: transparent; color: {t['heading']}; "
             f"border: none; padding: 2px 8px; font-size: {scaled_pt(12)}px; }}"
-            f"QMenuBar::item {{ padding: 3px 10px; border-radius: 4px; }}"
+            f"QMenuBar::item {{ padding: 3px 10px; border-radius: {scaled_px(4)}px; }}"
             f"QMenuBar::item:selected {{ background: {alpha(t['accent'], 0.313)}; }}"
             f"QMenu {{ background: {t['panel']}; color: {t['heading']}; "
-            f"border: 1px solid {t['border']}; border-radius: 6px; padding: 4px; }}"
-            f"QMenu::item {{ padding: 5px 28px 5px 12px; border-radius: 4px; }}"
+            f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px; padding: 4px; }}"
+            f"QMenu::item {{ padding: 5px 28px 5px 12px; border-radius: {scaled_px(4)}px; }}"
             f"QMenu::item:selected {{ background: {t['accent']}; }}"
         )
 

@@ -89,7 +89,7 @@ class WorkspaceBar(QTabBar):
         t = themes.get()
         self._renamer_style = (
             f"QLineEdit {{ background: {t['panel']}; color: {t['heading']}; "
-            f"border: 1px solid {alpha(t['accent'], 0.627)}; border-radius: 4px; "
+            f"border: 1px solid {alpha(t['accent'], 0.627)}; border-radius: {scaled_px(4)}px; "
             f"padding: 2px 6px; font-size: {scaled_pt(11)}px; selection-background-color: {alpha(t['accent'], 0.50)}; }}"
         )
         self.setStyleSheet(
@@ -97,7 +97,7 @@ class WorkspaceBar(QTabBar):
             f"QTabBar::tab {{ "
             f"  background: transparent; color: {t['muted']}; "
             f"  border: 1px solid transparent; "
-            f"  border-top-left-radius: 6px; border-top-right-radius: 6px; "
+            f"  border-top-left-radius: {scaled_px(6)}px; border-top-right-radius: {scaled_px(6)}px; "
             f"  padding: 2px 8px; margin-right: 1px; "
             f"  font-size: {scaled_pt(11)}px; min-width: 22px; max-width: 140px;"
             f"}} "
@@ -117,7 +117,7 @@ class WorkspaceBar(QTabBar):
             f"  margin: 0px; padding: 0px;"
             f"}} "
             f"QTabBar::close-button:hover {{ "
-            f"  background: {alpha(t['accent'], 0.375)}; border-radius: 3px;"
+            f"  background: {alpha(t['accent'], 0.375)}; border-radius: {scaled_px(3)}px;"
             f"}} "
             f"QTabBar QToolButton {{ "
             f"  color: {t['muted']}; background: transparent; border: none;"
@@ -327,7 +327,7 @@ class WorkspaceSection(QWidget):
             f"QFrame {{ color: {t['border']}; background: {t['border']}; }}")
         self._add_btn.setStyleSheet(
             f"QPushButton {{ background: {alpha(t['accent'], 0.753)}; color: {t['heading']}; "
-            f"border: 1px solid {t['accent']}; border-radius: 10px; "
+            f"border: 1px solid {t['accent']}; border-radius: {scaled_px(10)}px; "
             f"font-size: {scaled_pt(14)}px; font-weight: bold; }} "
             f"QPushButton:hover {{ background: {t['accent']}; color: {t['on_accent']}; "
             f"border: 1px solid {t['accent']}; }} ")

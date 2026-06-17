@@ -19,7 +19,7 @@ def create_tag_chip(tag: str, on_remove=None, parent=None) -> QWidget:
     """
     t = themes.get()
     chip = QWidget(parent)
-    chip.setStyleSheet(f"background: {t['accent']}; border-radius: 6px;")
+    chip.setStyleSheet(f"background: {t['accent']}; border-radius: {scaled_px(6)}px;")
     layout = QHBoxLayout(chip)
     layout.setContentsMargins(scaled_px(6), scaled_px(2), scaled_px(4), scaled_px(2))
     layout.setSpacing(scaled_px(2))
@@ -35,7 +35,7 @@ def create_tag_chip(tag: str, on_remove=None, parent=None) -> QWidget:
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.setStyleSheet(
             f"color: {t['heading']}; font-size: {scaled_pt(11)}px; padding: 0; "
-            f"background: transparent; border-radius: 3px;")
+            f"background: transparent; border-radius: {scaled_px(3)}px;")
         close_btn.setToolTip(f"Remove tag: {tag}")
         close_btn.clicked.connect(lambda checked, tg=tag: on_remove(tg))
         layout.addWidget(close_btn)

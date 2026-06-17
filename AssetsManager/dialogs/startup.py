@@ -137,13 +137,13 @@ class _DetailPanel(QFrame):
             self._status.setText(tr("startup.ready"))
             self._status.setStyleSheet(
                 f"font-size: {scaled_pt(11)}px; font-weight: bold; padding: 2px 8px; "
-                f"border-radius: 4px; color: {t['success']}; "
+                f"border-radius: {scaled_px(4)}px; color: {t['success']}; "
                 f"background: {_interpolate_color(t['success'], -0.75)};")
         else:
             self._status.setText(tr("startup.missing"))
             self._status.setStyleSheet(
                 f"font-size: {scaled_pt(11)}px; font-weight: bold; padding: 2px 8px; "
-                f"border-radius: 4px; color: {t['danger']}; "
+                f"border-radius: {scaled_px(4)}px; color: {t['danger']}; "
                 f"background: {_interpolate_color(t['danger'], -0.75)};")
         self._status.show()
 
@@ -179,7 +179,7 @@ class _DetailPanel(QFrame):
             f"#{name} {{"
             f"  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
             f"    stop:0 {t['panel']}, stop:1 {t['base']}); "
-            f"  border: 1px solid {alpha(t['border'], 0.313)}; border-radius: 10px; "
+            f"  border: 1px solid {alpha(t['border'], 0.313)}; border-radius: {scaled_px(10)}px; "
             f"}}")
 
     def _primary_btn_qss(self) -> str:
@@ -187,7 +187,7 @@ class _DetailPanel(QFrame):
         return (
             f"QPushButton {{"
             f"  background: {t['accent']}; color: {t['heading']}; "
-            f"  border: none; border-radius: 6px; "
+            f"  border: none; border-radius: {scaled_px(6)}px; "
             f"  padding: 9px 0; font-size: {scaled_pt(13)}px; font-weight: bold; "
             f"}}"
             f"QPushButton:hover {{ background: {_interpolate_color(t['accent'], 0.15)}; }}"
@@ -199,7 +199,7 @@ class _DetailPanel(QFrame):
         return (
             f"QPushButton {{"
             f"  background: transparent; color: {t['muted']}; "
-            f"  border: none; border-radius: 6px; "
+            f"  border: none; border-radius: {scaled_px(6)}px; "
             f"  padding: 6px 0; font-size: {scaled_pt(11)}px; "
             f"}}"
             f"QPushButton:hover {{ color: {t['body']}; background: {alpha(t['border'], 0.188)}; }}")
@@ -254,7 +254,7 @@ class _LibraryCard(QFrame):
         dot_bg = alpha(dot_fg, 0.25) if self._exists else alpha(dot_fg, 0.13)
         self._dot.setStyleSheet(
             f"font-size: {scaled_pt(10)}px; color: {dot_fg}; "
-            f"background: {dot_bg}; border-radius: 8px; "
+            f"background: {dot_bg}; border-radius: {scaled_px(8)}px; "
             f"padding: 0;")
         # Name and path labels
         self._name_label.setStyleSheet(
@@ -273,7 +273,7 @@ class _LibraryCard(QFrame):
         self.setStyleSheet(
             f"#libraryCard {{"
             f"  background: {bg}; "
-            f"  border: 1px solid {border}; border-radius: 8px; "
+            f"  border: 1px solid {border}; border-radius: {scaled_px(8)}px; "
             f"}}"
             f"#libraryCard:hover {{"
             f"  background: {alpha(t['border'], 0.125)}; "
@@ -400,7 +400,7 @@ class StartupWindow(QMainWindow):
             f"#listPanel {{"
             f"  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
             f"    stop:0 {_interpolate_color(t['panel'], 0.03)}, stop:1 {t['base']}); "
-            f"  border: 1px solid {alpha(t['border'], 0.188)}; border-radius: 10px; "
+            f"  border: 1px solid {alpha(t['border'], 0.188)}; border-radius: {scaled_px(10)}px; "
             f"}}")
         right_layout = QVBoxLayout(self._list_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -434,7 +434,7 @@ class StartupWindow(QMainWindow):
         self._browse_btn.setStyleSheet(
             f"QPushButton {{"
             f"  background: transparent; color: {t['body']}; "
-            f"  border: 1px solid {alpha(t['border'], 0.375)}; border-radius: 6px; "
+            f"  border: 1px solid {alpha(t['border'], 0.375)}; border-radius: {scaled_px(6)}px; "
             f"  padding: 6px 14px; font-size: {scaled_pt(12)}px; "
             f"}}"
             f"QPushButton:hover {{ background: {alpha(t['border'], 0.188)}; }}")
@@ -472,12 +472,12 @@ class StartupWindow(QMainWindow):
             f"QMenuBar {{ background: {t['header']}; color: {t['heading']}; "
             f"border-bottom: 1px solid {alpha(t['border'], 0.25)}; "
             f"padding: 2px 0; font-size: {scaled_pt(12)}px; }}"
-            f"QMenuBar::item {{ padding: 4px 10px; border-radius: 4px; }}"
+            f"QMenuBar::item {{ padding: 4px 10px; border-radius: {scaled_px(4)}px; }}"
             f"QMenuBar::item:selected {{ background: {alpha(t['accent'], 0.313)}; }}"
             f"QMenu {{ background: {t['panel']}; color: {t['heading']}; "
             f"border: 1px solid {t['border']}; "
-            f"border-radius: 6px; padding: 4px; }}"
-            f"QMenu::item {{ padding: 5px 28px 5px 12px; border-radius: 4px; }}"
+            f"border-radius: {scaled_px(6)}px; padding: 4px; }}"
+            f"QMenu::item {{ padding: 5px 28px 5px 12px; border-radius: {scaled_px(4)}px; }}"
             f"QMenu::item:selected {{ background: {t['accent']}; }}")
 
     def _open_settings(self):
@@ -578,7 +578,7 @@ class StartupWindow(QMainWindow):
             f"#listPanel {{"
             f"  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
             f"    stop:0 {_interpolate_color(t['panel'], 0.03)}, stop:1 {t['base']}); "
-            f"  border: 1px solid {alpha(t['border'], 0.188)}; border-radius: 10px; "
+            f"  border: 1px solid {alpha(t['border'], 0.188)}; border-radius: {scaled_px(10)}px; "
             f"}}")
 
         # Detail panel
@@ -603,7 +603,7 @@ class StartupWindow(QMainWindow):
         self._browse_btn.setStyleSheet(
             f"QPushButton {{"
             f"  background: transparent; color: {t['body']}; "
-            f"  border: 1px solid {alpha(t['border'], 0.375)}; border-radius: 6px; "
+            f"  border: 1px solid {alpha(t['border'], 0.375)}; border-radius: {scaled_px(6)}px; "
             f"  padding: 6px 14px; font-size: {scaled_pt(12)}px; "
             f"}}"
             f"QPushButton:hover {{ background: {alpha(t['border'], 0.188)}; }}")

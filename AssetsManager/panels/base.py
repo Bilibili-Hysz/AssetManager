@@ -91,7 +91,7 @@ class PanelContent(QWidget):
         gear.setFlat(True)
         gear.setStyleSheet(
             f"color: {t['heading']}; font-size: {scaled_pt(13)}px; font-weight: bold; "
-            f"padding: 0; background: transparent; border: none; border-radius: 3px;")
+            f"padding: 0; background: transparent; border: none; border-radius: {scaled_px(3)}px;")
         gear.setCursor(Qt.CursorShape.PointingHandCursor)
         gear.clicked.connect(lambda: generic_settings_dialog(self))
         return [gear]

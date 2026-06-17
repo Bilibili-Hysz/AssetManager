@@ -41,7 +41,7 @@ class TitleBarWidget(QWidget):
         self._menu_bar.setStyleSheet(
             f"QMenuBar {{ background: transparent; color: {t['heading']}; "
             f"border: none; padding: 4px 6px; font-size: {scaled_pt(12)}px; }}"
-            f"QMenuBar::item:selected {{ background: {t['accent']}60; border-radius: 4px; }}"
+            f"QMenuBar::item:selected {{ background: {t['accent']}60; border-radius: {scaled_px(4)}px; }}"
         )
         layout.addWidget(self._menu_bar)
 

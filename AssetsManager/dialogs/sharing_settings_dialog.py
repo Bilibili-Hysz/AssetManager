@@ -123,7 +123,7 @@ class SharingSettingsDialog(TabbedDialog):
         self._share_url_label.setStyleSheet(
             f"font-size: {scaled_pt(13)}px; color: {t['accent']}; "
             f"padding: 10px; background: {t['panel']}; "
-            f"border: 1px solid {t['border']}; border-radius: 6px;")
+            f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px;")
         self._share_url_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self._share_url_label.setVisible(False)
         share_layout.addWidget(self._share_url_label)
@@ -142,7 +142,7 @@ class SharingSettingsDialog(TabbedDialog):
         self._qr_label = QLabel()
         self._qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._qr_label.setFixedSize(scaled_px(200), scaled_px(200))
-        self._qr_label.setStyleSheet(f"background: {_t()['input_bg']}; border-radius: 10px; padding: 8px;")
+        self._qr_label.setStyleSheet(f"background: {_t()['input_bg']}; border-radius: {scaled_px(10)}px; padding: 8px;")
         self._qr_label.setVisible(False)
         share_layout.addWidget(self._qr_label, 0, Qt.AlignmentFlag.AlignCenter)
 
@@ -169,7 +169,7 @@ class SharingSettingsDialog(TabbedDialog):
             self._tunnel_url_label.setStyleSheet(
                 f"font-size: {scaled_pt(13)}px; color: {t['accent']}; "
                 f"padding: 8px; background: {t['panel']}; "
-                f"border: 1px solid {t['border']}; border-radius: 6px;")
+                f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px;")
             self._tunnel_url_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             self._tunnel_url_label.setVisible(False)
             tunnel_layout.addWidget(self._tunnel_url_label)

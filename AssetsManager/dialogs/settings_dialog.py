@@ -35,7 +35,7 @@ class SettingsDialog(TabbedDialog):
         swatch = QFrame()
         swatch.setFixedSize(scaled_px(12), scaled_px(12))
         swatch.setStyleSheet(
-            f"background: {accent}; border: 1px solid {accent}; border-radius: 3px;")
+            f"background: {accent}; border: 1px solid {accent}; border-radius: {scaled_px(3)}px;")
         row_l.addWidget(swatch)
         rb = QRadioButton(name)
         rb.setMinimumHeight(scaled_px(24))

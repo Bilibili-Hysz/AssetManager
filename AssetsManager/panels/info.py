@@ -347,7 +347,7 @@ class InfoPanel(PanelContent):
         t = themes.get()
         meta = QGroupBox(tr("info.title"))
         meta.setStyleSheet(
-            f"QGroupBox {{ border: 1px solid {t['border']}; border-radius: 4px; "
+            f"QGroupBox {{ border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; "
             f"margin-top: {scaled_px(4)}px; padding-top: {scaled_px(6)}px; color: {t['heading']}; }} "
             f"QGroupBox::title {{ subcontrol-origin: margin; left: {scaled_px(8)}px; padding: 0 {scaled_px(4)}px; }}")
         self._meta_grp = meta
@@ -387,7 +387,7 @@ class InfoPanel(PanelContent):
         # Tags
         tags_grp = QGroupBox(tr("info.tags"))
         tags_grp.setStyleSheet(
-            f"QGroupBox {{ border: 1px solid {t['border']}; border-radius: 4px; "
+            f"QGroupBox {{ border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; "
             f"margin-top: {scaled_px(4)}px; padding-top: {scaled_px(6)}px; color: {t['heading']}; }} "
             f"QGroupBox::title {{ subcontrol-origin: margin; left: {scaled_px(8)}px; padding: 0 {scaled_px(4)}px; }}")
         self._tags_grp = tags_grp
@@ -406,14 +406,14 @@ class InfoPanel(PanelContent):
         self._add_tag_btn.clicked.connect(self._add_tag)
         self._add_tag_btn.setStyleSheet(
             f"background: transparent; color: {t['muted']}; border: 1px dashed {t['border']}; "
-            f"border-radius: 6px; padding: {scaled_px(2)}px {scaled_px(10)}px; font-size: {scaled_pt(11)}px;")
+            f"border-radius: {scaled_px(6)}px; padding: {scaled_px(2)}px {scaled_px(10)}px; font-size: {scaled_pt(11)}px;")
         self._add_tag_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_row.addWidget(self._add_tag_btn)
         self._manage_btn = QPushButton(tr("info.manage_tags"))
         self._manage_btn.clicked.connect(self._open_tag_editor)
         self._manage_btn.setStyleSheet(
             f"background: transparent; color: {t['muted']}; border: 1px solid {t['border']}; "
-            f"border-radius: 6px; padding: {scaled_px(2)}px {scaled_px(10)}px; font-size: {scaled_pt(11)}px;")
+            f"border-radius: {scaled_px(6)}px; padding: {scaled_px(2)}px {scaled_px(10)}px; font-size: {scaled_pt(11)}px;")
         self._manage_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_row.addWidget(self._manage_btn)
         add_row.addStretch()
@@ -424,7 +424,7 @@ class InfoPanel(PanelContent):
         notes_grp = QGroupBox(tr("info.notes"))
         t = themes.get()
         notes_grp.setStyleSheet(
-            f"QGroupBox {{ border: 1px solid {t['border']}; border-radius: 4px; "
+            f"QGroupBox {{ border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; "
             f"margin-top: {scaled_px(4)}px; padding-top: {scaled_px(6)}px; color: {t['heading']}; }} "
             f"QGroupBox::title {{ subcontrol-origin: margin; left: {scaled_px(8)}px; padding: 0 {scaled_px(4)}px; }}")
         self._notes_grp = notes_grp
@@ -454,14 +454,14 @@ class InfoPanel(PanelContent):
         self._open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._open_btn.setStyleSheet(
             f"background: {t['accent']}; color: {t['heading']}; "
-            f"border: 1px solid {t['accent']}; border-radius: 4px; "
+            f"border: 1px solid {t['accent']}; border-radius: {scaled_px(4)}px; "
             f"padding: {scaled_px(2)}px {scaled_px(12)}px; font-size: {scaled_pt(12)}px;")
         self._open_btn.clicked.connect(lambda: self.open_requested.emit(self._current_path))
         self._copy_btn = QPushButton(tr("info.copy_path"))
         self._copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._copy_btn.setStyleSheet(
             f"background: transparent; color: {t['body']}; "
-            f"border: 1px solid {t['border']}; border-radius: 4px; "
+            f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; "
             f"padding: 2px 10px; font-size: {scaled_pt(12)}px;")
         self._copy_btn.clicked.connect(lambda: self.copy_path_requested.emit(self._current_path))
         act_layout.addWidget(self._open_btn)
@@ -499,16 +499,16 @@ class InfoPanel(PanelContent):
         for btn, color in [(self._add_tag_btn, t['muted']), (self._manage_btn, t['muted'])]:
             btn.setStyleSheet(
                 f"background: transparent; color: {color}; font-size: {scaled_pt(12)}px; "
-                f"border: 1px solid {t['border']}; border-radius: 4px; padding: {scaled_px(2)}px {scaled_px(10)}px;")
+                f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; padding: {scaled_px(2)}px {scaled_px(10)}px;")
         self._act_bar.setStyleSheet(
             f"background: transparent; border-top: 1px solid {t['border']}; "
             f"padding: {scaled_px(4)}px {scaled_px(8)}px;")
         self._open_btn.setStyleSheet(
             f"background: {t['accent']}; color: {t['heading']}; font-size: {scaled_pt(13)}px; "
-            f"border: 1px solid {t['accent']}; border-radius: 4px; padding: {scaled_px(2)}px {scaled_px(12)}px;")
+            f"border: 1px solid {t['accent']}; border-radius: {scaled_px(4)}px; padding: {scaled_px(2)}px {scaled_px(12)}px;")
         self._copy_btn.setStyleSheet(
             f"background: transparent; color: {t['body']}; "
-            f"border: 1px solid {t['border']}; border-radius: 4px; "
+            f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; "
             f"padding: {scaled_px(2)}px {scaled_px(10)}px; font-size: {scaled_pt(12)}px;")
         self._name.setStyleSheet(f"color: {t['heading']}; font-size: {scaled_pt(16)}px; font-weight: bold; "
                                  f"background: transparent; border: none; padding: 2px 0;")
@@ -609,7 +609,7 @@ class InfoPanel(PanelContent):
             rm_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             rm_btn.setStyleSheet(
                 f"QPushButton {{ color: {t['muted']}; font-size: {scaled_pt(11)}px; padding: 0; "
-                f"background: transparent; border: none; border-radius: 3px; }}"
+                f"background: transparent; border: none; border-radius: {scaled_px(3)}px; }}"
                 f"QPushButton:hover {{ color: {t['heading']}; background: {t['accent']}; }}")
             rm_btn.clicked.connect(lambda: self._remove_link(url))
             btn_holder.layout().addWidget(rm_btn)
@@ -627,7 +627,7 @@ class InfoPanel(PanelContent):
             add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             add_btn.setStyleSheet(
                 f"QPushButton {{ color: {t['muted']}; font-size: {scaled_pt(13)}px; padding: 0; "
-                f"background: transparent; border: none; border-radius: 3px; }}"
+                f"background: transparent; border: none; border-radius: {scaled_px(3)}px; }}"
                 f"QPushButton:hover {{ color: {t['heading']}; background: {t['accent']}; }}")
             add_btn.clicked.connect(self._add_link_dialog)
             btn_holder.layout().addWidget(add_btn)
@@ -638,7 +638,7 @@ class InfoPanel(PanelContent):
             scan_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             scan_btn.setStyleSheet(
                 f"QPushButton {{ color: {t['muted']}; font-size: {scaled_pt(13)}px; padding: 0; "
-                f"background: transparent; border: none; border-radius: 3px; }}"
+                f"background: transparent; border: none; border-radius: {scaled_px(3)}px; }}"
                 f"QPushButton:hover {{ color: {t['heading']}; background: {t['accent']}; }}")
             scan_btn.clicked.connect(self._manual_scan_links)
             btn_holder.layout().addWidget(scan_btn)
@@ -657,7 +657,7 @@ class InfoPanel(PanelContent):
         gear.setFlat(True)
         gear.setStyleSheet(
             f"color: {t['heading']}; font-size: {scaled_pt(13)}px; font-weight: bold; "
-            f"padding: 0; background: transparent; border: none; border-radius: 3px;")
+            f"padding: 0; background: transparent; border: none; border-radius: {scaled_px(3)}px;")
         gear.setCursor(Qt.CursorShape.PointingHandCursor)
         gear.clicked.connect(self._show_panel_menu)
         return [gear]
