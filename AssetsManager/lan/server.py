@@ -60,6 +60,15 @@ class _LanServerImpl:
         self._ssl_cert = ssl_cert
         self._ssl_key = ssl_key
 
+        # Hot-reloadable settings (initialized to defaults)
+        self._theme_color = None
+        self._welcome_msg = None
+        self._footer_text = None
+        self._show_hidden = False
+        self._max_depth = 0
+        self._include_types = None
+        self._exclude_patterns = None
+
         # Build middleware chain
         security_mw = create_security_middleware(self._rate_limiter, self._ip_blacklist, self._auth_rate_limiter)
         self._app = web.Application(middlewares=[security_mw, self._auth_middleware])
@@ -252,13 +261,13 @@ class _LanServerImpl:
         return {
             "share_name": self._share_name,
             "blur_tags": self._blur_tags,
-            "theme_color": getattr(self, '_theme_color', None),
-            "welcome_msg": getattr(self, '_welcome_msg', None),
-            "footer_text": getattr(self, '_footer_text', None),
-            "show_hidden": getattr(self, '_show_hidden', False),
-            "max_depth": getattr(self, '_max_depth', 0),
-            "include_types": getattr(self, '_include_types', None),
-            "exclude_patterns": getattr(self, '_exclude_patterns', None),
+            "theme_color": self._theme_color,
+            "welcome_msg": self._welcome_msg,
+            "footer_text": self._footer_text,
+            "show_hidden": self._show_hidden,
+            "max_depth": self._max_depth,
+            "include_types": self._include_types,
+            "exclude_patterns": self._exclude_patterns,
         }
 
     # ── Internal ────────────────────────────────────────────────
@@ -353,7 +362,7 @@ class _LanServerImpl:
                             "/api/info", "/api/tunnel/status", "/ws", "/",
                             "/favicon.ico") or request.path.startswith("/static") \
                 or request.path.startswith("/s/") \
-                or request.path.startswith("/api/shares/") and request.method == "GET":
+                or (request.path.startswith("/api/shares/") and request.method == "GET"):
             return await handler(request)
 
         # Check if any auth is configured
