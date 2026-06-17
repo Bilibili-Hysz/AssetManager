@@ -11,7 +11,7 @@ Features:
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QObject, QRunnable, QThreadPool
 from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QLineEdit, QPushButton, QHBoxLayout,
     QMenu, QInputDialog, QApplication, QAbstractItemView, QLabel, QWidget,
@@ -50,6 +50,38 @@ def _fs_level(item: QTreeWidgetItem) -> int:
     return level
 
 
+class _PreloadSignals(QObject):
+    done = Signal(object)
+
+
+class _PreloadTask(QRunnable):
+    def __init__(self, root_paths, max_depth=2):
+        super().__init__()
+        self._root_paths = root_paths
+        self._max_depth = max_depth
+        self.signals = _PreloadSignals()
+
+    def run(self):
+        results = []
+        for root_path in self._root_paths:
+            self._scan_recursive(root_path, 0, results)
+        self.signals.done.emit(results)
+
+    def _scan_recursive(self, path, depth, results):
+        if depth >= self._max_depth:
+            return
+        try:
+            entries = sorted(os.scandir(path),
+                             key=lambda e: (not e.is_dir(), e.name.lower()))
+            results.append((path, [(e.name, e.path, e.is_dir()) for e in entries
+                                   if not e.name.startswith(".")]))
+            for entry in entries:
+                if entry.is_dir() and not entry.name.startswith("."):
+                    self._scan_recursive(entry.path, depth + 1, results)
+        except OSError:
+            pass
+
+
 class SidebarPanel(PanelContent):
     directory_selected = Signal(str)
 
@@ -64,6 +96,7 @@ class SidebarPanel(PanelContent):
         self._search_pending = ""
         self._search_timer = None
         self._match_count = 0
+        self._search_gen = 0
 
         # ── Search bar + toolbar ─────────────────────────────────
 
@@ -490,11 +523,33 @@ class SidebarPanel(PanelContent):
     def _do_search(self):
         """Execute debounced search: preload children, filter, expand matches."""
         text = self._search_pending
-        # Clear previous highlights
         self._clear_search_highlights()
-        # Preload all lazy children so filter can see them
         if text:
-            self._preload_all_children()
+            self._search_gen += 1
+            gen = self._search_gen
+            roots = [self._library_root] if self._library_root else self.ROOTS
+            self._search.setPlaceholderText(tr("sidebar.searching"))
+            task = _PreloadTask(roots, max_depth=2)
+            task.signals.done.connect(lambda results: self._on_preload_done(text, results, gen))
+            QThreadPool.globalInstance().start(task)
+        else:
+            self._match_count = 0
+            for i in range(self._tree.topLevelItemCount()):
+                item = self._tree.topLevelItem(i)
+                vtype = self._get_vtype(item)
+                if vtype in (VTYPE_FAV_HEADER, VTYPE_REC_HEADER):
+                    item.setHidden(False)
+                    continue
+                if vtype == VTYPE_FS:
+                    self._filter_item(item, "")
+            self._search.setPlaceholderText(tr("sidebar.filter_placeholder"))
+
+    def _on_preload_done(self, text, results, gen):
+        """Apply preload results and filter."""
+        if gen != self._search_gen:
+            return
+        for parent_path, entries in results:
+            self._apply_preloaded_entries(parent_path, entries)
         self._match_count = 0
         for i in range(self._tree.topLevelItemCount()):
             item = self._tree.topLevelItem(i)
@@ -509,24 +564,49 @@ class SidebarPanel(PanelContent):
         else:
             self._search.setPlaceholderText(tr("sidebar.filter_placeholder"))
 
-    def _preload_all_children(self):
-        """Expand lazy placeholders for visible branches only (limited depth)."""
-        for i in range(self._tree.topLevelItemCount()):
-            item = self._tree.topLevelItem(i)
-            if self._get_vtype(item) == VTYPE_FS:
-                self._expand_children_limited(item, max_depth=2)
-
-    def _expand_children_limited(self, item, max_depth: int):
-        """Expand lazy placeholders up to max_depth levels."""
-        if max_depth <= 0:
+    def _apply_preloaded_entries(self, parent_path, entries):
+        """Find the tree item for parent_path and populate children from scan results."""
+        parent_item = self._find_item_by_path(parent_path)
+        if not parent_item:
             return
-        if item.childCount() == 1 and item.child(0).text(0) == "...":
-            item.removeChild(item.child(0))
-            self._load_children(item, 0)
-        for i in range(item.childCount()):
-            child = item.child(i)
-            if self._get_vtype(child) == VTYPE_FS:
-                self._expand_children_limited(child, max_depth - 1)
+        if parent_item.childCount() == 1 and parent_item.child(0).text(0) == "...":
+            parent_item.removeChild(parent_item.child(0))
+        elif parent_item.childCount() > 0:
+            return
+        level = _fs_level(parent_item)
+        branch_depth = self._depth
+        it = parent_item
+        while it:
+            if self._get_vtype(it) == VTYPE_FS and not it.parent():
+                name = Path(it.data(0, Qt.ItemDataRole.UserRole) or "").name
+                if name in self._branch_depths:
+                    branch_depth = self._branch_depths[name]
+                break
+            it = it.parent()
+        for name, path, is_dir in entries:
+            icon = "📁 " if is_dir else "   "
+            child = QTreeWidgetItem([f"{icon}{name}"])
+            self._set_vtype(child, VTYPE_FS, path)
+            parent_item.addChild(child)
+            if is_dir and level + 1 < branch_depth:
+                QTreeWidgetItem(child, ["..."])
+            elif is_dir:
+                child.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator)
+
+    def _find_item_by_path(self, target_path):
+        """Find a tree item by its stored path (BFS)."""
+        from collections import deque
+        queue = deque()
+        root = self._tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            queue.append(root.child(i))
+        while queue:
+            item = queue.popleft()
+            if self._get_vtype(item) == VTYPE_FS and item.data(0, Qt.ItemDataRole.UserRole) == target_path:
+                return item
+            for i in range(item.childCount()):
+                queue.append(item.child(i))
+        return None
 
     def _expand_all_children(self, item):
         if item.childCount() == 1 and item.child(0).text(0) == "...":
