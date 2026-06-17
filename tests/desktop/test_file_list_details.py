@@ -99,7 +99,7 @@ def test_details_selection_survives_refresh_by_path(tmp_path):
         idx = panel._detail_model.index(row, 0)
         sm.select(idx, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
 
-        panel._post_refresh()
+        panel._model.refresh()
         panel._model._wait_for_scan()
         panel._populate_details()
 
