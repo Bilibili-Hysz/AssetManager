@@ -168,7 +168,7 @@ class _FileInfoTask(QRunnable):
         self._branch_depths = branch_depths
         self._classify_cache = classify_cache
         self.signals = _FileInfoSignals()
-        self.setAutoDelete(True)
+        self.setAutoDelete(False)  # prevent QThreadPool from destroying before signal delivery
 
     def _is_deepest_folder(self, path):
         if not self._library_root or self._sidebar_depth < 1:
@@ -462,7 +462,7 @@ class InfoPanel(PanelContent):
         self._copy_btn.setStyleSheet(
             f"background: transparent; color: {t['body']}; "
             f"border: 1px solid {t['border']}; border-radius: 4px; "
-            f"padding: 2px 10px; font-size: 12px;")
+            f"padding: 2px 10px; font-size: {scaled_pt(12)}px;")
         self._copy_btn.clicked.connect(lambda: self.copy_path_requested.emit(self._current_path))
         act_layout.addWidget(self._open_btn)
         act_layout.addWidget(self._copy_btn)
@@ -494,23 +494,23 @@ class InfoPanel(PanelContent):
                             (self._notes_grp, tr("info.notes"))]:
             grp.setStyleSheet(
                 f"QGroupBox {{ color: {t['heading']}; border: 1px solid {t['border']}; "
-                f"border-radius: 6px; margin-top: 8px; padding-top: 12px; }}"
-                f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 5px; }}")
+                f"border-radius: {scaled_px(6)}px; margin-top: {scaled_px(8)}px; padding-top: {scaled_px(12)}px; }}"
+                f"QGroupBox::title {{ subcontrol-origin: margin; left: {scaled_px(10)}px; padding: 0 {scaled_px(5)}px; }}")
         for btn, color in [(self._add_tag_btn, t['muted']), (self._manage_btn, t['muted'])]:
             btn.setStyleSheet(
-                f"background: transparent; color: {color}; font-size: 12px; "
-                f"border: 1px solid {t['border']}; border-radius: 4px; padding: 2px 10px;")
+                f"background: transparent; color: {color}; font-size: {scaled_pt(12)}px; "
+                f"border: 1px solid {t['border']}; border-radius: 4px; padding: {scaled_px(2)}px {scaled_px(10)}px;")
         self._act_bar.setStyleSheet(
             f"background: transparent; border-top: 1px solid {t['border']}; "
-            f"padding: 4px 8px;")
+            f"padding: {scaled_px(4)}px {scaled_px(8)}px;")
         self._open_btn.setStyleSheet(
-            f"background: {t['accent']}; color: {t['heading']}; font-size: 13px; "
-            f"border: 1px solid {t['accent']}; border-radius: 4px; padding: 2px 12px;")
+            f"background: {t['accent']}; color: {t['heading']}; font-size: {scaled_pt(13)}px; "
+            f"border: 1px solid {t['accent']}; border-radius: 4px; padding: {scaled_px(2)}px {scaled_px(12)}px;")
         self._copy_btn.setStyleSheet(
             f"background: transparent; color: {t['body']}; "
             f"border: 1px solid {t['border']}; border-radius: 4px; "
-            f"padding: 2px 10px; font-size: 12px;")
-        self._name.setStyleSheet(f"color: {t['heading']}; font-size: 16px; font-weight: bold; "
+            f"padding: {scaled_px(2)}px {scaled_px(10)}px; font-size: {scaled_pt(12)}px;")
+        self._name.setStyleSheet(f"color: {t['heading']}; font-size: {scaled_pt(16)}px; font-weight: bold; "
                                  f"background: transparent; border: none; padding: 2px 0;")
 
     def _register_field(self, key: str, label: str, value: str = "") -> None:
@@ -538,14 +538,14 @@ class InfoPanel(PanelContent):
         layout.setContentsMargins(0, 1, 0, 1)
         lbl = QLabel(label)
         lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        lbl.setStyleSheet(f"color: {themes.get()['muted']}; font-size: 11px; min-width: 65px;")
+        lbl.setStyleSheet(f"color: {themes.get()['muted']}; font-size: {scaled_pt(11)}px; min-width: {scaled_px(65)}px;")
         layout.addWidget(lbl)
         val = QLabel(value)
         val.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         val.setWordWrap(False)
         val.setMinimumSize(0, 0)
         val.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        val.setStyleSheet(f"color: {themes.get()['body']}; font-size: 12px;")
+        val.setStyleSheet(f"color: {themes.get()['body']}; font-size: {scaled_pt(12)}px;")
         layout.addWidget(val, 1)
         return row
 
@@ -563,7 +563,7 @@ class InfoPanel(PanelContent):
         layout.setContentsMargins(0, 1, 0, 1)
         lbl = QLabel(tr("info.field_link"))
         lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        lbl.setStyleSheet(f"color: {themes.get()['muted']}; font-size: 11px; min-width: 65px;")
+        lbl.setStyleSheet(f"color: {themes.get()['muted']}; font-size: {scaled_pt(11)}px; min-width: {scaled_px(65)}px;")
         layout.addWidget(lbl)
         link = _DragLabel("—")
         link.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -571,7 +571,7 @@ class InfoPanel(PanelContent):
         link.setMinimumSize(0, 0)
         link.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         link.setOpenExternalLinks(True)
-        link.setStyleSheet(f"color: {themes.get()['body']}; font-size: 12px;")
+        link.setStyleSheet(f"color: {themes.get()['body']}; font-size: {scaled_pt(12)}px;")
         layout.addWidget(link, 1)
         btn_holder = QWidget()
         btn_holder.setStyleSheet("background: transparent;")
@@ -601,14 +601,14 @@ class InfoPanel(PanelContent):
             link_label.set_drag_url(url)
             link_label.setCursor(Qt.CursorShape.PointingHandCursor)
             link_label.setStyleSheet(
-                f"color: {t['body']}; font-size: 12px; text-decoration: underline;")
+                f"color: {t['body']}; font-size: {scaled_pt(12)}px; text-decoration: underline;")
             rm_btn = QPushButton("×")
             rm_btn.setToolTip(tr("info.link_remove"))
             rm_btn.setFixedSize(scaled_px(18), scaled_px(18))
             rm_btn.setFlat(True)
             rm_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             rm_btn.setStyleSheet(
-                f"QPushButton {{ color: {t['muted']}; font-size: 11px; padding: 0; "
+                f"QPushButton {{ color: {t['muted']}; font-size: {scaled_pt(11)}px; padding: 0; "
                 f"background: transparent; border: none; border-radius: 3px; }}"
                 f"QPushButton:hover {{ color: {t['heading']}; background: {t['accent']}; }}")
             rm_btn.clicked.connect(lambda: self._remove_link(url))
@@ -619,14 +619,14 @@ class InfoPanel(PanelContent):
             link_label.set_drag_url("")
             link_label.setCursor(Qt.CursorShape.ArrowCursor)
             link_label.setStyleSheet(
-                f"color: {t['body']}; font-size: 12px;")
+                f"color: {t['body']}; font-size: {scaled_pt(12)}px;")
             add_btn = QPushButton("+")
             add_btn.setToolTip(tr("info.link_add"))
             add_btn.setFixedSize(scaled_px(18), scaled_px(18))
             add_btn.setFlat(True)
             add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             add_btn.setStyleSheet(
-                f"QPushButton {{ color: {t['muted']}; font-size: 13px; padding: 0; "
+                f"QPushButton {{ color: {t['muted']}; font-size: {scaled_pt(13)}px; padding: 0; "
                 f"background: transparent; border: none; border-radius: 3px; }}"
                 f"QPushButton:hover {{ color: {t['heading']}; background: {t['accent']}; }}")
             add_btn.clicked.connect(self._add_link_dialog)
@@ -637,7 +637,7 @@ class InfoPanel(PanelContent):
             scan_btn.setFlat(True)
             scan_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             scan_btn.setStyleSheet(
-                f"QPushButton {{ color: {t['muted']}; font-size: 13px; padding: 0; "
+                f"QPushButton {{ color: {t['muted']}; font-size: {scaled_pt(13)}px; padding: 0; "
                 f"background: transparent; border: none; border-radius: 3px; }}"
                 f"QPushButton:hover {{ color: {t['heading']}; background: {t['accent']}; }}")
             scan_btn.clicked.connect(self._manual_scan_links)
@@ -656,7 +656,7 @@ class InfoPanel(PanelContent):
         gear.setFixedSize(scaled_px(20), scaled_px(20))
         gear.setFlat(True)
         gear.setStyleSheet(
-            f"color: {t['heading']}; font-size: 13px; font-weight: bold; "
+            f"color: {t['heading']}; font-size: {scaled_pt(13)}px; font-weight: bold; "
             f"padding: 0; background: transparent; border: none; border-radius: 3px;")
         gear.setCursor(Qt.CursorShape.PointingHandCursor)
         gear.clicked.connect(self._show_panel_menu)
@@ -705,6 +705,8 @@ class InfoPanel(PanelContent):
 
     def _animate_preview_in(self):
         """Animate preview image fade-in."""
+        if hasattr(self, '_preview_anim') and self._preview_anim:
+            self._preview_anim.stop()
         anim = QPropertyAnimation(self._preview, b"windowOpacity")
         anim.setDuration(200)
         anim.setStartValue(0.0)
@@ -746,7 +748,7 @@ class InfoPanel(PanelContent):
     def _show_empty_state(self):
         self._clear_preview()
         self._preview.setText(tr("info.no_file_selected"))
-        self._preview.setStyleSheet(f"color: {themes.get()['muted']}; font-size: 32px;")
+        self._preview.setStyleSheet(f"color: {themes.get()['muted']}; font-size: {scaled_pt(32)}px;")
 
     # ── Preview loader ─────────────────────────────────────────
 
@@ -923,7 +925,7 @@ class InfoPanel(PanelContent):
         if not self._current_path or not self._controller:
             return
         if hasattr(event, 'file_path') and event.file_path == self._current_path:
-            notes = self._controller._metadata_svc.get_notes(self._library_root, self._current_path)
+            notes = self._controller.get_notes(self._current_path)
             if hasattr(self, '_notes') and self._notes:
                 self._notes.blockSignals(True)
                 self._notes.setPlainText(notes)
@@ -1133,7 +1135,7 @@ class InfoPanel(PanelContent):
         self._notes.blockSignals(False)
         self._clear_preview()
         self._preview.setText("...")
-        self._preview.setStyleSheet(f"color: {themes.get()['muted']}; font-size: 24px;")
+        self._preview.setStyleSheet(f"color: {themes.get()['muted']}; font-size: {scaled_pt(24)}px;")
 
         # Cancel previous pending task (stale detection handles in-flight results)
         self._pending_task = None
@@ -1223,7 +1225,7 @@ class InfoPanel(PanelContent):
         }
         muted = themes.get()['muted']
         self._preview.setText(hints.get(suffix, "📄" if not is_dir else "📁"))
-        self._preview.setStyleSheet(f"color: {muted}; font-size: 40px;")
+        self._preview.setStyleSheet(f"color: {muted}; font-size: {scaled_pt(40)}px;")
 
     def _render_plugin_fields(self, plugin_fields):
         """Render plugin-contributed metadata fields from FileInfo."""
