@@ -17,9 +17,9 @@ from PySide6.QtGui import QPixmap, QDrag
 from AssetsManager.panels.base import PanelContent
 from AssetsManager.core.constants import IMAGE_EXTS
 from AssetsManager.core.signal_bus import get as bus
-from AssetsManager.core.tag_library import get_library
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core import themes
+from AssetsManager.widgets.tag_chip import create_tag_chip
 
 from AssetsManager import i18n
 
@@ -718,35 +718,7 @@ class InfoPanel(PanelContent):
         self._tags_widgets.clear()
 
     def _make_tag_chip(self, tag: str) -> QWidget:
-        t = themes.get()
-        lib = get_library()
-        chip = QWidget()
-        chip.setStyleSheet(
-            f"background: {t['accent']}; border-radius: 6px;")
-        layout = QHBoxLayout(chip)
-        layout.setContentsMargins(6, 2, 4, 2)
-        layout.setSpacing(2)
-
-        name = QLabel(tag)
-        name.setStyleSheet(f"color: {t['heading']}; font-size: 11px; background: transparent;")
-        layout.addWidget(name)
-
-        close_btn = QPushButton("×")
-        close_btn.setFixedSize(scaled_px(14), scaled_px(14))
-        close_btn.setFlat(True)
-        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        close_btn.setStyleSheet(
-            f"color: {t['heading']}; font-size: 11px; padding: 0; "
-            f"background: transparent; border-radius: 3px;")
-        close_btn.setToolTip(f"Remove tag: {tag}")
-        close_btn.clicked.connect(lambda checked, tg=tag: self._remove_tag(tg))
-        layout.addWidget(close_btn)
-
-        syn_text = lib.all_synonyms_text(tag)
-        tooltip = f"Tag: {tag}" + (f"\n\nSynonyms:\n{syn_text}" if syn_text else "")
-        chip.setToolTip(tooltip)
-
-        return chip
+        return create_tag_chip(tag, on_remove=self._remove_tag)
 
     def _render_tags(self, tags: list[str]):
         self._clear_tags()
@@ -990,74 +962,81 @@ class InfoPanel(PanelContent):
         else:
             fi = QFileInfo(str(info))
 
-        # Save notes for previously selected file
         self._flush_notes_save()
 
         self._current_path = fi.absoluteFilePath()
         is_dir = fi.isDir()
 
-        self._name.setText(fi.fileName() or str(info))
-
-        if is_dir:
-            if self._is_deepest_folder(self._current_path):
-                self._set_field_text(self._fields["type"], tr("info.project"))
-            else:
-                self._set_field_text(self._fields["type"], tr("info.folder"))
-        else:
-            ext = fi.suffix().upper()
-            self._set_field_text(self._fields["type"], tr("info.file", ext=ext))
-
-        # Size
-        if is_dir and fi.exists():
-            self._set_field_text(self._fields["size"], tr("info.calculating"))
-            self._start_async_dir_size(self._current_path)
-            summary = self._classify_dir(self._current_path)
-            if summary:
-                self._set_field_text(self._fields["summary"], summary)
-                self._fields["summary"].show()
-            else:
-                self._fields["summary"].hide()
-        else:
-            size = fi.size()
-            self._set_field_text(self._fields["size"], format_info_size(size) if not is_dir and size else "—")
-            self._fields["summary"].hide()
-
-        self._set_field_text(self._fields["date"], fi.lastModified().toString("yyyy-MM-dd HH:mm:ss"))
-        self._set_field_text(self._fields["path"], fi.absolutePath())
-
-        # Plugin metadata (runs first to collect plugin-discovered URLs)
-        plugin_urls = self._update_plugin_fields(self._current_path)
-
-        # Fetch metadata via controller
-        if self._controller:
-            metadata = self._controller._metadata_svc.get_metadata(self._library_root, self._current_path)
-            urls = list(metadata.urls)
-
-            if is_dir and self._is_deepest_folder(self._current_path) and not urls:
-                if self._current_path not in self._urls_scanned:
-                    self._urls_scanned.add(self._current_path)
+        # Pre-discover URLs for project folders before calling get_file_info
+        if is_dir and self._controller and self._is_deepest_folder(self._current_path):
+            if self._current_path not in self._urls_scanned:
+                self._urls_scanned.add(self._current_path)
+                existing = self._controller.get_urls(self._current_path)
+                if not existing:
                     discovered = self._controller.discover_urls_in_dir(self._current_path)
                     for u in discovered:
                         try:
                             self._controller.add_url(self._current_path, u)
                         except ValueError:
                             pass
-                    urls = self._controller.get_urls(self._current_path)
 
-            for purl in plugin_urls:
-                if purl not in urls:
-                    try:
-                        self._controller.add_url(self._current_path, purl)
-                        urls.append(purl)
-                    except Exception:
-                        pass
+        # Compute display values
+        is_project = is_dir and self._is_deepest_folder(self._current_path)
+        if is_dir:
+            display_type = tr("info.project") if is_project else tr("info.folder")
+            display_size = tr("info.calculating") if fi.exists() else "—"
+            dir_summary = self._classify_dir(self._current_path) if fi.exists() else None
+        else:
+            display_type = tr("info.file", ext=fi.suffix().upper())
+            size = fi.size()
+            display_size = format_info_size(size) if size else "—"
+            dir_summary = None
 
-        self._set_link_field(urls[0] if urls else "")
+        # Fetch all data via controller
+        if not self._controller:
+            return
+        file_info = self._controller.get_file_info(
+            self._current_path,
+            is_dir=is_dir,
+            file_type=display_type,
+            size_display=display_size,
+            modified_display=fi.lastModified().toString("yyyy-MM-dd HH:mm:ss"),
+            parent_path=fi.absolutePath(),
+            dir_summary=dir_summary,
+            is_project=is_project,
+        )
 
+        self._render_file_info(file_info, fi)
+
+    def _render_file_info(self, file_info, fi):
+        """Render FileInfo dataclass to widgets."""
+        self._name.setText(file_info.name)
+
+        self._set_field_text(self._fields["type"], file_info.file_type)
+        self._set_field_text(self._fields["size"], file_info.size_display)
+        self._set_field_text(self._fields["date"], file_info.modified_display)
+        self._set_field_text(self._fields["path"], file_info.parent_path)
+
+        # Summary
+        if file_info.is_dir and file_info.dir_summary:
+            self._set_field_text(self._fields["summary"], file_info.dir_summary)
+            self._fields["summary"].show()
+        else:
+            self._fields["summary"].hide()
+
+        # Async dir size
+        if file_info.is_dir and fi.exists():
+            self._start_async_dir_size(self._current_path)
+
+        # Plugin fields
+        self._render_plugin_fields(file_info.plugin_fields)
+
+        # URLs
+        self._set_link_field(file_info.urls[0] if file_info.urls else "")
+
+        # Preview
         suffix = Path(fi.fileName()).suffix.lower()
-
-        # Folder preview
-        if is_dir and fi.exists():
+        if file_info.is_dir and fi.exists():
             self._clear_preview()
             img_path = self._first_image_in_dir(self._current_path)
             if img_path:
@@ -1069,7 +1048,6 @@ class InfoPanel(PanelContent):
             self._preview.setStyleSheet(f"color: {themes.get()['muted']}; font-size: 40px;")
             return
 
-        # File preview
         if suffix in IMAGE_EXTS and fi.exists():
             self._clear_preview()
             self._preview_pixmap = self._load_preview_pixmap(self._current_path)
@@ -1087,40 +1065,26 @@ class InfoPanel(PanelContent):
             "zip": "🗜", "rar": "🗜", "7z": "🗜", "tar": "🗜", "gz": "🗜",
         }
         muted = themes.get()['muted']
-        self._preview.setText(hints.get(suffix, "📄" if not is_dir else "📁"))
+        self._preview.setText(hints.get(suffix, "📄" if not file_info.is_dir else "📁"))
         self._preview.setStyleSheet(f"color: {muted}; font-size: 40px;")
 
-    def _update_plugin_fields(self, file_path: str) -> list[str]:
-        """Display plugin-parsed metadata fields and return discovered URLs.
-
-        All parsed fields are persisted in plugin_metadata so they survive
-        plugin disable/restart. Returns URLs discovered by plugins.
-        """
+    def _render_plugin_fields(self, plugin_fields):
+        """Render plugin-contributed metadata fields from FileInfo."""
         while self._plugin_fields_layout.count():
             item = self._plugin_fields_layout.takeAt(0)
             w = item.widget() if item else None
             if w is not None:
                 w.deleteLater()
 
-        plugin_urls: list[str] = []
-
         try:
-            if self._controller is None:
-                self._plugin_fields_widget.setVisible(False)
-                return plugin_urls
-
-            plugin_fields, plugin_urls = self._controller.get_plugin_fields(file_path)
             for field in plugin_fields:
                 self._plugin_fields_layout.addWidget(
                     self._make_field(field.key.capitalize(), str(field.value))
                 )
-
             self._plugin_fields_widget.setVisible(self._plugin_fields_layout.count() > 0)
         except Exception:
-            _log.exception("Plugin field update failed for %s", file_path)
+            _log.exception("Plugin field rendering failed")
             self._plugin_fields_widget.setVisible(False)
-
-        return plugin_urls
 
     def clone(self):
         return InfoPanel()
