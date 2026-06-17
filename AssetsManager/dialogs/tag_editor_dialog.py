@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 from AssetsManager.core.protocols import TagStoreProtocol
 from AssetsManager.core.tag_library import get_library
 from AssetsManager.core import themes
+from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager.widgets.tag_chip import create_tag_chip
 from AssetsManager import i18n
 tr = i18n.tr
@@ -23,7 +24,7 @@ class TagEditorDialog(QDialog):
 
         file_name = Path(file_path).name if file_path else "Unknown"
         self.setWindowTitle(tr("tageditor.title", name=file_name))
-        self.setMinimumSize(420, 400)
+        self.setMinimumSize(scaled_px(420), scaled_px(400))
         themes.apply_to(self)
 
         layout = QVBoxLayout(self)
@@ -38,7 +39,7 @@ class TagEditorDialog(QDialog):
         self._current_flow.setStyleSheet("background: transparent;")
         flow_layout = QHBoxLayout(self._current_flow)
         flow_layout.setContentsMargins(0, 0, 0, 0)
-        flow_layout.setSpacing(4)
+        flow_layout.setSpacing(scaled_px(4))
         self._current_flow_layout = flow_layout
         self._current_chips: list[QWidget] = []
         current_layout.addWidget(self._current_flow)
@@ -67,7 +68,7 @@ class TagEditorDialog(QDialog):
         sug_layout.addWidget(self._sug_filter)
 
         self._sug_list = QListWidget()
-        self._sug_list.setMaximumHeight(160)
+        self._sug_list.setMaximumHeight(scaled_px(160))
         self._sug_list.itemDoubleClicked.connect(self._add_suggested_tag)
         sug_layout.addWidget(self._sug_list)
 

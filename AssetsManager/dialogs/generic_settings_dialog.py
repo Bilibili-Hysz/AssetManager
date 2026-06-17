@@ -1,0 +1,28 @@
+"""Generic settings dialog — shown when a panel has no specific settings yet."""
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton
+from PySide6.QtCore import Qt
+from AssetsManager.core import themes
+from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+from AssetsManager import i18n
+tr = i18n.tr
+
+
+def generic_settings_dialog(parent=None) -> QDialog:
+    dlg = QDialog(parent)
+    dlg.setWindowTitle(tr("panel.settings"))
+    dlg.setMinimumSize(scaled_px(300), scaled_px(180))
+    themes.apply_to(dlg)
+
+    layout = QVBoxLayout(dlg)
+
+    msg = QLabel(tr("panel.no_settings"))
+    msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    msg.setStyleSheet(f"font-size: {scaled_pt(14)}px; padding: 20px;")
+    layout.addWidget(msg)
+
+    close_btn = QPushButton(tr("dialog.close"))
+    close_btn.clicked.connect(dlg.accept)
+    layout.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignCenter)
+
+    dlg.exec()
+    return dlg

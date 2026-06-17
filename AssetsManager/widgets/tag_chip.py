@@ -2,7 +2,7 @@
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton
 from PySide6.QtCore import Qt
 from AssetsManager.core import themes
-from AssetsManager.core.ui_scale import scaled_px
+from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.tag_library import get_library
 
 
@@ -21,11 +21,11 @@ def create_tag_chip(tag: str, on_remove=None, parent=None) -> QWidget:
     chip = QWidget(parent)
     chip.setStyleSheet(f"background: {t['accent']}; border-radius: 6px;")
     layout = QHBoxLayout(chip)
-    layout.setContentsMargins(6, 2, 4, 2)
-    layout.setSpacing(2)
+    layout.setContentsMargins(scaled_px(6), scaled_px(2), scaled_px(4), scaled_px(2))
+    layout.setSpacing(scaled_px(2))
 
     name = QLabel(tag)
-    name.setStyleSheet(f"color: {t['heading']}; font-size: 11px; background: transparent;")
+    name.setStyleSheet(f"color: {t['heading']}; font-size: {scaled_pt(11)}px; background: transparent;")
     layout.addWidget(name)
 
     if on_remove:
@@ -34,7 +34,7 @@ def create_tag_chip(tag: str, on_remove=None, parent=None) -> QWidget:
         close_btn.setFlat(True)
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.setStyleSheet(
-            f"color: {t['heading']}; font-size: 11px; padding: 0; "
+            f"color: {t['heading']}; font-size: {scaled_pt(11)}px; padding: 0; "
             f"background: transparent; border-radius: 3px;")
         close_btn.setToolTip(f"Remove tag: {tag}")
         close_btn.clicked.connect(lambda checked, tg=tag: on_remove(tg))

@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QTabWidget, QPushButton, QMenu,
 )
+from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager.panels.file_list import QWidgetFileListPanel
 from AssetsManager.panels.base import PanelContent
 from AssetsManager import i18n
@@ -58,8 +59,8 @@ class TabContainer(PanelContent):
 
     def _new_tab_button(self):
         btn = QPushButton("+")
-        btn.setMaximumWidth(26)
-        btn.setMaximumHeight(24)
+        btn.setMaximumWidth(scaled_px(26))
+        btn.setMaximumHeight(scaled_px(24))
         btn.setFlat(True)
         btn.clicked.connect(lambda: self._add_tab())
         return btn

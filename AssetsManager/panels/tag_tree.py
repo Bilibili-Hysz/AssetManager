@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QLineEdit, QPushButton, QHBoxLayout,
     QMenu, QInputDialog, QMessageBox,
 )
+from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager.panels.base import PanelContent
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.controllers.tag_tree_controller import TagTreeController
@@ -45,7 +46,7 @@ class TagTreePanel(PanelContent):
         bar.addWidget(self._search)
         add_btn = QPushButton(tr("tagtree.new_tag"))
         add_btn.clicked.connect(self._add_tag)
-        add_btn.setMaximumWidth(50)
+        add_btn.setMaximumWidth(scaled_px(50))
         bar.addWidget(add_btn)
         self.content_layout.addLayout(bar)
 
