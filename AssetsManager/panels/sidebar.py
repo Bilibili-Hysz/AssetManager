@@ -739,7 +739,7 @@ class SidebarPanel(PanelContent):
             f"background: transparent; "
             f"border-top: 1px solid {t['border']};")
         self._status.setStyleSheet(
-            f"color: {t['muted']}; font-size: 11px; background: transparent;")
+            f"color: {t['muted']}; font-size: {scaled_pt(11)}px; background: transparent;")
 
     def navigate_to(self, path: str):
         self._library_root = path

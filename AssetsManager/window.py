@@ -50,11 +50,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._bg_resize_timer.setInterval(150)
         self._bg_resize_timer.timeout.connect(self._on_bg_resize_done)
         themes.apply_to(self)
+        self._library_session = None  # MUST be set before _setup_ui (workspace restore triggers _on_switch_library)
         self._setup_ui()
         self._connect_bus()
         self._startup_anim_done = False
         self._force_quit = False
-        self._library_session = None
 
     @staticmethod
     def _library_service():
@@ -227,7 +227,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._workspace = WorkspaceSection()
         self._workspace.library_switched.connect(self._on_switch_library)
         self._workspace.add_requested.connect(self._open_library)
-        self._workspace.setMinimumWidth(80)
+        self._workspace.setMinimumWidth(scaled_px(80))
         layout.addWidget(self._workspace)
 
         self._ws_right = QSpacerItem(10, 1, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
@@ -295,7 +295,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         t = themes.get()
         status_bar.setStyleSheet(
             f"QStatusBar {{ background: {t['header']}; color: {t['body']}; "
-            f"border-top: 1px solid {t['border']}; font-size: 11px; }}"
+            f"border-top: 1px solid {t['border']}; font-size: {scaled_pt(11)}px; }}"
             f"QStatusBar::item {{ border: none; }}"
         )
 
@@ -403,7 +403,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._menu_widget.setStyleSheet(f"background: {t['header']};")
         self._menu_bar.setStyleSheet(
             f"QMenuBar {{ background: transparent; color: {t['heading']}; "
-            f"border: none; padding: 2px 8px; font-size: 12px; }}"
+            f"border: none; padding: 2px 8px; font-size: {scaled_pt(12)}px; }}"
             f"QMenuBar::item {{ padding: 3px 10px; border-radius: 4px; }}"
             f"QMenuBar::item:selected {{ background: {alpha(t['accent'], 0.313)}; }}"
             f"QMenu {{ background: {t['panel']}; color: {t['heading']}; "
