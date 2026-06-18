@@ -20,6 +20,7 @@ class ThemePreviewDialog(QDialog):
         self.setWindowTitle(tr("settings.theme_preview"))
         self.setMinimumSize(scaled_px(800), scaled_px(500))
         self._renderer = ThemePreviewRenderer()
+        self._current_theme_name: str | None = None
         self._setup_ui()
         self._load_themes()
 
@@ -45,6 +46,7 @@ class ThemePreviewDialog(QDialog):
         left_layout.addLayout(btn_row)
 
         self._preview = ThemePreviewWidget()
+        self._preview.color_changed.connect(self._on_color_changed)
 
         splitter.addWidget(left)
         splitter.addWidget(self._preview)
@@ -90,10 +92,14 @@ class ThemePreviewDialog(QDialog):
         name = current.data(Qt.ItemDataRole.UserRole)
         if not name:
             return
+        self._current_theme_name = name
         loader = themes._get_loader()
         theme_data = loader.get_theme(name)
         if theme_data:
             self._renderer.apply_theme(self._preview, theme_data)
+
+    def _on_color_changed(self, color_name: str, hex_val: str) -> None:
+        self._renderer.apply_theme(self._preview, self._preview._theme_data)
 
     def _on_apply(self):
         current = self._theme_list.currentItem()

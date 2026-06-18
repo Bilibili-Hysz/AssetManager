@@ -1,7 +1,8 @@
 """Theme preview widget displaying all UI components for live theme preview."""
 import logging
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QFrame,
     QButtonGroup,
+    QGridLayout,
 )
 
 from AssetsManager.core.color_utils import alpha
@@ -270,6 +272,79 @@ class _GroupBoxSection(QGroupBox):
         outer.addWidget(inner)
 
 
+_COLOR_LABELS: dict[str, str] = {
+    "base": "Base",
+    "panel": "Panel",
+    "header": "Header",
+    "border": "Border",
+    "heading": "Heading",
+    "body": "Body",
+    "muted": "Muted",
+    "accent": "Accent",
+    "on_accent": "On Accent",
+    "success": "Success",
+    "warning": "Warning",
+    "danger": "Danger",
+    "input_bg": "Input BG",
+    "input_text": "Input Text",
+    "border_focus": "Border Focus",
+    "disabled_text": "Disabled Text",
+    "disabled_bg": "Disabled BG",
+    "hover_overlay": "Hover Overlay",
+    "selected_overlay": "Selected Overlay",
+}
+
+
+class _ColorSwatchSection(QGroupBox):
+    """Clickable color swatches for theme colors."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__("Colors", parent)
+        self._swatches: dict[str, QLabel] = {}
+        self._on_click = None
+
+        grid = QGridLayout(self)
+        grid.setSpacing(scaled_px(6))
+
+        for idx, (color_name, display_name) in enumerate(_COLOR_LABELS.items()):
+            row, col = divmod(idx, 3)
+            swatch = QLabel()
+            swatch.setFixedSize(scaled_px(32), scaled_px(32))
+            swatch.setProperty("color-swatch", True)
+            swatch.setCursor(Qt.CursorShape.PointingHandCursor)
+            swatch.setToolTip(display_name)
+            swatch.mousePressEvent = lambda e, name=color_name: self._handle_click(name)
+            self._swatches[color_name] = swatch
+
+            lbl = QLabel(display_name)
+            lbl.setProperty("label_role", "muted")
+
+            cell = QVBoxLayout()
+            cell.setSpacing(scaled_px(2))
+            cell.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            cell.addWidget(swatch, alignment=Qt.AlignmentFlag.AlignCenter)
+            cell.addWidget(lbl, alignment=Qt.AlignmentFlag.AlignCenter)
+            grid.addLayout(cell, row, col)
+
+    def set_on_click(self, callback) -> None:
+        self._on_click = callback
+
+    def _handle_click(self, color_name: str) -> None:
+        if self._on_click:
+            self._on_click(color_name)
+
+    def update_swatch(self, color_name: str, color_hex: str) -> None:
+        swatch = self._swatches.get(color_name)
+        if swatch:
+            swatch.setStyleSheet(
+                f"background: {color_hex}; border: 1px solid #555; border-radius: 4px;"
+            )
+
+    def set_all_colors(self, colors: dict[str, str]) -> None:
+        for name, hex_val in colors.items():
+            self.update_swatch(name, hex_val)
+
+
 # ── Main Widget ───────────────────────────────────────────
 
 class ThemePreviewWidget(QWidget):
@@ -280,9 +355,12 @@ class ThemePreviewWidget(QWidget):
     with descriptive title.
     """
 
+    color_changed = Signal(str, str)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("ThemePreviewWidget")
+        self._theme_data: dict = {}
 
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
@@ -297,7 +375,11 @@ class ThemePreviewWidget(QWidget):
             scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8)
         )
 
+        self._color_section = _ColorSwatchSection(container)
+        self._color_section.set_on_click(self._open_color_picker)
+
         self._sections: list[QGroupBox] = [
+            self._color_section,
             _ButtonSection(container),
             _InputSection(container),
             _LabelSection(container),
@@ -322,6 +404,32 @@ class ThemePreviewWidget(QWidget):
         """Return all preview sections."""
         return list(self._sections)
 
+    def color_section(self) -> _ColorSwatchSection:
+        """Return the color swatch section."""
+        return self._color_section
+
+    def set_theme_data(self, theme_data: dict) -> None:
+        self._theme_data = dict(theme_data)
+
+    def _get_current_color(self, color_name: str) -> QColor:
+        colors = {k: self._theme_data[k] for k in self._theme_data if k != "properties"}
+        hex_val = colors.get(color_name, "#888888")
+        return QColor(hex_val)
+
+    def _open_color_picker(self, color_name: str) -> None:
+        from AssetsManager.dialogs.color_picker_dialog import ColorPickerDialog
+
+        current = self._get_current_color(color_name)
+        dlg = ColorPickerDialog(initial_color=current, parent=self)
+        dlg.color_selected.connect(lambda c, name=color_name: self._on_color_picked(name, c))
+        dlg.exec()
+
+    def _on_color_picked(self, color_name: str, color: QColor) -> None:
+        hex_val = color.name()
+        self._color_section.update_swatch(color_name, hex_val)
+        self._theme_data[color_name] = hex_val
+        self.color_changed.emit(color_name, hex_val)
+
 
 # ── Renderer ──────────────────────────────────────────────
 
@@ -330,10 +438,12 @@ class ThemePreviewRenderer:
 
     def apply_theme(self, widget: ThemePreviewWidget, theme_data: dict) -> None:
         """Apply theme to preview widget via generated stylesheet."""
+        widget.set_theme_data(theme_data)
         colors = {k: theme_data[k] for k in theme_data if k != "properties"}
         properties = theme_data.get("properties", {})
         qss = self._build_stylesheet(colors, properties)
         widget.setStyleSheet(qss)
+        widget.color_section().set_all_colors(colors)
 
     def _build_stylesheet(self, colors: dict, properties: dict) -> str:
         """Build QSS from theme colors and properties."""
