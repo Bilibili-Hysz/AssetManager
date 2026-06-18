@@ -20,6 +20,14 @@ from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 
 
 class TitleBarWidget(QWidget):
+    """Custom frameless title bar — extensible design.
+
+    NOTE: refresh_theme() is provided but this class is not currently
+    instantiated by any consumer. Dock title bars are built by
+    dock_factory._build_title_bar which already refreshes on theme change.
+    If this class is adopted in the future, call refresh_theme() from the
+    host window's theme-change handler.
+    """
     def __init__(self, window, parent=None):
         super().__init__(parent)
         self._window = window
@@ -79,6 +87,31 @@ class TitleBarWidget(QWidget):
             layout.addWidget(btn)
 
     # ── Public API ──────────────────────────────────────────────
+
+    def refresh_theme(self):
+        """Re-apply styles after a theme change."""
+        t = themes.get()
+        self.setStyleSheet(f"TitleBarWidget {{ background: {t['header']}; }}")
+        self._menu_bar.setStyleSheet(
+            f"QMenuBar {{ background: transparent; color: {t['heading']}; "
+            f"border: none; padding: 4px 6px; font-size: {scaled_pt(12)}px; }}"
+            f"QMenuBar::item:selected {{ background: {t['accent']}60; border-radius: {scaled_px(4)}px; }}"
+        )
+        btn_base = (
+            f"QPushButton {{ background: transparent; color: {t['body']}; border: none; "
+            f"font-size: {scaled_pt(14)}px; padding: 0; margin: 0; }} "
+            f"QPushButton:hover {{ background: {t['accent']}40; }} "
+        )
+        close_style = (
+            f"QPushButton {{ background: transparent; color: {t['body']}; border: none; "
+            f"font-size: {scaled_pt(14)}px; padding: 0; margin: 0; }} "
+            f"QPushButton:hover {{ background: {t['danger']}; color: white; }} "
+        )
+        buttons = self.findChildren(QPushButton)
+        if len(buttons) >= 3:
+            for btn in buttons[:-1]:
+                btn.setStyleSheet(btn_base)
+            buttons[-1].setStyleSheet(close_style)
 
     def menu_bar(self) -> QMenuBar:
         """Return the integrated menu bar for building menus."""

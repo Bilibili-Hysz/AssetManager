@@ -65,6 +65,22 @@ class SharingSettingsDialog(TabbedDialog):
         self._setup_settings_tab(settings_tab)
         self._add_tab(settings_tab, tr("sharing.tab_settings"), scrollable=True)
 
+    def _on_theme_changed(self, _name):
+        super()._on_theme_changed(_name)
+        t = _t()
+        self._status_label.setStyleSheet(f"font-weight: bold; font-size: {scaled_pt(14)}px; color: {t['heading']};")
+        self._url_label.setStyleSheet(f"font-size: {scaled_pt(13)}px; color: {t['accent']};")
+        self._share_url_label.setStyleSheet(
+            f"font-size: {scaled_pt(13)}px; color: {t['accent']}; "
+            f"padding: 10px; background: {t['panel']}; "
+            f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px;")
+        self._qr_label.setStyleSheet(f"background: {t['input_bg']}; border-radius: {scaled_px(10)}px; padding: 8px;")
+        if hasattr(self, '_tunnel_url_label'):
+            self._tunnel_url_label.setStyleSheet(
+                f"font-size: {scaled_pt(13)}px; color: {t['accent']}; "
+                f"padding: 8px; background: {t['panel']}; "
+                f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px;")
+
     # ══════════════════════════════════════════════════════════
     # Tab 1: Share
     # ══════════════════════════════════════════════════════════

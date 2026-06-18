@@ -299,6 +299,15 @@ class MainWindow(LanSharingMixin, QMainWindow):
             f"QStatusBar::item {{ border: none; }}"
         )
 
+    def _apply_status_bar_theme(self):
+        t = themes.get()
+        self._share_status_label.setStyleSheet(f"color: {t['muted']}; padding: 0 8px;")
+        self.statusBar().setStyleSheet(
+            f"QStatusBar {{ background: {t['header']}; color: {t['body']}; "
+            f"border-top: 1px solid {t['border']}; font-size: {scaled_pt(11)}px; }}"
+            f"QStatusBar::item {{ border: none; }}"
+        )
+
     def _on_share_status_clicked(self, event):
         """Handle click on share status indicator."""
         if self._lan_server and self._lan_server.is_running():
@@ -430,6 +439,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
             QApplication.instance().setStyleSheet(themes.stylesheet())
             themes.apply_to(self)
             self._apply_menu_theme()
+            self._apply_status_bar_theme()
             self._workspace._apply_style()
             self.refresh_bg()
             if hasattr(self.file_list, '_apply_list_theme'):

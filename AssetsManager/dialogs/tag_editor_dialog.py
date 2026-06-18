@@ -27,6 +27,10 @@ class TagEditorDialog(QDialog):
         self.setMinimumSize(scaled_px(420), scaled_px(400))
         themes.apply_to(self)
 
+        # NOTE: Stylesheet colors below use init-time theme values.
+        # Short-lived modal dialogs don't need live theme refresh —
+        # closing and reopening picks up the new theme.
+
         layout = QVBoxLayout(self)
         t = themes.get()
 

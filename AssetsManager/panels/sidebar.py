@@ -134,13 +134,13 @@ class SidebarPanel(PanelContent):
         bar = QHBoxLayout()
         bar.setContentsMargins(scaled_px(4), scaled_px(4), scaled_px(4), scaled_px(2))
         bar.addWidget(self._search)
-        expand = QPushButton("+")
-        expand.setToolTip(tr("sidebar.expand_all"))
-        expand.clicked.connect(self._tree.expandAll)
-        collapse = QPushButton("−")
-        collapse.setToolTip(tr("sidebar.collapse_all"))
-        collapse.clicked.connect(self._tree.collapseAll)
-        for btn in (expand, collapse):
+        self._expand_btn = QPushButton("+")
+        self._expand_btn.setToolTip(tr("sidebar.expand_all"))
+        self._expand_btn.clicked.connect(self._tree.expandAll)
+        self._collapse_btn = QPushButton("−")
+        self._collapse_btn.setToolTip(tr("sidebar.collapse_all"))
+        self._collapse_btn.clicked.connect(self._tree.collapseAll)
+        for btn in (self._expand_btn, self._collapse_btn):
             btn.setFixedSize(scaled_px(26), scaled_px(26))
             btn.setFlat(True)
             btn.setStyleSheet(
@@ -732,6 +732,7 @@ class SidebarPanel(PanelContent):
         """Refresh sidebar styles when theme changes."""
         self._populate()
         self._apply_status_style()
+        self._apply_nav_btn_style()
 
     def _apply_status_style(self):
         t = themes.get()
@@ -740,6 +741,14 @@ class SidebarPanel(PanelContent):
             f"border-top: 1px solid {t['border']};")
         self._status.setStyleSheet(
             f"color: {t['muted']}; font-size: {scaled_pt(11)}px; background: transparent;")
+
+    def _apply_nav_btn_style(self):
+        t = themes.get()
+        for btn in (self._expand_btn, self._collapse_btn):
+            btn.setStyleSheet(
+                f"color: {t['body']}; padding: 0; font-size: {scaled_pt(14)}px; font-weight: bold; "
+                f"background: transparent; border-radius: {scaled_px(6)}px; "
+                f"border: 1px solid {alpha(t['border'], 0.375)};")
 
     def navigate_to(self, path: str):
         self._library_root = path
