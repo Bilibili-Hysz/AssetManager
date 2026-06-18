@@ -136,9 +136,7 @@ class SettingsDialog(TabbedDialog):
         s.set("bg_panel_opacity", self._bg_panel_slider.value() / 100.0)
         s.set("bg_header_opacity", self._bg_header_slider.value() / 100.0)
         s.save()
-        from AssetsManager.core import themes as _th
-        _th._cached_stylesheet = None
-        _th._cached_stylesheet_theme = None
+        themes.invalidate_cache()
         parent = self.parent()
         if parent and hasattr(parent, '_on_bg_style_changed'):
             parent._on_bg_style_changed()
@@ -247,9 +245,9 @@ class SettingsDialog(TabbedDialog):
         parent = self.parent()
         if parent and hasattr(parent, 'file_list') and hasattr(parent.file_list, '_loader'):
             count = parent.file_list._loader.clear_thumb_cache()
-            QMessageBox.information(self, "Done", f"Deleted {count} cached thumbnails.")
+            QMessageBox.information(self, tr("dialog.done"), tr("settings.thumbnails_deleted", count=count))
         else:
-            QMessageBox.warning(self, "Error", tr("settings.error_no_library"))
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.error_no_library"))
 
     def _regenerate_thumbnails(self):
         reply = QMessageBox.question(
@@ -265,7 +263,7 @@ class SettingsDialog(TabbedDialog):
         loader = fl._loader
         lib_root = fl._lib_root
         if not lib_root:
-            QMessageBox.warning(self, "Error", tr("settings.error_no_library_path"))
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.error_no_library_path"))
             return
         loader.clear_thumb_cache()
         self._progress.setVisible(True)
@@ -282,4 +280,4 @@ class SettingsDialog(TabbedDialog):
         self._progress.setVisible(False)
         self._clear_btn.setEnabled(True)
         self._regen_btn.setEnabled(True)
-        QMessageBox.information(self, "Done", tr("settings.thumb_regenerate_done", count=count))
+        QMessageBox.information(self, tr("dialog.done"), tr("settings.thumb_regenerate_done", count=count))

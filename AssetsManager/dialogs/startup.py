@@ -516,6 +516,15 @@ class StartupWindow(QMainWindow):
             self._cards.append(card)
             self._card_layout.insertWidget(len(self._cards) - 1, card)
 
+        if len(recent) > 30:
+            t = themes.get()
+            indicator = QLabel(tr("startup.hero_truncated", shown=30, total=len(recent)))
+            indicator.setStyleSheet(
+                f"font-size: {scaled_pt(10)}px; color: {t['muted']}; "
+                f"padding: {scaled_px(4)}px {scaled_px(12)}px; background: transparent; border: none;")
+            self._cards.append(indicator)
+            self._card_layout.insertWidget(len(self._cards) - 1, indicator)
+
         if self._cards:
             first_path = self._cards[0]._path
             self._on_card_clicked(first_path)

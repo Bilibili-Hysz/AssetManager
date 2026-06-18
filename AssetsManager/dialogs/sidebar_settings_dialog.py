@@ -128,6 +128,8 @@ class SidebarSettingsDialog(TabbedDialog):
             QDialogButtonBox.StandardButton.Cancel)
         btns.accepted.connect(self.accept)
         btns.rejected.connect(self.reject)
+        btns.button(QDialogButtonBox.StandardButton.Ok).setToolTip(tr("sidebar_settings.ok_tooltip"))
+        btns.button(QDialogButtonBox.StandardButton.Cancel).setToolTip(tr("sidebar_settings.cancel_tooltip"))
         layout.addWidget(btns)
 
     def _reset_branches(self):

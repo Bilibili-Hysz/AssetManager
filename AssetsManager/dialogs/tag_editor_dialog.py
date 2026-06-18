@@ -1,10 +1,10 @@
 """Tag editor dialog — manage tags for the current file with suggestions."""
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLineEdit, QGroupBox, QListWidget, QListWidgetItem,
-    QMessageBox, QWidget,
+    QMessageBox, QWidget, QProgressBar,
 )
 from AssetsManager.core.protocols import TagStoreProtocol
 from AssetsManager.core.tag_library import get_library
@@ -77,10 +77,15 @@ class TagEditorDialog(TabbedDialog):
 
         danger = QGroupBox(tr("tageditor.maintenance"))
         danger_layout = QHBoxLayout(danger)
-        del_unused = self.make_secondary_btn(tr("tageditor.delete_unused"), self._delete_unused)
-        del_unused.setToolTip(tr("tageditor.delete_unused_tooltip"))
-        danger_layout.addWidget(del_unused)
+        self._del_unused_btn = self.make_secondary_btn(tr("tageditor.delete_unused"), self._delete_unused)
+        self._del_unused_btn.setToolTip(tr("tageditor.delete_unused_tooltip"))
+        danger_layout.addWidget(self._del_unused_btn)
         danger_layout.addStretch()
+        self._del_progress = QProgressBar()
+        self._del_progress.setVisible(False)
+        self._del_progress.setTextVisible(False)
+        self._del_progress.setFixedHeight(scaled_px(4))
+        danger_layout.addWidget(self._del_progress)
         layout.addWidget(danger)
 
         # ── Bottom buttons ────────────────────────────────────
@@ -182,8 +187,37 @@ class TagEditorDialog(TabbedDialog):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply != QMessageBox.StandardButton.Yes:
             return
-        for t in unused:
-            get_library().remove_canonical(t)
+        self._del_unused_btn.setEnabled(False)
+        self._del_progress.setRange(0, len(unused))
+        self._del_progress.setValue(0)
+        self._del_progress.setVisible(True)
+        self._del_worker = _DeleteUnusedWorker(unused)
+        self._del_worker.progress.connect(self._on_delete_progress)
+        self._del_worker.finished.connect(self._on_delete_finished)
+        self._del_worker.start()
+
+    def _on_delete_progress(self, current: int):
+        self._del_progress.setValue(current)
+
+    def _on_delete_finished(self):
+        self._del_progress.setVisible(False)
+        self._del_unused_btn.setEnabled(True)
         self._store.save()
         self._modified = True
         self._refresh_suggestions()
+
+
+class _DeleteUnusedWorker(QThread):
+    """Background thread for deleting unused tags."""
+
+    progress = Signal(int)
+
+    def __init__(self, tags: list[str]):
+        super().__init__()
+        self._tags = tags
+
+    def run(self):
+        lib = get_library()
+        for i, tag in enumerate(self._tags):
+            lib.remove_canonical(tag)
+            self.progress.emit(i + 1)

@@ -452,6 +452,7 @@ class InfoPanel(PanelContent):
         act_layout.addStretch()
         self._open_btn = QPushButton(tr("info.open"))
         self._open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._open_btn.setToolTip(tr("info.open_tooltip"))
         self._open_btn.setStyleSheet(
             f"background: {t['accent']}; color: {t['heading']}; "
             f"border: 1px solid {t['accent']}; border-radius: {scaled_px(4)}px; "
@@ -459,6 +460,7 @@ class InfoPanel(PanelContent):
         self._open_btn.clicked.connect(lambda: self.open_requested.emit(self._current_path))
         self._copy_btn = QPushButton(tr("info.copy_path"))
         self._copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._copy_btn.setToolTip(tr("info.copy_tooltip"))
         self._copy_btn.setStyleSheet(
             f"background: transparent; color: {t['body']}; "
             f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; "
@@ -511,7 +513,68 @@ class InfoPanel(PanelContent):
             f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; "
             f"padding: {scaled_px(2)}px {scaled_px(10)}px; font-size: {scaled_pt(12)}px;")
         self._name.setStyleSheet(f"color: {t['heading']}; font-size: {scaled_pt(16)}px; font-weight: bold; "
-                                 f"background: transparent; border: none; padding: 2px 0;")
+                                  f"background: transparent; border: none; padding: 2px 0;")
+        # Update field labels and values
+        self._refresh_field_styles()
+        # Update link field
+        self._refresh_link_field_style()
+        # Update plugin fields
+        self._refresh_plugin_fields_style()
+
+    def _refresh_field_styles(self):
+        """Update all field label/value stylesheets for current theme."""
+        t = themes.get()
+        label_style = f"color: {t['muted']}; font-size: {scaled_pt(11)}px; min-width: {scaled_px(65)}px;"
+        value_style = f"color: {t['body']}; font-size: {scaled_pt(12)}px;"
+        for field in self._fields.values():
+            if not field or not field.layout():
+                continue
+            for i in range(field.layout().count()):
+                item = field.layout().itemAt(i)
+                if item and item.widget():
+                    w = item.widget()
+                    if isinstance(w, QLabel):
+                        if i == 0:  # label
+                            w.setStyleSheet(label_style)
+                        else:  # value
+                            w.setStyleSheet(value_style)
+
+    def _refresh_link_field_style(self):
+        """Update link field label/value stylesheets for current theme."""
+        t = themes.get()
+        row = self._field_link
+        if not row or not row.layout():
+            return
+        for i in range(row.layout().count()):
+            item = row.layout().itemAt(i)
+            if item and item.widget():
+                w = item.widget()
+                if isinstance(w, QLabel):
+                    if i == 0:  # label
+                        w.setStyleSheet(f"color: {t['muted']}; font-size: {scaled_pt(11)}px; min-width: {scaled_px(65)}px;")
+                    else:  # value
+                        w.setStyleSheet(f"color: {t['body']}; font-size: {scaled_pt(12)}px;")
+                elif isinstance(w, _DragLabel):
+                    if not w.text() or w.text() == "—":
+                        w.setStyleSheet(f"color: {t['body']}; font-size: {scaled_pt(12)}px;")
+
+    def _refresh_plugin_fields_style(self):
+        """Update plugin field stylesheets for current theme."""
+        t = themes.get()
+        if not hasattr(self, '_plugin_fields_widget') or not self._plugin_fields_widget.isVisible():
+            return
+        for i in range(self._plugin_fields_layout.count()):
+            item = self._plugin_fields_layout.itemAt(i)
+            if item and item.widget():
+                field = item.widget()
+                if field.layout():
+                    for j in range(field.layout().count()):
+                        sub = field.layout().itemAt(j)
+                        if sub and sub.widget() and isinstance(sub.widget(), QLabel):
+                            if j == 0:
+                                sub.widget().setStyleSheet(f"color: {t['muted']}; font-size: {scaled_pt(11)}px; min-width: {scaled_px(65)}px;")
+                            else:
+                                sub.widget().setStyleSheet(f"color: {t['body']}; font-size: {scaled_pt(12)}px;")
 
     def _register_field(self, key: str, label: str, value: str = "") -> None:
         """Register a metadata field and add it to the layout."""

@@ -199,6 +199,13 @@ def set_theme(name: str):
     bus().theme_changed.emit(name)
 
 
+def invalidate_cache():
+    """Force stylesheet regeneration on next access."""
+    global _cached_stylesheet, _cached_stylesheet_theme
+    _cached_stylesheet = None
+    _cached_stylesheet_theme = None
+
+
 def names() -> list[str]:
     """Return list of user-facing theme names (excludes 'Default' fallback)."""
     return [n for n in _THEME_NAMES if n != "Default"]
