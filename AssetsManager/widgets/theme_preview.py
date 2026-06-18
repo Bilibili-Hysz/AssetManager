@@ -362,7 +362,15 @@ class ThemePreviewWidget(QWidget):
         self.setObjectName("ThemePreviewWidget")
         self._theme_data: dict = {}
 
-        scroll = QScrollArea(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self._color_toolbar = _ColorSwatchSection()
+        self._color_toolbar.set_on_click(self._open_color_picker)
+        outer.addWidget(self._color_toolbar)
+
+        scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setObjectName("ThemePreviewScroll")
@@ -375,11 +383,7 @@ class ThemePreviewWidget(QWidget):
             scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8)
         )
 
-        self._color_section = _ColorSwatchSection(container)
-        self._color_section.set_on_click(self._open_color_picker)
-
         self._sections: list[QGroupBox] = [
-            self._color_section,
             _ButtonSection(container),
             _InputSection(container),
             _LabelSection(container),
@@ -392,13 +396,9 @@ class ThemePreviewWidget(QWidget):
         ]
         for section in self._sections:
             layout.addWidget(section)
-
         layout.addStretch()
         scroll.setWidget(container)
-
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(scroll)
+        outer.addWidget(scroll, 1)
 
     def sections(self) -> list[QGroupBox]:
         """Return all preview sections."""
@@ -406,7 +406,7 @@ class ThemePreviewWidget(QWidget):
 
     def color_section(self) -> _ColorSwatchSection:
         """Return the color swatch section."""
-        return self._color_section
+        return self._color_toolbar
 
     def set_theme_data(self, theme_data: dict) -> None:
         self._theme_data = dict(theme_data)
@@ -426,7 +426,7 @@ class ThemePreviewWidget(QWidget):
 
     def _on_color_picked(self, color_name: str, color: QColor) -> None:
         hex_val = color.name()
-        self._color_section.update_swatch(color_name, hex_val)
+        self._color_toolbar.update_swatch(color_name, hex_val)
         self._theme_data[color_name] = hex_val
         self.color_changed.emit(color_name, hex_val)
 

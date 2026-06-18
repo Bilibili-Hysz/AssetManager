@@ -37,6 +37,7 @@
   "settings.follow_system": "Follow System",
   "settings.custom_themes": "Custom Themes",
   "settings.new_theme": "New Theme",
+  "settings.save_as_custom": "Save as Custom",
   "settings.theme_name": "Theme Name",
   "settings.base_theme": "Base Theme",
   "settings.select_base": "Select base theme:",

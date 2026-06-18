@@ -36,6 +36,7 @@
   "settings.follow_system": "システムに従う",
   "settings.custom_themes": "カスタムテーマ",
   "settings.new_theme": "新規テーマ",
+  "settings.save_as_custom": "カスタムとして保存",
   "settings.theme_name": "テーマ名",
   "settings.base_theme": "ベーステーマ",
   "settings.select_base": "ベーステーマを選択：",

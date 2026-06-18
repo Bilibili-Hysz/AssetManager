@@ -36,6 +36,7 @@
   "settings.follow_system": "跟随系统",
   "settings.custom_themes": "自定义主题",
   "settings.new_theme": "新建主题",
+  "settings.save_as_custom": "另存为自定义",
   "settings.theme_name": "主题名称",
   "settings.base_theme": "基础主题",
   "settings.select_base": "选择基础主题：",

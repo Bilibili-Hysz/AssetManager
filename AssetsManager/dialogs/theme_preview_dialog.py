@@ -4,7 +4,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QSplitter, QWidget,
-    QListWidget, QListWidgetItem, QPushButton,
+    QListWidget, QListWidgetItem, QPushButton, QInputDialog, QMessageBox,
 )
 from PySide6.QtGui import QPixmap, QPainter, QColor, QIcon
 from AssetsManager.core.ui_scale import scaled_px
@@ -44,6 +44,15 @@ class ThemePreviewDialog(QDialog):
         btn_row.addWidget(apply_btn)
         btn_row.addWidget(close_btn)
         left_layout.addLayout(btn_row)
+
+        custom_row = QHBoxLayout()
+        new_btn = QPushButton(tr("settings.new_theme"))
+        new_btn.clicked.connect(self._on_new_custom_theme)
+        save_btn = QPushButton(tr("settings.save_as_custom"))
+        save_btn.clicked.connect(self._on_save_as_custom)
+        custom_row.addWidget(new_btn)
+        custom_row.addWidget(save_btn)
+        left_layout.addLayout(custom_row)
 
         self._preview = ThemePreviewWidget()
         self._preview.color_changed.connect(self._on_color_changed)
@@ -94,12 +103,18 @@ class ThemePreviewDialog(QDialog):
             return
         self._current_theme_name = name
         loader = themes._get_loader()
-        theme_data = loader.get_theme(name)
-        if theme_data:
-            self._renderer.apply_theme(self._preview, theme_data)
+        raw = loader.get_theme(name)
+        if raw:
+            # Flatten: merge colors dict with properties at top level
+            flat = dict(raw.get("colors", {}))
+            flat["properties"] = raw.get("properties", {})
+            self._renderer.apply_theme(self._preview, flat)
 
     def _on_color_changed(self, color_name: str, hex_val: str) -> None:
-        self._renderer.apply_theme(self._preview, self._preview._theme_data)
+        # Update the flattened theme data with the new color
+        if hasattr(self._preview, '_theme_data'):
+            self._preview._theme_data[color_name] = hex_val
+            self._renderer.apply_theme(self._preview, self._preview._theme_data)
 
     def _on_apply(self):
         current = self._theme_list.currentItem()
@@ -109,3 +124,63 @@ class ThemePreviewDialog(QDialog):
         if name:
             themes.set_theme(name)
             self.accept()
+
+    def _on_new_custom_theme(self):
+        from AssetsManager.core.themes import _get_loader
+        loader = _get_loader()
+        name, ok = QInputDialog.getText(self, tr("settings.new_theme"), tr("settings.theme_name"))
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+        groups = loader.list_themes()
+        all_themes = []
+        for group_name in ("Dark", "Light"):
+            for theme_data in groups.get(group_name, []):
+                all_themes.append(theme_data.get("name", ""))
+        if not all_themes:
+            return
+        base, ok = QInputDialog.getItem(self, tr("settings.base_theme"), tr("settings.select_base"), all_themes, 0, False)
+        if not ok:
+            return
+        if loader.create_custom_theme(name, base):
+            themes.reload_themes()
+            self._load_themes()
+            for i in range(self._theme_list.count()):
+                item = self._theme_list.item(i)
+                if item and item.data(Qt.ItemDataRole.UserRole) == name:
+                    self._theme_list.setCurrentItem(item)
+                    break
+        else:
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.theme_exists"))
+
+    def _on_save_as_custom(self):
+        from AssetsManager.core.themes import _get_loader
+        loader = _get_loader()
+        name, ok = QInputDialog.getText(self, tr("settings.save_as_custom"), tr("settings.theme_name"))
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+        theme_data = self._preview._theme_data
+        if not theme_data:
+            return
+        base_name = self._current_theme_name or themes.name()
+        if loader.create_custom_theme(name, base_name):
+            import json
+            from AssetsManager.core.path_resolver import themes_dir
+            path = themes_dir() / f"U_{name.replace(' ', '_')}.json"
+            colors = {k: v for k, v in theme_data.items() if k != "properties"}
+            nested = {
+                "name": name,
+                "colors": colors,
+                "properties": theme_data.get("properties", {}),
+            }
+            path.write_text(json.dumps(nested, indent=2, ensure_ascii=False), encoding="utf-8")
+            themes.reload_themes()
+            self._load_themes()
+            for i in range(self._theme_list.count()):
+                item = self._theme_list.item(i)
+                if item and item.data(Qt.ItemDataRole.UserRole) == name:
+                    self._theme_list.setCurrentItem(item)
+                    break
+        else:
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.theme_exists"))
