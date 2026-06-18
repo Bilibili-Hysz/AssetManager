@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import concurrent.futures
 import logging
 import os
@@ -28,6 +29,23 @@ AUTH_KIND_REQUEST_KEY = web.RequestKey("auth_kind", str)
 
 _format_size = format_size
 
+_SANITIZE_RE = re.compile(r'[\x00-\x1f\x7f/\\]')
+
+
+def sanitize_filename(name: str) -> str:
+    """Sanitize a filename for Content-Disposition header.
+
+    - Strip control characters
+    - Strip path separators
+    - Limit length to 200 chars
+    - Fallback to 'download' if empty
+    """
+    clean = _SANITIZE_RE.sub('', name)
+    if len(clean) > 200:
+        clean = clean[:200]
+    return clean or 'download'
+
+
 __all__ = [
     "CATEGORY_MAP",
     "IMAGE_EXTS",
@@ -51,6 +69,7 @@ __all__ = [
     "get_services",
     "get_tag_service",
     "matches_exclude",
+    "sanitize_filename",
     "set_request_auth_context",
     "set_auth_cookie",
     "validate_path",

@@ -8,7 +8,7 @@ from aiohttp import web
 from AssetsManager.application.share_service import ShareService
 from AssetsManager.domain.share import ShareLink
 from AssetsManager.domain.asset import IMAGE_EXTS
-from AssetsManager.lan.routes._helpers import get_auth_service, get_lan, get_auth_token, get_request_user, validate_path
+from AssetsManager.lan.routes._helpers import get_auth_service, get_lan, get_auth_token, get_request_user, sanitize_filename, validate_path
 from AssetsManager.lan.utils import get_local_ip
 
 _log = logging.getLogger(__name__)
@@ -230,7 +230,7 @@ async def handle_share_download(request):
             return web.json_response({"error": "Download limit reached"}, status=403)
         response = web.FileResponse(
             target,
-            headers={"Content-Disposition": f'attachment; filename="{target.name}"'},
+            headers={"Content-Disposition": f'attachment; filename="{sanitize_filename(target.name)}"'},
         )
         share_svc.increment_download(share_id)
         return response
