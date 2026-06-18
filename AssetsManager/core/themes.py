@@ -212,8 +212,16 @@ def names() -> list[str]:
 
 def reload_themes():
     """Reload all themes from disk. Called by file watcher or manual refresh."""
+    global _current
     _load_all_themes()
+    if _current not in _THEMES and _THEMES:
+        _current = _THEME_NAMES[0] if _THEME_NAMES else "Default"
     invalidate_cache()
+    bus().theme_changed.emit(_current)
+
+
+_loader.themes_changed.connect(reload_themes)
+_loader.watch_changes()
 
 
 def dark_themes() -> list[str]:
