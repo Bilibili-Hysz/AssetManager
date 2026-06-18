@@ -58,10 +58,8 @@ _EXTENDED_FALLBACKS = {
 
 def _themes_dir() -> str:
     """Resolve themes/ directory (PyInstaller bundle or dev)."""
-    if getattr(sys, 'frozen', False):
-        base = getattr(sys, '_MEIPASS', os.path.dirname(__file__))
-        return os.path.join(base, "AssetsManager", "themes")
-    return os.path.join(os.path.dirname(__file__), "..", "themes")
+    from AssetsManager.core.path_resolver import themes_dir
+    return str(themes_dir())
 
 
 def _load_json_theme(filepath: str) -> dict | None:

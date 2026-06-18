@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "name": "Lilac",
+  "description": "Soft lilac-white interface with purple accents",
+  "dark": false,
+  "colors": {
+    "base": "#f0eaf5",
+    "panel": "#f8f4fc",
+    "header": "#e4dcea",
+    "border": "#d0c4dc",
+    "heading": "#201828",
+    "body": "#483c58",
+    "muted": "#7c7090",
+    "accent": "#9070c0",
+    "success": "#2a9058",
+    "warning": "#c07820",
+    "danger": "#b83838",
+    "favorite": "#b89020",
+    "recent": "#5a90b8",
+    "on_accent": "#ffffff",
+    "hover_overlay": "#000000",
+    "selected_overlay": "#9070c0",
+    "border_focus": "#9070c0",
+    "input_bg": "#f8f4fc",
+    "input_text": "#201828",
+    "scrollbar_track": "#f0eaf5",
+    "scrollbar_thumb": "#c4b8d4",
+    "scrollbar_thumb_hover": "#b0a0c0",
+    "disabled_text": "#c4b8d4",
+    "disabled_bg": "#e4dcea",
+    "tooltip_bg": "#e4dcea",
+    "tooltip_text": "#201828"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.08,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  }
+}

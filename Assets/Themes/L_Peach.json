@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "name": "Peach",
+  "description": "Warm peach-white interface with coral accents",
+  "dark": false,
+  "colors": {
+    "base": "#f5ece8",
+    "panel": "#faf5f2",
+    "header": "#e8dcd4",
+    "border": "#d8c8bc",
+    "heading": "#281c14",
+    "body": "#4c3c30",
+    "muted": "#8c7868",
+    "accent": "#d06848",
+    "success": "#2a9058",
+    "warning": "#c07820",
+    "danger": "#b83838",
+    "favorite": "#b89020",
+    "recent": "#5a90b8",
+    "on_accent": "#ffffff",
+    "hover_overlay": "#000000",
+    "selected_overlay": "#d06848",
+    "border_focus": "#d06848",
+    "input_bg": "#faf5f2",
+    "input_text": "#281c14",
+    "scrollbar_track": "#f5ece8",
+    "scrollbar_thumb": "#c8b8a8",
+    "scrollbar_thumb_hover": "#b0a090",
+    "disabled_text": "#c0b0a0",
+    "disabled_bg": "#e8dcd4",
+    "tooltip_bg": "#e8dcd4",
+    "tooltip_text": "#281c14"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.08,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  }
+}

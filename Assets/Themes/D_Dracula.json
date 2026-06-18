@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "name": "Dracula",
+  "description": "Popular dark theme with vibrant purple and magenta accents",
+  "dark": true,
+  "colors": {
+    "base": "#1e1f29",
+    "panel": "#282a36",
+    "header": "#343746",
+    "border": "#44475a",
+    "heading": "#f8f8f2",
+    "body": "#b8b8c8",
+    "muted": "#6272a4",
+    "accent": "#bd93f9",
+    "success": "#50fa7b",
+    "warning": "#f1fa8c",
+    "danger": "#ff5555",
+    "favorite": "#f1fa8c",
+    "recent": "#8be9fd",
+    "on_accent": "#1e1f29",
+    "hover_overlay": "#ffffff",
+    "selected_overlay": "#bd93f9",
+    "border_focus": "#bd93f9",
+    "input_bg": "#282a36",
+    "input_text": "#f8f8f2",
+    "scrollbar_track": "#1e1f29",
+    "scrollbar_thumb": "#6272a4",
+    "scrollbar_thumb_hover": "#44475a",
+    "disabled_text": "#44475a",
+    "disabled_bg": "#191a21",
+    "tooltip_bg": "#343746",
+    "tooltip_text": "#f8f8f2"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.15,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  },
+  "background": {
+    "enabled": false,
+    "image": "",
+    "scale": "fill",
+    "opacity": 1.0,
+    "panel_opacity": 0.88,
+    "header_opacity": 1.0
+  }
+}

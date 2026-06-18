@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "name": "Mint",
+  "description": "Fresh green-white interface with vibrant emerald accents",
+  "dark": false,
+  "colors": {
+    "base": "#eef4f0",
+    "panel": "#f5faf7",
+    "header": "#e0ece4",
+    "border": "#c0d4c8",
+    "heading": "#18201c",
+    "body": "#3a4a40",
+    "muted": "#6a8070",
+    "accent": "#30a068",
+    "success": "#2a9058",
+    "warning": "#c07820",
+    "danger": "#b83838",
+    "favorite": "#b89020",
+    "recent": "#5a90b8",
+    "on_accent": "#ffffff",
+    "hover_overlay": "#000000",
+    "selected_overlay": "#30a068",
+    "border_focus": "#30a068",
+    "input_bg": "#f5faf7",
+    "input_text": "#18201c",
+    "scrollbar_track": "#eef4f0",
+    "scrollbar_thumb": "#b8ccc0",
+    "scrollbar_thumb_hover": "#a0b8a8",
+    "disabled_text": "#b0c4b8",
+    "disabled_bg": "#e0ece4",
+    "tooltip_bg": "#e0ece4",
+    "tooltip_text": "#18201c"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.08,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  },
+  "background": {
+    "enabled": false,
+    "image": "",
+    "scale": "fill",
+    "opacity": 1.0,
+    "panel_opacity": 0.88,
+    "header_opacity": 1.0
+  }
+}

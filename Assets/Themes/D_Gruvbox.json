@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "name": "Gruvbox",
+  "description": "Retro groove interface with warm vibrant accents",
+  "dark": true,
+  "colors": {
+    "base": "#1d2021",
+    "panel": "#282828",
+    "header": "#3c3836",
+    "border": "#504945",
+    "heading": "#ebdbb2",
+    "body": "#d5c4a1",
+    "muted": "#7c6f64",
+    "accent": "#d65d0e",
+    "success": "#98971a",
+    "warning": "#d79921",
+    "danger": "#cc241d",
+    "favorite": "#d79921",
+    "recent": "#458588",
+    "on_accent": "#1d2021",
+    "hover_overlay": "#ffffff",
+    "selected_overlay": "#d65d0e",
+    "border_focus": "#d65d0e",
+    "input_bg": "#282828",
+    "input_text": "#ebdbb2",
+    "scrollbar_track": "#1d2021",
+    "scrollbar_thumb": "#7c6f64",
+    "scrollbar_thumb_hover": "#504945",
+    "disabled_text": "#504945",
+    "disabled_bg": "#1a1a1a",
+    "tooltip_bg": "#3c3836",
+    "tooltip_text": "#ebdbb2"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.15,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  },
+  "background": {
+    "enabled": false,
+    "image": "",
+    "scale": "fill",
+    "opacity": 1.0,
+    "panel_opacity": 0.88,
+    "header_opacity": 1.0
+  }
+}

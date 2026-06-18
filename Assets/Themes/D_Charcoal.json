@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "name": "Charcoal",
+  "description": "Deep gray interface with silver accents",
+  "dark": true,
+  "colors": {
+    "base": "#141618",
+    "panel": "#1c1e22",
+    "header": "#262a30",
+    "border": "#3a4048",
+    "heading": "#e4e8ec",
+    "body": "#b0b8c4",
+    "muted": "#687080",
+    "accent": "#6088b0",
+    "success": "#50d890",
+    "warning": "#f5b040",
+    "danger": "#f06060",
+    "favorite": "#f0d060",
+    "recent": "#70b8e0",
+    "on_accent": "#ffffff",
+    "hover_overlay": "#ffffff",
+    "selected_overlay": "#6088b0",
+    "border_focus": "#6088b0",
+    "input_bg": "#1c1e22",
+    "input_text": "#e4e8ec",
+    "scrollbar_track": "#141618",
+    "scrollbar_thumb": "#687080",
+    "scrollbar_thumb_hover": "#3a4048",
+    "disabled_text": "#3a4048",
+    "disabled_bg": "#101214",
+    "tooltip_bg": "#262a30",
+    "tooltip_text": "#e4e8ec"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.15,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  }
+}

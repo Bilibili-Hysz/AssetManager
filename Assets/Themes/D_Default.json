@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "name": "Default",
+  "description": "Minimal fallback theme — loaded when all other themes fail",
+  "dark": true,
+  "colors": {
+    "base": "#1a1a1a",
+    "panel": "#252525",
+    "header": "#2d2d2d",
+    "border": "#555555",
+    "heading": "#e0e0e0",
+    "body": "#b0b0b0",
+    "muted": "#666666",
+    "accent": "#606060",
+    "success": "#44c98a",
+    "warning": "#f0a040",
+    "danger": "#e05555",
+    "favorite": "#e8c84a",
+    "recent": "#88aacc",
+    "on_accent": "#ffffff",
+    "hover_overlay": "#ffffff",
+    "selected_overlay": "#606060",
+    "border_focus": "#606060",
+    "input_bg": "#252525",
+    "input_text": "#e0e0e0",
+    "scrollbar_track": "#1a1a1a",
+    "scrollbar_thumb": "#666666",
+    "scrollbar_thumb_hover": "#555555",
+    "disabled_text": "#444444",
+    "disabled_bg": "#1a1a1a",
+    "tooltip_bg": "#2d2d2d",
+    "tooltip_text": "#e0e0e0"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.15,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  },
+  "background": {
+    "enabled": false,
+    "image": "",
+    "scale": "fill",
+    "opacity": 1.0,
+    "panel_opacity": 0.88,
+    "header_opacity": 1.0
+  }
+}

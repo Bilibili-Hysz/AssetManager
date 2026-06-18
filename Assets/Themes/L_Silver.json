@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "name": "Silver",
+  "description": "Cool gray-white interface with vibrant blue accents",
+  "dark": false,
+  "colors": {
+    "base": "#f0f2f4",
+    "panel": "#f8f9fc",
+    "header": "#e4e8ec",
+    "border": "#c8d0d8",
+    "heading": "#181c22",
+    "body": "#444c58",
+    "muted": "#788090",
+    "accent": "#4080c0",
+    "success": "#2a9058",
+    "warning": "#c07820",
+    "danger": "#b83838",
+    "favorite": "#b89020",
+    "recent": "#5a90b8",
+    "on_accent": "#ffffff",
+    "hover_overlay": "#000000",
+    "selected_overlay": "#4080c0",
+    "border_focus": "#4080c0",
+    "input_bg": "#f8f9fc",
+    "input_text": "#181c22",
+    "scrollbar_track": "#f0f2f4",
+    "scrollbar_thumb": "#c0c8d0",
+    "scrollbar_thumb_hover": "#a8b4c0",
+    "disabled_text": "#b8c0c8",
+    "disabled_bg": "#e4e8ec",
+    "tooltip_bg": "#e4e8ec",
+    "tooltip_text": "#181c22"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.08,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  },
+  "background": {
+    "enabled": false,
+    "image": "",
+    "scale": "fill",
+    "opacity": 1.0,
+    "panel_opacity": 0.88,
+    "header_opacity": 1.0
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "name": "Forest",
+  "description": "Deep forest green interface with vibrant emerald accents",
+  "dark": true,
+  "colors": {
+    "base": "#0e1410",
+    "panel": "#182018",
+    "header": "#223020",
+    "border": "#3a5838",
+    "heading": "#e0f0e8",
+    "body": "#a8c8b0",
+    "muted": "#5a8060",
+    "accent": "#40b870",
+    "success": "#50d890",
+    "warning": "#f5b040",
+    "danger": "#f06060",
+    "favorite": "#f0d060",
+    "recent": "#70b8e0",
+    "on_accent": "#ffffff",
+    "hover_overlay": "#ffffff",
+    "selected_overlay": "#40b870",
+    "border_focus": "#40b870",
+    "input_bg": "#182018",
+    "input_text": "#e0f0e8",
+    "scrollbar_track": "#0e1410",
+    "scrollbar_thumb": "#5a8060",
+    "scrollbar_thumb_hover": "#3a5838",
+    "disabled_text": "#3a5838",
+    "disabled_bg": "#0a100c",
+    "tooltip_bg": "#223020",
+    "tooltip_text": "#e0f0e8"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.15,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  },
+  "background": {
+    "enabled": false,
+    "image": "",
+    "scale": "fill",
+    "opacity": 1.0,
+    "panel_opacity": 0.88,
+    "header_opacity": 1.0
+  }
+}

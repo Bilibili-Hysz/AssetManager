@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "name": "Dawn",
+  "description": "Warm cream-white interface with rich blue accents",
+  "dark": false,
+  "colors": {
+    "base": "#f5f0e8",
+    "panel": "#faf8f4",
+    "header": "#e8e0d4",
+    "border": "#d8d0c0",
+    "heading": "#241c10",
+    "body": "#4a4030",
+    "muted": "#8a7c68",
+    "accent": "#4a70b0",
+    "success": "#2a9058",
+    "warning": "#c07820",
+    "danger": "#b83838",
+    "favorite": "#b89020",
+    "recent": "#5a90b8",
+    "on_accent": "#ffffff",
+    "hover_overlay": "#000000",
+    "selected_overlay": "#4a70b0",
+    "border_focus": "#4a70b0",
+    "input_bg": "#faf8f4",
+    "input_text": "#241c10",
+    "scrollbar_track": "#f5f0e8",
+    "scrollbar_thumb": "#c8bca8",
+    "scrollbar_thumb_hover": "#b0a490",
+    "disabled_text": "#c0b8a8",
+    "disabled_bg": "#e8e0d4",
+    "tooltip_bg": "#e8e0d4",
+    "tooltip_text": "#241c10"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.08,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  },
+  "background": {
+    "enabled": false,
+    "image": "",
+    "scale": "fill",
+    "opacity": 1.0,
+    "panel_opacity": 0.88,
+    "header_opacity": 1.0
+  }
+}

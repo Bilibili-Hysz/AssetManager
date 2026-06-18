@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "name": "Sky",
+  "description": "Light blue-white interface with airy sky accents",
+  "dark": false,
+  "colors": {
+    "base": "#e8f0f8",
+    "panel": "#f2f8fc",
+    "header": "#d8e8f4",
+    "border": "#c0d4e8",
+    "heading": "#142838",
+    "body": "#3c5468",
+    "muted": "#6c8ca8",
+    "accent": "#3888d0",
+    "success": "#2a9058",
+    "warning": "#c07820",
+    "danger": "#b83838",
+    "favorite": "#b89020",
+    "recent": "#5a90b8",
+    "on_accent": "#ffffff",
+    "hover_overlay": "#000000",
+    "selected_overlay": "#3888d0",
+    "border_focus": "#3888d0",
+    "input_bg": "#f2f8fc",
+    "input_text": "#142838",
+    "scrollbar_track": "#e8f0f8",
+    "scrollbar_thumb": "#b8d0e4",
+    "scrollbar_thumb_hover": "#a0bcd0",
+    "disabled_text": "#c0d4e8",
+    "disabled_bg": "#d8e8f4",
+    "tooltip_bg": "#d8e8f4",
+    "tooltip_text": "#142838"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.08,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "name": "Sage",
+  "description": "Muted green-gray interface with sage accents",
+  "dark": false,
+  "colors": {
+    "base": "#eceee8",
+    "panel": "#f5f7f2",
+    "header": "#dce0d8",
+    "border": "#c8d0c0",
+    "heading": "#1c2418",
+    "body": "#3c4838",
+    "muted": "#708068",
+    "accent": "#68a070",
+    "success": "#2a9058",
+    "warning": "#c07820",
+    "danger": "#b83838",
+    "favorite": "#b89020",
+    "recent": "#5a90b8",
+    "on_accent": "#ffffff",
+    "hover_overlay": "#000000",
+    "selected_overlay": "#68a070",
+    "border_focus": "#68a070",
+    "input_bg": "#f5f7f2",
+    "input_text": "#1c2418",
+    "scrollbar_track": "#eceee8",
+    "scrollbar_thumb": "#b8c4b0",
+    "scrollbar_thumb_hover": "#a0b098",
+    "disabled_text": "#c0c8b8",
+    "disabled_bg": "#dce0d8",
+    "tooltip_bg": "#dce0d8",
+    "tooltip_text": "#1c2418"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.08,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  }
+}

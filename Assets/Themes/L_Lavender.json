@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "name": "Lavender",
+  "description": "Soft purple-white interface with gentle violet accents",
+  "dark": false,
+  "colors": {
+    "base": "#f0eef5",
+    "panel": "#f8f6fc",
+    "header": "#e4e0ee",
+    "border": "#d0c8e0",
+    "heading": "#1c1828",
+    "body": "#443c58",
+    "muted": "#7a7090",
+    "accent": "#7860b0",
+    "success": "#2a9058",
+    "warning": "#c07820",
+    "danger": "#b83838",
+    "favorite": "#b89020",
+    "recent": "#5a90b8",
+    "on_accent": "#ffffff",
+    "hover_overlay": "#000000",
+    "selected_overlay": "#7860b0",
+    "border_focus": "#7860b0",
+    "input_bg": "#f8f6fc",
+    "input_text": "#1c1828",
+    "scrollbar_track": "#f0eef5",
+    "scrollbar_thumb": "#c8c0d8",
+    "scrollbar_thumb_hover": "#b0a8c0",
+    "disabled_text": "#c0b8d0",
+    "disabled_bg": "#e4e0ee",
+    "tooltip_bg": "#e4e0ee",
+    "tooltip_text": "#1c1828"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.08,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  }
+}

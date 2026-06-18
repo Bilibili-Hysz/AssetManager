@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "name": "Espresso",
+  "description": "Dark coffee brown interface with warm accents",
+  "dark": true,
+  "colors": {
+    "base": "#12100e",
+    "panel": "#1c1814",
+    "header": "#282018",
+    "border": "#4a3c2c",
+    "heading": "#f0e8d8",
+    "body": "#c8b898",
+    "muted": "#887860",
+    "accent": "#c08040",
+    "success": "#50d890",
+    "warning": "#f5b040",
+    "danger": "#f06060",
+    "favorite": "#f0d060",
+    "recent": "#70b8e0",
+    "on_accent": "#ffffff",
+    "hover_overlay": "#ffffff",
+    "selected_overlay": "#c08040",
+    "border_focus": "#c08040",
+    "input_bg": "#1c1814",
+    "input_text": "#f0e8d8",
+    "scrollbar_track": "#12100e",
+    "scrollbar_thumb": "#887860",
+    "scrollbar_thumb_hover": "#4a3c2c",
+    "disabled_text": "#4a3c2c",
+    "disabled_bg": "#0e0c0a",
+    "tooltip_bg": "#282018",
+    "tooltip_text": "#f0e8d8"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.15,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  }
+}

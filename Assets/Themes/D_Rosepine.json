@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "name": "Rose Pine",
+  "description": "Gentle dark interface with rose and pine accents",
+  "dark": true,
+  "colors": {
+    "base": "#191724",
+    "panel": "#1f1d2e",
+    "header": "#26233a",
+    "border": "#403d52",
+    "heading": "#e0def4",
+    "body": "#c4c0e0",
+    "muted": "#706c8a",
+    "accent": "#c4a7e7",
+    "success": "#31748f",
+    "warning": "#f6c177",
+    "danger": "#eb6f92",
+    "favorite": "#f6c177",
+    "recent": "#9ccfd8",
+    "on_accent": "#191724",
+    "hover_overlay": "#ffffff",
+    "selected_overlay": "#c4a7e7",
+    "border_focus": "#c4a7e7",
+    "input_bg": "#1f1d2e",
+    "input_text": "#e0def4",
+    "scrollbar_track": "#191724",
+    "scrollbar_thumb": "#706c8a",
+    "scrollbar_thumb_hover": "#403d52",
+    "disabled_text": "#403d52",
+    "disabled_bg": "#15131e",
+    "tooltip_bg": "#26233a",
+    "tooltip_text": "#e0def4"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.15,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  },
+  "background": {
+    "enabled": false,
+    "image": "",
+    "scale": "fill",
+    "opacity": 1.0,
+    "panel_opacity": 0.88,
+    "header_opacity": 1.0
+  }
+}

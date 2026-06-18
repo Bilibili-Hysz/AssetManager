@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "name": "Nord",
+  "description": "Arctic blue-gray interface with frost accents",
+  "dark": true,
+  "colors": {
+    "base": "#2e3440",
+    "panel": "#3b4252",
+    "header": "#434c5e",
+    "border": "#4c566a",
+    "heading": "#eceff4",
+    "body": "#d8dee9",
+    "muted": "#7b88a0",
+    "accent": "#88c0d0",
+    "success": "#a3be8c",
+    "warning": "#ebcb8b",
+    "danger": "#bf616a",
+    "favorite": "#ebcb8b",
+    "recent": "#88c0d0",
+    "on_accent": "#2e3440",
+    "hover_overlay": "#ffffff",
+    "selected_overlay": "#88c0d0",
+    "border_focus": "#88c0d0",
+    "input_bg": "#3b4252",
+    "input_text": "#eceff4",
+    "scrollbar_track": "#2e3440",
+    "scrollbar_thumb": "#7b88a0",
+    "scrollbar_thumb_hover": "#4c566a",
+    "disabled_text": "#4c566a",
+    "disabled_bg": "#272c36",
+    "tooltip_bg": "#434c5e",
+    "tooltip_text": "#eceff4"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.15,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  },
+  "background": {
+    "enabled": false,
+    "image": "",
+    "scale": "fill",
+    "opacity": 1.0,
+    "panel_opacity": 0.88,
+    "header_opacity": 1.0
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "name": "Midnight",
+  "description": "Very dark blue-black interface with bright blue accents",
+  "dark": true,
+  "colors": {
+    "base": "#080a10",
+    "panel": "#10141c",
+    "header": "#181e28",
+    "border": "#2a3448",
+    "heading": "#e0e8f8",
+    "body": "#a8b4cc",
+    "muted": "#506080",
+    "accent": "#4090e0",
+    "success": "#50d890",
+    "warning": "#f5b040",
+    "danger": "#f06060",
+    "favorite": "#f0d060",
+    "recent": "#70b8e0",
+    "on_accent": "#ffffff",
+    "hover_overlay": "#ffffff",
+    "selected_overlay": "#4090e0",
+    "border_focus": "#4090e0",
+    "input_bg": "#10141c",
+    "input_text": "#e0e8f8",
+    "scrollbar_track": "#080a10",
+    "scrollbar_thumb": "#506080",
+    "scrollbar_thumb_hover": "#2a3448",
+    "disabled_text": "#304060",
+    "disabled_bg": "#060810",
+    "tooltip_bg": "#181e28",
+    "tooltip_text": "#e0e8f8"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.15,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 4,
+      "md": 6,
+      "lg": 8
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16
+    },
+    "font_size": {
+      "sm": 11,
+      "md": 12,
+      "lg": 13,
+      "xl": 14
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  }
+}

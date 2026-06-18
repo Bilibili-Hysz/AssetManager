@@ -12,7 +12,6 @@ Prefix convention:
 """
 import json
 import os
-import sys
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
@@ -33,10 +32,8 @@ _PREFIX_GROUPS = {
 
 def _default_themes_dir() -> str:
     """Resolve the bundled themes directory (PyInstaller or dev)."""
-    if getattr(sys, "frozen", False):
-        base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
-        return os.path.join(base, "AssetsManager", "themes")
-    return os.path.join(os.path.dirname(__file__), "..", "themes")
+    from AssetsManager.core.path_resolver import themes_dir
+    return str(themes_dir())
 
 
 class ThemeLoader(QObject):
