@@ -12,12 +12,11 @@ Performance:
   - Theme changes trigger save to AppSettings and broadcast via signal_bus.
   - stylesheet() result cached (invalidated on theme change).
 """
-import json
-import os
 import sys
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.color_utils import alpha
+from AssetsManager.core.theme_loader import ThemeLoader
 
 # ── Internal state ────────────────────────────────────────
 
@@ -27,6 +26,35 @@ _DEFAULT_NAME = "Default"
 _current = "Navy"
 _cached_stylesheet: str | None = None
 _cached_stylesheet_theme: str | None = None
+
+# ThemeLoader singleton
+_loader = ThemeLoader()
+
+# Migration map: old lowercase names → new capitalized names
+_MIGRATION_MAP: dict[str, str] = {
+    "navy": "Navy",
+    "slate": "Slate",
+    "forest": "Forest",
+    "amber": "Amber",
+    "dracula": "Dracula",
+    "nord": "Nord",
+    "gruvbox": "Gruvbox",
+    "rose pine": "Rose Pine",
+    "midnight": "Midnight",
+    "charcoal": "Charcoal",
+    "espresso": "Espresso",
+    "dawn": "Dawn",
+    "silver": "Silver",
+    "mint": "Mint",
+    "lavender": "Lavender",
+    "peach": "Peach",
+    "sky": "Sky",
+    "rose": "Rose",
+    "sage": "Sage",
+    "coral": "Coral",
+    "lilac": "Lilac",
+    "default": "Default",
+}
 
 # Required legacy tokens (v1 compatibility)
 _REQUIRED_TOKENS = [
@@ -58,81 +86,48 @@ _EXTENDED_FALLBACKS = {
 
 def _themes_dir() -> str:
     """Resolve themes/ directory (PyInstaller bundle or dev)."""
-    from AssetsManager.core.path_resolver import themes_dir
-    return str(themes_dir())
+    return _loader.themes_dir
 
 
-def _load_json_theme(filepath: str) -> dict | None:
-    """Load and validate a single theme JSON file. Returns None on failure."""
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, IOError, OSError) as e:
-        print(f"[themes] WARNING: failed to load {filepath}: {e}", file=sys.stderr)
-        return None
+def _load_all_themes():
+    """Scan themes/ directory via ThemeLoader, load all valid .json files."""
+    global _THEMES, _THEME_NAMES
+    _THEMES.clear()
+    _THEME_NAMES.clear()
 
-    if not isinstance(data, dict) or "name" not in data or "colors" not in data:
-        print(f"[themes] WARNING: {filepath} missing required fields", file=sys.stderr)
+    _loader.scan_directory()
+
+    for name, data in _loader._themes.items():
+        merged = _merge_theme(data)
+        if merged is not None:
+            _THEMES[name] = merged
+            _THEME_NAMES.append(name)
+
+    if not _THEMES:
+        print("[themes] ERROR: no valid themes found", file=sys.stderr)
+
+
+def _merge_theme(data: dict) -> dict | None:
+    """Convert raw theme JSON data into merged flat dict with extended tokens."""
+    if "name" not in data or "colors" not in data:
         return None
 
     colors = data.get("colors", {})
     for token in _REQUIRED_TOKENS:
         if token not in colors:
-            print(f"[themes] WARNING: {filepath} missing required token '{token}'", file=sys.stderr)
             return None
 
-    # Merge: colors dict + properties dict into flat dict
     merged = dict(colors)
     merged["dark"] = data.get("dark", True)
     merged["name"] = data["name"]
     merged["description"] = data.get("description", "")
     merged["properties"] = data.get("properties", {})
 
-    # Fill in extended tokens from fallbacks
     for token, fallback_fn in _EXTENDED_FALLBACKS.items():
         if token not in merged:
             merged[token] = fallback_fn(merged)
 
     return merged
-
-
-def _load_all_themes():
-    """Scan themes/ directory, load all valid .json files."""
-    global _THEMES, _THEME_NAMES
-    _THEMES.clear()
-    _THEME_NAMES.clear()
-
-    themes_dir = _themes_dir()
-    if not os.path.isdir(themes_dir):
-        print(f"[themes] WARNING: themes directory not found: {themes_dir}", file=sys.stderr)
-        return
-
-    # Collect json files (sorted for stable order)
-    json_files = sorted(
-        f for f in os.listdir(themes_dir)
-        if f.endswith(".json") and not f.startswith(".")
-    )
-
-    # Load default first (fallback)
-    default_data = None
-    for filename in json_files:
-        filepath = os.path.join(themes_dir, filename)
-        data = _load_json_theme(filepath)
-        if data is None:
-            continue
-        name = data["name"]
-        _THEMES[name] = data
-        _THEME_NAMES.append(name)
-        if filename == "default.json":
-            default_data = data
-
-    # Ensure at least default exists
-    if not _THEMES:
-        if default_data:
-            _THEMES[default_data["name"]] = default_data
-            _THEME_NAMES.append(default_data["name"])
-        else:
-            print("[themes] ERROR: no valid themes found", file=sys.stderr)
 
 
 # ── Startup ───────────────────────────────────────────────
@@ -146,6 +141,9 @@ def _load_saved():
         settings = AppSettings.instance()
         settings.load()
         saved = settings.get("theme")
+        # Migrate old lowercase name if needed
+        if saved:
+            saved = _MIGRATION_MAP.get(saved.lower(), saved)
         if saved in _THEMES:
             _current = saved
         elif _THEMES:
@@ -180,21 +178,24 @@ def get(name: str | None = None) -> dict:
 def set_theme(name: str):
     """Switch to the named theme, persist, and broadcast.
 
+    Handles migration of old lowercase names to new capitalized names.
     Does nothing if the theme is not loaded.
     """
     global _current, _cached_stylesheet
-    if name not in _THEMES:
+    # Migrate old lowercase name if needed
+    migrated = _MIGRATION_MAP.get(name.lower(), name) if name else name
+    if migrated not in _THEMES:
         print(f"[themes] WARNING: theme '{name}' not found", file=sys.stderr)
         return
-    _current = name
+    _current = migrated
     _cached_stylesheet = None
     try:
         settings = AppSettings.instance()
-        settings.set("theme", name)
+        settings.set("theme", migrated)
         settings.save()
     except Exception:
         pass
-    bus().theme_changed.emit(name)
+    bus().theme_changed.emit(migrated)
 
 
 def invalidate_cache():
@@ -207,6 +208,12 @@ def invalidate_cache():
 def names() -> list[str]:
     """Return list of user-facing theme names (excludes 'Default' fallback)."""
     return [n for n in _THEME_NAMES if n != "Default"]
+
+
+def reload_themes():
+    """Reload all themes from disk. Called by file watcher or manual refresh."""
+    _load_all_themes()
+    invalidate_cache()
 
 
 def dark_themes() -> list[str]:
