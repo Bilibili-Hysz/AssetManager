@@ -1,0 +1,38 @@
+{
+  "include": [
+    "AssetsManager/application",
+    "AssetsManager/controllers",
+    "AssetsManager/core/cache.py",
+    "AssetsManager/core/color_utils.py",
+    "AssetsManager/core/config_migrator.py",
+    "AssetsManager/core/constants.py",
+    "AssetsManager/core/database.py",
+    "AssetsManager/core/db_migrations.py",
+    "AssetsManager/core/format_utils.py",
+    "AssetsManager/core/json_store.py",
+    "AssetsManager/core/path_resolver.py",
+    "AssetsManager/core/plugins",
+    "AssetsManager/core/project_data.py",
+    "AssetsManager/core/protocols.py",
+    "AssetsManager/core/settings.py",
+    "AssetsManager/core/signal_bus.py",
+    "AssetsManager/core/singleton.py",
+    "AssetsManager/core/theme_loader.py",
+    "AssetsManager/core/tag_store.py",
+    "AssetsManager/di",
+    "AssetsManager/domain",
+    "AssetsManager/lan",
+    "AssetsManager/repositories",
+    "AssetsManager/panels/_service_access.py",
+    "AssetsManager/panels/_event_bridge.py",
+    "AssetsManager/panels/base.py",
+    "AssetsManager/panels/tag_tree.py"
+  ],
+  "exclude": [
+    "AssetsManager/lan/static"
+  ],
+  "extraPaths": ["AssetsManager"],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": false,
+  "reportMissingTypeStubs": false
+}
