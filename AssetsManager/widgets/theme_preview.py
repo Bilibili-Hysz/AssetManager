@@ -362,13 +362,9 @@ class ThemePreviewWidget(QWidget):
         self.setObjectName("ThemePreviewWidget")
         self._theme_data: dict = {}
 
-        outer = QVBoxLayout(self)
+        outer = QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-
-        self._color_toolbar = _ColorSwatchSection()
-        self._color_toolbar.set_on_click(self._open_color_picker)
-        outer.addWidget(self._color_toolbar)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -399,6 +395,11 @@ class ThemePreviewWidget(QWidget):
         layout.addStretch()
         scroll.setWidget(container)
         outer.addWidget(scroll, 1)
+
+        self._color_toolbar = _ColorSwatchSection()
+        self._color_toolbar.set_on_click(self._open_color_picker)
+        self._color_toolbar.setMaximumWidth(scaled_px(200))
+        outer.addWidget(self._color_toolbar)
 
     def sections(self) -> list[QGroupBox]:
         """Return all preview sections."""
