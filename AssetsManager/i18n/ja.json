@@ -42,6 +42,8 @@
   "settings.theme_exists": "テーマは既に存在します",
   "settings.export_theme": "テーマをエクスポート",
   "settings.import_theme": "テーマをインポート",
+  "settings.theme_preview": "テーマをプレビュー",
+  "settings.apply_theme": "テーマを適用",
   "settings.language": "言語",
   "settings.ok": "OK",
   "filelist.back": "戻る",

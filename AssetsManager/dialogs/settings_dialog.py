@@ -137,39 +137,12 @@ class SettingsDialog(TabbedDialog):
         theme_layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(8))
 
         self._theme_list = QListWidget()
-        self._theme_list.setMinimumHeight(scaled_px(120))
+        self._theme_list.setMinimumHeight(scaled_px(160))
+        from PySide6.QtCore import QSize
+        self._theme_list.setIconSize(QSize(scaled_px(12), scaled_px(12)))
 
-        dark_themes = groups.get("Dark", [])
-        if dark_themes:
-            header = QListWidgetItem(tr("settings.dark_mode"))
-            header.setFlags(Qt.ItemFlag.NoItemFlags)
-            header.setData(Qt.ItemDataRole.UserRole, "__header__")
-            f = header.font()
-            f.setBold(True)
-            header.setFont(f)
-            self._theme_list.addItem(header)
-
-            for theme_data in dark_themes:
-                name = theme_data.get("name", "")
-                item = QListWidgetItem(f"  {name}")
-                item.setData(Qt.ItemDataRole.UserRole, name)
-                self._theme_list.addItem(item)
-
-        light_themes = groups.get("Light", [])
-        if light_themes:
-            header = QListWidgetItem(tr("settings.light_mode"))
-            header.setFlags(Qt.ItemFlag.NoItemFlags)
-            header.setData(Qt.ItemDataRole.UserRole, "__header__")
-            f = header.font()
-            f.setBold(True)
-            header.setFont(f)
-            self._theme_list.addItem(header)
-
-            for theme_data in light_themes:
-                name = theme_data.get("name", "")
-                item = QListWidgetItem(f"  {name}")
-                item.setData(Qt.ItemDataRole.UserRole, name)
-                self._theme_list.addItem(item)
+        # Populate with color swatches
+        self._populate_theme_list(groups)
 
         current_theme = themes.name()
         for i in range(self._theme_list.count()):
@@ -180,6 +153,10 @@ class SettingsDialog(TabbedDialog):
 
         self._theme_list.currentItemChanged.connect(self._on_theme_selected)
         theme_layout.addWidget(self._theme_list)
+
+        preview_btn = self.make_secondary_btn(tr("settings.theme_preview"), self._on_preview_theme)
+        theme_layout.addWidget(preview_btn)
+
         layout.addWidget(theme_group)
 
         # Section 3: Custom Themes
@@ -320,6 +297,52 @@ class SettingsDialog(TabbedDialog):
 
     # ── Handlers ─────────────────────────────────────────
 
+    def _populate_theme_list(self, groups, filter_mode=None):
+        """Populate theme list with color swatches, optionally filtered by mode."""
+        from PySide6.QtGui import QPixmap, QPainter, QColor
+        from AssetsManager.core.ui_scale import scaled_px
+
+        self._theme_list.clear()
+
+        for group_name in ("Dark", "Light"):
+            themes_data = groups.get(group_name, [])
+            if not themes_data:
+                continue
+
+            # Filter by mode if specified
+            if filter_mode == "dark" and group_name == "Light":
+                continue
+            if filter_mode == "light" and group_name == "Dark":
+                continue
+
+            # Header
+            header_text = tr("settings.dark_mode") if group_name == "Dark" else tr("settings.light_mode")
+            header = QListWidgetItem(header_text)
+            header.setFlags(Qt.ItemFlag.NoItemFlags)
+            header.setData(Qt.ItemDataRole.UserRole, "__header__")
+            f = header.font()
+            f.setBold(True)
+            header.setFont(f)
+            self._theme_list.addItem(header)
+
+            for theme_data in themes_data:
+                name = theme_data.get("name", "")
+                accent = theme_data.get("colors", {}).get("accent", "#888888")
+
+                # Create color swatch icon
+                sz = scaled_px(12)
+                pixmap = QPixmap(sz, sz)
+                pixmap.fill(QColor(accent))
+                painter = QPainter(pixmap)
+                painter.setPen(QColor(accent).darker(120))
+                painter.drawRoundedRect(0, 0, sz - 1, sz - 1, 3, 3)
+                painter.end()
+
+                from PySide6.QtGui import QIcon
+                item = QListWidgetItem(QIcon(pixmap), f"  {name}")
+                item.setData(Qt.ItemDataRole.UserRole, name)
+                self._theme_list.addItem(item)
+
     def _on_appearance_mode_changed(self, btn):
         if btn == self._mode_dark:
             mode = "dark"
@@ -330,12 +353,41 @@ class SettingsDialog(TabbedDialog):
         AppSettings.instance().set("appearance_mode", mode)
         AppSettings.instance().save()
 
+        # Filter theme list by selected mode
+        from AssetsManager.core.themes import _get_loader
+        loader = _get_loader()
+        groups = loader.list_themes()
+        filter_mode = mode if mode != "system" else None
+        self._populate_theme_list(groups, filter_mode=filter_mode)
+
+        # Auto-select first theme in filtered list if current is not visible
+        current_theme = themes.name()
+        found = False
+        for i in range(self._theme_list.count()):
+            item = self._theme_list.item(i)
+            if item and item.data(Qt.ItemDataRole.UserRole) == current_theme:
+                self._theme_list.setCurrentItem(item)
+                found = True
+                break
+        if not found and self._theme_list.count() > 0:
+            # Select first non-header item
+            for i in range(self._theme_list.count()):
+                item = self._theme_list.item(i)
+                if item and item.data(Qt.ItemDataRole.UserRole) != "__header__":
+                    self._theme_list.setCurrentItem(item)
+                    break
+
     def _on_theme_selected(self, current, _previous):
         if current is None:
             return
         name = current.data(Qt.ItemDataRole.UserRole)
         if name and name != "__header__":
             themes.set_theme(name)
+
+    def _on_preview_theme(self):
+        from AssetsManager.dialogs.theme_preview_dialog import ThemePreviewDialog
+        dlg = ThemePreviewDialog(self)
+        dlg.exec()
 
     def _on_new_theme(self):
         from AssetsManager.core.themes import _get_loader

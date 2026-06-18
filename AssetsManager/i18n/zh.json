@@ -42,6 +42,8 @@
   "settings.theme_exists": "主题已存在",
   "settings.export_theme": "导出主题",
   "settings.import_theme": "导入主题",
+  "settings.theme_preview": "预览主题",
+  "settings.apply_theme": "应用主题",
   "settings.language": "语言",
   "settings.ok": "确定",
   "filelist.back": "后退",

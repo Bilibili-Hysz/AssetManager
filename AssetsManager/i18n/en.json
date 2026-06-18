@@ -43,6 +43,8 @@
   "settings.theme_exists": "Theme already exists",
   "settings.export_theme": "Export Theme",
   "settings.import_theme": "Import Theme",
+  "settings.theme_preview": "Preview Theme",
+  "settings.apply_theme": "Apply Theme",
   "settings.language": "Language",
   "settings.ok": "OK",
   "filelist.back": "Back",
