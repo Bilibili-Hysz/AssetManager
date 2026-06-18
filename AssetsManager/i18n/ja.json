@@ -234,6 +234,8 @@
   "dialog.apply": "Apply",
   "dialog.browse": "Browse",
   "dialog.close": "Close",
+  "dialog.confirm": "確認",
+  "dialog.done": "完了",
   "dialog.error": "Error",
   "settings.background": "Background",
   "settings.bg_enabled": "Enable background image",

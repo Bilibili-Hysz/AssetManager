@@ -30,6 +30,11 @@ _cached_stylesheet_theme: str | None = None
 # ThemeLoader singleton
 _loader = ThemeLoader()
 
+
+def _get_loader() -> ThemeLoader:
+    """Return the ThemeLoader singleton."""
+    return _loader
+
 # Migration map: old lowercase names → new capitalized names
 _MIGRATION_MAP: dict[str, str] = {
     "navy": "Navy",

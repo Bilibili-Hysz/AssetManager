@@ -181,3 +181,85 @@ class ThemeLoader(QObject):
             if stem.startswith(prefix):
                 return prefix
         return ""
+
+    def create_custom_theme(self, name: str, base_name: str) -> bool:
+        """Create a new custom theme based on an existing theme.
+
+        Args:
+            name: Name for the new custom theme.
+            base_name: Name of the theme to copy from.
+
+        Returns:
+            True if created successfully, False if name already exists.
+        """
+        if name in self._themes:
+            return False
+
+        base_data = self._themes.get(base_name)
+        if base_data is None:
+            return False
+
+        import copy
+        new_data = copy.deepcopy(base_data)
+        new_data["name"] = name
+
+        filename = f"U_{name.replace(' ', '_')}.json"
+        filepath = os.path.join(self._themes_dir, filename)
+
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(new_data, f, indent=2, ensure_ascii=False)
+        except (IOError, OSError):
+            return False
+
+        self._themes[name] = new_data
+        self._paths[name] = filepath
+        return True
+
+    def delete_custom_theme(self, name: str) -> bool:
+        """Delete a custom theme (U_ prefix only).
+
+        Args:
+            name: Name of the custom theme to delete.
+
+        Returns:
+            True if deleted, False if not found or not a custom theme.
+        """
+        filepath = self._paths.get(name)
+        if filepath is None:
+            return False
+
+        prefix = self._extract_prefix(filepath)
+        if prefix != "U_":
+            return False
+
+        try:
+            os.remove(filepath)
+        except (IOError, OSError):
+            return False
+
+        del self._themes[name]
+        del self._paths[name]
+        return True
+
+    def export_theme(self, name: str, dest_path: str) -> bool:
+        """Export a theme to a JSON file.
+
+        Args:
+            name: Name of the theme to export.
+            dest_path: Destination file path.
+
+        Returns:
+            True if exported successfully.
+        """
+        data = self._themes.get(name)
+        if data is None:
+            return False
+
+        try:
+            with open(dest_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except (IOError, OSError):
+            return False
+
+        return True

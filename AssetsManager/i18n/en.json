@@ -245,6 +245,7 @@
   "dialog.apply": "Apply",
   "dialog.browse": "Browse",
   "dialog.close": "Close",
+  "dialog.confirm": "Confirm",
   "dialog.done": "Done",
   "dialog.error": "Error",
   "settings.background": "Background",
