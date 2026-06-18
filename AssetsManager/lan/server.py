@@ -359,7 +359,7 @@ class _LanServerImpl:
     async def _auth_middleware(self, request, handler):
         """Authentication middleware — skip for public endpoints."""
         if request.path in ("/api/auth/login", "/api/auth/register", "/api/auth/verify_key",
-                            "/api/info", "/api/tunnel/status", "/ws", "/",
+                            "/api/info", "/api/tunnel/status", "/",
                             "/favicon.ico") or request.path.startswith("/static") \
                 or request.path.startswith("/s/") \
                 or (request.path.startswith("/api/shares/") and request.method == "GET"):
