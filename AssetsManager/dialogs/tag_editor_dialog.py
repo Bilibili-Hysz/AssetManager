@@ -3,36 +3,30 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QGroupBox, QListWidget, QListWidgetItem,
+    QVBoxLayout, QHBoxLayout, QLineEdit, QGroupBox, QListWidget, QListWidgetItem,
     QMessageBox, QWidget,
 )
 from AssetsManager.core.protocols import TagStoreProtocol
 from AssetsManager.core.tag_library import get_library
-from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager.widgets.tag_chip import create_tag_chip
+from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager import i18n
 tr = i18n.tr
 
 
-class TagEditorDialog(QDialog):
+class TagEditorDialog(TabbedDialog):
     def __init__(self, store: TagStoreProtocol, file_path: str, parent=None):
-        super().__init__(parent)
         self._store = store
         self._file_path = file_path
         self._modified = False
-
         file_name = Path(file_path).name if file_path else "Unknown"
-        self.setWindowTitle(tr("tageditor.title", name=file_name))
-        self.setMinimumSize(scaled_px(420), scaled_px(400))
-        themes.apply_to(self)
+        super().__init__(parent, title=tr("tageditor.title", name=file_name),
+                         min_size=(scaled_px(420), scaled_px(400)))
 
-        # NOTE: Stylesheet colors below use init-time theme values.
-        # Short-lived modal dialogs don't need live theme refresh —
-        # closing and reopening picks up the new theme.
-
+    def _build_ui(self):
         layout = QVBoxLayout(self)
-        t = themes.get()
+        self.setStyleSheet(self._dialog_qss())
 
         # ── Current Tags ─────────────────────────────────────
 
@@ -53,8 +47,8 @@ class TagEditorDialog(QDialog):
         self._add_input.setPlaceholderText(tr("tageditor.placeholder"))
         self._add_input.returnPressed.connect(self._add_current_tag)
         add_row.addWidget(self._add_input)
-        add_btn = QPushButton(tr("tageditor.add"))
-        add_btn.clicked.connect(self._add_current_tag)
+        add_btn = self.make_secondary_btn(tr("tageditor.add"), self._add_current_tag)
+        add_btn.setToolTip(tr("tageditor.add_tooltip"))
         add_row.addWidget(add_btn)
         current_layout.addLayout(add_row)
 
@@ -68,6 +62,7 @@ class TagEditorDialog(QDialog):
         self._sug_filter = QLineEdit()
         self._sug_filter.setPlaceholderText(tr("tageditor.filter"))
         self._sug_filter.setClearButtonEnabled(True)
+        self._sug_filter.setToolTip(tr("tageditor.filter_tooltip"))
         self._sug_filter.textChanged.connect(self._refresh_suggestions)
         sug_layout.addWidget(self._sug_filter)
 
@@ -82,11 +77,8 @@ class TagEditorDialog(QDialog):
 
         danger = QGroupBox(tr("tageditor.maintenance"))
         danger_layout = QHBoxLayout(danger)
-        del_unused = QPushButton(tr("tageditor.delete_unused"))
-        del_unused.setStyleSheet(
-            f"color: {t['muted']}; background: transparent; "
-            f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; padding: 4px 12px;")
-        del_unused.clicked.connect(self._delete_unused)
+        del_unused = self.make_secondary_btn(tr("tageditor.delete_unused"), self._delete_unused)
+        del_unused.setToolTip(tr("tageditor.delete_unused_tooltip"))
         danger_layout.addWidget(del_unused)
         danger_layout.addStretch()
         layout.addWidget(danger)
@@ -95,8 +87,7 @@ class TagEditorDialog(QDialog):
 
         bottom = QHBoxLayout()
         bottom.addStretch()
-        close_btn = QPushButton(tr("tageditor.done"))
-        close_btn.clicked.connect(self.accept)
+        close_btn = self.make_primary_btn(tr("tageditor.done"), self.accept)
         bottom.addWidget(close_btn)
         layout.addLayout(bottom)
 
@@ -112,7 +103,6 @@ class TagEditorDialog(QDialog):
         for w in self._current_chips:
             w.deleteLater()
         self._current_chips.clear()
-        # Also remove any leftover stretch items from the layout
         while self._current_flow_layout.count():
             item = self._current_flow_layout.takeAt(0)
             if item and item.widget():

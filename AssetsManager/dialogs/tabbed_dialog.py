@@ -12,6 +12,15 @@ NOT applicable:
   - Panels → use PanelContent (panels/base.py)
   - Main windows → use QMainWindow with manual QSS
 
+Spacing scale (use scaled_px for DPI awareness):
+  - Dialog content margins / spacing: 12–16px
+  - Group box content margins / spacing: 8–12px
+  - Compact rows (chips, inline controls): 4–6px
+
+Error display convention:
+  - Non-critical errors: inline status labels (QLabel updated in-place)
+  - Critical / blocking errors: QMessageBox with appropriate icon
+
 Usage (tabbed dialog):
     class MySettings(TabbedDialog):
         def __init__(self, parent=None):
@@ -255,6 +264,20 @@ class TabbedDialog(QDialog):
         for btn in btn_box.buttons():
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
         root.addWidget(btn_box)
+
+        self._set_default_tab_order(btn_box)
+
+    def _set_default_tab_order(self, btn_box):
+        """Set tab order: tab widget → OK → Apply → Cancel."""
+        ok_btn = btn_box.button(QDialogButtonBox.StandardButton.Ok)
+        cancel_btn = btn_box.button(QDialogButtonBox.StandardButton.Cancel)
+        apply_btn = btn_box.button(QDialogButtonBox.ButtonRole.ApplyRole)
+        if ok_btn:
+            self.setTabOrder(self._tabs, ok_btn)
+        if apply_btn and ok_btn:
+            self.setTabOrder(ok_btn, apply_btn)
+        if cancel_btn and apply_btn:
+            self.setTabOrder(apply_btn, cancel_btn)
 
     def _setup_tabs(self):
         pass

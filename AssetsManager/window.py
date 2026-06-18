@@ -206,6 +206,10 @@ class MainWindow(LanSharingMixin, QMainWindow):
             a.setEnabled(False)
             a.setToolTip(tr("menu.sharing_install_hint"))
 
+        # Keyboard Shortcuts
+        tools_menu.addSeparator()
+        tools_menu.addAction(tr("menu.keyboard_shortcuts"), self._show_shortcuts)
+
         self._lan_server = None
 
     def _setup_ui(self):
@@ -542,6 +546,30 @@ class MainWindow(LanSharingMixin, QMainWindow):
         from AssetsManager.dialogs.plugin_manager_dialog import PluginManagerDialog
         dlg = PluginManagerDialog(self)
         dlg.exec()
+
+    def _show_shortcuts(self):
+        from PySide6.QtWidgets import QMessageBox
+        lines = [
+            "<b>Global</b>",
+            "Ctrl+Tab — Next workspace tab",
+            "Ctrl+Shift+Tab — Previous workspace tab",
+            "",
+            "<b>Sidebar</b>",
+            "Ctrl+F — Focus search / filter",
+            "Ctrl+Shift+F — Add current folder to Favorites",
+            "Escape — Clear search / return to tree",
+            "Delete — Remove selected favorite or recent item",
+            "",
+            "<b>File List</b>",
+            "Ctrl+F — Filter files by name",
+            "Ctrl+C — Copy selected file(s)",
+            "Ctrl+X — Cut selected file(s)",
+            "Ctrl+V — Paste file(s)",
+            "Ctrl+Z — Undo last operation",
+            "Delete — Delete selected file(s)",
+            "F2 — Rename selected file",
+        ]
+        QMessageBox.information(self, tr("shortcuts.title"), "<br>".join(lines))
 
     def _open_settings(self):
         from AssetsManager.dialogs.settings_dialog import SettingsDialog

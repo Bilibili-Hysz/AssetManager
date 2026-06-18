@@ -101,7 +101,7 @@ class SidebarPanel(PanelContent):
         # ── Search bar + toolbar ─────────────────────────────────
 
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Filter...  (Ctrl+F)")
+        self._search.setPlaceholderText(tr("sidebar.filter_placeholder"))
         self._search.textChanged.connect(self._on_search_text)
         self._search.setClearButtonEnabled(True)
         self._search.installEventFilter(self)
@@ -286,7 +286,10 @@ class SidebarPanel(PanelContent):
                     item.setExpanded(self._rec_expanded)
 
         total = self._tree.topLevelItemCount()
-        self._status.setText(tr("sidebar.status_root_folders", count=total))
+        if total == 0:
+            self._status.setText(tr("sidebar.status_empty"))
+        else:
+            self._status.setText(tr("sidebar.status_root_folders", count=total))
 
 
     # ── Lazy-load filesystem children ───────────────────────────────
@@ -729,8 +732,15 @@ class SidebarPanel(PanelContent):
     # ── Navigation ──────────────────────────────────────────────────
 
     def _on_theme_changed(self, _name: str = ""):
-        """Refresh sidebar styles when theme changes."""
-        self._populate()
+        """Refresh sidebar styles when theme changes (in-place, no tree rebuild)."""
+        t = themes.get()
+        for i in range(self._tree.topLevelItemCount()):
+            item = self._tree.topLevelItem(i)
+            vtype = self._get_vtype(item)
+            if vtype == VTYPE_FAV_HEADER:
+                self._bold_item(item, t["favorite"])
+            elif vtype == VTYPE_REC_HEADER:
+                self._bold_item(item, t["recent"])
         self._apply_status_style()
         self._apply_nav_btn_style()
 

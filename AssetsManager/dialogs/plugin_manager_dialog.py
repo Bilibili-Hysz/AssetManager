@@ -5,7 +5,6 @@ import logging
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -26,6 +25,7 @@ from AssetsManager.core.plugins.descriptor import (
 )
 from AssetsManager.core.plugins.manager import PluginManagerService
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager import i18n
 
 _log = logging.getLogger(__name__)
@@ -223,7 +223,7 @@ class PluginDetailPanel(QWidget):
 
         self._toggle_btn = QPushButton(tr("plugins.toggle", default="Toggle Enabled"))
         self._toggle_btn.setStyleSheet(
-            f"QPushButton {{ background: {t['accent']}; color: white; border: none; "
+            f"QPushButton {{ background: {t['accent']}; color: {t.get('on_accent', 'white')}; border: none; "
             f"padding: {scaled_px(8)}px {scaled_px(16)}px; border-radius: {scaled_px(4)}px; "
             f"font-size: {scaled_pt(12)}px; font-weight: bold; }}"
             f"QPushButton:hover {{ background: {t['accent']}cc; }}"
@@ -349,37 +349,21 @@ class PluginDetailPanel(QWidget):
 
 # ── Main dialog ───────────────────────────────────────────────
 
-class PluginManagerDialog(QDialog):
+class PluginManagerDialog(TabbedDialog):
     """Modern plugin manager with card-based layout."""
 
     def __init__(self, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.setWindowTitle(tr("plugins.title", default="Plugin Manager"))
-        self.setMinimumSize(scaled_px(780), scaled_px(500))
-        self.resize(scaled_px(900), scaled_px(620))
-
-        t = themes.get()
-        self.setStyleSheet(
-            f"QDialog {{ background: {t['base']}; }}"
-            f"QLabel {{ color: {t['body']}; background: transparent; }}"
-            f"QLineEdit {{ background: {t['panel']}; color: {t['body']}; "
-            f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; "
-            f"padding: {scaled_px(6)}px {scaled_px(10)}px; font-size: {scaled_pt(12)}px; }}"
-            f"QLineEdit:focus {{ border-color: {t['accent']}; }}"
-            f"QPushButton {{ background: {t['panel']}; color: {t['body']}; "
-            f"border: 1px solid {t['border']}; padding: {scaled_px(6)}px {scaled_px(16)}px; "
-            f"border-radius: {scaled_px(4)}px; font-size: {scaled_pt(12)}px; }}"
-            f"QPushButton:hover {{ background: {t['accent']}40; }}"
-            f"QScrollArea {{ border: none; background: transparent; }}"
-        )
-
         self._manager = PluginManagerService.get()
         self._cards: dict[str, PluginCard] = {}
-        self._setup_ui()
+        super().__init__(parent, title=tr("plugins.title", default="Plugin Manager"),
+                         min_size=(scaled_px(780), scaled_px(500)))
+        self.resize(scaled_px(900), scaled_px(620))
         self._load_plugins()
 
-    def _setup_ui(self):
-        t = themes.get()
+    def _build_ui(self):
+        t = self._t
+        self.setStyleSheet(self._dialog_qss())
+
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)

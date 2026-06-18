@@ -171,7 +171,10 @@ class ShareLinkManager(TabbedDialog):
         if success:
             self._shares = data.get("shares", [])
             self._populate_table()
-            self._status_label.setText(tr("sharemgr.status.active_count").format(count=len(self._shares)))
+            if self._shares:
+                self._status_label.setText(tr("sharemgr.status.active_count").format(count=len(self._shares)))
+            else:
+                self._status_label.setText(tr("sharemgr.status.empty"))
         else:
             self._status_label.setText(tr("sharemgr.status.error").format(data=str(data)))
 
@@ -214,7 +217,7 @@ class ShareLinkManager(TabbedDialog):
             copy_btn.setFixedSize(scaled_px(60), scaled_px(24))
             copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             copy_btn.setStyleSheet(
-                f"QPushButton {{ background: {self._t['accent']}; color: white; "
+                f"QPushButton {{ background: {self._t['accent']}; color: {self._t.get('on_accent', 'white')}; "
                 f"border: none; border-radius: {scaled_px(3)}px; font-size: {scaled_pt(11)}px; }}"
                 f"QPushButton:hover {{ background: {self._t['accent']}dd; }}"
             )
@@ -225,7 +228,7 @@ class ShareLinkManager(TabbedDialog):
             delete_btn.setFixedSize(scaled_px(60), scaled_px(24))
             delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             delete_btn.setStyleSheet(
-                f"QPushButton {{ background: {self._t['danger']}; color: white; "
+                f"QPushButton {{ background: {self._t['danger']}; color: {self._t.get('on_accent', 'white')}; "
                 f"border: none; border-radius: {scaled_px(3)}px; font-size: {scaled_pt(11)}px; }}"
                 f"QPushButton:hover {{ background: {self._t['danger']}dd; }}"
             )
@@ -309,15 +312,14 @@ class ShareLinkManager(TabbedDialog):
             from AssetsManager.lan.utils import get_auth_headers
             headers.update(get_auth_headers(self._server.token_secret))
 
-        self._pending_delete_row = row
+        captured_row = row
         task = _HttpDeleteTask(url, headers)
-        task.signals.finished.connect(self._on_delete_result)
+        task.signals.finished.connect(lambda ok, msg: self._on_delete_result(ok, msg, captured_row, share_id))
         QThreadPool.globalInstance().start(task)
 
-    def _on_delete_result(self, success, _data):
+    def _on_delete_result(self, success, _data, row: int, share_id: str):
         """Handle async delete result."""
         if success:
-            row = getattr(self, '_pending_delete_row', -1)
             if 0 <= row < len(self._shares):
                 self._shares.pop(row)
                 self._populate_table()

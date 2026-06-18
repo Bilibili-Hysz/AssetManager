@@ -441,5 +441,9 @@
   "sharing.start_to_share": "リンク作成には共有を開始してください",
   "sharing.start_tooltip": "LAN共有を開始",
   "sharing.stop_tooltip": "LAN共有を停止",
-  "sharing.url_copied_tooltip": "URLをコピーするにはクリック"
+  "sharing.url_copied_tooltip": "URLをコピーするにはクリック",
+  "menu.keyboard_shortcuts": "キーボードショートカット...",
+  "shortcuts.title": "キーボードショートカット",
+  "sharemgr.status.empty": "共有リンクはまだ作成されていません",
+  "sidebar.status_empty": "項目なし"
 }

@@ -441,5 +441,9 @@
   "sharing.start_to_share": "启动分享以创建链接",
   "sharing.start_tooltip": "启动 LAN 分享",
   "sharing.stop_tooltip": "停止 LAN 分享",
-  "sharing.url_copied_tooltip": "点击复制 URL"
+  "sharing.url_copied_tooltip": "点击复制 URL",
+  "menu.keyboard_shortcuts": "键盘快捷键...",
+  "shortcuts.title": "键盘快捷键",
+  "sharemgr.status.empty": "尚未创建分享链接",
+  "sidebar.status_empty": "无项目"
 }
