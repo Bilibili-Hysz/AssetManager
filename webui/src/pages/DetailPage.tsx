@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, Tag, FileText, Link as LinkIcon, File } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -13,7 +13,7 @@ export default function DetailPage() {
   const navigate = useNavigate();
   const path = searchParams.get('path') || '';
   const { api } = useAuth();
-  const metaApi = createMetadataApi(api);
+  const metaApi = useMemo(() => createMetadataApi(api), [api]);
   const { t } = useI18n();
 
   const [data, setData] = useState<ProjectDetail | null>(null);
@@ -21,13 +21,28 @@ export default function DetailPage() {
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!path) { setLoading(false); return; }
+    let disposed = false;
+    if (!path) {
+      setData(null);
+      setLoading(false);
+      return () => { disposed = true; };
+    }
     setLoading(true);
     metaApi.getProjectDetail(path)
-      .then(setData)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .then(detail => { if (!disposed) setData(detail); })
+      .catch(() => { if (!disposed) setData(null); })
+      .finally(() => { if (!disposed) setLoading(false); });
+    return () => { disposed = true; };
   }, [path, metaApi]);
+
+  const externalUrls = data?.urls?.filter(url => {
+    try {
+      const protocol = new URL(url).protocol;
+      return protocol === 'http:' || protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }) ?? [];
 
   return (
     <div className="min-h-screen bg-slate-950">
@@ -110,13 +125,13 @@ export default function DetailPage() {
             )}
 
             {/* URLs */}
-            {data.urls && data.urls.length > 0 && (
+            {externalUrls.length > 0 && (
               <div className="mb-6">
                 <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
                   <LinkIcon size={14} /> {t('info.urls')}
                 </div>
                 <div className="space-y-1">
-                  {data.urls.map((url, i) => (
+                  {externalUrls.map((url, i) => (
                     <a key={i} href={url} target="_blank" rel="noopener noreferrer"
                       className="block text-sm text-indigo-400 hover:text-indigo-300 truncate transition-colors">
                       {url}
@@ -137,7 +152,7 @@ export default function DetailPage() {
                       onClick={() => setViewerIndex(i)}
                       className="aspect-square rounded-lg overflow-hidden border border-slate-700/50 hover:border-indigo-500/50 transition-colors bg-slate-900"
                     >
-                      <img src={img.path} alt="" className="w-full h-full object-cover" />
+                      <img src={img.thumb_url} alt={img.name} className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>
@@ -158,23 +173,27 @@ export default function DetailPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.files.map(file => (
-                        <tr key={file.path} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
-                          <td className="px-4 py-2.5 text-sm text-slate-200 flex items-center gap-2">
-                            <File size={14} className="text-slate-500 flex-shrink-0" />
-                            <span className="truncate">{file.name}</span>
-                          </td>
-                          <td className="px-4 py-2.5 text-sm text-slate-400">{file.size_fmt}</td>
-                          <td className="px-4 py-2.5">
-                            <a
-                              href={`/api/download/${encodeURIComponent(file.path)}`}
-                              className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
-                            >
-                              <Download size={14} />
-                            </a>
-                          </td>
-                        </tr>
-                      ))}
+                      {data.files.map(file => {
+                        const filePath = [data.path, file.name].filter(Boolean).join('/');
+                        return (
+                          <tr key={file.name} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+                            <td className="px-4 py-2.5 text-sm text-slate-200 flex items-center gap-2">
+                              <File size={14} className="text-slate-500 flex-shrink-0" />
+                              <span className="truncate">{file.name}</span>
+                            </td>
+                            <td className="px-4 py-2.5 text-sm text-slate-400">{file.size_fmt}</td>
+                            <td className="px-4 py-2.5">
+                          <a
+                            href={`/api/download/${encodeURIComponent(filePath)}`}
+                            aria-label={`Download ${file.name}`}
+                                className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                              >
+                                <Download size={14} />
+                              </a>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -188,7 +207,7 @@ export default function DetailPage() {
 
       {viewerIndex !== null && data?.images && (
         <ImageViewer
-          images={data.images.map(img => img.path)}
+          images={data.images.map(img => img.url)}
           currentIndex={viewerIndex}
           onClose={() => setViewerIndex(null)}
           onIndexChange={setViewerIndex}

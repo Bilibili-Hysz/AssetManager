@@ -20,6 +20,7 @@ function detectLang(): Lang {
 
 let currentLang: Lang = detectLang();
 let currentDict: I18nDict = dictionaries[currentLang] ?? en;
+const listeners = new Set<() => void>();
 
 export function t(key: string, ...args: (string | number)[]): string {
   const keys = key.split('.');
@@ -41,10 +42,16 @@ export function setLang(lang: Lang): void {
   currentLang = lang;
   currentDict = dictionaries[lang] ?? en;
   try { localStorage.setItem('am_lang', lang); } catch { /* ignore */ }
+  listeners.forEach(listener => listener());
 }
 
 export function getLang(): Lang {
   return currentLang;
+}
+
+export function subscribeToLang(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }
 
 export type { Lang };

@@ -118,6 +118,7 @@ __all__ = [
     "get_request_auth_kind",
     "get_request_user",
     "get_search_service",
+    "get_share_token",
     "get_services",
     "get_share_service",
     "get_tag_service",
@@ -130,6 +131,7 @@ __all__ = [
     "sanitize_filename",
     "set_request_auth_context",
     "set_auth_cookie",
+    "set_share_cookie",
     "validate_path",
     "validated_existing_key",
 ]
@@ -305,13 +307,29 @@ def set_auth_cookie(response: web.Response, token: str):
     )
 
 
-def get_auth_token(request) -> str:
-    token = request.cookies.get("lan_token")
-    if token:
-        return token
+def set_share_cookie(response: web.Response, share_id: str, token: str) -> None:
+    """Set a short-lived token that is sent only to one share's API routes."""
+    response.set_cookie(
+        "share_token", token, httponly=True, samesite="Lax",
+        path=f"/api/shares/{share_id}", max_age=3600,
+    )
+
+
+def get_share_token(request) -> str:
+    """Return a share credential from its scoped cookie or Bearer API header."""
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         return auth_header[7:]
+    return request.cookies.get("share_token", "")
+
+
+def get_auth_token(request) -> str:
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:]
+    token = request.cookies.get("lan_token")
+    if token:
+        return token
     # ── DEPRECATED: Query-parameter auth (?token=, ?key=) ──
     # These leak credentials into server logs, browser history, and HTTP
     # referer headers.  Prefer the Authorization: Bearer header or the

@@ -28,6 +28,8 @@ class _FakeLan:
         self._ssl_key = None
         self._port = 8080
         self.broadcasts = []
+        from AssetsManager.lan.ws import WebSocketManager
+        self.ws_manager = WebSocketManager()
         from AssetsManager.lan.scanner import DirectoryScanner
         self.scanner = DirectoryScanner(str(library_root), db_conn)
 
@@ -43,7 +45,7 @@ class _FakeLan:
         pass
 
 
-def _make_lan_app(tmp_path):
+def _make_lan_app(tmp_path, *, authenticated_context_only=False):
     from aiohttp import web
     from AssetsManager.application.auth_service import AuthService
     from AssetsManager.core import database
@@ -71,6 +73,9 @@ def _make_lan_app(tmp_path):
 
         @web.middleware
         async def _test_auth_middleware(request, handler):
+            if authenticated_context_only:
+                set_request_auth_context(request, "user", {"username": "middleware-user", "role": "user"})
+                return await handler(request)
             token = get_auth_token(request)
             if token:
                 lan = request.app[LAN_APP_KEY]
@@ -216,6 +221,55 @@ async def test_auth_register_route_returns_user_token(tmp_path):
         await client.close()
 
 
+@pytest.mark.anyio
+async def test_websocket_accepts_middleware_authenticated_cookie_context(tmp_path):
+    """The WebSocket route must trust the auth context established by middleware."""
+    app, library, conn = _make_lan_app(tmp_path)
+
+    client = await _make_client(app)
+    try:
+        registered = await client.post(
+            "/api/auth/register",
+            json={"username": "socket-user", "password": "Test@1234"},
+        )
+        assert registered.status == 200
+        cookie = registered.cookies["lan_token"].value
+
+        websocket = await client.ws_connect("/ws", headers={"Cookie": f"lan_token={cookie}"})
+        assert not websocket.closed
+        await websocket.close()
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_websocket_accepts_existing_middleware_context_without_raw_token(tmp_path):
+    """The route must not re-parse credentials after middleware authenticates a request."""
+    app, library, conn = _make_lan_app(tmp_path, authenticated_context_only=True)
+
+    client = await _make_client(app)
+    try:
+        websocket = await client.ws_connect("/ws")
+        assert not websocket.closed
+        await websocket.close()
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_websocket_rejects_request_without_auth_context(tmp_path):
+    from aiohttp.client_exceptions import WSServerHandshakeError
+
+    app, library, conn = _make_lan_app(tmp_path)
+    client = await _make_client(app)
+    try:
+        with pytest.raises(WSServerHandshakeError) as exc_info:
+            await client.ws_connect("/ws")
+        assert exc_info.value.status == 401
+    finally:
+        await client.close()
+
+
 class TestLanPermissionRegression:
     @staticmethod
     def _deny_guest_setting(monkeypatch, key):
@@ -353,6 +407,17 @@ def test_api_exports_auth_token_helper():
         query = {}
 
     assert _get_auth_token(_Request()) == "cookie-token"
+
+
+def test_auth_token_prefers_bearer_header_over_cookie():
+    from AssetsManager.lan.api import _get_auth_token
+
+    class _Request:
+        cookies = {"lan_token": "cookie-token"}
+        headers = {"Authorization": "Bearer header-token"}
+        query = {}
+
+    assert _get_auth_token(_Request()) == "header-token"
 
 
 def test_lan_server_facade_accepts_ip_whitelist(monkeypatch):
@@ -972,6 +1037,74 @@ class TestShareSecurity:
             await client.close()
 
     @pytest.mark.anyio
+    async def test_share_verify_sets_scoped_http_only_cookie_without_token(self, tmp_path):
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("content", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
+            assert create.status == 200
+            share_id = (await create.json())["id"]
+
+            verify = await client.post(f"/api/shares/{share_id}/verify", json={"password": "secret123"})
+            assert verify.status == 200
+            data = await verify.json()
+            assert "token" not in data
+            cookie = verify.headers["Set-Cookie"]
+            assert "HttpOnly" in cookie
+            assert f"Path=/api/shares/{share_id}" in cookie
+
+            info = await client.get(f"/api/shares/{share_id}/info")
+            assert info.status == 200
+            assert (await info.json())["paths"] == ["file.txt"]
+
+            download = await client.get(f"/api/shares/{share_id}/download/file.txt")
+            assert download.status == 200
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_share_verify_api_client_returns_bearer_token_and_keeps_cookie(self, tmp_path):
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("content", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
+            assert create.status == 200
+            share_id = (await create.json())["id"]
+
+            verify = await client.post(
+                f"/api/shares/{share_id}/verify",
+                json={"password": "secret123"},
+                headers={"X-AssetsManager-API-Client": "1"},
+            )
+            assert verify.status == 200
+            data = await verify.json()
+            token = data["token"]
+            assert token
+            assert "share_token" not in verify.cookies
+
+            client.session.cookie_jar.clear()
+            download = await client.get(
+                f"/api/shares/{share_id}/download/file.txt",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert download.status == 200
+            assert await _read_body(download) == b"content"
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
     async def test_share_preview_requires_token_when_password_protected(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
         (library / "image.png").write_bytes(b"\x89PNG")
@@ -991,13 +1124,8 @@ class TestShareSecurity:
 
             verify = await client.post(f"/api/shares/{share_id}/verify", json={"password": "secret123"})
             assert verify.status == 200
-            token = (await verify.json())["token"]
-
-            preview_with_token = await client.get(
-                f"/api/shares/{share_id}/preview/image.png",
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            assert preview_with_token.status == 200
+            preview = await client.get(f"/api/shares/{share_id}/preview/image.png")
+            assert preview.status == 200
         finally:
             await client.close()
 
@@ -1184,6 +1312,39 @@ class TestMiddlewarePrecedenceRegression:
         finally:
             conn.close()
 
+    @pytest.mark.anyio
+    async def test_spa_assets_are_public_when_server_auth_is_enabled(self, tmp_path):
+        """The SPA must load its hashed bundles before a user can log in."""
+        from AssetsManager.lan.server import _LanServerImpl
+        from AssetsManager.lan.auth import hash_password, init_users_table
+        from AssetsManager.core import database
+        from aiohttp.test_utils import TestClient, TestServer
+
+        library = tmp_path / "library"
+        library.mkdir()
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        try:
+            conn.executescript(database._SCHEMA)
+            init_users_table(conn)
+            conn.commit()
+            server = _LanServerImpl(
+                library_root=str(library),
+                thumbnail_dir=str(tmp_path / "thumbs"),
+                db_conn=conn,
+                password=hash_password("Test@1234"),
+            )
+            spa_assets = Path(__file__).parent.parent.parent / "webui" / "dist" / "assets"
+            asset = next(spa_assets.glob("*.js"))
+            client = TestClient(TestServer(server._app))
+            await client.start_server()
+            try:
+                response = await client.get(f"/assets/{asset.name}")
+                assert response.status == 200
+            finally:
+                await client.close()
+        finally:
+            conn.close()
+
 
 class TestPasswordHashLeakRegression:
     """Regression: password_hash must not appear in API responses."""
@@ -1248,18 +1409,17 @@ class TestPasswordHashLeakRegression:
             data = await info.json()
             assert data["has_password"] is True
             assert "paths" not in data
+            assert "created_by" not in data
+            assert "download_count" not in data
 
             verify = await client.post(f"/api/shares/{share_id}/verify", json={"password": "secret123"})
             assert verify.status == 200
-            token = (await verify.json())["token"]
-
-            authed_info = await client.get(
-                f"/api/shares/{share_id}/info",
-                headers={"Authorization": f"Bearer {token}"},
-            )
+            authed_info = await client.get(f"/api/shares/{share_id}/info")
             assert authed_info.status == 200
             authed_data = await authed_info.json()
             assert authed_data["paths"] == ["secret.txt"]
+            assert authed_data["created_by"] == "local_ui"
+            assert "download_count" in authed_data
         finally:
             await client.close()
 
@@ -1278,6 +1438,30 @@ class TestPasswordHashLeakRegression:
             assert resp.status == 400
             data = await resp.json()
             assert "Too many paths" in data["error"]
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_batch_download_requires_json_paths_contract(self, tmp_path):
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("content", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            form = await client.post(
+                "/api/download/batch",
+                data={"paths": '["file.txt"]'},
+                headers=_local_ui_headers(app),
+            )
+            assert form.status == 400
+
+            json_response = await client.post(
+                "/api/download/batch",
+                json={"paths": ["file.txt"]},
+                headers=_local_ui_headers(app),
+            )
+            assert json_response.status == 200
+            assert json_response.headers["Content-Type"].startswith("application/zip")
         finally:
             await client.close()
 
@@ -1302,6 +1486,37 @@ def test_file_response_cleanup_runs_when_write_fails(tmp_path):
     import anyio
     anyio.run(_run)
     assert not os.path.exists(zip_path)
+
+
+def test_legacy_viewer_css_matches_script_visibility_class():
+    static_dir = Path(__file__).parents[2] / "AssetsManager" / "lan" / "static"
+    script = (static_dir / "app.js").read_text(encoding="utf-8")
+    stylesheet = (static_dir / "style.css").read_text(encoding="utf-8")
+
+    assert 'overlay.classList.add("visible")' in script
+    assert ".image-viewer.visible" in stylesheet
+
+
+def test_legacy_index_avoids_mandatory_external_assets():
+    index = (Path(__file__).parents[2] / "AssetsManager" / "lan" / "static" / "index.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert "fonts.googleapis.com" not in index
+    assert "unpkg.com" not in index
+
+
+def test_legacy_pages_use_local_icon_fallback_without_cdn():
+    static_dir = Path(__file__).parents[2] / "AssetsManager" / "lan" / "static"
+    fallback = (static_dir / "icons.js").read_text(encoding="utf-8")
+
+    assert "data-lucide" in fallback
+    assert "lucide" in fallback
+    for page in ("index.html", "detail.html", "share.html", "login.html"):
+        html = (static_dir / page).read_text(encoding="utf-8")
+        assert "unpkg.com" not in html
+        assert "fonts.googleapis.com" not in html
+        assert "/static/icons.js" in html
 
 
 @pytest.mark.anyio
@@ -1476,6 +1691,328 @@ class TestAuthTokenVerification:
                 await client.close()
         finally:
             conn.close()
+
+
+class TestP0ShareCookieAuthentication:
+    @pytest.mark.anyio
+    async def test_tunnel_status_requires_auth_when_server_auth_is_enabled(self, tmp_path):
+        from aiohttp.test_utils import TestClient, TestServer
+        from AssetsManager.core import database
+        from AssetsManager.lan.auth import hash_password, init_users_table
+        from AssetsManager.lan.server import _LanServerImpl
+
+        library = tmp_path / "library"
+        library.mkdir()
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        try:
+            conn.executescript(database._SCHEMA)
+            init_users_table(conn)
+            server = _LanServerImpl(
+                library_root=str(library), thumbnail_dir=str(tmp_path / "thumbs"),
+                db_conn=conn, password=hash_password("Test@1234"),
+            )
+            client = TestClient(TestServer(server._app))
+            await client.start_server()
+            try:
+                response = await client.get("/api/tunnel/status")
+                assert response.status == 401
+            finally:
+                await client.close()
+        finally:
+            conn.close()
+
+    @pytest.mark.anyio
+    async def test_static_backup_artifacts_are_not_served(self, tmp_path):
+        from aiohttp.test_utils import TestClient, TestServer
+        from AssetsManager.core import database
+        from AssetsManager.lan.auth import init_users_table
+        from AssetsManager.lan.server import _LanServerImpl
+
+        library = tmp_path / "library"
+        library.mkdir()
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        try:
+            conn.executescript(database._SCHEMA)
+            init_users_table(conn)
+            server = _LanServerImpl(
+                library_root=str(library), thumbnail_dir=str(tmp_path / "thumbs"), db_conn=conn,
+            )
+            client = TestClient(TestServer(server._app))
+            await client.start_server()
+            try:
+                for path in ("/static/index.html.bak", "/static/style.css.bak2"):
+                    response = await client.get(path)
+                    assert response.status == 404, path
+            finally:
+                await client.close()
+        finally:
+            conn.close()
+
+    @pytest.mark.anyio
+    async def test_static_route_blocks_path_escape(self, tmp_path):
+        from aiohttp.test_utils import TestClient, TestServer
+        from AssetsManager.core import database
+        from AssetsManager.lan.auth import init_users_table
+        from AssetsManager.lan.server import _LanServerImpl
+
+        library = tmp_path / "library"
+        library.mkdir()
+        (tmp_path / "private.txt").write_text("private", encoding="utf-8")
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        try:
+            conn.executescript(database._SCHEMA)
+            init_users_table(conn)
+            server = _LanServerImpl(
+                library_root=str(library), thumbnail_dir=str(tmp_path / "thumbs"), db_conn=conn,
+            )
+            client = TestClient(TestServer(server._app))
+            await client.start_server()
+            try:
+                response = await client.get("/static/%2e%2e/private.txt")
+                assert response.status == 404
+            finally:
+                await client.close()
+        finally:
+            conn.close()
+
+    @pytest.mark.anyio
+    async def test_public_asset_prefixes_are_segment_bounded_when_server_auth_is_enabled(self, tmp_path):
+        from aiohttp import web
+        from aiohttp.test_utils import TestClient, TestServer
+        from AssetsManager.core import database
+        from AssetsManager.lan.auth import hash_password, init_users_table
+        from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY
+        from AssetsManager.lan.server import _LanServerImpl
+
+        library = tmp_path / "library"
+        library.mkdir()
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        try:
+            conn.executescript(database._SCHEMA)
+            init_users_table(conn)
+            server = _LanServerImpl(
+                library_root=str(library), thumbnail_dir=str(tmp_path / "thumbs"),
+                db_conn=conn, password=hash_password("Test@1234"),
+            )
+            server._app[AUTH_SERVICE_APP_KEY] = server._auth_service
+            async def handle_asset(_request):
+                return web.Response(text="app")
+
+            async def handle_assets_admin(_request):
+                return web.Response(text="admin")
+
+            server._app.router.add_get("/assets/app.js", handle_asset)
+            server._app.router.add_get("/assets-admin", handle_assets_admin)
+            client = TestClient(TestServer(server._app))
+            await client.start_server()
+            try:
+                response = await client.get("/assets/app.js")
+                assert response.status == 200
+                assert await response.text() == "app"
+
+                static = await client.get("/static/foo")
+                assert static.status != 401
+
+                protected = await client.get("/assets-admin")
+                assert protected.status == 401
+
+                share_page = await client.get("/s/share-id")
+                assert share_page.status == 200
+
+                share_lookalike = await client.get("/sneak")
+                assert share_lookalike.status == 401
+            finally:
+                await client.close()
+        finally:
+            conn.close()
+
+    @pytest.mark.anyio
+    async def test_password_share_cookie_is_scoped_and_share_bound(self, tmp_path):
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "image.png").write_bytes(b"\x89PNG")
+
+        client = await _make_client(app)
+        try:
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["image.png"], "password": "secret123", "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
+            assert create.status == 200
+            share_id = (await create.json())["id"]
+
+            absent = await client.get(f"/api/shares/{share_id}/preview/image.png")
+            assert absent.status == 401
+
+            verify = await client.post(f"/api/shares/{share_id}/verify", json={"password": "secret123"})
+            assert verify.status == 200
+            cookie = verify.cookies["share_token"]
+            assert cookie["httponly"]
+            assert cookie["samesite"] == "Lax"
+            assert cookie["path"] == f"/api/shares/{share_id}"
+            token = cookie.value
+
+            info = await client.get(f"/api/shares/{share_id}/info", headers={"Cookie": f"share_token={token}"})
+            assert info.status == 200
+            assert (await info.json())["paths"] == ["image.png"]
+            preview = await client.get(f"/api/shares/{share_id}/preview/image.png", headers={"Cookie": f"share_token={token}"})
+            assert preview.status == 200
+            download = await client.get(f"/api/shares/{share_id}/download/image.png", headers={"Cookie": f"share_token={token}"})
+            assert download.status == 200
+
+            other_create = await client.post(
+                "/api/shares",
+                json={"paths": ["image.png"], "password": "secret123", "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
+            assert other_create.status == 200
+            other_id = (await other_create.json())["id"]
+            mismatched = await client.get(
+                f"/api/shares/{other_id}/preview/image.png",
+                headers={"Cookie": f"share_token={token}"},
+            )
+            assert mismatched.status == 401
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("password", [None, "secret123"])
+    async def test_successful_share_verify_returns_share_and_http_only_cookie(self, tmp_path, password):
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("content", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            payload = {"paths": ["file.txt"], "allow_preview": True}
+            if password is not None:
+                payload["password"] = password
+            create = await client.post("/api/shares", json=payload, headers=_local_ui_headers(app))
+            assert create.status == 200
+            share_id = (await create.json())["id"]
+
+            verify = await client.post(
+                f"/api/shares/{share_id}/verify", json={"password": password or ""}
+            )
+            assert verify.status == 200
+            data = await verify.json()
+            assert "token" not in data
+            assert data["share"]["id"] == share_id
+            assert verify.cookies["share_token"]["httponly"]
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_non_browser_share_verify_preserves_bearer_api_flow(self, tmp_path):
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("content", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "password": "secret123"},
+                headers=_local_ui_headers(app),
+            )
+            assert create.status == 200
+            share_id = (await create.json())["id"]
+
+            verify = await client.post(
+                f"/api/shares/{share_id}/verify",
+                json={"password": "secret123"},
+                headers={"X-AssetsManager-API-Client": "1"},
+            )
+            assert verify.status == 200
+            data = await verify.json()
+            assert data["token"]
+            assert "share_token" not in verify.cookies
+
+            download = await client.get(
+                f"/api/shares/{share_id}/download/file.txt",
+                headers={"Authorization": f"Bearer {data['token']}"},
+            )
+            assert download.status == 200
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_password_share_download_requires_matching_share_cookie(self, tmp_path):
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("protected", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
+            assert create.status == 200
+            share_id = (await create.json())["id"]
+
+            absent = await client.get(f"/api/shares/{share_id}/download/file.txt")
+            assert absent.status == 401
+
+            other_create = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
+            assert other_create.status == 200
+            other_id = (await other_create.json())["id"]
+            verify_other = await client.post(
+                f"/api/shares/{other_id}/verify", json={"password": "secret123"}
+            )
+            assert verify_other.status == 200
+            other_token = verify_other.cookies["share_token"].value
+
+            mismatched = await client.get(
+                f"/api/shares/{share_id}/download/file.txt",
+                headers={"Cookie": f"share_token={other_token}"},
+            )
+            assert mismatched.status == 401
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_expired_password_share_rejects_verify_download_and_preview(self, tmp_path):
+        import time
+
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "image.png").write_bytes(b"\x89PNG")
+
+        client = await _make_client(app)
+        try:
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["image.png"], "password": "secret123", "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
+            assert create.status == 200
+            share_id = (await create.json())["id"]
+
+            verified = await client.post(
+                f"/api/shares/{share_id}/verify", json={"password": "secret123"}
+            )
+            assert verified.status == 200
+            token = verified.cookies["share_token"].value
+            conn.execute("UPDATE share_links SET expires_at=? WHERE id=?", (time.time() - 1, share_id))
+            conn.commit()
+
+            verify = await client.post(
+                f"/api/shares/{share_id}/verify", json={"password": "secret123"}
+            )
+            assert verify.status == 410
+
+            download = await client.get(
+                f"/api/shares/{share_id}/download/image.png",
+                headers={"Cookie": f"share_token={token}"},
+            )
+            assert download.status == 410
+
+            preview = await client.get(f"/api/shares/{share_id}/preview/image.png")
+            assert preview.status == 410
+        finally:
+            await client.close()
 
     @pytest.mark.anyio
     async def test_middleware_rejects_invalid_token_when_password_set(self, tmp_path):

@@ -9,9 +9,10 @@ interface ShareDialogProps {
   open: boolean;
   onClose: () => void;
   paths: string[];
+  returnFocusTo?: HTMLElement | null;
 }
 
-export function ShareDialog({ open, onClose, paths }: ShareDialogProps) {
+export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialogProps) {
   const { api } = useAuth();
   const sharesApi = createSharesApi(api);
   const { t } = useI18n();
@@ -49,7 +50,7 @@ export function ShareDialog({ open, onClose, paths }: ShareDialogProps) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={t('share.create_title')}>
+    <Modal open={open} onClose={onClose} title={t('share.create_title')} returnFocusTo={returnFocusTo}>
       {shareUrl ? (
         <div className="space-y-4">
           <p className="text-sm text-slate-300">Share link created!</p>

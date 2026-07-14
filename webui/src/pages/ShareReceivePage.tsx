@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Download, Lock, Folder } from 'lucide-react';
 import { createApiClient } from '../api/client';
 import { createSharesApi } from '../api/shares';
@@ -9,29 +9,39 @@ import type { ShareInfoResponse } from '../types/api';
 
 export default function ShareReceivePage() {
   const { shareId } = useParams<{ shareId: string }>();
-  const api = createApiClient();
-  const sharesApi = createSharesApi(api);
+  const api = useMemo(() => createApiClient(), []);
+  const sharesApi = useMemo(() => createSharesApi(api), [api]);
   const { t } = useI18n();
   const { showToast } = useToast();
 
   const [shareInfo, setShareInfo] = useState<ShareInfoResponse | null>(null);
   const [password, setPassword] = useState('');
-  const [token, setToken] = useState<string | null>(null);
+  const [verified, setVerified] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!shareId) return;
+    setVerified(false);
     setLoading(true);
     sharesApi.getInfo(shareId)
-      .then(setShareInfo)
+      .then(info => {
+        setShareInfo(info);
+        // For password-protected shares: paths presence indicates backend returned
+        // full share (authorized via scoped HttpOnly cookie). Sanitized preverify
+        // response lacks paths, so verified stays false.
+        if (info.has_password && info.paths) {
+          setVerified(true);
+        }
+      })
       .catch(() => showToast('Failed to load share', 'error'))
       .finally(() => setLoading(false));
-  }, [shareId]);
+  }, [shareId, sharesApi, showToast]);
 
   const handleVerify = async () => {
     try {
       const res = await sharesApi.verifyPassword(shareId!, password);
-      setToken(res.token);
+      setShareInfo(res.share);
+      setVerified(true);
     } catch {
       showToast('Invalid password', 'error');
     }
@@ -53,7 +63,7 @@ export default function ShareReceivePage() {
     );
   }
 
-  if (shareInfo.has_password && !token) {
+  if (shareInfo.has_password && !verified) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-slate-950 gap-6 p-8">
         <Lock size={48} className="text-slate-600" />

@@ -20,6 +20,7 @@ function icon(name, cls = '') {
 }
 function initIcons() {
     if (typeof lucide !== 'undefined') lucide.createIcons();
+    else if (window.LanIconFallback) window.LanIconFallback.render();
 }
 
 // ── API ──────────────────────────────────────────────────────

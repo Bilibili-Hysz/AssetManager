@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight, ChevronDown, Folder, FileText, Search } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
@@ -99,7 +99,7 @@ export function Sidebar({ onNavigate, currentPath }: SidebarProps) {
   const { api } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
-  const metaApi = createMetadataApi(api);
+  const metaApi = useMemo(() => createMetadataApi(api), [api]);
 
   const handleNavigateDetail = useCallback((path: string) => {
     navigate(`/detail?path=${encodeURIComponent(path)}`);

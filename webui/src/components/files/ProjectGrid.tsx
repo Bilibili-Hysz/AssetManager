@@ -23,7 +23,7 @@ export function ProjectGrid({ items, selected, onSelect, onCardClick, onDoubleCl
             onSelect(item.path);
             onCardClick?.(item);
           }}
-          onDoubleClick={() => onDoubleClick?.(item)}
+          onOpen={() => onDoubleClick?.(item)}
           onContextMenu={e => onContextMenu?.(e, item)}
           thumbnail={thumbnailMap[item.path]}
         />

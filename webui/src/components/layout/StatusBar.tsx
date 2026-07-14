@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
-import { createSystemApi } from '../../api/system';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import type { StatsResponse } from '../../types/api';
 
@@ -10,24 +9,23 @@ interface StatusBarProps {
 }
 
 export function StatusBar(_props: StatusBarProps) {
-  const { api, token } = useAuth();
-  const systemApi = createSystemApi(api);
+  const { systemApi, user } = useAuth();
   const [stats, setStats] = useState<StatsResponse | null>(null);
-  const [wsStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
-
-  useWebSocket({
-    getToken: () => token,
-    onEvent: () => {},
-    enabled: true,
-  });
+  const { status: wsStatus } = useWebSocket({ enabled: Boolean(user) });
 
   useEffect(() => {
+    let disposed = false;
     const load = () => {
-      systemApi.getStats().then(setStats).catch(() => {});
+      systemApi.getStats().then(stats => {
+        if (!disposed) setStats(stats);
+      }).catch(() => {});
     };
     load();
     const timer = setInterval(load, 10000);
-    return () => clearInterval(timer);
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+    };
   }, [systemApi]);
 
   return (
@@ -44,7 +42,7 @@ export function StatusBar(_props: StatusBarProps) {
         )}
       </div>
       <div className="flex items-center gap-3">
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1" role="status" aria-live="polite">
           <span className={`w-1.5 h-1.5 rounded-full ${wsStatus === 'connected' ? 'bg-green-500' : wsStatus === 'connecting' ? 'bg-yellow-500' : 'bg-slate-600'}`} />
           {wsStatus === 'connected' ? 'Live' : wsStatus === 'connecting' ? 'Connecting...' : 'Offline'}
         </span>

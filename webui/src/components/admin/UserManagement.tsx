@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Shield, ShieldOff } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { createUsersApi } from '../../api/users';
@@ -7,7 +7,7 @@ import { useI18n } from '../../hooks/useI18n';
 
 export function UserManagement() {
   const { api } = useAuth();
-  const usersApi = createUsersApi(api);
+  const usersApi = useMemo(() => createUsersApi(api), [api]);
   const { t } = useI18n();
   const [users, setUsers] = useState<User[]>([]);
 

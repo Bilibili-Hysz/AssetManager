@@ -373,18 +373,22 @@ class _LanServerImpl:
         "/api/auth/register",
         "/api/auth/verify_key",
         "/api/info",
-        "/api/tunnel/status",
         "/login",
         "/",
         "/favicon.ico",
     })
 
     _PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
+        "/assets",
         "/static",
-        "/s/",
+        "/s",
     )
 
     _PUBLIC_PATH_PREFIX_GET: tuple[str, ...] = ()
+
+    @staticmethod
+    def _path_matches_prefix(path: str, prefix: str) -> bool:
+        return path == prefix or path.startswith(f"{prefix}/")
 
     def _is_public_share_endpoint(self, method: str, path: str) -> bool:
         prefix = "/api/shares/"
@@ -410,13 +414,13 @@ class _LanServerImpl:
         if request.path in self._PUBLIC_PATHS:
             return await handler(request)
         for prefix in self._PUBLIC_PATH_PREFIXES:
-            if request.path.startswith(prefix):
+            if self._path_matches_prefix(request.path, prefix):
                 return await handler(request)
         if self._is_public_share_endpoint(request.method, request.path):
             return await handler(request)
         if request.method == "GET":
             for prefix in self._PUBLIC_PATH_PREFIX_GET:
-                if request.path.startswith(prefix):
+                if self._path_matches_prefix(request.path, prefix):
                     return await handler(request)
 
         # Check if any auth is configured

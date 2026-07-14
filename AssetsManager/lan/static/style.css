@@ -44,7 +44,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 14px; -webkit-font-smoothing: antialiased; }
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: var(--bg-base);
     color: var(--text-primary);
     min-height: 100vh;
@@ -694,7 +694,7 @@ a:hover { color: var(--accent-hover); }
     background: rgba(0,0,0,0.95);
     display: none; align-items: center; justify-content: center;
 }
-.image-viewer.open { display: flex; }
+.image-viewer.visible { display: flex; }
 .image-viewer__close {
     position: absolute; top: 16px; right: 20px;
     font-size: 28px; color: rgba(255,255,255,0.6);
