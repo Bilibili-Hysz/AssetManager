@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { PanelLeftClose, PanelRightClose, Menu, Grid3x3, CheckSquare } from 'lucide-react';
 import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { useI18n } from '../../hooks/useI18n';
 import { StatusBar } from './StatusBar';
 
 interface AppLayoutProps {
@@ -35,6 +36,7 @@ export function AppLayout({
   onSidebarToggle, onInfoToggle,
   onViewModeToggle, onSelectModeToggle,
 }: AppLayoutProps) {
+  const { t } = useI18n();
   const isMobile = useMediaQuery('(max-width: 768px)');
   const mobileDialog = isMobile && infoOpen ? 'info' : isMobile && sidebarOpen ? 'sidebar' : null;
   const mobileDialogRef = useDialogFocus(mobileDialog !== null, mobileDialog === 'info' ? onInfoToggle : onSidebarToggle);
@@ -123,24 +125,24 @@ export function AppLayout({
       {/* ── Mobile Bottom Bar ── */}
       {isMobile && (
         <div className="flex-shrink-0 flex items-center justify-around h-12 border-t border-slate-700/50 bg-slate-900/90 backdrop-blur-sm">
-            <button onClick={onSidebarToggle} aria-label="Toggle menu" className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
+            <button onClick={onSidebarToggle} aria-label={t('mobile.menu')} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
             <Menu size={18} />
-            <span className="text-[10px]">Menu</span>
+            <span className="text-[10px]">{t('mobile.menu')}</span>
           </button>
           {onViewModeToggle && (
-            <button onClick={onViewModeToggle} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
+            <button onClick={onViewModeToggle} aria-label={t('mobile.view')} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
               <Grid3x3 size={18} />
-              <span className="text-[10px]">View</span>
+              <span className="text-[10px]">{t('mobile.view')}</span>
             </button>
           )}
           {infoPanel && (
-            <button onClick={onInfoToggle} aria-label="Toggle information panel" className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
+            <button onClick={onInfoToggle} aria-label={t('mobile.info')} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
               <PanelRightClose size={18} />
-              <span className="text-[10px]">Info</span>
+              <span className="text-[10px]">{t('mobile.info')}</span>
             </button>
           )}
           {onSelectModeToggle && (
-            <button onClick={onSelectModeToggle} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
+            <button onClick={onSelectModeToggle} aria-label={t('mobile.select')} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
               <CheckSquare size={18} />
               <span className="text-[10px]">Select</span>
             </button>

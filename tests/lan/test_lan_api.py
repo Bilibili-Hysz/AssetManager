@@ -419,7 +419,7 @@ async def test_metadata_route_returns_only_safe_http_urls(tmp_path):
     target.write_text("metadata", encoding="utf-8")
     conn.execute(
         "INSERT INTO file_meta(file_path, urls) VALUES (?, ?)",
-        (str(target.resolve()), '["https://example.com/reference", "javascript:alert(1)", "file:///private/path"]'),
+        (str(target.resolve()), '["https://example.com/reference", "https:", "http:/missing-host", "javascript:alert(1)", "file:///private/path"]'),
     )
     conn.commit()
 

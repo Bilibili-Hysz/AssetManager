@@ -147,7 +147,7 @@ const en = {
     unknown: 'An unexpected error occurred.',
   },
   perm: { guest: 'Guest', user: 'User', admin: 'Admin' },
-  mobile: { menu: 'Menu', select: 'Select', done: 'Done' },
+  mobile: { menu: 'Menu', view: 'View', info: 'Open information panel', select: 'Select', done: 'Done' },
   admin: {
     users: 'Users',
     invites: 'Invite Codes',

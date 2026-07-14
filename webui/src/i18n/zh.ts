@@ -133,7 +133,7 @@ const zh: I18nDict = {
     unknown: '发生未知错误。',
   },
   perm: { guest: '游客', user: '用户', admin: '管理员' },
-  mobile: { menu: '菜单', select: '选择', done: '完成' },
+  mobile: { menu: '菜单', view: '视图', info: '打开信息面板', select: '选择', done: '完成' },
   admin: {
     users: '用户',
     invites: '邀请码',

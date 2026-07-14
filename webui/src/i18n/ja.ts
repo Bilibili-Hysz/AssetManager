@@ -133,7 +133,7 @@ const ja: I18nDict = {
     unknown: '予期しないエラーが発生しました。',
   },
   perm: { guest: 'ゲスト', user: 'ユーザー', admin: '管理者' },
-  mobile: { menu: 'メニュー', select: '選択', done: '完了' },
+  mobile: { menu: 'メニュー', view: '表示', info: '情報パネルを開く', select: '選択', done: '完了' },
   admin: {
     users: 'ユーザー',
     invites: '招待コード',
