@@ -6,7 +6,7 @@ specs:
 plans:
   - docs/compose/plans/2026-07-15-batch-a-delivery-safety.md
 branch: batch-a-delivery-safety
-commits: 5f84b4d..uncommitted
+commits: 5f84b4d..6101334
 ---
 
 # Batch A Delivery Safety - Final Report
