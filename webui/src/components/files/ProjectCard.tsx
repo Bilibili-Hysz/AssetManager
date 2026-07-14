@@ -1,17 +1,17 @@
 import { useState } from 'react';
-import { Folder, File } from 'lucide-react';
+import { Folder, File, MoreHorizontal } from 'lucide-react';
 import type { ProjectItem } from '../../types/api';
 
 interface ProjectCardProps {
   item: ProjectItem;
   selected?: boolean;
   onSelect?: () => void;
-  onDoubleClick?: () => void;
+  onOpen?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
   thumbnail?: string;
 }
 
-export function ProjectCard({ item, selected, onSelect, onDoubleClick, onContextMenu, thumbnail }: ProjectCardProps) {
+export function ProjectCard({ item, selected, onSelect, onOpen, onContextMenu, thumbnail }: ProjectCardProps) {
   const [hover, setHover] = useState(false);
   const isDir = item.type === 'dir';
 
@@ -26,25 +26,38 @@ export function ProjectCard({ item, selected, onSelect, onDoubleClick, onContext
         }`}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onClick={onSelect}
-      onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
     >
-      {/* Thumbnail */}
-      <div className="aspect-square flex items-center justify-center overflow-hidden rounded-t-lg bg-slate-800/50">
-        {thumbnail ? (
-          <img src={thumbnail} alt={item.name} className="w-full h-full object-cover" />
-        ) : isDir ? (
-          <Folder size={36} className="text-amber-400/70" />
-        ) : (
-          <File size={36} className="text-slate-500" />
-        )}
-      </div>
-      {/* Info */}
-      <div className="p-2.5">
-        <p className="text-xs text-slate-200 truncate font-medium">{item.name}</p>
-        <p className="text-[11px] text-slate-500 mt-0.5">{item.size_fmt}</p>
-      </div>
+      <button
+        type="button"
+        className="block w-full text-left rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400"
+        aria-label={`${item.name}, ${item.size_fmt}`}
+        aria-pressed={selected}
+        onClick={onSelect}
+        onDoubleClick={onOpen}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            onOpen?.();
+          }
+        }}
+      >
+        {/* Thumbnail */}
+        <div className="aspect-square flex items-center justify-center overflow-hidden rounded-t-lg bg-slate-800/50">
+          {thumbnail ? (
+            <img src={thumbnail} alt="" className="w-full h-full object-cover" />
+          ) : isDir ? (
+            <Folder size={36} className="text-amber-400/70" aria-hidden="true" />
+          ) : (
+            <File size={36} className="text-slate-500" aria-hidden="true" />
+          )}
+        </div>
+        {/* Info */}
+        <div className="p-2.5">
+          <p className="text-xs text-slate-200 truncate font-medium">{item.name}</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">{item.size_fmt}</p>
+        </div>
+      </button>
       {/* Selection checkbox */}
       <div className={`absolute top-2 left-2 transition-opacity ${hover || selected ? 'opacity-100' : 'opacity-0'}`}>
         <div className={`w-4 h-4 rounded border-2 flex items-center justify-center
@@ -52,6 +65,17 @@ export function ProjectCard({ item, selected, onSelect, onDoubleClick, onContext
           {selected && <span className="text-white text-[10px] font-bold">✓</span>}
         </div>
       </div>
+      <button
+        type="button"
+        className="absolute top-1.5 right-1.5 rounded p-1.5 text-slate-300 opacity-0 transition-opacity hover:bg-slate-700/80 hover:text-white focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 group-hover:opacity-100"
+        aria-label={`Actions for ${item.name}`}
+        onClick={e => {
+          e.stopPropagation();
+          onContextMenu?.(e);
+        }}
+      >
+        <MoreHorizontal size={16} aria-hidden="true" />
+      </button>
     </div>
   );
 }

@@ -28,33 +28,39 @@ export function useProjects(initialPath = ''): UseProjectsReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSortState] = useState<SortConfig>({ sort: 'name', order: 'asc' });
+  const [refreshVersion, setRefreshVersion] = useState(0);
 
-  const fetchFiles = useCallback((path: string, sortConfig: SortConfig) => {
+  useEffect(() => {
+    const controller = new AbortController();
     setIsLoading(true);
     setError(null);
-    filesApi.list({ path: path || undefined, sort: sortConfig.sort, order: sortConfig.order })
-      .then(setData)
-      .catch(err => setError(err instanceof Error ? err.message : 'Failed to load files'))
-      .finally(() => setIsLoading(false));
-  }, [filesApi]);
+    filesApi.list(
+      { path: currentPath || undefined, sort: sort.sort, order: sort.order },
+      controller.signal,
+    )
+      .then(response => {
+        if (!controller.signal.aborted) setData(response);
+      })
+      .catch(err => {
+        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Failed to load files');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoading(false);
+      });
+    return () => controller.abort();
+  }, [currentPath, filesApi, refreshVersion, sort]);
 
   const navigateTo = useCallback((path: string) => {
     setCurrentPath(path);
-    fetchFiles(path, sort);
-  }, [fetchFiles, sort]);
+  }, []);
 
   const setSort = useCallback((config: SortConfig) => {
     setSortState(config);
-    fetchFiles(currentPath, config);
-  }, [fetchFiles, currentPath]);
+  }, []);
 
   const refresh = useCallback(() => {
-    fetchFiles(currentPath, sort);
-  }, [fetchFiles, currentPath, sort]);
-
-  useEffect(() => {
-    fetchFiles(currentPath, sort);
-  }, [fetchFiles]);
+    setRefreshVersion(version => version + 1);
+  }, []);
 
   return { data, isLoading, error, currentPath, sort, navigateTo, setSort, refresh };
 }

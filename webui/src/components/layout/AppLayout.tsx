@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import { PanelLeftClose, PanelRightClose, Menu, Grid3x3, CheckSquare } from 'lucide-react';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { StatusBar } from './StatusBar';
 
@@ -35,6 +36,8 @@ export function AppLayout({
   onViewModeToggle, onSelectModeToggle,
 }: AppLayoutProps) {
   const isMobile = useMediaQuery('(max-width: 768px)');
+  const mobileDialog = isMobile && infoOpen ? 'info' : isMobile && sidebarOpen ? 'sidebar' : null;
+  const mobileDialogRef = useDialogFocus(mobileDialog !== null, mobileDialog === 'info' ? onInfoToggle : onSidebarToggle);
 
   return (
     <div className="h-screen flex flex-col bg-slate-950 overflow-hidden">
@@ -67,10 +70,10 @@ export function AppLayout({
         )}
 
         {/* Mobile sidebar overlay */}
-        {sidebar && isMobile && sidebarOpen && (
+        {sidebar && mobileDialog === 'sidebar' && (
           <>
-            <div className="fixed inset-0 bg-black/50 z-40" onClick={onSidebarToggle} />
-            <div className="fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 border-r border-slate-700/50 shadow-xl overflow-hidden">
+            <div className="fixed inset-0 bg-black/50 z-40" onClick={onSidebarToggle} aria-hidden="true" />
+            <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label="Navigation menu" tabIndex={-1} className="fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 border-r border-slate-700/50 shadow-xl overflow-hidden">
               {sidebar}
             </div>
           </>
@@ -103,6 +106,15 @@ export function AppLayout({
             {infoPanel}
           </div>
         )}
+
+        {infoPanel && mobileDialog === 'info' && (
+          <>
+            <div className="fixed inset-0 bg-black/50 z-40" onClick={onInfoToggle} aria-hidden="true" />
+            <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label="Information panel" tabIndex={-1} className="fixed inset-x-0 bottom-0 z-50 max-h-[55vh] border-t border-slate-700/50 bg-slate-900 shadow-xl">
+              {infoPanel}
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Status Bar ── */}
@@ -111,7 +123,7 @@ export function AppLayout({
       {/* ── Mobile Bottom Bar ── */}
       {isMobile && (
         <div className="flex-shrink-0 flex items-center justify-around h-12 border-t border-slate-700/50 bg-slate-900/90 backdrop-blur-sm">
-          <button onClick={onSidebarToggle} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
+            <button onClick={onSidebarToggle} aria-label="Toggle menu" className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
             <Menu size={18} />
             <span className="text-[10px]">Menu</span>
           </button>
@@ -119,6 +131,12 @@ export function AppLayout({
             <button onClick={onViewModeToggle} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
               <Grid3x3 size={18} />
               <span className="text-[10px]">View</span>
+            </button>
+          )}
+          {infoPanel && (
+            <button onClick={onInfoToggle} aria-label="Toggle information panel" className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
+              <PanelRightClose size={18} />
+              <span className="text-[10px]">Info</span>
             </button>
           )}
           {onSelectModeToggle && (

@@ -10,7 +10,7 @@ export function createFilesApi(api: ApiClient) {
       filter?: string;
       search?: string;
       summaries?: string;
-    }) => api.get<FilesResponse>('files', params as Record<string, string | undefined>),
+    }, signal?: AbortSignal) => api.get<FilesResponse>('files', params as Record<string, string | undefined>, signal),
 
     download: (path: string) => {
       const encoded = encodeURIComponent(path);
@@ -26,7 +26,7 @@ export function createFilesApi(api: ApiClient) {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
     },
   };
 }

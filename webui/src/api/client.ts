@@ -60,6 +60,44 @@ export function createApiClient(options: ApiClientOptions = {}) {
     return response.json() as Promise<T>;
   }
 
+  async function requestBlob(
+    method: HttpMethod,
+    path: string,
+    body?: unknown,
+    signal?: AbortSignal,
+  ): Promise<Blob> {
+    const url = new URL(`${baseUrl}/api/${path}`, window.location.origin);
+    const headers: Record<string, string> = {};
+    if (body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    const response = await fetch(url.toString(), {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal,
+      credentials: 'same-origin',
+    });
+
+    if (response.status === 401) {
+      onUnauthorized?.();
+      throw new Error('Unauthorized');
+    }
+    if (response.status === 403) {
+      throw new Error('Forbidden');
+    }
+    if (response.status === 429) {
+      throw new Error('Rate limited');
+    }
+    if (!response.ok) {
+      const errBody = await response.json().catch(() => ({}));
+      throw new Error((errBody as { error?: string }).error ?? `HTTP ${response.status}`);
+    }
+
+    return response.blob();
+  }
+
   return {
     get: <T>(path: string, params?: Record<string, string | number | boolean | undefined | null>, signal?: AbortSignal) =>
       request<T>('GET', path, undefined, params, signal),
@@ -67,33 +105,14 @@ export function createApiClient(options: ApiClientOptions = {}) {
     post: <T>(path: string, body?: unknown, signal?: AbortSignal) =>
       request<T>('POST', path, body, undefined, signal),
 
+    postBlob: (path: string, body?: unknown, signal?: AbortSignal) =>
+      requestBlob('POST', path, body, signal),
+
     put: <T>(path: string, body?: unknown) =>
       request<T>('PUT', path, body),
 
     delete: <T>(path: string) =>
       request<T>('DELETE', path),
-
-    postBlob: async (path: string, body?: unknown) => {
-      const response = await fetch(new URL(`${baseUrl}/api/${path}`, window.location.origin).toString(), {
-        method: 'POST',
-        headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        credentials: 'same-origin',
-      });
-
-      if (response.status === 401) {
-        onUnauthorized?.();
-        throw new Error('Unauthorized');
-      }
-      if (response.status === 403) throw new Error('Forbidden');
-      if (response.status === 429) throw new Error('Rate limited');
-      if (!response.ok) {
-        const errBody = await response.json().catch(() => ({}));
-        throw new Error((errBody as { error?: string }).error ?? `HTTP ${response.status}`);
-      }
-
-      return response.blob();
-    },
   };
 }
 

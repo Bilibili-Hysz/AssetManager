@@ -63,20 +63,16 @@ export interface FilesResponse {
 
 export interface ProjectFile {
   name: string;
-  path: string;
-  type: 'file' | 'dir';
   size: number;
   size_fmt: string;
-  modified: number;
   extension: string;
   category: string;
-  thumbnail_url: string | null;
 }
 
 export interface ProjectImage {
-  path: string;
-  width: number;
-  height: number;
+  name: string;
+  url: string;
+  thumb_url: string;
 }
 
 export interface ProjectDetail {

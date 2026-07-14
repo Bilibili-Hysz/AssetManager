@@ -117,5 +117,19 @@ def setup_routes(app: web.Application, static_dir: Path):
     if spa_assets.exists():
         app.router.add_static("/assets", spa_assets, show_index=False)
 
-    # Legacy static files
-    app.router.add_static("/static", static_dir, show_index=False)
+    # Legacy static files. Backup artifacts may contain stale source or secrets.
+    async def handle_legacy_static(request: web.Request) -> web.StreamResponse:
+        filename = request.match_info["filename"]
+        if filename.lower().endswith((".bak", ".bak2")):
+            raise web.HTTPNotFound()
+        static_root = static_dir.resolve()
+        target = (static_root / filename).resolve()
+        try:
+            target.relative_to(static_root)
+        except ValueError:
+            raise web.HTTPNotFound()
+        if not target.is_file():
+            raise web.HTTPNotFound()
+        return web.FileResponse(target)
+
+    app.router.add_get("/static/{filename:.*}", handle_legacy_static)

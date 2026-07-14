@@ -8,35 +8,10 @@ from aiohttp import web
 
 from AssetsManager.domain.share import ShareLink
 from AssetsManager.domain.asset import IMAGE_EXTS
-from AssetsManager.lan.routes._helpers import get_share_service, get_lan, get_request_user, require_permission, sanitize_filename, validate_path
+from AssetsManager.lan.routes._helpers import get_share_service, get_lan, get_request_user, get_share_token, require_permission, sanitize_filename, set_share_cookie, validate_path
 from AssetsManager.lan.utils import get_local_ip
 
 _log = logging.getLogger(__name__)
-
-
-def _share_cookie_name(share_id: str) -> str:
-    return f"lan_share_{share_id}"
-
-
-def _get_share_token(request, share_id: str) -> str:
-    """Read a share-scoped browser session or legacy API bearer credential."""
-    token = request.cookies.get(_share_cookie_name(share_id))
-    if token:
-        return token
-    auth_header = request.headers.get("Authorization", "")
-    return auth_header[7:] if auth_header.startswith("Bearer ") else ""
-
-
-def _set_share_cookie(response: web.Response, share_id: str, token: str) -> None:
-    response.set_cookie(
-        _share_cookie_name(share_id),
-        token,
-        httponly=True,
-        samesite="Lax",
-        path=f"/api/shares/{share_id}",
-    )
-
-
 def _resolve_share_target(lan, share: ShareLink, rel_path: str) -> Path | None:
     """Resolve a path within a share's scope, with path traversal protection.
 
@@ -229,16 +204,16 @@ async def handle_verify_share_password(request):
     if share.is_expired():
         return web.json_response({"error": "Share expired"}, status=410)
 
-    if not share.has_password:
-        return web.json_response({"share": share.to_public_dict()})
-
-    if share_svc.verify_password(share_id, password):
+    if not share.has_password or share_svc.verify_password(share_id, password):
         token = share_svc.generate_token(share_id)
         result = {"share": share.to_public_dict()}
+        # Browser callers use the scoped HttpOnly cookie. Non-browser API
+        # clients can explicitly request the legacy Bearer credential.
         if request.headers.get("X-AssetsManager-API-Client") == "1":
             result["token"] = token
+            return web.json_response(result)
         response = web.json_response(result)
-        _set_share_cookie(response, share_id, token)
+        set_share_cookie(response, share_id, token)
         return response
 
     return web.json_response({"error": "Invalid password"}, status=401)
@@ -254,7 +229,7 @@ async def handle_share_download(request):
     if not share:
         return web.json_response({"error": "Share not found"}, status=404)
 
-    token = _get_share_token(request, share_id) if share.has_password else None
+    token = get_share_token(request) if share.has_password else None
     if share.has_password and not share_svc.verify_token(token or "", share_id):
         return web.json_response({"error": "Unauthorized"}, status=401)
 
@@ -301,7 +276,7 @@ async def handle_share_preview(request):
         return web.json_response({"error": "Preview not allowed"}, status=403)
 
     if share.has_password:
-        token = _get_share_token(request, share_id)
+        token = get_share_token(request)
         if not share_svc.verify_token(token, share_id):
             return web.json_response({"error": "Unauthorized"}, status=401)
 
@@ -325,7 +300,7 @@ async def handle_share_info(request):
         return web.json_response({"error": "Share not found"}, status=404)
 
     if share.has_password:
-        token = _get_share_token(request, share_id)
+        token = get_share_token(request)
         if not token or not share_svc.verify_token(token, share_id):
             return web.json_response({
                 "id": share.id,

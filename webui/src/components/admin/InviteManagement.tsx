@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Plus, X } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { createUsersApi } from '../../api/users';
@@ -8,7 +8,7 @@ import { useToast } from '../ui/Toast';
 
 export function InviteManagement() {
   const { api } = useAuth();
-  const usersApi = createUsersApi(api);
+  const usersApi = useMemo(() => createUsersApi(api), [api]);
   const { t } = useI18n();
   const { showToast } = useToast();
   const [invites, setInvites] = useState<InviteCode[]>([]);

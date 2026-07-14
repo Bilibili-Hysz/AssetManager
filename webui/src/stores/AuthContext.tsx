@@ -34,7 +34,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [authMode, setAuthMode] = useState<ServerInfo['auth_mode']>('none');
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
-
   const handleUnauthorized = useCallback(() => {
     setTokenState(null);
     setUser(null);
@@ -88,7 +87,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [authApi]);
 
-  // 初始化：获取 server info 并尝试恢复会话
   useEffect(() => {
     const init = async () => {
       try {
@@ -103,6 +101,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        // /auth/me is cookie-authenticated, so this also restores sessions
+        // whose HttpOnly credential is intentionally unavailable to JavaScript.
         await refreshMe();
       } catch {
         // Server unreachable — will show error in UI
@@ -111,15 +111,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshMe, systemApi, token]);
 
   const value: AuthContextValue = {
     token,
     user,
     role,
     permissions,
-    isAuthenticated: role !== null,
+    isAuthenticated: user !== null || role === 'guest',
     isLoading,
     authMode,
     serverInfo,

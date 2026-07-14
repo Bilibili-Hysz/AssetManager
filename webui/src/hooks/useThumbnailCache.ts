@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useAuth } from './useAuth';
 import { createThumbnailsApi } from '../api/thumbnails';
 
@@ -10,16 +10,19 @@ interface ThumbnailCache {
 
 export function useThumbnailCache() {
   const { api } = useAuth();
-  const thumbApi = createThumbnailsApi(api);
+  const thumbApi = useMemo(() => createThumbnailsApi(api), [api]);
   const cache = useRef<ThumbnailCache>({});
+  const [revision, setRevision] = useState(0);
 
-  // Load from sessionStorage on init
-  useState(() => {
+  useEffect(() => {
     try {
-      const stored = sessionStorage.getItem('lan_thumb_cache');
-      if (stored) cache.current = JSON.parse(stored);
+      const stored = window.sessionStorage.getItem('lan_thumb_cache');
+      if (stored) {
+        cache.current = JSON.parse(stored);
+        setRevision(version => version + 1);
+      }
     } catch { /* ignore */ }
-  });
+  }, []);
 
   const persist = useCallback(() => {
     try {
@@ -42,6 +45,7 @@ export function useThumbnailCache() {
       const res = await thumbApi.batch(uncached, 256);
       Object.assign(cache.current, res.thumbnails);
       persist();
+      setRevision(version => version + 1);
     } catch { /* ignore */ }
   }, [thumbApi, persist]);
 
@@ -49,5 +53,5 @@ export function useThumbnailCache() {
     return cache.current[path];
   }, []);
 
-  return { loadThumbnails, getThumbnail };
+  return { loadThumbnails, getThumbnail, revision };
 }

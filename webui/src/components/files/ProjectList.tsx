@@ -1,4 +1,4 @@
-import { Folder, File } from 'lucide-react';
+import { Folder, File, MoreHorizontal } from 'lucide-react';
 import type { ProjectItem } from '../../types/api';
 
 interface ProjectListProps {
@@ -20,6 +20,7 @@ export function ProjectList({ items, selected, onSelect, onDoubleClick, onContex
               <th className="text-left text-[11px] text-slate-500 font-medium px-3 py-2">Name</th>
               <th className="text-left text-[11px] text-slate-500 font-medium px-3 py-2 w-20">Size</th>
               <th className="text-left text-[11px] text-slate-500 font-medium px-3 py-2 w-32 hidden md:table-cell">Modified</th>
+              <th className="w-10"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -35,12 +36,47 @@ export function ProjectList({ items, selected, onSelect, onDoubleClick, onContex
                   onContextMenu={e => onContextMenu?.(e, item)}
                 >
                   <td className="px-3 py-2.5">
-                    {isDir ? <Folder size={16} className="text-amber-400" /> : <File size={16} className="text-slate-500" />}
+                    {isDir ? <Folder size={16} className="text-amber-400" aria-hidden="true" /> : <File size={16} className="text-slate-500" aria-hidden="true" />}
                   </td>
-                  <td className="px-3 py-2.5 text-sm text-slate-200">{item.name}</td>
+                  <td className="px-3 py-2.5 text-sm text-slate-200">
+                    <button
+                      type="button"
+                      className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                      aria-pressed={selected.has(item.path)}
+                      onClick={e => {
+                        e.stopPropagation();
+                        onSelect(item.path);
+                      }}
+                      onDoubleClick={e => {
+                        e.stopPropagation();
+                        onDoubleClick?.(item);
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          onDoubleClick?.(item);
+                        }
+                      }}
+                    >
+                      {item.name}
+                    </button>
+                  </td>
                   <td className="px-3 py-2.5 text-sm text-slate-400">{item.size_fmt}</td>
                   <td className="px-3 py-2.5 text-sm text-slate-500 hidden md:table-cell">
                     {new Date(item.modified * 1000).toLocaleDateString()}
+                  </td>
+                  <td className="px-2 py-2.5">
+                    <button
+                      type="button"
+                      className="rounded p-1 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                      aria-label={`Actions for ${item.name}`}
+                      onClick={e => {
+                        e.stopPropagation();
+                        onContextMenu?.(e, item);
+                      }}
+                    >
+                      <MoreHorizontal size={16} aria-hidden="true" />
+                    </button>
                   </td>
                 </tr>
               );

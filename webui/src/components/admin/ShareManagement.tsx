@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Trash2, Link as LinkIcon } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { createSharesApi } from '../../api/shares';
@@ -7,7 +7,7 @@ import { useI18n } from '../../hooks/useI18n';
 
 export function ShareManagement() {
   const { api } = useAuth();
-  const sharesApi = createSharesApi(api);
+  const sharesApi = useMemo(() => createSharesApi(api), [api]);
   const { t } = useI18n();
   const [shares, setShares] = useState<ShareLink[]>([]);
 

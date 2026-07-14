@@ -14,61 +14,55 @@ interface UseWebSocketReturn {
 export function useWebSocket({ onEvent, enabled = true }: UseWebSocketOptions): UseWebSocketReturn {
   const [status, setStatus] = useState<WebSocketStatus>('disconnected');
   const wsRef = useRef<WebSocket | null>(null);
+  const retryRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onEventRef = useRef(onEvent);
-
   onEventRef.current = onEvent;
 
   useEffect(() => {
-    let active = enabled;
-    let retryCount = 0;
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
-
+    let disposed = false;
+    const clearRetry = () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = null;
+    };
     const connect = () => {
-      if (!active) return;
-
+      clearRetry();
+      if (disposed || !enabled) {
+        setStatus('disconnected');
+        return;
+      }
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      setStatus('connecting');
       const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
       wsRef.current = ws;
-      setStatus('connecting');
-
       ws.onopen = () => {
-        if (!active || wsRef.current !== ws) return;
-        setStatus('connected');
-        retryCount = 0;
+        if (!disposed) {
+          setStatus('connected');
+          retryRef.current = 0;
+        }
       };
-
-      ws.onmessage = (event: MessageEvent) => {
-        if (!active || wsRef.current !== ws) return;
+      ws.onmessage = event => {
         try {
           const data = JSON.parse(event.data) as { type: string };
           onEventRef.current?.(data.type, data as Record<string, unknown>);
-        } catch {
-          // ignore malformed messages
-        }
+        } catch { /* ignore malformed messages */ }
       };
-
       ws.onclose = () => {
-        if (!active || wsRef.current !== ws) return;
+        if (wsRef.current === ws) wsRef.current = null;
+        if (disposed || !enabled) return;
         setStatus('disconnected');
-        wsRef.current = null;
-        const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
-        retryCount++;
-        retryTimer = setTimeout(connect, delay);
+        const delay = Math.min(1000 * 2 ** retryRef.current++, 30000);
+        timerRef.current = setTimeout(connect, delay);
       };
-
       ws.onerror = () => ws.close();
     };
-
-    if (enabled) connect();
-    else setStatus('disconnected');
-
+    connect();
     return () => {
-      active = false;
-      if (retryTimer) clearTimeout(retryTimer);
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
+      disposed = true;
+      clearRetry();
+      const ws = wsRef.current;
+      wsRef.current = null;
+      ws?.close();
     };
   }, [enabled]);
 

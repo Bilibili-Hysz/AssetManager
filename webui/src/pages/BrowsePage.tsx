@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Download, Share2, Copy, Eye } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
@@ -16,6 +16,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useProjects } from '../hooks/useProjects';
 import { useThumbnailCache } from '../hooks/useThumbnailCache';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import { createFilesApi } from '../api/files';
 import { createMetadataApi } from '../api/metadata';
 import { useI18n } from '../hooks/useI18n';
@@ -26,18 +27,20 @@ export default function BrowsePage() {
   const navigate = useNavigate();
   const initialPath = searchParams.get('path') || '';
   const { data, isLoading, error, currentPath, sort, navigateTo, setSort, refresh } = useProjects(initialPath);
-  const { loadThumbnails, getThumbnail } = useThumbnailCache();
-  const { api } = useAuth();
-  const filesApi = createFilesApi(api);
-  const metaApi = createMetadataApi(api);
+  const { loadThumbnails, getThumbnail, revision: thumbnailRevision } = useThumbnailCache();
+  const { api, user } = useAuth();
+  const filesApi = useMemo(() => createFilesApi(api), [api]);
+  const metaApi = useMemo(() => createMetadataApi(api), [api]);
   const { t } = useI18n();
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
     try { return (localStorage.getItem('am_view') as 'grid' | 'list') || 'grid'; } catch { return 'grid'; }
   });
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: ProjectItem } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: ProjectItem; trigger?: HTMLElement } | null>(null);
   const [sharePaths, setSharePaths] = useState<string[] | null>(null);
+  const [shareDialogTrigger, setShareDialogTrigger] = useState<HTMLElement | null | undefined>(undefined);
   const [selectedMetadata, setSelectedMetadata] = useState<Metadata | null>(null);
   const [metadataLoading, setMetadataLoading] = useState(false);
 
@@ -75,8 +78,13 @@ export default function BrowsePage() {
         refresh();
       }
     },
-    enabled: true,
+    enabled: Boolean(user),
   });
+
+  useEffect(() => {
+    const requestedPath = searchParams.get('path') || '';
+    if (requestedPath !== currentPath) navigateTo(requestedPath);
+  }, [currentPath, navigateTo, searchParams]);
 
   const handleSidebarDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -165,7 +173,14 @@ export default function BrowsePage() {
 
   const handleContextMenu = useCallback((e: React.MouseEvent, item: ProjectItem) => {
     e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, item });
+    const trigger = e.type === 'click' ? e.currentTarget as HTMLElement : undefined;
+    const rect = e.currentTarget.getBoundingClientRect();
+    setContextMenu({
+      x: e.clientX || rect.right,
+      y: e.clientY || rect.bottom,
+      item,
+      trigger,
+    });
   }, []);
 
   const handleDownload = useCallback((path: string) => {
@@ -190,32 +205,46 @@ export default function BrowsePage() {
   }, [metaApi, navigateTo, setSearchParams]);
 
   const handleSidebarToggle = useCallback(() => {
+    if (isMobile) {
+      setInfoOpen(false);
+      try { localStorage.setItem('am_info_open', '0'); } catch {}
+    }
     setSidebarOpen(prev => {
       const next = !prev;
       try { localStorage.setItem('am_sidebar_open', next ? '1' : '0'); } catch {}
       return next;
     });
-  }, []);
+  }, [isMobile, sidebarOpen]);
 
   const handleInfoToggle = useCallback(() => {
+    if (isMobile) {
+      setSidebarOpen(false);
+      try { localStorage.setItem('am_sidebar_open', '0'); } catch {}
+    }
     setInfoOpen(prev => {
       const next = !prev;
       try { localStorage.setItem('am_info_open', next ? '1' : '0'); } catch {}
       return next;
     });
-  }, []);
+  }, [infoOpen, isMobile]);
 
   // ── Thumbnails ──
-  const thumbnailMap: Record<string, string> = {};
-  if (data?.items && viewMode === 'grid') {
-    const imageItems = data.items.filter(i => i.category === 'image' || /\.(jpg|jpeg|png|gif|webp)$/i.test(i.extension));
-    if (imageItems.length > 0) loadThumbnails(imageItems.map(i => i.path));
-    imageItems.forEach(i => {
-      const t = getThumbnail(i.path);
-      if (t) thumbnailMap[i.path] = `data:image/jpeg;base64,${t}`;
-    });
-  }
-
+  const imagePaths = useMemo(() => data?.items
+    .filter(item => item.category === 'image' || /\.(jpg|jpeg|png|gif|webp)$/i.test(item.extension))
+    .map(item => item.path) ?? [], [data]);
+  useEffect(() => {
+    if (viewMode === 'grid') void loadThumbnails(imagePaths);
+  }, [imagePaths, loadThumbnails, viewMode]);
+  const thumbnailMap = useMemo(() => {
+    const thumbnails: Record<string, string> = {};
+    if (viewMode === 'grid') {
+      imagePaths.forEach(path => {
+        const thumbnail = getThumbnail(path);
+        if (thumbnail) thumbnails[path] = `data:image/jpeg;base64,${thumbnail}`;
+      });
+    }
+    return thumbnails;
+  }, [getThumbnail, imagePaths, thumbnailRevision, viewMode]);
   return (
     <AppLayout
       header={
@@ -236,6 +265,8 @@ export default function BrowsePage() {
       onInfoDragStart={handleInfoDragStart}
       onSidebarToggle={handleSidebarToggle}
       onInfoToggle={handleInfoToggle}
+      onViewModeToggle={() => handleViewModeChange(viewMode === 'grid' ? 'list' : 'grid')}
+      onSelectModeToggle={() => setSelected(new Set())}
     >
       <Breadcrumb path={currentPath} onNavigate={handleNavigate} />
 
@@ -294,11 +325,15 @@ export default function BrowsePage() {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
+          trigger={contextMenu.trigger}
           onClose={() => setContextMenu(null)}
           items={[
             { label: t('action.download'), icon: <Download size={13} />, onClick: () => handleDownload(contextMenu.item.path) },
             { label: t('action.detail'), icon: <Eye size={13} />, onClick: () => handleNavigateDetail(contextMenu.item.path) },
-            { label: t('action.share'), icon: <Share2 size={13} />, onClick: () => setSharePaths([contextMenu.item.path]) },
+            { label: t('action.share'), icon: <Share2 size={13} />, onClick: () => {
+              setShareDialogTrigger(contextMenu?.trigger);
+              setSharePaths([contextMenu.item.path]);
+            }},
             { label: t('action.copy_path'), icon: <Copy size={13} />, onClick: () => handleCopyPath(contextMenu.item.path) },
           ]}
         />
@@ -308,8 +343,12 @@ export default function BrowsePage() {
       {sharePaths && (
         <ShareDialog
           open={true}
-          onClose={() => setSharePaths(null)}
+          onClose={() => {
+            setSharePaths(null);
+            setShareDialogTrigger(undefined);
+          }}
           paths={sharePaths}
+          returnFocusTo={shareDialogTrigger}
         />
       )}
     </AppLayout>

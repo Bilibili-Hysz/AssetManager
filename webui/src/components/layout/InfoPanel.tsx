@@ -11,6 +11,14 @@ interface InfoPanelProps {
 
 export function InfoPanel({ metadata, loading, onTagClick, onClose }: InfoPanelProps) {
   const { t } = useI18n();
+  const externalUrls = metadata?.urls?.filter(url => {
+    try {
+      const protocol = new URL(url).protocol;
+      return protocol === 'http:' || protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }) ?? [];
 
   return (
     <div className="flex flex-col h-full">
@@ -18,8 +26,9 @@ export function InfoPanel({ metadata, loading, onTagClick, onClose }: InfoPanelP
       <div className="flex items-center justify-between px-4 py-2 border-b border-slate-700/50 flex-shrink-0">
         <h3 className="text-xs font-semibold text-slate-300">{t('info.title')}</h3>
         {onClose && (
-          <button
-            onClick={onClose}
+            <button
+              onClick={onClose}
+              aria-label="Close information panel"
             className="p-1 text-slate-500 hover:text-white hover:bg-slate-800/50 rounded transition-colors"
           >
             <X size={14} />
@@ -67,13 +76,13 @@ export function InfoPanel({ metadata, loading, onTagClick, onClose }: InfoPanelP
               </div>
             )}
             {/* URLs */}
-            {metadata.urls && metadata.urls.length > 0 && (
+            {externalUrls.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
                   <LinkIcon size={14} /> {t('info.urls')}
                 </div>
                 <div className="space-y-1">
-                  {metadata.urls.map((url, i) => (
+                  {externalUrls.map((url, i) => (
                     <a key={i} href={url} target="_blank" rel="noopener noreferrer"
                       className="block text-sm text-brand-400 hover:text-brand-300 truncate transition-colors">
                       {url}
