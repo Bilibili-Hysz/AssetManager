@@ -1345,6 +1345,58 @@ class TestMiddlewarePrecedenceRegression:
         finally:
             conn.close()
 
+    @pytest.mark.anyio
+    async def test_password_share_cookie_authenticates_scoped_routes_with_server_auth(self, tmp_path):
+        """A public password-share flow must work while server auth protects APIs."""
+        from aiohttp.test_utils import TestClient, TestServer
+        from AssetsManager.core import database
+        from AssetsManager.lan.auth import hash_password, init_users_table
+        from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY
+        from AssetsManager.lan.server import _LanServerImpl
+
+        library = tmp_path / "library"
+        library.mkdir()
+        (library / "shared.txt").write_text("shared", encoding="utf-8")
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        try:
+            conn.executescript(database._SCHEMA)
+            init_users_table(conn)
+            conn.commit()
+            server = _LanServerImpl(
+                library_root=str(library),
+                thumbnail_dir=str(tmp_path / "thumbs"),
+                db_conn=conn,
+                password=hash_password("Server@1234"),
+            )
+            server._app[AUTH_SERVICE_APP_KEY] = server._auth_service
+            client = TestClient(TestServer(server._app))
+            await client.start_server()
+            try:
+                created = await client.post(
+                    "/api/shares",
+                    json={"paths": ["shared.txt"], "password": "share123", "allow_preview": True},
+                    headers=_local_ui_headers(server._app),
+                )
+                assert created.status == 200
+                share_id = (await created.json())["id"]
+
+                verified = await client.post(
+                    f"/api/shares/{share_id}/verify", json={"password": "share123"}
+                )
+                assert verified.status == 200
+                assert "token" not in await verified.json()
+                cookie = verified.headers["Set-Cookie"]
+                assert "HttpOnly" in cookie
+                assert f"Path=/api/shares/{share_id}" in cookie
+
+                downloaded = await client.get(f"/api/shares/{share_id}/download/shared.txt")
+                assert downloaded.status == 200
+                assert await downloaded.read() == b"shared"
+            finally:
+                await client.close()
+        finally:
+            conn.close()
+
 
 class TestPasswordHashLeakRegression:
     """Regression: password_hash must not appear in API responses."""
