@@ -4,7 +4,13 @@ from aiohttp import web
 from AssetsManager.application import ProjectDepthConfig
 from AssetsManager.core.format_utils import format_size
 from AssetsManager.core.settings import AppSettings
-from AssetsManager.lan.routes._helpers import get_lan, get_auth_service, get_metadata_service, get_project_service
+from AssetsManager.lan.routes._helpers import (
+    get_lan,
+    get_auth_service,
+    get_metadata_service,
+    get_project_service,
+    require_admin,
+)
 
 
 async def handle_info(request):
@@ -47,6 +53,8 @@ async def handle_info(request):
 
 
 async def handle_tunnel_status(request):
+    if not require_admin(request):
+        return web.json_response({"error": "Admin access required"}, status=403)
     lan = get_lan(request)
     tunnel = getattr(lan, "_tunnel", None)
     public_url = tunnel.public_url if tunnel and tunnel.is_running else None

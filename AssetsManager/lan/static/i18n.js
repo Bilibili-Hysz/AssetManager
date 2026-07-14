@@ -6,10 +6,15 @@ const I18N = {
         const saved = localStorage.getItem('am_lang');
         const nav = navigator.language || 'en';
         const lang = saved || (nav.startsWith('zh') ? 'zh' : nav.startsWith('ja') ? 'ja' : 'en');
+        await this.load(lang);
+    },
+
+    async load(lang) {
         try {
             const resp = await fetch(`/static/i18n/${lang}.json`);
             if (resp.ok) this._dict = await resp.json();
             this._lang = lang;
+            document.documentElement.lang = this._lang;
         } catch(e) { /* fallback to English */ }
     },
 
@@ -19,9 +24,10 @@ const I18N = {
         return s;
     },
 
-    setLang(lang) {
+    async setLang(lang) {
         localStorage.setItem('am_lang', lang);
-        location.reload();
+        await this.load(lang);
+        this.applyToDOM();
     },
 
     applyToDOM() {

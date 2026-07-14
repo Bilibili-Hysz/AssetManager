@@ -1,6 +1,7 @@
 """Metadata routes: /api/meta/{path}, /api/search, /api/home, /api/tree, /api/projects, /api/projects/{path}."""
 import asyncio
 from urllib.parse import unquote
+from urllib.parse import urlparse
 
 from aiohttp import web
 
@@ -22,11 +23,12 @@ async def handle_meta(request):
     metadata = await asyncio.to_thread(
         svc.get_metadata, lan.library_root, target
     )
+    urls = [url for url in metadata.urls if urlparse(url).scheme in {"http", "https"}]
     return web.json_response({
         "path": rel_path,
         "tags": list(metadata.tags),
         "notes": metadata.notes,
-        "urls": list(metadata.urls),
+        "urls": urls,
     })
 
 

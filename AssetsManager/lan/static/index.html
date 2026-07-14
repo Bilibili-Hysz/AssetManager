@@ -25,7 +25,7 @@
         <!-- ═══ HEADER ═══ -->
         <header class="app-header">
             <div class="app-header__left">
-                <button class="app-header__btn" id="menuToggle" title="Toggle sidebar"><i data-lucide="panel-left"></i></button>
+                <button class="app-header__btn" id="menuToggle" title="Toggle sidebar" aria-label="Toggle sidebar"><i data-lucide="panel-left"></i></button>
                 <div class="app-header__brand">
                     <div class="app-header__logo">A</div>
                     <span class="app-header__name">AssetManager</span>
@@ -97,7 +97,7 @@
             <!-- Info panel section -->
             <div class="app-toolbar__section app-toolbar__section--right">
                 <span class="app-toolbar__title" id="infoTitle">Info</span>
-                <button class="app-toolbar__btn" id="toggleInfo" title="Toggle info panel"><i data-lucide="panel-right"></i></button>
+                <button class="app-toolbar__btn" id="toggleInfo" title="Toggle info panel" aria-label="Toggle information panel"><i data-lucide="panel-right"></i></button>
             </div>
         </div>
 
@@ -172,9 +172,10 @@
 
         <!-- Mobile Bottom Bar -->
         <div class="bottom-bar" id="bottomBar">
-            <button class="bottom-bar__btn" id="mobileMenuBtn"><i data-lucide="menu"></i></button>
-            <button class="bottom-bar__btn" id="mobileViewBtn">Grid</button>
-            <button class="bottom-bar__btn" id="mobileSelectBtn"><i data-lucide="check-square"></i></button>
+            <button class="bottom-bar__btn" id="mobileMenuBtn" aria-label="Open navigation menu"><i data-lucide="menu"></i></button>
+            <button class="bottom-bar__btn" id="mobileViewBtn" aria-label="Change view">Grid</button>
+            <button class="bottom-bar__btn" id="mobileInfoBtn" aria-label="Open information panel"><i data-lucide="panel-right"></i></button>
+            <button class="bottom-bar__btn" id="mobileSelectBtn" aria-label="Toggle selection mode"><i data-lucide="check-square"></i></button>
         </div>
     </div>
 

@@ -1617,6 +1617,7 @@ function bindEvents() {
     // Bottom bar (mobile)
     const mobileMenuBtn = document.getElementById("mobileMenuBtn");
     const mobileViewBtn = document.getElementById("mobileViewBtn");
+    const mobileInfoBtn = document.getElementById("mobileInfoBtn");
     const mobileSelectBtn = document.getElementById("mobileSelectBtn");
     if (mobileMenuBtn) mobileMenuBtn.addEventListener("click", toggleSidebar);
     if (mobileViewBtn) mobileViewBtn.addEventListener("click", () => {
@@ -1625,6 +1626,7 @@ function bindEvents() {
         renderProjects(state.projects);
         saveState();
     });
+    if (mobileInfoBtn) mobileInfoBtn.addEventListener("click", toggleInfoPanel);
     if (mobileSelectBtn) mobileSelectBtn.addEventListener("click", toggleBatchMode);
 
     // User menu

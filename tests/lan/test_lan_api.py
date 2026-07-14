@@ -397,6 +397,40 @@ class TestLanPermissionRegression:
         finally:
             await client.close()
 
+    @pytest.mark.anyio
+    async def test_tunnel_status_requires_authenticated_admin(self, tmp_path):
+        app, library, conn = _make_lan_app(tmp_path)
+
+        client = await _make_client(app)
+        try:
+            anonymous = await client.get("/api/tunnel/status")
+            assert anonymous.status == 403
+
+            admin = await client.get("/api/tunnel/status", headers=_local_ui_headers(app))
+            assert admin.status == 200
+        finally:
+            await client.close()
+
+
+@pytest.mark.anyio
+async def test_metadata_route_returns_only_safe_http_urls(tmp_path):
+    app, library, conn = _make_lan_app(tmp_path)
+    target = library / "asset.txt"
+    target.write_text("metadata", encoding="utf-8")
+    conn.execute(
+        "INSERT INTO file_meta(file_path, urls) VALUES (?, ?)",
+        (str(target.resolve()), '["https://example.com/reference", "javascript:alert(1)", "file:///private/path"]'),
+    )
+    conn.commit()
+
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/meta/asset.txt")
+        assert response.status == 200
+        assert (await response.json())["urls"] == ["https://example.com/reference"]
+    finally:
+        await client.close()
+
 
 def test_api_exports_auth_token_helper():
     from AssetsManager.lan.api import _get_auth_token
@@ -1799,6 +1833,20 @@ class TestP0ShareCookieAuthentication:
                 await client.close()
         finally:
             conn.close()
+
+    def test_legacy_static_viewer_uses_local_icons_and_mobile_info_access(self):
+        static_dir = Path(__file__).parents[2] / "AssetsManager" / "lan" / "static"
+        index = (static_dir / "index.html").read_text(encoding="utf-8")
+        app_js = (static_dir / "app.js").read_text(encoding="utf-8")
+        i18n = (static_dir / "i18n.js").read_text(encoding="utf-8")
+
+        assert "/static/icons.js" in index
+        assert 'id="mobileInfoBtn"' in index
+        assert 'aria-label="Open information panel"' in index
+        assert 'mobileInfoBtn.addEventListener("click", toggleInfoPanel)' in app_js
+        assert "document.documentElement.lang = this._lang" in i18n
+        assert "location.reload()" not in i18n
+        assert "await this.load(lang)" in i18n
 
     @pytest.mark.anyio
     async def test_static_route_blocks_path_escape(self, tmp_path):
