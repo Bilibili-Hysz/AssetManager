@@ -2,12 +2,11 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 export interface ApiClientOptions {
   baseUrl?: string;
-  getToken?: () => string | null;
   onUnauthorized?: () => void;
 }
 
 export function createApiClient(options: ApiClientOptions = {}) {
-  const { baseUrl = '', getToken, onUnauthorized } = options;
+  const { baseUrl = '', onUnauthorized } = options;
 
   async function request<T>(
     method: HttpMethod,
@@ -27,10 +26,6 @@ export function createApiClient(options: ApiClientOptions = {}) {
     }
 
     const headers: Record<string, string> = {};
-    const token = getToken?.();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
 
     if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
@@ -41,6 +36,7 @@ export function createApiClient(options: ApiClientOptions = {}) {
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal,
+      credentials: 'same-origin',
     });
 
     if (response.status === 401) {
@@ -76,6 +72,28 @@ export function createApiClient(options: ApiClientOptions = {}) {
 
     delete: <T>(path: string) =>
       request<T>('DELETE', path),
+
+    postBlob: async (path: string, body?: unknown) => {
+      const response = await fetch(new URL(`${baseUrl}/api/${path}`, window.location.origin).toString(), {
+        method: 'POST',
+        headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        credentials: 'same-origin',
+      });
+
+      if (response.status === 401) {
+        onUnauthorized?.();
+        throw new Error('Unauthorized');
+      }
+      if (response.status === 403) throw new Error('Forbidden');
+      if (response.status === 429) throw new Error('Rate limited');
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error((errBody as { error?: string }).error ?? `HTTP ${response.status}`);
+      }
+
+      return response.blob();
+    },
   };
 }
 

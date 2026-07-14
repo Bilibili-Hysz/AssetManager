@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, Tag, FileText, Link as LinkIcon, File } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -13,7 +13,7 @@ export default function DetailPage() {
   const navigate = useNavigate();
   const path = searchParams.get('path') || '';
   const { api } = useAuth();
-  const metaApi = createMetadataApi(api);
+  const metaApi = useMemo(() => createMetadataApi(api), [api]);
   const { t } = useI18n();
 
   const [data, setData] = useState<ProjectDetail | null>(null);

@@ -387,6 +387,10 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
     def _on_switch_library(self, path):
         """Switch all panels to a different library root."""
+        if self._lan_server and self._lan_server.is_running():
+            self._lan_server.stop()
+        if _alive(self.file_list) and hasattr(self.file_list, '_loader'):
+            self.file_list._loader.invalidate_tasks()
         if self._library_session is not None:
             old_root = self._library_session.root_str
             self._library_service().close_session(self._library_session)

@@ -7,7 +7,6 @@ Application services: library, asset, metadata, tag, file_operation,
 LAN routes: split into focused modules under lan/routes/.
 Core: database migrations, plugins, settings, path resolution.
 """
-import sys
 from pathlib import Path
 
 _root = Path.cwd()
@@ -25,6 +24,8 @@ a = Analysis(
         (str(_root / 'Assets' / 'Themes'), 'Assets/Themes'),
         # LAN sharing static files
         (str(_root / 'AssetsManager' / 'lan' / 'static'), 'AssetsManager/lan/static'),
+        # Web UI SPA build served by the LAN server
+        (str(_root / 'webui' / 'dist'), 'webui/dist'),
         # Plugin addons
         (str(_root / 'Plugins'), 'Plugins'),
         # RuntimeData — settings and shared data for first launch

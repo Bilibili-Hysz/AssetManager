@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { createApiClient, type ApiClient } from '../api/client';
 import { createAuthApi, type AuthApi } from '../api/auth';
 import { createSystemApi, type SystemApi } from '../api/system';
@@ -26,28 +26,8 @@ export interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function getStoredToken(): string | null {
-  try {
-    return sessionStorage.getItem('lan_token');
-  } catch {
-    return null;
-  }
-}
-
-function storeToken(token: string | null) {
-  try {
-    if (token) {
-      sessionStorage.setItem('lan_token', token);
-    } else {
-      sessionStorage.removeItem('lan_token');
-    }
-  } catch {
-    // localStorage not available
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setTokenState] = useState<string | null>(getStoredToken);
+  const [token, setTokenState] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<AuthState['role']>(null);
   const [permissions, setPermissions] = useState<string[]>([]);
@@ -57,23 +37,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleUnauthorized = useCallback(() => {
     setTokenState(null);
-    storeToken(null);
     setUser(null);
     setRole('guest');
     setPermissions([]);
   }, []);
 
-  const api = createApiClient({
-    getToken: () => token,
-    onUnauthorized: handleUnauthorized,
-  });
-
-  const authApi = createAuthApi(api);
-  const systemApi = createSystemApi(api);
+  const api = useMemo(
+    () => createApiClient({ onUnauthorized: handleUnauthorized }),
+    [handleUnauthorized],
+  );
+  const authApi = useMemo(() => createAuthApi(api), [api]);
+  const systemApi = useMemo(() => createSystemApi(api), [api]);
 
   const setToken = useCallback((newToken: string | null, newUser?: User | null) => {
-    setTokenState(newToken);
-    storeToken(newToken);
+    setTokenState(null);
     if (newToken) {
       setRole(newUser?.role === 'admin' ? 'admin' : 'user');
       setUser(newUser ?? null);
@@ -126,12 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        if (token) {
-          await refreshMe();
-        } else {
-          setRole('guest');
-          setPermissions(['browse', 'preview']);
-        }
+        await refreshMe();
       } catch {
         // Server unreachable — will show error in UI
       } finally {
@@ -147,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     role,
     permissions,
-    isAuthenticated: !!token || role === 'guest',
+    isAuthenticated: role !== null,
     isLoading,
     authMode,
     serverInfo,

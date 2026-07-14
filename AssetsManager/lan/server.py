@@ -380,6 +380,7 @@ class _LanServerImpl:
     })
 
     _PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
+        "/assets",
         "/static",
         "/s/",
     )

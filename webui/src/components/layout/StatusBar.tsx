@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { createSystemApi } from '../../api/system';
 import { useWebSocket } from '../../hooks/useWebSocket';
@@ -10,13 +10,11 @@ interface StatusBarProps {
 }
 
 export function StatusBar(_props: StatusBarProps) {
-  const { api, token } = useAuth();
-  const systemApi = createSystemApi(api);
+  const { api } = useAuth();
+  const systemApi = useMemo(() => createSystemApi(api), [api]);
   const [stats, setStats] = useState<StatsResponse | null>(null);
-  const [wsStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
 
-  useWebSocket({
-    getToken: () => token,
+  const { status: wsStatus } = useWebSocket({
     onEvent: () => {},
     enabled: true,
   });

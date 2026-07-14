@@ -197,7 +197,6 @@ export interface ShareCreateRequest {
 }
 
 export interface ShareVerifyResponse {
-  token: string;
   share: ShareLink;
 }
 

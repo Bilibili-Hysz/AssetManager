@@ -1,16 +1,40 @@
 """Share link routes: /api/shares/*, /s/{id}."""
 import logging
 from pathlib import Path
+
 from urllib.parse import unquote
 
 from aiohttp import web
 
 from AssetsManager.domain.share import ShareLink
 from AssetsManager.domain.asset import IMAGE_EXTS
-from AssetsManager.lan.routes._helpers import get_share_service, get_lan, get_auth_token, get_request_user, require_permission, sanitize_filename, validate_path
+from AssetsManager.lan.routes._helpers import get_share_service, get_lan, get_request_user, require_permission, sanitize_filename, validate_path
 from AssetsManager.lan.utils import get_local_ip
 
 _log = logging.getLogger(__name__)
+
+
+def _share_cookie_name(share_id: str) -> str:
+    return f"lan_share_{share_id}"
+
+
+def _get_share_token(request, share_id: str) -> str:
+    """Read a share-scoped browser session or legacy API bearer credential."""
+    token = request.cookies.get(_share_cookie_name(share_id))
+    if token:
+        return token
+    auth_header = request.headers.get("Authorization", "")
+    return auth_header[7:] if auth_header.startswith("Bearer ") else ""
+
+
+def _set_share_cookie(response: web.Response, share_id: str, token: str) -> None:
+    response.set_cookie(
+        _share_cookie_name(share_id),
+        token,
+        httponly=True,
+        samesite="Lax",
+        path=f"/api/shares/{share_id}",
+    )
 
 
 def _resolve_share_target(lan, share: ShareLink, rel_path: str) -> Path | None:
@@ -206,12 +230,16 @@ async def handle_verify_share_password(request):
         return web.json_response({"error": "Share expired"}, status=410)
 
     if not share.has_password:
-        token = share_svc.generate_token(share_id)
-        return web.json_response({"token": token, "share": share.to_public_dict()})
+        return web.json_response({"share": share.to_public_dict()})
 
     if share_svc.verify_password(share_id, password):
         token = share_svc.generate_token(share_id)
-        return web.json_response({"token": token, "share": share.to_public_dict()})
+        result = {"share": share.to_public_dict()}
+        if request.headers.get("X-AssetsManager-API-Client") == "1":
+            result["token"] = token
+        response = web.json_response(result)
+        _set_share_cookie(response, share_id, token)
+        return response
 
     return web.json_response({"error": "Invalid password"}, status=401)
 
@@ -226,7 +254,7 @@ async def handle_share_download(request):
     if not share:
         return web.json_response({"error": "Share not found"}, status=404)
 
-    token = get_auth_token(request) or "" if share.has_password else None
+    token = _get_share_token(request, share_id) if share.has_password else None
     if share.has_password and not share_svc.verify_token(token or "", share_id):
         return web.json_response({"error": "Unauthorized"}, status=401)
 
@@ -273,7 +301,7 @@ async def handle_share_preview(request):
         return web.json_response({"error": "Preview not allowed"}, status=403)
 
     if share.has_password:
-        token = get_auth_token(request)
+        token = _get_share_token(request, share_id)
         if not share_svc.verify_token(token, share_id):
             return web.json_response({"error": "Unauthorized"}, status=401)
 
@@ -297,7 +325,7 @@ async def handle_share_info(request):
         return web.json_response({"error": "Share not found"}, status=404)
 
     if share.has_password:
-        token = get_auth_token(request)
+        token = _get_share_token(request, share_id)
         if not token or not share_svc.verify_token(token, share_id):
             return web.json_response({
                 "id": share.id,

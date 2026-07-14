@@ -16,14 +16,17 @@ export default function ShareReceivePage() {
 
   const [shareInfo, setShareInfo] = useState<ShareInfoResponse | null>(null);
   const [password, setPassword] = useState('');
-  const [token, setToken] = useState<string | null>(null);
+  const [isVerified, setIsVerified] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!shareId) return;
     setLoading(true);
     sharesApi.getInfo(shareId)
-      .then(setShareInfo)
+      .then(info => {
+        setShareInfo(info);
+        setIsVerified(info.has_password && Array.isArray(info.paths));
+      })
       .catch(() => showToast('Failed to load share', 'error'))
       .finally(() => setLoading(false));
   }, [shareId]);
@@ -31,7 +34,8 @@ export default function ShareReceivePage() {
   const handleVerify = async () => {
     try {
       const res = await sharesApi.verifyPassword(shareId!, password);
-      setToken(res.token);
+      setShareInfo(res.share);
+      setIsVerified(true);
     } catch {
       showToast('Invalid password', 'error');
     }
@@ -53,7 +57,7 @@ export default function ShareReceivePage() {
     );
   }
 
-  if (shareInfo.has_password && !token) {
+  if (shareInfo.has_password && !isVerified) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-slate-950 gap-6 p-8">
         <Lock size={48} className="text-slate-600" />

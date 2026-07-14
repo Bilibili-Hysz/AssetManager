@@ -70,7 +70,6 @@ export default function BrowsePage() {
 
   // WebSocket real-time updates
   useWebSocket({
-    getToken: () => null,
     onEvent: (type) => {
       if (type === 'file_changed' || type === 'file_added' || type === 'file_removed') {
         refresh();

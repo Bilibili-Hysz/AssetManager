@@ -17,19 +17,16 @@ export function createFilesApi(api: ApiClient) {
       window.open(`/api/download/${encoded}`, '_blank');
     },
 
-    batchDownload: (paths: string[]) => {
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action = '/api/download/batch';
-      form.target = '_blank';
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'paths';
-      input.value = JSON.stringify(paths);
-      form.appendChild(input);
-      document.body.appendChild(form);
-      form.submit();
-      form.remove();
+    batchDownload: async (paths: string[]) => {
+      const blob = await api.postBlob('download/batch', { paths });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'assets.zip';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
     },
   };
 }

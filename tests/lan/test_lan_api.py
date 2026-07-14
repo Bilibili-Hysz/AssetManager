@@ -972,6 +972,74 @@ class TestShareSecurity:
             await client.close()
 
     @pytest.mark.anyio
+    async def test_share_verify_sets_scoped_http_only_cookie_without_token(self, tmp_path):
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("content", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
+            assert create.status == 200
+            share_id = (await create.json())["id"]
+
+            verify = await client.post(f"/api/shares/{share_id}/verify", json={"password": "secret123"})
+            assert verify.status == 200
+            data = await verify.json()
+            assert "token" not in data
+            cookie = verify.headers["Set-Cookie"]
+            assert "HttpOnly" in cookie
+            assert f"Path=/api/shares/{share_id}" in cookie
+
+            info = await client.get(f"/api/shares/{share_id}/info")
+            assert info.status == 200
+            assert (await info.json())["paths"] == ["file.txt"]
+
+            download = await client.get(f"/api/shares/{share_id}/download/file.txt")
+            assert download.status == 200
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_share_verify_api_client_returns_bearer_token_and_keeps_cookie(self, tmp_path):
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("content", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
+            assert create.status == 200
+            share_id = (await create.json())["id"]
+
+            verify = await client.post(
+                f"/api/shares/{share_id}/verify",
+                json={"password": "secret123"},
+                headers={"X-AssetsManager-API-Client": "1"},
+            )
+            assert verify.status == 200
+            data = await verify.json()
+            token = data["token"]
+            assert token
+            assert "HttpOnly" in verify.headers["Set-Cookie"]
+
+            client.session.cookie_jar.clear()
+            download = await client.get(
+                f"/api/shares/{share_id}/download/file.txt",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert download.status == 200
+            assert await _read_body(download) == b"content"
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
     async def test_share_preview_requires_token_when_password_protected(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
         (library / "image.png").write_bytes(b"\x89PNG")
@@ -991,13 +1059,9 @@ class TestShareSecurity:
 
             verify = await client.post(f"/api/shares/{share_id}/verify", json={"password": "secret123"})
             assert verify.status == 200
-            token = (await verify.json())["token"]
 
-            preview_with_token = await client.get(
-                f"/api/shares/{share_id}/preview/image.png",
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            assert preview_with_token.status == 200
+            preview = await client.get(f"/api/shares/{share_id}/preview/image.png")
+            assert preview.status == 200
         finally:
             await client.close()
 
@@ -1184,6 +1248,39 @@ class TestMiddlewarePrecedenceRegression:
         finally:
             conn.close()
 
+    @pytest.mark.anyio
+    async def test_spa_assets_are_public_when_server_auth_is_enabled(self, tmp_path):
+        """The SPA must load its hashed bundles before a user can log in."""
+        from AssetsManager.lan.server import _LanServerImpl
+        from AssetsManager.lan.auth import hash_password, init_users_table
+        from AssetsManager.core import database
+        from aiohttp.test_utils import TestClient, TestServer
+
+        library = tmp_path / "library"
+        library.mkdir()
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        try:
+            conn.executescript(database._SCHEMA)
+            init_users_table(conn)
+            conn.commit()
+            server = _LanServerImpl(
+                library_root=str(library),
+                thumbnail_dir=str(tmp_path / "thumbs"),
+                db_conn=conn,
+                password=hash_password("Test@1234"),
+            )
+            spa_assets = Path(__file__).parent.parent.parent / "webui" / "dist" / "assets"
+            asset = next(spa_assets.glob("*.js"))
+            client = TestClient(TestServer(server._app))
+            await client.start_server()
+            try:
+                response = await client.get(f"/assets/{asset.name}")
+                assert response.status == 200
+            finally:
+                await client.close()
+        finally:
+            conn.close()
+
 
 class TestPasswordHashLeakRegression:
     """Regression: password_hash must not appear in API responses."""
@@ -1248,18 +1345,18 @@ class TestPasswordHashLeakRegression:
             data = await info.json()
             assert data["has_password"] is True
             assert "paths" not in data
+            assert "created_by" not in data
+            assert "download_count" not in data
 
             verify = await client.post(f"/api/shares/{share_id}/verify", json={"password": "secret123"})
             assert verify.status == 200
-            token = (await verify.json())["token"]
 
-            authed_info = await client.get(
-                f"/api/shares/{share_id}/info",
-                headers={"Authorization": f"Bearer {token}"},
-            )
+            authed_info = await client.get(f"/api/shares/{share_id}/info")
             assert authed_info.status == 200
             authed_data = await authed_info.json()
             assert authed_data["paths"] == ["secret.txt"]
+            assert authed_data["created_by"] == "local_ui"
+            assert "download_count" in authed_data
         finally:
             await client.close()
 

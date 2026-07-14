@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from './useAuth';
 import { createFilesApi } from '../api/files';
 import type { FilesResponse } from '../types/api';
@@ -21,7 +21,7 @@ interface UseProjectsReturn {
 
 export function useProjects(initialPath = ''): UseProjectsReturn {
   const { api } = useAuth();
-  const filesApi = createFilesApi(api);
+  const filesApi = useMemo(() => createFilesApi(api), [api]);
 
   const [currentPath, setCurrentPath] = useState(initialPath);
   const [data, setData] = useState<FilesResponse | null>(null);
@@ -52,10 +52,9 @@ export function useProjects(initialPath = ''): UseProjectsReturn {
     fetchFiles(currentPath, sort);
   }, [fetchFiles, currentPath, sort]);
 
-  // Initial load
-  useState(() => {
+  useEffect(() => {
     fetchFiles(currentPath, sort);
-  });
+  }, [fetchFiles]);
 
   return { data, isLoading, error, currentPath, sort, navigateTo, setSort, refresh };
 }
