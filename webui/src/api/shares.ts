@@ -1,6 +1,10 @@
 import type { ApiClient } from './client';
 import type { ShareLink, ShareCreateRequest, ShareVerifyResponse, ShareInfoResponse, OkResponse } from '../types/api';
 
+function encodeSharePath(path: string): string {
+  return path.split('/').map(encodeURIComponent).join('/');
+}
+
 export function createSharesApi(api: ApiClient) {
   return {
     create: (data: ShareCreateRequest) =>
@@ -10,8 +14,8 @@ export function createSharesApi(api: ApiClient) {
     getInfo: (id: string) => api.get<ShareInfoResponse>(`shares/${id}/info`),
     verifyPassword: (id: string, password: string) =>
       api.post<ShareVerifyResponse>(`shares/${id}/verify`, { password }),
-    getDownloadUrl: (id: string, path: string) => `/api/shares/${id}/download/${encodeURIComponent(path)}`,
-    getPreviewUrl: (id: string, path: string) => `/api/shares/${id}/preview/${encodeURIComponent(path)}`,
+    getDownloadUrl: (id: string, path: string) => `/api/shares/${id}/download/${encodeSharePath(path)}`,
+    getPreviewUrl: (id: string, path: string) => `/api/shares/${id}/preview/${encodeSharePath(path)}`,
   };
 }
 
