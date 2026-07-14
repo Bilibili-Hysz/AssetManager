@@ -1,0 +1,15 @@
+{
+  "name": "Booth Link Parser",
+  "id": "booth_link",
+  "version": "1.0.0",
+  "author": "User",
+  "description": "Parse Booth _link/*.txt files for product metadata",
+  "enabled": true,
+  "entry": "parser.py",
+  "display_fields": [
+    {"key": "url", "label_key": "info.field_link", "type": "url"},
+    {"key": "name", "label_key": "info.field_name", "type": "text"},
+    {"key": "author", "label_key": "info.field_author", "type": "text"},
+    {"key": "item_id", "label_key": "info.field_id", "type": "text"}
+  ]
+}

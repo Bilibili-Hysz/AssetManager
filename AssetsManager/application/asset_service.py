@@ -13,6 +13,7 @@ from AssetsManager.application.asset_filters import (
     matches_search,
     sort_key_for_entry,
 )
+from AssetsManager.core.directory_cache import DirectoryCache
 from AssetsManager.domain.asset import category_for_extension
 from AssetsManager.core.format_utils import format_size
 
@@ -28,6 +29,7 @@ class DirectoryListOptions:
     exclude_patterns: tuple[str, ...] = ()
     max_depth: int = 0
     current_depth: int = 0
+    scan_summaries: bool = True
 
 
 @dataclass(frozen=True)
@@ -62,11 +64,16 @@ class DirectoryListing:
 class AssetService:
     """Pure file-system browsing operations shared by desktop and LAN."""
 
+    def __init__(self, directory_cache: DirectoryCache | None = None):
+        self._directory_cache = directory_cache
+
     def list_directory(self, library_root: Path, target: Path,
                        options: DirectoryListOptions | None = None) -> DirectoryListing:
         options = options or DirectoryListOptions()
         root = Path(library_root).resolve()
         target = Path(target).resolve()
+        if not target.is_relative_to(root):
+            raise ValueError('target must be under library_root')
         rel_path = "" if target == root else os.path.relpath(target, root).replace("\\", "/")
 
         try:
@@ -128,11 +135,8 @@ class AssetService:
 
         preview = None
         item_count = None
-        if is_dir:
-            # TODO: _scan_dir_summary causes N+1 filesystem scans when listing
-            # directories with many subdirectories. Consider lazy evaluation or
-            # limiting to visible items only.
-            preview, item_count = _scan_dir_summary(Path(entry.path))
+        if is_dir and options.scan_summaries:
+            preview, item_count = _scan_dir_summary(Path(entry.path), cache=self._directory_cache)
         size_fmt = f"{item_count} items" if is_dir and item_count is not None else format_size(size)
         return AssetListItem(
             name=name,
@@ -162,12 +166,24 @@ class AssetService:
         return items
 
 
-def _scan_dir_summary(dir_path: Path) -> tuple[Path | None, int]:
+def _scan_dir_summary(dir_path: Path, cache: DirectoryCache | None = None) -> tuple[Path | None, int]:
     """Scan a directory once to get both the first image and item count.
 
     Returns (preview_path, item_count). This avoids scanning the directory
     twice (once for preview, once for count).
     """
+    if cache is not None:
+        try:
+            mtime = dir_path.stat().st_mtime
+        except OSError:
+            mtime = None
+        if mtime is not None:
+            entry = cache.get(str(dir_path), mtime=mtime)
+            if entry is not None:
+                return Path(entry.preview_path) if entry.preview_path else None, entry.item_count
+    else:
+        mtime = None
+
     preview: Path | None = None
     count = 0
     try:
@@ -181,6 +197,10 @@ def _scan_dir_summary(dir_path: Path) -> tuple[Path | None, int]:
                     preview = Path(entry.path)
     except OSError:
         pass
+
+    if cache is not None and mtime is not None:
+        cache.set(str(dir_path), count, str(preview) if preview else None, mtime)
+
     return preview, count
 
 

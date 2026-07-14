@@ -3,11 +3,11 @@ import os
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl, QMimeData, QFileInfo, QThreadPool, QRunnable, QObject, Signal
+from PySide6.QtCore import Qt, QUrl, QMimeData, QFileInfo, QObject
 from PySide6.QtWidgets import (
     QApplication, QMenu, QInputDialog, QMessageBox,
 )
-from AssetsManager.application import FileOperationService, UndoService
+from AssetsManager.application import UndoService
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager import i18n
 
@@ -203,7 +203,7 @@ class ActionsMixin:
         result_holder: list = []
 
         def _do_paste():
-            svc = FileOperationService()
+            svc = panel._get_file_operation_service()
             if is_cut:
                 result = svc.move_to_directory(sources, dest, library_root=lib_root)
             else:
@@ -264,7 +264,7 @@ class ActionsMixin:
         if old == new:
             return new
         try:
-            FileOperationService().move(old, new, library_root=self._lib_root or None)
+            self._get_file_operation_service().move(old, new, library_root=self._lib_root or None)
         except Exception:
             _log.exception("Rename failed: %s -> %s", old, new)
             raise
@@ -286,7 +286,7 @@ class ActionsMixin:
             if add_undo:
                 for p in path_list:
                     panel._undo_svc.record_delete(p)
-            result = FileOperationService().delete_to_trash(path_list)
+            result = panel._get_file_operation_service().delete_to_trash(path_list)
             for error in result.errors:
                 _log.error("Move to trash failed: %s", error)
 
@@ -306,7 +306,7 @@ class ActionsMixin:
         panel = self
 
         def _do_perm_delete():
-            result = FileOperationService().delete_permanent(path_list)
+            result = panel._get_file_operation_service().delete_permanent(path_list)
             for error in result.errors:
                 _log.error("Permanent delete failed: %s", error)
 
@@ -316,7 +316,7 @@ class ActionsMixin:
         name, ok = QInputDialog.getText(self, tr("filelist.dialog.new_folder"), tr("filelist.dialog.new_folder_label"), text="New Folder")
         if ok and name.strip():
             try:
-                FileOperationService().create_folder(self._current, name.strip())
+                self._get_file_operation_service().create_folder(self._current, name.strip())
                 self._post_refresh()
             except OSError as e:
                 QMessageBox.warning(self, tr("dialog.error"), str(e))
@@ -327,7 +327,7 @@ class ActionsMixin:
         def _do_dup():
             for p in paths:
                 try:
-                    FileOperationService().duplicate(p, copy_label=" - Copy")
+                    panel._get_file_operation_service().duplicate(p, copy_label=" - Copy")
                 except OSError:
                     pass
         self._run_in_background(_do_dup, on_done=lambda: panel._post_refresh())
@@ -471,29 +471,6 @@ class ActionsMixin:
     # ── Background ops ───────────────────────────────────────────
 
     def _run_in_background(self, func, *args, on_done=None):
-        """Run func(*args) on a worker thread. If on_done provided, it's called
-        on the main thread after completion via a signal."""
-        class _Sig(QObject):
-            done = Signal()
-        class _Op(QRunnable):
-            def __init__(s, fn, args, sig):
-                super().__init__()
-                s._fn = fn
-                s._a = args
-                s._sig = sig
-
-            def run(s):
-                try:
-                    s._fn(*s._a)
-                except Exception:
-                    _log.exception("Background task failed")
-                if s._sig is not None:
-                    s._sig.done.emit()
-        sig = _Sig() if on_done is not None else None
-        if on_done is not None:
-            sig.done.connect(on_done)
-            self._background_ops.append(sig)
-            def _cleanup():
-                self._background_ops.remove(sig)
-            sig.done.connect(_cleanup, Qt.ConnectionType.SingleShotConnection)
-        QThreadPool.globalInstance().start(_Op(func, args, sig))
+        """Run func(*args) on a worker thread. If on_done provided, called on main thread."""
+        from AssetsManager.panels.file_list._background import run_in_background
+        run_in_background(func, *args, on_done=on_done, background_ops=self._background_ops)

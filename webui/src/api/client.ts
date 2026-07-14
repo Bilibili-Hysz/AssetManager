@@ -1,0 +1,82 @@
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+
+export interface ApiClientOptions {
+  baseUrl?: string;
+  getToken?: () => string | null;
+  onUnauthorized?: () => void;
+}
+
+export function createApiClient(options: ApiClientOptions = {}) {
+  const { baseUrl = '', getToken, onUnauthorized } = options;
+
+  async function request<T>(
+    method: HttpMethod,
+    path: string,
+    body?: unknown,
+    params?: Record<string, string | number | boolean | undefined | null>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const url = new URL(`${baseUrl}/api/${path}`, window.location.origin);
+
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v != null && v !== '') {
+          url.searchParams.set(k, String(v));
+        }
+      });
+    }
+
+    const headers: Record<string, string> = {};
+    const token = getToken?.();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    if (body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    const response = await fetch(url.toString(), {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal,
+    });
+
+    if (response.status === 401) {
+      onUnauthorized?.();
+      throw new Error('Unauthorized');
+    }
+
+    if (response.status === 403) {
+      throw new Error('Forbidden');
+    }
+
+    if (response.status === 429) {
+      throw new Error('Rate limited');
+    }
+
+    if (!response.ok) {
+      const errBody = await response.json().catch(() => ({}));
+      throw new Error((errBody as { error?: string }).error ?? `HTTP ${response.status}`);
+    }
+
+    return response.json() as Promise<T>;
+  }
+
+  return {
+    get: <T>(path: string, params?: Record<string, string | number | boolean | undefined | null>, signal?: AbortSignal) =>
+      request<T>('GET', path, undefined, params, signal),
+
+    post: <T>(path: string, body?: unknown, signal?: AbortSignal) =>
+      request<T>('POST', path, body, undefined, signal),
+
+    put: <T>(path: string, body?: unknown) =>
+      request<T>('PUT', path, body),
+
+    delete: <T>(path: string) =>
+      request<T>('DELETE', path),
+  };
+}
+
+export type ApiClient = ReturnType<typeof createApiClient>;

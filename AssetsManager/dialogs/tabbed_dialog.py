@@ -271,13 +271,15 @@ class TabbedDialog(QDialog):
         """Set tab order: tab widget → OK → Apply → Cancel."""
         ok_btn = btn_box.button(QDialogButtonBox.StandardButton.Ok)
         cancel_btn = btn_box.button(QDialogButtonBox.StandardButton.Cancel)
-        apply_btn = btn_box.button(QDialogButtonBox.ButtonRole.ApplyRole)
+        apply_btn = btn_box.button(QDialogButtonBox.StandardButton.Apply)
         if ok_btn:
             self.setTabOrder(self._tabs, ok_btn)
         if apply_btn and ok_btn:
             self.setTabOrder(ok_btn, apply_btn)
         if cancel_btn and apply_btn:
             self.setTabOrder(apply_btn, cancel_btn)
+        elif cancel_btn and ok_btn:
+            self.setTabOrder(ok_btn, cancel_btn)
 
     def _setup_tabs(self):
         pass

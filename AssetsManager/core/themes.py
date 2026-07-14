@@ -13,6 +13,7 @@ Performance:
   - stylesheet() result cached (invalidated on theme change).
 """
 import sys
+import threading
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.color_utils import alpha
@@ -26,6 +27,7 @@ _DEFAULT_NAME = "Default"
 _current = "Navy"
 _cached_stylesheet: str | None = None
 _cached_stylesheet_theme: str | None = None
+_themes_lock = threading.Lock()
 
 # ThemeLoader singleton
 _loader = ThemeLoader()
@@ -189,11 +191,12 @@ def set_theme(name: str):
     global _current, _cached_stylesheet
     # Migrate old lowercase name if needed
     migrated = _MIGRATION_MAP.get(name.lower(), name) if name else name
-    if migrated not in _THEMES:
-        print(f"[themes] WARNING: theme '{name}' not found", file=sys.stderr)
-        return
-    _current = migrated
-    _cached_stylesheet = None
+    with _themes_lock:
+        if migrated not in _THEMES:
+            print(f"[themes] WARNING: theme '{name}' not found", file=sys.stderr)
+            return
+        _current = migrated
+        _cached_stylesheet = None
     try:
         settings = AppSettings.instance()
         settings.set("theme", migrated)
@@ -206,8 +209,9 @@ def set_theme(name: str):
 def invalidate_cache():
     """Force stylesheet regeneration on next access."""
     global _cached_stylesheet, _cached_stylesheet_theme
-    _cached_stylesheet = None
-    _cached_stylesheet_theme = None
+    with _themes_lock:
+        _cached_stylesheet = None
+        _cached_stylesheet_theme = None
 
 
 def names() -> list[str]:
@@ -333,6 +337,21 @@ def bg_overall_opacity() -> float:
     return float(_bg_setting("opacity", 1.0))
 
 
+def bg_type() -> str:
+    """Background type: 'image' or 'video'."""
+    return str(_bg_setting("type", "image"))
+
+
+def bg_effect() -> str:
+    """Active image effect: 'none', 'blur', or 'mosaic'."""
+    return str(_bg_setting("effect", "none"))
+
+
+def bg_effect_intensity() -> int:
+    """Intensity of the active effect (1-50 for blur, 2-50 for mosaic)."""
+    return int(_bg_setting("effect_intensity", 20))
+
+
 def panel_color() -> str:
     """Return the effective panel background color.
 
@@ -360,8 +379,9 @@ def stylesheet() -> str:
     Cached result is invalidated on theme change.
     """
     global _cached_stylesheet, _cached_stylesheet_theme
-    if _cached_stylesheet is not None and _cached_stylesheet_theme == _current:
-        return _cached_stylesheet
+    with _themes_lock:
+        if _cached_stylesheet is not None and _cached_stylesheet_theme == _current:
+            return _cached_stylesheet
     from AssetsManager.core.ui_scale import scaled_px
     t = get()
     hov = alpha(t["hover_overlay"], t["properties"].get("opacity", {}).get("hover", 0.15))
@@ -469,11 +489,25 @@ def stylesheet() -> str:
         border-top: none;
     }}
 """
-    _cached_stylesheet = result
-    _cached_stylesheet_theme = _current
+    with _themes_lock:
+        _cached_stylesheet = result
+        _cached_stylesheet_theme = _current
     return result
 
 
 def apply_to(widget):
     """Apply the global stylesheet to a given widget."""
     widget.setStyleSheet(stylesheet())
+
+
+def theme_mode_for_base(hex_color: str) -> str:
+    """Return 'dark' or 'light' based on base color luminance."""
+    h = hex_color.lstrip("#")
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    try:
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    except (ValueError, IndexError):
+        return "dark"
+    luminance = 0.299 * r + 0.587 * g + 0.114 * b
+    return "light" if luminance >= 128 else "dark"

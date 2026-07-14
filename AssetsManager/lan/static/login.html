@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - AssetManager</title>
+    <link rel="stylesheet" href="/static/style.css?v=30">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="login-page">
+    <div class="login-card">
+        <div class="login-card__icon">A</div>
+        <h1 class="login-card__title" id="serverName">AssetManager</h1>
+        <p class="login-card__subtitle" data-i18n="auth.login_page_subtitle">Sign in to access the library</p>
+        <form id="loginForm" class="login-form">
+            <input type="text" id="usernameInput" data-i18n-placeholder="auth.username" placeholder="Username" autocomplete="username" class="login-form__input">
+            <input type="password" id="passwordInput" data-i18n-placeholder="auth.password" placeholder="Password" autocomplete="current-password" class="login-form__input">
+            <div class="login-form__error" id="loginError" style="display:none"></div>
+            <button type="submit" class="login-form__btn login-form__btn--primary" data-i18n="auth.sign_in">Sign In</button>
+            <button type="button" class="login-form__btn login-form__btn--guest" id="guestBtn" style="display:none" data-i18n="auth.guest">Browse as Guest</button>
+        </form>
+    </div>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="/static/i18n.js"></script>
+    <script src="/static/login.js"></script>
+    <script>
+        I18N.init().then(() => I18N.applyToDOM());
+    </script>
+</body>
+</html>

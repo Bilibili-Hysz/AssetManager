@@ -15,5 +15,4 @@ def test_signals_exist():
     assert hasattr(bus, 'file_focused')
     assert hasattr(bus, 'refresh_requested')
     assert hasattr(bus, 'theme_changed')
-    assert hasattr(bus, 'library_opened')
     assert hasattr(bus, 'sidebar_depth_changed')

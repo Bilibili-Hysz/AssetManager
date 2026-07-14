@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shared Files - AssetManager</title>
+    <link rel="stylesheet" href="/static/style.css?v=2">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%236366f1'/><text x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-weight='bold'>A</text></svg>">
+</head>
+<body class="share-page">
+    <div class="share-app">
+        <!-- Header -->
+        <header class="share-header">
+            <div class="share-header__logo">
+                <div class="share-header__logo-icon">A</div>
+                <span class="share-header__logo-text">AssetManager</span>
+            </div>
+        </header>
+
+        <!-- Password Overlay -->
+        <div class="share-password-overlay" id="passwordOverlay" style="display:none">
+            <div class="share-password-card">
+                <div class="share-password-card__icon"><i data-lucide="lock"></i></div>
+                <h2 class="share-password-card__title" data-i18n="share_page.protected">Protected Share</h2>
+                <p class="share-password-card__subtitle" data-i18n="share_page.enter_password">Enter the password to access these files</p>
+                <input type="password" class="auth-card__input" id="sharePasswordInput" data-i18n-placeholder="auth.password" placeholder="Password" autocomplete="off">
+                <div class="auth-card__error" id="passwordError" data-i18n="share_page.invalid_password">Invalid password</div>
+                <button type="button" class="btn btn--primary btn--full" id="verifyPasswordBtn" data-i18n="share_page.access">Access</button>
+            </div>
+        </div>
+
+        <!-- Expired/Error Overlay -->
+        <div class="share-error-overlay" id="errorOverlay" style="display:none">
+            <div class="share-error-card">
+                <div class="share-error-card__icon" id="errorIcon"><i data-lucide="alert-triangle"></i></div>
+                <h2 class="share-error-card__title" id="errorTitle" data-i18n="share_page.link_not_found">Link Not Found</h2>
+                <p class="share-error-card__subtitle" id="errorMessage" data-i18n="share_page.link_not_found_msg">This share link is invalid, expired, or has been deactivated.</p>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <main class="share-content" id="shareContent" style="display:none">
+            <div class="share-info">
+                <h1 class="share-info__title" id="shareTitle">Shared Files</h1>
+                <div class="share-info__meta" id="shareMeta"></div>
+            </div>
+            <div class="share-grid" id="shareGrid"></div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="share-footer">
+            <p data-i18n-html="share_page.powered_by">Powered by <strong>AssetManager</strong></p>
+        </footer>
+    </div>
+
+    <!-- Image Viewer -->
+    <div class="image-viewer" id="imageViewer">
+        <span class="image-viewer__close" id="imageViewerClose">&times;</span>
+        <img class="image-viewer__img" id="imageViewerImg" alt="">
+    </div>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="/static/i18n.js"></script>
+    <script src="/static/share.js?v=3"></script>
+    <script>
+        I18N.init().then(() => I18N.applyToDOM());
+    </script>
+</body>
+</html>

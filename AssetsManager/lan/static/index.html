@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AssetManager Share</title>
+    <link rel="stylesheet" href="/static/style.css?v=32">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%236366f1'/><text x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-weight='bold'>A</text></svg>">
+</head>
+<body>
+    <!-- Landing Page -->
+    <div class="landing-page" id="landingPage">
+        <div class="landing-card">
+            <div class="landing-card__icon">A</div>
+            <h1 class="landing-card__title">AssetManager</h1>
+            <p class="landing-card__subtitle" id="landingSubtitle" data-i18n="landing.welcome">Welcome to the asset library</p>
+            <div id="landingEnterSection">
+                <button type="button" class="landing-card__btn landing-card__btn--primary" id="landingEnterBtn" data-i18n="landing.enter">Enter Library</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div class="app" id="app" style="display:none">
+        <!-- ═══ HEADER ═══ -->
+        <header class="app-header">
+            <div class="app-header__left">
+                <button class="app-header__btn" id="menuToggle" title="Toggle sidebar"><i data-lucide="panel-left"></i></button>
+                <div class="app-header__brand">
+                    <div class="app-header__logo">A</div>
+                    <span class="app-header__name">AssetManager</span>
+                    <span class="app-header__share" id="shareName"></span>
+                </div>
+            </div>
+            <div class="app-header__center">
+                <div class="app-header__search">
+                    <i data-lucide="search" class="app-header__search-icon"></i>
+                    <input type="text" class="app-header__search-input" id="searchInput" placeholder="Search files..." autocomplete="off">
+                    <kbd class="app-header__search-hint">/</kbd>
+                </div>
+            </div>
+            <div class="app-header__right">
+                <div class="app-header__status" id="statusBadge">
+                    <span class="app-header__dot"></span>
+                    <span id="statusText" data-i18n="header.connected">Connected</span>
+                    <span class="app-header__role" id="headerRole"></span>
+                </div>
+                <div class="app-header__user" id="userMenu" style="display:none">
+                    <button class="app-header__user-btn" id="userBtn">
+                        <span class="app-header__avatar" id="userAvatar">U</span>
+                        <span class="app-header__username" id="userName">User</span>
+                    </button>
+                    <div class="app-header__dropdown" id="userDropdown">
+                        <div class="app-header__dropdown-info" id="userInfo"></div>
+                        <div class="app-header__dropdown-item" id="logoutBtn"><i data-lucide="log-out"></i> <span data-i18n="header.logout">Logout</span></div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- ═══ TOOLBAR (统一操作栏) ═══ -->
+        <div class="app-toolbar">
+            <!-- Sidebar section -->
+            <div class="app-toolbar__section app-toolbar__section--left">
+                <div class="app-toolbar__title" data-i18n="sidebar.library">Library</div>
+                <div class="app-toolbar__stats">
+                    <span id="statProjectsMini">-</span> · <span id="statTotalSizeMini">-</span>
+                </div>
+            </div>
+
+            <!-- Main section -->
+            <div class="app-toolbar__section app-toolbar__section--center">
+                <div class="app-toolbar__breadcrumb" id="breadcrumb"></div>
+                <div class="app-toolbar__divider"></div>
+                <div class="app-toolbar__actions">
+                    <div class="app-toolbar__group">
+                        <select class="app-toolbar__select" id="sortSelect">
+                            <option value="name" data-i18n="sort.name">Name</option>
+                            <option value="date" data-i18n="sort.date">Date</option>
+                            <option value="size" data-i18n="sort.size">Size</option>
+                        </select>
+                        <button class="app-toolbar__btn" id="sortOrder" title="Toggle order"><i data-lucide="arrow-up"></i></button>
+                    </div>
+                    <div class="app-toolbar__group">
+                        <button class="app-toolbar__btn active" id="viewGrid" title="Grid"><i data-lucide="layout-grid"></i></button>
+                        <button class="app-toolbar__btn" id="viewList" title="List"><i data-lucide="list"></i></button>
+                    </div>
+                    <div class="app-toolbar__group" id="batchActions" style="display:none">
+                        <span class="app-toolbar__selected" id="selectedCount">0</span>
+                        <button class="app-toolbar__btn app-toolbar__btn--accent" id="batchDownload"><i data-lucide="download"></i> <span data-i18n="action.download">Download</span></button>
+                        <button class="app-toolbar__btn" id="batchClear"><i data-lucide="x"></i></button>
+                    </div>
+                    <span class="app-toolbar__count" id="projectCount">-</span>
+                </div>
+            </div>
+
+            <!-- Info panel section -->
+            <div class="app-toolbar__section app-toolbar__section--right">
+                <span class="app-toolbar__title" id="infoTitle">Info</span>
+                <button class="app-toolbar__btn" id="toggleInfo" title="Toggle info panel"><i data-lucide="panel-right"></i></button>
+            </div>
+        </div>
+
+        <!-- ═══ SIDEBAR ═══ -->
+        <!-- Sidebar Backdrop (mobile) -->
+        <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+        <aside class="app-sidebar" id="sidebar">
+            <div class="app-sidebar__search">
+                <i data-lucide="search" class="app-sidebar__search-icon"></i>
+                <input type="text" class="app-sidebar__search-input" id="sidebarSearch" placeholder="Filter folders..." autocomplete="off">
+                <button class="app-sidebar__ctrl" id="expandAll" title="Expand All">+</button>
+                <button class="app-sidebar__ctrl" id="collapseAll" title="Collapse All">-</button>
+            </div>
+            <div class="app-sidebar__content" id="sidebarContent">
+                <div class="app-sidebar__tree" id="dirTree"></div>
+            </div>
+        </aside>
+
+        <!-- Grabber -->
+        <div class="app-grabber app-grabber--left" id="leftGrabber"></div>
+
+        <!-- MAIN -->
+        <main class="app-main" id="main">
+            <div class="app-main__welcome" id="welcomeMsg" style="display:none"></div>
+            <div class="app-main__view" id="viewContainer">
+                <div class="project-grid" id="projectGrid"></div>
+                <div class="project-detail" id="projectDetail" style="display:none"></div>
+            </div>
+        </main>
+
+        <!-- Grabber -->
+        <div class="app-grabber app-grabber--right" id="rightGrabber"></div>
+
+        <!-- INFO PANEL -->
+        <aside class="app-info" id="infoPanel">
+            <div class="app-info__preview" id="infoPreview"></div>
+            <div class="app-info__body">
+                <div class="app-info__section" id="infoFields"></div>
+                <div class="app-info__section" id="infoLinksSection" style="display:none">
+                    <div class="app-info__label" data-i18n="info.links">Links</div>
+                    <div class="app-info__links" id="infoLinks"></div>
+                </div>
+                <div class="app-info__section" id="infoTagsSection" style="display:none">
+                    <div class="app-info__label" data-i18n="info.tags">Tags</div>
+                    <div class="app-info__tags" id="infoTags"></div>
+                </div>
+                <div class="app-info__section" id="infoNotesSection" style="display:none">
+                    <div class="app-info__label" data-i18n="info.notes">Notes</div>
+                    <div class="app-info__notes" id="infoNotes"></div>
+                </div>
+            </div>
+            <div class="app-info__actions">
+                <button class="btn btn--primary" id="infoDownload"><i data-lucide="download"></i> <span data-i18n="action.download">Download</span></button>
+                <button class="btn btn--ghost" id="infoCopyPath" data-i18n="action.copy_path">Copy Path</button>
+                <button class="btn btn--ghost" id="infoOpenLocal" title="Open in explorer"><i data-lucide="folder-open"></i></button>
+            </div>
+        </aside>
+
+        <!-- ═══ FOOTER (统一底部栏) ═══ -->
+        <div class="app-footer">
+            <div class="app-footer__left">
+                <span id="statConnections">0</span> <span data-i18n="status.connections">connections</span>
+                · <span id="statRequests">0</span> <span data-i18n="status.requests">requests</span>
+            </div>
+            <div class="app-footer__center" id="footerText" style="display:none"></div>
+            <div class="app-footer__right">
+                <button class="app-footer__btn" id="toggleSidebar" title="Toggle sidebar"><i data-lucide="panel-left"></i></button>
+                <button class="app-footer__btn" id="infoPanelClose" title="Close info panel"><i data-lucide="panel-right-close"></i></button>
+            </div>
+        </div>
+
+        <!-- Mobile Bottom Bar -->
+        <div class="bottom-bar" id="bottomBar">
+            <button class="bottom-bar__btn" id="mobileMenuBtn"><i data-lucide="menu"></i></button>
+            <button class="bottom-bar__btn" id="mobileViewBtn">Grid</button>
+            <button class="bottom-bar__btn" id="mobileSelectBtn"><i data-lucide="check-square"></i></button>
+        </div>
+    </div>
+
+    <!-- Image Viewer -->
+    <div class="image-viewer" id="imageViewer">
+        <span class="image-viewer__close" id="imageViewerClose">&times;</span>
+        <button class="image-viewer__nav image-viewer__nav--prev" id="imageViewerPrev">&#10094;</button>
+        <button class="image-viewer__nav image-viewer__nav--next" id="imageViewerNext">&#10095;</button>
+        <img class="image-viewer__img" id="imageViewerImg" alt="">
+        <div class="image-viewer__counter" id="imageViewerCounter"></div>
+        <div class="image-viewer__hint" id="imageViewerHint" data-i18n="viewer.hint">Scroll to zoom · Drag to pan · Esc to close</div>
+    </div>
+
+    <!-- Context Menu -->
+    <div class="context-menu" id="contextMenu">
+        <div class="context-menu__item" data-action="open"><i data-lucide="folder-open"></i> <span data-i18n="action.open">Open</span></div>
+        <div class="context-menu__item" data-action="openExplorer"><i data-lucide="folder-open"></i> <span data-i18n="action.open_explorer">Open in Explorer</span></div>
+        <div class="context-menu__item" data-action="download"><i data-lucide="download"></i> <span data-i18n="action.download">Download</span></div>
+        <div class="context-menu__item" data-action="downloadZip" style="display:none"><i data-lucide="package"></i> <span data-i18n="action.download_zip">Download as ZIP</span></div>
+        <div class="context-menu__sep"></div>
+        <div class="context-menu__item" data-action="share"><i data-lucide="link"></i> <span data-i18n="action.share">Share Link</span></div>
+        <div class="context-menu__sep"></div>
+        <div class="context-menu__item" data-action="copyPath"><i data-lucide="clipboard"></i> <span data-i18n="action.copy_path">Copy Path</span></div>
+        <div class="context-menu__item" data-action="copyLink"><i data-lucide="link"></i> <span data-i18n="action.copy_link">Copy Link</span></div>
+        <div class="context-menu__sep"></div>
+        <div class="context-menu__item" data-action="details"><i data-lucide="file-text"></i> <span data-i18n="action.details">Details</span></div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Download Progress Bar -->
+    <div id="downloadProgressBar" class="progress-bar" style="display:none"><div class="progress-bar__fill"></div></div>
+
+    <!-- Login Overlay -->
+    <div class="overlay" id="loginOverlay" style="display:none">
+        <div class="auth-card">
+            <div class="auth-card__icon">A</div>
+            <div class="auth-card__title" data-i18n="auth.login_title">AssetManager Share</div>
+            <div class="auth-card__subtitle" id="loginSubtitle" data-i18n="auth.login_subtitle_key">Enter access key to continue</div>
+            <div id="loginKeyMode">
+                <input type="text" class="auth-card__input" id="loginKey" placeholder="Access Key" autocomplete="off">
+                <div class="auth-card__error" id="loginKeyError">Invalid key</div>
+                <button class="btn btn--primary btn--full" id="loginKeySubmit">Connect</button>
+            </div>
+            <div id="loginUserMode" style="display:none">
+                <input type="text" class="auth-card__input" id="loginUsername" placeholder="Username">
+                <input type="password" class="auth-card__input" id="loginPassword" placeholder="Password">
+                <div class="auth-card__error" id="loginError">Invalid credentials</div>
+                <button class="btn btn--primary btn--full" id="loginSubmit">Login</button>
+                <div class="auth-card__footer">
+                    <span>Don't have an account?</span> <a href="#" id="showRegister">Register</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Register Overlay -->
+    <div class="overlay" id="registerOverlay" style="display:none">
+        <div class="auth-card">
+            <div class="auth-card__icon">A</div>
+            <div class="auth-card__title">Create Account</div>
+            <div class="auth-card__subtitle">Register to access this library</div>
+            <input type="text" class="auth-card__input" id="regUsername" placeholder="Username">
+            <input type="password" class="auth-card__input" id="regPassword" placeholder="Password">
+            <input type="password" class="auth-card__input" id="regConfirm" placeholder="Confirm Password">
+            <input type="text" class="auth-card__input" id="regInvite" placeholder="Invite code">
+            <div class="auth-card__error" id="regError"></div>
+            <button class="btn btn--primary btn--full" id="regSubmit">Register</button>
+            <div class="auth-card__footer">
+                <span>Already have an account?</span> <a href="#" id="showLogin">Login</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Share Dialog -->
+    <div class="overlay" id="shareOverlay" style="display:none">
+        <div class="auth-card share-card">
+            <div class="auth-card__icon"><i data-lucide="link"></i></div>
+            <div class="auth-card__title">Create Share Link</div>
+            <div class="auth-card__subtitle" id="shareSubtitle">Share files with others</div>
+            <div class="share-form">
+                <label class="share-label">Password (optional)</label>
+                <input type="password" class="auth-card__input" id="sharePassword" placeholder="Leave empty for no password" autocomplete="off">
+                <label class="share-label">Expires After</label>
+                <select class="auth-card__input" id="shareExpiry">
+                    <option value="">Never</option>
+                    <option value="1">1 hour</option>
+                    <option value="24" selected>1 day</option>
+                    <option value="168">7 days</option>
+                    <option value="720">30 days</option>
+                </select>
+                <label class="share-label">Max Downloads</label>
+                <input type="number" class="auth-card__input" id="shareMaxDownloads" placeholder="Unlimited" min="1">
+                <label class="share-label"><input type="checkbox" id="shareAllowPreview" checked> Allow preview</label>
+            </div>
+            <div class="auth-card__error" id="shareError"></div>
+            <div id="shareResult" style="display:none">
+                <div class="share-result-url" id="shareUrl"></div>
+                <div class="share-key-hint" id="shareKeyHint" style="display:none"></div>
+                <button class="btn btn--primary btn--full" id="shareCopyBtn">Copy Link</button>
+            </div>
+            <div id="shareActions">
+                <button class="btn btn--primary btn--full" id="shareCreateBtn">Create Link</button>
+                <button class="btn btn--secondary btn--full" id="shareCancelBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="/static/i18n.js"></script>
+    <script src="/static/app.js?v=32"></script>
+    <script>I18N.init().then(() => I18N.applyToDOM());</script>
+</body>
+</html>

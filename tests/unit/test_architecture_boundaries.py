@@ -280,6 +280,7 @@ def test_open_library_calls_stay_in_documented_boundaries() -> None:
 def test_library_service_current_stays_legacy_only() -> None:
     allowed = {
         ("tests.integration.test_library_service", "test_current_context_remains_legacy_compatibility_api"),
+        ("tests.integration.test_library_service", "test_current_property_emits_deprecation_warning"),
     }
     violations: list[str] = []
     for path in _files(ROOT, "AssetsManager") + _files(ROOT, "tests"):

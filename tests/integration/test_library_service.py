@@ -296,6 +296,23 @@ def test_library_service_close_session_removes_context(tmp_path):
     assert service.current_session is None
 
 
+def test_library_service_close_session_closes_library_connection(tmp_path):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+
+    service = LibraryService()
+    session = service.open_session(root)
+    conn = session.db_conn
+
+    service.close_session(session)
+
+    import sqlite3
+    with pytest.raises(sqlite3.ProgrammingError):
+        conn.execute("SELECT 1")
+
+
 def test_library_service_close_session_is_idempotent(tmp_path):
     from AssetsManager.application.library_service import LibraryService
 
@@ -309,3 +326,73 @@ def test_library_service_close_session_is_idempotent(tmp_path):
     service.close_session(session)
 
     assert service.current_session is None
+
+
+# ── Phase 2.5: Per-library database teardown ──────────────────────
+
+def test_close_session_does_not_close_other_library_connections(tmp_path):
+    """Closing one library must not close another library's DB connection."""
+    from AssetsManager.application.library_service import LibraryService
+
+    lib_a = tmp_path / "lib_a"
+    lib_b = tmp_path / "lib_b"
+    lib_a.mkdir()
+    lib_b.mkdir()
+
+    service = LibraryService()
+    session_a = service.open_session(lib_a)
+    session_b = service.open_session(lib_b)
+
+    conn_a = session_a.db_conn
+    conn_b = session_b.db_conn
+
+    # Close library A
+    service.close_session(session_a)
+
+    # Library A connection should be closed
+    import sqlite3
+    with pytest.raises(sqlite3.ProgrammingError):
+        conn_a.execute("SELECT 1")
+
+    # Library B connection should still be alive
+    conn_b.execute("SELECT 1")
+
+    service.close_session(session_b)
+
+def test_library_context_not_in_public_application_exports():
+    """LibraryContext should not be in the public application __all__."""
+    from AssetsManager import application
+    assert hasattr(application, "__all__"), "application package must have __all__"
+    assert "LibraryContext" not in application.__all__, (
+        "LibraryContext must not be in __all__; LibrarySession is the public boundary"
+    )
+
+
+def test_open_library_emits_deprecation_warning():
+    """open_library() is legacy and must emit a DeprecationWarning."""
+    import warnings
+    from AssetsManager.application.library_service import LibraryService
+    from pathlib import Path
+    import tempfile
+
+    root = Path(tempfile.mkdtemp())
+    service = LibraryService()
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        service.open_library(root)
+        deprecations = [x for x in w if issubclass(x.category, DeprecationWarning)]
+        assert len(deprecations) >= 1, "open_library() must emit a DeprecationWarning"
+    service.close()
+
+
+def test_current_property_emits_deprecation_warning():
+    """LibraryService.current is legacy and must emit a DeprecationWarning."""
+    import warnings
+    from AssetsManager.application.library_service import LibraryService
+
+    service = LibraryService()
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        _ = service.current
+        deprecations = [x for x in w if issubclass(x.category, DeprecationWarning)]
+        assert len(deprecations) >= 1, "LibraryService.current must emit a DeprecationWarning"

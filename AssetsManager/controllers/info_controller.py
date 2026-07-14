@@ -155,6 +155,10 @@ class InfoController:
     def get_urls(self, file_path: str) -> list[str]:
         return self._metadata_svc.get_urls(self._library_root, file_path)
 
+    def get_notes(self, file_path: str) -> str:
+        """Return notes for a file."""
+        return self._metadata_svc.get_notes(self._library_root, file_path)
+
     # ── Plugin fields ───────────────────────────────────────────
 
     def get_plugin_fields(self, file_path: str) -> tuple[list[PluginField], list[str]]:
@@ -305,3 +309,64 @@ class InfoController:
                 seen.add(u)
                 result.append(u)
         return result
+
+    # ── Directory classification ─────────────────────────────────
+
+    @staticmethod
+    def classify_dir(dir_path: str, *, classify_cache: dict[str, str] | None = None) -> str:
+        """Return a human-readable summary of file types in a directory.
+
+        Uses an emoji-based breakdown (e.g. "🖼 5  📄 3") for display in
+        the InfoPanel.  The optional *classify_cache* avoids re-scanning
+        directories on repeated selections.
+        """
+        cache = classify_cache if classify_cache is not None else {}
+        if dir_path in cache:
+            return cache[dir_path]
+        from AssetsManager.panels.file_list._common import FILTER_CATEGORIES
+        emoji_map = {
+            "Images": "🖼", "3D Models": "🔷", "Videos": "🎬",
+            "Documents": "📄", "Archives": "🗜",
+        }
+        try:
+            counts: dict[str, int] = {}
+            for entry in os.scandir(dir_path):
+                if not entry.is_file():
+                    continue
+                ext = Path(entry.name).suffix.lower()
+                for cat, exts in FILTER_CATEGORIES.items():
+                    if ext in exts:
+                        emoji = emoji_map.get(cat, "📄")
+                        counts[emoji] = counts.get(emoji, 0) + 1
+                        break
+                if ext == ".blend":
+                    counts["🧊"] = counts.get("🧊", 0) + 1
+            if counts:
+                result = "  ".join(f"{k} {v}" for k, v in sorted(counts.items(), key=lambda x: -x[1]))
+                cache[dir_path] = result
+                return result
+        except OSError:
+            pass
+        cache[dir_path] = ""
+        return ""
+
+    @staticmethod
+    def is_deepest_folder(path: str, library_root: str, sidebar_depth: int,
+                          branch_depths: dict[str, int] | None = None) -> bool:
+        """Check whether this path reaches or exceeds the configured sidebar depth."""
+        if not library_root or sidebar_depth < 1:
+            return False
+        try:
+            rel = os.path.relpath(path, library_root)
+        except ValueError:
+            return False
+        if rel in (".", ""):
+            return False
+        parts = rel.replace(os.sep, "/").rstrip("/").split("/")
+        if not parts or parts == [""]:
+            return False
+        level = len(parts)
+        branch = parts[0]
+        depths = branch_depths or {}
+        effective = depths.get(branch, sidebar_depth)
+        return level >= effective

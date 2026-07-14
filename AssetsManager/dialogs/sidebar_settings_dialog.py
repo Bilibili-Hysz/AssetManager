@@ -17,7 +17,7 @@ from AssetsManager import i18n
 tr = i18n.tr
 
 DEPTH_OPTIONS = [0, 1, 2, 3, 5, 99]
-DEPTH_LABELS = {0: "0 (hidden)", 1: "1", 2: "2", 3: "3", 5: "5", 99: "All"}
+DEPTH_LABELS = {0: tr("sidebar_settings.depth_hidden"), 1: "1", 2: "2", 3: "3", 5: "5", 99: tr("sidebar_settings.depth_all")}
 
 
 class SidebarSettingsDialog(TabbedDialog):

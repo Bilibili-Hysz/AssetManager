@@ -29,9 +29,10 @@ class LanSharingMixin:
             bootstrap = app.property("bootstrap")
             if bootstrap is not None:
                 return bootstrap.library_service
-        _log.debug("LanSharingMixin falling back to application.get_library_service")
-        from AssetsManager.application import get_library_service
-        return get_library_service()
+        _log.debug("LanSharingMixin falling back to ThreadSafeSingleton")
+        from AssetsManager.application.library_service import LibraryService
+        from AssetsManager.core.singleton import ThreadSafeSingleton
+        return ThreadSafeSingleton.get(LibraryService)
 
     # ── Toggle sharing ──────────────────────────────────────────
 
@@ -70,6 +71,7 @@ class LanSharingMixin:
                 access_key=access_key,
                 rate_limit=settings.get("lan_rate_limit", 1000),
                 blocked_ips=settings.get("lan_blocked_ips", []),
+                ip_whitelist=settings.get("lan_ip_whitelist", []),
                 blur_tags=settings.get("lan_blur_tags", []),
                 ssl_cert=settings.get("lan_ssl_cert"),
                 ssl_key=settings.get("lan_ssl_key"),
@@ -134,6 +136,11 @@ class LanSharingMixin:
         settings = AppSettings.instance()
 
         if self._lan_server and self._lan_server.is_running():
+            # Update main window UI to reflect current server state
+            self._update_share_status(True, self._lan_server._port)
+            if hasattr(self, '_tray_manager') and self._tray_manager:
+                self._tray_manager.update_sharing_state(True)
+
             # Check if we can hot-reload or need to restart
             hot_settings = {
                 "share_name": settings.get("lan_share_name", "AssetManager"),
@@ -150,10 +157,24 @@ class LanSharingMixin:
 
             # Check if restart-required settings changed
             restart_required = False
+            server_config = getattr(self._lan_server, "_impl", self._lan_server)
             if settings.get("lan_port", 8080) != self._lan_server._port:
                 restart_required = True
             if settings.get("lan_bind", "0.0.0.0") != self._lan_server._bind:
                 restart_required = True
+            restart_settings = {
+                "lan_password": getattr(server_config, "_password_value", None),
+                "lan_access_key": getattr(server_config, "_access_key_value", None),
+                "lan_rate_limit": getattr(server_config, "_rate_limit_value", 1000),
+                "lan_blocked_ips": getattr(server_config, "_blocked_ips", []),
+                "lan_ip_whitelist": getattr(server_config, "_ip_whitelist", []),
+                "lan_ssl_cert": getattr(server_config, "_ssl_cert", None),
+                "lan_ssl_key": getattr(server_config, "_ssl_key", None),
+            }
+            for key, current_value in restart_settings.items():
+                if settings.get(key, current_value) != current_value:
+                    restart_required = True
+                    break
 
             if restart_required:
                 self._lan_server.stop()
@@ -236,6 +257,7 @@ class LanSharingMixin:
         class _Task(QRunnable):
             def __init__(self):
                 super().__init__()
+                self.setAutoDelete(False)
                 self.signals = _Result()
             def run(self):
                 try:
@@ -270,4 +292,88 @@ class LanSharingMixin:
             else:
                 QMessageBox.warning(self, tr("sharing.error"), tr("sharing.no_url"))
         else:
-            QMessageBox.warning(self, tr("sharing.error"), f"{tr('sharing.failed')}: {data}")
+            QMessageBox.warning(self, tr("sharing.error"), f"{tr('sharing.failed_to_start')}: {data}")
+
+    # ── Quick Share Card ─────────────────────────────────────
+
+    def _show_quick_share_card(self, paths: list[str], global_pos):
+        """Show a QuickShareCard popup at the given position for the selected paths."""
+        from AssetsManager.dialogs.quick_share_card import QuickShareCard
+        self._quick_share_card = QuickShareCard(self)
+        self._quick_share_card.share_requested.connect(self._on_quick_share_card_request)
+        self._quick_share_card.show_for_paths(paths, global_pos)
+
+    def _on_quick_share_card_request(self, data: dict):
+        """Handle share_requested signal from QuickShareCard."""
+        if not self._lan_server or not self._lan_server.is_running():
+            self._toggle_sharing()
+            if not self._lan_server or not self._lan_server.is_running():
+                if hasattr(self, '_quick_share_card') and self._quick_share_card:
+                    self._quick_share_card.close()
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.warning(self, tr("sharing.error"), tr("sharing.failed_to_start"))
+                return
+
+        paths = data.get("paths", [])
+        password = data.get("password")
+        expiry_hours = data.get("expiry_hours")
+
+        url = self._quick_share_api_url(self._lan_server)
+        api_data = {
+            "paths": paths,
+            "expires_hours": expiry_hours or 24,
+            "allow_preview": True,
+        }
+        if password:
+            api_data["password"] = password
+
+        headers = {"Content-Type": "application/json"}
+        if hasattr(self._lan_server, 'token_secret'):
+            from AssetsManager.lan.utils import get_auth_headers
+            headers.update(get_auth_headers(self._lan_server.token_secret))
+
+        from PySide6.QtCore import QObject, Signal, QRunnable, QThreadPool
+
+        class _CardResult(QObject):
+            finished = Signal(bool, object)
+
+        class _CardTask(QRunnable):
+            def __init__(self):
+                super().__init__()
+                self.setAutoDelete(False)
+                self.signals = _CardResult()
+
+            def run(self):
+                try:
+                    import requests
+                    resp = requests.post(url, json=api_data, headers=headers, timeout=10)
+                    if resp.status_code == 200:
+                        self.signals.finished.emit(True, resp.json())
+                    else:
+                        err = resp.json().get("error", "Unknown error")
+                        self.signals.finished.emit(False, err)
+                except ImportError:
+                    self.signals.finished.emit(False, "requests not installed")
+                except Exception as e:
+                    self.signals.finished.emit(False, str(e))
+
+        task = _CardTask()
+        task.signals.finished.connect(self._on_quick_share_card_result)
+        QThreadPool.globalInstance().start(task)
+
+    def _on_quick_share_card_result(self, success, data):
+        """Handle async result for QuickShareCard share creation."""
+        if not hasattr(self, '_quick_share_card') or not self._quick_share_card:
+            return
+        if success:
+            share_url = data.get("url")
+            if share_url:
+                self._quick_share_card.show_result(share_url)
+            else:
+                self._quick_share_card.close()
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.warning(self, tr("sharing.error"), tr("sharing.no_url"))
+        else:
+            self._quick_share_card.close()
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, tr("sharing.error"), f"{tr('sharing.failed_to_start')}: {data}")

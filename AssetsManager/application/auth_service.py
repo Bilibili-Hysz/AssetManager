@@ -31,10 +31,6 @@ class AuthService:
     def db_conn(self) -> Connection:
         return self._conn
 
-    @property
-    def token_secret(self) -> str:
-        return self._secret
-
     # ── Infrastructure ──────────────────────────────────────────
 
     def init_tables(self) -> None:

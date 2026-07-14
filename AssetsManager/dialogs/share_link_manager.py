@@ -162,9 +162,9 @@ class ShareLinkManager(TabbedDialog):
             from AssetsManager.lan.utils import get_auth_headers
             headers.update(get_auth_headers(self._server.token_secret))
 
-        task = _HttpGetTask(url, headers)
-        task.signals.finished.connect(self._on_load_result)
-        QThreadPool.globalInstance().start(task)
+        self._load_task = _HttpGetTask(url, headers)
+        self._load_task.signals.finished.connect(self._on_load_result)
+        QThreadPool.globalInstance().start(self._load_task)
 
     def _on_load_result(self, success, data):
         """Handle async load result."""
@@ -313,9 +313,9 @@ class ShareLinkManager(TabbedDialog):
             headers.update(get_auth_headers(self._server.token_secret))
 
         captured_row = row
-        task = _HttpDeleteTask(url, headers)
-        task.signals.finished.connect(lambda ok, msg: self._on_delete_result(ok, msg, captured_row, share_id))
-        QThreadPool.globalInstance().start(task)
+        self._delete_task = _HttpDeleteTask(url, headers)
+        self._delete_task.signals.finished.connect(lambda ok, msg: self._on_delete_result(ok, msg, captured_row, share_id))
+        QThreadPool.globalInstance().start(self._delete_task)
 
     def _on_delete_result(self, success, _data, row: int, share_id: str):
         """Handle async delete result."""

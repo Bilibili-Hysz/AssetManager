@@ -68,6 +68,7 @@ class ApplicationBootstrap:
         self.container = container or ServiceContainer()
         self._plugin_host: PluginHostContext | None = None
         self._plugin_svc: PluginService | None = None
+        self._undo_services: dict[str, UndoService] = {}
         self._register_services()
 
     # ── Service registration ─────────────────────────────────────
@@ -84,7 +85,7 @@ class ApplicationBootstrap:
         c.register(FileOperationService)
         c.register(ThumbnailService)
         c.register(SearchService)
-        c.register(ProjectService)
+        # ProjectService is created directly in for_library() with connection_provider
         c.register(AssetIndexService)
         c.register(UndoService)
         c.register(PluginService)
@@ -129,6 +130,9 @@ class ApplicationBootstrap:
     def for_library(self, session: LibrarySession) -> LibraryScopedServices:
         """Return a bundle of services scoped to a specific library session."""
         provider = session.connection_for
+        key = session.root_str
+        if key not in self._undo_services:
+            self._undo_services[key] = UndoService(library_root=key)
         return LibraryScopedServices(
             session=session,
             asset_service=self.container.resolve(AssetService),
@@ -138,10 +142,16 @@ class ApplicationBootstrap:
             thumbnail_service=self.container.resolve(ThumbnailService),
             search_service=self.container.resolve(SearchService),
             file_operation_service=self.container.resolve(FileOperationService),
-            undo_service=self.container.resolve(UndoService),
+            undo_service=self._undo_services[key],
             plugin_service=self.container.resolve(PluginService),
             asset_index_service=self.container.resolve(AssetIndexService),
         )
+
+    def cleanup_library(self, library_root: str) -> None:
+        """Clean up cached UndoService for a closed library."""
+        svc = self._undo_services.pop(library_root, None)
+        if svc is not None:
+            svc.cleanup()
 
     @property
     def library_service(self) -> LibraryService:

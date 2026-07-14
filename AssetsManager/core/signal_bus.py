@@ -13,8 +13,9 @@ Signal Reference:
                                   connected: sidebar.py::_populate
   theme_changed(str)           — emitted: themes.py::set_theme
                                   connected: file_list.py::_on_theme_changed, window.py (apply theme)
-  library_opened(str)          — emitted: window.py (open/recent), app.py (startup)
-                                  connected: info.py::_on_library_changed
+  library_opened(str)          — **DEPRECATED**: now delivered via domain event
+                                   LibraryOpened → _event_bridge.py → panel slot
+
 
   sidebar_depth_changed(int,object) — emitted: sidebar.py (depth init/settings)
                                   connected: info.py::_on_sidebar_depth_changed
@@ -28,10 +29,10 @@ class _SignalBus(QObject):
     file_focused = Signal(str)
     refresh_requested = Signal()
     theme_changed = Signal(str)
-    library_opened = Signal(str)
     language_changed = Signal(str)
     sidebar_depth_changed = Signal(int, object)
     ui_scale_changed = Signal(float)
+    plugin_changed = Signal(str, bool)  # (plugin_id, enabled)
 
 
 def get():

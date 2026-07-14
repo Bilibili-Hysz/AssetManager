@@ -30,6 +30,7 @@ class _LanServerImpl:
                  share_name: str = "AssetManager", password: str | None = None,
                  access_key: str | None = None,
                  rate_limit: int = 100, blocked_ips: list[str] | None = None,
+                 ip_whitelist: list[str] | None = None,
                  blur_tags: list[str] | None = None,
                  ssl_cert: str | None = None, ssl_key: str | None = None):
         self._library_root = Path(library_root)
@@ -43,6 +44,8 @@ class _LanServerImpl:
         else:
             self._password_hash = None
         self._access_key_hash = hash_key(access_key) if access_key else None
+        self._password_value = password
+        self._access_key_value = access_key
         self._ws_manager = WebSocketManager()
         self._scanner = DirectoryScanner(library_root, db_conn)
         self._tunnel = TunnelManager()
@@ -50,6 +53,9 @@ class _LanServerImpl:
         self._token_secret = os.urandom(32).hex()  # Random secret for token signing
 
         # Security
+        self._rate_limit_value = rate_limit
+        self._blocked_ips = list(blocked_ips or [])
+        self._ip_whitelist = list(ip_whitelist or [])
         self._rate_limiter = RateLimiter(max_requests=rate_limit)
         self._auth_rate_limiter = AuthRateLimiter(max_attempts=10, window_seconds=300)
         self._ip_blacklist = IPBlacklist()
@@ -70,7 +76,12 @@ class _LanServerImpl:
         self._exclude_patterns = None
 
         # Build middleware chain
-        security_mw = create_security_middleware(self._rate_limiter, self._ip_blacklist, self._auth_rate_limiter)
+        security_mw = create_security_middleware(
+            self._rate_limiter,
+            self._ip_blacklist,
+            self._auth_rate_limiter,
+            ip_whitelist=self._ip_whitelist,
+        )
         self._app = web.Application(middlewares=[security_mw, self._auth_middleware])
         self._app[LAN_APP_KEY] = self
         self._runner: web.AppRunner | None = None
@@ -355,15 +366,58 @@ class _LanServerImpl:
         """Invalidate the user existence cache (call when users are added/removed)."""
         self._has_users_cache = None
 
+    # ── Declarative public-endpoint list (keep aligned with api.py) ──
+
+    _PUBLIC_PATHS: frozenset[str] = frozenset({
+        "/api/auth/login",
+        "/api/auth/register",
+        "/api/auth/verify_key",
+        "/api/info",
+        "/api/tunnel/status",
+        "/login",
+        "/",
+        "/favicon.ico",
+    })
+
+    _PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
+        "/static",
+        "/s/",
+    )
+
+    _PUBLIC_PATH_PREFIX_GET: tuple[str, ...] = ()
+
+    def _is_public_share_endpoint(self, method: str, path: str) -> bool:
+        prefix = "/api/shares/"
+        if not path.startswith(prefix):
+            return False
+        parts = path[len(prefix):].split("/", 2)
+        if len(parts) < 2 or not parts[0]:
+            return False
+
+        action = parts[1]
+        has_tail = len(parts) == 3
+        if method == "POST":
+            return action == "verify" and not has_tail
+        if method != "GET":
+            return False
+        if action == "info":
+            return not has_tail
+        return action in {"download", "preview"} and has_tail
+
     @web.middleware
     async def _auth_middleware(self, request, handler):
         """Authentication middleware — skip for public endpoints."""
-        if request.path in ("/api/auth/login", "/api/auth/register", "/api/auth/verify_key",
-                            "/api/info", "/api/tunnel/status", "/",
-                            "/favicon.ico") or request.path.startswith("/static") \
-                or request.path.startswith("/s/") \
-                or (request.path.startswith("/api/shares/") and request.method == "GET"):
+        if request.path in self._PUBLIC_PATHS:
             return await handler(request)
+        for prefix in self._PUBLIC_PATH_PREFIXES:
+            if request.path.startswith(prefix):
+                return await handler(request)
+        if self._is_public_share_endpoint(request.method, request.path):
+            return await handler(request)
+        if request.method == "GET":
+            for prefix in self._PUBLIC_PATH_PREFIX_GET:
+                if request.path.startswith(prefix):
+                    return await handler(request)
 
         # Check if any auth is configured
         has_key = self._access_key_hash is not None
@@ -379,7 +433,7 @@ class _LanServerImpl:
         token = get_auth_token(request)
 
         # Try access key auth
-        if has_key and token and self._access_key_hash:
+        if has_key and token and self._access_key_hash is not None:
             if verify_key(token, self._access_key_hash):
                 set_request_auth_context(request, "access_key", {"username": "access_key", "role": "admin"})
                 return await handler(request)
@@ -398,7 +452,7 @@ class _LanServerImpl:
                 return await handler(request)
 
         # Try simple password token
-        if self._password_hash and token:
+        if has_password and token and self._password_hash is not None:
             if verify_token(token, self._password_hash):
                 set_request_auth_context(request, "password", {"username": "password", "role": "admin"})
                 return await handler(request)

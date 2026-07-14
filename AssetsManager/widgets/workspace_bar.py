@@ -58,11 +58,16 @@ class WorkspaceBar(QTabBar):
 
         self._apply_style()
         self._bus_theme_conn = bus().theme_changed.connect(self.refresh_theme)
+        self._bus_lang_conn = bus().language_changed.connect(self.refresh_theme)
 
     def closeEvent(self, event):
         """Disconnect bus signals on close."""
         try:
             bus().theme_changed.disconnect(self._bus_theme_conn)
+        except (RuntimeError, TypeError):
+            pass
+        try:
+            bus().language_changed.disconnect(self._bus_lang_conn)
         except (RuntimeError, TypeError):
             pass
         super().closeEvent(event)

@@ -34,12 +34,19 @@ class LibraryService:
     def open_library(self, root_path: str | Path) -> LibraryContext:
         """Open or reuse a library and return its raw context.
 
-        Legacy API — new callers should use ``open_session()`` so the runtime
-        state stays behind the ``LibrarySession`` boundary.  This method is
-        retained for ``LibraryService`` internal use, core-database tests, and
-        backward compatibility with callers that still depend on
-        ``LibraryContext`` directly.
+        .. deprecated::
+            Use ``open_session()`` instead.  ``LibraryContext`` is now an
+            internal implementation detail and ``LibrarySession`` is the sole
+            public opened-library boundary.
         """
+        import warnings
+        warnings.warn(
+            "LibraryService.open_library() is deprecated. Use LibraryService.open_session() instead.",
+            DeprecationWarning, stacklevel=2,
+        )
+        return self._open_library(root_path)
+
+    def _open_library(self, root_path: str | Path) -> LibraryContext:
         root = Path(root_path).resolve()
         key = str(root)
         with self._lock:
@@ -65,15 +72,21 @@ class LibraryService:
         return context
 
     def open_session(self, root_path: str | Path) -> LibrarySession:
-        return LibrarySession.from_context(self.open_library(root_path))
+        return LibrarySession.from_context(self._open_library(root_path))
 
     @property
     def current(self) -> LibraryContext | None:
         """Return the current raw context for legacy compatibility.
 
-        New callers should use ``current_session`` so opened-library state stays
-        behind the session boundary.
+        .. deprecated::
+            Use ``current_session`` instead.  ``LibraryContext`` is now an
+            internal detail and ``LibrarySession`` is the sole public boundary.
         """
+        import warnings
+        warnings.warn(
+            "LibraryService.current is deprecated. Use LibraryService.current_session instead.",
+            DeprecationWarning, stacklevel=2,
+        )
         with self._lock:
             return self._current
 
@@ -86,8 +99,14 @@ class LibraryService:
 
     def close(self) -> None:
         with self._lock:
+            contexts = list(self._contexts.values())
             self._contexts.clear()
             self._current = None
+        for ctx in contexts:
+            try:
+                LibrarySession.from_context(ctx).close()
+            except Exception:
+                pass
         self._db.close()
 
     def close_session(self, session: LibrarySession) -> None:
@@ -96,12 +115,15 @@ class LibraryService:
         Idempotent — closing an already-removed session is a no-op.
         The session itself is also marked as closed.
         """
-        session.close()
+        key = str(session.root)
         with self._lock:
-            key = str(session.root)
             self._contexts.pop(key, None)
             if self._current is not None and str(self._current.root) == key:
                 self._current = None
+        try:
+            session.close()
+        finally:
+            self._db.close_library(key)
 
 
 def get_library_service() -> LibraryService:

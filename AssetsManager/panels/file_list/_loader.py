@@ -8,7 +8,7 @@ import os
 import sqlite3
 import contextlib
 import threading
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QSize, Signal, QObject, QRunnable, QThreadPool, QMutex
@@ -77,6 +77,7 @@ def _suppress_libpng_warnings():
 class _LoadTask(QRunnable):
     def __init__(self, loader, row, path, item_path):
         super().__init__()
+        self.setAutoDelete(False)
         self._loader = loader
         self._row = row
         self._path = path
@@ -117,7 +118,7 @@ class _BakeTask(QRunnable):
             tmp = os.path.join(self._loader._cache_dir, f"{self._key}.webp.tmp")
             final = os.path.join(self._loader._cache_dir, f"{self._key}.webp")
             os.makedirs(self._loader._cache_dir, exist_ok=True)
-            img.save(tmp, b"WEBP", quality=85)
+            img.save(tmp, "WEBP", quality=85)
             os.replace(tmp, final)
             self._loader._db_mutex.lock()
             try:
@@ -144,6 +145,7 @@ class ThumbnailLoader(QObject):
         super().__init__(parent)
         self._size = size
         self._queued_keys: set[str] = set()
+        self._pending_items: dict[str, list[tuple[int, str]]] = defaultdict(list)
         self._cache: OrderedDict[str, tuple[QImage, float]] = OrderedDict()
         self._mutex = QMutex()
         self._failed_paths: set[str] = set()
@@ -209,8 +211,13 @@ class ThumbnailLoader(QObject):
         if file_path in self._failed_paths:
             self._mutex.unlock()
             return
+        if file_path in self._queued_keys:
+            self._pending_items[file_path].append((row, item_path))
+            self._mutex.unlock()
+            return
         if file_path not in self._queued_keys:
             self._queued_keys.add(file_path)
+            self._pending_items[file_path].append((row, item_path))
             self._mutex.unlock()
             task = _LoadTask(self, row, file_path, item_path)
             try:
@@ -227,6 +234,7 @@ class ThumbnailLoader(QObject):
             return
         self._mutex.lock()
         self._queued_keys.discard(path)
+        pending = self._pending_items.pop(path, [])
         try:
             mtime = os.path.getmtime(path)
         except OSError:
@@ -236,13 +244,17 @@ class ThumbnailLoader(QObject):
         if len(self._cache) > limit:
             self._cache.popitem(last=False)
         self._mutex.unlock()
-        self.thumbnail_ready.emit(row, item_path, img)
+        if not pending:
+            pending = [(row, item_path)]
+        for pending_row, pending_item_path in pending:
+            self.thumbnail_ready.emit(pending_row, pending_item_path, img)
 
     def _mark_failed(self, path):
         if self._stopped:
             return
         self._mutex.lock()
         self._queued_keys.discard(path)
+        self._pending_items.pop(path, None)
         if len(self._failed_paths) >= self._failed_paths_max:
             self._failed_paths.clear()
         self._failed_paths.add(path)
@@ -251,6 +263,7 @@ class ThumbnailLoader(QObject):
     def clear_queue(self):
         self._mutex.lock()
         self._queued_keys.clear()
+        self._pending_items.clear()
         self._mutex.unlock()
 
     def clear_cache(self):
@@ -418,6 +431,9 @@ class ThumbnailLoader(QObject):
         self._regen_cancel = False
         loader = self
         class _RegenTask(QRunnable):
+            def __init__(s):
+                super().__init__()
+                s.setAutoDelete(False)
             def run(s):
                 images = []
                 for root, dirs, files in os.walk(lib_root):

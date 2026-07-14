@@ -111,6 +111,28 @@ def test_details_selection_survives_refresh_by_path(tmp_path):
         app.processEvents()
 
 
+def test_details_selection_survives_post_refresh(tmp_path):
+    app, panel = _make_panel(tmp_path)
+    try:
+        _switch_to_details(panel)
+        target = str(tmp_path / "b.png")
+        row = next(i for i, e in enumerate(panel._detail_model._entries) if e.path == target)
+        idx = panel._detail_model.index(row, 0)
+        panel._detail_view.selectionModel().select(
+            idx, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows
+        )
+
+        panel._post_refresh()
+        panel._model._wait_for_scan()
+
+        sel_paths = [panel._detail_model.data(i, Qt.ItemDataRole.UserRole)
+                     for i in panel._detail_view.selectionModel().selectedRows()]
+        assert target in sel_paths
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
 def test_details_selection_drops_filtered_paths(tmp_path):
     app, panel = _make_panel(tmp_path)
     try:

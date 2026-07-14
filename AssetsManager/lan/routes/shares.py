@@ -5,44 +5,47 @@ from urllib.parse import unquote
 
 from aiohttp import web
 
-from AssetsManager.application.share_service import ShareService
 from AssetsManager.domain.share import ShareLink
 from AssetsManager.domain.asset import IMAGE_EXTS
-from AssetsManager.lan.routes._helpers import get_auth_service, get_lan, get_auth_token, get_request_user, sanitize_filename, validate_path
+from AssetsManager.lan.routes._helpers import get_share_service, get_lan, get_auth_token, get_request_user, require_permission, sanitize_filename, validate_path
 from AssetsManager.lan.utils import get_local_ip
 
 _log = logging.getLogger(__name__)
 
 
-def _get_share_service(request) -> ShareService:
-    """Create a ShareService from the request context."""
-    auth_service = get_auth_service(request)
-    return ShareService(auth_service.db_conn, auth_service.token_secret)
-
-
 def _resolve_share_target(lan, share: ShareLink, rel_path: str) -> Path | None:
     """Resolve a path within a share's scope, with path traversal protection.
 
-    Returns the resolved Path if valid, or None if not in share scope.
+    Uses canonical path containment (``Path.is_relative_to``) instead of
+    string prefix checks so that ``..`` segments and other tricks cannot
+    escape the share scope.
     """
     library_root = lan.library_root.resolve()
+    try:
+        candidate = (library_root / rel_path).resolve()
+    except (ValueError, OSError):
+        return None
+    if not candidate.is_relative_to(library_root):
+        return None
     for sp in share.paths:
         try:
             full = (library_root / sp).resolve()
-            if not full.exists():
-                continue
-            if sp == rel_path or rel_path.startswith(sp + "/"):
-                candidate = (library_root / rel_path).resolve()
-                if candidate.exists() and candidate.is_relative_to(library_root):
-                    return candidate
         except (ValueError, OSError):
             continue
+        if not full.exists():
+            continue
+        if candidate == full or candidate.is_relative_to(full):
+            if candidate.exists():
+                return candidate
     return None
 
 
 async def handle_create_share(request):
+    if not require_permission(request, "manage_links"):
+        return web.json_response({"error": "Forbidden"}, status=403)
+
     lan = get_lan(request)
-    share_svc = _get_share_service(request)
+    share_svc = get_share_service(request)
     user = get_request_user(request)
 
     try:
@@ -64,6 +67,8 @@ async def handle_create_share(request):
             target = validate_path(lan, p)
             if target.exists():
                 valid_paths.append(p)
+        except web.HTTPException:
+            raise
         except Exception:
             continue
 
@@ -121,10 +126,12 @@ async def handle_create_share(request):
 
 
 async def handle_list_shares(request):
-    lan = get_lan(request)
-    share_svc = _get_share_service(request)
-    user = get_request_user(request)
+    if not require_permission(request, "manage_links"):
+        return web.json_response({"error": "Forbidden"}, status=403)
 
+    lan = get_lan(request)
+    share_svc = get_share_service(request)
+    user = get_request_user(request)
     if user is None:
         return web.json_response({"error": "Unauthorized"}, status=401)
 
@@ -143,13 +150,18 @@ async def handle_list_shares(request):
 
 
 async def handle_delete_share(request):
-    share_svc = _get_share_service(request)
+    if not require_permission(request, "manage_links"):
+        return web.json_response({"error": "Forbidden"}, status=403)
+
+    share_svc = get_share_service(request)
     user = get_request_user(request)
     share_id = request.match_info.get("id", "")
 
-    share = share_svc.get_share(share_id)
+    share = share_svc.get_share_record(share_id)
     if not share:
         return web.json_response({"error": "Share not found"}, status=404)
+    if share.is_expired():
+        return web.json_response({"error": "Share expired"}, status=410)
 
     if user and user.get("role") == "admin":
         pass
@@ -163,6 +175,12 @@ async def handle_delete_share(request):
 
 
 async def handle_share_page(request):
+    # Check for SPA build first
+    spa_dir = Path(__file__).parent.parent.parent.parent / "webui" / "dist"
+    spa_index = spa_dir / "index.html"
+    if spa_index.exists():
+        return web.FileResponse(spa_index)
+    # Fallback to old share page
     static_dir = Path(__file__).parent.parent / "static"
     share_file = static_dir / "share.html"
     if share_file.exists():
@@ -171,7 +189,7 @@ async def handle_share_page(request):
 
 
 async def handle_verify_share_password(request):
-    share_svc = _get_share_service(request)
+    share_svc = get_share_service(request)
     share_id = request.match_info.get("id", "")
 
     try:
@@ -181,9 +199,11 @@ async def handle_verify_share_password(request):
 
     password = body.get("password", "")
 
-    share = share_svc.get_share(share_id)
+    share = share_svc.get_share_record(share_id)
     if not share:
         return web.json_response({"error": "Share not found"}, status=404)
+    if share.is_expired():
+        return web.json_response({"error": "Share expired"}, status=410)
 
     if not share.has_password:
         token = share_svc.generate_token(share_id)
@@ -198,7 +218,7 @@ async def handle_verify_share_password(request):
 
 async def handle_share_download(request):
     lan = get_lan(request)
-    share_svc = _get_share_service(request)
+    share_svc = get_share_service(request)
     share_id = request.match_info.get("id", "")
     rel_path = unquote(request.match_info.get("path", ""))
 
@@ -226,13 +246,12 @@ async def handle_share_download(request):
         return web.json_response({"error": "File not found in share"}, status=404)
 
     if target.is_file():
-        if share.is_download_limit_reached():
+        if not share_svc.increment_download(share_id):
             return web.json_response({"error": "Download limit reached"}, status=403)
         response = web.FileResponse(
             target,
             headers={"Content-Disposition": f'attachment; filename="{sanitize_filename(target.name)}"'},
         )
-        share_svc.increment_download(share_id)
         return response
 
     return web.json_response({"error": "Not a file"}, status=400)
@@ -240,13 +259,15 @@ async def handle_share_download(request):
 
 async def handle_share_preview(request):
     lan = get_lan(request)
-    share_svc = _get_share_service(request)
+    share_svc = get_share_service(request)
     share_id = request.match_info.get("id", "")
     rel_path = unquote(request.match_info.get("path", ""))
 
-    share = share_svc.get_share(share_id)
+    share = share_svc.get_share_record(share_id)
     if not share:
         return web.json_response({"error": "Share not found"}, status=404)
+    if share.is_expired():
+        return web.json_response({"error": "Share expired"}, status=410)
 
     if not share.allow_preview:
         return web.json_response({"error": "Preview not allowed"}, status=403)
@@ -268,10 +289,10 @@ async def handle_share_preview(request):
 
 
 async def handle_share_info(request):
-    share_svc = _get_share_service(request)
+    share_svc = get_share_service(request)
     share_id = request.match_info.get("id", "")
 
-    share = share_svc.get_share(share_id)
+    share = share_svc.get_share_record(share_id)
     if not share:
         return web.json_response({"error": "Share not found"}, status=404)
 

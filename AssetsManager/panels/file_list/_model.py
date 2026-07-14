@@ -72,6 +72,7 @@ class FileSystemModel(QAbstractListModel):
         self._dir_size_gen = 0
         self._scan_gen = 0
         self._pending_scan: tuple | None = None
+        self._active_scan_task: _ScanTask | None = None  # prevent GC of running task + signals
         self._path_index: dict[str, int] = {}
         self._is_shutdown = False
 
@@ -91,6 +92,7 @@ class FileSystemModel(QAbstractListModel):
         self._scan_gen += 1
         gen = self._scan_gen
         self._pending_scan = None
+        self._active_scan_task = None  # release previous task
         self._icons.clear()
         self._raw_pixmaps.clear()
         self._dir_size_cache.clear()
@@ -105,6 +107,8 @@ class FileSystemModel(QAbstractListModel):
         self.endResetModel()
 
         task = _ScanTask(path, self, gen)
+        task.setAutoDelete(False)  # prevent QThreadPool from deleting before signal fires
+        self._active_scan_task = task  # keep strong reference
         task.signals.scan_done.connect(
             lambda entries, stats: self._on_scan_done(entries, stats, gen)
         )
@@ -115,6 +119,7 @@ class FileSystemModel(QAbstractListModel):
             return
         if gen != self._scan_gen:
             return
+        self._active_scan_task = None  # release reference after processing
         self.beginResetModel()
         self._raw_entries = entries
         self._stat_cache = stat_cache
@@ -227,6 +232,7 @@ class FileSystemModel(QAbstractListModel):
 
         class _SizeTask(QRunnable):
             def run(s):
+                s.setAutoDelete(False)  # prevent destruction before signal delivery
                 if self._is_shutdown:
                     return
                 total = FileSystemModel._cached_dir_size(dir_path, lib_root, self._metadata_service)

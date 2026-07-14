@@ -180,7 +180,7 @@ class TagEditorDialog(TabbedDialog):
             return
         names = "\n".join(f"  • {t}" for t in unused[:20])
         if len(unused) > 20:
-            names += f"\n  ... and {len(unused) - 20} more"
+            names += f"\n  ... {tr('tageditor.and_more', count=len(unused) - 20)}"
         reply = QMessageBox.question(
             self, tr("tageditor.delete_unused"),
             tr("tageditor.delete_unused_msg", count=len(unused), names=names),

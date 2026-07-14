@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -390,7 +393,16 @@ class PluginHostContext:
         p = str(path or "").strip()
         if not p:
             return False
-        return Path(p).exists()
+        p_obj = Path(p)
+        if not p_obj.exists():
+            return False
+        if sys.platform == 'win32':
+            os.startfile(str(p_obj))
+        elif sys.platform == 'darwin':
+            subprocess.Popen(['open', str(p_obj)])
+        else:
+            subprocess.Popen(['xdg-open', str(p_obj)])
+        return True
 
     def get_current_root_path(self) -> str | None:
         return self._current_root_path

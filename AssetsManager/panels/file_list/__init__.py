@@ -162,6 +162,7 @@ class QWidgetFileListPanel(FileListPanel):
         self._grid_widget.selection_changed.connect(self._update_status)
         self._grid_widget.rename_requested.connect(self._rename_grid_row)
         self._model.modelAboutToBeReset.connect(self._capture_grid_selection)
+        self._model.modelAboutToBeReset.connect(self._capture_detail_selection)
         self._model.modelReset.connect(self._on_grid_model_reset)
 
         # Reconnect scroll debounce to grid widget's scrollbar
@@ -299,6 +300,8 @@ class QWidgetFileListPanel(FileListPanel):
             menu.addSeparator()
             menu.addAction(tr("filelist.menu.open_explorer"), lambda: self._open_in_explorer(
                 str(Path(p).parent) if not os.path.isdir(p) else p))
+            menu.addSeparator()
+            menu.addAction(tr("sharing.quick_share"), lambda: self._quick_share_from_context(paths, global_pos))
         else:
             if self._clipboard_source:
                 menu.addAction(tr("filelist.menu.paste"), self._paste)
@@ -306,6 +309,19 @@ class QWidgetFileListPanel(FileListPanel):
             menu.addSeparator()
             menu.addAction(tr("filelist.menu.open_explorer"), lambda: self._open_in_explorer(str(self._current)))
         menu.exec(global_pos)
+
+    def _quick_share_from_context(self, paths: list[str], global_pos):
+        """Delegate Quick Share to the main window's LanSharingMixin."""
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance()
+        win = app.activeWindow() if app else None
+        if win is None and app:
+            for w in app.topLevelWidgets():
+                if w.isVisible() and hasattr(w, '_show_quick_share_card'):
+                    win = w
+                    break
+        if win and hasattr(win, '_show_quick_share_card'):
+            win._show_quick_share_card(paths, global_pos)
 
     def _rename_grid_row(self, row: int, new_name: str):
         ent = self._model.entry_at(row)
@@ -360,11 +376,13 @@ class QWidgetFileListPanel(FileListPanel):
         if not hasattr(self, '_detail_model') or not hasattr(self, '_detail_view'):
             return
         sel = self._detail_view.selectionModel().selectedRows()
-        self._pending_detail_paths = {
+        paths = {
             path for path in (
                 self._detail_model.data(i, Qt.ItemDataRole.UserRole) for i in sel if i.isValid()
             ) if path
         }
+        if paths:
+            self._pending_detail_paths = paths
 
     def _restore_detail_selection(self):
         paths = getattr(self, '_pending_detail_paths', set())
@@ -395,6 +413,12 @@ class QWidgetFileListPanel(FileListPanel):
                 break
 
     def _on_grid_model_reset(self):
+        if self._view_mode == "Details":
+            # The first reset of an async refresh clears source entries. Keep
+            # the captured paths until the populated scan result arrives.
+            if self._model.rowCount():
+                self._populate_details()
+            return
         self._grid_widget.update_layout(self._model.rowCount(), self._grid_widget.width())
         self._restore_grid_selection()
         self._grid_widget._start_entrance_stagger()
@@ -475,7 +499,8 @@ class QWidgetFileListPanel(FileListPanel):
             self._grid_widget.selection_changed.emit()
             self._grid_widget.update()
 
-    def _on_view_changed(self, mode):
+    def _on_view_changed(self, _index):
+        mode = self._view_mode
         self._view_memory[str(self._current)] = mode
         self._loader.set_size(self._thumb_size)
         is_detail = mode == "Details"
@@ -592,10 +617,17 @@ class QWidgetFileListPanel(FileListPanel):
             return
         rows = sorted(self._thumb_batch)
         self._thumb_batch.clear()
-        self._model.dataChanged.emit(
-            self._model.index(rows[0], 0),
-            self._model.index(rows[-1], 0),
-            [FileSystemModel.RAW_PIXMAP_ROLE])
+        start = prev = rows[0]
+        for row in rows[1:] + [None]:
+            if row is not None and row == prev + 1:
+                prev = row
+                continue
+            self._model.dataChanged.emit(
+                self._model.index(start, 0),
+                self._model.index(prev, 0),
+                [FileSystemModel.RAW_PIXMAP_ROLE])
+            if row is not None:
+                start = prev = row
         self._grid_widget.on_thumb_batch(rows)
 
     def _toast(self, text: str):
@@ -608,9 +640,7 @@ class QWidgetFileListPanel(FileListPanel):
         else:
             self._capture_grid_selection()
         self._model.refresh()
-        if self._view_mode == "Details":
-            self._populate_details()
-        else:
+        if self._view_mode != "Details":
             self._grid_widget.update_layout(self._model.rowCount(), self._grid_widget.width())
             self._load_visible()
         self._hidden_btn.setText("◉" if self._model._show_hidden else "•")
@@ -639,96 +669,8 @@ class QWidgetFileListPanel(FileListPanel):
             self._status.setText(tr("filelist.status_total", total=total, sz="", mode=mode))
 
     def _handle_key(self, event):
-        key = event.key()
-        mods = event.modifiers()
-        ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
-        shift = bool(mods & Qt.KeyboardModifier.ShiftModifier)
-        is_details = self._view_mode == "Details"
-
-        if key == Qt.Key.Key_Delete:
-            if shift:
-                self._delete_selected_permanent()
-            else:
-                self._delete_selected()
-            return True
-        if key == Qt.Key.Key_Backspace:
-            self._go_up()
-            return True
-        if key == Qt.Key.Key_F2:
-            self._inline_rename()
-            return True
-        if key == Qt.Key.Key_Z and ctrl and not shift:
-            self._undo()
-            return True
-        if key == Qt.Key.Key_D and ctrl and not shift:
-            self._duplicate_selected()
-            return True
-        if key == Qt.Key.Key_N and ctrl and shift:
-            self._new_folder()
-            return True
-        if key == Qt.Key.Key_A and ctrl and not shift:
-            if is_details:
-                self._detail_view.selectAll()
-            else:
-                self._grid_widget.select_all()
-            self._update_status()
-            return True
-        if key == Qt.Key.Key_C and ctrl and not shift:
-            self._copy_selected()
-            return True
-        if key == Qt.Key.Key_X and ctrl and not shift:
-            self._cut_selected()
-            return True
-        if key == Qt.Key.Key_V and ctrl and not shift:
-            self._paste()
-            return True
-        if key == Qt.Key.Key_F and ctrl and not shift:
-            self._search.setFocus()
-            self._search.selectAll()
-            return True
-        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            if mods & Qt.KeyboardModifier.AltModifier:
-                paths = self._selected_paths()
-                if paths:
-                    self._show_properties(paths[0])
-                return True
-            if is_details:
-                sel = self._detail_view.selectionModel().selectedRows()
-                if sel:
-                    path = self._detail_model.data(sel[0], Qt.ItemDataRole.UserRole)
-                    if path:
-                        if os.path.isdir(path):
-                            self.navigate_to(path)
-                        else:
-                            self.file_double_clicked.emit(path)
-            else:
-                sel = self._grid_widget.selection_model_rows()
-                if sel:
-                    ent = self._model.entry_at(next(iter(sel)))
-                    if ent:
-                        if ent.is_dir():
-                            self.navigate_to(ent.path)
-                        else:
-                            self.file_double_clicked.emit(ent.path)
-            return True
-        if key == Qt.Key.Key_Escape:
-            if is_details:
-                self._detail_view.clearSelection()
-            else:
-                self._grid_widget.clear_selection()
-            self._search.clear()
-            self._update_status()
-            return True
-        if key == Qt.Key.Key_Y and ctrl and not shift:
-            self._redo()
-            return True
-        if key == Qt.Key.Key_F5:
-            self._do_refresh()
-            return True
-        if key == Qt.Key.Key_H and ctrl and not shift:
-            self._toggle_hidden()
-            return True
-        return False
+        from AssetsManager.panels.file_list._shortcuts import handle_key
+        return handle_key(self, event)
 
     def _copy_selected(self):
         self._copy_to_clipboard()

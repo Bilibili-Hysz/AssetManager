@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QColor
 from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager.widgets.hsv_wheel import HSVWheel, BrightnessSlider
+from AssetsManager import i18n
+tr = i18n.tr
 
 
 class ColorPickerDialog(QDialog):
@@ -19,7 +21,7 @@ class ColorPickerDialog(QDialog):
         super().__init__(parent)
         self._color = initial_color or QColor("#ff6b6b")
         self._updating = False
-        self.setWindowTitle("Color Picker")
+        self.setWindowTitle(tr("colorpicker.title"))
         self.setMinimumSize(scaled_px(400), scaled_px(350))
         self._setup_ui()
         self._update_from_color(self._color)
@@ -41,8 +43,8 @@ class ColorPickerDialog(QDialog):
         # Mode toggle
         mode_row = QHBoxLayout()
         self._mode_group = QButtonGroup(self)
-        self._hsv_mode = QRadioButton("HSV")
-        self._rgb_mode = QRadioButton("RGB")
+        self._hsv_mode = QRadioButton(tr("colorpicker.mode_hsv"))
+        self._rgb_mode = QRadioButton(tr("colorpicker.mode_rgb"))
         self._mode_group.addButton(self._hsv_mode)
         self._mode_group.addButton(self._rgb_mode)
         self._hsv_mode.setChecked(True)
@@ -53,7 +55,7 @@ class ColorPickerDialog(QDialog):
         layout.addLayout(mode_row)
 
         # HSV inputs
-        self._hsv_group = QGroupBox("HSV")
+        self._hsv_group = QGroupBox(tr("colorpicker.group_hsv"))
         hsv_layout = QHBoxLayout(self._hsv_group)
         self._h_spin = self._make_spin(0, 360, "H:")
         self._s_spin = self._make_spin(0, 100, "S:")
@@ -67,7 +69,7 @@ class ColorPickerDialog(QDialog):
         layout.addWidget(self._hsv_group)
 
         # RGB inputs
-        self._rgb_group = QGroupBox("RGB")
+        self._rgb_group = QGroupBox(tr("colorpicker.group_rgb"))
         rgb_layout = QHBoxLayout(self._rgb_group)
         self._r_spin = self._make_spin(0, 255, "R:")
         self._g_spin = self._make_spin(0, 255, "G:")
@@ -83,7 +85,7 @@ class ColorPickerDialog(QDialog):
 
         # HEX + preview
         hex_row = QHBoxLayout()
-        hex_row.addWidget(QLabel("HEX:"))
+        hex_row.addWidget(QLabel(tr("colorpicker.hex_label")))
         self._hex_input = QLineEdit()
         self._hex_input.setMaximumWidth(scaled_px(100))
         self._hex_input.editingFinished.connect(self._on_hex_changed)
@@ -100,9 +102,9 @@ class ColorPickerDialog(QDialog):
         # Buttons
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        ok_btn = QPushButton("OK")
+        ok_btn = QPushButton(tr("colorpicker.ok"))
         ok_btn.clicked.connect(self._on_ok)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(tr("colorpicker.cancel"))
         cancel_btn.clicked.connect(self.reject)
         btn_row.addWidget(ok_btn)
         btn_row.addWidget(cancel_btn)

@@ -40,10 +40,13 @@ except ImportError:
 class MainWindow(LanSharingMixin, QMainWindow):
     def __init__(self):
         super().__init__()
+        from AssetsManager.window_coordinator import WindowCoordinator
+        self._coordinator = WindowCoordinator(self)
         self.setWindowTitle(tr("app.name"))
         self.resize(1200, 800)
         self.setDockNestingEnabled(True)
-        self._bg_cache: tuple = ("", None, None)  # (path, raw, scaled)
+        self._bg_cache: tuple = ("", None, None)  # (path, processed_raw, scaled)
+        self._bg_effects_cache_key: str = ""  # effect:intensity string
         self._bg_dirty = False
         self._bg_resize_timer = QTimer(self)
         self._bg_resize_timer.setSingleShot(True)
@@ -63,13 +66,32 @@ class MainWindow(LanSharingMixin, QMainWindow):
             bootstrap = app.property("bootstrap")
             if bootstrap is not None:
                 return bootstrap.library_service
-        from AssetsManager.application import get_library_service
-        return get_library_service()
+        from AssetsManager.application.library_service import LibraryService
+        from AssetsManager.core.singleton import ThreadSafeSingleton
+        return ThreadSafeSingleton.get(LibraryService)
 
     def _open_library_session(self, path):
         session = self._library_service().open_session(path)
         self._library_session = session
         return session
+
+    def _scoped_services_for_session(self, session):
+        app = QApplication.instance()
+        bootstrap = app.property("bootstrap") if app is not None else None
+        if bootstrap is None:
+            return None
+        return bootstrap.for_library(session)
+
+    def _apply_scoped_services(self, session):
+        scoped = self._scoped_services_for_session(session)
+        if scoped is None:
+            return
+        for panel in (getattr(self, "file_list", None), getattr(self, "info", None)):
+            if _alive(panel) and hasattr(panel, "set_scoped_services"):
+                panel.set_scoped_services(scoped)
+        tag_tree = getattr(self, "tag_tree", None)
+        if _alive(tag_tree) and hasattr(tag_tree, "set_scoped_services"):
+            tag_tree.set_scoped_services(scoped)
 
     def showEvent(self, event):
         """Override to add startup fade-in animation."""
@@ -92,25 +114,50 @@ class MainWindow(LanSharingMixin, QMainWindow):
             path = themes.bg_image()
             opacity = themes.bg_overall_opacity()
             if path and Path(path).is_file():
+                effect = themes.bg_effect()
+                intensity = themes.bg_effect_intensity()
+                effects_key = f"{effect}:{intensity}"
                 # Load raw pixmap once per path change
                 if self._bg_cache[0] != path or not self._bg_cache[1]:
                     pm = QPixmap(path)
-                    self._bg_cache = (path, pm, None) if not pm.isNull() else ("", None, None)
-                raw = self._bg_cache[1]
+                    if pm.isNull():
+                        self._bg_cache = ("", None, None)
+                    else:
+                        processed = self._apply_bg_effects(pm, effect, intensity)
+                        self._bg_cache = (path, processed, None)
+                        self._bg_effects_cache_key = effects_key
+                elif self._bg_effects_cache_key != effects_key:
+                    pm = QPixmap(path)
+                    if not pm.isNull():
+                        processed = self._apply_bg_effects(pm, effect, intensity)
+                        self._bg_cache = (path, processed, None)
+                        self._bg_effects_cache_key = effects_key
+                processed = self._bg_cache[1]
                 scaled = self._bg_cache[2]
                 w, h = self.width(), self.height()
-                if raw and scaled is None and not self._bg_dirty:
-                    # Stable state: re-scale to current window size
-                    scaled = raw.scaled(w, h, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-                    self._bg_cache = (path, raw, scaled)
-                if raw:
+                if processed and scaled is None and not self._bg_dirty:
+                    scaled = processed.scaled(w, h, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+                    self._bg_cache = (self._bg_cache[0], processed, scaled)
+                if processed:
                     p = QPainter(self)
                     p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
                     p.setOpacity(opacity)
-                    src = scaled if scaled else raw
+                    src = scaled if scaled else processed
                     p.drawPixmap((w - src.width()) // 2, (h - src.height()) // 2, src)
                     p.end()
         super().paintEvent(event)
+
+    @staticmethod
+    def _apply_bg_effects(pixmap, effect, intensity):
+        """Apply a single effect to a pixmap."""
+        result = pixmap
+        if effect == "blur" and intensity > 0:
+            from AssetsManager.core.bg_effects import apply_blur
+            result = apply_blur(result, intensity)
+        elif effect == "mosaic" and intensity > 1:
+            from AssetsManager.core.bg_effects import apply_mosaic
+            result = apply_mosaic(result, intensity)
+        return result
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -133,7 +180,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         QApplication.instance().setStyleSheet(themes.stylesheet())
         self._apply_menu_theme()
         from AssetsManager import dock_factory as dk
-        for dock_widget, (title, extra_buttons) in dk._DOCK_TITLES.items():
+        for dock_widget, (i18n_key, title, extra_buttons) in dk._DOCK_TITLES.items():
             bar = dock_widget.titleBarWidget()
             if bar and hasattr(bar, '_is_custom_title'):
                 bar.setStyleSheet(
@@ -341,15 +388,20 @@ class MainWindow(LanSharingMixin, QMainWindow):
     def _on_switch_library(self, path):
         """Switch all panels to a different library root."""
         if self._library_session is not None:
+            old_root = self._library_session.root_str
             self._library_service().close_session(self._library_session)
+            app = QApplication.instance()
+            bootstrap = app.property("bootstrap") if app is not None else None
+            if bootstrap is not None:
+                bootstrap.cleanup_library(old_root)
         if _alive(self.file_list) and hasattr(self.file_list, '_undo_svc'):
             self.file_list._undo_svc.clear()
         session = self._open_library_session(path)
+        self._apply_scoped_services(session)
         if _alive(self.sidebar):
             self.sidebar.navigate_to(session.root_str)
         if _alive(self.file_list):
             self.file_list.navigate_to(session.root_str, set_root=True)
-        bus().library_opened.emit(session.root_str)
 
     def _open_library(self):
         startup = StartupWindow(self)
@@ -550,24 +602,24 @@ class MainWindow(LanSharingMixin, QMainWindow):
     def _show_shortcuts(self):
         from PySide6.QtWidgets import QMessageBox
         lines = [
-            "<b>Global</b>",
-            "Ctrl+Tab — Next workspace tab",
-            "Ctrl+Shift+Tab — Previous workspace tab",
+            f"<b>{tr('shortcuts.group_global')}</b>",
+            f"Ctrl+Tab — {tr('shortcuts.next_tab')}",
+            f"Ctrl+Shift+Tab — {tr('shortcuts.prev_tab')}",
             "",
-            "<b>Sidebar</b>",
-            "Ctrl+F — Focus search / filter",
-            "Ctrl+Shift+F — Add current folder to Favorites",
-            "Escape — Clear search / return to tree",
-            "Delete — Remove selected favorite or recent item",
+            f"<b>{tr('shortcuts.group_sidebar')}</b>",
+            f"Ctrl+F — {tr('shortcuts.sidebar_search')}",
+            f"Ctrl+Shift+F — {tr('shortcuts.sidebar_add_fav')}",
+            f"Escape — {tr('shortcuts.sidebar_clear')}",
+            f"Delete — {tr('shortcuts.sidebar_delete')}",
             "",
-            "<b>File List</b>",
-            "Ctrl+F — Filter files by name",
-            "Ctrl+C — Copy selected file(s)",
-            "Ctrl+X — Cut selected file(s)",
-            "Ctrl+V — Paste file(s)",
-            "Ctrl+Z — Undo last operation",
-            "Delete — Delete selected file(s)",
-            "F2 — Rename selected file",
+            f"<b>{tr('shortcuts.group_filelist')}</b>",
+            f"Ctrl+F — {tr('shortcuts.filelist_filter')}",
+            f"Ctrl+C — {tr('shortcuts.filelist_copy')}",
+            f"Ctrl+X — {tr('shortcuts.filelist_cut')}",
+            f"Ctrl+V — {tr('shortcuts.filelist_paste')}",
+            f"Ctrl+Z — {tr('shortcuts.filelist_undo')}",
+            f"Delete — {tr('shortcuts.filelist_delete')}",
+            f"F2 — {tr('shortcuts.filelist_rename')}",
         ]
         QMessageBox.information(self, tr("shortcuts.title"), "<br>".join(lines))
 
@@ -603,13 +655,14 @@ class MainWindow(LanSharingMixin, QMainWindow):
             return
         for cmd in plugin_ctx.commands():
             if getattr(cmd, 'id', None) == command_id:
-                _log.info("Running plugin command: %s", command_id)
+                plugin_id = getattr(cmd, 'plugin_id', 'unknown')
+                _log.info("Running plugin command: %s (plugin: %s)", command_id, plugin_id)
                 try:
                     handler = getattr(cmd, 'handler', None)
                     if handler and callable(handler):
                         handler()
                 except Exception:
-                    _log.exception("Plugin command failed: %s", command_id)
+                    _log.exception("Plugin command failed: %s (plugin: %s)", command_id, plugin_id)
                 return
 
     # ── Close ───────────────────────────────────────────────────

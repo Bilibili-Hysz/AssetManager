@@ -55,6 +55,7 @@ class FileListGridWidget(QWidget):
 
         self._scroll_y = 0
         self._textures: OrderedDict[int, QPixmap] = OrderedDict()
+        self._texture_dpr = max(1.0, float(self.devicePixelRatioF() or 1.0))
         self._dirty: set[int] = set()
         self._hover_row: int = -1
         self._selection: set[int] = set()
@@ -230,6 +231,11 @@ class FileListGridWidget(QWidget):
             return
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        dpr = max(1.0, float(self.devicePixelRatioF() or 1.0))
+        if dpr != self._texture_dpr:
+            self._texture_dpr = dpr
+            self._textures.clear()
+            self._dirty = set(range(self._model_rows))
         if not themes.bg_enabled():
             p.fillRect(self.rect(), self._clr_panel)
 
@@ -421,10 +427,13 @@ class FileListGridWidget(QWidget):
 
     def _render_item(self, row: int, item_rect: QRect) -> QPixmap | None:
         """Render item to offscreen QPixmap. Selection/hover baked into texture."""
-        tex = QPixmap(item_rect.width(), item_rect.height())
+        dpr = max(1.0, float(self.devicePixelRatioF() or 1.0))
+        tex = QPixmap(int(item_rect.width() * dpr), int(item_rect.height() * dpr))
+        tex.setDevicePixelRatio(dpr)
         tex.fill(Qt.GlobalColor.transparent)
         tp = QPainter(tex)
         tp.setRenderHint(QPainter.RenderHint.Antialiasing)
+        tp.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
         is_dir = self._model.data(self._model.index(row, 0), FileSystemModel.IS_DIR_ROLE)
         pixmap = self._model.data(self._model.index(row, 0), FileSystemModel.RAW_PIXMAP_ROLE)

@@ -48,8 +48,13 @@ def _make_lan_app(tmp_path):
     from AssetsManager.application.auth_service import AuthService
     from AssetsManager.core import database
     from AssetsManager.lan.api import setup_routes
-    from AssetsManager.lan.auth import init_users_table
-    from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY, LAN_APP_KEY
+    from AssetsManager.lan.auth import init_users_table, verify_auth_token
+    from AssetsManager.lan.routes._helpers import (
+        AUTH_SERVICE_APP_KEY,
+        LAN_APP_KEY,
+        get_auth_token,
+        set_request_auth_context,
+    )
 
     library = tmp_path / "library"
     library.mkdir()
@@ -64,7 +69,20 @@ def _make_lan_app(tmp_path):
         conn.commit()
         init_users_table(conn)
 
-        app = web.Application()
+        @web.middleware
+        async def _test_auth_middleware(request, handler):
+            token = get_auth_token(request)
+            if token:
+                lan = request.app[LAN_APP_KEY]
+                if verify_auth_token(token, lan.token_secret):
+                    set_request_auth_context(request, "local_ui", {"username": "local_ui", "role": "admin"})
+                else:
+                    user = request.app[AUTH_SERVICE_APP_KEY].verify_user_token(token)
+                    if user:
+                        set_request_auth_context(request, "user", user)
+            return await handler(request)
+
+        app = web.Application(middlewares=[_test_auth_middleware])
         app[LAN_APP_KEY] = _FakeLan(library, conn, tmp_path / "thumbs")
         app[AUTH_SERVICE_APP_KEY] = AuthService(conn, "test-secret")
         async def _close_db(_app):
@@ -99,6 +117,65 @@ async def _make_client(app):
     client = TestClient(server)
     await client.start_server()
     return client
+
+
+@pytest.mark.anyio
+async def test_security_middleware_enforces_ip_whitelist():
+    from aiohttp import web
+    from AssetsManager.lan.security import IPBlacklist, RateLimiter, create_security_middleware
+
+    async def handler(_request):
+        return web.json_response({"ok": True})
+
+    allowed_app = web.Application(
+        middlewares=[
+            create_security_middleware(
+                RateLimiter(),
+                IPBlacklist(),
+                ip_whitelist=["127.0.0.1"],
+            )
+        ]
+    )
+    allowed_app.router.add_get("/", handler)
+
+    denied_app = web.Application(
+        middlewares=[
+            create_security_middleware(
+                RateLimiter(),
+                IPBlacklist(),
+                ip_whitelist=["10.0.0.1"],
+            )
+        ]
+    )
+    denied_app.router.add_get("/", handler)
+
+    allowed_client = await _make_client(allowed_app)
+    denied_client = await _make_client(denied_app)
+    try:
+        allowed = await allowed_client.get("/")
+        denied = await denied_client.get("/")
+
+        assert allowed.status == 200
+        assert denied.status == 403
+    finally:
+        await allowed_client.close()
+        await denied_client.close()
+
+
+def _local_ui_headers(app):
+    from AssetsManager.lan.utils import get_auth_headers
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    return get_auth_headers(app[LAN_APP_KEY].token_secret)
+
+
+async def _register_user_token(client, username="alice"):
+    resp = await client.post(
+        "/api/auth/register",
+        json={"username": username, "password": "Test@1234"},
+    )
+    assert resp.status == 200
+    return (await resp.json())["token"]
 
 
 @pytest.mark.anyio
@@ -139,6 +216,134 @@ async def test_auth_register_route_returns_user_token(tmp_path):
         await client.close()
 
 
+class TestLanPermissionRegression:
+    @staticmethod
+    def _deny_guest_setting(monkeypatch, key):
+        from AssetsManager.core.settings import AppSettings
+
+        class _Settings:
+            def get(self, name, default=None):
+                if name == key:
+                    return False
+                return default
+
+        monkeypatch.setattr(AppSettings, "instance", classmethod(lambda cls: _Settings()))
+
+    @pytest.mark.anyio
+    async def test_registered_user_cannot_create_share(self, tmp_path):
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("content", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            token = await _register_user_token(client)
+            resp = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "allow_preview": True},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status == 403
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_guest_files_route_requires_browse_permission(self, tmp_path, monkeypatch):
+        self._deny_guest_setting(monkeypatch, "lan_guest_list")
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("content", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            resp = await client.get("/api/files")
+            assert resp.status == 403
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_guest_metadata_routes_require_browse_permission(self, tmp_path, monkeypatch):
+        self._deny_guest_setting(monkeypatch, "lan_guest_list")
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "asset.txt").write_text("content", encoding="utf-8")
+        (library / "project").mkdir()
+
+        client = await _make_client(app)
+        try:
+            for path in (
+                "/api/meta/asset.txt",
+                "/api/search",
+                "/api/home",
+                "/api/tree",
+                "/api/projects",
+                "/api/projects/project",
+            ):
+                resp = await client.get(path)
+                assert resp.status == 403, path
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_guest_download_routes_require_download_permission(self, tmp_path, monkeypatch):
+        self._deny_guest_setting(monkeypatch, "lan_guest_download")
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("content", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            single = await client.get("/api/download/file.txt")
+            assert single.status == 403
+
+            batch = await client.post("/api/download/batch", json={"paths": ["file.txt"]})
+            assert batch.status == 403
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_guest_thumbnail_routes_require_preview_permission(self, tmp_path, monkeypatch):
+        self._deny_guest_setting(monkeypatch, "lan_guest_preview")
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.png").write_bytes(b"not a real image")
+
+        client = await _make_client(app)
+        try:
+            single = await client.get("/api/thumbnails/file.png")
+            assert single.status == 403
+
+            batch = await client.post("/api/thumbnails/batch", json={"paths": ["file.png"]})
+            assert batch.status == 403
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_local_ui_token_can_create_share(self, tmp_path):
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("content", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            resp = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
+            assert resp.status == 200
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_admin_activity_routes_use_service_bundle(self, tmp_path):
+        app, library, conn = _make_lan_app(tmp_path)
+
+        client = await _make_client(app)
+        try:
+            activity = await client.get("/api/activity", headers=_local_ui_headers(app))
+            assert activity.status == 200
+
+            online = await client.get("/api/online-users", headers=_local_ui_headers(app))
+            assert online.status == 200
+        finally:
+            await client.close()
+
+
 def test_api_exports_auth_token_helper():
     from AssetsManager.lan.api import _get_auth_token
 
@@ -150,6 +355,28 @@ def test_api_exports_auth_token_helper():
     assert _get_auth_token(_Request()) == "cookie-token"
 
 
+def test_lan_server_facade_accepts_ip_whitelist(monkeypatch):
+    import AssetsManager.lan as lan
+
+    captured = {}
+
+    class _Impl:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(lan, "_HAS_AIOHTTP", True)
+    monkeypatch.setattr("AssetsManager.lan.server._LanServerImpl", _Impl)
+
+    lan.LanServer(
+        library_root="library",
+        thumbnail_dir="thumbs",
+        db_conn=object(),
+        ip_whitelist=["127.0.0.1"],
+    )
+
+    assert captured["ip_whitelist"] == ["127.0.0.1"]
+
+
 @pytest.mark.anyio
 async def test_download_route_serves_file(tmp_path):
     app, library, conn = _make_lan_app(tmp_path)
@@ -157,7 +384,7 @@ async def test_download_route_serves_file(tmp_path):
 
     client = await _make_client(app)
     try:
-        resp = await client.get("/api/download/asset.txt")
+        resp = await client.get("/api/download/asset.txt", headers=_local_ui_headers(app))
         assert resp.status == 200
         assert await _read_body(resp) == b"download me"
     finally:
@@ -195,20 +422,39 @@ async def test_tags_route_writes_only_library_paths(tmp_path):
 
     client = await _make_client(app)
     try:
-        resp = await client.post("/api/tags", json={"tag": "hero", "file_path": "asset.txt"})
+        unauth = await client.post("/api/tags", json={"tag": "hero", "file_path": "asset.txt"})
+        assert unauth.status == 403
+
+        resp = await client.post(
+            "/api/tags",
+            json={"tag": "hero", "file_path": "asset.txt"},
+            headers=_local_ui_headers(app),
+        )
         assert resp.status == 200
         row = conn.execute(
             "SELECT tag FROM file_tags WHERE file_path=?", (str(target.resolve()),)
         ).fetchone()
         assert row == ("hero",)
 
-        escape_resp = await client.post("/api/tags", json={"tag": "bad", "file_path": "../outside.txt"})
+        escape_resp = await client.post(
+            "/api/tags",
+            json={"tag": "bad", "file_path": "../outside.txt"},
+            headers=_local_ui_headers(app),
+        )
         assert escape_resp.status == 400
 
-        absolute_resp = await client.post("/api/tags", json={"tag": "bad", "file_path": str(outside)})
+        absolute_resp = await client.post(
+            "/api/tags",
+            json={"tag": "bad", "file_path": str(outside)},
+            headers=_local_ui_headers(app),
+        )
         assert absolute_resp.status == 400
 
-        missing_path = await client.post("/api/tags", json={"tag": "bad"})
+        missing_path = await client.post(
+            "/api/tags",
+            json={"tag": "bad"},
+            headers=_local_ui_headers(app),
+        )
         assert missing_path.status == 400
     finally:
         await client.close()
@@ -225,7 +471,11 @@ async def test_share_routes_create_and_download_scoped_file(tmp_path):
 
     client = await _make_client(app)
     try:
-        create = await client.post("/api/shares", json={"paths": ["project"], "allow_preview": True})
+        create = await client.post(
+            "/api/shares",
+            json={"paths": ["project"], "allow_preview": True},
+            headers=_local_ui_headers(app),
+        )
         assert create.status == 200
         share = await create.json()
         share_id = share["id"]
@@ -251,6 +501,7 @@ async def test_share_download_limit_returns_forbidden(tmp_path):
         create = await client.post(
             "/api/shares",
             json={"paths": ["asset.txt"], "max_downloads": 1, "allow_preview": True},
+            headers=_local_ui_headers(app),
         )
         assert create.status == 200
         share_id = (await create.json())["id"]
@@ -270,7 +521,8 @@ async def test_share_download_limit_returns_forbidden(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_share_download_serves_file_even_when_increment_fails(tmp_path, monkeypatch):
+async def test_share_download_rejected_when_increment_fails(tmp_path, monkeypatch):
+    """When increment_download fails (limit reached / not found), 403 is returned."""
     from AssetsManager.application.share_service import ShareService
 
     app, library, conn = _make_lan_app(tmp_path)
@@ -279,15 +531,18 @@ async def test_share_download_serves_file_even_when_increment_fails(tmp_path, mo
 
     client = await _make_client(app)
     try:
-        create = await client.post("/api/shares", json={"paths": ["asset.txt"], "allow_preview": True})
+        create = await client.post(
+            "/api/shares",
+            json={"paths": ["asset.txt"], "allow_preview": True},
+            headers=_local_ui_headers(app),
+        )
         assert create.status == 200
         share_id = (await create.json())["id"]
 
         monkeypatch.setattr(ShareService, "increment_download", lambda _self, _share_id: False)
 
         resp = await client.get(f"/api/shares/{share_id}/download/asset.txt")
-        assert resp.status == 200
-        assert await _read_body(resp) == b"shared asset"
+        assert resp.status == 403  # limit reached / increment failed
 
         row = conn.execute("SELECT download_count FROM share_links WHERE id=?", (share_id,)).fetchone()
         assert row == (0,)
@@ -306,6 +561,7 @@ async def test_share_download_increments_counter_after_successful_response(tmp_p
         create = await client.post(
             "/api/shares",
             json={"paths": ["asset.txt"], "max_downloads": 5, "allow_preview": True},
+            headers=_local_ui_headers(app),
         )
         assert create.status == 200
         share_id = (await create.json())["id"]
@@ -334,6 +590,7 @@ async def test_share_download_limit_prevents_download_when_reached(tmp_path):
         create = await client.post(
             "/api/shares",
             json={"paths": ["asset.txt"], "max_downloads": 1, "allow_preview": True},
+            headers=_local_ui_headers(app),
         )
         assert create.status == 200
         share_id = (await create.json())["id"]
@@ -649,12 +906,45 @@ class TestShareSecurity:
 
         client = await _make_client(app)
         try:
-            create = await client.post("/api/shares", json={"paths": ["public.txt"], "allow_preview": True})
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["public.txt"], "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
             assert create.status == 200
             share_id = (await create.json())["id"]
 
             traversal = await client.get(f"/api/shares/{share_id}/download/../../../secret/data.txt")
             assert traversal.status in (403, 404)
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_share_download_blocks_dotdot_within_share_prefix(self, tmp_path):
+        """A rel_path like project/../public.txt must not escape share scope."""
+        app, library, conn = _make_lan_app(tmp_path)
+        folder = library / "project"
+        folder.mkdir()
+        (folder / "data.txt").write_text("project data", encoding="utf-8")
+        (library / "public.txt").write_text("public data", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["project"], "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
+            assert create.status == 200
+            share_id = (await create.json())["id"]
+
+            # Legitimate access works
+            ok = await client.get(f"/api/shares/{share_id}/download/project/data.txt")
+            assert ok.status == 200
+
+            # dot-dot escapes the share scope even though it starts with "project/"
+            blocked = await client.get(f"/api/shares/{share_id}/download/project/../public.txt")
+            assert blocked.status == 403
         finally:
             await client.close()
 
@@ -665,9 +955,11 @@ class TestShareSecurity:
 
         client = await _make_client(app)
         try:
-            create = await client.post("/api/shares", json={
-                "paths": ["file.txt"], "password": "secret123", "allow_preview": True,
-            })
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
             assert create.status == 200
             share_id = (await create.json())["id"]
 
@@ -686,9 +978,11 @@ class TestShareSecurity:
 
         client = await _make_client(app)
         try:
-            create = await client.post("/api/shares", json={
-                "paths": ["image.png"], "password": "secret123", "allow_preview": True,
-            })
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["image.png"], "password": "secret123", "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
             assert create.status == 200
             share_id = (await create.json())["id"]
 
@@ -720,7 +1014,11 @@ class TestShareSecurity:
 
         client = await _make_client(app)
         try:
-            create = await client.post("/api/shares", json={"paths": ["file.txt"], "allow_preview": True})
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
             assert create.status == 200
             share_id = (await create.json())["id"]
 
@@ -736,13 +1034,30 @@ class TestShareSecurity:
 
         client = await _make_client(app)
         try:
-            create = await client.post("/api/shares", json={"paths": ["file.txt"], "allow_preview": True})
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
             assert create.status == 200
 
             list_resp = await client.get("/api/shares")
-            assert list_resp.status == 401
+            assert list_resp.status == 403
         finally:
             await client.close()
+
+    @pytest.mark.anyio
+    async def test_list_shares_rejects_missing_user_after_permission_check(self, monkeypatch):
+        from AssetsManager.lan.routes import shares
+
+        monkeypatch.setattr(shares, "require_permission", lambda request, permission: True)
+        monkeypatch.setattr(shares, "get_lan", lambda request: object())
+        monkeypatch.setattr(shares, "get_share_service", lambda request: object())
+        monkeypatch.setattr(shares, "get_request_user", lambda request: None)
+
+        response = await shares.handle_list_shares(object())
+
+        assert response.status == 401
 
     @pytest.mark.anyio
     async def test_access_key_auth_sets_admin_context_for_shares(self, tmp_path):
@@ -780,12 +1095,26 @@ class TestShareSecurity:
                         json={"paths": ["file.txt"], "allow_preview": True},
                     )
                     assert create.status == 200
+                    share_id = (await create.json())["id"]
+
+                    create_for_delete = await client.post(
+                        "/api/shares?key=raw-key",
+                        json={"paths": ["file.txt"], "allow_preview": True},
+                    )
+                    assert create_for_delete.status == 200
+                    share_id_for_delete = (await create_for_delete.json())["id"]
 
                     list_resp = await client.get("/api/shares?key=raw-key")
                     assert list_resp.status == 200
                     data = await list_resp.json()
+
+                    unauth_delete = await client.delete(f"/api/shares/{share_id}")
+                    assert unauth_delete.status == 401
+
+                    delete_resp = await client.delete(f"/api/shares/{share_id_for_delete}?key=raw-key")
+                    assert delete_resp.status == 200
                 assert not [w for w in caught if issubclass(w.category, NotAppKeyWarning)]
-                assert len(data["shares"]) == 1
+                assert len(data["shares"]) == 2
             finally:
                 await client.close()
         finally:
@@ -803,7 +1132,11 @@ class TestMiddlewarePrecedenceRegression:
 
         client = await _make_client(app)
         try:
-            create = await client.post("/api/shares", json={"paths": ["file.txt"], "allow_preview": True})
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
             assert create.status == 200
             share_id = (await create.json())["id"]
 
@@ -814,7 +1147,7 @@ class TestMiddlewarePrecedenceRegression:
 
     @pytest.mark.anyio
     async def test_non_get_share_endpoints_require_auth(self, tmp_path):
-        """POST /api/shares/{id}/verify must require auth (not skipped by precedence bug)."""
+        """POST /api/shares/{id}/verify is now public (share links must be accessible)."""
         from AssetsManager.lan.server import _LanServerImpl
         from AssetsManager.lan.auth import hash_password, init_users_table
         from AssetsManager.core import database
@@ -842,10 +1175,10 @@ class TestMiddlewarePrecedenceRegression:
             await client.start_server()
             try:
                 resp = await client.get("/api/shares/nonexistent/info")
-                assert resp.status != 401  # bypassed auth middleware
+                assert resp.status != 401  # bypasses auth middleware (public)
 
                 resp2 = await client.post("/api/shares/nonexistent/verify", json={"password": "x"})
-                assert resp2.status == 401  # blocked by auth middleware
+                assert resp2.status != 401  # also bypasses auth middleware (public — share links accessible without server auth)
             finally:
                 await client.close()
         finally:
@@ -902,9 +1235,11 @@ class TestPasswordHashLeakRegression:
 
         client = await _make_client(app)
         try:
-            create = await client.post("/api/shares", json={
-                "paths": ["secret.txt"], "password": "secret123", "allow_preview": True,
-            })
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["secret.txt"], "password": "secret123", "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
             assert create.status == 200
             share_id = (await create.json())["id"]
 
@@ -935,7 +1270,11 @@ class TestPasswordHashLeakRegression:
 
         client = await _make_client(app)
         try:
-            resp = await client.post("/api/download/batch", json={"paths": ["file.txt"] * 101})
+            resp = await client.post(
+                "/api/download/batch",
+                json={"paths": ["file.txt"] * 101},
+                headers=_local_ui_headers(app),
+            )
             assert resp.status == 400
             data = await resp.json()
             assert "Too many paths" in data["error"]
@@ -963,6 +1302,75 @@ def test_file_response_cleanup_runs_when_write_fails(tmp_path):
     import anyio
     anyio.run(_run)
     assert not os.path.exists(zip_path)
+
+
+@pytest.mark.anyio
+async def test_batch_download_rejects_over_size_limit(tmp_path):
+    app, library, conn = _make_lan_app(tmp_path)
+    from AssetsManager.lan.routes.downloads import MAX_BATCH_DOWNLOAD_BYTES
+    # Create a file larger than the limit
+    big = library / "big.bin"
+    big.write_bytes(b"x" * (MAX_BATCH_DOWNLOAD_BYTES + 1))
+    small = library / "small.txt"
+    small.write_text("ok", encoding="utf-8")
+
+    client = await _make_client(app)
+    try:
+        resp = await client.post(
+            "/api/download/batch",
+            json={"paths": ["big.bin", "small.txt"]},
+            headers=_local_ui_headers(app),
+        )
+        assert resp.status == 413
+        data = await resp.json()
+        assert "Total size exceeds" in data["error"]
+        assert data["total_bytes"] > MAX_BATCH_DOWNLOAD_BYTES
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_directory_download_rejects_over_size_limit(tmp_path, monkeypatch):
+    from AssetsManager.lan.routes import downloads
+
+    app, library, conn = _make_lan_app(tmp_path)
+    folder = library / "folder"
+    folder.mkdir()
+    (folder / "one.txt").write_bytes(b"123456")
+    (folder / "two.txt").write_bytes(b"abcdef")
+    monkeypatch.setattr(downloads, "MAX_BATCH_DOWNLOAD_BYTES", 10)
+
+    client = await _make_client(app)
+    try:
+        resp = await client.get("/api/download/folder", headers=_local_ui_headers(app))
+        assert resp.status == 413
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_batch_directory_download_rejects_over_size_limit(tmp_path, monkeypatch):
+    from AssetsManager.lan.routes import downloads
+
+    app, library, conn = _make_lan_app(tmp_path)
+    folder = library / "folder"
+    folder.mkdir()
+    (folder / "one.txt").write_bytes(b"123456")
+    (folder / "two.txt").write_bytes(b"abcdef")
+    monkeypatch.setattr(downloads, "MAX_BATCH_DOWNLOAD_BYTES", 10)
+
+    client = await _make_client(app)
+    try:
+        resp = await client.post(
+            "/api/download/batch",
+            json={"paths": ["folder"]},
+            headers=_local_ui_headers(app),
+        )
+        assert resp.status == 413
+        data = await resp.json()
+        assert data["total_bytes"] > downloads.MAX_BATCH_DOWNLOAD_BYTES
+    finally:
+        await client.close()
 
 
 class TestThumbnailSecurity:

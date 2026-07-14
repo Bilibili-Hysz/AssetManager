@@ -15,9 +15,7 @@ _root = Path.cwd()
 a = Analysis(
     ['run.py'],
     pathex=[str(_root)],
-    binaries=[
-        (str(_root / 'cloudflared-windows-amd64.exe'), '.'),
-    ],
+    binaries=[],
     datas=[
         (str(_root / 'assets'), 'assets'),
         (str(_root / 'AssetsManager' / 'i18n' / 'en.json'), 'AssetsManager/i18n'),
@@ -42,7 +40,6 @@ a = Analysis(
         'PySide6.QtCore',
         'PySide6.QtGui',
         'PySide6.QtWidgets',
-        'PySide6.QtOpenGLWidgets',
         'shiboken6',
         # LAN sharing — aiohttp + dependencies
         'aiohttp',
@@ -165,6 +162,24 @@ a = Analysis(
         'tkinter', 'unittest', 'test', 'tests',
         'pip', 'pkg_resources', 'distutils',
         'matplotlib', 'pandas',
+        # Qt modules not used by this app
+        'PySide6.QtQuick', 'PySide6.QtQml', 'PySide6.QtPdf',
+        'PySide6.QtOpenGL', 'PySide6.QtOpenGLWidgets',
+        'PySide6.Qt3D', 'PySide6.QtCharts', 'PySide6.QtDataVisualization',
+        'PySide6.QtMultimedia', 'PySide6.QtSvg', 'PySide6.QtSvgWidgets',
+        'PySide6.QtWebEngine', 'PySide6.QtWebEngineWidgets',
+        'PySide6.QtDesigner', 'PySide6.QtHelp', 'PySide6.QtSql',
+        # PIL formats not needed
+        'PIL._avif', 'PIL._avifcp314',
+        'PIL.FitsStubImagePlugin', 'PIL.GbrStubImagePlugin',
+        'PIL.GribStubImagePlugin', 'PIL.Hdf5StubImagePlugin',
+        'PIL.MicStubImagePlugin', 'PIL.MpoStubImagePlugin',
+        'PIL.MspStubImagePlugin', 'PIL.PalmStubImagePlugin',
+        'PIL.PcdStubImagePlugin', 'PIL.PcxStubImagePlugin',
+        'PIL.PixarStubImagePlugin', 'PIL.PsdStubImagePlugin',
+        'PIL.SgiStubImagePlugin', 'PIL.SunStubImagePlugin',
+        'PIL.TgaStubImagePlugin', 'PIL.WebPStubImagePlugin',
+        'PIL.XbmStubImagePlugin', 'PIL.XpmStubImagePlugin',
         # AI tagger deps — user installs ollama separately
         # LAN sharing deps — optional, installed via pip install aiohttp
     ],

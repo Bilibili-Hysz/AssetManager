@@ -20,6 +20,11 @@ class FileOperationResult:
         return not self.errors
 
 
+def _assert_under_root(path: Path, root: str | Path | None) -> None:
+    if root is not None and not Path(path).resolve().is_relative_to(Path(root)):
+        raise ValueError(f'Path {path} is outside library root')
+
+
 class FileOperationService:
     """Filesystem operations shared by desktop actions and future APIs."""
 
@@ -48,6 +53,8 @@ class FileOperationService:
              library_root: str | Path | None = None) -> Path:
         src = Path(source).resolve()
         dst = Path(destination).resolve()
+        _assert_under_root(src, library_root)
+        _assert_under_root(dst, library_root)
         if src == dst:
             return dst
         shutil.move(str(src), str(dst))
@@ -56,12 +63,16 @@ class FileOperationService:
         get_event_bus().publish(FileRenamed(old_path=str(src), new_path=str(dst)))
         return dst
 
-    def copy_to_directory(self, sources: list[str | Path], destination_dir: str | Path) -> FileOperationResult:
+    def copy_to_directory(self, sources: list[str | Path], destination_dir: str | Path,
+                          library_root: str | Path | None = None) -> FileOperationResult:
         changed: list[Path] = []
         errors: list[str] = []
         bus = get_event_bus()
+        root = Path(library_root).resolve() if library_root else None
+        _assert_under_root(Path(destination_dir).resolve(), root)
         for source in sources:
             src = Path(source).resolve()
+            _assert_under_root(src, root)
             try:
                 target = unique_destination(Path(destination_dir).resolve() / src.name).resolve()
                 if src.is_dir():
@@ -79,8 +90,11 @@ class FileOperationService:
         changed: list[Path] = []
         errors: list[str] = []
         bus = get_event_bus()
+        root = Path(library_root).resolve() if library_root else None
+        _assert_under_root(Path(destination_dir).resolve(), root)
         for source in sources:
             src = Path(source).resolve()
+            _assert_under_root(src, root)
             try:
                 target = unique_destination(Path(destination_dir) / src.name).resolve()
                 shutil.move(str(src), str(target))
@@ -102,12 +116,15 @@ class FileOperationService:
         get_event_bus().publish(FileCreated(path=str(target), is_dir=target.is_dir()))
         return target
 
-    def delete_permanent(self, paths: list[str | Path]) -> FileOperationResult:
+    def delete_permanent(self, paths: list[str | Path],
+                         library_root: str | Path | None = None) -> FileOperationResult:
         changed: list[Path] = []
         errors: list[str] = []
         bus = get_event_bus()
+        root = Path(library_root).resolve() if library_root else None
         for path in paths:
             p = Path(path)
+            _assert_under_root(p, root)
             try:
                 is_dir = p.is_dir()
                 if is_dir:

@@ -6,14 +6,18 @@ import re
 import concurrent.futures
 import logging
 import os
+import time
+import threading
 import zipfile
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from aiohttp import web
 
 from AssetsManager.application.asset_service import matches_exclude
+from AssetsManager.core.directory_cache import DirectoryCache
 from AssetsManager.core.format_utils import CATEGORY_MAP, format_size
 from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.lan.path_guard import MissingPathError, PathEscapeError, PathGuard
@@ -29,7 +33,48 @@ AUTH_KIND_REQUEST_KEY = web.RequestKey("auth_kind", str)
 
 _format_size = format_size
 
-_SANITIZE_RE = re.compile(r'[\x00-\x1f\x7f/\\]')
+ROLE_ADMIN = "admin"
+ROLE_USER = "user"
+ROLE_GUEST = "guest"
+
+_SANITIZE_RE = re.compile(r'[\x00-\x1f\x7f"\\/]')
+
+
+class ActivityLog:
+    def __init__(self, max_entries=100):
+        self._entries = deque(maxlen=max_entries)
+        self._lock = threading.Lock()
+
+    def add(self, user, action, detail=""):
+        with self._lock:
+            self._entries.append({
+                "time": time.time(),
+                "user": user or "guest",
+                "action": action,
+                "detail": detail,
+            })
+
+    def recent(self, count=10):
+        with self._lock:
+            return list(self._entries)[-count:]
+
+
+class OnlineUsers:
+    def __init__(self):
+        self._users = {}
+        self._lock = threading.Lock()
+
+    def connect(self, user_id, username, ip):
+        with self._lock:
+            self._users[user_id] = {"username": username, "ip": ip, "connected_at": time.time()}
+
+    def disconnect(self, user_id):
+        with self._lock:
+            self._users.pop(user_id, None)
+
+    def list_all(self):
+        with self._lock:
+            return [{"user_id": k, **v} for k, v in self._users.items()]
 
 
 def sanitize_filename(name: str) -> str:
@@ -47,6 +92,8 @@ def sanitize_filename(name: str) -> str:
 
 
 __all__ = [
+    "ActivityLog",
+    "OnlineUsers",
     "CATEGORY_MAP",
     "IMAGE_EXTS",
     "AUTH_SERVICE_APP_KEY",
@@ -54,11 +101,15 @@ __all__ = [
     "AUTH_USER_REQUEST_KEY",
     "LAN_APP_KEY",
     "LanScopedServices",
+    "ROLE_ADMIN",
+    "ROLE_GUEST",
+    "ROLE_USER",
     "_format_size",
     "build_zip_async",
     "build_zip_sync",
     "batch_cached_stats",
     "find_first_image",
+    "get_asset_service",
     "get_auth_service",
     "get_auth_token",
     "get_lan",
@@ -66,9 +117,16 @@ __all__ = [
     "get_project_service",
     "get_request_auth_kind",
     "get_request_user",
+    "get_search_service",
     "get_services",
+    "get_share_service",
     "get_tag_service",
+    "get_thumbnail_service",
+    "get_user_permissions",
     "matches_exclude",
+    "require_admin",
+    "require_permission",
+    "require_role",
     "sanitize_filename",
     "set_request_auth_context",
     "set_auth_cookie",
@@ -90,22 +148,35 @@ class LanScopedServices:
     metadata_service: Any
     project_service: Any
     tag_service: Any
+    search_service: Any
+    thumbnail_service: Any
+    asset_service: Any
+    share_service: Any
+    activity_log: Any = field(default_factory=ActivityLog)
+    online_users: Any = field(default_factory=OnlineUsers)
 
 
 def _build_lan_services(lan) -> LanScopedServices:
     """Build a LanScopedServices bundle from a LAN server instance."""
     from AssetsManager.application import MetadataService, ProjectService, TagService
+    from AssetsManager.application import SearchService, ThumbnailService, AssetService
     from AssetsManager.application.auth_service import AuthService
+    from AssetsManager.application.share_service import ShareService
 
     provider = lan.connection_for
     auth_service = getattr(lan, "_auth_service", None)
     if auth_service is None:
         auth_service = AuthService(lan.db_conn, lan.token_secret)
+    share_service = ShareService(auth_service.db_conn, lan.token_secret)
     return LanScopedServices(
         auth_service=auth_service,
         metadata_service=MetadataService(connection_provider=provider),
         project_service=ProjectService(connection_provider=provider),
         tag_service=TagService(connection_provider=provider),
+        search_service=SearchService(),
+        thumbnail_service=ThumbnailService(),
+        asset_service=AssetService(directory_cache=DirectoryCache(lan.db_conn)),
+        share_service=share_service,
     )
 
 
@@ -124,6 +195,50 @@ def get_request_user(request) -> dict[str, Any] | None:
 
 def get_request_auth_kind(request) -> str | None:
     return request.get(AUTH_KIND_REQUEST_KEY)
+
+
+def require_role(request, *roles):
+    """Return user dict if user has one of the required roles, else None."""
+    user = get_request_user(request)
+    if not user:
+        return None
+    if user.get("role") in roles:
+        return user
+    return None
+
+
+def require_admin(request):
+    """Return user dict if admin, else None."""
+    return require_role(request, ROLE_ADMIN)
+
+
+def require_permission(request, permission: str) -> bool:
+    """Return True when the current request user has a named LAN permission."""
+    return bool(get_user_permissions(get_request_user(request)).get(permission, False))
+
+
+def get_user_permissions(user):
+    """Return permission dict for a user role, respecting guest settings."""
+    role = user.get("role", ROLE_GUEST) if user else ROLE_GUEST
+    if role == ROLE_ADMIN:
+        return {"browse": True, "download": True, "upload": True, "manage_links": True, "manage_users": True, "settings": True, "preview": True}
+    if role == ROLE_USER:
+        return {"browse": True, "download": True, "upload": False, "manage_links": False, "manage_users": False, "settings": False, "preview": True}
+    # Guest — read from settings
+    try:
+        from AssetsManager.core.settings import AppSettings
+        s = AppSettings.instance()
+        return {
+            "browse": s.get("lan_guest_list", True),
+            "download": s.get("lan_guest_download", False),
+            "upload": False,
+            "manage_links": False,
+            "manage_users": False,
+            "settings": False,
+            "preview": s.get("lan_guest_preview", True),
+        }
+    except Exception:
+        return {"browse": True, "download": False, "upload": False, "manage_links": False, "manage_users": False, "settings": False, "preview": True}
 
 
 def get_services(request) -> LanScopedServices:
@@ -150,6 +265,22 @@ def get_project_service(request):
 
 def get_tag_service(request):
     return get_services(request).tag_service
+
+
+def get_share_service(request):
+    return get_services(request).share_service
+
+
+def get_search_service(request):
+    return get_services(request).search_service
+
+
+def get_thumbnail_service(request):
+    return get_services(request).thumbnail_service
+
+
+def get_asset_service(request):
+    return get_services(request).asset_service
 
 
 def validate_path(lan, rel_path: str) -> Path:
@@ -181,13 +312,27 @@ def get_auth_token(request) -> str:
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         return auth_header[7:]
-    # Accept both ?token= and ?key= for access key compatibility.
-    # Note: query parameters may appear in server logs, browser history,
-    # and HTTP referer headers. Prefer Authorization: Bearer header.
+    # ── DEPRECATED: Query-parameter auth (?token=, ?key=) ──
+    # These leak credentials into server logs, browser history, and HTTP
+    # referer headers.  Prefer the Authorization: Bearer header or the
+    # lan_token cookie.
     token = request.query.get("token", "")
     if token:
+        _log.warning(
+            "DEPRECATED: Query-parameter auth via ?token= is deprecated "
+            "and will be removed in a future release. "
+            "Use Authorization: Bearer header instead."
+        )
         return token
-    return request.query.get("key", "")
+    token = request.query.get("key", "")
+    if token:
+        _log.warning(
+            "DEPRECATED: Query-parameter auth via ?key= is deprecated "
+            "and will be removed in a future release. "
+            "Use Authorization: Bearer header instead."
+        )
+        return token
+    return ""
 
 
 def find_first_image(dir_path: Path) -> str | None:
@@ -226,7 +371,7 @@ def build_zip_sync(target_paths: list[tuple[Path, str | None]], zip_path: str) -
                             try:
                                 zf.write(fp, arc)
                             except OSError:
-                                pass
+                                _log.warning("Failed to add file to ZIP: %s", fp)
         return zip_path
     except Exception:
         _log.exception("Failed to create ZIP at %s", zip_path)

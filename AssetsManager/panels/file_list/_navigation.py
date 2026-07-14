@@ -82,10 +82,7 @@ class NavigationMixin:
         self._model.set_directory(str(p))
         if hasattr(self, '_first_image_cache'):
             self._first_image_cache.clear()
-        saved_mode = self._view_memory.get(str(p))
-        if saved_mode and saved_mode != self._view_mode:
-            self._view_combo.setCurrentText(saved_mode)
-        elif self._view_mode == "Details":
+        if not self._restore_view_mode(str(p)) and self._view_mode == "Details":
             self._populate_details()
         self._render_bc()
         self._update_status()
@@ -110,6 +107,7 @@ class NavigationMixin:
             self._forward_list.append(str(self._current))
             self._current = prev
             self._model.set_directory(str(prev))
+            self._restore_view_mode(str(prev))
             self._render_bc()
             if self._view_mode == "Details":
                 self._populate_details()
@@ -126,6 +124,7 @@ class NavigationMixin:
             self._history.append(str(self._current))
             self._current = nxt
             self._model.set_directory(str(nxt))
+            self._restore_view_mode(str(nxt))
             self._render_bc()
             if self._view_mode == "Details":
                 self._populate_details()
@@ -146,6 +145,7 @@ class NavigationMixin:
         self._forward_list.clear()
         self._current = parent
         self._model.set_directory(str(parent))
+        self._restore_view_mode(str(parent))
         self._render_bc()
         if self._view_mode == "Details":
             self._populate_details()
@@ -154,6 +154,16 @@ class NavigationMixin:
         self.folder_entered.emit(str(parent))
         bus().directory_changed.emit(str(parent))
         self._load_visible()
+
+    def _restore_view_mode(self, path: str) -> bool:
+        saved_mode = self._view_memory.get(path)
+        if not saved_mode or saved_mode == self._view_mode:
+            return False
+        index = self._view_combo.findData(saved_mode)
+        if index < 0:
+            return False
+        self._view_combo.setCurrentIndex(index)
+        return True
 
     # ── Breadcrumb ───────────────────────────────────────────────
 

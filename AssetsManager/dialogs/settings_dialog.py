@@ -5,8 +5,8 @@ Inherits TabbedDialog for consistent dark theme and widget factories.
 from PySide6.QtCore import Qt, Signal, QObject
 from PySide6.QtWidgets import (
     QMessageBox, QProgressBar, QVBoxLayout, QHBoxLayout, QWidget,
-    QRadioButton, QFrame, QButtonGroup, QFileDialog, QSlider,
-    QListWidget, QListWidgetItem, QInputDialog,
+    QRadioButton, QFrame, QPushButton, QFileDialog, QSlider,
+    QInputDialog,
 )
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager.core.settings import AppSettings
@@ -67,7 +67,7 @@ class SettingsDialog(TabbedDialog):
         layout.addWidget(self.make_heading(tr("settings.background")))
         self._bg_enabled_cb = self.make_checkbox(tr("settings.bg_enabled"),
             themes.bg_enabled())
-        self._bg_enabled_cb.clicked.connect(self._on_bg_setting_changed)
+        self._bg_enabled_cb.toggled.connect(self._on_bg_setting_changed)
         layout.addWidget(self._bg_enabled_cb)
 
         path_row, self._bg_path_edit = self.make_browse_row(
@@ -75,6 +75,7 @@ class SettingsDialog(TabbedDialog):
         current_path = themes.bg_image()
         if current_path:
             self._bg_path_edit.setText(current_path)
+        self._bg_path_edit.textChanged.connect(self._on_bg_setting_changed)
         layout.addLayout(path_row)
 
         self._bg_panel_slider = self._make_pct_slider(themes.bg_panel_opacity())
@@ -85,6 +86,29 @@ class SettingsDialog(TabbedDialog):
         self._bg_header_slider.valueChanged.connect(self._on_bg_setting_changed)
         layout.addLayout(self.make_labeled_row(tr("settings.bg_header_opacity"), self._bg_header_slider))
 
+        # ── Image Effects ──────────────────────────────
+
+        layout.addWidget(self.make_heading(tr("settings.bg_effects")))
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(scaled_px(8))
+        current_effect = themes.bg_effect()
+        effect_label = {"none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"), "mosaic": tr("settings.bg_mosaic")}.get(current_effect, tr("settings.bg_effect_none"))
+        self._effect_btn = QPushButton(effect_label + " \u25be")
+        self._effect_btn.setMinimumWidth(scaled_px(120))
+        self._effect_btn.clicked.connect(self._on_effect_menu)
+        btn_row.addWidget(self._effect_btn)
+
+        self._effect_intensity = QSlider(Qt.Orientation.Horizontal)
+        self._effect_intensity.setRange(1, 50)
+        self._effect_intensity.setValue(themes.bg_effect_intensity())
+        self._effect_intensity.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self._effect_intensity.setTickInterval(5)
+        self._effect_intensity.valueChanged.connect(self._on_bg_setting_changed)
+        btn_row.addWidget(self._effect_intensity, 1)
+        layout.addLayout(btn_row)
+        self._current_effect = current_effect
+
         clear_btn = self.make_secondary_btn(tr("settings.bg_clear"), self._clear_bg)
         layout.addWidget(clear_btn)
 
@@ -93,99 +117,233 @@ class SettingsDialog(TabbedDialog):
 
     def _setup_theme_section(self, layout):
         from AssetsManager.core.ui_scale import scaled_px
-        from AssetsManager.core.themes import _get_loader
-
-        loader = _get_loader()
-        groups = loader.list_themes()
 
         layout.addWidget(self.make_heading(tr("settings.theme")))
 
-        # Section 1: Appearance Mode
-        mode_group = self.make_groupbox(tr("settings.appearance_mode"))
-        mode_layout = QVBoxLayout(mode_group)
-        mode_layout.setSpacing(scaled_px(2))
-        mode_layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(8))
-
-        self._mode_btn_group = QButtonGroup(self)
-        self._mode_dark = QRadioButton(tr("settings.dark_mode"))
-        self._mode_light = QRadioButton(tr("settings.light_mode"))
-        self._mode_system = QRadioButton(tr("settings.follow_system"))
-
-        self._mode_btn_group.addButton(self._mode_dark)
-        self._mode_btn_group.addButton(self._mode_light)
-        self._mode_btn_group.addButton(self._mode_system)
-
-        mode_layout.addWidget(self._mode_dark)
-        mode_layout.addWidget(self._mode_light)
-        mode_layout.addWidget(self._mode_system)
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(scaled_px(8))
 
         current_mode = AppSettings.instance().get("appearance_mode", "dark")
-        if current_mode == "light":
-            self._mode_light.setChecked(True)
-        elif current_mode == "system":
-            self._mode_system.setChecked(True)
-        else:
-            self._mode_dark.setChecked(True)
-
-        self._mode_btn_group.buttonClicked.connect(self._on_appearance_mode_changed)
-        layout.addWidget(mode_group)
-
-        # Section 2: Theme Selection
-        theme_group = self.make_groupbox(tr("settings.theme"))
-        theme_layout = QVBoxLayout(theme_group)
-        theme_layout.setSpacing(scaled_px(4))
-        theme_layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(8))
-
-        self._theme_list = QListWidget()
-        self._theme_list.setMinimumHeight(scaled_px(160))
-        from PySide6.QtCore import QSize
-        self._theme_list.setIconSize(QSize(scaled_px(12), scaled_px(12)))
-
-        # Populate with color swatches
-        self._populate_theme_list(groups)
+        mode_text = tr("settings.dark_mode") if current_mode == "dark" else tr("settings.light_mode")
+        self._mode_btn = QPushButton(mode_text + " \u25be")
+        self._mode_btn.setMinimumWidth(scaled_px(100))
+        self._mode_btn.clicked.connect(self._on_mode_menu_requested)
+        btn_row.addWidget(self._mode_btn)
 
         current_theme = themes.name()
-        for i in range(self._theme_list.count()):
-            item = self._theme_list.item(i)
-            if item and item.data(Qt.ItemDataRole.UserRole) == current_theme:
-                self._theme_list.setCurrentItem(item)
-                break
+        self._theme_btn = QPushButton(current_theme + " \u25be")
+        self._theme_btn.setMinimumWidth(scaled_px(160))
+        self._theme_btn.clicked.connect(self._on_theme_menu_requested)
+        btn_row.addWidget(self._theme_btn)
 
-        self._theme_list.currentItemChanged.connect(self._on_theme_selected)
-        theme_layout.addWidget(self._theme_list)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
 
-        preview_btn = self.make_secondary_btn(tr("settings.theme_preview"), self._on_preview_theme)
-        theme_layout.addWidget(preview_btn)
+        self._current_mode = current_mode
 
-        layout.addWidget(theme_group)
+    def _on_mode_menu_requested(self):
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        dark_action = menu.addAction(tr("settings.dark_mode"))
+        light_action = menu.addAction(tr("settings.light_mode"))
+        custom_action = menu.addAction(tr("settings.custom_themes"))
+        chosen = menu.exec(self._mode_btn.mapToGlobal(self._mode_btn.rect().bottomLeft()))
+        if chosen == dark_action:
+            self._apply_mode("dark")
+        elif chosen == light_action:
+            self._apply_mode("light")
+        elif chosen == custom_action:
+            self._apply_mode("custom")
 
-        # Section 3: Custom Themes
-        custom_group = self.make_groupbox(tr("settings.custom_themes"))
-        custom_layout = QVBoxLayout(custom_group)
-        custom_layout.setSpacing(scaled_px(4))
-        custom_layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(8))
+    def _apply_mode(self, mode: str):
+        self._current_mode = mode
+        mode_label = {"dark": tr("settings.dark_mode"), "light": tr("settings.light_mode"), "custom": tr("settings.custom_themes")}.get(mode, mode)
+        self._mode_btn.setText(mode_label + " \u25be")
+        AppSettings.instance().set("appearance_mode", mode)
+        AppSettings.instance().save()
+        from AssetsManager.core.themes import _get_loader
+        loader = _get_loader()
+        groups = loader.list_themes()
+        if mode == "custom":
+            theme_list = groups.get("User", [])
+        else:
+            group_name = "Dark" if mode == "dark" else "Light"
+            theme_list = groups.get(group_name, [])
+        if theme_list:
+            first = theme_list[0].get("name", "")
+            if first:
+                themes.set_theme(first)
+                self._theme_btn.setText(first + " \u25be")
 
-        self._custom_list = QListWidget()
-        self._custom_list.setMinimumHeight(scaled_px(80))
+    def _on_theme_menu_requested(self):
+        from PySide6.QtWidgets import QMenu
+        from PySide6.QtGui import QPixmap, QColor, QIcon
+        from AssetsManager.core.themes import _get_loader, theme_mode_for_base
+        from AssetsManager.core.ui_scale import scaled_px
 
-        user_themes = groups.get("User", [])
-        for theme_data in user_themes:
-            name = theme_data.get("name", "")
-            self._add_custom_theme_item(name)
+        loader = _get_loader()
+        groups = loader.list_themes()
+        menu = QMenu(self)
 
-        custom_layout.addWidget(self._custom_list)
+        current_theme = themes.name()
+        sz = scaled_px(12)
 
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(scaled_px(6))
-        new_btn = self.make_secondary_btn(tr("settings.new_theme"), self._on_new_theme)
-        export_btn = self.make_secondary_btn(tr("settings.export_theme"), self._on_export_theme)
-        delete_btn = self.make_secondary_btn("Delete", self._on_delete_theme)
-        btn_row.addWidget(new_btn)
-        btn_row.addWidget(export_btn)
-        btn_row.addWidget(delete_btn)
-        custom_layout.addLayout(btn_row)
+        def _make_icon(accent):
+            pixmap = QPixmap(sz, sz)
+            pixmap.fill(QColor(accent))
+            return QIcon(pixmap)
 
-        layout.addWidget(custom_group)
+        if self._current_mode == "custom":
+            # Custom mode: show only User themes
+            user_themes = groups.get("User", [])
+            for td in user_themes:
+                name = td.get("name", "")
+                accent = td.get("colors", {}).get("accent", "#888")
+                action = menu.addAction(_make_icon(accent), name)
+                action.setData(name)
+                if name == current_theme:
+                    action.setCheckable(True)
+                    action.setChecked(True)
+        else:
+            group_name = "Dark" if self._current_mode == "dark" else "Light"
+            theme_list = groups.get(group_name, [])
+            # Built-in themes
+            for td in theme_list:
+                name = td.get("name", "")
+                accent = td.get("colors", {}).get("accent", "#888")
+                action = menu.addAction(_make_icon(accent), name)
+                action.setData(name)
+                if name == current_theme:
+                    action.setCheckable(True)
+                    action.setChecked(True)
+
+            # Custom themes for current mode
+            user_themes = groups.get("User", [])
+            user_in_mode = [
+                td for td in user_themes
+                if theme_mode_for_base(td.get("colors", {}).get("base", "#1a1a1a")) == self._current_mode
+            ]
+            if user_in_mode:
+                menu.addSeparator()
+                for td in user_in_mode:
+                    name = td.get("name", "")
+                    accent = td.get("colors", {}).get("accent", "#888")
+                    action = menu.addAction(_make_icon(accent), name)
+                    action.setData(name)
+                    if name == current_theme:
+                        action.setCheckable(True)
+                        action.setChecked(True)
+
+        # Action items
+        menu.addSeparator()
+        new_action = menu.addAction(tr("settings.new_theme"))
+        edit_action = menu.addAction(tr("settings.theme_preview"))
+        import_action = menu.addAction(tr("settings.import_theme"))
+        delete_action = menu.addAction(tr("settings.delete_theme"))
+
+        is_custom = any(td.get("name") == current_theme for td in user_themes)
+        edit_action.setEnabled(is_custom)
+        delete_action.setEnabled(is_custom)
+
+        chosen = menu.exec(self._theme_btn.mapToGlobal(self._theme_btn.rect().bottomLeft()))
+        if not chosen:
+            return
+
+        chosen_name = chosen.data()
+        if chosen_name:
+            themes.set_theme(chosen_name)
+            self._theme_btn.setText(chosen_name + " \u25be")
+        elif chosen == new_action:
+            self._on_new_custom_theme_btn()
+        elif chosen == edit_action:
+            self._on_preview_theme()
+        elif chosen == import_action:
+            self._import_theme()
+        elif chosen == delete_action:
+            self._delete_custom_theme_btn()
+
+    def _on_new_custom_theme_btn(self):
+        from AssetsManager.core.themes import _get_loader
+        loader = _get_loader()
+
+        name, ok = QInputDialog.getText(self, tr("settings.new_theme"), tr("settings.theme_name"))
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+
+        groups = loader.list_themes()
+        all_themes = []
+        for g in ("Dark", "Light"):
+            for td in groups.get(g, []):
+                all_themes.append(td.get("name", ""))
+        if not all_themes:
+            return
+
+        base, ok = QInputDialog.getItem(
+            self, tr("settings.base_theme"), tr("settings.select_base"), all_themes, 0, False)
+        if not ok:
+            return
+
+        if loader.create_custom_theme(name, base):
+            themes.reload_themes()
+            themes.set_theme(name)
+            self._theme_btn.setText(name + " \u25be")
+        else:
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.theme_exists"))
+
+    def _on_preview_theme(self):
+        from AssetsManager.dialogs.theme_preview_dialog import ThemePreviewDialog
+        dlg = ThemePreviewDialog(self)
+        dlg.exec()
+
+    def _import_theme(self):
+        import json
+        import shutil
+        from AssetsManager.core.path_resolver import themes_dir
+        from AssetsManager.core.themes import _get_loader, theme_mode_for_base
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, tr("settings.import_theme"), "",
+            "JSON Files (*.json);;All Files (*)")
+        if not path:
+            return
+        try:
+            data = json.loads(open(path, encoding="utf-8").read())
+            name = data.get("name", "")
+            if not name:
+                QMessageBox.warning(self, tr("dialog.error"), tr("settings.theme_no_name"))
+                return
+            loader = _get_loader()
+            if loader.get_theme(name):
+                QMessageBox.warning(self, tr("dialog.error"), tr("settings.theme_exists"))
+                return
+            base = data.get("colors", {}).get("base", "#1a1a1a")
+            mode = theme_mode_for_base(base)
+            prefix = "D_" if mode == "dark" else "L_"
+            dest = themes_dir() / f"{prefix}{name.replace(' ', '_')}.json"
+            shutil.copy2(path, dest)
+            themes.reload_themes()
+            themes.set_theme(name)
+            self._theme_btn.setText(name + " \u25be")
+        except Exception as e:
+            QMessageBox.warning(self, tr("dialog.error"), str(e))
+
+    def _delete_custom_theme_btn(self):
+        from PySide6.QtWidgets import QMessageBox
+        from AssetsManager.core.themes import _get_loader
+        current = themes.name()
+        loader = _get_loader()
+        if loader.delete_custom_theme(current):
+            themes.reload_themes()
+            groups = loader.list_themes()
+            group_name = "Dark" if self._current_mode == "dark" else "Light"
+            theme_list = groups.get(group_name, [])
+            if theme_list:
+                first = theme_list[0].get("name", "")
+                themes.set_theme(first)
+                self._theme_btn.setText(first + " \u25be")
+        else:
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.cannot_delete_builtin"))
 
     def _make_pct_slider(self, start_value):
         slider = QSlider(Qt.Orientation.Horizontal)
@@ -198,7 +356,7 @@ class SettingsDialog(TabbedDialog):
     def _browse_bg_image(self):
         path, _ = QFileDialog.getOpenFileName(
             self, tr("settings.bg_browse_title"), "",
-            "Images (*.png *.jpg *.jpeg *.bmp *.gif *.webp)")
+            "Media Files (*.png *.jpg *.jpeg *.bmp *.gif *.webp *.mp4 *.webm *.avi);;Images (*.png *.jpg *.jpeg *.bmp *.gif *.webp);;Videos (*.mp4 *.webm *.avi)")
         if path:
             self._bg_path_edit.setText(path)
             self._on_bg_setting_changed()
@@ -214,11 +372,35 @@ class SettingsDialog(TabbedDialog):
         s.set("bg_image", self._bg_path_edit.text())
         s.set("bg_panel_opacity", self._bg_panel_slider.value() / 100.0)
         s.set("bg_header_opacity", self._bg_header_slider.value() / 100.0)
+        s.set("bg_effect", self._current_effect)
+        s.set("bg_effect_intensity", self._effect_intensity.value())
         s.save()
         themes.invalidate_cache()
         parent = self.parent()
         if parent and hasattr(parent, '_on_bg_style_changed'):
-            parent._on_bg_style_changed()
+            try:
+                parent._on_bg_style_changed()
+            except Exception:
+                pass
+
+    def _on_effect_menu(self):
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        none_action = menu.addAction(tr("settings.bg_effect_none"))
+        blur_action = menu.addAction(tr("settings.bg_blur"))
+        mosaic_action = menu.addAction(tr("settings.bg_mosaic"))
+        chosen = menu.exec(self._effect_btn.mapToGlobal(self._effect_btn.rect().bottomLeft()))
+        if chosen == none_action:
+            self._current_effect = "none"
+        elif chosen == blur_action:
+            self._current_effect = "blur"
+        elif chosen == mosaic_action:
+            self._current_effect = "mosaic"
+        else:
+            return
+        label = {"none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"), "mosaic": tr("settings.bg_mosaic")}.get(self._current_effect, tr("settings.bg_effect_none"))
+        self._effect_btn.setText(label + " \u25be")
+        self._on_bg_setting_changed()
 
     # ── Tab 2: General ────────────────────────────────────
 
@@ -294,175 +476,6 @@ class SettingsDialog(TabbedDialog):
         layout.addWidget(cache_group)
         layout.addStretch()
         self._add_tab(tab, "  " + tr("settings.thumbnails") + "  ", scrollable=True)
-
-    # ── Handlers ─────────────────────────────────────────
-
-    def _populate_theme_list(self, groups, filter_mode=None):
-        """Populate theme list with color swatches, optionally filtered by mode."""
-        from PySide6.QtGui import QPixmap, QPainter, QColor
-        from AssetsManager.core.ui_scale import scaled_px
-
-        self._theme_list.clear()
-
-        for group_name in ("Dark", "Light"):
-            themes_data = groups.get(group_name, [])
-            if not themes_data:
-                continue
-
-            # Filter by mode if specified
-            if filter_mode == "dark" and group_name == "Light":
-                continue
-            if filter_mode == "light" and group_name == "Dark":
-                continue
-
-            # Header
-            header_text = tr("settings.dark_mode") if group_name == "Dark" else tr("settings.light_mode")
-            header = QListWidgetItem(header_text)
-            header.setFlags(Qt.ItemFlag.NoItemFlags)
-            header.setData(Qt.ItemDataRole.UserRole, "__header__")
-            f = header.font()
-            f.setBold(True)
-            header.setFont(f)
-            self._theme_list.addItem(header)
-
-            for theme_data in themes_data:
-                name = theme_data.get("name", "")
-                accent = theme_data.get("colors", {}).get("accent", "#888888")
-
-                # Create color swatch icon
-                sz = scaled_px(12)
-                pixmap = QPixmap(sz, sz)
-                pixmap.fill(QColor(accent))
-                painter = QPainter(pixmap)
-                painter.setPen(QColor(accent).darker(120))
-                painter.drawRoundedRect(0, 0, sz - 1, sz - 1, 3, 3)
-                painter.end()
-
-                from PySide6.QtGui import QIcon
-                item = QListWidgetItem(QIcon(pixmap), f"  {name}")
-                item.setData(Qt.ItemDataRole.UserRole, name)
-                self._theme_list.addItem(item)
-
-    def _on_appearance_mode_changed(self, btn):
-        if btn == self._mode_dark:
-            mode = "dark"
-        elif btn == self._mode_light:
-            mode = "light"
-        else:
-            mode = "system"
-        AppSettings.instance().set("appearance_mode", mode)
-        AppSettings.instance().save()
-
-        # Filter theme list by selected mode
-        from AssetsManager.core.themes import _get_loader
-        loader = _get_loader()
-        groups = loader.list_themes()
-        filter_mode = mode if mode != "system" else None
-        self._populate_theme_list(groups, filter_mode=filter_mode)
-
-        # Auto-select first theme in filtered list if current is not visible
-        current_theme = themes.name()
-        found = False
-        for i in range(self._theme_list.count()):
-            item = self._theme_list.item(i)
-            if item and item.data(Qt.ItemDataRole.UserRole) == current_theme:
-                self._theme_list.setCurrentItem(item)
-                found = True
-                break
-        if not found and self._theme_list.count() > 0:
-            # Select first non-header item
-            for i in range(self._theme_list.count()):
-                item = self._theme_list.item(i)
-                if item and item.data(Qt.ItemDataRole.UserRole) != "__header__":
-                    self._theme_list.setCurrentItem(item)
-                    break
-
-    def _on_theme_selected(self, current, _previous):
-        if current is None:
-            return
-        name = current.data(Qt.ItemDataRole.UserRole)
-        if name and name != "__header__":
-            themes.set_theme(name)
-
-    def _on_preview_theme(self):
-        from AssetsManager.dialogs.theme_preview_dialog import ThemePreviewDialog
-        dlg = ThemePreviewDialog(self)
-        dlg.exec()
-
-    def _on_new_theme(self):
-        from AssetsManager.core.themes import _get_loader
-        loader = _get_loader()
-
-        name, ok = QInputDialog.getText(self, tr("settings.new_theme"), tr("settings.theme_name"))
-        if not ok or not name.strip():
-            return
-
-        name = name.strip()
-        groups = loader.list_themes()
-        all_themes = []
-        for theme_data in groups.get("Dark", []):
-            all_themes.append(theme_data.get("name", ""))
-        for theme_data in groups.get("Light", []):
-            all_themes.append(theme_data.get("name", ""))
-
-        if not all_themes:
-            return
-
-        base, ok = QInputDialog.getItem(self, tr("settings.base_theme"), tr("settings.select_base"), all_themes, 0, False)
-        if not ok:
-            return
-
-        if loader.create_custom_theme(name, base):
-            self._add_custom_theme_item(name)
-            themes.reload_themes()
-        else:
-            QMessageBox.warning(self, tr("dialog.error"), tr("settings.theme_exists"))
-
-    def _add_custom_theme_item(self, name: str):
-        item = QListWidgetItem(f"  {name}")
-        item.setData(Qt.ItemDataRole.UserRole, name)
-        self._custom_list.addItem(item)
-
-    def _on_export_theme(self):
-        from AssetsManager.core.themes import _get_loader
-        loader = _get_loader()
-
-        current = self._custom_list.currentItem()
-        if current is None:
-            return
-        name = current.data(Qt.ItemDataRole.UserRole)
-        if not name:
-            return
-
-        path, _ = QFileDialog.getSaveFileName(self, tr("settings.export_theme"), f"{name}.json", "JSON (*.json)")
-        if path:
-            if loader.export_theme(name, path):
-                QMessageBox.information(self, tr("dialog.done"), tr("settings.export_theme"))
-            else:
-                QMessageBox.warning(self, tr("dialog.error"), tr("dialog.error"))
-
-    def _on_delete_theme(self):
-        from AssetsManager.core.themes import _get_loader
-        loader = _get_loader()
-
-        current = self._custom_list.currentItem()
-        if current is None:
-            return
-        name = current.data(Qt.ItemDataRole.UserRole)
-        if not name:
-            return
-
-        reply = QMessageBox.question(
-            self, tr("dialog.confirm"),
-            f"Delete theme '{name}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-
-        if loader.delete_custom_theme(name):
-            row = self._custom_list.row(current)
-            self._custom_list.takeItem(row)
-            themes.reload_themes()
 
     def _on_lang_clicked(self, key):
         i18n.set_language(key)

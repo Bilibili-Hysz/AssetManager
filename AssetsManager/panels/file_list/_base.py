@@ -39,7 +39,6 @@ from AssetsManager.panels.file_list._common import IMAGE_EXTS, FILTER_CATEGORY_L
 from AssetsManager.panels.file_list._navigation import NavigationMixin
 from AssetsManager.panels.file_list._actions import ActionsMixin
 from AssetsManager.panels.file_list._toast import Toast
-from AssetsManager.panels._service_access import require_scoped_services
 
 _log = logging.getLogger(__name__)
 tr = i18n.tr
@@ -68,6 +67,11 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._last_tree_item: QTreeWidgetItem | None = None
         self._drag_origin_pos = None
         self._drag_started = False
+        self._scoped_services = None
+
+        # Controller for non-UI business logic
+        from AssetsManager.controllers.file_list_controller import FileListController
+        self._controller = FileListController()
 
         # Actions mixin state (clipboard, undo)
         self._init_actions()
@@ -135,8 +139,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         tb.addWidget(self._filter_combo)
 
         self._view_combo = QComboBox()
-        self._view_combo.addItems([tr("filelist.view.grid"), tr("filelist.view.details")])
-        self._view_combo.currentTextChanged.connect(self._on_view_changed)
+        self._view_combo.addItem(tr("filelist.view.grid"), userData="Grid")
+        self._view_combo.addItem(tr("filelist.view.details"), userData="Details")
+        self._view_combo.currentIndexChanged.connect(self._on_view_changed)
         tb.addWidget(self._view_combo)
 
         self._zoom_combo = QComboBox()
@@ -211,23 +216,66 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._status.setStyleSheet(
             f"color: {t['muted']}; font-size: {scaled_pt(11)}px; background: transparent;")
 
+    def set_scoped_services(self, services):
+        """Bind library-scoped services resolved by MainWindow."""
+        self._scoped_services = services
+        self._root = services.session.root
+        self._model.set_library_root(services.session.root_str)
+        self._model.set_metadata_service(services.metadata_service)
+        self._loader.set_cache_db(services.session.db_conn)
+        self._loader.set_cache_dir(services.session.thumb_dir_str)
+        self._loader.orphan_cleanup()
+        if hasattr(services, "undo_service"):
+            self._undo_svc = services.undo_service
+        self._controller.set_file_operations(
+            services.file_operation_service, self._undo_svc)
+
+    def _get_scoped_services(self):
+        return self._scoped_services
+
+    def _get_file_operation_service(self):
+        scoped = self._scoped_services
+        if scoped is not None:
+            return scoped.file_operation_service
+        from AssetsManager.application import FileOperationService
+        return FileOperationService()
+
     def _get_tag_service(self):
         if not self._lib_root:
             raise RuntimeError("FileListPanel requires a library root for TagService")
-        scoped = require_scoped_services(self._lib_root, consumer="FileListPanel")
+        scoped = self._scoped_services
+        if scoped is None:
+            raise RuntimeError("FileListPanel scoped services not injected")
         return scoped.tag_service
 
     def _get_tag_store(self, root: str | None = None):
-        target_root = root or self._lib_root or str(self._current)
-        scoped = require_scoped_services(target_root, consumer="FileListPanel")
-        return scoped.session.tag_store
+        scoped = self._scoped_services
+        if scoped is not None:
+            return scoped.session.tag_store
+        # Lightweight fallback for tests / bootstrap-free contexts
+        target = root or self._lib_root or str(self._current)
+        if not target:
+            return None
+        from AssetsManager.core.database import DatabaseManager
+        from AssetsManager.core.singleton import ThreadSafeSingleton
+        from AssetsManager.core.tag_store import TagStore
+        mgr = ThreadSafeSingleton.get(DatabaseManager)
+        try:
+            conn = mgr.connection_for(target)
+            return TagStore(str(Path(target).resolve()), db_conn=conn)
+        except Exception:
+            return None
 
     def _configure_library_runtime(self, root: str):
         """Bind file-list runtime helpers to a library root."""
-        scoped = require_scoped_services(root, consumer="FileListPanel")
-        self._model.set_metadata_service(scoped.metadata_service)
-        self._loader.set_cache_db(scoped.session.db_conn)
-        self._loader.set_cache_dir(scoped.session.thumb_dir_str)
+        scoped = self._scoped_services
+        if scoped is None:
+            from AssetsManager.panels._service_access import require_scoped_services
+            try:
+                scoped = require_scoped_services(root, consumer="FileListPanel")
+            except Exception:
+                raise RuntimeError("FileListPanel scoped services not injected before navigate_to")
+        self.set_scoped_services(scoped)
         self._loader.orphan_cleanup()
 
     def refresh_header(self):
@@ -242,7 +290,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     @property
     def _view_mode(self):
-        return self._view_combo.currentText()
+        return self._view_combo.currentData() or self._view_combo.currentText()
 
     def _apply_list_theme(self):
         if self._list_view:
@@ -299,7 +347,8 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._hidden_btn.setText("◉" if self._model._show_hidden else "•")
         self._update_status()
 
-    def _on_view_changed(self, mode):
+    def _on_view_changed(self, _index):
+        mode = self._view_mode
         self._view_memory[str(self._current)] = mode
         self._loader.set_size(self._thumb_size)
         is_detail = mode == "Details"
@@ -346,8 +395,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def _on_zoom_frame(self, size: int):
         self._thumb_size = size
-        if self._view_mode == "Grid" and self._list_view:
-            self._list_view.setIconSize(QSize(size, size))
+        if self._view_mode == "Grid":
+            if self._list_view:
+                self._list_view.setIconSize(QSize(size, size))
 
     def _on_zoom_done(self):
         if self._list_view and hasattr(self._list_view, 'set_zoom_in_progress'):

@@ -4,12 +4,16 @@ from urllib.parse import unquote
 
 from aiohttp import web
 
-from AssetsManager.lan.routes._helpers import get_lan, get_tag_service, validated_existing_key
+from AssetsManager.lan.routes._helpers import (
+    get_lan, get_tag_service, require_admin, require_permission, validated_existing_key,
+)
 
 _log = logging.getLogger(__name__)
 
 
 async def handle_tags(request):
+    if not require_permission(request, "browse"):
+        return web.json_response({"error": "Browse access required"}, status=403)
     lan = get_lan(request)
     svc = get_tag_service(request)
     try:
@@ -21,6 +25,8 @@ async def handle_tags(request):
 
 
 async def handle_create_tag(request):
+    if not require_admin(request):
+        return web.json_response({"error": "Admin access required"}, status=403)
     lan = get_lan(request)
     svc = get_tag_service(request)
     try:
@@ -45,6 +51,8 @@ async def handle_create_tag(request):
 
 
 async def handle_rename_tag(request):
+    if not require_admin(request):
+        return web.json_response({"error": "Admin access required"}, status=403)
     lan = get_lan(request)
     svc = get_tag_service(request)
     old_name = unquote(request.match_info["name"])
@@ -64,6 +72,8 @@ async def handle_rename_tag(request):
 
 
 async def handle_delete_tag(request):
+    if not require_admin(request):
+        return web.json_response({"error": "Admin access required"}, status=403)
     lan = get_lan(request)
     svc = get_tag_service(request)
     tag_name = unquote(request.match_info["name"])

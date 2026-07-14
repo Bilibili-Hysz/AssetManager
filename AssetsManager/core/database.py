@@ -11,6 +11,7 @@ import os
 import shutil
 import sqlite3
 import threading
+import time
 from pathlib import Path
 
 from AssetsManager.core.path_resolver import (
@@ -62,6 +63,14 @@ CREATE TABLE IF NOT EXISTS library_stats (
     total_files    INTEGER DEFAULT 0,
     total_projects INTEGER DEFAULT 0,
     updated_at     REAL DEFAULT (strftime('%s','now'))
+);
+
+CREATE TABLE IF NOT EXISTS directory_cache (
+    dir_path     TEXT PRIMARY KEY,
+    item_count   INTEGER NOT NULL DEFAULT 0,
+    preview_path TEXT,
+    mtime        REAL NOT NULL,
+    scanned_at   REAL NOT NULL DEFAULT (strftime('%s','now'))
 );
 """
 
@@ -134,6 +143,20 @@ class DatabaseManager:
             self._current_key = ""
             self._current_root = ""
 
+    def close_library(self, root_path: str | Path) -> None:
+        """Close the SQLite connection for a single library root."""
+        key = str(Path(root_path).resolve())
+        with self._write_lock:
+            conn = self._connections.pop(key, None)
+            if conn is not None:
+                try:
+                    conn.close()
+                except sqlite3.Error:
+                    pass
+            if self._current_key == key:
+                self._current_key = ""
+                self._current_root = ""
+
     @property
     def data_dir(self) -> Path:
         return library_data_dir(self._current_root)
@@ -169,10 +192,12 @@ class DatabaseManager:
         known_names = {library_data_name(r) for r in known_roots if r and Path(r).exists()}
         legacy_names = {Path(r).resolve().name for r in known_roots if r and Path(r).exists()}
         known_names.update(legacy_names)
+        cutoff = time.time() - 7 * 86400
         for entry in RUNTIME_ROOT.iterdir():
             if entry.is_dir() and entry.name != "Shared" and entry.name not in known_names:
                 try:
-                    shutil.rmtree(str(entry), ignore_errors=True)
+                    if entry.stat().st_mtime < cutoff:
+                        shutil.rmtree(str(entry), ignore_errors=True)
                 except OSError:
                     pass
 

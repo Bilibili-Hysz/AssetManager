@@ -1,0 +1,61 @@
+# Backup copy of the pre-flattened workspace.
+/Project/
+
+# Python caches and test artifacts.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.coverage
+htmlcov/
+
+# Virtual environments.
+.venv/
+venv/
+env/
+
+# Build outputs.
+build/
+dist/
+*.spec~
+
+# Runtime data and local files.
+/RuntimeData/
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# IDE and OS files.
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local agent tooling dependencies.
+.mimocode/node_modules/
+.mimocode/.cron-lock
+.opencode/node_modules/
+
+# React/Vite local dependencies and generated metadata.
+/webui/node_modules/
+/webui/tsconfig.tsbuildinfo
+
+# Local snapshots retained beside legacy static assets.
+AssetsManager/lan/static/*.bak
+AssetsManager/lan/static/*.bak2
+
+# Cython generated extension sources and binaries.
+AssetsManager/application/asset_filters.c
+AssetsManager/core/cache.c
+AssetsManager/core/color_utils.c
+AssetsManager/core/format_utils.c
+*.pyd
+
+# Downloaded Cloudflare Tunnel executable.
+/cloudflared-windows-amd64.exe
+
+# Local standalone gate-test sandbox.
+/Gate_Test/

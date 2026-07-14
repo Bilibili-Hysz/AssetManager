@@ -1,12 +1,14 @@
 """Download routes: /api/download/{path}, /api/download/batch."""
 import os
+from pathlib import Path
 from urllib.parse import unquote
 
 from aiohttp import web
 
-from AssetsManager.lan.routes._helpers import build_zip_async, get_lan, sanitize_filename, validate_path
+from AssetsManager.lan.routes._helpers import build_zip_async, get_lan, require_permission, sanitize_filename, validate_path
 
 MAX_BATCH_DOWNLOAD_PATHS = 100
+MAX_BATCH_DOWNLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
 
 
 def _file_response_with_cleanup(path: str, *, filename: str, write_eof=None) -> web.FileResponse:
@@ -29,7 +31,28 @@ def _file_response_with_cleanup(path: str, *, filename: str, write_eof=None) -> 
     return response
 
 
+def _estimate_download_size(target: Path) -> int:
+    if target.is_file():
+        return target.stat().st_size
+    if target.is_dir():
+        total = 0
+        for dirpath, dirnames, filenames in os.walk(target):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+            for fname in filenames:
+                if fname.startswith("."):
+                    continue
+                try:
+                    total += (Path(dirpath) / fname).stat().st_size
+                except OSError:
+                    pass
+        return total
+    return 0
+
+
 async def handle_download(request):
+    if not require_permission(request, "download"):
+        return web.json_response({"error": "Forbidden"}, status=403)
+
     lan = get_lan(request)
     rel_path = unquote(request.match_info["path"])
     target = validate_path(lan, rel_path)
@@ -41,6 +64,17 @@ async def handle_download(request):
         )
 
     if target.is_dir():
+        try:
+            total_bytes = _estimate_download_size(target)
+        except OSError:
+            total_bytes = 0
+        if total_bytes > MAX_BATCH_DOWNLOAD_BYTES:
+            return web.json_response({
+                "error": f"Total size exceeds limit ({MAX_BATCH_DOWNLOAD_BYTES // (1024*1024)} MB)",
+                "total_bytes": total_bytes,
+                "limit_bytes": MAX_BATCH_DOWNLOAD_BYTES,
+            }, status=413)
+
         import tempfile
         tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip")
         os.close(tmp_fd)
@@ -58,6 +92,9 @@ async def handle_download(request):
 
 
 async def handle_batch_download(request):
+    if not require_permission(request, "download"):
+        return web.json_response({"error": "Forbidden"}, status=403)
+
     lan = get_lan(request)
     try:
         body = await request.json()
@@ -80,11 +117,27 @@ async def handle_batch_download(request):
             target = validate_path(lan, rel_path)
             if target.exists():
                 targets.append((rel_path, target))
+        except web.HTTPException:
+            raise
         except Exception:
             continue
 
     if not targets:
         return web.json_response({"error": "No valid paths"}, status=400)
+
+    # Enforce total-size limit
+    total_bytes = 0
+    for _, target in targets:
+        try:
+            total_bytes += _estimate_download_size(target)
+        except OSError:
+            pass
+    if total_bytes > MAX_BATCH_DOWNLOAD_BYTES:
+        return web.json_response({
+            "error": f"Total size exceeds limit ({MAX_BATCH_DOWNLOAD_BYTES // (1024*1024)} MB)",
+            "total_bytes": total_bytes,
+            "limit_bytes": MAX_BATCH_DOWNLOAD_BYTES,
+        }, status=413)
 
     import tempfile
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip")

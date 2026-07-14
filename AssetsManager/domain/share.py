@@ -1,6 +1,7 @@
 """Share link domain model."""
 from __future__ import annotations
 
+import os.path
 import time
 from dataclasses import dataclass
 
@@ -34,9 +35,17 @@ class ShareLink:
         return not self.is_expired() and not self.is_download_limit_reached()
 
     def is_path_allowed(self, rel_path: str) -> bool:
-        """Check if a relative path falls within this share's scope."""
+        """Check if a relative path falls within this share's scope.
+
+        Normalizes the path with ``os.path.normpath`` to collapse ``..``
+        segments before comparing, so ``project/../public.txt`` correctly
+        resolves to ``public.txt`` and is NOT allowed when the share only
+        covers ``project/``.
+        """
+        norm = os.path.normpath(rel_path).replace("\\", "/")
         for sp in self.paths:
-            if sp == rel_path or rel_path.startswith(sp + "/"):
+            sp_norm = os.path.normpath(sp).replace("\\", "/")
+            if norm == sp_norm or norm.startswith(sp_norm + "/"):
                 return True
         return False
 

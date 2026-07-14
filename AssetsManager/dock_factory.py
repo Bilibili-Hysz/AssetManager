@@ -188,5 +188,10 @@ def _refresh_docks_on_language(_code: str = ""):
             _DOCK_TITLES.pop(d, None)
 
 
-bus().theme_changed.connect(_refresh_docks_on_theme)
-bus().language_changed.connect(_refresh_docks_on_language)
+def install_dock_refresh_handlers():
+    """Install theme/language refresh handlers on the signal bus.
+
+    Must be called once during application startup before any dock is created.
+    """
+    bus().theme_changed.connect(_refresh_docks_on_theme)
+    bus().language_changed.connect(_refresh_docks_on_language)

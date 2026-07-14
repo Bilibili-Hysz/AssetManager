@@ -57,6 +57,7 @@ class _PreloadSignals(QObject):
 class _PreloadTask(QRunnable):
     def __init__(self, root_paths, max_depth=2):
         super().__init__()
+        self.setAutoDelete(False)  # prevent GC before signal delivery
         self._root_paths = root_paths
         self._max_depth = max_depth
         self.signals = _PreloadSignals()
@@ -96,7 +97,8 @@ class SidebarPanel(PanelContent):
         self._search_pending = ""
         self._search_timer = None
         self._match_count = 0
-        self._search_gen = 0
+        from AssetsManager.controllers.sidebar_controller import SidebarController
+        self._controller = SidebarController()
 
         # ── Search bar + toolbar ─────────────────────────────────
 
@@ -178,6 +180,8 @@ class SidebarPanel(PanelContent):
         self._populate()
         self._connect_bus(bus().refresh_requested, self._populate)
         self._connect_bus(bus().theme_changed, self._on_theme_changed)
+        self._connect_bus(bus().language_changed, self._on_theme_changed)
+        self._connect_bus(bus().ui_scale_changed, self._on_theme_changed)
 
     def _restore_depth_cfg(self):
         from AssetsManager.core.settings import AppSettings
@@ -528,8 +532,7 @@ class SidebarPanel(PanelContent):
         text = self._search_pending
         self._clear_search_highlights()
         if text:
-            self._search_gen += 1
-            gen = self._search_gen
+            gen = self._controller.next_search_gen()
             roots = [self._library_root] if self._library_root else self.ROOTS
             self._search.setPlaceholderText(tr("sidebar.searching"))
             task = _PreloadTask(roots, max_depth=2)
@@ -549,7 +552,7 @@ class SidebarPanel(PanelContent):
 
     def _on_preload_done(self, text, results, gen):
         """Apply preload results and filter."""
-        if gen != self._search_gen:
+        if not self._controller.is_current_search(gen):
             return
         for parent_path, entries in results:
             self._apply_preloaded_entries(parent_path, entries)

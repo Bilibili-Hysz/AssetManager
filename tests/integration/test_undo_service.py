@@ -180,3 +180,37 @@ def test_clear_cleans_backups(tmp_path):
         assert not os.path.exists(backup)
     finally:
         svc.cleanup()
+
+
+# ── Phase 2.3: Per-library undo isolation ────────────────────────
+
+def test_undo_stacks_isolated_by_library_root(tmp_path):
+    """Switching libraries must not carry undo history across libraries."""
+    lib_a = tmp_path / "lib_a"
+    lib_b = tmp_path / "lib_b"
+    lib_a.mkdir()
+    lib_b.mkdir()
+
+    src_a = lib_a / "a.txt"
+    src_b = lib_b / "b.txt"
+    src_a.write_text("data a", encoding="utf-8")
+    src_b.write_text("data b", encoding="utf-8")
+
+    svc_a = UndoService(library_root=str(lib_a))
+    svc_b = UndoService(library_root=str(lib_b))
+
+    svc_a.record_rename(str(src_a), str(lib_a / "a_new.txt"))
+    svc_b.record_delete(str(src_b))
+
+    assert svc_a.can_undo()  # lib A has undo
+    assert svc_b.can_undo()  # lib B has undo
+    assert svc_a.peek_undo().type == "rename"  # lib A: rename
+    assert svc_b.peek_undo().type == "delete"  # lib B: delete
+
+    # Clearing lib B should not affect lib A
+    svc_b.clear()
+    assert svc_a.can_undo()
+    assert not svc_b.can_undo()
+
+    svc_a.cleanup()
+    svc_b.cleanup()

@@ -1,0 +1,138 @@
+"""Shared sort/filter/category rules for desktop and LAN browsing."""
+
+import os
+import re
+from pathlib import Path
+from typing import Callable
+
+from AssetsManager.domain.asset import IMAGE_EXTS
+
+# ── Category extension sets ───────────────────────────────────────
+
+FILTER_CATEGORY_EXTS: dict[str, set[str] | frozenset[str]] = {
+    "all":         set(),
+    "images":      IMAGE_EXTS,
+    "models":      {".blend", ".fbx", ".obj", ".gltf", ".glb", ".max", ".ma", ".mb", ".3ds", ".stl"},
+    "videos":      {".mp4", ".mov", ".avi", ".mkv", ".webm", ".wmv"},
+    "documents":   {".txt", ".pdf", ".docx", ".xlsx", ".pptx", ".md", ".json", ".py", ".xml"},
+    "archives":    {".zip", ".rar", ".7z", ".tar", ".gz", ".bz2"},
+}
+
+FILTER_CATEGORY_LABELS: list[tuple[str, str]] = [
+    ("all", "All"),
+    ("images", "Images"),
+    ("models", "3D Models"),
+    ("videos", "Videos"),
+    ("documents", "Documents"),
+    ("archives", "Archives"),
+]
+
+FILTER_CATEGORIES: dict[str, set[str] | frozenset[str]] = {
+    label: FILTER_CATEGORY_EXTS[key] for key, label in FILTER_CATEGORY_LABELS
+}
+
+# ── Natural sort ──────────────────────────────────────────────────
+
+_natural_split = re.compile(r'(\d+)')
+
+
+def natural_key(s: str) -> list:
+    """Natural sort key: 'file2' < 'file10'."""
+    return [(int(x) if x.isdigit() else x.lower()) for x in _natural_split.split(s)]
+
+
+# ── Normalization ─────────────────────────────────────────────────
+
+_SORT_KEY_MAP: dict[str, str] = {
+    "Name": "name",
+    "Date": "date",
+    "Size": "size",
+    "Type": "type",
+}
+
+_CATEGORY_MAP: dict[str, str] = {
+    "All": "all",
+    "Images": "images",
+    "3D Models": "models",
+    "Videos": "videos",
+    "Documents": "documents",
+    "Archives": "archives",
+}
+
+
+def normalize_sort_key(key: str) -> str:
+    """Normalize sort key from display name to canonical form."""
+    return _SORT_KEY_MAP.get(key, key or "name")
+
+
+def normalize_filter_category(category: str) -> str:
+    """Normalize filter category from display name to canonical form."""
+    return _CATEGORY_MAP.get(category, category or "all")
+
+
+# ── Category matching ─────────────────────────────────────────────
+
+
+def extension_matches_category(ext: str, category: str) -> bool:
+    """Check if a file extension belongs to the given category."""
+    cat = normalize_filter_category(category)
+    if cat == "all":
+        return True
+    exts = FILTER_CATEGORY_EXTS.get(cat, set())
+    return ext in exts
+
+
+# ── File helpers ─────────────────────────────────────────────────
+
+def find_first_image(dir_path: Path) -> Path | None:
+    """Return the path of the first image file in a directory, or None."""
+    try:
+        with os.scandir(dir_path) as entries:
+            for entry in entries:
+                if entry.is_file() and Path(entry.name).suffix.lower() in IMAGE_EXTS:
+                    return Path(entry.path)
+        return None
+    except OSError:
+        return None
+
+
+# ── Hidden files ─────────────────────────────────────────────────
+
+def is_hidden(name: str) -> bool:
+    """Check if a name represents a hidden file/directory."""
+    return name.startswith(".")
+
+
+def matches_search(name: str, search: str) -> bool:
+    """Check if a name matches a search query (case-insensitive substring)."""
+    if not search:
+        return True
+    return search in name.lower()
+
+
+# ── Sort helpers ──────────────────────────────────────────────────
+
+def sort_key_for_entry(
+    name: str,
+    is_dir: bool,
+    modified: float,
+    size: int,
+    ext: str,
+    sort_by: str,
+    natural_sort: Callable[[str], list] | None = None,
+) -> tuple:
+    """Build a sort key tuple for a file/directory entry.
+
+    Always sorts directories first, then by the chosen key, then by name.
+    """
+    if natural_sort is None:
+        natural_sort = natural_key
+    k = normalize_sort_key(sort_by)
+    return (
+        not is_dir,
+        (natural_sort(name) if k == "name" else
+         -modified if k == "date" else
+         -size if k == "size" else
+         ext if ext else ""),
+        natural_sort(name),
+    )

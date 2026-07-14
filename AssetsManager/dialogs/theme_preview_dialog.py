@@ -63,13 +63,21 @@ class ThemePreviewDialog(QDialog):
         layout.addWidget(splitter)
 
     def _load_themes(self):
+        self._theme_list.clear()
         loader = themes._get_loader()
         groups = loader.list_themes()
-        for group_name in ("Dark", "Light"):
+        for group_name in ("Dark", "Light", "User"):
             themes_data = groups.get(group_name, [])
             if not themes_data:
                 continue
-            header = QListWidgetItem(group_name)
+            header_text = group_name
+            if group_name == "Dark":
+                header_text = tr("settings.dark_mode")
+            elif group_name == "Light":
+                header_text = tr("settings.light_mode")
+            elif group_name == "User":
+                header_text = tr("settings.custom_themes")
+            header = QListWidgetItem(header_text)
             header.setFlags(Qt.ItemFlag.NoItemFlags)
             f = header.font()
             f.setBold(True)
@@ -111,10 +119,8 @@ class ThemePreviewDialog(QDialog):
             self._renderer.apply_theme(self._preview, flat)
 
     def _on_color_changed(self, color_name: str, hex_val: str) -> None:
-        # Update the flattened theme data with the new color
-        if hasattr(self._preview, '_theme_data'):
-            self._preview._theme_data[color_name] = hex_val
-            self._renderer.apply_theme(self._preview, self._preview._theme_data)
+        self._preview._theme_data[color_name] = hex_val
+        self._renderer.apply_theme(self._preview, self._preview._theme_data)
 
     def _on_apply(self):
         current = self._theme_list.currentItem()
@@ -122,6 +128,22 @@ class ThemePreviewDialog(QDialog):
             return
         name = current.data(Qt.ItemDataRole.UserRole)
         if name:
+            if not name.startswith('U_'):
+                themes.set_theme(name)
+                self.accept()
+                return
+            theme_data = self._preview._theme_data
+            if theme_data:
+                import json
+                loader = themes._get_loader()
+                file_path = loader._paths.get(name)
+                if file_path:
+                    colors = {k: v for k, v in theme_data.items() if k != "properties"}
+                    props = theme_data.get("properties", {})
+                    nested = {"name": name, "colors": colors, "properties": props}
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        json.dump(nested, f, indent=2, ensure_ascii=False)
+                    themes.reload_themes()
             themes.set_theme(name)
             self.accept()
 

@@ -128,7 +128,8 @@ class LibrarySession:
         Idempotent. The shared ``db_conn`` is **not** closed here because
         the connection is owned by ``DatabaseManager``.
         """
-        if not self._closed:
+        already_closed = self._closed
+        object.__setattr__(self, "_closed", True)
+        if not already_closed:
             if hasattr(self.context.tag_store, "clear_cache"):
                 self.context.tag_store.clear_cache()
-            object.__setattr__(self, "_closed", True)

@@ -86,8 +86,15 @@ class IPBlacklist:
 
 # ── Middleware factory ────────────────────────────────────────
 
-def create_security_middleware(rate_limiter: RateLimiter, ip_blacklist: IPBlacklist, auth_rate_limiter: "AuthRateLimiter | None" = None):
+def create_security_middleware(
+    rate_limiter: RateLimiter,
+    ip_blacklist: IPBlacklist,
+    auth_rate_limiter: "AuthRateLimiter | None" = None,
+    *,
+    ip_whitelist: list[str] | None = None,
+):
     """Create aiohttp middleware for security checks."""
+    allowed_ips = set(ip_whitelist or [])
 
     # Paths that don't count toward rate limits (read-only browsing)
     _RATE_LIMIT_SKIP = (
@@ -124,6 +131,10 @@ def create_security_middleware(rate_limiter: RateLimiter, ip_blacklist: IPBlackl
         # IP blacklist check (always applies)
         if ip_blacklist.is_blocked(ip):
             _log.warning("Blocked request from blacklisted IP: %s", ip)
+            return web.json_response({"error": "Forbidden"}, status=403)
+
+        if allowed_ips and ip not in allowed_ips:
+            _log.warning("Blocked request from non-whitelisted IP: %s", ip)
             return web.json_response({"error": "Forbidden"}, status=403)
 
         # Auth endpoint rate limiting (stricter)

@@ -23,16 +23,35 @@ class UndoEntry:
 class UndoService:
     """Manages an undo/redo stack for file operations.
 
-    Each operation records enough information to reverse itself.
-    Backup copies are stored in a temporary directory.
+    Stacks are keyed by ``library_root`` so switching libraries does not
+    carry undo history across library boundaries.  When ``library_root`` is
+    omitted (legacy callers) a shared default stack is used.
     """
 
-    def __init__(self, max_depth: int = 20):
+    def __init__(self, max_depth: int = 20, library_root: str = ""):
+        self._library_root = str(library_root)
         self._lock = threading.Lock()
-        self._undo_stack: deque[UndoEntry] = deque(maxlen=max_depth)
-        self._redo_stack: list[UndoEntry] = []
         self._max_depth = max_depth
         self._undo_dir = tempfile.mkdtemp(prefix="AssetsManager_undo_")
+        self._stacks: dict[str, tuple[deque[UndoEntry], list[UndoEntry]]] = {}
+        self._stacks[self._library_root] = (
+            deque[UndoEntry](maxlen=max_depth), [],
+        )
+
+    def _resolve_stacks(self):
+        """Return (undo_deque, redo_list) for the current library root."""
+        key = self._library_root
+        if key not in self._stacks:
+            self._stacks[key] = (deque[UndoEntry](maxlen=self._max_depth), [])
+        return self._stacks[key]
+
+    @property
+    def _undo_stack(self) -> deque[UndoEntry]:
+        return self._resolve_stacks()[0]
+
+    @property
+    def _redo_stack(self) -> list[UndoEntry]:
+        return self._resolve_stacks()[1]
 
     def record_rename(self, old_path: str, new_path: str) -> None:
         """Record a rename operation for undo."""
@@ -98,6 +117,9 @@ class UndoService:
     def clear_redo(self) -> None:
         """Clear the redo stack (call after a new operation)."""
         with self._lock:
+            for entry in self._redo_stack:
+                if entry.backup:
+                    self._clean_backup(entry.backup)
             self._redo_stack.clear()
 
     def execute_undo(self, entry: UndoEntry) -> bool:
@@ -133,6 +155,24 @@ class UndoService:
             pass
         return False
 
+    def perform_undo(self) -> bool:
+        """Atomically pop + execute + push an undo entry. Returns True on success."""
+        with self._lock:
+            if not self._undo_stack:
+                return False
+            entry = self._undo_stack.pop()
+            self._redo_stack.append(entry)
+        return self.execute_undo(entry)
+
+    def perform_redo(self) -> bool:
+        """Atomically pop + execute + push a redo entry. Returns True on success."""
+        with self._lock:
+            if not self._redo_stack:
+                return False
+            entry = self._redo_stack.pop()
+            self._undo_stack.append(entry)
+        return self.execute_redo(entry)
+
     def cleanup(self) -> None:
         """Remove the undo backup directory."""
         try:
@@ -142,16 +182,16 @@ class UndoService:
 
     def _push_undo(self, entry: UndoEntry) -> None:
         with self._lock:
-            # deque with maxlen automatically evicts oldest when full
-            if len(self._undo_stack) >= self._max_depth:
-                old = self._undo_stack[0]
+            undo, redo = self._resolve_stacks()
+            if len(undo) >= self._max_depth:
+                old = undo[0]
                 if old.backup:
                     self._clean_backup(old.backup)
-            self._undo_stack.append(entry)
-            for redo_entry in self._redo_stack:
+            undo.append(entry)
+            for redo_entry in redo:
                 if redo_entry.backup:
                     self._clean_backup(redo_entry.backup)
-            self._redo_stack.clear()
+            redo.clear()
 
     def _make_backup(self, path: str) -> str | None:
         try:

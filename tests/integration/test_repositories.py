@@ -104,6 +104,58 @@ class TestMetadataRepository:
         assert repo.remove_url("/file.txt", "https://a.com") == ["https://b.com"]
         assert repo.remove_url("/file.txt", "https://a.com") is None
 
+    def test_get_urls_malformed_json_returns_empty(self, memory_db):
+        conn = _make_db(memory_db)
+        repo = MetadataRepository(conn)
+        conn.execute(
+            "INSERT INTO file_meta (file_path, urls) VALUES (?, ?)",
+            ("/bad.txt", "{not valid json"),
+        )
+        conn.commit()
+        assert repo.get_urls("/bad.txt") == []
+
+    def test_get_urls_wrong_json_type_returns_empty(self, memory_db):
+        conn = _make_db(memory_db)
+        repo = MetadataRepository(conn)
+        conn.execute(
+            "INSERT INTO file_meta (file_path, urls) VALUES (?, ?)",
+            ("/obj.txt", '{"key": "value"}'),
+        )
+        conn.commit()
+        assert repo.get_urls("/obj.txt") == []
+
+    def test_get_urls_empty_string_returns_empty(self, memory_db):
+        conn = _make_db(memory_db)
+        repo = MetadataRepository(conn)
+        conn.execute(
+            "INSERT INTO file_meta (file_path, urls) VALUES (?, ?)",
+            ("/empty.txt", ""),
+        )
+        conn.commit()
+        assert repo.get_urls("/empty.txt") == []
+
+    def test_add_url_survives_malformed_existing_json(self, memory_db):
+        conn = _make_db(memory_db)
+        repo = MetadataRepository(conn)
+        conn.execute(
+            "INSERT INTO file_meta (file_path, urls) VALUES (?, ?)",
+            ("/bad.txt", "corrupted"),
+        )
+        conn.commit()
+        result = repo.add_url("/bad.txt", "https://new.com")
+        assert result == ["https://new.com"]
+
+    def test_remove_url_survives_malformed_existing_json(self, memory_db):
+        conn = _make_db(memory_db)
+        repo = MetadataRepository(conn)
+        conn.execute(
+            "INSERT INTO file_meta (file_path, urls) VALUES (?, ?)",
+            ("/bad.txt", "corrupted"),
+        )
+        conn.commit()
+        result = repo.remove_url("/bad.txt", "https://anything.com")
+        assert result is None
+
     def test_cached_size_roundtrip(self, memory_db):
         conn = _make_db(memory_db)
         repo = MetadataRepository(conn)

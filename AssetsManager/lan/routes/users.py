@@ -1,15 +1,13 @@
 """User and invite routes: /api/users/*, /api/invites/*."""
 from aiohttp import web
 
-from AssetsManager.lan.routes._helpers import get_auth_service, get_lan, get_request_user
+from AssetsManager.lan.routes._helpers import get_auth_service, get_lan, get_services, require_admin
 
 
 async def handle_users(request):
-    auth_service = get_auth_service(request)
-    user = get_request_user(request)
-    if not user or user.get("role") != "admin":
+    if not require_admin(request):
         return web.json_response({"error": "Admin access required"}, status=403)
-
+    auth_service = get_auth_service(request)
     users = auth_service.list_users()
     for u in users:
         u.pop("password_hash", None)
@@ -17,10 +15,9 @@ async def handle_users(request):
 
 
 async def handle_toggle_user(request):
-    auth_service = get_auth_service(request)
-    user = get_request_user(request)
-    if not user or user.get("role") != "admin":
+    if not require_admin(request):
         return web.json_response({"error": "Admin access required"}, status=403)
+    auth_service = get_auth_service(request)
 
     try:
         user_id = int(request.match_info.get("id", ""))
@@ -42,20 +39,19 @@ async def handle_toggle_user(request):
 
 
 async def handle_invites(request):
-    auth_service = get_auth_service(request)
-    user = get_request_user(request)
-    if not user or user.get("role") != "admin":
+    if not require_admin(request):
         return web.json_response({"error": "Admin access required"}, status=403)
+    auth_service = get_auth_service(request)
 
     codes = auth_service.list_invite_codes()
     return web.json_response({"invites": codes})
 
 
 async def handle_create_invite(request):
-    auth_service = get_auth_service(request)
-    user = get_request_user(request)
-    if not user or user.get("role") != "admin":
+    user = require_admin(request)
+    if not user:
         return web.json_response({"error": "Admin access required"}, status=403)
+    auth_service = get_auth_service(request)
 
     code = auth_service.generate_invite_code(created_by=user.get("username", "admin"))
     if code:
@@ -64,11 +60,22 @@ async def handle_create_invite(request):
 
 
 async def handle_revoke_invite(request):
-    auth_service = get_auth_service(request)
-    user = get_request_user(request)
-    if not user or user.get("role") != "admin":
+    if not require_admin(request):
         return web.json_response({"error": "Admin access required"}, status=403)
+    auth_service = get_auth_service(request)
 
     code = request.match_info.get("code", "")
     ok = auth_service.revoke_invite_code(code)
     return web.json_response({"ok": ok})
+
+
+async def handle_activity(request):
+    if not require_admin(request):
+        return web.json_response({"error": "Admin access required"}, status=403)
+    return web.json_response({"activities": get_services(request).activity_log.recent(20)})
+
+
+async def handle_online_users(request):
+    if not require_admin(request):
+        return web.json_response({"error": "Admin access required"}, status=403)
+    return web.json_response({"users": get_services(request).online_users.list_all()})

@@ -17,6 +17,7 @@ _log = logging.getLogger(__name__)
 _VALIDATORS: dict[str, Callable] = {
     "thumb_quality": lambda v: v in ("fast", "default", "high", "original"),
     "bg_panel_opacity": lambda v: isinstance(v, (int, float)) and 0.0 <= v <= 1.0,
+    "bg_effect": lambda v: v in ("none", "blur", "mosaic"),
     "search_history": lambda v: isinstance(v, list),
 }
 
@@ -61,8 +62,33 @@ class AppSettings:
                     from AssetsManager.core.config_migrator import migrate
                     data = migrate(data)
                     self._data.update(data)
+                # Always try legacy migration if not yet done
+                if not self._data.get("_legacy_migrated"):
+                    self._migrate_legacy_settings()
             except Exception:
                 _log.exception("Failed to load settings from %s", self._path)
+
+    def _migrate_legacy_settings(self):
+        """Migrate settings from old .assetmanager/ location if present."""
+        from pathlib import Path
+        legacy_path = Path.home() / ".assetmanager" / "settings.json"
+        if not legacy_path.exists():
+            self._data["_legacy_migrated"] = True
+            self._dirty = True
+            return
+        try:
+            data = json.loads(legacy_path.read_text(encoding="utf-8"))
+            from AssetsManager.core.config_migrator import migrate
+            data = migrate(data)
+            self._data.update(data)
+            self._data["_legacy_migrated"] = True
+            self._dirty = True
+            self.save()
+            _log.info("Migrated legacy settings from %s", legacy_path)
+        except Exception:
+            self._data["_legacy_migrated"] = True
+            self._dirty = True
+            _log.exception("Failed to migrate legacy settings from %s", legacy_path)
 
     def save(self):
         with self._get_lock():
@@ -77,6 +103,8 @@ class AppSettings:
                                             prefix="settings_")
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
                     f.write(data)
+                    f.flush()
+                    os.fsync(f.fileno())
                 os.replace(tmp, str(self._path))
                 self._dirty = False
             except OSError:

@@ -37,21 +37,6 @@ CREATE TABLE IF NOT EXISTS invite_codes (
 );
 """
 
-SHARE_LINKS_SCHEMA = """
-CREATE TABLE IF NOT EXISTS share_links (
-    id              TEXT PRIMARY KEY,
-    paths           TEXT NOT NULL,
-    password_hash   TEXT,
-    expires_at      REAL,
-    max_downloads   INTEGER,
-    download_count  INTEGER DEFAULT 0,
-    allow_preview   INTEGER DEFAULT 1,
-    created_by      TEXT,
-    created_at      REAL DEFAULT (strftime('%s','now')),
-    is_active       INTEGER DEFAULT 1
-);
-"""
-
 
 class AuthRepository:
     """Encapsulates users and invite_codes table operations."""
@@ -62,12 +47,14 @@ class AuthRepository:
     # ── Schema ──────────────────────────────────────────────────
 
     def init_tables(self) -> None:
-        """Create users, invite_codes, and share_links tables if they don't exist."""
+        """Create users and invite_codes tables if they don't exist."""
         with db_write_lock():
             self._conn.execute(USERS_SCHEMA)
             self._conn.execute(INVITE_CODES_SCHEMA)
-            self._conn.execute(SHARE_LINKS_SCHEMA)
             self._conn.commit()
+        # Share schema owned by ShareRepository
+        from AssetsManager.repositories.share_repository import ShareRepository
+        ShareRepository(self._conn).init_table()
 
     # ── Users ────────────────────────────────────────────────────
 

@@ -31,9 +31,9 @@ from AssetsManager.domain.auth import (  # noqa: F401
 # Re-export schema constants from repository layer
 from AssetsManager.repositories.auth_repository import (  # noqa: F401
     INVITE_CODES_SCHEMA,
-    SHARE_LINKS_SCHEMA,
     USERS_SCHEMA,
 )
+from AssetsManager.repositories.share_repository import SHARE_LINKS_SCHEMA  # noqa: F401
 
 
 def init_users_table(db_conn):

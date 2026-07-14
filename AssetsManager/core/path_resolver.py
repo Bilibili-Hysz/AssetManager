@@ -7,13 +7,9 @@ from pathlib import Path
 def runtime_root() -> Path:
     """Return the application's runtime data root directory."""
     if getattr(sys, 'frozen', False):
-        # PyInstaller extracts bundled files to _MEIPASS
-        meipass = getattr(sys, '_MEIPASS', None)
-        if meipass:
-            bundled = Path(meipass) / "RuntimeData"
-            if bundled.exists():
-                return bundled
-        return Path(sys.executable).parent / "RuntimeData"
+        # Always use the directory next to the executable for writable data
+        exe_dir = Path(sys.executable).parent
+        return exe_dir / "RuntimeData"
     return Path(__file__).resolve().parent.parent.parent / "RuntimeData"
 
 

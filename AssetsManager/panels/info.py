@@ -170,53 +170,6 @@ class _FileInfoTask(QRunnable):
         self.signals = _FileInfoSignals()
         self.setAutoDelete(False)  # prevent QThreadPool from destroying before signal delivery
 
-    def _is_deepest_folder(self, path):
-        if not self._library_root or self._sidebar_depth < 1:
-            return False
-        try:
-            rel = os.path.relpath(path, self._library_root)
-        except ValueError:
-            return False
-        if rel in (".", ""):
-            return False
-        parts = rel.replace(os.sep, "/").rstrip("/").split("/")
-        if not parts or parts == [""]:
-            return False
-        level = len(parts)
-        branch = parts[0]
-        effective = self._branch_depths.get(branch, self._sidebar_depth)
-        return level >= effective
-
-    def _classify_dir(self, dir_path):
-        from AssetsManager.panels.file_list._common import FILTER_CATEGORIES
-        if dir_path in self._classify_cache:
-            return self._classify_cache[dir_path]
-        emoji_map = {
-            "Images": "🖼", "3D Models": "🔷", "Videos": "🎬",
-            "Documents": "📄", "Archives": "🗜",
-        }
-        try:
-            counts: dict[str, int] = {}
-            for entry in os.scandir(dir_path):
-                if not entry.is_file():
-                    continue
-                ext = Path(entry.name).suffix.lower()
-                for cat, exts in FILTER_CATEGORIES.items():
-                    if ext in exts:
-                        emoji = emoji_map.get(cat, "📄")
-                        counts[emoji] = counts.get(emoji, 0) + 1
-                        break
-                if ext == ".blend":
-                    counts["🧊"] = counts.get("🧊", 0) + 1
-            if counts:
-                result = "  ".join(f"{k} {v}" for k, v in sorted(counts.items(), key=lambda x: -x[1]))
-                self._classify_cache[dir_path] = result
-                return result
-        except OSError:
-            pass
-        self._classify_cache[dir_path] = ""
-        return ""
-
     def _load_preview(self, path, is_dir):
         if is_dir:
             img_path = InfoPanel._first_image_in_dir(path)
@@ -230,9 +183,11 @@ class _FileInfoTask(QRunnable):
 
     def run(self):
         try:
+            from AssetsManager.controllers.info_controller import InfoController
             path = self._path
             is_dir = os.path.isdir(path)
-            is_project = is_dir and self._is_deepest_folder(path)
+            is_project = is_dir and InfoController.is_deepest_folder(
+                path, self._library_root, self._sidebar_depth, self._branch_depths)
 
             if is_project and self._controller:
                 existing = self._controller.get_urls(path)
@@ -244,7 +199,7 @@ class _FileInfoTask(QRunnable):
                         except ValueError:
                             pass
 
-            dir_summary = self._classify_dir(path) if is_dir else None
+            dir_summary = self._controller.classify_dir(path, classify_cache=self._classify_cache) if is_dir else None
 
             if is_dir:
                 display_type = tr("info.project") if is_project else tr("info.folder")
@@ -295,6 +250,7 @@ class InfoPanel(PanelContent):
         self._library_root = ""
         self._store = None
         self._project = None
+        self._scoped_services = None
         self._controller = None
         self._current_path = ""
         self._preview_pixmap: QPixmap | None = None
@@ -476,16 +432,19 @@ class InfoPanel(PanelContent):
         self._splitter.splitterMoved.connect(self._apply_scaled_preview)
         self._show_empty_state()
 
-        self._connect_bus(bus().library_opened, self._on_library_changed)
-        self._connect_bus(bus().sidebar_depth_changed, self._on_sidebar_depth_changed)
-        self._connect_bus(bus().theme_changed, self._refresh_theme)
-        self._load_sidebar_depth_cfg()
-
         # Subscribe to domain events through a Qt bridge for UI-safe delivery.
-        from AssetsManager.domain.events import TagsChanged, NotesChanged, UrlsChanged
+        from AssetsManager.domain.events import TagsChanged, NotesChanged, UrlsChanged, LibraryOpened
+        self._connect_domain_event(LibraryOpened, self._on_library_changed)
         self._connect_domain_event(TagsChanged, self._on_domain_tags_changed)
         self._connect_domain_event(NotesChanged, self._on_domain_notes_changed)
         self._connect_domain_event(UrlsChanged, self._on_domain_urls_changed)
+
+        # Qt-only signals (no domain equivalent)
+        self._connect_bus(bus().sidebar_depth_changed, self._on_sidebar_depth_changed)
+        self._connect_bus(bus().theme_changed, self._refresh_theme)
+        self._connect_bus(bus().language_changed, self._refresh_theme)
+        self._connect_bus(bus().ui_scale_changed, self._refresh_theme)
+        self._load_sidebar_depth_cfg()
 
     def _refresh_theme(self, _name: str = ""):
         t = themes.get()
@@ -660,7 +619,7 @@ class InfoPanel(PanelContent):
         if url:
             short = url[:60] + "…" if len(url) > 60 else url
             link_label.setText(f"<a href='{url}'>{short}</a>")
-            link_label.setToolTip(f"Drag to browser or click to open\n{url}")
+            link_label.setToolTip(tr("info.drag_to_browser_hint").format(url=url))
             link_label.set_drag_url(url)
             link_label.setCursor(Qt.CursorShape.PointingHandCursor)
             link_label.setStyleSheet(
@@ -828,35 +787,10 @@ class InfoPanel(PanelContent):
         return None
 
     def _classify_dir(self, dir_path: str) -> str:
-        from AssetsManager.panels.file_list._common import FILTER_CATEGORIES
-        if not hasattr(self, '_classify_cache'):
-            self._classify_cache = LRUCache(500)
-        if dir_path in self._classify_cache:
-            return self._classify_cache[dir_path]
-        emoji_map = {
-            "Images": "🖼", "3D Models": "🔷", "Videos": "🎬",
-            "Documents": "📄", "Archives": "🗜",
-        }
-        try:
-            counts: dict[str, int] = {}
-            for entry in os.scandir(dir_path):
-                if not entry.is_file():
-                    continue
-                ext = Path(entry.name).suffix.lower()
-                for cat, exts in FILTER_CATEGORIES.items():
-                    if ext in exts:
-                        emoji = emoji_map.get(cat, "📄")
-                        counts[emoji] = counts.get(emoji, 0) + 1
-                        break
-                if ext == ".blend":
-                    counts["🧊"] = counts.get("🧊", 0) + 1
-            if counts:
-                result = "  ".join(f"{k} {v}" for k, v in sorted(counts.items(), key=lambda x: -x[1]))
-                self._classify_cache[dir_path] = result
-                return result
-        except OSError:
-            pass
-        self._classify_cache[dir_path] = ""
+        if self._controller is not None:
+            if not hasattr(self, '_classify_cache'):
+                self._classify_cache = LRUCache(500)
+            return self._controller.classify_dir(dir_path, classify_cache=self._classify_cache)
         return ""
 
     # ── Async directory size ──────────────────────────────────
@@ -870,6 +804,9 @@ class InfoPanel(PanelContent):
         signals.done.connect(self._on_async_dir_size_done)
         project = self._project
         class _SizeTask(QRunnable):
+            def __init__(s):
+                super().__init__()
+                s.setAutoDelete(False)
             def run(s):
                 sz = 0
                 try:
@@ -953,21 +890,20 @@ class InfoPanel(PanelContent):
         tag, ok = QInputDialog.getText(self, tr("info.dialog.add_tag"), tr("filelist.dialog.tag_label"))
         if ok and tag.strip():
             new_tags = self._controller.add_tag(self._current_path, tag.strip())
-            self._tags_widgets_texts = set(new_tags)
             self._render_tags(new_tags)
 
     def _open_tag_editor(self):
         if not self._current_path or not os.path.exists(self._current_path) or not self._controller:
             return
-        from AssetsManager.panels._service_access import require_scoped_services
         from AssetsManager.application.tag_service import TagServiceAdapter
         from AssetsManager.dialogs.tag_editor_dialog import TagEditorDialog
-        scoped = require_scoped_services(self._library_root, consumer="InfoPanel")
+        scoped = self._scoped_services
+        if scoped is None:
+            return
         adapter = TagServiceAdapter(self._library_root, scoped.tag_service)
         dlg = TagEditorDialog(adapter, self._current_path, self)
         if dlg.exec() == dlg.DialogCode.Accepted and dlg.was_modified():
             new_tags = self._controller.get_tags(self._current_path)
-            self._tags_widgets_texts = set(new_tags)
             self._render_tags(new_tags)
 
     def _remove_tag(self, tag: str):
@@ -1002,49 +938,63 @@ class InfoPanel(PanelContent):
             urls = self._controller.get_urls(self._current_path)
             self._set_link_field(urls[0] if urls else "")
 
-    def _on_library_changed(self, path):
+    def _on_library_changed(self, event):
+        """Handle LibraryOpened domain event — reset state; services already injected."""
+        path = event.library_root
         self._library_root = os.path.normpath(path)
         self._current_path = ""
         self._urls_scanned.clear()
         self._pending_task = None
         if hasattr(self, '_classify_cache'):
             self._classify_cache.clear()
-        try:
-            from AssetsManager.panels._service_access import require_scoped_services
-            from AssetsManager.controllers.info_controller import InfoController
-            scoped = require_scoped_services(self._library_root, consumer="InfoPanel")
-            session = scoped.session
+        if self._scoped_services is not None:
+            session = self._scoped_services.session
             self._store = session.tag_store
             self._project = session.project_data
-            self._controller = InfoController(
-                self._library_root,
-                session.db_conn,
-                metadata_svc=scoped.metadata_service,
-                tag_svc=scoped.tag_service,
-            )
-        except Exception:
-            _log.exception("Failed to init store/project for library: %s", path)
+            if self._controller is None:
+                from AssetsManager.controllers.info_controller import InfoController
+                self._controller = InfoController(
+                    self._library_root,
+                    session.db_conn,
+                    metadata_svc=self._scoped_services.metadata_service,
+                    tag_svc=self._scoped_services.tag_service,
+                )
+        else:
             self._store = None
             self._project = None
             self._controller = None
-        _log.debug("Library changed: root=%s store=%s project=%s", 
+        _log.debug("Library changed: root=%s store=%s project=%s",
                    self._library_root, bool(self._store), bool(self._project))
 
-    def _resolve_store(self):
-        if not self._library_root:
-            return None
-        from AssetsManager.panels._service_access import require_scoped_services
+    def set_scoped_services(self, services):
+        """Bind library-scoped services resolved by MainWindow."""
+        from AssetsManager.controllers.info_controller import InfoController
 
-        scoped = require_scoped_services(self._library_root, consumer="InfoPanel")
-        return scoped.session.tag_store
+        self._scoped_services = services
+        self._library_root = services.session.root_str
+        self._current_path = ""
+        self._urls_scanned.clear()
+        self._pending_task = None
+        if hasattr(self, '_classify_cache'):
+            self._classify_cache.clear()
+        self._store = services.session.tag_store
+        self._project = services.session.project_data
+        self._controller = InfoController(
+            self._library_root,
+            services.session.db_conn,
+            metadata_svc=services.metadata_service,
+            tag_svc=services.tag_service,
+        )
+
+    def _resolve_store(self):
+        if self._scoped_services is not None:
+            return self._scoped_services.session.tag_store
+        return None
 
     def _resolve_project(self):
-        if not self._library_root:
-            return None
-        from AssetsManager.panels._service_access import require_scoped_services
-
-        scoped = require_scoped_services(self._library_root, consumer="InfoPanel")
-        return scoped.session.project_data
+        if self._scoped_services is not None:
+            return self._scoped_services.session.project_data
+        return None
 
     def _ensure_store(self):
         if self._store is None and self._library_root:
@@ -1070,21 +1020,9 @@ class InfoPanel(PanelContent):
 
     def _is_deepest_folder(self, path: str) -> bool:
         """True if this folder is at the sidebar's deepest visible level."""
-        if not self._library_root or self._sidebar_depth < 1:
-            return False
-        try:
-            rel = os.path.relpath(path, self._library_root)
-        except ValueError:
-            return False
-        if rel in (".", ""):
-            return False
-        parts = rel.replace(os.sep, "/").rstrip("/").split("/")
-        if not parts or parts == [""]:
-            return False
-        level = len(parts)
-        branch = parts[0]
-        effective = self._branch_depths.get(branch, self._sidebar_depth)
-        return level >= effective
+        from AssetsManager.controllers.info_controller import InfoController
+        return InfoController.is_deepest_folder(
+            path, self._library_root, self._sidebar_depth, self._branch_depths)
 
     # ── Link management ─────────────────────────────────────────
 
@@ -1250,7 +1188,6 @@ class InfoPanel(PanelContent):
         self._set_link_field(file_info.urls[0] if file_info.urls else "")
 
         # Tags
-        self._tags_widgets_texts = set(file_info.tags)
         self._render_tags(list(file_info.tags))
 
         # Notes

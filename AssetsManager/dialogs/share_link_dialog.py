@@ -183,9 +183,9 @@ class ShareLinkDialog(TabbedDialog):
         self._create_btn.setEnabled(False)
         self._create_btn.setText(tr("sharelink.btn.creating"))
 
-        task = _CreateShareTask(url, data, headers)
-        task.signals.finished.connect(self._on_create_result)
-        QThreadPool.globalInstance().start(task)
+        self._create_task = _CreateShareTask(url, data, headers)
+        self._create_task.signals.finished.connect(self._on_create_result)
+        QThreadPool.globalInstance().start(self._create_task)
 
     def _on_create_result(self, success, data):
         """Handle async share link creation result."""

@@ -28,7 +28,7 @@ Latest result:
 - Ruff: passed
 - Pyright: `0 errors, 0 warnings, 0 informations`
 - Compileall: passed
-- Pytest: `607 passed, 1577 warnings in 17.48s`
+- Pytest: `620 passed, 38 warnings` (38 ResourceWarning are pre-existing)
 
 ## Current Working Rules
 
@@ -125,32 +125,34 @@ All deprecation warnings in tests are expected and intentional — they come fro
 - `tests/integration/test_repositories.py`: repository tests including share download counter.
 - `tests/integration/test_share_service.py`: share service validation tests.
 
+## Architecture Refactoring (Completed 2026-06-17)
+
+7-phase bottom-up refactoring completed (P1-P7):
+- P1: SQLite cross-thread safety audit — SAFE, 3 regression tests added
+- P2: Removed `get_lib_db()` from MetadataService, TagService, ProjectService
+- P3: `lan/auth.py` cleaned from 454 to 81 lines (17 duplicate functions removed)
+- P4: DatabaseManager registered in DI, 4 singletons deprecated
+- P5: Panel fallback paths removed, `_service_access.py` simplified to 2 functions
+- P6: LibrarySession lifecycle improved (close cleanup, switch guard)
+- P7: Architecture boundary tests expanded to cover all 5 layer rules
+- Deprecation warnings cleanup: 21 warnings fixed, 0 remaining
+- Share download semantics: counter increment moved after file response
+- TOCTOU fix: `unique_destination()` uses atomic O_CREAT|O_EXCL
+- Permanent delete: removed contradictory undo backup
+- LAN error audit: 62 responses, all safe, no path leakage
+
 ## Known Remaining Work
 
-### Recommended Next Task
+### Low Priority (can be deferred)
 
-Review LAN SQLite access across event-loop and threadpool boundaries.
-
-Suggested approach:
-
-1. Identify LAN routes that use shared `sqlite3.Connection` from both request handlers and `asyncio.to_thread`.
-2. Verify whether the behavior is actually unsafe or only theoretically risky.
-3. Make the smallest low-risk fix if a concrete issue is confirmed.
-4. Add focused regression tests.
-5. Run the full quality gate.
-
-### Other Remaining Tasks
-
-- Clean up deprecation warnings in tests by migrating callers from deprecated singletons (`get_manager()`, `get_store()`, `get_project_data()`, `get_library_service()`) to DI-resolved services.
-- Review share download completion semantics. The route now uses atomic increment correctly, but file response serving can still fail after the counter increments.
-- Review temp ZIP cleanup for all response paths and large download cancellation behavior.
-- Review `/api/shares/{id}/download` and preview public semantics for passwordless shares.
-- Continue reviewing LAN error responses for internal path or exception leakage beyond the already handled low-risk points.
-- Review `FileOperationService.unique_destination()` TOCTOU behavior.
-- Review permanent delete/backup race between backup creation and deletion.
-- Review malformed URL JSON handling in `MetadataRepository`.
-- Decide whether `UndoService` should be scoped per library/session instead of singleton-like scoped service resolution.
+- Review temp ZIP cleanup for all response paths and large download cancellation behavior. (Current implementation already handles most cases via `_file_response_with_cleanup`.)
 - Continue replacing presentation direct store/db access with scoped services where practical.
+
+### Completed in This Session
+
+- MetadataRepository URL JSON: added `isinstance(result, list)` guard for wrong JSON types. 5 regression tests.
+- Passwordless share semantics: reviewed — current design (59.5-bit unguessable ID + optional JWT) is appropriate for LAN sharing.
+- UndoService scoping: fixed cross-library undo contamination by clearing undo stack on library switch.
 
 ## New Session Prompt
 
@@ -166,7 +168,5 @@ python -m pyright
 python -m compileall AssetsManager -q
 python -m pytest -q
 
-Latest full gate passed: 607 passed, 1577 warnings.
-
-Recommended first task: review LAN SQLite access across event-loop and threadpool boundaries.
+Latest full gate passed: 620 passed, 38 warnings (ResourceWarning).
 ```

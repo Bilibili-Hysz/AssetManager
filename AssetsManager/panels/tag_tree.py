@@ -29,6 +29,7 @@ class TagTreePanel(PanelContent):
         self._store = None
         self._controller: TagTreeController | None = None
         self._active_tag_filter: str | None = None
+        self._scoped_services = None
 
         self._tree = QTreeWidget()
         self._tree.setHeaderHidden(True)
@@ -50,19 +51,20 @@ class TagTreePanel(PanelContent):
         bar.addWidget(add_btn)
         self.content_layout.addLayout(bar)
 
-        self._connect_bus(bus().library_opened, self._on_library_changed)
+        # Subscribe to domain events through a Qt bridge for UI-safe delivery.
+        from AssetsManager.domain.events import TagsChanged, LibraryOpened
+        self._connect_domain_event(LibraryOpened, self._on_library_changed)
+        self._connect_domain_event(TagsChanged, self._on_domain_tags_changed)
         self._connect_bus(bus().directory_changed, self._on_directory_changed)
+        self._connect_bus(bus().theme_changed, lambda _: self._populate())
+        self._connect_bus(bus().language_changed, lambda _: self._populate())
+        self._connect_bus(bus().ui_scale_changed, lambda _: self._populate())
         self._populate()
 
-        # Subscribe to domain events through a Qt bridge for UI-safe delivery.
-        from AssetsManager.domain.events import TagsChanged
-        self._connect_domain_event(TagsChanged, self._on_domain_tags_changed)
-
     def _resolve_tag_store(self, root: str):
-        from AssetsManager.panels._service_access import require_scoped_services
-
-        scoped = require_scoped_services(root, consumer="TagTreePanel")
-        return scoped.session.tag_store, scoped.tag_service
+        if self._scoped_services is not None:
+            return self._scoped_services.session.tag_store, self._scoped_services.tag_service
+        raise RuntimeError("TagTreePanel scoped services not injected for root: " + root)
 
     def _populate(self):
         if not self._controller:
@@ -177,27 +179,34 @@ class TagTreePanel(PanelContent):
         """Handle TagsChanged from EventBus (application layer)."""
         self._populate()
 
-    def _on_library_changed(self, path):
-        root = str(Path(path).resolve())
+    def _on_library_changed(self, event):
+        root = str(Path(event.library_root).resolve())
         if root == self._library_root:
             return
         old_root = self._library_root
         self._library_root = root
         self._current_path = root
-        try:
-            from AssetsManager.panels._service_access import require_scoped_services
-
-            scoped = require_scoped_services(root, consumer="TagTreePanel")
-            self._store = scoped.session.tag_store
-            self._controller = TagTreeController(root, tag_svc=scoped.tag_service)
-            if self._active_tag_filter and old_root != root:
-                self._active_tag_filter = None
-            self._populate()
-        except Exception:
+        if self._scoped_services is not None:
+            self._store = self._scoped_services.session.tag_store
+            self._controller = TagTreeController(root, tag_svc=self._scoped_services.tag_service)
+        else:
             self._store = None
             self._controller = None
-            if self._active_tag_filter and old_root != root:
-                self._active_tag_filter = None
+        if self._active_tag_filter and old_root != root:
+            self._active_tag_filter = None
+        self._populate()
+
+    def set_scoped_services(self, services):
+        """Bind library-scoped services resolved by MainWindow."""
+        old_root = self._library_root
+        self._scoped_services = services
+        self._library_root = services.session.root_str
+        self._current_path = services.session.root_str
+        self._store = services.session.tag_store
+        self._controller = TagTreeController(self._library_root, tag_svc=services.tag_service)
+        if self._active_tag_filter and old_root != self._library_root:
+            self._active_tag_filter = None
+        self._populate()
 
     def _on_directory_changed(self, path):
         self._current_path = str(Path(path).resolve())
@@ -209,7 +218,8 @@ class TagTreePanel(PanelContent):
         self._populate()
 
     def set_library_root(self, path: str):
-        self._on_library_changed(path)
+        from AssetsManager.domain.events import LibraryOpened
+        self._on_library_changed(LibraryOpened(library_root=path))
 
     def get_tag_filter(self) -> str | None:
         return self._active_tag_filter
