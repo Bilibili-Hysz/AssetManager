@@ -49,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const systemApi = useMemo(() => createSystemApi(api), [api]);
 
   const setToken = useCallback((newToken: string | null, newUser?: User | null) => {
-    setTokenState(null);
+    setTokenState(newToken);
     if (newToken) {
       setRole(newUser?.role === 'admin' ? 'admin' : 'user');
       setUser(newUser ?? null);
@@ -111,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
     init();
-  }, [refreshMe, systemApi, token]);
+  }, [refreshMe, systemApi]);
 
   const value: AuthContextValue = {
     token,

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from './useAuth';
 import { createThumbnailsApi } from '../api/thumbnails';
 
@@ -11,47 +11,42 @@ interface ThumbnailCache {
 export function useThumbnailCache() {
   const { api } = useAuth();
   const thumbApi = useMemo(() => createThumbnailsApi(api), [api]);
-  const cache = useRef<ThumbnailCache>({});
-  const [revision, setRevision] = useState(0);
+  const [cache, setCache] = useState<ThumbnailCache>({});
 
   useEffect(() => {
     try {
       const stored = window.sessionStorage.getItem('lan_thumb_cache');
       if (stored) {
-        cache.current = JSON.parse(stored);
-        setRevision(version => version + 1);
+        setCache(JSON.parse(stored));
       }
     } catch { /* ignore */ }
   }, []);
 
-  const persist = useCallback(() => {
+  const persist = useCallback((nextCache: ThumbnailCache) => {
     try {
-      const entries = Object.entries(cache.current);
-      if (entries.length > MAX_CACHE) {
-        // LRU eviction: remove oldest entries
-        const newCache: ThumbnailCache = {};
-        entries.slice(-MAX_CACHE).forEach(([k, v]) => { newCache[k] = v; });
-        cache.current = newCache;
-      }
-      sessionStorage.setItem('lan_thumb_cache', JSON.stringify(cache.current));
+      const entries = Object.entries(nextCache);
+      const retained = entries.length > MAX_CACHE ? Object.fromEntries(entries.slice(-MAX_CACHE)) : nextCache;
+      sessionStorage.setItem('lan_thumb_cache', JSON.stringify(retained));
+      return retained;
     } catch { /* quota exceeded */ }
   }, []);
 
   const loadThumbnails = useCallback(async (paths: string[]) => {
-    const uncached = paths.filter(p => !cache.current[p] && p);
+    const uncached = paths.filter(p => !cache[p] && p);
     if (uncached.length === 0) return;
 
     try {
       const res = await thumbApi.batch(uncached, 256);
-      Object.assign(cache.current, res.thumbnails);
-      persist();
-      setRevision(version => version + 1);
+      setCache(current => {
+        const nextCache = { ...current, ...res.thumbnails };
+        return persist(nextCache) ?? nextCache;
+      });
     } catch { /* ignore */ }
-  }, [thumbApi, persist]);
+  }, [cache, thumbApi, persist]);
 
   const getThumbnail = useCallback((path: string): string | undefined => {
-    return cache.current[path];
-  }, []);
+    return cache[path];
+  }, [cache]);
 
-  return { loadThumbnails, getThumbnail, revision };
+  return { loadThumbnails, getThumbnail, revision: cache };
 }
