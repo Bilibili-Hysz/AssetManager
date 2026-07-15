@@ -48,6 +48,10 @@ class LibraryService:
         return self._open_library(root_path)
 
     def _open_library(self, root_path: str | Path) -> LibraryContext:
+        context, _ = self._open(root_path)
+        return context
+
+    def _open(self, root_path: str | Path) -> tuple[LibraryContext, LibrarySession]:
         root = Path(root_path).resolve()
         key = str(root)
         with self._lock:
@@ -55,9 +59,10 @@ class LibraryService:
             if cached is not None:
                 session = self._sessions.get(key)
                 if session is None or session.is_closed:
-                    self._sessions[key] = LibrarySession.from_context(cached)
+                    session = LibrarySession.from_context(cached)
+                    self._sessions[key] = session
                 self._current = cached
-                return cached
+                return cached, session
 
             mgr = self._db
             conn = mgr.connection_for(key)
@@ -70,16 +75,16 @@ class LibraryService:
                 tag_store=TagStore(key, db_conn=conn),
                 project_data=ProjectData(key, db_conn=conn),
             )
+            session = LibrarySession.from_context(context)
             self._contexts[key] = context
-            self._sessions[key] = LibrarySession.from_context(context)
+            self._sessions[key] = session
             self._current = context
         get_event_bus().publish(LibraryOpened(library_root=key))
-        return context
+        return context, session
 
     def open_session(self, root_path: str | Path) -> LibrarySession:
-        context = self._open_library(root_path)
-        with self._lock:
-            return self._sessions[str(context.root)]
+        _, session = self._open(root_path)
+        return session
 
     @property
     def current(self) -> LibraryContext | None:
