@@ -82,7 +82,7 @@ class LibraryService:
         key = str(context.root)
         with self._lock:
             session = self._sessions.get(key)
-            if session is None:
+            if session is None or session.is_closed:
                 session = LibrarySession.from_context(context)
                 self._sessions[key] = session
             self._current_session = session

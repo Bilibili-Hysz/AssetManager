@@ -100,6 +100,24 @@ def test_open_session_reuses_canonical_session_identity(tmp_path):
     assert service.current_session is session
 
 
+def test_open_session_replaces_closed_canonical_session(tmp_path):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+
+    service = LibraryService()
+    session1 = service.open_session(root)
+    session1.close()
+
+    session2 = service.open_session(root)
+
+    assert session2 is not session1
+    assert not session2.is_closed
+    assert session2.connection_for(root) is session2.context.db_conn
+    assert service.open_session(root) is session2
+
+
 def test_open_session_contexts_do_not_follow_current_library(tmp_path):
     from AssetsManager.application.library_service import LibraryService
 
