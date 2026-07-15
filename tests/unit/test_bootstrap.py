@@ -167,3 +167,28 @@ class TestApplicationBootstrap:
         assert scoped.metadata_service._connection(root) is session.db_conn
         with pytest.raises(ValueError):
             scoped.metadata_service._connection(other)
+
+    def test_for_library_preserves_session_identity_and_resources(self, tmp_path, monkeypatch):
+        root = tmp_path / "library"
+        other = tmp_path / "other"
+        root.mkdir()
+        other.mkdir()
+
+        bootstrap = ApplicationBootstrap()
+        session = bootstrap.library_service.open_session(root)
+
+        def reject_session_reconstruction(cls, context):
+            raise AssertionError("for_library must not reconstruct a LibrarySession")
+
+        monkeypatch.setattr(type(session), "from_context", classmethod(reject_session_reconstruction))
+        scoped = bootstrap.for_library(session)
+
+        assert scoped.session is session
+        assert scoped.file_operation_service.session is session
+        assert scoped.metadata_service._repo(root)._conn is session.db_conn
+        assert scoped.tag_service._connection_provider(root) is session.db_conn
+        assert scoped.project_service._metadata_svc._repo(root)._conn is session.db_conn
+        assert scoped.project_service._tag_svc._connection_provider(root) is session.db_conn
+        assert scoped.file_operation_service._library_root is session.root
+        with pytest.raises(ValueError):
+            scoped.metadata_service._connection(other)

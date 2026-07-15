@@ -87,6 +87,19 @@ def test_open_session_reuses_cached_context(tmp_path):
     assert second.root == root.resolve()
 
 
+def test_open_session_reuses_canonical_session_identity(tmp_path):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+
+    service = LibraryService()
+    session = service.open_session(root)
+
+    assert service.open_session(root) is session
+    assert service.current_session is session
+
+
 def test_open_session_contexts_do_not_follow_current_library(tmp_path):
     from AssetsManager.application.library_service import LibraryService
 
