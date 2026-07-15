@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Header } from './Header';
 
@@ -18,15 +19,28 @@ vi.mock('react-router-dom', () => ({ Link: ({ children }: { children: React.Reac
 describe('Header menus', () => {
   afterEach(cleanup);
 
-  it('opens the user menu from the labelled button with keyboard focus and click', () => {
+  it.each(['header.language', 'alice'])('toggles %s once per native Enter and Space activation', async triggerName => {
+    const user = userEvent.setup();
     render(<Header onSidebarToggle={() => {}} onInfoToggle={() => {}} sidebarOpen={false} infoOpen={false} />);
 
-    const userButton = screen.getByRole('button', { name: 'alice' });
-    fireEvent.keyDown(userButton, { key: 'Enter' });
-    expect(userButton.getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByRole('button', { name: 'header.logout' })).toBeDefined();
-    fireEvent.click(userButton);
-    expect(userButton.getAttribute('aria-expanded')).toBe('false');
+    const trigger = screen.getByRole('button', { name: triggerName });
+    const clickListener = vi.fn();
+    trigger.addEventListener('click', clickListener);
+    trigger.focus();
+
+    await user.keyboard('{Enter}');
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(clickListener).toHaveBeenCalledTimes(1);
+    await user.keyboard('{Enter}');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(clickListener).toHaveBeenCalledTimes(2);
+
+    await user.keyboard(' ');
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(clickListener).toHaveBeenCalledTimes(3);
+    await user.keyboard(' ');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(clickListener).toHaveBeenCalledTimes(4);
   });
 
   it.each([

@@ -53,13 +53,6 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
 
   const toggleMenu = (menu: 'language' | 'user') => setOpenMenu(current => current === menu ? null : menu);
 
-  const handleMenuKeyDown = (e: React.KeyboardEvent, menu: 'language' | 'user') => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      toggleMenu(menu);
-    }
-  };
-
   const handleDisclosureKeyDown = (e: React.KeyboardEvent, menu: 'language' | 'user') => {
     if (e.key === 'Escape' && openMenu === menu) {
       e.preventDefault();
@@ -150,7 +143,7 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
       <div ref={menuRef} className="flex items-center gap-1 flex-shrink-0">
         {/* Language */}
         <div className="relative" onKeyDown={e => handleDisclosureKeyDown(e, 'language')}>
-          <button ref={languageTriggerRef} aria-label={t('header.language')} aria-expanded={openMenu === 'language'} onClick={() => toggleMenu('language')} onKeyDown={e => handleMenuKeyDown(e, 'language')} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
+          <button ref={languageTriggerRef} aria-label={t('header.language')} aria-expanded={openMenu === 'language'} onClick={() => toggleMenu('language')} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
             <Globe size={17} aria-hidden="true" />
           </button>
           <div data-header-menu hidden={openMenu !== 'language'} className="absolute right-0 top-full mt-1 z-50">
@@ -197,7 +190,7 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
           </Link>
         ) : (
           <div className="relative" onKeyDown={e => handleDisclosureKeyDown(e, 'user')}>
-            <button ref={userTriggerRef} aria-label={user?.username ?? t('perm.admin')} aria-expanded={openMenu === 'user'} onClick={() => toggleMenu('user')} onKeyDown={e => handleMenuKeyDown(e, 'user')} className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
+            <button ref={userTriggerRef} aria-label={user?.username ?? t('perm.admin')} aria-expanded={openMenu === 'user'} onClick={() => toggleMenu('user')} className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
               <User size={16} aria-hidden="true" />
               <span className="max-w-[80px] truncate hidden sm:inline">{user?.username ?? t('perm.admin')}</span>
             </button>
