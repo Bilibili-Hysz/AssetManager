@@ -261,7 +261,7 @@ class FileOperationService:
         conn.commit()
         for (cache_key,) in rows:
             try:
-                (thumb_dir(library_root) / f"{cache_key}.webp").unlink()
+                (thumb_dir(str(library_root)) / f"{cache_key}.webp").unlink()
             except OSError:
                 pass
 
