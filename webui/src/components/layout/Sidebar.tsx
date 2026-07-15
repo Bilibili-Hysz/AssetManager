@@ -106,11 +106,13 @@ export function Sidebar({ onNavigate, currentPath }: SidebarProps) {
   }, [navigate]);
 
   useEffect(() => {
+    let disposed = false;
     setLoading(true);
     metaApi.getTree()
-      .then(res => setTree(res.tree ?? []))
+      .then(res => { if (!disposed) setTree(res.tree ?? []); })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { if (!disposed) setLoading(false); });
+    return () => { disposed = true; };
   }, [metaApi]);
 
   return (
