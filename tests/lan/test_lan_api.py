@@ -1352,15 +1352,15 @@ class TestShareSecurity:
             await client.close()
 
     @pytest.mark.anyio
-    async def test_share_verify_never_returns_a_reusable_bearer_token(self, tmp_path):
+    async def test_share_verify_api_client_header_returns_usable_bearer_token(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
-        (library / "file.txt").write_text("content", encoding="utf-8")
+        (library / "image.png").write_bytes(b"\x89PNG")
 
         client = await _make_client(app)
         try:
             create = await client.post(
                 "/api/shares",
-                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
+                json={"paths": ["image.png"], "password": "secret123", "allow_preview": True},
                 headers=_local_ui_headers(app),
             )
             assert create.status == 200
@@ -1373,15 +1373,22 @@ class TestShareSecurity:
             )
             assert verify.status == 200
             data = await verify.json()
-            assert "token" not in data
-            assert verify.cookies["share_token"]["httponly"]
+            token = data["token"]
+            assert data["share"]["id"] == share_id
+            assert "Set-Cookie" not in verify.headers
 
             client.session.cookie_jar.clear()
+            auth = {"Authorization": f"Bearer {token}"}
+            info = await client.get(f"/api/shares/{share_id}/info", headers=auth)
+            assert info.status == 200
+            assert (await info.json())["paths"] == ["image.png"]
+            preview = await client.get(f"/api/shares/{share_id}/preview/image.png", headers=auth)
+            assert preview.status == 200
             download = await client.get(
-                f"/api/shares/{share_id}/download/file.txt",
-                headers={"Authorization": "Bearer not-a-share-cookie"},
+                f"/api/shares/{share_id}/download/image.png",
+                headers=auth,
             )
-            assert download.status == 401
+            assert download.status == 200
         finally:
             await client.close()
 
@@ -2266,7 +2273,7 @@ class TestP0ShareCookieAuthentication:
             await client.close()
 
     @pytest.mark.anyio
-    async def test_share_verify_ignores_api_client_header_and_returns_cookie_only(self, tmp_path):
+    async def test_browser_share_verify_returns_cookie_only(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
         (library / "file.txt").write_text("content", encoding="utf-8")
 
@@ -2283,7 +2290,6 @@ class TestP0ShareCookieAuthentication:
             verify = await client.post(
                 f"/api/shares/{share_id}/verify",
                 json={"password": "secret123"},
-                headers={"X-AssetsManager-API-Client": "1"},
             )
             assert verify.status == 200
             data = await verify.json()

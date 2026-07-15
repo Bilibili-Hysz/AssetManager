@@ -217,6 +217,9 @@ async def handle_verify_share_password(request):
     if not share.has_password or share_svc.verify_password(share_id, password):
         token = share_svc.generate_token(share_id)
         result = {"share": share.to_public_dict()}
+        if request.headers.get("X-AssetsManager-API-Client") == "1":
+            result["token"] = token
+            return web.json_response(result)
         response = web.json_response(result)
         set_share_cookie(response, share_id, token)
         return response
