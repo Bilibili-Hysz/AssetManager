@@ -115,7 +115,7 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
             {isSearching ? (
               <div className="p-3 text-center text-sm text-slate-500">{t('browse.loading')}</div>
             ) : results.length === 0 ? (
-              <div className="p-3 text-center text-sm text-slate-500">No results</div>
+              <div className="p-3 text-center text-sm text-slate-500">{t('header.no_results')}</div>
             ) : (
               results.map(result => (
                 <button

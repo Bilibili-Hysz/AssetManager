@@ -1,23 +1,41 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Header } from './Header';
+
+let testLang = 'en';
+const emptySearchMessages: Record<string, string> = { en: 'No results', zh: '无结果', ja: '結果がありません' };
 
 vi.mock('../../hooks/useAuth', () => ({
   useAuth: () => ({ user: { username: 'alice' }, role: 'user', logout: vi.fn(), serverInfo: null }),
 }));
 vi.mock('../../hooks/useI18n', () => ({
-  useI18n: () => ({ t: (key: string) => key, lang: 'en', setLang: vi.fn(), supportedLangs: ['en', 'zh'] }),
+  useI18n: () => ({ t: (key: string) => key === 'header.no_results' ? emptySearchMessages[testLang] : key, lang: testLang, setLang: vi.fn(), supportedLangs: ['en', 'zh', 'ja'] }),
 }));
 vi.mock('../../hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', toggleTheme: vi.fn() }) }));
 vi.mock('../../hooks/useSearch', () => ({
-  useSearch: () => ({ query: '', results: [], isSearching: false, setQuery: vi.fn(), clear: vi.fn() }),
+  useSearch: () => {
+    const [query, setQuery] = useState('');
+    return { query, results: [], isSearching: false, setQuery, clear: () => setQuery('') };
+  },
 }));
 vi.mock('react-router-dom', () => ({ Link: ({ children }: { children: React.ReactNode }) => <a href="/">{children}</a>, useNavigate: () => vi.fn() }));
 
 describe('Header menus', () => {
   afterEach(cleanup);
+
+  it.each([
+    ['en', 'No results'],
+    ['zh', '无结果'],
+    ['ja', '結果がありません'],
+  ])('renders localized empty search state in %s', (lang, message) => {
+    testLang = lang;
+    render(<Header onSidebarToggle={() => {}} onInfoToggle={() => {}} sidebarOpen={false} infoOpen={false} />);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'missing' } });
+    expect(screen.getByText(message)).toBeDefined();
+  });
 
   it.each(['header.language', 'alice'])('toggles %s once per native Enter and Space activation', async triggerName => {
     const user = userEvent.setup();

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BrowsePage from './BrowsePage';
 
 const search = vi.fn();
+const getMeta = vi.fn();
 
 vi.mock('../hooks/useAuth', () => ({
   useAuth: () => ({ api: {}, user: null }),
@@ -35,14 +36,15 @@ vi.mock('../hooks/useMediaQuery', () => ({ useMediaQuery: vi.fn(() => true) }));
 vi.mock('../hooks/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
 vi.mock('../api/files', () => ({ createFilesApi: () => ({ download: vi.fn(), batchDownload: vi.fn() }) }));
 vi.mock('../api/metadata', () => ({
-  createMetadataApi: () => ({ getMeta: vi.fn(), search }),
+  createMetadataApi: () => ({ getMeta, search }),
 }));
 vi.mock('../components/layout/AppLayout', () => ({ AppLayout: ({ children, infoPanel, onSelectModeToggle, selectMode }: { children: React.ReactNode; infoPanel: React.ReactNode; onSelectModeToggle?: () => void; selectMode?: boolean }) => <>{infoPanel}<button aria-label={selectMode ? 'mobile.done' : 'mobile.select'} onClick={onSelectModeToggle}>Toggle selection</button>{children}</> }));
 vi.mock('../components/layout/Header', () => ({ Header: () => null }));
 vi.mock('../components/layout/Sidebar', () => ({ Sidebar: () => null }));
 vi.mock('../components/layout/InfoPanel', () => ({
-  InfoPanel: ({ onTagClick }: { onTagClick?: (tag: string) => void }) => (
+  InfoPanel: ({ onTagClick, metadata, loading }: { onTagClick?: (tag: string) => void; metadata?: { path?: string } | null; loading?: boolean }) => (
     <>
+      <output data-testid="metadata">{loading ? 'loading' : metadata?.path ?? 'none'}</output>
       <button onClick={() => onTagClick?.('featured')}>Filter tag</button>
       <button onClick={() => onTagClick?.('first')}>Filter first tag</button>
       <button onClick={() => onTagClick?.('second')}>Filter second tag</button>
@@ -51,8 +53,8 @@ vi.mock('../components/layout/InfoPanel', () => ({
 }));
 vi.mock('../components/files/Breadcrumb', () => ({ Breadcrumb: () => null }));
 vi.mock('../components/files/FileToolbar', () => ({ FileToolbar: ({ selectedCount }: { selectedCount: number }) => <output data-testid="selected-count">{selectedCount}</output> }));
-vi.mock('../components/files/ProjectGrid', () => ({ ProjectGrid: (props: { onSelect: (path: string) => void; onDoubleClick: (item: { path: string }) => void }) => <><button onClick={() => props.onSelect('asset.png')}>Select asset</button><button onClick={() => props.onDoubleClick({ path: 'asset.png' })}>Open asset</button></> }));
-vi.mock('../components/files/ProjectList', () => ({ ProjectList: () => null }));
+vi.mock('../components/files/ProjectGrid', () => ({ ProjectGrid: (props: { onSelect: (path: string) => void; onCardClick?: (item: { path: string }) => void; onDoubleClick: (item: { path: string }) => void; selectionMode?: boolean }) => <><button onClick={() => { props.onSelect('asset.png'); if (!props.selectionMode) props.onCardClick?.({ path: 'asset.png' }); }}>Select asset</button><button onClick={() => props.onDoubleClick({ path: 'asset.png' })}>Open asset</button></> }));
+vi.mock('../components/files/ProjectList', () => ({ ProjectList: (props: { onSelect: (path: string) => void; onCardClick?: (item: { path: string }) => void; selectionMode?: boolean }) => <button onClick={() => { props.onSelect('asset.png'); if (!props.selectionMode) props.onCardClick?.({ path: 'asset.png' }); }}>List asset</button> }));
 vi.mock('../components/ui/Skeleton', () => ({ Skeleton: () => null }));
 vi.mock('../components/shares/ShareDialog', () => ({ ShareDialog: () => null }));
 
@@ -67,10 +69,12 @@ function NavigateToNewPath() {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>(resolvePromise => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 describe('BrowsePage', () => {
@@ -79,6 +83,8 @@ describe('BrowsePage', () => {
   beforeEach(() => {
     search.mockReset();
     search.mockResolvedValue({ results: [{ path: 'tagged/item' }] });
+    getMeta.mockReset();
+    getMeta.mockResolvedValue({ path: 'asset.png' });
   });
 
   it('updates the path query to the selected tag result', async () => {
@@ -101,9 +107,67 @@ describe('BrowsePage', () => {
     expect(screen.getByRole('button', { name: 'mobile.select' })).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: 'Select asset' }));
     expect(screen.getByTestId('selected-count').textContent).toBe('0');
+    getMeta.mockClear();
     fireEvent.click(screen.getByRole('button', { name: 'mobile.select' }));
     fireEvent.click(screen.getByRole('button', { name: 'Select asset' }));
     expect(screen.getByTestId('selected-count').textContent).toBe('1');
+    expect(getMeta).not.toHaveBeenCalled();
+  });
+
+  it('does not request metadata in grid or list selection mode', async () => {
+    const { useMediaQuery } = await import('../hooks/useMediaQuery');
+    vi.mocked(useMediaQuery).mockReturnValue(true);
+    render(<MemoryRouter initialEntries={['/browse']}><BrowsePage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'mobile.select' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select asset' }));
+    expect(getMeta).not.toHaveBeenCalled();
+    cleanup();
+    localStorage.setItem('am_view', 'list');
+    render(<MemoryRouter initialEntries={['/browse']}><BrowsePage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'mobile.select' }));
+    fireEvent.click(screen.getByRole('button', { name: 'List asset' }));
+    expect(getMeta).not.toHaveBeenCalled();
+    localStorage.removeItem('am_view');
+  });
+
+  it('ignores stale metadata responses and cleanup from an older card', async () => {
+    const first = deferred<{ path: string }>();
+    const second = deferred<{ path: string }>();
+    getMeta.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    render(<MemoryRouter initialEntries={['/browse']}><BrowsePage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Select asset' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select asset' }));
+    second.resolve({ path: 'newer' });
+    await waitFor(() => expect(screen.getByTestId('metadata').textContent).toBe('newer'));
+    first.resolve({ path: 'older' });
+    await waitFor(() => expect(getMeta).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId('metadata').textContent).toBe('newer');
+  });
+
+  it('ignores stale metadata failure and finally while the newer card is loading', async () => {
+    const first = deferred<{ path: string }>();
+    const second = deferred<{ path: string }>();
+    getMeta.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    render(<MemoryRouter initialEntries={['/browse']}><BrowsePage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Select asset' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select asset' }));
+    first.reject(new Error('stale failure'));
+    await waitFor(() => expect(getMeta).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId('metadata').textContent).toBe('loading');
+    second.resolve({ path: 'newer' });
+    await waitFor(() => expect(screen.getByTestId('metadata').textContent).toBe('newer'));
+  });
+
+  it('aborts and invalidates an active metadata request on unmount', () => {
+    const pending = deferred<{ path: string }>();
+    getMeta.mockClear();
+    getMeta.mockReturnValueOnce(pending.promise);
+    const view = render(<MemoryRouter initialEntries={['/browse']}><BrowsePage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Select asset' }));
+    const signal = getMeta.mock.calls[getMeta.mock.calls.length - 1]?.[1] as AbortSignal;
+    view.unmount();
+    expect(signal.aborted).toBe(true);
+    pending.resolve({ path: 'stale' });
   });
 
   it('ignores an older tag search that resolves after a newer one', async () => {

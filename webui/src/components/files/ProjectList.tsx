@@ -5,11 +5,13 @@ interface ProjectListProps {
   items: ProjectItem[];
   selected: Set<string>;
   onSelect: (path: string) => void;
+  onCardClick?: (item: ProjectItem) => void;
+  selectionMode?: boolean;
   onDoubleClick?: (item: ProjectItem) => void;
   onContextMenu?: (e: React.MouseEvent, item: ProjectItem) => void;
 }
 
-export function ProjectList({ items, selected, onSelect, onDoubleClick, onContextMenu }: ProjectListProps) {
+export function ProjectList({ items, selected, onSelect, onCardClick, selectionMode = false, onDoubleClick, onContextMenu }: ProjectListProps) {
   return (
     <div className="p-4">
       <div className="border border-slate-700/50 rounded-lg overflow-hidden">
@@ -31,7 +33,7 @@ export function ProjectList({ items, selected, onSelect, onDoubleClick, onContex
                   key={item.path}
                   className={`border-b border-slate-800/50 transition-colors cursor-pointer
                     ${selected.has(item.path) ? 'bg-indigo-500/5' : 'hover:bg-slate-800/30'}`}
-                  onClick={() => onSelect(item.path)}
+                  onClick={() => { onSelect(item.path); if (!selectionMode) onCardClick?.(item); }}
                   onDoubleClick={() => onDoubleClick?.(item)}
                   onContextMenu={e => onContextMenu?.(e, item)}
                 >
@@ -46,6 +48,7 @@ export function ProjectList({ items, selected, onSelect, onDoubleClick, onContex
                       onClick={e => {
                         e.stopPropagation();
                         onSelect(item.path);
+                        if (!selectionMode) onCardClick?.(item);
                       }}
                       onDoubleClick={e => {
                         e.stopPropagation();

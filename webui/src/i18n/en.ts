@@ -13,6 +13,7 @@ const en = {
     admin: 'Admin',
     settings: 'Settings',
     language: 'Language',
+    no_results: 'No results',
   },
   sidebar: {
     title: 'Directory',

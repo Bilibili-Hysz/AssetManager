@@ -72,9 +72,13 @@ export default function BrowsePage() {
   const infoStartW = useRef(0);
   const rafId = useRef<number | null>(null);
   const tagSearchGeneration = useRef(0);
+  const metadataGeneration = useRef(0);
+  const metadataAbort = useRef<AbortController | null>(null);
 
   useEffect(() => () => {
     tagSearchGeneration.current += 1;
+    metadataGeneration.current += 1;
+    metadataAbort.current?.abort();
   }, []);
 
   // WebSocket real-time updates
@@ -91,6 +95,8 @@ export default function BrowsePage() {
     const requestedPath = searchParams.get('path') || '';
     if (requestedPath !== currentPath) {
       tagSearchGeneration.current += 1;
+      metadataGeneration.current += 1;
+      metadataAbort.current?.abort();
       navigateTo(requestedPath);
     }
   }, [currentPath, navigateTo, searchParams]);
@@ -145,6 +151,8 @@ export default function BrowsePage() {
   // ── Handlers ──
   const handleNavigate = useCallback((path: string) => {
     tagSearchGeneration.current += 1;
+    metadataGeneration.current += 1;
+    metadataAbort.current?.abort();
     navigateTo(path);
     setSearchParams(path ? { path } : {}, { replace: true });
     setSelected(new Set());
@@ -176,11 +184,21 @@ export default function BrowsePage() {
   }, [handleNavigateDetail, handleSelect, isMobile, selectMode]);
 
   const handleCardClick = useCallback((item: ProjectItem) => {
+    const generation = ++metadataGeneration.current;
+    metadataAbort.current?.abort();
+    const abortController = new AbortController();
+    metadataAbort.current = abortController;
     setMetadataLoading(true);
-    metaApi.getMeta(item.path)
-      .then(setSelectedMetadata)
-      .catch(() => setSelectedMetadata(null))
-      .finally(() => setMetadataLoading(false));
+    metaApi.getMeta(item.path, abortController.signal)
+      .then(metadata => {
+        if (generation === metadataGeneration.current) setSelectedMetadata(metadata);
+      })
+      .catch(() => {
+        if (generation === metadataGeneration.current) setSelectedMetadata(null);
+      })
+      .finally(() => {
+        if (generation === metadataGeneration.current) setMetadataLoading(false);
+      });
   }, [metaApi]);
 
   const handleCardDoubleClick = useCallback((item: ProjectItem) => {
@@ -328,6 +346,7 @@ export default function BrowsePage() {
           selected={selected}
           onSelect={handleActivate}
           onCardClick={handleCardClick}
+          selectionMode={selectMode}
           onDoubleClick={handleCardDoubleClick}
           onContextMenu={handleContextMenu}
           thumbnailMap={thumbnailMap}
@@ -337,6 +356,8 @@ export default function BrowsePage() {
           items={data?.items ?? []}
           selected={selected}
           onSelect={handleActivate}
+          onCardClick={handleCardClick}
+          selectionMode={selectMode}
           onDoubleClick={handleCardDoubleClick}
           onContextMenu={handleContextMenu}
         />

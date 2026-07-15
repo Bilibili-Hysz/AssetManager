@@ -15,6 +15,7 @@ const ja: I18nDict = {
     admin: '管理',
     settings: '設定',
     language: '言語',
+    no_results: '結果がありません',
   },
   sidebar: {
     title: 'ディレクトリ',

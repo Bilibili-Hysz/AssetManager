@@ -76,7 +76,7 @@ export function AppLayout({
         {sidebar && mobileDialog === 'sidebar' && (
           <>
             <div className="fixed inset-0 bg-black/50 z-40" onClick={onSidebarToggle} aria-hidden="true" />
-            <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label="Navigation menu" tabIndex={-1} className="fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 border-r border-slate-700/50 shadow-xl overflow-hidden">
+            <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label={t('mobile.menu')} tabIndex={-1} className="fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 border-r border-slate-700/50 shadow-xl overflow-hidden">
               {sidebar}
             </div>
           </>
@@ -113,7 +113,7 @@ export function AppLayout({
         {infoPanel && mobileDialog === 'info' && (
           <>
             <div className="fixed inset-0 bg-black/50 z-40" onClick={onInfoToggle} aria-hidden="true" />
-            <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label="Information panel" tabIndex={-1} className="fixed inset-x-0 bottom-0 z-50 max-h-[55vh] border-t border-slate-700/50 bg-slate-900 shadow-xl">
+            <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label={t('info.title')} tabIndex={-1} className="fixed inset-x-0 bottom-0 z-50 max-h-[55vh] border-t border-slate-700/50 bg-slate-900 shadow-xl">
               {infoPanel}
             </div>
           </>

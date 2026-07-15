@@ -15,6 +15,7 @@ const zh: I18nDict = {
     admin: '管理',
     settings: '设置',
     language: '语言',
+    no_results: '无结果',
   },
   sidebar: {
     title: '目录',
