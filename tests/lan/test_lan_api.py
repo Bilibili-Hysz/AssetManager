@@ -501,6 +501,26 @@ async def test_metadata_route_returns_only_safe_http_urls(tmp_path):
         await client.close()
 
 
+@pytest.mark.anyio
+async def test_metadata_route_discards_malformed_urls(tmp_path):
+    app, library, conn = _make_lan_app(tmp_path)
+    target = library / "asset.txt"
+    target.write_text("metadata", encoding="utf-8")
+    conn.execute(
+        "INSERT INTO file_meta(file_path, urls) VALUES (?, ?)",
+        (str(target.resolve()), '["http://[", "https://example.com/reference"]'),
+    )
+    conn.commit()
+
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/meta/asset.txt")
+        assert response.status == 200
+        assert (await response.json())["urls"] == ["https://example.com/reference"]
+    finally:
+        await client.close()
+
+
 def test_api_exports_auth_token_helper():
     from AssetsManager.lan.api import _get_auth_token
 

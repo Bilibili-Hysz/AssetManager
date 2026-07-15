@@ -15,7 +15,7 @@ vi.mock('../hooks/useProjects', () => ({
   useProjects: (initialPath: string) => {
     const [currentPath, navigateTo] = useState(initialPath);
     return {
-      data: { items: [] },
+      data: { items: [{ path: 'asset.png', name: 'asset.png', type: 'file', extension: '.png', category: 'image', size_fmt: '1 KB', modified: 0 }] },
       isLoading: false,
       error: null,
       currentPath,
@@ -31,13 +31,13 @@ vi.mock('../hooks/useWebSocket', () => ({ useWebSocket: vi.fn() }));
 vi.mock('../hooks/useThumbnailCache', () => ({
   useThumbnailCache: () => ({ loadThumbnails: vi.fn(), getThumbnail: vi.fn(), revision: 0 }),
 }));
-vi.mock('../hooks/useMediaQuery', () => ({ useMediaQuery: () => false }));
+vi.mock('../hooks/useMediaQuery', () => ({ useMediaQuery: vi.fn(() => true) }));
 vi.mock('../hooks/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
 vi.mock('../api/files', () => ({ createFilesApi: () => ({ download: vi.fn(), batchDownload: vi.fn() }) }));
 vi.mock('../api/metadata', () => ({
   createMetadataApi: () => ({ getMeta: vi.fn(), search }),
 }));
-vi.mock('../components/layout/AppLayout', () => ({ AppLayout: ({ children, infoPanel }: { children: React.ReactNode; infoPanel: React.ReactNode }) => <>{infoPanel}{children}</> }));
+vi.mock('../components/layout/AppLayout', () => ({ AppLayout: ({ children, infoPanel, onSelectModeToggle, selectMode }: { children: React.ReactNode; infoPanel: React.ReactNode; onSelectModeToggle?: () => void; selectMode?: boolean }) => <>{infoPanel}<button aria-label={selectMode ? 'mobile.done' : 'mobile.select'} onClick={onSelectModeToggle}>Toggle selection</button>{children}</> }));
 vi.mock('../components/layout/Header', () => ({ Header: () => null }));
 vi.mock('../components/layout/Sidebar', () => ({ Sidebar: () => null }));
 vi.mock('../components/layout/InfoPanel', () => ({
@@ -50,8 +50,8 @@ vi.mock('../components/layout/InfoPanel', () => ({
   ),
 }));
 vi.mock('../components/files/Breadcrumb', () => ({ Breadcrumb: () => null }));
-vi.mock('../components/files/FileToolbar', () => ({ FileToolbar: () => null }));
-vi.mock('../components/files/ProjectGrid', () => ({ ProjectGrid: () => null }));
+vi.mock('../components/files/FileToolbar', () => ({ FileToolbar: ({ selectedCount }: { selectedCount: number }) => <output data-testid="selected-count">{selectedCount}</output> }));
+vi.mock('../components/files/ProjectGrid', () => ({ ProjectGrid: (props: { onSelect: (path: string) => void; onDoubleClick: (item: { path: string }) => void }) => <><button onClick={() => props.onSelect('asset.png')}>Select asset</button><button onClick={() => props.onDoubleClick({ path: 'asset.png' })}>Open asset</button></> }));
 vi.mock('../components/files/ProjectList', () => ({ ProjectList: () => null }));
 vi.mock('../components/ui/Skeleton', () => ({ Skeleton: () => null }));
 vi.mock('../components/shares/ShareDialog', () => ({ ShareDialog: () => null }));
@@ -92,6 +92,18 @@ describe('BrowsePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Filter tag' }));
 
     await waitFor(() => expect(screen.getByTestId('location-search').textContent).toBe('?path=tagged%2Fitem'));
+  });
+
+  it('only selects an asset after mobile selection mode is enabled', async () => {
+    const { useMediaQuery } = await import('../hooks/useMediaQuery');
+    vi.mocked(useMediaQuery).mockReturnValue(true);
+    render(<MemoryRouter initialEntries={['/browse']}><BrowsePage /></MemoryRouter>);
+    expect(screen.getByRole('button', { name: 'mobile.select' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Select asset' }));
+    expect(screen.getByTestId('selected-count').textContent).toBe('0');
+    fireEvent.click(screen.getByRole('button', { name: 'mobile.select' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select asset' }));
+    expect(screen.getByTestId('selected-count').textContent).toBe('1');
   });
 
   it('ignores an older tag search that resolves after a newer one', async () => {

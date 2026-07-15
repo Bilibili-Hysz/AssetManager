@@ -23,10 +23,14 @@ async def handle_meta(request):
     metadata = await asyncio.to_thread(
         svc.get_metadata, lan.library_root, target
     )
-    urls = [
-        url for url in metadata.urls
-        if (parsed := urlparse(url)).scheme in {"http", "https"} and parsed.netloc
-    ]
+    urls = []
+    for url in metadata.urls:
+        try:
+            parsed = urlparse(url)
+        except ValueError:
+            continue
+        if parsed.scheme in {"http", "https"} and parsed.netloc:
+            urls.append(url)
     return web.json_response({
         "path": rel_path,
         "tags": list(metadata.tags),

@@ -170,6 +170,11 @@ export default function BrowsePage() {
     });
   }, []);
 
+  const handleActivate = useCallback((path: string) => {
+    if (isMobile && !selectMode) handleNavigateDetail(path);
+    else handleSelect(path);
+  }, [handleNavigateDetail, handleSelect, isMobile, selectMode]);
+
   const handleCardClick = useCallback((item: ProjectItem) => {
     setMetadataLoading(true);
     metaApi.getMeta(item.path)
@@ -321,7 +326,7 @@ export default function BrowsePage() {
         <ProjectGrid
           items={data?.items ?? []}
           selected={selected}
-          onSelect={handleSelect}
+          onSelect={handleActivate}
           onCardClick={handleCardClick}
           onDoubleClick={handleCardDoubleClick}
           onContextMenu={handleContextMenu}
@@ -331,7 +336,7 @@ export default function BrowsePage() {
         <ProjectList
           items={data?.items ?? []}
           selected={selected}
-          onSelect={handleSelect}
+          onSelect={handleActivate}
           onDoubleClick={handleCardDoubleClick}
           onContextMenu={handleContextMenu}
         />

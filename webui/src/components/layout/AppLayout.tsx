@@ -137,9 +137,9 @@ export function AppLayout({
             </button>
           )}
           {infoPanel && (
-            <button onClick={onInfoToggle} aria-label={t('mobile.info')} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
+            <button onClick={onInfoToggle} aria-label={t(infoOpen ? 'action.close_info' : 'mobile.info')} aria-expanded={infoOpen} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
               <PanelRightClose size={18} aria-hidden="true" />
-              <span className="text-[10px]">{t('mobile.info')}</span>
+              <span className="text-[10px]">{t(infoOpen ? 'action.close_info' : 'mobile.info')}</span>
             </button>
           )}
           {onSelectModeToggle && (
