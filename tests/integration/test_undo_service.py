@@ -10,23 +10,50 @@ class _FailingFileOperations:
         raise OSError("filesystem failure")
 
 
-def test_failed_undo_keeps_entry_on_undo_stack(tmp_path):
+class _FailingPermanentDeleteOperations:
+    def delete_permanent(self, paths, *, library_root):
+        from AssetsManager.application.file_operation_service import FileOperationResult
+
+        return FileOperationResult((), ("filesystem failure",))
+
+
+def test_failed_move_undo_keeps_same_entry_on_undo_stack(tmp_path):
     svc = UndoService()
     svc.record_rename("missing-new", "old")
+    entry = svc.peek_undo()
 
     assert not svc.perform_undo(_FailingFileOperations(), str(tmp_path))
-    assert svc.can_undo()
+    assert svc.peek_undo() is entry
     assert not svc.can_redo()
 
 
-def test_failed_redo_keeps_entry_on_redo_stack(tmp_path):
+def test_failed_backup_restore_undo_keeps_same_entry_on_undo_stack(tmp_path):
+    source = tmp_path / "file.txt"
+    source.write_text("data", encoding="utf-8")
     svc = UndoService()
-    svc.record_rename("old", "missing-new")
-    assert svc.undo() is not None
+    try:
+        svc.record_delete(str(source))
+        entry = svc.peek_undo()
+        os.remove(entry.backup)
 
-    assert not svc.perform_redo(_FailingFileOperations(), str(tmp_path))
+        assert not svc.perform_undo(object(), str(tmp_path))
+        assert svc.peek_undo() is entry
+        assert not svc.can_redo()
+    finally:
+        svc.cleanup()
+
+
+def test_failed_permanent_delete_redo_keeps_same_entry_on_redo_stack(tmp_path):
+    source = tmp_path / "file.txt"
+    source.write_text("data", encoding="utf-8")
+    svc = UndoService()
+    svc.record_delete(str(source))
+    entry = svc.undo()
+
+    assert entry is not None
+    assert not svc.perform_redo(_FailingPermanentDeleteOperations(), str(tmp_path))
     assert not svc.can_undo()
-    assert svc.can_redo()
+    assert svc.peek_redo() is entry
 
 
 def test_record_rename_and_undo(tmp_path):
