@@ -191,6 +191,9 @@ class UndoService:
             if entry.type == "rename":
                 file_operations.move(entry.new, entry.old, library_root=library_root)
                 return True
+            if entry.type == "delete" and self.execute_undo(entry):
+                file_operations.reconcile_created(entry.path, entry.is_dir, library_root=library_root)
+                return True
             return self.execute_undo(entry)
         except (OSError, ValueError):
             return False
@@ -201,6 +204,9 @@ class UndoService:
             if entry.type == "rename":
                 file_operations.move(entry.old, entry.new, library_root=library_root)
                 return True
+            if entry.type == "delete":
+                result = file_operations.delete_permanent([entry.path], library_root=library_root)
+                return result.ok
             return self.execute_redo(entry)
         except (OSError, ValueError):
             return False

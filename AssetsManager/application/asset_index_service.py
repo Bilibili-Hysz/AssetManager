@@ -97,6 +97,18 @@ class AssetIndexService:
             conn.commit()
         return len(entries)
 
+    def index_directory_tree(
+        self,
+        conn: Connection,
+        library_root: str | Path,
+        dir_path: str | Path,
+    ) -> int:
+        """Index a directory and every descendant directory."""
+        count = 0
+        for current, _, _ in os.walk(Path(dir_path)):
+            count += self.index_directory(conn, library_root, current, force=True)
+        return count
+
     def query_by_parent(
         self,
         conn: Connection,

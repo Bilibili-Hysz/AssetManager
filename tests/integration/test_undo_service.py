@@ -104,6 +104,52 @@ def test_delete_redo_can_be_undone_again(tmp_path):
         svc.cleanup()
 
 
+def test_delete_undo_and_redo_reconcile_file_projections(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.core.tag_store import TagStore
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileCreated, FileDeleted
+    from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
+
+    library = tmp_path / "library"
+    library.mkdir()
+    source = library / "asset.txt"
+    source.write_text("data", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    conn = scoped.session.db_conn
+    index = scoped.asset_index_service
+    index.index_directory(conn, library, library)
+    TagStore(str(library)).add_tag(str(source), "hero")
+    ThumbnailRepository(conn).upsert_entry("thumb", str(source.resolve()), 1.0, 1, 1, 1)
+    thumbnail_file = scoped.session.thumb_dir / "thumb.webp"
+    thumbnail_file.write_bytes(b"thumb")
+    created = []
+    deleted = []
+    get_event_bus().subscribe(FileCreated, created.append)
+    get_event_bus().subscribe(FileDeleted, deleted.append)
+    undo = scoped.undo_service
+
+    try:
+        undo.record_delete(str(source))
+        assert scoped.file_operation_service.delete_to_trash([source]).ok
+
+        assert undo.perform_undo(scoped.file_operation_service, str(library))
+        assert source.read_text(encoding="utf-8") == "data"
+        assert index.get_entry(conn, source) is not None
+        assert created[-1].path == str(source)
+
+        assert undo.perform_redo(scoped.file_operation_service, str(library))
+        assert not source.exists()
+        assert TagStore(str(library)).get_tags(str(source)) == []
+        assert ThumbnailRepository(conn).list_all() == []
+        assert not thumbnail_file.exists()
+        assert index.get_entry(conn, source) is None
+        assert deleted[-1].path == str(source)
+    finally:
+        undo.cleanup()
+
+
 def test_undo_service_uses_unique_backup_dir():
     first = UndoService()
     second = UndoService()

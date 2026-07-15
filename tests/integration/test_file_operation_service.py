@@ -28,6 +28,31 @@ def test_copy_to_directory_copies_files_and_renames_conflicts(tmp_path):
     assert (dst_dir / "asset_1.txt").read_text(encoding="utf-8") == "asset"
 
 
+def test_copy_to_directory_indexes_copied_directory_tree(tmp_path, schema_db):
+    from AssetsManager.application import AssetIndexService, FileOperationService
+
+    library = tmp_path / "library"
+    source = library / "source"
+    nested = source / "nested"
+    destination = library / "destination"
+    nested.mkdir(parents=True)
+    destination.mkdir(parents=True)
+    (nested / "asset.txt").write_text("asset", encoding="utf-8")
+
+    index = AssetIndexService()
+    service = FileOperationService(
+        asset_index_service=index,
+        connection_provider=lambda _root: schema_db,
+    )
+    result = service.copy_to_directory([source], destination, library_root=library)
+
+    copied = destination / "source"
+    assert result.ok
+    assert [entry.name for entry in index.query_by_parent(schema_db, library, destination)] == ["source"]
+    assert [entry.name for entry in index.query_by_parent(schema_db, library, copied)] == ["nested"]
+    assert [entry.name for entry in index.query_by_parent(schema_db, library, copied / "nested")] == ["asset.txt"]
+
+
 def test_move_to_directory_moves_and_renames_conflicts(tmp_path):
     from AssetsManager.application import FileOperationService
 
