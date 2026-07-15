@@ -657,6 +657,23 @@ async def test_tags_route_writes_only_library_paths(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_download_route_uses_safe_rfc5987_filename_for_unicode_file(tmp_path):
+    app, library, conn = _make_lan_app(tmp_path)
+    (library / "报告.txt").write_text("download me", encoding="utf-8")
+
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/download/%E6%8A%A5%E5%91%8A.txt", headers=_local_ui_headers(app))
+
+        assert response.status == 200
+        header = response.headers["Content-Disposition"]
+        assert header.startswith('attachment; filename=".txt"')
+        assert "filename*=UTF-8''%E6%8A%A5%E5%91%8A.txt" in header
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
 async def test_share_routes_create_and_download_scoped_file(tmp_path):
     app, library, conn = _make_lan_app(tmp_path)
     folder = library / "project"
@@ -682,6 +699,31 @@ async def test_share_routes_create_and_download_scoped_file(tmp_path):
 
         blocked = await client.get(f"/api/shares/{share_id}/download/private.txt")
         assert blocked.status == 403
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_share_download_uses_safe_rfc5987_filename_for_unicode_file(tmp_path):
+    app, library, conn = _make_lan_app(tmp_path)
+    (library / "报告.txt").write_text("shared asset", encoding="utf-8")
+
+    client = await _make_client(app)
+    try:
+        create = await client.post(
+            "/api/shares",
+            json={"paths": ["报告.txt"], "allow_preview": True},
+            headers=_local_ui_headers(app),
+        )
+        assert create.status == 200
+        share_id = (await create.json())["id"]
+
+        response = await client.get(f"/api/shares/{share_id}/download/%E6%8A%A5%E5%91%8A.txt")
+
+        assert response.status == 200
+        header = response.headers["Content-Disposition"]
+        assert header.startswith('attachment; filename=".txt"')
+        assert "filename*=UTF-8''%E6%8A%A5%E5%91%8A.txt" in header
     finally:
         await client.close()
 
@@ -1200,7 +1242,7 @@ class TestShareSecurity:
             await client.close()
 
     @pytest.mark.anyio
-    async def test_share_verify_api_client_returns_bearer_token_and_keeps_cookie(self, tmp_path):
+    async def test_share_verify_never_returns_a_reusable_bearer_token(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
         (library / "file.txt").write_text("content", encoding="utf-8")
 
@@ -1221,17 +1263,15 @@ class TestShareSecurity:
             )
             assert verify.status == 200
             data = await verify.json()
-            token = data["token"]
-            assert token
-            assert "share_token" not in verify.cookies
+            assert "token" not in data
+            assert verify.cookies["share_token"]["httponly"]
 
             client.session.cookie_jar.clear()
             download = await client.get(
                 f"/api/shares/{share_id}/download/file.txt",
-                headers={"Authorization": f"Bearer {token}"},
+                headers={"Authorization": "Bearer not-a-share-cookie"},
             )
-            assert download.status == 200
-            assert await _read_body(download) == b"content"
+            assert download.status == 401
         finally:
             await client.close()
 
@@ -2047,6 +2087,7 @@ class TestP0ShareCookieAuthentication:
             assert cookie["httponly"]
             assert cookie["samesite"] == "Lax"
             assert cookie["path"] == f"/api/shares/{share_id}"
+            assert int(cookie["max-age"]) == 3600
             token = cookie.value
 
             info = await client.get(f"/api/shares/{share_id}/info", headers={"Cookie": f"share_token={token}"})
@@ -2099,7 +2140,7 @@ class TestP0ShareCookieAuthentication:
             await client.close()
 
     @pytest.mark.anyio
-    async def test_non_browser_share_verify_preserves_bearer_api_flow(self, tmp_path):
+    async def test_share_verify_ignores_api_client_header_and_returns_cookie_only(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
         (library / "file.txt").write_text("content", encoding="utf-8")
 
@@ -2120,14 +2161,15 @@ class TestP0ShareCookieAuthentication:
             )
             assert verify.status == 200
             data = await verify.json()
-            assert data["token"]
-            assert "share_token" not in verify.cookies
+            assert "token" not in data
+            assert verify.cookies["share_token"]["httponly"]
 
+            client.session.cookie_jar.clear()
             download = await client.get(
                 f"/api/shares/{share_id}/download/file.txt",
-                headers={"Authorization": f"Bearer {data['token']}"},
+                headers={"Authorization": "Bearer not-a-share-cookie"},
             )
-            assert download.status == 200
+            assert download.status == 401
         finally:
             await client.close()
 

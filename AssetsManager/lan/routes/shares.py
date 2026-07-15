@@ -2,7 +2,7 @@
 import logging
 from pathlib import Path
 
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 from aiohttp import web
 
@@ -13,6 +13,17 @@ from AssetsManager.lan.routes.pages import _spa_index
 from AssetsManager.lan.utils import get_local_ip
 
 _log = logging.getLogger(__name__)
+
+
+def _content_disposition_filename(name: str) -> str:
+    clean = sanitize_filename(name)
+    ascii_name = clean.encode("ascii", "ignore").decode("ascii") or "download"
+    header = f'attachment; filename="{ascii_name}"'
+    if clean != ascii_name:
+        header += f"; filename*=UTF-8''{quote(clean, safe='')}"
+    return header
+
+
 def _resolve_share_target(lan, share: ShareLink, rel_path: str) -> Path | None:
     """Resolve a path within a share's scope, with path traversal protection.
 
@@ -206,11 +217,6 @@ async def handle_verify_share_password(request):
     if not share.has_password or share_svc.verify_password(share_id, password):
         token = share_svc.generate_token(share_id)
         result = {"share": share.to_public_dict()}
-        # Browser callers use the scoped HttpOnly cookie. Non-browser API
-        # clients can explicitly request the legacy Bearer credential.
-        if request.headers.get("X-AssetsManager-API-Client") == "1":
-            result["token"] = token
-            return web.json_response(result)
         response = web.json_response(result)
         set_share_cookie(response, share_id, token)
         return response
@@ -252,7 +258,7 @@ async def handle_share_download(request):
             return web.json_response({"error": "Download limit reached"}, status=403)
         response = web.FileResponse(
             target,
-            headers={"Content-Disposition": f'attachment; filename="{sanitize_filename(target.name)}"'},
+            headers={"Content-Disposition": _content_disposition_filename(target.name)},
         )
         return response
 

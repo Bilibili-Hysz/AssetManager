@@ -1,7 +1,7 @@
 """Download routes: /api/download/{path}, /api/download/batch."""
 import os
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 from aiohttp import web
 
@@ -11,10 +11,19 @@ MAX_BATCH_DOWNLOAD_PATHS = 100
 MAX_BATCH_DOWNLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
 
 
+def _content_disposition_filename(name: str) -> str:
+    clean = sanitize_filename(name)
+    ascii_name = clean.encode("ascii", "ignore").decode("ascii") or "download"
+    header = f'attachment; filename="{ascii_name}"'
+    if clean != ascii_name:
+        header += f"; filename*=UTF-8''{quote(clean, safe='')}"
+    return header
+
+
 def _file_response_with_cleanup(path: str, *, filename: str, write_eof=None) -> web.FileResponse:
     response = web.FileResponse(
         path,
-        headers={"Content-Disposition": f'attachment; filename="{sanitize_filename(filename)}"'},
+        headers={"Content-Disposition": _content_disposition_filename(filename)},
     )
     original_write_eof = write_eof or response.write_eof
 
@@ -60,7 +69,7 @@ async def handle_download(request):
     if target.is_file():
         return web.FileResponse(
             target,
-            headers={"Content-Disposition": f'attachment; filename="{sanitize_filename(target.name)}"'},
+            headers={"Content-Disposition": _content_disposition_filename(target.name)},
         )
 
     if target.is_dir():
