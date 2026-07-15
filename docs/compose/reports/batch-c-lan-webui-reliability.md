@@ -6,16 +6,16 @@ specs:
 plans:
   - docs/compose/plans/2026-07-15-batch-c-lan-webui-reliability.md
 branch: batch-c-lan-webui-reliability
-implementation_range: 8d7a56664cdbdf68a820dfd30ff7a5d7c94d0d33..ffb94976113f5a8833d90cb2dfb93cec9f7b5b3b
+implementation_range: 8d7a56664cdbdf68a820dfd30ff7a5d7c94d0d33..e2678695a5c6dff4ddc32712934cdb62a24478e1
 ---
 
 # Batch C LAN WebUI Reliability Delivery Report
 
 ## Delivery Boundary
 
-This report was audited against the isolated `batch-c-lan-webui-reliability` worktree, its files, and every branch-local commit after base `8d7a56664cdbdf68a820dfd30ff7a5d7c94d0d33`. The exact implementation range is `8d7a56664cdbdf68a820dfd30ff7a5d7c94d0d33..ffb94976113f5a8833d90cb2dfb93cec9f7b5b3b`. Delivery status is branch-local: it means the implementation and gates below pass on this branch. It does not claim integration to `master`, a packaged-application smoke test, or deployment.
+This report was audited against the isolated `batch-c-lan-webui-reliability` worktree, its files, and every branch-local commit after base `8d7a56664cdbdf68a820dfd30ff7a5d7c94d0d33`. The exact delivery range is `8d7a56664cdbdf68a820dfd30ff7a5d7c94d0d33..e2678695a5c6dff4ddc32712934cdb62a24478e1`, and `e2678695a5c6dff4ddc32712934cdb62a24478e1` is the final delivery HEAD. This range includes the audited report commit `038961c0e14a348f72083a0f8d71ccee8138aa62` and the final CI commit; it is not a self-excluding implementation range. Delivery status is branch-local: it means the implementation and gates below pass on this branch. It does not claim integration to `master`, a packaged-application smoke test, or deployment.
 
-The approved spec and plan live at the front-matter paths. They were available in the anchor workspace during this audit but are not themselves commits in this branch. Some foundational contracts described by the spec, including public SPA asset routing, the normal `lan_token` browser session, scoped share-cookie helpers, batch JSON/Blob transport, and backend-shaped detail/share types, existed at the base. Batch C retained their regression coverage and hardened the failure modes listed below rather than reimplementing unchanged baseline code.
+The approved spec and plan are currently untracked anchor documents outside this branch at the front-matter paths. They are not independently present in this branch or included in the delivery range, so integration must include or reconcile those exact anchor documents rather than assuming this branch carries them. Some foundational contracts described by the spec, including public SPA asset routing, the normal `lan_token` browser session, scoped share-cookie helpers, batch JSON/Blob transport, and backend-shaped detail/share types, existed at the base. Batch C retained their regression coverage and hardened the failure modes listed below rather than reimplementing unchanged baseline code.
 
 ## Delivered Behavior
 
@@ -45,6 +45,7 @@ The approved spec and plan live at the front-matter paths. They were available i
 - Replaced hover-only header menus with controlled native-button disclosures, outside-click/Escape closing, focus restoration, and correct Enter/Space activation.
 - Added accessible names to icon-only controls, hid decorative icons, added toast/live status semantics, and separated asset selection from detail activation for keyboard users.
 - Wired mobile information-panel state and grid/list selection mode. Normal mobile activation opens detail; explicit selection mode selects without issuing metadata requests, exposes `aria-pressed`, and provides a localized Done action.
+- Completed the final frontend metadata/selection/i18n hardening in `ffb9497`: metadata requests preserve abort handling, mobile selection avoids accidental detail fetches, responsive info controls stay state-consistent, and the added labels are localized in English, Chinese, and Japanese.
 
 ### P2: Legacy Fallback
 
@@ -66,11 +67,11 @@ The approved spec and plan live at the front-matter paths. They were available i
 | S8 Legacy fallback | Dropdown selector fixed; viewer-class, backup rejection, and offline-dependency contracts retained. | `AssetsManager/lan/static/app.js`; fallback assertions in `tests/lan/test_lan_api.py`. |
 | S9 Security and policy | Explicit Bearer wins over stale cookie, WebSocket query credentials are rejected, tunnel status is admin-only, malformed metadata URLs are discarded, and share/download protections remain covered. | `_helpers.py`, `server.py`, `metadata.py`, `shares.py`, `websocket.py`; `tests/lan/test_helpers.py`, `test_lan_api.py`, `test_t2_t4_contracts.py`; `LoginPage.test.tsx`. |
 | S10 Test strategy/gates | Backend route, heartbeat, share/download, lifecycle, navigation, i18n, accessibility, mobile, fallback, full Python, full SPA, type, build, and architecture gates passed. | `tests/lan/*.py`, 15 WebUI test files, and the verification commands below. |
-| S11 Delivery phases | Branch commits progress through P0 WebSocket/auth, P1 share/download, P1 lifecycle, P2 navigation/accessibility/mobile, fallback, heartbeat completion, and final frontend hardening. | Complete implementation range and this report. |
+| S11 Delivery phases | Branch commits progress through P0 WebSocket/auth, P1 share/download, P1 lifecycle, P2 navigation/accessibility/mobile, fallback, correlated-PONG heartbeat completion, final frontend metadata/selection/i18n hardening, audited reporting, and CI enforcement of the WebUI test step. | Complete delivery range through `e267869`. |
 
 ## Verification
 
-The following commands were run against implementation HEAD `ffb94976113f5a8833d90cb2dfb93cec9f7b5b3b` during the final audit:
+The following commands and results were already verified against final delivery HEAD `e2678695a5c6dff4ddc32712934cdb62a24478e1`:
 
 - `python -m ruff check . --exclude ".Cython&Noikta"`: `All checks passed!`
 - `python -m pyright`: `0 errors, 0 warnings, 0 informations` (plus an informational newer-version notice).
@@ -91,7 +92,8 @@ No manual browser end-to-end pass was run. No packaged-application smoke test, d
 - Automated jsdom and aiohttp coverage does not replace a manual LAN browser pass across unauthenticated login, authenticated Browse/Detail, password shares, native downloads, live WebSocket status, mobile drawers/selection, and forced legacy fallback.
 - `npm ci` reports five known dependency vulnerabilities: three moderate, one high, and one critical. This batch did not run a potentially breaking `npm audit fix --force` or otherwise remediate them.
 - WebSocket heartbeat behavior is comprehensively unit/integration tested, but real proxy, sleep/wake, packet-loss, and many-client timing behavior still needs deployment-level observation.
-- The implementation range does not contain the approved spec/plan files themselves; downstream integration must preserve or add those anchor-workspace documents at the referenced paths.
+- After the last ordinary client disconnect, the heartbeat task can remain asleep until the next 30-second cycle before exiting. It retains no client or PONG waiter, does not block requests, and `close_all()` cancels it promptly during server shutdown, so this is a non-blocking cleanup delay rather than a shutdown blocker.
+- The delivery range does not contain the approved spec/plan files themselves. They are currently untracked in the anchor workspace, and downstream integration must include or reconcile those exact documents at the referenced paths.
 - Legacy fallback remains intentionally below SPA feature parity and receives only isolated-LAN and essential-interaction safeguards.
 
 ## Lessons
@@ -107,4 +109,28 @@ No manual browser end-to-end pass was run. No packaged-application smoke test, d
 
 ## Commit Accounting
 
-The exact implementation range in front matter ends at `ffb94976113f5a8833d90cb2dfb93cec9f7b5b3b`. The report-only commit created after that audit is intentionally outside the implementation range and is reported in the delivery response. If another implementation commit lands later, replace the range endpoint with that exact commit and rerun the affected gates before treating this report as current.
+The exact delivery range is `8d7a56664cdbdf68a820dfd30ff7a5d7c94d0d33..e2678695a5c6dff4ddc32712934cdb62a24478e1`. It contains 19 branch-local commits:
+
+| Commit | Delivery contribution |
+|---|---|
+| `c44bfdc` | Hardened LAN WebSocket authentication. |
+| `17fc6aa` | Bounded frontend reconnect and initial heartbeat behavior. |
+| `898010e` | Hardened share/download response contracts. |
+| `40c4c60` | Made LAN WebSocket heartbeat checks concurrent. |
+| `1f30912` | Hardened WebUI request lifecycles. |
+| `bea25c0` | Prevented stale Browse search updates. |
+| `a41b92b` | Ignored stale Browse tag searches. |
+| `b29c4fc` | Invalidated tag search on URL navigation. |
+| `572a952` | Aligned WebUI accessibility policies. |
+| `2b86dac` | Hardened LAN metadata and mobile accessibility. |
+| `2380da0` | Made header disclosures state-controlled. |
+| `f80fc25` | Relied on native header button activation. |
+| `0fe8ea0` | Hardened legacy LAN fallback interactions. |
+| `d174a4e` | Recorded intermediate Batch C LAN WebUI evidence. |
+| `de900b0` | Finalized intermediate Batch C commit evidence. |
+| `f3c6676` | Completed the unique-payload, correlated-PONG heartbeat and its regression coverage. |
+| `ffb9497` | Completed frontend metadata, mobile selection, responsive state, and i18n hardening. |
+| `038961c` | Audited and updated this delivery report; the report is included in the delivery range. |
+| `e267869` | Added the WebUI test step to CI and is the final delivery HEAD. |
+
+The final-review correction commit that updates this report's accounting is documentation-only and will necessarily follow `e267869`; it does not redefine the approved delivery endpoint or imply that the report must exclude itself from delivery accounting. If implementation changes after `e267869`, establish a new reviewed endpoint and rerun the affected gates before treating this report as current.
