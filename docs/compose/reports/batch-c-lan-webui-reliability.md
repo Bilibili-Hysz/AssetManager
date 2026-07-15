@@ -6,7 +6,7 @@ specs:
 plans:
   - docs/compose/plans/2026-07-13-webui-react-plan.md
 branch: batch-c-lan-webui-reliability
-commits: f80fc25..FINAL_REPORT_COMMIT
+commits: f80fc25..HEAD
 ---
 
 # Batch C LAN WebUI Reliability - Final Report
@@ -48,7 +48,7 @@ Manual browser checks and an independently repeated package audit were not execu
 
 ## Final Commit Range
 
-The implementation/tests commit is `0fe8ea0`; the report commit is `FINAL_REPORT_COMMIT`. The final delivery range is `f80fc25..FINAL_REPORT_COMMIT`.
+The implementation/tests commit is `0fe8ea0`; the report commits are the preceding report commit and this final report update. The final delivery range is `f80fc25..HEAD`, whose concrete final hash is recorded in the delivery response and Git verification.
 
 ## Residual Risks
 
