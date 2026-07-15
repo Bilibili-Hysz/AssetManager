@@ -18,6 +18,8 @@ class WebSocketManager:
         self._clients: set[web.WebSocketResponse] = set()
         self._lock = asyncio.Lock()
         self._heartbeat_task: asyncio.Task | None = None
+        self._pong_waiters: dict[web.WebSocketResponse, tuple[bytes, asyncio.Event]] = {}
+        self._ping_sequence = 0
 
     async def add(self, ws: web.WebSocketResponse) -> bool:
         async with self._lock:
@@ -37,7 +39,13 @@ class WebSocketManager:
     async def remove(self, ws: web.WebSocketResponse):
         async with self._lock:
             self._clients.discard(ws)
+            self._pong_waiters.pop(ws, None)
             _log.debug("WebSocket client disconnected (%d total)", len(self._clients))
+
+    def acknowledge_pong(self, ws: web.WebSocketResponse, message: bytes):
+        waiter = self._pong_waiters.get(ws)
+        if waiter is not None and waiter[0] == message:
+            waiter[1].set()
 
     async def _heartbeat(self):
         while True:
@@ -49,10 +57,18 @@ class WebSocketManager:
                 clients = list(self._clients)
             dead = []
             for ws in clients:
+                pong = asyncio.Event()
+                self._ping_sequence += 1
+                message = str(self._ping_sequence).encode()
+                self._pong_waiters[ws] = (message, pong)
                 try:
-                    await asyncio.wait_for(ws.ping(), timeout=WS_OPERATION_TIMEOUT)
+                    await asyncio.wait_for(ws.ping(message), timeout=WS_OPERATION_TIMEOUT)
+                    await asyncio.wait_for(pong.wait(), timeout=WS_OPERATION_TIMEOUT)
                 except Exception:
                     dead.append(ws)
+                finally:
+                    if self._pong_waiters.get(ws) == (message, pong):
+                        self._pong_waiters.pop(ws, None)
             if dead:
                 async with self._lock:
                     self._clients.difference_update(dead)
@@ -76,6 +92,8 @@ class WebSocketManager:
         if dead:
             async with self._lock:
                 self._clients.difference_update(dead)
+                for ws in dead:
+                    self._pong_waiters.pop(ws, None)
 
     @staticmethod
     async def _close(ws: web.WebSocketResponse, **kwargs):
@@ -94,4 +112,5 @@ class WebSocketManager:
         async with self._lock:
             clients = list(self._clients)
             self._clients.clear()
+            self._pong_waiters.clear()
         await asyncio.gather(*(self._close(ws) for ws in clients))

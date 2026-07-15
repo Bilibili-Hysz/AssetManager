@@ -38,7 +38,6 @@ export function useWebSocket({ onEvent, enabled = true }: UseWebSocketOptions): 
       ws.onopen = () => {
         if (!disposed) {
           setStatus('connected');
-          retryRef.current = 0;
         }
       };
       ws.onmessage = event => {

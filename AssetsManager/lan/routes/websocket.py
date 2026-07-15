@@ -1,5 +1,5 @@
 """WebSocket route."""
-from aiohttp import web
+from aiohttp import WSMsgType, web
 
 from AssetsManager.lan.routes._helpers import get_lan, get_request_user
 
@@ -11,13 +11,16 @@ async def handle_websocket(request):
     if "token" in request.query or "key" in request.query or not get_request_user(request):
         return web.json_response({"error": "Unauthorized"}, status=401)
 
-    ws = web.WebSocketResponse()
+    ws = web.WebSocketResponse(autoping=False)
     await ws.prepare(request)
     if not await lan.ws_manager.add(ws):
         return ws
     try:
         async for msg in ws:
-            pass
+            if msg.type is WSMsgType.PONG:
+                lan.ws_manager.acknowledge_pong(ws, msg.data)
+            elif msg.type is WSMsgType.PING:
+                await ws.pong(msg.data)
     finally:
         await lan.ws_manager.remove(ws)
     return ws
