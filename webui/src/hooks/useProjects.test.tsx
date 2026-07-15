@@ -3,7 +3,9 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useProjects } from './useProjects';
 
-const list = vi.fn(() => Promise.resolve({ items: [] }));
+const list = vi.fn<(...args: unknown[]) => Promise<{ items: Array<{ path: string }> }>>(
+  () => Promise.resolve({ items: [] }),
+);
 const api = {};
 
 vi.mock('./useAuth', () => ({
@@ -43,5 +45,35 @@ describe('useProjects', () => {
     rerender({ path: 'projects/one' });
 
     expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes the listing when sort changes', async () => {
+    const { result } = renderHook(() => useProjects('projects'));
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+
+    act(() => result.current.setSort({ sort: 'size', order: 'desc' }));
+
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ path: 'projects', sort: 'size', order: 'desc' }),
+      expect.any(AbortSignal),
+    ));
+  });
+
+  it('ignores a response from a superseded listing request', async () => {
+    let resolveFirst!: (value: { items: Array<{ path: string }> }) => void;
+    let resolveSecond!: (value: { items: Array<{ path: string }> }) => void;
+    list
+      .mockImplementationOnce(() => new Promise<{ items: Array<{ path: string }> }>(resolve => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise<{ items: Array<{ path: string }> }>(resolve => { resolveSecond = resolve; }));
+
+    const { result } = renderHook(() => useProjects('one'));
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+    act(() => result.current.navigateTo('two'));
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+
+    await act(async () => { resolveSecond({ items: [{ path: 'two' }] }); });
+    expect(result.current.data?.items[0]?.path).toBe('two');
+    await act(async () => { resolveFirst({ items: [{ path: 'one' }] }); });
+    expect(result.current.data?.items[0]?.path).toBe('two');
   });
 });

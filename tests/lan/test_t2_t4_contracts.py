@@ -53,3 +53,24 @@ async def test_websocket_query_token_does_not_authenticate_a_connection(tmp_path
         assert error.value.status == 401
     finally:
         await client.close()
+
+
+@pytest.mark.anyio
+async def test_websocket_valid_query_token_does_not_authenticate_a_connection(tmp_path):
+    from aiohttp.client_exceptions import WSServerHandshakeError
+
+    app, _, _ = _make_lan_app(tmp_path)
+    client = await _make_client(app)
+    try:
+        registered = await client.post(
+            "/api/auth/register",
+            json={"username": "query-user", "password": "Test@1234"},
+        )
+        token = (await registered.json())["token"]
+        client.session.cookie_jar.clear()
+
+        with pytest.raises(WSServerHandshakeError) as error:
+            await client.ws_connect(f"/ws?token={token}")
+        assert error.value.status == 401
+    finally:
+        await client.close()

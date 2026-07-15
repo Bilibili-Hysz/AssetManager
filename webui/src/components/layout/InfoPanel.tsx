@@ -28,10 +28,10 @@ export function InfoPanel({ metadata, loading, onTagClick, onClose }: InfoPanelP
         {onClose && (
             <button
               onClick={onClose}
-              aria-label="Close information panel"
+              aria-label={t('action.close_info')}
             className="p-1 text-slate-500 hover:text-white hover:bg-slate-800/50 rounded transition-colors"
           >
-            <X size={14} />
+            <X size={14} aria-hidden="true" />
           </button>
         )}
       </div>

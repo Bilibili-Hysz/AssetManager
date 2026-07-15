@@ -1,7 +1,7 @@
 """Unit tests for LAN API security and basic functionality."""
+import asyncio
 import os
 import sqlite3
-import asyncio
 from pathlib import Path
 
 import pytest
@@ -21,7 +21,7 @@ async def test_websocket_heartbeat_checks_clients_concurrently_and_isolates_erro
         def __init__(self, fails=False):
             self.fails = fails
 
-        async def ping(self):
+        async def ping(self, payload):
             nonlocal active, peak_active
             active += 1
             peak_active = max(peak_active, active)
@@ -30,16 +30,167 @@ async def test_websocket_heartbeat_checks_clients_concurrently_and_isolates_erro
             active -= 1
             if self.fails:
                 raise RuntimeError("dead client")
+            manager.acknowledge_pong(self, payload)
+
+        async def close(self, **_kwargs):
+            pass
 
     clients = {_Client(), _Client(fails=True), _Client()}
     manager._clients = clients
-    # Run one check cycle directly without waiting for the production interval.
     cycle = asyncio.create_task(manager._heartbeat_cycle())
     await started.wait()
     assert peak_active == len(clients)
     release.set()
     await cycle
     assert manager._clients == {client for client in clients if not client.fails}
+
+
+@pytest.mark.anyio
+async def test_websocket_heartbeat_removes_and_closes_client_without_pong(monkeypatch):
+    from AssetsManager.lan import ws as ws_module
+
+    class _Client:
+        async def ping(self, _payload):
+            pass
+
+        async def close(self, **_kwargs):
+            self.closed = True
+
+    monkeypatch.setattr(ws_module, "HEARTBEAT_PING_TIMEOUT", 0.01)
+    client = _Client()
+    client.closed = False
+    manager = ws_module.WebSocketManager()
+    manager._clients = {client}
+
+    await manager._heartbeat_cycle()
+
+    assert client not in manager._clients
+    assert client.closed
+
+
+@pytest.mark.anyio
+async def test_websocket_heartbeat_does_not_close_client_removed_while_ping_pending():
+    from AssetsManager.lan import ws as ws_module
+
+    ping_started = asyncio.Event()
+    release_ping = asyncio.Event()
+
+    class _Client:
+        def __init__(self):
+            self.close_count = 0
+
+        async def ping(self, _payload):
+            ping_started.set()
+            await release_ping.wait()
+            raise RuntimeError("disconnected")
+
+        async def close(self, **_kwargs):
+            self.close_count += 1
+
+    client = _Client()
+    manager = ws_module.WebSocketManager()
+    manager._clients = {client}
+    cycle = asyncio.create_task(manager._heartbeat_cycle())
+    await ping_started.wait()
+
+    await manager.remove(client)
+    await client.close()
+    release_ping.set()
+    await cycle
+
+    assert client.close_count == 1
+    assert client not in manager._pong_waiters
+
+
+@pytest.mark.anyio
+async def test_websocket_heartbeat_unrelated_pong_does_not_satisfy_waiter(monkeypatch):
+    from AssetsManager.lan import ws as ws_module
+
+    class _Client:
+        async def ping(self, payload=None):
+            self.payload = payload
+
+        async def close(self, **_kwargs):
+            pass
+
+    monkeypatch.setattr(ws_module, "HEARTBEAT_PING_TIMEOUT", 0.01)
+    client = _Client()
+    manager = ws_module.WebSocketManager()
+    manager._clients = {client}
+    cycle = asyncio.create_task(manager._heartbeat_cycle())
+    while not hasattr(client, "payload"):
+        await asyncio.sleep(0)
+    manager.acknowledge_pong(client, b"unrelated")
+
+    await cycle
+
+    assert client not in manager._clients
+    assert client not in manager._pong_waiters
+
+
+@pytest.mark.anyio
+async def test_websocket_heartbeat_matching_pong_keeps_client_and_cleans_waiter():
+    from AssetsManager.lan import ws as ws_module
+
+    class _Client:
+        async def ping(self, payload=None):
+            assert isinstance(payload, bytes)
+            manager.acknowledge_pong(self, payload)
+
+        async def close(self, **_kwargs):
+            self.closed = True
+
+    client = _Client()
+    client.closed = False
+    manager = ws_module.WebSocketManager()
+    manager._clients = {client}
+
+    await manager._heartbeat_cycle()
+
+    assert client in manager._clients
+    assert client not in manager._pong_waiters
+    assert not client.closed
+
+
+@pytest.mark.anyio
+async def test_websocket_heartbeat_waiters_are_cleaned_after_ping_failure():
+    from AssetsManager.lan import ws as ws_module
+
+    class _Client:
+        async def ping(self, _payload):
+            raise RuntimeError("write failed")
+
+        async def close(self, **_kwargs):
+            pass
+
+    client = _Client()
+    manager = ws_module.WebSocketManager()
+    manager._clients = {client}
+
+    await manager._heartbeat_cycle()
+
+    assert client not in manager._pong_waiters
+
+
+@pytest.mark.anyio
+async def test_websocket_heartbeat_cycle_is_bounded_with_slow_clients(monkeypatch):
+    from AssetsManager.lan import ws as ws_module
+
+    class _Client:
+        async def ping(self, _payload):
+            await asyncio.sleep(0.05)
+
+        async def close(self, **_kwargs):
+            pass
+
+    monkeypatch.setattr(ws_module, "HEARTBEAT_PING_TIMEOUT", 0.01)
+    manager = ws_module.WebSocketManager()
+    clients = {_Client(), _Client(), _Client()}
+    manager._clients = clients
+
+    await asyncio.wait_for(manager._heartbeat_cycle(), timeout=0.1)
+
+    assert manager._clients == set()
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -306,6 +457,25 @@ async def test_websocket_rejects_request_without_auth_context(tmp_path):
         await client.close()
 
 
+@pytest.mark.anyio
+async def test_websocket_manager_rejects_connections_over_limit(monkeypatch):
+    from AssetsManager.lan import ws as ws_module
+
+    class _Socket:
+        async def close(self, **_kwargs):
+            pass
+
+    manager = ws_module.WebSocketManager()
+    monkeypatch.setattr(ws_module, "MAX_WS_CONNECTIONS", 1)
+    first = _Socket()
+    second = _Socket()
+
+    assert await manager.add(first) is True
+    assert await manager.add(second) is False
+    assert manager._clients == {first}
+    await manager.close_all()
+
+
 class TestLanPermissionRegression:
     @staticmethod
     def _deny_guest_setting(monkeypatch, key):
@@ -447,6 +617,21 @@ class TestLanPermissionRegression:
         finally:
             await client.close()
 
+    @pytest.mark.anyio
+    async def test_tunnel_status_rejects_authenticated_non_admin(self, tmp_path):
+        app, library, conn = _make_lan_app(tmp_path)
+
+        client = await _make_client(app)
+        try:
+            token = await _register_user_token(client)
+            response = await client.get(
+                "/api/tunnel/status",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert response.status == 403
+        finally:
+            await client.close()
+
 
 @pytest.mark.anyio
 async def test_metadata_route_returns_only_safe_http_urls(tmp_path):
@@ -456,6 +641,26 @@ async def test_metadata_route_returns_only_safe_http_urls(tmp_path):
     conn.execute(
         "INSERT INTO file_meta(file_path, urls) VALUES (?, ?)",
         (str(target.resolve()), '["https://example.com/reference", "https:", "http:/missing-host", "javascript:alert(1)", "file:///private/path"]'),
+    )
+    conn.commit()
+
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/meta/asset.txt")
+        assert response.status == 200
+        assert (await response.json())["urls"] == ["https://example.com/reference"]
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_metadata_route_discards_malformed_urls(tmp_path):
+    app, library, conn = _make_lan_app(tmp_path)
+    target = library / "asset.txt"
+    target.write_text("metadata", encoding="utf-8")
+    conn.execute(
+        "INSERT INTO file_meta(file_path, urls) VALUES (?, ?)",
+        (str(target.resolve()), '["http://[", "https://example.com/reference"]'),
     )
     conn.commit()
 
@@ -596,6 +801,23 @@ async def test_tags_route_writes_only_library_paths(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_download_route_uses_safe_rfc5987_filename_for_unicode_file(tmp_path):
+    app, library, conn = _make_lan_app(tmp_path)
+    (library / "报告.txt").write_text("download me", encoding="utf-8")
+
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/download/%E6%8A%A5%E5%91%8A.txt", headers=_local_ui_headers(app))
+
+        assert response.status == 200
+        header = response.headers["Content-Disposition"]
+        assert header.startswith('attachment; filename=".txt"')
+        assert "filename*=UTF-8''%E6%8A%A5%E5%91%8A.txt" in header
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
 async def test_share_routes_create_and_download_scoped_file(tmp_path):
     app, library, conn = _make_lan_app(tmp_path)
     folder = library / "project"
@@ -621,6 +843,31 @@ async def test_share_routes_create_and_download_scoped_file(tmp_path):
 
         blocked = await client.get(f"/api/shares/{share_id}/download/private.txt")
         assert blocked.status == 403
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_share_download_uses_safe_rfc5987_filename_for_unicode_file(tmp_path):
+    app, library, conn = _make_lan_app(tmp_path)
+    (library / "报告.txt").write_text("shared asset", encoding="utf-8")
+
+    client = await _make_client(app)
+    try:
+        create = await client.post(
+            "/api/shares",
+            json={"paths": ["报告.txt"], "allow_preview": True},
+            headers=_local_ui_headers(app),
+        )
+        assert create.status == 200
+        share_id = (await create.json())["id"]
+
+        response = await client.get(f"/api/shares/{share_id}/download/%E6%8A%A5%E5%91%8A.txt")
+
+        assert response.status == 200
+        header = response.headers["Content-Disposition"]
+        assert header.startswith('attachment; filename=".txt"')
+        assert "filename*=UTF-8''%E6%8A%A5%E5%91%8A.txt" in header
     finally:
         await client.close()
 
@@ -1139,15 +1386,15 @@ class TestShareSecurity:
             await client.close()
 
     @pytest.mark.anyio
-    async def test_share_verify_api_client_returns_bearer_token_and_keeps_cookie(self, tmp_path):
+    async def test_share_verify_api_client_header_returns_usable_bearer_token(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
-        (library / "file.txt").write_text("content", encoding="utf-8")
+        (library / "image.png").write_bytes(b"\x89PNG")
 
         client = await _make_client(app)
         try:
             create = await client.post(
                 "/api/shares",
-                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
+                json={"paths": ["image.png"], "password": "secret123", "allow_preview": True},
                 headers=_local_ui_headers(app),
             )
             assert create.status == 200
@@ -1161,16 +1408,21 @@ class TestShareSecurity:
             assert verify.status == 200
             data = await verify.json()
             token = data["token"]
-            assert token
-            assert "share_token" not in verify.cookies
+            assert data["share"]["id"] == share_id
+            assert "Set-Cookie" not in verify.headers
 
             client.session.cookie_jar.clear()
+            auth = {"Authorization": f"Bearer {token}"}
+            info = await client.get(f"/api/shares/{share_id}/info", headers=auth)
+            assert info.status == 200
+            assert (await info.json())["paths"] == ["image.png"]
+            preview = await client.get(f"/api/shares/{share_id}/preview/image.png", headers=auth)
+            assert preview.status == 200
             download = await client.get(
-                f"/api/shares/{share_id}/download/file.txt",
-                headers={"Authorization": f"Bearer {token}"},
+                f"/api/shares/{share_id}/download/image.png",
+                headers=auth,
             )
             assert download.status == 200
-            assert await _read_body(download) == b"content"
         finally:
             await client.close()
 
@@ -1612,11 +1864,22 @@ def test_file_response_cleanup_runs_when_write_fails(tmp_path):
 
 def test_legacy_viewer_css_matches_script_visibility_class():
     static_dir = Path(__file__).parents[2] / "AssetsManager" / "lan" / "static"
-    script = (static_dir / "app.js").read_text(encoding="utf-8")
     stylesheet = (static_dir / "style.css").read_text(encoding="utf-8")
 
-    assert 'overlay.classList.add("visible")' in script
     assert ".image-viewer.visible" in stylesheet
+    for script_name in ("app.js", "detail.js", "share.js"):
+        script = (static_dir / script_name).read_text(encoding="utf-8")
+        assert 'classList.add("visible")' in script
+        assert 'classList.remove("visible")' in script
+
+
+def test_legacy_user_dropdown_outside_click_uses_current_header_selector():
+    app_js = (Path(__file__).parents[2] / "AssetsManager" / "lan" / "static" / "app.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'e.target.closest(".app-header__user")' in app_js
+    assert 'e.target.closest(".header__user")' not in app_js
 
 
 def test_legacy_index_avoids_mandatory_external_assets():
@@ -1862,7 +2125,12 @@ class TestP0ShareCookieAuthentication:
             client = TestClient(TestServer(server._app))
             await client.start_server()
             try:
-                for path in ("/static/index.html.bak", "/static/style.css.bak2"):
+                for path in (
+                    "/static/index.html.bak",
+                    "/static/style.css.bak2",
+                    "/static/nested/old.JS.BAK",
+                    "/static/nested/old.css.BAK2",
+                ):
                     response = await client.get(path)
                     assert response.status == 404, path
             finally:
@@ -1986,6 +2254,7 @@ class TestP0ShareCookieAuthentication:
             assert cookie["httponly"]
             assert cookie["samesite"] == "Lax"
             assert cookie["path"] == f"/api/shares/{share_id}"
+            assert int(cookie["max-age"]) == 3600
             token = cookie.value
 
             info = await client.get(f"/api/shares/{share_id}/info", headers={"Cookie": f"share_token={token}"})
@@ -2038,7 +2307,7 @@ class TestP0ShareCookieAuthentication:
             await client.close()
 
     @pytest.mark.anyio
-    async def test_non_browser_share_verify_preserves_bearer_api_flow(self, tmp_path):
+    async def test_browser_share_verify_returns_cookie_only(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
         (library / "file.txt").write_text("content", encoding="utf-8")
 
@@ -2055,18 +2324,18 @@ class TestP0ShareCookieAuthentication:
             verify = await client.post(
                 f"/api/shares/{share_id}/verify",
                 json={"password": "secret123"},
-                headers={"X-AssetsManager-API-Client": "1"},
             )
             assert verify.status == 200
             data = await verify.json()
-            assert data["token"]
-            assert "share_token" not in verify.cookies
+            assert "token" not in data
+            assert verify.cookies["share_token"]["httponly"]
 
+            client.session.cookie_jar.clear()
             download = await client.get(
                 f"/api/shares/{share_id}/download/file.txt",
-                headers={"Authorization": f"Bearer {data['token']}"},
+                headers={"Authorization": "Bearer not-a-share-cookie"},
             )
-            assert download.status == 200
+            assert download.status == 401
         finally:
             await client.close()
 

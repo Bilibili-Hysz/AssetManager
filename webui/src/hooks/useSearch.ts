@@ -24,6 +24,7 @@ export function useSearch(): UseSearchReturn {
     const generation = ++generationRef.current;
     setQueryState(q);
     if (timerRef.current) clearTimeout(timerRef.current);
+    const generation = ++generationRef.current;
 
     if (!q.trim()) {
       setResults([]);

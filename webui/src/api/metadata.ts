@@ -5,8 +5,8 @@ export function createMetadataApi(api: ApiClient) {
   return {
     getProjectDetail: (path: string) =>
       api.get<ProjectDetail>(`projects/${encodeURIComponent(path)}`),
-    getMeta: (path: string) =>
-      api.get<Metadata>(`meta/${encodeURIComponent(path)}`),
+    getMeta: (path: string, signal?: AbortSignal) =>
+      api.get<Metadata>(`meta/${encodeURIComponent(path)}`, undefined, signal),
     search: (q: string, tags?: string, category?: string) =>
       api.get<SearchResponse>('search', { q, tags, category }),
     getTree: () => api.get<TreeResponse>('tree'),

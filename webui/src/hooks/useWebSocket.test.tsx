@@ -55,6 +55,12 @@ describe('useWebSocket', () => {
     act(() => vi.advanceTimersByTime(1_000));
 
     expect(MockWebSocket.instances).toHaveLength(2);
+
+    act(() => MockWebSocket.instances[1]?.onopen?.());
+    act(() => MockWebSocket.instances[1]?.onclose?.());
+    act(() => vi.advanceTimersByTime(30_000));
+
+    expect(MockWebSocket.instances).toHaveLength(2);
   });
 
   it('replaces a socket when authentication becomes enabled', () => {

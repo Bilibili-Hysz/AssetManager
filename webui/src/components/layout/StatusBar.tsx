@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { useI18n } from '../../hooks/useI18n';
 import type { StatsResponse } from '../../types/api';
 
 interface StatusBarProps {
@@ -10,6 +11,7 @@ interface StatusBarProps {
 
 export function StatusBar(_props: StatusBarProps) {
   const { systemApi, user } = useAuth();
+  const { t } = useI18n();
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const { status: wsStatus } = useWebSocket({ enabled: Boolean(user) });
 
@@ -33,9 +35,9 @@ export function StatusBar(_props: StatusBarProps) {
       <div className="flex items-center gap-3 flex-1 min-w-0">
         {stats && (
           <>
-            <span>{stats.connections} connections</span>
+            <span>{t('status.connections', stats.connections)}</span>
             <span>·</span>
-            <span>{stats.requests} requests</span>
+            <span>{t('status.requests', stats.requests)}</span>
             <span>·</span>
             <span>{stats.bytes_transferred_fmt}</span>
           </>
@@ -44,10 +46,10 @@ export function StatusBar(_props: StatusBarProps) {
       <div className="flex items-center gap-3">
         <span className="flex items-center gap-1" role="status" aria-live="polite">
           <span className={`w-1.5 h-1.5 rounded-full ${wsStatus === 'connected' ? 'bg-green-500' : wsStatus === 'connecting' ? 'bg-yellow-500' : 'bg-slate-600'}`} />
-          {wsStatus === 'connected' ? 'Live' : wsStatus === 'connecting' ? 'Connecting...' : 'Offline'}
+          {wsStatus === 'connected' ? t('status.connected') : wsStatus === 'connecting' ? t('status.reconnecting') : t('status.disconnected')}
         </span>
         {stats && stats.uptime > 0 && (
-          <span>Uptime: {Math.floor(stats.uptime / 3600)}h {Math.floor((stats.uptime % 3600) / 60)}m</span>
+          <span>{t('status.uptime', `${Math.floor(stats.uptime / 3600)}h ${Math.floor((stats.uptime % 3600) / 60)}m`)}</span>
         )}
       </div>
     </div>

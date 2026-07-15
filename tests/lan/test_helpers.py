@@ -56,6 +56,17 @@ def test_get_auth_token_uses_bearer_header(caplog):
     assert "DEPRECATED" not in caplog.text
 
 
+def test_get_auth_token_prefers_bearer_header_over_stale_cookie(caplog):
+    req = _MockRequest(
+        cookies={"lan_token": "stale-cookie"},
+        headers={"Authorization": "Bearer current-token"},
+    )
+    with caplog.at_level(logging.WARNING):
+        result = get_auth_token(req)
+    assert result == "current-token"
+    assert "DEPRECATED" not in caplog.text
+
+
 def test_get_auth_token_deprecates_query_token(caplog):
     req = _MockRequest(query={"token": "qt-tok"})
     with caplog.at_level(logging.WARNING):

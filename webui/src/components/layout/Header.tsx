@@ -21,7 +21,13 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
   const { query, results, isSearching, setQuery, clear } = useSearch();
   const navigate = useNavigate();
   const searchRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const languageTriggerRef = useRef<HTMLButtonElement>(null);
+  const userTriggerRef = useRef<HTMLButtonElement>(null);
   const [showResults, setShowResults] = useState(false);
+  const [openMenu, setOpenMenu] = useState<'language' | 'user' | null>(null);
+  const sidebarToggleLabel = t(sidebarOpen ? 'action.close_sidebar' : 'action.open_sidebar');
+  const infoToggleLabel = t(infoOpen ? 'action.close_info' : 'mobile.info');
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -33,10 +39,28 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpenMenu(null);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   const handleResultClick = (result: SearchResult) => {
     clear();
     setShowResults(false);
     navigate(`/browse?path=${encodeURIComponent(result.path)}`);
+  };
+
+  const toggleMenu = (menu: 'language' | 'user') => setOpenMenu(current => current === menu ? null : menu);
+
+  const handleDisclosureKeyDown = (e: React.KeyboardEvent, menu: 'language' | 'user') => {
+    if (e.key === 'Escape' && openMenu === menu) {
+      e.preventDefault();
+      setOpenMenu(null);
+      (menu === 'language' ? languageTriggerRef : userTriggerRef).current?.focus();
+    }
   };
 
   // Keyboard shortcut: / to focus search
@@ -58,10 +82,11 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
       <div className="flex items-center gap-2 flex-shrink-0">
         <button
           onClick={onSidebarToggle}
+          aria-label={sidebarToggleLabel}
           className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors"
-          title={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+          title={sidebarToggleLabel}
         >
-          <PanelLeft size={18} />
+          <PanelLeft size={18} aria-hidden="true" />
         </button>
         <Link to="/" className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-md bg-indigo-500 flex items-center justify-center text-sm font-bold text-white">
@@ -75,7 +100,7 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
 
       {/* Center: search */}
       <div ref={searchRef} className="flex-1 max-w-md relative">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" aria-hidden="true" />
         <input
           id="header-search-input"
           type="text"
@@ -92,7 +117,7 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
             {isSearching ? (
               <div className="p-3 text-center text-sm text-slate-500">{t('browse.loading')}</div>
             ) : results.length === 0 ? (
-              <div className="p-3 text-center text-sm text-slate-500">No results</div>
+              <div className="p-3 text-center text-sm text-slate-500">{t('header.no_results')}</div>
             ) : (
               results.map(result => (
                 <button
@@ -117,13 +142,13 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
       </div>
 
       {/* Right: actions */}
-      <div className="flex items-center gap-1 flex-shrink-0">
+      <div ref={menuRef} className="flex items-center gap-1 flex-shrink-0">
         {/* Language */}
-        <div className="relative group">
-          <button className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
-            <Globe size={17} />
+        <div className="relative" onKeyDown={e => handleDisclosureKeyDown(e, 'language')}>
+          <button ref={languageTriggerRef} aria-label={t('header.language')} aria-expanded={openMenu === 'language'} onClick={() => toggleMenu('language')} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
+            <Globe size={17} aria-hidden="true" />
           </button>
-          <div className="absolute right-0 top-full mt-1 hidden group-hover:block z-50">
+          <div data-header-menu hidden={openMenu !== 'language'} className="absolute right-0 top-full mt-1 z-50">
             <div className="bg-slate-800 border border-slate-600/50 rounded-lg py-1 min-w-[120px] shadow-xl">
               {supportedLangs.map(l => (
                 <button
@@ -131,7 +156,7 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
                   className={`w-full px-3 py-1.5 text-sm text-left hover:bg-slate-700/50 transition-colors ${
                     lang === l ? 'text-indigo-400' : 'text-slate-300'
                   }`}
-                  onClick={() => setLang(l)}
+                  onClick={() => { setLang(l); setOpenMenu(null); }}
                 >
                   {l === 'en' ? 'English' : l === 'zh' ? '中文' : '日本語'}
                 </button>
@@ -143,19 +168,21 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}
+          aria-label={t('theme.toggle')}
           className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors"
           title={t('theme.toggle')}
         >
-          {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+          {theme === 'dark' ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
         </button>
 
         {/* Info panel toggle */}
         <button
           onClick={onInfoToggle}
+          aria-label={infoToggleLabel}
           className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors"
-          title={infoOpen ? 'Close info panel' : 'Open info panel'}
+          title={infoToggleLabel}
         >
-          <PanelRight size={17} />
+          <PanelRight size={17} aria-hidden="true" />
         </button>
 
         {/* User / Login */}
@@ -164,12 +191,12 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
             {t('header.login')}
           </Link>
         ) : (
-          <div className="relative group">
-            <button className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
-              <User size={16} />
+          <div className="relative" onKeyDown={e => handleDisclosureKeyDown(e, 'user')}>
+            <button ref={userTriggerRef} aria-label={user?.username ?? t('perm.admin')} aria-expanded={openMenu === 'user'} onClick={() => toggleMenu('user')} className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
+              <User size={16} aria-hidden="true" />
               <span className="max-w-[80px] truncate hidden sm:inline">{user?.username ?? t('perm.admin')}</span>
             </button>
-            <div className="absolute right-0 top-full mt-1 hidden group-hover:block z-50">
+            <div data-header-menu hidden={openMenu !== 'user'} className="absolute right-0 top-full mt-1 z-50">
               <div className="bg-slate-800 border border-slate-600/50 rounded-lg py-1 min-w-[140px] shadow-xl">
                 <div className="px-3 py-1.5 text-xs text-slate-500 border-b border-slate-700/50">
                   {user?.username} · {role === 'admin' ? t('perm.admin') : t('perm.user')}

@@ -34,10 +34,10 @@ export function ShareManagement() {
               <LinkIcon size={16} className="text-slate-500" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-slate-200 truncate">{share.url}</p>
-                <p className="text-xs text-slate-500">{share.download_count}/{share.max_downloads ?? '∞'} downloads</p>
+                <p className="text-xs text-slate-500">{t('share.downloads', share.download_count, share.max_downloads ?? '∞')}</p>
               </div>
-              <button onClick={() => handleDelete(share.id)} className="p-1 text-slate-400 hover:text-red-400 transition-colors">
-                <Trash2 size={14} />
+              <button aria-label={`${t('action.delete')} ${share.url}`} onClick={() => handleDelete(share.id)} className="p-1 text-slate-400 hover:text-red-400 transition-colors">
+                <Trash2 size={14} aria-hidden="true" />
               </button>
             </div>
           ))}

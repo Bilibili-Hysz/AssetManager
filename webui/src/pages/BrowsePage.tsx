@@ -38,6 +38,7 @@ export default function BrowsePage() {
     try { return (localStorage.getItem('am_view') as 'grid' | 'list') || 'grid'; } catch { return 'grid'; }
   });
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: ProjectItem; trigger?: HTMLElement } | null>(null);
   const [sharePaths, setSharePaths] = useState<string[] | null>(null);
   const [shareDialogTrigger, setShareDialogTrigger] = useState<HTMLElement | null | undefined>(undefined);
@@ -70,6 +71,15 @@ export default function BrowsePage() {
   const infoStartX = useRef(0);
   const infoStartW = useRef(0);
   const rafId = useRef<number | null>(null);
+  const tagSearchGeneration = useRef(0);
+  const metadataGeneration = useRef(0);
+  const metadataAbort = useRef<AbortController | null>(null);
+
+  useEffect(() => () => {
+    tagSearchGeneration.current += 1;
+    metadataGeneration.current += 1;
+    metadataAbort.current?.abort();
+  }, []);
 
   // WebSocket real-time updates
   useWebSocket({
@@ -83,7 +93,12 @@ export default function BrowsePage() {
 
   useEffect(() => {
     const requestedPath = searchParams.get('path') || '';
-    if (requestedPath !== currentPath) navigateTo(requestedPath);
+    if (requestedPath !== currentPath) {
+      tagSearchGeneration.current += 1;
+      metadataGeneration.current += 1;
+      metadataAbort.current?.abort();
+      navigateTo(requestedPath);
+    }
   }, [currentPath, navigateTo, searchParams]);
 
   const handleSidebarDragStart = useCallback((e: React.MouseEvent) => {
@@ -135,6 +150,9 @@ export default function BrowsePage() {
 
   // ── Handlers ──
   const handleNavigate = useCallback((path: string) => {
+    tagSearchGeneration.current += 1;
+    metadataGeneration.current += 1;
+    metadataAbort.current?.abort();
     navigateTo(path);
     setSearchParams(path ? { path } : {}, { replace: true });
     setSelected(new Set());
@@ -142,6 +160,7 @@ export default function BrowsePage() {
   }, [navigateTo, setSearchParams]);
 
   const handleNavigateDetail = useCallback((path: string) => {
+    tagSearchGeneration.current += 1;
     navigate(`/detail?path=${encodeURIComponent(path)}`);
   }, [navigate]);
 
@@ -159,12 +178,27 @@ export default function BrowsePage() {
     });
   }, []);
 
+  const handleActivate = useCallback((path: string) => {
+    if (isMobile && !selectMode) handleNavigateDetail(path);
+    else handleSelect(path);
+  }, [handleNavigateDetail, handleSelect, isMobile, selectMode]);
+
   const handleCardClick = useCallback((item: ProjectItem) => {
+    const generation = ++metadataGeneration.current;
+    metadataAbort.current?.abort();
+    const abortController = new AbortController();
+    metadataAbort.current = abortController;
     setMetadataLoading(true);
-    metaApi.getMeta(item.path)
-      .then(setSelectedMetadata)
-      .catch(() => setSelectedMetadata(null))
-      .finally(() => setMetadataLoading(false));
+    metaApi.getMeta(item.path, abortController.signal)
+      .then(metadata => {
+        if (generation === metadataGeneration.current) setSelectedMetadata(metadata);
+      })
+      .catch(() => {
+        if (generation === metadataGeneration.current) setSelectedMetadata(null);
+      })
+      .finally(() => {
+        if (generation === metadataGeneration.current) setMetadataLoading(false);
+      });
   }, [metaApi]);
 
   const handleCardDoubleClick = useCallback((item: ProjectItem) => {
@@ -192,13 +226,14 @@ export default function BrowsePage() {
   }, []);
 
   const handleTagFilter = useCallback((tag: string) => {
+    const generation = ++tagSearchGeneration.current;
     // Navigate to browse with search query for this tag
     navigateTo('');
     setSearchParams({}, { replace: true });
     // Trigger search via URL params — useSearch will pick it up
     // For now, use the search API directly
     metaApi.search('', tag).then(res => {
-      if (res.results.length > 0) {
+      if (generation === tagSearchGeneration.current && res.results.length > 0) {
         const path = res.results[0]?.path ?? '';
         setSearchParams(path ? { path } : {}, { replace: true });
       }
@@ -267,7 +302,11 @@ export default function BrowsePage() {
       onSidebarToggle={handleSidebarToggle}
       onInfoToggle={handleInfoToggle}
       onViewModeToggle={() => handleViewModeChange(viewMode === 'grid' ? 'list' : 'grid')}
-      onSelectModeToggle={() => setSelected(new Set())}
+      selectMode={selectMode}
+      onSelectModeToggle={() => {
+        setSelectMode(prev => !prev);
+        setSelected(new Set());
+      }}
     >
       <Breadcrumb path={currentPath} onNavigate={handleNavigate} />
 
@@ -305,8 +344,9 @@ export default function BrowsePage() {
         <ProjectGrid
           items={data?.items ?? []}
           selected={selected}
-          onSelect={handleSelect}
+          onSelect={handleActivate}
           onCardClick={handleCardClick}
+          selectionMode={selectMode}
           onDoubleClick={handleCardDoubleClick}
           onContextMenu={handleContextMenu}
           thumbnailMap={thumbnailMap}
@@ -315,7 +355,9 @@ export default function BrowsePage() {
         <ProjectList
           items={data?.items ?? []}
           selected={selected}
-          onSelect={handleSelect}
+          onSelect={handleActivate}
+          onCardClick={handleCardClick}
+          selectionMode={selectMode}
           onDoubleClick={handleCardDoubleClick}
           onContextMenu={handleContextMenu}
         />

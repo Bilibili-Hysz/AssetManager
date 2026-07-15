@@ -1,15 +1,20 @@
 import { Folder, File, MoreHorizontal } from 'lucide-react';
+import { useI18n } from '../../hooks/useI18n';
 import type { ProjectItem } from '../../types/api';
 
 interface ProjectListProps {
   items: ProjectItem[];
   selected: Set<string>;
   onSelect: (path: string) => void;
+  onCardClick?: (item: ProjectItem) => void;
+  selectionMode?: boolean;
   onDoubleClick?: (item: ProjectItem) => void;
   onContextMenu?: (e: React.MouseEvent, item: ProjectItem) => void;
 }
 
-export function ProjectList({ items, selected, onSelect, onDoubleClick, onContextMenu }: ProjectListProps) {
+export function ProjectList({ items, selected, onSelect, onCardClick, selectionMode = false, onDoubleClick, onContextMenu }: ProjectListProps) {
+  const { t } = useI18n();
+
   return (
     <div className="p-4">
       <div className="border border-slate-700/50 rounded-lg overflow-hidden">
@@ -17,10 +22,10 @@ export function ProjectList({ items, selected, onSelect, onDoubleClick, onContex
           <thead>
             <tr className="border-b border-slate-700/50 bg-slate-800/50">
               <th className="text-left text-[11px] text-slate-500 font-medium px-3 py-2 w-8" />
-              <th className="text-left text-[11px] text-slate-500 font-medium px-3 py-2">Name</th>
-              <th className="text-left text-[11px] text-slate-500 font-medium px-3 py-2 w-20">Size</th>
-              <th className="text-left text-[11px] text-slate-500 font-medium px-3 py-2 w-32 hidden md:table-cell">Modified</th>
-              <th className="w-10"><span className="sr-only">Actions</span></th>
+              <th className="text-left text-[11px] text-slate-500 font-medium px-3 py-2">{t('sort.name')}</th>
+              <th className="text-left text-[11px] text-slate-500 font-medium px-3 py-2 w-20">{t('sort.size')}</th>
+              <th className="text-left text-[11px] text-slate-500 font-medium px-3 py-2 w-32 hidden md:table-cell">{t('info.modified')}</th>
+              <th className="w-10"><span className="sr-only">{t('action.actions')}</span></th>
             </tr>
           </thead>
           <tbody>
@@ -31,7 +36,7 @@ export function ProjectList({ items, selected, onSelect, onDoubleClick, onContex
                   key={item.path}
                   className={`border-b border-slate-800/50 transition-colors cursor-pointer
                     ${selected.has(item.path) ? 'bg-indigo-500/5' : 'hover:bg-slate-800/30'}`}
-                  onClick={() => onSelect(item.path)}
+                  onClick={() => { onSelect(item.path); if (!selectionMode) onCardClick?.(item); }}
                   onDoubleClick={() => onDoubleClick?.(item)}
                   onContextMenu={e => onContextMenu?.(e, item)}
                 >
@@ -46,6 +51,7 @@ export function ProjectList({ items, selected, onSelect, onDoubleClick, onContex
                       onClick={e => {
                         e.stopPropagation();
                         onSelect(item.path);
+                        if (!selectionMode) onCardClick?.(item);
                       }}
                       onDoubleClick={e => {
                         e.stopPropagation();
@@ -69,7 +75,7 @@ export function ProjectList({ items, selected, onSelect, onDoubleClick, onContex
                     <button
                       type="button"
                       className="rounded p-1 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
-                      aria-label={`Actions for ${item.name}`}
+                      aria-label={t('action.item_actions', item.name)}
                       onClick={e => {
                         e.stopPropagation();
                         onContextMenu?.(e, item);

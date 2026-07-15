@@ -323,7 +323,7 @@ def get_share_token(request) -> str:
     return request.cookies.get("share_token", "")
 
 
-def get_auth_token(request) -> str:
+def get_auth_token(request, *, allow_query: bool = True) -> str:
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         return auth_header[7:]
@@ -341,7 +341,7 @@ def get_auth_token(request) -> str:
             "and will be removed in a future release. "
             "Use Authorization: Bearer header instead."
         )
-        return token
+        return token if allow_query else ""
     token = request.query.get("key", "")
     if token:
         _log.warning(
@@ -349,7 +349,7 @@ def get_auth_token(request) -> str:
             "and will be removed in a future release. "
             "Use Authorization: Bearer header instead."
         )
-        return token
+        return token if allow_query else ""
     return ""
 
 

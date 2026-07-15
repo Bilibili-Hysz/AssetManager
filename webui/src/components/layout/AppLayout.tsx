@@ -20,6 +20,7 @@ interface AppLayoutProps {
   onInfoToggle: () => void;
   onViewModeToggle?: () => void;
   onSelectModeToggle?: () => void;
+  selectMode?: boolean;
 }
 
 /**
@@ -34,7 +35,7 @@ export function AppLayout({
   sidebarWidth, infoWidth,
   onSidebarDragStart, onInfoDragStart,
   onSidebarToggle, onInfoToggle,
-  onViewModeToggle, onSelectModeToggle,
+  onViewModeToggle, onSelectModeToggle, selectMode = false,
 }: AppLayoutProps) {
   const { t } = useI18n();
   const isMobile = useMediaQuery('(max-width: 768px)');
@@ -53,9 +54,9 @@ export function AppLayout({
           <button
             onClick={onSidebarToggle}
             className="absolute left-0 top-2 z-30 p-1 text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 rounded-r-md transition-colors"
-            title="Open sidebar"
+            aria-label={t('mobile.menu')}
           >
-            <PanelLeftClose size={16} />
+            <PanelLeftClose size={16} aria-hidden="true" />
           </button>
         )}
 
@@ -75,7 +76,7 @@ export function AppLayout({
         {sidebar && mobileDialog === 'sidebar' && (
           <>
             <div className="fixed inset-0 bg-black/50 z-40" onClick={onSidebarToggle} aria-hidden="true" />
-            <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label="Navigation menu" tabIndex={-1} className="fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 border-r border-slate-700/50 shadow-xl overflow-hidden">
+            <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label={t('mobile.menu')} tabIndex={-1} className="fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 border-r border-slate-700/50 shadow-xl overflow-hidden">
               {sidebar}
             </div>
           </>
@@ -91,9 +92,9 @@ export function AppLayout({
           <button
             onClick={onInfoToggle}
             className="absolute right-0 top-2 z-30 p-1 text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 rounded-l-md transition-colors"
-            title="Open info panel"
+            aria-label={t('mobile.info')}
           >
-            <PanelRightClose size={16} />
+            <PanelRightClose size={16} aria-hidden="true" />
           </button>
         )}
 
@@ -112,7 +113,7 @@ export function AppLayout({
         {infoPanel && mobileDialog === 'info' && (
           <>
             <div className="fixed inset-0 bg-black/50 z-40" onClick={onInfoToggle} aria-hidden="true" />
-            <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label="Information panel" tabIndex={-1} className="fixed inset-x-0 bottom-0 z-50 max-h-[55vh] border-t border-slate-700/50 bg-slate-900 shadow-xl">
+            <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label={t('info.title')} tabIndex={-1} className="fixed inset-x-0 bottom-0 z-50 max-h-[55vh] border-t border-slate-700/50 bg-slate-900 shadow-xl">
               {infoPanel}
             </div>
           </>
@@ -126,25 +127,25 @@ export function AppLayout({
       {isMobile && (
         <div className="flex-shrink-0 flex items-center justify-around h-12 border-t border-slate-700/50 bg-slate-900/90 backdrop-blur-sm">
             <button onClick={onSidebarToggle} aria-label={t('mobile.menu')} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
-            <Menu size={18} />
+            <Menu size={18} aria-hidden="true" />
             <span className="text-[10px]">{t('mobile.menu')}</span>
           </button>
           {onViewModeToggle && (
             <button onClick={onViewModeToggle} aria-label={t('mobile.view')} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
-              <Grid3x3 size={18} />
+              <Grid3x3 size={18} aria-hidden="true" />
               <span className="text-[10px]">{t('mobile.view')}</span>
             </button>
           )}
           {infoPanel && (
-            <button onClick={onInfoToggle} aria-label={t('mobile.info')} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
-              <PanelRightClose size={18} />
-              <span className="text-[10px]">{t('mobile.info')}</span>
+            <button onClick={onInfoToggle} aria-label={t(infoOpen ? 'action.close_info' : 'mobile.info')} aria-expanded={infoOpen} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
+              <PanelRightClose size={18} aria-hidden="true" />
+              <span className="text-[10px]">{t(infoOpen ? 'action.close_info' : 'mobile.info')}</span>
             </button>
           )}
           {onSelectModeToggle && (
-            <button onClick={onSelectModeToggle} aria-label={t('mobile.select')} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
-              <CheckSquare size={18} />
-              <span className="text-[10px]">Select</span>
+            <button onClick={onSelectModeToggle} aria-label={t(selectMode ? 'mobile.done' : 'mobile.select')} aria-pressed={selectMode} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
+              <CheckSquare size={18} aria-hidden="true" />
+              <span className="text-[10px]">{t(selectMode ? 'mobile.done' : 'mobile.select')}</span>
             </button>
           )}
         </div>
