@@ -7,12 +7,32 @@ import { Header } from './Header';
 
 let testLang = 'en';
 const emptySearchMessages: Record<string, string> = { en: 'No results', zh: '无结果', ja: '結果がありません' };
+const toggleMessages: Record<string, Record<string, string>> = {
+  en: {
+    'action.open_sidebar': 'Open sidebar',
+    'action.close_sidebar': 'Close sidebar',
+    'mobile.info': 'Open information panel',
+    'action.close_info': 'Close information panel',
+  },
+  zh: {
+    'action.open_sidebar': '打开侧栏',
+    'action.close_sidebar': '关闭侧栏',
+    'mobile.info': '打开信息面板',
+    'action.close_info': '关闭信息面板',
+  },
+  ja: {
+    'action.open_sidebar': 'サイドバーを開く',
+    'action.close_sidebar': 'サイドバーを閉じる',
+    'mobile.info': '情報パネルを開く',
+    'action.close_info': '情報パネルを閉じる',
+  },
+};
 
 vi.mock('../../hooks/useAuth', () => ({
   useAuth: () => ({ user: { username: 'alice' }, role: 'user', logout: vi.fn(), serverInfo: null }),
 }));
 vi.mock('../../hooks/useI18n', () => ({
-  useI18n: () => ({ t: (key: string) => key === 'header.no_results' ? emptySearchMessages[testLang] : key, lang: testLang, setLang: vi.fn(), supportedLangs: ['en', 'zh', 'ja'] }),
+  useI18n: () => ({ t: (key: string) => key === 'header.no_results' ? emptySearchMessages[testLang] : toggleMessages[testLang]?.[key] ?? key, lang: testLang, setLang: vi.fn(), supportedLangs: ['en', 'zh', 'ja'] }),
 }));
 vi.mock('../../hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', toggleTheme: vi.fn() }) }));
 vi.mock('../../hooks/useSearch', () => ({
@@ -35,6 +55,18 @@ describe('Header menus', () => {
     render(<Header onSidebarToggle={() => {}} onInfoToggle={() => {}} sidebarOpen={false} infoOpen={false} />);
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'missing' } });
     expect(screen.getByText(message)).toBeDefined();
+  });
+
+  it.each([
+    ['en', 'Open sidebar', 'Open information panel'],
+    ['zh', '打开侧栏', '打开信息面板'],
+    ['ja', 'サイドバーを開く', '情報パネルを開く'],
+  ])('renders localized toggle labels and titles in %s', (lang, sidebarLabel, infoLabel) => {
+    testLang = lang;
+    render(<Header onSidebarToggle={() => {}} onInfoToggle={() => {}} sidebarOpen={false} infoOpen={false} />);
+
+    expect(screen.getByRole('button', { name: sidebarLabel }).getAttribute('title')).toBe(sidebarLabel);
+    expect(screen.getByRole('button', { name: infoLabel }).getAttribute('title')).toBe(infoLabel);
   });
 
   it.each(['header.language', 'alice'])('toggles %s once per native Enter and Space activation', async triggerName => {

@@ -58,6 +58,8 @@ const zh: I18nDict = {
     open_sidebar: '打开侧栏',
     close_sidebar: '关闭侧栏',
     close_info: '关闭信息面板',
+    actions: '操作',
+    item_actions: '{0} 的操作',
   },
   auth: {
     login_title: '登录',

@@ -90,6 +90,7 @@ class WebSocketManager:
         }
         if dead:
             async with self._lock:
+                dead.intersection_update(self._clients)
                 self._clients.difference_update(dead)
             await asyncio.gather(*(self._close(ws) for ws in dead))
 

@@ -26,6 +26,8 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
   const userTriggerRef = useRef<HTMLButtonElement>(null);
   const [showResults, setShowResults] = useState(false);
   const [openMenu, setOpenMenu] = useState<'language' | 'user' | null>(null);
+  const sidebarToggleLabel = t(sidebarOpen ? 'action.close_sidebar' : 'action.open_sidebar');
+  const infoToggleLabel = t(infoOpen ? 'action.close_info' : 'mobile.info');
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -80,9 +82,9 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
       <div className="flex items-center gap-2 flex-shrink-0">
         <button
           onClick={onSidebarToggle}
-          aria-label={sidebarOpen ? t('action.close_sidebar') : t('action.open_sidebar')}
+          aria-label={sidebarToggleLabel}
           className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors"
-          title={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+          title={sidebarToggleLabel}
         >
           <PanelLeft size={18} aria-hidden="true" />
         </button>
@@ -176,9 +178,9 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
         {/* Info panel toggle */}
         <button
           onClick={onInfoToggle}
-          aria-label={infoOpen ? t('action.close_info') : t('mobile.info')}
+          aria-label={infoToggleLabel}
           className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors"
-          title={infoOpen ? 'Close info panel' : 'Open info panel'}
+          title={infoToggleLabel}
         >
           <PanelRight size={17} aria-hidden="true" />
         </button>

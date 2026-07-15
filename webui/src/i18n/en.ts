@@ -62,6 +62,8 @@ const en = {
     open_sidebar: 'Open sidebar',
     close_sidebar: 'Close sidebar',
     close_info: 'Close information panel',
+    actions: 'Actions',
+    item_actions: 'Actions for {0}',
   },
   auth: {
     login_title: 'Login',

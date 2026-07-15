@@ -58,6 +58,8 @@ const ja: I18nDict = {
     open_sidebar: 'サイドバーを開く',
     close_sidebar: 'サイドバーを閉じる',
     close_info: '情報パネルを閉じる',
+    actions: '操作',
+    item_actions: '{0} の操作',
   },
   auth: {
     login_title: 'ログイン',

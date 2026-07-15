@@ -69,6 +69,40 @@ async def test_websocket_heartbeat_removes_and_closes_client_without_pong(monkey
 
 
 @pytest.mark.anyio
+async def test_websocket_heartbeat_does_not_close_client_removed_while_ping_pending():
+    from AssetsManager.lan import ws as ws_module
+
+    ping_started = asyncio.Event()
+    release_ping = asyncio.Event()
+
+    class _Client:
+        def __init__(self):
+            self.close_count = 0
+
+        async def ping(self, _payload):
+            ping_started.set()
+            await release_ping.wait()
+            raise RuntimeError("disconnected")
+
+        async def close(self, **_kwargs):
+            self.close_count += 1
+
+    client = _Client()
+    manager = ws_module.WebSocketManager()
+    manager._clients = {client}
+    cycle = asyncio.create_task(manager._heartbeat_cycle())
+    await ping_started.wait()
+
+    await manager.remove(client)
+    await client.close()
+    release_ping.set()
+    await cycle
+
+    assert client.close_count == 1
+    assert client not in manager._pong_waiters
+
+
+@pytest.mark.anyio
 async def test_websocket_heartbeat_unrelated_pong_does_not_satisfy_waiter(monkeypatch):
     from AssetsManager.lan import ws as ws_module
 
