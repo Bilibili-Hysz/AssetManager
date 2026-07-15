@@ -21,7 +21,6 @@ export function useSearch(): UseSearchReturn {
   const generationRef = useRef(0);
 
   const setQuery = useCallback((q: string) => {
-    const generation = ++generationRef.current;
     setQueryState(q);
     if (timerRef.current) clearTimeout(timerRef.current);
     const generation = ++generationRef.current;
