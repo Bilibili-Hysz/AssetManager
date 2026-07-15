@@ -186,6 +186,35 @@ def test_rename_undo_and_redo_keep_metadata_and_index_consistent(tmp_path):
         undo.cleanup()
 
 
+def test_directory_rename_redo_removes_stale_descendant_index_entries(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    old = library / "old"
+    nested = old / "nested"
+    new = library / "new"
+    nested.mkdir(parents=True)
+    asset = nested / "asset.txt"
+    asset.write_text("data", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    conn = scoped.session.db_conn
+    index = scoped.asset_index_service
+    index.index_directory_tree(conn, library, library)
+    undo = scoped.undo_service
+
+    try:
+        undo.record_rename(str(old), str(new))
+        scoped.file_operation_service.move(old, new, library_root=library)
+
+        assert undo.perform_undo(scoped.file_operation_service, str(library))
+        assert undo.perform_redo(scoped.file_operation_service, str(library))
+        assert index.get_entry(conn, old / "nested" / "asset.txt") is None
+        assert index.get_entry(conn, new / "nested" / "asset.txt") is not None
+    finally:
+        undo.cleanup()
+
+
 def test_undo_service_uses_unique_backup_dir():
     first = UndoService()
     second = UndoService()

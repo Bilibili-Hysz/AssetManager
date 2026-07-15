@@ -169,11 +169,11 @@ class AssetIndexService:
     def remove_directory(self, conn: Connection, dir_path: str | Path) -> int:
         """Remove all entries under a directory. Returns count removed."""
         prefix = str(Path(dir_path).resolve())
-        escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         with db_write_lock():
             cur = conn.execute(
-                "DELETE FROM assets WHERE parent_path=? OR parent_path LIKE ? ESCAPE '\\'",
-                (prefix, escaped + os.sep + "%"),
+                "DELETE FROM assets WHERE file_path=? "
+                "OR substr(file_path, 1, length(?) + 1)=?",
+                (prefix, prefix, prefix + os.sep),
             )
             conn.commit()
             return cur.rowcount
