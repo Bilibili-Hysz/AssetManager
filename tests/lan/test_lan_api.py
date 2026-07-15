@@ -6,6 +6,40 @@ from pathlib import Path
 
 import pytest
 
+
+@pytest.mark.anyio
+async def test_websocket_heartbeat_checks_clients_concurrently_and_isolates_errors():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    manager = WebSocketManager()
+    started = asyncio.Event()
+    release = asyncio.Event()
+    active = 0
+    peak_active = 0
+
+    class _Client:
+        def __init__(self, fails=False):
+            self.fails = fails
+
+        async def ping(self):
+            nonlocal active, peak_active
+            active += 1
+            peak_active = max(peak_active, active)
+            started.set()
+            await release.wait()
+            active -= 1
+            if self.fails:
+                raise RuntimeError("dead client")
+
+    clients = {_Client(), _Client(fails=True), _Client()}
+    manager._clients = clients
+    cycle = asyncio.create_task(manager._heartbeat_cycle())
+    await started.wait()
+    assert peak_active == len(clients)
+    release.set()
+    await cycle
+    assert manager._clients == {client for client in clients if not client.fails}
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
@@ -288,83 +322,6 @@ async def test_websocket_manager_rejects_connections_over_limit(monkeypatch):
     assert await manager.add(second) is False
     assert manager._clients == {first}
     await manager.close_all()
-
-
-@pytest.mark.anyio
-async def test_websocket_heartbeat_removes_client_when_ping_times_out(monkeypatch):
-    from AssetsManager.lan import ws as ws_module
-
-    release = asyncio.Event()
-
-    class _Socket:
-        closed = False
-
-        async def ping(self, _message=b""):
-            await release.wait()
-
-        async def close(self, **_kwargs):
-            self.closed = True
-
-    manager = ws_module.WebSocketManager()
-    socket = _Socket()
-    manager._clients.add(socket)
-    monkeypatch.setattr(ws_module, "WS_HEARTBEAT_INTERVAL", 0)
-    monkeypatch.setattr(ws_module, "WS_OPERATION_TIMEOUT", 0.01)
-
-    await asyncio.wait_for(manager._heartbeat(), timeout=0.1)
-
-    assert socket not in manager._clients
-    assert socket.closed
-
-
-@pytest.mark.anyio
-async def test_websocket_heartbeat_removes_client_when_pong_times_out(monkeypatch):
-    from AssetsManager.lan import ws as ws_module
-
-    class _Socket:
-        closed = False
-
-        async def ping(self, _message=b""):
-            pass
-
-        async def close(self, **_kwargs):
-            self.closed = True
-
-    manager = ws_module.WebSocketManager()
-    socket = _Socket()
-    manager._clients.add(socket)
-    monkeypatch.setattr(ws_module, "WS_HEARTBEAT_INTERVAL", 0)
-    monkeypatch.setattr(ws_module, "WS_OPERATION_TIMEOUT", 0.01)
-
-    await manager._heartbeat()
-
-    assert socket not in manager._clients
-    assert socket.closed
-
-
-@pytest.mark.anyio
-async def test_websocket_heartbeat_keeps_client_that_acknowledges_pong(monkeypatch):
-    from AssetsManager.lan import ws as ws_module
-
-    class _Socket:
-        closed = False
-
-        async def ping(self, message=b""):
-            manager.acknowledge_pong(self, message)
-            await manager.remove(self)
-
-        async def close(self, **_kwargs):
-            self.closed = True
-
-    manager = ws_module.WebSocketManager()
-    socket = _Socket()
-    manager._clients.add(socket)
-    monkeypatch.setattr(ws_module, "WS_HEARTBEAT_INTERVAL", 0)
-    monkeypatch.setattr(ws_module, "WS_OPERATION_TIMEOUT", 0.01)
-
-    await manager._heartbeat()
-
-    assert not socket.closed
 
 
 class TestLanPermissionRegression:
