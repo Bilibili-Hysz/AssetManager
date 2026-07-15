@@ -29,7 +29,6 @@ class LibraryService:
         self._db = db or DatabaseManager()
         self._lock = threading.Lock()
         self._current: LibraryContext | None = None
-        self._current_session: LibrarySession | None = None
         self._contexts: dict[str, LibraryContext] = {}
         self._sessions: dict[str, LibrarySession] = {}
 
@@ -54,8 +53,10 @@ class LibraryService:
         with self._lock:
             cached = self._contexts.get(key)
             if cached is not None:
+                session = self._sessions.get(key)
+                if session is None or session.is_closed:
+                    self._sessions[key] = LibrarySession.from_context(cached)
                 self._current = cached
-                self._current_session = self._sessions.get(key)
                 return cached
 
             mgr = self._db
@@ -69,24 +70,16 @@ class LibraryService:
                 tag_store=TagStore(key, db_conn=conn),
                 project_data=ProjectData(key, db_conn=conn),
             )
-            session = LibrarySession.from_context(context)
             self._contexts[key] = context
-            self._sessions[key] = session
+            self._sessions[key] = LibrarySession.from_context(context)
             self._current = context
-            self._current_session = session
         get_event_bus().publish(LibraryOpened(library_root=key))
         return context
 
     def open_session(self, root_path: str | Path) -> LibrarySession:
         context = self._open_library(root_path)
-        key = str(context.root)
         with self._lock:
-            session = self._sessions.get(key)
-            if session is None or session.is_closed:
-                session = LibrarySession.from_context(context)
-                self._sessions[key] = session
-            self._current_session = session
-            return session
+            return self._sessions[str(context.root)]
 
     @property
     def current(self) -> LibraryContext | None:
@@ -107,7 +100,9 @@ class LibraryService:
     @property
     def current_session(self) -> LibrarySession | None:
         with self._lock:
-            return self._current_session
+            if self._current is None:
+                return None
+            return self._sessions.get(str(self._current.root))
 
     def close(self) -> None:
         with self._lock:
@@ -115,7 +110,6 @@ class LibraryService:
             self._contexts.clear()
             self._sessions.clear()
             self._current = None
-            self._current_session = None
         for session in sessions:
             try:
                 session.close()
@@ -131,15 +125,15 @@ class LibraryService:
         """
         key = str(session.root)
         with self._lock:
-            self._contexts.pop(key, None)
-            cached_session = self._sessions.pop(key, None)
-            if self._current is not None and str(self._current.root) == key:
+            if self._sessions.get(key) is not session:
+                session.close()
+                return
+            self._sessions.pop(key)
+            context = self._contexts.pop(key, None)
+            if self._current is context:
                 self._current = None
-                self._current_session = None
         try:
             session.close()
-            if cached_session is not None and cached_session is not session:
-                cached_session.close()
         finally:
             self._db.close_library(key)
 

@@ -359,6 +359,46 @@ def test_library_service_close_session_is_idempotent(tmp_path):
     assert service.current_session is None
 
 
+def test_close_session_for_stale_identity_preserves_replacement(tmp_path):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+
+    service = LibraryService()
+    old = service.open_session(root)
+    old.close()
+    replacement = service.open_session(root)
+
+    service.close_session(old)
+
+    assert service.current_session is replacement
+    assert service.open_session(root) is replacement
+    assert replacement.context is old.context
+    replacement.db_conn.execute("SELECT 1")
+
+
+def test_open_library_replaces_closed_canonical_session_for_cached_context(tmp_path):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+
+    service = LibraryService()
+    session = service.open_session(root)
+    context = session.context
+    session.close()
+
+    reopened_context = service.open_library(root)
+    replacement = service.current_session
+
+    assert reopened_context is context
+    assert replacement is not None
+    assert replacement is not session
+    assert replacement.is_closed is False
+    assert service.open_session(root) is replacement
+
+
 # ── Phase 2.5: Per-library database teardown ──────────────────────
 
 def test_close_session_does_not_close_other_library_connections(tmp_path):
