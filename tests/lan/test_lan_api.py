@@ -1,4 +1,5 @@
 """Unit tests for LAN API security and basic functionality."""
+import asyncio
 import os
 import sqlite3
 from pathlib import Path
@@ -270,6 +271,50 @@ async def test_websocket_rejects_request_without_auth_context(tmp_path):
         await client.close()
 
 
+@pytest.mark.anyio
+async def test_websocket_manager_rejects_connections_over_limit(monkeypatch):
+    from AssetsManager.lan import ws as ws_module
+
+    class _Socket:
+        async def close(self, **_kwargs):
+            pass
+
+    manager = ws_module.WebSocketManager()
+    monkeypatch.setattr(ws_module, "MAX_WS_CONNECTIONS", 1)
+    first = _Socket()
+    second = _Socket()
+
+    assert await manager.add(first) is True
+    assert await manager.add(second) is False
+    assert manager._clients == {first}
+    await manager.close_all()
+
+
+@pytest.mark.anyio
+async def test_websocket_heartbeat_removes_client_when_ping_times_out(monkeypatch):
+    from AssetsManager.lan import ws as ws_module
+
+    release = asyncio.Event()
+
+    class _Socket:
+        closed = False
+
+        async def ping(self):
+            await release.wait()
+
+        async def close(self, **_kwargs):
+            self.closed = True
+
+    manager = ws_module.WebSocketManager()
+    socket = _Socket()
+    manager._clients.add(socket)
+    monkeypatch.setattr(ws_module, "WS_HEARTBEAT_INTERVAL", 0)
+    monkeypatch.setattr(ws_module, "WS_OPERATION_TIMEOUT", 0.01)
+
+    await manager._heartbeat()
+
+    assert socket not in manager._clients
+    assert socket.closed
 class TestLanPermissionRegression:
     @staticmethod
     def _deny_guest_setting(monkeypatch, key):

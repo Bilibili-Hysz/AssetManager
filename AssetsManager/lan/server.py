@@ -434,7 +434,7 @@ class _LanServerImpl:
 
         # Get token from cookie, header, or query param
         from AssetsManager.lan.routes._helpers import get_auth_token, set_request_auth_context
-        token = get_auth_token(request)
+        token = get_auth_token(request, allow_query=request.path != "/ws")
 
         # Try access key auth
         if has_key and token and self._access_key_hash is not None:

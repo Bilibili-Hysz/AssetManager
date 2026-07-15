@@ -51,6 +51,7 @@ export function useWebSocket({ onEvent, enabled = true }: UseWebSocketOptions): 
         if (wsRef.current === ws) wsRef.current = null;
         if (disposed || !enabled) return;
         setStatus('disconnected');
+        if (retryRef.current >= 1) return;
         const delay = Math.min(1000 * 2 ** retryRef.current++, 30000);
         timerRef.current = setTimeout(connect, delay);
       };

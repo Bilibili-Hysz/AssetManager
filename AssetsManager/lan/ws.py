@@ -7,6 +7,8 @@ from aiohttp import web
 _log = logging.getLogger(__name__)
 
 MAX_WS_CONNECTIONS = 50
+WS_HEARTBEAT_INTERVAL = 30
+WS_OPERATION_TIMEOUT = 5
 
 
 class WebSocketManager:
@@ -17,15 +19,20 @@ class WebSocketManager:
         self._lock = asyncio.Lock()
         self._heartbeat_task: asyncio.Task | None = None
 
-    async def add(self, ws: web.WebSocketResponse):
+    async def add(self, ws: web.WebSocketResponse) -> bool:
         async with self._lock:
             if len(self._clients) >= MAX_WS_CONNECTIONS:
-                await ws.close(code=1013, message=b"Too many connections")
-                return
-            self._clients.add(ws)
-            _log.debug("WebSocket client connected (%d total)", len(self._clients))
-        if self._heartbeat_task is None:
-            self._heartbeat_task = asyncio.create_task(self._heartbeat())
+                accepted = False
+            else:
+                self._clients.add(ws)
+                accepted = True
+                _log.debug("WebSocket client connected (%d total)", len(self._clients))
+                if self._heartbeat_task is None or self._heartbeat_task.done():
+                    self._heartbeat_task = asyncio.create_task(self._heartbeat())
+        if not accepted:
+            await self._close(ws, code=1013, message=b"Too many connections")
+            return False
+        return True
 
     async def remove(self, ws: web.WebSocketResponse):
         async with self._lock:
@@ -34,19 +41,22 @@ class WebSocketManager:
 
     async def _heartbeat(self):
         while True:
-            await asyncio.sleep(30)
+            await asyncio.sleep(WS_HEARTBEAT_INTERVAL)
             async with self._lock:
                 if not self._clients:
                     self._heartbeat_task = None
                     return
-                dead = []
-                for ws in self._clients:
-                    try:
-                        await ws.ping()
-                    except Exception:
-                        dead.append(ws)
-                for ws in dead:
-                    self._clients.discard(ws)
+                clients = list(self._clients)
+            dead = []
+            for ws in clients:
+                try:
+                    await asyncio.wait_for(ws.ping(), timeout=WS_OPERATION_TIMEOUT)
+                except Exception:
+                    dead.append(ws)
+            if dead:
+                async with self._lock:
+                    self._clients.difference_update(dead)
+                await asyncio.gather(*(self._close(ws) for ws in dead))
 
     async def broadcast(self, event_type: str, data: dict | None = None):
         """Send a JSON event to all connected clients."""
@@ -65,17 +75,23 @@ class WebSocketManager:
 
         if dead:
             async with self._lock:
-                for ws in dead:
-                    self._clients.discard(ws)
+                self._clients.difference_update(dead)
+
+    @staticmethod
+    async def _close(ws: web.WebSocketResponse, **kwargs):
+        try:
+            await asyncio.wait_for(ws.close(**kwargs), timeout=WS_OPERATION_TIMEOUT)
+        except Exception:
+            pass
 
     async def close_all(self):
         """Close all connected WebSocket clients."""
+        heartbeat = self._heartbeat_task
+        self._heartbeat_task = None
+        if heartbeat and heartbeat is not asyncio.current_task():
+            heartbeat.cancel()
+            await asyncio.gather(heartbeat, return_exceptions=True)
         async with self._lock:
             clients = list(self._clients)
             self._clients.clear()
-
-        for ws in clients:
-            try:
-                await ws.close()
-            except Exception:
-                pass
+        await asyncio.gather(*(self._close(ws) for ws in clients))
