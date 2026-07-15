@@ -1710,7 +1710,7 @@ function bindEvents() {
     });
 
     // Close dropdowns
-    document.addEventListener("click", (e) => { if (!e.target.closest(".header__user")) document.getElementById("userDropdown").classList.remove("open"); });
+    document.addEventListener("click", (e) => { if (!e.target.closest(".app-header__user")) document.getElementById("userDropdown").classList.remove("open"); });
 }
 
 // ── Init ─────────────────────────────────────────────────────

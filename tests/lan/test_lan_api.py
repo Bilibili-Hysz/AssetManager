@@ -1705,11 +1705,22 @@ def test_file_response_cleanup_runs_when_write_fails(tmp_path):
 
 def test_legacy_viewer_css_matches_script_visibility_class():
     static_dir = Path(__file__).parents[2] / "AssetsManager" / "lan" / "static"
-    script = (static_dir / "app.js").read_text(encoding="utf-8")
     stylesheet = (static_dir / "style.css").read_text(encoding="utf-8")
 
-    assert 'overlay.classList.add("visible")' in script
     assert ".image-viewer.visible" in stylesheet
+    for script_name in ("app.js", "detail.js", "share.js"):
+        script = (static_dir / script_name).read_text(encoding="utf-8")
+        assert 'classList.add("visible")' in script
+        assert 'classList.remove("visible")' in script
+
+
+def test_legacy_user_dropdown_outside_click_uses_current_header_selector():
+    app_js = (Path(__file__).parents[2] / "AssetsManager" / "lan" / "static" / "app.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'e.target.closest(".app-header__user")' in app_js
+    assert 'e.target.closest(".header__user")' not in app_js
 
 
 def test_legacy_index_avoids_mandatory_external_assets():
@@ -1955,7 +1966,12 @@ class TestP0ShareCookieAuthentication:
             client = TestClient(TestServer(server._app))
             await client.start_server()
             try:
-                for path in ("/static/index.html.bak", "/static/style.css.bak2"):
+                for path in (
+                    "/static/index.html.bak",
+                    "/static/style.css.bak2",
+                    "/static/nested/old.JS.BAK",
+                    "/static/nested/old.css.BAK2",
+                ):
                     response = await client.get(path)
                     assert response.status == 404, path
             finally:
