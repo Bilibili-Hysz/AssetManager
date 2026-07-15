@@ -65,7 +65,7 @@ class LibraryService:
             if cached is not None:
                 session = self._sessions.get(key)
                 if session is None or session.is_closed:
-                    session = LibrarySession.from_context(cached)
+                    session = LibrarySession.from_context(cached, self.close_session)
                     self._sessions[key] = session
                 self._current = cached
                 return cached, session
@@ -81,7 +81,7 @@ class LibraryService:
                 tag_store=TagStore(key, db_conn=conn),
                 project_data=ProjectData(key, db_conn=conn),
             )
-            session = LibrarySession.from_context(context)
+            session = LibrarySession.from_context(context, self.close_session)
             self._contexts[key] = context
             self._sessions[key] = session
             self._current = context
@@ -115,6 +115,12 @@ class LibraryService:
                 return None
             return self._sessions.get(str(self._current.root))
 
+    def owns_live_session(self, session: LibrarySession) -> bool:
+        """Return whether session is this service's exact live canonical session."""
+        key = str(session.root)
+        with self._lock:
+            return self._sessions.get(key) is session and not session.is_closed
+
     def close(self) -> None:
         with self._lifecycle:
             self._lifecycle.wait_for(lambda: not self._closing)
@@ -126,7 +132,7 @@ class LibraryService:
         try:
             for session in sessions:
                 try:
-                    session.close()
+                    session._close_direct()
                 except Exception:
                     pass
             self._db.close()
@@ -153,10 +159,10 @@ class LibraryService:
                 if self._current is context:
                     self._current = None
         if not current:
-            session.close()
+            session._close_direct()
             return
         try:
-            session.close()
+            session._close_direct()
         finally:
             try:
                 self._db.close_library(key)

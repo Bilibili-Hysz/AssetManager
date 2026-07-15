@@ -1,7 +1,7 @@
 """Per-library application context."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from sqlite3 import Connection
 from typing import TYPE_CHECKING, Callable
@@ -63,10 +63,17 @@ class LibrarySession:
 
     context: LibraryContext
     _closed: bool = False
+    _close_callback: Callable[[LibrarySession], None] | None = field(
+        default=None, repr=False, compare=False
+    )
 
     @classmethod
-    def from_context(cls, context: LibraryContext) -> LibrarySession:
-        return cls(context=context)
+    def from_context(
+        cls,
+        context: LibraryContext,
+        close_callback: Callable[[LibrarySession], None] | None = None,
+    ) -> LibrarySession:
+        return cls(context=context, _close_callback=close_callback)
 
     @property
     def root(self) -> Path:
@@ -128,6 +135,15 @@ class LibrarySession:
         Idempotent. The shared ``db_conn`` is **not** closed here because
         the connection is owned by ``DatabaseManager``.
         """
+        if self._closed:
+            return
+        if self._close_callback is not None:
+            self._close_callback(self)
+            return
+        self._close_direct()
+
+    def _close_direct(self) -> None:
+        """Mark closed without re-entering an owning lifecycle service."""
         already_closed = self._closed
         object.__setattr__(self, "_closed", True)
         if not already_closed:

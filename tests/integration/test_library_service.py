@@ -258,6 +258,22 @@ def test_session_close_marks_closed(tmp_path):
     assert session.is_closed is True
 
 
+def test_session_close_removes_owned_canonical_session(tmp_path):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+    service = LibraryService()
+    session = service.open_session(root)
+
+    session.close()
+
+    assert service.current_session is None
+    replacement = service.open_session(root)
+    assert replacement is not session
+    assert replacement.is_closed is False
+
+
 def test_session_close_is_idempotent(tmp_path):
     from AssetsManager.application.library_service import LibraryService
 
@@ -398,6 +414,62 @@ def test_close_session_serializes_same_root_reopen_through_db_teardown(
     reopened[0].db_conn.execute("SELECT 1")
 
 
+def test_direct_session_close_serializes_same_root_reopen_through_db_teardown(
+    tmp_path, monkeypatch
+):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+    service = LibraryService()
+    session = service.open_session(root)
+    old_conn = session.db_conn
+    teardown_started = threading.Event()
+    allow_teardown = threading.Event()
+    reopen_started = threading.Event()
+    connection_requested = threading.Event()
+    reopened: list = []
+    original_close_library = service._db.close_library
+    original_connection_for = service._db.connection_for
+
+    def blocking_close_library(root_path):
+        teardown_started.set()
+        assert allow_teardown.wait(5)
+        original_close_library(root_path)
+
+    def tracked_connection_for(root_path):
+        connection_requested.set()
+        return original_connection_for(root_path)
+
+    monkeypatch.setattr(service._db, "close_library", blocking_close_library)
+    monkeypatch.setattr(service._db, "connection_for", tracked_connection_for)
+
+    close_thread = threading.Thread(target=session.close)
+
+    def reopen():
+        reopen_started.set()
+        reopened.append(service.open_session(root))
+
+    reopen_thread = threading.Thread(target=reopen)
+    close_thread.start()
+    assert teardown_started.wait(5)
+    reopen_thread.start()
+    assert reopen_started.wait(5)
+    try:
+        assert not connection_requested.wait(0.2)
+    finally:
+        allow_teardown.set()
+    close_thread.join(5)
+    reopen_thread.join(5)
+
+    assert not close_thread.is_alive()
+    assert not reopen_thread.is_alive()
+    assert reopened[0] is not session
+    assert reopened[0].is_closed is False
+    assert reopened[0].db_conn is not old_conn
+    reopened[0].db_conn.execute("SELECT 1")
+
+
 def test_close_serializes_same_root_reopen_through_db_teardown(tmp_path, monkeypatch):
     from AssetsManager.application.library_service import LibraryService
 
@@ -480,11 +552,11 @@ def test_close_session_for_stale_identity_preserves_replacement(tmp_path):
 
     assert service.current_session is replacement
     assert service.open_session(root) is replacement
-    assert replacement.context is old.context
+    assert replacement.context is not old.context
     replacement.db_conn.execute("SELECT 1")
 
 
-def test_open_library_replaces_closed_canonical_session_for_cached_context(tmp_path):
+def test_open_library_replaces_directly_closed_canonical_session_and_context(tmp_path):
     from AssetsManager.application.library_service import LibraryService
 
     root = tmp_path / "library"
@@ -498,7 +570,7 @@ def test_open_library_replaces_closed_canonical_session_for_cached_context(tmp_p
     reopened_context = service.open_library(root)
     replacement = service.current_session
 
-    assert reopened_context is context
+    assert reopened_context is not context
     assert replacement is not None
     assert replacement is not session
     assert replacement.is_closed is False

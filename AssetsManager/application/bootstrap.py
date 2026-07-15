@@ -129,6 +129,10 @@ class ApplicationBootstrap:
 
     def for_library(self, session: LibrarySession) -> LibraryScopedServices:
         """Return a bundle of services scoped to a specific library session."""
+        if not self.library_service.owns_live_session(session):
+            raise ValueError(
+                "LibrarySession must be the live canonical session owned by this bootstrap"
+            )
         provider = session.connection_for
         key = session.root_str
         if key not in self._undo_services:

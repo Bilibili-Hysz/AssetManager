@@ -2,6 +2,7 @@
 import pytest
 
 from AssetsManager.application.bootstrap import ApplicationBootstrap
+from AssetsManager.application.context import LibrarySession
 from AssetsManager.application.library_service import LibraryService
 from AssetsManager.application.asset_service import AssetService
 from AssetsManager.application.metadata_service import MetadataService
@@ -167,6 +168,56 @@ class TestApplicationBootstrap:
         assert scoped.metadata_service._connection(root) is session.db_conn
         with pytest.raises(ValueError):
             scoped.metadata_service._connection(other)
+
+    def test_for_library_rejects_closed_canonical_session(self, tmp_path):
+        root = tmp_path / "library"
+        root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        session = bootstrap.library_service.open_session(root)
+
+        session.close()
+
+        with pytest.raises(ValueError, match="live canonical"):
+            bootstrap.for_library(session)
+
+    def test_for_library_rejects_stale_session_after_reopen(self, tmp_path):
+        root = tmp_path / "library"
+        root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        stale = bootstrap.library_service.open_session(root)
+        stale.close()
+        canonical = bootstrap.library_service.open_session(root)
+
+        with pytest.raises(ValueError, match="live canonical"):
+            bootstrap.for_library(stale)
+        assert bootstrap.for_library(canonical).session is canonical
+
+    def test_for_library_rejects_reconstructed_session(self, tmp_path):
+        root = tmp_path / "library"
+        root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        canonical = bootstrap.library_service.open_session(root)
+        reconstructed = LibrarySession.from_context(canonical.context)
+
+        with pytest.raises(ValueError, match="live canonical"):
+            bootstrap.for_library(reconstructed)
+
+    def test_for_library_rejects_session_from_another_service(self, tmp_path):
+        root = tmp_path / "library"
+        root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        foreign = LibraryService().open_session(root)
+
+        with pytest.raises(ValueError, match="live canonical"):
+            bootstrap.for_library(foreign)
+
+    def test_for_library_accepts_exact_live_canonical_session(self, tmp_path):
+        root = tmp_path / "library"
+        root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        canonical = bootstrap.library_service.open_session(root)
+
+        assert bootstrap.for_library(canonical).session is canonical
 
     def test_for_library_preserves_session_identity_and_resources(self, tmp_path, monkeypatch):
         root = tmp_path / "library"
