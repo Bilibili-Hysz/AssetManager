@@ -6,7 +6,7 @@ specs:
 plans:
   - docs/compose/plans/2026-07-15-batch-b-file-operation-consistency.md
 branch: batch-b-file-operation-consistency
-commits: a893537..uncommitted
+commits: a893537..6ff0754
 ---
 
 # Batch B File Operation Consistency - Final Report
