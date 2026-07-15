@@ -68,15 +68,16 @@ class FileOperationService:
              library_root: str | Path | None = None) -> Path:
         src = Path(source).resolve()
         dst = Path(destination).resolve()
-        _assert_under_root(src, library_root)
-        _assert_under_root(dst, library_root)
+        root = self._resolve_library_root(library_root)
+        _assert_under_root(src, root)
+        _assert_under_root(dst, root)
         if src == dst:
             return dst
         source_is_dir = src.is_dir()
         shutil.move(str(src), str(dst))
-        if library_root:
-            self._migrate_metadata(library_root, src, dst)
-            self._reconcile_renamed(src, dst, source_is_dir, library_root)
+        if root:
+            self._migrate_metadata(root, src, dst)
+            self._reconcile_renamed(src, dst, source_is_dir, root)
         get_event_bus().publish(FileRenamed(old_path=str(src), new_path=str(dst)))
         return dst
 

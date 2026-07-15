@@ -1,4 +1,5 @@
 """Tests for UndoService."""
+import hashlib
 import os
 
 from AssetsManager.application.undo_service import UndoService
@@ -150,9 +151,10 @@ def test_delete_undo_and_redo_reconcile_file_projections(tmp_path):
         undo.cleanup()
 
 
-def test_rename_undo_and_redo_keep_metadata_and_index_consistent(tmp_path):
+def test_session_bound_rename_undo_and_redo_reconcile_projections(tmp_path):
     from AssetsManager.application import ApplicationBootstrap
     from AssetsManager.core.tag_store import TagStore
+    from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
 
     library = tmp_path / "library"
     library.mkdir()
@@ -165,23 +167,42 @@ def test_rename_undo_and_redo_keep_metadata_and_index_consistent(tmp_path):
     index = scoped.asset_index_service
     index.index_directory(conn, library, library)
     TagStore(str(library)).add_tag(str(old), "hero")
+    conn.execute("INSERT INTO file_meta (file_path, notes) VALUES (?, ?)", (str(old.resolve()), "note"))
+    conn.commit()
+    thumbnail_key = hashlib.sha256(
+        f"{old.resolve()}|{old.stat().st_mtime}".encode()
+    ).hexdigest()[:16]
+    thumbnails = ThumbnailRepository(conn)
+    thumbnails.upsert_entry(thumbnail_key, str(old.resolve()), 1.0, 1, 1, 1)
+    old_thumbnail = scoped.session.thumb_dir / f"{thumbnail_key}.webp"
+    old_thumbnail.write_bytes(b"thumbnail")
     undo = scoped.undo_service
 
     try:
         undo.record_rename(str(old), str(new))
-        scoped.file_operation_service.move(old, new, library_root=library)
+        assert scoped.file_operation_service.move(old, new) == new
 
-        assert undo.perform_undo(scoped.file_operation_service, str(library))
+        # No library root is supplied: the session-bound command service owns it.
+        assert undo.perform_undo(scoped.file_operation_service)
         assert old.exists()
         assert TagStore(str(library)).get_tags(str(old)) == ["hero"]
+        assert conn.execute("SELECT notes FROM file_meta WHERE file_path=?", (str(old.resolve()),)).fetchone() == ("note",)
         assert index.get_entry(conn, old) is not None
         assert index.get_entry(conn, new) is None
+        undo_key, undo_source = thumbnails.list_all()[0]
+        assert undo_source == str(old.resolve())
+        assert (scoped.session.thumb_dir / f"{undo_key}.webp").exists()
 
-        assert undo.perform_redo(scoped.file_operation_service, str(library))
+        assert undo.perform_redo(scoped.file_operation_service)
         assert new.exists()
         assert TagStore(str(library)).get_tags(str(new)) == ["hero"]
+        assert conn.execute("SELECT notes FROM file_meta WHERE file_path=?", (str(new.resolve()),)).fetchone() == ("note",)
         assert index.get_entry(conn, new) is not None
         assert index.get_entry(conn, old) is None
+        redo_key, redo_source = thumbnails.list_all()[0]
+        assert redo_source == str(new.resolve())
+        assert (scoped.session.thumb_dir / f"{redo_key}.webp").exists()
+        assert not (scoped.session.thumb_dir / f"{undo_key}.webp").exists()
     finally:
         undo.cleanup()
 
