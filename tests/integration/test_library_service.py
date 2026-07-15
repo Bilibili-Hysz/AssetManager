@@ -87,6 +87,36 @@ def test_open_session_reuses_cached_context(tmp_path):
     assert second.root == root.resolve()
 
 
+@pytest.mark.parametrize("close_all", [False, True], ids=["close_session", "close"])
+def test_open_session_survives_close_during_library_open_event(
+    tmp_path, monkeypatch, close_all
+):
+    from concurrent.futures import ThreadPoolExecutor
+
+    import AssetsManager.application.library_service as library_service_module
+
+    root = tmp_path / "library"
+    root.mkdir()
+    service = library_service_module.LibraryService()
+
+    class ClosingEventBus:
+        def publish(self, event):
+            session = service.current_session
+            assert session is not None
+            close = service.close if close_all else lambda: service.close_session(session)
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                executor.submit(close).result()
+
+    monkeypatch.setattr(
+        library_service_module, "get_event_bus", lambda: ClosingEventBus()
+    )
+
+    session = service.open_session(root)
+
+    assert session.root == root.resolve()
+    assert session.is_closed is True
+
+
 def test_open_session_contexts_do_not_follow_current_library(tmp_path):
     from AssetsManager.application.library_service import LibraryService
 
