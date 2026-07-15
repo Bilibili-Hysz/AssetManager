@@ -816,8 +816,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         paths = [u.toLocalFile() for u in event.mimeData().urls() if u.toLocalFile()]
         if not paths:
             return False
-        from AssetsManager.application import FileOperationService
-        result = FileOperationService().copy_to_directory(paths, str(self._current))
+        result = self._get_file_operation_service().copy_to_directory(paths, str(self._current))
         for error in result.errors:
             _log.error("Drag-drop copy failed: %s", error)
         self._post_refresh()

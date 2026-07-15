@@ -1,4 +1,5 @@
 """Tests for repositories/thumbnail_repository.py."""
+import os
 import sqlite3
 
 import pytest
@@ -56,6 +57,15 @@ class TestThumbnailRepository:
         repo.upsert_entry("key1", "/a.png", 1.0, 100, 80, 50)
         repo.delete_by_key("key1")
         assert repo.get_source_mtime("key1") is None
+
+    def test_delete_path_removes_path_and_descendants(self, repo, conn):
+        folder = os.path.join(os.sep, "library", "folder")
+        repo.upsert_entry("root", folder, 1.0, 1, 1, 1)
+        repo.upsert_entry("child", os.path.join(folder, "image.png"), 1.0, 1, 1, 1)
+        repo.upsert_entry("other", os.path.join(os.sep, "library", "other.png"), 1.0, 1, 1, 1)
+
+        assert repo.delete_path(folder) == ["root", "child"]
+        assert repo.list_all() == [("other", os.path.join(os.sep, "library", "other.png"))]
 
     def test_touch_access(self, repo, conn):
         repo.upsert_entry("key1", "/a.png", 1.0, 100, 80, 50)

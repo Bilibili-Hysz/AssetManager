@@ -46,6 +46,21 @@ def test_index_directory_force_reindexes(tmp_path, schema_db):
     assert svc.count(conn, lib) == 2
 
 
+def test_force_index_removes_stale_entries_from_parent(tmp_path, schema_db):
+    lib = tmp_path / "lib"
+    stale = lib / "stale.txt"
+    lib.mkdir()
+    stale.write_text("x")
+
+    svc = AssetIndexService()
+    svc.index_directory(schema_db, lib, lib)
+    stale.unlink()
+
+    svc.index_directory(schema_db, lib, lib, force=True)
+
+    assert svc.get_entry(schema_db, stale) is None
+
+
 def test_query_by_parent(tmp_path, schema_db):
     lib = tmp_path / "lib"
     sub = lib / "sub"

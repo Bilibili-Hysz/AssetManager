@@ -19,6 +19,42 @@ class _RecordingFileOperations:
         self.calls.append(("delete_permanent", paths, library_root))
 
 
+class _FailingFileOperations:
+    def move(self, source, destination, *, library_root):
+        raise OSError("blocked")
+
+    def delete_permanent(self, paths, *, library_root):
+        return type("Result", (), {"ok": False})()
+
+
+def test_failed_perform_undo_keeps_source_stack_and_does_not_advance_redo(tmp_path):
+    old = tmp_path / "old.txt"
+    new = tmp_path / "new.txt"
+    new.write_text("asset", encoding="utf-8")
+    svc = UndoService()
+    svc.record_rename(str(old), str(new))
+
+    assert not svc.perform_undo(_FailingFileOperations(), str(tmp_path))
+    assert svc.peek_undo().new == str(new)
+    assert svc.peek_redo() is None
+    assert new.exists()
+    assert not old.exists()
+
+
+def test_failed_perform_redo_keeps_source_stack_and_does_not_advance_undo(tmp_path):
+    path = tmp_path / "asset.txt"
+    path.write_text("asset", encoding="utf-8")
+    svc = UndoService()
+    svc.record_delete(str(path))
+    path.unlink()
+    assert svc.perform_undo(FileOperationService(), str(tmp_path))
+
+    assert not svc.perform_redo(_FailingFileOperations(), str(tmp_path))
+    assert svc.peek_redo().path == str(path)
+    assert svc.peek_undo() is None
+    assert path.exists()
+
+
 def test_perform_undo_and_redo_delegate_to_library_file_operations(tmp_path):
     library_root = str(tmp_path)
     source = str(tmp_path / "old.txt")
@@ -108,6 +144,94 @@ def test_delete_redo_can_be_undone_again(tmp_path):
         assert src.read_text(encoding="utf-8") == "data"
     finally:
         svc.cleanup()
+
+
+def test_delete_undo_and_redo_reconcile_file_projections(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.core.tag_store import TagStore
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileCreated, FileDeleted
+    from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
+
+    library = tmp_path / "library"
+    library.mkdir()
+    source = library / "asset.txt"
+    source.write_text("data", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    conn = scoped.session.db_conn
+    index = scoped.asset_index_service
+    index.index_directory(conn, library, library)
+    TagStore(str(library)).add_tag(str(source), "hero")
+    ThumbnailRepository(conn).upsert_entry("thumb", str(source.resolve()), 1.0, 1, 1, 1)
+    thumbnail_file = scoped.session.thumb_dir / "thumb.webp"
+    thumbnail_file.write_bytes(b"thumb")
+    created = []
+    deleted = []
+    get_event_bus().subscribe(FileCreated, created.append)
+    get_event_bus().subscribe(FileDeleted, deleted.append)
+    undo = scoped.undo_service
+
+    try:
+        undo.record_delete(str(source))
+        assert scoped.file_operation_service.delete_to_trash([source]).ok
+
+        assert undo.perform_undo(scoped.file_operation_service)
+        assert source.read_text(encoding="utf-8") == "data"
+        assert index.get_entry(conn, source) is not None
+        assert created[-1].path == str(source)
+
+        assert undo.perform_redo(scoped.file_operation_service)
+        assert not source.exists()
+        assert TagStore(str(library)).get_tags(str(source)) == []
+        assert ThumbnailRepository(conn).list_all() == []
+        assert not thumbnail_file.exists()
+        assert index.get_entry(conn, source) is None
+        assert deleted[-1].path == str(source)
+    finally:
+        undo.cleanup()
+
+
+def test_rename_undo_and_redo_reconcile_metadata_thumbnails_and_index(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.core.tag_store import TagStore
+    from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
+
+    library = tmp_path / "library"
+    library.mkdir()
+    old = library / "old.txt"
+    new = library / "new.txt"
+    old.write_text("data", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    conn = scoped.session.db_conn
+    index = scoped.asset_index_service
+    index.index_directory(conn, library, library)
+    TagStore(str(library)).add_tag(str(old), "hero")
+    ThumbnailRepository(conn).upsert_entry("thumb", str(old.resolve()), 1.0, 1, 1, 1)
+    old_thumbnail = scoped.session.thumb_dir / "thumb.webp"
+    old_thumbnail.write_bytes(b"thumb")
+    undo = scoped.undo_service
+
+    try:
+        undo.record_rename(str(old), str(new))
+        assert scoped.file_operation_service.move(old, new) == new
+
+        assert undo.perform_undo(scoped.file_operation_service)
+        assert old.exists()
+        assert TagStore(str(library)).get_tags(str(old)) == ["hero"]
+        assert index.get_entry(conn, old) is not None
+        assert index.get_entry(conn, new) is None
+        assert ThumbnailRepository(conn).list_all()[0][1] == str(old.resolve())
+
+        assert undo.perform_redo(scoped.file_operation_service)
+        assert new.exists()
+        assert TagStore(str(library)).get_tags(str(new)) == ["hero"]
+        assert index.get_entry(conn, old) is None
+        assert index.get_entry(conn, new) is not None
+        assert ThumbnailRepository(conn).list_all()[0][1] == str(new.resolve())
+    finally:
+        undo.cleanup()
 
 
 def test_undo_service_uses_unique_backup_dir():

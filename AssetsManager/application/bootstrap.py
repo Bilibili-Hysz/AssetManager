@@ -141,7 +141,10 @@ class ApplicationBootstrap:
             project_service=ProjectService(connection_provider=provider),
             thumbnail_service=self.container.resolve(ThumbnailService),
             search_service=self.container.resolve(SearchService),
-            file_operation_service=self.container.resolve(FileOperationService),
+            file_operation_service=FileOperationService(
+                session=session,
+                asset_index_service=self.container.resolve(AssetIndexService),
+            ),
             undo_service=self._undo_services[key],
             plugin_service=self.container.resolve(PluginService),
             asset_index_service=self.container.resolve(AssetIndexService),

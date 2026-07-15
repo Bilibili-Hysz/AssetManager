@@ -7,6 +7,7 @@ import tempfile
 import threading
 from collections import deque
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -122,7 +123,7 @@ class UndoService:
                     self._clean_backup(entry.backup)
             self._redo_stack.clear()
 
-    def perform_undo(self, file_operations, library_root: str) -> bool:
+    def perform_undo(self, file_operations, library_root: str | Path | None = None) -> bool:
         """Undo through file operations, moving history only after success."""
         with self._lock:
             if not self._undo_stack:
@@ -137,7 +138,7 @@ class UndoService:
             self._redo_stack.append(entry)
         return True
 
-    def perform_redo(self, file_operations, library_root: str) -> bool:
+    def perform_redo(self, file_operations, library_root: str | Path | None = None) -> bool:
         """Redo through file operations, moving history only after success."""
         with self._lock:
             if not self._redo_stack:
@@ -156,7 +157,8 @@ class UndoService:
     def _operation_succeeded(result) -> bool:
         return getattr(result, "ok", True)
 
-    def _execute_reverse(self, file_operations, entry: UndoEntry, library_root: str) -> bool:
+    def _execute_reverse(self, file_operations, entry: UndoEntry,
+                         library_root: str | Path | None) -> bool:
         try:
             if entry.type == "rename":
                 return self._operation_succeeded(
@@ -170,7 +172,8 @@ class UndoService:
             pass
         return False
 
-    def _execute_forward(self, file_operations, entry: UndoEntry, library_root: str) -> bool:
+    def _execute_forward(self, file_operations, entry: UndoEntry,
+                         library_root: str | Path | None) -> bool:
         try:
             if entry.type == "rename":
                 return self._operation_succeeded(

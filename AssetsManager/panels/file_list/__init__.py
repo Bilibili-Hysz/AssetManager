@@ -729,8 +729,7 @@ class QWidgetFileListPanel(FileListPanel):
         external = [u for u in urls if os.path.dirname(u) != dest]
         if not external:
             return False
-        from AssetsManager.application import FileOperationService
-        result = FileOperationService().copy_to_directory(external, dest)
+        result = self._get_file_operation_service().copy_to_directory(external, dest)
         for error in result.errors:
             _log.error("Drag-drop copy failed: %s", error)
         self._post_refresh()

@@ -5,9 +5,14 @@ import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import FileCopied, FileCreated, FileDeleted, FileRenamed
+
+if TYPE_CHECKING:
+    from AssetsManager.application.asset_index_service import AssetIndexService
+    from AssetsManager.application.context import LibrarySession
 
 
 @dataclass(frozen=True)
@@ -27,6 +32,21 @@ def _assert_under_root(path: Path, root: str | Path | None) -> None:
 
 class FileOperationService:
     """Filesystem operations shared by desktop actions and future APIs."""
+
+    def __init__(self, session: LibrarySession | None = None,
+                 asset_index_service: AssetIndexService | None = None):
+        self.session = session
+        self._asset_index_service = asset_index_service
+
+    @property
+    def _library_root(self) -> Path | None:
+        return self.session.root if self.session is not None else None
+
+    def _root_for(self, library_root: str | Path | None) -> Path | None:
+        root = self._library_root or (Path(library_root).resolve() if library_root else None)
+        if library_root is not None and root is not None and Path(library_root).resolve() != root:
+            raise ValueError(f"Library root does not match bound session: {library_root}")
+        return root
 
     def create_folder(self, parent: str | Path, name: str = "New Folder") -> Path:
         base = Path(parent) / name
@@ -53,13 +73,16 @@ class FileOperationService:
              library_root: str | Path | None = None) -> Path:
         src = Path(source).resolve()
         dst = Path(destination).resolve()
-        _assert_under_root(src, library_root)
-        _assert_under_root(dst, library_root)
+        root = self._root_for(library_root)
+        _assert_under_root(src, root)
+        _assert_under_root(dst, root)
         if src == dst:
             return dst
+        is_dir = src.is_dir()
         shutil.move(str(src), str(dst))
-        if library_root:
-            self._migrate_metadata(library_root, src, dst)
+        if root:
+            self._migrate_metadata(root, src, dst)
+        self._refresh_after_move(src, dst, is_dir)
         get_event_bus().publish(FileRenamed(old_path=str(src), new_path=str(dst)))
         return dst
 
@@ -68,17 +91,18 @@ class FileOperationService:
         changed: list[Path] = []
         errors: list[str] = []
         bus = get_event_bus()
-        root = Path(library_root).resolve() if library_root else None
+        root = self._root_for(library_root)
         _assert_under_root(Path(destination_dir).resolve(), root)
         for source in sources:
             src = Path(source).resolve()
-            _assert_under_root(src, root)
             try:
                 target = unique_destination(Path(destination_dir).resolve() / src.name).resolve()
                 if src.is_dir():
                     shutil.copytree(src, target)
+                    self._refresh_directory_tree(target)
                 else:
                     shutil.copy2(src, target)
+                self._refresh_parents(target.parent)
                 changed.append(target)
                 bus.publish(FileCopied(source_path=str(src), destination_path=str(target)))
             except OSError as exc:
@@ -90,16 +114,18 @@ class FileOperationService:
         changed: list[Path] = []
         errors: list[str] = []
         bus = get_event_bus()
-        root = Path(library_root).resolve() if library_root else None
+        root = self._root_for(library_root)
         _assert_under_root(Path(destination_dir).resolve(), root)
         for source in sources:
             src = Path(source).resolve()
             _assert_under_root(src, root)
             try:
+                is_dir = src.is_dir()
                 target = unique_destination(Path(destination_dir) / src.name).resolve()
                 shutil.move(str(src), str(target))
-                if library_root:
-                    self._migrate_metadata(library_root, src, target)
+                if root:
+                    self._migrate_metadata(root, src, target)
+                self._refresh_after_move(src, target, is_dir)
                 changed.append(target)
                 bus.publish(FileRenamed(old_path=str(src), new_path=str(target)))
             except OSError as exc:
@@ -121,7 +147,7 @@ class FileOperationService:
         changed: list[Path] = []
         errors: list[str] = []
         bus = get_event_bus()
-        root = Path(library_root).resolve() if library_root else None
+        root = self._root_for(library_root)
         for path in paths:
             p = Path(path)
             _assert_under_root(p, root)
@@ -131,6 +157,8 @@ class FileOperationService:
                     shutil.rmtree(p)
                 else:
                     p.unlink()
+                self._clear_deleted_projection(p)
+                self._refresh_parents(p.parent)
                 changed.append(p)
                 bus.publish(FileDeleted(path=str(p), is_dir=is_dir))
             except OSError as exc:
@@ -142,25 +170,35 @@ class FileOperationService:
         """Restore an undo backup and publish the corresponding create event."""
         source = Path(backup).resolve()
         target = Path(destination).resolve()
-        _assert_under_root(target, library_root)
-        if source.is_dir():
+        root = self._root_for(library_root)
+        _assert_under_root(target, root)
+        is_dir = source.is_dir()
+        if is_dir:
             shutil.copytree(source, target)
         else:
             shutil.copy2(source, target)
-        get_event_bus().publish(FileCreated(path=str(target), is_dir=source.is_dir()))
+        self._refresh_parents(target.parent)
+        if is_dir:
+            self._refresh_directory_tree(target)
+        get_event_bus().publish(FileCreated(path=str(target), is_dir=is_dir))
         return target
 
-    def delete_to_trash(self, paths: list[str | Path]) -> FileOperationResult:
+    def delete_to_trash(self, paths: list[str | Path],
+                        library_root: str | Path | None = None) -> FileOperationResult:
         from send2trash import send2trash
 
         changed: list[Path] = []
         errors: list[str] = []
         bus = get_event_bus()
+        root = self._root_for(library_root)
         for path in paths:
             p = Path(path)
+            _assert_under_root(p, root)
             try:
                 is_dir = p.is_dir()
                 send2trash(str(p))
+                self._clear_deleted_projection(p)
+                self._refresh_parents(p.parent)
                 changed.append(p)
                 bus.publish(FileDeleted(path=str(p), is_dir=is_dir))
             except OSError as exc:
@@ -171,6 +209,61 @@ class FileOperationService:
     def _migrate_metadata(library_root: str | Path, old_path: Path, new_path: Path) -> None:
         from AssetsManager.core.database import migrate_path_metadata
         migrate_path_metadata(str(library_root), str(old_path), str(new_path))
+
+    def _refresh_parents(self, *parents: Path) -> None:
+        if self.session is None or self._asset_index_service is None:
+            return
+        for parent in set(parents):
+            self._asset_index_service.index_directory(
+                self.session.db_conn, self.session.root, parent, force=True,
+            )
+
+    def _refresh_after_move(self, old_path: Path, new_path: Path, is_dir: bool) -> None:
+        if self.session is None or self._asset_index_service is None:
+            return
+        if is_dir:
+            self._asset_index_service.remove_entry(self.session.db_conn, old_path)
+            self._asset_index_service.remove_directory(self.session.db_conn, old_path)
+        self._refresh_parents(old_path.parent, new_path.parent)
+        if is_dir:
+            self._refresh_directory_tree(new_path)
+
+    def _refresh_directory_tree(self, directory: Path) -> None:
+        if self.session is None or self._asset_index_service is None:
+            return
+        self._asset_index_service.index_directory_tree(
+            self.session.db_conn, self.session.root, directory,
+        )
+
+    def _clear_deleted_projection(self, path: Path) -> None:
+        if self.session is None:
+            return
+        import os
+        from AssetsManager.core.database import db_write_lock
+        from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
+
+        target = str(path.resolve())
+        escaped = target.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        prefix = escaped + os.sep.replace("\\", "\\\\") + "%"
+        with db_write_lock():
+            self.session.db_conn.execute(
+                "DELETE FROM file_tags WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'", (target, prefix),
+            )
+            self.session.db_conn.execute(
+                "DELETE FROM file_meta WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'", (target, prefix),
+            )
+            self.session.db_conn.commit()
+        cache_keys = ThumbnailRepository(self.session.db_conn).delete_path(target)
+        for cache_key in cache_keys:
+            try:
+                (self.session.thumb_dir / f"{cache_key}.webp").unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+        if self._asset_index_service is not None:
+            self._asset_index_service.remove_entry(self.session.db_conn, path)
+            self._asset_index_service.remove_directory(self.session.db_conn, path)
 
 
 def unique_destination(path: str | Path) -> Path:

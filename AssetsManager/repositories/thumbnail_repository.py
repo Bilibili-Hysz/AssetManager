@@ -1,6 +1,7 @@
 """Thumbnail cache repository — thin wrapper around thumbnail_cache table."""
 from __future__ import annotations
 
+import os
 from sqlite3 import Connection
 
 from AssetsManager.core.database import db_write_lock
@@ -66,6 +67,21 @@ class ThumbnailRepository:
         with db_write_lock():
             self._conn.execute("DELETE FROM thumbnail_cache WHERE cache_key=?", (cache_key,))
             self._conn.commit()
+
+    def delete_path(self, source_path: str) -> list[str]:
+        """Delete cache rows for a path and its descendants, returning keys."""
+        escaped = source_path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        with db_write_lock():
+            rows = self._conn.execute(
+                "SELECT cache_key FROM thumbnail_cache WHERE source_path=? OR source_path LIKE ? ESCAPE '\\'",
+                (source_path, escaped + os.sep.replace("\\", "\\\\") + "%"),
+            ).fetchall()
+            self._conn.execute(
+                "DELETE FROM thumbnail_cache WHERE source_path=? OR source_path LIKE ? ESCAPE '\\'",
+                (source_path, escaped + os.sep.replace("\\", "\\\\") + "%"),
+            )
+            self._conn.commit()
+            return [row[0] for row in rows]
 
     def clear_all(self) -> None:
         """Delete all entries from the thumbnail cache table."""

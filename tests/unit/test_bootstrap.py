@@ -124,6 +124,15 @@ class TestApplicationBootstrap:
         assert scoped.metadata_service._connection(root) is session.db_conn
         assert scoped.tag_service.list_tags(root) == []
 
+    def test_for_library_binds_file_operations_to_session(self, tmp_path):
+        root = tmp_path / "library"
+        root.mkdir()
+
+        bootstrap = ApplicationBootstrap()
+        session = bootstrap.library_service.open_session(root)
+
+        assert bootstrap.for_library(session).file_operation_service.session is session
+
     def test_library_session_delegates_context_resources(self, tmp_path):
         root = tmp_path / "library"
         root.mkdir()

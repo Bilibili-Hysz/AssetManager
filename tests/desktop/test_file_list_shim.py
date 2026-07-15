@@ -115,3 +115,42 @@ def test_set_root_prefers_scoped_library_runtime_when_bootstrap_present(tmp_path
         panel.shutdown()
         app.setProperty("bootstrap", None)
         app.processEvents()
+
+
+def test_external_drop_uses_scoped_file_operation_service(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    library = tmp_path / "library"
+    library.mkdir()
+    external = tmp_path / "external.txt"
+    external.write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    panel = QWidgetFileListPanel()
+    try:
+        scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+        panel.set_scoped_services(scoped)
+        panel.navigate_to(str(library), set_root=True)
+        panel._post_refresh = Mock()
+        panel._load_visible = Mock()
+
+        class DropEvent:
+            def mimeData(self):
+                class MimeData:
+                    def urls(self):
+                        class Url:
+                            def toLocalFile(self):
+                                return str(external)
+                        return [Url()]
+                return MimeData()
+
+        copied = Mock(return_value=type("Result", (), {"errors": ()})())
+        monkeypatch.setattr(scoped.file_operation_service, "copy_to_directory", copied)
+
+        assert panel._on_drop(DropEvent()) is True
+        copied.assert_called_once_with([str(external)], str(library))
+    finally:
+        panel.shutdown()
+        app.setProperty("bootstrap", None)
+        app.processEvents()
