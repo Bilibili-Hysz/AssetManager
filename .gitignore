@@ -23,6 +23,7 @@ dist/
 
 # Runtime data and local files.
 /RuntimeData/
+/_query_db.py
 *.db
 *.db-shm
 *.db-wal
@@ -35,6 +36,7 @@ dist/
 Thumbs.db
 
 # Local agent tooling dependencies.
+.worktrees/
 .mimocode/node_modules/
 .mimocode/.cron-lock
 .opencode/node_modules/
