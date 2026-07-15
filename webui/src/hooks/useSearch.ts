@@ -34,21 +34,31 @@ export function useSearch(): UseSearchReturn {
     setIsSearching(true);
     timerRef.current = setTimeout(() => {
       metaApi.search(q.trim())
-        .then(res => { if (generation === generationRef.current) setResults(res.results ?? []); })
-        .catch(() => { if (generation === generationRef.current) setResults([]); })
-        .finally(() => { if (generation === generationRef.current) setIsSearching(false); });
+        .then(res => {
+          if (generation === generationRef.current) setResults(res.results ?? []);
+        })
+        .catch(() => {
+          if (generation === generationRef.current) setResults([]);
+        })
+        .finally(() => {
+          if (generation === generationRef.current) setIsSearching(false);
+        });
     }, 200);
   }, [metaApi]);
 
   const clear = useCallback(() => {
-    generationRef.current++;
+    ++generationRef.current;
+    if (timerRef.current) clearTimeout(timerRef.current);
     setQueryState('');
     setResults([]);
     setIsSearching(false);
   }, []);
 
   useEffect(() => {
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    return () => {
+      ++generationRef.current;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, []);
 
   return { query, results, isSearching, setQuery, clear };

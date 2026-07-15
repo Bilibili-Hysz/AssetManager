@@ -199,7 +199,8 @@ export default function BrowsePage() {
     // For now, use the search API directly
     metaApi.search('', tag).then(res => {
       if (res.results.length > 0) {
-        navigateTo(res.results[0]?.path ?? '');
+        const path = res.results[0]?.path ?? '';
+        setSearchParams(path ? { path } : {}, { replace: true });
       }
     }).catch(() => {});
   }, [metaApi, navigateTo, setSearchParams]);

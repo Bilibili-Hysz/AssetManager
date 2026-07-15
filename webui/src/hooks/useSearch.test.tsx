@@ -1,13 +1,12 @@
 // @vitest-environment jsdom
 import { act, renderHook } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSearch } from './useSearch';
 
 const search = vi.fn();
-const api = {};
 
 vi.mock('./useAuth', () => ({
-  useAuth: () => ({ api }),
+  useAuth: () => ({ api: {} }),
 }));
 
 vi.mock('../api/metadata', () => ({
@@ -15,29 +14,47 @@ vi.mock('../api/metadata', () => ({
 }));
 
 describe('useSearch', () => {
-  afterEach(() => {
-    vi.useRealTimers();
+  beforeEach(() => {
+    vi.useFakeTimers();
     search.mockReset();
+    search.mockResolvedValue({ results: [] });
   });
 
-  it('ignores a response from a superseded search', async () => {
-    vi.useFakeTimers();
-    let resolveFirst!: (value: { results: Array<{ path: string }> }) => void;
-    let resolveSecond!: (value: { results: Array<{ path: string }> }) => void;
-    search
-      .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
-      .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('cancels a pending search when cleared', () => {
     const { result } = renderHook(() => useSearch());
 
-    act(() => {
-      result.current.setQuery('old');
-      vi.advanceTimersByTime(200);
-      result.current.setQuery('new');
-      vi.advanceTimersByTime(200);
-    });
-    await act(async () => { resolveSecond({ results: [{ path: 'new' }] }); });
-    expect(result.current.results[0]?.path).toBe('new');
-    await act(async () => { resolveFirst({ results: [{ path: 'old' }] }); });
-    expect(result.current.results[0]?.path).toBe('new');
+    act(() => result.current.setQuery('report'));
+    act(() => result.current.clear());
+    act(() => vi.advanceTimersByTime(200));
+
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  it('cancels a pending search when unmounted', () => {
+    const { result, unmount } = renderHook(() => useSearch());
+
+    act(() => result.current.setQuery('report'));
+    unmount();
+    act(() => vi.advanceTimersByTime(200));
+
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  it('ignores an in-flight result after clearing', async () => {
+    let resolveSearch!: (value: { results: Array<{ path: string }> }) => void;
+    search.mockReturnValue(new Promise(resolve => { resolveSearch = resolve; }));
+    const { result } = renderHook(() => useSearch());
+
+    act(() => result.current.setQuery('report'));
+    act(() => vi.advanceTimersByTime(200));
+    act(() => result.current.clear());
+    await act(async () => resolveSearch({ results: [{ path: 'stale-report' }] }));
+
+    expect(result.current.results).toEqual([]);
+    expect(result.current.isSearching).toBe(false);
   });
 });
