@@ -292,6 +292,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={t(showPassword ? 'auth.hide_password' : 'auth.show_password')}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -316,16 +317,24 @@ export default function LoginPage() {
             </button>
 
             {/* Register link */}
-            {showUserMode && (
-              <button
-                type="button"
-                onClick={() => { setView('register'); setError(''); setRegErrors([]); }}
-                className="w-full text-xs text-slate-500 hover:text-slate-300 transition-colors"
-              >
-                {t('auth.no_account')}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => { setView('register'); setError(''); setRegErrors([]); }}
+              className="w-full text-xs text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              {t('auth.no_account')}
+            </button>
           </form>
+        )}
+
+        {view !== 'login' && view !== 'register' && (
+          <button
+            type="button"
+            onClick={() => { setView('register'); setError(''); setRegErrors([]); }}
+            className="w-full mt-4 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+          >
+            {t('auth.no_account')}
+          </button>
         )}
 
         {/* Register View */}

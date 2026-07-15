@@ -12,6 +12,7 @@ const en = {
     logout: 'Logout',
     admin: 'Admin',
     settings: 'Settings',
+    language: 'Language',
   },
   sidebar: {
     title: 'Directory',
@@ -57,6 +58,9 @@ const en = {
     close: 'Close',
     copy: 'Copy',
     copied: 'Copied!',
+    open_sidebar: 'Open sidebar',
+    close_sidebar: 'Close sidebar',
+    close_info: 'Close information panel',
   },
   auth: {
     login_title: 'Login',
@@ -102,6 +106,8 @@ const en = {
     password_digit: 'Password must contain a digit',
     password_special: 'Password must contain a special character',
     password_mismatch: 'Passwords do not match',
+    show_password: 'Show password',
+    hide_password: 'Hide password',
   },
   share: {
     create_title: 'Create Share Link',

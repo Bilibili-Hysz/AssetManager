@@ -54,8 +54,8 @@ export function InviteManagement() {
                 {invite.revoked ? t('admin.revoke') : invite.used_by ? 'Used' : 'Active'}
               </span>
               {!invite.revoked && !invite.used_by && (
-                <button onClick={() => handleRevoke(invite.code)} className="p-1 text-slate-400 hover:text-white transition-colors">
-                  <X size={14} />
+                <button aria-label={`${t('admin.revoke')} ${invite.code}`} onClick={() => handleRevoke(invite.code)} className="p-1 text-slate-400 hover:text-white transition-colors">
+                  <X size={14} aria-hidden="true" />
                 </button>
               )}
             </div>

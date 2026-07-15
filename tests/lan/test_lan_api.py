@@ -465,6 +465,21 @@ class TestLanPermissionRegression:
         finally:
             await client.close()
 
+    @pytest.mark.anyio
+    async def test_tunnel_status_rejects_authenticated_non_admin(self, tmp_path):
+        app, library, conn = _make_lan_app(tmp_path)
+
+        client = await _make_client(app)
+        try:
+            token = await _register_user_token(client)
+            response = await client.get(
+                "/api/tunnel/status",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert response.status == 403
+        finally:
+            await client.close()
+
 
 @pytest.mark.anyio
 async def test_metadata_route_returns_only_safe_http_urls(tmp_path):

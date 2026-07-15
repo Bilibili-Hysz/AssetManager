@@ -14,6 +14,7 @@ const ja: I18nDict = {
     logout: 'ログアウト',
     admin: '管理',
     settings: '設定',
+    language: '言語',
   },
   sidebar: {
     title: 'ディレクトリ',
@@ -53,6 +54,9 @@ const ja: I18nDict = {
     close: '閉じる',
     copy: 'コピー',
     copied: 'コピーしました！',
+    open_sidebar: 'サイドバーを開く',
+    close_sidebar: 'サイドバーを閉じる',
+    close_info: '情報パネルを閉じる',
   },
   auth: {
     login_title: 'ログイン',
@@ -98,6 +102,8 @@ const ja: I18nDict = {
     password_digit: 'パスワードに数字を含める必要があります',
     password_special: 'パスワードに特殊文字を含める必要があります',
     password_mismatch: 'パスワードが一致しません',
+    show_password: 'パスワードを表示',
+    hide_password: 'パスワードを非表示',
   },
   share: {
     create_title: '共有リンクを作成',

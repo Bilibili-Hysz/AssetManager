@@ -58,10 +58,11 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
       <div className="flex items-center gap-2 flex-shrink-0">
         <button
           onClick={onSidebarToggle}
+          aria-label={sidebarOpen ? t('action.close_sidebar') : t('action.open_sidebar')}
           className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors"
           title={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
         >
-          <PanelLeft size={18} />
+          <PanelLeft size={18} aria-hidden="true" />
         </button>
         <Link to="/" className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-md bg-indigo-500 flex items-center justify-center text-sm font-bold text-white">
@@ -75,7 +76,7 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
 
       {/* Center: search */}
       <div ref={searchRef} className="flex-1 max-w-md relative">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" aria-hidden="true" />
         <input
           id="header-search-input"
           type="text"
@@ -120,8 +121,8 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
       <div className="flex items-center gap-1 flex-shrink-0">
         {/* Language */}
         <div className="relative group">
-          <button className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
-            <Globe size={17} />
+          <button aria-label={t('header.language')} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
+            <Globe size={17} aria-hidden="true" />
           </button>
           <div className="absolute right-0 top-full mt-1 hidden group-hover:block z-50">
             <div className="bg-slate-800 border border-slate-600/50 rounded-lg py-1 min-w-[120px] shadow-xl">
@@ -143,19 +144,21 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}
+          aria-label={t('theme.toggle')}
           className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors"
           title={t('theme.toggle')}
         >
-          {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+          {theme === 'dark' ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
         </button>
 
         {/* Info panel toggle */}
         <button
           onClick={onInfoToggle}
+          aria-label={infoOpen ? t('action.close_info') : t('mobile.info')}
           className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors"
           title={infoOpen ? 'Close info panel' : 'Open info panel'}
         >
-          <PanelRight size={17} />
+          <PanelRight size={17} aria-hidden="true" />
         </button>
 
         {/* User / Login */}
@@ -165,8 +168,8 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
           </Link>
         ) : (
           <div className="relative group">
-            <button className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
-              <User size={16} />
+            <button aria-label={user?.username ?? t('perm.admin')} className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
+              <User size={16} aria-hidden="true" />
               <span className="max-w-[80px] truncate hidden sm:inline">{user?.username ?? t('perm.admin')}</span>
             </button>
             <div className="absolute right-0 top-full mt-1 hidden group-hover:block z-50">

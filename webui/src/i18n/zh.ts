@@ -14,6 +14,7 @@ const zh: I18nDict = {
     logout: '退出登录',
     admin: '管理',
     settings: '设置',
+    language: '语言',
   },
   sidebar: {
     title: '目录',
@@ -53,6 +54,9 @@ const zh: I18nDict = {
     close: '关闭',
     copy: '复制',
     copied: '已复制！',
+    open_sidebar: '打开侧栏',
+    close_sidebar: '关闭侧栏',
+    close_info: '关闭信息面板',
   },
   auth: {
     login_title: '登录',
@@ -98,6 +102,8 @@ const zh: I18nDict = {
     password_digit: '密码必须包含数字',
     password_special: '密码必须包含特殊字符',
     password_mismatch: '两次输入的密码不一致',
+    show_password: '显示密码',
+    hide_password: '隐藏密码',
   },
   share: {
     create_title: '创建分享链接',

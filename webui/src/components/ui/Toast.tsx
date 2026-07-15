@@ -1,5 +1,6 @@
 import { useState, useCallback, createContext, useContext, type ReactNode } from 'react';
 import { X, CheckCircle, AlertCircle, Info } from 'lucide-react';
+import { useI18n } from '../../hooks/useI18n';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -17,6 +18,7 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 let nextId = 0;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const { t } = useI18n();
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
@@ -38,6 +40,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map(toast => (
           <div
             key={toast.id}
+            role={toast.type === 'error' ? 'alert' : 'status'}
+            aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
             className={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border backdrop-blur-sm ${
               toast.type === 'success'
                 ? 'bg-emerald-900/90 border-emerald-700/50 text-emerald-200'
@@ -46,12 +50,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   : 'bg-slate-800/90 border-slate-600/50 text-slate-200'
             }`}
           >
-            {toast.type === 'success' ? <CheckCircle size={18} /> :
-             toast.type === 'error' ? <AlertCircle size={18} /> :
-             <Info size={18} />}
+            {toast.type === 'success' ? <CheckCircle size={18} aria-hidden="true" /> :
+             toast.type === 'error' ? <AlertCircle size={18} aria-hidden="true" /> :
+             <Info size={18} aria-hidden="true" />}
             <span className="text-sm flex-1">{toast.message}</span>
-            <button onClick={() => dismiss(toast.id)} className="opacity-60 hover:opacity-100">
-              <X size={16} />
+            <button aria-label={t('action.close')} onClick={() => dismiss(toast.id)} className="opacity-60 hover:opacity-100">
+              <X size={16} aria-hidden="true" />
             </button>
           </div>
         ))}

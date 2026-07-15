@@ -38,6 +38,7 @@ export default function BrowsePage() {
     try { return (localStorage.getItem('am_view') as 'grid' | 'list') || 'grid'; } catch { return 'grid'; }
   });
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: ProjectItem; trigger?: HTMLElement } | null>(null);
   const [sharePaths, setSharePaths] = useState<string[] | null>(null);
   const [shareDialogTrigger, setShareDialogTrigger] = useState<HTMLElement | null | undefined>(undefined);
@@ -278,7 +279,11 @@ export default function BrowsePage() {
       onSidebarToggle={handleSidebarToggle}
       onInfoToggle={handleInfoToggle}
       onViewModeToggle={() => handleViewModeChange(viewMode === 'grid' ? 'list' : 'grid')}
-      onSelectModeToggle={() => setSelected(new Set())}
+      selectMode={selectMode}
+      onSelectModeToggle={() => {
+        setSelectMode(prev => !prev);
+        setSelected(new Set());
+      }}
     >
       <Breadcrumb path={currentPath} onNavigate={handleNavigate} />
 
