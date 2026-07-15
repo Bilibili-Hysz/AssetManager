@@ -22,6 +22,8 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
   const navigate = useNavigate();
   const searchRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const languageTriggerRef = useRef<HTMLButtonElement>(null);
+  const userTriggerRef = useRef<HTMLButtonElement>(null);
   const [showResults, setShowResults] = useState(false);
   const [openMenu, setOpenMenu] = useState<'language' | 'user' | null>(null);
 
@@ -49,14 +51,20 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
     navigate(`/browse?path=${encodeURIComponent(result.path)}`);
   };
 
-  const toggleMenu = (menu: 'language' | 'user') => setOpenMenu(openMenu === menu ? null : menu);
+  const toggleMenu = (menu: 'language' | 'user') => setOpenMenu(current => current === menu ? null : menu);
 
   const handleMenuKeyDown = (e: React.KeyboardEvent, menu: 'language' | 'user') => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       toggleMenu(menu);
-    } else if (e.key === 'Escape') {
+    }
+  };
+
+  const handleDisclosureKeyDown = (e: React.KeyboardEvent, menu: 'language' | 'user') => {
+    if (e.key === 'Escape' && openMenu === menu) {
+      e.preventDefault();
       setOpenMenu(null);
+      (menu === 'language' ? languageTriggerRef : userTriggerRef).current?.focus();
     }
   };
 
@@ -141,11 +149,11 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
       {/* Right: actions */}
       <div ref={menuRef} className="flex items-center gap-1 flex-shrink-0">
         {/* Language */}
-        <div className="relative group">
-          <button aria-label={t('header.language')} aria-expanded={openMenu === 'language'} onClick={() => toggleMenu('language')} onKeyDown={e => handleMenuKeyDown(e, 'language')} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
+        <div className="relative" onKeyDown={e => handleDisclosureKeyDown(e, 'language')}>
+          <button ref={languageTriggerRef} aria-label={t('header.language')} aria-expanded={openMenu === 'language'} onClick={() => toggleMenu('language')} onKeyDown={e => handleMenuKeyDown(e, 'language')} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
             <Globe size={17} aria-hidden="true" />
           </button>
-          <div className={`absolute right-0 top-full mt-1 ${openMenu === 'language' ? 'block' : 'hidden group-hover:block group-focus-within:block'} z-50`}>
+          <div data-header-menu hidden={openMenu !== 'language'} className="absolute right-0 top-full mt-1 z-50">
             <div className="bg-slate-800 border border-slate-600/50 rounded-lg py-1 min-w-[120px] shadow-xl">
               {supportedLangs.map(l => (
                 <button
@@ -188,12 +196,12 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
             {t('header.login')}
           </Link>
         ) : (
-          <div className="relative group">
-            <button aria-label={user?.username ?? t('perm.admin')} aria-expanded={openMenu === 'user'} onClick={() => toggleMenu('user')} onKeyDown={e => handleMenuKeyDown(e, 'user')} className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
+          <div className="relative" onKeyDown={e => handleDisclosureKeyDown(e, 'user')}>
+            <button ref={userTriggerRef} aria-label={user?.username ?? t('perm.admin')} aria-expanded={openMenu === 'user'} onClick={() => toggleMenu('user')} onKeyDown={e => handleMenuKeyDown(e, 'user')} className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
               <User size={16} aria-hidden="true" />
               <span className="max-w-[80px] truncate hidden sm:inline">{user?.username ?? t('perm.admin')}</span>
             </button>
-            <div className={`absolute right-0 top-full mt-1 ${openMenu === 'user' ? 'block' : 'hidden group-hover:block group-focus-within:block'} z-50`}>
+            <div data-header-menu hidden={openMenu !== 'user'} className="absolute right-0 top-full mt-1 z-50">
               <div className="bg-slate-800 border border-slate-600/50 rounded-lg py-1 min-w-[140px] shadow-xl">
                 <div className="px-3 py-1.5 text-xs text-slate-500 border-b border-slate-700/50">
                   {user?.username} · {role === 'admin' ? t('perm.admin') : t('perm.user')}

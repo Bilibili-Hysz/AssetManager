@@ -28,4 +28,39 @@ describe('Header menus', () => {
     fireEvent.click(userButton);
     expect(userButton.getAttribute('aria-expanded')).toBe('false');
   });
+
+  it.each([
+    ['language', 'header.language', 'English'],
+    ['user', 'alice', 'header.logout'],
+  ])('closes the %s menu on Escape from an item and restores trigger focus', (_menu, triggerName, itemName) => {
+    render(<Header onSidebarToggle={() => {}} onInfoToggle={() => {}} sidebarOpen={false} infoOpen={false} />);
+
+    const trigger = screen.getByRole('button', { name: triggerName });
+    fireEvent.click(trigger);
+    const item = screen.getByRole('button', { name: itemName });
+    item.focus();
+
+    fireEvent.keyDown(item, { key: 'Escape' });
+
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(item.closest('[data-header-menu]')?.hasAttribute('hidden')).toBe(true);
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it.each([
+    ['header.language', 'English'],
+    ['alice', 'header.logout'],
+  ])('reactivating %s closes its menu while focus remains within the disclosure', (triggerName, itemName) => {
+    render(<Header onSidebarToggle={() => {}} onInfoToggle={() => {}} sidebarOpen={false} infoOpen={false} />);
+
+    const trigger = screen.getByRole('button', { name: triggerName });
+    fireEvent.click(trigger);
+    const item = screen.getByRole('button', { name: itemName });
+    item.focus();
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(item.closest('[data-header-menu]')?.hasAttribute('hidden')).toBe(true);
+  });
 });
