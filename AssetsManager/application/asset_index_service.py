@@ -81,10 +81,15 @@ class AssetIndexService:
         except OSError:
             return 0
 
-        if not entries:
-            return 0
-
         with db_write_lock():
+            if force:
+                conn.execute(
+                    "DELETE FROM assets WHERE parent_path=? AND library_root=?",
+                    (target, root),
+                )
+            if not entries:
+                conn.commit()
+                return 0
             conn.executemany(
                 "INSERT INTO assets (file_path, name, extension, kind, size, mtime, "
                 "parent_path, library_root, created_at, updated_at) "
@@ -103,9 +108,9 @@ class AssetIndexService:
         library_root: str | Path,
         dir_path: str | Path,
     ) -> int:
-        """Index a directory and every descendant directory."""
+        """Force-index a directory and all nested directories."""
         count = 0
-        for current, _, _ in os.walk(Path(dir_path)):
+        for current, _, _ in os.walk(dir_path):
             count += self.index_directory(conn, library_root, current, force=True)
         return count
 
@@ -169,11 +174,13 @@ class AssetIndexService:
     def remove_directory(self, conn: Connection, dir_path: str | Path) -> int:
         """Remove all entries under a directory. Returns count removed."""
         prefix = str(Path(dir_path).resolve())
+        escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        subtree = escaped + os.sep.replace("\\", "\\\\") + "%"
         with db_write_lock():
             cur = conn.execute(
-                "DELETE FROM assets WHERE file_path=? "
-                "OR substr(file_path, 1, length(?) + 1)=?",
-                (prefix, prefix, prefix + os.sep),
+                "DELETE FROM assets WHERE file_path=? OR file_path LIKE ? ESCAPE '\\' "
+                "OR parent_path=? OR parent_path LIKE ? ESCAPE '\\'",
+                (prefix, subtree, prefix, subtree),
             )
             conn.commit()
             return cur.rowcount

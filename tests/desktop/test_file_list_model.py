@@ -6,6 +6,7 @@ import pytest
 # Set QT_QPA_PLATFORM before any Qt imports
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 from AssetsManager.panels.file_list._model import FileSystemModel
 
@@ -31,6 +32,19 @@ def model():
 
 
 class TestFileSystemModel:
+    def test_inline_rename_delegates_without_direct_filesystem_mutation(self, model, tmp_dir):
+        model.set_directory(tmp_dir)
+        model._wait_for_scan()
+        row = next(i for i in range(model.rowCount()) if model.data(model.index(i, 0)) == "readme.txt")
+        requested = []
+        model.rename_requested.connect(lambda requested_row, name: requested.append((requested_row, name)))
+
+        assert model.setData(model.index(row, 0), "renamed.txt", Qt.ItemDataRole.EditRole)
+
+        assert requested == [(row, "renamed.txt")]
+        assert os.path.exists(os.path.join(tmp_dir, "readme.txt"))
+        assert not os.path.exists(os.path.join(tmp_dir, "renamed.txt"))
+
     def test_set_directory(self, model, tmp_dir):
         model.set_directory(tmp_dir)
         model._wait_for_scan()

@@ -816,14 +816,37 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         paths = [u.toLocalFile() for u in event.mimeData().urls() if u.toLocalFile()]
         if not paths:
             return False
-        from AssetsManager.application import FileOperationService
-        result = FileOperationService().copy_to_directory(paths, str(self._current))
-        for error in result.errors:
-            _log.error("Drag-drop copy failed: %s", error)
+        scoped = self._get_scoped_services()
+        if scoped is None:
+            return False
+        destination = str(self._current)
+        root = Path(self._lib_root).resolve()
+        sources = [path for path in paths if os.path.dirname(path) != destination]
+        in_library = [path for path in sources if Path(path).resolve().is_relative_to(root)]
+        external = [path for path in sources if path not in in_library]
+        if not sources:
+            return False
+
+        service = scoped.file_operation_service
+        for source in in_library:
+            result = service.move_to_directory(
+                [source], destination, library_root=self._lib_root,
+            )
+            for changed_path in result.changed_paths:
+                self._undo_svc.record_rename(source, str(changed_path))
+            for error in result.errors:
+                _log.error("Drag-drop move failed: %s", error)
+        if external:
+            result = service.copy_to_directory(
+                external, destination, library_root=self._lib_root,
+            )
+            for error in result.errors:
+                _log.error("Drag-drop copy failed: %s", error)
         self._post_refresh()
         if self._view_mode == "Details":
             self._populate_details()
         self._load_visible()
+        return True
 
     # ── External drag (drag files to other apps) ────────────────
 

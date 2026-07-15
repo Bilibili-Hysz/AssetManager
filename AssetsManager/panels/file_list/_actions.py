@@ -190,9 +190,17 @@ class ActionsMixin:
         QApplication.clipboard().setMimeData(mime)
 
     def _paste(self):
-        if not self._clipboard_source:
+        if self._get_scoped_services() is None:
             return
         sources = list(self._clipboard_source)
+        if not sources:
+            sources = [
+                url.toLocalFile()
+                for url in QApplication.clipboard().mimeData().urls()
+                if url.isLocalFile() and url.toLocalFile()
+            ]
+        if not sources:
+            return
         dest = str(self._current)
         is_cut = self._clipboard_cut
         lib_root = self._lib_root or None
@@ -206,6 +214,9 @@ class ActionsMixin:
             svc = panel._get_file_operation_service()
             if is_cut:
                 result = svc.move_to_directory(sources, dest, library_root=lib_root)
+                if result.ok:
+                    for source, destination in zip(sources, result.changed_paths):
+                        panel._undo_svc.record_rename(str(source), str(destination))
             else:
                 result = svc.copy_to_directory(sources, dest)
             result_holder.append(result)
@@ -263,6 +274,8 @@ class ActionsMixin:
         new = str(Path(new_path).resolve())
         if old == new:
             return new
+        if self._get_scoped_services() is None:
+            return old
         try:
             self._get_file_operation_service().move(old, new, library_root=self._lib_root or None)
         except Exception:
@@ -273,6 +286,8 @@ class ActionsMixin:
         return new
 
     def _delete(self, paths, *, add_undo=True):
+        if self._get_scoped_services() is None:
+            return
         names = "\n".join(f"  {Path(p).name}" for p in paths[:10])
         if len(paths) > 10:
             names += f"\n  ... and {len(paths) - 10} more"
@@ -283,21 +298,22 @@ class ActionsMixin:
         panel = self
 
         def _do_delete():
-            if add_undo:
-                for p in path_list:
-                    panel._undo_svc.record_delete(p)
-            result = panel._get_file_operation_service().delete_to_trash(path_list)
+            result = panel._get_file_operation_service().delete_to_trash(
+                path_list, library_root=panel._lib_root or None,
+            )
             for error in result.errors:
                 _log.error("Move to trash failed: %s", error)
 
         self._run_in_background(_do_delete, on_done=lambda: panel._post_refresh())
 
     def _delete_permanent(self, paths):
+        if self._get_scoped_services() is None:
+            return
         names = "\n".join(f"  {Path(p).name}" for p in paths[:10])
         if len(paths) > 10:
             names += f"\n  ... and {len(paths) - 10} more"
         r = QMessageBox.warning(self, tr("filelist.dialog.delete_permanent"),
-            f"Permanently delete?\n\n{names}\n\nThis cannot be undone.",
+            f"Permanently delete?\n\n{names}\n\nYou can undo this deletion.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel)
         if r != QMessageBox.StandardButton.Yes:
@@ -306,7 +322,22 @@ class ActionsMixin:
         panel = self
 
         def _do_perm_delete():
-            result = panel._get_file_operation_service().delete_permanent(path_list)
+            entries = [panel._undo_svc.prepare_delete(path) for path in path_list]
+            try:
+                result = panel._get_file_operation_service().delete_permanent(
+                    path_list, library_root=panel._lib_root or None,
+                )
+            except Exception:
+                for entry in entries:
+                    panel._undo_svc.discard_delete(entry)
+                raise
+            changed_paths = {Path(path).resolve() for path in result.changed_paths}
+            for path, entry in zip(path_list, entries):
+                if Path(path).resolve() in changed_paths:
+                    if entry is not None:
+                        panel._undo_svc.commit_delete(entry)
+                else:
+                    panel._undo_svc.discard_delete(entry)
             for error in result.errors:
                 _log.error("Permanent delete failed: %s", error)
 
@@ -335,24 +366,26 @@ class ActionsMixin:
     # ── Undo ─────────────────────────────────────────────────────
 
     def _undo(self):
+        if self._get_scoped_services() is None:
+            return
         if not self._undo_svc.can_undo():
             return
         panel = self
         def _do_undo():
             panel._undo_svc.perform_undo(
-                panel._get_file_operation_service(),
-                panel._lib_root or str(panel._current),
+                panel._get_file_operation_service(), panel._lib_root
             )
         self._run_in_background(_do_undo, on_done=lambda: panel._post_refresh())
 
     def _redo(self):
+        if self._get_scoped_services() is None:
+            return
         if not self._undo_svc.can_redo():
             return
         panel = self
         def _do_redo():
             panel._undo_svc.perform_redo(
-                panel._get_file_operation_service(),
-                panel._lib_root or str(panel._current),
+                panel._get_file_operation_service(), panel._lib_root
             )
         self._run_in_background(_do_redo, on_done=lambda: panel._post_refresh())
 

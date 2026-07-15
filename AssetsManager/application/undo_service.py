@@ -61,13 +61,28 @@ class UndoService:
 
     def record_delete(self, path: str) -> None:
         """Record a delete operation with backup for undo."""
+        entry = self.prepare_delete(path)
+        if entry is not None:
+            self.commit_delete(entry)
+
+    def prepare_delete(self, path: str) -> UndoEntry | None:
+        """Create a delete backup without adding it to undo history."""
         backup = self._make_backup(path)
-        if backup:
-            entry = UndoEntry(
-                type="delete", path=path, backup=backup,
-                is_dir=os.path.isdir(path),
-            )
-            self._push_undo(entry)
+        if not backup:
+            return None
+        return UndoEntry(
+            type="delete", path=path, backup=backup,
+            is_dir=os.path.isdir(path),
+        )
+
+    def commit_delete(self, entry: UndoEntry) -> None:
+        """Add a successfully deleted backup to undo history."""
+        self._push_undo(entry)
+
+    def discard_delete(self, entry: UndoEntry | None) -> None:
+        """Remove a delete backup when its filesystem operation failed."""
+        if entry is not None and entry.backup:
+            self._clean_backup(entry.backup)
 
     def can_undo(self) -> bool:
         with self._lock:
@@ -123,41 +138,8 @@ class UndoService:
                     self._clean_backup(entry.backup)
             self._redo_stack.clear()
 
-    def execute_undo(self, entry: UndoEntry) -> bool:
-        """Execute the reverse of an undo entry. Returns True on success."""
-        try:
-            if entry.type == "rename":
-                os.rename(entry.new, entry.old)
-                return True
-            elif entry.type == "delete":
-                if entry.backup and os.path.exists(entry.backup):
-                    if entry.is_dir:
-                        shutil.copytree(entry.backup, entry.path)
-                    else:
-                        shutil.copy2(entry.backup, entry.path)
-                    return True
-        except OSError:
-            pass
-        return False
-
-    def execute_redo(self, entry: UndoEntry) -> bool:
-        """Re-apply an undone operation. Returns True on success."""
-        try:
-            if entry.type == "rename":
-                os.rename(entry.old, entry.new)
-                return True
-            elif entry.type == "delete":
-                if entry.is_dir:
-                    shutil.rmtree(entry.path, ignore_errors=True)
-                else:
-                    os.remove(entry.path)
-                return True
-        except OSError:
-            pass
-        return False
-
     def perform_undo(self, file_operations, library_root: str | Path | None = None) -> bool:
-        """Undo through the command service, moving stacks only after success."""
+        """Undo through file operations, moving history only after success."""
         with self._lock:
             if not self._undo_stack:
                 return False
@@ -172,7 +154,7 @@ class UndoService:
         return True
 
     def perform_redo(self, file_operations, library_root: str | Path | None = None) -> bool:
-        """Redo through the command service, moving stacks only after success."""
+        """Redo through file operations, moving history only after success."""
         with self._lock:
             if not self._redo_stack:
                 return False
@@ -186,33 +168,39 @@ class UndoService:
             self._undo_stack.append(entry)
         return True
 
+    @staticmethod
+    def _operation_succeeded(result) -> bool:
+        return getattr(result, "ok", True)
+
     def _execute_reverse(self, file_operations, entry: UndoEntry,
                          library_root: str | Path | None) -> bool:
-        """Execute an undo entry without mutating either history stack."""
         try:
             if entry.type == "rename":
-                file_operations.move(entry.new, entry.old, library_root=library_root)
-                return True
-            if entry.type == "delete" and self.execute_undo(entry):
-                file_operations.reconcile_created(entry.path, entry.is_dir, library_root=library_root)
-                return True
-            return self.execute_undo(entry)
+                return self._operation_succeeded(
+                    file_operations.move(entry.new, entry.old, library_root=library_root)
+                )
+            if entry.type == "delete" and entry.backup and os.path.exists(entry.backup):
+                return self._operation_succeeded(
+                    file_operations.restore_backup(entry.backup, entry.path, library_root=library_root)
+                )
         except (OSError, ValueError):
-            return False
+            pass
+        return False
 
     def _execute_forward(self, file_operations, entry: UndoEntry,
                          library_root: str | Path | None) -> bool:
-        """Execute a redo entry without mutating either history stack."""
         try:
             if entry.type == "rename":
-                file_operations.move(entry.old, entry.new, library_root=library_root)
-                return True
+                return self._operation_succeeded(
+                    file_operations.move(entry.old, entry.new, library_root=library_root)
+                )
             if entry.type == "delete":
-                result = file_operations.delete_permanent([entry.path], library_root=library_root)
-                return result.ok
-            return self.execute_redo(entry)
+                return self._operation_succeeded(
+                    file_operations.delete_permanent([entry.path], library_root=library_root)
+                )
         except (OSError, ValueError):
-            return False
+            pass
+        return False
 
     def cleanup(self) -> None:
         """Remove the undo backup directory."""

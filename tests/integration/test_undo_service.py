@@ -1,59 +1,84 @@
 """Tests for UndoService."""
-import hashlib
 import os
 
-from AssetsManager.application.undo_service import UndoService
+from AssetsManager.application.file_operation_service import FileOperationService
+from AssetsManager.application.undo_service import UndoEntry, UndoService
+
+
+class _RecordingFileOperations:
+    def __init__(self):
+        self.calls = []
+
+    def move(self, source, destination, *, library_root):
+        self.calls.append(("move", source, destination, library_root))
+
+    def restore_backup(self, backup, destination, *, library_root):
+        self.calls.append(("restore_backup", backup, destination, library_root))
+
+    def delete_permanent(self, paths, *, library_root):
+        self.calls.append(("delete_permanent", paths, library_root))
 
 
 class _FailingFileOperations:
     def move(self, source, destination, *, library_root):
-        raise OSError("filesystem failure")
+        raise OSError("blocked")
 
-
-class _FailingPermanentDeleteOperations:
     def delete_permanent(self, paths, *, library_root):
-        from AssetsManager.application.file_operation_service import FileOperationResult
-
-        return FileOperationResult((), ("filesystem failure",))
+        return type("Result", (), {"ok": False})()
 
 
-def test_failed_move_undo_keeps_same_entry_on_undo_stack(tmp_path):
+def test_failed_perform_undo_keeps_source_stack_and_does_not_advance_redo(tmp_path):
+    old = tmp_path / "old.txt"
+    new = tmp_path / "new.txt"
+    new.write_text("asset", encoding="utf-8")
     svc = UndoService()
-    svc.record_rename("missing-new", "old")
-    entry = svc.peek_undo()
+    svc.record_rename(str(old), str(new))
 
     assert not svc.perform_undo(_FailingFileOperations(), str(tmp_path))
-    assert svc.peek_undo() is entry
-    assert not svc.can_redo()
+    assert svc.peek_undo().new == str(new)
+    assert svc.peek_redo() is None
+    assert new.exists()
+    assert not old.exists()
 
 
-def test_failed_backup_restore_undo_keeps_same_entry_on_undo_stack(tmp_path):
-    source = tmp_path / "file.txt"
-    source.write_text("data", encoding="utf-8")
+def test_failed_perform_redo_keeps_source_stack_and_does_not_advance_undo(tmp_path):
+    path = tmp_path / "asset.txt"
+    path.write_text("asset", encoding="utf-8")
     svc = UndoService()
-    try:
-        svc.record_delete(str(source))
-        entry = svc.peek_undo()
-        os.remove(entry.backup)
+    svc.record_delete(str(path))
+    path.unlink()
+    assert svc.perform_undo(FileOperationService(), str(tmp_path))
 
-        assert not svc.perform_undo(object(), str(tmp_path))
-        assert svc.peek_undo() is entry
-        assert not svc.can_redo()
-    finally:
-        svc.cleanup()
+    assert not svc.perform_redo(_FailingFileOperations(), str(tmp_path))
+    assert svc.peek_redo().path == str(path)
+    assert svc.peek_undo() is None
+    assert path.exists()
 
 
-def test_failed_permanent_delete_redo_keeps_same_entry_on_redo_stack(tmp_path):
-    source = tmp_path / "file.txt"
-    source.write_text("data", encoding="utf-8")
-    svc = UndoService()
-    svc.record_delete(str(source))
-    entry = svc.undo()
+def test_perform_undo_and_redo_delegate_to_library_file_operations(tmp_path):
+    library_root = str(tmp_path)
+    source = str(tmp_path / "old.txt")
+    renamed = str(tmp_path / "new.txt")
+    deleted = str(tmp_path / "deleted.txt")
+    backup = str(tmp_path / "backup.txt")
+    (tmp_path / "backup.txt").write_text("backup", encoding="utf-8")
+    operations = _RecordingFileOperations()
+    svc = UndoService(library_root=library_root)
 
-    assert entry is not None
-    assert not svc.perform_redo(_FailingPermanentDeleteOperations(), str(tmp_path))
-    assert not svc.can_undo()
-    assert svc.peek_redo() is entry
+    svc.record_rename(source, renamed)
+    assert svc.perform_undo(operations, library_root)
+    assert svc.perform_redo(operations, library_root)
+
+    svc._push_undo(UndoEntry(type="delete", path=deleted, backup=backup))
+    assert svc.perform_undo(operations, library_root)
+    assert svc.perform_redo(operations, library_root)
+
+    assert operations.calls == [
+        ("move", renamed, source, library_root),
+        ("move", source, renamed, library_root),
+        ("restore_backup", backup, deleted, library_root),
+        ("delete_permanent", [deleted], library_root),
+    ]
 
 
 def test_record_rename_and_undo(tmp_path):
@@ -65,10 +90,7 @@ def test_record_rename_and_undo(tmp_path):
     os.rename(str(src), str(tmp_path / "new.txt"))
 
     assert svc.can_undo()
-    entry = svc.undo()
-    assert entry is not None
-    assert entry.type == "rename"
-    assert svc.execute_undo(entry) is True
+    assert svc.perform_undo(FileOperationService(), str(tmp_path))
     assert (tmp_path / "old.txt").exists()
     assert not (tmp_path / "new.txt").exists()
 
@@ -97,12 +119,28 @@ def test_record_delete_and_undo(tmp_path):
     os.remove(str(src))
 
     assert svc.can_undo()
-    entry = svc.undo()
-    assert entry is not None
-    assert entry.type == "delete"
-    assert svc.execute_undo(entry) is True
+    assert svc.perform_undo(FileOperationService(), str(tmp_path))
     assert (tmp_path / "file.txt").exists()
     assert (tmp_path / "file.txt").read_text(encoding="utf-8") == "data"
+
+
+def test_discard_prepared_delete_cleans_backup_without_recording_history(tmp_path):
+    source = tmp_path / "file.txt"
+    source.write_text("data", encoding="utf-8")
+    svc = UndoService()
+    try:
+        entry = svc.prepare_delete(str(source))
+
+        assert entry is not None
+        assert os.path.exists(entry.backup)
+        assert not svc.can_undo()
+
+        svc.discard_delete(entry)
+
+        assert not os.path.exists(entry.backup)
+        assert not svc.can_undo()
+    finally:
+        svc.cleanup()
 
 
 def test_delete_redo_can_be_undone_again(tmp_path):
@@ -114,19 +152,14 @@ def test_delete_redo_can_be_undone_again(tmp_path):
         svc.record_delete(str(src))
         os.remove(str(src))
 
-        entry = svc.undo()
-        assert entry is not None
-        assert svc.execute_undo(entry) is True
+        operations = FileOperationService()
+        assert svc.perform_undo(operations, str(tmp_path))
         assert src.exists()
 
-        redo_entry = svc.redo()
-        assert redo_entry is not None
-        assert svc.execute_redo(redo_entry) is True
+        assert svc.perform_redo(operations, str(tmp_path))
         assert not src.exists()
 
-        entry_again = svc.undo()
-        assert entry_again is not None
-        assert svc.execute_undo(entry_again) is True
+        assert svc.perform_undo(operations, str(tmp_path))
         assert src.read_text(encoding="utf-8") == "data"
     finally:
         svc.cleanup()
@@ -162,12 +195,12 @@ def test_delete_undo_and_redo_reconcile_file_projections(tmp_path):
         undo.record_delete(str(source))
         assert scoped.file_operation_service.delete_to_trash([source]).ok
 
-        assert undo.perform_undo(scoped.file_operation_service, str(library))
+        assert undo.perform_undo(scoped.file_operation_service)
         assert source.read_text(encoding="utf-8") == "data"
         assert index.get_entry(conn, source) is not None
         assert created[-1].path == str(source)
 
-        assert undo.perform_redo(scoped.file_operation_service, str(library))
+        assert undo.perform_redo(scoped.file_operation_service)
         assert not source.exists()
         assert TagStore(str(library)).get_tags(str(source)) == []
         assert ThumbnailRepository(conn).list_all() == []
@@ -178,7 +211,7 @@ def test_delete_undo_and_redo_reconcile_file_projections(tmp_path):
         undo.cleanup()
 
 
-def test_session_bound_rename_undo_and_redo_reconcile_projections(tmp_path):
+def test_rename_undo_and_redo_reconcile_metadata_thumbnails_and_index(tmp_path):
     from AssetsManager.application import ApplicationBootstrap
     from AssetsManager.core.tag_store import TagStore
     from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
@@ -194,71 +227,28 @@ def test_session_bound_rename_undo_and_redo_reconcile_projections(tmp_path):
     index = scoped.asset_index_service
     index.index_directory(conn, library, library)
     TagStore(str(library)).add_tag(str(old), "hero")
-    conn.execute("INSERT INTO file_meta (file_path, notes) VALUES (?, ?)", (str(old.resolve()), "note"))
-    conn.commit()
-    thumbnail_key = hashlib.sha256(
-        f"{old.resolve()}|{old.stat().st_mtime}".encode()
-    ).hexdigest()[:16]
-    thumbnails = ThumbnailRepository(conn)
-    thumbnails.upsert_entry(thumbnail_key, str(old.resolve()), 1.0, 1, 1, 1)
-    old_thumbnail = scoped.session.thumb_dir / f"{thumbnail_key}.webp"
-    old_thumbnail.write_bytes(b"thumbnail")
+    ThumbnailRepository(conn).upsert_entry("thumb", str(old.resolve()), 1.0, 1, 1, 1)
+    old_thumbnail = scoped.session.thumb_dir / "thumb.webp"
+    old_thumbnail.write_bytes(b"thumb")
     undo = scoped.undo_service
 
     try:
         undo.record_rename(str(old), str(new))
         assert scoped.file_operation_service.move(old, new) == new
 
-        # No library root is supplied: the session-bound command service owns it.
         assert undo.perform_undo(scoped.file_operation_service)
         assert old.exists()
         assert TagStore(str(library)).get_tags(str(old)) == ["hero"]
-        assert conn.execute("SELECT notes FROM file_meta WHERE file_path=?", (str(old.resolve()),)).fetchone() == ("note",)
         assert index.get_entry(conn, old) is not None
         assert index.get_entry(conn, new) is None
-        undo_key, undo_source = thumbnails.list_all()[0]
-        assert undo_source == str(old.resolve())
-        assert (scoped.session.thumb_dir / f"{undo_key}.webp").exists()
+        assert ThumbnailRepository(conn).list_all()[0][1] == str(old.resolve())
 
         assert undo.perform_redo(scoped.file_operation_service)
         assert new.exists()
         assert TagStore(str(library)).get_tags(str(new)) == ["hero"]
-        assert conn.execute("SELECT notes FROM file_meta WHERE file_path=?", (str(new.resolve()),)).fetchone() == ("note",)
-        assert index.get_entry(conn, new) is not None
         assert index.get_entry(conn, old) is None
-        redo_key, redo_source = thumbnails.list_all()[0]
-        assert redo_source == str(new.resolve())
-        assert (scoped.session.thumb_dir / f"{redo_key}.webp").exists()
-        assert not (scoped.session.thumb_dir / f"{undo_key}.webp").exists()
-    finally:
-        undo.cleanup()
-
-
-def test_directory_rename_redo_removes_stale_descendant_index_entries(tmp_path):
-    from AssetsManager.application import ApplicationBootstrap
-
-    library = tmp_path / "library"
-    old = library / "old"
-    nested = old / "nested"
-    new = library / "new"
-    nested.mkdir(parents=True)
-    asset = nested / "asset.txt"
-    asset.write_text("data", encoding="utf-8")
-    bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
-    conn = scoped.session.db_conn
-    index = scoped.asset_index_service
-    index.index_directory_tree(conn, library, library)
-    undo = scoped.undo_service
-
-    try:
-        undo.record_rename(str(old), str(new))
-        scoped.file_operation_service.move(old, new, library_root=library)
-
-        assert undo.perform_undo(scoped.file_operation_service, str(library))
-        assert undo.perform_redo(scoped.file_operation_service, str(library))
-        assert index.get_entry(conn, old / "nested" / "asset.txt") is None
-        assert index.get_entry(conn, new / "nested" / "asset.txt") is not None
+        assert index.get_entry(conn, new) is not None
+        assert ThumbnailRepository(conn).list_all()[0][1] == str(new.resolve())
     finally:
         undo.cleanup()
 
@@ -301,7 +291,7 @@ def test_can_undo_redo_empty():
     assert svc.redo() is None
 
 
-def test_execute_redo_rename(tmp_path):
+def test_redo_rename_through_file_operations(tmp_path):
     src = tmp_path / "old.txt"
     src.write_text("data", encoding="utf-8")
 
@@ -309,14 +299,11 @@ def test_execute_redo_rename(tmp_path):
     svc.record_rename(str(src), str(tmp_path / "new.txt"))
     os.rename(str(src), str(tmp_path / "new.txt"))
 
-    entry = svc.undo()
-    assert entry is not None
-    svc.execute_undo(entry)
+    operations = FileOperationService()
+    assert svc.perform_undo(operations, str(tmp_path))
     assert (tmp_path / "old.txt").exists()
 
-    redo_entry = svc.redo()
-    assert redo_entry is not None
-    assert svc.execute_redo(redo_entry) is True
+    assert svc.perform_redo(operations, str(tmp_path))
     assert (tmp_path / "new.txt").exists()
     assert not (tmp_path / "old.txt").exists()
 

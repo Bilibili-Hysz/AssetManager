@@ -161,6 +161,7 @@ class QWidgetFileListPanel(FileListPanel):
         self._grid_widget.context_menu.connect(self._on_grid_context)
         self._grid_widget.selection_changed.connect(self._update_status)
         self._grid_widget.rename_requested.connect(self._rename_grid_row)
+        self._model.rename_requested.connect(self._rename_grid_row)
         self._model.modelAboutToBeReset.connect(self._capture_grid_selection)
         self._model.modelAboutToBeReset.connect(self._capture_detail_selection)
         self._model.modelReset.connect(self._on_grid_model_reset)
@@ -722,22 +723,7 @@ class QWidgetFileListPanel(FileListPanel):
         return False
 
     def _on_drop(self, event):
-        urls = [u.toLocalFile() for u in event.mimeData().urls() if u.toLocalFile()]
-        if not urls:
-            return False
-        dest = str(self._current)
-        external = [u for u in urls if os.path.dirname(u) != dest]
-        if not external:
-            return False
-        from AssetsManager.application import FileOperationService
-        result = FileOperationService().copy_to_directory(external, dest)
-        for error in result.errors:
-            _log.error("Drag-drop copy failed: %s", error)
-        self._post_refresh()
-        if self._view_mode == "Details":
-            self._populate_details()
-        self._load_visible()
-        return True
+        return super()._on_drop(event)
 
     @staticmethod
     def _is_external_drop(event) -> bool:

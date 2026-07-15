@@ -82,7 +82,7 @@ class ApplicationBootstrap:
         c.register(AssetService)
         c.register(MetadataService)
         c.register(TagService)
-        c.register(FileOperationService, deps=[AssetIndexService])
+        c.register(FileOperationService)
         c.register(ThumbnailService)
         c.register(SearchService)
         # ProjectService is created directly in for_library() with connection_provider
@@ -142,9 +142,8 @@ class ApplicationBootstrap:
             thumbnail_service=self.container.resolve(ThumbnailService),
             search_service=self.container.resolve(SearchService),
             file_operation_service=FileOperationService(
+                session=session,
                 asset_index_service=self.container.resolve(AssetIndexService),
-                connection_provider=provider,
-                library_root=session.root,
             ),
             undo_service=self._undo_services[key],
             plugin_service=self.container.resolve(PluginService),
