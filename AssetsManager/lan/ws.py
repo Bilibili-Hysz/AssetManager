@@ -7,6 +7,7 @@ from aiohttp import web
 _log = logging.getLogger(__name__)
 
 MAX_WS_CONNECTIONS = 50
+HEARTBEAT_PING_TIMEOUT = 10.0
 
 
 class WebSocketManager:
@@ -39,14 +40,31 @@ class WebSocketManager:
                 if not self._clients:
                     self._heartbeat_task = None
                     return
-                dead = []
-                for ws in self._clients:
-                    try:
-                        await ws.ping()
-                    except Exception:
-                        dead.append(ws)
-                for ws in dead:
-                    self._clients.discard(ws)
+            await self._heartbeat_cycle()
+
+    async def _heartbeat_cycle(self):
+        """Check all clients concurrently without holding the client lock."""
+        async with self._lock:
+            clients = list(self._clients)
+
+        async def check(ws: web.WebSocketResponse):
+            try:
+                await asyncio.wait_for(ws.ping(), HEARTBEAT_PING_TIMEOUT)
+            except Exception:
+                return ws
+            return None
+
+        results = await asyncio.gather(
+            *(check(ws) for ws in clients), return_exceptions=True
+        )
+        dead = {
+            ws
+            for ws, result in zip(clients, results)
+            if isinstance(result, BaseException) or result is not None
+        }
+        if dead:
+            async with self._lock:
+                self._clients.difference_update(dead)
 
     async def broadcast(self, event_type: str, data: dict | None = None):
         """Send a JSON event to all connected clients."""

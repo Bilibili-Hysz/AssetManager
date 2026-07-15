@@ -1,9 +1,45 @@
 """Unit tests for LAN API security and basic functionality."""
 import os
 import sqlite3
+import asyncio
 from pathlib import Path
 
 import pytest
+
+
+@pytest.mark.anyio
+async def test_websocket_heartbeat_checks_clients_concurrently_and_isolates_errors():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    manager = WebSocketManager()
+    started = asyncio.Event()
+    release = asyncio.Event()
+    active = 0
+    peak_active = 0
+
+    class _Client:
+        def __init__(self, fails=False):
+            self.fails = fails
+
+        async def ping(self):
+            nonlocal active, peak_active
+            active += 1
+            peak_active = max(peak_active, active)
+            started.set()
+            await release.wait()
+            active -= 1
+            if self.fails:
+                raise RuntimeError("dead client")
+
+    clients = {_Client(), _Client(fails=True), _Client()}
+    manager._clients = clients
+    # Run one check cycle directly without waiting for the production interval.
+    cycle = asyncio.create_task(manager._heartbeat_cycle())
+    await started.wait()
+    assert peak_active == len(clients)
+    release.set()
+    await cycle
+    assert manager._clients == {client for client in clients if not client.fails}
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
