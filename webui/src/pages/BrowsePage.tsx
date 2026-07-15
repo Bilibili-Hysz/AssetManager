@@ -70,6 +70,11 @@ export default function BrowsePage() {
   const infoStartX = useRef(0);
   const infoStartW = useRef(0);
   const rafId = useRef<number | null>(null);
+  const tagSearchGeneration = useRef(0);
+
+  useEffect(() => () => {
+    tagSearchGeneration.current += 1;
+  }, []);
 
   // WebSocket real-time updates
   useWebSocket({
@@ -135,6 +140,7 @@ export default function BrowsePage() {
 
   // ── Handlers ──
   const handleNavigate = useCallback((path: string) => {
+    tagSearchGeneration.current += 1;
     navigateTo(path);
     setSearchParams(path ? { path } : {}, { replace: true });
     setSelected(new Set());
@@ -142,6 +148,7 @@ export default function BrowsePage() {
   }, [navigateTo, setSearchParams]);
 
   const handleNavigateDetail = useCallback((path: string) => {
+    tagSearchGeneration.current += 1;
     navigate(`/detail?path=${encodeURIComponent(path)}`);
   }, [navigate]);
 
@@ -192,13 +199,14 @@ export default function BrowsePage() {
   }, []);
 
   const handleTagFilter = useCallback((tag: string) => {
+    const generation = ++tagSearchGeneration.current;
     // Navigate to browse with search query for this tag
     navigateTo('');
     setSearchParams({}, { replace: true });
     // Trigger search via URL params — useSearch will pick it up
     // For now, use the search API directly
     metaApi.search('', tag).then(res => {
-      if (res.results.length > 0) {
+      if (generation === tagSearchGeneration.current && res.results.length > 0) {
         const path = res.results[0]?.path ?? '';
         setSearchParams(path ? { path } : {}, { replace: true });
       }
