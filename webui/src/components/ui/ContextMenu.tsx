@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { useI18n } from '../../hooks/useI18n';
 
 interface MenuItem {
   label: string;
@@ -17,6 +18,7 @@ interface ContextMenuProps {
 }
 
 export function ContextMenu({ x, y, items, trigger, onClose }: ContextMenuProps) {
+  const { t } = useI18n();
   const menuRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef(true);
 
@@ -58,7 +60,7 @@ export function ContextMenu({ x, y, items, trigger, onClose }: ContextMenuProps)
       ref={menuRef}
       className="fixed z-50 min-w-[180px] rounded-lg bg-slate-800 border border-slate-600/50 shadow-xl py-1"
       style={{ left: adjustedX, top: adjustedY }}
-      aria-label="Actions"
+      aria-label={t('action.actions')}
     >
       {items.map((item, i) => (
         item.divider ? (
