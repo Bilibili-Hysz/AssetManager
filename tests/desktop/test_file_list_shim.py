@@ -2,11 +2,54 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import pytest
 from PySide6.QtCore import QItemSelectionModel
 from PySide6.QtWidgets import QApplication
 
 from AssetsManager.application.bootstrap import ApplicationBootstrap
 from AssetsManager.panels.file_list import QWidgetFileListPanel
+
+
+class _UndoServiceSpy:
+    def __init__(self):
+        self.calls = []
+
+    def can_undo(self):
+        return True
+
+    def can_redo(self):
+        return True
+
+    def perform_undo(self, file_operations, library_root):
+        self.calls.append(("undo", file_operations, library_root))
+        return True
+
+    def perform_redo(self, file_operations, library_root):
+        self.calls.append(("redo", file_operations, library_root))
+        return True
+
+
+@pytest.mark.parametrize(("action", "operation"), [
+    ("_undo", "undo"),
+    ("_redo", "redo"),
+])
+def test_history_action_uses_success_first_undo_service(tmp_path, action, operation):
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        panel.navigate_to(str(tmp_path), set_root=True)
+        file_operations = object()
+        undo_service = _UndoServiceSpy()
+        panel._undo_svc = undo_service
+        panel._get_file_operation_service = lambda: file_operations
+        panel._run_in_background = lambda work, *, on_done: (work(), on_done())
+
+        getattr(panel, action)()
+
+        assert undo_service.calls == [(operation, file_operations, str(tmp_path.resolve()))]
+    finally:
+        panel.shutdown()
+        app.processEvents()
 
 
 def test_grid_selection_shim_supports_actions_api(tmp_path):
