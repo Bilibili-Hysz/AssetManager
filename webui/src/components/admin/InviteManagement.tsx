@@ -21,7 +21,7 @@ export function InviteManagement() {
     try {
       const res = await usersApi.createInvite();
       setInvites(prev => [{ code: res.code, created_at: new Date().toISOString(), revoked: false }, ...prev]);
-      showToast('Invite code created!', 'success');
+      showToast(t('admin.invite_created'), 'success');
     } catch {}
   };
 
@@ -51,7 +51,7 @@ export function InviteManagement() {
             <div key={invite.code} className="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-slate-800/30 border border-slate-700/50">
               <code className="flex-1 text-sm text-slate-200 font-mono">{invite.code}</code>
               <span className={`text-xs ${invite.revoked ? 'text-red-400' : invite.used_by ? 'text-slate-500' : 'text-emerald-400'}`}>
-                {invite.revoked ? t('admin.revoke') : invite.used_by ? 'Used' : 'Active'}
+                {invite.revoked ? t('admin.revoke') : invite.used_by ? t('admin.invite_used') : t('admin.invite_active')}
               </span>
               {!invite.revoked && !invite.used_by && (
                 <button aria-label={`${t('admin.revoke')} ${invite.code}`} onClick={() => handleRevoke(invite.code)} className="p-1 text-slate-400 hover:text-white transition-colors">

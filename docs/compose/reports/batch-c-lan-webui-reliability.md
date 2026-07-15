@@ -6,14 +6,14 @@ specs:
 plans:
   - docs/compose/plans/2026-07-15-batch-c-lan-webui-reliability.md
 branch: batch-c-lan-webui-reliability
-implementation_range: 8d7a56664cdbdf68a820dfd30ff7a5d7c94d0d33..e2678695a5c6dff4ddc32712934cdb62a24478e1
+implementation_range: 8d7a566..8ecf1fe
 ---
 
 # Batch C LAN WebUI Reliability Delivery Report
 
 ## Delivery Boundary
 
-This report was audited against the isolated `batch-c-lan-webui-reliability` worktree, its files, and every branch-local commit after base `8d7a56664cdbdf68a820dfd30ff7a5d7c94d0d33`. The exact delivery range is `8d7a56664cdbdf68a820dfd30ff7a5d7c94d0d33..e2678695a5c6dff4ddc32712934cdb62a24478e1`, and `e2678695a5c6dff4ddc32712934cdb62a24478e1` is the final delivery HEAD. This range includes the audited report commit `038961c0e14a348f72083a0f8d71ccee8138aa62` and the final CI commit; it is not a self-excluding implementation range. Delivery status is branch-local: it means the implementation and gates below pass on this branch. It does not claim integration to `master`, a packaged-application smoke test, or deployment.
+This report was audited against the isolated `batch-c-lan-webui-reliability` worktree, its files, and every branch-local commit after base `8d7a566`. The exact implementation range is `8d7a566..8ecf1fe`, and `8ecf1fe` is the final implementation delivery endpoint. This report update may be committed after that endpoint; it is documentation-only and does not redefine the implementation endpoint. Delivery status is branch-local: it means the implementation and gates below pass on this branch. It does not claim integration to `master`, a packaged-application smoke test, or deployment.
 
 The approved spec and plan are currently untracked anchor documents outside this branch at the front-matter paths. They are not independently present in this branch or included in the delivery range, so integration must include or reconcile those exact anchor documents rather than assuming this branch carries them. Some foundational contracts described by the spec, including public SPA asset routing, the normal `lan_token` browser session, scoped share-cookie helpers, batch JSON/Blob transport, and backend-shaped detail/share types, existed at the base. Batch C retained their regression coverage and hardened the failure modes listed below rather than reimplementing unchanged baseline code.
 
@@ -30,7 +30,7 @@ The approved spec and plan are currently untracked anchor documents outside this
 
 ### P1: Share and Download Contracts
 
-- Password-share verification is cookie-only: successful verification returns `share`, sets the existing narrow HttpOnly `share_token` cookie, and never returns a reusable Bearer token, including when a caller sends the former API-client opt-in header.
+- Browser password-share verification uses the scoped HttpOnly `share_token` cookie and omits the token from the response. An explicit `X-AssetsManager-API-Client: 1` request instead returns `{token, share}` without setting the cookie for non-browser clients; the returned token is bound to that share.
 - Existing share-cookie scope, `SameSite=Lax`, one-hour lifetime, share binding, expiry, preview/download authorization, path containment, and download-count protections remain covered.
 - Normal and shared downloads now emit sanitized `Content-Disposition` values. Non-ASCII names receive an ASCII fallback plus RFC 5987 `filename*=UTF-8''...`, preventing raw unsafe header values while retaining the intended filename.
 - Existing single-file cookie-backed navigation, JSON batch-download/Blob handling, share state replacement, and detail response contracts remain covered by backend and frontend contract tests.
@@ -66,20 +66,20 @@ The approved spec and plan are currently untracked anchor documents outside this
 | S7 Active SPA functional repairs | Path-query navigation, localized rerenders, metadata URL filtering, mobile info/select behavior, registration affordance, and accessible controls. | `metadata.py`, `webui/src/pages/BrowsePage.tsx`, `LoginPage.tsx`, layout/file/admin/toast components, `webui/src/i18n/{en,zh,ja}.ts`; new/updated component and page tests. |
 | S8 Legacy fallback | Dropdown selector fixed; viewer-class, backup rejection, and offline-dependency contracts retained. | `AssetsManager/lan/static/app.js`; fallback assertions in `tests/lan/test_lan_api.py`. |
 | S9 Security and policy | Explicit Bearer wins over stale cookie, WebSocket query credentials are rejected, tunnel status is admin-only, malformed metadata URLs are discarded, and share/download protections remain covered. | `_helpers.py`, `server.py`, `metadata.py`, `shares.py`, `websocket.py`; `tests/lan/test_helpers.py`, `test_lan_api.py`, `test_t2_t4_contracts.py`; `LoginPage.test.tsx`. |
-| S10 Test strategy/gates | Backend route, heartbeat, share/download, lifecycle, navigation, i18n, accessibility, mobile, fallback, full Python, full SPA, type, build, and architecture gates passed. | `tests/lan/*.py`, 15 WebUI test files, and the verification commands below. |
-| S11 Delivery phases | Branch commits progress through P0 WebSocket/auth, P1 share/download, P1 lifecycle, P2 navigation/accessibility/mobile, fallback, correlated-PONG heartbeat completion, final frontend metadata/selection/i18n hardening, audited reporting, and CI enforcement of the WebUI test step. | Complete delivery range through `e267869`. |
+| S10 Test strategy/gates | Backend route, heartbeat, share/download, lifecycle, navigation, i18n, accessibility, mobile, fallback, full Python, full SPA, type, build, and architecture gates passed. | `tests/lan/*.py`, 16 WebUI test files, and the verification commands below. |
+| S11 Delivery phases | Branch commits progress through P0 WebSocket/auth, P1 share/download, P1 lifecycle, P2 navigation/accessibility/mobile, fallback, correlated-PONG heartbeat completion, final frontend metadata/selection/i18n hardening, restored API-client share tokens, localized project controls, heartbeat duplicate-close cleanup, and audited reporting. | Complete implementation range through `8ecf1fe`. |
 
 ## Verification
 
-The following commands and results were already verified against final delivery HEAD `e2678695a5c6dff4ddc32712934cdb62a24478e1`:
+The following commands and results are the current known verification record for implementation endpoint `8ecf1fe`; fresh verification may be rerun after this report-only update:
 
 - `python -m ruff check . --exclude ".Cython&Noikta"`: `All checks passed!`
 - `python -m pyright`: `0 errors, 0 warnings, 0 informations` (plus an informational newer-version notice).
 - `python -m compileall AssetsManager -q`: passed with no output.
-- `python -m pytest -q`: `832 passed in 57.59s`.
+- `python -m pytest -q`: `833 passed` (current known Python test count; fresh verification may be rerun).
 - `python -m pytest tests/unit/test_architecture_boundaries.py -q`: `15 passed in 6.63s`.
 - `npm ci` from `webui/`: installed/audited `238 packages`; npm reported `5 vulnerabilities (3 moderate, 1 high, 1 critical)`.
-- `npm test -- --run` from `webui/`: `15 passed` test files and `45 passed` tests in `12.35s`; React Router emitted only v7 future-flag warnings.
+- `npm test -- --run` from `webui/`: `16 passed` test files and `51 passed` tests (current known WebUI count); React Router emitted only v7 future-flag warnings. Fresh verification may be rerun.
 - `npm run typecheck` from `webui/`: passed with no TypeScript errors.
 - `npm run build` from `webui/`: passed; Vite transformed `1621 modules` and built in `5.58s`.
 
@@ -109,7 +109,7 @@ No manual browser end-to-end pass was run. No packaged-application smoke test, d
 
 ## Commit Accounting
 
-The exact delivery range is `8d7a56664cdbdf68a820dfd30ff7a5d7c94d0d33..e2678695a5c6dff4ddc32712934cdb62a24478e1`. It contains 19 branch-local commits:
+The exact implementation range is `8d7a566..8ecf1fe`. It contains the implementation commits listed below, including the final implementation endpoint `8ecf1fe`:
 
 | Commit | Delivery contribution |
 |---|---|
@@ -131,6 +131,9 @@ The exact delivery range is `8d7a56664cdbdf68a820dfd30ff7a5d7c94d0d33..e2678695a
 | `f3c6676` | Completed the unique-payload, correlated-PONG heartbeat and its regression coverage. |
 | `ffb9497` | Completed frontend metadata, mobile selection, responsive state, and i18n hardening. |
 | `038961c` | Audited and updated this delivery report; the report is included in the delivery range. |
-| `e267869` | Added the WebUI test step to CI and is the final delivery HEAD. |
+| `e267869` | Added the WebUI test step to CI. |
+| `d7cd35b` | Finalized the prior delivery accounting; documentation-only and not the implementation endpoint. |
+| `504af1f` | Restored API-client share tokens and updated the LAN API contract tests. |
+| `8ecf1fe` | Localized project controls and fixed heartbeat duplicate-close cleanup; this is the final implementation delivery endpoint. |
 
-The final-review correction commit that updates this report's accounting is documentation-only and will necessarily follow `e267869`; it does not redefine the approved delivery endpoint or imply that the report must exclude itself from delivery accounting. If implementation changes after `e267869`, establish a new reviewed endpoint and rerun the affected gates before treating this report as current.
+The report update commit follows `8ecf1fe` and is documentation-only; it does not redefine the implementation endpoint or imply that the report-only commit is an implementation change. If implementation changes after `8ecf1fe`, establish a new reviewed endpoint and rerun the affected gates before treating this report as current.
