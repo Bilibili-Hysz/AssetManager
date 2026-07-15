@@ -337,23 +337,21 @@ class ActionsMixin:
     def _undo(self):
         if not self._undo_svc.can_undo():
             return
-        entry = self._undo_svc.undo()
-        if not entry:
-            return
         panel = self
         def _do_undo():
-            panel._undo_svc.execute_undo(entry)
+            panel._undo_svc.perform_undo(
+                panel._get_file_operation_service(), panel._lib_root
+            )
         self._run_in_background(_do_undo, on_done=lambda: panel._post_refresh())
 
     def _redo(self):
         if not self._undo_svc.can_redo():
             return
-        entry = self._undo_svc.redo()
-        if not entry:
-            return
         panel = self
         def _do_redo():
-            panel._undo_svc.execute_redo(entry)
+            panel._undo_svc.perform_redo(
+                panel._get_file_operation_service(), panel._lib_root
+            )
         self._run_in_background(_do_redo, on_done=lambda: panel._post_refresh())
 
     # ── Selection helpers ────────────────────────────────────────

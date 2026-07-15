@@ -137,6 +137,19 @@ class FileOperationService:
                 errors.append(str(exc))
         return FileOperationResult(tuple(changed), tuple(errors))
 
+    def restore_backup(self, backup: str | Path, destination: str | Path,
+                       library_root: str | Path | None = None) -> Path:
+        """Restore an undo backup and publish the corresponding create event."""
+        source = Path(backup).resolve()
+        target = Path(destination).resolve()
+        _assert_under_root(target, library_root)
+        if source.is_dir():
+            shutil.copytree(source, target)
+        else:
+            shutil.copy2(source, target)
+        get_event_bus().publish(FileCreated(path=str(target), is_dir=source.is_dir()))
+        return target
+
     def delete_to_trash(self, paths: list[str | Path]) -> FileOperationResult:
         from send2trash import send2trash
 

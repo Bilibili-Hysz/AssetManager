@@ -1,7 +1,48 @@
 """Tests for UndoService."""
 import os
 
-from AssetsManager.application.undo_service import UndoService
+from AssetsManager.application.file_operation_service import FileOperationService
+from AssetsManager.application.undo_service import UndoEntry, UndoService
+
+
+class _RecordingFileOperations:
+    def __init__(self):
+        self.calls = []
+
+    def move(self, source, destination, *, library_root):
+        self.calls.append(("move", source, destination, library_root))
+
+    def restore_backup(self, backup, destination, *, library_root):
+        self.calls.append(("restore_backup", backup, destination, library_root))
+
+    def delete_permanent(self, paths, *, library_root):
+        self.calls.append(("delete_permanent", paths, library_root))
+
+
+def test_perform_undo_and_redo_delegate_to_library_file_operations(tmp_path):
+    library_root = str(tmp_path)
+    source = str(tmp_path / "old.txt")
+    renamed = str(tmp_path / "new.txt")
+    deleted = str(tmp_path / "deleted.txt")
+    backup = str(tmp_path / "backup.txt")
+    (tmp_path / "backup.txt").write_text("backup", encoding="utf-8")
+    operations = _RecordingFileOperations()
+    svc = UndoService(library_root=library_root)
+
+    svc.record_rename(source, renamed)
+    assert svc.perform_undo(operations, library_root)
+    assert svc.perform_redo(operations, library_root)
+
+    svc._push_undo(UndoEntry(type="delete", path=deleted, backup=backup))
+    assert svc.perform_undo(operations, library_root)
+    assert svc.perform_redo(operations, library_root)
+
+    assert operations.calls == [
+        ("move", renamed, source, library_root),
+        ("move", source, renamed, library_root),
+        ("restore_backup", backup, deleted, library_root),
+        ("delete_permanent", [deleted], library_root),
+    ]
 
 
 def test_record_rename_and_undo(tmp_path):
@@ -13,10 +54,7 @@ def test_record_rename_and_undo(tmp_path):
     os.rename(str(src), str(tmp_path / "new.txt"))
 
     assert svc.can_undo()
-    entry = svc.undo()
-    assert entry is not None
-    assert entry.type == "rename"
-    assert svc.execute_undo(entry) is True
+    assert svc.perform_undo(FileOperationService(), str(tmp_path))
     assert (tmp_path / "old.txt").exists()
     assert not (tmp_path / "new.txt").exists()
 
@@ -45,10 +83,7 @@ def test_record_delete_and_undo(tmp_path):
     os.remove(str(src))
 
     assert svc.can_undo()
-    entry = svc.undo()
-    assert entry is not None
-    assert entry.type == "delete"
-    assert svc.execute_undo(entry) is True
+    assert svc.perform_undo(FileOperationService(), str(tmp_path))
     assert (tmp_path / "file.txt").exists()
     assert (tmp_path / "file.txt").read_text(encoding="utf-8") == "data"
 
@@ -62,19 +97,14 @@ def test_delete_redo_can_be_undone_again(tmp_path):
         svc.record_delete(str(src))
         os.remove(str(src))
 
-        entry = svc.undo()
-        assert entry is not None
-        assert svc.execute_undo(entry) is True
+        operations = FileOperationService()
+        assert svc.perform_undo(operations, str(tmp_path))
         assert src.exists()
 
-        redo_entry = svc.redo()
-        assert redo_entry is not None
-        assert svc.execute_redo(redo_entry) is True
+        assert svc.perform_redo(operations, str(tmp_path))
         assert not src.exists()
 
-        entry_again = svc.undo()
-        assert entry_again is not None
-        assert svc.execute_undo(entry_again) is True
+        assert svc.perform_undo(operations, str(tmp_path))
         assert src.read_text(encoding="utf-8") == "data"
     finally:
         svc.cleanup()
@@ -118,7 +148,7 @@ def test_can_undo_redo_empty():
     assert svc.redo() is None
 
 
-def test_execute_redo_rename(tmp_path):
+def test_redo_rename_through_file_operations(tmp_path):
     src = tmp_path / "old.txt"
     src.write_text("data", encoding="utf-8")
 
@@ -126,14 +156,11 @@ def test_execute_redo_rename(tmp_path):
     svc.record_rename(str(src), str(tmp_path / "new.txt"))
     os.rename(str(src), str(tmp_path / "new.txt"))
 
-    entry = svc.undo()
-    assert entry is not None
-    svc.execute_undo(entry)
+    operations = FileOperationService()
+    assert svc.perform_undo(operations, str(tmp_path))
     assert (tmp_path / "old.txt").exists()
 
-    redo_entry = svc.redo()
-    assert redo_entry is not None
-    assert svc.execute_redo(redo_entry) is True
+    assert svc.perform_redo(operations, str(tmp_path))
     assert (tmp_path / "new.txt").exists()
     assert not (tmp_path / "old.txt").exists()
 
