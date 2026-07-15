@@ -124,6 +124,25 @@ def test_record_delete_and_undo(tmp_path):
     assert (tmp_path / "file.txt").read_text(encoding="utf-8") == "data"
 
 
+def test_discard_prepared_delete_cleans_backup_without_recording_history(tmp_path):
+    source = tmp_path / "file.txt"
+    source.write_text("data", encoding="utf-8")
+    svc = UndoService()
+    try:
+        entry = svc.prepare_delete(str(source))
+
+        assert entry is not None
+        assert os.path.exists(entry.backup)
+        assert not svc.can_undo()
+
+        svc.discard_delete(entry)
+
+        assert not os.path.exists(entry.backup)
+        assert not svc.can_undo()
+    finally:
+        svc.cleanup()
+
+
 def test_delete_redo_can_be_undone_again(tmp_path):
     src = tmp_path / "file.txt"
     src.write_text("data", encoding="utf-8")

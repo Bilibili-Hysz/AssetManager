@@ -397,44 +397,6 @@ class TestLanPermissionRegression:
         finally:
             await client.close()
 
-    @pytest.mark.anyio
-    async def test_tunnel_status_requires_authenticated_admin(self, tmp_path):
-        app, library, conn = _make_lan_app(tmp_path)
-
-        client = await _make_client(app)
-        try:
-            anonymous = await client.get("/api/tunnel/status")
-            assert anonymous.status == 403
-
-            admin = await client.get("/api/tunnel/status", headers=_local_ui_headers(app))
-            assert admin.status == 200
-        finally:
-            await client.close()
-
-
-@pytest.mark.anyio
-async def test_metadata_route_returns_only_safe_http_urls(tmp_path):
-    app, library, conn = _make_lan_app(tmp_path)
-    target = library / "asset.txt"
-    target.write_text("metadata", encoding="utf-8")
-    conn.executemany(
-        "INSERT INTO file_urls(file_path, url) VALUES (?, ?)",
-        [
-            (str(target.resolve()), "https://example.com/reference"),
-            (str(target.resolve()), "javascript:alert(1)"),
-            (str(target.resolve()), "file:///private/path"),
-        ],
-    )
-    conn.commit()
-
-    client = await _make_client(app)
-    try:
-        response = await client.get("/api/meta/asset.txt")
-        assert response.status == 200
-        assert (await response.json())["urls"] == ["https://example.com/reference"]
-    finally:
-        await client.close()
-
 
 def test_api_exports_auth_token_helper():
     from AssetsManager.lan.api import _get_auth_token

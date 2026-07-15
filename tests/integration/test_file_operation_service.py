@@ -28,6 +28,23 @@ def test_copy_to_directory_copies_files_and_renames_conflicts(tmp_path):
     assert (dst_dir / "asset_1.txt").read_text(encoding="utf-8") == "asset"
 
 
+def test_unbound_copy_to_directory_rejects_external_sources(tmp_path):
+    import pytest
+
+    from AssetsManager.application import FileOperationService
+
+    library = tmp_path / "library"
+    external = tmp_path.parent / "external.txt"
+    library.mkdir()
+    external.write_text("asset", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="outside library root"):
+        FileOperationService().copy_to_directory([external], library)
+
+    assert external.exists()
+    assert not (library / external.name).exists()
+
+
 def test_bound_copy_to_directory_allows_external_sources(tmp_path):
     from AssetsManager.application import ApplicationBootstrap
 
@@ -42,6 +59,33 @@ def test_bound_copy_to_directory_allows_external_sources(tmp_path):
 
     assert result.ok
     assert (library / "external.txt").read_text(encoding="utf-8") == "asset"
+    assert scoped.asset_index_service.get_entry(scoped.session.db_conn, library / "external.txt") is not None
+
+
+def test_file_copied_observers_see_new_file_indexed(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileCopied
+
+    library = tmp_path / "library"
+    external = tmp_path / "external.txt"
+    library.mkdir()
+    external.write_text("asset", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    conn = scoped.session.db_conn
+    index = scoped.asset_index_service
+    observed = []
+
+    def observe(event):
+        observed.append(index.get_entry(conn, event.destination_path) is not None)
+
+    get_event_bus().subscribe(FileCopied, observe)
+
+    result = scoped.file_operation_service.copy_to_directory([external], library)
+
+    assert result.ok
+    assert observed == [True]
 
 
 def test_move_to_directory_moves_and_renames_conflicts(tmp_path):
@@ -310,6 +354,44 @@ def test_directory_move_reindexes_new_hierarchy_and_removes_old_subtree(tmp_path
     assert index.get_entry(conn, new_dir) is not None
     assert index.get_entry(conn, new_nested_dir) is not None
     assert index.get_entry(conn, new_asset) is not None
+
+
+def test_file_renamed_observers_see_moved_directory_projection(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileRenamed
+
+    library = tmp_path / "library"
+    old_dir = library / "source" / "folder"
+    old_child = old_dir / "nested" / "asset.txt"
+    destination = library / "destination"
+    old_child.parent.mkdir(parents=True)
+    old_child.write_text("asset", encoding="utf-8")
+    destination.mkdir()
+    bootstrap = ApplicationBootstrap()
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    conn = scoped.session.db_conn
+    index = scoped.asset_index_service
+    index.index_directory(conn, library, library)
+    index.index_directory(conn, library, old_dir)
+    index.index_directory(conn, library, old_child.parent)
+    observed = []
+
+    def observe(event):
+        new_dir = event.new_path
+        new_child = str((destination / old_dir.name / "nested" / "asset.txt").resolve())
+        observed.append((
+            index.get_entry(conn, event.old_path) is None,
+            index.get_entry(conn, old_child) is None,
+            index.get_entry(conn, new_dir) is not None,
+            index.get_entry(conn, new_child) is not None,
+        ))
+
+    get_event_bus().subscribe(FileRenamed, observe)
+
+    scoped.file_operation_service.move(old_dir, destination / old_dir.name)
+
+    assert observed == [(True, True, True, True)]
 
 
 def test_restore_backup_reindexes_directory_tree_before_publishing_created(tmp_path):

@@ -61,13 +61,28 @@ class UndoService:
 
     def record_delete(self, path: str) -> None:
         """Record a delete operation with backup for undo."""
+        entry = self.prepare_delete(path)
+        if entry is not None:
+            self.commit_delete(entry)
+
+    def prepare_delete(self, path: str) -> UndoEntry | None:
+        """Create a delete backup without adding it to undo history."""
         backup = self._make_backup(path)
-        if backup:
-            entry = UndoEntry(
-                type="delete", path=path, backup=backup,
-                is_dir=os.path.isdir(path),
-            )
-            self._push_undo(entry)
+        if not backup:
+            return None
+        return UndoEntry(
+            type="delete", path=path, backup=backup,
+            is_dir=os.path.isdir(path),
+        )
+
+    def commit_delete(self, entry: UndoEntry) -> None:
+        """Add a successfully deleted backup to undo history."""
+        self._push_undo(entry)
+
+    def discard_delete(self, entry: UndoEntry | None) -> None:
+        """Remove a delete backup when its filesystem operation failed."""
+        if entry is not None and entry.backup:
+            self._clean_backup(entry.backup)
 
     def can_undo(self) -> bool:
         with self._lock:

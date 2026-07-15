@@ -92,11 +92,19 @@ class FileOperationService:
         errors: list[str] = []
         bus = get_event_bus()
         root = self._root_for(library_root)
-        _assert_under_root(Path(destination_dir).resolve(), root)
+        is_bound = root is not None
+        destination = Path(destination_dir).resolve()
+        if root is None:
+            # Legacy unbound copies may rearrange files within the destination's
+            # containing tree, but cannot import from outside that tree.
+            root = destination.parent
+        _assert_under_root(destination, root)
         for source in sources:
             src = Path(source).resolve()
+            if not is_bound:
+                _assert_under_root(src, root)
             try:
-                target = unique_destination(Path(destination_dir).resolve() / src.name).resolve()
+                target = unique_destination(destination / src.name).resolve()
                 if src.is_dir():
                     shutil.copytree(src, target)
                     self._refresh_directory_tree(target)

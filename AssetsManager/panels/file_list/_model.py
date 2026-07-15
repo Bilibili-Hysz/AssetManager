@@ -48,6 +48,7 @@ class FileSystemModel(QAbstractListModel):
     """Model backed by os.scandir. Supports sort, filter, and per-item roles."""
 
     dir_size_ready = Signal(str, str, int)  # (dir_path, formatted_size, generation)
+    rename_requested = Signal(int, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -302,15 +303,10 @@ class FileSystemModel(QAbstractListModel):
             return True
         if role == Qt.ItemDataRole.EditRole and index.isValid():
             entry = self._entries[index.row()]
-            old_path = entry.path
-            new_path = os.path.join(os.path.dirname(old_path), str(value))
-            if new_path != old_path and value:
-                try:
-                    os.rename(old_path, new_path)
-                    self.refresh()
-                    return True
-                except OSError:
-                    return False
+            new_name = str(value).strip()
+            if new_name and new_name != entry.name:
+                self.rename_requested.emit(index.row(), new_name)
+                return True
             return False
         return False
 
