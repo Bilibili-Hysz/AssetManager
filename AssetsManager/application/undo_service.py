@@ -155,23 +155,55 @@ class UndoService:
             pass
         return False
 
-    def perform_undo(self) -> bool:
-        """Atomically pop + execute + push an undo entry. Returns True on success."""
+    def perform_undo(self, file_operations, library_root: str) -> bool:
+        """Undo through the command service, moving stacks only after success."""
         with self._lock:
             if not self._undo_stack:
                 return False
-            entry = self._undo_stack.pop()
+            entry = self._undo_stack[-1]
+        if not self._execute_reverse(file_operations, entry, library_root):
+            return False
+        with self._lock:
+            if not self._undo_stack or self._undo_stack[-1] != entry:
+                return False
+            self._undo_stack.pop()
             self._redo_stack.append(entry)
-        return self.execute_undo(entry)
+        return True
 
-    def perform_redo(self) -> bool:
-        """Atomically pop + execute + push a redo entry. Returns True on success."""
+    def perform_redo(self, file_operations, library_root: str) -> bool:
+        """Redo through the command service, moving stacks only after success."""
         with self._lock:
             if not self._redo_stack:
                 return False
-            entry = self._redo_stack.pop()
+            entry = self._redo_stack[-1]
+        if not self._execute_forward(file_operations, entry, library_root):
+            return False
+        with self._lock:
+            if not self._redo_stack or self._redo_stack[-1] != entry:
+                return False
+            self._redo_stack.pop()
             self._undo_stack.append(entry)
-        return self.execute_redo(entry)
+        return True
+
+    def _execute_reverse(self, file_operations, entry: UndoEntry, library_root: str) -> bool:
+        """Execute an undo entry without mutating either history stack."""
+        try:
+            if entry.type == "rename":
+                file_operations.move(entry.new, entry.old, library_root=library_root)
+                return True
+            return self.execute_undo(entry)
+        except (OSError, ValueError):
+            return False
+
+    def _execute_forward(self, file_operations, entry: UndoEntry, library_root: str) -> bool:
+        """Execute a redo entry without mutating either history stack."""
+        try:
+            if entry.type == "rename":
+                file_operations.move(entry.old, entry.new, library_root=library_root)
+                return True
+            return self.execute_redo(entry)
+        except (OSError, ValueError):
+            return False
 
     def cleanup(self) -> None:
         """Remove the undo backup directory."""

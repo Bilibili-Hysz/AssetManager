@@ -4,6 +4,30 @@ import os
 from AssetsManager.application.undo_service import UndoService
 
 
+class _FailingFileOperations:
+    def move(self, source, destination, *, library_root):
+        raise OSError("filesystem failure")
+
+
+def test_failed_undo_keeps_entry_on_undo_stack(tmp_path):
+    svc = UndoService()
+    svc.record_rename("missing-new", "old")
+
+    assert not svc.perform_undo(_FailingFileOperations(), str(tmp_path))
+    assert svc.can_undo()
+    assert not svc.can_redo()
+
+
+def test_failed_redo_keeps_entry_on_redo_stack(tmp_path):
+    svc = UndoService()
+    svc.record_rename("old", "missing-new")
+    assert svc.undo() is not None
+
+    assert not svc.perform_redo(_FailingFileOperations(), str(tmp_path))
+    assert not svc.can_undo()
+    assert svc.can_redo()
+
+
 def test_record_rename_and_undo(tmp_path):
     src = tmp_path / "old.txt"
     src.write_text("data", encoding="utf-8")
