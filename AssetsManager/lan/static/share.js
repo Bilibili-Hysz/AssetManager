@@ -8,7 +8,6 @@ const shareState = {
     hasPassword: false,
     allowPreview: true,
     verified: false,
-    token: null,
 };
 
 // ── Utilities ────────────────────────────────────────────────
@@ -99,8 +98,12 @@ async function verifyPassword() {
 
         if (r.ok) {
             const d = await r.json();
+            const share = d.share;
+            if (!share) throw new Error("Missing verified share");
             shareState.verified = true;
-            shareState.token = d.token || null;
+            shareState.paths = d.share.paths || [];
+            shareState.hasPassword = d.share.has_password;
+            shareState.allowPreview = d.share.allow_preview;
             loadShareContent();
         } else {
             errorEl.style.display = "";
@@ -114,19 +117,11 @@ async function verifyPassword() {
 // ── Content Loading ──────────────────────────────────────────
 
 function getDownloadUrl(path) {
-    let url = `/api/shares/${shareState.id}/download/${encPath(path)}`;
-    if (shareState.token) {
-        url += `?token=${encodeURIComponent(shareState.token)}`;
-    }
-    return url;
+    return `/api/shares/${shareState.id}/download/${encPath(path)}`;
 }
 
 function getPreviewUrl(path) {
-    let url = `/api/shares/${shareState.id}/preview/${encPath(path)}`;
-    if (shareState.token) {
-        url += `?token=${encodeURIComponent(shareState.token)}`;
-    }
-    return url;
+    return `/api/shares/${shareState.id}/preview/${encPath(path)}`;
 }
 
 async function loadShareContent() {

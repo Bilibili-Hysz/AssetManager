@@ -9,6 +9,7 @@ from aiohttp import web
 from AssetsManager.domain.share import ShareLink
 from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.lan.routes._helpers import get_share_service, get_lan, get_request_user, get_share_token, require_permission, sanitize_filename, set_share_cookie, validate_path
+from AssetsManager.lan.routes.pages import _spa_index
 from AssetsManager.lan.utils import get_local_ip
 
 _log = logging.getLogger(__name__)
@@ -174,10 +175,8 @@ async def handle_delete_share(request):
 
 
 async def handle_share_page(request):
-    # Check for SPA build first
-    spa_dir = Path(__file__).parent.parent.parent.parent / "webui" / "dist"
-    spa_index = spa_dir / "index.html"
-    if spa_index.exists():
+    spa_index = _spa_index()
+    if spa_index:
         return web.FileResponse(spa_index)
     # Fallback to old share page
     static_dir = Path(__file__).parent.parent / "static"

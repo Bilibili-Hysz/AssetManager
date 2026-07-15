@@ -44,4 +44,26 @@ describe('useWebSocket', () => {
     expect(socket?.close).toHaveBeenCalledOnce();
     expect(MockWebSocket.instances).toHaveLength(1);
   });
+
+  it('reconnects once after an unexpected close', () => {
+    renderHook(() => useWebSocket({ enabled: true }));
+    const socket = MockWebSocket.instances[0];
+    expect(socket).toBeDefined();
+
+    act(() => socket?.onclose?.());
+    act(() => socket?.onclose?.());
+    act(() => vi.advanceTimersByTime(1_000));
+
+    expect(MockWebSocket.instances).toHaveLength(2);
+  });
+
+  it('replaces a socket when authentication becomes enabled', () => {
+    const { rerender } = renderHook(({ enabled }) => useWebSocket({ enabled }), {
+      initialProps: { enabled: false },
+    });
+
+    rerender({ enabled: true });
+
+    expect(MockWebSocket.instances).toHaveLength(1);
+  });
 });
