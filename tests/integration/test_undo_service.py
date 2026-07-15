@@ -150,6 +150,42 @@ def test_delete_undo_and_redo_reconcile_file_projections(tmp_path):
         undo.cleanup()
 
 
+def test_rename_undo_and_redo_keep_metadata_and_index_consistent(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.core.tag_store import TagStore
+
+    library = tmp_path / "library"
+    library.mkdir()
+    old = library / "old.txt"
+    new = library / "new.txt"
+    old.write_text("data", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    conn = scoped.session.db_conn
+    index = scoped.asset_index_service
+    index.index_directory(conn, library, library)
+    TagStore(str(library)).add_tag(str(old), "hero")
+    undo = scoped.undo_service
+
+    try:
+        undo.record_rename(str(old), str(new))
+        scoped.file_operation_service.move(old, new, library_root=library)
+
+        assert undo.perform_undo(scoped.file_operation_service, str(library))
+        assert old.exists()
+        assert TagStore(str(library)).get_tags(str(old)) == ["hero"]
+        assert index.get_entry(conn, old) is not None
+        assert index.get_entry(conn, new) is None
+
+        assert undo.perform_redo(scoped.file_operation_service, str(library))
+        assert new.exists()
+        assert TagStore(str(library)).get_tags(str(new)) == ["hero"]
+        assert index.get_entry(conn, new) is not None
+        assert index.get_entry(conn, old) is None
+    finally:
+        undo.cleanup()
+
+
 def test_undo_service_uses_unique_backup_dir():
     first = UndoService()
     second = UndoService()

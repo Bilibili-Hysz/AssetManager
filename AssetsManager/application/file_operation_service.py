@@ -75,6 +75,7 @@ class FileOperationService:
         shutil.move(str(src), str(dst))
         if library_root:
             self._migrate_metadata(library_root, src, dst)
+            self._reconcile_renamed(src, dst, library_root)
         get_event_bus().publish(FileRenamed(old_path=str(src), new_path=str(dst)))
         return dst
 
@@ -202,6 +203,16 @@ class FileOperationService:
                     self._asset_index_service.remove_directory(conn, target)
                 self._asset_index_service.index_directory(conn, root, target.parent, force=True)
         get_event_bus().publish(FileDeleted(path=str(target), is_dir=is_dir))
+
+    def _reconcile_renamed(self, source: Path, destination: Path,
+                           library_root: str | Path) -> None:
+        """Refresh the index after moving an entry within a library."""
+        root = self._resolve_library_root(library_root)
+        if root is None or self._asset_index_service is None or self._connection_provider is None:
+            return
+        conn = self._connection_provider(root)
+        self._asset_index_service.remove_entry(conn, source)
+        self._asset_index_service.index_directory(conn, root, destination.parent, force=True)
 
     def _index_directory(self, directory: Path, library_root: str | Path | None) -> None:
         root = self._resolve_library_root(library_root)
