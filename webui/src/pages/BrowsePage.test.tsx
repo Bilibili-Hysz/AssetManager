@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
+import { useState } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BrowsePage from './BrowsePage';
 
@@ -11,16 +12,19 @@ vi.mock('../hooks/useAuth', () => ({
 }));
 
 vi.mock('../hooks/useProjects', () => ({
-  useProjects: (initialPath: string) => ({
-    data: { items: [] },
-    isLoading: false,
-    error: null,
-    currentPath: initialPath,
-    sort: { sort: 'name', order: 'asc' },
-    navigateTo: vi.fn(),
-    setSort: vi.fn(),
-    refresh: vi.fn(),
-  }),
+  useProjects: (initialPath: string) => {
+    const [currentPath, navigateTo] = useState(initialPath);
+    return {
+      data: { items: [] },
+      isLoading: false,
+      error: null,
+      currentPath,
+      sort: { sort: 'name', order: 'asc' },
+      navigateTo,
+      setSort: vi.fn(),
+      refresh: vi.fn(),
+    };
+  },
 }));
 
 vi.mock('../hooks/useWebSocket', () => ({ useWebSocket: vi.fn() }));
@@ -54,6 +58,11 @@ vi.mock('../components/shares/ShareDialog', () => ({ ShareDialog: () => null }))
 
 function LocationSearch() {
   return <output data-testid="location-search">{useLocation().search}</output>;
+}
+
+function NavigateToNewPath() {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate('/browse?path=newer%2Furl')}>Navigate URL</button>;
 }
 
 function deferred<T>() {
@@ -107,5 +116,27 @@ describe('BrowsePage', () => {
     first.resolve({ results: [{ path: 'older/item' }] });
     await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
     expect(screen.getByTestId('location-search').textContent).toBe('?path=newer%2Fitem');
+  });
+
+  it('ignores a pending tag search after router search params change', async () => {
+    const pending = deferred<{ results: Array<{ path: string }> }>();
+    search.mockReset();
+    search.mockReturnValueOnce(pending.promise);
+
+    render(
+      <MemoryRouter initialEntries={['/browse?path=original']}>
+        <BrowsePage />
+        <NavigateToNewPath />
+        <LocationSearch />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filter tag' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Navigate URL' }));
+    await waitFor(() => expect(screen.getByTestId('location-search').textContent).toBe('?path=newer%2Furl'));
+
+    pending.resolve({ results: [{ path: 'stale/tag-result' }] });
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('location-search').textContent).toBe('?path=newer%2Furl');
   });
 });

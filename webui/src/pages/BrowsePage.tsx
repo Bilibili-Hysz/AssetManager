@@ -88,7 +88,10 @@ export default function BrowsePage() {
 
   useEffect(() => {
     const requestedPath = searchParams.get('path') || '';
-    if (requestedPath !== currentPath) navigateTo(requestedPath);
+    if (requestedPath !== currentPath) {
+      tagSearchGeneration.current += 1;
+      navigateTo(requestedPath);
+    }
   }, [currentPath, navigateTo, searchParams]);
 
   const handleSidebarDragStart = useCallback((e: React.MouseEvent) => {
