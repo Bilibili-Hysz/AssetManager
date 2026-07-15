@@ -28,6 +28,9 @@ class LibraryService:
     def __init__(self, db: DatabaseManager | None = None):
         self._db = db or DatabaseManager()
         self._lock = threading.Lock()
+        self._lifecycle = threading.Condition(self._lock)
+        self._closing = False
+        self._closing_roots: set[str] = set()
         self._current: LibraryContext | None = None
         self._contexts: dict[str, LibraryContext] = {}
         self._sessions: dict[str, LibrarySession] = {}
@@ -54,7 +57,10 @@ class LibraryService:
     def _open(self, root_path: str | Path) -> tuple[LibraryContext, LibrarySession]:
         root = Path(root_path).resolve()
         key = str(root)
-        with self._lock:
+        with self._lifecycle:
+            self._lifecycle.wait_for(
+                lambda: not self._closing and key not in self._closing_roots
+            )
             cached = self._contexts.get(key)
             if cached is not None:
                 session = self._sessions.get(key)
@@ -110,17 +116,24 @@ class LibraryService:
             return self._sessions.get(str(self._current.root))
 
     def close(self) -> None:
-        with self._lock:
+        with self._lifecycle:
+            self._lifecycle.wait_for(lambda: not self._closing)
+            self._closing = True
             sessions = list(self._sessions.values())
             self._contexts.clear()
             self._sessions.clear()
             self._current = None
-        for session in sessions:
-            try:
-                session.close()
-            except Exception:
-                pass
-        self._db.close()
+        try:
+            for session in sessions:
+                try:
+                    session.close()
+                except Exception:
+                    pass
+            self._db.close()
+        finally:
+            with self._lifecycle:
+                self._closing = False
+                self._lifecycle.notify_all()
 
     def close_session(self, session: LibrarySession) -> None:
         """Remove a session's context from the service cache.
@@ -129,18 +142,28 @@ class LibraryService:
         The session itself is also marked as closed.
         """
         key = str(session.root)
-        with self._lock:
+        with self._lifecycle:
             if self._sessions.get(key) is not session:
-                session.close()
-                return
-            self._sessions.pop(key)
-            context = self._contexts.pop(key, None)
-            if self._current is context:
-                self._current = None
+                current = False
+            else:
+                current = True
+                self._closing_roots.add(key)
+                self._sessions.pop(key)
+                context = self._contexts.pop(key, None)
+                if self._current is context:
+                    self._current = None
+        if not current:
+            session.close()
+            return
         try:
             session.close()
         finally:
-            self._db.close_library(key)
+            try:
+                self._db.close_library(key)
+            finally:
+                with self._lifecycle:
+                    self._closing_roots.discard(key)
+                    self._lifecycle.notify_all()
 
 
 def get_library_service() -> LibraryService:

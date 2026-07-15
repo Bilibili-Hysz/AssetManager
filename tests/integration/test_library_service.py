@@ -1,4 +1,5 @@
 from pathlib import Path
+import threading
 
 import pytest
 
@@ -341,6 +342,112 @@ def test_library_service_close_session_closes_library_connection(tmp_path):
     import sqlite3
     with pytest.raises(sqlite3.ProgrammingError):
         conn.execute("SELECT 1")
+
+
+def test_close_session_serializes_same_root_reopen_through_db_teardown(
+    tmp_path, monkeypatch
+):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+    service = LibraryService()
+    session = service.open_session(root)
+    old_conn = session.db_conn
+    teardown_started = threading.Event()
+    allow_teardown = threading.Event()
+    reopen_started = threading.Event()
+    connection_requested = threading.Event()
+    reopened: list = []
+    original_close_library = service._db.close_library
+    original_connection_for = service._db.connection_for
+
+    def blocking_close_library(root_path):
+        teardown_started.set()
+        assert allow_teardown.wait(5)
+        original_close_library(root_path)
+
+    def tracked_connection_for(root_path):
+        connection_requested.set()
+        return original_connection_for(root_path)
+
+    monkeypatch.setattr(service._db, "close_library", blocking_close_library)
+    monkeypatch.setattr(service._db, "connection_for", tracked_connection_for)
+
+    close_thread = threading.Thread(target=service.close_session, args=(session,))
+
+    def reopen():
+        reopen_started.set()
+        reopened.append(service.open_session(root))
+
+    reopen_thread = threading.Thread(target=reopen)
+    close_thread.start()
+    assert teardown_started.wait(5)
+    reopen_thread.start()
+    assert reopen_started.wait(5)
+    try:
+        assert not connection_requested.wait(0.2)
+    finally:
+        allow_teardown.set()
+    close_thread.join(5)
+    reopen_thread.join(5)
+
+    assert not close_thread.is_alive()
+    assert not reopen_thread.is_alive()
+    assert reopened[0].db_conn is not old_conn
+    reopened[0].db_conn.execute("SELECT 1")
+
+
+def test_close_serializes_same_root_reopen_through_db_teardown(tmp_path, monkeypatch):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+    service = LibraryService()
+    session = service.open_session(root)
+    old_conn = session.db_conn
+    teardown_started = threading.Event()
+    allow_teardown = threading.Event()
+    reopen_started = threading.Event()
+    connection_requested = threading.Event()
+    reopened: list = []
+    original_close = service._db.close
+    original_connection_for = service._db.connection_for
+
+    def blocking_close():
+        teardown_started.set()
+        assert allow_teardown.wait(5)
+        original_close()
+
+    def tracked_connection_for(root_path):
+        connection_requested.set()
+        return original_connection_for(root_path)
+
+    monkeypatch.setattr(service._db, "close", blocking_close)
+    monkeypatch.setattr(service._db, "connection_for", tracked_connection_for)
+
+    close_thread = threading.Thread(target=service.close)
+
+    def reopen():
+        reopen_started.set()
+        reopened.append(service.open_session(root))
+
+    reopen_thread = threading.Thread(target=reopen)
+    close_thread.start()
+    assert teardown_started.wait(5)
+    reopen_thread.start()
+    assert reopen_started.wait(5)
+    try:
+        assert not connection_requested.wait(0.2)
+    finally:
+        allow_teardown.set()
+    close_thread.join(5)
+    reopen_thread.join(5)
+
+    assert not close_thread.is_alive()
+    assert not reopen_thread.is_alive()
+    assert reopened[0].db_conn is not old_conn
+    reopened[0].db_conn.execute("SELECT 1")
 
 
 def test_library_service_close_session_is_idempotent(tmp_path):
