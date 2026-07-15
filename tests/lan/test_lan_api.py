@@ -21,7 +21,7 @@ async def test_websocket_heartbeat_checks_clients_concurrently_and_isolates_erro
         def __init__(self, fails=False):
             self.fails = fails
 
-        async def ping(self):
+        async def ping(self, payload):
             nonlocal active, peak_active
             active += 1
             peak_active = max(peak_active, active)
@@ -30,6 +30,10 @@ async def test_websocket_heartbeat_checks_clients_concurrently_and_isolates_erro
             active -= 1
             if self.fails:
                 raise RuntimeError("dead client")
+            manager.acknowledge_pong(self, payload)
+
+        async def close(self, **_kwargs):
+            pass
 
     clients = {_Client(), _Client(fails=True), _Client()}
     manager._clients = clients
@@ -39,6 +43,120 @@ async def test_websocket_heartbeat_checks_clients_concurrently_and_isolates_erro
     release.set()
     await cycle
     assert manager._clients == {client for client in clients if not client.fails}
+
+
+@pytest.mark.anyio
+async def test_websocket_heartbeat_removes_and_closes_client_without_pong(monkeypatch):
+    from AssetsManager.lan import ws as ws_module
+
+    class _Client:
+        async def ping(self, _payload):
+            pass
+
+        async def close(self, **_kwargs):
+            self.closed = True
+
+    monkeypatch.setattr(ws_module, "HEARTBEAT_PING_TIMEOUT", 0.01)
+    client = _Client()
+    client.closed = False
+    manager = ws_module.WebSocketManager()
+    manager._clients = {client}
+
+    await manager._heartbeat_cycle()
+
+    assert client not in manager._clients
+    assert client.closed
+
+
+@pytest.mark.anyio
+async def test_websocket_heartbeat_unrelated_pong_does_not_satisfy_waiter(monkeypatch):
+    from AssetsManager.lan import ws as ws_module
+
+    class _Client:
+        async def ping(self, payload=None):
+            self.payload = payload
+
+        async def close(self, **_kwargs):
+            pass
+
+    monkeypatch.setattr(ws_module, "HEARTBEAT_PING_TIMEOUT", 0.01)
+    client = _Client()
+    manager = ws_module.WebSocketManager()
+    manager._clients = {client}
+    cycle = asyncio.create_task(manager._heartbeat_cycle())
+    while not hasattr(client, "payload"):
+        await asyncio.sleep(0)
+    manager.acknowledge_pong(client, b"unrelated")
+
+    await cycle
+
+    assert client not in manager._clients
+    assert client not in manager._pong_waiters
+
+
+@pytest.mark.anyio
+async def test_websocket_heartbeat_matching_pong_keeps_client_and_cleans_waiter():
+    from AssetsManager.lan import ws as ws_module
+
+    class _Client:
+        async def ping(self, payload=None):
+            assert isinstance(payload, bytes)
+            manager.acknowledge_pong(self, payload)
+
+        async def close(self, **_kwargs):
+            self.closed = True
+
+    client = _Client()
+    client.closed = False
+    manager = ws_module.WebSocketManager()
+    manager._clients = {client}
+
+    await manager._heartbeat_cycle()
+
+    assert client in manager._clients
+    assert client not in manager._pong_waiters
+    assert not client.closed
+
+
+@pytest.mark.anyio
+async def test_websocket_heartbeat_waiters_are_cleaned_after_ping_failure():
+    from AssetsManager.lan import ws as ws_module
+
+    class _Client:
+        async def ping(self, _payload):
+            raise RuntimeError("write failed")
+
+        async def close(self, **_kwargs):
+            pass
+
+    client = _Client()
+    manager = ws_module.WebSocketManager()
+    manager._clients = {client}
+
+    await manager._heartbeat_cycle()
+
+    assert client not in manager._pong_waiters
+
+
+@pytest.mark.anyio
+async def test_websocket_heartbeat_cycle_is_bounded_with_slow_clients(monkeypatch):
+    from AssetsManager.lan import ws as ws_module
+
+    class _Client:
+        async def ping(self, _payload):
+            await asyncio.sleep(0.05)
+
+        async def close(self, **_kwargs):
+            pass
+
+    monkeypatch.setattr(ws_module, "HEARTBEAT_PING_TIMEOUT", 0.01)
+    manager = ws_module.WebSocketManager()
+    clients = {_Client(), _Client(), _Client()}
+    manager._clients = clients
+
+    await asyncio.wait_for(manager._heartbeat_cycle(), timeout=0.1)
+
+    assert manager._clients == set()
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 

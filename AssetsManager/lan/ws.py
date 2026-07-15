@@ -63,10 +63,21 @@ class WebSocketManager:
             clients = list(self._clients)
 
         async def check(ws: web.WebSocketResponse):
+            waiter: tuple[bytes, asyncio.Event] | None = None
             try:
-                await asyncio.wait_for(ws.ping(), HEARTBEAT_PING_TIMEOUT)
+                async with self._lock:
+                    self._ping_sequence += 1
+                    payload = str(self._ping_sequence).encode()
+                    waiter = (payload, asyncio.Event())
+                    self._pong_waiters[ws] = waiter
+                await asyncio.wait_for(ws.ping(payload), HEARTBEAT_PING_TIMEOUT)
+                await asyncio.wait_for(waiter[1].wait(), HEARTBEAT_PING_TIMEOUT)
             except Exception:
                 return ws
+            finally:
+                async with self._lock:
+                    if self._pong_waiters.get(ws) is waiter:
+                        self._pong_waiters.pop(ws, None)
             return None
 
         results = await asyncio.gather(
@@ -80,6 +91,7 @@ class WebSocketManager:
         if dead:
             async with self._lock:
                 self._clients.difference_update(dead)
+            await asyncio.gather(*(self._close(ws) for ws in dead))
 
     async def broadcast(self, event_type: str, data: dict | None = None):
         """Send a JSON event to all connected clients."""
