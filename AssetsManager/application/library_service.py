@@ -31,6 +31,8 @@ class LibraryService:
         self._current: LibraryContext | None = None
         self._contexts: dict[str, LibraryContext] = {}
         self._sessions: dict[str, LibrarySession] = {}
+        self._closing: set[str] = set()
+        self._lifecycle = threading.Condition(self._lock)
 
     def open_library(self, root_path: str | Path) -> LibraryContext:
         """Open or reuse a library and return its raw context.
@@ -54,7 +56,9 @@ class LibraryService:
     def _open(self, root_path: str | Path) -> tuple[LibraryContext, LibrarySession]:
         root = Path(root_path).resolve()
         key = str(root)
-        with self._lock:
+        with self._lifecycle:
+            while key in self._closing:
+                self._lifecycle.wait()
             cached = self._contexts.get(key)
             if cached is not None:
                 session = self._sessions.get(key)
@@ -129,10 +133,11 @@ class LibraryService:
         The session itself is also marked as closed.
         """
         key = str(session.root)
-        with self._lock:
+        with self._lifecycle:
             if self._sessions.get(key) is not session:
                 session.close()
                 return
+            self._closing.add(key)
             self._sessions.pop(key)
             context = self._contexts.pop(key, None)
             if self._current is context:
@@ -140,7 +145,12 @@ class LibraryService:
         try:
             session.close()
         finally:
-            self._db.close_library(key)
+            try:
+                self._db.close_library(key)
+            finally:
+                with self._lifecycle:
+                    self._closing.remove(key)
+                    self._lifecycle.notify_all()
 
 
 def get_library_service() -> LibraryService:

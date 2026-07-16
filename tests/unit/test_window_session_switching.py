@@ -12,9 +12,10 @@ class _Server:
 class _Loader:
     def invalidate_tasks(self):
         events.append("loader.invalidate")
+        return 7
 
-    def wait_for_tasks(self):
-        events.append("loader.wait")
+    def wait_for_tasks(self, generation):
+        events.append(f"loader.wait:{generation}")
 
 
 class _FileList:
@@ -62,4 +63,4 @@ def test_switch_library_stops_lan_and_invalidates_thumbnails_before_closing(monk
 
     MainWindow._on_switch_library(window, "new-root")
 
-    assert events[:5] == ["lan.stop", "loader.invalidate", "loader.wait", "session.close", "session.open"]
+    assert events[:5] == ["lan.stop", "loader.invalidate", "loader.wait:7", "session.close", "session.open"]

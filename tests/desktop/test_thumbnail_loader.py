@@ -1,4 +1,5 @@
 import os
+import threading
 
 from PySide6.QtGui import QImage
 
@@ -50,24 +51,68 @@ def test_thumbnail_loader_invalidation_discards_old_generation_completion():
     assert "source.png" not in loader._cache
 
 
-def test_thumbnail_loader_invalidation_clears_queued_tasks(monkeypatch):
+def test_thumbnail_loader_invalidation_returns_invalidated_generation():
     loader = ThumbnailLoader()
-    cleared = []
-    monkeypatch.setattr(loader._pool, "clear", lambda: cleared.append(True))
+    generation = loader.runtime_generation
 
-    loader.invalidate_tasks()
+    invalidated = loader.invalidate_tasks()
 
-    assert cleared == [True]
+    assert invalidated == generation
+    assert loader.runtime_generation == generation + 1
 
 
-def test_thumbnail_loader_waits_for_running_tasks(monkeypatch):
+def test_thumbnail_loader_waits_only_for_invalidated_runtime_tasks(tmp_path, monkeypatch):
     loader = ThumbnailLoader()
-    waited = []
-    monkeypatch.setattr(loader._pool, "waitForDone", lambda timeout: waited.append(timeout))
+    loader.set_cache_dir(str(tmp_path / "cache"))
+    old_source = tmp_path / "old.png"
+    new_source = tmp_path / "new.png"
+    old_source.write_bytes(b"old")
+    new_source.write_bytes(b"new")
+    old_entered = threading.Event()
+    new_entered = threading.Event()
+    release_old = threading.Event()
+    release_new = threading.Event()
+    old_wait_finished = threading.Event()
+    old_connection_closed = threading.Event()
+    invalidated = threading.Event()
 
-    loader.wait_for_tasks(250)
+    def blocked_cache_boundary(key, source_path, runtime):
+        if source_path == str(old_source):
+            old_entered.set()
+            assert release_old.wait(timeout=2)
+        else:
+            new_entered.set()
+            assert release_new.wait(timeout=2)
+        return None
 
-    assert waited == [250]
+    monkeypatch.setattr(loader, "_try_load_cached", blocked_cache_boundary)
+    loader.request(1, str(old_source))
+    assert old_entered.wait(timeout=2)
+
+    def invalidate_wait_and_close():
+        old_generation = loader.invalidate_tasks()
+        invalidated.set()
+        loader.wait_for_tasks(old_generation)
+        old_wait_finished.set()
+        old_connection_closed.set()
+
+    switch = threading.Thread(target=invalidate_wait_and_close)
+    switch.start()
+    assert invalidated.wait(timeout=2)
+    loader.request(2, str(new_source))
+    assert new_entered.wait(timeout=2)
+    assert not old_wait_finished.wait(timeout=0.05)
+    assert not old_connection_closed.is_set()
+
+    release_old.set()
+    assert old_wait_finished.wait(timeout=2)
+    assert old_connection_closed.is_set()
+    assert new_entered.is_set()
+    release_new.set()
+    switch.join(timeout=2)
+    loader.wait_for_tasks(loader.runtime_generation)
+
+    assert not switch.is_alive()
 
 
 def test_thumbnail_loader_runtime_invalidation_clears_memory_and_failed_paths(monkeypatch):

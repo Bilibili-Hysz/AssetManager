@@ -413,6 +413,59 @@ def test_close_session_waits_for_inflight_scoped_metadata_operation(tmp_path, mo
         metadata.set_notes(root, root, "later")
 
 
+def test_same_root_reopen_waits_for_close_and_gets_fresh_usable_services(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+
+    root = tmp_path / "library"
+    other_root = tmp_path / "other"
+    root.mkdir()
+    other_root.mkdir()
+    bootstrap = ApplicationBootstrap()
+    service = bootstrap.library_service
+    original = service.open_session(root)
+    original_connection = original.db_conn
+    lease_held = threading.Event()
+    release_lease = threading.Event()
+    close_started = threading.Event()
+    original_close = original.close
+
+    def held_operation():
+        with original.operation():
+            lease_held.set()
+            assert release_lease.wait(timeout=2)
+
+    def observed_close():
+        close_started.set()
+        original_close()
+
+    monkeypatch.setattr(original, "close", observed_close)
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        operation = executor.submit(held_operation)
+        assert lease_held.wait(timeout=2)
+        closing = executor.submit(service.close_session, original)
+        assert close_started.wait(timeout=2)
+        reopening = executor.submit(service.open_session, root)
+
+        other = executor.submit(service.open_session, other_root).result(timeout=2)
+        assert other.db_conn.execute("SELECT 1").fetchone() == (1,)
+        assert not reopening.done()
+
+        release_lease.set()
+        operation.result(timeout=2)
+        closing.result(timeout=2)
+        replacement = reopening.result(timeout=2)
+
+    assert replacement is not original
+    assert replacement.db_conn is not original_connection
+    assert replacement.db_conn.execute("SELECT 1").fetchone() == (1,)
+    metadata = bootstrap.for_library(replacement).metadata_service
+    metadata.set_notes(root, root, "replacement")
+    assert metadata.get_metadata(root, root).notes == "replacement"
+
+
 @pytest.mark.parametrize(
     ("service_name", "method_name", "arguments", "pause_target"),
     [
