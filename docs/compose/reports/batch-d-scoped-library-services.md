@@ -6,8 +6,8 @@
 - Requested initial implementation HEAD: `9f376fc` (`fix: drain scoped work before library teardown`)
 - Final implementation endpoint: `5ea71709365e1d70128069a9660fd1fdf26ca989` (`Fix scoped async session validation`)
 - Implementation review range: `efe0c42..5ea7170`. This commit span contains the intervening report commits `2091669`, `60b864b`, `0fa0c99`, `abee171`, `1c2d5c1`, `235506f`, and `b600c38`, so it is a delivery-review range rather than an implementation-only diff.
-- Exact topology is linear: implementation fixes through `8557007`, then the architecture/report commit `2091669`, lifecycle atomicity fix `9d5c8e4`, async identity/single-injection fix `e8d0a60`, report-only commits `60b864b` and `0fa0c99`, duplicate lifecycle/root-containment fix `4863b8c`, report-only evidence updates `abee171` and `1c2d5c1`, FileList worker race fix `f28b181`, report-only updates `235506f` and `b600c38`, and scoped async session validation fix `5ea7170` at the implementation endpoint. This report commit follows that endpoint.
-- Complete delivery range: `efe0c42..5ea7170`, including the prior report commits and all later implementation fixes.
+- Exact topology is linear: implementation fixes through `8557007`, then the architecture/report commit `2091669`, lifecycle atomicity fix `9d5c8e4`, async identity/single-injection fix `e8d0a60`, report-only commits `60b864b` and `0fa0c99`, duplicate lifecycle/root-containment fix `4863b8c`, report-only evidence updates `abee171` and `1c2d5c1`, FileList worker race fix `f28b181`, report-only updates `235506f` and `b600c38`, scoped async session validation fix `5ea7170` at the implementation endpoint, and report-only commits `f62b801` plus this commit after that endpoint.
+- Complete delivery range: `efe0c42..5ea7170` for implementation and its preceding report commits; `f62b801` plus this commit record endpoint evidence after implementation.
 - The approved anchor documents `docs/compose/specs/2026-07-15-batch-d-scoped-library-services-design.md` and `docs/compose/plans/2026-07-15-batch-d-scoped-library-services.md` were untracked in the source worktree and are absent from this isolated branch. This report maps the approved S1-S8 contract without claiming those anchors are tracked here.
 
 ## S1-S8 Mapping
@@ -21,7 +21,7 @@
 | S5 | Session close rejects new work, drains active operations, closes only the requested library connection, is idempotent, serializes same-root reopen, and rejects same-thread close from inside an active lease instead of deadlocking. `9d5c8e4` also serializes whole-service teardown with per-session teardown, including sessions already removed from the active map. | `AssetsManager/application/context.py`, `AssetsManager/application/library_service.py`, `tests/unit/test_bootstrap.py`, `tests/core/test_database_metadata.py`, `tests/integration/test_library_service.py` |
 | S6 | Covered file-list mutations fail closed without an injected bundle. Every queued FileList mutation captures its originating session, `FileOperationService`, `UndoService`, canonical library root, and resolved paths before dispatch; switching panels cannot redirect paste, trash, permanent delete, duplicate, undo, or redo work to a later library, and a closed originating session refuses the queued mutation before execution. Production presentation code contains no `FileOperationService()` or `UndoService()` constructor. The architecture test ratchets this invariant. | `AssetsManager/application/file_operation_service.py`, `AssetsManager/panels/file_list/_actions.py`, `AssetsManager/panels/file_list/_base.py`, `tests/desktop/test_file_list_shim.py`, `tests/integration/test_file_operation_service.py`, `tests/unit/test_architecture_boundaries.py` |
 | S7 | Session-bound service operations hold leases; thumbnail generations drain before teardown; InfoPanel flushes pending notes before switch; the whole async file-info task holds its originating session lease, preventing post-close repository work. `e8d0a60` tags file-info, preview, and directory-size completions with a generation, session identity, and path so stale work cannot render after navigation or same-root reopen. At `f28b181`, each queued directory-size worker captures its originating session, root, metadata service, path, and generation before dispatch, then leases that session through cache read, filesystem scan, and cache write. At `5ea7170`, unscoped directory-size work has no session lease and therefore bypasses DB-backed cache reads and writes; Info callbacks also reject completions from a closed session. | `AssetsManager/application/context.py`, scoped application services, `AssetsManager/panels/file_list/_loader.py`, `AssetsManager/panels/file_list/_model.py`, `AssetsManager/panels/info.py`, `AssetsManager/window.py`, `tests/desktop/test_file_list_model.py`, `tests/desktop/test_file_list_shim.py`, `tests/desktop/test_thumbnail_loader.py`, `tests/desktop/test_info_async_identity.py`, `tests/unit/test_window_session_switching.py` |
-| S8 | The complete delivery range through `5ea7170` was reviewed for mutation fallbacks, `LibraryContext`/`.current` growth, stale writes, and Phase 3/6/7/8 scope creep. Earlier controller evidence is retained below as historical evidence and is pending a final controller rerun at the `5ea7170` implementation endpoint. | This report and the evidence below |
+| S8 | The complete delivery range through `5ea7170` was reviewed for mutation fallbacks, `LibraryContext`/`.current` growth, stale writes, and Phase 3/6/7/8 scope creep. Controller verification passed at that implementation endpoint. | This report and the evidence below |
 
 ## Changed Lifecycle And Injection Files
 
@@ -75,7 +75,7 @@ Regression coverage:
 
 ## Verification Evidence
 
-The following controller transcript was completed for the earlier `f28b181e51151d31b6d73bfbd632fc53daf6e742` endpoint. It is retained as prior evidence only; final controller verification is pending rerun at `5ea71709365e1d70128069a9660fd1fdf26ca989`. This report-only commit does not change the implementation endpoint or review range.
+The following controller transcript was completed at the final `5ea71709365e1d70128069a9660fd1fdf26ca989` implementation endpoint. This report-only commit does not change that endpoint or implementation review range.
 
 ```text
 python -m ruff check . --exclude ".Cython&Noikta"
@@ -88,19 +88,19 @@ python -m compileall AssetsManager -q
 (no output, exit 0)
 
 python -m pytest -q
-891 passed in 95.03s
+894 passed in 77.78s
 
 python -m pytest tests/unit/test_architecture_boundaries.py -q
-16 passed in 10.23s
+16 passed in 10.12s
 
 npm test -- --run
-17 passed test files; 57 passed tests in 25.20s
+17 passed test files; 57 passed tests in 24.88s
 
 npm run typecheck
 tsc --noEmit (exit 0)
 
 npm run build
-1621 modules transformed; built in 16.75s
+1621 modules transformed; built in 15.09s
 ```
 
 ## Review Findings Resolved
