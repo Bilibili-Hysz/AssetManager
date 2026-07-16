@@ -1,6 +1,8 @@
 """Unit tests for FileSystemModel."""
 import os
 import tempfile
+import threading
+from unittest.mock import Mock
 import pytest
 
 # Set QT_QPA_PLATFORM before any Qt imports
@@ -9,6 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 from AssetsManager.panels.file_list._model import FileSystemModel
+from AssetsManager.application.bootstrap import ApplicationBootstrap
 
 _app = QApplication.instance() or QApplication([])
 
@@ -32,6 +35,81 @@ def model():
 
 
 class TestFileSystemModel:
+    def test_directory_size_worker_leases_originating_session_through_cache_write(self, tmp_path, monkeypatch):
+        """A running worker drains before A closes; queued A work refuses after close."""
+        class CapturingPool:
+            def __init__(self):
+                self.tasks = []
+
+            def setMaxThreadCount(self, _count):
+                pass
+
+            def start(self, task):
+                self.tasks.append(task)
+
+            def waitForDone(self):
+                pass
+
+        library_a = tmp_path / "library-a"
+        library_b = tmp_path / "library-b"
+        folder_a = library_a / "folder"
+        folder_b = library_b / "folder"
+        folder_a.mkdir(parents=True)
+        folder_b.mkdir(parents=True)
+        (folder_a / "asset.bin").write_bytes(b"abc")
+        pool = CapturingPool()
+        monkeypatch.setattr("AssetsManager.panels.file_list._model.QThreadPool", lambda: pool)
+        bootstrap = ApplicationBootstrap()
+        session_a = bootstrap.library_service.open_session(library_a)
+        session_b = bootstrap.library_service.open_session(library_b)
+        model = FileSystemModel()
+        entered_write = threading.Event()
+        release_write = threading.Event()
+        closed = threading.Event()
+        svc_a = Mock()
+        svc_a.get_dir_size.return_value = (0, False)
+
+        def block_write(*_args):
+            entered_write.set()
+            assert release_write.wait(5)
+
+        svc_a.set_dir_size.side_effect = block_write
+        model.set_library_root(str(library_a), session_a)
+        model.set_metadata_service(svc_a)
+        model._start_async_dir_size(str(folder_a))
+        worker = threading.Thread(target=pool.tasks.pop().run)
+        worker.start()
+        assert entered_write.wait(5)
+        closer = threading.Thread(
+            target=lambda: (bootstrap.library_service.close_session(session_a), closed.set()),
+        )
+        closer.start()
+        assert not closed.wait(0.1)
+        release_write.set()
+        worker.join(5)
+        closer.join(5)
+        assert closed.is_set()
+        svc_a.get_dir_size.assert_called_once_with(str(library_a.resolve()), str(folder_a), force=False)
+        svc_a.set_dir_size.assert_called_once_with(str(library_a.resolve()), str(folder_a), 3)
+
+        # A task queued before close cannot begin after close or write through B.
+        model._pending_dir_sizes.clear()
+        # Restore A's captured context only long enough to queue the task.
+        model._session = session_a
+        model._lib_root = str(library_a.resolve())
+        model._metadata_service = svc_a
+        model._start_async_dir_size(str(folder_a))
+        with pytest.raises(RuntimeError, match="closed LibrarySession"):
+            pool.tasks.pop().run()
+        svc_b = Mock()
+        svc_b.get_dir_size.return_value = (7, True)
+        model.set_library_root(str(library_b), session_b)
+        model.set_metadata_service(svc_b)
+        model._start_async_dir_size(str(folder_b))
+        pool.tasks.pop().run()
+        svc_b.get_dir_size.assert_called_once_with(str(library_b.resolve()), str(folder_b), force=False)
+        svc_b.set_dir_size.assert_not_called()
+
     def test_inline_rename_delegates_without_direct_filesystem_mutation(self, model, tmp_dir):
         model.set_directory(tmp_dir)
         model._wait_for_scan()

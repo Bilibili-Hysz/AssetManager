@@ -216,7 +216,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         """Bind library-scoped services resolved by MainWindow."""
         self._scoped_services = services
         self._root = services.session.root
-        self._model.set_library_root(services.session.root_str)
+        self._model.set_library_root(services.session.root_str, services.session)
         self._model.set_metadata_service(services.metadata_service)
         self._loader.set_cache_db(services.session.db_conn)
         self._loader.set_cache_dir(services.session.thumb_dir_str)
