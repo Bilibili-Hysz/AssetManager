@@ -21,7 +21,7 @@
 | S5 | Session close rejects new work, drains active operations, closes only the requested library connection, is idempotent, serializes same-root reopen, and rejects same-thread close from inside an active lease instead of deadlocking. `9d5c8e4` also serializes whole-service teardown with per-session teardown, including sessions already removed from the active map. | `AssetsManager/application/context.py`, `AssetsManager/application/library_service.py`, `tests/unit/test_bootstrap.py`, `tests/core/test_database_metadata.py`, `tests/integration/test_library_service.py` |
 | S6 | Covered file-list mutations fail closed without an injected bundle. Production presentation code contains no `FileOperationService()` or `UndoService()` constructor. The architecture test now ratchets this invariant. | `AssetsManager/panels/file_list/_actions.py`, `AssetsManager/panels/file_list/_base.py`, `tests/desktop/test_file_list_shim.py`, `tests/unit/test_architecture_boundaries.py` |
 | S7 | Session-bound service operations hold leases; thumbnail generations drain before teardown; InfoPanel flushes pending notes before switch; the whole async file-info task holds its originating session lease, preventing post-close repository work. `e8d0a60` tags file-info, preview, and directory-size completions with a generation, session identity, and path so stale work cannot render after navigation or same-root reopen. | `AssetsManager/application/context.py`, scoped application services, `AssetsManager/panels/file_list/_loader.py`, `AssetsManager/panels/info.py`, `AssetsManager/window.py`, `tests/desktop/test_thumbnail_loader.py`, `tests/desktop/test_info_async_identity.py`, `tests/unit/test_window_session_switching.py` |
-| S8 | The complete delivery range was reviewed for mutation fallbacks, `LibraryContext`/`.current` growth, stale writes, and Phase 3/6/7/8 scope creep. Recorded focused, full Python, architecture, and retained WebUI gates passed at their recorded endpoints; the final controller rerun remains pending. | This report and the evidence below |
+| S8 | The complete delivery range was reviewed for mutation fallbacks, `LibraryContext`/`.current` growth, stale writes, and Phase 3/6/7/8 scope creep. Final controller gates passed for Python quality, compilation, the full suite, architecture boundaries, and the retained WebUI checks. | This report and the evidence below |
 
 ## Changed Lifecycle And Injection Files
 
@@ -74,23 +74,9 @@ Regression coverage:
 
 ## Verification Evidence
 
-The figures below are the latest known recorded verification results. They predate the final controller rerun for `9d5c8e4` and `e8d0a60`; this report does not claim that rerun has completed.
+Final controller verification completed against the delivery endpoint `e8d0a60a1c364f21e7af76450c0809d46bc23ec7` before this report-only commit.
 
-Latest-known focused Batch D regressions:
-
-```text
-python -m pytest tests/unit/test_architecture_boundaries.py tests/unit/test_bootstrap.py tests/integration/test_library_service.py tests/integration/test_undo_service.py tests/desktop/test_file_list_shim.py tests/desktop/test_scoped_service_access.py tests/desktop/test_thumbnail_loader.py tests/unit/test_window_session_switching.py tests/core/test_database_metadata.py -q
-150 passed in 16.13s
-```
-
-Latest-known additional explicit-injection regression after the full-suite finding:
-
-```text
-python -m pytest tests/desktop/test_file_list_details.py -q
-18 passed in 1.92s
-```
-
-Latest-known Python gates:
+Python gates:
 
 ```text
 python -m ruff check . --exclude ".Cython&Noikta"
@@ -98,46 +84,29 @@ All checks passed!
 
 python -m pyright
 0 errors, 0 warnings, 0 informations
-Pyright also printed a non-failing update notice: v1.1.410 -> v1.1.411.
 
 python -m compileall AssetsManager -q
 (no output, exit 0)
 
 python -m pytest -q
-876 passed in 63.02s (0:01:03)
+885 passed in 66.19s
 
 python -m pytest tests/unit/test_architecture_boundaries.py -q
-16 passed in 5.22s
+16 passed in 10.10s
 ```
 
-Latest-known WebUI gates, run before the final full Python suite so `webui/dist` was present:
+WebUI gates:
 
 ```text
-npm ci
-added 237 packages, and audited 238 packages in 22s
-5 vulnerabilities (3 moderate, 1 high, 1 critical)
-
 npm test -- --run
-17 passed test files; 57 passed tests; duration 17.28s
+17 passed test files; 57 passed tests
 
 npm run typecheck
 tsc --noEmit (exit 0)
 
 npm run build
-1621 modules transformed; built in 9.40s
-dist/index.html 0.81 kB (gzip 0.44 kB)
-dist/assets/index-C07LYIce.css 24.04 kB (gzip 5.24 kB)
-dist/assets/index-COj95Eix.js 262.61 kB (gzip 79.57 kB)
+1621 modules transformed; built in 16.46s
 ```
-
-Latest-known diff hygiene:
-
-```text
-git diff --check efe0c42..8557007
-(no errors, exit 0)
-```
-
-The recorded diff-hygiene command ends at the earlier `8557007` endpoint and is not a claim that `git diff --check efe0c42..e8d0a60` has been rerun.
 
 ## Review Findings Resolved
 
