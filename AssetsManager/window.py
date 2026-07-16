@@ -402,8 +402,6 @@ class MainWindow(LanSharingMixin, QMainWindow):
             bootstrap = app.property("bootstrap") if app is not None else None
             if bootstrap is not None:
                 bootstrap.cleanup_library(old_root)
-        if _alive(self.file_list) and getattr(self.file_list, '_undo_svc', None) is not None:
-            self.file_list._undo_svc.clear()
         session = self._open_library_session(path)
         self._apply_scoped_services(session)
         if _alive(self.sidebar):

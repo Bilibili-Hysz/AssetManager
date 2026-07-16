@@ -114,6 +114,45 @@ class TestApplicationBootstrap:
             first.undo_service.cleanup()
             second.undo_service.cleanup()
 
+    def test_closing_session_discards_only_its_undo_service(self, tmp_path):
+        first_root = tmp_path / "first"
+        second_root = tmp_path / "second"
+        first_root.mkdir()
+        second_root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        first_session = bootstrap.library_service.open_session(first_root)
+        second_session = bootstrap.library_service.open_session(second_root)
+        first = bootstrap.for_library(first_session)
+        second = bootstrap.for_library(second_session)
+        first.undo_service.record_rename(str(first_root / "a"), str(first_root / "b"))
+        second.undo_service.record_rename(str(second_root / "a"), str(second_root / "b"))
+
+        first_session.close()
+
+        with pytest.raises(RuntimeError, match="closed"):
+            first.undo_service.can_undo()
+        with pytest.raises(RuntimeError, match="closed"):
+            first.undo_service.record_rename("old", "new")
+        assert not first.undo_service.undo_dir.exists()
+        assert second.undo_service.can_undo()
+        assert second.undo_service.undo_dir.exists()
+
+    def test_reopening_same_root_gets_fresh_undo_service(self, tmp_path):
+        root = tmp_path / "library"
+        root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        old_session = bootstrap.library_service.open_session(root)
+        old = bootstrap.for_library(old_session)
+        old.undo_service.record_rename(str(root / "a"), str(root / "b"))
+
+        old_session.close()
+        new_session = bootstrap.library_service.open_session(root)
+        new = bootstrap.for_library(new_session)
+
+        assert new_session is not old_session
+        assert new.undo_service is not old.undo_service
+        assert not new.undo_service.can_undo()
+
     def test_for_library_binds_provider_to_context_connection(self, tmp_path):
         root = tmp_path / "library"
         root.mkdir()

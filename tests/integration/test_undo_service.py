@@ -1,6 +1,8 @@
 """Tests for UndoService."""
 import os
 
+import pytest
+
 from AssetsManager.application.file_operation_service import FileOperationService
 from AssetsManager.application.undo_service import UndoEntry, UndoService
 
@@ -384,3 +386,57 @@ def test_undo_stacks_isolated_by_library_root(tmp_path):
 
     svc_a.cleanup()
     svc_b.cleanup()
+
+
+def test_two_library_undo_redo_uses_each_session_file_operations(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+
+    lib_a = tmp_path / "lib_a"
+    lib_b = tmp_path / "lib_b"
+    lib_a.mkdir()
+    lib_b.mkdir()
+    old_a, new_a = lib_a / "old_a.txt", lib_a / "new_a.txt"
+    old_b, new_b = lib_b / "old_b.txt", lib_b / "new_b.txt"
+    old_a.write_text("a", encoding="utf-8")
+    old_b.write_text("b", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    scoped_a = bootstrap.for_library(bootstrap.library_service.open_session(lib_a))
+    scoped_b = bootstrap.for_library(bootstrap.library_service.open_session(lib_b))
+
+    scoped_a.undo_service.record_rename(str(old_a), str(new_a))
+    scoped_b.undo_service.record_rename(str(old_b), str(new_b))
+    scoped_a.file_operation_service.move(old_a, new_a)
+    scoped_b.file_operation_service.move(old_b, new_b)
+
+    assert scoped_a.undo_service.perform_undo(scoped_a.file_operation_service)
+    assert old_a.exists() and new_b.exists()
+    assert scoped_b.undo_service.can_undo()
+    assert scoped_b.undo_service.perform_undo(scoped_b.file_operation_service)
+    assert old_b.exists()
+    assert scoped_a.undo_service.perform_redo(scoped_a.file_operation_service)
+    assert new_a.exists() and old_b.exists()
+
+
+def test_close_one_library_rejects_its_undo_but_other_library_remains_functional(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+
+    lib_a = tmp_path / "lib_a"
+    lib_b = tmp_path / "lib_b"
+    lib_a.mkdir()
+    lib_b.mkdir()
+    old_b, new_b = lib_b / "old.txt", lib_b / "new.txt"
+    old_b.write_text("b", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    session_a = bootstrap.library_service.open_session(lib_a)
+    scoped_a = bootstrap.for_library(session_a)
+    scoped_b = bootstrap.for_library(bootstrap.library_service.open_session(lib_b))
+    scoped_a.undo_service.record_rename(str(lib_a / "old"), str(lib_a / "new"))
+    scoped_b.undo_service.record_rename(str(old_b), str(new_b))
+    scoped_b.file_operation_service.move(old_b, new_b)
+
+    session_a.close()
+
+    with pytest.raises(RuntimeError, match="closed"):
+        scoped_a.undo_service.perform_undo(scoped_a.file_operation_service)
+    assert scoped_b.undo_service.perform_undo(scoped_b.file_operation_service)
+    assert old_b.exists()

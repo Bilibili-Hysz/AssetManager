@@ -8,6 +8,10 @@ import threading
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from AssetsManager.application.context import LibrarySession
 
 
 @dataclass(frozen=True)
@@ -29,8 +33,11 @@ class UndoService:
     omitted (legacy callers) a shared default stack is used.
     """
 
-    def __init__(self, max_depth: int = 20, library_root: str = ""):
+    def __init__(self, max_depth: int = 20, library_root: str = "",
+                 session: LibrarySession | None = None):
         self._library_root = str(library_root)
+        self._session = session
+        self._closed = False
         self._lock = threading.Lock()
         self._max_depth = max_depth
         self._undo_dir = tempfile.mkdtemp(prefix="AssetsManager_undo_")
@@ -39,8 +46,17 @@ class UndoService:
             deque[UndoEntry](maxlen=max_depth), [],
         )
 
+    @property
+    def undo_dir(self) -> Path:
+        return Path(self._undo_dir)
+
+    def _ensure_open(self) -> None:
+        if self._closed or (self._session is not None and self._session.is_closed):
+            raise RuntimeError("Cannot use undo history for a closed LibrarySession")
+
     def _resolve_stacks(self):
         """Return (undo_deque, redo_list) for the current library root."""
+        self._ensure_open()
         key = self._library_root
         if key not in self._stacks:
             self._stacks[key] = (deque[UndoEntry](maxlen=self._max_depth), [])
@@ -67,6 +83,7 @@ class UndoService:
 
     def prepare_delete(self, path: str) -> UndoEntry | None:
         """Create a delete backup without adding it to undo history."""
+        self._ensure_open()
         backup = self._make_backup(path)
         if not backup:
             return None
@@ -81,6 +98,7 @@ class UndoService:
 
     def discard_delete(self, entry: UndoEntry | None) -> None:
         """Remove a delete backup when its filesystem operation failed."""
+        self._ensure_open()
         if entry is not None and entry.backup:
             self._clean_backup(entry.backup)
 
@@ -204,6 +222,7 @@ class UndoService:
 
     def cleanup(self) -> None:
         """Remove the undo backup directory."""
+        self._closed = True
         try:
             shutil.rmtree(self._undo_dir, ignore_errors=True)
         except OSError:

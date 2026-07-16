@@ -98,3 +98,48 @@ def test_main_window_injects_one_scoped_bundle_into_all_applicable_panels(qapp, 
     for panel in panels:
         panel.set_scoped_services.assert_called_once_with(services)
         assert panel.set_scoped_services.call_args.args[0] is services
+
+
+def test_main_window_switch_injects_new_active_bundle_without_clearing_it(qapp, monkeypatch):
+    from unittest.mock import Mock
+
+    from AssetsManager.window import MainWindow
+
+    old_session = Mock(root_str="old-root")
+    new_session = Mock(root_str="new-root")
+    old_bundle = Mock()
+    new_bundle = Mock()
+    panels = [Mock(), Mock(), Mock(), Mock()]
+
+    class Window:
+        file_list, info, sidebar, tag_tree = panels
+        _library_session = old_session
+        _lan_server = None
+        _scoped_services_for_session = MainWindow._scoped_services_for_session
+        _apply_scoped_services = MainWindow._apply_scoped_services
+
+        def _library_service(self):
+            return library_service
+
+        def _open_library_session(self, path):
+            self._library_session = new_session
+            return new_session
+
+    bootstrap = Mock()
+    bootstrap.for_library.side_effect = lambda session: (
+        old_bundle if session is old_session else new_bundle
+    )
+    library_service = bootstrap.library_service
+    qapp.setProperty("bootstrap", bootstrap)
+    monkeypatch.setattr("AssetsManager.window._alive", lambda panel: panel is not None)
+    window = Window()
+    window.file_list._undo_svc = old_bundle.undo_service
+
+    MainWindow._on_switch_library(window, "new-root")
+
+    library_service.close_session.assert_called_once_with(old_session)
+    old_bundle.undo_service.clear.assert_not_called()
+    bootstrap.for_library.assert_called_once_with(new_session)
+    for panel in panels:
+        panel.set_scoped_services.assert_called_once_with(new_bundle)
+    new_bundle.undo_service.clear.assert_not_called()

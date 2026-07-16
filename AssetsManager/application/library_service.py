@@ -5,6 +5,7 @@ import logging
 import threading
 import warnings
 from pathlib import Path
+from typing import Callable
 
 from AssetsManager.application.context import LibraryContext, LibrarySession
 from AssetsManager.core.database import DatabaseManager
@@ -34,6 +35,23 @@ class LibraryService:
         self._current: LibraryContext | None = None
         self._contexts: dict[str, LibraryContext] = {}
         self._sessions: dict[str, LibrarySession] = {}
+        self._session_close_listeners: list[Callable[[LibrarySession], None]] = []
+
+    def add_session_close_listener(
+        self, listener: Callable[[LibrarySession], None]
+    ) -> None:
+        """Notify an owner when a canonical session is closed."""
+        with self._lock:
+            self._session_close_listeners.append(listener)
+
+    def _notify_session_closed(self, session: LibrarySession) -> None:
+        with self._lock:
+            listeners = tuple(self._session_close_listeners)
+        for listener in listeners:
+            try:
+                listener(session)
+            except Exception:
+                _log.exception("Library session close listener failed")
 
     def open_library(self, root_path: str | Path) -> LibraryContext:
         """Open or reuse a library and return its raw context.
@@ -133,6 +151,7 @@ class LibraryService:
             for session in sessions:
                 try:
                     session._close_direct()
+                    self._notify_session_closed(session)
                 except Exception:
                     pass
             self._db.close()
@@ -163,6 +182,7 @@ class LibraryService:
             return
         try:
             session._close_direct()
+            self._notify_session_closed(session)
         finally:
             try:
                 self._db.close_library(key)

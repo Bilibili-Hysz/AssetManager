@@ -68,8 +68,9 @@ class ApplicationBootstrap:
         self.container = container or ServiceContainer()
         self._plugin_host: PluginHostContext | None = None
         self._plugin_svc: PluginService | None = None
-        self._undo_services: dict[str, UndoService] = {}
+        self._undo_services: dict[int, tuple[LibrarySession, UndoService]] = {}
         self._register_services()
+        self.library_service.add_session_close_listener(self._cleanup_session)
 
     # ── Service registration ─────────────────────────────────────
 
@@ -134,9 +135,11 @@ class ApplicationBootstrap:
                 "LibrarySession must be the live canonical session owned by this bootstrap"
             )
         provider = session.connection_for
-        key = session.root_str
-        if key not in self._undo_services:
-            self._undo_services[key] = UndoService(library_root=key)
+        key = id(session)
+        cached = self._undo_services.get(key)
+        if cached is None or cached[0] is not session:
+            cached = (session, UndoService(library_root=session.root_str, session=session))
+            self._undo_services[key] = cached
         return LibraryScopedServices(
             session=session,
             asset_service=self.container.resolve(AssetService),
@@ -149,16 +152,23 @@ class ApplicationBootstrap:
                 session=session,
                 asset_index_service=self.container.resolve(AssetIndexService),
             ),
-            undo_service=self._undo_services[key],
+            undo_service=cached[1],
             plugin_service=self.container.resolve(PluginService),
             asset_index_service=self.container.resolve(AssetIndexService),
         )
 
+    def _cleanup_session(self, session: LibrarySession) -> None:
+        cached = self._undo_services.get(id(session))
+        if cached is not None and cached[0] is session:
+            self._undo_services.pop(id(session))
+            cached[1].cleanup()
+
     def cleanup_library(self, library_root: str) -> None:
-        """Clean up cached UndoService for a closed library."""
-        svc = self._undo_services.pop(library_root, None)
-        if svc is not None:
-            svc.cleanup()
+        """Clean up undo services for closed sessions at a legacy call site."""
+        for session, service in tuple(self._undo_services.values()):
+            if session.root_str == library_root and session.is_closed:
+                self._undo_services.pop(id(session), None)
+                service.cleanup()
 
     @property
     def library_service(self) -> LibraryService:
