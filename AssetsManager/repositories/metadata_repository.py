@@ -30,6 +30,16 @@ class MetadataRepository:
         ).fetchone()
         return row[0] if row else ""
 
+    def get_notes_and_urls(self, file_path: str) -> tuple[str, list[str]]:
+        """Return notes and URLs for a file path from one metadata row."""
+        row = self._conn.execute(
+            "SELECT notes, urls FROM file_meta WHERE file_path=?",
+            (file_path,),
+        ).fetchone()
+        if not row:
+            return ("", [])
+        return (row[0] or "", self._decode_urls(file_path, row[1]))
+
     def set_notes(self, file_path: str, notes: str) -> None:
         """Set notes for a file path."""
         with db_write_lock():
@@ -50,14 +60,18 @@ class MetadataRepository:
         ).fetchone()
         if not row:
             return []
+        return self._decode_urls(file_path, row[0])
+
+    @staticmethod
+    def _decode_urls(file_path: str, value: str | None) -> list[str]:
         try:
-            result = json.loads(row[0] or "[]")
+            result = json.loads(value or "[]")
             if not isinstance(result, list):
-                _log.warning("URLs JSON is not a list for %s: %r", file_path, row[0])
+                _log.warning("URLs JSON is not a list for %s: %r", file_path, value)
                 return []
             return result
         except (json.JSONDecodeError, TypeError):
-            _log.warning("Malformed URLs JSON for %s: %r", file_path, row[0])
+            _log.warning("Malformed URLs JSON for %s: %r", file_path, value)
             return []
 
     def set_urls(self, file_path: str, urls: list[str]) -> None:

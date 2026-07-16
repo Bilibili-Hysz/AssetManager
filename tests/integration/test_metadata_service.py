@@ -40,6 +40,35 @@ def test_metadata_service_reads_notes_urls_and_tags(tmp_path):
         conn.close()
 
 
+def test_metadata_service_combines_notes_and_urls_into_one_metadata_query(tmp_path):
+    from AssetsManager.application import MetadataService
+
+    library = tmp_path / "library"
+    library.mkdir()
+    asset = library / "asset.txt"
+    asset.write_text("asset", encoding="utf-8")
+
+    conn = _memory_conn()
+    try:
+        service = MetadataService(connection_provider=lambda _root: conn)
+        service.set_notes(library, asset, "note")
+        service.add_url(library, asset, "https://example.com")
+        statements: list[str] = []
+        conn.set_trace_callback(statements.append)
+
+        metadata = service.get_metadata(library, asset)
+
+        reads = [" ".join(statement.split()) for statement in statements if statement.startswith("SELECT")]
+        assert metadata.notes == "note"
+        assert metadata.urls == ("https://example.com",)
+        assert len(reads) == 2
+        assert any("SELECT tag FROM file_tags WHERE file_path=" in statement for statement in reads)
+        assert any("SELECT notes, urls FROM file_meta WHERE file_path=" in statement for statement in reads)
+    finally:
+        conn.set_trace_callback(None)
+        conn.close()
+
+
 def test_metadata_service_writes_notes_and_urls(tmp_path):
     from AssetsManager.application import MetadataService
 

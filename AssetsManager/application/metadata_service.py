@@ -57,11 +57,12 @@ class MetadataService:
         conn = self._connection(root)
         meta_repo = MetadataRepository(conn)
         tag_repo = TagRepository(conn)
+        notes, urls = meta_repo.get_notes_and_urls(str(target))
         return AssetMetadata(
             path=target,
             tags=tuple(tag_repo.get_tags(str(target))),
-            notes=meta_repo.get_notes(str(target)),
-            urls=tuple(meta_repo.get_urls(str(target))),
+            notes=notes,
+            urls=tuple(urls),
         )
 
     @session_operation

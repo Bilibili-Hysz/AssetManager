@@ -94,6 +94,37 @@ class TestMetadataRepository:
         repo.set_urls("/file.txt", ["https://a.com", "https://b.com"])
         assert repo.get_urls("/file.txt") == ["https://a.com", "https://b.com"]
 
+    def test_get_notes_and_urls_reads_both_columns_and_validates_urls(self, memory_db):
+        conn = _make_db(memory_db)
+        repo = MetadataRepository(conn)
+        conn.execute(
+            "INSERT INTO file_meta (file_path, notes, urls) VALUES (?, ?, ?)",
+            ("/asset.txt", "note", '["https://example.com"]'),
+        )
+        conn.commit()
+
+        assert repo.get_notes_and_urls("/asset.txt") == ("note", ["https://example.com"])
+
+    def test_get_notes_and_urls_rejects_non_list_json(self, memory_db):
+        conn = _make_db(memory_db)
+        repo = MetadataRepository(conn)
+        conn.execute(
+            "INSERT INTO file_meta (file_path, notes, urls) VALUES (?, ?, ?)",
+            ("/asset.txt", "note", '{"url": "https://example.com"}'),
+        )
+        conn.commit()
+
+        assert repo.get_notes_and_urls("/asset.txt") == ("note", [])
+
+    def test_get_notes_and_urls_normalizes_null_notes_to_empty_text(self):
+        class _NullNotesConnection:
+            def execute(self, _statement, _parameters):
+                return type("_Cursor", (), {"fetchone": lambda _self: (None, "[]")})()
+
+        repo = MetadataRepository(_NullNotesConnection())
+
+        assert repo.get_notes_and_urls("/asset.txt") == ("", [])
+
     def test_add_remove_url_return_changed_urls(self, memory_db):
         conn = _make_db(memory_db)
         repo = MetadataRepository(conn)
