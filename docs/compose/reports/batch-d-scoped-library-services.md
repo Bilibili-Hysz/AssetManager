@@ -4,9 +4,10 @@
 
 - Base: `efe0c42` (`fix: repair merged webui test dependencies`)
 - Requested initial implementation HEAD: `9f376fc` (`fix: drain scoped work before library teardown`)
-- Verified implementation endpoint: `855700717b0246df433eeac4dd55cb92de025800` (`fix: reject closed callback sessions`)
-- Implementation review range: `efe0c42..8557007`
-- The final architecture/report commit is intentionally outside the implementation endpoint.
+- Final implementation endpoint: `e8d0a60a1c364f21e7af76450c0809d46bc23ec7` (`fix: reject stale scoped UI completions`)
+- Implementation review range: `efe0c42..e8d0a60`. This commit span contains the intervening architecture/report commit `2091669`, so it is a delivery-review range rather than an implementation-only diff.
+- Exact topology is linear: implementation fixes through `8557007`, then the architecture/report commit `2091669`, then lifecycle atomicity fixes `9d5c8e4`, then async identity/single-injection fixes `e8d0a60` at `HEAD`.
+- Complete delivery range: `efe0c42..e8d0a60`, including the prior architecture/report commit and all later implementation fixes.
 - The approved anchor documents `docs/compose/specs/2026-07-15-batch-d-scoped-library-services-design.md` and `docs/compose/plans/2026-07-15-batch-d-scoped-library-services.md` were untracked in the source worktree and are absent from this isolated branch. This report maps the approved S1-S8 contract without claiming those anchors are tracked here.
 
 ## S1-S8 Mapping
@@ -15,12 +16,12 @@
 | --- | --- | --- |
 | S1 | New opened-library flows use `LibrarySession`; `LibraryContext` construction remains internal to `LibraryService`. | `AssetsManager/application/context.py`, `AssetsManager/application/library_service.py`, `tests/integration/test_library_service.py` |
 | S2 | `ApplicationBootstrap.for_library(session)` accepts only its exact live canonical session and binds the complete service bundle to that identity. No second session/context is created by the bundle factory. | `AssetsManager/application/bootstrap.py`, `AssetsManager/application/library_service.py`, `tests/unit/test_bootstrap.py` |
-| S3 | MainWindow resolves one bundle and injects it into file-list, info, sidebar, and tag-tree panels. Presentation lookup can only reuse the already-open current session and cannot open a library as a side effect. | `AssetsManager/window.py`, `AssetsManager/panels/_service_access.py`, `AssetsManager/panels/file_list/_base.py`, `AssetsManager/panels/info.py`, `AssetsManager/panels/sidebar.py`, `tests/desktop/test_scoped_service_access.py` |
+| S3 | MainWindow resolves one bundle and injects it into file-list, info, sidebar, and tag-tree panels. File-list accepts an already-injected matching bundle without reinjecting it, while presentation lookup can only reuse the already-open current session and cannot open a library as a side effect. | `AssetsManager/window.py`, `AssetsManager/panels/_service_access.py`, `AssetsManager/panels/file_list/_base.py`, `AssetsManager/panels/info.py`, `AssetsManager/panels/sidebar.py`, `tests/desktop/test_scoped_service_access.py` |
 | S4 | Undo is cached per canonical session identity, shared by consumers of that bundle, and cleaned only by the bootstrap session-close listener. Closing a panel no longer destroys the bootstrap-owned Undo service. | `AssetsManager/application/bootstrap.py`, `AssetsManager/application/undo_service.py`, `AssetsManager/panels/file_list/_base.py`, `tests/integration/test_undo_service.py`, `tests/desktop/test_file_list_shim.py` |
-| S5 | Session close rejects new work, drains active operations, closes only the requested library connection, is idempotent, serializes same-root reopen, and rejects same-thread close from inside an active lease instead of deadlocking. | `AssetsManager/application/context.py`, `AssetsManager/application/library_service.py`, `tests/core/test_database_metadata.py`, `tests/integration/test_library_service.py` |
+| S5 | Session close rejects new work, drains active operations, closes only the requested library connection, is idempotent, serializes same-root reopen, and rejects same-thread close from inside an active lease instead of deadlocking. `9d5c8e4` also serializes whole-service teardown with per-session teardown, including sessions already removed from the active map. | `AssetsManager/application/context.py`, `AssetsManager/application/library_service.py`, `tests/unit/test_bootstrap.py`, `tests/core/test_database_metadata.py`, `tests/integration/test_library_service.py` |
 | S6 | Covered file-list mutations fail closed without an injected bundle. Production presentation code contains no `FileOperationService()` or `UndoService()` constructor. The architecture test now ratchets this invariant. | `AssetsManager/panels/file_list/_actions.py`, `AssetsManager/panels/file_list/_base.py`, `tests/desktop/test_file_list_shim.py`, `tests/unit/test_architecture_boundaries.py` |
-| S7 | Session-bound service operations hold leases; thumbnail generations drain before teardown; InfoPanel flushes pending notes before switch; the whole async file-info task holds its originating session lease, preventing post-close repository work. | `AssetsManager/application/context.py`, scoped application services, `AssetsManager/panels/file_list/_loader.py`, `AssetsManager/panels/info.py`, `AssetsManager/window.py`, `tests/desktop/test_thumbnail_loader.py`, `tests/unit/test_window_session_switching.py` |
-| S8 | The exact range was reviewed for mutation fallbacks, `LibraryContext`/`.current` growth, stale writes, and Phase 3/6/7/8 scope creep. Focused, full Python, architecture, and retained WebUI gates passed. | This report and the evidence below |
+| S7 | Session-bound service operations hold leases; thumbnail generations drain before teardown; InfoPanel flushes pending notes before switch; the whole async file-info task holds its originating session lease, preventing post-close repository work. `e8d0a60` tags file-info, preview, and directory-size completions with a generation, session identity, and path so stale work cannot render after navigation or same-root reopen. | `AssetsManager/application/context.py`, scoped application services, `AssetsManager/panels/file_list/_loader.py`, `AssetsManager/panels/info.py`, `AssetsManager/window.py`, `tests/desktop/test_thumbnail_loader.py`, `tests/desktop/test_info_async_identity.py`, `tests/unit/test_window_session_switching.py` |
+| S8 | The complete delivery range was reviewed for mutation fallbacks, `LibraryContext`/`.current` growth, stale writes, and Phase 3/6/7/8 scope creep. Recorded focused, full Python, architecture, and retained WebUI gates passed at their recorded endpoints; the final controller rerun remains pending. | This report and the evidence below |
 
 ## Changed Lifecycle And Injection Files
 
@@ -50,6 +51,7 @@ Regression coverage:
 - `tests/core/test_database_metadata.py`
 - `tests/desktop/test_file_list_details.py`
 - `tests/desktop/test_file_list_shim.py`
+- `tests/desktop/test_info_async_identity.py`
 - `tests/desktop/test_scoped_service_access.py`
 - `tests/desktop/test_thumbnail_loader.py`
 - `tests/integration/test_library_service.py`
@@ -72,21 +74,23 @@ Regression coverage:
 
 ## Verification Evidence
 
-Focused Batch D regressions after final fixes:
+The figures below are the latest known recorded verification results. They predate the final controller rerun for `9d5c8e4` and `e8d0a60`; this report does not claim that rerun has completed.
+
+Latest-known focused Batch D regressions:
 
 ```text
 python -m pytest tests/unit/test_architecture_boundaries.py tests/unit/test_bootstrap.py tests/integration/test_library_service.py tests/integration/test_undo_service.py tests/desktop/test_file_list_shim.py tests/desktop/test_scoped_service_access.py tests/desktop/test_thumbnail_loader.py tests/unit/test_window_session_switching.py tests/core/test_database_metadata.py -q
 150 passed in 16.13s
 ```
 
-Additional explicit-injection regression after the full-suite finding:
+Latest-known additional explicit-injection regression after the full-suite finding:
 
 ```text
 python -m pytest tests/desktop/test_file_list_details.py -q
 18 passed in 1.92s
 ```
 
-Python gates:
+Latest-known Python gates:
 
 ```text
 python -m ruff check . --exclude ".Cython&Noikta"
@@ -106,7 +110,7 @@ python -m pytest tests/unit/test_architecture_boundaries.py -q
 16 passed in 5.22s
 ```
 
-WebUI gates, run before the final full Python suite so `webui/dist` was present:
+Latest-known WebUI gates, run before the final full Python suite so `webui/dist` was present:
 
 ```text
 npm ci
@@ -126,12 +130,14 @@ dist/assets/index-C07LYIce.css 24.04 kB (gzip 5.24 kB)
 dist/assets/index-COj95Eix.js 262.61 kB (gzip 79.57 kB)
 ```
 
-Diff hygiene:
+Latest-known diff hygiene:
 
 ```text
 git diff --check efe0c42..8557007
 (no errors, exit 0)
 ```
+
+The recorded diff-hygiene command ends at the earlier `8557007` endpoint and is not a claim that `git diff --check efe0c42..e8d0a60` has been rerun.
 
 ## Review Findings Resolved
 
@@ -143,6 +149,8 @@ git diff --check efe0c42..8557007
 - Bound async directory-size cache work to its originating session lease.
 - Guarded synchronous `LibraryOpened` callbacks from accessing a closed or root-mismatched stale bundle before replacement injection, including same-root reopen.
 - Rejected reentrant same-thread session close rather than waiting on itself.
+- Serialized service-wide teardown against individual-session close/reopen work, including an in-flight removed session (`9d5c8e4`).
+- Bound asynchronous InfoPanel completions to a generation, exact session object, and path; retained a single matching FileList injection during normal switching (`e8d0a60`).
 - Updated desktop tests to explicitly open and inject scoped bundles.
 - Added a constructor ratchet for presentation mutation services and removed stale architecture exceptions.
 
