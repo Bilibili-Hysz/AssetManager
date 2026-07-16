@@ -357,11 +357,12 @@ class ActionsMixin:
         if self._get_scoped_services() is None:
             return
         paths = list(self._selected_paths())
+        service = self._get_file_operation_service()
         panel = self
         def _do_dup():
             for p in paths:
                 try:
-                    panel._get_file_operation_service().duplicate(p, copy_label=" - Copy")
+                    service.duplicate(p, copy_label=" - Copy")
                 except OSError:
                     pass
         self._run_in_background(_do_dup, on_done=lambda: panel._post_refresh())

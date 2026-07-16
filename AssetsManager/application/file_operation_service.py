@@ -148,8 +148,11 @@ class FileOperationService:
 
     @session_operation
     def duplicate(self, path: str | Path, copy_label: str = "_copy") -> Path:
-        src = Path(path)
-        target = unique_destination(src.with_name(f"{src.stem}{copy_label}{src.suffix}"))
+        src = Path(path).resolve()
+        root = self._root_for(None)
+        _assert_under_root(src, root)
+        target = unique_destination(src.with_name(f"{src.stem}{copy_label}{src.suffix}")).resolve()
+        _assert_under_root(target, root)
         if src.is_dir():
             shutil.copytree(src, target)
         else:

@@ -737,6 +737,63 @@ def test_unscoped_mutations_never_construct_unbound_services(tmp_path, monkeypat
         app.processEvents()
 
 
+def test_duplicate_captures_originating_service_and_closed_session_refuses(tmp_path, monkeypatch):
+    """Queued duplicates stay bound to the service injected when requested."""
+    from unittest.mock import Mock
+
+    import pytest
+
+    library_a = tmp_path / "library-a"
+    library_b = tmp_path / "library-b"
+    source = library_a / "asset.txt"
+    library_a.mkdir()
+    library_b.mkdir()
+    source.write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    panel = QWidgetFileListPanel()
+    queued = []
+    try:
+        scoped_a = bootstrap.for_library(bootstrap.library_service.open_session(library_a))
+        scoped_b = bootstrap.for_library(bootstrap.library_service.open_session(library_b))
+        duplicate_a = Mock(wraps=scoped_a.file_operation_service.duplicate)
+        duplicate_b = Mock(wraps=scoped_b.file_operation_service.duplicate)
+        monkeypatch.setattr(scoped_a.file_operation_service, "duplicate", duplicate_a)
+        monkeypatch.setattr(scoped_b.file_operation_service, "duplicate", duplicate_b)
+        panel.set_scoped_services(scoped_a)
+        monkeypatch.setattr(panel, "_selected_paths", lambda: [str(source)])
+        monkeypatch.setattr(
+            panel, "_run_in_background", lambda operation, *args, on_done=None: queued.append(operation),
+        )
+        panel._post_refresh = Mock()
+
+        panel._duplicate_selected()
+        panel.set_scoped_services(scoped_b)
+
+        queued.pop()()
+        assert (library_a / "asset - Copy.txt").read_text() == "asset"
+        assert not (library_b / "asset - Copy.txt").exists()
+        duplicate_a.assert_called_once_with(str(source), copy_label=" - Copy")
+        duplicate_b.assert_not_called()
+
+        panel.set_scoped_services(scoped_a)
+        panel._duplicate_selected()
+        panel.set_scoped_services(scoped_b)
+        bootstrap.library_service.close_session(scoped_a.session)
+
+        with pytest.raises(RuntimeError, match="closed LibrarySession"):
+            queued.pop()()
+        assert duplicate_a.call_count == 2
+        duplicate_b.assert_not_called()
+        assert not (library_a / "asset - Copy_1.txt").exists()
+        assert not (library_b / "asset - Copy.txt").exists()
+    finally:
+        panel.shutdown()
+        app.setProperty("bootstrap", None)
+        app.processEvents()
+
+
 def test_panel_shutdown_does_not_cleanup_bootstrap_owned_undo_service(tmp_path, monkeypatch):
     from unittest.mock import Mock
 
