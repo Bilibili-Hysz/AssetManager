@@ -14,7 +14,10 @@ def _make_panel(tmp_path):
     (tmp_path / "b.png").write_bytes(b"\x89PNG")
     (tmp_path / "sub").mkdir()
     app = QApplication.instance() or QApplication([])
+    bootstrap = app.property("bootstrap")
     panel = QWidgetFileListPanel()
+    session = bootstrap.library_service.open_session(tmp_path)
+    panel.set_scoped_services(bootstrap.for_library(session))
     panel.navigate_to(str(tmp_path), set_root=True)
     panel._model._wait_for_scan()
     return app, panel

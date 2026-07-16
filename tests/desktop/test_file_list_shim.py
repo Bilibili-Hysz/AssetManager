@@ -97,7 +97,7 @@ def test_grid_selection_drops_filtered_paths(tmp_path):
         app.processEvents()
 
 
-def test_set_root_prefers_scoped_library_runtime_when_bootstrap_present(tmp_path):
+def test_set_root_uses_injected_scoped_library_runtime(tmp_path):
     (tmp_path / "a.txt").write_text("a")
     app = QApplication.instance() or QApplication([])
     bootstrap = ApplicationBootstrap()
@@ -105,6 +105,7 @@ def test_set_root_prefers_scoped_library_runtime_when_bootstrap_present(tmp_path
     panel = QWidgetFileListPanel()
     try:
         session = bootstrap.library_service.open_session(tmp_path)
+        panel.set_scoped_services(bootstrap.for_library(session))
 
         panel.navigate_to(str(tmp_path), set_root=True)
 
@@ -653,7 +654,7 @@ def test_covered_mutations_refuse_without_scoped_services(tmp_path, monkeypatch)
     source = tmp_path / "asset.txt"
     destination = tmp_path / "renamed.txt"
     source.write_text("asset")
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     panel = QWidgetFileListPanel()
     try:
         service = Mock()
@@ -733,6 +734,26 @@ def test_unscoped_mutations_never_construct_unbound_services(tmp_path, monkeypat
         panel._post_refresh.assert_not_called()
     finally:
         panel.shutdown()
+        app.processEvents()
+
+
+def test_panel_shutdown_does_not_cleanup_bootstrap_owned_undo_service(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    panel = QWidgetFileListPanel()
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(tmp_path))
+    panel.set_scoped_services(scoped)
+    cleanup = Mock()
+    monkeypatch.setattr(scoped.undo_service, "cleanup", cleanup)
+
+    try:
+        panel.shutdown()
+        cleanup.assert_not_called()
+    finally:
+        app.setProperty("bootstrap", None)
         app.processEvents()
 
 

@@ -158,11 +158,12 @@ class _FileInfoSignals(QObject):
 class _FileInfoTask(QRunnable):
     """Background task for heavy file-info operations."""
 
-    def __init__(self, path, controller, library_root,
+    def __init__(self, path, controller, session, library_root,
                  sidebar_depth, branch_depths, classify_cache):
         super().__init__()
         self._path = path
         self._controller = controller
+        self._session = session
         self._library_root = library_root
         self._sidebar_depth = sidebar_depth
         self._branch_depths = branch_depths
@@ -183,61 +184,65 @@ class _FileInfoTask(QRunnable):
 
     def run(self):
         try:
-            from AssetsManager.controllers.info_controller import InfoController
-            path = self._path
-            is_dir = os.path.isdir(path)
-            is_project = is_dir and InfoController.is_deepest_folder(
-                path, self._library_root, self._sidebar_depth, self._branch_depths)
-
-            if is_project and self._controller:
-                existing = self._controller.get_urls(path)
-                if not existing:
-                    discovered = self._controller.discover_urls_in_dir(path)
-                    for u in discovered:
-                        try:
-                            self._controller.add_url(path, u)
-                        except ValueError:
-                            pass
-
-            dir_summary = self._controller.classify_dir(path, classify_cache=self._classify_cache) if is_dir else None
-
-            if is_dir:
-                display_type = tr("info.project") if is_project else tr("info.folder")
-                display_size = tr("info.calculating") if os.path.exists(path) else "—"
-            else:
-                display_type = tr("info.file", ext=Path(path).suffix.lstrip('.').upper())
-                try:
-                    size = os.path.getsize(path)
-                except OSError:
-                    size = 0
-                display_size = format_info_size(size) if size else "—"
-
-            try:
-                from datetime import datetime
-                mtime = os.path.getmtime(path)
-                modified_display = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
-            except OSError:
-                modified_display = "—"
-
-            parent_path = str(Path(path).parent)
-
-            file_info = self._controller.get_file_info(
-                path,
-                is_dir=is_dir,
-                file_type=display_type,
-                size_display=display_size,
-                modified_display=modified_display,
-                parent_path=parent_path,
-                dir_summary=dir_summary,
-                is_project=is_project,
-            )
-
-            self.signals.result_ready.emit(file_info)
-
-            preview = self._load_preview(path, is_dir)
-            self.signals.preview_ready.emit(path, preview)
+            with self._session.operation():
+                self._run_scoped()
         except Exception:
             _log.exception("FileInfoTask failed for %s", self._path)
+
+    def _run_scoped(self):
+        from AssetsManager.controllers.info_controller import InfoController
+        path = self._path
+        is_dir = os.path.isdir(path)
+        is_project = is_dir and InfoController.is_deepest_folder(
+            path, self._library_root, self._sidebar_depth, self._branch_depths)
+
+        if is_project and self._controller:
+            existing = self._controller.get_urls(path)
+            if not existing:
+                discovered = self._controller.discover_urls_in_dir(path)
+                for u in discovered:
+                    try:
+                        self._controller.add_url(path, u)
+                    except ValueError:
+                        pass
+
+        dir_summary = self._controller.classify_dir(path, classify_cache=self._classify_cache) if is_dir else None
+
+        if is_dir:
+            display_type = tr("info.project") if is_project else tr("info.folder")
+            display_size = tr("info.calculating") if os.path.exists(path) else "—"
+        else:
+            display_type = tr("info.file", ext=Path(path).suffix.lstrip('.').upper())
+            try:
+                size = os.path.getsize(path)
+            except OSError:
+                size = 0
+            display_size = format_info_size(size) if size else "—"
+
+        try:
+            from datetime import datetime
+            mtime = os.path.getmtime(path)
+            modified_display = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+        except OSError:
+            modified_display = "—"
+
+        parent_path = str(Path(path).parent)
+
+        file_info = self._controller.get_file_info(
+            path,
+            is_dir=is_dir,
+            file_type=display_type,
+            size_display=display_size,
+            modified_display=modified_display,
+            parent_path=parent_path,
+            dir_summary=dir_summary,
+            is_project=is_project,
+        )
+
+        self.signals.result_ready.emit(file_info)
+
+        preview = self._load_preview(path, is_dir)
+        self.signals.preview_ready.emit(path, preview)
 
 
 class InfoPanel(PanelContent):
@@ -1151,6 +1156,7 @@ class InfoPanel(PanelContent):
         task = _FileInfoTask(
             path=self._current_path,
             controller=self._controller,
+            session=self._scoped_services.session,
             library_root=self._library_root,
             sidebar_depth=self._sidebar_depth,
             branch_depths=self._branch_depths,

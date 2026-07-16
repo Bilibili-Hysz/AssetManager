@@ -393,6 +393,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
         """Switch all panels to a different library root."""
         if self._lan_server and self._lan_server.is_running():
             self._lan_server.stop()
+        if _alive(self.info) and hasattr(self.info, '_flush_notes_save'):
+            self.info._flush_notes_save()
+            notes_timer = getattr(self.info, '_notes_timer', None)
+            if notes_timer is not None:
+                notes_timer.stop()
         if _alive(self.file_list) and hasattr(self.file_list, '_loader'):
             generation = self.file_list._loader.invalidate_tasks()
             self.file_list._loader.wait_for_runtime(generation)

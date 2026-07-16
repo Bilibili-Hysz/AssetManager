@@ -787,6 +787,21 @@ def test_duplicate_direct_close_waits_for_active_operation(tmp_path):
     assert first_done.is_set()
     assert duplicate_done.is_set()
 
+
+def test_session_cannot_close_from_inside_its_own_operation(tmp_path):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+    session = LibraryService().open_session(root)
+
+    with session.operation():
+        with pytest.raises(RuntimeError, match="active operation"):
+            session.close()
+
+    assert not session.is_closed
+
+
 def test_library_context_not_in_public_application_exports():
     """LibraryContext should not be in the public application __all__."""
     from AssetsManager import application

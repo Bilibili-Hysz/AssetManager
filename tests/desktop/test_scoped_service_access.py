@@ -59,6 +59,16 @@ def test_require_scoped_services_returns_services_with_bootstrap(qapp, tmp_path)
     assert result.session.root == tmp_path.resolve()
 
 
+def test_require_scoped_services_does_not_open_a_library(qapp, tmp_path):
+    bootstrap = ApplicationBootstrap()
+    qapp.setProperty("bootstrap", bootstrap)
+
+    with pytest.raises(RuntimeError, match="session_not_open"):
+        require_scoped_services(tmp_path, consumer="TestPanel")
+
+    assert bootstrap.library_service.current_session is None
+
+
 def test_require_scoped_services_raises_for_unopened_library_with_bootstrap(qapp, tmp_path):
     import unittest.mock as mock
 

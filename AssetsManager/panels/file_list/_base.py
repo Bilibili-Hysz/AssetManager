@@ -81,10 +81,6 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._model.dir_size_ready.connect(self._on_dir_size_ready)
         self._model.dir_size_ready.connect(self._on_detail_dir_size_ready)
         self._loader = ThumbnailLoader(size=self._thumb_size)
-        app = QApplication.instance()
-        if app:
-            app.aboutToQuit.connect(self._cleanup_undo_dir)
-
         # ── Panel header ─────────────────────────────────────────
 
         t = themes.get()
@@ -251,19 +247,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         scoped = self._scoped_services
         if scoped is not None:
             return scoped.session.tag_store
-        # Lightweight fallback for tests / bootstrap-free contexts
-        target = root or self._lib_root or str(self._current)
-        if not target:
-            return None
-        from AssetsManager.core.database import DatabaseManager
-        from AssetsManager.core.singleton import ThreadSafeSingleton
-        from AssetsManager.core.tag_store import TagStore
-        mgr = ThreadSafeSingleton.get(DatabaseManager)
-        try:
-            conn = mgr.connection_for(target)
-            return TagStore(str(Path(target).resolve()), db_conn=conn)
-        except Exception:
-            return None
+        return None
 
     def _configure_library_runtime(self, root: str):
         """Bind file-list runtime helpers to a library root."""
@@ -987,10 +971,6 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         new.navigate_to(str(self._current))
         return new
 
-    def _cleanup_undo_dir(self):
-        if self._undo_svc is not None:
-            self._undo_svc.cleanup()
-
     @staticmethod
     def _schedule_library_stats_update(_lib_root: str):
         pass  # implemented in concrete subclass
@@ -1005,7 +985,6 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._model.shutdown()
 
     def closeEvent(self, event):
-        self._cleanup_undo_dir()
         self._loader.stop()
         self._model.shutdown()
         super().closeEvent(event)

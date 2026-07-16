@@ -27,6 +27,18 @@ class _FileList:
         events.append("file-list.navigate")
 
 
+class _Timer:
+    def stop(self):
+        events.append("notes.stop")
+
+
+class _Info:
+    _notes_timer = _Timer()
+
+    def _flush_notes_save(self):
+        events.append("notes.flush")
+
+
 class _Session:
     root_str = "old-root"
 
@@ -41,6 +53,7 @@ class _Window:
         self._lan_server = _Server()
         self._library_session = _Session()
         self.file_list = _FileList()
+        self.info = _Info()
         self.sidebar = None
 
     def _library_service(self):
@@ -64,6 +77,7 @@ def test_switch_library_stops_lan_and_invalidates_thumbnails_before_closing(monk
 
     MainWindow._on_switch_library(window, "new-root")
 
-    assert events[:5] == [
-        "lan.stop", "loader.invalidate", "loader.wait", "session.close", "session.open"
+    assert events[:7] == [
+        "lan.stop", "notes.flush", "notes.stop", "loader.invalidate", "loader.wait",
+        "session.close", "session.open",
     ]

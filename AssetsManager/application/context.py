@@ -192,6 +192,8 @@ class LibrarySession:
 
     def _close_direct(self) -> None:
         """Reject new operations and drain existing ones without service locks."""
+        if getattr(self._operation_local, "depth", 0) > 0:
+            raise RuntimeError("Cannot close a LibrarySession from an active operation")
         with self._operation_condition:
             object.__setattr__(self, "_closed", True)
             self._operation_condition.wait_for(lambda: self._active_operations == 0)
