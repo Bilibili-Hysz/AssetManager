@@ -7,7 +7,6 @@ from PySide6.QtCore import Qt, QUrl, QMimeData, QFileInfo, QObject
 from PySide6.QtWidgets import (
     QApplication, QMenu, QInputDialog, QMessageBox,
 )
-from AssetsManager.application import UndoService
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager import i18n
 
@@ -22,7 +21,7 @@ class ActionsMixin:
         """Call from FileListPanel.__init__ to set up action state."""
         self._clipboard_source: list[str] = []
         self._clipboard_cut = False
-        self._undo_svc = UndoService()
+        self._undo_svc = None
         self._background_ops: list[QObject] = []
 
     # ── Clicks ───────────────────────────────────────────────────
@@ -344,6 +343,8 @@ class ActionsMixin:
         self._run_in_background(_do_perm_delete, on_done=lambda: panel._post_refresh())
 
     def _new_folder(self):
+        if self._get_scoped_services() is None:
+            return
         name, ok = QInputDialog.getText(self, tr("filelist.dialog.new_folder"), tr("filelist.dialog.new_folder_label"), text="New Folder")
         if ok and name.strip():
             try:
@@ -353,6 +354,8 @@ class ActionsMixin:
                 QMessageBox.warning(self, tr("dialog.error"), str(e))
 
     def _duplicate_selected(self):
+        if self._get_scoped_services() is None:
+            return
         paths = list(self._selected_paths())
         panel = self
         def _do_dup():

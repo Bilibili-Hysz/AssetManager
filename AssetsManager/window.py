@@ -86,7 +86,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
         scoped = self._scoped_services_for_session(session)
         if scoped is None:
             return
-        for panel in (getattr(self, "file_list", None), getattr(self, "info", None)):
+        for panel in (
+            getattr(self, "file_list", None),
+            getattr(self, "info", None),
+            getattr(self, "sidebar", None),
+        ):
             if _alive(panel) and hasattr(panel, "set_scoped_services"):
                 panel.set_scoped_services(scoped)
         tag_tree = getattr(self, "tag_tree", None)
@@ -398,7 +402,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
             bootstrap = app.property("bootstrap") if app is not None else None
             if bootstrap is not None:
                 bootstrap.cleanup_library(old_root)
-        if _alive(self.file_list) and hasattr(self.file_list, '_undo_svc'):
+        if _alive(self.file_list) and getattr(self.file_list, '_undo_svc', None) is not None:
             self.file_list._undo_svc.clear()
         session = self._open_library_session(path)
         self._apply_scoped_services(session)

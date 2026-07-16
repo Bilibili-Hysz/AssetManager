@@ -689,4 +689,64 @@ def test_covered_mutations_refuse_without_scoped_services(tmp_path, monkeypatch)
         assert source.exists()
     finally:
         panel.shutdown()
+
+
+def test_unscoped_mutations_never_construct_unbound_services(tmp_path, monkeypatch):
+    """Mutation paths must fail closed before reaching fallback constructors."""
+    from unittest.mock import Mock
+
+    from AssetsManager.panels.file_list._base import FileListPanel
+
+    source = tmp_path / "asset.txt"
+    destination = tmp_path / "renamed.txt"
+    source.write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        panel._clipboard_source = [str(source)]
+        panel._clipboard_cut = False
+        panel._post_refresh = Mock()
+        panel._run_in_background = Mock()
+        panel._undo_svc = Mock()
+        panel._undo_svc.can_undo.return_value = True
+        panel._undo_svc.can_redo.return_value = True
+        monkeypatch.setattr(
+            "AssetsManager.application.FileOperationService",
+            lambda: (_ for _ in ()).throw(AssertionError("unbound FileOperationService constructed")),
+        )
+        monkeypatch.setattr(
+            "AssetsManager.application.UndoService",
+            lambda: (_ for _ in ()).throw(AssertionError("unbound UndoService constructed")),
+        )
+
+        assert panel._rename_absolute(str(source), str(destination)) == str(source.resolve())
+        panel._paste()
+        assert FileListPanel._on_drop(panel, type("Drop", (), {"mimeData": lambda self: type("Mime", (), {"urls": lambda self: [type("Url", (), {"toLocalFile": lambda self: str(source)})()]})()})()) is False
+        panel._delete([str(source)])
+        panel._delete_permanent([str(source)])
+        panel._new_folder()
+        panel._duplicate_selected()
+        panel._undo()
+        panel._redo()
+
+        panel._run_in_background.assert_not_called()
+        panel._post_refresh.assert_not_called()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_file_list_does_not_construct_unbound_undo_service(monkeypatch):
+    """The panel receives its undo service only through scoped injection."""
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(
+        "AssetsManager.application.UndoService",
+        lambda: (_ for _ in ()).throw(AssertionError("unbound UndoService constructed")),
+    )
+
+    panel = QWidgetFileListPanel()
+    try:
+        assert panel._undo_svc is None
+    finally:
+        panel.shutdown()
         app.processEvents()

@@ -237,8 +237,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         scoped = self._scoped_services
         if scoped is not None:
             return scoped.file_operation_service
-        from AssetsManager.application import FileOperationService
-        return FileOperationService()
+        raise RuntimeError("FileListPanel scoped services not injected")
 
     def _get_tag_service(self):
         if not self._lib_root:
@@ -989,7 +988,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         return new
 
     def _cleanup_undo_dir(self):
-        if hasattr(self, '_undo_svc'):
+        if self._undo_svc is not None:
             self._undo_svc.cleanup()
 
     @staticmethod

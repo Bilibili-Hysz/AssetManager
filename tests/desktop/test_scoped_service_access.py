@@ -70,3 +70,31 @@ def test_require_scoped_services_raises_for_unopened_library_with_bootstrap(qapp
     ):
         with pytest.raises(RuntimeError, match="requires scoped library services"):
             require_scoped_services(tmp_path, consumer="TestPanel")
+
+
+def test_main_window_injects_one_scoped_bundle_into_all_applicable_panels(qapp, monkeypatch):
+    """MainWindow owns scoped resolution and gives each panel the same bundle."""
+    from unittest.mock import Mock
+
+    from AssetsManager.window import MainWindow
+
+    session = object()
+    services = object()
+    bootstrap = Mock()
+    bootstrap.for_library.return_value = services
+    qapp.setProperty("bootstrap", bootstrap)
+
+    panels = [Mock(), Mock(), Mock(), Mock()]
+
+    class Window:
+        file_list, info, sidebar, tag_tree = panels
+        _scoped_services_for_session = MainWindow._scoped_services_for_session
+
+    monkeypatch.setattr("AssetsManager.window._alive", lambda panel: True)
+
+    MainWindow._apply_scoped_services(Window(), session)
+
+    bootstrap.for_library.assert_called_once_with(session)
+    for panel in panels:
+        panel.set_scoped_services.assert_called_once_with(services)
+        assert panel.set_scoped_services.call_args.args[0] is services
