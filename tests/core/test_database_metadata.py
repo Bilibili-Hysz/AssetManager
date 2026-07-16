@@ -1,5 +1,30 @@
 
 
+import sqlite3
+
+import pytest
+
+
+def test_close_library_is_selective_and_idempotent(tmp_path):
+    from AssetsManager.core.database import DatabaseManager
+
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    manager = DatabaseManager()
+    first_conn = manager.connection_for(first)
+    second_conn = manager.connection_for(second)
+
+    manager.close_library(first)
+    manager.close_library(first)
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        first_conn.execute("SELECT 1")
+    second_conn.execute("SELECT 1")
+    manager.close()
+
+
 def test_migrate_path_metadata_moves_file_rows(tmp_path, monkeypatch):
     from AssetsManager.core import database, path_resolver
     from AssetsManager.core.singleton import ThreadSafeSingleton

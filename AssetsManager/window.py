@@ -394,7 +394,8 @@ class MainWindow(LanSharingMixin, QMainWindow):
         if self._lan_server and self._lan_server.is_running():
             self._lan_server.stop()
         if _alive(self.file_list) and hasattr(self.file_list, '_loader'):
-            self.file_list._loader.invalidate_tasks()
+            generation = self.file_list._loader.invalidate_tasks()
+            self.file_list._loader.wait_for_runtime(generation)
         if self._library_session is not None:
             old_root = self._library_session.root_str
             self._library_service().close_session(self._library_session)
@@ -699,5 +700,5 @@ class MainWindow(LanSharingMixin, QMainWindow):
         # True exit: clean up everything
         self._shutdown_resources()
         super().closeEvent(event)
-        close_all_dbs()
         self._library_service().close()
+        close_all_dbs()

@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from AssetsManager.application.context import session_operation
+
 if TYPE_CHECKING:
     from AssetsManager.application.context import LibrarySession
 
@@ -51,8 +53,10 @@ class UndoService:
         return Path(self._undo_dir)
 
     def _ensure_open(self) -> None:
-        if self._closed or (self._session is not None and self._session.is_closed):
+        if self._closed:
             raise RuntimeError("Cannot use undo history for a closed LibrarySession")
+        if self._session is not None:
+            self._session._ensure_access()
 
     def _resolve_stacks(self):
         """Return (undo_deque, redo_list) for the current library root."""
@@ -70,17 +74,20 @@ class UndoService:
     def _redo_stack(self) -> list[UndoEntry]:
         return self._resolve_stacks()[1]
 
+    @session_operation
     def record_rename(self, old_path: str, new_path: str) -> None:
         """Record a rename operation for undo."""
         entry = UndoEntry(type="rename", old=old_path, new=new_path)
         self._push_undo(entry)
 
+    @session_operation
     def record_delete(self, path: str) -> None:
         """Record a delete operation with backup for undo."""
         entry = self.prepare_delete(path)
         if entry is not None:
             self.commit_delete(entry)
 
+    @session_operation
     def prepare_delete(self, path: str) -> UndoEntry | None:
         """Create a delete backup without adding it to undo history."""
         self._ensure_open()
@@ -92,32 +99,39 @@ class UndoService:
             is_dir=os.path.isdir(path),
         )
 
+    @session_operation
     def commit_delete(self, entry: UndoEntry) -> None:
         """Add a successfully deleted backup to undo history."""
         self._push_undo(entry)
 
+    @session_operation
     def discard_delete(self, entry: UndoEntry | None) -> None:
         """Remove a delete backup when its filesystem operation failed."""
         self._ensure_open()
         if entry is not None and entry.backup:
             self._clean_backup(entry.backup)
 
+    @session_operation
     def can_undo(self) -> bool:
         with self._lock:
             return bool(self._undo_stack)
 
+    @session_operation
     def can_redo(self) -> bool:
         with self._lock:
             return bool(self._redo_stack)
 
+    @session_operation
     def peek_undo(self) -> UndoEntry | None:
         with self._lock:
             return self._undo_stack[-1] if self._undo_stack else None
 
+    @session_operation
     def peek_redo(self) -> UndoEntry | None:
         with self._lock:
             return self._redo_stack[-1] if self._redo_stack else None
 
+    @session_operation
     def undo(self) -> UndoEntry | None:
         """Pop the last undo entry and push it to redo. Returns the entry to execute."""
         with self._lock:
@@ -127,6 +141,7 @@ class UndoService:
             self._redo_stack.append(entry)
             return entry
 
+    @session_operation
     def redo(self) -> UndoEntry | None:
         """Pop the last redo entry and push it to undo. Returns the entry to execute."""
         with self._lock:
@@ -136,6 +151,7 @@ class UndoService:
             self._undo_stack.append(entry)
             return entry
 
+    @session_operation
     def clear(self) -> None:
         """Clear both undo and redo stacks."""
         with self._lock:
@@ -148,6 +164,7 @@ class UndoService:
                     self._clean_backup(entry.backup)
             self._redo_stack.clear()
 
+    @session_operation
     def clear_redo(self) -> None:
         """Clear the redo stack (call after a new operation)."""
         with self._lock:
@@ -156,6 +173,7 @@ class UndoService:
                     self._clean_backup(entry.backup)
             self._redo_stack.clear()
 
+    @session_operation
     def perform_undo(self, file_operations, library_root: str | Path | None = None) -> bool:
         """Undo through file operations, moving history only after success."""
         with self._lock:
@@ -171,6 +189,7 @@ class UndoService:
             self._redo_stack.append(entry)
         return True
 
+    @session_operation
     def perform_redo(self, file_operations, library_root: str | Path | None = None) -> bool:
         """Redo through file operations, moving history only after success."""
         with self._lock:

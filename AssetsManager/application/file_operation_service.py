@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from AssetsManager.application.context import session_operation
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import FileCopied, FileCreated, FileDeleted, FileRenamed
 
@@ -48,6 +49,7 @@ class FileOperationService:
             raise ValueError(f"Library root does not match bound session: {library_root}")
         return root
 
+    @session_operation
     def create_folder(self, parent: str | Path, name: str = "New Folder") -> Path:
         base = Path(parent) / name
         for _ in range(100):
@@ -60,6 +62,7 @@ class FileOperationService:
                 base = target
         raise OSError(f"Could not create unique folder under {parent}")
 
+    @session_operation
     def rename(self, old_path: str | Path, new_name: str,
                library_root: str | Path | None = None) -> Path:
         old = Path(old_path).resolve()
@@ -69,6 +72,7 @@ class FileOperationService:
         result = self.move(old, dst, library_root=library_root)
         return result
 
+    @session_operation
     def move(self, source: str | Path, destination: str | Path,
              library_root: str | Path | None = None) -> Path:
         src = Path(source).resolve()
@@ -86,6 +90,7 @@ class FileOperationService:
         get_event_bus().publish(FileRenamed(old_path=str(src), new_path=str(dst)))
         return dst
 
+    @session_operation
     def copy_to_directory(self, sources: list[str | Path], destination_dir: str | Path,
                           library_root: str | Path | None = None) -> FileOperationResult:
         changed: list[Path] = []
@@ -117,6 +122,7 @@ class FileOperationService:
                 errors.append(str(exc))
         return FileOperationResult(tuple(changed), tuple(errors))
 
+    @session_operation
     def move_to_directory(self, sources: list[str | Path], destination_dir: str | Path,
                           library_root: str | Path | None = None) -> FileOperationResult:
         changed: list[Path] = []
@@ -140,6 +146,7 @@ class FileOperationService:
                 errors.append(str(exc))
         return FileOperationResult(tuple(changed), tuple(errors))
 
+    @session_operation
     def duplicate(self, path: str | Path, copy_label: str = "_copy") -> Path:
         src = Path(path)
         target = unique_destination(src.with_name(f"{src.stem}{copy_label}{src.suffix}"))
@@ -150,6 +157,7 @@ class FileOperationService:
         get_event_bus().publish(FileCreated(path=str(target), is_dir=target.is_dir()))
         return target
 
+    @session_operation
     def delete_permanent(self, paths: list[str | Path],
                          library_root: str | Path | None = None) -> FileOperationResult:
         changed: list[Path] = []
@@ -173,6 +181,7 @@ class FileOperationService:
                 errors.append(str(exc))
         return FileOperationResult(tuple(changed), tuple(errors))
 
+    @session_operation
     def restore_backup(self, backup: str | Path, destination: str | Path,
                        library_root: str | Path | None = None) -> Path:
         """Restore an undo backup and publish the corresponding create event."""
@@ -191,6 +200,7 @@ class FileOperationService:
         get_event_bus().publish(FileCreated(path=str(target), is_dir=is_dir))
         return target
 
+    @session_operation
     def delete_to_trash(self, paths: list[str | Path],
                         library_root: str | Path | None = None) -> FileOperationResult:
         from send2trash import send2trash

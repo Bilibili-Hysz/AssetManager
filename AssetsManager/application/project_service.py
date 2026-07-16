@@ -10,7 +10,7 @@ from urllib.parse import quote
 
 from AssetsManager.application.asset_filters import IMAGE_EXTS, find_first_image
 from AssetsManager.application.asset_index_service import AssetIndexService
-from AssetsManager.application.context import ConnectionProvider
+from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.application.metadata_service import MetadataService
 from AssetsManager.application.tag_service import TagService
 from AssetsManager.core.database import db_write_lock
@@ -167,10 +167,15 @@ class ProjectHome:
 class ProjectService:
     """Build project list responses shared by LAN routes and future desktop views."""
 
-    def __init__(self, connection_provider: ConnectionProvider):
-        self._metadata_svc = MetadataService(connection_provider=connection_provider)
-        self._tag_svc = TagService(connection_provider=connection_provider)
+    def __init__(self, connection_provider: ConnectionProvider,
+                 session: LibrarySession | None = None):
+        self._session = session
+        self._metadata_svc = MetadataService(
+            connection_provider=connection_provider, session=session
+        )
+        self._tag_svc = TagService(connection_provider=connection_provider, session=session)
 
+    @session_operation
     def list_projects(
         self,
         library_root: str | Path,
@@ -278,6 +283,7 @@ class ProjectService:
             except Exception:
                 _log.debug("batch file count cache write failed")
 
+    @session_operation
     def get_home(
         self,
         library_root: str | Path,
@@ -327,6 +333,7 @@ class ProjectService:
                 projects.extend(self._collect_projects(library_root, Path(entry.path), depth + 1, child_branch, depth_config))
         return projects
 
+    @session_operation
     def count_projects(
         self,
         library_root: str | Path,
@@ -383,6 +390,7 @@ class ProjectService:
             _log.debug("library total size query failed")
             return 0
 
+    @session_operation
     def get_project_detail(
         self,
         library_root: str | Path,
@@ -419,6 +427,7 @@ class ProjectService:
             modified=modified,
         )
 
+    @session_operation
     def build_tree(
         self,
         library_root: str | Path,

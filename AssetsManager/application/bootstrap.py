@@ -143,9 +143,9 @@ class ApplicationBootstrap:
         return LibraryScopedServices(
             session=session,
             asset_service=self.container.resolve(AssetService),
-            metadata_service=MetadataService(connection_provider=provider),
-            tag_service=TagService(connection_provider=provider),
-            project_service=ProjectService(connection_provider=provider),
+            metadata_service=MetadataService(connection_provider=provider, session=session),
+            tag_service=TagService(connection_provider=provider, session=session),
+            project_service=ProjectService(connection_provider=provider, session=session),
             thumbnail_service=self.container.resolve(ThumbnailService),
             search_service=self.container.resolve(SearchService),
             file_operation_service=FileOperationService(

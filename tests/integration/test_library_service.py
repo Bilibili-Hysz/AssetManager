@@ -608,6 +608,185 @@ def test_close_session_does_not_close_other_library_connections(tmp_path):
 
     service.close_session(session_b)
 
+
+@pytest.mark.parametrize(
+    ("service_name", "method_name", "arguments", "block_target"),
+    [
+        ("metadata_service", "get_notes", lambda root: (root, root / "asset.txt"), "_repo"),
+        ("tag_service", "list_tags", lambda root: (root,), "_connection_provider"),
+        ("project_service", "count_projects", lambda root: (root,), "_count_projects_recursive"),
+        ("file_operation_service", "create_folder", lambda root: (root,), "create_folder"),
+        ("undo_service", "prepare_delete", lambda root: (str(root / "asset.txt"),), "_make_backup"),
+    ],
+)
+@pytest.mark.parametrize("direct_close", [False, True], ids=["close_session", "session_close"])
+def test_scoped_public_operation_lease_drains_before_close(
+    tmp_path, monkeypatch, service_name, method_name, arguments, block_target, direct_close
+):
+    from AssetsManager.application import ApplicationBootstrap
+
+    root = tmp_path / f"library-{service_name}-{direct_close}"
+    root.mkdir()
+    (root / "asset.txt").write_text("asset", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(root)
+    scoped = bootstrap.for_library(session)
+    target = getattr(scoped, service_name)
+    entered = threading.Event()
+    release = threading.Event()
+    operation_done = threading.Event()
+    close_done = threading.Event()
+
+    if service_name == "metadata_service":
+        original = target._repo
+
+        def blocking_repo(*args, **kwargs):
+            repo = original(*args, **kwargs)
+            original_get_notes = repo.get_notes
+
+            def get_notes(*repo_args, **repo_kwargs):
+                entered.set()
+                assert release.wait(5)
+                return original_get_notes(*repo_args, **repo_kwargs)
+
+            repo.get_notes = get_notes
+            return repo
+
+        monkeypatch.setattr(target, block_target, blocking_repo)
+    elif service_name == "tag_service":
+        original = target._connection_provider
+
+        def blocking_provider(*args, **kwargs):
+            conn = original(*args, **kwargs)
+            entered.set()
+            assert release.wait(5)
+            return conn
+
+        monkeypatch.setattr(target, block_target, blocking_provider)
+    elif service_name == "project_service":
+        original = target._count_projects_recursive
+
+        def blocking_count(*args, **kwargs):
+            entered.set()
+            assert release.wait(5)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(target, block_target, blocking_count)
+    elif service_name == "file_operation_service":
+        import AssetsManager.application.file_operation_service as file_operations_module
+
+        original = file_operations_module.unique_destination
+
+        def blocking_create(*args, **kwargs):
+            entered.set()
+            assert release.wait(5)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(file_operations_module, "unique_destination", blocking_create)
+    else:
+        original = target._make_backup
+
+        def blocking_backup(*args, **kwargs):
+            entered.set()
+            assert release.wait(5)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(target, block_target, blocking_backup)
+
+    operation = threading.Thread(
+        target=lambda: (getattr(target, method_name)(*arguments(root)), operation_done.set())
+    )
+    operation.start()
+    assert entered.wait(5)
+    close = session.close if direct_close else lambda: bootstrap.library_service.close_session(session)
+    closer = threading.Thread(target=lambda: (close(), close_done.set()))
+    closer.start()
+    try:
+        assert not close_done.wait(0.2)
+        assert session.is_closed
+        with pytest.raises(RuntimeError, match="closed"):
+            getattr(target, method_name)(*arguments(root))
+    finally:
+        release.set()
+    assert operation_done.wait(5)
+    assert close_done.wait(5)
+    operation.join(5)
+    closer.join(5)
+
+
+def test_stale_duplicate_close_drains_without_blocking_other_root_open(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    first_root.mkdir()
+    second_root.mkdir()
+    bootstrap = ApplicationBootstrap()
+    first = bootstrap.library_service.open_session(first_root)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def operation():
+        with first.operation():
+            entered.set()
+            assert release.wait(5)
+
+    worker = threading.Thread(target=operation)
+    worker.start()
+    assert entered.wait(5)
+    first_closer = threading.Thread(target=lambda: bootstrap.library_service.close_session(first))
+    first_closer.start()
+    for _ in range(100):
+        if first.is_closed:
+            break
+        threading.Event().wait(0.01)
+    assert first.is_closed
+    stale_closer = threading.Thread(target=lambda: bootstrap.library_service.close_session(first))
+    stale_closer.start()
+    second = bootstrap.library_service.open_session(second_root)
+    assert second.root == second_root.resolve()
+    release.set()
+    worker.join(5)
+    first_closer.join(5)
+    stale_closer.join(5)
+
+
+def test_duplicate_direct_close_waits_for_active_operation(tmp_path):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+    session = LibraryService().open_session(root)
+    entered = threading.Event()
+    release = threading.Event()
+    first_done = threading.Event()
+    duplicate_done = threading.Event()
+
+    def operation():
+        with session.operation():
+            entered.set()
+            assert release.wait(5)
+
+    worker = threading.Thread(target=operation)
+    worker.start()
+    assert entered.wait(5)
+    first = threading.Thread(target=lambda: (session.close(), first_done.set()))
+    first.start()
+    for _ in range(100):
+        if session.is_closed:
+            break
+        threading.Event().wait(0.01)
+    duplicate = threading.Thread(target=lambda: (session.close(), duplicate_done.set()))
+    duplicate.start()
+    assert not first_done.wait(0.2)
+    assert not duplicate_done.wait(0.2)
+    release.set()
+    worker.join(5)
+    first.join(5)
+    duplicate.join(5)
+    assert first_done.is_set()
+    assert duplicate_done.is_set()
+
 def test_library_context_not_in_public_application_exports():
     """LibraryContext should not be in the public application __all__."""
     from AssetsManager import application

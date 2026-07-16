@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from contextlib import contextmanager
+from functools import wraps
 from pathlib import Path
 from sqlite3 import Connection
-from typing import TYPE_CHECKING, Callable
+import threading
+from typing import TYPE_CHECKING, Any, Callable, Iterator, TypeVar
 
 if TYPE_CHECKING:
     from AssetsManager.core.tag_store import TagStore
@@ -12,6 +15,20 @@ if TYPE_CHECKING:
 
 
 ConnectionProvider = Callable[[str | Path], Connection]
+R = TypeVar("R")
+
+
+def session_operation(method: Callable[..., R]) -> Callable[..., R]:
+    """Lease a bound session for the complete public service operation."""
+    @wraps(method)
+    def leased(self: Any, *args: Any, **kwargs: Any) -> R:
+        session = getattr(self, "_session", None) or getattr(self, "session", None)
+        if session is None:
+            return method(self, *args, **kwargs)
+        with session.operation():
+            return method(self, *args, **kwargs)
+
+    return leased
 
 
 @dataclass(frozen=True)
@@ -66,6 +83,14 @@ class LibrarySession:
     _close_callback: Callable[[LibrarySession], None] | None = field(
         default=None, repr=False, compare=False
     )
+    _operation_condition: threading.Condition = field(
+        default_factory=threading.Condition, init=False, repr=False, compare=False
+    )
+    _operation_local: threading.local = field(
+        default_factory=threading.local, init=False, repr=False, compare=False
+    )
+    _active_operations: int = field(default=0, init=False, repr=False, compare=False)
+    _cache_cleared: bool = field(default=False, init=False, repr=False, compare=False)
 
     @classmethod
     def from_context(
@@ -89,20 +114,17 @@ class LibrarySession:
 
     @property
     def db_conn(self) -> Connection:
-        if self._closed:
-            raise RuntimeError("Cannot use a closed LibrarySession")
+        self._ensure_access()
         return self.context.db_conn
 
     @property
     def tag_store(self) -> TagStore:
-        if self._closed:
-            raise RuntimeError("Cannot use a closed LibrarySession")
+        self._ensure_access()
         return self.context.tag_store
 
     @property
     def project_data(self) -> ProjectData:
-        if self._closed:
-            raise RuntimeError("Cannot use a closed LibrarySession")
+        self._ensure_access()
         return self.context.project_data
 
     @property
@@ -118,8 +140,7 @@ class LibrarySession:
         return self.context.thumb_dir_str
 
     def connection_for(self, library_root: str | Path | None = None) -> Connection:
-        if self._closed:
-            raise RuntimeError("Cannot use a closed LibrarySession")
+        self._ensure_access()
         return self.context.connection_for(library_root)
 
     # ── Lifecycle ────────────────────────────────────────────────
@@ -127,7 +148,33 @@ class LibrarySession:
     @property
     def is_closed(self) -> bool:
         """Return whether this session has been closed."""
-        return self._closed
+        with self._operation_condition:
+            return self._closed
+
+    def _ensure_access(self) -> None:
+        with self._operation_condition:
+            if self._closed and getattr(self._operation_local, "depth", 0) == 0:
+                raise RuntimeError("Cannot use a closed LibrarySession")
+
+    @contextmanager
+    def operation(self) -> Iterator[None]:
+        """Keep session resources alive for one complete scoped operation."""
+        depth = getattr(self._operation_local, "depth", 0)
+        with self._operation_condition:
+            if depth == 0:
+                if self._closed:
+                    raise RuntimeError("Cannot use a closed LibrarySession")
+                object.__setattr__(self, "_active_operations", self._active_operations + 1)
+            self._operation_local.depth = depth + 1
+        try:
+            yield
+        finally:
+            with self._operation_condition:
+                remaining_depth = self._operation_local.depth - 1
+                self._operation_local.depth = remaining_depth
+                if remaining_depth == 0:
+                    object.__setattr__(self, "_active_operations", self._active_operations - 1)
+                    self._operation_condition.notify_all()
 
     def close(self) -> None:
         """Close this session and release owned resources.
@@ -136,6 +183,7 @@ class LibrarySession:
         the connection is owned by ``DatabaseManager``.
         """
         if self._closed:
+            self._close_direct()
             return
         if self._close_callback is not None:
             self._close_callback(self)
@@ -143,9 +191,12 @@ class LibrarySession:
         self._close_direct()
 
     def _close_direct(self) -> None:
-        """Mark closed without re-entering an owning lifecycle service."""
-        already_closed = self._closed
-        object.__setattr__(self, "_closed", True)
-        if not already_closed:
-            if hasattr(self.context.tag_store, "clear_cache"):
-                self.context.tag_store.clear_cache()
+        """Reject new operations and drain existing ones without service locks."""
+        with self._operation_condition:
+            object.__setattr__(self, "_closed", True)
+            self._operation_condition.wait_for(lambda: self._active_operations == 0)
+            if self._cache_cleared:
+                return
+            object.__setattr__(self, "_cache_cleared", True)
+        if hasattr(self.context.tag_store, "clear_cache"):
+            self.context.tag_store.clear_cache()
