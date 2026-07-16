@@ -151,6 +151,11 @@ class LibrarySession:
         with self._operation_condition:
             return self._closed
 
+    @property
+    def has_current_thread_operation(self) -> bool:
+        """Return whether the calling thread holds an operation lease."""
+        return getattr(self._operation_local, "depth", 0) > 0
+
     def _ensure_access(self) -> None:
         with self._operation_condition:
             if self._closed and getattr(self._operation_local, "depth", 0) == 0:
@@ -182,6 +187,8 @@ class LibrarySession:
         Idempotent. The shared ``db_conn`` is **not** closed here because
         the connection is owned by ``DatabaseManager``.
         """
+        if self.has_current_thread_operation:
+            raise RuntimeError("Cannot close a LibrarySession from an active operation")
         if self._closed:
             self._close_direct()
             return
@@ -192,7 +199,7 @@ class LibrarySession:
 
     def _close_direct(self) -> None:
         """Reject new operations and drain existing ones without service locks."""
-        if getattr(self._operation_local, "depth", 0) > 0:
+        if self.has_current_thread_operation:
             raise RuntimeError("Cannot close a LibrarySession from an active operation")
         with self._operation_condition:
             object.__setattr__(self, "_closed", True)

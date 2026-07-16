@@ -32,6 +32,7 @@ class LibraryService:
         self._lifecycle = threading.Condition(self._lock)
         self._closing = False
         self._closing_roots: set[str] = set()
+        self._closing_sessions: dict[str, LibrarySession] = {}
         self._current: LibraryContext | None = None
         self._contexts: dict[str, LibraryContext] = {}
         self._sessions: dict[str, LibrarySession] = {}
@@ -141,8 +142,19 @@ class LibraryService:
 
     def close(self) -> None:
         with self._lifecycle:
+            if any(
+                session.has_current_thread_operation
+                for session in (
+                    *self._sessions.values(),
+                    *self._closing_sessions.values(),
+                )
+            ):
+                raise RuntimeError(
+                    "Cannot close LibraryService from an active operation"
+                )
             self._lifecycle.wait_for(lambda: not self._closing)
             self._closing = True
+            self._lifecycle.wait_for(lambda: not self._closing_roots)
             sessions = list(self._sessions.values())
             self._contexts.clear()
             self._sessions.clear()
@@ -167,13 +179,17 @@ class LibraryService:
         Idempotent — closing an already-removed session is a no-op.
         The session itself is also marked as closed.
         """
+        if session.has_current_thread_operation:
+            raise RuntimeError("Cannot close a LibrarySession from an active operation")
         key = str(session.root)
         with self._lifecycle:
+            self._lifecycle.wait_for(lambda: not self._closing)
             if self._sessions.get(key) is not session:
                 current = False
             else:
                 current = True
                 self._closing_roots.add(key)
+                self._closing_sessions[key] = session
                 self._sessions.pop(key)
                 context = self._contexts.pop(key, None)
                 if self._current is context:
@@ -192,6 +208,7 @@ class LibraryService:
             finally:
                 with self._lifecycle:
                     self._closing_roots.discard(key)
+                    self._closing_sessions.pop(key, None)
                     self._lifecycle.notify_all()
 
 

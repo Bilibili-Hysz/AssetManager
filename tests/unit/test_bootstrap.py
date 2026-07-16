@@ -1,4 +1,6 @@
 """Tests for ApplicationBootstrap."""
+import threading
+
 import pytest
 
 from AssetsManager.application.bootstrap import ApplicationBootstrap
@@ -17,6 +19,176 @@ from AssetsManager.application.asset_index_service import AssetIndexService
 
 
 class TestApplicationBootstrap:
+
+    @pytest.mark.parametrize("direct_close", [True, False], ids=["callback", "service"])
+    def test_same_thread_close_rejects_before_lifecycle_mutation(
+        self, tmp_path, direct_close
+    ):
+        root = tmp_path / "library"
+        root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        session = bootstrap.library_service.open_session(root)
+        scoped = bootstrap.for_library(session)
+        scoped.undo_service.record_rename("old", "new")
+        notifications = []
+        bootstrap.library_service.add_session_close_listener(notifications.append)
+        close = (
+            session.close
+            if direct_close
+            else lambda: bootstrap.library_service.close_session(session)
+        )
+
+        with session.operation():
+            with pytest.raises(RuntimeError, match="active operation"):
+                close()
+
+            assert bootstrap.library_service.current_session is session
+            assert bootstrap.library_service.owns_live_session(session)
+            assert not session.is_closed
+            assert session.db_conn.execute("SELECT 1").fetchone() == (1,)
+            assert notifications == []
+            assert bootstrap.for_library(session).undo_service is scoped.undo_service
+            assert scoped.undo_service.can_undo()
+
+    def test_global_close_serializes_with_selective_close_teardown(
+        self, tmp_path, monkeypatch
+    ):
+        root = tmp_path / "library"
+        root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        service = bootstrap.library_service
+        session = service.open_session(root)
+        scoped = bootstrap.for_library(session)
+        scoped.undo_service.record_rename("old", "new")
+        operation_entered = threading.Event()
+        release_operation = threading.Event()
+        operation_exited = threading.Event()
+        selective_done = threading.Event()
+        global_done = threading.Event()
+        notifications = []
+        db_close_calls = []
+        reopened = []
+        operation_errors = []
+        original_db_close = service._db.close
+        service.add_session_close_listener(notifications.append)
+
+        def tracked_db_close():
+            db_close_calls.append("close")
+            original_db_close()
+
+        monkeypatch.setattr(service._db, "close", tracked_db_close)
+
+        def operation():
+            try:
+                with session.operation():
+                    operation_entered.set()
+                    assert release_operation.wait(5)
+                    assert session.db_conn.execute("SELECT 1").fetchone() == (1,)
+            except Exception as exc:
+                operation_errors.append(exc)
+            finally:
+                operation_exited.set()
+
+        worker = threading.Thread(target=operation)
+        selective = threading.Thread(
+            target=lambda: (service.close_session(session), selective_done.set())
+        )
+        global_close = threading.Thread(target=lambda: (service.close(), global_done.set()))
+        reopen = threading.Thread(target=lambda: reopened.append(service.open_session(root)))
+
+        worker.start()
+        assert operation_entered.wait(5)
+        selective.start()
+        for _ in range(100):
+            if session.is_closed:
+                break
+            threading.Event().wait(0.01)
+        assert session.is_closed
+        global_close.start()
+        reopen.start()
+        try:
+            assert not global_done.wait(0.2)
+            assert not reopened
+            assert db_close_calls == []
+            assert notifications == []
+            assert id(session) in bootstrap._undo_services
+            assert session.context.db_conn.execute("SELECT 1").fetchone() == (1,)
+        finally:
+            release_operation.set()
+
+        assert operation_exited.wait(5)
+        assert selective_done.wait(5)
+        assert global_done.wait(5)
+        worker.join(5)
+        selective.join(5)
+        global_close.join(5)
+        reopen.join(5)
+
+        assert notifications.count(session) == 1
+        assert operation_errors == []
+        assert id(session) not in bootstrap._undo_services
+        assert not scoped.undo_service.undo_dir.exists()
+        assert db_close_calls == ["close"]
+        assert len(reopened) == 1
+        assert reopened[0] is not session
+        reopened[0].db_conn.execute("SELECT 1")
+
+    def test_global_close_inside_operation_rejects_before_mutation(
+        self, tmp_path, monkeypatch
+    ):
+        root = tmp_path / "library"
+        root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        service = bootstrap.library_service
+        session = service.open_session(root)
+        scoped = bootstrap.for_library(session)
+        scoped.undo_service.record_rename("old", "new")
+        notifications = []
+        db_close_calls = []
+        service.add_session_close_listener(notifications.append)
+        monkeypatch.setattr(service._db, "close", lambda: db_close_calls.append("close"))
+
+        with session.operation():
+            with pytest.raises(RuntimeError, match="active operation"):
+                service.close()
+
+            assert service.current_session is session
+            assert service.owns_live_session(session)
+            assert not session.is_closed
+            assert session.db_conn.execute("SELECT 1").fetchone() == (1,)
+            assert notifications == []
+            assert db_close_calls == []
+            assert bootstrap.for_library(session).undo_service is scoped.undo_service
+            assert scoped.undo_service.can_undo()
+
+    def test_global_close_inside_draining_operation_rejects_without_deadlock(
+        self, tmp_path
+    ):
+        root = tmp_path / "library"
+        root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        service = bootstrap.library_service
+        session = service.open_session(root)
+        selective_done = threading.Event()
+
+        with session.operation():
+            selective = threading.Thread(
+                target=lambda: (service.close_session(session), selective_done.set())
+            )
+            selective.start()
+            for _ in range(100):
+                if session.is_closed:
+                    break
+                threading.Event().wait(0.01)
+            assert session.is_closed
+
+            with pytest.raises(RuntimeError, match="active operation"):
+                service.close()
+            assert not selective_done.is_set()
+            assert session.context.db_conn.execute("SELECT 1").fetchone() == (1,)
+
+        assert selective_done.wait(5)
+        selective.join(5)
 
     def test_bootstrap_registers_all_services(self):
         bootstrap = ApplicationBootstrap()
