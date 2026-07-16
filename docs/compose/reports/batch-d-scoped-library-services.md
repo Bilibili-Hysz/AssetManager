@@ -21,7 +21,7 @@
 | S5 | Session close rejects new work, drains active operations, closes only the requested library connection, is idempotent, serializes same-root reopen, and rejects same-thread close from inside an active lease instead of deadlocking. `9d5c8e4` also serializes whole-service teardown with per-session teardown, including sessions already removed from the active map. | `AssetsManager/application/context.py`, `AssetsManager/application/library_service.py`, `tests/unit/test_bootstrap.py`, `tests/core/test_database_metadata.py`, `tests/integration/test_library_service.py` |
 | S6 | Covered file-list mutations fail closed without an injected bundle. Every queued FileList mutation captures its originating session, `FileOperationService`, `UndoService`, canonical library root, and resolved paths before dispatch; switching panels cannot redirect paste, trash, permanent delete, duplicate, undo, or redo work to a later library, and a closed originating session refuses the queued mutation before execution. Production presentation code contains no `FileOperationService()` or `UndoService()` constructor. The architecture test ratchets this invariant. | `AssetsManager/application/file_operation_service.py`, `AssetsManager/panels/file_list/_actions.py`, `AssetsManager/panels/file_list/_base.py`, `tests/desktop/test_file_list_shim.py`, `tests/integration/test_file_operation_service.py`, `tests/unit/test_architecture_boundaries.py` |
 | S7 | Session-bound service operations hold leases; thumbnail generations drain before teardown; InfoPanel flushes pending notes before switch; the whole async file-info task holds its originating session lease, preventing post-close repository work. `e8d0a60` tags file-info, preview, and directory-size completions with a generation, session identity, and path so stale work cannot render after navigation or same-root reopen. At `f28b181`, each queued directory-size worker captures its originating session, root, metadata service, path, and generation before dispatch, then leases that session through cache read, filesystem scan, and cache write. | `AssetsManager/application/context.py`, scoped application services, `AssetsManager/panels/file_list/_loader.py`, `AssetsManager/panels/file_list/_model.py`, `AssetsManager/panels/info.py`, `AssetsManager/window.py`, `tests/desktop/test_file_list_model.py`, `tests/desktop/test_thumbnail_loader.py`, `tests/desktop/test_info_async_identity.py`, `tests/unit/test_window_session_switching.py` |
-| S8 | The complete delivery range through `f28b181` retains the prior review for mutation fallbacks, `LibraryContext`/`.current` growth, stale writes, and Phase 3/6/7/8 scope creep. Final verification is pending a controller rerun after the `f28b181` implementation commit; the results below are retained prior evidence and are not claims for the new endpoint. | This report and the evidence below |
+| S8 | The complete delivery range through `f28b181` was reviewed for mutation fallbacks, `LibraryContext`/`.current` growth, stale writes, and Phase 3/6/7/8 scope creep. Fresh final controller verification passed at the `f28b181` implementation endpoint; this report-only commit records that evidence without changing the endpoint or review range. | This report and the evidence below |
 
 ## Changed Lifecycle And Injection Files
 
@@ -75,19 +75,7 @@ Regression coverage:
 
 ## Verification Evidence
 
-Final verification is pending a controller rerun after the implementation endpoint `f28b181e51151d31b6d73bfbd632fc53daf6e742`. The evidence below was recorded before `f28b181` and is preserved as prior evidence only; it must not be read as verification of the final implementation endpoint.
-
-Prior reviewer evidence at `4863b8c`:
-
-```text
-python -m pytest -q
-889 passed
-
-python -m pytest tests/unit/test_architecture_boundaries.py -q
-16 passed
-```
-
-Prior controller rerun before `f28b181`:
+Fresh final controller verification completed after the implementation endpoint `f28b181e51151d31b6d73bfbd632fc53daf6e742`. This report-only commit records the final evidence without changing the implementation endpoint or review range.
 
 ```text
 python -m ruff check . --exclude ".Cython&Noikta"
@@ -98,19 +86,21 @@ python -m pyright
 
 python -m compileall AssetsManager -q
 (no output, exit 0)
-```
 
-Prior controller WebUI rerun before `f28b181`:
+python -m pytest -q
+891 passed in 95.03s
 
-```text
+python -m pytest tests/unit/test_architecture_boundaries.py -q
+16 passed in 10.23s
+
 npm test -- --run
-17 passed test files; 57 passed tests
+17 passed test files; 57 passed tests in 25.20s
 
 npm run typecheck
 tsc --noEmit (exit 0)
 
 npm run build
-1621 modules transformed; built in 9.19s
+1621 modules transformed; built in 16.75s
 ```
 
 ## Review Findings Resolved
