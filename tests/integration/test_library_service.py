@@ -377,6 +377,103 @@ def test_close_session_for_stale_identity_preserves_replacement(tmp_path):
     replacement.db_conn.execute("SELECT 1")
 
 
+def test_close_session_waits_for_inflight_scoped_metadata_operation(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    import time
+
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+
+    root = tmp_path / "library"
+    root.mkdir()
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(root)
+    metadata = bootstrap.for_library(session).metadata_service
+    entered = threading.Event()
+    release = threading.Event()
+    original = metadata._repo
+
+    def paused_repo(library_root):
+        entered.set()
+        assert release.wait(timeout=2)
+        return original(library_root)
+
+    monkeypatch.setattr(metadata, "_repo", paused_repo)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        operation = executor.submit(metadata.set_notes, root, root, "note")
+        assert entered.wait(timeout=2)
+        closing = executor.submit(bootstrap.library_service.close_session, session)
+        time.sleep(0.05)
+        assert not closing.done()
+        release.set()
+        operation.result(timeout=2)
+        closing.result(timeout=2)
+
+    with pytest.raises(RuntimeError, match="closed"):
+        metadata.set_notes(root, root, "later")
+
+
+@pytest.mark.parametrize(
+    ("service_name", "method_name", "arguments", "pause_target"),
+    [
+        ("project_service", "build_tree", lambda root: (root,), "_scan_tree"),
+        ("file_operation_service", "move", lambda root: (root / "source", root / "destination"), "_root_for"),
+    ],
+)
+def test_close_session_waits_for_inflight_scoped_operation(
+    tmp_path, monkeypatch, service_name, method_name, arguments, pause_target
+):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    import time
+
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+
+    root = tmp_path / "library"
+    root.mkdir()
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(root)
+    service = getattr(bootstrap.for_library(session), service_name)
+    if service_name == "file_operation_service":
+        (root / "source").write_text("source", encoding="utf-8")
+    entered = threading.Event()
+    release = threading.Event()
+    original = getattr(service, pause_target)
+
+    def paused(*args, **kwargs):
+        entered.set()
+        assert release.wait(timeout=2)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(service, pause_target, paused)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        operation = executor.submit(getattr(service, method_name), *arguments(root))
+        assert entered.wait(timeout=2)
+        closing = executor.submit(bootstrap.library_service.close_session, session)
+        time.sleep(0.05)
+        assert not closing.done()
+        release.set()
+        operation.result(timeout=2)
+        closing.result(timeout=2)
+
+    with pytest.raises(RuntimeError, match="closed"):
+        getattr(service, method_name)(*arguments(root))
+
+
+def test_closed_scoped_tag_service_rejects_without_writing(tmp_path):
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+
+    root = tmp_path / "library"
+    root.mkdir()
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(root)
+    tags = bootstrap.for_library(session).tag_service
+    bootstrap.library_service.close_session(session)
+
+    with pytest.raises(RuntimeError, match="closed"):
+        tags.add_tag(root, root / "asset.txt", "tag")
+
+
 def test_open_library_replaces_closed_canonical_session_for_cached_context(tmp_path):
     from AssetsManager.application.library_service import LibraryService
 

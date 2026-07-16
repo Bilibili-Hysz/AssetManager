@@ -10,7 +10,7 @@ from urllib.parse import quote
 
 from AssetsManager.application.asset_filters import IMAGE_EXTS, find_first_image
 from AssetsManager.application.asset_index_service import AssetIndexService
-from AssetsManager.application.context import ConnectionProvider
+from AssetsManager.application.context import ConnectionProvider, LibrarySession, SessionBoundOperations
 from AssetsManager.application.metadata_service import MetadataService
 from AssetsManager.application.tag_service import TagService
 from AssetsManager.core.database import db_write_lock
@@ -164,12 +164,15 @@ class ProjectHome:
         }
 
 
-class ProjectService:
+class ProjectService(SessionBoundOperations):
     """Build project list responses shared by LAN routes and future desktop views."""
 
-    def __init__(self, connection_provider: ConnectionProvider):
+    def __init__(self, connection_provider: ConnectionProvider,
+                 session: LibrarySession | None = None):
         self._metadata_svc = MetadataService(connection_provider=connection_provider)
         self._tag_svc = TagService(connection_provider=connection_provider)
+        if session is not None:
+            self._bind_session(session)
 
     def list_projects(
         self,

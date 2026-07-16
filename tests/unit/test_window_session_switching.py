@@ -13,6 +13,9 @@ class _Loader:
     def invalidate_tasks(self):
         events.append("loader.invalidate")
 
+    def wait_for_tasks(self):
+        events.append("loader.wait")
+
 
 class _FileList:
     def __init__(self):
@@ -59,4 +62,4 @@ def test_switch_library_stops_lan_and_invalidates_thumbnails_before_closing(monk
 
     MainWindow._on_switch_library(window, "new-root")
 
-    assert events[:4] == ["lan.stop", "loader.invalidate", "session.close", "session.open"]
+    assert events[:5] == ["lan.stop", "loader.invalidate", "loader.wait", "session.close", "session.open"]

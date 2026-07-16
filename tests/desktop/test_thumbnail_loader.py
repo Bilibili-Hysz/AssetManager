@@ -60,6 +60,16 @@ def test_thumbnail_loader_invalidation_clears_queued_tasks(monkeypatch):
     assert cleared == [True]
 
 
+def test_thumbnail_loader_waits_for_running_tasks(monkeypatch):
+    loader = ThumbnailLoader()
+    waited = []
+    monkeypatch.setattr(loader._pool, "waitForDone", lambda timeout: waited.append(timeout))
+
+    loader.wait_for_tasks(250)
+
+    assert waited == [250]
+
+
 def test_thumbnail_loader_runtime_invalidation_clears_memory_and_failed_paths(monkeypatch):
     loader = ThumbnailLoader()
     img = QImage(1, 1, QImage.Format.Format_RGB32)

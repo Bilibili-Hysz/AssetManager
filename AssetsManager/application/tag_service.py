@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from sqlite3 import Connection
 
-from AssetsManager.application.context import ConnectionProvider
+from AssetsManager.application.context import ConnectionProvider, LibrarySession, SessionBoundOperations
 from AssetsManager.core.tag_library import get_library
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import TagsChanged
@@ -39,15 +39,18 @@ def _get_repo(
     return TagRepository(_resolve_connection(db_conn, library_root, connection_provider))
 
 
-class TagService:
+class TagService(SessionBoundOperations):
     """Read and mutate tags through a single application-layer API.
 
     All tag operations go through TagRepository for DB access and
     TagLibrary for canonical name resolution.
     """
 
-    def __init__(self, connection_provider: ConnectionProvider | None = None):
+    def __init__(self, connection_provider: ConnectionProvider | None = None,
+                 session: LibrarySession | None = None):
         self._connection_provider = connection_provider
+        if session is not None:
+            self._bind_session(session)
 
     def list_tags(self, library_root: str | Path, db_conn: Connection | None = None) -> list[dict]:
         """Return all tags with usage counts."""

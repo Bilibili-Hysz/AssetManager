@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from AssetsManager.application.asset_index_service import AssetIndexService
     from AssetsManager.application.context import LibrarySession
 
+from AssetsManager.application.context import SessionBoundOperations
+
 
 @dataclass(frozen=True)
 class FileOperationResult:
@@ -30,13 +32,15 @@ def _assert_under_root(path: Path, root: str | Path | None) -> None:
         raise ValueError(f'Path {path} is outside library root')
 
 
-class FileOperationService:
+class FileOperationService(SessionBoundOperations):
     """Filesystem operations shared by desktop actions and future APIs."""
 
     def __init__(self, session: LibrarySession | None = None,
                  asset_index_service: AssetIndexService | None = None):
         self.session = session
         self._asset_index_service = asset_index_service
+        if session is not None:
+            self._bind_session(session)
 
     @property
     def _library_root(self) -> Path | None:

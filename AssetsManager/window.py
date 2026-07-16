@@ -391,6 +391,8 @@ class MainWindow(LanSharingMixin, QMainWindow):
             self._lan_server.stop()
         if _alive(self.file_list) and hasattr(self.file_list, '_loader'):
             self.file_list._loader.invalidate_tasks()
+            if hasattr(self.file_list._loader, "wait_for_tasks"):
+                self.file_list._loader.wait_for_tasks()
         if self._library_session is not None:
             old_root = self._library_session.root_str
             self._library_service().close_session(self._library_session)

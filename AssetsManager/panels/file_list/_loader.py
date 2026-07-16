@@ -208,6 +208,13 @@ class ThumbnailLoader(QObject):
         """Backward-compatible name for invalidating the current runtime."""
         self.invalidate_runtime()
 
+    def wait_for_tasks(self, timeout_ms: int = 1000) -> None:
+        """Wait for already-running tasks after their runtime was invalidated."""
+        try:
+            self._pool.waitForDone(timeout_ms)
+        except Exception:
+            pass
+
     def _runtime(self) -> _Runtime:
         return _Runtime(self._runtime_generation, self._cache_dir, self._repo, self._lib_root)
 

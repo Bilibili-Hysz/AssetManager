@@ -1,3 +1,4 @@
+import pytest
 
 
 def test_migrate_path_metadata_moves_file_rows(tmp_path, monkeypatch):
@@ -111,3 +112,25 @@ def test_migrate_path_metadata_moves_directory_children(tmp_path, monkeypatch):
         assert conn.execute("SELECT 1 FROM file_meta WHERE file_path=?", (str(child.resolve()),)).fetchone() is None
     finally:
         database.close_all_dbs()
+
+
+def test_close_library_is_selective_and_idempotent(tmp_path):
+    import sqlite3
+
+    from AssetsManager.core.database import DatabaseManager
+
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    manager = DatabaseManager()
+    first_conn = manager.connection_for(first)
+    second_conn = manager.connection_for(second)
+
+    manager.close_library(first)
+    manager.close_library(first)
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        first_conn.execute("SELECT 1")
+    assert second_conn.execute("SELECT 1").fetchone() == (1,)
+    manager.close_library(second)

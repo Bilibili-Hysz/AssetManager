@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from sqlite3 import Connection
 
-from AssetsManager.application.context import ConnectionProvider
+from AssetsManager.application.context import ConnectionProvider, LibrarySession, SessionBoundOperations
 from AssetsManager.core.project_data import ProjectData
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import NotesChanged, UrlsChanged
@@ -25,15 +25,18 @@ class AssetMetadata:
     urls: tuple[str, ...]
 
 
-class MetadataService:
+class MetadataService(SessionBoundOperations):
     """Read and write per-asset metadata.
 
     Uses MetadataRepository for file_meta operations and
     TagRepository for tag reads.
     """
 
-    def __init__(self, connection_provider: ConnectionProvider | None = None):
+    def __init__(self, connection_provider: ConnectionProvider | None = None,
+                 session: LibrarySession | None = None):
         self._connection_provider = connection_provider
+        if session is not None:
+            self._bind_session(session)
 
     def _connection(self, library_root: str | Path) -> Connection:
         root = str(Path(library_root).resolve())
