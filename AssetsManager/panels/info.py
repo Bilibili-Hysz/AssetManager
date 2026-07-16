@@ -4,6 +4,7 @@ Layout: QSplitter(preview / metadata scroll) + fixed Actions bar at bottom.
 """
 import logging
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QRect, QSize, QPoint, QMimeData, QUrl, QPropertyAnimation, QEasingCurve, QRunnable, QThreadPool, QObject
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QPixmap, QDrag
 
 from AssetsManager.panels.base import PanelContent
+from AssetsManager.application.context import LibrarySession
 from AssetsManager.core.cache import LRUCache
 from AssetsManager.core.constants import IMAGE_EXTS
 from AssetsManager.core.signal_bus import get as bus
@@ -150,20 +152,28 @@ def format_info_size(size):
     return f"{size:.2f} TB"
 
 
+@dataclass(frozen=True)
+class _AsyncRequest:
+    generation: int
+    session: LibrarySession
+    path: str
+
+
 class _FileInfoSignals(QObject):
-    result_ready = Signal(object)
-    preview_ready = Signal(str, object)
+    result_ready = Signal(object, object)
+    preview_ready = Signal(object, object)
 
 
 class _FileInfoTask(QRunnable):
     """Background task for heavy file-info operations."""
 
-    def __init__(self, path, controller, session, library_root,
+    def __init__(self, request, controller, library_root,
                  sidebar_depth, branch_depths, classify_cache):
         super().__init__()
-        self._path = path
+        self._request = request
+        self._path = request.path
         self._controller = controller
-        self._session = session
+        self._session = request.session
         self._library_root = library_root
         self._sidebar_depth = sidebar_depth
         self._branch_depths = branch_depths
@@ -239,10 +249,10 @@ class _FileInfoTask(QRunnable):
             is_project=is_project,
         )
 
-        self.signals.result_ready.emit(file_info)
+        self.signals.result_ready.emit(self._request, file_info)
 
         preview = self._load_preview(path, is_dir)
-        self.signals.preview_ready.emit(path, preview)
+        self.signals.preview_ready.emit(self._request, preview)
 
 
 class InfoPanel(PanelContent):
@@ -264,6 +274,8 @@ class InfoPanel(PanelContent):
         self._branch_depths: dict[str, int] = {}
         self._urls_scanned: set[str] = set()  # avoid re-scanning URL discovery
         self._pending_task: _FileInfoTask | None = None
+        self._async_generation = 0
+        self._async_request: _AsyncRequest | None = None
 
         # ── Splitter ──────────────────────────────────────────
 
@@ -800,20 +812,49 @@ class InfoPanel(PanelContent):
 
     # ── Async directory size ──────────────────────────────────
 
-    def _start_async_dir_size(self, dir_path: str):
+    def _new_async_request(self, path: str) -> _AsyncRequest:
+        scoped = self._scoped_services
+        if scoped is None:
+            raise RuntimeError("InfoPanel scoped services not injected")
+        self._async_generation += 1
+        request = _AsyncRequest(
+            self._async_generation,
+            scoped.session,
+            path,
+        )
+        self._async_request = request
+        return request
+
+    def _invalidate_async_requests(self):
+        self._async_generation += 1
+        self._async_request = None
+        self._pending_task = None
+
+    def _is_current_async_request(self, request: _AsyncRequest) -> bool:
+        scoped = self._scoped_services
+        return (
+            request is self._async_request
+            and request.generation == self._async_generation
+            and scoped is not None
+            and request.session is scoped.session
+            and request.path == self._current_path
+        )
+
+    def _start_async_dir_size(self, request: _AsyncRequest):
         """Compute directory size using DB cache (ProjectData), fall back to scan."""
         from PySide6.QtCore import QRunnable, QThreadPool, Signal, QObject
         class _SizeSignals(QObject):
-            done = Signal(str, object)
+            done = Signal(object, object)
         signals = _SizeSignals()
         signals.done.connect(self._on_async_dir_size_done)
         project = self._project
-        session = self._scoped_services.session if self._scoped_services is not None else None
+        session = request.session
+        dir_path = request.path
         class _SizeTask(QRunnable):
-            def __init__(s):
+            def __init__(task_self):
                 super().__init__()
-                s.setAutoDelete(False)
-            def run(s):
+                task_self.setAutoDelete(False)
+            def run(task_self):
                 sz = 0
                 try:
                     if project and session:
@@ -824,12 +865,12 @@ class InfoPanel(PanelContent):
                         sz = ProjectData.compute_dir_size(dir_path)
                 except Exception:
                     sz = 0
-                signals.done.emit(dir_path, sz)
+                signals.done.emit(request, sz)
         pool = QThreadPool.globalInstance()
         pool.start(_SizeTask())
 
-    def _on_async_dir_size_done(self, dir_path: str, size: int):
-        if dir_path != self._current_path:
+    def _on_async_dir_size_done(self, request: _AsyncRequest, size: int):
+        if not self._is_current_async_request(request):
             return
         self._set_field_text(self._fields["size"], format_info_size(size))
 
@@ -951,7 +992,7 @@ class InfoPanel(PanelContent):
         self._library_root = os.path.normpath(path)
         self._current_path = ""
         self._urls_scanned.clear()
-        self._pending_task = None
+        self._invalidate_async_requests()
         if hasattr(self, '_classify_cache'):
             self._classify_cache.clear()
         scoped = self._scoped_services
@@ -986,7 +1027,7 @@ class InfoPanel(PanelContent):
         self._library_root = services.session.root_str
         self._current_path = ""
         self._urls_scanned.clear()
-        self._pending_task = None
+        self._invalidate_async_requests()
         if hasattr(self, '_classify_cache'):
             self._classify_cache.clear()
         self._store = services.session.tag_store
@@ -1118,6 +1159,7 @@ class InfoPanel(PanelContent):
         self._flush_notes_save()
 
         self._current_path = fi.absoluteFilePath()
+        request = self._new_async_request(self._current_path)
         is_dir = fi.isDir()
 
         # Mark as scanned for URL discovery (async task does the actual work)
@@ -1161,9 +1203,8 @@ class InfoPanel(PanelContent):
             self._classify_cache = LRUCache(500)
 
         task = _FileInfoTask(
-            path=self._current_path,
+            request=request,
             controller=self._controller,
-            session=self._scoped_services.session,
             library_root=self._library_root,
             sidebar_depth=self._sidebar_depth,
             branch_depths=self._branch_depths,
@@ -1174,7 +1215,7 @@ class InfoPanel(PanelContent):
         self._pending_task = task
         QThreadPool.globalInstance().start(task)
 
-    def _render_file_info(self, file_info):
+    def _render_file_info(self, request, file_info):
         """Render FileInfo dataclass to widgets (no preview — handled async)."""
         self._name.setText(file_info.name)
 
@@ -1192,7 +1233,7 @@ class InfoPanel(PanelContent):
 
         # Async dir size
         if file_info.is_dir and os.path.exists(self._current_path):
-            self._start_async_dir_size(self._current_path)
+            self._start_async_dir_size(request)
 
         # Plugin fields
         self._render_plugin_fields(file_info.plugin_fields)
@@ -1208,15 +1249,15 @@ class InfoPanel(PanelContent):
         self._notes.setPlainText(file_info.notes)
         self._notes.blockSignals(False)
 
-    def _on_file_info_ready(self, file_info):
+    def _on_file_info_ready(self, request, file_info):
         """Called on main thread when async file-info load completes."""
-        if file_info.path != self._current_path:
+        if not self._is_current_async_request(request) or file_info.path != request.path:
             return
-        self._render_file_info(file_info)
+        self._render_file_info(request, file_info)
 
-    def _on_preview_ready(self, path, pixmap):
+    def _on_preview_ready(self, request, pixmap):
         """Called on main thread when async preview load completes."""
-        if path != self._current_path:
+        if not self._is_current_async_request(request):
             return
         if pixmap:
             self._preview_pixmap = pixmap
@@ -1265,7 +1306,7 @@ class InfoPanel(PanelContent):
         self._flush_notes_save()
         if self._notes_timer:
             self._notes_timer.stop()
-        self._pending_task = None
+        self._invalidate_async_requests()
         super().shutdown()
 
     def closeEvent(self, event):

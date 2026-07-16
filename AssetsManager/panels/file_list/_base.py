@@ -258,8 +258,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
                 scoped = require_scoped_services(root, consumer="FileListPanel")
             except Exception:
                 raise RuntimeError("FileListPanel scoped services not injected before navigate_to")
-        self.set_scoped_services(scoped)
-        self._loader.orphan_cleanup()
+            self.set_scoped_services(scoped)
+        if Path(scoped.session.root).resolve() != Path(root).resolve():
+            raise RuntimeError("FileListPanel scoped services do not match navigation root")
 
     def refresh_header(self):
         """Re-apply header bar styling (called on bg opacity changes)."""
