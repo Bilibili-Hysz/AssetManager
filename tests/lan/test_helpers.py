@@ -1,5 +1,9 @@
 import logging
-from AssetsManager.lan.routes._helpers import sanitize_filename, get_auth_token
+import builtins
+from pathlib import Path
+from types import SimpleNamespace
+
+from AssetsManager.lan.routes._helpers import find_first_image, sanitize_filename, get_auth_token
 
 
 def test_sanitize_filename_normal():
@@ -29,6 +33,55 @@ def test_sanitize_filename_fallback_to_download():
     assert sanitize_filename("\x00\x01\x02") == "download"
     assert sanitize_filename("/") == "download"
     assert sanitize_filename("\\") == "download"
+
+
+def test_find_first_image_does_not_sort_all_candidates(tmp_path: Path, monkeypatch):
+    expected = tmp_path / "Apple.PNG"
+    expected.write_bytes(b"a")
+    (tmp_path / "zebra.jpg").write_bytes(b"z")
+    (tmp_path / "middle.webp").write_bytes(b"m")
+
+    def fail_sorted(*_args, **_kwargs):
+        raise AssertionError("find_first_image must not sort candidates")
+
+    monkeypatch.setattr(builtins, "sorted", fail_sorted)
+
+    assert find_first_image(tmp_path) == str(expected)
+
+
+def test_find_first_image_uses_case_insensitive_filename_order(tmp_path: Path):
+    (tmp_path / "zebra.jpg").write_bytes(b"z")
+    expected = tmp_path / "Apple.PNG"
+    expected.write_bytes(b"a")
+    (tmp_path / "middle.webp").write_bytes(b"m")
+    (tmp_path / "not-an-image.txt").write_text("ignore")
+
+    assert find_first_image(tmp_path) == str(expected)
+
+
+def test_find_first_image_ignores_nested_images_and_returns_none_without_direct_images(tmp_path: Path):
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (nested / "inside.jpg").write_bytes(b"image")
+
+    assert find_first_image(tmp_path) is None
+
+
+def test_find_first_image_preserves_first_scanned_entry_when_names_normalize_equally(monkeypatch, tmp_path: Path):
+    first = SimpleNamespace(name="Alpha.jpg", path=str(tmp_path / "Alpha.jpg"), is_file=lambda: True)
+    second = SimpleNamespace(name="alpha.JPG", path=str(tmp_path / "alpha.JPG"), is_file=lambda: True)
+    monkeypatch.setattr("AssetsManager.lan.routes._helpers.os.scandir", lambda _path: [first, second])
+
+    assert find_first_image(tmp_path) == first.path
+
+
+def test_find_first_image_returns_none_when_scandir_raises_os_error(monkeypatch, tmp_path: Path):
+    def raise_os_error(_path):
+        raise OSError("unavailable")
+
+    monkeypatch.setattr("AssetsManager.lan.routes._helpers.os.scandir", raise_os_error)
+
+    assert find_first_image(tmp_path) is None
 
 
 # ── get_auth_token deprecation tests ──

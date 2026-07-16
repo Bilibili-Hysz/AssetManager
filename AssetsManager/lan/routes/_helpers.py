@@ -355,12 +355,16 @@ def get_auth_token(request, *, allow_query: bool = True) -> str:
 
 def find_first_image(dir_path: Path) -> str | None:
     try:
-        entries = sorted(
-            [e for e in os.scandir(dir_path)
-             if e.is_file() and Path(e.name).suffix.lower() in IMAGE_EXTS],
-            key=lambda e: e.name.lower(),
-        )
-        return entries[0].path if entries else None
+        best_entry = None
+        best_name = ""
+        for entry in os.scandir(dir_path):
+            if not entry.is_file() or Path(entry.name).suffix.lower() not in IMAGE_EXTS:
+                continue
+            name = entry.name.lower()
+            if best_entry is None or name < best_name:
+                best_entry = entry
+                best_name = name
+        return best_entry.path if best_entry is not None else None
     except OSError:
         return None
 
