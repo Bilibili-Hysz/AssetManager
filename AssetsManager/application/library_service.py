@@ -151,9 +151,10 @@ class LibraryService:
             for session in sessions:
                 try:
                     session._close_direct()
-                    self._notify_session_closed(session)
                 except Exception:
                     pass
+                finally:
+                    self._notify_session_closed(session)
             self._db.close()
         finally:
             with self._lifecycle:
@@ -181,8 +182,10 @@ class LibraryService:
             session._close_direct()
             return
         try:
-            session._close_direct()
-            self._notify_session_closed(session)
+            try:
+                session._close_direct()
+            finally:
+                self._notify_session_closed(session)
         finally:
             try:
                 self._db.close_library(key)

@@ -137,6 +137,70 @@ class TestApplicationBootstrap:
         assert second.undo_service.can_undo()
         assert second.undo_service.undo_dir.exists()
 
+    def test_close_session_cleans_scoped_undo_when_session_cleanup_raises(
+        self, tmp_path, monkeypatch
+    ):
+        first_root = tmp_path / "first"
+        second_root = tmp_path / "second"
+        first_root.mkdir()
+        second_root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        first_session = bootstrap.library_service.open_session(first_root)
+        second_session = bootstrap.library_service.open_session(second_root)
+        first = bootstrap.for_library(first_session)
+        second = bootstrap.for_library(second_session)
+        first.undo_service.record_rename("old-a", "new-a")
+        second.undo_service.record_rename("old-b", "new-b")
+        notifications = []
+        bootstrap.library_service.add_session_close_listener(notifications.append)
+
+        def fail_clear_cache():
+            raise RuntimeError("tag cache cleanup failed")
+
+        monkeypatch.setattr(first_session.context.tag_store, "clear_cache", fail_clear_cache)
+
+        with pytest.raises(RuntimeError, match="tag cache cleanup failed"):
+            bootstrap.library_service.close_session(first_session)
+
+        assert first_session.is_closed
+        assert id(first_session) not in bootstrap._undo_services
+        assert not first.undo_service.undo_dir.exists()
+        assert notifications == [first_session]
+        assert bootstrap.library_service.owns_live_session(second_session)
+        assert bootstrap._undo_services[id(second_session)][1] is second.undo_service
+        assert second.undo_service.can_undo()
+        assert second.undo_service.undo_dir.exists()
+
+    def test_global_close_notifies_once_when_session_cleanup_raises(
+        self, tmp_path, monkeypatch
+    ):
+        first_root = tmp_path / "first"
+        second_root = tmp_path / "second"
+        first_root.mkdir()
+        second_root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        first_session = bootstrap.library_service.open_session(first_root)
+        second_session = bootstrap.library_service.open_session(second_root)
+        first = bootstrap.for_library(first_session)
+        second = bootstrap.for_library(second_session)
+        notifications = []
+        bootstrap.library_service.add_session_close_listener(notifications.append)
+
+        def fail_clear_cache():
+            raise RuntimeError("tag cache cleanup failed")
+
+        monkeypatch.setattr(first_session.context.tag_store, "clear_cache", fail_clear_cache)
+
+        bootstrap.library_service.close()
+
+        assert first_session.is_closed
+        assert second_session.is_closed
+        assert bootstrap._undo_services == {}
+        assert not first.undo_service.undo_dir.exists()
+        assert not second.undo_service.undo_dir.exists()
+        assert notifications.count(first_session) == 1
+        assert notifications.count(second_session) == 1
+
     def test_reopening_same_root_gets_fresh_undo_service(self, tmp_path):
         root = tmp_path / "library"
         root.mkdir()
