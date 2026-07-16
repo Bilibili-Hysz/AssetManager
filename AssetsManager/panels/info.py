@@ -808,6 +808,7 @@ class InfoPanel(PanelContent):
         signals = _SizeSignals()
         signals.done.connect(self._on_async_dir_size_done)
         project = self._project
+        session = self._scoped_services.session if self._scoped_services is not None else None
         class _SizeTask(QRunnable):
             def __init__(s):
                 super().__init__()
@@ -815,8 +816,9 @@ class InfoPanel(PanelContent):
             def run(s):
                 sz = 0
                 try:
-                    if project:
-                        sz, _ = project.get_dir_size(dir_path)
+                    if project and session:
+                        with session.operation():
+                            sz, _ = project.get_dir_size(dir_path)
                     else:
                         from AssetsManager.core.project_data import ProjectData
                         sz = ProjectData.compute_dir_size(dir_path)
@@ -952,7 +954,8 @@ class InfoPanel(PanelContent):
         self._pending_task = None
         if hasattr(self, '_classify_cache'):
             self._classify_cache.clear()
-        if self._scoped_services is not None:
+        scoped = self._scoped_services
+        if scoped is not None and scoped.session.root_str == self._library_root:
             session = self._scoped_services.session
             self._store = session.tag_store
             self._project = session.project_data

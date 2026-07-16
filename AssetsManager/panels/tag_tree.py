@@ -186,9 +186,10 @@ class TagTreePanel(PanelContent):
         old_root = self._library_root
         self._library_root = root
         self._current_path = root
-        if self._scoped_services is not None:
-            self._store = self._scoped_services.session.tag_store
-            self._controller = TagTreeController(root, tag_svc=self._scoped_services.tag_service)
+        scoped = self._scoped_services
+        if scoped is not None and scoped.session.root_str == root:
+            self._store = scoped.session.tag_store
+            self._controller = TagTreeController(root, tag_svc=scoped.tag_service)
         else:
             self._store = None
             self._controller = None
