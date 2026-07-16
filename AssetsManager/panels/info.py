@@ -955,7 +955,11 @@ class InfoPanel(PanelContent):
         if hasattr(self, '_classify_cache'):
             self._classify_cache.clear()
         scoped = self._scoped_services
-        if scoped is not None and scoped.session.root_str == self._library_root:
+        if (
+            scoped is not None
+            and not scoped.session.is_closed
+            and scoped.session.root_str == self._library_root
+        ):
             session = self._scoped_services.session
             self._store = session.tag_store
             self._project = session.project_data
