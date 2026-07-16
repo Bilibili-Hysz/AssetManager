@@ -213,11 +213,6 @@ def test_lan_does_not_depend_on_desktop_presentation() -> None:
 def test_presentation_db_store_access_stays_in_documented_fallbacks() -> None:
     forbidden_calls = {"get_lib_db", "get_manager", "get_store", "get_project_data", "get_library_dir", "close_all_dbs"}
     allowed_calls = {
-        ("AssetsManager.panels.file_list._base", "_configure_library_runtime", "get_manager"),
-        ("AssetsManager.panels.file_list._base", "_get_tag_store", "get_store"),
-        ("AssetsManager.panels.info", "_resolve_project", "get_project_data"),
-        ("AssetsManager.panels.info", "_resolve_store", "get_store"),
-        ("AssetsManager.panels.tag_tree", "_resolve_tag_store", "get_store"),
         ("AssetsManager.dialogs.sidebar_favorites", "set_library_root", "get_library_dir"),
         ("AssetsManager.dialogs.sidebar_recent", "set_library_root", "get_library_dir"),
     }
@@ -227,11 +222,7 @@ def test_presentation_db_store_access_stays_in_documented_fallbacks() -> None:
         "AssetsManager.core.project_data",
     }
     allowed_imports = {
-        ("AssetsManager.panels.info", "AssetsManager.core.tag_store"),
         ("AssetsManager.panels.info", "AssetsManager.core.project_data"),
-        ("AssetsManager.panels.file_list._base", "AssetsManager.core.tag_store"),
-        ("AssetsManager.panels.file_list._base", "AssetsManager.core.database"),
-        ("AssetsManager.panels.tag_tree", "AssetsManager.core.tag_store"),
         ("AssetsManager.dialogs.sidebar_recent", "AssetsManager.core.database"),
         ("AssetsManager.dialogs.sidebar_favorites", "AssetsManager.core.database"),
     }
@@ -254,6 +245,18 @@ def test_presentation_db_store_access_stays_in_documented_fallbacks() -> None:
                     continue
                 violations.append(f"{module} imports {imported}")
     assert not violations, "Presentation DB/store access outside fallback allowlist:\n" + "\n".join(violations)
+
+
+def test_presentation_does_not_construct_unscoped_mutation_services() -> None:
+    forbidden_calls = {"FileOperationService", "UndoService"}
+    violations: list[str] = []
+    for package in ("dialogs", "panels", "widgets"):
+        for path in _python_files(package):
+            module = _module_name(path)
+            for scope, call in sorted(_direct_calls(path)):
+                if call in forbidden_calls:
+                    violations.append(f"{module}.{scope} constructs {call}()")
+    assert not violations, "Unscoped mutation service construction in presentation:\n" + "\n".join(violations)
 
 
 def test_open_library_calls_stay_in_documented_boundaries() -> None:
