@@ -6,7 +6,7 @@
 - Requested initial implementation HEAD: `9f376fc` (`fix: drain scoped work before library teardown`)
 - Final implementation endpoint: `4863b8c22d7b17238ef57a589eb82dffee6692a6` (`Fix scoped duplicate lifecycle`)
 - Implementation review range: `efe0c42..4863b8c`. This commit span contains the intervening report commits `2091669`, `60b864b`, and `0fa0c99`, so it is a delivery-review range rather than an implementation-only diff.
-- Exact topology is linear: implementation fixes through `8557007`, then the architecture/report commit `2091669`, lifecycle atomicity fix `9d5c8e4`, async identity/single-injection fix `e8d0a60`, report-only commits `60b864b` and `0fa0c99`, and duplicate lifecycle/root-containment fix `4863b8c` at `HEAD`.
+- Exact topology is linear: implementation fixes through `8557007`, then the architecture/report commit `2091669`, lifecycle atomicity fix `9d5c8e4`, async identity/single-injection fix `e8d0a60`, report-only commits `60b864b` and `0fa0c99`, and duplicate lifecycle/root-containment fix `4863b8c` at the implementation endpoint. Later commits are report-only evidence updates.
 - Complete delivery range: `efe0c42..4863b8c`, including the prior report commits and all later implementation fixes.
 - The approved anchor documents `docs/compose/specs/2026-07-15-batch-d-scoped-library-services-design.md` and `docs/compose/plans/2026-07-15-batch-d-scoped-library-services.md` were untracked in the source worktree and are absent from this isolated branch. This report maps the approved S1-S8 contract without claiming those anchors are tracked here.
 
@@ -21,7 +21,7 @@
 | S5 | Session close rejects new work, drains active operations, closes only the requested library connection, is idempotent, serializes same-root reopen, and rejects same-thread close from inside an active lease instead of deadlocking. `9d5c8e4` also serializes whole-service teardown with per-session teardown, including sessions already removed from the active map. | `AssetsManager/application/context.py`, `AssetsManager/application/library_service.py`, `tests/unit/test_bootstrap.py`, `tests/core/test_database_metadata.py`, `tests/integration/test_library_service.py` |
 | S6 | Covered file-list mutations fail closed without an injected bundle. Duplicate captures the scoped `FileOperationService` when queued, so switching panels cannot redirect work to a later library; invoking that captured service after its session closes refuses before mutation. Production presentation code contains no `FileOperationService()` or `UndoService()` constructor. The architecture test ratchets this invariant. | `AssetsManager/application/file_operation_service.py`, `AssetsManager/panels/file_list/_actions.py`, `AssetsManager/panels/file_list/_base.py`, `tests/desktop/test_file_list_shim.py`, `tests/integration/test_file_operation_service.py`, `tests/unit/test_architecture_boundaries.py` |
 | S7 | Session-bound service operations hold leases; thumbnail generations drain before teardown; InfoPanel flushes pending notes before switch; the whole async file-info task holds its originating session lease, preventing post-close repository work. `e8d0a60` tags file-info, preview, and directory-size completions with a generation, session identity, and path so stale work cannot render after navigation or same-root reopen. | `AssetsManager/application/context.py`, scoped application services, `AssetsManager/panels/file_list/_loader.py`, `AssetsManager/panels/info.py`, `AssetsManager/window.py`, `tests/desktop/test_thumbnail_loader.py`, `tests/desktop/test_info_async_identity.py`, `tests/unit/test_window_session_switching.py` |
-| S8 | The complete delivery range was reviewed for mutation fallbacks, `LibraryContext`/`.current` growth, stale writes, and Phase 3/6/7/8 scope creep. Reviewer evidence at `4863b8c` records fresh full Python and architecture results; Ruff, Pyright, compilation, and retained WebUI results remain latest-prior evidence pending a controller rerun. | This report and the evidence below |
+| S8 | The complete delivery range was reviewed for mutation fallbacks, `LibraryContext`/`.current` growth, stale writes, and Phase 3/6/7/8 scope creep. Reviewer evidence at `4863b8c` records fresh full Python and architecture results; a fresh controller rerun records passing Ruff, Pyright, compilation, and WebUI checks. | This report and the evidence below |
 
 ## Changed Lifecycle And Injection Files
 
@@ -74,7 +74,7 @@ Regression coverage:
 
 ## Verification Evidence
 
-Reviewer verification completed against the final implementation endpoint `4863b8c22d7b17238ef57a589eb82dffee6692a6` for the full Python suite and architecture boundary test. The remaining figures below are latest-prior controller evidence from `e8d0a60a1c364f21e7af76450c0809d46bc23ec7`; they are not claims of a controller rerun at `4863b8c`.
+Reviewer verification completed against the final implementation endpoint `4863b8c22d7b17238ef57a589eb82dffee6692a6` for the full Python suite and architecture boundary test. A fresh controller rerun completed the remaining lint, type, compilation, and WebUI checks. Report-only commits after `4863b8c` update this evidence without changing the implementation endpoint or review range.
 
 Fresh reviewer evidence at `4863b8c`:
 
@@ -86,7 +86,7 @@ python -m pytest tests/unit/test_architecture_boundaries.py -q
 16 passed
 ```
 
-Latest-prior controller evidence at `e8d0a60`:
+Fresh controller rerun:
 
 ```text
 python -m ruff check . --exclude ".Cython&Noikta"
@@ -99,7 +99,7 @@ python -m compileall AssetsManager -q
 (no output, exit 0)
 ```
 
-Latest-prior WebUI evidence at `e8d0a60`:
+Fresh controller WebUI rerun:
 
 ```text
 npm test -- --run
@@ -109,7 +109,7 @@ npm run typecheck
 tsc --noEmit (exit 0)
 
 npm run build
-1621 modules transformed; built in 16.46s
+1621 modules transformed; built in 9.19s
 ```
 
 ## Review Findings Resolved
