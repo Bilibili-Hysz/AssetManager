@@ -8,7 +8,7 @@
 - Implementation review range: `efe0c42..5ea7170`. This commit span contains the intervening report commits `2091669`, `60b864b`, `0fa0c99`, `abee171`, `1c2d5c1`, `235506f`, and `b600c38`, so it is a delivery-review range rather than an implementation-only diff.
 - Exact topology is linear: implementation fixes through `8557007`, then the architecture/report commit `2091669`, lifecycle atomicity fix `9d5c8e4`, async identity/single-injection fix `e8d0a60`, report-only commits `60b864b` and `0fa0c99`, duplicate lifecycle/root-containment fix `4863b8c`, report-only evidence updates `abee171` and `1c2d5c1`, FileList worker race fix `f28b181`, report-only updates `235506f` and `b600c38`, scoped async session validation fix `5ea7170` at the implementation endpoint, and report-only commits `f62b801` plus this commit after that endpoint.
 - Complete delivery range: `efe0c42..5ea7170` for implementation and its preceding report commits; `f62b801` plus this commit record endpoint evidence after implementation.
-- The approved anchor documents `docs/compose/specs/2026-07-15-batch-d-scoped-library-services-design.md` and `docs/compose/plans/2026-07-15-batch-d-scoped-library-services.md` were untracked in the source worktree and are absent from this isolated branch. This report maps the approved S1-S8 contract without claiming those anchors are tracked here.
+- The approved anchor documents `docs/compose/specs/2026-07-15-batch-d-scoped-library-services-design.md` and `docs/compose/plans/2026-07-15-batch-d-scoped-library-services.md` were outside the isolated implementation branch and its delivery range; the integrated `master` delivery tracks them at those paths.
 
 ## S1-S8 Mapping
 

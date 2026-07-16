@@ -15,7 +15,7 @@ implementation_range: 8d7a566..e360fe8
 
 This report was audited against the isolated `batch-c-lan-webui-reliability` worktree, its files, and every branch-local commit after base `8d7a566`. The exact implementation range is `8d7a566..e360fe8`, and `e360fe8` is the final implementation delivery endpoint. This report update may be committed after that endpoint; it is documentation-only and does not redefine the implementation endpoint. Delivery status is branch-local: it means the implementation and gates below pass on this branch. It does not claim integration to `master`, a packaged-application smoke test, or deployment.
 
-The approved spec and plan are currently untracked anchor documents outside this branch at the front-matter paths. They are not independently present in this branch or included in the delivery range, so integration must include or reconcile those exact anchor documents rather than assuming this branch carries them. Some foundational contracts described by the spec, including public SPA asset routing, the normal `lan_token` browser session, scoped share-cookie helpers, batch JSON/Blob transport, and backend-shaped detail/share types, existed at the base. Batch C retained their regression coverage and hardened the failure modes listed below rather than reimplementing unchanged baseline code.
+The approved spec and plan at the front-matter paths were outside the isolated implementation branch and are not part of the implementation range, but they are tracked with the integrated delivery on `master`. Some foundational contracts described by the spec, including public SPA asset routing, the normal `lan_token` browser session, scoped share-cookie helpers, batch JSON/Blob transport, and backend-shaped detail/share types, existed at the base. Batch C retained their regression coverage and hardened the failure modes listed below rather than reimplementing unchanged baseline code.
 
 ## Delivered Behavior
 
@@ -93,7 +93,7 @@ No manual browser end-to-end pass was run. No packaged-application smoke test, d
 - `npm ci` reports five known dependency vulnerabilities: three moderate, one high, and one critical. This batch did not run a potentially breaking `npm audit fix --force` or otherwise remediate them.
 - WebSocket heartbeat behavior is comprehensively unit/integration tested, but real proxy, sleep/wake, packet-loss, and many-client timing behavior still needs deployment-level observation.
 - After the last ordinary client disconnect, the heartbeat task can remain asleep until the next 30-second cycle before exiting. It retains no client or PONG waiter, does not block requests, and `close_all()` cancels it promptly during server shutdown, so this is a non-blocking cleanup delay rather than a shutdown blocker.
-- The delivery range does not contain the approved spec/plan files themselves. They are currently untracked in the anchor workspace, and downstream integration must include or reconcile those exact documents at the referenced paths.
+- The implementation range does not contain the approved spec/plan files themselves; the integrated `master` delivery tracks them at the referenced paths.
 - Legacy fallback remains intentionally below SPA feature parity and receives only isolated-LAN and essential-interaction safeguards.
 
 ## Lessons
