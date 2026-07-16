@@ -17,7 +17,9 @@ def _lookup_scoped_services(library_root: str | Path):
         bootstrap = app.property("bootstrap")
         if bootstrap is None:
             return None, "missing_bootstrap"
-        session = bootstrap.library_service.open_session(library_root)
+        session = bootstrap.library_service.current_session
+        if session is None or session.root != Path(library_root).resolve():
+            return None, "session_not_open"
         return bootstrap.for_library(session), None
     except Exception:
         _log.debug("scoped service lookup failed for %s", library_root, exc_info=True)

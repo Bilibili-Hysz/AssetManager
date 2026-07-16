@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from sqlite3 import Connection
 
-from AssetsManager.application.context import ConnectionProvider, LibrarySession, SessionBoundOperations
+from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.core.tag_library import get_library
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import TagsChanged
@@ -39,7 +39,7 @@ def _get_repo(
     return TagRepository(_resolve_connection(db_conn, library_root, connection_provider))
 
 
-class TagService(SessionBoundOperations):
+class TagService:
     """Read and mutate tags through a single application-layer API.
 
     All tag operations go through TagRepository for DB access and
@@ -49,9 +49,9 @@ class TagService(SessionBoundOperations):
     def __init__(self, connection_provider: ConnectionProvider | None = None,
                  session: LibrarySession | None = None):
         self._connection_provider = connection_provider
-        if session is not None:
-            self._bind_session(session)
+        self._session = session
 
+    @session_operation
     def list_tags(self, library_root: str | Path, db_conn: Connection | None = None) -> list[dict]:
         """Return all tags with usage counts."""
         conn = _resolve_connection(db_conn, library_root, self._connection_provider)
@@ -60,12 +60,14 @@ class TagService(SessionBoundOperations):
         ).fetchall()
         return [{"name": r[0], "count": r[1]} for r in rows]
 
+    @session_operation
     def get_tags(self, library_root: str | Path, path: str | Path,
                  db_conn: Connection | None = None) -> list[str]:
         """Return tags for a file."""
         repo = _get_repo(db_conn, library_root, self._connection_provider)
         return repo.get_tags(str(Path(path).resolve()))
 
+    @session_operation
     def add_tag(self, library_root: str | Path, path: str | Path, tag: str,
                 db_conn: Connection | None = None) -> None:
         """Add a tag to a file, resolving to canonical form."""
@@ -80,6 +82,7 @@ class TagService(SessionBoundOperations):
         repo.add_tag(key, canonical)
         get_event_bus().publish(TagsChanged(file_path=key, new_tags=tuple(repo.get_tags(key))))
 
+    @session_operation
     def remove_tag(self, library_root: str | Path, path: str | Path, tag: str,
                    db_conn: Connection | None = None) -> None:
         """Remove a tag from a file (case-insensitive match)."""
@@ -91,6 +94,7 @@ class TagService(SessionBoundOperations):
             repo.remove_tag(key, match)
             get_event_bus().publish(TagsChanged(file_path=key, new_tags=tuple(repo.get_tags(key))))
 
+    @session_operation
     def rename_tag(self, library_root: str | Path, old_name: str, new_name: str,
                    db_conn: Connection | None = None) -> None:
         """Rename a tag across all files."""
@@ -98,6 +102,7 @@ class TagService(SessionBoundOperations):
         repo.rename_tag(old_name, new_name)
         get_event_bus().publish(TagsChanged())
 
+    @session_operation
     def delete_tag(self, library_root: str | Path, tag_name: str,
                    db_conn: Connection | None = None) -> None:
         """Delete a tag from all files."""
@@ -105,18 +110,21 @@ class TagService(SessionBoundOperations):
         repo.delete_tag(tag_name)
         get_event_bus().publish(TagsChanged())
 
+    @session_operation
     def get_tags_for_tree(self, library_root: str | Path, dir_path: str | Path,
                           db_conn: Connection | None = None) -> list[str]:
         """Return all distinct tags for a directory and its descendants."""
         repo = _get_repo(db_conn, library_root, self._connection_provider)
         return repo.get_tags_for_tree(str(Path(dir_path).resolve()))
 
+    @session_operation
     def get_all_tags(self, library_root: str | Path,
                      db_conn: Connection | None = None) -> list[str]:
         """Return all distinct tags in the library."""
         repo = _get_repo(db_conn, library_root, self._connection_provider)
         return repo.get_all_tags()
 
+    @session_operation
     def get_files_by_tag(self, library_root: str | Path, tag: str,
                          db_conn: Connection | None = None) -> set[str]:
         """Return all file paths that have a given tag."""
@@ -125,12 +133,14 @@ class TagService(SessionBoundOperations):
 
     # ── Tag metadata (color, icon, category) ─────────────────────
 
+    @session_operation
     def get_tags_with_metadata(self, library_root: str | Path,
                                db_conn: Connection | None = None) -> list[dict]:
         """Return all tags with their metadata (color, icon, category)."""
         repo = _get_repo(db_conn, library_root, self._connection_provider)
         return repo.get_tags_with_metadata()
 
+    @session_operation
     def set_tag_metadata(self, library_root: str | Path, tag: str,
                          color: str = "", icon: str = "", category: str = "",
                          db_conn: Connection | None = None) -> None:
@@ -138,12 +148,14 @@ class TagService(SessionBoundOperations):
         repo = _get_repo(db_conn, library_root, self._connection_provider)
         repo.set_tag_metadata(tag, color=color, icon=icon, category=category)
 
+    @session_operation
     def get_tag_metadata(self, library_root: str | Path, tag: str,
                          db_conn: Connection | None = None) -> dict[str, str] | None:
         """Return metadata for a tag, or None if not set."""
         repo = _get_repo(db_conn, library_root, self._connection_provider)
         return repo.get_tag_metadata(tag)
 
+    @session_operation
     def save(self, library_root: str | Path | None = None,
              db_conn: Connection | None = None) -> None:
         """Persist pending changes. No-op for TagService (auto-commit).

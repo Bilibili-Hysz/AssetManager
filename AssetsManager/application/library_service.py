@@ -5,6 +5,7 @@ import logging
 import threading
 import warnings
 from pathlib import Path
+from typing import Callable
 
 from AssetsManager.application.context import LibraryContext, LibrarySession
 from AssetsManager.core.database import DatabaseManager
@@ -28,11 +29,30 @@ class LibraryService:
     def __init__(self, db: DatabaseManager | None = None):
         self._db = db or DatabaseManager()
         self._lock = threading.Lock()
+        self._lifecycle = threading.Condition(self._lock)
+        self._closing = False
+        self._closing_roots: set[str] = set()
+        self._closing_sessions: dict[str, LibrarySession] = {}
         self._current: LibraryContext | None = None
         self._contexts: dict[str, LibraryContext] = {}
         self._sessions: dict[str, LibrarySession] = {}
-        self._closing: set[str] = set()
-        self._lifecycle = threading.Condition(self._lock)
+        self._session_close_listeners: list[Callable[[LibrarySession], None]] = []
+
+    def add_session_close_listener(
+        self, listener: Callable[[LibrarySession], None]
+    ) -> None:
+        """Notify an owner when a canonical session is closed."""
+        with self._lock:
+            self._session_close_listeners.append(listener)
+
+    def _notify_session_closed(self, session: LibrarySession) -> None:
+        with self._lock:
+            listeners = tuple(self._session_close_listeners)
+        for listener in listeners:
+            try:
+                listener(session)
+            except Exception:
+                _log.exception("Library session close listener failed")
 
     def open_library(self, root_path: str | Path) -> LibraryContext:
         """Open or reuse a library and return its raw context.
@@ -57,13 +77,14 @@ class LibraryService:
         root = Path(root_path).resolve()
         key = str(root)
         with self._lifecycle:
-            while key in self._closing:
-                self._lifecycle.wait()
+            self._lifecycle.wait_for(
+                lambda: not self._closing and key not in self._closing_roots
+            )
             cached = self._contexts.get(key)
             if cached is not None:
                 session = self._sessions.get(key)
                 if session is None or session.is_closed:
-                    session = LibrarySession.from_context(cached)
+                    session = LibrarySession.from_context(cached, self.close_session)
                     self._sessions[key] = session
                 self._current = cached
                 return cached, session
@@ -79,7 +100,7 @@ class LibraryService:
                 tag_store=TagStore(key, db_conn=conn),
                 project_data=ProjectData(key, db_conn=conn),
             )
-            session = LibrarySession.from_context(context)
+            session = LibrarySession.from_context(context, self.close_session)
             self._contexts[key] = context
             self._sessions[key] = session
             self._current = context
@@ -113,18 +134,44 @@ class LibraryService:
                 return None
             return self._sessions.get(str(self._current.root))
 
-    def close(self) -> None:
+    def owns_live_session(self, session: LibrarySession) -> bool:
+        """Return whether session is this service's exact live canonical session."""
+        key = str(session.root)
         with self._lock:
+            return self._sessions.get(key) is session and not session.is_closed
+
+    def close(self) -> None:
+        with self._lifecycle:
+            if any(
+                session.has_current_thread_operation
+                for session in (
+                    *self._sessions.values(),
+                    *self._closing_sessions.values(),
+                )
+            ):
+                raise RuntimeError(
+                    "Cannot close LibraryService from an active operation"
+                )
+            self._lifecycle.wait_for(lambda: not self._closing)
+            self._closing = True
+            self._lifecycle.wait_for(lambda: not self._closing_roots)
             sessions = list(self._sessions.values())
             self._contexts.clear()
             self._sessions.clear()
             self._current = None
-        for session in sessions:
-            try:
-                session.close()
-            except Exception:
-                pass
-        self._db.close()
+        try:
+            for session in sessions:
+                try:
+                    session._close_direct()
+                except Exception:
+                    pass
+                finally:
+                    self._notify_session_closed(session)
+            self._db.close()
+        finally:
+            with self._lifecycle:
+                self._closing = False
+                self._lifecycle.notify_all()
 
     def close_session(self, session: LibrarySession) -> None:
         """Remove a session's context from the service cache.
@@ -132,24 +179,36 @@ class LibraryService:
         Idempotent — closing an already-removed session is a no-op.
         The session itself is also marked as closed.
         """
+        if session.has_current_thread_operation:
+            raise RuntimeError("Cannot close a LibrarySession from an active operation")
         key = str(session.root)
         with self._lifecycle:
+            self._lifecycle.wait_for(lambda: not self._closing)
             if self._sessions.get(key) is not session:
-                session.close()
-                return
-            self._closing.add(key)
-            self._sessions.pop(key)
-            context = self._contexts.pop(key, None)
-            if self._current is context:
-                self._current = None
+                current = False
+            else:
+                current = True
+                self._closing_roots.add(key)
+                self._closing_sessions[key] = session
+                self._sessions.pop(key)
+                context = self._contexts.pop(key, None)
+                if self._current is context:
+                    self._current = None
+        if not current:
+            session._close_direct()
+            return
         try:
-            session.close()
+            try:
+                session._close_direct()
+            finally:
+                self._notify_session_closed(session)
         finally:
             try:
                 self._db.close_library(key)
             finally:
                 with self._lifecycle:
-                    self._closing.remove(key)
+                    self._closing_roots.discard(key)
+                    self._closing_sessions.pop(key, None)
                     self._lifecycle.notify_all()
 
 

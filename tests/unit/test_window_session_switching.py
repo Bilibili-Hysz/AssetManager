@@ -14,8 +14,9 @@ class _Loader:
         events.append("loader.invalidate")
         return 7
 
-    def wait_for_tasks(self, generation):
-        events.append(f"loader.wait:{generation}")
+    def wait_for_runtime(self, generation):
+        assert generation == 7
+        events.append("loader.wait")
 
 
 class _FileList:
@@ -24,6 +25,18 @@ class _FileList:
 
     def navigate_to(self, path, set_root=False):
         events.append("file-list.navigate")
+
+
+class _Timer:
+    def stop(self):
+        events.append("notes.stop")
+
+
+class _Info:
+    _notes_timer = _Timer()
+
+    def _flush_notes_save(self):
+        events.append("notes.flush")
 
 
 class _Session:
@@ -40,6 +53,7 @@ class _Window:
         self._lan_server = _Server()
         self._library_session = _Session()
         self.file_list = _FileList()
+        self.info = _Info()
         self.sidebar = None
 
     def _library_service(self):
@@ -63,4 +77,7 @@ def test_switch_library_stops_lan_and_invalidates_thumbnails_before_closing(monk
 
     MainWindow._on_switch_library(window, "new-root")
 
-    assert events[:5] == ["lan.stop", "loader.invalidate", "loader.wait:7", "session.close", "session.open"]
+    assert events[:7] == [
+        "lan.stop", "notes.flush", "notes.stop", "loader.invalidate", "loader.wait",
+        "session.close", "session.open",
+    ]

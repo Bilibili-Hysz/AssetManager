@@ -81,10 +81,6 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._model.dir_size_ready.connect(self._on_dir_size_ready)
         self._model.dir_size_ready.connect(self._on_detail_dir_size_ready)
         self._loader = ThumbnailLoader(size=self._thumb_size)
-        app = QApplication.instance()
-        if app:
-            app.aboutToQuit.connect(self._cleanup_undo_dir)
-
         # ── Panel header ─────────────────────────────────────────
 
         t = themes.get()
@@ -220,7 +216,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         """Bind library-scoped services resolved by MainWindow."""
         self._scoped_services = services
         self._root = services.session.root
-        self._model.set_library_root(services.session.root_str)
+        self._model.set_library_root(services.session.root_str, services.session)
         self._model.set_metadata_service(services.metadata_service)
         self._loader.set_cache_db(services.session.db_conn)
         self._loader.set_cache_dir(services.session.thumb_dir_str)
@@ -237,8 +233,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         scoped = self._scoped_services
         if scoped is not None:
             return scoped.file_operation_service
-        from AssetsManager.application import FileOperationService
-        return FileOperationService()
+        raise RuntimeError("FileListPanel scoped services not injected")
 
     def _get_tag_service(self):
         if not self._lib_root:
@@ -252,19 +247,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         scoped = self._scoped_services
         if scoped is not None:
             return scoped.session.tag_store
-        # Lightweight fallback for tests / bootstrap-free contexts
-        target = root or self._lib_root or str(self._current)
-        if not target:
-            return None
-        from AssetsManager.core.database import DatabaseManager
-        from AssetsManager.core.singleton import ThreadSafeSingleton
-        from AssetsManager.core.tag_store import TagStore
-        mgr = ThreadSafeSingleton.get(DatabaseManager)
-        try:
-            conn = mgr.connection_for(target)
-            return TagStore(str(Path(target).resolve()), db_conn=conn)
-        except Exception:
-            return None
+        return None
 
     def _configure_library_runtime(self, root: str):
         """Bind file-list runtime helpers to a library root."""
@@ -275,8 +258,10 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
                 scoped = require_scoped_services(root, consumer="FileListPanel")
             except Exception:
                 raise RuntimeError("FileListPanel scoped services not injected before navigate_to")
-        self.set_scoped_services(scoped)
-        self._loader.orphan_cleanup()
+            self.set_scoped_services(scoped)
+        if Path(scoped.session.root).resolve() != Path(root).resolve():
+            raise RuntimeError("FileListPanel scoped services do not match navigation root")
+        self._model.set_library_root(scoped.session.root_str, scoped.session)
 
     def refresh_header(self):
         """Re-apply header bar styling (called on bg opacity changes)."""
@@ -988,10 +973,6 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         new.navigate_to(str(self._current))
         return new
 
-    def _cleanup_undo_dir(self):
-        if hasattr(self, '_undo_svc'):
-            self._undo_svc.cleanup()
-
     @staticmethod
     def _schedule_library_stats_update(_lib_root: str):
         pass  # implemented in concrete subclass
@@ -1006,7 +987,6 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._model.shutdown()
 
     def closeEvent(self, event):
-        self._cleanup_undo_dir()
         self._loader.stop()
         self._model.shutdown()
         super().closeEvent(event)

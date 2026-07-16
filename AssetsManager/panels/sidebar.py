@@ -94,6 +94,7 @@ class SidebarPanel(PanelContent):
         self._favs = SidebarFavorites()
         self._recents = SidebarRecentFolders()
         self._library_root: str | None = None
+        self._scoped_services = None
         self._search_pending = ""
         self._search_timer = None
         self._match_count = 0
@@ -193,6 +194,14 @@ class SidebarPanel(PanelContent):
                 bus().sidebar_depth_changed.emit(self._depth, dict(self._branch_depths))
         except Exception:
             pass
+
+    def set_scoped_services(self, services):
+        """Bind the library bundle resolved by MainWindow."""
+        self._scoped_services = services
+        self._library_root = services.session.root_str
+        self._favs.set_library_root(self._library_root)
+        self._recents.set_library_root(self._library_root)
+        self._populate()
 
     @staticmethod
     def _set_vtype(item: QTreeWidgetItem, vtype: str, path: str = ""):

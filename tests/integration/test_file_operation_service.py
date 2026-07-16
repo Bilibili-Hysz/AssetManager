@@ -218,6 +218,69 @@ def test_duplicate_file(tmp_path):
     assert duplicate.read_text(encoding="utf-8") == "asset"
 
 
+def test_bound_duplicate_rejects_external_source_and_destination(tmp_path):
+    import pytest
+
+    from AssetsManager.application import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    external = tmp_path / "external.txt"
+    library.mkdir()
+    external.write_text("asset", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+
+    with pytest.raises(ValueError, match="outside library root"):
+        scoped.file_operation_service.duplicate(external)
+
+    assert external.exists()
+    assert not (tmp_path / "external_copy.txt").exists()
+
+
+def test_bound_duplicate_rejects_external_destination(tmp_path, monkeypatch):
+    import pytest
+
+    from AssetsManager.application import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    source = library / "asset.txt"
+    external_destination = tmp_path / "external_copy.txt"
+    library.mkdir()
+    source.write_text("asset", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    monkeypatch.setattr(
+        "AssetsManager.application.file_operation_service.unique_destination",
+        lambda path: external_destination,
+    )
+
+    with pytest.raises(ValueError, match="outside library root"):
+        scoped.file_operation_service.duplicate(source)
+
+    assert source.exists()
+    assert not external_destination.exists()
+
+
+def test_bound_duplicate_rejects_closed_session_without_mutating(tmp_path):
+    import pytest
+
+    from AssetsManager.application import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    source = library / "asset.txt"
+    library.mkdir()
+    source.write_text("asset", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    bootstrap.library_service.close_session(scoped.session)
+
+    with pytest.raises(RuntimeError, match="closed LibrarySession"):
+        scoped.file_operation_service.duplicate(source)
+
+    assert source.exists()
+    assert not (library / "asset_copy.txt").exists()
+
+
 def test_delete_permanent_removes_files(tmp_path):
     from AssetsManager.application import FileOperationService
 

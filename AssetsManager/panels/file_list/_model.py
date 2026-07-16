@@ -14,6 +14,7 @@ from AssetsManager.application.asset_filters import (
     normalize_filter_category,
     normalize_sort_key,
 )
+from AssetsManager.application.context import LibrarySession
 from AssetsManager.core.cache import LRUCache
 
 _log = logging.getLogger(__name__)
@@ -68,6 +69,7 @@ class FileSystemModel(QAbstractListModel):
         self._failed_thumbs: set[str] = set()  # paths that failed to load thumbnails
         self._lib_root: str = ""
         self._metadata_service = None
+        self._session: LibrarySession | None = None
         self._size_pool: QThreadPool | None = None
         self._pending_dir_sizes: set[str] = set()
         self._dir_size_gen = 0
@@ -76,14 +78,16 @@ class FileSystemModel(QAbstractListModel):
         self._active_scan_task: _ScanTask | None = None  # prevent GC of running task + signals
         self._path_index: dict[str, int] = {}
         self._is_shutdown = False
+        self.dir_size_ready.connect(self._on_dir_size_ready)
 
     SUBTITLE_ROLE = Qt.ItemDataRole.UserRole + 1
     RAW_PIXMAP_ROLE = Qt.ItemDataRole.UserRole + 2
     IS_DIR_ROLE = Qt.ItemDataRole.UserRole + 3
     DIR_SIZE_ROLE = Qt.ItemDataRole.UserRole + 4
 
-    def set_library_root(self, path: str):
+    def set_library_root(self, path: str, session: LibrarySession | None = None):
         self._lib_root = str(Path(path).resolve())
+        self._session = session
 
     def set_metadata_service(self, metadata_service):
         self._metadata_service = metadata_service
@@ -126,6 +130,9 @@ class FileSystemModel(QAbstractListModel):
         self._stat_cache = stat_cache
         self._apply_sort()
         self.endResetModel()
+
+    def _on_dir_size_ready(self, dir_path: str, _size: str, _gen: int):
+        self._pending_dir_sizes.discard(dir_path)
 
     def _wait_for_scan(self):
         """Block until the background scan completes. For testing only."""
@@ -229,14 +236,24 @@ class FileSystemModel(QAbstractListModel):
             self._size_pool.setMaxThreadCount(2)
         self._pending_dir_sizes.add(dir_path)
         gen = self._dir_size_gen
+        # All mutable scoped dependencies are captured before the task is queued.
         lib_root = self._lib_root
+        session = self._session
+        # Unscoped browsing has no session lease, so never touch DB-backed cache.
+        metadata_service = self._metadata_service if session is not None else None
 
         class _SizeTask(QRunnable):
             def run(s):
                 s.setAutoDelete(False)  # prevent destruction before signal delivery
-                if self._is_shutdown:
-                    return
-                total = FileSystemModel._cached_dir_size(dir_path, lib_root, self._metadata_service)
+                if session is None:
+                    if self._is_shutdown:
+                        return
+                    total = FileSystemModel._cached_dir_size(dir_path, lib_root, metadata_service)
+                else:
+                    # A queued task refuses after close; a running task keeps its
+                    # original session alive through cache read, scan, and write.
+                    with session.operation():
+                        total = FileSystemModel._cached_dir_size(dir_path, lib_root, metadata_service)
                 if self._is_shutdown:
                     return
                 result = FileSystemModel._fmt_size(total) if total > 0 else "Empty"

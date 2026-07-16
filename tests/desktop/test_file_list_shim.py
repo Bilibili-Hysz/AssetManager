@@ -1,5 +1,8 @@
 import os
 from pathlib import Path
+from unittest.mock import Mock
+
+import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -97,7 +100,7 @@ def test_grid_selection_drops_filtered_paths(tmp_path):
         app.processEvents()
 
 
-def test_set_root_prefers_scoped_library_runtime_when_bootstrap_present(tmp_path):
+def test_set_root_uses_injected_scoped_library_runtime(tmp_path):
     (tmp_path / "a.txt").write_text("a")
     app = QApplication.instance() or QApplication([])
     bootstrap = ApplicationBootstrap()
@@ -105,6 +108,7 @@ def test_set_root_prefers_scoped_library_runtime_when_bootstrap_present(tmp_path
     panel = QWidgetFileListPanel()
     try:
         session = bootstrap.library_service.open_session(tmp_path)
+        panel.set_scoped_services(bootstrap.for_library(session))
 
         panel.navigate_to(str(tmp_path), set_root=True)
 
@@ -112,6 +116,54 @@ def test_set_root_prefers_scoped_library_runtime_when_bootstrap_present(tmp_path
         assert panel._model._metadata_service._connection(tmp_path) is session.db_conn
         assert panel._loader._db_conn is session.db_conn
         assert panel._loader._cache_dir == session.thumb_dir_str
+    finally:
+        panel.shutdown()
+        app.setProperty("bootstrap", None)
+        app.processEvents()
+
+
+def test_root_refresh_retains_injected_session_and_closed_worker_rejects_write(tmp_path, monkeypatch):
+    """Root refreshes retain the leased session, including its close rejection."""
+    class CapturingPool:
+        def __init__(self):
+            self.tasks = []
+
+        def setMaxThreadCount(self, _count):
+            pass
+
+        def start(self, task):
+            self.tasks.append(task)
+
+        def waitForDone(self):
+            pass
+
+    library = tmp_path / "library"
+    folder = library / "folder"
+    folder.mkdir(parents=True)
+    (folder / "asset.bin").write_bytes(b"abc")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    pool = CapturingPool()
+    panel = QWidgetFileListPanel()
+    try:
+        session = bootstrap.library_service.open_session(library)
+        scoped = bootstrap.for_library(session)
+        get_dir_size = Mock(wraps=scoped.metadata_service.get_dir_size)
+        monkeypatch.setattr(scoped.metadata_service, "get_dir_size", get_dir_size)
+        panel.set_scoped_services(scoped)
+        panel._model._size_pool = pool
+
+        panel.navigate_to(str(library), set_root=True)
+        panel.navigate_to(str(folder))
+        panel.navigate_to(str(library), set_root=True)
+
+        assert panel._model._session is session
+        panel._model._start_async_dir_size(str(folder))
+        bootstrap.library_service.close_session(session)
+        with pytest.raises(RuntimeError, match="closed LibrarySession"):
+            pool.tasks.pop().run()
+        get_dir_size.assert_not_called()
     finally:
         panel.shutdown()
         app.setProperty("bootstrap", None)
@@ -653,7 +705,7 @@ def test_covered_mutations_refuse_without_scoped_services(tmp_path, monkeypatch)
     source = tmp_path / "asset.txt"
     destination = tmp_path / "renamed.txt"
     source.write_text("asset")
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     panel = QWidgetFileListPanel()
     try:
         service = Mock()
@@ -687,6 +739,244 @@ def test_covered_mutations_refuse_without_scoped_services(tmp_path, monkeypatch)
         run_in_background.assert_not_called()
         panel._post_refresh.assert_not_called()
         assert source.exists()
+    finally:
+        panel.shutdown()
+
+
+def test_unscoped_mutations_never_construct_unbound_services(tmp_path, monkeypatch):
+    """Mutation paths must fail closed before reaching fallback constructors."""
+    from unittest.mock import Mock
+
+    from AssetsManager.panels.file_list._base import FileListPanel
+
+    source = tmp_path / "asset.txt"
+    destination = tmp_path / "renamed.txt"
+    source.write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        panel._clipboard_source = [str(source)]
+        panel._clipboard_cut = False
+        panel._post_refresh = Mock()
+        panel._run_in_background = Mock()
+        panel._undo_svc = Mock()
+        panel._undo_svc.can_undo.return_value = True
+        panel._undo_svc.can_redo.return_value = True
+        monkeypatch.setattr(
+            "AssetsManager.application.FileOperationService",
+            lambda: (_ for _ in ()).throw(AssertionError("unbound FileOperationService constructed")),
+        )
+        monkeypatch.setattr(
+            "AssetsManager.application.UndoService",
+            lambda: (_ for _ in ()).throw(AssertionError("unbound UndoService constructed")),
+        )
+
+        assert panel._rename_absolute(str(source), str(destination)) == str(source.resolve())
+        panel._paste()
+        assert FileListPanel._on_drop(panel, type("Drop", (), {"mimeData": lambda self: type("Mime", (), {"urls": lambda self: [type("Url", (), {"toLocalFile": lambda self: str(source)})()]})()})()) is False
+        panel._delete([str(source)])
+        panel._delete_permanent([str(source)])
+        panel._new_folder()
+        panel._duplicate_selected()
+        panel._undo()
+        panel._redo()
+
+        panel._run_in_background.assert_not_called()
+        panel._post_refresh.assert_not_called()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_duplicate_captures_originating_service_and_closed_session_refuses(tmp_path, monkeypatch):
+    """Queued duplicates stay bound to the service injected when requested."""
+    from unittest.mock import Mock
+
+    import pytest
+
+    library_a = tmp_path / "library-a"
+    library_b = tmp_path / "library-b"
+    source = library_a / "asset.txt"
+    library_a.mkdir()
+    library_b.mkdir()
+    source.write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    panel = QWidgetFileListPanel()
+    queued = []
+    try:
+        scoped_a = bootstrap.for_library(bootstrap.library_service.open_session(library_a))
+        scoped_b = bootstrap.for_library(bootstrap.library_service.open_session(library_b))
+        duplicate_a = Mock(wraps=scoped_a.file_operation_service.duplicate)
+        duplicate_b = Mock(wraps=scoped_b.file_operation_service.duplicate)
+        monkeypatch.setattr(scoped_a.file_operation_service, "duplicate", duplicate_a)
+        monkeypatch.setattr(scoped_b.file_operation_service, "duplicate", duplicate_b)
+        panel.set_scoped_services(scoped_a)
+        monkeypatch.setattr(panel, "_selected_paths", lambda: [str(source)])
+        monkeypatch.setattr(
+            panel, "_run_in_background", lambda operation, *args, on_done=None: queued.append(operation),
+        )
+        panel._post_refresh = Mock()
+
+        panel._duplicate_selected()
+        panel.set_scoped_services(scoped_b)
+
+        queued.pop()()
+        assert (library_a / "asset - Copy.txt").read_text() == "asset"
+        assert not (library_b / "asset - Copy.txt").exists()
+        duplicate_a.assert_called_once_with(str(source), copy_label=" - Copy")
+        duplicate_b.assert_not_called()
+
+        panel.set_scoped_services(scoped_a)
+        panel._duplicate_selected()
+        panel.set_scoped_services(scoped_b)
+        bootstrap.library_service.close_session(scoped_a.session)
+
+        with pytest.raises(RuntimeError, match="closed LibrarySession"):
+            queued.pop()()
+        assert duplicate_a.call_count == 1
+        duplicate_b.assert_not_called()
+        assert not (library_a / "asset - Copy_1.txt").exists()
+        assert not (library_b / "asset - Copy.txt").exists()
+    finally:
+        panel.shutdown()
+        app.setProperty("bootstrap", None)
+        app.processEvents()
+
+
+def test_queued_mutations_capture_originating_scoped_dependencies(tmp_path, monkeypatch):
+    """Switching panels cannot redirect queued mutations to another library."""
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    import pytest
+    from PySide6.QtWidgets import QMessageBox
+
+    library_a = tmp_path / "library-a"
+    library_b = tmp_path / "library-b"
+    library_a.mkdir()
+    library_b.mkdir()
+    source = library_a / "asset.txt"
+    source.write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    panel = QWidgetFileListPanel()
+    queued = []
+    try:
+        scoped_a = bootstrap.for_library(bootstrap.library_service.open_session(library_a))
+        scoped_b = bootstrap.for_library(bootstrap.library_service.open_session(library_b))
+        for scoped in (scoped_a, scoped_b):
+            scoped.file_operation_service.copy_to_directory = Mock(
+                return_value=SimpleNamespace(ok=True, changed_paths=(), errors=()),
+            )
+            scoped.file_operation_service.move_to_directory = Mock(
+                return_value=SimpleNamespace(ok=True, changed_paths=(), errors=()),
+            )
+            scoped.file_operation_service.delete_to_trash = Mock(
+                return_value=SimpleNamespace(errors=()),
+            )
+            scoped.file_operation_service.delete_permanent = Mock(
+                return_value=SimpleNamespace(changed_paths=(), errors=()),
+            )
+            scoped.undo_service.prepare_delete = Mock(return_value=None)
+            scoped.undo_service.commit_delete = Mock()
+            scoped.undo_service.discard_delete = Mock()
+            scoped.undo_service.perform_undo = Mock()
+            scoped.undo_service.perform_redo = Mock()
+            scoped.undo_service.can_undo = Mock(return_value=True)
+            scoped.undo_service.can_redo = Mock(return_value=True)
+        panel._run_in_background = lambda operation, *args, on_done=None: queued.append(operation)
+        monkeypatch.setattr(
+            "AssetsManager.panels.file_list._actions.QMessageBox.question",
+            Mock(return_value=QMessageBox.StandardButton.Yes),
+        )
+        monkeypatch.setattr(
+            "AssetsManager.panels.file_list._actions.QMessageBox.warning",
+            Mock(return_value=QMessageBox.StandardButton.Yes),
+        )
+
+        actions = [
+            lambda: (setattr(panel, "_clipboard_source", [str(source)]), setattr(panel, "_clipboard_cut", False), panel._paste()),
+            lambda: panel._delete([str(source)]),
+            lambda: panel._delete_permanent([str(source)]),
+            panel._undo,
+            panel._redo,
+        ]
+        for action in actions:
+            panel.set_scoped_services(scoped_a)
+            action()
+            panel.set_scoped_services(scoped_b)
+            queued.pop()()
+
+        assert scoped_a.file_operation_service.copy_to_directory.called
+        assert scoped_a.file_operation_service.delete_to_trash.called
+        assert scoped_a.file_operation_service.delete_permanent.called
+        scoped_a.undo_service.perform_undo.assert_called_once_with(
+            scoped_a.file_operation_service, str(library_a.resolve()),
+        )
+        scoped_a.undo_service.perform_redo.assert_called_once_with(
+            scoped_a.file_operation_service, str(library_a.resolve()),
+        )
+        assert not scoped_b.file_operation_service.copy_to_directory.called
+        assert not scoped_b.file_operation_service.delete_to_trash.called
+        assert not scoped_b.file_operation_service.delete_permanent.called
+        assert not scoped_b.undo_service.perform_undo.called
+        assert not scoped_b.undo_service.perform_redo.called
+
+        for action in actions:
+            session_a = bootstrap.library_service.open_session(library_a)
+            scoped_a = bootstrap.for_library(session_a)
+            scoped_a.undo_service.can_undo = Mock(return_value=True)
+            scoped_a.undo_service.can_redo = Mock(return_value=True)
+            panel.set_scoped_services(scoped_a)
+            panel._clipboard_source = [str(source)]
+            panel._clipboard_cut = False
+            panel._run_in_background = lambda operation, *args, on_done=None: queued.append(operation)
+            action()
+            panel.set_scoped_services(scoped_b)
+            bootstrap.library_service.close_session(session_a)
+            with pytest.raises(RuntimeError, match="closed LibrarySession"):
+                queued.pop()()
+        assert not scoped_b.file_operation_service.move_to_directory.called
+    finally:
+        panel.shutdown()
+        app.setProperty("bootstrap", None)
+        app.processEvents()
+
+
+def test_panel_shutdown_does_not_cleanup_bootstrap_owned_undo_service(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    panel = QWidgetFileListPanel()
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(tmp_path))
+    panel.set_scoped_services(scoped)
+    cleanup = Mock()
+    monkeypatch.setattr(scoped.undo_service, "cleanup", cleanup)
+
+    try:
+        panel.shutdown()
+        cleanup.assert_not_called()
+    finally:
+        app.setProperty("bootstrap", None)
+        app.processEvents()
+
+
+def test_file_list_does_not_construct_unbound_undo_service(monkeypatch):
+    """The panel receives its undo service only through scoped injection."""
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(
+        "AssetsManager.application.UndoService",
+        lambda: (_ for _ in ()).throw(AssertionError("unbound UndoService constructed")),
+    )
+
+    panel = QWidgetFileListPanel()
+    try:
+        assert panel._undo_svc is None
     finally:
         panel.shutdown()
         app.processEvents()

@@ -11,16 +11,13 @@ import threading
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any
 
 from PySide6.QtCore import Qt, QSize, Signal, QObject, QRunnable, QThreadPool, QMutex
 from PySide6.QtGui import QImage, QImageReader
 
 from AssetsManager.application.thumbnail_service import thumbnail_cache_key
 from AssetsManager.panels.file_list._common import IMAGE_EXTS
-
-if TYPE_CHECKING:
-    from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
 
 _log = logging.getLogger(__name__)
 
@@ -32,7 +29,7 @@ _stderr_redirect_lock = threading.Lock()
 class _Runtime:
     generation: int
     cache_dir: str
-    repo: ThumbnailRepository | None
+    repo: Any | None
     lib_root: str
 
 # ── Thumbnail quality (read from AppSettings) ────────────────
@@ -99,18 +96,15 @@ class _LoadTask(QRunnable):
 
     def run(self):
         try:
-            try:
-                pix = self._loader._load_image(self._path, self._runtime)
-                if pix is not None:
-                    self._loader._on_image_loaded(
-                        self._row, self._path, self._item_path, pix, self._runtime.generation)
-                else:
-                    self._loader._mark_failed(self._path, self._runtime.generation)
-            except Exception:
-                _log.exception("Thumbnail load failed: %s", self._path)
+            pix = self._loader._load_image(self._path, self._runtime)
+            if pix is not None:
+                self._loader._on_image_loaded(
+                    self._row, self._path, self._item_path, pix, self._runtime.generation)
+            else:
                 self._loader._mark_failed(self._path, self._runtime.generation)
-        finally:
-            self._loader._task_finished(self._runtime.generation)
+        except Exception:
+            _log.exception("Thumbnail load failed: %s", self._path)
+            self._loader._mark_failed(self._path, self._runtime.generation)
 
 
 class _BakeTask(QRunnable):
@@ -124,23 +118,34 @@ class _BakeTask(QRunnable):
 
     def run(self):
         try:
-            try:
-                reader = QImageReader(self._source_path)
-                reader.setAutoTransform(True)
-                sz = reader.size()
-                if sz.isValid() and (sz.width() > self._bake_size or sz.height() > self._bake_size):
-                    reader.setScaledSize(sz.scaled(QSize(self._bake_size, self._bake_size),
-                                                    Qt.AspectRatioMode.KeepAspectRatio))
-                with _suppress_libpng_warnings():
-                    img = reader.read()
-                if img.isNull():
-                    return
-                self._loader._store_baked_image(
-                    self._key, self._source_path, self._bake_size, img, self._runtime)
-            except Exception:
-                _log.exception("Bake task failed: %s", self._source_path)
+            reader = QImageReader(self._source_path)
+            reader.setAutoTransform(True)
+            sz = reader.size()
+            if sz.isValid() and (sz.width() > self._bake_size or sz.height() > self._bake_size):
+                reader.setScaledSize(sz.scaled(QSize(self._bake_size, self._bake_size),
+                                                Qt.AspectRatioMode.KeepAspectRatio))
+            with _suppress_libpng_warnings():
+                img = reader.read()
+            if img.isNull():
+                return
+            self._loader._store_baked_image(
+                self._key, self._source_path, self._bake_size, img, self._runtime)
+        except Exception:
+            _log.exception("Bake task failed: %s", self._source_path)
+
+
+class _TrackedTask(QRunnable):
+    def __init__(self, loader, task, generation):
+        super().__init__()
+        self._loader = loader
+        self._task = task
+        self._generation = generation
+
+    def run(self):
+        try:
+            self._task.run()
         finally:
-            self._loader._task_finished(self._runtime.generation)
+            self._loader._task_finished(self._generation)
 
 
 class ThumbnailLoader(QObject):
@@ -164,8 +169,8 @@ class ThumbnailLoader(QObject):
         self._regen_cancel = False
         self._stopped = False
         self._runtime_generation = 0
-        self._task_state = threading.Condition()
-        self._tasks_by_generation: dict[int, int] = defaultdict(int)
+        self._task_condition = threading.Condition()
+        self._active_tasks: dict[int, int] = defaultdict(int)
         from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
         self._repo: ThumbnailRepository | None = None
 
@@ -196,18 +201,16 @@ class ThumbnailLoader(QObject):
 
     @property
     def runtime_generation(self) -> int:
-        self._mutex.lock()
-        try:
+        with self._task_condition:
             return self._runtime_generation
-        finally:
-            self._mutex.unlock()
 
     def invalidate_runtime(self):
         """Discard state and queued work from the previous library runtime."""
         self._mutex.lock()
         try:
-            invalidated_generation = self._runtime_generation
-            self._runtime_generation += 1
+            with self._task_condition:
+                old_generation = self._runtime_generation
+                self._runtime_generation += 1
             self._cache.clear()
             self._failed_paths.clear()
             self._queued_keys.clear()
@@ -215,52 +218,49 @@ class ThumbnailLoader(QObject):
             self._regen_cancel = True
         finally:
             self._mutex.unlock()
-        return invalidated_generation
+        return old_generation
 
     def invalidate_tasks(self):
         """Backward-compatible name for invalidating the current runtime."""
         return self.invalidate_runtime()
 
-    def wait_for_tasks(self, generation: int) -> None:
-        """Wait until all tasks captured from one runtime have exited."""
-        with self._task_state:
-            while self._tasks_by_generation.get(generation, 0):
-                self._task_state.wait()
+    def wait_for_runtime(self, generation: int) -> None:
+        """Wait without timeout for exactly one invalidated runtime's tasks."""
+        with self._task_condition:
+            self._task_condition.wait_for(
+                lambda: self._active_tasks.get(generation, 0) == 0
+            )
 
-    def _start_task(self, task, priority: int | None = None) -> bool:
-        generation = task._runtime.generation
-        self._mutex.lock()
-        try:
-            if not self._is_current_generation_locked(generation):
+    def _start_task(self, task, generation: int, priority: int = 0) -> bool:
+        """Register and start work atomically against runtime invalidation."""
+        with self._task_condition:
+            if generation != self._runtime_generation:
                 return False
-            with self._task_state:
-                self._tasks_by_generation[generation] += 1
-        finally:
-            self._mutex.unlock()
+            self._active_tasks[generation] += 1
+        tracked = _TrackedTask(self, task, generation)
         try:
-            if priority is None:
-                self._pool.start(task)
-            else:
-                try:
-                    self._pool.start(task, priority=priority)
-                except TypeError:
-                    self._pool.start(task)
+            try:
+                self._pool.start(tracked, priority=priority)
+            except TypeError:
+                self._pool.start(tracked)
         except Exception:
             self._task_finished(generation)
             raise
         return True
 
     def _task_finished(self, generation: int) -> None:
-        with self._task_state:
-            remaining = self._tasks_by_generation[generation] - 1
+        with self._task_condition:
+            remaining = self._active_tasks[generation] - 1
             if remaining:
-                self._tasks_by_generation[generation] = remaining
+                self._active_tasks[generation] = remaining
             else:
-                self._tasks_by_generation.pop(generation, None)
-                self._task_state.notify_all()
+                self._active_tasks.pop(generation, None)
+            self._task_condition.notify_all()
 
     def _runtime(self) -> _Runtime:
-        return _Runtime(self._runtime_generation, self._cache_dir, self._repo, self._lib_root)
+        with self._task_condition:
+            generation = self._runtime_generation
+        return _Runtime(generation, self._cache_dir, self._repo, self._lib_root)
 
     def _is_current_generation(self, generation: int) -> bool:
         self._mutex.lock()
@@ -270,7 +270,8 @@ class ThumbnailLoader(QObject):
             self._mutex.unlock()
 
     def _is_current_generation_locked(self, generation: int) -> bool:
-        return self._runtime_generation == generation
+        with self._task_condition:
+            return self._runtime_generation == generation
 
     def _is_active_runtime(self, runtime: _Runtime) -> bool:
         self._mutex.lock()
@@ -320,7 +321,7 @@ class ThumbnailLoader(QObject):
             self._pending_items[file_path].append((row, item_path))
             self._mutex.unlock()
             task = _LoadTask(self, row, file_path, item_path, runtime)
-            self._start_task(task, priority=1 if priority == 0 else 0)
+            self._start_task(task, runtime.generation, priority=1 if priority == 0 else 0)
         else:
             self._mutex.unlock()
 
@@ -377,7 +378,7 @@ class ThumbnailLoader(QObject):
         self._stopped = True
         self._mutex.unlock()
         generation = self.invalidate_tasks()
-        self.wait_for_tasks(generation)
+        self.wait_for_runtime(generation)
 
     # ── Loading (worker thread) ──────────────────────────────────
 
@@ -442,9 +443,7 @@ class ThumbnailLoader(QObject):
         cached_file = os.path.join(runtime.cache_dir, f"{key}.webp")
         if not os.path.isfile(cached_file):
             return None
-        self._mutex.lock()
-        if not self._is_current_generation_locked(runtime.generation):
-            self._mutex.unlock()
+        if not self._is_current_generation(runtime.generation):
             return None
         self._db_mutex.lock()
         try:
@@ -460,16 +459,15 @@ class ThumbnailLoader(QObject):
                             os.remove(cached_file)
                         except OSError:
                             pass
-                        if self._is_current_generation_locked(runtime.generation):
+                        if self._is_current_generation(runtime.generation):
                             runtime.repo.delete_entry(key)
                         return None
-                    if self._is_current_generation_locked(runtime.generation):
+                    if self._is_current_generation(runtime.generation):
                         runtime.repo.touch_access(key)
         except Exception:
             _log.exception("Cache DB query failed")
         finally:
             self._db_mutex.unlock()
-            self._mutex.unlock()
         if not os.path.isfile(cached_file):
             return None
         reader = QImageReader(cached_file)
@@ -488,12 +486,11 @@ class ThumbnailLoader(QObject):
         if bs < 0:
             return
         task = _BakeTask(self, key, source_path, bs, runtime or self._runtime())
-        self._start_task(task)
+        self._start_task(task, task._runtime.generation)
 
     def _store_baked_image(self, key, source_path, bake_size, img, runtime: _Runtime):
-        self._mutex.lock()
         try:
-            if not self._is_current_generation_locked(runtime.generation):
+            if not self._is_current_generation(runtime.generation):
                 return
             tmp = os.path.join(runtime.cache_dir, f"{key}.webp.tmp")
             final = os.path.join(runtime.cache_dir, f"{key}.webp")
@@ -502,7 +499,7 @@ class ThumbnailLoader(QObject):
             os.replace(tmp, final)
             self._db_mutex.lock()
             try:
-                if runtime.repo and self._is_current_generation_locked(runtime.generation):
+                if runtime.repo and self._is_current_generation(runtime.generation):
                     runtime.repo.upsert_entry(
                         key, source_path, os.path.getmtime(source_path),
                         os.path.getsize(source_path), bake_size, os.path.getsize(final),
@@ -511,8 +508,6 @@ class ThumbnailLoader(QObject):
                 self._db_mutex.unlock()
         except Exception:
             _log.exception("Bake DB insert failed")
-        finally:
-            self._mutex.unlock()
 
     # ── Utility ──────────────────────────────────────────────────
 
@@ -567,36 +562,32 @@ class ThumbnailLoader(QObject):
         self._mutex.unlock()
         loader = self
         class _RegenTask(QRunnable):
-            def __init__(self):
+            def __init__(s):
                 super().__init__()
-                self.setAutoDelete(False)
-                self._runtime = runtime
-            def run(self):
-                try:
-                    images = []
-                    for root, dirs, files in os.walk(lib_root):
-                        if not loader._is_active_runtime(runtime):
-                            return
-                        for f in files:
-                            if f.startswith('.') or not loader._is_active_runtime(runtime):
-                                if not loader._is_active_runtime(runtime):
-                                    return
-                                continue
-                            ext = os.path.splitext(f)[1].lower()
-                            if ext in IMAGE_EXTS:
-                                images.append(os.path.join(root, f))
-                    total = len(images)
-                    for i, path in enumerate(images):
-                        if not loader._is_active_runtime(runtime):
-                            return
-                        try:
-                            key = loader._disk_key(path)
-                            if loader._should_bake(path, runtime.lib_root):
-                                loader._queue_bake_native(key, path, runtime)
-                        except Exception:
-                            pass
-                        if on_progress and total > 0:
-                            on_progress(i + 1, total)
-                finally:
-                    loader._task_finished(runtime.generation)
-        self._start_task(_RegenTask())
+                s.setAutoDelete(False)
+            def run(s):
+                images = []
+                for root, dirs, files in os.walk(lib_root):
+                    if not loader._is_active_runtime(runtime):
+                        return
+                    for f in files:
+                        if f.startswith('.') or not loader._is_active_runtime(runtime):
+                            if not loader._is_active_runtime(runtime):
+                                return
+                            continue
+                        ext = os.path.splitext(f)[1].lower()
+                        if ext in IMAGE_EXTS:
+                            images.append(os.path.join(root, f))
+                total = len(images)
+                for i, path in enumerate(images):
+                    if not loader._is_active_runtime(runtime):
+                        return
+                    try:
+                        key = loader._disk_key(path)
+                        if loader._should_bake(path, runtime.lib_root):
+                            loader._queue_bake_native(key, path, runtime)
+                    except Exception:
+                        pass
+                    if on_progress and total > 0:
+                        on_progress(i + 1, total)
+        self._start_task(_RegenTask(), runtime.generation)

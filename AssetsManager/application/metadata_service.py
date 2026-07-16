@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from sqlite3 import Connection
 
-from AssetsManager.application.context import ConnectionProvider, LibrarySession, SessionBoundOperations
+from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.core.project_data import ProjectData
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import NotesChanged, UrlsChanged
@@ -25,7 +25,7 @@ class AssetMetadata:
     urls: tuple[str, ...]
 
 
-class MetadataService(SessionBoundOperations):
+class MetadataService:
     """Read and write per-asset metadata.
 
     Uses MetadataRepository for file_meta operations and
@@ -35,8 +35,7 @@ class MetadataService(SessionBoundOperations):
     def __init__(self, connection_provider: ConnectionProvider | None = None,
                  session: LibrarySession | None = None):
         self._connection_provider = connection_provider
-        if session is not None:
-            self._bind_session(session)
+        self._session = session
 
     def _connection(self, library_root: str | Path) -> Connection:
         root = str(Path(library_root).resolve())
@@ -51,6 +50,7 @@ class MetadataService(SessionBoundOperations):
         """Return a MetadataRepository for the given library root."""
         return MetadataRepository(self._connection(library_root))
 
+    @session_operation
     def get_metadata(self, library_root: str | Path, path: str | Path) -> AssetMetadata:
         root = str(Path(library_root).resolve())
         target = Path(path).resolve()
@@ -64,17 +64,21 @@ class MetadataService(SessionBoundOperations):
             urls=tuple(meta_repo.get_urls(str(target))),
         )
 
+    @session_operation
     def get_notes(self, library_root: str | Path, path: str | Path) -> str:
         return self._repo(str(Path(library_root).resolve())).get_notes(str(Path(path).resolve()))
 
+    @session_operation
     def set_notes(self, library_root: str | Path, path: str | Path, text: str) -> None:
         key = str(Path(path).resolve())
         self._repo(str(Path(library_root).resolve())).set_notes(key, text)
         get_event_bus().publish(NotesChanged(file_path=key))
 
+    @session_operation
     def get_urls(self, library_root: str | Path, path: str | Path) -> list[str]:
         return self._repo(str(Path(library_root).resolve())).get_urls(str(Path(path).resolve()))
 
+    @session_operation
     def add_url(self, library_root: str | Path, path: str | Path, url: str) -> None:
         root = str(Path(library_root).resolve())
         key = str(Path(path).resolve())
@@ -83,6 +87,7 @@ class MetadataService(SessionBoundOperations):
         if urls is not None:
             get_event_bus().publish(UrlsChanged(file_path=key, new_urls=tuple(urls)))
 
+    @session_operation
     def remove_url(self, library_root: str | Path, path: str | Path, url: str) -> None:
         root = str(Path(library_root).resolve())
         key = str(Path(path).resolve())
@@ -91,6 +96,7 @@ class MetadataService(SessionBoundOperations):
         if urls is not None:
             get_event_bus().publish(UrlsChanged(file_path=key, new_urls=tuple(urls)))
 
+    @session_operation
     def get_dir_size(self, library_root: str | Path, dir_path: str | Path,
                      force: bool = False) -> tuple[int, bool]:
         root = str(Path(library_root).resolve())
@@ -120,12 +126,14 @@ class MetadataService(SessionBoundOperations):
         repo.set_cached_size(target, size, mtime)
         return (size, False)
 
+    @session_operation
     def set_dir_size(self, library_root: str | Path, dir_path: str | Path, size: int) -> None:
         root = str(Path(library_root).resolve())
         target = str(Path(dir_path).resolve())
         mtime = os.path.getmtime(target) if os.path.exists(target) else 0.0
         self._repo(root).set_cached_size(target, size, mtime)
 
+    @session_operation
     def get_cached_stats(
         self, library_root: str | Path, file_paths: list[str]
     ) -> dict[str, tuple[int, float]]:
@@ -134,20 +142,24 @@ class MetadataService(SessionBoundOperations):
             return {}
         return self._repo(str(Path(library_root).resolve())).get_cached_stats(file_paths)
 
+    @session_operation
     def get_cached_file_count(self, library_root: str | Path, dir_path: str | Path) -> int | None:
         """Return cached file count for a directory, or None if not cached."""
         return self._repo(str(Path(library_root).resolve())).get_cached_file_count(str(Path(dir_path).resolve()))
 
+    @session_operation
     def get_library_total_size(self, library_root: str | Path) -> int:
         """Return total size from library_stats, or 0 if not available."""
         return self._repo(str(Path(library_root).resolve())).get_library_total_size(str(Path(library_root).resolve()))
 
+    @session_operation
     def batch_get_cached_file_counts(self, library_root: str, dir_paths: list[str]) -> dict[str, int]:
         """Return {path: count} for directories that have cached file counts."""
         if not dir_paths:
             return {}
         return self._repo(str(Path(library_root).resolve())).batch_get_cached_file_counts(dir_paths)
 
+    @session_operation
     def batch_set_cached_file_counts(self, library_root: str, entries: dict[str, int]) -> None:
         """Cache file counts for multiple directories in a single transaction."""
         if not entries:

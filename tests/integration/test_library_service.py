@@ -1,4 +1,5 @@
 from pathlib import Path
+import threading
 
 import pytest
 
@@ -257,6 +258,22 @@ def test_session_close_marks_closed(tmp_path):
     assert session.is_closed is True
 
 
+def test_session_close_removes_owned_canonical_session(tmp_path):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+    service = LibraryService()
+    session = service.open_session(root)
+
+    session.close()
+
+    assert service.current_session is None
+    replacement = service.open_session(root)
+    assert replacement is not session
+    assert replacement.is_closed is False
+
+
 def test_session_close_is_idempotent(tmp_path):
     from AssetsManager.application.library_service import LibraryService
 
@@ -343,6 +360,168 @@ def test_library_service_close_session_closes_library_connection(tmp_path):
         conn.execute("SELECT 1")
 
 
+def test_close_session_serializes_same_root_reopen_through_db_teardown(
+    tmp_path, monkeypatch
+):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+    service = LibraryService()
+    session = service.open_session(root)
+    old_conn = session.db_conn
+    teardown_started = threading.Event()
+    allow_teardown = threading.Event()
+    reopen_started = threading.Event()
+    connection_requested = threading.Event()
+    reopened: list = []
+    original_close_library = service._db.close_library
+    original_connection_for = service._db.connection_for
+
+    def blocking_close_library(root_path):
+        teardown_started.set()
+        assert allow_teardown.wait(5)
+        original_close_library(root_path)
+
+    def tracked_connection_for(root_path):
+        connection_requested.set()
+        return original_connection_for(root_path)
+
+    monkeypatch.setattr(service._db, "close_library", blocking_close_library)
+    monkeypatch.setattr(service._db, "connection_for", tracked_connection_for)
+
+    close_thread = threading.Thread(target=service.close_session, args=(session,))
+
+    def reopen():
+        reopen_started.set()
+        reopened.append(service.open_session(root))
+
+    reopen_thread = threading.Thread(target=reopen)
+    close_thread.start()
+    assert teardown_started.wait(5)
+    reopen_thread.start()
+    assert reopen_started.wait(5)
+    try:
+        assert not connection_requested.wait(0.2)
+    finally:
+        allow_teardown.set()
+    close_thread.join(5)
+    reopen_thread.join(5)
+
+    assert not close_thread.is_alive()
+    assert not reopen_thread.is_alive()
+    assert reopened[0].db_conn is not old_conn
+    reopened[0].db_conn.execute("SELECT 1")
+
+
+def test_direct_session_close_serializes_same_root_reopen_through_db_teardown(
+    tmp_path, monkeypatch
+):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+    service = LibraryService()
+    session = service.open_session(root)
+    old_conn = session.db_conn
+    teardown_started = threading.Event()
+    allow_teardown = threading.Event()
+    reopen_started = threading.Event()
+    connection_requested = threading.Event()
+    reopened: list = []
+    original_close_library = service._db.close_library
+    original_connection_for = service._db.connection_for
+
+    def blocking_close_library(root_path):
+        teardown_started.set()
+        assert allow_teardown.wait(5)
+        original_close_library(root_path)
+
+    def tracked_connection_for(root_path):
+        connection_requested.set()
+        return original_connection_for(root_path)
+
+    monkeypatch.setattr(service._db, "close_library", blocking_close_library)
+    monkeypatch.setattr(service._db, "connection_for", tracked_connection_for)
+
+    close_thread = threading.Thread(target=session.close)
+
+    def reopen():
+        reopen_started.set()
+        reopened.append(service.open_session(root))
+
+    reopen_thread = threading.Thread(target=reopen)
+    close_thread.start()
+    assert teardown_started.wait(5)
+    reopen_thread.start()
+    assert reopen_started.wait(5)
+    try:
+        assert not connection_requested.wait(0.2)
+    finally:
+        allow_teardown.set()
+    close_thread.join(5)
+    reopen_thread.join(5)
+
+    assert not close_thread.is_alive()
+    assert not reopen_thread.is_alive()
+    assert reopened[0] is not session
+    assert reopened[0].is_closed is False
+    assert reopened[0].db_conn is not old_conn
+    reopened[0].db_conn.execute("SELECT 1")
+
+
+def test_close_serializes_same_root_reopen_through_db_teardown(tmp_path, monkeypatch):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+    service = LibraryService()
+    session = service.open_session(root)
+    old_conn = session.db_conn
+    teardown_started = threading.Event()
+    allow_teardown = threading.Event()
+    reopen_started = threading.Event()
+    connection_requested = threading.Event()
+    reopened: list = []
+    original_close = service._db.close
+    original_connection_for = service._db.connection_for
+
+    def blocking_close():
+        teardown_started.set()
+        assert allow_teardown.wait(5)
+        original_close()
+
+    def tracked_connection_for(root_path):
+        connection_requested.set()
+        return original_connection_for(root_path)
+
+    monkeypatch.setattr(service._db, "close", blocking_close)
+    monkeypatch.setattr(service._db, "connection_for", tracked_connection_for)
+
+    close_thread = threading.Thread(target=service.close)
+
+    def reopen():
+        reopen_started.set()
+        reopened.append(service.open_session(root))
+
+    reopen_thread = threading.Thread(target=reopen)
+    close_thread.start()
+    assert teardown_started.wait(5)
+    reopen_thread.start()
+    assert reopen_started.wait(5)
+    try:
+        assert not connection_requested.wait(0.2)
+    finally:
+        allow_teardown.set()
+    close_thread.join(5)
+    reopen_thread.join(5)
+
+    assert not close_thread.is_alive()
+    assert not reopen_thread.is_alive()
+    assert reopened[0].db_conn is not old_conn
+    reopened[0].db_conn.execute("SELECT 1")
+
+
 def test_library_service_close_session_is_idempotent(tmp_path):
     from AssetsManager.application.library_service import LibraryService
 
@@ -373,161 +552,11 @@ def test_close_session_for_stale_identity_preserves_replacement(tmp_path):
 
     assert service.current_session is replacement
     assert service.open_session(root) is replacement
-    assert replacement.context is old.context
+    assert replacement.context is not old.context
     replacement.db_conn.execute("SELECT 1")
 
 
-def test_close_session_waits_for_inflight_scoped_metadata_operation(tmp_path, monkeypatch):
-    from concurrent.futures import ThreadPoolExecutor
-    import threading
-    import time
-
-    from AssetsManager.application.bootstrap import ApplicationBootstrap
-
-    root = tmp_path / "library"
-    root.mkdir()
-    bootstrap = ApplicationBootstrap()
-    session = bootstrap.library_service.open_session(root)
-    metadata = bootstrap.for_library(session).metadata_service
-    entered = threading.Event()
-    release = threading.Event()
-    original = metadata._repo
-
-    def paused_repo(library_root):
-        entered.set()
-        assert release.wait(timeout=2)
-        return original(library_root)
-
-    monkeypatch.setattr(metadata, "_repo", paused_repo)
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        operation = executor.submit(metadata.set_notes, root, root, "note")
-        assert entered.wait(timeout=2)
-        closing = executor.submit(bootstrap.library_service.close_session, session)
-        time.sleep(0.05)
-        assert not closing.done()
-        release.set()
-        operation.result(timeout=2)
-        closing.result(timeout=2)
-
-    with pytest.raises(RuntimeError, match="closed"):
-        metadata.set_notes(root, root, "later")
-
-
-def test_same_root_reopen_waits_for_close_and_gets_fresh_usable_services(tmp_path, monkeypatch):
-    from concurrent.futures import ThreadPoolExecutor
-    import threading
-
-    from AssetsManager.application.bootstrap import ApplicationBootstrap
-
-    root = tmp_path / "library"
-    other_root = tmp_path / "other"
-    root.mkdir()
-    other_root.mkdir()
-    bootstrap = ApplicationBootstrap()
-    service = bootstrap.library_service
-    original = service.open_session(root)
-    original_connection = original.db_conn
-    lease_held = threading.Event()
-    release_lease = threading.Event()
-    close_started = threading.Event()
-    original_close = original.close
-
-    def held_operation():
-        with original.operation():
-            lease_held.set()
-            assert release_lease.wait(timeout=2)
-
-    def observed_close():
-        close_started.set()
-        original_close()
-
-    monkeypatch.setattr(original, "close", observed_close)
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        operation = executor.submit(held_operation)
-        assert lease_held.wait(timeout=2)
-        closing = executor.submit(service.close_session, original)
-        assert close_started.wait(timeout=2)
-        reopening = executor.submit(service.open_session, root)
-
-        other = executor.submit(service.open_session, other_root).result(timeout=2)
-        assert other.db_conn.execute("SELECT 1").fetchone() == (1,)
-        assert not reopening.done()
-
-        release_lease.set()
-        operation.result(timeout=2)
-        closing.result(timeout=2)
-        replacement = reopening.result(timeout=2)
-
-    assert replacement is not original
-    assert replacement.db_conn is not original_connection
-    assert replacement.db_conn.execute("SELECT 1").fetchone() == (1,)
-    metadata = bootstrap.for_library(replacement).metadata_service
-    metadata.set_notes(root, root, "replacement")
-    assert metadata.get_metadata(root, root).notes == "replacement"
-
-
-@pytest.mark.parametrize(
-    ("service_name", "method_name", "arguments", "pause_target"),
-    [
-        ("project_service", "build_tree", lambda root: (root,), "_scan_tree"),
-        ("file_operation_service", "move", lambda root: (root / "source", root / "destination"), "_root_for"),
-    ],
-)
-def test_close_session_waits_for_inflight_scoped_operation(
-    tmp_path, monkeypatch, service_name, method_name, arguments, pause_target
-):
-    from concurrent.futures import ThreadPoolExecutor
-    import threading
-    import time
-
-    from AssetsManager.application.bootstrap import ApplicationBootstrap
-
-    root = tmp_path / "library"
-    root.mkdir()
-    bootstrap = ApplicationBootstrap()
-    session = bootstrap.library_service.open_session(root)
-    service = getattr(bootstrap.for_library(session), service_name)
-    if service_name == "file_operation_service":
-        (root / "source").write_text("source", encoding="utf-8")
-    entered = threading.Event()
-    release = threading.Event()
-    original = getattr(service, pause_target)
-
-    def paused(*args, **kwargs):
-        entered.set()
-        assert release.wait(timeout=2)
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(service, pause_target, paused)
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        operation = executor.submit(getattr(service, method_name), *arguments(root))
-        assert entered.wait(timeout=2)
-        closing = executor.submit(bootstrap.library_service.close_session, session)
-        time.sleep(0.05)
-        assert not closing.done()
-        release.set()
-        operation.result(timeout=2)
-        closing.result(timeout=2)
-
-    with pytest.raises(RuntimeError, match="closed"):
-        getattr(service, method_name)(*arguments(root))
-
-
-def test_closed_scoped_tag_service_rejects_without_writing(tmp_path):
-    from AssetsManager.application.bootstrap import ApplicationBootstrap
-
-    root = tmp_path / "library"
-    root.mkdir()
-    bootstrap = ApplicationBootstrap()
-    session = bootstrap.library_service.open_session(root)
-    tags = bootstrap.for_library(session).tag_service
-    bootstrap.library_service.close_session(session)
-
-    with pytest.raises(RuntimeError, match="closed"):
-        tags.add_tag(root, root / "asset.txt", "tag")
-
-
-def test_open_library_replaces_closed_canonical_session_for_cached_context(tmp_path):
+def test_open_library_replaces_directly_closed_canonical_session_and_context(tmp_path):
     from AssetsManager.application.library_service import LibraryService
 
     root = tmp_path / "library"
@@ -541,7 +570,7 @@ def test_open_library_replaces_closed_canonical_session_for_cached_context(tmp_p
     reopened_context = service.open_library(root)
     replacement = service.current_session
 
-    assert reopened_context is context
+    assert reopened_context is not context
     assert replacement is not None
     assert replacement is not session
     assert replacement.is_closed is False
@@ -578,6 +607,200 @@ def test_close_session_does_not_close_other_library_connections(tmp_path):
     conn_b.execute("SELECT 1")
 
     service.close_session(session_b)
+
+
+@pytest.mark.parametrize(
+    ("service_name", "method_name", "arguments", "block_target"),
+    [
+        ("metadata_service", "get_notes", lambda root: (root, root / "asset.txt"), "_repo"),
+        ("tag_service", "list_tags", lambda root: (root,), "_connection_provider"),
+        ("project_service", "count_projects", lambda root: (root,), "_count_projects_recursive"),
+        ("file_operation_service", "create_folder", lambda root: (root,), "create_folder"),
+        ("undo_service", "prepare_delete", lambda root: (str(root / "asset.txt"),), "_make_backup"),
+    ],
+)
+@pytest.mark.parametrize("direct_close", [False, True], ids=["close_session", "session_close"])
+def test_scoped_public_operation_lease_drains_before_close(
+    tmp_path, monkeypatch, service_name, method_name, arguments, block_target, direct_close
+):
+    from AssetsManager.application import ApplicationBootstrap
+
+    root = tmp_path / f"library-{service_name}-{direct_close}"
+    root.mkdir()
+    (root / "asset.txt").write_text("asset", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(root)
+    scoped = bootstrap.for_library(session)
+    target = getattr(scoped, service_name)
+    entered = threading.Event()
+    release = threading.Event()
+    operation_done = threading.Event()
+    close_done = threading.Event()
+
+    if service_name == "metadata_service":
+        original = target._repo
+
+        def blocking_repo(*args, **kwargs):
+            repo = original(*args, **kwargs)
+            original_get_notes = repo.get_notes
+
+            def get_notes(*repo_args, **repo_kwargs):
+                entered.set()
+                assert release.wait(5)
+                return original_get_notes(*repo_args, **repo_kwargs)
+
+            repo.get_notes = get_notes
+            return repo
+
+        monkeypatch.setattr(target, block_target, blocking_repo)
+    elif service_name == "tag_service":
+        original = target._connection_provider
+
+        def blocking_provider(*args, **kwargs):
+            conn = original(*args, **kwargs)
+            entered.set()
+            assert release.wait(5)
+            return conn
+
+        monkeypatch.setattr(target, block_target, blocking_provider)
+    elif service_name == "project_service":
+        original = target._count_projects_recursive
+
+        def blocking_count(*args, **kwargs):
+            entered.set()
+            assert release.wait(5)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(target, block_target, blocking_count)
+    elif service_name == "file_operation_service":
+        import AssetsManager.application.file_operation_service as file_operations_module
+
+        original = file_operations_module.unique_destination
+
+        def blocking_create(*args, **kwargs):
+            entered.set()
+            assert release.wait(5)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(file_operations_module, "unique_destination", blocking_create)
+    else:
+        original = target._make_backup
+
+        def blocking_backup(*args, **kwargs):
+            entered.set()
+            assert release.wait(5)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(target, block_target, blocking_backup)
+
+    operation = threading.Thread(
+        target=lambda: (getattr(target, method_name)(*arguments(root)), operation_done.set())
+    )
+    operation.start()
+    assert entered.wait(5)
+    close = session.close if direct_close else lambda: bootstrap.library_service.close_session(session)
+    closer = threading.Thread(target=lambda: (close(), close_done.set()))
+    closer.start()
+    try:
+        assert not close_done.wait(0.2)
+        assert session.is_closed
+        with pytest.raises(RuntimeError, match="closed"):
+            getattr(target, method_name)(*arguments(root))
+    finally:
+        release.set()
+    assert operation_done.wait(5)
+    assert close_done.wait(5)
+    operation.join(5)
+    closer.join(5)
+
+
+def test_stale_duplicate_close_drains_without_blocking_other_root_open(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    first_root.mkdir()
+    second_root.mkdir()
+    bootstrap = ApplicationBootstrap()
+    first = bootstrap.library_service.open_session(first_root)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def operation():
+        with first.operation():
+            entered.set()
+            assert release.wait(5)
+
+    worker = threading.Thread(target=operation)
+    worker.start()
+    assert entered.wait(5)
+    first_closer = threading.Thread(target=lambda: bootstrap.library_service.close_session(first))
+    first_closer.start()
+    for _ in range(100):
+        if first.is_closed:
+            break
+        threading.Event().wait(0.01)
+    assert first.is_closed
+    stale_closer = threading.Thread(target=lambda: bootstrap.library_service.close_session(first))
+    stale_closer.start()
+    second = bootstrap.library_service.open_session(second_root)
+    assert second.root == second_root.resolve()
+    release.set()
+    worker.join(5)
+    first_closer.join(5)
+    stale_closer.join(5)
+
+
+def test_duplicate_direct_close_waits_for_active_operation(tmp_path):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+    session = LibraryService().open_session(root)
+    entered = threading.Event()
+    release = threading.Event()
+    first_done = threading.Event()
+    duplicate_done = threading.Event()
+
+    def operation():
+        with session.operation():
+            entered.set()
+            assert release.wait(5)
+
+    worker = threading.Thread(target=operation)
+    worker.start()
+    assert entered.wait(5)
+    first = threading.Thread(target=lambda: (session.close(), first_done.set()))
+    first.start()
+    for _ in range(100):
+        if session.is_closed:
+            break
+        threading.Event().wait(0.01)
+    duplicate = threading.Thread(target=lambda: (session.close(), duplicate_done.set()))
+    duplicate.start()
+    assert not first_done.wait(0.2)
+    assert not duplicate_done.wait(0.2)
+    release.set()
+    worker.join(5)
+    first.join(5)
+    duplicate.join(5)
+    assert first_done.is_set()
+    assert duplicate_done.is_set()
+
+
+def test_session_cannot_close_from_inside_its_own_operation(tmp_path):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+    session = LibraryService().open_session(root)
+
+    with session.operation():
+        with pytest.raises(RuntimeError, match="active operation"):
+            session.close()
+
+    assert not session.is_closed
+
 
 def test_library_context_not_in_public_application_exports():
     """LibraryContext should not be in the public application __all__."""

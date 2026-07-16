@@ -1,13 +1,13 @@
 """Actions mixin for FileListPanel — context menu, file ops, undo, tags."""
 import os
 import logging
+from contextlib import nullcontext
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl, QMimeData, QFileInfo, QObject
 from PySide6.QtWidgets import (
     QApplication, QMenu, QInputDialog, QMessageBox,
 )
-from AssetsManager.application import UndoService
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager import i18n
 
@@ -22,7 +22,7 @@ class ActionsMixin:
         """Call from FileListPanel.__init__ to set up action state."""
         self._clipboard_source: list[str] = []
         self._clipboard_cut = False
-        self._undo_svc = UndoService()
+        self._undo_svc = None
         self._background_ops: list[QObject] = []
 
     # ── Clicks ───────────────────────────────────────────────────
@@ -190,7 +190,8 @@ class ActionsMixin:
         QApplication.clipboard().setMimeData(mime)
 
     def _paste(self):
-        if self._get_scoped_services() is None:
+        mutation = self._capture_mutation_context()
+        if mutation is None:
             return
         sources = list(self._clipboard_source)
         if not sources:
@@ -201,30 +202,29 @@ class ActionsMixin:
             ]
         if not sources:
             return
-        dest = str(self._current)
+        session, service, undo_service, lib_root = mutation
+        dest = str(Path(self._current).resolve())
         is_cut = self._clipboard_cut
-        lib_root = self._lib_root or None
         if is_cut:
             self._clipboard_source = []
             self._clipboard_cut = False
-        panel = self
         result_holder: list = []
 
         def _do_paste():
-            svc = panel._get_file_operation_service()
-            if is_cut:
-                result = svc.move_to_directory(sources, dest, library_root=lib_root)
-                if result.ok:
-                    for source, destination in zip(sources, result.changed_paths):
-                        panel._undo_svc.record_rename(str(source), str(destination))
-            else:
-                result = svc.copy_to_directory(sources, dest)
+            with self._session_operation(session):
+                if is_cut:
+                    result = service.move_to_directory(sources, dest, library_root=lib_root)
+                    if result.ok:
+                        for source, destination in zip(sources, result.changed_paths):
+                            undo_service.record_rename(str(source), str(destination))
+                else:
+                    result = service.copy_to_directory(sources, dest)
             result_holder.append(result)
 
         def _on_paste_done():
-            panel._post_refresh()
+            self._post_refresh()
             if result_holder and not result_holder[0].ok:
-                QMessageBox.warning(panel, tr("filelist.dialog.paste_error"), "\n".join(result_holder[0].errors))
+                QMessageBox.warning(self, tr("filelist.dialog.paste_error"), "\n".join(result_holder[0].errors))
 
         self._run_in_background(_do_paste, on_done=_on_paste_done)
 
@@ -286,7 +286,8 @@ class ActionsMixin:
         return new
 
     def _delete(self, paths, *, add_undo=True):
-        if self._get_scoped_services() is None:
+        mutation = self._capture_mutation_context()
+        if mutation is None:
             return
         names = "\n".join(f"  {Path(p).name}" for p in paths[:10])
         if len(paths) > 10:
@@ -294,20 +295,20 @@ class ActionsMixin:
         if QMessageBox.question(self, tr("filelist.dialog.move_trash"), f"Move to Recycle Bin?\n\n{names}",
                                  QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
-        path_list = list(paths)
-        panel = self
+        session, service, _undo_service, lib_root = mutation
+        path_list = [str(Path(path).resolve()) for path in paths]
 
         def _do_delete():
-            result = panel._get_file_operation_service().delete_to_trash(
-                path_list, library_root=panel._lib_root or None,
-            )
+            with self._session_operation(session):
+                result = service.delete_to_trash(path_list, library_root=lib_root)
             for error in result.errors:
                 _log.error("Move to trash failed: %s", error)
 
-        self._run_in_background(_do_delete, on_done=lambda: panel._post_refresh())
+        self._run_in_background(_do_delete, on_done=self._post_refresh)
 
     def _delete_permanent(self, paths):
-        if self._get_scoped_services() is None:
+        mutation = self._capture_mutation_context()
+        if mutation is None:
             return
         names = "\n".join(f"  {Path(p).name}" for p in paths[:10])
         if len(paths) > 10:
@@ -318,32 +319,33 @@ class ActionsMixin:
             QMessageBox.StandardButton.Cancel)
         if r != QMessageBox.StandardButton.Yes:
             return
-        path_list = list(paths)
-        panel = self
+        session, service, undo_service, lib_root = mutation
+        path_list = [str(Path(path).resolve()) for path in paths]
 
         def _do_perm_delete():
-            entries = [panel._undo_svc.prepare_delete(path) for path in path_list]
-            try:
-                result = panel._get_file_operation_service().delete_permanent(
-                    path_list, library_root=panel._lib_root or None,
-                )
-            except Exception:
-                for entry in entries:
-                    panel._undo_svc.discard_delete(entry)
-                raise
-            changed_paths = {Path(path).resolve() for path in result.changed_paths}
-            for path, entry in zip(path_list, entries):
-                if Path(path).resolve() in changed_paths:
-                    if entry is not None:
-                        panel._undo_svc.commit_delete(entry)
-                else:
-                    panel._undo_svc.discard_delete(entry)
+            with self._session_operation(session):
+                entries = [undo_service.prepare_delete(path) for path in path_list]
+                try:
+                    result = service.delete_permanent(path_list, library_root=lib_root)
+                except Exception:
+                    for entry in entries:
+                        undo_service.discard_delete(entry)
+                    raise
+                changed_paths = {Path(path).resolve() for path in result.changed_paths}
+                for path, entry in zip(path_list, entries):
+                    if Path(path).resolve() in changed_paths:
+                        if entry is not None:
+                            undo_service.commit_delete(entry)
+                    else:
+                        undo_service.discard_delete(entry)
             for error in result.errors:
                 _log.error("Permanent delete failed: %s", error)
 
-        self._run_in_background(_do_perm_delete, on_done=lambda: panel._post_refresh())
+        self._run_in_background(_do_perm_delete, on_done=self._post_refresh)
 
     def _new_folder(self):
+        if self._get_scoped_services() is None:
+            return
         name, ok = QInputDialog.getText(self, tr("filelist.dialog.new_folder"), tr("filelist.dialog.new_folder_label"), text="New Folder")
         if ok and name.strip():
             try:
@@ -353,41 +355,45 @@ class ActionsMixin:
                 QMessageBox.warning(self, tr("dialog.error"), str(e))
 
     def _duplicate_selected(self):
-        paths = list(self._selected_paths())
-        panel = self
+        mutation = self._capture_mutation_context()
+        if mutation is None:
+            return
+        session, service, _undo_service, _lib_root = mutation
+        paths = [str(Path(path).resolve()) for path in self._selected_paths()]
         def _do_dup():
-            for p in paths:
-                try:
-                    panel._get_file_operation_service().duplicate(p, copy_label=" - Copy")
-                except OSError:
-                    pass
-        self._run_in_background(_do_dup, on_done=lambda: panel._post_refresh())
+            with self._session_operation(session):
+                for p in paths:
+                    try:
+                        service.duplicate(p, copy_label=" - Copy")
+                    except OSError:
+                        pass
+        self._run_in_background(_do_dup, on_done=self._post_refresh)
 
     # ── Undo ─────────────────────────────────────────────────────
 
     def _undo(self):
-        if self._get_scoped_services() is None:
+        mutation = self._capture_mutation_context()
+        if mutation is None:
             return
-        if not self._undo_svc.can_undo():
+        session, service, undo_service, lib_root = mutation
+        if not undo_service.can_undo():
             return
-        panel = self
         def _do_undo():
-            panel._undo_svc.perform_undo(
-                panel._get_file_operation_service(), panel._lib_root
-            )
-        self._run_in_background(_do_undo, on_done=lambda: panel._post_refresh())
+            with self._session_operation(session):
+                undo_service.perform_undo(service, lib_root)
+        self._run_in_background(_do_undo, on_done=self._post_refresh)
 
     def _redo(self):
-        if self._get_scoped_services() is None:
+        mutation = self._capture_mutation_context()
+        if mutation is None:
             return
-        if not self._undo_svc.can_redo():
+        session, service, undo_service, lib_root = mutation
+        if not undo_service.can_redo():
             return
-        panel = self
         def _do_redo():
-            panel._undo_svc.perform_redo(
-                panel._get_file_operation_service(), panel._lib_root
-            )
-        self._run_in_background(_do_redo, on_done=lambda: panel._post_refresh())
+            with self._session_operation(session):
+                undo_service.perform_redo(service, lib_root)
+        self._run_in_background(_do_redo, on_done=self._post_refresh)
 
     # ── Selection helpers ────────────────────────────────────────
 
@@ -502,6 +508,29 @@ class ActionsMixin:
         QMessageBox.information(self, tr("filelist.properties"), info)
 
     # ── Background ops ───────────────────────────────────────────
+
+    def _capture_mutation_context(self):
+        """Snapshot scoped dependencies before a mutation reaches a worker."""
+        scoped = self._get_scoped_services()
+        if scoped is None:
+            return None
+        session = getattr(scoped, "session", None)
+        root = getattr(session, "root", None)
+        if not isinstance(root, (str, Path)):
+            # Compatibility for unit seams; production scoped bundles always
+            # supply a canonical session and root.
+            session = None
+            root = self._lib_root
+        return (
+            session,
+            self._get_file_operation_service(),
+            self._undo_svc,
+            str(Path(root).resolve()) if root else None,
+        )
+
+    @staticmethod
+    def _session_operation(session):
+        return session.operation() if session is not None else nullcontext()
 
     def _run_in_background(self, func, *args, on_done=None):
         """Run func(*args) on a worker thread. If on_done provided, called on main thread."""

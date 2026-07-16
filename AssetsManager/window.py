@@ -86,7 +86,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
         scoped = self._scoped_services_for_session(session)
         if scoped is None:
             return
-        for panel in (getattr(self, "file_list", None), getattr(self, "info", None)):
+        for panel in (
+            getattr(self, "file_list", None),
+            getattr(self, "info", None),
+            getattr(self, "sidebar", None),
+        ):
             if _alive(panel) and hasattr(panel, "set_scoped_services"):
                 panel.set_scoped_services(scoped)
         tag_tree = getattr(self, "tag_tree", None)
@@ -389,10 +393,14 @@ class MainWindow(LanSharingMixin, QMainWindow):
         """Switch all panels to a different library root."""
         if self._lan_server and self._lan_server.is_running():
             self._lan_server.stop()
+        if _alive(self.info) and hasattr(self.info, '_flush_notes_save'):
+            self.info._flush_notes_save()
+            notes_timer = getattr(self.info, '_notes_timer', None)
+            if notes_timer is not None:
+                notes_timer.stop()
         if _alive(self.file_list) and hasattr(self.file_list, '_loader'):
-            invalidated_generation = self.file_list._loader.invalidate_tasks()
-            if hasattr(self.file_list._loader, "wait_for_tasks"):
-                self.file_list._loader.wait_for_tasks(invalidated_generation)
+            generation = self.file_list._loader.invalidate_tasks()
+            self.file_list._loader.wait_for_runtime(generation)
         if self._library_session is not None:
             old_root = self._library_session.root_str
             self._library_service().close_session(self._library_session)
@@ -400,8 +408,6 @@ class MainWindow(LanSharingMixin, QMainWindow):
             bootstrap = app.property("bootstrap") if app is not None else None
             if bootstrap is not None:
                 bootstrap.cleanup_library(old_root)
-        if _alive(self.file_list) and hasattr(self.file_list, '_undo_svc'):
-            self.file_list._undo_svc.clear()
         session = self._open_library_session(path)
         self._apply_scoped_services(session)
         if _alive(self.sidebar):
@@ -699,5 +705,5 @@ class MainWindow(LanSharingMixin, QMainWindow):
         # True exit: clean up everything
         self._shutdown_resources()
         super().closeEvent(event)
-        close_all_dbs()
         self._library_service().close()
+        close_all_dbs()
