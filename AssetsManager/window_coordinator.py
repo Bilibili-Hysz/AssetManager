@@ -27,6 +27,7 @@ class WindowCoordinator:
 
     def __init__(self, window: QMainWindow):
         self._window = window
+        self._theme_generation = 0
 
     # ── Theme ─────────────────────────────────────────────────────
 
@@ -57,9 +58,32 @@ class WindowCoordinator:
 
     def on_theme_refresh(self) -> None:
         """Smooth theme transition animation."""
-        self._animate_theme_transition()
+        self._theme_generation += 1
+        self._stop_theme_animations()
+        if AppSettings.instance().get("reduce_motion", False):
+            self._apply_theme()
+            return
+        self._animate_theme_transition(self._theme_generation)
 
-    def _animate_theme_transition(self) -> None:
+    def _stop_theme_animations(self) -> None:
+        for name in ("_startup_anim", "_theme_anim_out", "_theme_anim_in"):
+            animation = getattr(self._window, name, None)
+            if animation is not None:
+                animation.stop()
+        self._window.setWindowOpacity(1.0)
+
+    def _apply_theme(self) -> None:
+        w = self._window
+        QApplication.instance().setStyleSheet(themes.stylesheet())
+        themes.apply_to(w)
+        self.apply_menu_theme()
+        self.apply_status_bar_theme()
+        w._workspace._apply_style()
+        w.refresh_bg()
+        if hasattr(w.file_list, "_apply_list_theme"):
+            w.file_list._apply_list_theme()
+
+    def _animate_theme_transition(self, generation: int) -> None:
         w = self._window
         anim_out = QPropertyAnimation(w, b"windowOpacity")
         anim_out.setDuration(100)
@@ -68,19 +92,15 @@ class WindowCoordinator:
         anim_out.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         def on_fade_out_done():
-            QApplication.instance().setStyleSheet(themes.stylesheet())
-            themes.apply_to(w)
-            self.apply_menu_theme()
-            self.apply_status_bar_theme()
-            w._workspace._apply_style()
-            w.refresh_bg()
-            if hasattr(w.file_list, '_apply_list_theme'):
-                w.file_list._apply_list_theme()
+            if generation != self._theme_generation:
+                return
+            self._apply_theme()
             anim_in = QPropertyAnimation(w, b"windowOpacity")
             anim_in.setDuration(200)
             anim_in.setStartValue(0.7)
             anim_in.setEndValue(1.0)
             anim_in.setEasingCurve(QEasingCurve.Type.OutCubic)
+            anim_in.finished.connect(lambda: w.setWindowOpacity(1.0))
             anim_in.start()
             w._theme_anim_in = anim_in
 

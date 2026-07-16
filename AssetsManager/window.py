@@ -490,41 +490,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         )
 
     def _on_theme_refresh(self):
-        # Smooth theme transition animation
-        self._animate_theme_transition()
-
-    def _animate_theme_transition(self):
-        """Animate theme change with a subtle fade effect."""
-        # Fade out
-        anim_out = QPropertyAnimation(self, b"windowOpacity")
-        anim_out.setDuration(100)
-        anim_out.setStartValue(1.0)
-        anim_out.setEndValue(0.7)
-        anim_out.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-        def on_fade_out_done():
-            # Apply theme while window is partially transparent
-            QApplication.instance().setStyleSheet(themes.stylesheet())
-            themes.apply_to(self)
-            self._apply_menu_theme()
-            self._apply_status_bar_theme()
-            self._workspace._apply_style()
-            self.refresh_bg()
-            if hasattr(self.file_list, '_apply_list_theme'):
-                self.file_list._apply_list_theme()
-
-            # Fade back in
-            anim_in = QPropertyAnimation(self, b"windowOpacity")
-            anim_in.setDuration(200)
-            anim_in.setStartValue(0.7)
-            anim_in.setEndValue(1.0)
-            anim_in.setEasingCurve(QEasingCurve.Type.OutCubic)
-            anim_in.start()
-            self._theme_anim_in = anim_in
-
-        anim_out.finished.connect(on_fade_out_done)
-        anim_out.start()
-        self._theme_anim_out = anim_out
+        self._coordinator.on_theme_refresh()
 
     def _refresh_language(self, _code: str = ""):
         self.setWindowTitle(tr("app.name"))
