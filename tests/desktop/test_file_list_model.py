@@ -35,6 +35,39 @@ def model():
 
 
 class TestFileSystemModel:
+    def test_unscoped_directory_size_skips_db_cache_write(self, tmp_path, monkeypatch):
+        class CapturingPool:
+            def __init__(self):
+                self.tasks = []
+
+            def setMaxThreadCount(self, _count):
+                pass
+
+            def start(self, task):
+                self.tasks.append(task)
+
+            def waitForDone(self):
+                pass
+
+        library = tmp_path / "library"
+        folder = library / "folder"
+        folder.mkdir(parents=True)
+        (folder / "asset.bin").write_bytes(b"abc")
+        pool = CapturingPool()
+        monkeypatch.setattr("AssetsManager.panels.file_list._model.QThreadPool", lambda: pool)
+        metadata_service = Mock()
+        metadata_service.get_dir_size.return_value = (0, False)
+        model = FileSystemModel()
+        model.set_library_root(str(library))
+        model.set_metadata_service(metadata_service)
+
+        model._start_async_dir_size(str(folder))
+        pool.tasks.pop().run()
+
+        assert model._session is None
+        metadata_service.get_dir_size.assert_not_called()
+        metadata_service.set_dir_size.assert_not_called()
+
     def test_directory_size_worker_leases_originating_session_through_cache_write(self, tmp_path, monkeypatch):
         """A running worker drains before A closes; queued A work refuses after close."""
         class CapturingPool:

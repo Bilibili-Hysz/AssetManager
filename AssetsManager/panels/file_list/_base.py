@@ -261,6 +261,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             self.set_scoped_services(scoped)
         if Path(scoped.session.root).resolve() != Path(root).resolve():
             raise RuntimeError("FileListPanel scoped services do not match navigation root")
+        self._model.set_library_root(scoped.session.root_str, scoped.session)
 
     def refresh_header(self):
         """Re-apply header bar styling (called on bg opacity changes)."""

@@ -1,5 +1,8 @@
 import os
 from pathlib import Path
+from unittest.mock import Mock
+
+import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -113,6 +116,54 @@ def test_set_root_uses_injected_scoped_library_runtime(tmp_path):
         assert panel._model._metadata_service._connection(tmp_path) is session.db_conn
         assert panel._loader._db_conn is session.db_conn
         assert panel._loader._cache_dir == session.thumb_dir_str
+    finally:
+        panel.shutdown()
+        app.setProperty("bootstrap", None)
+        app.processEvents()
+
+
+def test_root_refresh_retains_injected_session_and_closed_worker_rejects_write(tmp_path, monkeypatch):
+    """Root refreshes retain the leased session, including its close rejection."""
+    class CapturingPool:
+        def __init__(self):
+            self.tasks = []
+
+        def setMaxThreadCount(self, _count):
+            pass
+
+        def start(self, task):
+            self.tasks.append(task)
+
+        def waitForDone(self):
+            pass
+
+    library = tmp_path / "library"
+    folder = library / "folder"
+    folder.mkdir(parents=True)
+    (folder / "asset.bin").write_bytes(b"abc")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    pool = CapturingPool()
+    panel = QWidgetFileListPanel()
+    try:
+        session = bootstrap.library_service.open_session(library)
+        scoped = bootstrap.for_library(session)
+        get_dir_size = Mock(wraps=scoped.metadata_service.get_dir_size)
+        monkeypatch.setattr(scoped.metadata_service, "get_dir_size", get_dir_size)
+        panel.set_scoped_services(scoped)
+        panel._model._size_pool = pool
+
+        panel.navigate_to(str(library), set_root=True)
+        panel.navigate_to(str(folder))
+        panel.navigate_to(str(library), set_root=True)
+
+        assert panel._model._session is session
+        panel._model._start_async_dir_size(str(folder))
+        bootstrap.library_service.close_session(session)
+        with pytest.raises(RuntimeError, match="closed LibrarySession"):
+            pool.tasks.pop().run()
+        get_dir_size.assert_not_called()
     finally:
         panel.shutdown()
         app.setProperty("bootstrap", None)

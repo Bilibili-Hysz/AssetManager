@@ -837,6 +837,7 @@ class InfoPanel(PanelContent):
             and request.generation == self._async_generation
             and scoped is not None
             and request.session is scoped.session
+            and not request.session.is_closed
             and request.path == self._current_path
         )
 

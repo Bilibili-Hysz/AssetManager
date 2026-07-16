@@ -30,7 +30,7 @@ def _plugin_value(panel):
 
 def test_file_info_and_preview_reject_old_navigate_away_back_completion(tmp_path):
     panel = InfoPanel()
-    session = object()
+    session = Mock(is_closed=False)
     panel._scoped_services = Mock(session=session)
     path_a = tmp_path / "a.txt"
     path_b = tmp_path / "b.txt"
@@ -105,3 +105,25 @@ def test_directory_size_rejects_stale_zero_for_reused_path_and_session(tmp_path)
 
     value = panel._fields["size"].layout().itemAt(1).widget().text()
     assert value == "4.00 KB"
+
+
+def test_closed_session_rejects_file_info_preview_plugin_and_directory_callbacks(tmp_path):
+    panel = InfoPanel()
+    path = tmp_path / "asset.txt"
+    path.write_text("asset", encoding="utf-8")
+    session = Mock(root_str=str(tmp_path), is_closed=False)
+    panel._scoped_services = Mock(session=session)
+    panel._current_path = str(path)
+    request = panel._new_async_request(str(path))
+    panel._name.setText("unchanged")
+    panel._set_field_text(panel._fields["size"], "pending")
+    session.is_closed = True
+
+    panel._on_file_info_ready(request, _file_info(path, name="stale", plugin_value="stale-plugin"))
+    panel._on_preview_ready(request, Mock())
+    panel._on_async_dir_size_done(request, 0)
+
+    assert panel._name.text() == "unchanged"
+    assert panel._plugin_fields_layout.count() == 0
+    assert panel._preview_pixmap is None
+    assert panel._fields["size"].layout().itemAt(1).widget().text() == "pending"

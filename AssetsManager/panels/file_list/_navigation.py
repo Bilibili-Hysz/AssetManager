@@ -68,7 +68,6 @@ class NavigationMixin:
             return
         if set_root:
             self._root = p
-            self._model.set_library_root(str(p))
             try:
                 self._configure_library_runtime(str(p))
             except Exception as e:

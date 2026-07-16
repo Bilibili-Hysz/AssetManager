@@ -238,8 +238,9 @@ class FileSystemModel(QAbstractListModel):
         gen = self._dir_size_gen
         # All mutable scoped dependencies are captured before the task is queued.
         lib_root = self._lib_root
-        metadata_service = self._metadata_service
         session = self._session
+        # Unscoped browsing has no session lease, so never touch DB-backed cache.
+        metadata_service = self._metadata_service if session is not None else None
 
         class _SizeTask(QRunnable):
             def run(s):
