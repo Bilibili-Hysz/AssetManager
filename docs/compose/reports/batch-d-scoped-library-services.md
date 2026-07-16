@@ -4,10 +4,10 @@
 
 - Base: `efe0c42` (`fix: repair merged webui test dependencies`)
 - Requested initial implementation HEAD: `9f376fc` (`fix: drain scoped work before library teardown`)
-- Final implementation endpoint: `4863b8c22d7b17238ef57a589eb82dffee6692a6` (`Fix scoped duplicate lifecycle`)
-- Implementation review range: `efe0c42..4863b8c`. This commit span contains the intervening report commits `2091669`, `60b864b`, and `0fa0c99`, so it is a delivery-review range rather than an implementation-only diff.
-- Exact topology is linear: implementation fixes through `8557007`, then the architecture/report commit `2091669`, lifecycle atomicity fix `9d5c8e4`, async identity/single-injection fix `e8d0a60`, report-only commits `60b864b` and `0fa0c99`, and duplicate lifecycle/root-containment fix `4863b8c` at the implementation endpoint. Later commits are report-only evidence updates.
-- Complete delivery range: `efe0c42..4863b8c`, including the prior report commits and all later implementation fixes.
+- Final implementation endpoint: `f28b181e51151d31b6d73bfbd632fc53daf6e742` (`Fix scoped FileList worker races`)
+- Implementation review range: `efe0c42..f28b181`. This commit span contains the intervening report commits `2091669`, `60b864b`, `0fa0c99`, `abee171`, and `1c2d5c1`, so it is a delivery-review range rather than an implementation-only diff.
+- Exact topology is linear: implementation fixes through `8557007`, then the architecture/report commit `2091669`, lifecycle atomicity fix `9d5c8e4`, async identity/single-injection fix `e8d0a60`, report-only commits `60b864b` and `0fa0c99`, duplicate lifecycle/root-containment fix `4863b8c`, report-only evidence updates `abee171` and `1c2d5c1`, and FileList worker race fix `f28b181` at the implementation endpoint. This report commit follows that endpoint.
+- Complete delivery range: `efe0c42..f28b181`, including the prior report commits and all later implementation fixes.
 - The approved anchor documents `docs/compose/specs/2026-07-15-batch-d-scoped-library-services-design.md` and `docs/compose/plans/2026-07-15-batch-d-scoped-library-services.md` were untracked in the source worktree and are absent from this isolated branch. This report maps the approved S1-S8 contract without claiming those anchors are tracked here.
 
 ## S1-S8 Mapping
@@ -19,9 +19,9 @@
 | S3 | MainWindow resolves one bundle and injects it into file-list, info, sidebar, and tag-tree panels. File-list accepts an already-injected matching bundle without reinjecting it, while presentation lookup can only reuse the already-open current session and cannot open a library as a side effect. | `AssetsManager/window.py`, `AssetsManager/panels/_service_access.py`, `AssetsManager/panels/file_list/_base.py`, `AssetsManager/panels/info.py`, `AssetsManager/panels/sidebar.py`, `tests/desktop/test_scoped_service_access.py` |
 | S4 | Undo is cached per canonical session identity, shared by consumers of that bundle, and cleaned only by the bootstrap session-close listener. Closing a panel no longer destroys the bootstrap-owned Undo service. | `AssetsManager/application/bootstrap.py`, `AssetsManager/application/undo_service.py`, `AssetsManager/panels/file_list/_base.py`, `tests/integration/test_undo_service.py`, `tests/desktop/test_file_list_shim.py` |
 | S5 | Session close rejects new work, drains active operations, closes only the requested library connection, is idempotent, serializes same-root reopen, and rejects same-thread close from inside an active lease instead of deadlocking. `9d5c8e4` also serializes whole-service teardown with per-session teardown, including sessions already removed from the active map. | `AssetsManager/application/context.py`, `AssetsManager/application/library_service.py`, `tests/unit/test_bootstrap.py`, `tests/core/test_database_metadata.py`, `tests/integration/test_library_service.py` |
-| S6 | Covered file-list mutations fail closed without an injected bundle. Duplicate captures the scoped `FileOperationService` when queued, so switching panels cannot redirect work to a later library; invoking that captured service after its session closes refuses before mutation. Production presentation code contains no `FileOperationService()` or `UndoService()` constructor. The architecture test ratchets this invariant. | `AssetsManager/application/file_operation_service.py`, `AssetsManager/panels/file_list/_actions.py`, `AssetsManager/panels/file_list/_base.py`, `tests/desktop/test_file_list_shim.py`, `tests/integration/test_file_operation_service.py`, `tests/unit/test_architecture_boundaries.py` |
-| S7 | Session-bound service operations hold leases; thumbnail generations drain before teardown; InfoPanel flushes pending notes before switch; the whole async file-info task holds its originating session lease, preventing post-close repository work. `e8d0a60` tags file-info, preview, and directory-size completions with a generation, session identity, and path so stale work cannot render after navigation or same-root reopen. | `AssetsManager/application/context.py`, scoped application services, `AssetsManager/panels/file_list/_loader.py`, `AssetsManager/panels/info.py`, `AssetsManager/window.py`, `tests/desktop/test_thumbnail_loader.py`, `tests/desktop/test_info_async_identity.py`, `tests/unit/test_window_session_switching.py` |
-| S8 | The complete delivery range was reviewed for mutation fallbacks, `LibraryContext`/`.current` growth, stale writes, and Phase 3/6/7/8 scope creep. Reviewer evidence at `4863b8c` records fresh full Python and architecture results; a fresh controller rerun records passing Ruff, Pyright, compilation, and WebUI checks. | This report and the evidence below |
+| S6 | Covered file-list mutations fail closed without an injected bundle. Every queued FileList mutation captures its originating session, `FileOperationService`, `UndoService`, canonical library root, and resolved paths before dispatch; switching panels cannot redirect paste, trash, permanent delete, duplicate, undo, or redo work to a later library, and a closed originating session refuses the queued mutation before execution. Production presentation code contains no `FileOperationService()` or `UndoService()` constructor. The architecture test ratchets this invariant. | `AssetsManager/application/file_operation_service.py`, `AssetsManager/panels/file_list/_actions.py`, `AssetsManager/panels/file_list/_base.py`, `tests/desktop/test_file_list_shim.py`, `tests/integration/test_file_operation_service.py`, `tests/unit/test_architecture_boundaries.py` |
+| S7 | Session-bound service operations hold leases; thumbnail generations drain before teardown; InfoPanel flushes pending notes before switch; the whole async file-info task holds its originating session lease, preventing post-close repository work. `e8d0a60` tags file-info, preview, and directory-size completions with a generation, session identity, and path so stale work cannot render after navigation or same-root reopen. At `f28b181`, each queued directory-size worker captures its originating session, root, metadata service, path, and generation before dispatch, then leases that session through cache read, filesystem scan, and cache write. | `AssetsManager/application/context.py`, scoped application services, `AssetsManager/panels/file_list/_loader.py`, `AssetsManager/panels/file_list/_model.py`, `AssetsManager/panels/info.py`, `AssetsManager/window.py`, `tests/desktop/test_file_list_model.py`, `tests/desktop/test_thumbnail_loader.py`, `tests/desktop/test_info_async_identity.py`, `tests/unit/test_window_session_switching.py` |
+| S8 | The complete delivery range through `f28b181` retains the prior review for mutation fallbacks, `LibraryContext`/`.current` growth, stale writes, and Phase 3/6/7/8 scope creep. Final verification is pending a controller rerun after the `f28b181` implementation commit; the results below are retained prior evidence and are not claims for the new endpoint. | This report and the evidence below |
 
 ## Changed Lifecycle And Injection Files
 
@@ -50,6 +50,7 @@ Regression coverage:
 
 - `tests/core/test_database_metadata.py`
 - `tests/desktop/test_file_list_details.py`
+- `tests/desktop/test_file_list_model.py`
 - `tests/desktop/test_file_list_shim.py`
 - `tests/desktop/test_info_async_identity.py`
 - `tests/desktop/test_scoped_service_access.py`
@@ -74,9 +75,9 @@ Regression coverage:
 
 ## Verification Evidence
 
-Reviewer verification completed against the final implementation endpoint `4863b8c22d7b17238ef57a589eb82dffee6692a6` for the full Python suite and architecture boundary test. A fresh controller rerun completed the remaining lint, type, compilation, and WebUI checks. Report-only commits after `4863b8c` update this evidence without changing the implementation endpoint or review range.
+Final verification is pending a controller rerun after the implementation endpoint `f28b181e51151d31b6d73bfbd632fc53daf6e742`. The evidence below was recorded before `f28b181` and is preserved as prior evidence only; it must not be read as verification of the final implementation endpoint.
 
-Fresh reviewer evidence at `4863b8c`:
+Prior reviewer evidence at `4863b8c`:
 
 ```text
 python -m pytest -q
@@ -86,7 +87,7 @@ python -m pytest tests/unit/test_architecture_boundaries.py -q
 16 passed
 ```
 
-Fresh controller rerun:
+Prior controller rerun before `f28b181`:
 
 ```text
 python -m ruff check . --exclude ".Cython&Noikta"
@@ -99,7 +100,7 @@ python -m compileall AssetsManager -q
 (no output, exit 0)
 ```
 
-Fresh controller WebUI rerun:
+Prior controller WebUI rerun before `f28b181`:
 
 ```text
 npm test -- --run
@@ -125,6 +126,8 @@ npm run build
 - Serialized service-wide teardown against individual-session close/reopen work, including an in-flight removed session (`9d5c8e4`).
 - Bound asynchronous InfoPanel completions to a generation, exact session object, and path; retained a single matching FileList injection during normal switching (`e8d0a60`).
 - Captured the scoped file-operation service before dispatching an asynchronous duplicate, so a later panel injection cannot redirect the duplicate to another library. `4863b8c` also resolves and checks both duplicate source and generated destination against the captured service root, and the session-operation lease rejects execution after close.
+- Captured the originating session, file-operation service, undo service, canonical root, and resolved paths for every queued FileList paste, trash, permanent-delete, duplicate, undo, and redo mutation; each worker holds the originating session lease for its complete operation (`f28b181`).
+- Captured the originating session, root, metadata service, directory path, and generation for each queued directory-size worker, and held the session lease through cache read, scan, and cache write (`f28b181`).
 - Updated desktop tests to explicitly open and inject scoped bundles.
 - Added a constructor ratchet for presentation mutation services and removed stale architecture exceptions.
 
