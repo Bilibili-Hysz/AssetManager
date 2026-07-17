@@ -1,4 +1,5 @@
 import os
+from unittest.mock import Mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -8,6 +9,7 @@ from PySide6.QtWidgets import QApplication
 from AssetsManager.panels.file_list._base import FileListPanel
 from AssetsManager.panels.file_list import QWidgetFileListPanel
 from AssetsManager.panels.file_list._grid_widget import FileListGridWidget
+from AssetsManager.panels.file_list._grid_layout import GridLayout
 from AssetsManager.panels.file_list._model import FileSystemModel
 
 
@@ -37,6 +39,35 @@ def test_grid_thumb_batch_marks_only_loaded_rows_dirty():
     widget.on_thumb_batch([1, 9])
 
     assert widget._dirty == {1, 9}
+
+
+def test_grid_light_relayout_preserves_cached_textures_and_dirty_rows():
+    widget = FileListGridWidget()
+    widget.set_layout_ref(GridLayout())
+    widget._textures[0] = object()
+    widget._dirty = {1}
+
+    widget.update_layout(3, 400, relayout_only=True)
+
+    assert widget._textures[0] is not None
+    assert widget._dirty == {1}
+    assert widget._zoom_relayout_active is True
+
+    widget.update_layout(3, 400)
+
+    assert widget._zoom_relayout_active is False
+
+
+def test_zoom_frame_requests_light_grid_relayout():
+    panel = type("_Panel", (), {})()
+    panel._thumb_size = 96
+    panel._model = type("_Model", (), {"rowCount": lambda _self: 5})()
+    panel._grid_widget = Mock()
+    panel._grid_widget.width.return_value = 400
+
+    QWidgetFileListPanel._on_zoom_frame(panel, 128)
+
+    panel._grid_widget.update_layout.assert_called_once_with(5, 400, relayout_only=True)
 
 
 def test_view_mode_uses_stable_id_when_display_text_is_localized():

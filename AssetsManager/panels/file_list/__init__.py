@@ -534,7 +534,8 @@ class QWidgetFileListPanel(FileListPanel):
     def _on_zoom_frame(self, size: int):
         self._thumb_size = size
         self._grid_widget.set_thumb_size(size)
-        self._grid_widget.update_layout(self._model.rowCount(), self._grid_widget.width())
+        self._grid_widget.update_layout(
+            self._model.rowCount(), self._grid_widget.width(), relayout_only=True)
 
     def _on_zoom_done(self):
         self._loader.set_size(self._thumb_size)

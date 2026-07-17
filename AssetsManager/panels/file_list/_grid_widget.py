@@ -55,6 +55,7 @@ class FileListGridWidget(QWidget):
 
         self._scroll_y = 0
         self._textures: OrderedDict[int, QPixmap] = OrderedDict()
+        self._zoom_relayout_active = False
         self._texture_dpr = max(1.0, float(self.devicePixelRatioF() or 1.0))
         self._dirty: set[int] = set()
         self._hover_row: int = -1
@@ -189,7 +190,8 @@ class FileListGridWidget(QWidget):
 
     # ── Layout update ───────────────────────────────────────
 
-    def update_layout(self, item_count: int, widget_width: int):
+    def update_layout(self, item_count: int, widget_width: int, *, relayout_only: bool = False):
+        self._zoom_relayout_active = relayout_only
         self._model_rows = item_count
         if item_count > 0:
             self._has_been_populated = True
@@ -202,9 +204,10 @@ class FileListGridWidget(QWidget):
             to_del = [r for r in self._textures if r >= item_count]
             for r in to_del:
                 del self._textures[r]
-            cur_cols = getattr(self._layout, '_cols', 0)
-            if cur_cols != prev_cols or not hasattr(self, '_dirty_except_resize'):
-                self._dirty |= set(range(item_count))
+            if not relayout_only:
+                cur_cols = getattr(self._layout, '_cols', 0)
+                if cur_cols != prev_cols or not hasattr(self, '_dirty_except_resize'):
+                    self._dirty |= set(range(item_count))
             self.update()
 
     # ── Card rect helper ─────────────────────────────────────
@@ -304,17 +307,17 @@ class FileListGridWidget(QWidget):
                     elif op < 1.0:
                         p.save()
                         p.setOpacity(op)
-                        p.drawPixmap(rect.topLeft(), tex)
+                        p.drawPixmap(rect if self._zoom_relayout_active else rect.topLeft(), tex)
                         p.restore()
                     else:
-                        p.drawPixmap(rect.topLeft(), tex)
+                        p.drawPixmap(rect if self._zoom_relayout_active else rect.topLeft(), tex)
                 elif op < 1.0:
                     p.save()
                     p.setOpacity(op)
-                    p.drawPixmap(rect.topLeft(), tex)
+                    p.drawPixmap(rect if self._zoom_relayout_active else rect.topLeft(), tex)
                     p.restore()
                 else:
-                    p.drawPixmap(rect.topLeft(), tex)
+                    p.drawPixmap(rect if self._zoom_relayout_active else rect.topLeft(), tex)
 
         # ── Rubber band overlay ──
         if self._rubber_band_active and not self._rubber_band_rect.isNull():
