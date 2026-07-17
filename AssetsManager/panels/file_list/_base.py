@@ -185,6 +185,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._scroll_debounce.setSingleShot(True)
         self._scroll_debounce.setInterval(100)
         self._scroll_debounce.timeout.connect(self._load_visible)
+        self._scroll_animating = False
+        self._scroll_animation_generation = 0
+        self._scroll_animation_setting_value = False
         self.setFocusProxy(self._search)
 
         # ── Status bar ──────────────────────────────────────────
@@ -724,6 +727,36 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
                             self._on_tree_click(item, 0)
                 self._reset_drag_state()
         return super().eventFilter(obj, event)
+
+    def _on_scroll_value_changed(self) -> None:
+        if self._scroll_animation_setting_value:
+            return
+        if self._scroll_animating:
+            self._scroll_animation_generation += 1
+            self._scroll_animating = False
+            animation = getattr(self, "_scroll_anim", None)
+            if animation is not None:
+                animation.stop()
+        self._scroll_debounce.start()
+
+    def _begin_smooth_scroll(self) -> int:
+        self._scroll_animation_generation += 1
+        self._scroll_animating = True
+        self._scroll_debounce.stop()
+        return self._scroll_animation_generation
+
+    def _finish_smooth_scroll(self, generation: int) -> None:
+        if generation != self._scroll_animation_generation:
+            return
+        self._scroll_animating = False
+        self._scroll_debounce.start()
+
+    def _set_scroll_animation_value(self, scrollbar, value) -> None:
+        self._scroll_animation_setting_value = True
+        try:
+            scrollbar.setValue(int(value))
+        finally:
+            self._scroll_animation_setting_value = False
 
     def _smooth_scroll(self, event):
         from PySide6.QtCore import QVariantAnimation, QEasingCurve

@@ -11,6 +11,106 @@ from PySide6.QtWidgets import QApplication
 
 from AssetsManager.application.bootstrap import ApplicationBootstrap
 from AssetsManager.panels.file_list import QWidgetFileListPanel
+from AssetsManager.panels.file_list._base import FileListPanel
+
+
+class _ScrollTimer:
+    def __init__(self):
+        self.start_calls = 0
+        self.stop_calls = 0
+
+    def start(self):
+        self.start_calls += 1
+
+    def stop(self):
+        self.stop_calls += 1
+
+
+def _bare_scroll_panel():
+    panel = type("_Panel", (), {})()
+    panel._scroll_debounce = _ScrollTimer()
+    panel._scroll_animating = False
+    panel._scroll_animation_generation = 0
+    panel._scroll_animation_setting_value = False
+    return panel
+
+
+def test_manual_scroll_value_change_starts_thumbnail_debounce():
+    panel = _bare_scroll_panel()
+
+    FileListPanel._on_scroll_value_changed(panel)
+
+    assert panel._scroll_debounce.start_calls == 1
+
+
+def test_scroll_value_changes_during_smooth_animation_do_not_start_thumbnail_debounce():
+    panel = _bare_scroll_panel()
+    panel._scroll_animating = True
+    panel._scroll_animation_setting_value = True
+
+    FileListPanel._on_scroll_value_changed(panel)
+
+    assert panel._scroll_debounce.start_calls == 0
+
+
+def test_only_latest_smooth_scroll_completion_starts_thumbnail_debounce():
+    panel = _bare_scroll_panel()
+
+    first = FileListPanel._begin_smooth_scroll(panel)
+    second = FileListPanel._begin_smooth_scroll(panel)
+    FileListPanel._finish_smooth_scroll(panel, first)
+
+    assert panel._scroll_debounce.start_calls == 0
+    FileListPanel._finish_smooth_scroll(panel, second)
+
+    assert panel._scroll_debounce.start_calls == 1
+
+
+def test_user_scroll_during_smooth_animation_stops_animation_and_starts_debounce():
+    panel = _bare_scroll_panel()
+    animation = Mock()
+    panel._scroll_anim = animation
+    FileListPanel._begin_smooth_scroll(panel)
+
+    FileListPanel._on_scroll_value_changed(panel)
+
+    animation.stop.assert_called_once_with()
+    assert panel._scroll_animating is False
+    assert panel._scroll_debounce.start_calls == 1
+
+
+def test_animation_scroll_value_change_does_not_cancel_its_own_animation():
+    panel = _bare_scroll_panel()
+    animation = Mock()
+    panel._scroll_anim = animation
+    FileListPanel._begin_smooth_scroll(panel)
+    panel._scroll_animation_setting_value = True
+
+    FileListPanel._on_scroll_value_changed(panel)
+
+    animation.stop.assert_not_called()
+    assert panel._scroll_debounce.start_calls == 0
+
+
+def test_grid_scrollbar_uses_shared_animation_gate():
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        timer = _ScrollTimer()
+        panel._scroll_debounce = timer
+        scrollbar = panel._grid_widget._scrollbar
+        scrollbar.setRange(0, 100)
+
+        scrollbar.setValue(10)
+        assert timer.start_calls == 1
+
+        panel._scroll_animating = True
+        panel._scroll_animation_setting_value = True
+        scrollbar.setValue(20)
+        assert timer.start_calls == 1
+    finally:
+        panel.shutdown()
+        app.processEvents()
 
 
 def test_grid_selection_shim_supports_actions_api(tmp_path):

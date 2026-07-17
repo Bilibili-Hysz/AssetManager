@@ -168,8 +168,7 @@ class QWidgetFileListPanel(FileListPanel):
 
         # Reconnect scroll debounce to grid widget's scrollbar
         self._scroll_debounce.timeout.disconnect()
-        self._grid_widget._scrollbar.valueChanged.connect(
-            lambda: self._scroll_debounce.start())
+        self._grid_widget._scrollbar.valueChanged.connect(self._on_scroll_value_changed)
         self._scroll_debounce.timeout.connect(self._load_visible)
 
         self.content_layout.insertWidget(
@@ -563,12 +562,14 @@ class QWidgetFileListPanel(FileListPanel):
         if self._scroll_anim and self._scroll_anim.state() == QVariantAnimation.State.Running:
             target = self._scroll_anim.endValue() - event.angleDelta().y()
             self._scroll_anim.stop()
+        generation = self._begin_smooth_scroll()
         self._scroll_anim = QVariantAnimation()
         self._scroll_anim.setDuration(120)
         self._scroll_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._scroll_anim.setStartValue(sb.value())
         self._scroll_anim.setEndValue(target)
-        self._scroll_anim.valueChanged.connect(lambda v: sb.setValue(int(v)))
+        self._scroll_anim.valueChanged.connect(lambda v: self._set_scroll_animation_value(sb, v))
+        self._scroll_anim.finished.connect(lambda: self._finish_smooth_scroll(generation))
         self._scroll_anim.start()
 
     def _load_visible(self):
