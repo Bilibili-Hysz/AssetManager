@@ -1488,13 +1488,19 @@ class FileListGridWidget(QWidget):
                            rect.width(), editor.sizeHint().height())
         editor.setFocus()
         editor.show()
+        finished = False
+
         def _finish():
+            nonlocal finished
+            if finished:
+                return
+            finished = True
             new_name = editor.text().strip()
             editor.deleteLater()
             if new_name and new_name != name:
                 self.rename_requested.emit(row, new_name)
+
         editor.editingFinished.connect(_finish)
-        editor.returnPressed.connect(_finish)
 
     # ── Wheel / zoom ─────────────────────────────────────────
 

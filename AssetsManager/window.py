@@ -493,8 +493,10 @@ class MainWindow(LanSharingMixin, QMainWindow):
         """Save dock sizes to AppSettings for session restore."""
         sizes = []
         for d in (self.sidebar_dock, self.info_dock):
-            if d.widget():
-                sizes.append(d.widget().width())
+            if _alive(d):
+                panel = d.widget()
+                if _alive(panel):
+                    sizes.append(panel.width())
         AppSettings.instance().set("dock_widths", sizes)
         AppSettings.instance().save()
 
@@ -514,10 +516,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
         if isinstance(sizes, list) and len(sizes) == 2:
             docks = [self.sidebar_dock, self.info_dock]
             for d, w in zip(docks, sizes):
-                panel = d.widget()
-                if panel is not None:
-                    panel.setMinimumWidth(max(100, w // 2))
-                    panel.resize(w, panel.height())
+                panel = d.widget() if _alive(d) else None
+                if not isinstance(panel, QWidget) or not _alive(panel):
+                    continue
+                panel.setMinimumWidth(max(100, w // 2))
+                panel.resize(w, panel.height())
 
     def _on_dir_selected(self, path):
         self.setWindowTitle(f"{tr('app.name')} — {path}")

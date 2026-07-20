@@ -876,7 +876,7 @@ class ThumbnailLoader(QObject):
                 self._db_mutex.unlock()
         return count
 
-    def regenerate_all(self, lib_root: str, on_progress=None):
+    def regenerate_all(self, lib_root: str, on_progress=None, on_complete=None) -> bool:
         self._mutex.lock()
         self._regen_cancel = False
         runtime = self._runtime_locked()
@@ -889,35 +889,42 @@ class ThumbnailLoader(QObject):
 
             def run(self):
                 images = []
-                for root, dirs, files in os.walk(lib_root):
-                    if not loader._is_active_runtime(runtime):
-                        return
-                    for f in files:
-                        if f.startswith('.') or not loader._is_active_runtime(runtime):
-                            if not loader._is_active_runtime(runtime):
-                                return
-                            continue
-                        ext = os.path.splitext(f)[1].lower()
-                        if ext in IMAGE_EXTS:
-                            images.append(os.path.join(root, f))
-                total = len(images)
-                for i, path in enumerate(images):
-                    if not loader._is_active_runtime(runtime):
-                        return
-                    try:
-                        key = loader._disk_key(path)
-                        if loader._should_bake(path, runtime.lib_root):
-                            bake_size = get_bake_size()
-                            if bake_size < 0:
-                                continue
-                            if loader._max_admitted_tasks == 1:
-                                _BakeTask(loader, key, path, bake_size, runtime).run()
-                                continue
-                            while not loader._queue_bake_native(key, path, runtime):
-                                if not loader._wait_for_task_capacity(runtime):
+                try:
+                    for root, dirs, files in os.walk(lib_root):
+                        if not loader._is_active_runtime(runtime):
+                            return
+                        for f in files:
+                            if f.startswith('.') or not loader._is_active_runtime(runtime):
+                                if not loader._is_active_runtime(runtime):
                                     return
-                    except Exception:
-                        pass
-                    if on_progress and total > 0:
-                        on_progress(i + 1, total)
-        self._start_task(_RegenTask(), runtime.generation, runtime=runtime)
+                                continue
+                            ext = os.path.splitext(f)[1].lower()
+                            if ext in IMAGE_EXTS:
+                                images.append(os.path.join(root, f))
+                    total = len(images)
+                    for i, path in enumerate(images):
+                        if not loader._is_active_runtime(runtime):
+                            return
+                        try:
+                            key = loader._disk_key(path)
+                            if loader._should_bake(path, runtime.lib_root):
+                                bake_size = get_bake_size()
+                                if bake_size < 0:
+                                    continue
+                                if loader._max_admitted_tasks == 1:
+                                    _BakeTask(loader, key, path, bake_size, runtime).run()
+                                    continue
+                                while not loader._queue_bake_native(key, path, runtime):
+                                    if not loader._wait_for_task_capacity(runtime):
+                                        return
+                        except Exception:
+                            pass
+                        if on_progress and total > 0:
+                            on_progress(i + 1, total)
+                finally:
+                    if on_complete and loader._is_active_runtime(runtime):
+                        on_complete(len(images))
+        admitted = self._start_task(_RegenTask(), runtime.generation, runtime=runtime)
+        if not admitted and on_complete:
+            on_complete(0)
+        return admitted

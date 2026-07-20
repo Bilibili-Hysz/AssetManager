@@ -4,6 +4,7 @@ Inherits TabbedDialog for consistent dark theme and widget factories.
 """
 from typing import Protocol, cast, runtime_checkable
 
+from shiboken6 import Shiboken
 from PySide6.QtCore import Qt, Signal, QObject
 from PySide6.QtWidgets import (
     QMessageBox, QProgressBar, QVBoxLayout, QHBoxLayout, QWidget,
@@ -21,7 +22,7 @@ tr = i18n.tr
 class _ThumbnailLoader(Protocol):
     def clear_thumb_cache(self) -> int: ...
 
-    def regenerate_all(self, lib_root: str, on_progress=None) -> None: ...
+    def regenerate_all(self, lib_root: str, on_progress=None, on_complete=None) -> bool: ...
 
 
 class _FileListHost(Protocol):
@@ -491,7 +492,7 @@ class SettingsDialog(TabbedDialog):
         self._progress.setTextVisible(True)
         cl.addWidget(self._progress)
 
-        self._progress_signals = _ProgressSignals()
+        self._progress_signals = _ProgressSignals(self)
         self._progress_signals.updated.connect(self._on_progress)
         self._progress_signals.finished.connect(self._on_regenerate_done)
 
@@ -549,7 +550,22 @@ class SettingsDialog(TabbedDialog):
         self._progress.setRange(0, 0)
         self._clear_btn.setEnabled(False)
         self._regen_btn.setEnabled(False)
-        loader.regenerate_all(lib_root, on_progress=lambda c, t: self._progress_signals.updated.emit(c, t))
+        signals = self._progress_signals
+        loader.regenerate_all(
+            lib_root,
+            on_progress=lambda c, t: self._emit_regeneration_progress(signals, c, t),
+            on_complete=lambda count: self._emit_regeneration_finished(signals, count),
+        )
+
+    @staticmethod
+    def _emit_regeneration_progress(signals, current: int, total: int):
+        if Shiboken.isValid(signals):
+            signals.updated.emit(current, total)
+
+    @staticmethod
+    def _emit_regeneration_finished(signals, count: int):
+        if Shiboken.isValid(signals):
+            signals.finished.emit(count)
 
     def _on_progress(self, cur: int, total: int):
         self._progress.setRange(0, total)

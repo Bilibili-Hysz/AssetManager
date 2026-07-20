@@ -1,5 +1,6 @@
 import os
 import threading
+import time
 
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
@@ -24,6 +25,46 @@ def test_thumbnail_loader_emits_item_path_for_cached_preview(tmp_path):
     loader.request(7, str(source), item_path=str(item))
 
     assert seen == [(7, str(item), img)]
+
+
+def test_thumbnail_regeneration_reports_terminal_completion(tmp_path):
+    source = tmp_path / "cover.png"
+    source.write_bytes(b"not a decoded image")
+    loader = ThumbnailLoader()
+    loader.set_lib_root(str(tmp_path))
+    completed = []
+
+    loader.regenerate_all(str(tmp_path), on_complete=completed.append)
+
+    deadline = time.monotonic() + 5
+    while not completed and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.01)
+    loader._pool.waitForDone(5000)
+
+    assert completed == [1]
+
+
+def test_thumbnail_regeneration_reports_rejected_admission():
+    loader = ThumbnailLoader(max_admitted_tasks=1)
+    runtime = loader._runtime()
+    started = threading.Event()
+    release = threading.Event()
+
+    class _BlockingTask:
+        def run(self):
+            started.set()
+            assert release.wait(5)
+
+    assert loader._start_task(_BlockingTask(), runtime.generation, runtime=runtime)
+    assert started.wait(5)
+    completed = []
+
+    assert not loader.regenerate_all("unused", on_complete=completed.append)
+
+    release.set()
+    loader._pool.waitForDone(5000)
+    assert completed == [0]
 
 
 def test_thumbnail_loader_records_memory_hit_with_session_and_generation(tmp_path):

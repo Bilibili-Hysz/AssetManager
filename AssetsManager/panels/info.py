@@ -915,6 +915,7 @@ class InfoPanel(PanelContent):
     # ── Tags ───────────────────────────────────────────────────
 
     def _clear_tags(self):
+        self._tag_render_generation = getattr(self, "_tag_render_generation", 0) + 1
         for w in self._tags_widgets:
             self._tags_flow_layout.removeWidget(w)
             w.deleteLater()
@@ -936,9 +937,12 @@ class InfoPanel(PanelContent):
         """Animate tag chip entrance with fade-in."""
         chip.setWindowOpacity(0.0)
         from PySide6.QtCore import QTimer
-        QTimer.singleShot(delay, lambda: self._do_fade_in(chip))
+        generation = self._tag_render_generation
+        QTimer.singleShot(delay, lambda: self._do_fade_in(chip, generation))
 
-    def _do_fade_in(self, chip):
+    def _do_fade_in(self, chip, generation):
+        if generation != self._tag_render_generation:
+            return
         anim = QPropertyAnimation(chip, b"windowOpacity")
         anim.setDuration(150)
         anim.setStartValue(0.0)
@@ -1272,6 +1276,7 @@ class InfoPanel(PanelContent):
 
     def prepare_library_switch(self):
         """Flush local edits and stop debounce work for the old library."""
+        self._tag_render_generation = getattr(self, "_tag_render_generation", 0) + 1
         self.flush_pending_changes()
         if self._notes_timer:
             self._notes_timer.stop()

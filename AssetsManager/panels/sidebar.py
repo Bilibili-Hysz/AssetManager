@@ -132,6 +132,7 @@ class SidebarPanel(PanelContent):
         self._tree.itemExpanded.connect(self._on_expand)
         self._tree.installEventFilter(self)
         self._drag_highlight_item: QTreeWidgetItem | None = None
+        self._tree_generation = 0
 
         t = themes.get()
         bar = QHBoxLayout()
@@ -209,6 +210,7 @@ class SidebarPanel(PanelContent):
 
     def prepare_library_switch(self) -> None:
         """Invalidate pending searches before replacing the library bundle."""
+        self._tree_generation += 1
         self._controller.next_search_gen()
         if self._search_timer is not None:
             self._search_timer.stop()
@@ -237,6 +239,7 @@ class SidebarPanel(PanelContent):
             item.setForeground(0, QBrush(QColor(color)))
 
     def _populate(self):
+        self._tree_generation += 1
         self._tree.clear()
 
         # ── Virtual: Favorites header ──────────────────────────
@@ -703,7 +706,8 @@ class SidebarPanel(PanelContent):
             item.setBackground(0, QBrush(QColor(t["accent"] + "30")))
             # Fade out background after 500ms
             from PySide6.QtCore import QTimer
-            QTimer.singleShot(500, lambda: item.setBackground(0, QBrush()))
+            generation = self._tree_generation
+            QTimer.singleShot(500, lambda: self._clear_highlight_background(item, generation))
         else:
             # Ancestor of match: muted accent
             item.setForeground(0, QBrush(QColor(t["muted"])))
@@ -721,6 +725,10 @@ class SidebarPanel(PanelContent):
         font = item.font(0)
         font.setBold(False)
         item.setFont(0, font)
+
+    def _clear_highlight_background(self, item, generation: int):
+        if generation == self._tree_generation:
+            item.setBackground(0, QBrush())
         for i in range(item.childCount()):
             child = item.child(i)
             if child is not None:
