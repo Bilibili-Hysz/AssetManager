@@ -231,6 +231,9 @@ class DetailModel(QAbstractItemModel):
             return 0.0
 
     def _display_data(self, entry, col: int) -> str:
+        fs_model = self._fs_model
+        if fs_model is None or fs_model._is_shutdown:
+            return ""
         if col == 0:
             return entry.name
         if col == 1:
@@ -241,12 +244,12 @@ class DetailModel(QAbstractItemModel):
             if entry.is_dir():
                 return self._dir_size_display(entry)
             try:
-                return FileSystemModel._fmt_size(self._fs_model._cached_stat(entry).st_size)
+                return FileSystemModel._fmt_size(fs_model._cached_stat(entry).st_size)
             except (OSError, AttributeError):
                 return "—"
         if col == 3:
             try:
-                st = self._fs_model._cached_stat(entry)
+                st = fs_model._cached_stat(entry)
                 if st.st_mtime > 0:
                     return datetime.datetime.fromtimestamp(st.st_mtime).strftime('%Y-%m-%d')
             except (OSError, AttributeError, ValueError, OverflowError):
@@ -257,16 +260,19 @@ class DetailModel(QAbstractItemModel):
         return ""
 
     def _dir_size_display(self, entry) -> str:
-        for cache in (self._fs_model._subtitle_cache, self._fs_model._dir_size_cache):
+        fs_model = self._fs_model
+        if fs_model is None or fs_model._is_shutdown:
+            return "..."
+        for cache in (fs_model._subtitle_cache, fs_model._dir_size_cache):
             sz = cache.get(entry.path)
             if sz and sz not in ("...", ""):
                 return sz
-        row = self._fs_model._path_index.get(entry.path, -1)
+        row = fs_model._path_index.get(entry.path, -1)
         if row >= 0:
-            idx = self._fs_model.index(row, 0)
-            dsz = self._fs_model.data(idx, FileSystemModel.DIR_SIZE_ROLE)
-            if dsz and dsz not in ("...", ""):
+            idx = fs_model.index(row, 0)
+            dsz = fs_model.data(idx, Qt.ItemDataRole(FileSystemModel.DIR_SIZE_ROLE))
+            if isinstance(dsz, str) and dsz not in ("...", ""):
                 return dsz
-            subtitle = self._fs_model.data(idx, FileSystemModel.SUBTITLE_ROLE)
-            return subtitle if subtitle else "..."
+            subtitle = fs_model.data(idx, Qt.ItemDataRole(FileSystemModel.SUBTITLE_ROLE))
+            return subtitle if isinstance(subtitle, str) and subtitle else "..."
         return "..."

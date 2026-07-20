@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl, QMimeData, QFileInfo, QObject
 from PySide6.QtWidgets import (
-    QApplication, QMenu, QInputDialog, QMessageBox,
+    QApplication, QInputDialog, QMessageBox,
 )
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager import i18n
@@ -81,7 +81,6 @@ class ActionsMixin:
 
     def _ctx_menu(self, pos):
         widget = self.sender()
-        menu = QMenu(self)
         if widget is self._list_view:
             idxs = self._list_view.selectionModel().selectedRows()
             paths = [self._model.path_at(i.row()) for i in idxs if i.isValid()]
@@ -89,46 +88,10 @@ class ActionsMixin:
             sel = self._detail_view.selectionModel().selectedRows()
             paths = [self._detail_model.data(i, Qt.ItemDataRole.UserRole)
                      for i in sel if i.isValid()]
-
-        if paths:
-            p = paths[0]
-            menu.addAction(tr("filelist.menu.open"), lambda: self._open_file(p))
-            if os.path.isdir(p):
-                menu.addAction(tr("filelist.menu.copy"), lambda: self._copy_paths(paths, False))
-                menu.addAction(tr("filelist.menu.cut"), lambda: self._copy_paths(paths, True))
-            else:
-                open_with = menu.addMenu(tr("filelist.menu.open_with"))
-                open_with.addAction(tr("filelist.menu.default"), lambda: self._open_file(p))
-                from AssetsManager.core.tool_scheduler import list_tools, run_tool
-                for tool in list_tools():
-                    if "{file}" in str(tool.get("args", [])):
-                        icon = tool.get("icon", "") or "🔧"
-                        text = f"{icon}  {tool.get('name', 'Tool')}"
-                        open_with.addAction(text, lambda checked, t=tool, fp=p: run_tool(t, file_path=fp))
-            menu.addAction(tr("filelist.menu.copy_path"), lambda: QApplication.clipboard().setText(p))
-            if os.path.isdir(p):
-                menu.addAction(tr("filelist.menu.rename"), lambda: self._rename(p))
-            menu.addAction(tr("filelist.menu.delete"), lambda: self._delete([p]))
-            menu.addAction(tr("filelist.menu.delete_permanent"), lambda: self._delete_permanent([p]))
-            tag_menu = menu.addMenu(tr("filelist.menu.tags"))
-            tag_menu.addAction(tr("filelist.menu.apply_tag"), lambda: self._apply_tag_dialog(paths))
-            tag_menu.addAction(tr("filelist.menu.remove_tag"), lambda: self._remove_tag_dialog(paths))
-            tag_menu.addSeparator()
-            tag_menu.addAction(tr("filelist.menu.manage_tags"), lambda: self._manage_tags_dialog(paths))
-            menu.addSeparator()
-            menu.addAction(tr("filelist.properties"), lambda: self._show_properties(p))
-            menu.addSeparator()
-            menu.addAction(tr("filelist.menu.open_explorer"), lambda: self._open_in_explorer(
-                str(Path(p).parent) if not os.path.isdir(p) else p))
-            # Plugin-contributed context menu items
-            self._add_plugin_context_items(menu, p)
-        else:
-            if self._clipboard_source:
-                menu.addAction(tr("filelist.menu.paste"), self._paste)
-            menu.addAction(tr("filelist.menu.new_folder"), self._new_folder)
-            menu.addSeparator()
-            menu.addAction(tr("filelist.menu.open_explorer"), lambda: self._open_in_explorer(str(self._current)))
-        menu.exec(widget.viewport().mapToGlobal(pos))
+        self._show_context_menu(
+            [path for path in paths if isinstance(path, str)],
+            widget.viewport().mapToGlobal(pos),
+        )
 
     def _open_file(self, path):
         if os.path.isdir(path):
@@ -205,6 +168,8 @@ class ActionsMixin:
         session, service, undo_service, lib_root = mutation
         dest = str(Path(self._current).resolve())
         is_cut = self._clipboard_cut
+        operation = "move" if is_cut else "copy"
+        self._show_operation_feedback(session, operation, running=True)
         if is_cut:
             self._clipboard_source = []
             self._clipboard_cut = False
@@ -222,11 +187,34 @@ class ActionsMixin:
             result_holder.append(result)
 
         def _on_paste_done():
+            if not self._is_current_operation_session(session):
+                return
+            if result_holder:
+                result = result_holder[0]
+                self._request_operation_selection(session, getattr(result, "changed_paths", ()))
+                self._show_operation_feedback(
+                    session,
+                    operation,
+                    changed_count=len(getattr(result, "changed_paths", ())),
+                    errors=tuple(getattr(result, "errors", ())),
+                )
             self._post_refresh()
             if result_holder and not result_holder[0].ok:
                 QMessageBox.warning(self, tr("filelist.dialog.paste_error"), "\n".join(result_holder[0].errors))
 
         self._run_in_background(_do_paste, on_done=_on_paste_done)
+
+    def _can_paste(self) -> bool:
+        """Expose both FileList and valid external file clipboard sources."""
+        if self._clipboard_source:
+            return True
+        mime = QApplication.clipboard().mimeData()
+        if mime is None:
+            return False
+        return any(
+            url.isLocalFile() and url.toLocalFile()
+            for url in mime.urls()
+        )
 
     def _copy(self):
         p = self._selected_paths()
@@ -256,10 +244,15 @@ class ActionsMixin:
         old = Path(path).name
         name, ok = QInputDialog.getText(self, tr("filelist.dialog.rename"), tr("filelist.dialog.rename_label"), text=old)
         if ok and name.strip() and name.strip() != old:
+            session = getattr(self._get_scoped_services(), "session", None)
+            self._show_operation_feedback(session, "rename", running=True)
             try:
-                self._rename_file_path(path, name.strip())
+                new_path = self._rename_file_path(path, name.strip())
+                self._request_operation_selection(session, [new_path])
+                self._show_operation_feedback(session, "rename", changed_count=1)
                 self._post_refresh()
             except OSError as e:
+                self._show_operation_feedback(session, "rename", errors=(str(e),))
                 QMessageBox.warning(self, tr("dialog.error"), str(e))
 
     def _rename_file_path(self, old_path: str, new_name: str, *, add_undo: bool = True) -> str:
@@ -297,14 +290,32 @@ class ActionsMixin:
             return
         session, service, _undo_service, lib_root = mutation
         path_list = [str(Path(path).resolve()) for path in paths]
+        result_holder: list = []
+        self._show_operation_feedback(session, "trash", running=True)
 
         def _do_delete():
             with self._session_operation(session):
                 result = service.delete_to_trash(path_list, library_root=lib_root)
+            result_holder.append(result)
             for error in result.errors:
                 _log.error("Move to trash failed: %s", error)
 
-        self._run_in_background(_do_delete, on_done=self._post_refresh)
+        def _on_delete_done():
+            if not self._is_current_operation_session(session):
+                return
+            if result_holder:
+                result = result_holder[0]
+                changed_paths = getattr(result, "changed_paths", ())
+                errors = tuple(getattr(result, "errors", ()))
+                if changed_paths:
+                    candidates = self._deletion_selection_candidates(changed_paths)
+                    self._request_operation_selection(session, candidates)
+                self._show_operation_feedback(
+                    session, "trash", changed_count=len(changed_paths), errors=errors,
+                )
+            self._post_refresh()
+
+        self._run_in_background(_do_delete, on_done=_on_delete_done)
 
     def _delete_permanent(self, paths):
         mutation = self._capture_mutation_context()
@@ -321,6 +332,8 @@ class ActionsMixin:
             return
         session, service, undo_service, lib_root = mutation
         path_list = [str(Path(path).resolve()) for path in paths]
+        result_holder: list = []
+        self._show_operation_feedback(session, "permanent_delete", running=True)
 
         def _do_perm_delete():
             with self._session_operation(session):
@@ -338,20 +351,41 @@ class ActionsMixin:
                             undo_service.commit_delete(entry)
                     else:
                         undo_service.discard_delete(entry)
+            result_holder.append(result)
             for error in result.errors:
                 _log.error("Permanent delete failed: %s", error)
 
-        self._run_in_background(_do_perm_delete, on_done=self._post_refresh)
+        def _on_perm_delete_done():
+            if not self._is_current_operation_session(session):
+                return
+            if result_holder:
+                result = result_holder[0]
+                changed_paths = getattr(result, "changed_paths", ())
+                errors = tuple(getattr(result, "errors", ()))
+                if changed_paths:
+                    candidates = self._deletion_selection_candidates(changed_paths)
+                    self._request_operation_selection(session, candidates)
+                self._show_operation_feedback(
+                    session, "permanent_delete", changed_count=len(changed_paths), errors=errors,
+                )
+            self._post_refresh()
+
+        self._run_in_background(_do_perm_delete, on_done=_on_perm_delete_done)
 
     def _new_folder(self):
         if self._get_scoped_services() is None:
             return
         name, ok = QInputDialog.getText(self, tr("filelist.dialog.new_folder"), tr("filelist.dialog.new_folder_label"), text="New Folder")
         if ok and name.strip():
+            session = getattr(self._get_scoped_services(), "session", None)
+            self._show_operation_feedback(session, "new_folder", running=True)
             try:
-                self._get_file_operation_service().create_folder(self._current, name.strip())
+                created = self._get_file_operation_service().create_folder(self._current, name.strip())
+                self._request_operation_selection(session, [created])
+                self._show_operation_feedback(session, "new_folder", changed_count=1)
                 self._post_refresh()
             except OSError as e:
+                self._show_operation_feedback(session, "new_folder", errors=(str(e),))
                 QMessageBox.warning(self, tr("dialog.error"), str(e))
 
     def _duplicate_selected(self):
@@ -360,14 +394,26 @@ class ActionsMixin:
             return
         session, service, _undo_service, _lib_root = mutation
         paths = [str(Path(path).resolve()) for path in self._selected_paths()]
+        results: list[Path] = []
+        errors: list[str] = []
+        self._show_operation_feedback(session, "duplicate", running=True)
         def _do_dup():
             with self._session_operation(session):
                 for p in paths:
                     try:
-                        service.duplicate(p, copy_label=" - Copy")
-                    except OSError:
-                        pass
-        self._run_in_background(_do_dup, on_done=self._post_refresh)
+                        results.append(service.duplicate(p, copy_label=" - Copy"))
+                    except OSError as error:
+                        errors.append(str(error))
+        def _on_duplicate_done():
+            if not self._is_current_operation_session(session):
+                return
+            self._request_operation_selection(session, results)
+            self._show_operation_feedback(
+                session, "duplicate", changed_count=len(results), errors=tuple(errors),
+            )
+            self._post_refresh()
+
+        self._run_in_background(_do_dup, on_done=_on_duplicate_done)
 
     # ── Undo ─────────────────────────────────────────────────────
 
@@ -378,10 +424,27 @@ class ActionsMixin:
         session, service, undo_service, lib_root = mutation
         if not undo_service.can_undo():
             return
+        entry = undo_service.peek_undo()
+        target = self._history_selection_target(entry, undo=True)
+        result_holder: list[bool] = []
+        self._show_operation_feedback(session, "undo", running=True)
+
         def _do_undo():
             with self._session_operation(session):
-                undo_service.perform_undo(service, lib_root)
-        self._run_in_background(_do_undo, on_done=self._post_refresh)
+                result_holder.append(undo_service.perform_undo(service, lib_root))
+
+        def _on_undo_done():
+            if not self._is_current_operation_session(session):
+                return
+            if result_holder == [True] and target is not None:
+                self._request_operation_selection(session, [target])
+            self._show_operation_feedback(
+                session, "undo", changed_count=1 if result_holder == [True] else 0,
+                errors=() if result_holder == [True] else ("undo_failed",),
+            )
+            self._post_refresh()
+
+        self._run_in_background(_do_undo, on_done=_on_undo_done)
 
     def _redo(self):
         mutation = self._capture_mutation_context()
@@ -390,10 +453,44 @@ class ActionsMixin:
         session, service, undo_service, lib_root = mutation
         if not undo_service.can_redo():
             return
+        entry = undo_service.peek_redo()
+        target = self._history_selection_target(entry, undo=False)
+        deletion_candidates = (
+            self._deletion_selection_candidates([entry.path])
+            if getattr(entry, "type", None) == "delete"
+            else ()
+        )
+        result_holder: list[bool] = []
+        self._show_operation_feedback(session, "redo", running=True)
+
         def _do_redo():
             with self._session_operation(session):
-                undo_service.perform_redo(service, lib_root)
-        self._run_in_background(_do_redo, on_done=self._post_refresh)
+                result_holder.append(undo_service.perform_redo(service, lib_root))
+
+        def _on_redo_done():
+            if not self._is_current_operation_session(session):
+                return
+            if result_holder == [True]:
+                if target is not None:
+                    self._request_operation_selection(session, [target])
+                elif deletion_candidates:
+                    self._request_operation_selection(session, deletion_candidates)
+            self._show_operation_feedback(
+                session, "redo", changed_count=1 if result_holder == [True] else 0,
+                errors=() if result_holder == [True] else ("redo_failed",),
+            )
+            self._post_refresh()
+
+        self._run_in_background(_do_redo, on_done=_on_redo_done)
+
+    @staticmethod
+    def _history_selection_target(entry, *, undo: bool) -> str | None:
+        """Return the path made visible by a successful undo or redo operation."""
+        if getattr(entry, "type", None) == "rename":
+            return entry.old if undo else entry.new
+        if getattr(entry, "type", None) == "delete" and undo:
+            return entry.path
+        return None
 
     # ── Selection helpers ────────────────────────────────────────
 
@@ -436,31 +533,37 @@ class ActionsMixin:
             self._list_view.edit(indices[0])
 
     def _batch_rename(self, paths):
-        name, ok = QInputDialog.getText(self, tr("filelist.dialog.batch_rename"),
-            tr("filelist.dialog.batch_pattern"), text="{name}_{n}")
-        if ok and name.strip():
-            pattern = name.strip()
-            counter = 1
-            for p in sorted(paths):
-                src = Path(p)
-                new_name = pattern.replace("{name}", src.stem).replace("{n}", str(counter))
-                new = os.path.join(str(src.parent), new_name + src.suffix)
-                if new != str(src):
-                    try:
-                        self._rename_absolute(str(src), new)
-                        counter += 1
-                    except OSError:
-                        pass
-            self._post_refresh()
+        from AssetsManager.panels.file_list._batch_rename_dialog import BatchRenameDialog
+
+        dialog = BatchRenameDialog(paths, self)
+        if dialog.exec() != dialog.DialogCode.Accepted or dialog.plan is None:
+            return
+        session = getattr(self._get_scoped_services(), "session", None)
+        renamed = []
+        errors = []
+        self._show_operation_feedback(session, "batch_rename", running=True)
+        for entry in dialog.plan.changed_entries:
+            try:
+                renamed.append(self._rename_absolute(str(entry.source), str(entry.target)))
+            except OSError as error:
+                errors.append(str(error))
+        self._request_operation_selection(session, renamed)
+        self._show_operation_feedback(
+            session, "batch_rename", changed_count=len(renamed), errors=tuple(errors),
+        )
+        self._post_refresh()
 
     # ── Tag dialogs ──────────────────────────────────────────────
 
     def _apply_tag_dialog(self, paths):
         if not self._lib_root:
             return
-        tag, ok = QInputDialog.getText(self, tr("filelist.dialog.apply_tag"), tr("filelist.dialog.tag_label"))
+        svc = self._get_tag_service()
+        tags = svc.get_all_tags(self._lib_root)
+        tag, ok = QInputDialog.getItem(
+            self, tr("filelist.dialog.apply_tag"), tr("filelist.dialog.tag_label"), tags, 0, True,
+        )
         if ok and tag.strip():
-            svc = self._get_tag_service()
             for p in paths:
                 svc.add_tag(self._lib_root, p, tag.strip())
             self._post_refresh()

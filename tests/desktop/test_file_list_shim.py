@@ -6,12 +6,512 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QItemSelectionModel, QMimeData, QUrl
+from PySide6.QtCore import QItemSelectionModel, QMimeData, QPoint, QUrl, Qt
+from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
 from AssetsManager.application.bootstrap import ApplicationBootstrap
+from AssetsManager.i18n import tr
 from AssetsManager.panels.file_list import QWidgetFileListPanel
 from AssetsManager.panels.file_list._base import FileListPanel
+from AssetsManager.panels.file_list._shortcuts import handle_key
+
+
+def test_grid_visible_thumbnails_are_requested_before_prefetch_rows():
+    from AssetsManager.panels.file_list import QWidgetFileListPanel
+    from AssetsManager.panels.file_list._common import IMAGE_EXTS
+
+    class Entry:
+        def __init__(self, row):
+            self.path = f"/library/{row}.png"
+            self.name = f"{row}.png"
+
+        def is_dir(self):
+            return False
+
+        def is_file(self):
+            return True
+
+    panel = type("_Panel", (), {})()
+    panel._model = type("_Model", (), {
+        "rowCount": lambda _self: 10,
+        "entry_at": lambda _self, row: Entry(row),
+    })()
+    panel._view_mode = "Grid"
+    panel._grid_widget = type("_Grid", (), {"height": lambda _self: 300, "_scroll_y": 0})()
+    panel._grid_layout = type("_Layout", (), {
+        "visible_rows": lambda _self, _scroll, _height: [3, 4],
+        "columns": 2,
+    })()
+    panel._loader = Mock()
+
+    QWidgetFileListPanel._load_visible(panel)
+
+    assert IMAGE_EXTS
+    panel._loader.retain_deferred.assert_called_once_with({f"/library/{row}.png" for row in range(10)})
+    assert [(call.args[0], call.kwargs["priority"]) for call in panel._loader.request.call_args_list] == [
+        (3, 0), (4, 0), (0, 1), (1, 1), (2, 1), (5, 1), (6, 1), (7, 1), (8, 1), (9, 1),
+    ]
+
+
+def test_grid_scan_commit_starts_one_presentation_after_loading_reset(tmp_path):
+    (tmp_path / "asset.txt").write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        begin_presentation = Mock(wraps=panel._grid_widget.begin_presentation)
+        panel._grid_widget.begin_presentation = begin_presentation
+        update_layout = Mock(wraps=panel._grid_widget.update_layout)
+        panel._grid_widget.update_layout = update_layout
+
+        panel.navigate_to(str(tmp_path))
+        panel._model._wait_for_scan()
+        app.processEvents()
+
+        assert begin_presentation.call_count == 1
+        assert begin_presentation.call_args.args[0] == panel._model.scan_generation
+        assert [call.args[0] for call in update_layout.call_args_list] == [0, 1]
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_empty_grid_scan_does_not_start_presentation_or_thumbnail_load(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        panel._grid_widget.begin_presentation = Mock()
+        panel._load_visible = Mock()
+
+        panel.navigate_to(str(tmp_path), set_root=True)
+        panel._model._wait_for_scan()
+        app.processEvents()
+
+        panel._grid_widget.begin_presentation.assert_not_called()
+        panel._load_visible.assert_not_called()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_grid_visibility_toggle_does_not_replay_presentation(tmp_path):
+    (tmp_path / "asset.txt").write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        panel.navigate_to(str(tmp_path), set_root=True)
+        panel._model._wait_for_scan()
+        app.processEvents()
+        begin_presentation = Mock(wraps=panel._grid_widget.begin_presentation)
+        panel._grid_widget.begin_presentation = begin_presentation
+
+        details = panel._view_combo.findData("Details")
+        grid = panel._view_combo.findData("Grid")
+        panel._view_combo.setCurrentIndex(details)
+        panel._view_combo.setCurrentIndex(grid)
+
+        begin_presentation.assert_not_called()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_details_scan_commits_latest_grid_presentation_before_switching_back(tmp_path):
+    (tmp_path / "asset.txt").write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        details = panel._view_combo.findData("Details")
+        grid = panel._view_combo.findData("Grid")
+        panel._view_combo.setCurrentIndex(details)
+        begin_presentation = Mock(wraps=panel._grid_widget.begin_presentation)
+        panel._grid_widget.begin_presentation = begin_presentation
+
+        panel.navigate_to(str(tmp_path), set_root=True)
+        panel._model._wait_for_scan()
+        app.processEvents()
+
+        assert begin_presentation.call_args.args[0] == panel._model.scan_generation
+        panel._view_combo.setCurrentIndex(grid)
+        app.processEvents()
+        assert panel._grid_widget._pending_presentation is not None
+        assert panel._grid_widget._pending_presentation[0] == panel._model.scan_generation
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_grid_reset_discards_pending_thumbnail_batch(tmp_path):
+    (tmp_path / "asset.txt").write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        panel._thumbnail_delivery._batch = {0: str(tmp_path / "asset.txt")}
+        panel._thumbnail_delivery._timer.start()
+
+        panel._model.set_directory(str(tmp_path))
+
+        assert panel._thumbnail_delivery._batch == {}
+        assert panel._thumbnail_delivery._timer.isActive() is False
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_grid_thumbnail_delivery_batches_only_current_model_rows(tmp_path):
+    (tmp_path / "asset.png").write_bytes(b"not decoded by this test")
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        panel.navigate_to(str(tmp_path), set_root=True)
+        panel._model._wait_for_scan()
+        row = panel._model._path_index[str(tmp_path / "asset.png")]
+        committed = Mock()
+        panel._grid_widget.commit_thumbnail_rows = committed
+        image = QImage(1, 1, QImage.Format.Format_RGB32)
+
+        panel._on_thumbnail_ready(row, str(tmp_path / "missing.png"), image)
+        panel._on_thumbnail_ready(row, str(tmp_path / "asset.png"), image)
+        panel._flush_thumb_batch()
+
+        committed.assert_called_once_with([row])
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_thumbnail_result_is_ignored_after_panel_shutdown():
+    panel = type("_Panel", (), {})()
+    panel._model = type("_Model", (), {"_is_shutdown": True})()
+
+    FileListPanel._on_thumbnail_ready(panel, 0, "/library/asset.png", Mock())
+
+
+def test_grid_thumbnail_delivery_is_ignored_after_panel_shutdown():
+    panel = type("_Panel", (), {})()
+    panel._model = type("_Model", (), {"_is_shutdown": True})()
+    panel._thumbnail_delivery = Mock()
+
+    QWidgetFileListPanel._on_thumbnail_ready(panel, 0, "/library/asset.png", Mock())
+
+    panel._thumbnail_delivery.handle_ready.assert_not_called()
+
+
+def test_delayed_grid_load_is_ignored_after_panel_shutdown():
+    panel = type("_Panel", (), {})()
+    panel._model = type("_Model", (), {"_is_shutdown": True})()
+    panel._loader = Mock()
+
+    QWidgetFileListPanel._load_visible(panel)
+
+    panel._loader.request.assert_not_called()
+
+
+
+
+def test_file_operation_is_ignored_after_panel_shutdown():
+    panel = type("_Panel", (), {})()
+    panel._model = type("_Model", (), {"_is_shutdown": True})()
+    panel._file_op_timer = Mock()
+
+    QWidgetFileListPanel._on_file_operation(panel, Mock())
+
+    panel._file_op_timer.start.assert_not_called()
+
+
+def test_grid_status_uses_cached_total_size_without_recomputing():
+    panel = type("_Panel", (), {})()
+    panel._model = type("_Model", (), {"rowCount": lambda _self: 20})()
+    panel._view_mode = "Grid"
+    panel._grid_widget = type("_Grid", (), {"selection_model_rows": lambda _self: set()})()
+    panel._cached_total_sz = 1024
+    panel._compute_total_sz = Mock()
+    panel._controller = Mock()
+    panel._controller.format_total_size_suffix.return_value = "  |  1.0 KB"
+    panel._status = Mock()
+
+    QWidgetFileListPanel._update_status(panel)
+
+    panel._compute_total_sz.assert_not_called()
+    panel._controller.format_total_size_suffix.assert_called_once_with(1024)
+
+
+def test_grid_status_computes_total_size_when_cache_is_invalid():
+    panel = type("_Panel", (), {})()
+    panel._model = type("_Model", (), {"rowCount": lambda _self: 20})()
+    panel._view_mode = "Grid"
+    panel._grid_widget = type("_Grid", (), {"selection_model_rows": lambda _self: set()})()
+    panel._cached_total_sz = -1
+    panel._compute_total_sz = Mock(side_effect=lambda: setattr(panel, "_cached_total_sz", 1024))
+    panel._controller = Mock()
+    panel._controller.format_total_size_suffix.return_value = "  |  1.0 KB"
+    panel._status = Mock()
+
+    QWidgetFileListPanel._update_status(panel)
+
+    panel._compute_total_sz.assert_called_once_with()
+    panel._controller.format_total_size_suffix.assert_called_once_with(1024)
+
+
+def test_grid_status_projects_explicit_file_list_states(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        panel.navigate_to(str(tmp_path), set_root=True)
+        assert "Loading" in panel._status.text()
+        panel._model._wait_for_scan()
+        assert panel._status.text() == tr("filelist.empty")
+
+        (tmp_path / "asset.txt").write_text("asset")
+        panel._model.refresh()
+        panel._model._wait_for_scan()
+        app.processEvents()
+        panel._model._wait_for_scan()
+        panel._model.set_filter(text="missing")
+        assert panel._status.text() == tr("filelist.state.empty_filtered")
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_operation_feedback_projects_running_success_and_partial_states(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    panel = QWidgetFileListPanel()
+    session = bootstrap.library_service.open_session(tmp_path)
+    panel.set_scoped_services(bootstrap.for_library(session))
+    try:
+        panel._show_operation_feedback(session, "copy", running=True)
+        assert panel._operation_feedback.isHidden() is False
+        assert "progress" in panel._operation_feedback.text().lower()
+
+        panel._show_operation_feedback(session, "copy", changed_count=2)
+        assert "2" in panel._operation_feedback.text()
+        assert panel._operation_feedback_timer.isActive()
+
+        panel._show_operation_feedback(session, "copy", changed_count=1, errors=("blocked",))
+        assert "1" in panel._operation_feedback.text()
+        assert "failed" in panel._operation_feedback.text().lower()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_stale_operation_completion_does_not_refresh_or_update_feedback(tmp_path):
+    from AssetsManager.application.file_operation_service import FileOperationResult
+
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    source = first / "asset.txt"
+    source.write_text("asset")
+    panel = QWidgetFileListPanel()
+    first_session = bootstrap.library_service.open_session(first)
+    panel.set_scoped_services(bootstrap.for_library(first_session))
+    callbacks = []
+    try:
+        panel.navigate_to(str(first), set_root=True)
+        panel._clipboard_source = [str(source)]
+        panel._clipboard_cut = False
+        panel._run_in_background = lambda func, *args, on_done=None: callbacks.append((func, on_done))
+        panel._post_refresh = Mock()
+        panel._show_operation_feedback = Mock()
+        bootstrap.for_library(first_session).file_operation_service.copy_to_directory = Mock(
+            return_value=FileOperationResult((first / "copy.txt",), ())
+        )
+
+        panel._paste()
+        second_session = bootstrap.library_service.open_session(second)
+        panel.set_scoped_services(bootstrap.for_library(second_session))
+        func, on_done = callbacks.pop()
+        func()
+        on_done()
+
+        panel._post_refresh.assert_not_called()
+        panel._show_operation_feedback.assert_called_once_with(first_session, "copy", running=True)
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_duplicate_feedback_reports_partial_failures(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    first.write_text("first")
+    second.write_text("second")
+    panel = QWidgetFileListPanel()
+    session = bootstrap.library_service.open_session(tmp_path)
+    scoped = bootstrap.for_library(session)
+    panel.set_scoped_services(scoped)
+    try:
+        panel._selected_paths = lambda: [str(first), str(second)]
+        panel._run_in_background = lambda func, *args, on_done=None: (func(), on_done())
+        panel._post_refresh = Mock()
+        duplicated = tmp_path / "first - Copy.txt"
+
+        def duplicate(path, *, copy_label):
+            if path == str(second):
+                raise OSError("target is locked")
+            assert copy_label == " - Copy"
+            return duplicated
+
+        monkeypatch.setattr(scoped.file_operation_service, "duplicate", duplicate)
+
+        panel._duplicate_selected()
+
+        assert "1" in panel._operation_feedback.text()
+        assert "failed" in panel._operation_feedback.text().lower()
+        panel._post_refresh.assert_called_once()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_grid_selects_requested_operation_result_after_refresh(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    panel = QWidgetFileListPanel()
+    session = bootstrap.library_service.open_session(tmp_path)
+    panel.set_scoped_services(bootstrap.for_library(session))
+    panel.navigate_to(str(tmp_path), set_root=True)
+    panel._model._wait_for_scan()
+    target = tmp_path / "created.txt"
+    target.write_text("created")
+
+    try:
+        panel._request_operation_selection(session, [target])
+        panel._post_refresh()
+        panel._model._wait_for_scan()
+        app.processEvents()
+        panel._model._wait_for_scan()
+        panel._model._wait_for_scan()
+
+        assert panel._grid_widget.selection_model_rows() == {panel._model._path_index[str(target)]}
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_operation_selection_is_discarded_after_directory_or_session_change(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    target = first / "created.txt"
+    target.write_text("created")
+    panel = QWidgetFileListPanel()
+    first_session = bootstrap.library_service.open_session(first)
+    panel.set_scoped_services(bootstrap.for_library(first_session))
+    panel.navigate_to(str(first), set_root=True)
+    panel._model._wait_for_scan()
+
+    try:
+        panel._request_operation_selection(first_session, [target])
+        second_session = bootstrap.library_service.open_session(second)
+        panel.set_scoped_services(bootstrap.for_library(second_session))
+        panel.navigate_to(str(second), set_root=True)
+        panel._model._wait_for_scan()
+
+        assert panel._grid_widget.selection_model_rows() == set()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_grid_deletion_candidates_prefer_next_visible_item(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    for name in ("a.txt", "b.txt", "c.txt"):
+        (tmp_path / name).write_text(name)
+    panel = QWidgetFileListPanel()
+    session = bootstrap.library_service.open_session(tmp_path)
+    panel.set_scoped_services(bootstrap.for_library(session))
+    panel.navigate_to(str(tmp_path), set_root=True)
+    panel._model._wait_for_scan()
+    deleted = tmp_path / "b.txt"
+
+    try:
+        candidates = panel._deletion_selection_candidates([deleted])
+        deleted.unlink()
+        panel._request_operation_selection(session, candidates)
+        panel._post_refresh()
+        panel._model._wait_for_scan()
+        app.processEvents()
+        panel._model._wait_for_scan()
+
+        assert panel._grid_widget.selection_model_rows() == {panel._model._path_index[str(tmp_path / "c.txt")]}
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_grid_deletion_candidates_fall_back_to_previous_visible_item(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    for name in ("a.txt", "b.txt"):
+        (tmp_path / name).write_text(name)
+    panel = QWidgetFileListPanel()
+    session = bootstrap.library_service.open_session(tmp_path)
+    panel.set_scoped_services(bootstrap.for_library(session))
+    panel.navigate_to(str(tmp_path), set_root=True)
+    panel._model._wait_for_scan()
+    deleted = tmp_path / "b.txt"
+
+    try:
+        candidates = panel._deletion_selection_candidates([deleted])
+        deleted.unlink()
+        panel._request_operation_selection(session, candidates)
+        panel._post_refresh()
+        panel._model._wait_for_scan()
+        app.processEvents()
+        panel._model._wait_for_scan()
+
+        assert panel._grid_widget.selection_model_rows() == {panel._model._path_index[str(tmp_path / "a.txt")]}
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_grid_undo_rename_selects_restored_path_after_refresh(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    old = tmp_path / "old.txt"
+    new = tmp_path / "new.txt"
+    old.write_text("asset")
+    panel = QWidgetFileListPanel()
+    session = bootstrap.library_service.open_session(tmp_path)
+    scoped = bootstrap.for_library(session)
+    panel.set_scoped_services(scoped)
+    panel.navigate_to(str(tmp_path), set_root=True)
+    panel._model._wait_for_scan()
+    scoped.undo_service.record_rename(str(old), str(new))
+    scoped.file_operation_service.move(old, new)
+    panel._run_in_background = lambda func, *args, on_done=None: (func(), on_done and on_done())
+
+    try:
+        panel._undo()
+        panel._model._wait_for_scan()
+        app.processEvents()
+        panel._model._wait_for_scan()
+
+        assert panel._grid_widget.selection_model_rows() == {panel._model._path_index[str(old)]}
+
+        panel._redo()
+        panel._model._wait_for_scan()
+        app.processEvents()
+        panel._model._wait_for_scan()
+
+        assert panel._grid_widget.selection_model_rows() == {panel._model._path_index[str(new)]}
+    finally:
+        panel.shutdown()
+        app.processEvents()
 
 
 class _ScrollTimer:
@@ -213,17 +713,40 @@ def test_set_root_uses_injected_scoped_library_runtime(tmp_path):
         panel.navigate_to(str(tmp_path), set_root=True)
 
         assert panel._model._metadata_service is not None
-        assert panel._model._metadata_service._connection(tmp_path) is session.db_conn
-        assert panel._loader._db_conn is session.db_conn
+        conn = session.connection_for(tmp_path)
+        assert panel._model._metadata_service._connection(tmp_path) is conn
+        assert panel._loader._db_conn is conn
         assert panel._loader._cache_dir == session.thumb_dir_str
+        assert panel._loader._lib_root == session.root_str
     finally:
         panel.shutdown()
         app.setProperty("bootstrap", None)
         app.processEvents()
 
 
-def test_root_refresh_retains_injected_session_and_closed_worker_rejects_write(tmp_path, monkeypatch):
-    """Root refreshes retain the leased session, including its close rejection."""
+def test_uninjected_runtime_does_not_resolve_qapplication_bootstrap(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    panel = QWidgetFileListPanel()
+    try:
+        bootstrap.library_service.open_session(tmp_path)
+        for_library = Mock(wraps=bootstrap.for_library)
+        monkeypatch.setattr(bootstrap, "for_library", for_library)
+
+        with pytest.raises(RuntimeError, match="scoped services not injected"):
+            panel._configure_library_runtime(str(tmp_path))
+
+        for_library.assert_not_called()
+        assert panel._scoped_services is None
+    finally:
+        panel.shutdown()
+        app.setProperty("bootstrap", None)
+        app.processEvents()
+
+
+def test_root_refresh_retains_injected_session_and_closed_worker_skips_write(tmp_path, monkeypatch):
+    """Queued work after close exits quietly without accessing the closed store."""
     class CapturingPool:
         def __init__(self):
             self.tasks = []
@@ -261,13 +784,40 @@ def test_root_refresh_retains_injected_session_and_closed_worker_rejects_write(t
         assert panel._model._session is session
         panel._model._start_async_dir_size(str(folder))
         bootstrap.library_service.close_session(session)
-        with pytest.raises(RuntimeError, match="closed LibrarySession"):
-            pool.tasks.pop().run()
+        pool.tasks.pop().run()
         get_dir_size.assert_not_called()
     finally:
         panel.shutdown()
         app.setProperty("bootstrap", None)
         app.processEvents()
+
+
+def test_prepare_library_switch_drains_thumbnails_before_directory_size_work():
+    panel = type("_Panel", (), {})()
+    calls = []
+    panel._loader = type("_Loader", (), {
+        "invalidate_tasks": lambda _self: calls.append("invalidate") or 3,
+        "wait_for_runtime": lambda _self, generation: calls.append(("thumbnails", generation)),
+    })()
+    panel._model = type("_Model", (), {
+        "prepare_library_switch": lambda _self: calls.append("directory-sizes"),
+    })()
+
+    FileListPanel.prepare_library_switch(panel)
+
+    assert calls == ["invalidate", ("thumbnails", 3), "directory-sizes"]
+
+
+def test_directory_size_result_is_ignored_after_panel_shutdown():
+    panel = type("_Panel", (), {})()
+    panel._model = type("_Model", (), {
+        "_is_shutdown": True,
+        "_pending_dir_sizes": {"/library/folder"},
+    })()
+
+    FileListPanel._on_dir_size_ready(panel, "/library/folder", "1.0 KB", 1)
+
+    assert panel._model._pending_dir_sizes == {"/library/folder"}
 
 
 def test_external_drop_uses_scoped_file_operation_service(tmp_path, monkeypatch):
@@ -742,6 +1292,59 @@ def test_partial_permanent_delete_commits_only_changed_path_backups(tmp_path, mo
         app.processEvents()
 
 
+def test_partial_delete_selects_neighbor_of_successfully_deleted_path(tmp_path, monkeypatch):
+    from AssetsManager.application.file_operation_service import FileOperationResult
+    from PySide6.QtWidgets import QMessageBox
+
+    for name in ("a.txt", "b.txt", "c.txt"):
+        (tmp_path / name).write_text(name)
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    panel = QWidgetFileListPanel()
+    session = bootstrap.library_service.open_session(tmp_path)
+    panel.set_scoped_services(bootstrap.for_library(session))
+    monkeypatch.setattr(
+        "AssetsManager.panels.file_list._actions.QMessageBox.question",
+        lambda *args: QMessageBox.StandardButton.Yes,
+    )
+    try:
+        panel.navigate_to(str(tmp_path), set_root=True)
+        panel._model._wait_for_scan()
+        panel._run_in_background = lambda func, *args, on_done=None: (func(), on_done and on_done())
+        panel._post_refresh = Mock()
+        panel._request_operation_selection = Mock()
+        service = Mock(return_value=None)
+        service.delete_to_trash.return_value = FileOperationResult((tmp_path / "a.txt",), ("b failed",))
+        monkeypatch.setattr(panel, "_get_file_operation_service", lambda: service)
+
+        panel._delete([str(tmp_path / "a.txt"), str(tmp_path / "b.txt")])
+
+        panel._request_operation_selection.assert_called_once_with(session, (str(tmp_path / "b.txt"), str(tmp_path / "c.txt")))
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_operation_request_without_current_directory_target_clears_prior_intent(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    panel = QWidgetFileListPanel()
+    session = bootstrap.library_service.open_session(tmp_path)
+    panel.set_scoped_services(bootstrap.for_library(session))
+    target = tmp_path / "target.txt"
+    outside = tmp_path.parent / "outside.txt"
+    try:
+        panel.navigate_to(str(tmp_path), set_root=True)
+        panel._request_operation_selection(session, [target])
+
+        panel._request_operation_selection(session, [outside])
+
+        assert panel._pending_operation_selection is None
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
 def test_panel_undo_redo_use_perform_methods(tmp_path, monkeypatch):
     from unittest.mock import Mock
 
@@ -1066,6 +1669,26 @@ def test_panel_shutdown_does_not_cleanup_bootstrap_owned_undo_service(tmp_path, 
         app.processEvents()
 
 
+def test_panel_shutdown_releases_scoped_service_references(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    panel = QWidgetFileListPanel()
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(tmp_path))
+    panel.set_scoped_services(scoped)
+
+    try:
+        panel.shutdown()
+
+        assert panel._scoped_services is None
+        assert panel._undo_svc is None
+        assert panel._model._session is None
+        assert panel._model._metadata_service is None
+        assert panel._controller._file_ops is None
+        assert panel._controller._undo_svc is None
+    finally:
+        app.processEvents()
+
+
 def test_file_list_does_not_construct_unbound_undo_service(monkeypatch):
     """The panel receives its undo service only through scoped injection."""
     app = QApplication.instance() or QApplication([])
@@ -1077,6 +1700,605 @@ def test_file_list_does_not_construct_unbound_undo_service(monkeypatch):
     panel = QWidgetFileListPanel()
     try:
         assert panel._undo_svc is None
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_grid_selection_survives_post_refresh_by_path(tmp_path):
+    (tmp_path / "a.txt").write_text("a")
+    target = tmp_path / "b.txt"
+    target.write_text("b")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    panel = QWidgetFileListPanel()
+    session = bootstrap.library_service.open_session(tmp_path)
+    panel.set_scoped_services(bootstrap.for_library(session))
+    try:
+        panel.navigate_to(str(tmp_path), set_root=True)
+        panel._model._wait_for_scan()
+        panel._grid_widget._selection = {panel._model._path_index[str(target)]}
+
+        panel._post_refresh()
+        panel._model._wait_for_scan()
+        app.processEvents()
+        panel._model._wait_for_scan()
+        panel._model._wait_for_scan()
+
+        selected = [panel._model.path_at(row) for row in panel._grid_widget.selection_model_rows()]
+        assert selected == [str(target)]
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_grid_batch_rename_selects_first_renamed_result(tmp_path, monkeypatch):
+    for name in ("a.txt", "b.txt"):
+        (tmp_path / name).write_text(name)
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    panel = QWidgetFileListPanel()
+    session = bootstrap.library_service.open_session(tmp_path)
+    panel.set_scoped_services(bootstrap.for_library(session))
+    from AssetsManager.panels.file_list._batch_rename import plan_batch_rename
+
+    class AcceptedDialog:
+        DialogCode = type("DialogCode", (), {"Accepted": 1})
+
+        def __init__(self, paths, _parent):
+            self.plan = plan_batch_rename(
+                paths, "{name}_renamed", occupied_paths=paths, windows_rules=True,
+            )
+
+        def exec(self):
+            return self.DialogCode.Accepted
+
+    monkeypatch.setattr("AssetsManager.panels.file_list._batch_rename_dialog.BatchRenameDialog", AcceptedDialog)
+    try:
+        panel.navigate_to(str(tmp_path), set_root=True)
+        panel._model._wait_for_scan()
+        panel._grid_widget._selection = {
+            panel._model._path_index[str(tmp_path / name)] for name in ("a.txt", "b.txt")
+        }
+
+        panel._batch_rename([str(tmp_path / "a.txt"), str(tmp_path / "b.txt")])
+        panel._model._wait_for_scan()
+        app.processEvents()
+        panel._model._wait_for_scan()
+        app.processEvents()
+
+        selected = [panel._model.path_at(row) for row in panel._grid_widget.selection_model_rows()]
+        assert selected == [str(tmp_path / "a_renamed.txt")]
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_grid_selection_survives_filter_when_path_remains_visible(tmp_path):
+    (tmp_path / "alpha.txt").write_text("a")
+    target = tmp_path / "beta.txt"
+    target.write_text("b")
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        panel.navigate_to(str(tmp_path), set_root=True)
+        panel._model._wait_for_scan()
+        panel._grid_widget._selection = {panel._model._path_index[str(target)]}
+
+        panel._model.set_filter(text="beta")
+
+        selected = [panel._model.path_at(row) for row in panel._grid_widget.selection_model_rows()]
+        assert selected == [str(target)]
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_grid_clear_selection_during_refresh_overrides_path_restore(tmp_path):
+    target = tmp_path / "asset.txt"
+    target.write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    panel = QWidgetFileListPanel()
+    session = bootstrap.library_service.open_session(tmp_path)
+    panel.set_scoped_services(bootstrap.for_library(session))
+    try:
+        panel.navigate_to(str(tmp_path), set_root=True)
+        panel._model._wait_for_scan()
+        panel._grid_widget._selection = {panel._model._path_index[str(target)]}
+
+        panel._post_refresh()
+        panel._grid_widget.clear_selection()
+        panel._model._wait_for_scan()
+        app.processEvents()
+
+        assert panel._grid_widget.selection_model_rows() == set()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_grid_selection_drops_when_navigating_to_another_directory(tmp_path):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    selected = first / "selected.txt"
+    selected.write_text("asset")
+    (second / "other.txt").write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    panel = QWidgetFileListPanel()
+    session = bootstrap.library_service.open_session(tmp_path)
+    panel.set_scoped_services(bootstrap.for_library(session))
+    try:
+        panel.navigate_to(str(first), set_root=True)
+        panel._model._wait_for_scan()
+        panel._grid_widget._selection = {panel._model._path_index[str(selected)]}
+
+        panel.navigate_to(str(second))
+        panel._model._wait_for_scan()
+        app.processEvents()
+
+        assert panel.current_path == str(second.resolve())
+        assert panel._grid_widget.selection_model_rows() == set()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_grid_refresh_drops_externally_removed_selection(tmp_path):
+    target = tmp_path / "removed.txt"
+    target.write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    panel = QWidgetFileListPanel()
+    session = bootstrap.library_service.open_session(tmp_path)
+    panel.set_scoped_services(bootstrap.for_library(session))
+    try:
+        panel.navigate_to(str(tmp_path), set_root=True)
+        panel._model._wait_for_scan()
+        panel._grid_widget._selection = {panel._model._path_index[str(target)]}
+        target.unlink()
+
+        panel._post_refresh()
+        panel._model._wait_for_scan()
+        app.processEvents()
+        panel._model._wait_for_scan()
+        panel._model._wait_for_scan()
+
+        assert panel._grid_widget.selection_model_rows() == set()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_context_menu_exposes_same_operation_actions_for_file_and_directory(tmp_path):
+    """The shared builder keeps Grid and Details operation menus aligned."""
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    file_path = tmp_path / "asset.txt"
+    folder_path = tmp_path / "folder"
+    file_path.write_text("asset")
+    folder_path.mkdir()
+
+    try:
+        expected_keys = {
+            "filelist.menu.open",
+            "filelist.menu.copy",
+            "filelist.menu.cut",
+            "filelist.menu.copy_path",
+            "filelist.menu.rename",
+            "filelist.menu.delete",
+            "filelist.menu.delete_permanent",
+            "filelist.menu.duplicate",
+            "filelist.menu.undo",
+            "filelist.menu.redo",
+        }
+        expected = {tr(key) for key in expected_keys}
+        for path in (file_path, folder_path):
+            menu = panel._build_context_menu([str(path)], QPoint())
+            labels = {action.text() for action in menu.actions() if not action.isSeparator()}
+            assert expected <= labels
+            menu.deleteLater()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_context_menu_open_uses_the_same_internal_open_behavior_as_enter(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    file_path = tmp_path / "asset.txt"
+    file_path.write_text("asset")
+    opened = Mock()
+    panel.file_double_clicked.connect(opened)
+
+    try:
+        menu = panel._build_context_menu([str(file_path)], QPoint())
+        menu.actions()[0].trigger()
+
+        opened.assert_called_once_with(str(file_path))
+        menu.deleteLater()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_context_menu_disables_mutations_without_scoped_services(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    path = tmp_path / "asset.txt"
+    path.write_text("asset")
+
+    try:
+        menu = panel._build_context_menu([str(path)], QPoint())
+        actions = {action.text(): action for action in menu.actions() if not action.isSeparator()}
+        for key in (
+            "filelist.menu.rename",
+            "filelist.menu.duplicate",
+            "filelist.menu.delete",
+            "filelist.menu.delete_permanent",
+            "filelist.menu.undo",
+            "filelist.menu.redo",
+        ):
+            assert actions[tr(key)].isEnabled() is False
+        assert actions[tr("filelist.menu.copy")].isEnabled() is True
+        assert actions[tr("filelist.menu.cut")].isEnabled() is True
+        menu.deleteLater()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_context_menu_projects_scoped_undo_redo_availability(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    path = tmp_path / "asset.txt"
+    path.write_text("asset")
+    panel._undo_svc = Mock()
+    panel._undo_svc.can_undo.return_value = True
+    panel._undo_svc.can_redo.return_value = False
+    monkeypatch.setattr(panel, "_get_scoped_services", lambda: Mock())
+
+    try:
+        menu = panel._build_context_menu([str(path)], QPoint())
+        actions = {action.text(): action for action in menu.actions() if not action.isSeparator()}
+        assert actions[tr("filelist.menu.rename")].isEnabled() is True
+        assert actions[tr("filelist.menu.duplicate")].isEnabled() is True
+        assert actions[tr("filelist.menu.delete")].isEnabled() is True
+        assert actions[tr("filelist.menu.delete_permanent")].isEnabled() is True
+        assert actions[tr("filelist.menu.undo")].isEnabled() is True
+        assert actions[tr("filelist.menu.redo")].isEnabled() is False
+        menu.deleteLater()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_context_menu_keeps_rename_visible_but_disabled_for_multi_selection(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    paths = [tmp_path / "first.txt", tmp_path / "second.txt"]
+    for path in paths:
+        path.write_text("asset")
+    panel._undo_svc = Mock()
+    panel._undo_svc.can_undo.return_value = False
+    panel._undo_svc.can_redo.return_value = False
+    monkeypatch.setattr(panel, "_get_scoped_services", lambda: Mock())
+
+    try:
+        menu = panel._build_context_menu([str(path) for path in paths], QPoint())
+        actions = {action.text(): action for action in menu.actions() if not action.isSeparator()}
+        assert tr("filelist.menu.rename") in actions
+        assert actions[tr("filelist.menu.rename")].isEnabled() is False
+        assert actions[tr("filelist.menu.duplicate")].isEnabled() is True
+        menu.deleteLater()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_empty_context_menu_exposes_common_view_and_history_actions():
+    app = QApplication.instance() or QApplication([])
+    QApplication.clipboard().clear()
+    panel = QWidgetFileListPanel()
+
+    try:
+        menu = panel._build_context_menu([], QPoint())
+        actions = {action.text(): action for action in menu.actions() if not action.isSeparator()}
+        expected_keys = {
+            "filelist.menu.paste",
+            "filelist.menu.new_folder",
+            "filelist.menu.select_all",
+            "filelist.menu.refresh",
+            "filelist.menu.toggle_hidden",
+            "filelist.menu.undo",
+            "filelist.menu.redo",
+        }
+        assert {tr(key) for key in expected_keys} <= actions.keys()
+        assert actions[tr("filelist.menu.paste")].isEnabled() is False
+        menu.deleteLater()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_empty_context_menu_enables_paste_when_file_list_owns_clipboard(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    panel._clipboard_source = ["/library/asset.txt"]
+    panel._undo_svc = Mock()
+    panel._undo_svc.can_undo.return_value = False
+    panel._undo_svc.can_redo.return_value = False
+    monkeypatch.setattr(panel, "_get_scoped_services", lambda: Mock())
+
+    try:
+        menu = panel._build_context_menu([], QPoint())
+        paste = next(action for action in menu.actions() if action.text() == tr("filelist.menu.paste"))
+        assert paste.isEnabled() is True
+        menu.deleteLater()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_empty_context_menu_enables_paste_for_external_local_file_clipboard(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    source = tmp_path / "asset.txt"
+    source.write_text("asset")
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(source))])
+    QApplication.clipboard().setMimeData(mime)
+    panel = QWidgetFileListPanel()
+    panel._undo_svc = Mock()
+    panel._undo_svc.can_undo.return_value = False
+    panel._undo_svc.can_redo.return_value = False
+    monkeypatch.setattr(panel, "_get_scoped_services", lambda: Mock())
+
+    try:
+        menu = panel._build_context_menu([], QPoint())
+        paste = next(action for action in menu.actions() if action.text() == tr("filelist.menu.paste"))
+        assert paste.isEnabled() is True
+        menu.deleteLater()
+    finally:
+        panel.shutdown()
+        QApplication.clipboard().clear()
+        app.processEvents()
+
+
+def test_context_menu_projects_stable_shortcuts_from_file_list_commands(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    path = tmp_path / "asset.txt"
+    path.write_text("asset")
+    panel._undo_svc = Mock()
+    panel._undo_svc.can_undo.return_value = False
+    panel._undo_svc.can_redo.return_value = False
+    monkeypatch.setattr(panel, "_get_scoped_services", lambda: Mock())
+
+    try:
+        selected_menu = panel._build_context_menu([str(path)], QPoint())
+        selected = {action.text(): action for action in selected_menu.actions() if not action.isSeparator()}
+        assert selected[tr("filelist.menu.open")].shortcut().toString() == "Enter"
+        assert selected[tr("filelist.menu.copy")].shortcut().toString() == "Ctrl+C"
+        assert selected[tr("filelist.menu.rename")].shortcut().toString() == "F2"
+        assert selected[tr("filelist.menu.delete_permanent")].shortcut().toString() == "Shift+Del"
+
+        empty_menu = panel._build_context_menu([], QPoint())
+        empty = {action.text(): action for action in empty_menu.actions() if not action.isSeparator()}
+        assert empty[tr("filelist.menu.paste")].shortcut().toString() == "Ctrl+V"
+        assert empty[tr("filelist.menu.new_folder")].shortcut().toString() == "Ctrl+Shift+N"
+        assert empty[tr("filelist.menu.refresh")].shortcut().toString() == "F5"
+        assert empty[tr("filelist.menu.keyboard_help")].shortcut().toString() == "F4"
+        selected_menu.deleteLater()
+        empty_menu.deleteLater()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+@pytest.mark.parametrize(
+    ("key", "modifiers", "command_id"),
+    [
+        (Qt.Key.Key_C, Qt.KeyboardModifier.ControlModifier, "copy"),
+        (Qt.Key.Key_X, Qt.KeyboardModifier.ControlModifier, "cut"),
+        (Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier, "paste"),
+        (Qt.Key.Key_D, Qt.KeyboardModifier.ControlModifier, "duplicate"),
+        (Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier, "undo"),
+        (Qt.Key.Key_Y, Qt.KeyboardModifier.ControlModifier, "redo"),
+        (Qt.Key.Key_F5, Qt.KeyboardModifier.NoModifier, "refresh"),
+        (Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier, "select_all"),
+        (Qt.Key.Key_H, Qt.KeyboardModifier.ControlModifier, "toggle_hidden"),
+        (Qt.Key.Key_Delete, Qt.KeyboardModifier.NoModifier, "trash"),
+        (Qt.Key.Key_Delete, Qt.KeyboardModifier.ShiftModifier, "permanent_delete"),
+        (Qt.Key.Key_F2, Qt.KeyboardModifier.NoModifier, "rename"),
+        (Qt.Key.Key_N, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier, "new_folder"),
+        (Qt.Key.Key_F4, Qt.KeyboardModifier.NoModifier, "help"),
+    ],
+)
+def test_common_shortcuts_dispatch_to_file_list_command_ids(key, modifiers, command_id):
+    panel = type("_Panel", (), {"_view_mode": "Grid"})()
+    panel._invoke_command = Mock()
+    event = type("_Event", (), {
+        "key": lambda _self: key,
+        "modifiers": lambda _self: modifiers,
+    })()
+
+    assert handle_key(panel, event) is True
+    panel._invoke_command.assert_called_once_with(command_id, shortcut=True)
+
+
+def test_filelist_help_persists_seen_hint_and_uses_local_presentation(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    settings = Mock()
+    settings.get.return_value = False
+    information = Mock()
+    monkeypatch.setattr("AssetsManager.core.settings.AppSettings.instance", lambda: settings)
+    monkeypatch.setattr("PySide6.QtWidgets.QMessageBox.information", information)
+    try:
+        panel._invoke_command("help")
+
+        settings.set.assert_called_once_with("filelist_shortcut_hints_seen", True)
+        settings.save.assert_called_once_with()
+        information.assert_called_once()
+        assert "F4" in information.call_args.args[2]
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_apply_tag_dialog_uses_catalog_picker_for_all_selected_paths(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    panel = QWidgetFileListPanel()
+    session = bootstrap.library_service.open_session(tmp_path)
+    panel.set_scoped_services(bootstrap.for_library(session))
+    service = Mock()
+    service.get_all_tags.return_value = ["character", "hero"]
+    monkeypatch.setattr(panel, "_get_tag_service", lambda: service)
+    picker = Mock(return_value=("hero", True))
+    monkeypatch.setattr("AssetsManager.panels.file_list._actions.QInputDialog.getItem", picker)
+    panel._post_refresh = Mock()
+    paths = [str(tmp_path / "a.txt"), str(tmp_path / "b.txt")]
+    try:
+        panel._apply_tag_dialog(paths)
+
+        picker.assert_called_once_with(
+            panel, tr("filelist.dialog.apply_tag"), tr("filelist.dialog.tag_label"),
+            ["character", "hero"], 0, True,
+        )
+        assert service.add_tag.call_args_list == [
+            ((str(tmp_path), path, "hero"),) for path in paths
+        ]
+        panel._post_refresh.assert_called_once_with()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_backspace_remains_a_navigation_shortcut_outside_the_command_registry():
+    panel = type("_Panel", (), {"_view_mode": "Grid"})()
+    panel._go_up = Mock()
+    panel._invoke_command = Mock()
+    event = type("_Event", (), {
+        "key": lambda _self: Qt.Key.Key_Backspace,
+        "modifiers": lambda _self: Qt.KeyboardModifier.NoModifier,
+    })()
+
+    assert handle_key(panel, event) is True
+    panel._go_up.assert_called_once_with()
+    panel._invoke_command.assert_not_called()
+
+
+def test_enter_in_grid_dispatches_the_shared_open_command():
+    panel = type("_Panel", (), {"_view_mode": "Grid"})()
+    panel._invoke_command = Mock()
+    event = type("_Event", (), {
+        "key": lambda _self: Qt.Key.Key_Return,
+        "modifiers": lambda _self: Qt.KeyboardModifier.NoModifier,
+    })()
+
+    assert handle_key(panel, event) is True
+    panel._invoke_command.assert_called_once_with("open", shortcut=True)
+
+
+def test_enter_in_details_dispatches_the_shared_open_command():
+    panel = type("_Panel", (), {"_view_mode": "Details"})()
+    panel._invoke_command = Mock()
+    event = type("_Event", (), {
+        "key": lambda _self: Qt.Key.Key_Enter,
+        "modifiers": lambda _self: Qt.KeyboardModifier.NoModifier,
+    })()
+
+    assert handle_key(panel, event) is True
+    panel._invoke_command.assert_called_once_with("open", shortcut=True)
+
+
+@pytest.mark.parametrize("view_mode", ["Grid", "Details"])
+def test_escape_clears_current_view_selection_search_and_status(view_mode):
+    panel = type("_Panel", (), {"_view_mode": view_mode})()
+    panel._grid_widget = Mock()
+    panel._detail_view = Mock()
+    panel._search = Mock()
+    panel._update_status = Mock()
+    event = type("_Event", (), {
+        "key": lambda _self: Qt.Key.Key_Escape,
+        "modifiers": lambda _self: Qt.KeyboardModifier.NoModifier,
+    })()
+
+    assert handle_key(panel, event) is True
+    if view_mode == "Grid":
+        panel._grid_widget.clear_selection.assert_called_once_with()
+        panel._detail_view.clearSelection.assert_not_called()
+    else:
+        panel._detail_view.clearSelection.assert_called_once_with()
+        panel._grid_widget.clear_selection.assert_not_called()
+    panel._search.clear.assert_called_once_with()
+    panel._update_status.assert_called_once_with()
+
+
+def test_alt_enter_opens_properties_for_first_selected_path():
+    panel = type("_Panel", (), {"_view_mode": "Grid"})()
+    panel._invoke_command = Mock()
+    event = type("_Event", (), {
+        "key": lambda _self: Qt.Key.Key_Return,
+        "modifiers": lambda _self: Qt.KeyboardModifier.AltModifier,
+    })()
+
+    assert handle_key(panel, event) is True
+    panel._invoke_command.assert_called_once_with("properties", shortcut=True)
+
+
+def test_ctrl_f_focuses_and_selects_the_search_field():
+    panel = type("_Panel", (), {"_view_mode": "Grid"})()
+    panel._search = Mock()
+    event = type("_Event", (), {
+        "key": lambda _self: Qt.Key.Key_F,
+        "modifiers": lambda _self: Qt.KeyboardModifier.ControlModifier,
+    })()
+
+    assert handle_key(panel, event) is True
+    panel._search.setFocus.assert_called_once_with()
+    panel._search.selectAll.assert_called_once_with()
+
+
+@pytest.mark.parametrize("view_mode", ["Grid", "Details"])
+def test_enter_with_no_selection_is_a_safe_noop(view_mode):
+    panel = type("_Panel", (), {"_view_mode": view_mode})()
+    panel._invoke_command = Mock()
+    event = type("_Event", (), {
+        "key": lambda _self: Qt.Key.Key_Return,
+        "modifiers": lambda _self: Qt.KeyboardModifier.NoModifier,
+    })()
+
+    assert handle_key(panel, event) is True
+    panel._invoke_command.assert_called_once_with("open", shortcut=True)
+
+
+@pytest.mark.parametrize("is_dir", [True, False])
+def test_shared_open_command_navigates_directories_and_opens_files(tmp_path, is_dir):
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    path = tmp_path / ("folder" if is_dir else "asset.txt")
+    if is_dir:
+        path.mkdir()
+    else:
+        path.write_text("asset")
+    panel.navigate_to = Mock()
+    opened = Mock()
+    panel.file_double_clicked.connect(opened)
+
+    try:
+        panel._invoke_command("open", panel._command_context([str(path)]), shortcut=True)
+
+        if is_dir:
+            panel.navigate_to.assert_called_once_with(str(path))
+            opened.assert_not_called()
+        else:
+            opened.assert_called_once_with(str(path))
+            panel.navigate_to.assert_not_called()
     finally:
         panel.shutdown()
         app.processEvents()

@@ -23,7 +23,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont, QPen, QPainterPath
 from PySide6.QtWidgets import (
     QPushButton, QHBoxLayout, QComboBox, QLabel, QWidget, QApplication,
-    QListView, QTreeWidgetItem,
+    QTreeWidgetItem,
 )
 
 from AssetsManager.panels.base import PanelContent
@@ -39,6 +39,7 @@ from AssetsManager.panels.file_list._common import IMAGE_EXTS, FILTER_CATEGORY_L
 from AssetsManager.panels.file_list._navigation import NavigationMixin
 from AssetsManager.panels.file_list._actions import ActionsMixin
 from AssetsManager.panels.file_list._toast import Toast
+from AssetsManager.application.tag_service import TagServiceAdapter
 
 _log = logging.getLogger(__name__)
 tr = i18n.tr
@@ -68,6 +69,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._drag_origin_pos = None
         self._drag_started = False
         self._scoped_services = None
+        self._operation_feedback_generation = 0
 
         # Controller for non-UI business logic
         from AssetsManager.controllers.file_list_controller import FileListController
@@ -200,6 +202,13 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._status = QLabel("")
         sl.addWidget(self._status)
         sl.addStretch()
+        self._operation_feedback = QLabel("")
+        self._operation_feedback.hide()
+        sl.addWidget(self._operation_feedback)
+        self._operation_feedback_timer = QTimer(self)
+        self._operation_feedback_timer.setSingleShot(True)
+        self._operation_feedback_timer.setInterval(4000)
+        self._operation_feedback_timer.timeout.connect(self._clear_operation_feedback)
         self._fst_status_style()
         self.content_layout.addWidget(self._status_bar)
 
@@ -214,15 +223,32 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             f"border-top: 1px solid {t['border']};")
         self._status.setStyleSheet(
             f"color: {t['muted']}; font-size: {scaled_pt(11)}px; background: transparent;")
+        self._operation_feedback.setStyleSheet(
+            f"color: {t['muted']}; font-size: {scaled_pt(11)}px; background: transparent;")
 
     def set_scoped_services(self, services):
         """Bind library-scoped services resolved by MainWindow."""
+        self._operation_feedback_generation = getattr(self, "_operation_feedback_generation", 0) + 1
+        clear_feedback = getattr(self, "_clear_operation_feedback", None)
+        if callable(clear_feedback):
+            clear_feedback()
         self._scoped_services = services
         self._root = services.session.root
         self._model.set_library_root(services.session.root_str, services.session)
         self._model.set_metadata_service(services.metadata_service)
-        self._loader.set_cache_db(services.session.db_conn)
+        self._loader.set_performance_context(
+            getattr(services, "performance_recorder", None), services.session.event_token
+        )
+        set_grid_context = getattr(self, "_set_grid_performance_context", None)
+        if set_grid_context is not None:
+            set_grid_context(
+                getattr(services, "performance_recorder", None),
+                services.session.event_token,
+                self._model.scan_generation,
+            )
+        self._loader.set_cache_db(services.session.connection_for(services.session.root))
         self._loader.set_cache_dir(services.session.thumb_dir_str)
+        self._loader.set_lib_root(services.session.root_str)
         self._loader.orphan_cleanup()
         if hasattr(services, "undo_service"):
             self._undo_svc = services.undo_service
@@ -231,6 +257,55 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def _get_scoped_services(self):
         return self._scoped_services
+
+    def _is_current_operation_session(self, session) -> bool:
+        scoped = self._scoped_services
+        return bool(
+            not getattr(self._model, "_is_shutdown", False)
+            and scoped is not None
+            and getattr(scoped, "session", None) is session
+            and not getattr(session, "is_closed", False)
+        )
+
+    def _show_operation_feedback(
+        self,
+        session,
+        operation: str,
+        *,
+        changed_count: int = 0,
+        errors: tuple[str, ...] = (),
+        running: bool = False,
+    ) -> None:
+        """Display session-bound operation feedback without affecting command state."""
+        if (
+            not self._is_current_operation_session(session)
+        ):
+            return
+        label = tr(f"filelist.feedback.operation.{operation}")
+        if running:
+            text = tr("filelist.feedback.running", operation=label)
+        elif errors and changed_count:
+            text = tr("filelist.feedback.partial", operation=label, count=changed_count, failed=len(errors))
+        elif errors:
+            text = tr("filelist.feedback.failed", operation=label, failed=len(errors))
+        else:
+            text = tr("filelist.feedback.succeeded", operation=label, count=changed_count)
+        self._operation_feedback.setText(text)
+        self._operation_feedback.show()
+        if running:
+            self._operation_feedback_timer.stop()
+        else:
+            self._operation_feedback_timer.start()
+
+    def _clear_operation_feedback(self) -> None:
+        feedback = getattr(self, "_operation_feedback", None)
+        if feedback is not None:
+            feedback.clear()
+            feedback.hide()
+
+    def _set_grid_performance_context(self, _recorder, _session_token: str, _generation: int) -> None:
+        """Optional QWidget-grid hook; legacy list views have no frame recorder."""
+        pass
 
     def _get_file_operation_service(self):
         scoped = self._scoped_services
@@ -246,22 +321,11 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             raise RuntimeError("FileListPanel scoped services not injected")
         return scoped.tag_service
 
-    def _get_tag_store(self, root: str | None = None):
-        scoped = self._scoped_services
-        if scoped is not None:
-            return scoped.session.tag_store
-        return None
-
     def _configure_library_runtime(self, root: str):
         """Bind file-list runtime helpers to a library root."""
         scoped = self._scoped_services
         if scoped is None:
-            from AssetsManager.panels._service_access import require_scoped_services
-            try:
-                scoped = require_scoped_services(root, consumer="FileListPanel")
-            except Exception:
-                raise RuntimeError("FileListPanel scoped services not injected before navigate_to")
-            self.set_scoped_services(scoped)
+            raise RuntimeError("FileListPanel scoped services not injected before navigate_to")
         if Path(scoped.session.root).resolve() != Path(root).resolve():
             raise RuntimeError("FileListPanel scoped services do not match navigation root")
         self._model.set_library_root(scoped.session.root_str, scoped.session)
@@ -273,6 +337,10 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             f"background: {themes.header_for_dock()}; "
             f"border: 1px solid {t['border']}; "
             f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
+
+    def refresh_contents(self):
+        """Refresh the active directory after an application-wide update."""
+        self._model.refresh()
 
     # ── View switching ──────────────────────────────────────────
 
@@ -335,6 +403,16 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._hidden_btn.setText("◉" if self._model._show_hidden else "•")
         self._update_status()
 
+    def _clear_selection_for_navigation(self) -> None:
+        """Compatibility hook for clearing view-owned selection on directory changes."""
+
+    def _request_operation_selection(self, _session, _paths) -> None:
+        """Compatibility hook for result-path selection after a refresh."""
+
+    def _deletion_selection_candidates(self, _paths) -> tuple[str, ...]:
+        """Compatibility hook for selecting a surviving neighbor after deletion."""
+        return ()
+
     def _on_view_changed(self, _index):
         mode = self._view_mode
         self._view_memory[str(self._current)] = mode
@@ -344,13 +422,6 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             self._list_view.setVisible(not is_detail)
         if self._detail_view:
             self._detail_view.setVisible(is_detail)
-        if hasattr(self, '_grid_delegate') and self._grid_delegate:
-            if mode == "Grid" and self._list_view:
-                self._grid_delegate.set_view_mode("Grid")
-                if hasattr(self._list_view, 'setViewMode'):
-                    self._list_view.setViewMode(QListView.ViewMode.IconMode)
-                    self._list_view.setIconSize(QSize(self._thumb_size, self._thumb_size))
-                    self._list_view.scheduleDelayedItemsLayout()
         if is_detail:
             self._populate_details()
         else:
@@ -372,7 +443,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
         if self._list_view and hasattr(self._list_view, 'set_zoom_in_progress'):
             self._list_view.set_zoom_in_progress(True)
-        self._zoom_anim = QVariantAnimation()
+        self._zoom_anim = QVariantAnimation(self)
         self._zoom_anim.setDuration(180)
         self._zoom_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._zoom_anim.setStartValue(start)
@@ -391,11 +462,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         if self._list_view and hasattr(self._list_view, 'set_zoom_in_progress'):
             self._list_view.set_zoom_in_progress(False)
         self._loader.set_size(self._thumb_size)
-        if hasattr(self, '_grid_delegate') and self._grid_delegate:
-            self._grid_delegate.invalidate_scaled_cache()
         if self._view_mode == "Grid":
-            if hasattr(self, '_grid_delegate') and self._grid_delegate:
-                self._grid_delegate.set_thumb_size(self._thumb_size)
             if self._list_view:
                 self._list_view.scheduleDelayedItemsLayout()
         self._load_visible()
@@ -494,6 +561,8 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def _on_thumbnail_ready(self, row: int, path: str, img):
         """Main-thread handler: convert QImage to QPixmap."""
+        if self._model._is_shutdown:
+            return
         if img is None or img.isNull():
             return
         pixmap = QPixmap.fromImage(img)
@@ -536,6 +605,8 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def _on_dir_size_ready(self, dir_path: str, size_str: str, gen: int = 0):
         """Handle async directory size result — update subtitle and refresh affected row."""
+        if self._model._is_shutdown:
+            return
         self._model._pending_dir_sizes.discard(dir_path)
         if gen and gen != self._model._dir_size_gen:
             return
@@ -559,7 +630,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._detail_view.clear()
         # Use _lib_root if available, otherwise current directory for tag access
         root = self._lib_root or str(self._current)
-        self._detail_store = self._get_tag_store(root)
+        self._detail_store = TagServiceAdapter(root, self._get_tag_service())
         self._detail_index = 0
         self._detail_total = self._model.rowCount()
         self._detail_snapshot_id = id(self._model._entries)  # detect stale chunks
@@ -567,6 +638,11 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def _populate_details_chunk(self):
         import datetime
+        if self._model._is_shutdown:
+            return
+        detail_view = self._detail_view
+        if detail_view is None:
+            return
         # Abort if model changed since _populate_details was called
         if id(self._model._entries) != self._detail_snapshot_id:
             return
@@ -583,7 +659,10 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
                 # Read from subtitle cache (async result) first, then fallback to DIR_SIZE_ROLE
                 sz = self._model._subtitle_cache.get(path)
                 if not sz or sz == "...":
-                    sz = self._model.data(self._model.index(i, 0), FileSystemModel.DIR_SIZE_ROLE)
+                    sz = self._model.data(
+                        self._model.index(i, 0),
+                        Qt.ItemDataRole(FileSystemModel.DIR_SIZE_ROLE),
+                    )
                 size = sz if sz else "..."
             else:
                 try:
@@ -600,19 +679,23 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
                 date = "—"
             tags_text = ", ".join(store.get_tags(path)[:3]) if store and not is_dir else ""
             ext = Path(name).suffix.upper() if not is_dir else tr("filelist.prop_folder")
-            item = QTreeWidgetItem([f"{icon}{name}", ext, size, date, tags_text])
+            item = QTreeWidgetItem()
+            for column, text in enumerate((f"{icon}{name}", ext, size, date, tags_text)):
+                item.setText(column, str(text))
             item.setData(0, Qt.ItemDataRole.UserRole, path)
-            self._detail_view.addTopLevelItem(item)
+            detail_view.addTopLevelItem(item)
         self._detail_index = end
         if self._detail_index < self._detail_total:
             QTimer.singleShot(0, self._populate_details_chunk)
         else:
-            self._detail_view.setSortingEnabled(True)
-            self._detail_view.setUpdatesEnabled(True)
+            detail_view.setSortingEnabled(True)
+            detail_view.setUpdatesEnabled(True)
             self._update_status()
 
     def _on_detail_dir_size_ready(self, dir_path: str, size_str: str, gen: int = 0):
         """Update Detail view when async directory size computation completes."""
+        if self._model._is_shutdown:
+            return
         if not self._detail_view:
             return
         if gen and gen != self._model._dir_size_gen:
@@ -625,7 +708,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def _on_detail_header_clicked(self, col: int):
         """Tweak column widths after sort for better readability."""
-        self._detail_view.resizeColumnToContents(col)
+        detail_view = self._detail_view
+        if detail_view is not None:
+            detail_view.resizeColumnToContents(col)
 
     # ── Status ──────────────────────────────────────────────────
 
@@ -653,14 +738,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             sel = len(self._list_view.selectionModel().selectedRows())
         else:
             sel = 0
-        total_sz = self._cached_total_sz
-        sz_str = ""
-        if total_sz > 0:
-            sz_str = f"  |  {FileSystemModel._fmt_size(total_sz)}"
-        if sel:
-            self._status.setText(f"{sel} selected / {total} items{sz_str}  |  {self._view_mode}")
-        else:
-            self._status.setText(f"{total} items{sz_str}  |  {self._view_mode}")
+        self._status.setText(self._controller.compute_status_text(
+            total, sel, self._cached_total_sz, self._view_mode,
+        ))
 
     # ── Keyboard ────────────────────────────────────────────────
 
@@ -688,16 +768,20 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         if is_list or is_detail:
             if t == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
                 if is_list:
-                    idx = self._list_view.indexAt(event.pos())
-                    if idx.isValid() and idx in self._list_view.selectionModel().selectedRows():
+                    if lv is None:
+                        return super().eventFilter(obj, event)
+                    idx = lv.indexAt(event.pos())
+                    if idx.isValid() and idx in lv.selectionModel().selectedRows():
                         self._drag_origin_pos = event.pos()
                         self._drag_started = False
                         return True
                     else:
                         self._reset_drag_state()
                 else:
-                    idx = self._detail_view.indexAt(event.pos())
-                    if idx.isValid() and self._detail_view.selectionModel().isSelected(idx):
+                    if dv is None:
+                        return super().eventFilter(obj, event)
+                    idx = dv.indexAt(event.pos())
+                    if idx.isValid() and dv.selectionModel().isSelected(idx):
                         self._drag_origin_pos = event.pos()
                         self._drag_started = False
                         return True
@@ -711,18 +795,25 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
                         self._start_external_drag()
                         return True
                 # Mouse left the viewport during potential drag — cancel
-                vp = self._list_view.viewport() if is_list else self._detail_view.viewport()
+                view = lv if is_list else dv
+                if view is None:
+                    return super().eventFilter(obj, event)
+                vp = view.viewport()
                 if not vp.rect().contains(event.pos()):
                     self._reset_drag_state()
             if t == QEvent.Type.MouseButtonRelease:
                 if self._drag_origin_pos is not None and not self._drag_started:
                     # Was a click on selected item that didn't become a drag — simulate click
                     if is_list:
-                        idx = self._list_view.indexAt(event.pos())
+                        if lv is None:
+                            return super().eventFilter(obj, event)
+                        idx = lv.indexAt(event.pos())
                         if idx.isValid():
                             self._on_click(idx)
                     else:
-                        item = self._detail_view.itemAt(event.pos())
+                        if dv is None:
+                            return super().eventFilter(obj, event)
+                        item = dv.itemAt(event.pos())
                         if item:
                             self._on_tree_click(item, 0)
                 self._reset_drag_state()
@@ -771,7 +862,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             target = self._scroll_anim.endValue() - event.angleDelta().y()
             self._scroll_anim.stop()
 
-        self._scroll_anim = QVariantAnimation()
+        self._scroll_anim = QVariantAnimation(self)
         self._scroll_anim.setDuration(120)
         self._scroll_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._scroll_anim.setStartValue(sb.value())
@@ -835,10 +926,11 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         if not paths:
             return False
         scoped = self._get_scoped_services()
-        if scoped is None:
+        root_path = self._lib_root
+        if scoped is None or root_path is None:
             return False
         destination = str(self._current)
-        root = Path(self._lib_root).resolve()
+        root = Path(root_path).resolve()
         sources = [path for path in paths if os.path.dirname(path) != destination]
         in_library = [path for path in sources if Path(path).resolve().is_relative_to(root)]
         external = [path for path in sources if path not in in_library]
@@ -846,20 +938,25 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             return False
 
         service = scoped.file_operation_service
+        changed_paths = []
         for source in in_library:
             result = service.move_to_directory(
-                [source], destination, library_root=self._lib_root,
+                [source], destination, library_root=root_path,
             )
             for changed_path in result.changed_paths:
-                self._undo_svc.record_rename(source, str(changed_path))
+                changed_paths.append(changed_path)
+                if self._undo_svc is not None:
+                    self._undo_svc.record_rename(source, str(changed_path))
             for error in result.errors:
                 _log.error("Drag-drop move failed: %s", error)
         if external:
             result = service.copy_to_directory(
-                external, destination, library_root=self._lib_root,
+                external, destination, library_root=root_path,
             )
+            changed_paths.extend(getattr(result, "changed_paths", ()))
             for error in result.errors:
                 _log.error("Drag-drop copy failed: %s", error)
+        self._request_operation_selection(scoped.session, changed_paths)
         self._post_refresh()
         if self._view_mode == "Details":
             self._populate_details()
@@ -876,6 +973,10 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
     def _start_external_drag(self):
         """Start a QDrag with file URLs so files can be dropped to other apps."""
         from PySide6.QtGui import QDrag
+        list_view = self._list_view
+        if list_view is None:
+            self._reset_drag_state()
+            return
         paths = self._selected_paths()
         if not paths:
             self._reset_drag_state()
@@ -965,7 +1066,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             p.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, str(count))
         p.end()
         # Execute drag — blocks until drop/cancel
-        drag = QDrag(self._list_view.viewport())
+        drag = QDrag(list_view.viewport())
         drag.setMimeData(mime)
         drag.setPixmap(pixmap)
         drag.setHotSpot(QPoint(min(20, w // 3), min(16, h // 3)))
@@ -1001,6 +1102,12 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     # ── Cleanup ─────────────────────────────────────────────────
 
+    def prepare_library_switch(self):
+        """Drain all session-bound background work before its session closes."""
+        generation = self._loader.invalidate_tasks()
+        self._loader.wait_for_runtime(generation)
+        self._model.prepare_library_switch()
+
     def clone(self):
         new = FileListPanel()
         new.navigate_to(str(self._current))
@@ -1012,14 +1119,44 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def shutdown(self):
         """Clean up bus connections and worker threads."""
-        try:
-            bus().theme_changed.disconnect(self._on_theme_changed)
-        except (RuntimeError, TypeError):
-            pass
+        self._operation_feedback_generation += 1
+        for timer_name in ("_search_timer", "_scroll_debounce", "_file_op_timer", "_operation_feedback_timer"):
+            timer = getattr(self, timer_name, None)
+            if timer is not None:
+                timer.stop()
+        watcher = getattr(self, "_fs_watcher", None)
+        if watcher is not None:
+            watched = watcher.directories()
+            if watched:
+                watcher.removePaths(watched)
+        delivery = getattr(self, "_thumbnail_delivery", None)
+        if delivery is not None:
+            delivery.clear()
+        grid = getattr(self, "_grid_widget", None)
+        if grid is not None:
+            grid.stop_animations()
+        for animation_name in ("_zoom_anim", "_scroll_anim"):
+            animation = getattr(self, animation_name, None)
+            if animation is not None:
+                for signal_name in ("valueChanged", "finished"):
+                    signal = getattr(animation, signal_name, None)
+                    if signal is not None:
+                        try:
+                            signal.disconnect()
+                        except (RuntimeError, TypeError):
+                            pass
+                animation.stop()
+        self._scroll_animating = False
+        self._scroll_animation_setting_value = False
         self._loader.stop()
         self._model.shutdown()
+        self._model.clear_scoped_services()
+        self._controller.set_file_operations(None, None)
+        self._scoped_services = None
+        self._undo_svc = None
+        self._clear_operation_feedback()
+        super().shutdown()
 
     def closeEvent(self, event):
-        self._loader.stop()
-        self._model.shutdown()
+        self.shutdown()
         super().closeEvent(event)

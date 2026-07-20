@@ -7,6 +7,8 @@ All thresholds are calibrated for a developer machine; CI may adjust upward.
 from __future__ import annotations
 
 import time
+import os
+from unittest.mock import patch
 
 
 # ── Threshold constants (in seconds unless noted) ──────────────
@@ -249,8 +251,8 @@ def test_share_repository_create_and_read_performance(tmp_path):
 
 # ── DirectoryCache integration ────────────────────────────────
 
-def test_directory_listing_with_cache_performance(tmp_path):
-    """Listing 200 subdirs with cache must be faster than without."""
+def test_directory_listing_with_cache_uses_cached_summaries(tmp_path):
+    """Warm listings skip subdirectory scans without relying on wall-clock timing."""
     from AssetsManager.application import AssetService, DirectoryListOptions
     from AssetsManager.core.database import DatabaseManager
     from AssetsManager.core.directory_cache import DirectoryCache
@@ -266,14 +268,23 @@ def test_directory_listing_with_cache_performance(tmp_path):
     cache = DirectoryCache(conn)
     svc = AssetService(directory_cache=cache)
 
-    start = time.perf_counter()
-    svc.list_directory(tmp_path, tmp_path, DirectoryListOptions(scan_summaries=True))
-    cold_elapsed = time.perf_counter() - start
+    cold_listing = svc.list_directory(tmp_path, tmp_path, DirectoryListOptions(scan_summaries=True))
+    original_scandir = os.scandir
+    calls = 0
 
-    start = time.perf_counter()
-    svc.list_directory(tmp_path, tmp_path, DirectoryListOptions(scan_summaries=True))
-    warm_elapsed = time.perf_counter() - start
+    def counting_scandir(path, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_scandir(path, *args, **kwargs)
 
-    assert warm_elapsed < cold_elapsed * 0.5, (
-        f"Cache warm ({warm_elapsed:.3f}s) should be <50% of cold ({cold_elapsed:.3f}s)"
-    )
+    with patch("os.scandir", side_effect=counting_scandir):
+        warm_listing = svc.list_directory(tmp_path, tmp_path, DirectoryListOptions(scan_summaries=True))
+
+    def summary(items):
+        return [
+            (item.name, item.path, item.type, item.size_fmt, item.preview_path, item.item_count)
+            for item in items
+        ]
+
+    assert summary(warm_listing.items) == summary(cold_listing.items)
+    assert calls == 1

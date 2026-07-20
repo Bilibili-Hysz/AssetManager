@@ -8,23 +8,10 @@ from __future__ import annotations
 
 import os
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from sqlite3 import Connection
 
-from AssetsManager.core.database import db_write_lock
-
-
-@dataclass(frozen=True)
-class AssetIndexEntry:
-    file_path: str
-    name: str
-    extension: str
-    kind: str
-    size: int
-    mtime: float
-    parent_path: str
-    library_root: str
+from AssetsManager.repositories.asset_index_repository import AssetIndexEntry, AssetIndexRepository
 
 
 class AssetIndexService:
@@ -47,10 +34,7 @@ class AssetIndexService:
         now = time.time()
 
         if not force:
-            existing = conn.execute(
-                "SELECT COUNT(*) FROM assets WHERE parent_path=? AND library_root=?",
-                (target, root),
-            ).fetchone()[0]
+            existing = AssetIndexRepository(conn).count_by_parent(target, root)
             if existing > 0:
                 return existing
 
@@ -81,25 +65,9 @@ class AssetIndexService:
         except OSError:
             return 0
 
-        with db_write_lock():
-            if force:
-                conn.execute(
-                    "DELETE FROM assets WHERE parent_path=? AND library_root=?",
-                    (target, root),
-                )
-            if not entries:
-                conn.commit()
-                return 0
-            conn.executemany(
-                "INSERT INTO assets (file_path, name, extension, kind, size, mtime, "
-                "parent_path, library_root, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT(file_path) DO UPDATE SET "
-                "name=excluded.name, extension=excluded.extension, kind=excluded.kind, "
-                "size=excluded.size, mtime=excluded.mtime, updated_at=excluded.updated_at",
-                entries,
-            )
-            conn.commit()
+        AssetIndexRepository(conn).replace_parent_entries(
+            target, root, entries, clear_existing=force,
+        )
         return len(entries)
 
     def index_directory_tree(
@@ -123,12 +91,7 @@ class AssetIndexService:
         """Return indexed entries under a parent directory."""
         root = str(Path(library_root).resolve())
         parent = str(Path(parent_path).resolve())
-        rows = conn.execute(
-            "SELECT file_path, name, extension, kind, size, mtime, parent_path, library_root "
-            "FROM assets WHERE parent_path=? AND library_root=? ORDER BY name",
-            (parent, root),
-        ).fetchall()
-        return [AssetIndexEntry(*r) for r in rows]
+        return AssetIndexRepository(conn).query_by_parent(root, parent)
 
     def query_by_extension(
         self,
@@ -138,12 +101,7 @@ class AssetIndexService:
     ) -> list[AssetIndexEntry]:
         """Return indexed entries with a given extension."""
         root = str(Path(library_root).resolve())
-        rows = conn.execute(
-            "SELECT file_path, name, extension, kind, size, mtime, parent_path, library_root "
-            "FROM assets WHERE extension=? AND library_root=? ORDER BY name",
-            (extension.lower(), root),
-        ).fetchall()
-        return [AssetIndexEntry(*r) for r in rows]
+        return AssetIndexRepository(conn).query_by_extension(root, extension)
 
     def search_by_name(
         self,
@@ -154,50 +112,21 @@ class AssetIndexService:
     ) -> list[AssetIndexEntry]:
         """Search indexed entries by name substring."""
         root = str(Path(library_root).resolve())
-        escaped_query = query.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        pattern = f"%{escaped_query}%"
-        rows = conn.execute(
-            "SELECT file_path, name, extension, kind, size, mtime, parent_path, library_root "
-            "FROM assets WHERE library_root=? AND LOWER(name) LIKE ? ESCAPE '\\' "
-            "ORDER BY name LIMIT ?",
-            (root, pattern, limit),
-        ).fetchall()
-        return [AssetIndexEntry(*r) for r in rows]
+        return AssetIndexRepository(conn).search_by_name(root, query, limit)
 
     def remove_entry(self, conn: Connection, file_path: str | Path) -> None:
         """Remove a single entry from the index."""
-        with db_write_lock():
-            conn.execute("DELETE FROM assets WHERE file_path=?",
-                         (str(Path(file_path).resolve()),))
-            conn.commit()
+        AssetIndexRepository(conn).delete_entry(str(Path(file_path).resolve()))
 
     def remove_directory(self, conn: Connection, dir_path: str | Path) -> int:
         """Remove all entries under a directory. Returns count removed."""
-        prefix = str(Path(dir_path).resolve())
-        escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        subtree = escaped + os.sep.replace("\\", "\\\\") + "%"
-        with db_write_lock():
-            cur = conn.execute(
-                "DELETE FROM assets WHERE file_path=? OR file_path LIKE ? ESCAPE '\\' "
-                "OR parent_path=? OR parent_path LIKE ? ESCAPE '\\'",
-                (prefix, subtree, prefix, subtree),
-            )
-            conn.commit()
-            return cur.rowcount
+        return AssetIndexRepository(conn).delete_path(str(Path(dir_path).resolve()))
 
     def count(self, conn: Connection, library_root: str | Path) -> int:
         """Return total indexed entries for a library."""
         root = str(Path(library_root).resolve())
-        row = conn.execute(
-            "SELECT COUNT(*) FROM assets WHERE library_root=?", (root,)
-        ).fetchone()
-        return row[0] if row else 0
+        return AssetIndexRepository(conn).count(root)
 
     def get_entry(self, conn: Connection, file_path: str | Path) -> AssetIndexEntry | None:
         """Return a single entry by path, or None."""
-        row = conn.execute(
-            "SELECT file_path, name, extension, kind, size, mtime, parent_path, library_root "
-            "FROM assets WHERE file_path=?",
-            (str(Path(file_path).resolve()),),
-        ).fetchone()
-        return AssetIndexEntry(*row) if row else None
+        return AssetIndexRepository(conn).get_entry(str(Path(file_path).resolve()))

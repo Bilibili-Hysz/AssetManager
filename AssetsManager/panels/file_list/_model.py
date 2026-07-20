@@ -4,8 +4,10 @@
 import logging
 import os
 from pathlib import Path
+import weakref
 from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QFileInfo, QObject, QRunnable, QThreadPool, Signal
 from PySide6.QtGui import QIcon
+from shiboken6 import Shiboken
 from AssetsManager.application.asset_filters import (
     extension_matches_category,
     is_hidden,
@@ -20,19 +22,19 @@ from AssetsManager.core.cache import LRUCache
 _log = logging.getLogger(__name__)
 
 class _ScanSignals(QObject):
-    scan_done = Signal(list, dict)  # (entries, stat_cache)
+    scan_done = Signal(list, dict, object)  # (entries, stat_cache, error)
 
 class _ScanTask(QRunnable):
-    def __init__(self, path: str, model: "FileSystemModel", gen: int):
+    def __init__(self, path: str, gen: int):
         super().__init__()
         self._path = path
-        self._model = model
         self._gen = gen
         self.signals = _ScanSignals()
 
     def run(self):
         entries = []
         stat_cache: dict[str, os.stat_result] = {}
+        error: OSError | None = None
         try:
             for entry in os.scandir(self._path):
                 entries.append(entry)
@@ -40,16 +42,24 @@ class _ScanTask(QRunnable):
                     stat_cache[entry.path] = entry.stat()
                 except OSError:
                     pass
-        except OSError:
-            pass
-        self._model._pending_scan = (entries, stat_cache, self._gen)
-        self.signals.scan_done.emit(entries, stat_cache)
+        except OSError as exc:
+            error = exc
+        self.signals.scan_done.emit(entries, stat_cache, error)
 
 class FileSystemModel(QAbstractListModel):
     """Model backed by os.scandir. Supports sort, filter, and per-item roles."""
 
     dir_size_ready = Signal(str, str, int)  # (dir_path, formatted_size, generation)
     rename_requested = Signal(int, str)
+    scan_started = Signal(int)  # scan generation; emitted before the loading reset
+    scan_committed = Signal(int)  # populated scan generation; excludes the loading reset
+    state_changed = Signal(str, int, object)  # (state, generation, OSError | None)
+
+    STATE_LOADING = "loading"
+    STATE_READY = "ready"
+    STATE_EMPTY_FOLDER = "empty_folder"
+    STATE_EMPTY_FILTERED = "empty_filtered"
+    STATE_SCAN_ERROR = "scan_error"
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -74,8 +84,10 @@ class FileSystemModel(QAbstractListModel):
         self._pending_dir_sizes: set[str] = set()
         self._dir_size_gen = 0
         self._scan_gen = 0
-        self._pending_scan: tuple | None = None
+        self._committing_scan_gen: int | None = None
         self._active_scan_task: _ScanTask | None = None  # prevent GC of running task + signals
+        self._scan_error: OSError | None = None
+        self._scan_loading = False
         self._path_index: dict[str, int] = {}
         self._is_shutdown = False
         self.dir_size_ready.connect(self._on_dir_size_ready)
@@ -84,6 +96,31 @@ class FileSystemModel(QAbstractListModel):
     RAW_PIXMAP_ROLE = Qt.ItemDataRole.UserRole + 2
     IS_DIR_ROLE = Qt.ItemDataRole.UserRole + 3
     DIR_SIZE_ROLE = Qt.ItemDataRole.UserRole + 4
+
+    @property
+    def scan_generation(self) -> int:
+        """Current presentation generation for stale-scan-safe consumers."""
+        return self._scan_gen
+
+    @property
+    def is_committing_scan(self) -> bool:
+        """Whether the current model reset applies an asynchronous scan result."""
+        return self._committing_scan_gen == self._scan_gen
+
+    @property
+    def list_state(self) -> str:
+        if self._scan_loading:
+            return self.STATE_LOADING
+        if self._scan_error is not None:
+            return self.STATE_SCAN_ERROR
+        if not self._raw_entries:
+            return self.STATE_EMPTY_FOLDER
+        if not self._entries:
+            return self.STATE_EMPTY_FILTERED
+        return self.STATE_READY
+
+    def _emit_state(self) -> None:
+        self.state_changed.emit(self.list_state, self._scan_gen, self._scan_error)
 
     def set_library_root(self, path: str, session: LibrarySession | None = None):
         self._lib_root = str(Path(path).resolve())
@@ -96,7 +133,9 @@ class FileSystemModel(QAbstractListModel):
         self._dir_path = path
         self._scan_gen += 1
         gen = self._scan_gen
-        self._pending_scan = None
+        self._scan_loading = True
+        self._scan_error = None
+        self.scan_started.emit(gen)
         self._active_scan_task = None  # release previous task
         self._icons.clear()
         self._raw_pixmaps.clear()
@@ -110,26 +149,40 @@ class FileSystemModel(QAbstractListModel):
         self._entries = []
         self._path_index = {}
         self.endResetModel()
+        self._emit_state()
 
-        task = _ScanTask(path, self, gen)
+        task = _ScanTask(path, gen)
         task.setAutoDelete(False)  # prevent QThreadPool from deleting before signal fires
         self._active_scan_task = task  # keep strong reference
-        task.signals.scan_done.connect(
-            lambda entries, stats: self._on_scan_done(entries, stats, gen)
-        )
+        model_ref = weakref.ref(self)
+
+        def complete(entries: list, stats: dict, error: OSError | None) -> None:
+            model = model_ref()
+            if model is not None and Shiboken.isValid(model):
+                model._on_scan_done(entries, stats, error, gen)
+
+        task.signals.scan_done.connect(complete)
         QThreadPool.globalInstance().start(task)
 
-    def _on_scan_done(self, entries: list, stat_cache: dict, gen: int):
+    def _on_scan_done(self, entries: list, stat_cache: dict, error: OSError | None, gen: int):
         if self._is_shutdown:
             return
         if gen != self._scan_gen:
             return
         self._active_scan_task = None  # release reference after processing
-        self.beginResetModel()
-        self._raw_entries = entries
-        self._stat_cache = stat_cache
-        self._apply_sort()
-        self.endResetModel()
+        self._scan_loading = False
+        self._scan_error = error
+        self._committing_scan_gen = gen
+        try:
+            self.beginResetModel()
+            self._raw_entries = entries
+            self._stat_cache = stat_cache
+            self._apply_sort()
+            self.endResetModel()
+        finally:
+            self._committing_scan_gen = None
+        self.scan_committed.emit(gen)
+        self._emit_state()
 
     def _on_dir_size_ready(self, dir_path: str, _size: str, _gen: int):
         self._pending_dir_sizes.discard(dir_path)
@@ -141,10 +194,6 @@ class FileSystemModel(QAbstractListModel):
         app = QApplication.instance()
         if app is not None:
             app.processEvents()
-        if hasattr(self, '_pending_scan') and self._pending_scan is not None:
-            entries, stat_cache, gen = self._pending_scan
-            self._pending_scan = None
-            self._on_scan_done(entries, stat_cache, gen)
 
     def refresh(self):
         if self._dir_path:
@@ -158,6 +207,7 @@ class FileSystemModel(QAbstractListModel):
             self.beginResetModel()
             self._apply_sort()
             self.endResetModel()
+            self._emit_state()
 
     def set_filter(self, text: str = "", category: str = "All"):
         self._filter_text = text
@@ -168,6 +218,7 @@ class FileSystemModel(QAbstractListModel):
             self.beginResetModel()
             self._apply_sort()
             self.endResetModel()
+            self._emit_state()
 
     def rowCount(self, parent=QModelIndex()):
         return len(self._entries)
@@ -199,7 +250,7 @@ class FileSystemModel(QAbstractListModel):
             return None
 
     @staticmethod
-    def _fmt_size(sz: int) -> str:
+    def _fmt_size(sz: float) -> str:
         for unit in ["B", "KB", "MB", "GB", "TB"]:
             if sz < 1024:
                 return f"{sz:.1f} {unit}"
@@ -241,26 +292,29 @@ class FileSystemModel(QAbstractListModel):
         session = self._session
         # Unscoped browsing has no session lease, so never touch DB-backed cache.
         metadata_service = self._metadata_service if session is not None else None
+        model = self
 
         class _SizeTask(QRunnable):
-            def run(s):
-                s.setAutoDelete(False)  # prevent destruction before signal delivery
+            def run(self):
+                self.setAutoDelete(False)  # prevent destruction before signal delivery
                 if session is None:
-                    if self._is_shutdown:
+                    if model._is_shutdown:
                         return
                     total = FileSystemModel._cached_dir_size(dir_path, lib_root, metadata_service)
                 else:
                     # A queued task refuses after close; a running task keeps its
                     # original session alive through cache read, scan, and write.
-                    with session.operation():
-                        total = FileSystemModel._cached_dir_size(dir_path, lib_root, metadata_service)
-                if self._is_shutdown:
+                    try:
+                        with session.operation():
+                            total = FileSystemModel._cached_dir_size(dir_path, lib_root, metadata_service)
+                    except RuntimeError:
+                        # A caller that closes before a queued task starts must not
+                        # leak an exception from the Qt worker thread.
+                        return
+                if model._is_shutdown:
                     return
                 result = FileSystemModel._fmt_size(total) if total > 0 else "Empty"
-                s._model = self
-                s._path = dir_path
-                s._gen = gen
-                s._model.dir_size_ready.emit(s._path, result, s._gen)
+                model.dir_size_ready.emit(dir_path, result, gen)
 
         self._size_pool.start(_SizeTask())
 
@@ -298,11 +352,11 @@ class FileSystemModel(QAbstractListModel):
         return byte_total
 
     @staticmethod
-    def _safe_stat(entry):
+    def _safe_stat(entry) -> os.stat_result:
         try:
             return entry.stat()
         except OSError:
-            return type('_Stat', (), {'st_mtime': 0, 'st_size': 0})()
+            return os.stat_result((0,) * 10)
 
     def _cached_stat(self, entry):
         """Return stat result from cache, or call stat() and cache it."""
@@ -339,10 +393,27 @@ class FileSystemModel(QAbstractListModel):
     def shutdown(self):
         """Wait for background directory-size tasks before stores are closed."""
         self._is_shutdown = True
+        self._scan_gen += 1
+        if self._active_scan_task is not None:
+            self._active_scan_task.signals.scan_done.disconnect()
+            self._active_scan_task = None
         if self._size_pool is not None:
             self._size_pool.waitForDone()
             self._size_pool = None
         self._pending_dir_sizes.clear()
+
+    def prepare_library_switch(self):
+        """Drain session-bound directory-size work before its session closes."""
+        self._dir_size_gen += 1
+        if self._size_pool is not None:
+            self._size_pool.waitForDone()
+        self._pending_dir_sizes.clear()
+
+    def clear_scoped_services(self) -> None:
+        """Release closed-library references after all background work has drained."""
+        self._session = None
+        self._metadata_service = None
+        self._lib_root = ""
 
     def filter_accepts(self, entry: os.DirEntry) -> bool:
         if not matches_search(entry.name, self._filter_text):

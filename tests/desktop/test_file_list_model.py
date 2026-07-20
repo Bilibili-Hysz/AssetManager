@@ -31,10 +31,61 @@ def tmp_dir():
 
 @pytest.fixture
 def model():
-    return FileSystemModel()
+    value = FileSystemModel()
+    yield value
+    value.shutdown()
 
 
 class TestFileSystemModel:
+    def test_list_state_distinguishes_empty_and_filtered_results(self, model, tmp_path):
+        model.set_directory(str(tmp_path))
+        model._wait_for_scan()
+
+        assert model.list_state == model.STATE_EMPTY_FOLDER
+
+        (tmp_path / "asset.txt").write_text("asset")
+        model.refresh()
+        model._wait_for_scan()
+        model.set_filter(text="missing")
+
+        assert model.list_state == model.STATE_EMPTY_FILTERED
+
+    def test_scan_error_is_retained_as_current_state(self, model, tmp_path, monkeypatch):
+        def fail_scan(_path):
+            raise PermissionError("denied")
+
+        monkeypatch.setattr("AssetsManager.panels.file_list._model.os.scandir", fail_scan)
+        model.set_directory(str(tmp_path))
+        model._wait_for_scan()
+
+        assert model.list_state == model.STATE_SCAN_ERROR
+        assert isinstance(model._scan_error, PermissionError)
+
+    def test_stale_scan_error_cannot_replace_newer_success(self, model, tmp_path):
+        model.set_directory(str(tmp_path))
+        stale_generation = model.scan_generation
+        model.set_directory(str(tmp_path))
+        current_generation = model.scan_generation
+        entry = next(os.scandir(tmp_path), None)
+
+        model._on_scan_done([entry] if entry is not None else [], {}, None, current_generation)
+        model._on_scan_done([], {}, PermissionError("stale"), stale_generation)
+
+        expected_state = model.STATE_READY if entry is not None else model.STATE_EMPTY_FOLDER
+        assert model.list_state == expected_state
+        assert model._scan_error is None
+
+    def test_safe_stat_uses_zeroed_stat_result_for_missing_entry(self):
+        class MissingEntry:
+            def stat(self):
+                raise OSError("removed during scan")
+
+        stat = FileSystemModel._safe_stat(MissingEntry())
+
+        assert isinstance(stat, os.stat_result)
+        assert stat.st_size == 0
+        assert stat.st_mtime == 0
+
     def test_unscoped_directory_size_skips_db_cache_write(self, tmp_path, monkeypatch):
         class CapturingPool:
             def __init__(self):
@@ -132,8 +183,8 @@ class TestFileSystemModel:
         model._lib_root = str(library_a.resolve())
         model._metadata_service = svc_a
         model._start_async_dir_size(str(folder_a))
-        with pytest.raises(RuntimeError, match="closed LibrarySession"):
-            pool.tasks.pop().run()
+        pool.tasks.pop().run()
+        svc_a.set_dir_size.assert_called_once()
         svc_b = Mock()
         svc_b.get_dir_size.return_value = (7, True)
         model.set_library_root(str(library_b), session_b)
@@ -142,6 +193,37 @@ class TestFileSystemModel:
         pool.tasks.pop().run()
         svc_b.get_dir_size.assert_called_once_with(str(library_b.resolve()), str(folder_b), force=False)
         svc_b.set_dir_size.assert_not_called()
+
+    def test_prepare_library_switch_drains_directory_size_workers(self, model):
+        class CapturingPool:
+            def __init__(self):
+                self.waited = False
+
+            def waitForDone(self):
+                self.waited = True
+
+        pool = CapturingPool()
+        model._size_pool = pool
+        model._pending_dir_sizes.update({"/library/a", "/library/b"})
+        model._dir_size_gen = 7
+
+        model.prepare_library_switch()
+
+        assert pool.waited
+        assert model._dir_size_gen == 8
+        assert not model._pending_dir_sizes
+
+    def test_clear_scoped_services_releases_closed_library_references(self, model, tmp_path):
+        session = Mock()
+        metadata_service = Mock()
+        model.set_library_root(str(tmp_path), session)
+        model.set_metadata_service(metadata_service)
+
+        model.clear_scoped_services()
+
+        assert model._session is None
+        assert model._metadata_service is None
+        assert model._lib_root == ""
 
     def test_inline_rename_delegates_without_direct_filesystem_mutation(self, model, tmp_dir):
         model.set_directory(tmp_dir)
@@ -157,10 +239,88 @@ class TestFileSystemModel:
         assert not os.path.exists(os.path.join(tmp_dir, "renamed.txt"))
 
     def test_set_directory(self, model, tmp_dir):
+        lifecycle = []
+        model.scan_started.connect(lambda generation: lifecycle.append(("started", generation)))
+        model.scan_committed.connect(lambda generation: lifecycle.append(("committed", generation)))
+
         model.set_directory(tmp_dir)
         model._wait_for_scan()
         # 3 files (excl .hidden) + 1 folder = 4 items
         assert model.rowCount() == 4
+        assert lifecycle == [("started", 1), ("committed", 1)]
+
+    def test_empty_directory_resolves_empty_folder_state(self, model, tmp_path):
+        model.set_directory(str(tmp_path))
+        model._wait_for_scan()
+
+        assert model.list_state == model.STATE_EMPTY_FOLDER
+        assert model._scan_error is None
+
+    def test_filter_with_no_results_resolves_filtered_empty_state(self, model, tmp_path):
+        (tmp_path / "asset.txt").write_text("asset")
+        model.set_directory(str(tmp_path))
+        model._wait_for_scan()
+        model.set_filter(text="does-not-match")
+
+        assert model.rowCount() == 0
+        assert model.list_state == model.STATE_EMPTY_FILTERED
+
+    def test_scan_error_resolves_error_state_and_is_cleared_by_next_scan(self, model, tmp_path, monkeypatch):
+        def denied(_path):
+            raise PermissionError("denied")
+
+        monkeypatch.setattr("AssetsManager.panels.file_list._model.os.scandir", denied)
+        model.set_directory(str(tmp_path))
+        model._wait_for_scan()
+
+        assert model.list_state == model.STATE_SCAN_ERROR
+        assert isinstance(model._scan_error, PermissionError)
+
+        monkeypatch.undo()
+        (tmp_path / "asset.txt").write_text("asset")
+        model.refresh()
+        model._wait_for_scan()
+
+        assert model.list_state == model.STATE_READY
+        assert model._scan_error is None
+
+    def test_stale_scan_error_cannot_replace_newer_result(self, model, tmp_path):
+        first = tmp_path / "first"
+        second = tmp_path / "second"
+        first.mkdir()
+        second.mkdir()
+        (second / "asset.txt").write_text("asset")
+        model.set_directory(str(first))
+        old_generation = model.scan_generation
+        model.set_directory(str(second))
+        current_generation = model.scan_generation
+
+        with os.scandir(second) as entries:
+            model._on_scan_done(list(entries), {}, None, current_generation)
+        model._on_scan_done([], {}, PermissionError("stale"), old_generation)
+
+        assert model.list_state == model.STATE_READY
+        assert model._scan_error is None
+        assert model.data(model.index(0, 0)) == "asset.txt"
+
+    def test_rapid_directory_switch_commits_only_latest_generation(self, model, tmp_path):
+        first = tmp_path / "first"
+        second = tmp_path / "second"
+        first.mkdir()
+        second.mkdir()
+        (first / "only-first.txt").write_text("")
+        (second / "only-second.txt").write_text("")
+
+        model.set_directory(str(first))
+        model.set_directory(str(second))
+        model._wait_for_scan()
+
+        names = {
+            model.data(model.index(row, 0))
+            for row in range(model.rowCount())
+        }
+        assert model.scan_generation == 2
+        assert names == {"only-second.txt"}
 
     def test_set_directory_includes_hidden(self, model, tmp_dir):
         model._show_hidden = True

@@ -24,6 +24,10 @@ class TestFileListController:
         )
         assert text == "5 items  |  Grid"
 
+    def test_format_total_size_suffix(self):
+        assert FileListController.format_total_size_suffix(1024) == "  |  1.0 KB"
+        assert FileListController.format_total_size_suffix(0) == ""
+
     def test_find_first_image_caches_result(self, tmp_path):
         (tmp_path / "image.png").write_bytes(b"png")
         (tmp_path / "text.txt").write_text("x")

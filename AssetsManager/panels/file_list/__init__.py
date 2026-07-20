@@ -11,7 +11,6 @@ from PySide6.QtCore import (
     Qt, QTimer, QEasingCurve, QVariantAnimation, QModelIndex, QRect, QPoint, QEvent, Signal, QFileInfo, QObject,
     QItemSelectionModel,
 )
-from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QWidget, QMenu, QApplication, QSizePolicy, QTreeView, QAbstractItemView,
 )
@@ -22,11 +21,13 @@ from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager import i18n
 from AssetsManager.panels.file_list._base import FileListPanel
-from AssetsManager.panels.file_list._model import FileSystemModel
 from AssetsManager.panels.file_list._common import IMAGE_EXTS, ZOOM_PRESETS
 from AssetsManager.panels.file_list._grid_layout import GridLayout
 from AssetsManager.panels.file_list._grid_widget import FileListGridWidget
+from AssetsManager.panels.file_list._thumbnail_delivery import ThumbnailDeliveryCoordinator
 from AssetsManager.panels.file_list._detail_model import DetailModel
+from AssetsManager.panels.file_list._commands import FileListCommand, FileListCommandContext
+from AssetsManager.application.tag_service import TagServiceAdapter
 
 _log = logging.getLogger(__name__)
 tr = i18n.tr
@@ -145,26 +146,28 @@ class QWidgetFileListPanel(FileListPanel):
         self.content_layout.setContentsMargins(scaled_px(2), 0, scaled_px(2), scaled_px(4))
         self._header.setProperty("central", True)
 
-        # Thumbnail batch processing
-        self._thumb_batch: set[int] = set()
-        self._thumb_timer = QTimer(self)
-        self._thumb_timer.setSingleShot(True)
-        self._thumb_timer.setInterval(50)
-        self._thumb_timer.timeout.connect(self._flush_thumb_batch)
-
         self._grid_widget = FileListGridWidget()
         self._grid_widget.set_model(self._model)
         self._grid_layout = GridLayout()
         self._grid_widget.set_layout_ref(self._grid_layout)
+        self._thumbnail_delivery = ThumbnailDeliveryCoordinator(self._model, self._grid_widget)
         self._grid_widget.clicked.connect(self._on_grid_click)
         self._grid_widget.double_clicked.connect(self._on_grid_double_click)
         self._grid_widget.context_menu.connect(self._on_grid_context)
         self._grid_widget.selection_changed.connect(self._update_status)
+        self._grid_widget.selection_changed.connect(self._on_grid_selection_changed)
         self._grid_widget.rename_requested.connect(self._rename_grid_row)
         self._model.rename_requested.connect(self._rename_grid_row)
         self._model.modelAboutToBeReset.connect(self._capture_grid_selection)
         self._model.modelAboutToBeReset.connect(self._capture_detail_selection)
         self._model.modelReset.connect(self._on_grid_model_reset)
+        self._model.scan_started.connect(self._on_scan_started)
+        self._model.scan_committed.connect(self._on_scan_committed)
+        self._model.state_changed.connect(self._on_file_list_state_changed)
+        self._pending_scan_generation: int | None = None
+        self._pending_selection_paths: set[str] | None = None
+        self._pending_detail_paths: set[str] | None = None
+        self._presentation_generation = -1
 
         # Reconnect scroll debounce to grid widget's scrollbar
         self._scroll_debounce.timeout.disconnect()
@@ -182,6 +185,8 @@ class QWidgetFileListPanel(FileListPanel):
         self._detail_view = QTreeView()
         self._detail_model = DetailModel()
         self._detail_model.rename_requested.connect(self._rename_detail_row)
+        self._detail_model.layoutAboutToBeChanged.connect(self._capture_detail_selection)
+        self._detail_model.layoutChanged.connect(self._restore_detail_selection)
         self._detail_view.setModel(self._detail_model)
         self._detail_view.setRootIsDecorated(False)
         self._detail_view.setItemsExpandable(False)
@@ -211,14 +216,15 @@ class QWidgetFileListPanel(FileListPanel):
         self._connect_bus(bus().language_changed, self._refresh_language)
         self.initialize_navigation()
 
-        from AssetsManager.domain.events import FileRenamed, FileDeleted, FileCreated
+        from AssetsManager.domain.events import FileSystemChanged
         self._file_op_timer = QTimer(self)
         self._file_op_timer.setSingleShot(True)
         self._file_op_timer.setInterval(200)
         self._file_op_timer.timeout.connect(self._post_refresh)
-        self._connect_domain_event(FileRenamed, self._on_file_operation)
-        self._connect_domain_event(FileDeleted, self._on_file_operation)
-        self._connect_domain_event(FileCreated, self._on_file_operation)
+        self._connect_domain_event(FileSystemChanged, self._on_file_operation)
+
+    def _set_grid_performance_context(self, recorder, session_token: str, generation: int) -> None:
+        self._grid_widget.set_performance_context(recorder, session_token, generation)
 
     def _refresh_language(self, _code=""):
         self._detail_model.headerDataChanged.emit(
@@ -226,6 +232,11 @@ class QWidgetFileListPanel(FileListPanel):
         self._update_status()
 
     def _on_file_operation(self, event):
+        if getattr(self._model, "_is_shutdown", False):
+            return
+        scoped = self._scoped_services
+        if scoped is None or event.session_token != scoped.session.event_token:
+            return
         self._file_op_timer.start()
 
     def clone(self):
@@ -264,13 +275,22 @@ class QWidgetFileListPanel(FileListPanel):
             )
         sel = self._detail_view.selectionModel().selectedRows()
         paths = [self._detail_model.data(i, Qt.ItemDataRole.UserRole) for i in sel if i.isValid()]
-        self._show_context_menu([p for p in paths if p], self._detail_view.viewport().mapToGlobal(pos))
+        self._show_context_menu(
+            [path for path in paths if isinstance(path, str)],
+            self._detail_view.viewport().mapToGlobal(pos),
+        )
 
     def _show_context_menu(self, paths: list[str], global_pos: QPoint):
+        self._build_context_menu(paths, global_pos).exec(global_pos)
+
+    def _build_context_menu(self, paths: list[str], global_pos: QPoint) -> QMenu:
+        """Build the shared Grid and Details context menu without displaying it."""
         menu = QMenu(self)
+        context = self._command_context(paths)
         if paths:
             p = paths[0]
-            menu.addAction(tr("filelist.menu.open"), lambda p=p: self._navigate_or_open(p))
+            commands = self._selected_commands(context, global_pos, p)
+            self._add_command_group(menu, commands, context, "open")
             if not os.path.isdir(p):
                 open_with = menu.addMenu(tr("filelist.menu.open_with"))
                 open_with.addAction(tr("filelist.menu.default"), lambda p=p: self._navigate_or_open(p))
@@ -280,48 +300,225 @@ class QWidgetFileListPanel(FileListPanel):
                         icon = tool.get("icon", "") or "🔧"
                         text = f"{icon}  {tool.get('name', 'Tool')}"
                         open_with.addAction(text, lambda checked, t=tool, fp=p: run_tool(t, file_path=fp))
-            menu.addAction(tr("filelist.menu.copy"), lambda: self._copy_paths(paths, False))
-            menu.addAction(tr("filelist.menu.cut"), lambda: self._copy_paths(paths, True))
-            menu.addAction(tr("filelist.menu.copy_path"), lambda p=p: QApplication.clipboard().setText(p))
-            if len(paths) == 1:
-                menu.addAction(tr("filelist.menu.rename"), lambda: self._rename(p))
-            menu.addAction(tr("filelist.menu.delete"), lambda: self._delete(paths))
-            menu.addAction(tr("filelist.menu.delete_permanent"), lambda: self._delete_permanent(paths))
-            menu.addSeparator()
-            menu.addAction(tr("filelist.menu.duplicate"), self._duplicate_selected)
-            menu.addAction(tr("filelist.menu.undo"), self._undo)
+            self._add_command_group(menu, commands, context, "clipboard")
+            self._add_command_group(menu, commands, context, "mutate")
+            self._add_command_group(menu, commands, context, "history")
             tag_menu = menu.addMenu(tr("filelist.menu.tags"))
             tag_menu.addAction(tr("filelist.menu.apply_tag"), lambda: self._apply_tag_dialog(paths))
             tag_menu.addAction(tr("filelist.menu.remove_tag"), lambda: self._remove_tag_dialog(paths))
             tag_menu.addSeparator()
             tag_menu.addAction(tr("filelist.menu.manage_tags"), lambda: self._manage_tags_dialog(paths))
+            tag_menu.setEnabled(context.can_mutate)
             menu.addSeparator()
-            menu.addAction(tr("filelist.properties"), lambda: self._show_properties(p))
-            menu.addSeparator()
-            menu.addAction(tr("filelist.menu.open_explorer"), lambda: self._open_in_explorer(
-                str(Path(p).parent) if not os.path.isdir(p) else p))
-            menu.addSeparator()
-            menu.addAction(tr("sharing.quick_share"), lambda: self._quick_share_from_context(paths, global_pos))
+            self._add_command_group(menu, commands, context, "organize")
+            self._add_plugin_context_items(menu, p)
         else:
-            if self._clipboard_source:
-                menu.addAction(tr("filelist.menu.paste"), self._paste)
-            menu.addAction(tr("filelist.menu.new_folder"), self._new_folder)
+            commands = self._empty_commands(context)
+            self._add_command_group(menu, commands, context, "clipboard")
+            self._add_command_group(menu, commands, context, "browse")
+            self._add_command_group(menu, commands, context, "history")
+            self._add_command_group(menu, commands, context, "organize")
+        return menu
+
+    def _command_context(self, paths: list[str]) -> FileListCommandContext:
+        can_mutate = self._get_scoped_services() is not None
+        undo_service = self._undo_svc if can_mutate else None
+        return FileListCommandContext(
+            paths=tuple(paths),
+            current_dir=self._current,
+            view_mode=self._view_mode,
+            clipboard_has_local_files=self._can_paste(),
+            can_mutate=can_mutate,
+            undo_available=undo_service is not None and undo_service.can_undo(),
+            redo_available=undo_service is not None and undo_service.can_redo(),
+        )
+
+    @staticmethod
+    def _always(_context: FileListCommandContext) -> bool:
+        return True
+
+    def _selected_commands(
+        self, context: FileListCommandContext, global_pos: QPoint, path: str,
+    ) -> tuple[FileListCommand, ...]:
+        return (
+            FileListCommand("open", "filelist.menu.open", "Enter", "open", self._always, self._always,
+                            lambda: self._invoke_command("open", context)),
+            FileListCommand("copy", "filelist.menu.copy", "Ctrl+C", "clipboard", self._always, self._always,
+                            lambda: self._invoke_command("copy", context)),
+            FileListCommand("cut", "filelist.menu.cut", "Ctrl+X", "clipboard", self._always, self._always,
+                            lambda: self._invoke_command("cut", context)),
+            FileListCommand("copy_path", "filelist.menu.copy_path", None, "clipboard", self._always, self._always,
+                            lambda: self._invoke_command("copy_path", context)),
+            FileListCommand("rename", "filelist.menu.rename", "F2", "mutate", self._always,
+                            lambda value: value.can_mutate and len(value.paths) == 1,
+                            lambda: self._invoke_command("rename", context)),
+            FileListCommand("duplicate", "filelist.menu.duplicate", "Ctrl+D", "mutate", self._always,
+                            lambda value: value.can_mutate, lambda: self._invoke_command("duplicate", context)),
+            FileListCommand("trash", "filelist.menu.delete", "Delete", "mutate", self._always,
+                            lambda value: value.can_mutate, lambda: self._invoke_command("trash", context)),
+            FileListCommand("permanent_delete", "filelist.menu.delete_permanent", "Shift+Delete", "mutate",
+                            self._always, lambda value: value.can_mutate,
+                            lambda: self._invoke_command("permanent_delete", context)),
+            FileListCommand("undo", "filelist.menu.undo", "Ctrl+Z", "history", self._always,
+                            lambda value: value.undo_available, lambda: self._invoke_command("undo", context)),
+            FileListCommand("redo", "filelist.menu.redo", "Ctrl+Y", "history", self._always,
+                            lambda value: value.redo_available, lambda: self._invoke_command("redo", context)),
+            FileListCommand("properties", "filelist.properties", "Alt+Enter", "organize", self._always,
+                            self._always, lambda: self._invoke_command("properties", context)),
+            FileListCommand("reveal", "filelist.menu.open_explorer", None, "organize", self._always,
+                            self._always, lambda: self._invoke_command("reveal", context)),
+            FileListCommand("quick_share", "sharing.quick_share", None, "organize", self._always,
+                            self._always, lambda: self._invoke_command("quick_share", context, global_pos)),
+            FileListCommand("help", "filelist.menu.keyboard_help", "F4", "organize", self._always,
+                            self._always, lambda: self._invoke_command("help", context)),
+        )
+
+    def _empty_commands(self, _context: FileListCommandContext) -> tuple[FileListCommand, ...]:
+        return (
+            FileListCommand("paste", "filelist.menu.paste", "Ctrl+V", "clipboard", self._always,
+                            lambda value: value.can_mutate and value.clipboard_has_local_files,
+                            lambda: self._invoke_command("paste", _context)),
+            FileListCommand("new_folder", "filelist.menu.new_folder", "Ctrl+Shift+N", "clipboard", self._always,
+                            lambda value: value.can_mutate, lambda: self._invoke_command("new_folder", _context)),
+            FileListCommand("select_all", "filelist.menu.select_all", "Ctrl+A", "browse", self._always,
+                            self._always, lambda: self._invoke_command("select_all", _context)),
+            FileListCommand("refresh", "filelist.menu.refresh", "F5", "browse", self._always,
+                            self._always, lambda: self._invoke_command("refresh", _context)),
+            FileListCommand("toggle_hidden", "filelist.menu.toggle_hidden", "Ctrl+H", "browse", self._always,
+                            self._always, lambda: self._invoke_command("toggle_hidden", _context)),
+            FileListCommand("undo", "filelist.menu.undo", "Ctrl+Z", "history", self._always,
+                            lambda value: value.undo_available, lambda: self._invoke_command("undo", _context)),
+            FileListCommand("redo", "filelist.menu.redo", "Ctrl+Y", "history", self._always,
+                            lambda value: value.redo_available, lambda: self._invoke_command("redo", _context)),
+            FileListCommand("reveal", "filelist.menu.open_explorer", None, "organize", self._always,
+                            self._always, lambda: self._invoke_command("reveal", _context)),
+            FileListCommand("help", "filelist.menu.keyboard_help", "F4", "organize", self._always,
+                            self._always, lambda: self._invoke_command("help", _context)),
+        )
+
+    def _invoke_command(
+        self,
+        command_id: str,
+        context: FileListCommandContext | None = None,
+        global_pos: QPoint | None = None,
+        *,
+        shortcut: bool = False,
+    ) -> None:
+        """Invoke an existing FileList action through its stable command ID."""
+        context = context or self._command_context(self._selected_paths())
+        paths = context.paths
+        path = paths[0] if paths else None
+        if command_id == "open" and path:
+            self._navigate_or_open(path)
+        elif command_id == "copy":
+            self._copy_paths(paths, False)
+        elif command_id == "cut":
+            self._copy_paths(paths, True)
+        elif command_id == "copy_path" and path:
+            QApplication.clipboard().setText(path)
+        elif command_id == "rename" and path:
+            if shortcut:
+                self._inline_rename()
+            else:
+                self._rename(path)
+        elif command_id == "duplicate":
+            self._duplicate_selected()
+        elif command_id == "trash":
+            self._delete(list(paths))
+        elif command_id == "permanent_delete":
+            self._delete_permanent(list(paths))
+        elif command_id == "undo":
+            self._undo()
+        elif command_id == "redo":
+            self._redo()
+        elif command_id == "properties" and path:
+            self._show_properties(path)
+        elif command_id == "reveal":
+            target = str(Path(path).parent) if path and not os.path.isdir(path) else path or str(self._current)
+            self._open_in_explorer(target)
+        elif command_id == "quick_share":
+            self._quick_share_from_context(list(paths), global_pos or QPoint())
+        elif command_id == "paste":
+            self._paste()
+        elif command_id == "new_folder":
+            self._new_folder()
+        elif command_id == "select_all":
+            self._select_all()
+        elif command_id == "refresh":
+            self._do_refresh()
+        elif command_id == "toggle_hidden":
+            self._toggle_hidden()
+        elif command_id == "help":
+            self._show_filelist_shortcuts()
+
+    def _show_filelist_shortcuts(self) -> None:
+        """Show FileList's stable shortcuts without depending on its host window."""
+        from AssetsManager.core.settings import AppSettings
+        from PySide6.QtWidgets import QMessageBox
+
+        settings = AppSettings.instance()
+        if not settings.get("filelist_shortcut_hints_seen", False):
+            settings.set("filelist_shortcut_hints_seen", True)
+            settings.save()
+        lines = [
+            f"F4 - {tr('filelist.help.keyboard_help')}",
+            f"Ctrl+F - {tr('shortcuts.filelist_filter')}",
+            f"Enter - {tr('filelist.menu.open')}",
+            f"Alt+Enter - {tr('filelist.properties')}",
+            f"Backspace - {tr('filelist.help.up')}",
+            f"Ctrl+C / Ctrl+X / Ctrl+V - {tr('filelist.help.clipboard')}",
+            f"Ctrl+D - {tr('filelist.menu.duplicate')}",
+            f"F2 - {tr('filelist.menu.rename')}",
+            f"Delete / Shift+Delete - {tr('filelist.help.delete')}",
+            f"Ctrl+Z / Ctrl+Y - {tr('filelist.help.history')}",
+            f"Ctrl+Shift+N - {tr('filelist.menu.new_folder')}",
+            f"Ctrl+A - {tr('filelist.menu.select_all')}",
+            f"F5 - {tr('filelist.menu.refresh')}",
+            f"Ctrl+H - {tr('filelist.menu.toggle_hidden')}",
+            f"Escape - {tr('filelist.help.clear')}",
+        ]
+        QMessageBox.information(self, tr("filelist.help.title"), "\n".join(lines))
+
+    @staticmethod
+    def _add_command_group(
+        menu: QMenu,
+        commands: tuple[FileListCommand, ...],
+        context: FileListCommandContext,
+        group: str,
+    ) -> None:
+        projected = [command for command in commands if command.group == group and command.visible_when(context)]
+        if not projected:
+            return
+        if menu.actions():
             menu.addSeparator()
-            menu.addAction(tr("filelist.menu.open_explorer"), lambda: self._open_in_explorer(str(self._current)))
-        menu.exec(global_pos)
+        for command in projected:
+            action = menu.addAction(tr(command.label_key), command.invoke)
+            action.setEnabled(command.enabled_when(context))
+            if command.shortcut:
+                action.setShortcut(command.shortcut)
+
+    def _select_all(self):
+        if self._view_mode == "Details":
+            self._detail_view.selectAll()
+        else:
+            self._grid_widget.select_all()
+        self._update_status()
 
     def _quick_share_from_context(self, paths: list[str], global_pos):
         """Delegate Quick Share to the main window's LanSharingMixin."""
         from PySide6.QtWidgets import QApplication
         app = QApplication.instance()
-        win = app.activeWindow() if app else None
-        if win is None and app:
+        if not isinstance(app, QApplication):
+            return
+        win = app.activeWindow()
+        if win is None:
             for w in app.topLevelWidgets():
                 if w.isVisible() and hasattr(w, '_show_quick_share_card'):
                     win = w
                     break
-        if win and hasattr(win, '_show_quick_share_card'):
-            win._show_quick_share_card(paths, global_pos)
+        show_quick_share = getattr(win, "_show_quick_share_card", None)
+        if callable(show_quick_share):
+            show_quick_share(paths, global_pos)
 
     def _rename_grid_row(self, row: int, new_name: str):
         ent = self._model.entry_at(row)
@@ -335,10 +532,15 @@ class QWidgetFileListPanel(FileListPanel):
         self._rename_path(self._detail_model._entries[row].path, new_name)
 
     def _rename_path(self, old_path: str, new_name: str):
+        session = getattr(self._get_scoped_services(), "session", None)
+        self._show_operation_feedback(session, "rename", running=True)
         try:
-            self._rename_file_path(old_path, new_name)
+            new_path = self._rename_file_path(old_path, new_name)
+            self._request_operation_selection(session, [new_path])
+            self._show_operation_feedback(session, "rename", changed_count=1)
             self._post_refresh()
         except OSError as e:
+            self._show_operation_feedback(session, "rename", errors=(str(e),))
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(self, tr("dialog.error"), str(e))
 
@@ -350,17 +552,24 @@ class QWidgetFileListPanel(FileListPanel):
 
     def _populate_details(self):
         self._capture_detail_selection()
-        store = self._get_tag_store(self._lib_root)
+        scoped = self._get_scoped_services()
+        store = (
+            TagServiceAdapter(self._lib_root, scoped.tag_service)
+            if scoped is not None and self._lib_root
+            else None
+        )
         self._detail_model.set_source(self._model, store=store, lib_root=self._lib_root)
         self._restore_detail_selection()
         self._update_status()
 
     def _on_detail_selection_changed(self):
+        if self._pending_scan_generation == self._model.scan_generation:
+            self._pending_detail_paths = set(self._selected_detail_paths())
         self._update_status()
         sel = self._detail_view.selectionModel().selectedRows()
         if sel:
             path = self._detail_model.data(sel[0], Qt.ItemDataRole.UserRole)
-            if path:
+            if isinstance(path, str):
                 info = QFileInfo(path)
                 self.file_selected.emit(info)
                 bus().file_focused.emit(str(path))
@@ -370,7 +579,7 @@ class QWidgetFileListPanel(FileListPanel):
         return [p for p in (
             self._detail_model.data(i, Qt.ItemDataRole.UserRole)
             for i in sel if i.isValid()
-        ) if p]
+        ) if isinstance(p, str)]
 
     def _capture_detail_selection(self):
         if not hasattr(self, '_detail_model') or not hasattr(self, '_detail_view'):
@@ -379,16 +588,19 @@ class QWidgetFileListPanel(FileListPanel):
         paths = {
             path for path in (
                 self._detail_model.data(i, Qt.ItemDataRole.UserRole) for i in sel if i.isValid()
-            ) if path
+            ) if isinstance(path, str)
         }
         if paths:
             self._pending_detail_paths = paths
 
     def _restore_detail_selection(self):
-        paths = getattr(self, '_pending_detail_paths', set())
-        if not paths:
+        paths = self._pending_detail_paths
+        if paths is None:
             return
-        self._pending_detail_paths = set()
+        self._pending_detail_paths = None
+        self._select_detail_paths(paths)
+
+    def _select_detail_paths(self, paths: set[str]) -> None:
         sm = self._detail_view.selectionModel()
         sm.clearSelection()
         for row, entry in enumerate(self._detail_model._entries):
@@ -399,6 +611,8 @@ class QWidgetFileListPanel(FileListPanel):
                               | QItemSelectionModel.SelectionFlag.Rows)
 
     def _on_detail_dir_size_ready(self, dir_path: str, size_str: str, gen: int = 0):
+        if getattr(self._model, "_is_shutdown", False):
+            return
         if gen and gen != self._model._dir_size_gen:
             return
         self._model._pending_dir_sizes.discard(dir_path)
@@ -413,6 +627,14 @@ class QWidgetFileListPanel(FileListPanel):
                 break
 
     def _on_grid_model_reset(self):
+        self._thumbnail_delivery.clear()
+        self._grid_widget.set_performance_generation(self._model.scan_generation)
+        if self._pending_scan_generation == self._model.scan_generation:
+            # Both async-refresh resets can be delivered after the model has
+            # left its committing state. Preserve paths until scan_committed.
+            if not self._model.is_committing_scan:
+                self._grid_widget.update_layout(0, self._grid_widget.width())
+            return
         if self._view_mode == "Details":
             # The first reset of an async refresh clears source entries. Keep
             # the captured paths until the populated scan result arrives.
@@ -420,9 +642,45 @@ class QWidgetFileListPanel(FileListPanel):
                 self._populate_details()
             return
         self._grid_widget.update_layout(self._model.rowCount(), self._grid_widget.width())
-        self._restore_grid_selection()
-        self._grid_widget._start_entrance_stagger()
-        QTimer.singleShot(80, self._load_visible)
+        if self._view_mode == "Grid":
+            self._restore_grid_selection()
+
+    def _on_scan_started(self, generation: int):
+        self._pending_scan_generation = generation
+
+    def _on_file_list_state_changed(self, _state: str, generation: int, _error) -> None:
+        if generation == self._model.scan_generation:
+            self._update_status()
+
+    def _on_scan_committed(self, generation: int):
+        """Present each populated scan generation once after its model reset completes."""
+        if generation != self._pending_scan_generation:
+            return
+        self._pending_scan_generation = None
+        if generation <= self._presentation_generation:
+            return
+        self._presentation_generation = generation
+        result_paths = self._consume_operation_selection()
+        if self._view_mode == "Grid":
+            self._restore_grid_selection()
+        if not self._model.rowCount():
+            self._grid_widget.discard_pending_presentation(generation)
+            return
+        self._grid_widget.update_layout(self._model.rowCount(), self._grid_widget.width())
+        visible_rows = self._grid_layout.visible_rows(
+            self._grid_widget._scroll_y, self._grid_widget.height())
+        self._grid_widget.begin_presentation(generation, visible_rows)
+        if self._view_mode == "Details":
+            self._populate_details()
+        else:
+            QTimer.singleShot(80, self._load_visible_if_active)
+        if result_paths:
+            self._restore_operation_selection(result_paths)
+
+    def _load_visible_if_active(self):
+        """Ignore delayed scan presentation work after panel shutdown."""
+        if not self._model._is_shutdown:
+            self._load_visible()
 
     def _apply_list_theme(self):
         pass
@@ -478,70 +736,173 @@ class QWidgetFileListPanel(FileListPanel):
     def _capture_grid_selection(self):
         if not hasattr(self, '_grid_widget'):
             return
-        self._pending_selection_paths = {
+        paths = {
             path for path in (
                 self._model.path_at(r) for r in self._grid_widget.selection_model_rows()
             ) if path
         }
+        if paths:
+            self._pending_selection_paths = paths
 
     def _restore_grid_selection(self):
-        paths = getattr(self, '_pending_selection_paths', set())
-        if not paths:
+        paths = self._pending_selection_paths
+        if paths is None:
             return
+        self._pending_selection_paths = None
+        self._select_grid_paths(paths)
+
+    def _on_grid_selection_changed(self) -> None:
+        if self._pending_scan_generation == self._model.scan_generation:
+            self._pending_selection_paths = {
+                path for row in self._grid_widget.selection_model_rows()
+                if (path := self._model.path_at(row)) is not None
+            }
+
+    def _select_grid_paths(self, paths: set[str]) -> None:
         old = self._grid_widget._selection.copy()
         self._grid_widget._selection = {
             row for path, row in self._model._path_index.items()
             if path in paths
         }
-        self._pending_selection_paths = set()
         if old != self._grid_widget._selection:
             self._grid_widget._apply_selection_progress(old)
             self._grid_widget.selection_changed.emit()
             self._grid_widget.update()
+
+    def _clear_selection_for_navigation(self) -> None:
+        """Avoid carrying view selection into a different directory's scan."""
+        self._pending_selection_paths = None
+        self._pending_detail_paths = None
+        self._pending_operation_selection = None
+        self._grid_widget.clear_selection()
+        self._detail_view.clearSelection()
+
+    def _request_operation_selection(self, session, paths) -> None:
+        """Restore the first successful result only in its originating session and directory."""
+        self._pending_operation_selection = None
+        scoped = self._scoped_services
+        if scoped is None or getattr(scoped, "session", None) is not session:
+            return
+        if getattr(session, "is_closed", False):
+            return
+        current_dir = self._current.resolve()
+        targets = tuple(
+            str(Path(path).resolve())
+            for path in paths
+            if Path(path).resolve().parent == current_dir
+        )
+        if targets:
+            self._pending_operation_selection = (session, current_dir, targets[:1])
+
+    def _deletion_selection_candidates(self, paths) -> tuple[str, ...]:
+        """Prefer the next visible survivor, then the previous visible survivor."""
+        deleted = {str(Path(path).resolve()) for path in paths}
+        entries = self._detail_model._entries if self._view_mode == "Details" else self._model._entries
+        visible_paths = [str(Path(entry.path).resolve()) for entry in entries]
+        deleted_rows = [row for row, path in enumerate(visible_paths) if path in deleted]
+        if not deleted_rows:
+            return ()
+        first = min(deleted_rows)
+        last = max(deleted_rows)
+        return tuple(
+            path
+            for path in [*visible_paths[last + 1:], *reversed(visible_paths[:first])]
+            if path not in deleted
+        )
+
+    def _consume_operation_selection(self) -> tuple[str, ...]:
+        intent = getattr(self, "_pending_operation_selection", None)
+        if intent is None:
+            return ()
+        self._pending_operation_selection = None
+        session, current_dir, paths = intent
+        scoped = self._scoped_services
+        if (
+            scoped is None
+            or getattr(scoped, "session", None) is not session
+            or getattr(session, "is_closed", False)
+            or self._current.resolve() != current_dir
+        ):
+            return ()
+        return paths
+
+    def _restore_operation_selection(self, paths: tuple[str, ...]) -> None:
+        if self._view_mode == "Details":
+            self._pending_detail_paths = set(paths)
+            self._restore_detail_selection()
+        else:
+            self._pending_selection_paths = set(paths)
+            self._restore_grid_selection()
 
     def _on_view_changed(self, _index):
         mode = self._view_mode
         self._view_memory[str(self._current)] = mode
         self._loader.set_size(self._thumb_size)
         is_detail = mode == "Details"
+        paths = (
+            {
+                path for row in self._grid_widget.selection_model_rows()
+                if (path := self._model.path_at(row)) is not None
+            }
+            if is_detail
+            else set(self._selected_detail_paths())
+        )
         self._grid_widget.setVisible(not is_detail)
         self._detail_view.setVisible(is_detail)
         if not is_detail:
             self._grid_widget.update_layout(self._model.rowCount(), self._grid_widget.width())
+            self._select_grid_paths(paths)
+            self._detail_view.clearSelection()
             self._load_visible()
         else:
             self._populate_details()
+            self._select_detail_paths(paths)
+            self._select_grid_paths(set())
         self._update_status()
 
     def _on_zoom_changed(self, val):
         target = int(val.replace("px", ""))
         if not hasattr(self, '_zoom_anim'):
             self._zoom_anim = None
+        self._zoom_generation = getattr(self, "_zoom_generation", 0) + 1
+        generation = self._zoom_generation
         if self._zoom_anim and self._zoom_anim.state() == QVariantAnimation.State.Running:
             self._zoom_anim.stop()
         start = self._thumb_size
         if start == target:
+            # A cancelled animation may already have an active interpolated
+            # layout. Commit it instead of leaving mixed geometry behind.
+            if self._grid_widget._zoom_relayout_active:
+                self._on_zoom_done(generation)
             return
-        self._zoom_anim = QVariantAnimation()
+        self._grid_widget.begin_zoom(target)
+        self._zoom_anim = QVariantAnimation(self)
         self._zoom_anim.setDuration(180)
         self._zoom_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._zoom_anim.setStartValue(start)
         self._zoom_anim.setEndValue(target)
         self._zoom_anim.valueChanged.connect(self._on_zoom_frame)
-        self._zoom_anim.finished.connect(self._on_zoom_done)
+        self._zoom_anim.finished.connect(lambda: self._on_zoom_done(generation, target))
         self._zoom_anim.start()
 
     def _on_zoom_frame(self, size: int):
+        if getattr(self._model, "_is_shutdown", False):
+            return
         self._thumb_size = size
-        self._grid_widget.set_thumb_size(size)
-        self._grid_widget.update_layout(
-            self._model.rowCount(), self._grid_widget.width(), relayout_only=True)
+        self._grid_widget.set_zoom_thumb_size(size)
 
-    def _on_zoom_done(self):
+    def _on_zoom_done(self, generation: int | None = None, target_size: int | None = None):
+        if getattr(self._model, "_is_shutdown", False):
+            return
+        if generation is not None and generation != getattr(self, "_zoom_generation", 0):
+            return
+        if target_size is not None:
+            self._thumb_size = target_size
         self._loader.set_size(self._thumb_size)
         self._grid_widget.set_thumb_size(self._thumb_size)
-        self._grid_widget.invalidate_textures()
         self._grid_widget.update_layout(self._model.rowCount(), self._grid_widget.width())
+        self._grid_widget.finish_zoom()
+        self._grid_widget.invalidate_textures()
         self._load_visible()
 
     def _wheel_zoom_evt(self, event):
@@ -564,7 +925,8 @@ class QWidgetFileListPanel(FileListPanel):
             target = self._scroll_anim.endValue() - event.angleDelta().y()
             self._scroll_anim.stop()
         generation = self._begin_smooth_scroll()
-        self._scroll_anim = QVariantAnimation()
+        self._grid_widget.set_scrolling()
+        self._scroll_anim = QVariantAnimation(self)
         self._scroll_anim.setDuration(120)
         self._scroll_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._scroll_anim.setStartValue(sb.value())
@@ -574,6 +936,8 @@ class QWidgetFileListPanel(FileListPanel):
         self._scroll_anim.start()
 
     def _load_visible(self):
+        if getattr(self._model, "_is_shutdown", False):
+            return
         total = self._model.rowCount()
         if total == 0:
             return
@@ -582,56 +946,39 @@ class QWidgetFileListPanel(FileListPanel):
         vh = self._grid_widget.height()
         sy = self._grid_widget._scroll_y
         visible = self._grid_layout.visible_rows(sy, vh)
+        visible_rows = [row for row in visible if 0 <= row < total]
         cols = self._grid_layout.columns
         extra = max(2, cols) * 3
-        first = max(0, min(visible[0] if visible else 0, total - 1) - extra)
-        last = min(total - 1, max(visible[-1] if visible else 0, 0) + extra)
-        for i in range(first, last + 1):
+        first = max(0, min(visible_rows[0] if visible_rows else 0, total - 1) - extra)
+        last = min(total - 1, max(visible_rows[-1] if visible_rows else 0, 0) + extra)
+        visible_set = set(visible_rows)
+        prefetch_rows = [row for row in range(first, last + 1) if row not in visible_set]
+        candidates = []
+        retained_paths = set()
+        for i in [*visible_rows, *prefetch_rows]:
             ent = self._model.entry_at(i)
             if not ent:
                 continue
+            priority = 0 if i in visible_set else 1
             if ent.is_dir():
                 preview = self._first_image_cached(ent.path)
                 if preview:
-                    self._loader.request(i, preview, priority=0, item_path=ent.path)
+                    candidates.append((i, preview, priority, ent.path))
+                    retained_paths.add(preview)
             elif ent.is_file() and Path(ent.name).suffix.lower() in IMAGE_EXTS:
-                self._loader.request(i, ent.path, priority=0)
+                candidates.append((i, ent.path, priority, None))
+                retained_paths.add(ent.path)
+        self._loader.retain_deferred(retained_paths)
+        for row, path, priority, item_path in candidates:
+            self._loader.request(row, path, priority=priority, item_path=item_path)
 
     def _on_thumbnail_ready(self, row: int, path: str, img):
-        """Main-thread handler — convert QImage to QPixmap."""
-        if img is None or img.isNull():
+        if getattr(self._model, "_is_shutdown", False):
             return
-        pixmap = QPixmap.fromImage(img)
-        idx = self._model.index(row, 0)
-        if not idx.isValid():
-            return
-        if self._model.path_at(row) != path:
-            return
-        ent = self._model.entry_at(row)
-        if ent:
-            self._model._raw_pixmaps[ent.path] = pixmap
-        self._model.setData(idx, QIcon(pixmap), Qt.ItemDataRole.DecorationRole)
-        self._thumb_batch.add(row)
-        self._thumb_timer.start()
-        self._grid_widget.mark_loaded(row)
+        self._thumbnail_delivery.handle_ready(row, path, img)
 
     def _flush_thumb_batch(self):
-        if not self._thumb_batch:
-            return
-        rows = sorted(self._thumb_batch)
-        self._thumb_batch.clear()
-        start = prev = rows[0]
-        for row in rows[1:] + [None]:
-            if row is not None and row == prev + 1:
-                prev = row
-                continue
-            self._model.dataChanged.emit(
-                self._model.index(start, 0),
-                self._model.index(prev, 0),
-                [FileSystemModel.RAW_PIXMAP_ROLE])
-            if row is not None:
-                start = prev = row
-        self._grid_widget.on_thumb_batch(rows)
+        self._thumbnail_delivery.flush()
 
     def _toast(self, text: str):
         from AssetsManager.panels.file_list._toast import Toast
@@ -650,6 +997,19 @@ class QWidgetFileListPanel(FileListPanel):
         self._update_status()
 
     def _update_status(self):
+        state = getattr(self._model, "list_state", None)
+        if state is not None and state == getattr(self._model, "STATE_LOADING", None):
+            self._status.setText(tr("filelist.state.loading"))
+            return
+        if state is not None and state == getattr(self._model, "STATE_SCAN_ERROR", None):
+            self._status.setText(tr("filelist.state.scan_error"))
+            return
+        if state is not None and state == getattr(self._model, "STATE_EMPTY_FOLDER", None):
+            self._status.setText(tr("filelist.empty"))
+            return
+        if state is not None and state == getattr(self._model, "STATE_EMPTY_FILTERED", None):
+            self._status.setText(tr("filelist.state.empty_filtered"))
+            return
         total = self._model.rowCount()
         mode = self._view_mode
         if self._view_mode == "Details":
@@ -659,10 +1019,9 @@ class QWidgetFileListPanel(FileListPanel):
             else:
                 self._status.setText(tr("filelist.status_total", total=total, sz="", mode=mode))
         elif hasattr(self, '_grid_widget') and self._grid_widget is not None:
-            self._compute_total_sz()
-            sz_str = ""
-            if self._cached_total_sz > 0:
-                sz_str = f"  |  {FileSystemModel._fmt_size(self._cached_total_sz)}"
+            if self._cached_total_sz < 0:
+                self._compute_total_sz()
+            sz_str = self._controller.format_total_size_suffix(self._cached_total_sz)
             sel = len(self._grid_widget.selection_model_rows())
             if sel > 0:
                 self._status.setText(tr("filelist.status_selected", sel=sel, total=total, sz=sz_str, mode=mode))

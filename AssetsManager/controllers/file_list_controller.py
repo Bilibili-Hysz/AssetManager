@@ -97,6 +97,13 @@ class FileListController:
         return f"{total} items{sz_str}  |  {view_mode}"
 
     @staticmethod
+    def format_total_size_suffix(total_size: int) -> str:
+        """Return the optional, display-ready total-size status suffix."""
+        if total_size <= 0:
+            return ""
+        return f"  |  {_fmt_size(total_size)}"
+
+    @staticmethod
     def compute_total_size(entries: list, stat_cache: dict) -> int:
         """Compute total size of non-directory entries.
 

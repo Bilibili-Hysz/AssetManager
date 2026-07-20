@@ -2,13 +2,16 @@
 import os
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
 
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtWidgets import QPushButton, QLabel, QMessageBox
+from PySide6.QtCore import Qt, QTimer, QFileSystemWatcher
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, QWidget
 
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px
+from AssetsManager.panels.file_list._loader import ThumbnailLoader
+from AssetsManager.panels.file_list._model import FileSystemModel
 
 _log = logging.getLogger(__name__)
 
@@ -16,14 +19,34 @@ _log = logging.getLogger(__name__)
 class NavigationMixin:
     """Provides navigate_to, back/forward/up, breadcrumb, and FS watcher."""
 
-    # Signals expected on the concrete class
-    folder_entered = Signal(str)
+    if TYPE_CHECKING:
+        _model: FileSystemModel
+        _loader: ThumbnailLoader
+        _fs_watcher: QFileSystemWatcher
+        _first_image_cache: dict[str, str | None]
+        _last_click_row: int
+        _current: Path
+        _root: Path | None
+        _history: list[str]
+        _forward_list: list[str]
+        _view_memory: dict[str, str]
+        _view_mode: str
+        _view_combo: QComboBox
+        _bc_layout: QHBoxLayout
+        folder_entered: Any
+
+        def _configure_library_runtime(self, root: str) -> None: ...
+        def _populate_details(self) -> None: ...
+        def _post_refresh(self) -> None: ...
+        def _clear_selection_for_navigation(self) -> None: ...
+        def _update_status(self) -> None: ...
+        def _load_visible(self) -> None: ...
+        def _schedule_library_stats_update(self, root: str) -> None: ...
 
     # ── FS watcher ────────────────────────────────────────────────
 
     def _start_fs_watcher(self):
-        from PySide6.QtCore import QFileSystemWatcher
-        self._fs_watcher = QFileSystemWatcher(self)
+        self._fs_watcher = QFileSystemWatcher(cast(QWidget, self))
         self._fs_watcher.directoryChanged.connect(self._on_fs_changed)
 
     def _watch_current_dir(self):
@@ -34,6 +57,8 @@ class NavigationMixin:
             self._fs_watcher.addPath(str(self._current))
 
     def _on_fs_changed(self, _path):
+        if self._model._is_shutdown:
+            return
         self._first_image_cache.clear()
         if hasattr(self, '_loader'):
             self._loader.clear_cache()
@@ -53,18 +78,12 @@ class NavigationMixin:
 
     def navigate_to(self, path, *, set_root=False):
         self._loader.clear_queue()
-        # Reset hover state (supports both delegate and canvas)
-        if hasattr(self, '_grid_delegate'):
-            self._grid_delegate._hover_row = -1
-        if hasattr(self, '_canvas'):
-            self._canvas._hover_row = -1
-            self._canvas.update()
         self._last_click_row = -1
         p = Path(path).resolve()
         if not p.is_dir():
             p = p.parent
         if not p.exists():
-            QMessageBox.warning(self, "Error", f"Path not found:\n{path}")
+            QMessageBox.warning(cast(QWidget, self), "Error", f"Path not found:\n{path}")
             return
         if set_root:
             self._root = p
@@ -77,6 +96,8 @@ class NavigationMixin:
         self._view_memory[old_dir] = self._view_mode
         self._history.append(str(self._current))
         self._forward_list.clear()
+        if p != self._current:
+            self._clear_selection_for_navigation()
         self._current = p
         self._model.set_directory(str(p))
         if hasattr(self, '_first_image_cache'):
@@ -104,6 +125,7 @@ class NavigationMixin:
                     return
             self._loader.clear_queue()
             self._forward_list.append(str(self._current))
+            self._clear_selection_for_navigation()
             self._current = prev
             self._model.set_directory(str(prev))
             self._restore_view_mode(str(prev))
@@ -121,6 +143,7 @@ class NavigationMixin:
             nxt = Path(self._forward_list.pop())
             self._loader.clear_queue()
             self._history.append(str(self._current))
+            self._clear_selection_for_navigation()
             self._current = nxt
             self._model.set_directory(str(nxt))
             self._restore_view_mode(str(nxt))
@@ -142,6 +165,7 @@ class NavigationMixin:
         self._loader.clear_queue()
         self._history.append(str(self._current))
         self._forward_list.clear()
+        self._clear_selection_for_navigation()
         self._current = parent
         self._model.set_directory(str(parent))
         self._restore_view_mode(str(parent))
@@ -169,9 +193,12 @@ class NavigationMixin:
     def _render_bc(self):
         t = themes.get()
         while self._bc_layout.count():
-            it = self._bc_layout.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
+            item = self._bc_layout.takeAt(0)
+            if item is None:
+                continue
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
         ancestors = [self._current]
         p = self._current.parent
         while p != p.parent:

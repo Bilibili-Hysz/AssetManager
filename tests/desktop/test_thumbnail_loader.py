@@ -2,7 +2,9 @@ import os
 import threading
 
 from PySide6.QtGui import QImage
+from PySide6.QtWidgets import QApplication
 
+from AssetsManager.core.performance import PerformanceRecorder
 from AssetsManager.panels.file_list._loader import ThumbnailLoader
 
 
@@ -24,6 +26,101 @@ def test_thumbnail_loader_emits_item_path_for_cached_preview(tmp_path):
     assert seen == [(7, str(item), img)]
 
 
+def test_thumbnail_loader_records_memory_hit_with_session_and_generation(tmp_path):
+    source = tmp_path / "cover.png"
+    source.write_bytes(b"cached")
+    image = QImage(1, 1, QImage.Format.Format_RGB32)
+    recorder = PerformanceRecorder(enabled=True)
+    loader = ThumbnailLoader()
+    loader.set_performance_context(recorder, "session-a")
+    loader._cache[str(source)] = (image, os.path.getmtime(source))
+
+    loader.request(1, str(source))
+
+    event = recorder.recent()[0]
+    assert event.name == "thumbnail.cache"
+    assert event.session_token == "session-a"
+    assert event.generation == loader.runtime_generation
+    assert event.path == str(source)
+    assert event.attributes == {"tier": "memory", "outcome": "hit"}
+
+
+def test_thumbnail_loader_records_queue_and_stale_discard(tmp_path):
+    source = tmp_path / "cover.png"
+    source.write_bytes(b"pending")
+    recorder = PerformanceRecorder(enabled=True)
+    loader = ThumbnailLoader()
+    loader.set_performance_context(recorder, "session-a")
+    runtime = loader._runtime()
+    loader.invalidate_runtime()
+
+    loader._on_image_loaded(1, str(source), str(source), QImage(1, 1, QImage.Format.Format_RGB32), runtime)
+
+    event = recorder.recent()[-1]
+    assert event.name == "thumbnail.load"
+    assert event.session_token == "session-a"
+    assert event.generation == runtime.generation
+    assert event.attributes == {"outcome": "stale_discard"}
+
+
+def test_thumbnail_loader_drain_records_invalidated_generation():
+    recorder = PerformanceRecorder(enabled=True)
+    loader = ThumbnailLoader()
+    loader.set_performance_context(recorder, "session-a")
+    generation = loader.invalidate_runtime()
+
+    loader.wait_for_runtime(generation)
+
+    event = recorder.recent()[-1]
+    assert event.name == "thumbnail.drain"
+    assert event.session_token == "session-a"
+    assert event.generation == generation
+    assert event.attributes == {"outcome": "completed"}
+
+
+def test_thumbnail_loader_drain_keeps_old_session_attribution_during_rebind():
+    recorder = PerformanceRecorder(enabled=True)
+    loader = ThumbnailLoader()
+    loader.set_performance_context(recorder, "session-old")
+    started = threading.Event()
+    release = threading.Event()
+
+    class Task:
+        def run(self):
+            started.set()
+            assert release.wait(5)
+
+    runtime = loader._runtime()
+    loader._start_task(Task(), runtime.generation, runtime=runtime)
+    assert started.wait(5)
+    generation = loader.invalidate_runtime()
+    drained = threading.Event()
+    waiter = threading.Thread(target=lambda: (loader.wait_for_runtime(generation), drained.set()))
+    waiter.start()
+    loader.set_performance_context(recorder, "session-new")
+    release.set()
+    assert drained.wait(5)
+    waiter.join(5)
+    loader._pool.waitForDone(5000)
+
+    event = recorder.recent()[-1]
+    assert event.name == "thumbnail.drain"
+    assert event.session_token == "session-old"
+    assert event.generation == generation
+
+
+def test_thumbnail_loader_disabled_telemetry_does_not_read_clock(tmp_path, monkeypatch):
+    from AssetsManager.panels.file_list import _loader
+
+    source = tmp_path / "cover.png"
+    source.write_bytes(b"cached")
+    loader = ThumbnailLoader()
+    loader._cache[str(source)] = (QImage(1, 1, QImage.Format.Format_RGB32), os.path.getmtime(source))
+    monkeypatch.setattr(_loader, "perf_counter", lambda: (_ for _ in ()).throw(AssertionError()))
+
+    loader.request(1, str(source))
+
+
 def test_thumbnail_loader_stop_discards_late_results():
     img = QImage(1, 1, QImage.Format.Format_RGB32)
     loader = ThumbnailLoader()
@@ -35,6 +132,23 @@ def test_thumbnail_loader_stop_discards_late_results():
 
     assert seen == []
     assert "source.png" not in loader._cache
+
+
+def test_thumbnail_loader_reads_completion_mtime_before_acquiring_state_lock(monkeypatch):
+    loader = ThumbnailLoader()
+    lock_held_during_stat = []
+
+    def capture_mtime(_path):
+        lock_held_during_stat.append(loader._mutex.tryLock())
+        if lock_held_during_stat[-1]:
+            loader._mutex.unlock()
+        return 0.0
+
+    monkeypatch.setattr(os.path, "getmtime", capture_mtime)
+
+    loader._on_image_loaded(1, "source.png", "item.png", QImage(1, 1, QImage.Format.Format_RGB32))
+
+    assert lock_held_during_stat == [True]
 
 
 def test_thumbnail_loader_invalidation_discards_old_generation_completion():
@@ -201,3 +315,324 @@ def test_old_thumbnail_runtime_quiesces_before_repository_close(tmp_path):
     assert closed.wait(5)
     assert repository_finished.is_set()
     closer.join(5)
+
+
+def test_thumbnail_loader_defers_unique_request_at_capacity_and_retries(tmp_path, monkeypatch):
+    first = tmp_path / "first.png"
+    second = tmp_path / "second.png"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    loader = ThumbnailLoader(max_admitted_tasks=1)
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_load(path, _runtime):
+        if path == str(first):
+            started.set()
+            assert release.wait(5)
+        return None
+
+    monkeypatch.setattr(loader, "_load_image", blocking_load)
+    loader.request(1, str(first))
+    assert started.wait(5)
+
+    loader.request(2, str(second))
+
+    assert str(second) in loader._queued_keys
+    assert str(second) in loader._pending_items
+    assert str(second) in loader._deferred_loads
+    release.set()
+    loader._pool.waitForDone(5000)
+    loader._pool.waitForDone(5000)
+    assert str(second) in loader._failed_paths
+
+
+def test_thumbnail_loader_duplicate_fanout_remains_admitted_at_capacity(tmp_path, monkeypatch):
+    source = tmp_path / "source.png"
+    source.write_bytes(b"source")
+    loader = ThumbnailLoader(max_admitted_tasks=1)
+    started = threading.Event()
+    release = threading.Event()
+    image = QImage(2, 2, QImage.Format.Format_RGBA8888)
+    seen = []
+    loader.thumbnail_ready.connect(lambda row, path, ready: seen.append((row, path, ready)))
+
+    def blocking_load(_path, _runtime):
+        started.set()
+        assert release.wait(5)
+        return image
+
+    monkeypatch.setattr(loader, "_load_image", blocking_load)
+    loader.request(1, str(source), item_path="first")
+    assert started.wait(5)
+    loader.request(2, str(source), item_path="second")
+    assert loader._pending_items[str(source)] == [(1, "first"), (2, "second")]
+
+    release.set()
+    loader._pool.waitForDone(5000)
+    app = QApplication.instance()
+    if app is not None:
+        app.processEvents()
+    assert [(row, path) for row, path, _ in seen] == [(1, "first"), (2, "second")]
+
+
+def test_thumbnail_loader_capacity_is_loader_wide_across_generations():
+    loader = ThumbnailLoader(max_admitted_tasks=1)
+    started = threading.Event()
+    release = threading.Event()
+
+    class Task:
+        def run(self):
+            started.set()
+            assert release.wait(5)
+
+    old_runtime = loader._runtime()
+    assert loader._start_task(Task(), old_runtime.generation, runtime=old_runtime)
+    assert started.wait(5)
+    loader.invalidate_runtime()
+    new_runtime = loader._runtime()
+    assert not loader._start_task(Task(), new_runtime.generation, runtime=new_runtime)
+    release.set()
+    loader._pool.waitForDone(5000)
+
+
+def test_thumbnail_loader_bounds_deferred_unique_requests(tmp_path, monkeypatch):
+    paths = [tmp_path / f"{index}.png" for index in range(3)]
+    for path in paths:
+        path.write_bytes(b"source")
+    loader = ThumbnailLoader(max_admitted_tasks=1, max_deferred_loads=1)
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_load(path, _runtime):
+        if path == str(paths[0]):
+            started.set()
+            assert release.wait(5)
+        return None
+
+    monkeypatch.setattr(loader, "_load_image", blocking_load)
+    loader.request(1, str(paths[0]))
+    assert started.wait(5)
+    loader.request(2, str(paths[1]))
+    loader.request(3, str(paths[2]))
+
+    assert list(loader._deferred_loads) == [str(paths[1])]
+    assert str(paths[2]) not in loader._queued_keys
+    assert str(paths[2]) not in loader._pending_items
+    release.set()
+    loader._pool.waitForDone(5000)
+
+
+def test_thumbnail_loader_resize_clears_deferred_requests(tmp_path, monkeypatch):
+    paths = [tmp_path / f"{index}.png" for index in range(2)]
+    for path in paths:
+        path.write_bytes(b"source")
+    loader = ThumbnailLoader(max_admitted_tasks=1)
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_load(path, _runtime):
+        if path == str(paths[0]):
+            started.set()
+            assert release.wait(5)
+        return None
+
+    monkeypatch.setattr(loader, "_load_image", blocking_load)
+    loader.request(1, str(paths[0]))
+    assert started.wait(5)
+    loader.request(2, str(paths[1]))
+    assert str(paths[1]) in loader._deferred_loads
+
+    loader.set_size(128)
+    assert loader._deferred_loads == {}
+    assert loader._pending_items == {}
+    release.set()
+    loader._pool.waitForDone(5000)
+
+
+def test_thumbnail_loader_discards_deferred_paths_outside_viewport(tmp_path):
+    loader = ThumbnailLoader()
+    runtime = loader._runtime()
+    first = str(tmp_path / "old-visible.png")
+    second = str(tmp_path / "current-visible.png")
+    task = object()
+    loader._deferred_loads = {
+        first: (task, runtime, 1),
+        second: (task, runtime, 1),
+    }
+    loader._queued_keys = {first, second}
+    loader._queued_generations = {first: runtime.generation, second: runtime.generation}
+    loader._pending_items[first].append((1, first))
+    loader._pending_items[second].append((2, second))
+
+    loader.retain_deferred({second})
+
+    assert list(loader._deferred_loads) == [second]
+    assert loader._queued_keys == {second}
+    assert dict(loader._pending_items) == {second: [(2, second)]}
+
+
+def test_thumbnail_loader_invalidation_wakes_capacity_waiter():
+    loader = ThumbnailLoader(max_admitted_tasks=2)
+    started = threading.Barrier(3)
+    waiting = threading.Event()
+    released = threading.Event()
+    runtime = loader._runtime()
+
+    class Task:
+        def run(self):
+            started.wait(5)
+            assert released.wait(5)
+
+    assert loader._start_task(Task(), runtime.generation, runtime=runtime)
+    assert loader._start_task(Task(), runtime.generation, runtime=runtime)
+    started.wait(5)
+
+    def wait_for_capacity():
+        waiting.set()
+        return loader._wait_for_task_capacity(runtime)
+
+    result = []
+    waiter = threading.Thread(target=lambda: result.append(wait_for_capacity()))
+    waiter.start()
+    assert waiting.wait(5)
+    loader.invalidate_runtime()
+    waiter.join(5)
+    assert result == [False]
+    released.set()
+    loader._pool.waitForDone(5000)
+
+
+def test_thumbnail_loader_evicts_memory_cache_by_lru_bytes(tmp_path):
+    paths = [tmp_path / f"{name}.png" for name in ("a", "b", "c")]
+    for path in paths:
+        path.write_bytes(b"source")
+    image = QImage(10, 10, QImage.Format.Format_RGBA8888)
+    budget = image.sizeInBytes() * 2
+    loader = ThumbnailLoader(max_cache_bytes=budget)
+
+    for path in paths[:2]:
+        loader._on_image_loaded(1, str(path), str(path), image)
+    loader.request(1, str(paths[0]))  # Mark A as most recently used.
+    loader._on_image_loaded(1, str(paths[2]), str(paths[2]), image)
+
+    assert list(loader._cache) == [str(paths[0]), str(paths[2])]
+    assert loader._cache_bytes == budget
+
+
+def test_thumbnail_loader_oversize_image_is_delivered_but_not_cached(tmp_path):
+    source = tmp_path / "large.png"
+    source.write_bytes(b"source")
+    image = QImage(10, 10, QImage.Format.Format_RGBA8888)
+    loader = ThumbnailLoader(max_cache_bytes=image.sizeInBytes() - 1)
+    seen = []
+    loader.thumbnail_ready.connect(lambda row, path, ready: seen.append((row, path, ready)))
+
+    loader._on_image_loaded(1, str(source), "item", image)
+
+    assert seen == [(1, "item", image)]
+    assert str(source) not in loader._cache
+    assert loader._cache_bytes == 0
+
+
+def test_thumbnail_loader_capacity_rejection_records_bounded_telemetry(tmp_path):
+    source = tmp_path / "source.png"
+    source.write_bytes(b"source")
+    recorder = PerformanceRecorder(enabled=True)
+    loader = ThumbnailLoader(max_admitted_tasks=1)
+    loader.set_performance_context(recorder, "session-a")
+    started = threading.Event()
+    release = threading.Event()
+
+    class Task:
+        def run(self):
+            started.set()
+            assert release.wait(5)
+
+    runtime = loader._runtime()
+    assert loader._start_task(Task(), runtime.generation, runtime=runtime)
+    assert started.wait(5)
+    assert not loader._start_task(Task(), runtime.generation, runtime=runtime)
+    event = recorder.recent()[-1]
+    assert event.name == "thumbnail.queue"
+    assert event.session_token == "session-a"
+    assert event.generation == runtime.generation
+    assert event.attributes == {"outcome": "capacity_rejected", "queue_depth": 1, "queue_capacity": 1}
+    release.set()
+    loader._pool.waitForDone(5000)
+
+
+def test_thumbnail_loader_cache_accounting_resets_on_clear_resize_and_invalidation(tmp_path):
+    source = tmp_path / "source.png"
+    source.write_bytes(b"source")
+    image = QImage(10, 10, QImage.Format.Format_RGBA8888)
+    loader = ThumbnailLoader(max_cache_bytes=image.sizeInBytes() * 2)
+
+    loader._on_image_loaded(1, str(source), str(source), image)
+    assert loader._cache_bytes == image.sizeInBytes()
+    loader.clear_cache()
+    assert loader._cache_bytes == 0
+    loader._on_image_loaded(1, str(source), str(source), image)
+    loader.set_size(128)
+    assert loader._cache_bytes == 0
+    loader._on_image_loaded(1, str(source), str(source), image)
+    loader.invalidate_runtime()
+    assert loader._cache_bytes == 0
+
+
+def test_thumbnail_loader_invalid_recorder_context_is_ignored():
+    loader = ThumbnailLoader()
+
+    class _BrokenRecorder:
+        @property
+        def enabled(self):
+            raise RuntimeError()
+
+    loader.set_performance_context(_BrokenRecorder(), "session-a")
+
+    assert loader._performance_recorder is None
+
+
+def test_thumbnail_loader_visible_duplicate_promotes_deferred_prefetch(tmp_path):
+    source = tmp_path / "source.png"
+    source.write_bytes(b"source")
+    loader = ThumbnailLoader(max_admitted_tasks=1)
+    runtime = loader._runtime()
+    task = object()
+    loader._queued_keys.add(str(source))
+    loader._queued_generations[str(source)] = runtime.generation
+    loader._pending_items[str(source)].append((1, "prefetch"))
+    loader._deferred_loads[str(source)] = (task, runtime, 0)
+
+    loader.request(2, str(source), priority=0, item_path="visible")
+
+    promoted_task, promoted_runtime, priority = loader._deferred_loads[str(source)]
+    assert (promoted_task, promoted_runtime, priority) == (task, runtime, 1)
+    assert loader._pending_items[str(source)] == [(1, "prefetch"), (2, "visible")]
+
+
+def test_thumbnail_loader_visible_request_displaces_deferred_prefetch_at_capacity(tmp_path, monkeypatch):
+    paths = [tmp_path / f"{name}.png" for name in ("active", "prefetch", "visible")]
+    for path in paths:
+        path.write_bytes(b"source")
+    loader = ThumbnailLoader(max_admitted_tasks=1, max_deferred_loads=1)
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_load(path, _runtime):
+        if path == str(paths[0]):
+            started.set()
+            assert release.wait(5)
+        return None
+
+    monkeypatch.setattr(loader, "_load_image", blocking_load)
+    loader.request(1, str(paths[0]), priority=0)
+    assert started.wait(5)
+    loader.request(2, str(paths[1]), priority=1)
+    loader.request(3, str(paths[2]), priority=0)
+
+    assert list(loader._deferred_loads) == [str(paths[2])]
+    assert str(paths[1]) not in loader._queued_keys
+    assert str(paths[1]) not in loader._pending_items
+    release.set()
+    loader._pool.waitForDone(5000)
