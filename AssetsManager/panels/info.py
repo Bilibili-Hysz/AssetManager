@@ -458,7 +458,7 @@ class InfoPanel(PanelContent):
         # Qt-only signals (no domain equivalent)
         self._connect_bus(bus().sidebar_depth_changed, self._on_sidebar_depth_changed)
         self._connect_bus(bus().theme_changed, self._refresh_theme)
-        self._connect_bus(bus().language_changed, self._refresh_theme)
+        self._connect_bus(bus().language_changed, self._refresh_language)
         self._connect_bus(bus().ui_scale_changed, self._refresh_theme)
         self._load_sidebar_depth_cfg()
 
@@ -495,6 +495,35 @@ class InfoPanel(PanelContent):
         self._refresh_link_field_style()
         # Update plugin fields
         self._refresh_plugin_fields_style()
+
+    def _refresh_language(self, _code: str = ""):
+        self._meta_grp.setTitle(tr("info.title"))
+        self._tags_grp.setTitle(tr("info.tags"))
+        self._notes_grp.setTitle(tr("info.notes"))
+        self._add_tag_btn.setText(tr("info.add_tag"))
+        self._manage_btn.setText(tr("info.manage_tags"))
+        self._notes.setPlaceholderText(tr("info.notes_placeholder"))
+        self._preview.setToolTip(tr("info.preview_dbl_click"))
+        self._open_btn.setText(tr("info.open"))
+        self._open_btn.setToolTip(tr("info.open_tooltip"))
+        self._copy_btn.setText(tr("info.copy_path"))
+        self._copy_btn.setToolTip(tr("info.copy_tooltip"))
+        labels = ("info.field_type", "info.field_size", "info.field_contains", "info.field_modified", "info.field_path")
+        for key, label_key in zip(("type", "size", "summary", "date", "path"), labels):
+            field = self._fields[key]
+            layout = field.layout()
+            item = layout.itemAt(0) if layout is not None else None
+            label = item.widget() if item is not None else None
+            if isinstance(label, QLabel):
+                label.setText(tr(label_key))
+        link_layout = self._field_link.layout()
+        link_item = link_layout.itemAt(0) if link_layout is not None else None
+        link_label = link_item.widget() if link_item is not None else None
+        if isinstance(link_label, QLabel):
+            link_label.setText(tr("info.field_link"))
+        if not self._current_path:
+            self._show_empty_state()
+        self._refresh_theme()
 
     def _refresh_field_styles(self):
         """Update all field label/value stylesheets for current theme."""

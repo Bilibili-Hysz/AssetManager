@@ -110,6 +110,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         tb.setSpacing(scaled_px(3))
 
         self._nav_buttons = []
+        self._nav_tooltip_keys = ("filelist.back", "filelist.forward", "filelist.up")
         self._nav_buttons.append(self._make_nav_button("◀", tr("filelist.back"), self._go_back, font_size=10))
         self._nav_buttons.append(self._make_nav_button("▶", tr("filelist.forward"), self._go_forward, font_size=10))
         self._nav_buttons.append(self._make_nav_button("▲", tr("filelist.up"), self._go_up, font_size=10))
@@ -131,8 +132,8 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         tb.addWidget(self._sort_btn)
 
         self._filter_combo = QComboBox()
-        for key, label in FILTER_CATEGORY_LABELS:
-            self._filter_combo.addItem(label, key)
+        for key, _label in FILTER_CATEGORY_LABELS:
+            self._filter_combo.addItem(tr(f"filelist.filter.{key}"), key)
         self._filter_combo.currentTextChanged.connect(self._on_filter_changed)
         tb.addWidget(self._filter_combo)
 
@@ -152,8 +153,8 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         tb.addStretch()
         self._hidden_btn = self._make_nav_button("◉", tr("filelist.hidden"), self._toggle_hidden, font_size=12)
         tb.addWidget(self._hidden_btn)
-        refresh = self._make_nav_button("⟳", tr("filelist.refresh"), self._do_refresh, font_size=15)
-        tb.addWidget(refresh)
+        self._refresh_btn = self._make_nav_button("⟳", tr("filelist.refresh"), self._do_refresh, font_size=15)
+        tb.addWidget(self._refresh_btn)
 
         # Search — inline at end of toolbar
         from PySide6.QtWidgets import QLineEdit
@@ -372,6 +373,39 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
                 f"QPushButton {{ background: transparent; color: {t['body']}; "
                 f"border: none; padding: 0; font-size: {scaled_pt(10)}px; }} "
                 f"QPushButton:hover {{ background: {alpha(t['panel'], 0.50)}; border-radius: {scaled_px(3)}px; color: {t['heading']}; }}")
+
+    def _retranslate_controls(self):
+        self._header_title.setText(tr("filelist.header"))
+        for button, key in zip(self._nav_buttons, self._nav_tooltip_keys):
+            button.setToolTip(tr(key))
+        self._sort_btn.setToolTip(tr("filelist.sort_dir"))
+        self._hidden_btn.setToolTip(tr("filelist.hidden"))
+        self._refresh_btn.setToolTip(tr("filelist.refresh"))
+        self._search.setPlaceholderText(tr("filelist.filter_placeholder"))
+
+        sort_key = self._sort_combo.currentData()
+        self._sort_combo.blockSignals(True)
+        self._sort_combo.clear()
+        for key, label in (("name", tr("filelist.sort.name")), ("date", tr("filelist.sort.date")),
+                           ("size", tr("filelist.sort.size")), ("type", tr("filelist.sort.type"))):
+            self._sort_combo.addItem(label, key)
+        self._sort_combo.setCurrentIndex(max(0, self._sort_combo.findData(sort_key)))
+        self._sort_combo.blockSignals(False)
+
+        filter_key = self._filter_combo.currentData()
+        self._filter_combo.blockSignals(True)
+        self._filter_combo.clear()
+        for key, _label in FILTER_CATEGORY_LABELS:
+            self._filter_combo.addItem(tr(f"filelist.filter.{key}"), key)
+        self._filter_combo.setCurrentIndex(max(0, self._filter_combo.findData(filter_key)))
+        self._filter_combo.blockSignals(False)
+
+        view_mode = self._view_combo.currentData()
+        self._view_combo.blockSignals(True)
+        self._view_combo.setItemText(0, tr("filelist.view.grid"))
+        self._view_combo.setItemText(1, tr("filelist.view.details"))
+        self._view_combo.setCurrentIndex(max(0, self._view_combo.findData(view_mode)))
+        self._view_combo.blockSignals(False)
 
     def _update_thumb_cache_dir(self):
         if self._root:

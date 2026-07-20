@@ -227,6 +227,7 @@ class QWidgetFileListPanel(FileListPanel):
         self._grid_widget.set_performance_context(recorder, session_token, generation)
 
     def _refresh_language(self, _code=""):
+        self._retranslate_controls()
         self._detail_model.headerDataChanged.emit(
             Qt.Orientation.Horizontal, 0, len(self._detail_model.HEADER_KEYS) - 1)
         self._update_status()

@@ -28,6 +28,20 @@ def _plugin_value(panel):
     return field.layout().itemAt(1).widget().text()
 
 
+def test_info_language_refresh_updates_visible_labels():
+    panel = InfoPanel()
+    try:
+        panel._refresh_language("zh")
+
+        assert panel._meta_grp.title()
+        assert panel._tags_grp.title()
+        assert panel._notes.placeholderText()
+        assert panel._open_btn.text()
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+
+
 def test_file_info_and_preview_reject_old_navigate_away_back_completion(tmp_path):
     panel = InfoPanel()
     session = Mock(is_closed=False)

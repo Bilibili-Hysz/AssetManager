@@ -29,6 +29,24 @@ def _switch_to_details(panel):
     panel._populate_details()
 
 
+def test_file_list_language_refresh_preserves_control_values(tmp_path):
+    app, panel = _make_panel(tmp_path)
+    try:
+        panel._sort_combo.setCurrentIndex(2)
+        panel._filter_combo.setCurrentIndex(3)
+        panel._view_combo.setCurrentIndex(1)
+
+        panel._refresh_language("zh")
+
+        assert panel._sort_combo.currentData() == "size"
+        assert panel._filter_combo.currentData() == "videos"
+        assert panel._view_combo.currentData() == "Details"
+        assert panel._search.placeholderText()
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
 def test_details_selected_paths_returns_detail_view_selection(tmp_path):
     app, panel = _make_panel(tmp_path)
     try:
