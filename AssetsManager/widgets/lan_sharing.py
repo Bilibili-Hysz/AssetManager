@@ -16,7 +16,6 @@ from AssetsManager import i18n
 
 if TYPE_CHECKING:
     from AssetsManager.application.context import LibrarySession
-    from AssetsManager.dialogs.quick_share_card import QuickShareCard
     from AssetsManager.lan import LanServer
     from AssetsManager.widgets.tray import SystemTrayManager
 
@@ -35,7 +34,6 @@ class LanSharingMixin:
     _tray_manager: SystemTrayManager | None
     _share_status_label: QLabel
     _share_toggle_btn: QPushButton
-    _quick_share_card: QuickShareCard | None
 
     def _dialog_parent(self) -> QWidget:
         return cast(QWidget, self)
@@ -194,13 +192,7 @@ class LanSharingMixin:
 
     # ── Share Link Management ───────────────────────────────────
 
-    @staticmethod
-    def _quick_share_api_url(server) -> str:
-        port = server._port
-        base_url = server.status().get("url", f"http://localhost:{port}")
-        return f"{base_url}/api/shares"
-
-    def _open_share_link_dialog(self, path: str = ""):
+    def _open_share_link_dialog(self, path: str = "", paths: list[str] | None = None):
         """Open dialog to create a share link for a path."""
         if not self._lan_server or not self._lan_server.is_running():
             from PySide6.QtWidgets import QMessageBox
@@ -216,7 +208,8 @@ class LanSharingMixin:
 
         try:
             from AssetsManager.dialogs.share_link_dialog import ShareLinkDialog
-            dlg = ShareLinkDialog(self._dialog_parent(), path=path, server=self._lan_server)
+            selected_paths = list(paths) if paths is not None else ([path] if path else [])
+            dlg = ShareLinkDialog(self._dialog_parent(), paths=selected_paths, server=self._lan_server)
             dlg.exec()
         except Exception as e:
             import logging
@@ -232,8 +225,13 @@ class LanSharingMixin:
             return
 
         try:
-            from AssetsManager.dialogs.share_link_manager import ShareLinkManager
-            dlg = ShareLinkManager(self._dialog_parent(), server=self._lan_server)
+            from AssetsManager.dialogs.sharing_settings_dialog import SharingSettingsDialog
+            dlg = SharingSettingsDialog(
+                self._dialog_parent(),
+                server_status=self._lan_server.status(),
+                server=self._lan_server,
+                initial_page="links",
+            )
             dlg.exec()
         except Exception as e:
             import logging
@@ -242,104 +240,9 @@ class LanSharingMixin:
             QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), str(e))
 
     def _quick_share(self, path: str):
-        """Quick share a file/folder with default settings (async, non-blocking)."""
-        if not self._lan_server or not self._lan_server.is_running():
-            self._toggle_sharing()
-            if not self._lan_server or not self._lan_server.is_running():
-                from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(self._dialog_parent(), tr("sharing.error"), tr("sharing.failed_to_start"))
-                return
+        """Route legacy quick-share callers through the canonical creator."""
+        self._open_share_link_dialog(path=path)
 
-        url = self._quick_share_api_url(self._lan_server)
-        data = {"paths": [path], "expires_hours": 24, "allow_preview": True}
-
-        headers = {"Content-Type": "application/json"}
-        if hasattr(self._lan_server, 'token_secret'):
-            from AssetsManager.lan.utils import get_auth_headers
-            headers.update(get_auth_headers(self._lan_server.token_secret))
-
-        from PySide6.QtCore import QThreadPool
-        from AssetsManager.dialogs._share_api import ShareApiTask
-
-        task = ShareApiTask("POST", url, headers, data, success_statuses=(200, 201))
-        task.signals.finished.connect(self._on_quick_share_result)
-        QThreadPool.globalInstance().start(task)
-
-    def _on_quick_share_result(self, success, data):
-        from PySide6.QtWidgets import QApplication, QMessageBox
-        if success:
-            share_url = data.get("url")
-            if share_url:
-                QApplication.clipboard().setText(share_url)
-                msg = QMessageBox(self._dialog_parent())
-                msg.setWindowTitle(tr("sharing.quick_share"))
-                msg.setText(tr("sharing.link_copied"))
-                msg.setInformativeText(share_url)
-                msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-                msg.exec()
-            else:
-                QMessageBox.warning(self._dialog_parent(), tr("sharing.error"), tr("sharing.no_url"))
-        else:
-            QMessageBox.warning(self._dialog_parent(), tr("sharing.error"), f"{tr('sharing.failed_to_start')}: {data}")
-
-    # ── Quick Share Card ─────────────────────────────────────
-
-    def _show_quick_share_card(self, paths: list[str], global_pos):
-        """Show a QuickShareCard popup at the given position for the selected paths."""
-        from AssetsManager.dialogs.quick_share_card import QuickShareCard
-        self._quick_share_card = QuickShareCard(self._dialog_parent())
-        self._quick_share_card.share_requested.connect(self._on_quick_share_card_request)
-        self._quick_share_card.show_for_paths(paths, global_pos)
-
-    def _on_quick_share_card_request(self, data: dict):
-        """Handle share_requested signal from QuickShareCard."""
-        if not self._lan_server or not self._lan_server.is_running():
-            self._toggle_sharing()
-            if not self._lan_server or not self._lan_server.is_running():
-                if hasattr(self, '_quick_share_card') and self._quick_share_card:
-                    self._quick_share_card.close()
-                from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(self._dialog_parent(), tr("sharing.error"), tr("sharing.failed_to_start"))
-                return
-
-        paths = data.get("paths", [])
-        password = data.get("password")
-        expiry_hours = data.get("expiry_hours")
-
-        url = self._quick_share_api_url(self._lan_server)
-        api_data = {
-            "paths": paths,
-            "expires_hours": expiry_hours or 24,
-            "allow_preview": True,
-        }
-        if password:
-            api_data["password"] = password
-
-        headers = {"Content-Type": "application/json"}
-        if hasattr(self._lan_server, 'token_secret'):
-            from AssetsManager.lan.utils import get_auth_headers
-            headers.update(get_auth_headers(self._lan_server.token_secret))
-
-        from PySide6.QtCore import QThreadPool
-        from AssetsManager.dialogs._share_api import ShareApiTask
-
-        task = ShareApiTask("POST", url, headers, api_data, success_statuses=(200, 201))
-        task.signals.finished.connect(self._on_quick_share_card_result)
-        QThreadPool.globalInstance().start(task)
-
-    def _on_quick_share_card_result(self, success, data):
-        """Handle async result for QuickShareCard share creation."""
-        if not hasattr(self, '_quick_share_card') or not self._quick_share_card:
-            return
-        if success:
-            share_url = data.get("url")
-            if share_url:
-                self._quick_share_card.show_result(share_url)
-            else:
-                self._quick_share_card.close()
-                from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(self._dialog_parent(), tr("sharing.error"), tr("sharing.no_url"))
-        else:
-            self._quick_share_card.close()
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self._dialog_parent(), tr("sharing.error"), f"{tr('sharing.failed_to_start')}: {data}")
+    def _show_quick_share_card(self, paths: list[str], _global_pos):
+        """Compatibility entry point for FileList while its caller migrates."""
+        self._open_share_link_dialog(paths=paths)

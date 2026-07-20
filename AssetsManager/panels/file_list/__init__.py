@@ -505,7 +505,7 @@ class QWidgetFileListPanel(FileListPanel):
         self._update_status()
 
     def _quick_share_from_context(self, paths: list[str], global_pos):
-        """Delegate Quick Share to the main window's LanSharingMixin."""
+        """Delegate Quick Share to the canonical LAN share-link creator."""
         from PySide6.QtWidgets import QApplication
         app = QApplication.instance()
         if not isinstance(app, QApplication):
@@ -513,12 +513,12 @@ class QWidgetFileListPanel(FileListPanel):
         win = app.activeWindow()
         if win is None:
             for w in app.topLevelWidgets():
-                if w.isVisible() and hasattr(w, '_show_quick_share_card'):
+                if w.isVisible() and hasattr(w, '_open_share_link_dialog'):
                     win = w
                     break
-        show_quick_share = getattr(win, "_show_quick_share_card", None)
-        if callable(show_quick_share):
-            show_quick_share(paths, global_pos)
+        open_share_link_dialog = getattr(win, "_open_share_link_dialog", None)
+        if callable(open_share_link_dialog):
+            open_share_link_dialog(paths=paths)
 
     def _rename_grid_row(self, row: int, new_name: str):
         ent = self._model.entry_at(row)

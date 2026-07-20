@@ -7,7 +7,6 @@ Modules:
     generic_settings_dialog.py
     settings_dialog.py
     share_link_dialog.py
-    share_link_manager.py
     sharing_settings_dialog.py
     sidebar_favorites.py
     sidebar_recent.py

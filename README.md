@@ -276,10 +276,8 @@ AssetsManager_old-bak/
 │   │
 │   ├── dialogs/                # Qt 对话框
 │   │   ├── settings_dialog.py         # 设置对话框
-│   │   ├── sharing_settings_dialog.py # 分享系统对话框（4 Tab）
+│   │   ├── sharing_settings_dialog.py # 分享系统管理对话框
 │   │   ├── share_link_dialog.py       # 创建分享链接
-│   │   ├── share_link_manager.py      # 管理分享链接
-│   │   ├── quick_share_card.py        # 快速分享卡片
 │   │   ├── startup.py                 # 启动窗口（库选择）
 │   │   ├── tag_editor_dialog.py       # 标签编辑器
 │   │   ├── plugin_manager_dialog.py   # 插件管理器

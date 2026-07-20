@@ -54,7 +54,9 @@ class SharingSettingsDialog(TabbedDialog):
     settings_changed = Signal()
     _data_changed = Signal()
 
-    def __init__(self, parent=None, server_status: dict | None = None, server=None):
+    def __init__(
+        self, parent=None, server_status: dict | None = None, server=None, initial_page: int | str = 0,
+    ):
         self._settings = AppSettings.instance()
         self._host = parent
         self._server_status = server_status or {}
@@ -63,6 +65,7 @@ class SharingSettingsDialog(TabbedDialog):
         self._invite_codes = []
         self._online_users = []
         self._activity_items = []
+        self._initial_page = 1 if initial_page in (1, "links") else 0
 
         # Start at the desktop target while allowing the specified narrow-window fallback.
         super().__init__(parent, title=tr("sharing.dialog_title"), min_size=(700, 620))
@@ -138,7 +141,7 @@ class SharingSettingsDialog(TabbedDialog):
         btn_box.accepted.connect(self._on_accept)
         btn_box.rejected.connect(self.reject)
         root.addWidget(btn_box)
-        self._select_page(0)
+        self._select_page(self._initial_page)
         self._update_navigation_mode()
 
     def _make_nav_button(self, label, index, layout):
@@ -391,6 +394,8 @@ class SharingSettingsDialog(TabbedDialog):
 
         self._refresh_links_btn = self.make_secondary_btn(tr("sharemgr.btn.refresh"), self._load_share_links)
         filter_row.addWidget(self._refresh_links_btn)
+        self._create_link_btn = self.make_primary_btn(tr("sharelink.btn.create_link"), self._open_create_link_dialog)
+        filter_row.addWidget(self._create_link_btn)
         layout.addLayout(filter_row)
 
         # ── Table ─────────────────────────────────────────────
@@ -963,6 +968,17 @@ class SharingSettingsDialog(TabbedDialog):
             return None
         port = self._server._port
         return f"http://localhost:{port}"
+
+    def _open_create_link_dialog(self):
+        """Open the canonical creator from the Links page."""
+        if not self._server or not self._server.is_running():
+            self._links_status.setText(tr("sharemgr.error.server_unavailable"))
+            return
+        from AssetsManager.dialogs.share_link_dialog import ShareLinkDialog
+
+        dialog = ShareLinkDialog(self, paths=[], server=self._server)
+        if dialog.exec():
+            self._load_share_links()
 
     def _load_share_links(self):
         base = self._get_api_base()

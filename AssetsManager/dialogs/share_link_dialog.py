@@ -21,10 +21,12 @@ _log = logging.getLogger(__name__)
 class ShareLinkDialog(TabbedDialog):
     """Dialog for creating share links."""
 
-    def __init__(self, parent=None, path: str = "", server=None):
-        self._path = path
+    def __init__(self, parent=None, path: str = "", paths: list[str] | None = None, server=None):
+        # Keep ``path`` while callers migrate, but normalize all requests to paths.
+        self._paths = list(paths) if paths is not None else ([path] if path else [])
         self._server = server
         self._share_url = None
+        self._creating = False
         super().__init__(parent, title=tr("sharelink.title"), min_size=(400, 450))
 
     def _build_ui(self):
@@ -36,9 +38,12 @@ class ShareLinkDialog(TabbedDialog):
         # Path display
         path_group = self.make_groupbox(tr("sharelink.group.path"))
         path_layout = QVBoxLayout(path_group)
-        path_label = self.make_label(self._path)
+        path_label = self.make_label("\n".join(self._paths) or tr("sharemgr.fallback.unknown"))
         path_label.setWordWrap(True)
         path_layout.addWidget(path_label)
+        self._selection_hint = self.make_muted(tr("sharelink.hint.select_items"))
+        self._selection_hint.setVisible(not self._paths)
+        path_layout.addWidget(self._selection_hint)
         layout.addWidget(path_group)
 
         # Options
@@ -106,6 +111,10 @@ class ShareLinkDialog(TabbedDialog):
         self._open_btn = self.make_secondary_btn(tr("sharelink.btn.open_browser"), self._open_link)
         self._open_btn.setEnabled(False)
         btn_row.addWidget(self._open_btn)
+        self._create_another_btn = self.make_secondary_btn(
+            tr("sharelink.btn.create_another"), self._create_another)
+        self._create_another_btn.setVisible(False)
+        btn_row.addWidget(self._create_another_btn)
         btn_row.addStretch()
         result_layout.addLayout(btn_row)
 
@@ -115,6 +124,9 @@ class ShareLinkDialog(TabbedDialog):
         # Action buttons
         action_row = QHBoxLayout()
         self._create_btn = self.make_primary_btn(tr("sharelink.btn.create_link"), self._create_link)
+        self._create_btn.setEnabled(bool(self._paths))
+        if not self._paths:
+            self._create_btn.setToolTip(tr("sharelink.hint.select_items"))
         action_row.addWidget(self._create_btn)
 
         self._close_btn = self.make_secondary_btn(tr("sharelink.btn.close"), self.accept)
@@ -126,6 +138,10 @@ class ShareLinkDialog(TabbedDialog):
 
     def _create_link(self):
         """Create the share link via API (async, non-blocking)."""
+        if self._creating or self._share_url:
+            return
+        if not self._paths:
+            return
         if not self._server:
             QMessageBox.warning(self, tr("sharelink.msg.error_title"), tr("sharelink.error.server_unavailable"))
             return
@@ -139,7 +155,7 @@ class ShareLinkDialog(TabbedDialog):
         port = self._server._port
         url = f"http://localhost:{port}/api/shares"
         data = {
-            "paths": [self._path],
+            "paths": self._paths,
             "password": password,
             "expires_hours": expires_hours,
             "max_downloads": max_downloads,
@@ -151,22 +167,35 @@ class ShareLinkDialog(TabbedDialog):
             from AssetsManager.lan.utils import get_auth_headers
             headers.update(get_auth_headers(self._server.token_secret))
 
+        self._creating = True
         self._create_btn.setEnabled(False)
         self._create_btn.setText(tr("sharelink.btn.creating"))
 
+        server = self._server
         self._create_task = ShareApiTask("POST", url, headers, data, success_statuses=(200, 201))
-        self._create_task.signals.finished.connect(self._on_create_result)
+        self._create_task.signals.finished.connect(
+            lambda success, result, source=server: self._on_create_result(success, result, source))
         QThreadPool.globalInstance().start(self._create_task)
 
-    def _on_create_result(self, success, data):
+    def _on_create_result(self, success, data, source_server=None):
         """Handle async share link creation result."""
+        if source_server is not None and source_server is not self._server:
+            return
+        self._creating = False
         self._create_btn.setText(tr("sharelink.btn.create_link"))
         if success:
-            self._share_url = data.get("url")
+            url = data.get("url") if isinstance(data, dict) else None
+            if not isinstance(url, str) or not url:
+                self._create_btn.setEnabled(True)
+                QMessageBox.warning(self, tr("sharelink.msg.error_title"), tr("sharelink.error.unknown"))
+                return
+            self._share_url = url
             requires_key = data.get("requires_key", False)
             self._url_label.setText(self._share_url)
             self._result_group.setVisible(True)
             self._create_btn.setEnabled(False)
+            self._create_btn.setVisible(False)
+            self._create_another_btn.setVisible(True)
             if requires_key:
                 self._key_hint.setText(tr("sharelink.hint.requires_key"))
                 self._key_hint.setVisible(True)
@@ -174,11 +203,20 @@ class ShareLinkDialog(TabbedDialog):
                 self._key_hint.setVisible(False)
             self._copy_btn.setEnabled(True)
             self._open_btn.setEnabled(True)
-            self._create_btn.setEnabled(True)
         else:
             self._create_btn.setEnabled(True)
             error = data.get("error") if isinstance(data, dict) else tr("sharelink.error.unknown")
             QMessageBox.warning(self, tr("sharelink.msg.error_title"), tr("sharelink.error.create_failed").format(data=error))
+
+    def _create_another(self):
+        """Return to explicit creation mode after a completed request."""
+        self._share_url = None
+        self._result_group.setVisible(False)
+        self._copy_btn.setEnabled(False)
+        self._open_btn.setEnabled(False)
+        self._create_another_btn.setVisible(False)
+        self._create_btn.setVisible(True)
+        self._create_btn.setEnabled(True)
 
     def _copy_link(self):
         """Copy share link to clipboard."""

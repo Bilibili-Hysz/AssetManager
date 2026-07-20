@@ -19,10 +19,6 @@ class _Server:
         return {"url": "http://192.168.1.10:9090"}
 
 
-def test_quick_share_uses_server_status_url():
-    assert LanSharingMixin._quick_share_api_url(_Server()) == "http://192.168.1.10:9090/api/shares"
-
-
 def test_endpoint_state_and_primary_action_distinguish_local_and_public_scope():
     assert _endpoint_state({}) == "off"
     assert _endpoint_state({"state": "starting"}) == "starting"
