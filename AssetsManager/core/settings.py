@@ -80,7 +80,11 @@ class AppSettings:
             data = json.loads(legacy_path.read_text(encoding="utf-8"))
             from AssetsManager.core.config_migrator import migrate
             data = migrate(data)
-            self._data.update(data)
+            # The current settings file is authoritative. Legacy values only
+            # fill keys absent from it so an old profile cannot overwrite a
+            # user change that was already persisted in the new location.
+            for key, value in data.items():
+                self._data.setdefault(key, value)
             self._data["_legacy_migrated"] = True
             self._dirty = True
             self.save()
@@ -88,6 +92,7 @@ class AppSettings:
         except Exception:
             self._data["_legacy_migrated"] = True
             self._dirty = True
+            self.save()
             _log.exception("Failed to migrate legacy settings from %s", legacy_path)
 
     def save(self):

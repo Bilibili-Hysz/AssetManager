@@ -310,6 +310,17 @@ def _bg_setting(key: str, default=None):
     return _bg_defaults().get(key, default)
 
 
+def _bg_number(key: str, default: float) -> float:
+    """Return a numeric background setting or its safe default."""
+    value = _bg_setting(key, default)
+    if not isinstance(value, (str, int, float)):
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
 def bg_enabled() -> bool:
     """Whether background image is enabled (user setting overrides theme default)."""
     return bool(_bg_setting("enabled"))
@@ -326,15 +337,15 @@ def bg_scale() -> str:
 
 
 def bg_panel_opacity() -> float:
-    return float(_bg_setting("panel_opacity", 0.88))
+    return _bg_number("panel_opacity", 0.88)
 
 
 def bg_header_opacity() -> float:
-    return float(_bg_setting("header_opacity", 1.0))
+    return _bg_number("header_opacity", 1.0)
 
 
 def bg_overall_opacity() -> float:
-    return float(_bg_setting("opacity", 1.0))
+    return _bg_number("opacity", 1.0)
 
 
 def bg_type() -> str:
@@ -349,7 +360,7 @@ def bg_effect() -> str:
 
 def bg_effect_intensity() -> int:
     """Intensity of the active effect (1-50 for blur, 2-50 for mosaic)."""
-    return int(_bg_setting("effect_intensity", 20))
+    return int(_bg_number("effect_intensity", 20.0))
 
 
 def panel_color() -> str:

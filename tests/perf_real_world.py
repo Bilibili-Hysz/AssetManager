@@ -86,13 +86,15 @@ def bench_project_service_list():
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "AssetsManager"))
     from core import database
     from core.db_migrations import migrate
-    from lan.auth import init_users_table
+    from repositories.auth_repository import AuthRepository
+    from repositories.share_repository import ShareRepository
     from application.project_service import ProjectDepthConfig, ProjectService
 
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.executescript(database._SCHEMA)
     migrate(conn)
-    init_users_table(conn)
+    AuthRepository(conn).init_tables()
+    ShareRepository(conn).init_table()
 
     svc = ProjectService(connection_provider=lambda _root: conn)
     cfg = ProjectDepthConfig(global_depth=1)
