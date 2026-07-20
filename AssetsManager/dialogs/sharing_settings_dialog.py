@@ -65,7 +65,14 @@ class SharingSettingsDialog(TabbedDialog):
         self._invite_codes = []
         self._online_users = []
         self._activity_items = []
-        self._initial_page = 1 if initial_page in (1, "links") else 0
+        if initial_page == "links":
+            self._initial_page = 1
+        elif initial_page == "access":
+            self._initial_page = 2
+        elif isinstance(initial_page, int):
+            self._initial_page = initial_page
+        else:
+            self._initial_page = 0
 
         # Start at the desktop target while allowing the specified narrow-window fallback.
         super().__init__(parent, title=tr("sharing.dialog_title"), min_size=(700, 620))
@@ -74,7 +81,11 @@ class SharingSettingsDialog(TabbedDialog):
         self._data_changed.connect(self._refresh_all_tabs)
 
         self._update_status()
-        self._load_settings()
+        self._loading_settings = True
+        try:
+            self._load_settings()
+        finally:
+            self._loading_settings = False
 
         self._status_timer = QTimer(self)
         self._status_timer.setInterval(2000)
@@ -444,7 +455,7 @@ class SharingSettingsDialog(TabbedDialog):
         self._links_table.itemSelectionChanged.connect(self._on_links_selection_changed)
 
     # ══════════════════════════════════════════════════════════
-    # Tab 3: Users
+    # Tab 3: Access
     # ══════════════════════════════════════════════════════════
 
     def _setup_users_tab(self, parent):
@@ -453,45 +464,56 @@ class SharingSettingsDialog(TabbedDialog):
         layout.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16))
         layout.setSpacing(scaled_px(12))
 
-        # ── Admin Info ────────────────────────────────────────
-        admin_group = self.make_groupbox(tr("sharing.users.admin_info"))
-        admin_layout = QVBoxLayout(admin_group)
-        admin_layout.setSpacing(scaled_px(6))
-        admin_layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(8))
-
+        # Keep identity available without giving it a competing section.
         user_row = QHBoxLayout()
-        user_row.addWidget(self.make_label(tr("sharing.users.current_user")))
+        user_row.addWidget(self.make_label(tr("sharing.access.signed_in_as")))
         self._admin_user_label = QLabel(self._settings.get("lan_share_name", "Admin"))
         self._admin_user_label.setStyleSheet(f"font-weight: bold; color: {t['heading']};")
         user_row.addWidget(self._admin_user_label)
-        user_row.addSpacing(scaled_px(20))
-        user_row.addWidget(self.make_label(tr("sharing.users.role")))
         role_label = QLabel(tr("sharing.users.role_admin"))
         role_label.setStyleSheet(f"color: {t['accent']}; font-weight: bold;")
         user_row.addWidget(role_label)
         user_row.addStretch()
-        admin_layout.addLayout(user_row)
-        layout.addWidget(admin_group)
+        layout.addLayout(user_row)
 
-        # ── Invite Codes ──────────────────────────────────────
-        invite_group = self.make_groupbox(tr("sharing.users.invite_codes"))
+        # ── Guest Access Policy ───────────────────────────────
+        guest_group = self.make_groupbox(tr("sharing.access.guest_policy"))
+        guest_layout = QVBoxLayout(guest_group)
+        guest_layout.setSpacing(scaled_px(6))
+        guest_layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(8))
+        guest_layout.addWidget(self.make_muted(tr("sharing.access.guest_policy_immediate")))
+
+        self._guest_download = self.make_checkbox(tr("sharing.users.guest_can_download"), checked=True)
+        guest_layout.addWidget(self._guest_download)
+        self._guest_preview = self.make_checkbox(tr("sharing.users.guest_can_preview"), checked=True)
+        guest_layout.addWidget(self._guest_preview)
+        self._guest_list = self.make_checkbox(tr("sharing.users.guest_can_list"), checked=True)
+        guest_layout.addWidget(self._guest_list)
+        for checkbox in (self._guest_download, self._guest_preview, self._guest_list):
+            checkbox.toggled.connect(self._save_guest_permissions)
+        self._guest_policy_status = self.make_muted("")
+        guest_layout.addWidget(self._guest_policy_status)
+        layout.addWidget(guest_group)
+
+        # ── Invitations ───────────────────────────────────────
+        invite_group = self.make_groupbox(tr("sharing.access.invitations"))
         invite_layout = QVBoxLayout(invite_group)
         invite_layout.setSpacing(scaled_px(8))
         invite_layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(8))
 
         invite_btn_row = QHBoxLayout()
-        self._generate_code_btn = self.make_primary_btn(tr("sharing.users.generate_code"), self._generate_invite_code)
+        self._generate_code_btn = self.make_primary_btn(tr("sharing.access.generate_invitation"), self._generate_invite_code)
+        self._generate_code_btn.setAccessibleName(tr("sharing.access.generate_invitation"))
         invite_btn_row.addWidget(self._generate_code_btn)
         invite_btn_row.addStretch()
         invite_layout.addLayout(invite_btn_row)
 
         self._codes_table = QTableWidget()
-        self._codes_table.setColumnCount(4)
+        self._codes_table.setColumnCount(3)
         self._codes_table.setHorizontalHeaderLabels([
             tr("sharing.users.code"),
             tr("sharing.users.code_status"),
             tr("sharing.users.code_created"),
-            tr("sharing.users.code_actions"),
         ])
         self._codes_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._codes_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -503,18 +525,26 @@ class SharingSettingsDialog(TabbedDialog):
         c_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         c_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         c_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        c_header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
-        self._codes_table.setColumnWidth(3, scaled_px(120))
 
         self._apply_table_theme()
         invite_layout.addWidget(self._codes_table)
 
+        invite_footer = QHBoxLayout()
+        self._copy_code_btn = self.make_secondary_btn(tr("sharing.users.btn_copy_code"), self._copy_selected_invite)
+        self._copy_code_btn.setEnabled(False)
+        self._revoke_code_btn = self.make_secondary_btn(tr("sharing.users.btn_revoke"), self._revoke_selected_invite)
+        self._revoke_code_btn.setEnabled(False)
+        invite_footer.addWidget(self._copy_code_btn)
+        invite_footer.addWidget(self._revoke_code_btn)
+        invite_footer.addStretch()
         self._codes_status = self.make_muted(tr("sharing.users.no_codes"))
-        invite_layout.addWidget(self._codes_status)
+        invite_footer.addWidget(self._codes_status)
+        invite_layout.addLayout(invite_footer)
         layout.addWidget(invite_group)
+        self._codes_table.itemSelectionChanged.connect(self._on_invite_selection_changed)
 
-        # ── Online Users ──────────────────────────────────────
-        online_group = self.make_groupbox(tr("sharing.users.online_users"))
+        # ── Connected Users ───────────────────────────────────
+        online_group = self.make_groupbox(tr("sharing.access.connected_users"))
         online_layout = QVBoxLayout(online_group)
         online_layout.setSpacing(scaled_px(6))
         online_layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(8))
@@ -543,21 +573,6 @@ class SharingSettingsDialog(TabbedDialog):
         self._online_status = self.make_muted(tr("sharing.users.no_online"))
         online_layout.addWidget(self._online_status)
         layout.addWidget(online_group)
-
-        # ── Guest Permission Defaults ─────────────────────────
-        guest_group = self.make_groupbox(tr("sharing.users.guest_defaults"))
-        guest_layout = QVBoxLayout(guest_group)
-        guest_layout.setSpacing(scaled_px(6))
-        guest_layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(8))
-
-        self._guest_download = self.make_checkbox(tr("sharing.users.guest_can_download"), checked=True)
-        guest_layout.addWidget(self._guest_download)
-        self._guest_preview = self.make_checkbox(tr("sharing.users.guest_can_preview"), checked=True)
-        guest_layout.addWidget(self._guest_preview)
-        self._guest_list = self.make_checkbox(tr("sharing.users.guest_can_list"), checked=True)
-        guest_layout.addWidget(self._guest_list)
-
-        layout.addWidget(guest_group)
         layout.addStretch()
 
     # ══════════════════════════════════════════════════════════
@@ -1202,18 +1217,16 @@ class SharingSettingsDialog(TabbedDialog):
         self._invites_task = task
 
     def _on_invites_loaded(self, success, data):
-        if success and data:
-            self._invite_codes = data.get("invites", data) if isinstance(data, dict) else data
+        if success:
+            self._invite_codes = data.get("invites", data) if isinstance(data, dict) else (data or [])
             self._populate_codes_table()
         else:
-            self._codes_status.setText(tr("sharing.users.no_codes"))
+            self._codes_status.setText(tr("sharing.access.invites_load_failed"))
 
     def _populate_codes_table(self):
         if not isinstance(self._invite_codes, list):
             self._invite_codes = []
         self._codes_table.setRowCount(len(self._invite_codes))
-        t = _t()
-
         for i, code_data in enumerate(self._invite_codes):
             code = code_data if isinstance(code_data, str) else code_data.get("code", str(code_data))
             self._codes_table.setItem(i, 0, QTableWidgetItem(str(code)))
@@ -1224,52 +1237,56 @@ class SharingSettingsDialog(TabbedDialog):
             created = code_data.get("created", "—") if isinstance(code_data, dict) else "—"
             self._codes_table.setItem(i, 2, QTableWidgetItem(str(created)))
 
-            actions_widget = QWidget()
-            actions_layout = QHBoxLayout(actions_widget)
-            actions_layout.setContentsMargins(scaled_px(4), scaled_px(2), scaled_px(4), scaled_px(2))
-            actions_layout.setSpacing(scaled_px(4))
-
-            copy_btn = QPushButton(tr("sharing.users.btn_copy_code"))
-            copy_btn.setFixedHeight(scaled_px(22))
-            copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            copy_btn.setStyleSheet(
-                f"QPushButton {{ background: {t['accent']}; color: {t['on_accent']}; "
-                f"border: none; border-radius: {scaled_px(3)}px; font-size: {scaled_pt(10)}px; padding: 2px 6px; }}"
-                f"QPushButton:hover {{ background: {t['accent']}dd; }}")
-            copy_btn.clicked.connect(lambda checked, c=code: QApplication.clipboard().setText(c))
-            actions_layout.addWidget(copy_btn)
-
-            revoke_btn = QPushButton(tr("sharing.users.btn_revoke"))
-            revoke_btn.setFixedHeight(scaled_px(22))
-            revoke_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            revoke_btn.setStyleSheet(
-                f"QPushButton {{ background: {t['danger']}; color: {t['on_accent']}; "
-                f"border: none; border-radius: {scaled_px(3)}px; font-size: {scaled_pt(10)}px; padding: 2px 6px; }}"
-                f"QPushButton:hover {{ background: {t['danger']}dd; }}")
-            revoke_btn.clicked.connect(lambda checked, idx=i: self._revoke_invite_code(idx))
-            actions_layout.addWidget(revoke_btn)
-
-            actions_layout.addStretch()
-            self._codes_table.setCellWidget(i, 3, actions_widget)
-
         self._codes_status.setText(
-            f"{len(self._invite_codes)} " + tr("sharing.users.invite_codes").lower()
+            tr("sharing.access.invitation_count").format(count=len(self._invite_codes))
             if self._invite_codes else tr("sharing.users.no_codes"))
+        self._on_invite_selection_changed()
+
+    def _on_invite_selection_changed(self):
+        has_selection = bool(self._codes_table.selectionModel().selectedRows())
+        self._copy_code_btn.setEnabled(has_selection)
+        self._revoke_code_btn.setEnabled(has_selection)
+
+    def _selected_invite_row(self):
+        rows = self._codes_table.selectionModel().selectedRows()
+        return rows[0].row() if rows else None
+
+    def _copy_selected_invite(self):
+        row = self._selected_invite_row()
+        if row is None or row >= len(self._invite_codes):
+            return
+        code_data = self._invite_codes[row]
+        code = code_data if isinstance(code_data, str) else code_data.get("code", "")
+        if code:
+            QApplication.clipboard().setText(str(code))
+            self._codes_status.setText(tr("sharing.access.invitation_copied"))
+
+    def _revoke_selected_invite(self):
+        row = self._selected_invite_row()
+        if row is not None:
+            self._revoke_invite_code(row)
 
     def _generate_invite_code(self):
         base = self._get_api_base()
         if not base:
+            self._codes_status.setText(tr("sharing.access.invites_unavailable"))
             return
         headers = self._get_auth_headers()
+        self._generate_code_btn.setEnabled(False)
+        self._codes_status.setText(tr("sharing.access.invitation_generating"))
         task = ShareApiTask("POST", f"{base}/api/invites/create", headers, success_statuses=(200, 201))
         task.signals.finished.connect(lambda ok, data: self._on_generate_code_result(ok, data))
         QThreadPool.globalInstance().start(task)
         self._gen_task = task
 
     def _on_generate_code_result(self, success, data):
+        self._generate_code_btn.setEnabled(True)
         if success:
+            self._codes_status.setText(tr("sharing.access.invitation_generated"))
             self._load_invite_codes()
             self._data_changed.emit()
+        else:
+            self._codes_status.setText(tr("sharing.access.invitation_generate_failed"))
 
     def _revoke_invite_code(self, row):
         if row < 0 or row >= len(self._invite_codes):
@@ -1280,8 +1297,12 @@ class SharingSettingsDialog(TabbedDialog):
             return
         base = self._get_api_base()
         if not base:
+            self._codes_status.setText(tr("sharing.access.invites_unavailable"))
             return
         headers = self._get_auth_headers()
+        self._copy_code_btn.setEnabled(False)
+        self._revoke_code_btn.setEnabled(False)
+        self._codes_status.setText(tr("sharing.access.invitation_revoking"))
         task = ShareApiTask("DELETE", f"{base}/api/invites/{code}/revoke", headers)
         task.signals.finished.connect(lambda ok, _: self._on_revoke_result(ok, row))
         QThreadPool.globalInstance().start(task)
@@ -1292,7 +1313,11 @@ class SharingSettingsDialog(TabbedDialog):
             if 0 <= row < len(self._invite_codes):
                 self._invite_codes.pop(row)
             self._populate_codes_table()
+            self._codes_status.setText(tr("sharing.access.invitation_revoked"))
             self._data_changed.emit()
+        else:
+            self._on_invite_selection_changed()
+            self._codes_status.setText(tr("sharing.access.invitation_revoke_failed"))
 
     def _load_online_users(self):
         base = self._get_api_base()
@@ -1305,11 +1330,11 @@ class SharingSettingsDialog(TabbedDialog):
         self._online_task = task
 
     def _on_online_users_loaded(self, success, data):
-        if success and data:
-            self._online_users = data.get("users", data) if isinstance(data, dict) else data
+        if success:
+            self._online_users = data.get("users", data) if isinstance(data, dict) else (data or [])
             self._populate_online_table()
         else:
-            self._online_status.setText(tr("sharing.users.no_online"))
+            self._online_status.setText(tr("sharing.access.connected_users_load_failed"))
 
     def _populate_online_table(self):
         if not isinstance(self._online_users, list):
@@ -1327,7 +1352,7 @@ class SharingSettingsDialog(TabbedDialog):
                 self._online_table.setItem(i, 2, QTableWidgetItem("—"))
 
         self._online_status.setText(
-            f"{len(self._online_users)} {tr('sharing.users.online_users').lower()}"
+            tr("sharing.access.connected_user_count").format(count=len(self._online_users))
             if self._online_users else tr("sharing.users.no_online"))
 
     # ══════════════════════════════════════════════════════════
@@ -1520,6 +1545,17 @@ class SharingSettingsDialog(TabbedDialog):
 
     def _on_apply(self):
         self._save_settings()
+
+    def _save_guest_permissions(self):
+        """Persist guest policy immediately; routes read these settings per request."""
+        if getattr(self, "_loading_settings", False):
+            return
+        s = self._settings
+        s.set("lan_guest_download", self._guest_download.isChecked())
+        s.set("lan_guest_preview", self._guest_preview.isChecked())
+        s.set("lan_guest_list", self._guest_list.isChecked())
+        s.save()
+        self._guest_policy_status.setText(tr("sharing.access.guest_policy_saved"))
 
     def _save_settings(self):
         s = self._settings

@@ -54,3 +54,50 @@ def test_endpoint_public_state_prefers_tunnel_url(monkeypatch):
     dialog._update_status()
 
     assert dialog._url_label.text() == "https://share.example.test"
+
+
+def test_access_page_persists_guest_policy_immediately(monkeypatch):
+    class Settings:
+        def __init__(self):
+            self.values = {}
+            self.saved = 0
+
+        def get(self, _key, default=None):
+            return default
+
+        def set(self, key, value):
+            self.values[key] = value
+
+        def save(self):
+            self.saved += 1
+
+    settings = Settings()
+    monkeypatch.setattr(
+        "AssetsManager.dialogs.sharing_settings_dialog.AppSettings.instance",
+        classmethod(lambda _cls: settings),
+    )
+    dialog = SharingSettingsDialog()
+
+    dialog._guest_download.setChecked(True)
+
+    assert settings.values["lan_guest_download"] is True
+    assert settings.values["lan_guest_preview"] is True
+    assert settings.values["lan_guest_list"] is True
+    assert settings.saved == 1
+    assert dialog._guest_policy_status.text() == "Guest access policy updated."
+
+
+def test_access_page_invite_failures_are_region_local(monkeypatch):
+    monkeypatch.setattr(
+        "AssetsManager.dialogs.sharing_settings_dialog.AppSettings.instance",
+        classmethod(lambda _cls: type("_Settings", (), {"get": lambda _self, _key, default=None: default})()),
+    )
+    dialog = SharingSettingsDialog()
+
+    dialog._on_generate_code_result(False, None)
+    assert dialog._codes_status.text() == "Could not generate invitation."
+
+    dialog._invite_codes = [{"code": "INVITE"}]
+    dialog._codes_table.selectRow(0)
+    dialog._on_revoke_result(False, 0)
+    assert dialog._codes_status.text() == "Could not revoke invitation."
