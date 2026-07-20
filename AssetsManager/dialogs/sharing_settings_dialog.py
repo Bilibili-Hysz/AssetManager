@@ -1,20 +1,12 @@
-"""Share System dialog — unified sharing control with tabbed interface.
-
-Inherits from TabbedDialog for consistent styling and reusable components.
-
-Tab 1: Overview — Server status, quick share, recent activity, tunnel
-Tab 2: Share Links — Table of share links with search/filter/actions
-Tab 3: Users — Admin info, invite codes, online users, guest defaults
-Tab 4: Settings — Network, Security, Branding, Advanced
-"""
+"""Share System management shell and its endpoint, link, access, and settings pages."""
 import logging
 from PySide6.QtCore import Qt, QTimer, Signal, QObject, QRunnable, QThreadPool
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QTextEdit, QFrame, QGridLayout,
+    QTextEdit, QFrame,
     QFileDialog, QWidget, QApplication,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QCheckBox, QMessageBox,
+    QCheckBox, QMessageBox, QStackedWidget, QDialogButtonBox,
 )
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
@@ -35,11 +27,29 @@ def _t():
     return themes.get()
 
 
-class SharingSettingsDialog(TabbedDialog):
-    """Unified Share System dialog with 4-tab interface.
+def _endpoint_state(status: dict, tunnel_running: bool = False) -> str:
+    """Map server facts to the small set of states rendered by the endpoint page."""
+    state = status.get("state")
+    if state in {"starting", "failed"}:
+        return state
+    if not status.get("running", False):
+        return "off"
+    return "public" if tunnel_running else "local"
 
-    Inherits from TabbedDialog for consistent styling and reusable components.
-    """
+
+def _endpoint_primary_action(state: str) -> str:
+    """Return the action scope, leaving translated presentation to the widget."""
+    return {
+        "off": "start",
+        "starting": "busy",
+        "local": "stop_server",
+        "public": "stop_tunnel",
+        "failed": "retry",
+    }.get(state, "start")
+
+
+class SharingSettingsDialog(TabbedDialog):
+    """Dedicated Share System shell while retaining existing page behavior."""
 
     settings_changed = Signal()
     _data_changed = Signal()
@@ -54,7 +64,9 @@ class SharingSettingsDialog(TabbedDialog):
         self._online_users = []
         self._activity_items = []
 
-        super().__init__(parent, title=tr("sharing.dialog_title"), min_size=(700, 700))
+        # Start at the desktop target while allowing the specified narrow-window fallback.
+        super().__init__(parent, title=tr("sharing.dialog_title"), min_size=(700, 620))
+        self.resize(scaled_px(980), scaled_px(720))
 
         self._data_changed.connect(self._refresh_all_tabs)
 
@@ -71,27 +83,102 @@ class SharingSettingsDialog(TabbedDialog):
             self._load_online_users()
             self._load_invite_codes()
 
-    def _setup_tabs(self):
-        """Setup 4 tabs: Overview, Share Links, Users, Settings."""
-        # Tab 1: Overview
-        overview_tab = QWidget()
-        self._setup_overview_tab(overview_tab)
-        self._add_tab(overview_tab, tr("sharing.tab_overview"), scrollable=True)
+    def _build_ui(self):
+        """Build a desktop navigation shell with a compact top-nav fallback."""
+        self.setStyleSheet(self._dialog_qss())
+        root = QVBoxLayout(self)
+        root.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(12))
+        root.setSpacing(scaled_px(12))
 
-        # Tab 2: Share Links
-        links_tab = QWidget()
-        self._setup_share_links_tab(links_tab)
-        self._add_tab(links_tab, tr("sharing.tab_share_links"), scrollable=True)
+        header = QHBoxLayout()
+        title = self.make_heading(tr("sharing.dialog_title"))
+        title.setStyleSheet(f"font-size: {scaled_pt(18)}px; font-weight: bold; color: {_t()['heading']};")
+        header.addWidget(title)
+        header.addStretch()
+        root.addLayout(header)
 
-        # Tab 3: Users
-        users_tab = QWidget()
-        self._setup_users_tab(users_tab)
-        self._add_tab(users_tab, tr("sharing.tab_users"), scrollable=True)
+        self._top_nav = QWidget()
+        top_nav_layout = QHBoxLayout(self._top_nav)
+        top_nav_layout.setContentsMargins(0, 0, 0, 0)
+        top_nav_layout.setSpacing(scaled_px(6))
+        self._nav_rail = QFrame()
+        self._nav_rail.setFixedWidth(scaled_px(216))
+        rail_layout = QVBoxLayout(self._nav_rail)
+        rail_layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
+        rail_layout.setSpacing(scaled_px(4))
 
-        # Tab 4: Settings
-        settings_tab = QWidget()
-        self._setup_settings_tab(settings_tab)
-        self._add_tab(settings_tab, tr("sharing.tab_settings"), scrollable=True)
+        self._page_stack = QStackedWidget()
+        self._nav_buttons = []
+        self._top_nav_buttons = []
+        pages = (
+            (tr("sharing.nav.endpoint"), self._setup_overview_tab),
+            (tr("sharing.nav.links"), self._setup_share_links_tab),
+            (tr("sharing.nav.access"), self._setup_users_tab),
+            (tr("sharing.nav.configuration"), self._setup_settings_tab),
+        )
+        for index, (label, setup) in enumerate(pages):
+            page = QWidget()
+            setup(page)
+            self._page_stack.addWidget(page)
+            self._nav_buttons.append(self._make_nav_button(label, index, rail_layout))
+            self._top_nav_buttons.append(self._make_nav_button(label, index, top_nav_layout))
+        rail_layout.addStretch()
+        root.addWidget(self._top_nav)
+
+        body = QHBoxLayout()
+        body.setSpacing(scaled_px(16))
+        body.addWidget(self._nav_rail)
+        body.addWidget(self._page_stack, 1)
+        root.addLayout(body, 1)
+
+        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        apply_btn = btn_box.addButton(tr("dialog.apply"), QDialogButtonBox.ButtonRole.ApplyRole)
+        apply_btn.clicked.connect(self._on_apply)
+        apply_btn.clicked.connect(self.settings_changed.emit)
+        btn_box.accepted.connect(self._on_accept)
+        btn_box.rejected.connect(self.reject)
+        root.addWidget(btn_box)
+        self._select_page(0)
+        self._update_navigation_mode()
+
+    def _make_nav_button(self, label, index, layout):
+        button = QPushButton(label)
+        button.setCheckable(True)
+        button.setAccessibleName(label)
+        button.setToolTip(label)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setMinimumHeight(scaled_px(36))
+        button.clicked.connect(lambda _checked=False, page=index: self._select_page(page))
+        layout.addWidget(button)
+        return button
+
+    def _select_page(self, index):
+        self._page_stack.setCurrentIndex(index)
+        for button in self._nav_buttons + self._top_nav_buttons:
+            button.setChecked(button in (self._nav_buttons[index], self._top_nav_buttons[index]))
+        self._apply_shell_theme()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "_nav_rail"):
+            self._update_navigation_mode()
+
+    def _update_navigation_mode(self):
+        compact = self.width() < scaled_px(800)
+        self._nav_rail.setVisible(not compact)
+        self._top_nav.setVisible(compact)
+
+    def _apply_shell_theme(self):
+        t = _t()
+        nav_style = (
+            f"QFrame {{ background: {t['base']}; border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px; }}"
+            f"QPushButton {{ text-align: left; background: transparent; color: {t['body']}; border: none; "
+            f"border-radius: {scaled_px(4)}px; padding: {scaled_px(8)}px {scaled_px(10)}px; }}"
+            f"QPushButton:hover {{ background: {t['hover_overlay']}; }}"
+            f"QPushButton:checked {{ background: {t['accent']}; color: {t['on_accent']}; font-weight: bold; }}"
+        )
+        self._nav_rail.setStyleSheet(nav_style)
+        self._top_nav.setStyleSheet(nav_style)
 
     def _refresh_all_tabs(self):
         """Refresh all tabs with current server data."""
@@ -127,15 +214,9 @@ class SharingSettingsDialog(TabbedDialog):
     def _on_theme_changed(self, _name):
         super()._on_theme_changed(_name)
         t = _t()
-        self._status_label.setStyleSheet(f"font-weight: bold; font-size: {scaled_pt(14)}px; color: {t['heading']};")
-        self._url_label.setStyleSheet(f"font-size: {scaled_pt(13)}px; color: {t['accent']};")
-        if hasattr(self, '_share_url_label') and self._share_url_label:
-            self._share_url_label.setStyleSheet(
-                f"font-size: {scaled_pt(13)}px; color: {t['accent']}; "
-                f"padding: 10px; background: {t['panel']}; "
-                f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px;")
-        if hasattr(self, '_qr_label'):
-            self._qr_label.setStyleSheet(f"background: {t['input_bg']}; border-radius: {scaled_px(10)}px; padding: 8px;")
+        self._apply_shell_theme()
+        self._status_label.setStyleSheet(f"font-weight: bold; font-size: {scaled_pt(20)}px; color: {t['heading']};")
+        self._url_label.setStyleSheet(f"font-size: {scaled_pt(15)}px; color: {t['accent']};")
         if hasattr(self, '_tunnel_url_label'):
             self._tunnel_url_label.setStyleSheet(
                 f"font-size: {scaled_pt(13)}px; color: {t['accent']}; "
@@ -161,7 +242,7 @@ class SharingSettingsDialog(TabbedDialog):
             self._online_table.setStyleSheet(table_style)
 
     # ══════════════════════════════════════════════════════════
-    # Tab 1: Overview
+    # Endpoint
     # ══════════════════════════════════════════════════════════
 
     def _make_card(self, title: str, icon: str = "") -> tuple[QFrame, QVBoxLayout]:
@@ -194,150 +275,60 @@ class SharingSettingsDialog(TabbedDialog):
         layout.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16))
         layout.setSpacing(scaled_px(12))
 
-        grid = QGridLayout()
-        grid.setSpacing(scaled_px(12))
-
-        # ── Card 1: Server Status (row 0, col 0) ─────────────
-        status_card, status_cl = self._make_card(tr("sharing.card_server_status"), "🖥️")
-        self._status_frame = status_card
-
+        self._status_frame = QFrame()
+        endpoint_layout = QVBoxLayout(self._status_frame)
+        endpoint_layout.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16))
+        endpoint_layout.setSpacing(scaled_px(10))
         status_row = QHBoxLayout()
-        self._status_icon = QLabel("🔴")
-        self._status_icon.setFixedWidth(scaled_px(24))
+        self._status_icon = QLabel()
+        self._status_icon.setFixedSize(scaled_px(12), scaled_px(12))
+        self._status_icon.setAccessibleName(tr("sharing.endpoint.status_indicator"))
         status_row.addWidget(self._status_icon)
         self._status_label = QLabel(tr("sharing.status_off"))
-        self._status_label.setStyleSheet(
-            f"font-weight: bold; font-size: {scaled_pt(14)}px; color: {t['heading']};")
+        self._status_label.setStyleSheet(f"font-size: {scaled_pt(20)}px; font-weight: bold; color: {t['heading']};")
         status_row.addWidget(self._status_label)
+        self._exposure_label = QLabel()
+        self._exposure_label.setVisible(False)
+        status_row.addWidget(self._exposure_label)
         status_row.addStretch()
-        self._toggle_btn = self.make_primary_btn(tr("sharing.btn_start_sharing"), self._on_toggle_server)
-        self._toggle_btn.setFixedWidth(scaled_px(120))
+        self._toggle_btn = self.make_primary_btn(tr("sharing.btn_start_sharing"), self._on_primary_endpoint_action)
         status_row.addWidget(self._toggle_btn)
-        status_cl.addLayout(status_row)
+        endpoint_layout.addLayout(status_row)
 
-        self._url_row = QHBoxLayout()
-        self._url_label = QLabel("")
-        self._url_label.setStyleSheet(f"font-size: {scaled_pt(13)}px; color: {t['accent']};")
-        self._url_row.addWidget(self._url_label)
-        self._url_row.addStretch()
+        self._url_label = QLabel()
+        self._url_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._url_label.setWordWrap(False)
+        self._url_label.setStyleSheet(f"font-size: {scaled_pt(15)}px; color: {t['accent']};")
+        endpoint_layout.addWidget(self._url_label)
+        action_row = QHBoxLayout()
         self._copy_btn = self.make_secondary_btn(tr("sharing.btn_copy_link"), self._copy_link)
-        self._copy_btn.setFixedWidth(scaled_px(90))
-        self._copy_btn.setVisible(False)
-        self._url_row.addWidget(self._copy_btn)
-        status_cl.addLayout(self._url_row)
-
-        info_grid = QHBoxLayout()
-        info_grid.setSpacing(scaled_px(20))
+        self._open_btn = self.make_secondary_btn(tr("sharing.btn_open"), self._open_endpoint)
+        action_row.addWidget(self._copy_btn)
+        action_row.addWidget(self._open_btn)
+        action_row.addStretch()
+        endpoint_layout.addLayout(action_row)
+        metadata_row = QHBoxLayout()
+        metadata_row.setSpacing(scaled_px(24))
         self._ip_info, self._ip_info_value = self._make_info_pair(tr("sharing.overview.ip_address"), "—")
         self._port_info, self._port_info_value = self._make_info_pair(tr("sharing.overview.port"), "—")
-        info_grid.addLayout(self._ip_info)
-        info_grid.addLayout(self._port_info)
-        info_grid.addStretch()
-        status_cl.addLayout(info_grid)
-
-        grid.addWidget(status_card, 0, 0)
-
-        # ── Card 2: Online Users (row 0, col 1) ──────────────
-        online_card, online_cl = self._make_card(tr("sharing.card_online_users"), "👥")
-
-        self._online_info, self._online_info_value = self._make_info_pair(tr("sharing.overview.online_users"), "0")
+        self._online_info, self._online_info_value = self._make_info_pair(tr("sharing.endpoint.connections"), "0")
         self._traffic_info, self._traffic_info_value = self._make_info_pair(tr("sharing.overview.traffic"), "0 B")
-        stats_row = QHBoxLayout()
-        stats_row.setSpacing(scaled_px(20))
-        stats_row.addLayout(self._online_info)
-        stats_row.addLayout(self._traffic_info)
-        stats_row.addStretch()
-        online_cl.addLayout(stats_row)
+        for info in (self._ip_info, self._port_info, self._online_info, self._traffic_info):
+            metadata_row.addLayout(info)
+        metadata_row.addStretch()
+        endpoint_layout.addLayout(metadata_row)
+        layout.addWidget(self._status_frame)
 
-        grid.addWidget(online_card, 0, 1)
-
-        # ── Card 3: Traffic Stats (row 1, col 0) ─────────────
-        traffic_card, traffic_cl = self._make_card(tr("sharing.card_traffic_stats"), "📊")
-
-        self._share_section_content = QVBoxLayout()
-        self._share_section_content.setSpacing(scaled_px(8))
-
-        self._share_url_label = QLabel("")
-        self._share_url_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._share_url_label.setStyleSheet(
-            f"font-size: {scaled_pt(13)}px; color: {t['accent']}; "
-            f"padding: 10px; background: {t['panel']}; "
-            f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px;")
-        self._share_url_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self._share_url_label.setVisible(False)
-        self._share_section_content.addWidget(self._share_url_label)
-
-        share_btn_row = QHBoxLayout()
-        self._share_copy_btn = self.make_primary_btn(tr("sharing.btn_copy_link"), self._copy_overview_link)
-        self._share_copy_btn.setVisible(False)
-        share_btn_row.addWidget(self._share_copy_btn)
-        self._share_open_btn = self.make_secondary_btn(tr("sharing.btn_open_in_browser"), self._open_share_link)
-        self._share_open_btn.setVisible(False)
-        share_btn_row.addWidget(self._share_open_btn)
-        share_btn_row.addStretch()
-        self._share_section_content.addLayout(share_btn_row)
-
-        self._qr_label = QLabel()
-        self._qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._qr_label.setFixedSize(scaled_px(200), scaled_px(200))
-        self._qr_label.setStyleSheet(
-            f"background: {t['input_bg']}; border-radius: {scaled_px(10)}px; padding: 8px;")
-        self._qr_label.setVisible(False)
-        self._share_section_content.addWidget(self._qr_label, 0, Qt.AlignmentFlag.AlignCenter)
-
-        self._qr_copy_btn = self.make_secondary_btn(tr("sharing.btn_copy_qr"), self._copy_qr)
-        self._qr_copy_btn.setVisible(False)
-        self._share_section_content.addWidget(self._qr_copy_btn, 0, Qt.AlignmentFlag.AlignCenter)
-        self._qr_pixmap = None
-
-        traffic_cl.addLayout(self._share_section_content)
-        grid.addWidget(traffic_card, 1, 0)
-
-        # ── Card 4: Quick Share (row 1, col 1) ───────────────
-        quick_card, quick_cl = self._make_card(tr("sharing.card_quick_share"), "⚡")
-
-        self._quick_share_btn = self.make_primary_btn(tr("sharing.overview.quick_share"), self._on_quick_share)
-        self._quick_share_btn.setFixedHeight(scaled_px(44))
-        self._quick_share_btn.setStyleSheet(
-            f"QPushButton {{ background: {t['accent']}; color: {t['on_accent']}; border: none; "
-            f"border-radius: {scaled_px(8)}px; padding: 10px 24px; "
-            f"font-size: {scaled_pt(14)}px; font-weight: bold; }}"
-            f"QPushButton:hover {{ background: {t['accent']}dd; }}")
-        quick_cl.addWidget(self._quick_share_btn)
-        quick_hint = self.make_muted(tr("sharing.overview.quick_share_hint"))
-        quick_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        quick_cl.addWidget(quick_hint)
-
-        grid.addWidget(quick_card, 1, 1)
-
-        # ── Card 5: Recent Activity (row 2, full width) ──────
-        activity_card, activity_cl = self._make_card(tr("sharing.card_recent_activity"), "📋")
-
-        self._activity_list = QLabel(tr("sharing.overview.no_activity"))
-        self._activity_list.setWordWrap(True)
-        self._activity_list.setStyleSheet(f"color: {t['muted']}; font-size: {scaled_pt(11)}px;")
-        activity_cl.addWidget(self._activity_list)
-
-        grid.addWidget(activity_card, 2, 0, 1, 2)
-
-        # ── Card 6: Cloudflare Tunnel (row 3, full width) ────
+        # Tunnel remains an independent exposure control; it never stops local sharing.
         from AssetsManager.lan.tunnel import is_available as is_tunnel_available
         if is_tunnel_available():
-            tunnel_card, tunnel_cl = self._make_card(tr("sharing.card_tunnel"), "🌐")
-
+            tunnel_card, tunnel_cl = self._make_card(tr("sharing.card_tunnel"))
             self._tunnel_status = self.make_muted(tr("sharing.tunnel_not_connected"))
             tunnel_cl.addWidget(self._tunnel_status)
-
             self._tunnel_url_label = QLabel("")
-            self._tunnel_url_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._tunnel_url_label.setStyleSheet(
-                f"font-size: {scaled_pt(13)}px; color: {t['accent']}; "
-                f"padding: 8px; background: {t['panel']}; "
-                f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px;")
             self._tunnel_url_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             self._tunnel_url_label.setVisible(False)
             tunnel_cl.addWidget(self._tunnel_url_label)
-
             tunnel_btn_row = QHBoxLayout()
             self._tunnel_btn = self.make_primary_btn(tr("sharing.btn_start_tunnel"), self._toggle_tunnel)
             self._tunnel_copy_btn = self.make_secondary_btn(tr("sharing.btn_copy"), self._copy_tunnel_url)
@@ -349,12 +340,16 @@ class SharingSettingsDialog(TabbedDialog):
             tunnel_btn_row.addWidget(self._tunnel_open_btn)
             tunnel_btn_row.addStretch()
             tunnel_cl.addLayout(tunnel_btn_row)
-
-            grid.addWidget(tunnel_card, 3, 0, 1, 2)
+            layout.addWidget(tunnel_card)
         else:
             self._tunnel_section = None
 
-        layout.addLayout(grid)
+        activity_card, activity_cl = self._make_card(tr("sharing.card_recent_activity"))
+        self._activity_list = QLabel(tr("sharing.overview.no_activity"))
+        self._activity_list.setWordWrap(True)
+        self._activity_list.setStyleSheet(f"color: {t['muted']}; font-size: {scaled_pt(11)}px;")
+        activity_cl.addWidget(self._activity_list)
+        layout.addWidget(activity_card)
         layout.addStretch()
 
     def _make_info_pair(self, label_text, value_text):
@@ -789,116 +784,50 @@ class SharingSettingsDialog(TabbedDialog):
 
     def _update_status(self):
         t = _t()
-        running = self._server_status.get("running", False)
+        tunnel_running = bool(self._server and hasattr(self._server, "is_tunnel_running") and self._server.is_tunnel_running())
+        state = _endpoint_state(self._server_status, tunnel_running)
+        action = _endpoint_primary_action(state)
+        details = {
+            "off": (tr("sharing.status_off"), t["muted"], tr("sharing.btn_start_sharing")),
+            "starting": (tr("sharing.btn_connecting"), t["accent"], tr("sharing.btn_connecting")),
+            "local": (tr("sharing.status_active"), t["success"], tr("sharing.btn_stop_sharing")),
+            "public": (tr("sharing.status_active"), t["success"], tr("sharing.btn_stop_tunnel")),
+            "failed": (tr("sharing.endpoint.failed"), t["danger"], tr("sharing.endpoint.try_again")),
+        }
+        label, color, action_label = details[state]
+        self._status_icon.setStyleSheet(
+            f"background: {color}; border-radius: {scaled_px(6)}px; border: none;")
+        self._status_label.setText(label)
+        self._toggle_btn.setText(action_label)
+        self._toggle_btn.setEnabled(action != "busy")
+        self._toggle_btn.setStyleSheet(self.toggle_btn_style(action in {"stop_server", "stop_tunnel"}))
+        self._status_frame.setStyleSheet(self.status_style(state in {"local", "public"}))
+        local_url = self._server_status.get("url", "")
+        public_url = self._tunnel_url_label.text() if state == "public" and hasattr(self, "_tunnel_url_label") else ""
+        url = public_url or local_url
+        self._url_label.setText(url)
+        self._url_label.setVisible(bool(url))
+        self._copy_btn.setVisible(bool(url))
+        self._open_btn.setVisible(bool(url))
+        self._ip_info_value.setText(self._server_status.get("ip", "—") if local_url else "—")
+        self._port_info_value.setText(str(self._server_status.get("port", "—")) if local_url else "—")
+        self._online_info_value.setText(str(self._server_status.get("connections", 0)))
+        self._traffic_info_value.setText(self._format_bytes(self._server_status.get("bytes_transferred", 0)))
+        self._exposure_label.setVisible(state == "public")
+        if state == "public":
+            self._exposure_label.setText(tr("sharing.endpoint.internet_access"))
+            self._exposure_label.setStyleSheet(
+                f"color: {t['heading']}; background: {t['warning']}; border-radius: {scaled_px(3)}px; "
+                f"padding: {scaled_px(3)}px {scaled_px(6)}px;")
 
-        if running:
-            self._status_icon.setText("🟢")
-            self._status_label.setText(tr("sharing.status_active"))
-            self._status_label.setStyleSheet(f"font-weight: bold; font-size: {scaled_pt(14)}px; color: {t['heading']};")
-            url = self._server_status.get("url", "")
-            self._url_label.setText(url)
-            self._url_label.setVisible(True)
-            self._copy_btn.setVisible(True)
-            self._toggle_btn.setText(tr("sharing.btn_stop_sharing"))
-            self._toggle_btn.setStyleSheet(self.toggle_btn_style(True))
-            self._status_frame.setStyleSheet(self.status_style(True))
-
-            self._ip_info_value.setText(self._server_status.get("ip", "—"))
-            self._port_info_value.setText(str(self._server_status.get("port", "—")))
-            self._online_info_value.setText(str(self._server_status.get("connections", 0)))
-            self._traffic_info_value.setText(self._format_bytes(self._server_status.get("bytes_transferred", 0)))
-
-            if hasattr(self, '_share_url_label'):
-                access_key = self._settings.get("lan_access_key", "")
-                share_url = f"{url}?key={access_key}" if access_key else url
-                self._share_url_label.setText(share_url)
-                self._share_url_label.setVisible(True)
-                self._share_copy_btn.setVisible(True)
-                self._share_open_btn.setVisible(True)
-                self._generate_qr(share_url)
+    def _on_primary_endpoint_action(self):
+        """Keep local server and public-tunnel scopes distinct on the Endpoint page."""
+        tunnel_running = bool(self._server and hasattr(self._server, "is_tunnel_running") and self._server.is_tunnel_running())
+        state = _endpoint_state(self._server_status, tunnel_running)
+        if _endpoint_primary_action(state) == "stop_tunnel":
+            self._toggle_tunnel()
         else:
-            self._status_icon.setText("🔴")
-            self._status_label.setText(tr("sharing.status_off"))
-            self._status_label.setStyleSheet(f"font-weight: bold; font-size: {scaled_pt(14)}px; color: {t['heading']};")
-            self._url_label.setVisible(False)
-            self._copy_btn.setVisible(False)
-            self._toggle_btn.setText(tr("sharing.btn_start_sharing"))
-            self._toggle_btn.setStyleSheet(self.toggle_btn_style(False))
-            self._status_frame.setStyleSheet(self.status_style(False))
-
-            self._ip_info_value.setText("—")
-            self._port_info_value.setText("—")
-            self._online_info_value.setText("0")
-            self._traffic_info_value.setText("0 B")
-            if hasattr(self, '_share_url_label'):
-                self._share_url_label.setVisible(False)
-                self._share_copy_btn.setVisible(False)
-                self._share_open_btn.setVisible(False)
-            if hasattr(self, '_qr_label'):
-                self._qr_label.setVisible(False)
-                self._qr_copy_btn.setVisible(False)
-
-    def _generate_qr(self, url: str):
-        """Generate and display QR code for the given URL."""
-        try:
-            import segno
-            from io import BytesIO
-            from PySide6.QtGui import QImage, QPixmap, QPainter, QColor
-            qr = segno.make_qr(url, error="H")
-            buf = BytesIO()
-            qr.save(buf, kind="png", scale=16, border=2)
-            buf.seek(0)
-            raw_img = QImage()
-            raw_img.loadFromData(buf.read())
-            if raw_img.isNull():
-                return
-            size = raw_img.width() + 40
-            canvas = QPixmap(size, size)
-            canvas.fill(QColor("white"))
-            painter = QPainter(canvas)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor("white"))
-            painter.drawRoundedRect(0, 0, size, size, 16, 16)
-            x = (size - raw_img.width()) // 2
-            y = (size - raw_img.height()) // 2
-            painter.drawImage(x, y, raw_img)
-            painter.end()
-            self._qr_pixmap = canvas
-            self._qr_label.setPixmap(canvas.scaled(
-                190, 190, Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation))
-            self._qr_label.setVisible(True)
-            self._qr_copy_btn.setVisible(True)
-        except ImportError:
-            self._qr_label.setText(tr("sharing.install_segno_hint"))
-            self._qr_label.setVisible(True)
-        except Exception:
-            self._qr_label.setText(tr("sharing.qr_generation_failed"))
-            self._qr_label.setVisible(True)
-
-    def _copy_overview_link(self):
-        """Copy share URL to clipboard."""
-        url = self._share_url_label.text()
-        if url:
-            QApplication.clipboard().setText(url)
-            self._share_copy_btn.setText(tr("sharing.copied"))
-            QTimer.singleShot(1500, lambda: self._share_copy_btn.setText(tr("sharing.btn_copy_link")))
-
-    def _open_share_link(self):
-        """Open share URL in browser."""
-        from PySide6.QtGui import QDesktopServices
-        from PySide6.QtCore import QUrl
-        url = self._share_url_label.text()
-        if url:
-            QDesktopServices.openUrl(QUrl(url))
-
-    def _copy_qr(self):
-        """Copy QR code to clipboard."""
-        if self._qr_pixmap and not self._qr_pixmap.isNull():
-            QApplication.clipboard().setPixmap(self._qr_pixmap)
-            self._qr_copy_btn.setText(tr("sharing.copied"))
-            QTimer.singleShot(1500, lambda: self._qr_copy_btn.setText(tr("sharing.btn_copy_qr")))
+            self._on_toggle_server()
 
     def _poll_server_status(self):
         if not self._server or not self._server.is_running():
@@ -1013,32 +942,10 @@ class SharingSettingsDialog(TabbedDialog):
             self._copy_btn.setText(tr("sharing.copied"))
             QTimer.singleShot(1500, lambda: self._copy_btn.setText(tr("sharing.btn_copy_link")))
 
-    def _on_quick_share(self):
-        from AssetsManager.dialogs.quick_share_card import QuickShareCard
-        if not hasattr(self, '_quick_card'):
-            self._quick_card = QuickShareCard(self)
-            self._quick_card.share_requested.connect(self._create_quick_share)
-        pos = self._quick_share_btn.mapToGlobal(self._quick_share_btn.rect().bottomLeft())
-        self._quick_card.show_for_paths([], pos)
-
-    def _create_quick_share(self, data: dict):
-        base = self._get_api_base()
-        if not base:
-            Toast.instance(self, tr("sharing.toast.error"), level="error")
-            return
-        headers = self._get_auth_headers()
-        headers["Content-Type"] = "application/json"
-        task = ShareApiTask("POST", f"{base}/api/shares", headers, data, success_statuses=(200, 201))
-        task.signals.finished.connect(self._on_quick_share_result)
-        QThreadPool.globalInstance().start(task)
-        self._quick_share_task = task
-
-    def _on_quick_share_result(self, success, data):
-        if success:
-            Toast.instance(self, tr("sharing.toast.share_created"), level="success")
-            self._data_changed.emit()
-        else:
-            Toast.instance(self, tr("sharing.toast.error"), level="error")
+    def _open_endpoint(self):
+        url = self._server_status.get("url", "")
+        if url:
+            QDesktopServices.openUrl(QUrl(url))
 
     # ══════════════════════════════════════════════════════════
     # Share Links Tab: Data & Actions
@@ -1430,9 +1337,9 @@ class SharingSettingsDialog(TabbedDialog):
                     if isinstance(item, dict):
                         msg = item.get("message", item.get("action", str(item)))
                         time_str = item.get("time", item.get("timestamp", ""))
-                        lines.append(f"• {msg}" + (f"  ({time_str})" if time_str else ""))
+                        lines.append(f"{time_str}: {msg}" if time_str else str(msg))
                     else:
-                        lines.append(f"• {item}")
+                        lines.append(str(item))
                 self._activity_list.setText("\n".join(lines))
             else:
                 self._activity_list.setText(tr("sharing.overview.no_activity"))
@@ -1468,13 +1375,7 @@ class SharingSettingsDialog(TabbedDialog):
             self._tunnel_url_label.setVisible(False)
             self._tunnel_copy_btn.setVisible(False)
             self._tunnel_open_btn.setVisible(False)
-            # Revert QR code to local URL
-            local_url = self._server_status.get("url", "")
-            if local_url:
-                access_key = self._settings.get("lan_access_key", "")
-                share_url = f"{local_url}?key={access_key}" if access_key else local_url
-                self._share_url_label.setText(share_url)
-                self._generate_qr(share_url)
+            self._update_status()
             self._data_changed.emit()
         else:
             self._tunnel_btn.setEnabled(False)
@@ -1520,9 +1421,7 @@ class SharingSettingsDialog(TabbedDialog):
             self._tunnel_btn.setEnabled(True)
             self._tunnel_copy_btn.setVisible(True)
             self._tunnel_open_btn.setVisible(True)
-            # Update QR code to show tunnel URL
-            self._generate_qr(public_url)
-            self._share_url_label.setText(public_url)
+            self._update_status()
             self._data_changed.emit()
         else:
             self._tunnel_status.setText(tr("sharing.tunnel_failed"))
@@ -1530,6 +1429,7 @@ class SharingSettingsDialog(TabbedDialog):
             self._tunnel_btn.setText(tr("sharing.btn_start_tunnel"))
             self._tunnel_btn.setStyleSheet(self.primary_btn_style())
             self._tunnel_btn.setEnabled(True)
+            self._update_status()
             Toast.instance(self, tr("sharing.toast.error"), level="error")
 
     # ── Auth ──────────────────────────────────────────────────

@@ -1,6 +1,10 @@
 from unittest.mock import Mock
 
-from AssetsManager.dialogs.sharing_settings_dialog import SharingSettingsDialog
+from AssetsManager.dialogs.sharing_settings_dialog import (
+    SharingSettingsDialog,
+    _endpoint_primary_action,
+    _endpoint_state,
+)
 from AssetsManager.widgets.lan_sharing import LanSharingMixin
 
 
@@ -17,6 +21,20 @@ class _Server:
 
 def test_quick_share_uses_server_status_url():
     assert LanSharingMixin._quick_share_api_url(_Server()) == "http://192.168.1.10:9090/api/shares"
+
+
+def test_endpoint_state_and_primary_action_distinguish_local_and_public_scope():
+    assert _endpoint_state({}) == "off"
+    assert _endpoint_state({"state": "starting"}) == "starting"
+    assert _endpoint_state({"running": True}) == "local"
+    assert _endpoint_state({"running": True}, tunnel_running=True) == "public"
+    assert _endpoint_state({"state": "failed"}) == "failed"
+
+    assert _endpoint_primary_action("off") == "start"
+    assert _endpoint_primary_action("starting") == "busy"
+    assert _endpoint_primary_action("local") == "stop_server"
+    assert _endpoint_primary_action("public") == "stop_tunnel"
+    assert _endpoint_primary_action("failed") == "retry"
 
 
 def test_sharing_dialog_uses_stable_auth_mode_key():
@@ -299,23 +317,3 @@ def test_sharing_dialog_refresh_clears_runtime_data_when_stopped():
     assert dialog._links_table.rows == 0
     assert dialog._codes_table.rows == 0
     assert dialog._online_table.rows == 0
-
-
-def test_sharing_dialog_overview_copy_uses_overview_url(monkeypatch):
-    from AssetsManager.dialogs import sharing_settings_dialog
-
-    copied = []
-    clipboard = type("_Clipboard", (), {"setText": copied.append})()
-    url_label = type(
-        "_UrlLabel",
-        (),
-        {"text": lambda _self: "http://localhost:8080?key=secret"},
-    )()
-    monkeypatch.setattr(sharing_settings_dialog.QApplication, "clipboard", staticmethod(lambda: clipboard))
-    dialog = SharingSettingsDialog.__new__(SharingSettingsDialog)
-    dialog._share_url_label = url_label
-    dialog._share_copy_btn = _DialogButton()
-
-    dialog._copy_overview_link()
-
-    assert copied == ["http://localhost:8080?key=secret"]
