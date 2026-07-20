@@ -51,12 +51,14 @@ def test_share_link_result_mode_requires_explicit_create_another():
         assert dialog.get_share_url() == "http://share.test/s/1"
         assert dialog._create_btn.isHidden()
         assert not dialog._create_another_btn.isHidden()
+        assert dialog._qr_btn.isEnabled()
 
         dialog._create_another()
 
         assert dialog.get_share_url() is None
         assert not dialog._create_btn.isHidden()
         assert dialog._create_another_btn.isHidden()
+        assert not dialog._qr_btn.isEnabled()
     finally:
         dialog.close()
         dialog.deleteLater()

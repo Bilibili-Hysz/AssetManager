@@ -111,6 +111,9 @@ class ShareLinkDialog(TabbedDialog):
         self._open_btn = self.make_secondary_btn(tr("sharelink.btn.open_browser"), self._open_link)
         self._open_btn.setEnabled(False)
         btn_row.addWidget(self._open_btn)
+        self._qr_btn = self.make_secondary_btn(tr("sharing.qr.show"), self._show_qr)
+        self._qr_btn.setEnabled(False)
+        btn_row.addWidget(self._qr_btn)
         self._create_another_btn = self.make_secondary_btn(
             tr("sharelink.btn.create_another"), self._create_another)
         self._create_another_btn.setVisible(False)
@@ -203,6 +206,7 @@ class ShareLinkDialog(TabbedDialog):
                 self._key_hint.setVisible(False)
             self._copy_btn.setEnabled(True)
             self._open_btn.setEnabled(True)
+            self._qr_btn.setEnabled(True)
         else:
             self._create_btn.setEnabled(True)
             error = data.get("error") if isinstance(data, dict) else tr("sharelink.error.unknown")
@@ -214,6 +218,7 @@ class ShareLinkDialog(TabbedDialog):
         self._result_group.setVisible(False)
         self._copy_btn.setEnabled(False)
         self._open_btn.setEnabled(False)
+        self._qr_btn.setEnabled(False)
         self._create_another_btn.setVisible(False)
         self._create_btn.setVisible(True)
         self._create_btn.setEnabled(True)
@@ -232,6 +237,12 @@ class ShareLinkDialog(TabbedDialog):
             from PySide6.QtGui import QDesktopServices
             from PySide6.QtCore import QUrl
             QDesktopServices.openUrl(QUrl(self._share_url))
+
+    def _show_qr(self):
+        if not self._share_url:
+            return
+        from AssetsManager.dialogs.share_qr_dialog import ShareQrDialog
+        ShareQrDialog(self, self._share_url).exec()
 
     def get_share_url(self) -> str | None:
         """Return the created share URL."""

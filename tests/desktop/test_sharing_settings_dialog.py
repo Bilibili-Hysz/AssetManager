@@ -86,6 +86,7 @@ def test_endpoint_public_state_prefers_tunnel_url(monkeypatch):
     dialog._update_status()
 
     assert dialog._url_label.text() == "https://share.example.test"
+    assert not dialog._qr_btn.isHidden()
 
 
 def test_access_page_persists_guest_policy_immediately(monkeypatch):

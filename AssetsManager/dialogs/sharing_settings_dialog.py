@@ -320,8 +320,10 @@ class SharingSettingsDialog(TabbedDialog):
         action_row = QHBoxLayout()
         self._copy_btn = self.make_secondary_btn(tr("sharing.btn_copy_link"), self._copy_link)
         self._open_btn = self.make_secondary_btn(tr("sharing.btn_open"), self._open_endpoint)
+        self._qr_btn = self.make_secondary_btn(tr("sharing.qr.show"), self._show_endpoint_qr)
         action_row.addWidget(self._copy_btn)
         action_row.addWidget(self._open_btn)
+        action_row.addWidget(self._qr_btn)
         action_row.addStretch()
         endpoint_layout.addLayout(action_row)
         metadata_row = QHBoxLayout()
@@ -982,6 +984,7 @@ class SharingSettingsDialog(TabbedDialog):
         self._url_label.setVisible(bool(url))
         self._copy_btn.setVisible(bool(url))
         self._open_btn.setVisible(bool(url))
+        self._qr_btn.setVisible(bool(url))
         self._ip_info_value.setText(self._server_status.get("ip", "—") if local_url else "—")
         self._port_info_value.setText(str(self._server_status.get("port", "—")) if local_url else "—")
         self._online_info_value.setText(str(self._server_status.get("connections", 0)))
@@ -1001,6 +1004,13 @@ class SharingSettingsDialog(TabbedDialog):
             self._toggle_tunnel()
         else:
             self._on_toggle_server()
+
+    def _show_endpoint_qr(self):
+        url = self._url_label.text()
+        if not url:
+            return
+        from AssetsManager.dialogs.share_qr_dialog import ShareQrDialog
+        ShareQrDialog(self, url).exec()
 
     def _poll_server_status(self):
         if not self._server or not self._server.is_running():
