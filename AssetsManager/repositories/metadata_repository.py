@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from sqlite3 import Connection
 
 from AssetsManager.core.database import db_write_lock
@@ -42,7 +43,7 @@ class MetadataRepository:
 
     def set_notes(self, file_path: str, notes: str) -> None:
         """Set notes for a file path."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.execute(
                 "INSERT INTO file_meta (file_path, notes) VALUES (?, ?) "
                 "ON CONFLICT(file_path) DO UPDATE SET notes=excluded.notes",
@@ -76,7 +77,7 @@ class MetadataRepository:
 
     def set_urls(self, file_path: str, urls: list[str]) -> None:
         """Set URLs for a file path."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             data = json.dumps(urls, ensure_ascii=False)
             self._conn.execute(
                 "INSERT INTO file_meta (file_path, urls) VALUES (?, ?) "
@@ -87,7 +88,7 @@ class MetadataRepository:
 
     def add_url(self, file_path: str, url: str) -> list[str] | None:
         """Add a URL under the process write lock. Returns updated URLs if changed."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             urls = self.get_urls(file_path)
             if url in urls:
                 return None
@@ -103,7 +104,7 @@ class MetadataRepository:
 
     def remove_url(self, file_path: str, url: str) -> list[str] | None:
         """Remove a URL under the process write lock. Returns updated URLs if changed."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             urls = self.get_urls(file_path)
             if url not in urls:
                 return None
@@ -132,7 +133,7 @@ class MetadataRepository:
 
     def set_cached_size(self, file_path: str, size: int, mtime: float) -> None:
         """Cache a directory size."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.execute(
                 "INSERT INTO file_meta (file_path, cached_size, cached_mtime) VALUES (?, ?, ?) "
                 "ON CONFLICT(file_path) DO UPDATE SET "
@@ -154,7 +155,7 @@ class MetadataRepository:
 
     def set_cached_file_count(self, file_path: str, count: int) -> None:
         """Cache a file count."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.execute(
                 "INSERT INTO file_meta (file_path, cached_file_count) VALUES (?, ?) "
                 "ON CONFLICT(file_path) DO UPDATE SET cached_file_count=excluded.cached_file_count",
@@ -186,7 +187,7 @@ class MetadataRepository:
         """Cache file counts for multiple directories in a single transaction."""
         if not entries:
             return
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.executemany(
                 "INSERT INTO file_meta (file_path, cached_file_count) VALUES (?, ?) "
                 "ON CONFLICT(file_path) DO UPDATE SET cached_file_count=excluded.cached_file_count",
@@ -223,7 +224,7 @@ class MetadataRepository:
 
     def set_library_total_size(self, library_path: str, size: int) -> None:
         """Update library_stats total_size."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.execute(
                 "INSERT OR REPLACE INTO library_stats (library_path, total_size) VALUES (?, ?)",
                 (library_path, size),
@@ -235,7 +236,7 @@ class MetadataRepository:
     def invalidate_size_cache(self, file_path: str) -> None:
         """Clear cached size/count for a path and its children."""
         escaped = file_path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.execute(
                 "UPDATE file_meta SET cached_size=NULL, cached_mtime=NULL, cached_file_count=NULL "
                 "WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
@@ -243,12 +244,26 @@ class MetadataRepository:
             )
             self._conn.commit()
 
+    def delete_path(self, file_path: str, *, commit: bool = True) -> int:
+        """Delete metadata for a path and its descendants."""
+        escaped = file_path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        separator = "\\" if "\\" in file_path else "/" if "/" in file_path else os.sep
+        prefix = escaped + separator.replace("\\", "\\\\") + "%"
+        with db_write_lock(self._conn):
+            cur = self._conn.execute(
+                "DELETE FROM file_meta WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
+                (file_path, prefix),
+            )
+            if commit:
+                self._conn.commit()
+            return cur.rowcount
+
     # ── Migration ────────────────────────────────────────────────
 
     def migrate_path(self, old_path: str, new_path: str) -> int:
         """Move metadata from old_path to new_path. Returns rows affected."""
         escaped = old_path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        with db_write_lock():
+        with db_write_lock(self._conn):
             rows = self._conn.execute(
                 "SELECT file_path, notes, cached_size, cached_mtime, cached_file_count, urls "
                 "FROM file_meta WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",

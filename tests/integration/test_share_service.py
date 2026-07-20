@@ -7,7 +7,7 @@ import pytest
 from AssetsManager.domain.share import ShareLink
 from AssetsManager.application.share_service import ShareService
 from AssetsManager.core import database
-from AssetsManager.lan.auth import init_users_table
+from AssetsManager.repositories.share_repository import ShareRepository
 
 
 def _make_db(memory_db):
@@ -15,7 +15,7 @@ def _make_db(memory_db):
     conn.executescript(database._SCHEMA)
     from AssetsManager.core.db_migrations import migrate
     migrate(conn)
-    init_users_table(conn)
+    ShareRepository(conn).init_table()
     return conn
 
 
@@ -95,6 +95,16 @@ class TestShareLink:
 # ── ShareService integration tests ──────────────────────────────
 
 class TestShareService:
+
+    def test_init_table_creates_share_schema(self, memory_db):
+        ShareService(memory_db, "test-secret").init_table()
+
+        tables = {
+            row[0] for row in memory_db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        assert "share_links" in tables
 
     def test_create_and_get_share(self, tmp_path, memory_db):
         conn = _make_db(memory_db)

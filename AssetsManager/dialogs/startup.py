@@ -9,7 +9,7 @@ Visual: card-based with theme gradients, property-based styling, snapshot diffin
 """
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFileDialog, QFrame, QWidget, QScrollArea, QSizePolicy,
@@ -300,19 +300,23 @@ class StartupWindow(QMainWindow):
         self._settings = AppSettings.instance()
         self._settings.load()
         self._cards: list[_LibraryCard] = []
+        self._truncation_indicator: QLabel | None = None
         self._selected_path: str = ""
 
         self._setup_ui()
         self._populate()
-        bus().theme_changed.connect(self.refresh_theme)
-        bus().language_changed.connect(self._refresh_language)
+        self._theme_connection = bus().theme_changed.connect(self.refresh_theme)
+        self._language_connection = bus().language_changed.connect(self._refresh_language)
         self._center_on_parent(parent)
 
     def closeEvent(self, event):
         """Disconnect bus signals on close."""
         try:
-            bus().theme_changed.disconnect(self.refresh_theme)
-            bus().language_changed.disconnect(self._refresh_language)
+            QObject.disconnect(self._theme_connection)
+        except (RuntimeError, TypeError):
+            pass
+        try:
+            QObject.disconnect(self._language_connection)
         except (RuntimeError, TypeError):
             pass
         super().closeEvent(event)
@@ -497,6 +501,10 @@ class StartupWindow(QMainWindow):
             self._card_layout.removeWidget(c)
             c.deleteLater()
         self._cards.clear()
+        if self._truncation_indicator is not None:
+            self._card_layout.removeWidget(self._truncation_indicator)
+            self._truncation_indicator.deleteLater()
+            self._truncation_indicator = None
 
         if not paths:
             self._hero_count.setText(tr("startup.hero_empty"))
@@ -522,8 +530,8 @@ class StartupWindow(QMainWindow):
             indicator.setStyleSheet(
                 f"font-size: {scaled_pt(10)}px; color: {t['muted']}; "
                 f"padding: {scaled_px(4)}px {scaled_px(12)}px; background: transparent; border: none;")
-            self._cards.append(indicator)
-            self._card_layout.insertWidget(len(self._cards) - 1, indicator)
+            self._truncation_indicator = indicator
+            self._card_layout.insertWidget(len(self._cards), indicator)
 
         if self._cards:
             first_path = self._cards[0]._path

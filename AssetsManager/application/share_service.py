@@ -26,6 +26,10 @@ class ShareService:
         self._secret = token_secret
         self._repo = ShareRepository(db_conn)
 
+    def init_table(self) -> None:
+        """Initialize the share-link persistence schema."""
+        self._repo.init_table()
+
     # ── CRUD ────────────────────────────────────────────────────
 
     def create_share(

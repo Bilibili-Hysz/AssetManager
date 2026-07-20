@@ -3,8 +3,8 @@ from AssetsManager.repositories.tag_repository import TagRepository
 from AssetsManager.repositories.metadata_repository import MetadataRepository
 from AssetsManager.repositories.share_repository import ShareRepository
 from AssetsManager.repositories.auth_repository import AuthRepository
+from AssetsManager.repositories.asset_index_repository import AssetIndexRepository
 from AssetsManager.core import database
-from AssetsManager.lan.auth import init_users_table
 
 
 def _make_db(memory_db):
@@ -12,7 +12,8 @@ def _make_db(memory_db):
     conn.executescript(database._SCHEMA)
     from AssetsManager.core.db_migrations import migrate
     migrate(conn)
-    init_users_table(conn)
+    AuthRepository(conn).init_tables()
+    ShareRepository(conn).init_table()
     return conn
 
 
@@ -77,10 +78,71 @@ class TestTagRepository:
         assert count == 2
         assert repo.get_all_tags() == []
 
+    def test_delete_path_removes_direct_and_descendant_tags(self, memory_db):
+        conn = _make_db(memory_db)
+        repo = TagRepository(conn)
+        repo.add_tag("C:/library/folder", "root")
+        repo.add_tag("C:/library/folder/child.txt", "child")
+        repo.add_tag("C:/library/folder-copy/keep.txt", "keep")
+
+        assert repo.delete_path("C:/library/folder") == 2
+        assert repo.get_tags("C:/library/folder") == []
+        assert repo.get_tags("C:/library/folder/child.txt") == []
+        assert repo.get_tags("C:/library/folder-copy/keep.txt") == ["keep"]
+
+
+# ── AssetIndexRepository ─────────────────────────────────────────
+
+class TestAssetIndexRepository:
+
+    def test_replace_parent_entries_and_query_by_parent(self, memory_db):
+        repo = AssetIndexRepository(_make_db(memory_db))
+        entries = [
+            ("C:/library/folder/a.txt", "a.txt", ".txt", "file", 1, 1.0,
+             "C:/library/folder", "C:/library", 1.0, 1.0),
+            ("C:/library/folder/b.jpg", "b.jpg", ".jpg", "file", 2, 2.0,
+             "C:/library/folder", "C:/library", 1.0, 1.0),
+        ]
+
+        repo.replace_parent_entries("C:/library/folder", "C:/library", entries, clear_existing=True)
+
+        assert [entry.name for entry in repo.query_by_parent("C:/library", "C:/library/folder")] == [
+            "a.txt", "b.jpg",
+        ]
+        assert [entry.name for entry in repo.query_by_extension("C:/library", ".jpg")] == ["b.jpg"]
+        assert [entry.name for entry in repo.search_by_name("C:/library", "a.", 10)] == ["a.txt"]
+
+    def test_delete_path_removes_descendants_without_prefix_collision(self, memory_db):
+        repo = AssetIndexRepository(_make_db(memory_db))
+        entries = [
+            ("C:/library/folder/child.txt", "child.txt", ".txt", "file", 1, 1.0,
+             "C:/library/folder", "C:/library", 1.0, 1.0),
+            ("C:/library/folder-copy/keep.txt", "keep.txt", ".txt", "file", 1, 1.0,
+             "C:/library/folder-copy", "C:/library", 1.0, 1.0),
+        ]
+        repo.replace_parent_entries("C:/library/folder", "C:/library", [entries[0]], clear_existing=True)
+        repo.replace_parent_entries("C:/library/folder-copy", "C:/library", [entries[1]], clear_existing=True)
+
+        assert repo.delete_path("C:/library/folder") == 1
+        assert repo.get_entry("C:/library/folder/child.txt") is None
+        assert repo.get_entry("C:/library/folder-copy/keep.txt") is not None
+
 
 # ── MetadataRepository ───────────────────────────────────────────
 
 class TestMetadataRepository:
+
+    def test_delete_path_removes_direct_and_descendant_metadata(self, memory_db):
+        conn = _make_db(memory_db)
+        repo = MetadataRepository(conn)
+        repo.set_notes("C:/library/folder", "root")
+        repo.set_notes("C:/library/folder/child.txt", "child")
+        repo.set_notes("C:/library/folder-copy/keep.txt", "keep")
+
+        assert repo.delete_path("C:/library/folder") == 2
+        assert repo.get_notes("C:/library/folder") == ""
+        assert repo.get_notes("C:/library/folder/child.txt") == ""
+        assert repo.get_notes("C:/library/folder-copy/keep.txt") == "keep"
 
     def test_notes_roundtrip(self, memory_db):
         conn = _make_db(memory_db)
@@ -283,6 +345,30 @@ class TestShareRepository:
 
 class TestAuthRepository:
 
+    def test_init_tables_does_not_create_share_schema(self, memory_db):
+        conn = memory_db
+        AuthRepository(conn).init_tables()
+
+        tables = {
+            row[0] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        assert {"users", "invite_codes"}.issubset(tables)
+        assert "share_links" not in tables
+
+    def test_auth_and_share_repositories_initialize_their_own_schemas(self, memory_db):
+        AuthRepository(memory_db).init_tables()
+        ShareRepository(memory_db).init_table()
+
+        tables = {
+            row[0]
+            for row in memory_db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        assert {"users", "invite_codes", "share_links"}.issubset(tables)
+
     def test_insert_and_get_user(self, memory_db):
         conn = _make_db(memory_db)
         repo = AuthRepository(conn)
@@ -396,6 +482,27 @@ def test_get_tags_with_metadata(memory_db):
     assert hero["color"] == "#ff0000"
     villain = next(t for t in tags if t["name"] == "villain")
     assert villain["color"] == ""
+
+
+def test_list_tags_with_counts(memory_db):
+    conn = _make_db(memory_db)
+    repo = TagRepository(conn)
+    repo.add_tag("/first.txt", "hero")
+    repo.add_tag("/second.txt", "hero")
+    repo.add_tag("/second.txt", "villain")
+
+    assert repo.list_tags_with_counts() == [
+        {"name": "hero", "count": 2},
+        {"name": "villain", "count": 1},
+    ]
+
+
+def test_get_files_by_tag_case_insensitive(memory_db):
+    conn = _make_db(memory_db)
+    repo = TagRepository(conn)
+    repo.add_tag("/first.txt", "Hero")
+
+    assert repo.get_files_by_tag_case_insensitive("hero") == ["/first.txt"]
 
 
 def test_tag_service_metadata(memory_db):

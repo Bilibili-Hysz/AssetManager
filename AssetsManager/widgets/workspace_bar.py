@@ -12,7 +12,7 @@ Each tab represents a different asset library root. Provides:
 """
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect, Property
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect, Property, QSignalBlocker
 from PySide6.QtWidgets import (
     QTabBar, QMenu, QLineEdit, QPushButton, QWidget, QHBoxLayout,
     QFrame,
@@ -143,9 +143,12 @@ class WorkspaceBar(QTabBar):
         if existing >= 0:
             self.setCurrentIndex(existing)
             return existing
-        idx = self.addTab(name)
-        self.setTabData(idx, path)
-        self.setCurrentIndex(idx)
+        # addTab() may select its first tab before its path is available.
+        # Block the intermediate Qt signal and notify once the tab is complete.
+        with QSignalBlocker(self):
+            idx = self.addTab(name)
+            self.setTabData(idx, path)
+            self.setCurrentIndex(idx)
         self._on_current_changed(idx)
         # Initialize indicator position
         tab_rect = self.tabRect(idx)
@@ -232,7 +235,14 @@ class WorkspaceBar(QTabBar):
     def _on_close(self, idx):
         if self.count() <= 1:
             return
-        self.removeTab(idx)
+        current_path = self.current_library()
+        self.currentChanged.disconnect(self._on_current_changed)
+        try:
+            self.removeTab(idx)
+        finally:
+            self.currentChanged.connect(self._on_current_changed)
+        if self.current_library() != current_path:
+            self._on_current_changed(self.currentIndex())
 
     # ── Context menu ────────────────────────────────────────────
 
@@ -281,9 +291,18 @@ class WorkspaceBar(QTabBar):
             self.add_library(str(data))
 
     def _close_others(self, keep_idx):
-        for i in range(self.count() - 1, -1, -1):
-            if i != keep_idx:
-                self.removeTab(i)
+        keep_path = self.tabData(keep_idx)
+        current_path = self.current_library()
+        self.currentChanged.disconnect(self._on_current_changed)
+        try:
+            for i in range(self.count() - 1, -1, -1):
+                if self.tabData(i) != keep_path:
+                    self.removeTab(i)
+            self.setCurrentIndex(0)
+        finally:
+            self.currentChanged.connect(self._on_current_changed)
+        if current_path != str(keep_path):
+            self._on_current_changed(0)
 
 
 class WorkspaceSection(QWidget):

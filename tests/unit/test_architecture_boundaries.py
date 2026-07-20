@@ -78,6 +78,30 @@ def _attribute_reads(path: Path) -> set[tuple[str, str]]:
     return found
 
 
+def _session_raw_resource_reads(path: Path) -> set[tuple[str, str]]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    found: set[tuple[str, str]] = set()
+
+    def visit(node: ast.AST, scope: str) -> None:
+        next_scope = scope
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            next_scope = node.name
+        elif isinstance(node, ast.ClassDef):
+            next_scope = node.name
+        elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load):
+            value = node.value
+            if node.attr in {"db_conn", "tag_store", "project_data"} and (
+                isinstance(value, ast.Name) and value.id == "session"
+                or isinstance(value, ast.Attribute) and value.attr == "session"
+            ):
+                found.add((next_scope, node.attr))
+        for child in ast.iter_child_nodes(node):
+            visit(child, next_scope)
+
+    visit(tree, "<module>")
+    return found
+
+
 def _files(root: Path, *parts: str) -> list[Path]:
     return sorted((root.joinpath(*parts)).rglob("*.py"))
 
@@ -197,6 +221,49 @@ def test_no_imports_from_removed_lru_cache_module() -> None:
     assert not violations, "core/lru_cache was removed — use core/cache:\n" + "\n".join(violations)
 
 
+def test_presentation_service_locator_module_does_not_exist() -> None:
+    assert not (SRC / "panels" / "_service_access.py").exists(), (
+        "Presentation panels must receive scoped services from their composition root"
+    )
+
+
+def test_presentation_does_not_lookup_bootstrap_from_qapplication() -> None:
+    violations: list[str] = []
+    for package in ("dialogs", "panels", "widgets"):
+        for path in _python_files(package):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "property"
+                    and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                    and node.args[0].value == "bootstrap"
+                ):
+                    violations.append(f"{_module_name(path)} looks up QApplication bootstrap")
+    assert not violations, "Presentation must receive dependencies explicitly:\n" + "\n".join(violations)
+
+
+def test_main_window_uses_panel_lifecycle_contracts() -> None:
+    window_path = SRC / "window.py"
+    tree = ast.parse(window_path.read_text(encoding="utf-8"), filename=str(window_path))
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Attribute) or not isinstance(node.ctx, ast.Load):
+            continue
+        owner = node.value
+        if (
+            node.attr.startswith("_")
+            and isinstance(owner, ast.Attribute)
+            and isinstance(owner.value, ast.Name)
+            and owner.value.id == "self"
+            and owner.attr in {"file_list", "info"}
+        ):
+            violations.append(f"MainWindow reads self.{owner.attr}.{node.attr}")
+    assert not violations, "MainWindow must use public panel lifecycle methods:\n" + "\n".join(violations)
+
+
 def test_lan_does_not_depend_on_desktop_presentation() -> None:
     _assert_no_import_prefixes(
         _python_files("lan"),
@@ -211,11 +278,8 @@ def test_lan_does_not_depend_on_desktop_presentation() -> None:
 
 
 def test_presentation_db_store_access_stays_in_documented_fallbacks() -> None:
-    forbidden_calls = {"get_lib_db", "get_manager", "get_store", "get_project_data", "get_library_dir", "close_all_dbs"}
-    allowed_calls = {
-        ("AssetsManager.dialogs.sidebar_favorites", "set_library_root", "get_library_dir"),
-        ("AssetsManager.dialogs.sidebar_recent", "set_library_root", "get_library_dir"),
-    }
+    forbidden_calls = {"get_store", "get_project_data", "get_library_dir", "close_all_dbs"}
+    allowed_calls = set()
     forbidden_imports = {
         "AssetsManager.core.database",
         "AssetsManager.core.tag_store",
@@ -223,8 +287,6 @@ def test_presentation_db_store_access_stays_in_documented_fallbacks() -> None:
     }
     allowed_imports = {
         ("AssetsManager.panels.info", "AssetsManager.core.project_data"),
-        ("AssetsManager.dialogs.sidebar_recent", "AssetsManager.core.database"),
-        ("AssetsManager.dialogs.sidebar_favorites", "AssetsManager.core.database"),
     }
     violations: list[str] = []
     for package in ("dialogs", "panels", "widgets"):
@@ -245,6 +307,258 @@ def test_presentation_db_store_access_stays_in_documented_fallbacks() -> None:
                     continue
                 violations.append(f"{module} imports {imported}")
     assert not violations, "Presentation DB/store access outside fallback allowlist:\n" + "\n".join(violations)
+
+
+def test_database_does_not_restore_removed_get_manager_wrapper() -> None:
+    source = (SRC / "core" / "database.py").read_text(encoding="utf-8")
+
+    assert "def get_manager(" not in source
+
+
+def test_database_does_not_restore_removed_get_lib_db_helper() -> None:
+    source = (SRC / "core" / "database.py").read_text(encoding="utf-8")
+
+    assert "def get_lib_db(" not in source
+
+
+def test_database_does_not_restore_removed_update_library_stats_helper() -> None:
+    source = (SRC / "core" / "database.py").read_text(encoding="utf-8")
+
+    assert "def update_library_stats(" not in source
+
+
+def test_production_path_metadata_migration_uses_explicit_resources() -> None:
+    path = SRC / "application" / "file_operation_service.py"
+    source = path.read_text(encoding="utf-8")
+    assert "migrate_path_metadata(\n            self._connection(), self.session.thumb_dir" in source
+
+
+def test_project_service_delegates_file_meta_cache_to_repository() -> None:
+    source = (SRC / "application" / "project_service.py").read_text(encoding="utf-8")
+    assert "from AssetsManager.repositories.metadata_repository import MetadataRepository" in source
+    assert "db_conn.execute(" not in source
+    assert "db_conn.executemany(" not in source
+
+
+def test_tag_service_delegates_tag_counts_to_repository() -> None:
+    source = (SRC / "application" / "tag_service.py").read_text(encoding="utf-8")
+    assert "repo.list_tags_with_counts()" in source
+    assert "conn.execute(" not in source
+
+
+def test_thumbnail_service_delegates_tag_lookup_to_repository() -> None:
+    source = (SRC / "application" / "thumbnail_service.py").read_text(encoding="utf-8")
+    assert "TagRepository(db_conn).get_tags" in source
+    assert "db_conn.execute(" not in source
+
+
+def test_search_service_delegates_tag_lookup_to_repository() -> None:
+    source = (SRC / "application" / "search_service.py").read_text(encoding="utf-8")
+    assert "get_files_by_tag_case_insensitive" in source
+    assert "db_conn.execute(" not in source
+
+
+def test_auth_service_does_not_own_share_link_operations() -> None:
+    source = (SRC / "application" / "auth_service.py").read_text(encoding="utf-8")
+
+    assert "share_repository" not in source
+    assert "share_link" not in source
+    assert "share_token" not in source
+
+
+def test_auth_repository_does_not_initialize_share_schema() -> None:
+    source = (SRC / "repositories" / "auth_repository.py").read_text(encoding="utf-8")
+
+    assert "share_repository" not in source
+    assert "ShareRepository" not in source
+
+
+def test_lan_auth_does_not_compose_repository_schemas() -> None:
+    source = (SRC / "lan" / "auth.py").read_text(encoding="utf-8")
+
+    assert "AssetsManager.repositories" not in source
+    assert "init_users_table" not in source
+
+
+def test_lan_server_delegates_active_user_lookup_to_auth_service() -> None:
+    source = (SRC / "lan" / "server.py").read_text(encoding="utf-8")
+    start = source.index("    def _has_active_users(self) -> bool:")
+    end = source.index("    def invalidate_user_cache", start)
+
+    assert "self._auth_service.has_active_users(raise_on_error=True)" in source[start:end]
+    assert "self._db_conn.execute(" not in source[start:end]
+
+
+def test_lan_server_initializes_auth_and_share_through_services() -> None:
+    source = (SRC / "lan" / "server.py").read_text(encoding="utf-8")
+    start = source.index("    async def _startup(self):")
+    end = source.index("    async def _shutdown", start)
+
+    assert "self._auth_service.init_tables()" in source[start:end]
+    assert "self._share_service.init_table()" in source[start:end]
+    assert "AssetsManager.repositories" not in source
+
+
+def test_files_route_uses_scoped_metadata_service_for_cached_stats() -> None:
+    source = (SRC / "lan" / "routes" / "files.py").read_text(encoding="utf-8")
+    helpers = (SRC / "lan" / "routes" / "_helpers.py").read_text(encoding="utf-8")
+
+    assert "get_metadata_service(request).get_cached_stats(" in source
+    assert "batch_cached_stats" not in source
+    assert "batch_cached_stats" not in helpers
+
+
+def test_project_routes_do_not_inject_raw_lan_connections() -> None:
+    source = (SRC / "lan" / "routes" / "metadata.py").read_text(encoding="utf-8")
+    start = source.index("async def handle_home")
+    end = source.index("async def handle_tree", start)
+    project_source = source[source.index("async def handle_projects"):]
+
+    assert "lan.db_conn" not in source[start:end]
+    assert "lan.db_conn" not in project_source
+
+
+def test_thumbnail_routes_use_scoped_connection_provider() -> None:
+    source = (SRC / "lan" / "routes" / "thumbnails.py").read_text(encoding="utf-8")
+    helpers = (SRC / "lan" / "routes" / "_helpers.py").read_text(encoding="utf-8")
+
+    assert "lan.db_conn" not in source
+    assert "library_root=lan.library_root" in source
+    assert "ThumbnailService(connection_provider=provider)" in helpers
+
+
+def test_search_routes_use_scoped_connection_provider() -> None:
+    source = (SRC / "lan" / "routes" / "metadata.py").read_text(encoding="utf-8")
+    helpers = (SRC / "lan" / "routes" / "_helpers.py").read_text(encoding="utf-8")
+    start = source.index("async def handle_search")
+    end = source.index("def _record_search_route", start)
+
+    assert "lan.db_conn" not in source[start:end]
+    assert "SearchService(\n            connection_provider=provider," in helpers
+
+
+def test_file_operation_service_delegates_deleted_projection_cleanup() -> None:
+    source = (SRC / "application" / "file_operation_service.py").read_text(encoding="utf-8")
+    start = source.index("    def _clear_deleted_projection(self, path: Path) -> None:")
+    end = source.index("\n\ndef unique_destination", start)
+    cleanup = source[start:end]
+
+    assert "TagRepository(conn).delete_path(target, commit=False)" in cleanup
+    assert "MetadataRepository(conn).delete_path(target, commit=False)" in cleanup
+    assert "DELETE FROM file_tags" not in cleanup
+    assert "DELETE FROM file_meta" not in cleanup
+
+
+def test_asset_index_service_delegates_assets_sql_to_repository() -> None:
+    source = (SRC / "application" / "asset_index_service.py").read_text(encoding="utf-8")
+
+    assert "AssetIndexRepository(conn)" in source
+    assert "SELECT " not in source
+    assert "INSERT INTO assets" not in source
+    assert "DELETE FROM assets" not in source
+    assert "conn.execute(" not in source
+    assert "conn.executemany(" not in source
+
+
+def test_file_list_shutdown_releases_tracked_panel_subscriptions() -> None:
+    source = (SRC / "panels" / "file_list" / "_base.py").read_text(encoding="utf-8")
+    start = source.index("    def shutdown(self):")
+    end = source.index("    def closeEvent", start)
+    assert "super().shutdown()" in source[start:end]
+
+
+def test_file_list_uses_session_scoped_file_events() -> None:
+    source = (SRC / "panels" / "file_list" / "__init__.py").read_text(encoding="utf-8")
+    assert "FileSystemChanged" in source
+    assert "event.session_token != scoped.session.event_token" in source
+
+
+def test_tag_panels_use_session_scoped_tag_events() -> None:
+    info = (SRC / "panels" / "info.py").read_text(encoding="utf-8")
+    tag_tree = (SRC / "panels" / "tag_tree.py").read_text(encoding="utf-8")
+    assert "AssetTagsChanged" in info
+    assert "event.file_path != self._current_path" in info
+    assert "TagCatalogChanged" in tag_tree
+    assert "event.session_token != scoped.session.event_token" in tag_tree
+
+
+def test_info_uses_session_scoped_metadata_events() -> None:
+    source = (SRC / "panels" / "info.py").read_text(encoding="utf-8")
+    assert "AssetNotesChanged" in source
+    assert "AssetUrlsChanged" in source
+    assert "event.session_token == scoped.session.event_token" in source
+
+
+def test_panels_do_not_import_legacy_unscoped_mutation_events() -> None:
+    legacy_events = {
+        "FileCreated", "FileRenamed", "FileDeleted", "FileCopied",
+        "TagsChanged", "NotesChanged", "UrlsChanged",
+    }
+    violations: list[str] = []
+    for path in _python_files("panels"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "AssetsManager.domain.events":
+                imported = legacy_events.intersection(alias.name for alias in node.names)
+                if imported:
+                    violations.append(f"{_module_name(path)} imports {', '.join(sorted(imported))}")
+    assert not violations, (
+        "Panels must refresh through session-scoped domain events, not legacy unscoped mutation events:\n"
+        + "\n".join(violations)
+    )
+
+
+def test_startup_window_tracks_theme_and_language_connection_handles() -> None:
+    source = (SRC / "dialogs" / "startup.py").read_text(encoding="utf-8")
+    start = source.index("    def __init__(self, parent=None):")
+    end = source.index("    def _center_on_parent", start)
+    lifecycle = source[start:end]
+
+    assert "self._theme_connection = bus().theme_changed.connect(self.refresh_theme)" in lifecycle
+    assert "self._language_connection = bus().language_changed.connect(self._refresh_language)" in lifecycle
+    assert "QObject.disconnect(self._theme_connection)" in lifecycle
+    assert "QObject.disconnect(self._language_connection)" in lifecycle
+
+
+def test_library_panels_bind_through_scoped_services_only() -> None:
+    info = (SRC / "panels" / "info.py").read_text(encoding="utf-8")
+    tag_tree = (SRC / "panels" / "tag_tree.py").read_text(encoding="utf-8")
+    assert "_connect_domain_event(LibraryOpened" not in info
+    assert "_connect_domain_event(LibraryOpened" not in tag_tree
+
+
+def test_sidebar_storage_does_not_open_database_manager() -> None:
+    for module in ("sidebar_favorites.py", "sidebar_recent.py"):
+        source = (SRC / "dialogs" / module).read_text(encoding="utf-8")
+        assert "get_library_dir" not in source
+        assert "AssetsManager.core.database" not in source
+
+
+def test_legacy_library_dir_helper_is_path_only() -> None:
+    source = (SRC / "core" / "database.py").read_text(encoding="utf-8")
+    start = source.index("def get_library_dir")
+    end = source.index("def migrate_path_metadata", start)
+    helper = source[start:end]
+    assert "ThreadSafeSingleton" not in helper
+    assert "library_data_dir" in helper
+
+
+def test_database_singleton_helpers_are_legacy_only() -> None:
+    allowed = {
+        "core/database.py",
+        "core/project_data.py",
+        "core/tag_store.py",
+    }
+    violations: list[str] = []
+    for path in SRC.rglob("*.py"):
+        relative = path.relative_to(SRC).as_posix()
+        if relative in allowed:
+            continue
+        source = path.read_text(encoding="utf-8")
+        if "get_lib_db(" in source or "close_all_dbs(" in source:
+            violations.append(relative)
+
+    assert not violations, "Database singleton helpers must stay legacy-only:\n" + "\n".join(violations)
 
 
 def test_presentation_does_not_construct_unscoped_mutation_services() -> None:
@@ -297,6 +611,25 @@ def test_library_service_current_stays_legacy_only() -> None:
                 continue
             violations.append(f"{module}.{scope} reads .current")
     assert not violations, "LibraryService.current should stay legacy-only:\n" + "\n".join(violations)
+
+
+def test_production_code_does_not_read_session_raw_resources() -> None:
+    allowed_modules = {
+        "AssetsManager.application.context",
+        "AssetsManager.application.library_service",
+    }
+    violations: list[str] = []
+    for package in ("application", "controllers", "panels", "widgets"):
+        for path in _python_files(package):
+            module = _module_name(path)
+            if module in allowed_modules:
+                continue
+            for scope, attr in sorted(_session_raw_resource_reads(path)):
+                violations.append(f"{module}.{scope} reads session raw resource .{attr}")
+    assert not violations, (
+        "Production code must use scoped services or session.connection_for(), "
+        "not LibrarySession raw resources:\n" + "\n".join(violations)
+    )
 
 
 def test_application_does_not_import_lan_or_panels() -> None:

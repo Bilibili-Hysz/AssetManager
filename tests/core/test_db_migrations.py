@@ -53,10 +53,11 @@ def test_open_library_runs_migrations(tmp_path, monkeypatch):
     monkeypatch.setattr(path_resolver, "runtime_root", lambda: runtime)
     monkeypatch.setattr(database, "RUNTIME_ROOT", runtime)
     try:
-        conn = database.get_lib_db(str(lib))
+        manager = database.DatabaseManager()
+        conn = manager.connection_for(lib)
         assert current_version(conn) == 5
     finally:
-        database.close_all_dbs()
+        manager.close()
 
 
 def test_v2_creates_assets_table(memory_db):

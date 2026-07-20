@@ -76,6 +76,7 @@ class LibraryService:
     def _open(self, root_path: str | Path) -> tuple[LibraryContext, LibrarySession]:
         root = Path(root_path).resolve()
         key = str(root)
+        opened_session = False
         with self._lifecycle:
             self._lifecycle.wait_for(
                 lambda: not self._closing and key not in self._closing_roots
@@ -86,26 +87,32 @@ class LibraryService:
                 if session is None or session.is_closed:
                     session = LibrarySession.from_context(cached, self.close_session)
                     self._sessions[key] = session
+                    opened_session = True
                 self._current = cached
-                return cached, session
+                result = (cached, session)
+            else:
+                mgr = self._db
+                conn = mgr.connection_for(key)
 
-            mgr = self._db
-            conn = mgr.connection_for(key)
-
-            context = LibraryContext(
-                root=root,
-                data_dir=mgr.data_dir_for(key),
-                thumb_dir=mgr.thumb_dir_for(key),
-                db_conn=conn,
-                tag_store=TagStore(key, db_conn=conn),
-                project_data=ProjectData(key, db_conn=conn),
-            )
-            session = LibrarySession.from_context(context, self.close_session)
-            self._contexts[key] = context
-            self._sessions[key] = session
-            self._current = context
-        get_event_bus().publish(LibraryOpened(library_root=key))
-        return context, session
+                context = LibraryContext(
+                    root=root,
+                    data_dir=mgr.data_dir_for(key),
+                    thumb_dir=mgr.thumb_dir_for(key),
+                    db_conn=conn,
+                    tag_store=TagStore(key, db_conn=conn),
+                    project_data=ProjectData(key, db_conn=conn),
+                )
+                session = LibrarySession.from_context(context, self.close_session)
+                self._contexts[key] = context
+                self._sessions[key] = session
+                self._current = context
+                opened_session = True
+                result = (context, session)
+        if opened_session:
+            get_event_bus().publish(LibraryOpened(
+                library_root=key, session_token=result[1].event_token,
+            ))
+        return result
 
     def open_session(self, root_path: str | Path) -> LibrarySession:
         _, session = self._open(root_path)

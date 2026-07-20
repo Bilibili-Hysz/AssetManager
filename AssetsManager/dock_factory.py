@@ -9,9 +9,13 @@ All docks get a themed title bar with:
 
 Panels can provide extra buttons via a title_bar_buttons() method.
 """
+from __future__ import annotations
+
+from typing import Protocol, cast
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDockWidget, QMenu, QWidget, QHBoxLayout, QLabel, QPushButton,
+    QDockWidget, QMainWindow, QMenu, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton,
 )
 
 from AssetsManager.panels.sidebar import SidebarPanel
@@ -41,7 +45,19 @@ PANELS = {
 _DOCK_TITLES: dict[QDockWidget, tuple[str, str, list]] = {}  # dock -> (i18n_key, title, extra_buttons)
 
 
-def create(title: str = "Panel", parent=None, area=Qt.DockWidgetArea.RightDockWidgetArea,
+class _DockPanel(Protocol):
+    content_layout: QVBoxLayout
+
+    def footer_bar(self) -> QWidget | None: ...
+
+    def title_bar_buttons(self) -> list[QWidget]: ...
+
+    def title_bar_extension(self) -> QWidget | None: ...
+
+    def shutdown(self) -> None: ...
+
+
+def create(title: str = "Panel", parent: QMainWindow | None = None, area=Qt.DockWidgetArea.RightDockWidgetArea,
            panel_type: str = "empty"):
     panel_info = PANELS.get(panel_type)
     if panel_info:
@@ -59,11 +75,15 @@ def create(title: str = "Panel", parent=None, area=Qt.DockWidgetArea.RightDockWi
                      QDockWidget.DockWidgetFeature.DockWidgetFloatable)
     dock.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
     dock.customContextMenuRequested.connect(lambda pos, d=dock, w=parent: _menu(pos, d, w))
-    parent.addDockWidget(area, dock)
+    if parent is not None:
+        parent.addDockWidget(area, dock)
 
-    extra_buttons = []
-    if hasattr(widget, 'title_bar_buttons') and callable(widget.title_bar_buttons):
-        extra_buttons = widget.title_bar_buttons() or []
+    extra_buttons: list[QWidget] = []
+    title_buttons = getattr(widget, "title_bar_buttons", None)
+    if callable(title_buttons):
+        buttons = title_buttons()
+        if isinstance(buttons, list) and all(isinstance(button, QWidget) for button in buttons):
+            extra_buttons = buttons
     dock.setTitleBarWidget(_build_title_bar(title, dock, extra_buttons))
     _DOCK_TITLES[dock] = (i18n_key, title, extra_buttons)
 
@@ -72,17 +92,18 @@ def create(title: str = "Panel", parent=None, area=Qt.DockWidgetArea.RightDockWi
     return dock
 
 
-def _attach_footer(widget):
-    footer = widget.footer_bar() if hasattr(widget, 'footer_bar') and callable(widget.footer_bar) else None
-    if footer:
-        widget.content_layout.addWidget(footer)
+def _attach_footer(widget: QWidget):
+    footer_bar = getattr(widget, "footer_bar", None)
+    footer = footer_bar() if callable(footer_bar) else None
+    if isinstance(footer, QWidget):
+        cast(_DockPanel, widget).content_layout.addWidget(footer)
 
 
 def _build_title_bar(dock_title: str, dock: QDockWidget,
                      extra_buttons: list[QWidget]) -> QWidget:
     t = themes.get()
     bar = QWidget()
-    bar._is_custom_title = True
+    bar.setProperty("is_custom_title", True)
     bar.setStyleSheet(
         f"background: {themes.header_for_dock()}; "
         f"border: 1px solid {t['border']}; "
@@ -100,9 +121,10 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
 
     # ── Panel extension slot ─────────────────────────────────
     panel = dock.widget()
-    if hasattr(panel, 'title_bar_extension') and callable(panel.title_bar_extension):
-        ext = panel.title_bar_extension()
-        if ext is not None:
+    extension = getattr(panel, "title_bar_extension", None)
+    if callable(extension):
+        ext = extension()
+        if isinstance(ext, QWidget):
             layout.addWidget(ext, 1)
 
     layout.addStretch()
@@ -149,8 +171,9 @@ def _menu(pos, dock, window):
 
 def _close_dock(dock, window=None):
     panel = dock.widget()
-    if panel and hasattr(panel, 'shutdown'):
-        panel.shutdown()
+    shutdown = getattr(panel, "shutdown", None)
+    if callable(shutdown):
+        shutdown()
     if window:
         window.removeDockWidget(dock)
     _DOCK_TITLES.pop(dock, None)
@@ -170,7 +193,7 @@ def _refresh_docks_on_theme(_name: str = ""):
     """Rebuild all dock title bars when theme changes."""
     for d, (i18n_key, title, btns) in list(_DOCK_TITLES.items()):
         try:
-            if d.widget():
+            if d.widget() is not None:
                 d.setTitleBarWidget(_build_title_bar(title, d, btns))
         except RuntimeError:
             _DOCK_TITLES.pop(d, None)
@@ -180,7 +203,7 @@ def _refresh_docks_on_language(_code: str = ""):
     """Update dock titles when language changes."""
     for d, (i18n_key, _old_title, btns) in list(_DOCK_TITLES.items()):
         try:
-            if d.widget():
+            if d.widget() is not None:
                 new_title = tr(i18n_key)
                 _DOCK_TITLES[d] = (i18n_key, new_title, btns)
                 d.setTitleBarWidget(_build_title_bar(new_title, d, btns))

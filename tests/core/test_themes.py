@@ -91,3 +91,18 @@ def test_bg_effect_defaults():
     assert themes.bg_effect_intensity() == 20
     s._data.pop("bg_effect", None)
     s._data.pop("bg_effect_intensity", None)
+
+
+def test_background_numeric_settings_fall_back_when_invalid(monkeypatch):
+    values = {
+        "panel_opacity": None,
+        "header_opacity": "invalid",
+        "opacity": "0.75",
+        "effect_intensity": None,
+    }
+    monkeypatch.setattr(themes, "_bg_setting", lambda key, default: values.get(key, default))
+
+    assert themes.bg_panel_opacity() == 0.88
+    assert themes.bg_header_opacity() == 1.0
+    assert themes.bg_overall_opacity() == 0.75
+    assert themes.bg_effect_intensity() == 20

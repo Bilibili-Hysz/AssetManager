@@ -129,6 +129,18 @@ class TestProjectData:
         assert "https://a.com" in urls
         assert "https://b.com" in urls
 
+    def test_deprecated_get_project_data_does_not_retain_process_global_store(self, project_env):
+        from AssetsManager.core.project_data import get_project_data
+
+        root, conn = project_env
+        with pytest.warns(DeprecationWarning, match="get_project_data"):
+            first = get_project_data(root, db_conn=conn)
+        with pytest.warns(DeprecationWarning, match="get_project_data"):
+            second = get_project_data(root, db_conn=conn)
+
+        assert first is not second
+        assert first._db is second._db is conn
+
 
 def test_get_by_uid_does_not_mutate_settings(tmp_path):
     from AssetsManager.core import library_manager

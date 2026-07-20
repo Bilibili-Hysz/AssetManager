@@ -41,7 +41,11 @@ def main():
 
     from AssetsManager.application.bootstrap import ApplicationBootstrap
     from AssetsManager.dock_factory import install_dock_refresh_handlers
-    bootstrap = ApplicationBootstrap()
+    from AssetsManager.core.performance import PerformanceRecorder
+    telemetry_enabled = AppSettings.instance().get("performance_telemetry_enabled", False)
+    bootstrap = ApplicationBootstrap(
+        performance_recorder=PerformanceRecorder(enabled=True) if telemetry_enabled else None
+    )
     app.setProperty("bootstrap", bootstrap)
     install_dock_refresh_handlers()
 
@@ -86,12 +90,11 @@ def main():
                 pass
             window = None
 
-        session = bootstrap.library_service.open_session(path)
-        window = MainWindow()
+        window = MainWindow(bootstrap)
         # window.__init__ already restores workspace tabs via _restore_workspace_tabs().
         # If no saved tabs, add the startup-selected path.
         if not window._workspace.tab_paths():
-            window._workspace.add_library(session.root_str)
+            window._workspace.add_library(path)
         window.show()
         # Expose tray to window for state updates
         window._tray_manager = tray

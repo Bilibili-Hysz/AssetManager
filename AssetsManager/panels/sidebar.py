@@ -197,11 +197,25 @@ class SidebarPanel(PanelContent):
 
     def set_scoped_services(self, services):
         """Bind the library bundle resolved by MainWindow."""
+        self.prepare_library_switch()
+        library_root = services.session.root_str
+        if not isinstance(library_root, str):
+            return
         self._scoped_services = services
-        self._library_root = services.session.root_str
-        self._favs.set_library_root(self._library_root)
-        self._recents.set_library_root(self._library_root)
+        self._library_root = library_root
+        self._favs.set_library_root(library_root, services.session.data_dir)
+        self._recents.set_library_root(library_root, services.session.data_dir)
         self._populate()
+
+    def prepare_library_switch(self) -> None:
+        """Invalidate pending searches before replacing the library bundle."""
+        self._controller.next_search_gen()
+        if self._search_timer is not None:
+            self._search_timer.stop()
+
+    def shutdown(self) -> None:
+        self.prepare_library_switch()
+        super().shutdown()
 
     @staticmethod
     def _set_vtype(item: QTreeWidgetItem, vtype: str, path: str = ""):
@@ -209,7 +223,9 @@ class SidebarPanel(PanelContent):
         item.setData(0, Qt.ItemDataRole.UserRole + 1, vtype)
 
     @staticmethod
-    def _get_vtype(item: QTreeWidgetItem) -> str:
+    def _get_vtype(item: QTreeWidgetItem | None) -> str:
+        if item is None:
+            return ""
         return item.data(0, Qt.ItemDataRole.UserRole + 1) or VTYPE_FS
 
     @staticmethod
@@ -286,6 +302,8 @@ class SidebarPanel(PanelContent):
         # Filesystem items stay collapsed (lazy-load on user expand).
         for i in range(self._tree.topLevelItemCount()):
             item = self._tree.topLevelItem(i)
+            if item is None:
+                continue
             vtype = self._get_vtype(item)
             if vtype == VTYPE_FAV_HEADER:
                 if self._fav_expanded is None:
@@ -310,8 +328,9 @@ class SidebarPanel(PanelContent):
     def _on_expand(self, item):
         if self._get_vtype(item) != VTYPE_FS:
             return
-        if item.childCount() == 1 and item.child(0).text(0) == "...":
-            item.removeChild(item.child(0))
+        placeholder = item.child(0) if item.childCount() == 1 else None
+        if placeholder is not None and placeholder.text(0) == "...":
+            item.removeChild(placeholder)
             self._load_children(item, 0)
 
     def _load_children(self, parent_item, _unused=0):
@@ -545,12 +564,17 @@ class SidebarPanel(PanelContent):
             roots = [self._library_root] if self._library_root else self.ROOTS
             self._search.setPlaceholderText(tr("sidebar.searching"))
             task = _PreloadTask(roots, max_depth=2)
-            task.signals.done.connect(lambda results: self._on_preload_done(text, results, gen))
+            root = self._library_root
+            task.signals.done.connect(
+                lambda results: self._on_preload_done(text, results, gen, root)
+            )
             QThreadPool.globalInstance().start(task)
         else:
             self._match_count = 0
             for i in range(self._tree.topLevelItemCount()):
                 item = self._tree.topLevelItem(i)
+                if item is None:
+                    continue
                 vtype = self._get_vtype(item)
                 if vtype in (VTYPE_FAV_HEADER, VTYPE_REC_HEADER):
                     item.setHidden(False)
@@ -559,15 +583,17 @@ class SidebarPanel(PanelContent):
                     self._filter_item(item, "")
             self._search.setPlaceholderText(tr("sidebar.filter_placeholder"))
 
-    def _on_preload_done(self, text, results, gen):
+    def _on_preload_done(self, text, results, gen, root=None):
         """Apply preload results and filter."""
-        if not self._controller.is_current_search(gen):
+        if root != self._library_root or not self._controller.is_current_search(gen):
             return
         for parent_path, entries in results:
             self._apply_preloaded_entries(parent_path, entries)
         self._match_count = 0
         for i in range(self._tree.topLevelItemCount()):
             item = self._tree.topLevelItem(i)
+            if item is None:
+                continue
             vtype = self._get_vtype(item)
             if vtype in (VTYPE_FAV_HEADER, VTYPE_REC_HEADER):
                 item.setHidden(bool(text))
@@ -584,8 +610,9 @@ class SidebarPanel(PanelContent):
         parent_item = self._find_item_by_path(parent_path)
         if not parent_item:
             return
-        if parent_item.childCount() == 1 and parent_item.child(0).text(0) == "...":
-            parent_item.removeChild(parent_item.child(0))
+        placeholder = parent_item.child(0) if parent_item.childCount() == 1 else None
+        if placeholder is not None and placeholder.text(0) == "...":
+            parent_item.removeChild(placeholder)
         elif parent_item.childCount() > 0:
             return
         level = _fs_level(parent_item)
@@ -614,18 +641,23 @@ class SidebarPanel(PanelContent):
         queue = deque()
         root = self._tree.invisibleRootItem()
         for i in range(root.childCount()):
-            queue.append(root.child(i))
+            child = root.child(i)
+            if child is not None:
+                queue.append(child)
         while queue:
             item = queue.popleft()
             if self._get_vtype(item) == VTYPE_FS and item.data(0, Qt.ItemDataRole.UserRole) == target_path:
                 return item
             for i in range(item.childCount()):
-                queue.append(item.child(i))
+                child = item.child(i)
+                if child is not None:
+                    queue.append(child)
         return None
 
     def _expand_all_children(self, item):
-        if item.childCount() == 1 and item.child(0).text(0) == "...":
-            item.removeChild(item.child(0))
+        placeholder = item.child(0) if item.childCount() == 1 else None
+        if placeholder is not None and placeholder.text(0) == "...":
+            item.removeChild(placeholder)
             self._load_children(item, 0)
         for i in range(item.childCount()):
             child = item.child(i)
@@ -636,11 +668,14 @@ class SidebarPanel(PanelContent):
         if not text:
             item.setHidden(False)
             for i in range(item.childCount()):
-                self._filter_item(item.child(i), text)
+                child = item.child(i)
+                if child is not None:
+                    self._filter_item(child, text)
             return False
         visible = text in item.text(0).lower()
         for i in range(item.childCount()):
-            if self._filter_item(item.child(i), text):
+            child = item.child(i)
+            if child is not None and self._filter_item(child, text):
                 visible = True
         item.setHidden(not visible)
         if visible:
@@ -687,7 +722,9 @@ class SidebarPanel(PanelContent):
         font.setBold(False)
         item.setFont(0, font)
         for i in range(item.childCount()):
-            self._reset_item_style(item.child(i))
+            child = item.child(i)
+            if child is not None:
+                self._reset_item_style(child)
 
     # ── Keyboard shortcuts ─────────────────────────────────────────
 
@@ -748,6 +785,8 @@ class SidebarPanel(PanelContent):
         t = themes.get()
         for i in range(self._tree.topLevelItemCount()):
             item = self._tree.topLevelItem(i)
+            if item is None:
+                continue
             vtype = self._get_vtype(item)
             if vtype == VTYPE_FAV_HEADER:
                 self._bold_item(item, t["favorite"])
@@ -779,7 +818,7 @@ class SidebarPanel(PanelContent):
         self._populate()
         for i in range(self._tree.topLevelItemCount()):
             item = self._tree.topLevelItem(i)
-            if self._get_vtype(item) == VTYPE_FS:
+            if item is not None and self._get_vtype(item) == VTYPE_FS:
                 self._on_expand(item)
                 break
 

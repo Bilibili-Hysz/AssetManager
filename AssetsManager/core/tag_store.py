@@ -5,12 +5,12 @@ Tags are shared across the library - same DB as file_meta.
 
 This store delegates to TagRepository for all SQL operations.
 """
-import threading
 import warnings
 from pathlib import Path
 from sqlite3 import Connection
 
-from AssetsManager.core.database import get_lib_db, db_write_lock
+from AssetsManager.core.database import DatabaseManager, db_write_lock
+from AssetsManager.core.singleton import ThreadSafeSingleton
 from AssetsManager.core.tag_library import get_library
 from AssetsManager.repositories.tag_repository import TagRepository
 
@@ -20,10 +20,11 @@ class TagStore:
 
     def __init__(self, library_root: str, db_conn: Connection | None = None):
         self._root = str(Path(library_root).resolve())
-        self._db = db_conn or get_lib_db(self._root)
+        self._db = db_conn or ThreadSafeSingleton.get(DatabaseManager).connection_for(self._root)
         self._repo = TagRepository(self._db)
         self._resolve_cache: dict[str, str] = {}
-        self._resolve_cache_lock = threading.Lock()
+        from threading import Lock
+        self._resolve_cache_lock = Lock()
 
     def _resolve(self, filepath: str) -> str:
         """Cached Path.resolve() to avoid repeated filesystem I/O."""
@@ -86,23 +87,11 @@ class TagStore:
 
     def save(self):
         """Persist pending changes. No-op for SQLite (auto-commit per operation)."""
-        with db_write_lock():
+        with db_write_lock(self._db):
             self._repo._conn.commit()
 
 
-_stores: dict[str, TagStore] = {}
-_stores_lock = threading.Lock()
-
-
 def get_store(library_root: str, db_conn: Connection | None = None) -> TagStore:
+    """Deprecated compatibility constructor without global store retention."""
     warnings.warn("get_store() is deprecated, use TagService instead", DeprecationWarning, stacklevel=2)
-    key = str(Path(library_root).resolve())
-    store = _stores.get(key)
-    if store is not None:
-        return store
-    with _stores_lock:
-        store = _stores.get(key)
-        if store is None:
-            store = TagStore(key, db_conn=db_conn)
-            _stores[key] = store
-        return store
+    return TagStore(str(Path(library_root).resolve()), db_conn=db_conn)

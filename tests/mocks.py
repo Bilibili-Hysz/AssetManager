@@ -148,22 +148,18 @@ class MockDatabase:
             )
         """)
         self._conn.commit()
-        self._current_root = "."
 
     def open_library(self, root_path: str) -> None:
-        self._current_root = root_path
+        pass
 
     def close(self) -> None:
         self._conn.close()
 
-    @property
-    def db_conn(self):
+    def connection_for(self, root_path: str):
         return self._conn
 
-    @property
-    def data_dir(self) -> Path:
+    def data_dir_for(self, root_path: str) -> Path:
         return Path(tempfile.gettempdir()) / "mock_data"
 
-    @property
-    def thumb_dir(self) -> Path:
-        return self.data_dir / ".thumbnails"
+    def thumb_dir_for(self, root_path: str) -> Path:
+        return self.data_dir_for(root_path) / ".thumbnails"

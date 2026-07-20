@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from sqlite3 import Connection
 
 from AssetsManager.core.database import db_write_lock
@@ -27,6 +28,13 @@ class TagRepository:
         ).fetchall()
         return [r[0] for r in rows]
 
+    def list_tags_with_counts(self) -> list[dict[str, int | str]]:
+        """Return all tags with their usage counts, sorted by tag."""
+        rows = self._conn.execute(
+            "SELECT tag, COUNT(*) as cnt FROM file_tags GROUP BY tag ORDER BY tag"
+        ).fetchall()
+        return [{"name": row[0], "count": row[1]} for row in rows]
+
     def get_tags_for_files(self, file_paths: list[str]) -> dict[str, list[str]]:
         """Return tags for multiple files, keyed by file path.
 
@@ -48,7 +56,7 @@ class TagRepository:
 
     def add_tag(self, file_path: str, tag: str) -> bool:
         """Add a tag to a file. Returns True if inserted (not duplicate)."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             try:
                 self._conn.execute(
                     "INSERT OR IGNORE INTO file_tags (file_path, tag) VALUES (?, ?)",
@@ -62,7 +70,7 @@ class TagRepository:
 
     def remove_tag(self, file_path: str, tag: str) -> bool:
         """Remove a tag from a file. Returns True if deleted."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             try:
                 self._conn.execute(
                     "DELETE FROM file_tags WHERE file_path=? AND tag=?",
@@ -76,12 +84,26 @@ class TagRepository:
 
     def remove_file(self, file_path: str) -> int:
         """Remove all tags for a file. Returns number of tags removed."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             cur = self._conn.execute(
                 "DELETE FROM file_tags WHERE file_path=?",
                 (file_path,),
             )
             self._conn.commit()
+            return cur.rowcount
+
+    def delete_path(self, file_path: str, *, commit: bool = True) -> int:
+        """Delete tags for a path and its descendants."""
+        escaped = file_path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        separator = "\\" if "\\" in file_path else "/" if "/" in file_path else os.sep
+        prefix = escaped + separator.replace("\\", "\\\\") + "%"
+        with db_write_lock(self._conn):
+            cur = self._conn.execute(
+                "DELETE FROM file_tags WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
+                (file_path, prefix),
+            )
+            if commit:
+                self._conn.commit()
             return cur.rowcount
 
     def get_all_tags(self) -> list[str]:
@@ -99,6 +121,14 @@ class TagRepository:
         ).fetchall()
         return [r[0] for r in rows]
 
+    def get_files_by_tag_case_insensitive(self, tag: str) -> list[str]:
+        """Return file paths for a tag using SQLite's case-insensitive match."""
+        rows = self._conn.execute(
+            "SELECT file_path FROM file_tags WHERE LOWER(tag)=LOWER(?)",
+            (tag,),
+        ).fetchall()
+        return [row[0] for row in rows]
+
     def get_tags_for_tree(self, dir_path: str) -> list[str]:
         """Return all unique tags for files under a directory prefix."""
         escaped = dir_path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -110,7 +140,7 @@ class TagRepository:
 
     def rename_tag(self, old_name: str, new_name: str) -> int:
         """Rename a tag across all files. Returns number of rows affected."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             cur = self._conn.execute(
                 "UPDATE file_tags SET tag=? WHERE tag=?",
                 (new_name, old_name),
@@ -120,7 +150,7 @@ class TagRepository:
 
     def delete_tag(self, tag_name: str) -> int:
         """Delete a tag from all files. Returns number of rows affected."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             cur = self._conn.execute(
                 "DELETE FROM file_tags WHERE tag=?",
                 (tag_name,),
@@ -131,7 +161,7 @@ class TagRepository:
     def migrate_path(self, old_path: str, new_path: str) -> int:
         """Move all tags from old_path to new_path. Returns rows affected."""
         escaped = old_path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        with db_write_lock():
+        with db_write_lock(self._conn):
             rows = self._conn.execute(
                 "SELECT file_path, tag FROM file_tags WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
                 (old_path, escaped + "/%"),
@@ -166,7 +196,7 @@ class TagRepository:
 
     def set_tag_metadata(self, tag: str, color: str = "", icon: str = "", category: str = "") -> None:
         """Set metadata for a tag."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.execute(
                 "INSERT INTO tag_metadata (tag, color, icon, category) VALUES (?, ?, ?, ?) "
                 "ON CONFLICT(tag) DO UPDATE SET "
@@ -190,6 +220,6 @@ class TagRepository:
 
     def delete_tag_metadata(self, tag: str) -> None:
         """Delete metadata for a tag."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.execute("DELETE FROM tag_metadata WHERE tag=?", (tag,))
             self._conn.commit()

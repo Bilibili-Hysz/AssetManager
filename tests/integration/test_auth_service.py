@@ -13,7 +13,7 @@ def test_init_tables(schema_db):
     ).fetchall()}
     assert "users" in tables
     assert "invite_codes" in tables
-    assert "share_links" in tables
+    assert "share_links" not in tables
 
 
 def test_password_hash_and_verify():
@@ -61,34 +61,6 @@ def test_register_and_authenticate_user(schema_db):
     user, err = svc.authenticate_user("testuser", "wrong")
     assert user is None
     assert err != ""
-
-
-def test_create_and_get_share_link(schema_db):
-    from AssetsManager.application.auth_service import AuthService
-
-    conn = schema_db
-    svc = AuthService(conn, "test-secret")
-    svc.init_tables()
-
-    share = svc.create_share_link(["project/asset.txt"], allow_preview=True)
-    assert share is not None
-    assert share["paths"] == ["project/asset.txt"]
-
-    retrieved = svc.get_share_link(share["id"])
-    assert retrieved is not None
-    assert retrieved["id"] == share["id"]
-
-
-def test_verify_share_password_allows_passwordless_share(schema_db):
-    from AssetsManager.application.auth_service import AuthService
-
-    conn = schema_db
-    svc = AuthService(conn, "test-secret")
-    svc.init_tables()
-
-    share = svc.create_share_link(["project/asset.txt"], allow_preview=True)
-    assert share is not None
-    assert svc.verify_share_password(share["id"], "") is True
 
 
 def test_user_activate_deactivate(schema_db):

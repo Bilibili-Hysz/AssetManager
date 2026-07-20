@@ -116,7 +116,8 @@ class PluginManagerService:
         record = self.plugin_record(plugin_id)
         if record is None:
             return False
-        self.unload_plugin(plugin_id)
+        if not self.unload_plugin(plugin_id):
+            return False
         record.enabled = False
         record.state = PLUGIN_STATE_DISABLED
         self._persist_enabled_state()
@@ -154,12 +155,15 @@ class PluginManagerService:
                 record.state = PLUGIN_STATE_LOADED
                 if host_context is not None and hasattr(record.plugin_instance, "register"):
                     register = getattr(record.plugin_instance, "register")
-                    register(host_context)
+                    with host_context.plugin_registration(record.plugin_id):
+                        register(host_context)
                     record.state = PLUGIN_STATE_ACTIVE
                 _log.info("Plugin '%s' loaded (%s)", record.plugin_id, record.state)
             return PluginLoadResult(True, record.plugin_id, record.state, tuple(record.diagnostics))
         except Exception as exc:
             _log.exception("Failed to load plugin '%s'", record.plugin_id)
+            if host_context is not None:
+                host_context.unregister_plugin(record.plugin_id)
             with self._records_lock:
                 record.diagnostics.append(PluginDiagnostic(
                     "error", "plugin.load_failed", f"Load failed: {exc}",
@@ -172,12 +176,14 @@ class PluginManagerService:
             return PluginLoadResult(False, record.plugin_id, PLUGIN_STATE_ERROR, tuple(record.diagnostics))
 
     def unload_plugin(self, plugin_id: str) -> bool:
+        plugin_id = str(plugin_id or "").strip()
         with self._records_lock:
-            record = self._records.get(str(plugin_id or "").strip())
+            record = self._records.get(plugin_id)
             if record is None:
                 return False
             instance = record.plugin_instance
             ctx: PluginHostContext | None = record.host_context  # type: ignore[assignment]
+        unregister_failed = False
         if instance is not None and ctx is not None and hasattr(instance, "unregister"):
             try:
                 unregister = getattr(instance, "unregister")
@@ -190,10 +196,14 @@ class PluginManagerService:
                         plugin_id=record.plugin_id, source=record.manifest_path,
                     ))
                     record.state = PLUGIN_STATE_ERROR
-                return False
+                unregister_failed = True
         # Always clean up host context contributions, even if plugin has no unregister()
         if ctx is not None:
-            ctx.unregister_plugin(plugin_id)
+            try:
+                ctx.unregister_plugin(plugin_id)
+            except Exception:
+                # A faulty subscription cleanup must not retain global plugin state.
+                _log.exception("Failed to clean host contributions for plugin '%s'", record.plugin_id)
         # Clean up global mutations (categories, theme tokens)
         self.remove_registered_categories(plugin_id)
         self.remove_registered_theme_tokens(plugin_id)
@@ -205,8 +215,10 @@ class PluginManagerService:
             record.module = None
             record.plugin_instance = None
             record.host_context = None
-            record.state = PLUGIN_STATE_LOADABLE if record.enabled else PLUGIN_STATE_DISABLED
-        return True
+            record.state = PLUGIN_STATE_ERROR if unregister_failed else (
+                PLUGIN_STATE_LOADABLE if record.enabled else PLUGIN_STATE_DISABLED
+            )
+        return not unregister_failed
 
     def load_all_enabled(self, host_context: PluginHostContext | None = None) -> list[PluginLoadResult]:
         """Load all enabled plugins. Returns results for each."""

@@ -3,7 +3,7 @@ import logging
 import tempfile
 from pathlib import Path
 
-from AssetsManager.core.database import get_library_dir
+from AssetsManager.core.path_resolver import library_data_dir
 from AssetsManager.core.json_store import JsonStore
 
 _log = logging.getLogger(__name__)
@@ -17,11 +17,12 @@ class SidebarFavorites(JsonStore):
         if library_root:
             self.set_library_root(library_root)
 
-    def set_library_root(self, library_root: str):
+    def set_library_root(self, library_root: str, data_dir: Path | None = None):
         if not library_root or library_root == ".":
             return
         old_data = list(self._items) if self._loaded else None
-        self._path = get_library_dir(library_root) / "favorites.json"
+        self._path = (data_dir or library_data_dir(library_root)) / "favorites.json"
+        self._path.parent.mkdir(parents=True, exist_ok=True)
         self._loaded = False
         self._ensure_loaded()
         if old_data and not self._items:

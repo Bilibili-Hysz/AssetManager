@@ -8,7 +8,7 @@ from sqlite3 import Connection
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.core.tag_library import get_library
 from AssetsManager.domain.event_bus import get_event_bus
-from AssetsManager.domain.events import TagsChanged
+from AssetsManager.domain.events import AssetTagsChanged, TagCatalogChanged, TagsChanged
 from AssetsManager.repositories.tag_repository import TagRepository
 
 _log = logging.getLogger(__name__)
@@ -51,14 +51,33 @@ class TagService:
         self._connection_provider = connection_provider
         self._session = session
 
+    def _publish_asset_tags_changed(
+        self, file_path: str, tags: tuple[str, ...], *, publish_catalog: bool = True
+    ) -> None:
+        if self._session is None:
+            return
+        get_event_bus().publish(AssetTagsChanged(
+            library_root=self._session.root_str,
+            session_token=self._session.event_token,
+            file_path=file_path,
+            new_tags=tags,
+        ))
+        if publish_catalog:
+            self._publish_tag_catalog_changed()
+
+    def _publish_tag_catalog_changed(self) -> None:
+        if self._session is None:
+            return
+        get_event_bus().publish(TagCatalogChanged(
+            library_root=self._session.root_str,
+            session_token=self._session.event_token,
+        ))
+
     @session_operation
     def list_tags(self, library_root: str | Path, db_conn: Connection | None = None) -> list[dict]:
         """Return all tags with usage counts."""
-        conn = _resolve_connection(db_conn, library_root, self._connection_provider)
-        rows = conn.execute(
-            "SELECT tag, COUNT(*) as cnt FROM file_tags GROUP BY tag ORDER BY tag"
-        ).fetchall()
-        return [{"name": r[0], "count": r[1]} for r in rows]
+        repo = _get_repo(db_conn, library_root, self._connection_provider)
+        return repo.list_tags_with_counts()
 
     @session_operation
     def get_tags(self, library_root: str | Path, path: str | Path,
@@ -66,6 +85,13 @@ class TagService:
         """Return tags for a file."""
         repo = _get_repo(db_conn, library_root, self._connection_provider)
         return repo.get_tags(str(Path(path).resolve()))
+
+    @session_operation
+    def get_tags_for_files(self, library_root: str | Path, paths: list[str | Path],
+                           db_conn: Connection | None = None) -> dict[str, list[str]]:
+        """Return tags keyed by resolved path for many files at once."""
+        repo = _get_repo(db_conn, library_root, self._connection_provider)
+        return repo.get_tags_for_files([str(Path(path).resolve()) for path in paths])
 
     @session_operation
     def add_tag(self, library_root: str | Path, path: str | Path, tag: str,
@@ -80,7 +106,9 @@ class TagService:
         if canonical.lower() in existing:
             return
         repo.add_tag(key, canonical)
-        get_event_bus().publish(TagsChanged(file_path=key, new_tags=tuple(repo.get_tags(key))))
+        tags = tuple(repo.get_tags(key))
+        get_event_bus().publish(TagsChanged(file_path=key, new_tags=tags))
+        self._publish_asset_tags_changed(key, tags)
 
     @session_operation
     def remove_tag(self, library_root: str | Path, path: str | Path, tag: str,
@@ -92,23 +120,44 @@ class TagService:
         match = next((t for t in existing if t.lower() == tag.lower()), None)
         if match:
             repo.remove_tag(key, match)
-            get_event_bus().publish(TagsChanged(file_path=key, new_tags=tuple(repo.get_tags(key))))
+            tags = tuple(repo.get_tags(key))
+            get_event_bus().publish(TagsChanged(file_path=key, new_tags=tags))
+            self._publish_asset_tags_changed(key, tags)
+
+    @session_operation
+    def remove_file(self, library_root: str | Path, path: str | Path,
+                    db_conn: Connection | None = None) -> None:
+        """Remove all tags for a resolved file path."""
+        repo = _get_repo(db_conn, library_root, self._connection_provider)
+        repo.remove_file(str(Path(path).resolve()))
 
     @session_operation
     def rename_tag(self, library_root: str | Path, old_name: str, new_name: str,
                    db_conn: Connection | None = None) -> None:
         """Rename a tag across all files."""
         repo = _get_repo(db_conn, library_root, self._connection_provider)
+        paths = repo.get_files_by_tag(old_name)
         repo.rename_tag(old_name, new_name)
         get_event_bus().publish(TagsChanged())
+        for path in paths:
+            self._publish_asset_tags_changed(
+                path, tuple(repo.get_tags(path)), publish_catalog=False
+            )
+        self._publish_tag_catalog_changed()
 
     @session_operation
     def delete_tag(self, library_root: str | Path, tag_name: str,
                    db_conn: Connection | None = None) -> None:
         """Delete a tag from all files."""
         repo = _get_repo(db_conn, library_root, self._connection_provider)
+        paths = repo.get_files_by_tag(tag_name)
         repo.delete_tag(tag_name)
         get_event_bus().publish(TagsChanged())
+        for path in paths:
+            self._publish_asset_tags_changed(
+                path, tuple(repo.get_tags(path)), publish_catalog=False
+            )
+        self._publish_tag_catalog_changed()
 
     @session_operation
     def get_tags_for_tree(self, library_root: str | Path, dir_path: str | Path,
@@ -180,8 +229,7 @@ class TagServiceAdapter:
         return self._svc.get_tags(self._root, filepath)
 
     def get_tags_for_files(self, filepaths: list[str]) -> dict[str, list[str]]:
-        repo = _get_repo(None, self._root, self._svc._connection_provider)
-        return repo.get_tags_for_files(filepaths)
+        return self._svc.get_tags_for_files(self._root, filepaths)
 
     def add_tag(self, filepath: str, tag: str) -> None:
         self._svc.add_tag(self._root, filepath, tag)
@@ -190,8 +238,7 @@ class TagServiceAdapter:
         self._svc.remove_tag(self._root, filepath, tag)
 
     def remove_file(self, filepath: str) -> None:
-        repo = _get_repo(None, self._root, self._svc._connection_provider)
-        repo.remove_file(filepath)
+        self._svc.remove_file(self._root, filepath)
 
     def get_all_tags(self) -> list[str]:
         return self._svc.get_all_tags(self._root)

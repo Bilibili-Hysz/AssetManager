@@ -26,6 +26,8 @@ from AssetsManager.application.tag_service import TagService
 from AssetsManager.application.thumbnail_service import ThumbnailService
 from AssetsManager.application.undo_service import UndoService
 from AssetsManager.core.database import DatabaseManager
+from AssetsManager.core.directory_cache import DirectoryCache
+from AssetsManager.core.performance import PerformanceRecorder
 from AssetsManager.core.plugins import PluginHostContext
 from AssetsManager.di import ServiceContainer
 
@@ -52,6 +54,7 @@ class LibraryScopedServices:
     undo_service: UndoService
     plugin_service: PluginService
     asset_index_service: AssetIndexService
+    performance_recorder: PerformanceRecorder | None = None
 
 
 class ApplicationBootstrap:
@@ -64,8 +67,13 @@ class ApplicationBootstrap:
         lib_svc = bootstrap.resolve(LibraryService)
     """
 
-    def __init__(self, container: ServiceContainer | None = None):
+    def __init__(
+        self,
+        container: ServiceContainer | None = None,
+        performance_recorder: PerformanceRecorder | None = None,
+    ):
         self.container = container or ServiceContainer()
+        self._performance_recorder = performance_recorder
         self._plugin_host: PluginHostContext | None = None
         self._plugin_svc: PluginService | None = None
         self._undo_services: dict[int, tuple[LibrarySession, UndoService]] = {}
@@ -77,7 +85,7 @@ class ApplicationBootstrap:
     def _register_services(self) -> None:
         c = self.container
         # Core infrastructure — no dependencies
-        c.register(DatabaseManager)
+        c.register(DatabaseManager, instance=DatabaseManager(self._performance_recorder))
         # Core services — class-based registration (auto-singleton)
         c.register(LibraryService, deps=[DatabaseManager])
         c.register(AssetService)
@@ -122,6 +130,10 @@ class ApplicationBootstrap:
     def plugin_service(self) -> PluginService | None:
         return self._plugin_svc
 
+    @property
+    def performance_recorder(self) -> PerformanceRecorder | None:
+        return self._performance_recorder
+
     # ── Convenience accessors ────────────────────────────────────
 
     def resolve(self, service_type):
@@ -138,23 +150,39 @@ class ApplicationBootstrap:
         key = id(session)
         cached = self._undo_services.get(key)
         if cached is None or cached[0] is not session:
-            cached = (session, UndoService(library_root=session.root_str, session=session))
+            cached = (
+                session,
+                UndoService(
+                    library_root=session.root_str,
+                    session=session,
+                    performance_recorder=self._performance_recorder,
+                ),
+            )
             self._undo_services[key] = cached
         return LibraryScopedServices(
             session=session,
-            asset_service=self.container.resolve(AssetService),
+            asset_service=AssetService(
+                directory_cache=DirectoryCache(session.connection_for(session.root)),
+                performance_recorder=self._performance_recorder,
+                session_token=session.event_token,
+            ),
             metadata_service=MetadataService(connection_provider=provider, session=session),
             tag_service=TagService(connection_provider=provider, session=session),
             project_service=ProjectService(connection_provider=provider, session=session),
             thumbnail_service=self.container.resolve(ThumbnailService),
-            search_service=self.container.resolve(SearchService),
+            search_service=SearchService(
+                performance_recorder=self._performance_recorder,
+                session_token=session.event_token,
+            ),
             file_operation_service=FileOperationService(
                 session=session,
                 asset_index_service=self.container.resolve(AssetIndexService),
+                performance_recorder=self._performance_recorder,
             ),
             undo_service=cached[1],
             plugin_service=self.container.resolve(PluginService),
             asset_index_service=self.container.resolve(AssetIndexService),
+            performance_recorder=self._performance_recorder,
         )
 
     def _cleanup_session(self, session: LibrarySession) -> None:

@@ -76,8 +76,8 @@ class ShareLinkDialog(TabbedDialog):
         options_layout.setSpacing(scaled_px(8))
 
         # Password
-        pw_row = self.make_labeled_row(tr("sharelink.label.password"), self.make_input(tr("sharelink.placeholder.password")))
-        self._password_input = pw_row.itemAt(1).widget()
+        self._password_input = self.make_input(tr("sharelink.placeholder.password"))
+        pw_row = self.make_labeled_row(tr("sharelink.label.password"), self._password_input)
         self._password_input.setEchoMode(QLineEdit.EchoMode.Password)
         options_layout.addLayout(pw_row)
 

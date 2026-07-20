@@ -482,10 +482,6 @@ class PluginManagerDialog(TabbedDialog):
         else:
             self._manager.disable_plugin(plugin_id)
 
-        # Notify other UI components
-        from AssetsManager.core.signal_bus import get as bus
-        bus().plugin_changed.emit(plugin_id, enable)
-
         # Refresh the affected card
         card = self._cards.get(plugin_id)
         record = self._manager.plugin_record(plugin_id)

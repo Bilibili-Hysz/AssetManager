@@ -5,11 +5,15 @@ import logging
 import os
 import subprocess
 import sys
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 from AssetsManager.core.plugins.descriptor import ALL_PERMISSIONS
+from AssetsManager.domain.event_bus import EventSubscription, get_event_bus
+from AssetsManager.domain.events import DomainEvent
 
 _log = logging.getLogger(__name__)
 
@@ -123,6 +127,9 @@ class PluginHostContext:
         self._search_providers: list[SearchProviderContribution] = []
         self._theme_tokens: list[ThemeTokenContribution] = []
         self._event_hooks: dict[type, list[tuple[Callable, str]]] = {}
+        self._event_subscriptions: list[tuple[str, EventSubscription, dict[str, bool]]] = []
+        self._registering_plugin_id = ""
+        self._event_hooks_lock = threading.Lock()
         self._notifications: list[dict[str, str]] = []
 
     def register_command(self, descriptor: dict[str, object], handler: Callable[..., object] | None = None, plugin_id: str = "") -> bool:
@@ -359,18 +366,38 @@ class PluginHostContext:
     def granted_permissions(self) -> frozenset[str]:
         return self._granted_permissions
 
-    def hook(self, event_type: type, handler: Callable, plugin_id: str = "") -> None:
+    @contextmanager
+    def plugin_registration(self, plugin_id: str):
+        """Assign ownership to contributions registered during plugin startup."""
+        previous = self._registering_plugin_id
+        self._registering_plugin_id = plugin_id
+        try:
+            yield
+        finally:
+            self._registering_plugin_id = previous
+
+    def hook(self, event_type: type[DomainEvent], handler: Callable, plugin_id: str = "") -> None:
         """Register a handler for a lifecycle event.
 
-        The handler will be called when the event is published via EventBus.
-        Supported event types are defined in domain.events:
-        - LibraryOpened, FileRenamed, FileDeleted, FileCreated, FileCopied
-        - TagsChanged, NotesChanged, UrlsChanged
+        The handler runs synchronously in the EventBus publishing thread. It
+        must not mutate Qt UI directly; unload closes the host-owned subscription.
         """
+        if not isinstance(event_type, type) or not issubclass(event_type, DomainEvent):
+            raise TypeError("hook event_type must be a DomainEvent subclass")
         if not callable(handler):
             _log.warning("hook: handler must be callable")
             return
-        self._event_hooks.setdefault(event_type, []).append((handler, plugin_id))
+        owner = plugin_id or self._registering_plugin_id
+        active = {"value": True}
+
+        def dispatch(event: DomainEvent) -> None:
+            if active["value"]:
+                handler(event)
+
+        with self._event_hooks_lock:
+            self._event_hooks.setdefault(event_type, []).append((handler, owner))
+            subscription = get_event_bus().subscribe(event_type, dispatch)
+            self._event_subscriptions.append((owner, subscription, active))
 
     def file_handlers(self) -> list[FileHandlerContribution]:
         return list(self._file_handlers)
@@ -387,7 +414,8 @@ class PluginHostContext:
         return list(self._categories)
 
     def event_hooks(self) -> dict[type, list[tuple[Callable, str]]]:
-        return dict(self._event_hooks)
+        with self._event_hooks_lock:
+            return {event_type: list(hooks) for event_type, hooks in self._event_hooks.items()}
 
     def open_path(self, path: str) -> bool:
         p = str(path or "").strip()
@@ -449,10 +477,25 @@ class PluginHostContext:
         self._columns = [c for c in self._columns if c.plugin_id != plugin_id]
         self._search_providers = [p for p in self._search_providers if p.plugin_id != plugin_id]
         self._theme_tokens = [t for t in self._theme_tokens if t.plugin_id != plugin_id]
-        self._event_hooks = {
-            etype: [(h, pid) for h, pid in handlers if pid != plugin_id]
-            for etype, handlers in self._event_hooks.items()
-        }
+        with self._event_hooks_lock:
+            subscriptions = [
+                (subscription, active)
+                for pid, subscription, active in self._event_subscriptions
+                if pid == plugin_id
+            ]
+            self._event_subscriptions = [
+                (pid, subscription, active)
+                for pid, subscription, active in self._event_subscriptions
+                if pid != plugin_id
+            ]
+            self._event_hooks = {
+                etype: [(h, pid) for h, pid in handlers if pid != plugin_id]
+                for etype, handlers in self._event_hooks.items()
+            }
+            for _subscription, active in subscriptions:
+                active["value"] = False
+        for subscription, _active in subscriptions:
+            subscription.close()
         _log.info("Unregistered contributions for plugin '%s'", plugin_id)
 
 

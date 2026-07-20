@@ -41,9 +41,18 @@ These rules are mandatory for new refactor work.
 | `library_opened(root)` | Library root path | `window.py`, `startup.py` |
 | `directory_changed(current_path)` | Current browsing directory | `file_list/_navigation.py`, `sidebar.py` |
 | `file_focused(file_info)` | Selected file info | `file_list` |
-| `TagsChanged` / `NotesChanged` / `UrlsChanged` | Domain events | application services |
+| `FileSystemChanged` | Session-bound file projection change | `FileOperationService` |
+| `AssetTagsChanged` / `TagCatalogChanged` | Session-bound asset or tag catalog change | `TagService` |
+| `AssetNotesChanged` / `AssetUrlsChanged` | Session-bound asset metadata change | `MetadataService` |
 
 **Rule**: `library_opened` carries library roots; `directory_changed` carries browsing paths. Never conflate the two.
+
+### Domain Events And Qt Signals
+
+- Application services publish immutable domain events through `EventBus`; desktop panels consume them only through `panels/_event_bridge.py`, which forwards them to the Qt thread.
+- New panel refresh logic must use session-scoped events (`FileSystemChanged`, `AssetTagsChanged`, `TagCatalogChanged`, `AssetNotesChanged`, `AssetUrlsChanged`) and must filter on the active `session_token` before mutating UI state.
+- Legacy unscoped events (`FileCreated`, `FileRenamed`, `FileDeleted`, `FileCopied`, `TagsChanged`, `NotesChanged`, `UrlsChanged`) remain a plugin and compatibility API. Do not add panel subscriptions to them.
+- `core.signal_bus` is for Qt-only presentation coordination such as navigation, focus, theme, language, and UI scale. It is not a replacement for application mutation events.
 
 ## New Feature Entry Rules
 

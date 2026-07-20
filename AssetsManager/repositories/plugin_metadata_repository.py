@@ -19,7 +19,7 @@ class PluginMetadataRepository:
 
     def upsert(self, file_path: str, plugin_id: str, field_key: str, field_value: str) -> None:
         """Insert or update a plugin metadata entry."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.execute(
                 "INSERT INTO plugin_metadata (file_path, plugin_id, field_key, field_value, updated_at) "
                 "VALUES (?, ?, ?, ?, ?) "
@@ -33,7 +33,7 @@ class PluginMetadataRepository:
         """Insert or update multiple fields for a file/plugin pair in one transaction."""
         if not fields:
             return
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.executemany(
                 "INSERT INTO plugin_metadata (file_path, plugin_id, field_key, field_value, updated_at) "
                 "VALUES (?, ?, ?, ?, ?) "
@@ -81,7 +81,7 @@ class PluginMetadataRepository:
 
     def delete_for_file(self, file_path: str) -> None:
         """Delete all plugin metadata for a file."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.execute(
                 "DELETE FROM plugin_metadata WHERE file_path=?",
                 (file_path,),
@@ -90,7 +90,7 @@ class PluginMetadataRepository:
 
     def delete_for_plugin(self, plugin_id: str) -> None:
         """Delete all metadata for a plugin (e.g. on uninstall)."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.execute(
                 "DELETE FROM plugin_metadata WHERE plugin_id=?",
                 (plugin_id,),

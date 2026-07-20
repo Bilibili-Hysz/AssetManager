@@ -25,9 +25,67 @@ def test_close_library_is_selective_and_idempotent(tmp_path):
     manager.close()
 
 
+def test_database_manager_uses_only_explicit_library_resources(tmp_path):
+    from AssetsManager.core.database import DatabaseManager
+
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    manager = DatabaseManager()
+    try:
+        first_conn = manager.connection_for(first)
+        first_data_dir = manager.data_dir_for(first)
+        first_thumb_dir = manager.thumb_dir_for(first)
+        second_conn = manager.connection_for(second)
+
+        assert first_conn is manager.connection_for(first)
+        assert second_conn is manager.connection_for(second)
+        assert first_conn is not second_conn
+        assert first_data_dir == manager.data_dir_for(first)
+        assert first_thumb_dir == manager.thumb_dir_for(first)
+        assert not hasattr(manager, "_current_root")
+        assert not hasattr(manager, "_current_key")
+        assert not hasattr(manager, "db_conn")
+        assert not hasattr(manager, "data_dir")
+        assert not hasattr(manager, "thumb_dir")
+    finally:
+        manager.close()
+
+
+def test_database_module_does_not_expose_removed_get_manager_wrapper():
+    from AssetsManager.core import database
+
+    assert not hasattr(database, "get_manager")
+
+
+def test_database_module_does_not_expose_removed_get_lib_db_helper():
+    from AssetsManager.core import database
+
+    assert not hasattr(database, "get_lib_db")
+
+
+def test_database_module_does_not_expose_removed_update_library_stats_helper():
+    from AssetsManager.core import database
+
+    assert not hasattr(database, "update_library_stats")
+
+
+def test_legacy_library_dir_helper_does_not_construct_database_manager(tmp_path, monkeypatch):
+    from AssetsManager.core import database
+
+    def fail_singleton(_type):
+        raise AssertionError("path-only lookup must not construct DatabaseManager")
+
+    monkeypatch.setattr(database.ThreadSafeSingleton, "get", fail_singleton)
+
+    directory = database.get_library_dir(str(tmp_path / "library"))
+
+    assert directory.is_dir()
+
+
 def test_migrate_path_metadata_moves_file_rows(tmp_path, monkeypatch):
     from AssetsManager.core import database, path_resolver
-    from AssetsManager.core.singleton import ThreadSafeSingleton
 
     runtime = tmp_path / "RuntimeData"
     lib = tmp_path / "Library"
@@ -40,9 +98,10 @@ def test_migrate_path_metadata_moves_file_rows(tmp_path, monkeypatch):
     monkeypatch.setattr(path_resolver, "runtime_root", lambda: runtime)
     monkeypatch.setattr(database, "RUNTIME_ROOT", runtime)
     try:
-        conn = database.get_lib_db(str(lib))
+        manager = database.DatabaseManager()
+        conn = manager.connection_for(lib)
         old_key = database._thumbnail_cache_key(str(old.resolve()))
-        thumb_dir = ThreadSafeSingleton.get(database.DatabaseManager).thumb_dir
+        thumb_dir = manager.thumb_dir_for(lib)
         thumb_dir.mkdir(parents=True, exist_ok=True)
         (thumb_dir / f"{old_key}.webp").write_bytes(b"thumb")
         conn.execute("INSERT INTO file_tags (file_path, tag) VALUES (?,?)", (str(old.resolve()), "hero"))
@@ -53,7 +112,7 @@ def test_migrate_path_metadata_moves_file_rows(tmp_path, monkeypatch):
         )
         conn.commit()
 
-        database.migrate_path_metadata(str(lib), str(old), str(new))
+        database.migrate_path_metadata(conn, thumb_dir, old, new)
 
         assert conn.execute("SELECT tag FROM file_tags WHERE file_path=?", (str(new.resolve()),)).fetchone() == ("hero",)
         assert conn.execute("SELECT notes, urls FROM file_meta WHERE file_path=?", (str(new.resolve()),)).fetchone() == ("note", '["https://example.com"]')
@@ -62,12 +121,11 @@ def test_migrate_path_metadata_moves_file_rows(tmp_path, monkeypatch):
         assert conn.execute("SELECT source_path FROM thumbnail_cache WHERE cache_key=?", (new_key,)).fetchone() == (str(new.resolve()),)
         assert (thumb_dir / f"{new_key}.webp").exists()
     finally:
-        database.close_all_dbs()
+        manager.close()
 
 
 def test_migrate_path_metadata_uses_target_library_thumb_dir(tmp_path, monkeypatch):
     from AssetsManager.core import database, path_resolver
-    from AssetsManager.core.singleton import ThreadSafeSingleton
 
     runtime = tmp_path / "RuntimeData"
     first = tmp_path / "FirstLibrary"
@@ -82,9 +140,10 @@ def test_migrate_path_metadata_uses_target_library_thumb_dir(tmp_path, monkeypat
     monkeypatch.setattr(path_resolver, "runtime_root", lambda: runtime)
     monkeypatch.setattr(database, "RUNTIME_ROOT", runtime)
     try:
-        first_conn = database.get_lib_db(str(first))
+        manager = database.DatabaseManager()
+        first_conn = manager.connection_for(first)
         old_key = database._thumbnail_cache_key(str(old.resolve()))
-        first_thumb_dir = ThreadSafeSingleton.get(database.DatabaseManager).thumb_dir_for(first)
+        first_thumb_dir = manager.thumb_dir_for(first)
         first_thumb_dir.mkdir(parents=True, exist_ok=True)
         old_thumb = first_thumb_dir / f"{old_key}.webp"
         old_thumb.write_bytes(b"thumb")
@@ -94,17 +153,17 @@ def test_migrate_path_metadata_uses_target_library_thumb_dir(tmp_path, monkeypat
         )
         first_conn.commit()
 
-        # Switch the manager's mutable current library before migrating first.
-        database.get_lib_db(str(second))
+        # Opening another library must not alter the target library resources.
+        manager.connection_for(second)
 
-        database.migrate_path_metadata(str(first), str(old), str(new))
+        database.migrate_path_metadata(first_conn, first_thumb_dir, old, new)
 
         new_key = database._thumbnail_cache_key(str(new.resolve()))
         assert not old_thumb.exists()
         assert (first_thumb_dir / f"{new_key}.webp").exists()
-        assert not (ThreadSafeSingleton.get(database.DatabaseManager).thumb_dir_for(second) / f"{new_key}.webp").exists()
+        assert not (manager.thumb_dir_for(second) / f"{new_key}.webp").exists()
     finally:
-        database.close_all_dbs()
+        manager.close()
 
 
 def test_migrate_path_metadata_moves_directory_children(tmp_path, monkeypatch):
@@ -124,15 +183,16 @@ def test_migrate_path_metadata_moves_directory_children(tmp_path, monkeypatch):
     monkeypatch.setattr(path_resolver, "runtime_root", lambda: runtime)
     monkeypatch.setattr(database, "RUNTIME_ROOT", runtime)
     try:
-        conn = database.get_lib_db(str(lib))
+        manager = database.DatabaseManager()
+        conn = manager.connection_for(lib)
         conn.execute("INSERT INTO file_tags (file_path, tag) VALUES (?,?)", (str(child.resolve()), "nested"))
         conn.execute("INSERT INTO file_meta (file_path, notes) VALUES (?,?)", (str(child.resolve()), "nested note"))
         conn.commit()
 
-        database.migrate_path_metadata(str(lib), str(old_dir), str(new_dir))
+        database.migrate_path_metadata(conn, manager.thumb_dir_for(lib), old_dir, new_dir)
 
         assert conn.execute("SELECT tag FROM file_tags WHERE file_path=?", (str(new_child.resolve()),)).fetchone() == ("nested",)
         assert conn.execute("SELECT notes FROM file_meta WHERE file_path=?", (str(new_child.resolve()),)).fetchone() == ("nested note",)
         assert conn.execute("SELECT 1 FROM file_meta WHERE file_path=?", (str(child.resolve()),)).fetchone() is None
     finally:
-        database.close_all_dbs()
+        manager.close()

@@ -59,7 +59,8 @@ def test_bound_copy_to_directory_allows_external_sources(tmp_path):
 
     assert result.ok
     assert (library / "external.txt").read_text(encoding="utf-8") == "asset"
-    assert scoped.asset_index_service.get_entry(scoped.session.db_conn, library / "external.txt") is not None
+    conn = scoped.session.connection_for(library)
+    assert scoped.asset_index_service.get_entry(conn, library / "external.txt") is not None
 
 
 def test_file_copied_observers_see_new_file_indexed(tmp_path):
@@ -73,7 +74,7 @@ def test_file_copied_observers_see_new_file_indexed(tmp_path):
     external.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
     scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
-    conn = scoped.session.db_conn
+    conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     observed = []
 
@@ -86,6 +87,57 @@ def test_file_copied_observers_see_new_file_indexed(tmp_path):
 
     assert result.ok
     assert observed == [True]
+
+
+def test_file_commands_record_after_projection_and_event_publication(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.core.performance import PerformanceRecorder
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileCopied
+
+    library = tmp_path / "library"
+    library.mkdir()
+    external = tmp_path / "external.txt"
+    external.write_text("asset", encoding="utf-8")
+    recorder = PerformanceRecorder(enabled=True)
+    bootstrap = ApplicationBootstrap(performance_recorder=recorder)
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    observed = []
+
+    def observe(_event):
+        events = [event for event in recorder.recent() if event.name == "file.command"]
+        observed.append(events == [])
+
+    get_event_bus().subscribe(FileCopied, observe)
+    result = scoped.file_operation_service.copy_to_directory([external], library)
+
+    event = next(event for event in recorder.recent() if event.name == "file.command")
+    assert result.ok
+    assert observed == [True]
+    assert event.session_token == scoped.session.event_token
+    assert event.path == scoped.session.root_str
+    assert event.attributes == {
+        "command": "copy", "outcome": "success", "affected_count": 1, "phase": "events_published"
+    }
+
+
+def test_file_command_recorder_failure_does_not_change_operation(tmp_path, monkeypatch):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.core.performance import PerformanceRecorder
+
+    library = tmp_path / "library"
+    library.mkdir()
+    external = tmp_path / "external.txt"
+    external.write_text("asset", encoding="utf-8")
+    recorder = PerformanceRecorder(enabled=True)
+    monkeypatch.setattr(recorder, "record", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError()))
+    bootstrap = ApplicationBootstrap(performance_recorder=recorder)
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+
+    result = scoped.file_operation_service.copy_to_directory([external], library)
+
+    assert result.ok
+    assert (library / "external.txt").exists()
 
 
 def test_move_to_directory_moves_and_renames_conflicts(tmp_path):
@@ -107,6 +159,25 @@ def test_move_to_directory_moves_and_renames_conflicts(tmp_path):
 
 
 def test_rename_migrates_metadata(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.core.tag_store import TagStore
+
+    library = tmp_path / "library"
+    library.mkdir()
+    old = library / "old.txt"
+    old.write_text("asset", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    store = TagStore(str(library), db_conn=scoped.session.connection_for(library))
+    store.add_tag(str(old), "hero")
+
+    new = scoped.file_operation_service.rename(old, "new.txt")
+
+    assert new.name == "new.txt"
+    assert store.get_tags(str(new)) == ["hero"]
+
+
+def test_unbound_rename_with_library_root_migrates_metadata(tmp_path):
     from AssetsManager.application import FileOperationService
     from AssetsManager.core.tag_store import TagStore
 
@@ -119,8 +190,7 @@ def test_rename_migrates_metadata(tmp_path):
 
     new = FileOperationService().rename(old, "new.txt", library_root=library)
 
-    assert new.name == "new.txt"
-    assert TagStore(str(library)).get_tags(str(new)) == ["hero"]
+    assert store.get_tags(str(new)) == ["hero"]
 
 
 def test_rename_reindexes_parent_after_metadata_migration(tmp_path):
@@ -132,12 +202,13 @@ def test_rename_reindexes_parent_after_metadata_migration(tmp_path):
     old.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
     scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
-    scoped.asset_index_service.index_directory(scoped.session.db_conn, library, library)
+    conn = scoped.session.connection_for(library)
+    scoped.asset_index_service.index_directory(conn, library, library)
 
     new = scoped.file_operation_service.rename(old, "new.txt")
 
-    assert scoped.asset_index_service.get_entry(scoped.session.db_conn, old) is None
-    assert scoped.asset_index_service.get_entry(scoped.session.db_conn, new) is not None
+    assert scoped.asset_index_service.get_entry(conn, old) is None
+    assert scoped.asset_index_service.get_entry(conn, new) is not None
 
 
 def test_copy_and_move_reindex_source_and_destination_parents(tmp_path):
@@ -153,16 +224,17 @@ def test_copy_and_move_reindex_source_and_destination_parents(tmp_path):
     bootstrap = ApplicationBootstrap()
     scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
     index = scoped.asset_index_service
-    index.index_directory(scoped.session.db_conn, library, source_dir)
-    index.index_directory(scoped.session.db_conn, library, destination_dir)
+    conn = scoped.session.connection_for(library)
+    index.index_directory(conn, library, source_dir)
+    index.index_directory(conn, library, destination_dir)
 
     copied = scoped.file_operation_service.copy_to_directory([source], destination_dir)
     moved = scoped.file_operation_service.move_to_directory([source], destination_dir)
 
     assert copied.ok and moved.ok
-    assert index.get_entry(scoped.session.db_conn, copied.changed_paths[0]) is not None
-    assert index.get_entry(scoped.session.db_conn, source) is None
-    assert index.get_entry(scoped.session.db_conn, moved.changed_paths[0]) is not None
+    assert index.get_entry(conn, copied.changed_paths[0]) is not None
+    assert index.get_entry(conn, source) is None
+    assert index.get_entry(conn, moved.changed_paths[0]) is not None
 
 
 def test_directory_copy_reindexes_copied_tree(tmp_path):
@@ -178,7 +250,7 @@ def test_directory_copy_reindexes_copied_tree(tmp_path):
     asset.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
     scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
-    conn = scoped.session.db_conn
+    conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
 
     copied = scoped.file_operation_service.copy_to_directory([source_dir], destination_dir)
@@ -305,7 +377,7 @@ def test_permanent_delete_clears_projection_subtree_and_reindexes_parent(tmp_pat
     child.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
     scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
-    conn = scoped.session.db_conn
+    conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     index.index_directory(conn, library, library)
     index.index_directory(conn, library, target)
@@ -340,7 +412,7 @@ def test_trash_delete_clears_projections_before_file_deleted_subscribers_run(tmp
     child.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
     scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
-    conn = scoped.session.db_conn
+    conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     index.index_directory(conn, library, library)
     index.index_directory(conn, library, target)
@@ -402,7 +474,7 @@ def test_directory_move_reindexes_new_hierarchy_and_removes_old_subtree(tmp_path
     asset.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
     scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
-    conn = scoped.session.db_conn
+    conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     for directory in (library, source_parent, old_dir, nested_dir, destination_parent):
         index.index_directory(conn, library, directory)
@@ -433,7 +505,7 @@ def test_file_renamed_observers_see_moved_directory_projection(tmp_path):
     destination.mkdir()
     bootstrap = ApplicationBootstrap()
     scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
-    conn = scoped.session.db_conn
+    conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     index.index_directory(conn, library, library)
     index.index_directory(conn, library, old_dir)
@@ -474,7 +546,7 @@ def test_restore_backup_reindexes_directory_tree_before_publishing_created(tmp_p
     shutil.rmtree(target)
     bootstrap = ApplicationBootstrap()
     scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
-    conn = scoped.session.db_conn
+    conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     observed = []
 
@@ -491,6 +563,35 @@ def test_restore_backup_reindexes_directory_tree_before_publishing_created(tmp_p
 
     assert restored == target
     assert observed == [(str(target), True, True)]
+
+
+def test_create_and_duplicate_reindex_before_publishing_created(tmp_path):
+    from pathlib import Path
+
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileCreated
+
+    library = tmp_path / "library"
+    source = library / "source.txt"
+    source.parent.mkdir()
+    source.write_text("asset", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    conn = scoped.session.connection_for(library)
+    index = scoped.asset_index_service
+    observed = []
+
+    def observe(event):
+        path = Path(event.path)
+        observed.append((path, index.get_entry(conn, path) is not None))
+
+    get_event_bus().subscribe(FileCreated, observe)
+
+    created = scoped.file_operation_service.create_folder(library)
+    duplicate = scoped.file_operation_service.duplicate(source)
+
+    assert observed == [(created, True), (duplicate, True)]
 
 
 def test_bound_restore_backup_rejects_destination_outside_library(tmp_path):

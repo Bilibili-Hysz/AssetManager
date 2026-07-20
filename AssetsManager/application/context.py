@@ -7,6 +7,8 @@ from functools import wraps
 from pathlib import Path
 from sqlite3 import Connection
 import threading
+import uuid
+import warnings
 from typing import TYPE_CHECKING, Any, Callable, Iterator, TypeVar
 
 if TYPE_CHECKING:
@@ -79,6 +81,7 @@ class LibrarySession:
     """
 
     context: LibraryContext
+    event_token: str = field(default_factory=lambda: uuid.uuid4().hex, init=False)
     _closed: bool = False
     _close_callback: Callable[[LibrarySession], None] | None = field(
         default=None, repr=False, compare=False
@@ -114,16 +117,31 @@ class LibrarySession:
 
     @property
     def db_conn(self) -> Connection:
+        warnings.warn(
+            "LibrarySession.db_conn is deprecated; use connection_for(root) or scoped services.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._ensure_access()
         return self.context.db_conn
 
     @property
     def tag_store(self) -> TagStore:
+        warnings.warn(
+            "LibrarySession.tag_store is deprecated; use TagService or TagServiceAdapter.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._ensure_access()
         return self.context.tag_store
 
     @property
     def project_data(self) -> ProjectData:
+        warnings.warn(
+            "LibrarySession.project_data is deprecated; use MetadataService.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._ensure_access()
         return self.context.project_data
 

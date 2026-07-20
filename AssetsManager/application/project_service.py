@@ -9,12 +9,12 @@ from pathlib import Path
 from urllib.parse import quote
 
 from AssetsManager.application.asset_filters import IMAGE_EXTS, find_first_image
-from AssetsManager.application.asset_index_service import AssetIndexService
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.application.metadata_service import MetadataService
 from AssetsManager.application.tag_service import TagService
-from AssetsManager.core.database import db_write_lock
 from AssetsManager.core.format_utils import CATEGORY_MAP, format_size
+from AssetsManager.repositories.metadata_repository import MetadataRepository
+from AssetsManager.repositories.asset_index_repository import AssetIndexRepository
 
 _log = logging.getLogger(__name__)
 
@@ -169,6 +169,7 @@ class ProjectService:
 
     def __init__(self, connection_provider: ConnectionProvider,
                  session: LibrarySession | None = None):
+        self._connection_provider = connection_provider
         self._session = session
         self._metadata_svc = MetadataService(
             connection_provider=connection_provider, session=session
@@ -191,6 +192,7 @@ class ProjectService:
     ) -> ProjectListing:
         root = Path(library_root).resolve()
         target_path = Path(target).resolve()
+        db_conn = db_conn or self._connection_provider(root)
         depth_config = depth_config or ProjectDepthConfig()
         rel_path = rel_path.replace("\\", "/").strip("/")
         search = search.lower()
@@ -248,13 +250,7 @@ class ProjectService:
 
         # Batch query existing counts
         try:
-            placeholders = ",".join("?" * len(paths))
-            rows = db_conn.execute(
-                f"SELECT file_path, cached_file_count FROM file_meta "
-                f"WHERE file_path IN ({placeholders}) AND cached_file_count IS NOT NULL",
-                paths,
-            ).fetchall()
-            cached = {r[0]: r[1] for r in rows if r[1] and r[1] > 0}
+            cached = MetadataRepository(db_conn).batch_get_cached_file_counts(paths)
         except Exception:
             _log.debug("batch file count cache query failed")
             cached = {}
@@ -273,13 +269,7 @@ class ProjectService:
         # Batch write
         if to_write:
             try:
-                with db_write_lock():
-                    db_conn.executemany(
-                        "INSERT INTO file_meta (file_path, cached_file_count) VALUES (?, ?) "
-                        "ON CONFLICT(file_path) DO UPDATE SET cached_file_count=excluded.cached_file_count",
-                        list(to_write.items()),
-                    )
-                    db_conn.commit()
+                MetadataRepository(db_conn).batch_set_cached_file_counts(to_write)
             except Exception:
                 _log.debug("batch file count cache write failed")
 
@@ -291,6 +281,7 @@ class ProjectService:
         db_conn: sqlite3.Connection | None = None,
     ) -> ProjectHome:
         root = Path(library_root).resolve()
+        db_conn = db_conn or self._connection_provider(root)
         depth_config = depth_config or ProjectDepthConfig()
         projects = self._collect_projects(root, root, 0, "", depth_config)
         recent = sorted(projects, key=lambda p: p["mtime"], reverse=True)[:20]
@@ -381,11 +372,7 @@ class ProjectService:
         if db_conn is None:
             return 0
         try:
-            row = db_conn.execute(
-                "SELECT total_size FROM library_stats WHERE library_path=?",
-                (str(root),),
-            ).fetchone()
-            return (row[0] or 0) if row else 0
+            return MetadataRepository(db_conn).get_library_total_size(str(root))
         except Exception:
             _log.debug("library total size query failed")
             return 0
@@ -400,6 +387,7 @@ class ProjectService:
     ) -> ProjectDetail:
         root = Path(library_root).resolve()
         target_path = Path(target).resolve()
+        db_conn = db_conn or self._connection_provider(root)
         rel_path = rel_path.replace("\\", "/").strip("/")
         notes, urls = self._notes_and_urls(root, target_path)
         files, images = self._project_files(root, target_path)
@@ -574,15 +562,16 @@ class ProjectService:
     def _file_count(root: Path, path: Path, db_conn: sqlite3.Connection | None) -> int:
         if db_conn is not None:
             try:
-                indexed = AssetIndexService().query_by_parent(db_conn, root, path)
+                indexed = AssetIndexRepository(db_conn).query_by_parent(
+                    str(root.resolve()), str(path.resolve()),
+                )
                 if indexed:
                     return len(indexed)
-                count_row = db_conn.execute(
-                    "SELECT cached_file_count FROM file_meta WHERE file_path=?",
-                    (str(path.resolve()),),
-                ).fetchone()
-                if count_row and count_row[0] is not None and count_row[0] > 0:
-                    return count_row[0]
+                cached_count = MetadataRepository(db_conn).get_cached_file_count(
+                    str(path.resolve())
+                )
+                if cached_count is not None:
+                    return cached_count
             except Exception:
                 _log.debug("file count cache query failed")
 
@@ -593,13 +582,9 @@ class ProjectService:
 
         if db_conn is not None:
             try:
-                with db_write_lock():
-                    db_conn.execute(
-                        "INSERT INTO file_meta (file_path, cached_file_count) VALUES (?,?) "
-                        "ON CONFLICT(file_path) DO UPDATE SET cached_file_count=excluded.cached_file_count",
-                        (str(path.resolve()), file_count),
-                    )
-                    db_conn.commit()
+                MetadataRepository(db_conn).set_cached_file_count(
+                    str(path.resolve()), file_count
+                )
             except Exception:
                 _log.debug("file count cache write failed")
         return file_count

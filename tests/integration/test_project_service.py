@@ -30,6 +30,20 @@ def test_list_projects_marks_projects_at_global_depth(tmp_path, schema_db):
     assert response["items"][0]["file_count"] == 2
 
 
+def test_list_projects_uses_connection_provider_without_db_conn(tmp_path, schema_db):
+    library = tmp_path / "library"
+    library.mkdir()
+    project = library / "alpha"
+    project.mkdir()
+    (project / "asset.txt").write_text("asset", encoding="utf-8")
+
+    listing = ProjectService(connection_provider=lambda _root: schema_db).list_projects(
+        library, library, depth_config=ProjectDepthConfig(global_depth=1)
+    )
+
+    assert listing.items[0].file_count == 1
+
+
 def test_list_projects_applies_branch_depth_and_search(tmp_path, schema_db):
     library = tmp_path / "library"
     library.mkdir()
@@ -142,6 +156,24 @@ def test_get_project_detail_uses_connection_provider_without_db_conn(tmp_path, s
 
     assert detail["tags"] == ["scoped"]
     assert detail["notes"] == "provider notes"
+
+
+def test_get_home_uses_connection_provider_without_db_conn(tmp_path, schema_db):
+    library = tmp_path / "library"
+    project = library / "alpha"
+    project.mkdir(parents=True)
+    schema_db.execute(
+        "INSERT INTO library_stats (library_path, total_size) VALUES (?, ?)",
+        (str(library.resolve()), 123),
+    )
+    schema_db.commit()
+
+    home = ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1)
+    )
+
+    assert home.total_projects == 1
+    assert home.total_size == 123
 
 
 def test_build_tree_returns_nodes_with_depth_config(tmp_path, memory_db):

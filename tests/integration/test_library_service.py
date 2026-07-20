@@ -68,7 +68,7 @@ def test_open_session_wraps_cached_context(tmp_path):
 
     assert session.context is context
     assert session.root == context.root
-    assert session.db_conn is context.db_conn
+    assert session.connection_for(root) is context.db_conn
     assert service.current_session is not None
     assert service.current_session.context is context
 
@@ -133,9 +133,9 @@ def test_open_session_contexts_do_not_follow_current_library(tmp_path):
     assert first.context is not second.context
     assert first.root == first_root.resolve()
     assert second.root == second_root.resolve()
-    assert first.db_conn is service._db.connection_for(first_root)
-    assert second.db_conn is service._db.connection_for(second_root)
-    assert first.db_conn is not second.db_conn
+    assert first.connection_for(first_root) is service._db.connection_for(first_root)
+    assert second.connection_for(second_root) is service._db.connection_for(second_root)
+    assert first.connection_for(first_root) is not second.connection_for(second_root)
 
 
 def test_current_session_tracks_latest_opened_library(tmp_path):
@@ -166,10 +166,25 @@ def test_library_session_connection_provider_rejects_mismatched_root(tmp_path):
 
     session = LibraryService().open_session(root)
 
-    assert session.connection_for(root) is session.db_conn
-    assert session.connection_for(str(root)) is session.db_conn
+    assert session.connection_for(root) is session.context.db_conn
+    assert session.connection_for(str(root)) is session.context.db_conn
     with pytest.raises(ValueError):
         session.connection_for(other)
+
+
+def test_library_session_raw_resources_are_deprecated(tmp_path):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+    session = LibraryService().open_session(root)
+
+    with pytest.warns(DeprecationWarning, match="db_conn"):
+        assert session.db_conn is session.connection_for(root)
+    with pytest.warns(DeprecationWarning, match="tag_store"):
+        assert session.tag_store is session.context.tag_store
+    with pytest.warns(DeprecationWarning, match="project_data"):
+        assert session.project_data is session.context.project_data
 
 
 def test_open_library_contexts_do_not_follow_current_library(tmp_path):
@@ -300,11 +315,11 @@ def test_closed_session_still_exposes_resources(tmp_path):
     assert session.is_closed is True
 
     import pytest
-    with pytest.raises(RuntimeError, match="closed"):
+    with pytest.warns(DeprecationWarning, match="db_conn"), pytest.raises(RuntimeError, match="closed"):
         _ = session.db_conn
-    with pytest.raises(RuntimeError, match="closed"):
+    with pytest.warns(DeprecationWarning, match="tag_store"), pytest.raises(RuntimeError, match="closed"):
         _ = session.tag_store
-    with pytest.raises(RuntimeError, match="closed"):
+    with pytest.warns(DeprecationWarning, match="project_data"), pytest.raises(RuntimeError, match="closed"):
         _ = session.project_data
     with pytest.raises(RuntimeError, match="closed"):
         session.connection_for(root)
@@ -351,7 +366,7 @@ def test_library_service_close_session_closes_library_connection(tmp_path):
 
     service = LibraryService()
     session = service.open_session(root)
-    conn = session.db_conn
+    conn = session.connection_for(root)
 
     service.close_session(session)
 
@@ -369,7 +384,7 @@ def test_close_session_serializes_same_root_reopen_through_db_teardown(
     root.mkdir()
     service = LibraryService()
     session = service.open_session(root)
-    old_conn = session.db_conn
+    old_conn = session.connection_for(root)
     teardown_started = threading.Event()
     allow_teardown = threading.Event()
     reopen_started = threading.Event()
@@ -410,8 +425,8 @@ def test_close_session_serializes_same_root_reopen_through_db_teardown(
 
     assert not close_thread.is_alive()
     assert not reopen_thread.is_alive()
-    assert reopened[0].db_conn is not old_conn
-    reopened[0].db_conn.execute("SELECT 1")
+    assert reopened[0].connection_for(root) is not old_conn
+    reopened[0].connection_for(root).execute("SELECT 1")
 
 
 def test_direct_session_close_serializes_same_root_reopen_through_db_teardown(
@@ -423,7 +438,7 @@ def test_direct_session_close_serializes_same_root_reopen_through_db_teardown(
     root.mkdir()
     service = LibraryService()
     session = service.open_session(root)
-    old_conn = session.db_conn
+    old_conn = session.connection_for(root)
     teardown_started = threading.Event()
     allow_teardown = threading.Event()
     reopen_started = threading.Event()
@@ -466,8 +481,8 @@ def test_direct_session_close_serializes_same_root_reopen_through_db_teardown(
     assert not reopen_thread.is_alive()
     assert reopened[0] is not session
     assert reopened[0].is_closed is False
-    assert reopened[0].db_conn is not old_conn
-    reopened[0].db_conn.execute("SELECT 1")
+    assert reopened[0].connection_for(root) is not old_conn
+    reopened[0].connection_for(root).execute("SELECT 1")
 
 
 def test_close_serializes_same_root_reopen_through_db_teardown(tmp_path, monkeypatch):
@@ -477,7 +492,7 @@ def test_close_serializes_same_root_reopen_through_db_teardown(tmp_path, monkeyp
     root.mkdir()
     service = LibraryService()
     session = service.open_session(root)
-    old_conn = session.db_conn
+    old_conn = session.connection_for(root)
     teardown_started = threading.Event()
     allow_teardown = threading.Event()
     reopen_started = threading.Event()
@@ -518,8 +533,8 @@ def test_close_serializes_same_root_reopen_through_db_teardown(tmp_path, monkeyp
 
     assert not close_thread.is_alive()
     assert not reopen_thread.is_alive()
-    assert reopened[0].db_conn is not old_conn
-    reopened[0].db_conn.execute("SELECT 1")
+    assert reopened[0].connection_for(root) is not old_conn
+    reopened[0].connection_for(root).execute("SELECT 1")
 
 
 def test_library_service_close_session_is_idempotent(tmp_path):
@@ -553,7 +568,7 @@ def test_close_session_for_stale_identity_preserves_replacement(tmp_path):
     assert service.current_session is replacement
     assert service.open_session(root) is replacement
     assert replacement.context is not old.context
-    replacement.db_conn.execute("SELECT 1")
+    replacement.connection_for(root).execute("SELECT 1")
 
 
 def test_open_library_replaces_directly_closed_canonical_session_and_context(tmp_path):
@@ -577,6 +592,27 @@ def test_open_library_replaces_directly_closed_canonical_session_and_context(tmp
     assert service.open_session(root) is replacement
 
 
+def test_same_root_reopen_publishes_new_library_opened_token(tmp_path, monkeypatch):
+    from AssetsManager.application.library_service import LibraryService
+    from AssetsManager.domain.event_bus import EventBus
+    from AssetsManager.domain.events import LibraryOpened
+
+    bus = EventBus()
+    events = []
+    bus.subscribe(LibraryOpened, events.append)
+    import AssetsManager.domain.event_bus as eb
+    monkeypatch.setattr(eb, "_instance", bus)
+    root = tmp_path / "library"
+    root.mkdir()
+    service = LibraryService()
+
+    first = service.open_session(root)
+    service.close_session(first)
+    second = service.open_session(root)
+
+    assert [event.session_token for event in events] == [first.event_token, second.event_token]
+
+
 # ── Phase 2.5: Per-library database teardown ──────────────────────
 
 def test_close_session_does_not_close_other_library_connections(tmp_path):
@@ -592,8 +628,8 @@ def test_close_session_does_not_close_other_library_connections(tmp_path):
     session_a = service.open_session(lib_a)
     session_b = service.open_session(lib_b)
 
-    conn_a = session_a.db_conn
-    conn_b = session_b.db_conn
+    conn_a = session_a.connection_for(lib_a)
+    conn_b = session_b.connection_for(lib_b)
 
     # Close library A
     service.close_session(session_a)

@@ -26,7 +26,6 @@ class TagTreePanel(PanelContent):
         super().__init__(parent)
         self._library_root = ""
         self._current_path = ""
-        self._store = None
         self._controller: TagTreeController | None = None
         self._active_tag_filter: str | None = None
         self._scoped_services = None
@@ -52,19 +51,13 @@ class TagTreePanel(PanelContent):
         self.content_layout.addLayout(bar)
 
         # Subscribe to domain events through a Qt bridge for UI-safe delivery.
-        from AssetsManager.domain.events import TagsChanged, LibraryOpened
-        self._connect_domain_event(LibraryOpened, self._on_library_changed)
-        self._connect_domain_event(TagsChanged, self._on_domain_tags_changed)
+        from AssetsManager.domain.events import TagCatalogChanged
+        self._connect_domain_event(TagCatalogChanged, self._on_domain_tags_changed)
         self._connect_bus(bus().directory_changed, self._on_directory_changed)
         self._connect_bus(bus().theme_changed, lambda _: self._populate())
         self._connect_bus(bus().language_changed, lambda _: self._populate())
         self._connect_bus(bus().ui_scale_changed, lambda _: self._populate())
         self._populate()
-
-    def _resolve_tag_store(self, root: str):
-        if self._scoped_services is not None:
-            return self._scoped_services.session.tag_store, self._scoped_services.tag_service
-        raise RuntimeError("TagTreePanel scoped services not injected for root: " + root)
 
     def _populate(self):
         if not self._controller:
@@ -147,7 +140,6 @@ class TagTreePanel(PanelContent):
         new_tag, ok = QInputDialog.getText(self, tr("tagtree.dialog.rename"), tr("tagtree.dialog.rename_label"), text=old_tag)
         if ok and new_tag.strip() and new_tag.strip().lower() != old_tag.lower() and self._controller:
             self._controller.rename_tag(old_tag, new_tag.strip())
-            self._populate()
 
     def _delete_tag(self, tag):
         files = self._controller.get_files_for_tag(tag) if self._controller else []
@@ -159,12 +151,10 @@ class TagTreePanel(PanelContent):
             return
         if self._controller:
             self._controller.delete_tag(tag)
-            self._populate()
 
     def _remove_tag(self, filepath, tag):
         if self._controller:
             self._controller.remove_tag_from_file(filepath, tag)
-            self._populate()
 
     def _on_search(self, text):
         search = text.lower()
@@ -176,29 +166,10 @@ class TagTreePanel(PanelContent):
             item.setHidden(not match)
 
     def _on_domain_tags_changed(self, event):
-        """Handle TagsChanged from EventBus (application layer)."""
-        self._populate()
-
-    def _on_library_changed(self, event):
-        root = str(Path(event.library_root).resolve())
-        if root == self._library_root:
-            return
-        old_root = self._library_root
-        self._library_root = root
-        self._current_path = root
+        """Handle a session-scoped tag catalog update."""
         scoped = self._scoped_services
-        if (
-            scoped is not None
-            and not scoped.session.is_closed
-            and scoped.session.root_str == root
-        ):
-            self._store = scoped.session.tag_store
-            self._controller = TagTreeController(root, tag_svc=scoped.tag_service)
-        else:
-            self._store = None
-            self._controller = None
-        if self._active_tag_filter and old_root != root:
-            self._active_tag_filter = None
+        if scoped is None or event.session_token != scoped.session.event_token:
+            return
         self._populate()
 
     def set_scoped_services(self, services):
@@ -207,24 +178,43 @@ class TagTreePanel(PanelContent):
         self._scoped_services = services
         self._library_root = services.session.root_str
         self._current_path = services.session.root_str
-        self._store = services.session.tag_store
         self._controller = TagTreeController(self._library_root, tag_svc=services.tag_service)
         if self._active_tag_filter and old_root != self._library_root:
             self._active_tag_filter = None
         self._populate()
 
+    def prepare_library_switch(self) -> None:
+        """Drop service-bound state before the old session closes."""
+        self._controller = None
+        self._scoped_services = None
+        self._active_tag_filter = None
+        self._tree.clear()
+
+    def shutdown(self) -> None:
+        self.prepare_library_switch()
+        super().shutdown()
+
     def _on_directory_changed(self, path):
         self._current_path = str(Path(path).resolve())
 
-    def _ensure_store(self):
-        if self._store is None and self._library_root:
-            self._store, tag_service = self._resolve_tag_store(self._library_root)
-            self._controller = TagTreeController(self._library_root, tag_svc=tag_service)
-        self._populate()
-
     def set_library_root(self, path: str):
-        from AssetsManager.domain.events import LibraryOpened
-        self._on_library_changed(LibraryOpened(library_root=path))
+        """Set a legacy standalone root, reusing a matching scoped service."""
+        root = str(Path(path).resolve())
+        if root == self._library_root:
+            return
+        self._library_root = root
+        self._current_path = root
+        scoped = self._scoped_services
+        if (
+            scoped is not None
+            and not scoped.session.is_closed
+            and scoped.session.root_str == root
+        ):
+            self._controller = TagTreeController(root, tag_svc=scoped.tag_service)
+        else:
+            self._controller = None
+        self._active_tag_filter = None
+        self._populate()
 
     def get_tag_filter(self) -> str | None:
         return self._active_tag_filter

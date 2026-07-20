@@ -40,7 +40,7 @@ class PanelContent(QWidget):
 
     def _animate_in(self):
         """Animate panel entrance."""
-        self._show_anim = QPropertyAnimation(self, b"windowOpacity")
+        self._show_anim = QPropertyAnimation(self, b"windowOpacity", self)
         self._show_anim.setDuration(200)
         self._show_anim.setStartValue(0.0)
         self._show_anim.setEndValue(1.0)
@@ -62,8 +62,13 @@ class PanelContent(QWidget):
         self._domain_subscriptions.append(sub)
         return sub
 
+    def prepare_library_switch(self) -> None:
+        """Release work tied to the current library before session close."""
+
     def shutdown(self):
         """Disconnect all tracked bus signals before panel destruction."""
+        if self._show_anim is not None:
+            self._show_anim.stop()
         for sub in self._domain_subscriptions:
             try:
                 sub.close()

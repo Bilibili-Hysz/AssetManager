@@ -2,18 +2,18 @@
 import json
 import os
 import re
-import threading
 import warnings
 from pathlib import Path
 from sqlite3 import Connection
 
-from AssetsManager.core.database import db_write_lock, get_lib_db
+from AssetsManager.core.database import DatabaseManager, db_write_lock
+from AssetsManager.core.singleton import ThreadSafeSingleton
 
 
 class ProjectData:
     def __init__(self, library_root: str, db_conn: Connection | None = None):
         self._root = str(Path(library_root).resolve())
-        self._db = db_conn or get_lib_db(self._root)
+        self._db = db_conn or ThreadSafeSingleton.get(DatabaseManager).connection_for(self._root)
 
     def _key(self, path: str) -> str:
         return str(Path(path).resolve())
@@ -29,7 +29,7 @@ class ProjectData:
     def set_notes(self, path: str, text: str):
         key = self._key(path)
         text = text.strip()
-        with db_write_lock():
+        with db_write_lock(self._db):
             if text:
                 self._db.execute(
                     "INSERT INTO file_meta (file_path, notes) VALUES (?,?) "
@@ -67,14 +67,14 @@ class ProjectData:
         url = url.strip()
         if not self._url_pattern.match(url):
             raise ValueError(f"URL must start with http:// or https://: {url}")
-        with db_write_lock():
+        with db_write_lock(self._db):
             urls = self.get_urls(path)
             if url not in urls:
                 urls.append(url)
                 self._save_urls(path, urls)
 
     def remove_url(self, path: str, url: str):
-        with db_write_lock():
+        with db_write_lock(self._db):
             urls = self.get_urls(path)
             if url in urls:
                 urls.remove(url)
@@ -83,7 +83,7 @@ class ProjectData:
     def _save_urls(self, path: str, urls: list[str]):
         key = self._key(path)
         data = json.dumps(urls, ensure_ascii=False)
-        with db_write_lock():
+        with db_write_lock(self._db):
             self._db.execute(
                 "INSERT INTO file_meta (file_path, urls) VALUES (?,?) "
                 "ON CONFLICT(file_path) DO UPDATE SET urls=excluded.urls",
@@ -132,7 +132,7 @@ class ProjectData:
             mtime = os.path.getmtime(path)
         except OSError:
             return
-        with db_write_lock():
+        with db_write_lock(self._db):
             self._db.execute(
                 "INSERT INTO file_meta (file_path, cached_size, cached_mtime) VALUES (?,?,?) "
                 "ON CONFLICT(file_path) DO UPDATE SET cached_size=excluded.cached_size, cached_mtime=excluded.cached_mtime",
@@ -142,7 +142,7 @@ class ProjectData:
     def invalidate_size_cache(self, dir_path: str):
         prefix = self._key(dir_path)
         escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        with db_write_lock():
+        with db_write_lock(self._db):
             self._db.execute(
                 "UPDATE file_meta SET cached_size=NULL, cached_mtime=NULL, cached_file_count=NULL "
                 "WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
@@ -152,7 +152,7 @@ class ProjectData:
     def prune_missing(self):
         rows = self._db.execute("SELECT file_path FROM file_meta").fetchall()
         removed = 0
-        with db_write_lock():
+        with db_write_lock(self._db):
             for (path,) in rows:
                 if not os.path.exists(path):
                     self._db.execute("DELETE FROM file_meta WHERE file_path=?", (path,))
@@ -161,19 +161,7 @@ class ProjectData:
                 self._db.commit()
 
 
-_stores: dict[str, ProjectData] = {}
-_stores_lock = threading.Lock()
-
-
 def get_project_data(library_root: str, db_conn: Connection | None = None) -> ProjectData:
+    """Deprecated compatibility constructor without global store retention."""
     warnings.warn("get_project_data() is deprecated, use ProjectDataService instead", DeprecationWarning, stacklevel=2)
-    key = str(Path(library_root).resolve())
-    store = _stores.get(key)
-    if store is not None:
-        return store
-    with _stores_lock:
-        store = _stores.get(key)
-        if store is None:
-            store = ProjectData(key, db_conn=db_conn)
-            _stores[key] = store
-        return store
+    return ProjectData(str(Path(library_root).resolve()), db_conn=db_conn)

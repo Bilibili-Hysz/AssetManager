@@ -76,9 +76,14 @@ def test_clean_orphan_dirs_keeps_hashed_and_legacy_dirs(tmp_path, monkeypatch):
     assert not orphan.exists()
 
 
-def test_db_write_lock_is_reentrant():
-    from AssetsManager.core.database import db_write_lock
+def test_legacy_db_write_lock_is_reentrant_without_a_manager(monkeypatch):
+    from AssetsManager.core import database
 
-    with db_write_lock():
-        with db_write_lock():
+    monkeypatch.setattr(
+        database.ThreadSafeSingleton,
+        "get",
+        lambda _type: (_ for _ in ()).throw(AssertionError("manager lookup")),
+    )
+    with database.db_write_lock():
+        with database.db_write_lock():
             assert True

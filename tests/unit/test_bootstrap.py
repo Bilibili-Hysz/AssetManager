@@ -45,7 +45,7 @@ class TestApplicationBootstrap:
             assert bootstrap.library_service.current_session is session
             assert bootstrap.library_service.owns_live_session(session)
             assert not session.is_closed
-            assert session.db_conn.execute("SELECT 1").fetchone() == (1,)
+            assert session.connection_for(root).execute("SELECT 1").fetchone() == (1,)
             assert notifications == []
             assert bootstrap.for_library(session).undo_service is scoped.undo_service
             assert scoped.undo_service.can_undo()
@@ -83,7 +83,7 @@ class TestApplicationBootstrap:
                 with session.operation():
                     operation_entered.set()
                     assert release_operation.wait(5)
-                    assert session.db_conn.execute("SELECT 1").fetchone() == (1,)
+                    assert session.connection_for(root).execute("SELECT 1").fetchone() == (1,)
             except Exception as exc:
                 operation_errors.append(exc)
             finally:
@@ -131,7 +131,7 @@ class TestApplicationBootstrap:
         assert db_close_calls == ["close"]
         assert len(reopened) == 1
         assert reopened[0] is not session
-        reopened[0].db_conn.execute("SELECT 1")
+        reopened[0].connection_for(root).execute("SELECT 1")
 
     def test_global_close_inside_operation_rejects_before_mutation(
         self, tmp_path, monkeypatch
@@ -155,7 +155,7 @@ class TestApplicationBootstrap:
             assert service.current_session is session
             assert service.owns_live_session(session)
             assert not session.is_closed
-            assert session.db_conn.execute("SELECT 1").fetchone() == (1,)
+            assert session.connection_for(root).execute("SELECT 1").fetchone() == (1,)
             assert notifications == []
             assert db_close_calls == []
             assert bootstrap.for_library(session).undo_service is scoped.undo_service
@@ -257,6 +257,8 @@ class TestApplicationBootstrap:
 
         assert scoped.session is session
         assert isinstance(scoped.asset_service, AssetService)
+        assert scoped.asset_service._session_token == session.event_token
+        assert scoped.asset_service._directory_cache._conn is session.connection_for(session.root)
         assert isinstance(scoped.metadata_service, MetadataService)
         assert isinstance(scoped.tag_service, TagService)
         assert isinstance(scoped.project_service, ProjectService)
@@ -266,6 +268,38 @@ class TestApplicationBootstrap:
         assert isinstance(scoped.undo_service, UndoService)
         assert isinstance(scoped.plugin_service, PluginService)
         assert isinstance(scoped.asset_index_service, AssetIndexService)
+
+    def test_for_library_injects_explicit_performance_recorder(self, tmp_path):
+        from AssetsManager.core.performance import PerformanceRecorder
+
+        root = tmp_path / "library"
+        root.mkdir()
+        recorder = PerformanceRecorder(enabled=True)
+        bootstrap = ApplicationBootstrap(performance_recorder=recorder)
+        session = bootstrap.library_service.open_session(root)
+
+        scoped = bootstrap.for_library(session)
+
+        assert scoped.asset_service._performance_recorder is recorder
+        assert scoped.asset_service._session_token == session.event_token
+
+    def test_for_library_asset_service_reuses_session_directory_summary_cache(self, tmp_path):
+        from AssetsManager.core.performance import PerformanceRecorder
+
+        root = tmp_path / "library"
+        child = root / "child"
+        child.mkdir(parents=True)
+        (child / "asset.png").write_bytes(b"data")
+        recorder = PerformanceRecorder(enabled=True)
+        bootstrap = ApplicationBootstrap(performance_recorder=recorder)
+        session = bootstrap.library_service.open_session(root)
+        scoped = bootstrap.for_library(session)
+
+        scoped.asset_service.list_directory(root, root)
+        scoped.asset_service.list_directory(root, root)
+
+        summaries = [event for event in recorder.recent() if event.name == "directory.summary"]
+        assert [event.attributes["cache_hit"] for event in summaries] == [False, True]
 
     def test_for_library_creates_library_scoped_undo_service(self, tmp_path):
         first_root = tmp_path / "first"
@@ -397,7 +431,7 @@ class TestApplicationBootstrap:
         session = bootstrap.library_service.open_session(root)
         scoped = bootstrap.for_library(session)
 
-        assert scoped.metadata_service._connection(root) is session.db_conn
+        assert scoped.metadata_service._connection(root) is session.connection_for(root)
         assert scoped.tag_service.list_tags(root) == []
 
     def test_for_library_binds_file_operations_to_session(self, tmp_path):
@@ -424,9 +458,6 @@ class TestApplicationBootstrap:
         assert session.data_dir_str == context.data_dir_str
         assert session.thumb_dir is context.thumb_dir
         assert session.thumb_dir_str == context.thumb_dir_str
-        assert session.db_conn is context.db_conn
-        assert session.tag_store is context.tag_store
-        assert session.project_data is context.project_data
         assert session.connection_for(root) is context.db_conn
 
     def test_for_library_accepts_library_session(self, tmp_path):
@@ -440,7 +471,7 @@ class TestApplicationBootstrap:
         scoped = bootstrap.for_library(session)
 
         assert scoped.session is session
-        assert scoped.metadata_service._connection(root) is session.db_conn
+        assert scoped.metadata_service._connection(root) is session.connection_for(root)
         with pytest.raises(ValueError):
             scoped.metadata_service._connection(other)
 
@@ -511,10 +542,10 @@ class TestApplicationBootstrap:
 
         assert scoped.session is session
         assert scoped.file_operation_service.session is session
-        assert scoped.metadata_service._repo(root)._conn is session.db_conn
-        assert scoped.tag_service._connection_provider(root) is session.db_conn
-        assert scoped.project_service._metadata_svc._repo(root)._conn is session.db_conn
-        assert scoped.project_service._tag_svc._connection_provider(root) is session.db_conn
+        assert scoped.metadata_service._repo(root)._conn is session.connection_for(root)
+        assert scoped.tag_service._connection_provider(root) is session.connection_for(root)
+        assert scoped.project_service._metadata_svc._repo(root)._conn is session.connection_for(root)
+        assert scoped.project_service._tag_svc._connection_provider(root) is session.connection_for(root)
         assert scoped.file_operation_service._library_root is session.root
         with pytest.raises(ValueError):
             scoped.metadata_service._connection(other)

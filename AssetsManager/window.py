@@ -14,7 +14,7 @@ from AssetsManager.core.ui_scale import scaled_pt, scaled_px
 from AssetsManager.core.settings import AppSettings
 from AssetsManager import i18n
 from AssetsManager.dialogs.startup import StartupWindow
-from AssetsManager.core.database import close_all_dbs, clean_orphan_dirs
+from AssetsManager.core.database import clean_orphan_dirs
 from AssetsManager.widgets.workspace_bar import WorkspaceSection
 from AssetsManager.widgets.lan_sharing import LanSharingMixin
 
@@ -38,9 +38,10 @@ except ImportError:
 
 
 class MainWindow(LanSharingMixin, QMainWindow):
-    def __init__(self):
+    def __init__(self, bootstrap, library_session=None):
         super().__init__()
         from AssetsManager.window_coordinator import WindowCoordinator
+        from AssetsManager.window_lifecycle_coordinator import WindowLifecycleCoordinator
         self._coordinator = WindowCoordinator(self)
         self.setWindowTitle(tr("app.name"))
         self.resize(1200, 800)
@@ -53,22 +54,17 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._bg_resize_timer.setInterval(150)
         self._bg_resize_timer.timeout.connect(self._on_bg_resize_done)
         themes.apply_to(self)
-        self._library_session = None  # MUST be set before _setup_ui (workspace restore triggers _on_switch_library)
+        self._bootstrap = bootstrap
+        self._lifecycle_coordinator = WindowLifecycleCoordinator(self, _alive)
+        # Must be set before UI setup because workspace restore can switch libraries.
+        self._library_session = library_session
         self._setup_ui()
         self._connect_bus()
         self._startup_anim_done = False
         self._force_quit = False
 
-    @staticmethod
-    def _library_service():
-        app = QApplication.instance()
-        if app is not None:
-            bootstrap = app.property("bootstrap")
-            if bootstrap is not None:
-                return bootstrap.library_service
-        from AssetsManager.application.library_service import LibraryService
-        from AssetsManager.core.singleton import ThreadSafeSingleton
-        return ThreadSafeSingleton.get(LibraryService)
+    def _library_service(self):
+        return self._bootstrap.library_service
 
     def _open_library_session(self, path):
         session = self._library_service().open_session(path)
@@ -76,11 +72,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         return session
 
     def _scoped_services_for_session(self, session):
-        app = QApplication.instance()
-        bootstrap = app.property("bootstrap") if app is not None else None
-        if bootstrap is None:
-            return None
-        return bootstrap.for_library(session)
+        return self._bootstrap.for_library(session)
 
     def _apply_scoped_services(self, session):
         scoped = self._scoped_services_for_session(session)
@@ -91,11 +83,13 @@ class MainWindow(LanSharingMixin, QMainWindow):
             getattr(self, "info", None),
             getattr(self, "sidebar", None),
         ):
-            if _alive(panel) and hasattr(panel, "set_scoped_services"):
-                panel.set_scoped_services(scoped)
+            set_services = getattr(panel, "set_scoped_services", None)
+            if _alive(panel) and callable(set_services):
+                set_services(scoped)
         tag_tree = getattr(self, "tag_tree", None)
-        if _alive(tag_tree) and hasattr(tag_tree, "set_scoped_services"):
-            tag_tree.set_scoped_services(scoped)
+        set_tag_services = getattr(tag_tree, "set_scoped_services", None)
+        if _alive(tag_tree) and callable(set_tag_services):
+            set_tag_services(scoped)
 
     def showEvent(self, event):
         """Override to add startup fade-in animation."""
@@ -181,19 +175,22 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
     def _on_bg_style_changed(self):
         """Re-apply stylesheet and refresh title-bars when bg opacity changes."""
-        QApplication.instance().setStyleSheet(themes.stylesheet())
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            app.setStyleSheet(themes.stylesheet())
         self._apply_menu_theme()
         from AssetsManager import dock_factory as dk
         for dock_widget, (i18n_key, title, extra_buttons) in dk._DOCK_TITLES.items():
             bar = dock_widget.titleBarWidget()
-            if bar and hasattr(bar, '_is_custom_title'):
+            if bar and bar.property("is_custom_title"):
                 bar.setStyleSheet(
                     f"background: {themes.header_for_dock()}; "
                     f"border: 1px solid {themes.get()['border']}; "
                     f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
         self._workspace._apply_style()
-        if hasattr(self.file_list, 'refresh_header') and callable(getattr(self.file_list, 'refresh_header', None)):
-            self.file_list.refresh_header()
+        refresh_header = getattr(self.file_list, "refresh_header", None)
+        if callable(refresh_header):
+            refresh_header()
         self.refresh_bg()
 
     def _setup_menu(self):
@@ -235,7 +232,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
         # Plugin contributions
         app = QApplication.instance()
-        if app:
+        if isinstance(app, QApplication):
             plugin_ctx = app.property("plugin_host_context")
             if plugin_ctx:
                 contributions = plugin_ctx.menu_contributions("tools")
@@ -244,8 +241,9 @@ class MainWindow(LanSharingMixin, QMainWindow):
                     for contrib in contributions:
                         title = getattr(contrib, 'title', None) or getattr(contrib, 'id', 'Plugin')
                         cmd_id = getattr(contrib, 'command_id', None)
-                        tools_menu.addAction(f"🧩  {title}",
-                            lambda checked, cid=cmd_id: self._run_plugin_command(cid))
+                        if isinstance(cmd_id, str):
+                            tools_menu.addAction(f"🧩  {title}",
+                                lambda checked, cid=cmd_id: self._run_plugin_command(cid))
 
         # LAN Sharing
         tools_menu.addSeparator()
@@ -311,11 +309,17 @@ class MainWindow(LanSharingMixin, QMainWindow):
         # ── Docks ───────────────────────────────────────────────
         self.sidebar_dock = dock.create(tr("dock.sidebar"), self, Qt.DockWidgetArea.LeftDockWidgetArea,
                                          panel_type="sidebar")
+        from AssetsManager.panels.sidebar import SidebarPanel
         self.sidebar = self.sidebar_dock.widget()
+        if not isinstance(self.sidebar, SidebarPanel):
+            raise RuntimeError("Sidebar dock did not create SidebarPanel")
 
         self.info_dock = dock.create(tr("dock.info"), self, Qt.DockWidgetArea.RightDockWidgetArea,
                                        panel_type="info")
+        from AssetsManager.panels.info import InfoPanel
         self.info = self.info_dock.widget()
+        if not isinstance(self.info, InfoPanel):
+            raise RuntimeError("Info dock did not create InfoPanel")
 
         # ── Status bar ──────────────────────────────────────────
         self._setup_status_bar()
@@ -391,42 +395,21 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
     def _on_switch_library(self, path):
         """Switch all panels to a different library root."""
-        if self._lan_server and self._lan_server.is_running():
-            self._lan_server.stop()
-        if _alive(self.info) and hasattr(self.info, '_flush_notes_save'):
-            self.info._flush_notes_save()
-            notes_timer = getattr(self.info, '_notes_timer', None)
-            if notes_timer is not None:
-                notes_timer.stop()
-        if _alive(self.file_list) and hasattr(self.file_list, '_loader'):
-            generation = self.file_list._loader.invalidate_tasks()
-            self.file_list._loader.wait_for_runtime(generation)
-        if self._library_session is not None:
-            old_root = self._library_session.root_str
-            self._library_service().close_session(self._library_session)
-            app = QApplication.instance()
-            bootstrap = app.property("bootstrap") if app is not None else None
-            if bootstrap is not None:
-                bootstrap.cleanup_library(old_root)
-        session = self._open_library_session(path)
-        self._apply_scoped_services(session)
-        if _alive(self.sidebar):
-            self.sidebar.navigate_to(session.root_str)
-        if _alive(self.file_list):
-            self.file_list.navigate_to(session.root_str, set_root=True)
+        self._lifecycle_coordinator.switch_library(path)
 
     def _open_library(self):
         startup = StartupWindow(self)
         def _on_open(path):
-            session = self._open_library_session(path)
-            self._workspace.add_library(session.root_str)
-            clean_orphan_dirs([session.root_str])
+            # Workspace switching owns session creation. add_library emits
+            # synchronously, so opening a session here would double-open it.
+            self._workspace.add_library(path)
+            clean_orphan_dirs([path])
             # Save recent
             settings = AppSettings.instance()
-            settings.prepend_list("recent_libraries", session.root_str, max_items=10)
+            settings.prepend_list("recent_libraries", str(Path(path).resolve()), max_items=10)
             settings.save()
             from AssetsManager.core.library_manager import record_visit
-            record_visit(session.root_str)
+            record_visit(str(Path(path).resolve()))
             startup.close()
         startup.library_opened.connect(_on_open)
         startup.show()
@@ -473,7 +456,9 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._workspace.setVisible(avail > 0)
         self._ws_left.changeSize(left_bound - menu_w, 1)
         self._workspace.setFixedWidth(max(avail, 0))
-        self._menu_widget.layout().activate()
+        menu_layout = self._menu_widget.layout()
+        if menu_layout is not None:
+            menu_layout.activate()
 
     def _apply_menu_theme(self):
         t = themes.get()
@@ -529,15 +514,18 @@ class MainWindow(LanSharingMixin, QMainWindow):
         if isinstance(sizes, list) and len(sizes) == 2:
             docks = [self.sidebar_dock, self.info_dock]
             for d, w in zip(docks, sizes):
-                d.widget().setMinimumWidth(max(100, w // 2))
-                d.widget().resize(w, d.widget().height())
+                panel = d.widget()
+                if panel is not None:
+                    panel.setMinimumWidth(max(100, w // 2))
+                    panel.resize(w, panel.height())
 
     def _on_dir_selected(self, path):
         self.setWindowTitle(f"{tr('app.name')} — {path}")
 
     def _on_file_focused_safe(self, info):
-        if _alive(self.info):
-            self.info.update_info(info)
+        update_info = getattr(self.info, "update_info", None)
+        if _alive(self.info) and callable(update_info):
+            update_info(info)
 
     def _on_file_double_clicked(self, path):
         import os
@@ -557,15 +545,18 @@ class MainWindow(LanSharingMixin, QMainWindow):
             return
         if Path(path).suffix.lower() not in IMAGE_EXTS:
             return
-        if _alive(self.info) and hasattr(self.info, '_flush_notes_save'):
-            self.info._flush_notes_save()
+        flush_pending = getattr(self.info, "flush_pending_changes", None)
+        if _alive(self.info) and callable(flush_pending):
+            flush_pending()
         open_image_viewer(self, path)
 
     def _refresh_all(self):
-        if _alive(self.sidebar):
-            self.sidebar._populate()
-        if _alive(self.file_list):
-            self.file_list._model.refresh()
+        populate = getattr(self.sidebar, "_populate", None)
+        if _alive(self.sidebar) and callable(populate):
+            populate()
+        refresh_contents = getattr(self.file_list, "refresh_contents", None)
+        if _alive(self.file_list) and callable(refresh_contents):
+            refresh_contents()
 
     @staticmethod
     def _copy_to_clipboard(path: str):
@@ -610,7 +601,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
     def _on_ui_scale_changed(self, scale: float):
         """Re-apply stylesheet and update font when UI scale changes."""
         app = QApplication.instance()
-        if not app:
+        if not isinstance(app, QApplication):
             return
         from AssetsManager.core.ui_scale import scaled_pt
         themes.apply_to(self)
@@ -652,14 +643,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
     def _shutdown_resources(self):
         """Persist UI state and stop background resources before process exit."""
-        if hasattr(self, '_lan_server') and self._lan_server and self._lan_server.is_running():
-            self._lan_server.stop()
-        if _alive(self.info) and hasattr(self.info, '_flush_notes_save'):
-            self.info._flush_notes_save()
-        self._save_dock_layout()
-        self._save_workspace_tabs()
-        if _alive(self.file_list) and hasattr(self.file_list, '_loader'):
-            self.file_list._loader.stop()
+        self._lifecycle_coordinator.shutdown_resources()
 
     def closeEvent(self, event):
         # If system tray is available, hide to tray instead of quitting
@@ -672,4 +656,3 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._shutdown_resources()
         super().closeEvent(event)
         self._library_service().close()
-        close_all_dbs()

@@ -1,6 +1,7 @@
 """Tests for ThumbnailService."""
 
 import io
+import sqlite3
 
 import pytest
 
@@ -82,6 +83,50 @@ def test_check_blur_returns_false_without_db(tmp_path):
     svc = ThumbnailService()
     assert svc._check_blur(asset, {"nsfw"}, None) is False
     assert svc._check_blur(asset, None, None) is False
+
+
+def test_check_blur_uses_case_insensitive_repository_tags(tmp_path):
+    asset = tmp_path / "photo.jpg"
+    asset.write_bytes(b"fake")
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE file_tags (file_path TEXT, tag TEXT)")
+    conn.execute(
+        "INSERT INTO file_tags (file_path, tag) VALUES (?, ?)",
+        (str(asset.resolve()), "NSFW"),
+    )
+
+    assert ThumbnailService()._check_blur(asset, {"nsfw"}, conn) is True
+
+
+def test_resolve_uses_connection_provider_for_blur_tags(tmp_path):
+    library = tmp_path / "library"
+    library.mkdir()
+    asset = library / "photo.jpg"
+    asset.write_bytes(b"fake")
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE file_tags (file_path TEXT, tag TEXT)")
+    conn.execute(
+        "INSERT INTO file_tags (file_path, tag) VALUES (?, ?)",
+        (str(asset.resolve()), "NSFW"),
+    )
+    roots = []
+    service = ThumbnailService(connection_provider=lambda root: roots.append(root) or conn)
+
+    result = service.resolve(
+        asset, tmp_path / "thumbs", blur_tags={"nsfw"}, library_root=library
+    )
+
+    assert result.should_blur is True
+    assert roots == [library.resolve()]
+
+
+def test_check_blur_degrades_for_closed_connection(tmp_path):
+    asset = tmp_path / "photo.jpg"
+    asset.write_bytes(b"fake")
+    conn = sqlite3.connect(":memory:")
+    conn.close()
+
+    assert ThumbnailService()._check_blur(asset, {"nsfw"}, conn) is False
 
 
 def test_process_image_returns_none_for_missing_file(tmp_path):

@@ -293,8 +293,8 @@ class SharingSettingsDialog(TabbedDialog):
 
         info_grid = QHBoxLayout()
         info_grid.setSpacing(scaled_px(20))
-        self._ip_info = self._make_info_pair(tr("sharing.overview.ip_address"), "—")
-        self._port_info = self._make_info_pair(tr("sharing.overview.port"), "—")
+        self._ip_info, self._ip_info_value = self._make_info_pair(tr("sharing.overview.ip_address"), "—")
+        self._port_info, self._port_info_value = self._make_info_pair(tr("sharing.overview.port"), "—")
         info_grid.addLayout(self._ip_info)
         info_grid.addLayout(self._port_info)
         info_grid.addStretch()
@@ -305,8 +305,8 @@ class SharingSettingsDialog(TabbedDialog):
         # ── Card 2: Online Users (row 0, col 1) ──────────────
         online_card, online_cl = self._make_card(tr("sharing.card_online_users"), "👥")
 
-        self._online_info = self._make_info_pair(tr("sharing.overview.online_users"), "0")
-        self._traffic_info = self._make_info_pair(tr("sharing.overview.traffic"), "0 B")
+        self._online_info, self._online_info_value = self._make_info_pair(tr("sharing.overview.online_users"), "0")
+        self._traffic_info, self._traffic_info_value = self._make_info_pair(tr("sharing.overview.traffic"), "0 B")
         stats_row = QHBoxLayout()
         stats_row.setSpacing(scaled_px(20))
         stats_row.addLayout(self._online_info)
@@ -333,7 +333,7 @@ class SharingSettingsDialog(TabbedDialog):
         self._share_section_content.addWidget(self._share_url_label)
 
         share_btn_row = QHBoxLayout()
-        self._share_copy_btn = self.make_primary_btn(tr("sharing.btn_copy_link"), self._copy_share_link)
+        self._share_copy_btn = self.make_primary_btn(tr("sharing.btn_copy_link"), self._copy_overview_link)
         self._share_copy_btn.setVisible(False)
         share_btn_row.addWidget(self._share_copy_btn)
         self._share_open_btn = self.make_secondary_btn(tr("sharing.btn_open_in_browser"), self._open_share_link)
@@ -432,8 +432,7 @@ class SharingSettingsDialog(TabbedDialog):
         val.setStyleSheet(f"color: {t['heading']}; font-weight: bold; font-size: {scaled_pt(12)}px;")
         layout.addWidget(lbl)
         layout.addWidget(val)
-        layout._value_label = val
-        return layout
+        return layout, val
 
     # ══════════════════════════════════════════════════════════
     # Tab 2: Share Links
@@ -642,8 +641,8 @@ class SharingSettingsDialog(TabbedDialog):
             expanded=True, parent=parent)
         nl = network_panel.content_layout()
 
-        name_row = self.make_labeled_row(tr("sharing.label_share_name"), self.make_input("AssetManager"))
-        self._name_edit = name_row.itemAt(1).widget()
+        self._name_edit = self.make_input("AssetManager")
+        name_row = self.make_labeled_row(tr("sharing.label_share_name"), self._name_edit)
         nl.addLayout(name_row)
 
         port_bind_row = QHBoxLayout()
@@ -861,10 +860,10 @@ class SharingSettingsDialog(TabbedDialog):
             self._toggle_btn.setStyleSheet(self.toggle_btn_style(True))
             self._status_frame.setStyleSheet(self.status_style(True))
 
-            self._ip_info._value_label.setText(self._server_status.get("ip", "—"))
-            self._port_info._value_label.setText(str(self._server_status.get("port", "—")))
-            self._online_info._value_label.setText(str(self._server_status.get("connections", 0)))
-            self._traffic_info._value_label.setText(self._format_bytes(self._server_status.get("bytes_transferred", 0)))
+            self._ip_info_value.setText(self._server_status.get("ip", "—"))
+            self._port_info_value.setText(str(self._server_status.get("port", "—")))
+            self._online_info_value.setText(str(self._server_status.get("connections", 0)))
+            self._traffic_info_value.setText(self._format_bytes(self._server_status.get("bytes_transferred", 0)))
 
             if hasattr(self, '_share_url_label'):
                 access_key = self._settings.get("lan_access_key", "")
@@ -884,10 +883,10 @@ class SharingSettingsDialog(TabbedDialog):
             self._toggle_btn.setStyleSheet(self.toggle_btn_style(False))
             self._status_frame.setStyleSheet(self.status_style(False))
 
-            self._ip_info._value_label.setText("—")
-            self._port_info._value_label.setText("—")
-            self._online_info._value_label.setText("0")
-            self._traffic_info._value_label.setText("0 B")
+            self._ip_info_value.setText("—")
+            self._port_info_value.setText("—")
+            self._online_info_value.setText("0")
+            self._traffic_info_value.setText("0 B")
             if hasattr(self, '_share_url_label'):
                 self._share_url_label.setVisible(False)
                 self._share_copy_btn.setVisible(False)
@@ -935,7 +934,7 @@ class SharingSettingsDialog(TabbedDialog):
             self._qr_label.setText(tr("sharing.qr_generation_failed"))
             self._qr_label.setVisible(True)
 
-    def _copy_share_link(self):
+    def _copy_overview_link(self):
         """Copy share URL to clipboard."""
         url = self._share_url_label.text()
         if url:
@@ -999,23 +998,24 @@ class SharingSettingsDialog(TabbedDialog):
             return
         connections = data.get("connections", 0)
         bytes_transferred = data.get("bytes_transferred", 0)
-        self._online_info._value_label.setText(str(connections))
-        self._traffic_info._value_label.setText(self._format_bytes(bytes_transferred))
+        self._online_info_value.setText(str(connections))
+        self._traffic_info_value.setText(self._format_bytes(bytes_transferred))
 
         # Periodically refresh all tabs
         self._poll_counter = getattr(self, '_poll_counter', 0) + 1
         if self._poll_counter % 3 == 0:  # Every 6 seconds (3 * 2s interval)
             self._refresh_all_tabs()
 
-    def _format_bytes(self, size: int) -> str:
+    def _format_bytes(self, size: int | float) -> str:
         if size == 0:
             return "0 B"
         units = ["B", "KB", "MB", "GB", "TB"]
+        value = float(size)
         i = 0
-        while size >= 1024 and i < len(units) - 1:
-            size /= 1024
+        while value >= 1024 and i < len(units) - 1:
+            value /= 1024
             i += 1
-        return f"{size:.1f} {units[i]}"
+        return f"{value:.1f} {units[i]}"
 
     def _on_toggle_server(self):
         self._toggle_btn.setEnabled(False)
@@ -1176,7 +1176,7 @@ class SharingSettingsDialog(TabbedDialog):
                 f"QPushButton {{ background: {t['accent']}; color: {t['on_accent']}; "
                 f"border: none; border-radius: {scaled_px(3)}px; font-size: {scaled_pt(10)}px; padding: 2px 8px; }}"
                 f"QPushButton:hover {{ background: {t['accent']}dd; }}")
-            copy_btn.clicked.connect(lambda checked, idx=i: self._copy_share_link(idx))
+            copy_btn.clicked.connect(lambda checked, idx=i: self._copy_table_share_link(idx))
             actions_layout.addWidget(copy_btn)
 
             delete_btn = QPushButton(tr("sharing.links.btn_delete"))
@@ -1215,7 +1215,7 @@ class SharingSettingsDialog(TabbedDialog):
         self._populate_links_table()
 
     def _on_links_selection_changed(self):
-        selected = len(self._links_table.selectedRows()) > 0
+        selected = bool(self._links_table.selectedItems())
         self._batch_delete_btn.setEnabled(selected)
 
     def _on_select_all(self, checked):
@@ -1224,15 +1224,19 @@ class SharingSettingsDialog(TabbedDialog):
         else:
             self._links_table.clearSelection()
 
-    def _copy_share_link(self, row):
+    def _copy_table_share_link(self, row):
         filtered = self._get_filtered_shares()
         if row < 0 or row >= len(filtered):
+            return
+        server = self._server
+        if server is None or not server.is_running():
+            self._links_status.setText(tr("sharemgr.error.server_unavailable"))
             return
         share = filtered[row]
         share_id = share.get("id")
         if not share_id:
             return
-        port = self._server._port
+        port = server._port
         from AssetsManager.lan.server import get_local_ip
         ip = get_local_ip()
         url = f"http://{ip}:{port}/s/{share_id}"

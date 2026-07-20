@@ -6,13 +6,20 @@ Contains:
 - Share dialog with QR code, tunnel support
 - Sharing settings integration
 """
-import logging
+from __future__ import annotations
 
-from PySide6.QtWidgets import (
-    QApplication,
-    QMessageBox,
-)
+import logging
+from typing import TYPE_CHECKING, cast
+
+from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QWidget
 from AssetsManager import i18n
+
+if TYPE_CHECKING:
+    from AssetsManager.application.context import LibrarySession
+    from AssetsManager.dialogs.quick_share_card import QuickShareCard
+    from AssetsManager.lan import LanServer
+    from AssetsManager.widgets.tray import SystemTrayManager
+
 tr = i18n.tr
 
 _log = logging.getLogger(__name__)
@@ -22,17 +29,16 @@ _log = logging.getLogger(__name__)
 class LanSharingMixin:
     """Mixin for LAN sharing functionality. Must be used with QMainWindow."""
 
-    @staticmethod
-    def _library_service():
-        app = QApplication.instance()
-        if app is not None:
-            bootstrap = app.property("bootstrap")
-            if bootstrap is not None:
-                return bootstrap.library_service
-        _log.debug("LanSharingMixin falling back to ThreadSafeSingleton")
-        from AssetsManager.application.library_service import LibraryService
-        from AssetsManager.core.singleton import ThreadSafeSingleton
-        return ThreadSafeSingleton.get(LibraryService)
+    # Supplied by the QMainWindow host. Annotations preserve the mixin's MRO.
+    _lan_server: LanServer | None
+    _library_session: LibrarySession | None
+    _tray_manager: SystemTrayManager | None
+    _share_status_label: QLabel
+    _share_toggle_btn: QPushButton
+    _quick_share_card: QuickShareCard | None
+
+    def _dialog_parent(self) -> QWidget:
+        return cast(QWidget, self)
 
     # ── Toggle sharing ──────────────────────────────────────────
 
@@ -55,17 +61,17 @@ class LanSharingMixin:
         access_key = settings.get("lan_access_key")
         share_name = settings.get("lan_share_name", "AssetManager")
 
-        lib_root = str(self.file_list._root or self.file_list._current) if hasattr(self, 'file_list') else None
-        if not lib_root:
-            QMessageBox.warning(self, tr("dialog.error"), tr("sharing.no_library"))
+        session = getattr(self, "_library_session", None)
+        if session is None or session.is_closed:
+            QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), tr("sharing.no_library"))
             return
 
         try:
-            session = self._library_service().open_session(lib_root)
-            self._lan_server = lan.LanServer(
+            bootstrap = getattr(self, "_bootstrap", None)
+            server = lan.LanServer(
                 library_root=session.root_str,
                 thumbnail_dir=session.thumb_dir_str,
-                db_conn=session.db_conn,
+                db_conn=session.connection_for(session.root),
                 share_name=share_name,
                 password=password,
                 access_key=access_key,
@@ -75,14 +81,17 @@ class LanSharingMixin:
                 blur_tags=settings.get("lan_blur_tags", []),
                 ssl_cert=settings.get("lan_ssl_cert"),
                 ssl_key=settings.get("lan_ssl_key"),
+                performance_recorder=getattr(bootstrap, "performance_recorder", None),
+                session_token=getattr(session, "event_token", None),
             )
-            self._lan_server.start(port=port, bind=bind)
+            self._lan_server = server
+            server.start(port=port, bind=bind)
             self._update_share_status(True, port)
             if hasattr(self, '_tray_manager') and self._tray_manager:
                 from AssetsManager.lan.server import get_local_ip
                 self._tray_manager.update_sharing_state(True, f"http://{get_local_ip()}:{port}")
         except OSError:
-            QMessageBox.warning(self, tr("dialog.error"), tr("sharing.port_in_use", port=port))
+            QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), tr("sharing.port_in_use", port=port))
 
     # ── Status display ──────────────────────────────────────────
 
@@ -121,14 +130,14 @@ class LanSharingMixin:
         try:
             from AssetsManager.dialogs.sharing_settings_dialog import SharingSettingsDialog
             status = self._lan_server.status() if self._lan_server else {}
-            dlg = SharingSettingsDialog(self, server_status=status, server=self._lan_server)
+            dlg = SharingSettingsDialog(self._dialog_parent(), server_status=status, server=self._lan_server)
             dlg.settings_changed.connect(self._apply_sharing_settings)
             dlg.exec()
         except Exception as e:
             import logging
             logging.getLogger(__name__).exception("Failed to open sharing settings")
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, tr("dialog.error"), tr("sharing.error_open", error=str(e)))
+            QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), tr("sharing.error_open", error=str(e)))
 
     def _apply_sharing_settings(self):
         """Apply sharing settings. Called after dialog saves settings."""
@@ -196,7 +205,7 @@ class LanSharingMixin:
         if not self._lan_server or not self._lan_server.is_running():
             from PySide6.QtWidgets import QMessageBox
             reply = QMessageBox.question(
-                self, tr("sharing.not_running"),
+                self._dialog_parent(), tr("sharing.not_running"),
                 tr("sharing.start_to_share"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
@@ -207,30 +216,30 @@ class LanSharingMixin:
 
         try:
             from AssetsManager.dialogs.share_link_dialog import ShareLinkDialog
-            dlg = ShareLinkDialog(self, path=path, server=self._lan_server)
+            dlg = ShareLinkDialog(self._dialog_parent(), path=path, server=self._lan_server)
             dlg.exec()
         except Exception as e:
             import logging
             logging.getLogger(__name__).exception("Failed to open share link dialog")
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, tr("dialog.error"), str(e))
+            QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), str(e))
 
     def _open_share_link_manager(self):
         """Open dialog to manage share links."""
         if not self._lan_server or not self._lan_server.is_running():
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, tr("sharing.not_running"), tr("sharing.start_to_manage"))
+            QMessageBox.warning(self._dialog_parent(), tr("sharing.not_running"), tr("sharing.start_to_manage"))
             return
 
         try:
             from AssetsManager.dialogs.share_link_manager import ShareLinkManager
-            dlg = ShareLinkManager(self, server=self._lan_server)
+            dlg = ShareLinkManager(self._dialog_parent(), server=self._lan_server)
             dlg.exec()
         except Exception as e:
             import logging
             logging.getLogger(__name__).exception("Failed to open share link manager")
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, tr("dialog.error"), str(e))
+            QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), str(e))
 
     def _quick_share(self, path: str):
         """Quick share a file/folder with default settings (async, non-blocking)."""
@@ -238,7 +247,7 @@ class LanSharingMixin:
             self._toggle_sharing()
             if not self._lan_server or not self._lan_server.is_running():
                 from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(self, tr("sharing.error"), tr("sharing.failed_to_start"))
+                QMessageBox.warning(self._dialog_parent(), tr("sharing.error"), tr("sharing.failed_to_start"))
                 return
 
         url = self._quick_share_api_url(self._lan_server)
@@ -283,23 +292,23 @@ class LanSharingMixin:
             share_url = data.get("url")
             if share_url:
                 QApplication.clipboard().setText(share_url)
-                msg = QMessageBox(self)
+                msg = QMessageBox(self._dialog_parent())
                 msg.setWindowTitle(tr("sharing.quick_share"))
                 msg.setText(tr("sharing.link_copied"))
                 msg.setInformativeText(share_url)
                 msg.setStandardButtons(QMessageBox.StandardButton.Ok)
                 msg.exec()
             else:
-                QMessageBox.warning(self, tr("sharing.error"), tr("sharing.no_url"))
+                QMessageBox.warning(self._dialog_parent(), tr("sharing.error"), tr("sharing.no_url"))
         else:
-            QMessageBox.warning(self, tr("sharing.error"), f"{tr('sharing.failed_to_start')}: {data}")
+            QMessageBox.warning(self._dialog_parent(), tr("sharing.error"), f"{tr('sharing.failed_to_start')}: {data}")
 
     # ── Quick Share Card ─────────────────────────────────────
 
     def _show_quick_share_card(self, paths: list[str], global_pos):
         """Show a QuickShareCard popup at the given position for the selected paths."""
         from AssetsManager.dialogs.quick_share_card import QuickShareCard
-        self._quick_share_card = QuickShareCard(self)
+        self._quick_share_card = QuickShareCard(self._dialog_parent())
         self._quick_share_card.share_requested.connect(self._on_quick_share_card_request)
         self._quick_share_card.show_for_paths(paths, global_pos)
 
@@ -311,7 +320,7 @@ class LanSharingMixin:
                 if hasattr(self, '_quick_share_card') and self._quick_share_card:
                     self._quick_share_card.close()
                 from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(self, tr("sharing.error"), tr("sharing.failed_to_start"))
+                QMessageBox.warning(self._dialog_parent(), tr("sharing.error"), tr("sharing.failed_to_start"))
                 return
 
         paths = data.get("paths", [])
@@ -372,8 +381,8 @@ class LanSharingMixin:
             else:
                 self._quick_share_card.close()
                 from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(self, tr("sharing.error"), tr("sharing.no_url"))
+                QMessageBox.warning(self._dialog_parent(), tr("sharing.error"), tr("sharing.no_url"))
         else:
             self._quick_share_card.close()
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, tr("sharing.error"), f"{tr('sharing.failed_to_start')}: {data}")
+            QMessageBox.warning(self._dialog_parent(), tr("sharing.error"), f"{tr('sharing.failed_to_start')}: {data}")

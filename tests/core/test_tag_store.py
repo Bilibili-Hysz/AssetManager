@@ -1,5 +1,7 @@
 """Tests for TagStore."""
 import os
+import sqlite3
+import pytest
 from AssetsManager.core.tag_store import TagStore
 
 
@@ -86,3 +88,23 @@ def test_remove_file():
     s.remove_file("/test/library/g.png")
     assert "/test/library/g.png" not in s.get_all_tagged_files()
     _clean(s, "/test/library/g.png")
+
+
+def test_deprecated_get_store_does_not_retain_process_global_store(tmp_path):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import migrate
+    from AssetsManager.core.tag_store import get_store
+
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.executescript(database._SCHEMA)
+    migrate(conn)
+    try:
+        with pytest.warns(DeprecationWarning, match="get_store"):
+            first = get_store(str(tmp_path), db_conn=conn)
+        with pytest.warns(DeprecationWarning, match="get_store"):
+            second = get_store(str(tmp_path), db_conn=conn)
+
+        assert first is not second
+        assert first._db is second._db is conn
+    finally:
+        conn.close()

@@ -22,6 +22,7 @@ class DomainEvent:
 class LibraryOpened(DomainEvent):
     """A library was opened."""
     library_root: str = ""
+    session_token: str = ""
 
 
 # ── File events ──────────────────────────────────────────────────
@@ -54,6 +55,16 @@ class FileCopied(DomainEvent):
     destination_path: str = ""
 
 
+@dataclass(frozen=True)
+class FileSystemChanged(DomainEvent):
+    """A session-scoped file operation completed its projection updates."""
+    library_root: str = ""
+    session_token: str = ""
+    kind: str = ""
+    paths: tuple[str, ...] = ()
+    old_paths: tuple[str, ...] = ()
+
+
 # ── Metadata events ──────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -64,8 +75,32 @@ class TagsChanged(DomainEvent):
 
 
 @dataclass(frozen=True)
+class AssetTagsChanged(DomainEvent):
+    """Tags for one asset changed within a specific library session."""
+    library_root: str = ""
+    session_token: str = ""
+    file_path: str = ""
+    new_tags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class TagCatalogChanged(DomainEvent):
+    """The tag catalog changed within a specific library session."""
+    library_root: str = ""
+    session_token: str = ""
+
+
+@dataclass(frozen=True)
 class NotesChanged(DomainEvent):
     """Notes were modified for a file."""
+    file_path: str = ""
+
+
+@dataclass(frozen=True)
+class AssetNotesChanged(DomainEvent):
+    """Notes for one asset changed within a specific library session."""
+    library_root: str = ""
+    session_token: str = ""
     file_path: str = ""
 
 
@@ -76,3 +111,10 @@ class UrlsChanged(DomainEvent):
     new_urls: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class AssetUrlsChanged(DomainEvent):
+    """URLs for one asset changed within a specific library session."""
+    library_root: str = ""
+    session_token: str = ""
+    file_path: str = ""
+    new_urls: tuple[str, ...] = ()

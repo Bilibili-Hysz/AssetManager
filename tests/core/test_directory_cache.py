@@ -92,6 +92,35 @@ def test_directory_cache_batch_set(memory_db: sqlite3.Connection):
     assert cache.get('/lib/b').item_count == 10
 
 
+def test_directory_cache_batch_get(memory_db: sqlite3.Connection):
+    migrate(memory_db)
+    from AssetsManager.core.directory_cache import DirectoryCache
+    cache = DirectoryCache(memory_db)
+    cache.set_batch([
+        ('/lib/a', 5, None, 1000.0),
+        ('/lib/b', 10, '/lib/b/img.jpg', 2000.0),
+    ])
+
+    entries = cache.get_batch(['/lib/a', '/lib/missing', '/lib/b'])
+
+    assert set(entries) == {'/lib/a', '/lib/b'}
+    assert entries['/lib/b'].preview_path == '/lib/b/img.jpg'
+
+
+def test_directory_cache_batch_get_chunks_over_500_paths(memory_db: sqlite3.Connection):
+    migrate(memory_db)
+    from AssetsManager.core.directory_cache import DirectoryCache
+    cache = DirectoryCache(memory_db)
+    paths = [f'/lib/{index}' for index in range(501)]
+    cache.set_batch([(path, index, None, float(index)) for index, path in enumerate(paths)])
+
+    entries = cache.get_batch(paths)
+
+    assert len(entries) == 501
+    assert entries[paths[0]].item_count == 0
+    assert entries[paths[-1]].item_count == 500
+
+
 def test_directory_cache_invalidate(memory_db: sqlite3.Connection):
     migrate(memory_db)
     from AssetsManager.core.directory_cache import DirectoryCache

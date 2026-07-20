@@ -263,8 +263,6 @@ class InfoPanel(PanelContent):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._library_root = ""
-        self._store = None
-        self._project = None
         self._scoped_services = None
         self._controller = None
         self._current_path = ""
@@ -450,11 +448,12 @@ class InfoPanel(PanelContent):
         self._show_empty_state()
 
         # Subscribe to domain events through a Qt bridge for UI-safe delivery.
-        from AssetsManager.domain.events import TagsChanged, NotesChanged, UrlsChanged, LibraryOpened
-        self._connect_domain_event(LibraryOpened, self._on_library_changed)
-        self._connect_domain_event(TagsChanged, self._on_domain_tags_changed)
-        self._connect_domain_event(NotesChanged, self._on_domain_notes_changed)
-        self._connect_domain_event(UrlsChanged, self._on_domain_urls_changed)
+        from AssetsManager.domain.events import (
+            AssetNotesChanged, AssetTagsChanged, AssetUrlsChanged,
+        )
+        self._connect_domain_event(AssetTagsChanged, self._on_domain_tags_changed)
+        self._connect_domain_event(AssetNotesChanged, self._on_domain_notes_changed)
+        self._connect_domain_event(AssetUrlsChanged, self._on_domain_urls_changed)
 
         # Qt-only signals (no domain equivalent)
         self._connect_bus(bus().sidebar_depth_changed, self._on_sidebar_depth_changed)
@@ -503,10 +502,11 @@ class InfoPanel(PanelContent):
         label_style = f"color: {t['muted']}; font-size: {scaled_pt(11)}px; min-width: {scaled_px(65)}px;"
         value_style = f"color: {t['body']}; font-size: {scaled_pt(12)}px;"
         for field in self._fields.values():
-            if not field or not field.layout():
+            layout = field.layout() if field else None
+            if layout is None:
                 continue
-            for i in range(field.layout().count()):
-                item = field.layout().itemAt(i)
+            for i in range(layout.count()):
+                item = layout.itemAt(i)
                 if item and item.widget():
                     w = item.widget()
                     if isinstance(w, QLabel):
@@ -519,10 +519,11 @@ class InfoPanel(PanelContent):
         """Update link field label/value stylesheets for current theme."""
         t = themes.get()
         row = self._field_link
-        if not row or not row.layout():
+        layout = row.layout() if row else None
+        if layout is None:
             return
-        for i in range(row.layout().count()):
-            item = row.layout().itemAt(i)
+        for i in range(layout.count()):
+            item = layout.itemAt(i)
             if item and item.widget():
                 w = item.widget()
                 if isinstance(w, QLabel):
@@ -541,16 +542,18 @@ class InfoPanel(PanelContent):
             return
         for i in range(self._plugin_fields_layout.count()):
             item = self._plugin_fields_layout.itemAt(i)
-            if item and item.widget():
-                field = item.widget()
-                if field.layout():
-                    for j in range(field.layout().count()):
-                        sub = field.layout().itemAt(j)
-                        if sub and sub.widget() and isinstance(sub.widget(), QLabel):
+            field = item.widget() if item is not None else None
+            if field is not None:
+                layout = field.layout()
+                if layout is not None:
+                    for j in range(layout.count()):
+                        sub = layout.itemAt(j)
+                        label = sub.widget() if sub is not None else None
+                        if isinstance(label, QLabel):
                             if j == 0:
-                                sub.widget().setStyleSheet(f"color: {t['muted']}; font-size: {scaled_pt(11)}px; min-width: {scaled_px(65)}px;")
+                                label.setStyleSheet(f"color: {t['muted']}; font-size: {scaled_pt(11)}px; min-width: {scaled_px(65)}px;")
                             else:
-                                sub.widget().setStyleSheet(f"color: {t['body']}; font-size: {scaled_pt(12)}px;")
+                                label.setStyleSheet(f"color: {t['body']}; font-size: {scaled_pt(12)}px;")
 
     def _register_field(self, key: str, label: str, value: str = "") -> None:
         """Register a metadata field and add it to the layout."""
@@ -590,7 +593,9 @@ class InfoPanel(PanelContent):
 
     @staticmethod
     def _set_field_text(row: QWidget, value: str):
-        val_label = row.layout().itemAt(1).widget()
+        layout = row.layout()
+        item = layout.itemAt(1) if layout is not None else None
+        val_label = item.widget() if item is not None else None
         if isinstance(val_label, QLabel):
             val_label.setText(value)
             val_label.setToolTip(value if value and value != "—" else "")
@@ -623,15 +628,23 @@ class InfoPanel(PanelContent):
     def _set_link_field(self, url: str):
         row = self._field_link
         layout = row.layout()
-        link_label = layout.itemAt(1).widget()
-        btn_holder = layout.itemAt(2).widget()
+        if layout is None:
+            return
+        link_item = layout.itemAt(1)
+        button_item = layout.itemAt(2)
+        link_label = link_item.widget() if link_item is not None else None
+        btn_holder = button_item.widget() if button_item is not None else None
         if not isinstance(link_label, _DragLabel) or btn_holder is None:
             return
+        button_layout = btn_holder.layout()
+        if button_layout is None:
+            return
         # Clear buttons
-        while btn_holder.layout().count():
-            item = btn_holder.layout().takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        while button_layout.count():
+            item = button_layout.takeAt(0)
+            widget = item.widget() if item is not None else None
+            if widget is not None:
+                widget.deleteLater()
         t = themes.get()
         if url:
             short = url[:60] + "…" if len(url) > 60 else url
@@ -651,7 +664,7 @@ class InfoPanel(PanelContent):
                 f"background: transparent; border: none; border-radius: {scaled_px(3)}px; }}"
                 f"QPushButton:hover {{ color: {t['heading']}; background: {t['accent']}; }}")
             rm_btn.clicked.connect(lambda: self._remove_link(url))
-            btn_holder.layout().addWidget(rm_btn)
+            button_layout.addWidget(rm_btn)
         else:
             link_label.setText("—")
             link_label.setToolTip("")
@@ -669,7 +682,7 @@ class InfoPanel(PanelContent):
                 f"background: transparent; border: none; border-radius: {scaled_px(3)}px; }}"
                 f"QPushButton:hover {{ color: {t['heading']}; background: {t['accent']}; }}")
             add_btn.clicked.connect(self._add_link_dialog)
-            btn_holder.layout().addWidget(add_btn)
+            button_layout.addWidget(add_btn)
             scan_btn = QPushButton("↻")
             scan_btn.setToolTip(tr("info.scanner.desc"))
             scan_btn.setFixedSize(scaled_px(18), scaled_px(18))
@@ -680,7 +693,7 @@ class InfoPanel(PanelContent):
                 f"background: transparent; border: none; border-radius: {scaled_px(3)}px; }}"
                 f"QPushButton:hover {{ color: {t['heading']}; background: {t['accent']}; }}")
             scan_btn.clicked.connect(self._manual_scan_links)
-            btn_holder.layout().addWidget(scan_btn)
+            button_layout.addWidget(scan_btn)
 
     # ── Panel settings toggle ───────────────────────────────────
 
@@ -716,7 +729,7 @@ class InfoPanel(PanelContent):
             a.setChecked(widget.isVisible())
             a.toggled.connect(lambda v, w=widget: w.setVisible(v))
         btn = self.sender()
-        if btn and hasattr(btn, 'rect'):
+        if isinstance(btn, QWidget):
             menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
         else:
             menu.exec(self.cursor().pos())
@@ -848,22 +861,24 @@ class InfoPanel(PanelContent):
             done = Signal(object, object)
         signals = _SizeSignals()
         signals.done.connect(self._on_async_dir_size_done)
-        project = self._project
+        scoped = self._scoped_services
         session = request.session
         dir_path = request.path
         class _SizeTask(QRunnable):
-            def __init__(task_self):
+            def __init__(self):
                 super().__init__()
-                task_self.setAutoDelete(False)
-            def run(task_self):
+                self.setAutoDelete(False)
+
+            def run(self):
                 sz = 0
                 try:
-                    if project and session:
+                    if scoped is not None and session:
                         with session.operation():
-                            sz, _ = project.get_dir_size(dir_path)
+                            sz, _ = scoped.metadata_service.get_dir_size(
+                                scoped.session.root, dir_path
+                            )
                     else:
-                        from AssetsManager.core.project_data import ProjectData
-                        sz = ProjectData.compute_dir_size(dir_path)
+                        return
                 except Exception:
                     sz = 0
                 signals.done.emit(request, sz)
@@ -938,8 +953,7 @@ class InfoPanel(PanelContent):
             return
         tag, ok = QInputDialog.getText(self, tr("info.dialog.add_tag"), tr("filelist.dialog.tag_label"))
         if ok and tag.strip():
-            new_tags = self._controller.add_tag(self._current_path, tag.strip())
-            self._render_tags(new_tags)
+            self._controller.add_tag(self._current_path, tag.strip())
 
     def _open_tag_editor(self):
         if not self._current_path or not os.path.exists(self._current_path) or not self._controller:
@@ -958,21 +972,28 @@ class InfoPanel(PanelContent):
     def _remove_tag(self, tag: str):
         if not self._current_path or not self._controller:
             return
-        new_tags = self._controller.remove_tag(self._current_path, tag)
-        self._render_tags(new_tags)
+        self._controller.remove_tag(self._current_path, tag)
 
     def _on_domain_tags_changed(self, event):
-        """Handle TagsChanged from EventBus (application layer)."""
-        if not self._current_path or not self._controller:
+        """Handle a session-scoped tag update for the focused asset."""
+        scoped = self._scoped_services
+        if (
+            not self._current_path
+            or not self._controller
+            or scoped is None
+            or event.session_token != scoped.session.event_token
+            or event.file_path != self._current_path
+        ):
             return
         new_tags = self._controller.get_tags(self._current_path)
         self._render_tags(new_tags)
 
     def _on_domain_notes_changed(self, event):
-        """Handle NotesChanged from EventBus."""
-        if not self._current_path or not self._controller:
+        """Handle a session-scoped notes update for the focused asset."""
+        scoped = self._scoped_services
+        if not self._current_path or not self._controller or scoped is None:
             return
-        if hasattr(event, 'file_path') and event.file_path == self._current_path:
+        if event.session_token == scoped.session.event_token and event.file_path == self._current_path:
             notes = self._controller.get_notes(self._current_path)
             if hasattr(self, '_notes') and self._notes:
                 self._notes.blockSignals(True)
@@ -980,45 +1001,13 @@ class InfoPanel(PanelContent):
                 self._notes.blockSignals(False)
 
     def _on_domain_urls_changed(self, event):
-        """Handle UrlsChanged from EventBus."""
-        if not self._current_path or not self._controller:
+        """Handle a session-scoped URLs update for the focused asset."""
+        scoped = self._scoped_services
+        if not self._current_path or not self._controller or scoped is None:
             return
-        if hasattr(event, 'file_path') and event.file_path == self._current_path:
+        if event.session_token == scoped.session.event_token and event.file_path == self._current_path:
             urls = self._controller.get_urls(self._current_path)
             self._set_link_field(urls[0] if urls else "")
-
-    def _on_library_changed(self, event):
-        """Handle LibraryOpened domain event — reset state; services already injected."""
-        path = event.library_root
-        self._library_root = os.path.normpath(path)
-        self._current_path = ""
-        self._urls_scanned.clear()
-        self._invalidate_async_requests()
-        if hasattr(self, '_classify_cache'):
-            self._classify_cache.clear()
-        scoped = self._scoped_services
-        if (
-            scoped is not None
-            and not scoped.session.is_closed
-            and scoped.session.root_str == self._library_root
-        ):
-            session = self._scoped_services.session
-            self._store = session.tag_store
-            self._project = session.project_data
-            if self._controller is None:
-                from AssetsManager.controllers.info_controller import InfoController
-                self._controller = InfoController(
-                    self._library_root,
-                    session.db_conn,
-                    metadata_svc=self._scoped_services.metadata_service,
-                    tag_svc=self._scoped_services.tag_service,
-                )
-        else:
-            self._store = None
-            self._project = None
-            self._controller = None
-        _log.debug("Library changed: root=%s store=%s project=%s",
-                   self._library_root, bool(self._store), bool(self._project))
 
     def set_scoped_services(self, services):
         """Bind library-scoped services resolved by MainWindow."""
@@ -1031,32 +1020,12 @@ class InfoPanel(PanelContent):
         self._invalidate_async_requests()
         if hasattr(self, '_classify_cache'):
             self._classify_cache.clear()
-        self._store = services.session.tag_store
-        self._project = services.session.project_data
         self._controller = InfoController(
             self._library_root,
-            services.session.db_conn,
+            services.session.connection_for(services.session.root),
             metadata_svc=services.metadata_service,
             tag_svc=services.tag_service,
         )
-
-    def _resolve_store(self):
-        if self._scoped_services is not None:
-            return self._scoped_services.session.tag_store
-        return None
-
-    def _resolve_project(self):
-        if self._scoped_services is not None:
-            return self._scoped_services.session.project_data
-        return None
-
-    def _ensure_store(self):
-        if self._store is None and self._library_root:
-            self._store = self._resolve_store()
-
-    def _ensure_project(self):
-        if self._project is None and self._library_root:
-            self._project = self._resolve_project()
 
     def _on_sidebar_depth_changed(self, depth, branch_depths):
         self._sidebar_depth = depth
@@ -1091,15 +1060,11 @@ class InfoPanel(PanelContent):
                 from PySide6.QtWidgets import QMessageBox
                 QMessageBox.warning(self, tr("info.dialog.invalid_url"), str(e))
                 return
-            urls = self._controller.get_urls(self._current_path)
-            self._set_link_field(urls[0] if urls else "")
 
     def _remove_link(self, url: str):
         if not self._current_path or not self._controller:
             return
         self._controller.remove_url(self._current_path, url)
-        urls = self._controller.get_urls(self._current_path)
-        self._set_link_field(urls[0] if urls else "")
 
     def _manual_scan_links(self):
         if not self._current_path or not os.path.isdir(self._current_path) or not self._controller:
@@ -1146,11 +1111,9 @@ class InfoPanel(PanelContent):
 
     def update_info(self, info):
         from PySide6.QtCore import QFileInfo
-        self._ensure_store()
-        self._ensure_project()
-        if not self._store or not self._project:
-            _log.debug("update_info skipped: store=%s project=%s lib_root=%s",
-                       bool(self._store), bool(self._project), repr(self._library_root))
+        if self._controller is None or self._scoped_services is None:
+            _log.debug("update_info skipped: controller=%s lib_root=%s",
+                       bool(self._controller), repr(self._library_root))
             return
         if isinstance(info, QFileInfo):
             fi = info
@@ -1303,15 +1266,21 @@ class InfoPanel(PanelContent):
     def clone(self):
         return InfoPanel()
 
-    def shutdown(self):
+    def flush_pending_changes(self):
+        """Persist pending notes before switching libraries or opening a viewer."""
         self._flush_notes_save()
+
+    def prepare_library_switch(self):
+        """Flush local edits and stop debounce work for the old library."""
+        self.flush_pending_changes()
         if self._notes_timer:
             self._notes_timer.stop()
+
+    def shutdown(self):
+        self.prepare_library_switch()
         self._invalidate_async_requests()
         super().shutdown()
 
     def closeEvent(self, event):
-        self._flush_notes_save()
-        if self._notes_timer:
-            self._notes_timer.stop()
+        self.prepare_library_switch()
         super().closeEvent(event)

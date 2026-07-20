@@ -38,6 +38,7 @@ def test_library_service_publishes_library_opened(tmp_path, monkeypatch):
 
     assert len(events) == 1
     assert events[0].library_root == str(lib.resolve())
+    assert events[0].session_token == svc.current_session.event_token
 
 
 def test_tag_service_publishes_tags_changed_on_add(tmp_path, monkeypatch):
@@ -72,6 +73,69 @@ def test_tag_service_publishes_tags_changed_on_add(tmp_path, monkeypatch):
         assert "hero" in events[0].new_tags
     finally:
         conn.close()
+
+
+def test_scoped_tag_add_publishes_asset_and_catalog_events(tmp_path, monkeypatch):
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+    from AssetsManager.domain.event_bus import EventBus
+    from AssetsManager.domain.events import AssetTagsChanged, TagCatalogChanged
+
+    bus = EventBus()
+    asset_events = []
+    catalog_events = []
+    bus.subscribe(AssetTagsChanged, asset_events.append)
+    bus.subscribe(TagCatalogChanged, catalog_events.append)
+    import AssetsManager.domain.event_bus as eb
+    monkeypatch.setattr(eb, "_instance", bus)
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path)
+    service = bootstrap.for_library(session).tag_service
+    asset = tmp_path / "file.txt"
+    try:
+        service.add_tag(tmp_path, asset, "hero")
+
+        assert len(asset_events) == len(catalog_events) == 1
+        assert asset_events[0].library_root == session.root_str
+        assert asset_events[0].session_token == session.event_token
+        assert asset_events[0].file_path == str(asset.resolve())
+        assert asset_events[0].new_tags == ("hero",)
+        assert catalog_events[0].session_token == session.event_token
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_scoped_tag_rename_updates_each_affected_asset_once(tmp_path, monkeypatch):
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+    from AssetsManager.domain.event_bus import EventBus
+    from AssetsManager.domain.events import AssetTagsChanged, TagCatalogChanged
+
+    bus = EventBus()
+    asset_events = []
+    catalog_events = []
+    bus.subscribe(AssetTagsChanged, asset_events.append)
+    bus.subscribe(TagCatalogChanged, catalog_events.append)
+    import AssetsManager.domain.event_bus as eb
+    monkeypatch.setattr(eb, "_instance", bus)
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path)
+    service = bootstrap.for_library(session).tag_service
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    try:
+        service.add_tag(tmp_path, first, "hero")
+        service.add_tag(tmp_path, second, "hero")
+        asset_events.clear()
+        catalog_events.clear()
+
+        service.rename_tag(tmp_path, "hero", "champion")
+
+        assert {event.file_path for event in asset_events} == {
+            str(first.resolve()), str(second.resolve())
+        }
+        assert all(event.new_tags == ("champion",) for event in asset_events)
+        assert len(catalog_events) == 1
+    finally:
+        bootstrap.library_service.close()
 
 
 def test_tag_service_publishes_tags_changed_on_remove(tmp_path, monkeypatch):
@@ -205,6 +269,34 @@ def test_metadata_service_publishes_urls_changed(tmp_path, monkeypatch):
     conn.close()
 
 
+def test_scoped_metadata_events_include_session_identity(tmp_path, monkeypatch):
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+    from AssetsManager.domain.event_bus import EventBus
+    from AssetsManager.domain.events import AssetNotesChanged, AssetUrlsChanged
+
+    bus = EventBus()
+    note_events = []
+    url_events = []
+    bus.subscribe(AssetNotesChanged, note_events.append)
+    bus.subscribe(AssetUrlsChanged, url_events.append)
+    import AssetsManager.domain.event_bus as eb
+    monkeypatch.setattr(eb, "_instance", bus)
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path)
+    service = bootstrap.for_library(session).metadata_service
+    asset = tmp_path / "file.txt"
+    try:
+        service.set_notes(tmp_path, asset, "hello")
+        service.add_url(tmp_path, asset, "https://example.com")
+
+        assert note_events[0].session_token == session.event_token
+        assert note_events[0].file_path == str(asset.resolve())
+        assert url_events[0].session_token == session.event_token
+        assert url_events[0].new_urls == ("https://example.com",)
+    finally:
+        bootstrap.library_service.close()
+
+
 def test_file_operation_publishes_file_created(tmp_path, monkeypatch):
     """FileOperationService.create_folder() publishes FileCreated."""
     from AssetsManager.application.file_operation_service import FileOperationService
@@ -291,3 +383,33 @@ def test_file_operation_publishes_file_copied(tmp_path, monkeypatch):
     assert len(events) == 1
     assert events[0].source_path == str((tmp_path / "source.txt").resolve())
     assert events[0].destination_path == str((dest / "source.txt").resolve())
+
+
+def test_scoped_copy_publishes_session_scoped_file_change(tmp_path, monkeypatch):
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+    from AssetsManager.domain.event_bus import EventBus
+    from AssetsManager.domain.events import FileSystemChanged
+
+    source = tmp_path / "source.txt"
+    source.write_text("x")
+    destination = tmp_path / "dest"
+    destination.mkdir()
+    bus = EventBus()
+    events = []
+    bus.subscribe(FileSystemChanged, events.append)
+    import AssetsManager.domain.event_bus as eb
+    monkeypatch.setattr(eb, "_instance", bus)
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path)
+    service = bootstrap.for_library(session).file_operation_service
+    try:
+        service.copy_to_directory([source], destination)
+
+        assert len(events) == 1
+        assert events[0].library_root == session.root_str
+        assert events[0].session_token == session.event_token
+        assert events[0].kind == "copied"
+        assert events[0].old_paths == (str(source.resolve()),)
+        assert events[0].paths == (str((destination / source.name).resolve()),)
+    finally:
+        bootstrap.library_service.close()

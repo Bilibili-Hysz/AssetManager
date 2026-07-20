@@ -127,3 +127,10 @@ def test_closed_session_rejects_file_info_preview_plugin_and_directory_callbacks
     assert panel._plugin_fields_layout.count() == 0
     assert panel._preview_pixmap is None
     assert panel._fields["size"].layout().itemAt(1).widget().text() == "pending"
+
+
+def test_field_update_ignores_missing_dynamic_layout():
+    from PySide6.QtWidgets import QWidget
+
+    row = QWidget()
+    InfoPanel._set_field_text(row, "updated")

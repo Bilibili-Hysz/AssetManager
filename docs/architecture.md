@@ -119,21 +119,18 @@ Panels receive controllers via library-scoped initialization paths. `InfoPanel` 
 
 ## Domain Events
 
-Application services publish domain events via `AssetsManager.domain.event_bus.get_event_bus()`:
+Application services publish immutable facts via `AssetsManager.domain.event_bus.get_event_bus()`. Session-bound UI refresh uses the scoped event set below:
 
 | Service | Method | Event |
 |---------|--------|-------|
-| `LibraryService` | `open_library()` | `LibraryOpened` |
-| `TagService` | `add_tag()`, `remove_tag()`, `rename_tag()`, `delete_tag()` | `TagsChanged` |
-| `MetadataService` | `set_notes()` | `NotesChanged` |
-| `MetadataService` | `add_url()`, `remove_url()` | `UrlsChanged` |
-| `FileOperationService` | `create_folder()` | `FileCreated` |
-| `FileOperationService` | `move()`, `move_to_directory()` | `FileRenamed` |
-| `FileOperationService` | `copy_to_directory()` | `FileCopied` |
-| `FileOperationService` | `duplicate()` | `FileCreated` |
-| `FileOperationService` | `delete_permanent()`, `delete_to_trash()` | `FileDeleted` |
+| `LibraryService` | `open_session()` | `LibraryOpened` |
+| `TagService` | asset mutation | `AssetTagsChanged` and `TagCatalogChanged` |
+| `MetadataService` | note or URL mutation | `AssetNotesChanged` or `AssetUrlsChanged` |
+| `FileOperationService` | bound file mutation after projection updates | `FileSystemChanged` |
 
-Desktop panels subscribe to domain events through `panels/_event_bridge.py`, which forwards domain events via Qt signals before invoking UI handlers. This keeps UI mutation on the Qt thread when events are published by worker or LAN threads. `EventBus.subscribe()` returns a subscription token, `subscribe_weak()` avoids keeping bound-method owners alive, and the Qt bridge closes its token during panel shutdown.
+Desktop panels subscribe only to session-scoped domain events through `panels/_event_bridge.py`, which forwards domain events via Qt signals before invoking UI handlers. Handlers reject events whose `session_token` does not match the active scoped session; asset-detail handlers also reject unrelated paths. This keeps UI mutation on the Qt thread when events are published by worker or LAN threads. `EventBus.subscribe()` returns a subscription token, `subscribe_weak()` avoids keeping bound-method owners alive, and the Qt bridge closes its token during panel shutdown.
+
+Legacy unscoped events (`FileCreated`, `FileRenamed`, `FileDeleted`, `FileCopied`, `TagsChanged`, `NotesChanged`, `UrlsChanged`) remain available for plugins and compatibility consumers. Panels must not subscribe to them because they do not carry session identity. `core.signal_bus` remains a separate Qt-only presentation mechanism for navigation, focused-file, theme, language, and UI-scale coordination; it must not carry application mutation facts.
 
 ## Application Bootstrap
 

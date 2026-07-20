@@ -61,3 +61,13 @@ AssetsManager/core/format_utils.c
 
 # Local standalone gate-test sandbox.
 /Gate_Test/
+
+# Generated local performance trend evidence.
+/artifacts/
+
+# Root-level diagnostic captures generated during local investigations.
+/crash_*.txt
+/full_crash_output*.txt
+/first_half.txt
+/root_crash_new.txt
+/test_order.txt

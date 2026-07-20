@@ -83,6 +83,74 @@ def test_perform_undo_and_redo_delegate_to_library_file_operations(tmp_path):
     ]
 
 
+def test_peeked_undo_and_redo_entries_preserve_selection_targets(tmp_path):
+    """UI callers can derive a target before moving an entry between stacks."""
+    old = str(tmp_path / "old.txt")
+    new = str(tmp_path / "new.txt")
+    operations = _RecordingFileOperations()
+    svc = UndoService(library_root=str(tmp_path))
+    svc.record_rename(old, new)
+
+    undo_entry = svc.peek_undo()
+    assert undo_entry is not None
+    assert undo_entry.type == "rename"
+    assert undo_entry.old == old  # Undo restores the original path.
+    assert svc.perform_undo(operations, str(tmp_path))
+
+    redo_entry = svc.peek_redo()
+    assert redo_entry is not None
+    assert redo_entry.type == "rename"
+    assert redo_entry.new == new  # Redo restores the renamed path.
+    assert svc.perform_redo(operations, str(tmp_path))
+
+
+def test_peeked_delete_entry_distinguishes_undo_restore_from_redo_removal(tmp_path):
+    path = tmp_path / "deleted.txt"
+    backup = tmp_path / "backup.txt"
+    backup.write_text("backup", encoding="utf-8")
+    operations = _RecordingFileOperations()
+    svc = UndoService(library_root=str(tmp_path))
+    svc._push_undo(UndoEntry(type="delete", path=str(path), backup=str(backup)))
+
+    undo_entry = svc.peek_undo()
+    assert undo_entry is not None
+    assert undo_entry.path == str(path)  # Undo has a concrete restored target.
+    assert svc.perform_undo(operations, str(tmp_path))
+
+    redo_entry = svc.peek_redo()
+    assert redo_entry is not None
+    assert redo_entry.path == str(path)  # Redo removes this path; it has no selection target.
+
+
+def test_undo_records_session_scoped_execution_outcomes(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.core.performance import PerformanceRecorder
+
+    library = tmp_path / "library"
+    library.mkdir()
+    old = library / "old.txt"
+    new = library / "new.txt"
+    old.write_text("data", encoding="utf-8")
+    recorder = PerformanceRecorder(enabled=True)
+    bootstrap = ApplicationBootstrap(performance_recorder=recorder)
+    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    undo = scoped.undo_service
+    undo.record_rename(str(old), str(new))
+    assert scoped.file_operation_service.move(old, new) == new
+    recorder.clear()
+
+    assert undo.perform_undo(scoped.file_operation_service)
+    assert undo.perform_redo(scoped.file_operation_service)
+
+    events = [event for event in recorder.recent() if event.name == "file.undo"]
+    assert [(event.attributes["command"], event.attributes["outcome"]) for event in events] == [
+        ("undo", "success"), ("redo", "success")
+    ]
+    assert all(event.session_token == scoped.session.event_token for event in events)
+    assert [event.attributes["phase"] for event in events] == ["events_published", "events_published"]
+    assert [event for event in recorder.recent() if event.name == "file.command"] == []
+
+
 def test_record_rename_and_undo(tmp_path):
     src = tmp_path / "old.txt"
     src.write_text("data", encoding="utf-8")
@@ -180,7 +248,7 @@ def test_delete_undo_and_redo_reconcile_file_projections(tmp_path):
     source.write_text("data", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
     scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
-    conn = scoped.session.db_conn
+    conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     index.index_directory(conn, library, library)
     TagStore(str(library)).add_tag(str(source), "hero")
@@ -225,7 +293,7 @@ def test_rename_undo_and_redo_reconcile_metadata_thumbnails_and_index(tmp_path):
     old.write_text("data", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
     scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
-    conn = scoped.session.db_conn
+    conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     index.index_directory(conn, library, library)
     TagStore(str(library)).add_tag(str(old), "hero")

@@ -35,10 +35,9 @@ def schema_db(memory_db):
 def _cleanup_stores():
     """Close per-library stores and clean up test data directories."""
     yield
-    import warnings
     from PySide6.QtCore import QThreadPool
     from PySide6.QtWidgets import QApplication
-    from AssetsManager.core import tag_store, project_data, database
+    from AssetsManager.core import database
     from AssetsManager.core.path_resolver import library_data_dir
 
     app = QApplication.instance()
@@ -54,18 +53,6 @@ def _cleanup_stores():
     mgr = ThreadSafeSingleton.get(DatabaseManager)
     opened_roots = list(mgr._connections.keys())
 
-    for store in list(tag_store._stores.values()):
-        try:
-            store._db.close()
-        except Exception as exc:
-            warnings.warn(f"Failed to close tag_store: {exc}")
-    tag_store._stores.clear()
-    for store in list(project_data._stores.values()):
-        try:
-            store._db.close()
-        except Exception as exc:
-            warnings.warn(f"Failed to close project_data: {exc}")
-    project_data._stores.clear()
     database.close_all_dbs()
 
     # Reset the global EventBus singleton to avoid handler leaks between tests

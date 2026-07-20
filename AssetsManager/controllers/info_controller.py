@@ -10,6 +10,7 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from AssetsManager.application.metadata_service import MetadataService
 from AssetsManager.application.tag_service import TagService
@@ -17,6 +18,16 @@ from AssetsManager.core.plugins.manager import PluginManagerService
 from AssetsManager.repositories.plugin_metadata_repository import PluginMetadataRepository
 
 _log = logging.getLogger(__name__)
+
+
+class _DirectoryClassifyCache(Protocol):
+    """Minimal cache contract used by directory classification."""
+
+    def __contains__(self, key: str) -> bool: ...
+
+    def __getitem__(self, key: str) -> str: ...
+
+    def __setitem__(self, key: str, value: str) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -313,7 +324,9 @@ class InfoController:
     # ── Directory classification ─────────────────────────────────
 
     @staticmethod
-    def classify_dir(dir_path: str, *, classify_cache: dict[str, str] | None = None) -> str:
+    def classify_dir(
+        dir_path: str, *, classify_cache: _DirectoryClassifyCache | None = None,
+    ) -> str:
         """Return a human-readable summary of file types in a directory.
 
         Uses an emoji-based breakdown (e.g. "🖼 5  📄 3") for display in

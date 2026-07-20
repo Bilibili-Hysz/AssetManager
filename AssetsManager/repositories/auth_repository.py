@@ -48,17 +48,14 @@ class AuthRepository:
 
     def init_tables(self) -> None:
         """Create users and invite_codes tables if they don't exist."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.execute(USERS_SCHEMA)
             self._conn.execute(INVITE_CODES_SCHEMA)
             self._conn.commit()
-        # Share schema owned by ShareRepository
-        from AssetsManager.repositories.share_repository import ShareRepository
-        ShareRepository(self._conn).init_table()
 
     # ── Users ────────────────────────────────────────────────────
 
-    def has_active_users(self) -> bool:
+    def has_active_users(self, *, raise_on_error: bool = False) -> bool:
         """Check if there are any active users."""
         try:
             row = self._conn.execute(
@@ -67,6 +64,8 @@ class AuthRepository:
             return (row[0] > 0) if row else False
         except Exception:
             _log.warning("has_active_users query failed", exc_info=True)
+            if raise_on_error:
+                raise
             return False
 
     def get_user_by_username(self, username: str) -> dict | None:
@@ -111,7 +110,7 @@ class AuthRepository:
                     email: str | None = None, role: str = "viewer") -> int | None:
         """Insert a new user. Returns user ID or None on failure."""
         try:
-            with db_write_lock():
+            with db_write_lock(self._conn):
                 cur = self._conn.execute(
                     "INSERT INTO users (username, password, email, role, is_active) "
                     "VALUES (?, ?, ?, ?, 1)",
@@ -133,7 +132,7 @@ class AuthRepository:
     ) -> int | None:
         """Atomically consume an invite code and insert a user."""
         try:
-            with db_write_lock():
+            with db_write_lock(self._conn):
                 user_cur = self._conn.execute(
                     "INSERT INTO users (username, password, email, role, is_active) "
                     "VALUES (?, ?, ?, ?, 1)",
@@ -169,7 +168,7 @@ class AuthRepository:
 
     def set_user_active(self, user_id: int, active: bool) -> bool:
         """Activate or deactivate a user. Returns True if updated."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             cur = self._conn.execute(
                 "UPDATE users SET is_active=? WHERE id=?",
                 (1 if active else 0, user_id),
@@ -182,7 +181,7 @@ class AuthRepository:
     def insert_invite_code(self, code: str, created_by: str = "admin") -> bool:
         """Insert a new invite code. Returns True on success."""
         try:
-            with db_write_lock():
+            with db_write_lock(self._conn):
                 self._conn.execute(
                     "INSERT INTO invite_codes (code, created_by, is_active) "
                     "VALUES (?, ?, 1)",
@@ -216,7 +215,7 @@ class AuthRepository:
 
     def deactivate_invite_code(self, code: str) -> bool:
         """Deactivate an invite code. Returns True if updated."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             cur = self._conn.execute(
                 "UPDATE invite_codes SET is_active=0 WHERE code=?",
                 (code,),
@@ -237,7 +236,7 @@ class AuthRepository:
     def consume_invite_code(self, code: str, username: str) -> bool:
         """Mark an invite code as used by the given username."""
         try:
-            with db_write_lock():
+            with db_write_lock(self._conn):
                 cur = self._conn.execute(
                     "UPDATE invite_codes SET used_by=?, used_at=strftime('%s','now') "
                     "WHERE code=? AND is_active=1 AND used_by IS NULL",

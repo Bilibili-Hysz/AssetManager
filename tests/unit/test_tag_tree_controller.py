@@ -26,9 +26,12 @@ def lib_env(tmp_path):
 
 def _make_controller(lib_root: str):
     from AssetsManager.application.tag_service import TagService
-    from AssetsManager.core.database import get_lib_db
+    from AssetsManager.core.database import DatabaseManager
+    from AssetsManager.core.singleton import ThreadSafeSingleton
     from AssetsManager.controllers.tag_tree_controller import TagTreeController
-    svc = TagService(connection_provider=get_lib_db)
+    svc = TagService(
+        connection_provider=lambda root: ThreadSafeSingleton.get(DatabaseManager).connection_for(root)
+    )
     return TagTreeController(lib_root, tag_svc=svc)
 
 

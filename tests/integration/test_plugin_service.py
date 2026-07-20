@@ -1,5 +1,8 @@
 """Tests for PluginService."""
 import json
+from unittest.mock import Mock
+
+import pytest
 
 from AssetsManager.application.plugin_service import PluginService
 from AssetsManager.core.plugins import PluginManagerService
@@ -97,6 +100,83 @@ def test_unload_plugin(tmp_path):
     assert record.state == "loadable"
 
 
+def test_failed_plugin_register_cleans_event_hook(tmp_path):
+    from AssetsManager.core.plugins import PluginHostContext
+    plugin_dir = _make_plugin(tmp_path, "failing.register")
+    (plugin_dir / "main.py").write_text(
+        "from AssetsManager.domain.events import FileCreated\n"
+        "class Plugin:\n"
+        "    def register(self, ctx):\n"
+        "        ctx.hook(FileCreated, lambda event: None)\n"
+        "        raise RuntimeError('register failed')\n",
+        encoding="utf-8",
+    )
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileCreated
+
+    manager = PluginManagerService(search_paths=[tmp_path])
+    manager.discover_plugins()
+    result = manager.load_plugin("failing.register", PluginHostContext())
+
+    assert result.ok is False
+    assert get_event_bus().handler_count(FileCreated) == 0
+
+
+def test_failed_plugin_unregister_still_cleans_event_hook(tmp_path):
+    from AssetsManager.core.plugins import PluginHostContext
+    plugin_dir = _make_plugin(tmp_path, "failing.unregister")
+    (plugin_dir / "main.py").write_text(
+        "from AssetsManager.domain.events import FileCreated\n"
+        "class Plugin:\n"
+        "    def register(self, ctx):\n"
+        "        ctx.hook(FileCreated, lambda event: None)\n"
+        "    def unregister(self, ctx):\n"
+        "        raise RuntimeError('unregister failed')\n",
+        encoding="utf-8",
+    )
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileCreated
+
+    manager = PluginManagerService(search_paths=[tmp_path])
+    manager.discover_plugins()
+    context = PluginHostContext()
+    assert manager.load_plugin("failing.unregister", context).ok
+    assert get_event_bus().handler_count(FileCreated) == 1
+
+    assert manager.unload_plugin("failing.unregister") is False
+    assert get_event_bus().handler_count(FileCreated) == 0
+
+
+def test_failed_host_cleanup_still_completes_plugin_unload(tmp_path, monkeypatch):
+    from AssetsManager.core.plugins import PluginHostContext
+    from AssetsManager.core.plugins import PLUGIN_STATE_LOADABLE
+
+    _make_plugin(tmp_path, "failing.host_cleanup")
+    manager = PluginManagerService(search_paths=[tmp_path])
+    manager.discover_plugins()
+    context = PluginHostContext()
+    assert manager.load_plugin("failing.host_cleanup", context).ok
+
+    def fail_unregister(_plugin_id):
+        raise RuntimeError("subscription close failed")
+
+    remove_categories = Mock(wraps=manager.remove_registered_categories)
+    remove_theme_tokens = Mock(wraps=manager.remove_registered_theme_tokens)
+    monkeypatch.setattr(manager, "remove_registered_categories", remove_categories)
+    monkeypatch.setattr(manager, "remove_registered_theme_tokens", remove_theme_tokens)
+    monkeypatch.setattr(context, "unregister_plugin", fail_unregister)
+
+    assert manager.unload_plugin("failing.host_cleanup") is True
+    remove_categories.assert_called_once_with("failing.host_cleanup")
+    remove_theme_tokens.assert_called_once_with("failing.host_cleanup")
+    record = manager.plugin_record("failing.host_cleanup")
+    assert record is not None
+    assert record.state == PLUGIN_STATE_LOADABLE
+    assert record.module is None
+    assert record.plugin_instance is None
+    assert record.host_context is None
+
+
 def test_load_nonexistent_plugin_returns_error(tmp_path):
     PluginManagerService._instance = None
     svc = PluginService(PluginManagerService(search_paths=[tmp_path]))
@@ -152,22 +232,73 @@ def test_register_file_handler_with_invalid_callables():
 
 def test_hook_registers_event_handler():
     from AssetsManager.core.plugins.host_context import PluginHostContext
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileCreated
 
     ctx = PluginHostContext()
     calls = []
 
-    def on_theme(event):
+    def on_created(event):
         calls.append(event)
 
-    ctx.hook("ThemeChanged", on_theme)
+    ctx.hook(FileCreated, on_created)
     hooks = ctx.event_hooks()
-    assert "ThemeChanged" in hooks
-    assert len(hooks["ThemeChanged"]) == 1
+    assert FileCreated in hooks
+    assert len(hooks[FileCreated]) == 1
 
-    # Simulate event delivery — hooks are stored as (handler, plugin_id) tuples
-    handler, pid = hooks["ThemeChanged"][0]
-    handler({"theme": "Navy"})
+    get_event_bus().publish(FileCreated(path="/asset.txt"))
     assert len(calls) == 1
+
+
+def test_unregister_plugin_keeps_shared_handler_owned_by_another_plugin():
+    from AssetsManager.core.plugins.host_context import PluginHostContext
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileCreated
+
+    ctx = PluginHostContext()
+    calls = []
+
+    def on_created(event):
+        calls.append(event)
+
+    ctx.hook(FileCreated, on_created, plugin_id="plugin_a")
+    ctx.hook(FileCreated, on_created, plugin_id="plugin_b")
+    ctx.unregister_plugin("plugin_a")
+
+    get_event_bus().publish(FileCreated(path="/asset.txt"))
+    assert len(calls) == 1
+    assert calls[0].path == "/asset.txt"
+    assert get_event_bus().handler_count(FileCreated) == 1
+
+
+def test_plugin_registration_assigns_default_hook_ownership(tmp_path):
+    from AssetsManager.core.plugins import PluginHostContext
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileCreated
+
+    plugin_dir = _make_plugin(tmp_path, "implicit.owner")
+    (plugin_dir / "main.py").write_text(
+        "from AssetsManager.domain.events import FileCreated\n"
+        "class Plugin:\n"
+        "    def register(self, ctx):\n"
+        "        ctx.hook(FileCreated, lambda event: None)\n",
+        encoding="utf-8",
+    )
+    manager = PluginManagerService(search_paths=[tmp_path])
+    manager.discover_plugins()
+    context = PluginHostContext()
+
+    assert manager.load_plugin("implicit.owner", context).ok
+    assert get_event_bus().handler_count(FileCreated) == 1
+    assert manager.unload_plugin(" implicit.owner ")
+    assert get_event_bus().handler_count(FileCreated) == 0
+
+
+def test_hook_rejects_non_domain_event_type():
+    from AssetsManager.core.plugins.host_context import PluginHostContext
+
+    with pytest.raises(TypeError, match="DomainEvent subclass"):
+        PluginHostContext().hook("ThemeChanged", lambda _event: None)  # type: ignore[arg-type]
 
 
 def test_register_category():
@@ -389,6 +520,8 @@ def test_unload_preserves_other_plugins(tmp_path):
 def test_unload_cleans_event_hooks():
     """Verify that unregister_plugin removes event hooks by plugin_id."""
     from AssetsManager.core.plugins.host_context import PluginHostContext
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileCreated
 
     ctx = PluginHostContext()
 
@@ -398,18 +531,61 @@ def test_unload_cleans_event_hooks():
     def handler_b(event):
         pass
 
-    ctx.hook("ThemeChanged", handler_a, plugin_id="plugin_a")
-    ctx.hook("ThemeChanged", handler_b, plugin_id="plugin_b")
+    ctx.hook(FileCreated, handler_a, plugin_id="plugin_a")
+    ctx.hook(FileCreated, handler_b, plugin_id="plugin_b")
 
     hooks = ctx.event_hooks()
-    assert len(hooks["ThemeChanged"]) == 2
+    assert len(hooks[FileCreated]) == 2
 
     ctx.unregister_plugin("plugin_a")
 
     hooks = ctx.event_hooks()
-    assert len(hooks["ThemeChanged"]) == 1
-    _, pid = hooks["ThemeChanged"][0]
+    assert len(hooks[FileCreated]) == 1
+    _, pid = hooks[FileCreated][0]
     assert pid == "plugin_b"
+    assert get_event_bus().handler_count(FileCreated) == 1
+
+
+def test_unload_keeps_shared_handler_owned_by_other_plugin():
+    """Each hook must have its own EventBus subscription token."""
+    from AssetsManager.core.plugins.host_context import PluginHostContext
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileCreated
+
+    ctx = PluginHostContext()
+    calls = []
+
+    def handler(event):
+        calls.append(event)
+
+    ctx.hook(FileCreated, handler, plugin_id="plugin_a")
+    ctx.hook(FileCreated, handler, plugin_id="plugin_b")
+    ctx.unregister_plugin("plugin_a")
+
+    get_event_bus().publish(FileCreated(path="/asset.txt"))
+
+    assert len(calls) == 1
+    assert get_event_bus().handler_count(FileCreated) == 1
+
+
+def test_unload_normalizes_plugin_id_for_hook_cleanup(tmp_path):
+    from AssetsManager.core.plugins.host_context import PluginHostContext
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileCreated
+
+    plugin_dir = _make_plugin(tmp_path, "normalized.plugin")
+    (plugin_dir / "main.py").write_text(
+        "from AssetsManager.domain.events import FileCreated\n"
+        "class Plugin:\n"
+        "    def register(self, ctx): ctx.hook(FileCreated, lambda event: None)\n",
+        encoding="utf-8",
+    )
+    manager = PluginManagerService(search_paths=[tmp_path])
+    manager.discover_plugins()
+    assert manager.load_plugin("normalized.plugin", PluginHostContext()).ok
+
+    assert manager.unload_plugin(" normalized.plugin ") is True
+    assert get_event_bus().handler_count(FileCreated) == 0
 
 
 def test_unload_cleans_tool_windows():

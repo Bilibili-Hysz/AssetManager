@@ -4,6 +4,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QApplication
 
 from AssetsManager.application.bootstrap import ApplicationBootstrap
@@ -13,12 +14,18 @@ from AssetsManager.application.bootstrap import ApplicationBootstrap
 def _bootstrap_app():
     """Set up ApplicationBootstrap on QApplication for panel tests.
 
-    Panels call ``require_scoped_services()`` which reads
-    ``QApplication.property("bootstrap")``. Without this, any panel
-    that resolves scoped services raises ``RuntimeError``.
+    Tests may use this bootstrap to open canonical sessions and explicitly
+    inject ``bootstrap.for_library(session)`` into panels.
     """
     app = QApplication.instance() or QApplication([])
     bootstrap = ApplicationBootstrap()
     app.setProperty("bootstrap", bootstrap)
     yield bootstrap
+    for widget in app.topLevelWidgets():
+        shutdown = getattr(widget, "shutdown", None)
+        if callable(shutdown):
+            shutdown()
+        widget.close()
+        widget.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     app.setProperty("bootstrap", None)

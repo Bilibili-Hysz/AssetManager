@@ -10,7 +10,9 @@ from sqlite3 import Connection
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.core.project_data import ProjectData
 from AssetsManager.domain.event_bus import get_event_bus
-from AssetsManager.domain.events import NotesChanged, UrlsChanged
+from AssetsManager.domain.events import (
+    AssetNotesChanged, AssetUrlsChanged, NotesChanged, UrlsChanged,
+)
 from AssetsManager.repositories.metadata_repository import MetadataRepository
 from AssetsManager.repositories.tag_repository import TagRepository
 
@@ -50,6 +52,25 @@ class MetadataService:
         """Return a MetadataRepository for the given library root."""
         return MetadataRepository(self._connection(library_root))
 
+    def _publish_notes_changed(self, file_path: str) -> None:
+        if self._session is None:
+            return
+        get_event_bus().publish(AssetNotesChanged(
+            library_root=self._session.root_str,
+            session_token=self._session.event_token,
+            file_path=file_path,
+        ))
+
+    def _publish_urls_changed(self, file_path: str, urls: tuple[str, ...]) -> None:
+        if self._session is None:
+            return
+        get_event_bus().publish(AssetUrlsChanged(
+            library_root=self._session.root_str,
+            session_token=self._session.event_token,
+            file_path=file_path,
+            new_urls=urls,
+        ))
+
     @session_operation
     def get_metadata(self, library_root: str | Path, path: str | Path) -> AssetMetadata:
         root = str(Path(library_root).resolve())
@@ -74,6 +95,7 @@ class MetadataService:
         key = str(Path(path).resolve())
         self._repo(str(Path(library_root).resolve())).set_notes(key, text)
         get_event_bus().publish(NotesChanged(file_path=key))
+        self._publish_notes_changed(key)
 
     @session_operation
     def get_urls(self, library_root: str | Path, path: str | Path) -> list[str]:
@@ -86,7 +108,9 @@ class MetadataService:
         repo = self._repo(root)
         urls = repo.add_url(key, url)
         if urls is not None:
-            get_event_bus().publish(UrlsChanged(file_path=key, new_urls=tuple(urls)))
+            result = tuple(urls)
+            get_event_bus().publish(UrlsChanged(file_path=key, new_urls=result))
+            self._publish_urls_changed(key, result)
 
     @session_operation
     def remove_url(self, library_root: str | Path, path: str | Path, url: str) -> None:
@@ -95,7 +119,9 @@ class MetadataService:
         repo = self._repo(root)
         urls = repo.remove_url(key, url)
         if urls is not None:
-            get_event_bus().publish(UrlsChanged(file_path=key, new_urls=tuple(urls)))
+            result = tuple(urls)
+            get_event_bus().publish(UrlsChanged(file_path=key, new_urls=result))
+            self._publish_urls_changed(key, result)
 
     @session_operation
     def get_dir_size(self, library_root: str | Path, dir_path: str | Path,

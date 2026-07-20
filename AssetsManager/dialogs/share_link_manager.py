@@ -257,6 +257,10 @@ class ShareLinkManager(TabbedDialog):
         """Copy share link for a specific row."""
         if row < 0 or row >= len(self._shares):
             return
+        server = self._server
+        if server is None:
+            self._status_label.setText(tr("sharemgr.error.server_unavailable"))
+            return
 
         share = self._shares[row]
         share_id = share.get("id")
@@ -264,7 +268,7 @@ class ShareLinkManager(TabbedDialog):
             return
 
         # Build URL
-        port = self._server._port
+        port = server._port
         from AssetsManager.lan.server import get_local_ip
         ip = get_local_ip()
         url = f"http://{ip}:{port}/s/{share_id}"
@@ -290,6 +294,10 @@ class ShareLinkManager(TabbedDialog):
         """Delete share link for a specific row (async, non-blocking)."""
         if row < 0 or row >= len(self._shares):
             return
+        server = self._server
+        if server is None:
+            self._status_label.setText(tr("sharemgr.error.server_unavailable"))
+            return
 
         share = self._shares[row]
         share_id = share.get("id")
@@ -305,12 +313,12 @@ class ShareLinkManager(TabbedDialog):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        port = self._server._port
+        port = server._port
         url = f"http://localhost:{port}/api/shares/{share_id}"
         headers = {}
-        if hasattr(self._server, 'token_secret'):
+        if hasattr(server, 'token_secret'):
             from AssetsManager.lan.utils import get_auth_headers
-            headers.update(get_auth_headers(self._server.token_secret))
+            headers.update(get_auth_headers(server.token_secret))
 
         captured_row = row
         self._delete_task = _HttpDeleteTask(url, headers)

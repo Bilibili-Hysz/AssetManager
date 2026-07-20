@@ -2,6 +2,8 @@
 
 Inherits TabbedDialog for consistent dark theme and widget factories.
 """
+from typing import Protocol, cast, runtime_checkable
+
 from PySide6.QtCore import Qt, Signal, QObject
 from PySide6.QtWidgets import (
     QMessageBox, QProgressBar, QVBoxLayout, QHBoxLayout, QWidget,
@@ -14,6 +16,26 @@ from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core import themes
 from AssetsManager import i18n
 tr = i18n.tr
+
+
+class _ThumbnailLoader(Protocol):
+    def clear_thumb_cache(self) -> int: ...
+
+    def regenerate_all(self, lib_root: str, on_progress=None) -> None: ...
+
+
+class _FileListHost(Protocol):
+    _loader: _ThumbnailLoader
+    _lib_root: str
+
+
+@runtime_checkable
+class _BackgroundStyleHost(Protocol):
+    def _on_bg_style_changed(self) -> None: ...
+
+
+class _ThumbnailHost(Protocol):
+    file_list: _FileListHost
 
 
 class _ProgressSignals(QObject):
@@ -377,7 +399,7 @@ class SettingsDialog(TabbedDialog):
         s.save()
         themes.invalidate_cache()
         parent = self.parent()
-        if parent and hasattr(parent, '_on_bg_style_changed'):
+        if isinstance(parent, _BackgroundStyleHost):
             try:
                 parent._on_bg_style_changed()
             except Exception:
@@ -499,8 +521,9 @@ class SettingsDialog(TabbedDialog):
         if reply != QMessageBox.StandardButton.Yes:
             return
         parent = self.parent()
-        if parent and hasattr(parent, 'file_list') and hasattr(parent.file_list, '_loader'):
-            count = parent.file_list._loader.clear_thumb_cache()
+        if parent is not None and hasattr(parent, "file_list"):
+            host = cast(_ThumbnailHost, parent)
+            count = host.file_list._loader.clear_thumb_cache()
             QMessageBox.information(self, tr("dialog.done"), tr("settings.thumbnails_deleted", count=count))
         else:
             QMessageBox.warning(self, tr("dialog.error"), tr("settings.error_no_library"))
@@ -513,9 +536,9 @@ class SettingsDialog(TabbedDialog):
         if reply != QMessageBox.StandardButton.Yes:
             return
         parent = self.parent()
-        if not parent or not hasattr(parent, 'file_list'):
+        if parent is None or not hasattr(parent, "file_list"):
             return
-        fl = parent.file_list
+        fl = cast(_ThumbnailHost, parent).file_list
         loader = fl._loader
         lib_root = fl._lib_root
         if not lib_root:

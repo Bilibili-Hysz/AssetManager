@@ -5,12 +5,15 @@ import os
 import shutil
 import tempfile
 import threading
+from contextlib import nullcontext
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import TYPE_CHECKING
 
 from AssetsManager.application.context import session_operation
+from AssetsManager.core.performance import PerformanceRecorder
 
 if TYPE_CHECKING:
     from AssetsManager.application.context import LibrarySession
@@ -36,7 +39,8 @@ class UndoService:
     """
 
     def __init__(self, max_depth: int = 20, library_root: str = "",
-                 session: LibrarySession | None = None):
+                 session: LibrarySession | None = None,
+                 performance_recorder: PerformanceRecorder | None = None):
         self._library_root = str(library_root)
         self._session = session
         self._closed = False
@@ -47,6 +51,23 @@ class UndoService:
         self._stacks[self._library_root] = (
             deque[UndoEntry](maxlen=max_depth), [],
         )
+        self._performance_recorder = (
+            performance_recorder if performance_recorder is not None and performance_recorder.enabled else None
+        )
+
+    def _record_execution(self, command: str, started: float | None, outcome: str) -> None:
+        if self._performance_recorder is None or started is None:
+            return
+        try:
+            self._performance_recorder.record(
+                "file.undo",
+                (perf_counter() - started) * 1000,
+                session_token=self._session.event_token if self._session is not None else None,
+                path=self._library_root or None,
+                attributes={"command": command, "outcome": outcome, "phase": "events_published" if outcome == "success" else "failed"},
+            )
+        except Exception:
+            pass
 
     @property
     def undo_dir(self) -> Path:
@@ -176,33 +197,49 @@ class UndoService:
     @session_operation
     def perform_undo(self, file_operations, library_root: str | Path | None = None) -> bool:
         """Undo through file operations, moving history only after success."""
+        started = perf_counter() if self._performance_recorder is not None else None
         with self._lock:
             if not self._undo_stack:
+                self._record_execution("undo", started, "empty")
                 return False
             entry = self._undo_stack[-1]
-        if not self._execute_reverse(file_operations, entry, library_root):
+        suppress = getattr(file_operations, "suppress_command_telemetry", nullcontext)
+        with suppress():
+            succeeded = self._execute_reverse(file_operations, entry, library_root)
+        if not succeeded:
+            self._record_execution("undo", started, "error")
             return False
         with self._lock:
             if not self._undo_stack or self._undo_stack[-1] != entry:
+                self._record_execution("undo", started, "error")
                 return False
             self._undo_stack.pop()
             self._redo_stack.append(entry)
+        self._record_execution("undo", started, "success")
         return True
 
     @session_operation
     def perform_redo(self, file_operations, library_root: str | Path | None = None) -> bool:
         """Redo through file operations, moving history only after success."""
+        started = perf_counter() if self._performance_recorder is not None else None
         with self._lock:
             if not self._redo_stack:
+                self._record_execution("redo", started, "empty")
                 return False
             entry = self._redo_stack[-1]
-        if not self._execute_forward(file_operations, entry, library_root):
+        suppress = getattr(file_operations, "suppress_command_telemetry", nullcontext)
+        with suppress():
+            succeeded = self._execute_forward(file_operations, entry, library_root)
+        if not succeeded:
+            self._record_execution("redo", started, "error")
             return False
         with self._lock:
             if not self._redo_stack or self._redo_stack[-1] != entry:
+                self._record_execution("redo", started, "error")
                 return False
             self._redo_stack.pop()
             self._undo_stack.append(entry)
+        self._record_execution("redo", started, "success")
         return True
 
     @staticmethod

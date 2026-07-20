@@ -1,5 +1,7 @@
-from AssetsManager.widgets.lan_sharing import LanSharingMixin
+from unittest.mock import Mock
+
 from AssetsManager.dialogs.sharing_settings_dialog import SharingSettingsDialog
+from AssetsManager.widgets.lan_sharing import LanSharingMixin
 
 
 class _Server:
@@ -15,6 +17,46 @@ class _Server:
 
 def test_quick_share_uses_server_status_url():
     assert LanSharingMixin._quick_share_api_url(_Server()) == "http://192.168.1.10:9090/api/shares"
+
+
+def test_toggle_sharing_uses_injected_library_session(monkeypatch, tmp_path):
+    from AssetsManager import lan
+    from AssetsManager.core.settings import AppSettings
+
+    class _Settings:
+        def get(self, key, default=None):
+            return default
+
+    class _Session:
+        root_str = str(tmp_path)
+        thumb_dir_str = str(tmp_path / "thumbs")
+        is_closed = False
+
+        def __init__(self):
+            self.connection_for = Mock(return_value=object())
+            self.root = tmp_path
+
+    class _Host(LanSharingMixin):
+        def __init__(self):
+            self._lan_server = None
+            self._library_session = _Session()
+            self.status_updates = []
+
+        def _update_share_status(self, running, port=8080):
+            self.status_updates.append((running, port))
+
+    server = Mock()
+    monkeypatch.setattr(AppSettings, "instance", classmethod(lambda cls: _Settings()))
+    monkeypatch.setattr(lan, "LanServer", Mock(return_value=server))
+    host = _Host()
+
+    host._toggle_sharing()
+
+    host._library_session.connection_for.assert_called_once_with(tmp_path)
+    assert lan.LanServer.call_args.kwargs["library_root"] == str(tmp_path)
+    assert lan.LanServer.call_args.kwargs["performance_recorder"] is None
+    assert lan.LanServer.call_args.kwargs["session_token"] is None
+    server.start.assert_called_once_with(port=8080, bind="0.0.0.0")
 
 
 class _RestartServer:
@@ -250,3 +292,23 @@ def test_sharing_dialog_refresh_clears_runtime_data_when_stopped():
     assert dialog._links_table.rows == 0
     assert dialog._codes_table.rows == 0
     assert dialog._online_table.rows == 0
+
+
+def test_sharing_dialog_overview_copy_uses_overview_url(monkeypatch):
+    from AssetsManager.dialogs import sharing_settings_dialog
+
+    copied = []
+    clipboard = type("_Clipboard", (), {"setText": copied.append})()
+    url_label = type(
+        "_UrlLabel",
+        (),
+        {"text": lambda _self: "http://localhost:8080?key=secret"},
+    )()
+    monkeypatch.setattr(sharing_settings_dialog.QApplication, "clipboard", staticmethod(lambda: clipboard))
+    dialog = SharingSettingsDialog.__new__(SharingSettingsDialog)
+    dialog._share_url_label = url_label
+    dialog._share_copy_btn = _DialogButton()
+
+    dialog._copy_overview_link()
+
+    assert copied == ["http://localhost:8080?key=secret"]

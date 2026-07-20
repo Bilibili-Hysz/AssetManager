@@ -23,13 +23,13 @@ class ThumbnailRepository:
 
     def delete_entry(self, cache_key: str) -> None:
         """Delete a single cache entry."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.execute("DELETE FROM thumbnail_cache WHERE cache_key=?", (cache_key,))
             self._conn.commit()
 
     def touch_access(self, cache_key: str) -> None:
         """Update last_access timestamp."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.execute(
                 "UPDATE thumbnail_cache SET last_access=strftime('%s','now') WHERE cache_key=?",
                 (cache_key,),
@@ -46,7 +46,7 @@ class ThumbnailRepository:
         cache_size: int,
     ) -> None:
         """Insert or update a thumbnail cache entry."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.execute(
                 "INSERT OR REPLACE INTO thumbnail_cache "
                 "(cache_key, source_path, source_mtime, source_size, baked_size, cache_size, last_access) "
@@ -64,14 +64,14 @@ class ThumbnailRepository:
 
     def delete_by_key(self, cache_key: str) -> None:
         """Delete entry by cache key (for orphan cleanup)."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.execute("DELETE FROM thumbnail_cache WHERE cache_key=?", (cache_key,))
             self._conn.commit()
 
     def delete_path(self, source_path: str) -> list[str]:
         """Delete cache rows for a path and its descendants, returning keys."""
         escaped = source_path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        with db_write_lock():
+        with db_write_lock(self._conn):
             rows = self._conn.execute(
                 "SELECT cache_key FROM thumbnail_cache WHERE source_path=? OR source_path LIKE ? ESCAPE '\\'",
                 (source_path, escaped + os.sep.replace("\\", "\\\\") + "%"),
@@ -85,7 +85,7 @@ class ThumbnailRepository:
 
     def clear_all(self) -> None:
         """Delete all entries from the thumbnail cache table."""
-        with db_write_lock():
+        with db_write_lock(self._conn):
             self._conn.execute("DELETE FROM thumbnail_cache")
             self._conn.commit()
 

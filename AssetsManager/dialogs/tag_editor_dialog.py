@@ -110,8 +110,9 @@ class TagEditorDialog(TabbedDialog):
         self._current_chips.clear()
         while self._current_flow_layout.count():
             item = self._current_flow_layout.takeAt(0)
-            if item and item.widget():
-                item.widget().deleteLater()
+            widget = item.widget() if item is not None else None
+            if widget is not None:
+                widget.deleteLater()
 
     def _refresh_current(self):
         self._clear_current_chips()

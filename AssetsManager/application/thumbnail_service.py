@@ -9,7 +9,9 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
+from AssetsManager.application.context import ConnectionProvider
 from AssetsManager.domain.asset import IMAGE_EXTS
+from AssetsManager.repositories.tag_repository import TagRepository
 
 _log = logging.getLogger(__name__)
 
@@ -74,6 +76,9 @@ class ThumbnailResult:
 class ThumbnailService:
     """Resolve and process thumbnails for assets."""
 
+    def __init__(self, connection_provider: ConnectionProvider | None = None):
+        self._connection_provider = connection_provider
+
     def resolve(
         self,
         target: Path,
@@ -81,13 +86,14 @@ class ThumbnailService:
         max_size: int = 512,
         blur_tags: set[str] | None = None,
         db_conn: sqlite3.Connection | None = None,
+        library_root: str | Path | None = None,
     ) -> ThumbnailResult:
         """Resolve the source image for a thumbnail request.
 
         Checks the disk cache first, then falls back to the original file.
         Also determines if the image should be blurred based on tags.
         """
-        should_blur = self._check_blur(target, blur_tags, db_conn)
+        should_blur = self._check_blur(target, blur_tags, db_conn, library_root)
         is_original_request = max_size >= 1024
 
         # Try cache
@@ -136,19 +142,28 @@ class ThumbnailService:
             _log.debug("process_image failed for %s: %s", source_path, exc)
             return None
 
-    @staticmethod
     def _check_blur(
+        self,
         target: Path,
         blur_tags: set[str] | None,
         db_conn: sqlite3.Connection | None,
+        library_root: str | Path | None = None,
     ) -> bool:
-        if not blur_tags or not db_conn:
+        if not blur_tags:
+            return False
+        if db_conn is None and library_root is not None and self._connection_provider is not None:
+            try:
+                db_conn = self._connection_provider(Path(library_root).resolve())
+            except Exception:
+                _log.debug("_check_blur connection resolution failed for %s", target)
+                return False
+        if db_conn is None:
             return False
         try:
-            rows = db_conn.execute(
-                "SELECT tag FROM file_tags WHERE file_path=?", (str(target.resolve()),)
-            ).fetchall()
-            file_tags = {r[0].lower() for r in rows}
+            file_tags = {
+                tag.lower()
+                for tag in TagRepository(db_conn).get_tags(str(target.resolve()))
+            }
             return bool(file_tags & {t.lower() for t in blur_tags})
         except sqlite3.Error:
             _log.debug("_check_blur query failed for %s", target)

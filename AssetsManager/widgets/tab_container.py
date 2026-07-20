@@ -92,8 +92,7 @@ class TabContainer(PanelContent):
             return
         panel = self._tabs_to_filelists.pop(idx, None)
         if panel:
-            if hasattr(panel, '_loader'):
-                panel._loader.stop()
+            panel.shutdown()
             panel.deleteLater()
         self._tabs.removeTab(idx)
         self._rebuild_tab_map()
@@ -176,8 +175,9 @@ class TabContainer(PanelContent):
         # to avoid index shifting issues.
         while self._tabs.count() > 1:
             panel = self._tabs.widget(self._tabs.count() - 1)
-            if isinstance(panel, QWidgetFileListPanel) and hasattr(panel, '_loader'):
-                panel._loader.stop()
+            if isinstance(panel, QWidgetFileListPanel):
+                panel.shutdown()
+                panel.deleteLater()
             self._tabs.removeTab(self._tabs.count() - 1)
         # Rebuild index mapping
         self._tabs_to_filelists = {}
@@ -195,7 +195,6 @@ class TabContainer(PanelContent):
 
     def closeEvent(self, event):
         for fl in list(self._tabs_to_filelists.values()):
-            if hasattr(fl, '_loader'):
-                fl._loader.stop()
+            fl.shutdown()
         if event:
             super().closeEvent(event)
