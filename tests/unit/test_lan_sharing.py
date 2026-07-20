@@ -1,11 +1,13 @@
 from unittest.mock import Mock
 
+from PySide6.QtWidgets import QApplication
+
 from AssetsManager.dialogs.sharing_settings_dialog import (
     SharingSettingsDialog,
     _endpoint_primary_action,
     _endpoint_state,
 )
-from AssetsManager.widgets.lan_sharing import LanSharingMixin
+from AssetsManager.widgets.lan_sharing import HOT_SHARING_SETTINGS, LanSharingMixin, RESTART_SHARING_SETTINGS
 
 
 class _Server:
@@ -38,6 +40,91 @@ def test_sharing_dialog_uses_stable_auth_mode_key():
     dialog._auth_combo = type("_Combo", (), {"currentData": lambda _self: "password"})()
 
     assert dialog._auth_mode() == "password"
+
+
+def test_sharing_configuration_impact_keys_match_reload_contract():
+    assert HOT_SHARING_SETTINGS == {
+        "lan_share_name": "share_name",
+        "lan_blur_tags": "blur_tags",
+        "lan_theme_color": "theme_color",
+        "lan_welcome_msg": "welcome_msg",
+        "lan_footer_text": "footer_text",
+        "lan_show_hidden": "show_hidden",
+        "lan_max_depth": "max_depth",
+        "lan_include_types": "include_types",
+        "lan_exclude_patterns": "exclude_patterns",
+    }
+    assert {"lan_port", "lan_bind", "lan_password", "lan_rate_limit", "lan_ip_whitelist", "lan_ssl_cert"} <= RESTART_SHARING_SETTINGS
+    assert "lan_auth_mode" not in RESTART_SHARING_SETTINGS
+
+
+def test_sharing_configuration_summary_counts_hot_and_restart_changes():
+    dialog = SharingSettingsDialog.__new__(SharingSettingsDialog)
+    dialog._configuration_snapshot = {"lan_share_name": "AssetManager", "lan_port": 8080}
+    dialog._configuration_values = lambda: {"lan_share_name": "Shared", "lan_port": 9090}
+
+    changes = dialog._configuration_changes()
+
+    assert changes == {"lan_share_name", "lan_port"}
+    assert len(changes & HOT_SHARING_SETTINGS.keys()) == 1
+    assert len(changes - HOT_SHARING_SETTINGS.keys()) == 1
+
+
+def test_sharing_configuration_impact_excludes_persisted_only_settings():
+    dialog = SharingSettingsDialog.__new__(SharingSettingsDialog)
+    dialog._configuration_snapshot = {"lan_enable_log": False}
+    dialog._configuration_values = lambda: {"lan_enable_log": True}
+
+    changes = dialog._configuration_changes()
+
+    assert changes == {"lan_enable_log"}
+    assert not changes & HOT_SHARING_SETTINGS.keys()
+    assert not changes & RESTART_SHARING_SETTINGS
+
+
+def test_clean_configuration_apply_still_emits_lifecycle_update():
+    dialog = SharingSettingsDialog.__new__(SharingSettingsDialog)
+    dialog._configuration_changes = lambda: set()
+    dialog._save_settings = Mock()
+    dialog._sync_configuration_snapshot = Mock()
+    dialog._update_configuration_summary = Mock()
+    dialog.settings_changed = Mock()
+
+    dialog._apply_configuration_changes(force=True)
+
+    dialog._save_settings.assert_called_once()
+    dialog._sync_configuration_snapshot.assert_called_once()
+    dialog.settings_changed.emit.assert_called_once()
+
+
+def test_clean_configuration_apply_without_force_remains_a_noop():
+    dialog = SharingSettingsDialog.__new__(SharingSettingsDialog)
+    dialog._configuration_changes = lambda: set()
+    dialog._save_settings = Mock()
+
+    dialog._apply_configuration_changes()
+
+    dialog._save_settings.assert_not_called()
+
+
+def test_sharing_configuration_navigation_and_dirty_summary():
+    app = QApplication.instance() or QApplication([])
+    dialog = SharingSettingsDialog()
+    try:
+        assert dialog._configuration_stack.count() >= 5
+        assert dialog._configuration_nav_buttons[0].isChecked()
+        assert dialog._configuration_summary_label.text() == "No unsaved changes"
+
+        dialog._name_edit.setText("Changed")
+        app.processEvents()
+        assert "apply now" in dialog._configuration_summary_label.text()
+
+        dialog._port_spin.setValue(9090)
+        app.processEvents()
+        assert "require restart" in dialog._configuration_summary_label.text()
+    finally:
+        dialog.close()
+        dialog.deleteLater()
 
 
 def test_toggle_sharing_uses_injected_library_session(monkeypatch, tmp_path):

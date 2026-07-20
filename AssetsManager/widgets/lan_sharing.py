@@ -23,6 +23,30 @@ tr = i18n.tr
 
 _log = logging.getLogger(__name__)
 
+# These settings are passed through to LanServer.reload_settings without a
+# server restart. Configuration presentation imports this declaration so its
+# impact summary cannot drift from the lifecycle owner.
+HOT_SHARING_SETTINGS = {
+    "lan_share_name": "share_name",
+    "lan_blur_tags": "blur_tags",
+    "lan_theme_color": "theme_color",
+    "lan_welcome_msg": "welcome_msg",
+    "lan_footer_text": "footer_text",
+    "lan_show_hidden": "show_hidden",
+    "lan_max_depth": "max_depth",
+    "lan_include_types": "include_types",
+    "lan_exclude_patterns": "exclude_patterns",
+}
+HOT_SHARING_DEFAULTS = {
+    "lan_share_name": "AssetManager", "lan_blur_tags": [], "lan_theme_color": "#5b7ff5",
+    "lan_welcome_msg": "", "lan_footer_text": "", "lan_show_hidden": False,
+    "lan_max_depth": 0, "lan_include_types": None, "lan_exclude_patterns": None,
+}
+RESTART_SHARING_SETTINGS = frozenset({
+    "lan_port", "lan_bind", "lan_password", "lan_access_key",
+    "lan_rate_limit", "lan_blocked_ips", "lan_ip_whitelist", "lan_ssl_cert", "lan_ssl_key",
+})
+
 
 
 class LanSharingMixin:
@@ -150,15 +174,8 @@ class LanSharingMixin:
 
             # Check if we can hot-reload or need to restart
             hot_settings = {
-                "share_name": settings.get("lan_share_name", "AssetManager"),
-                "blur_tags": settings.get("lan_blur_tags", []),
-                "theme_color": settings.get("lan_theme_color", "#5b7ff5"),
-                "welcome_msg": settings.get("lan_welcome_msg", ""),
-                "footer_text": settings.get("lan_footer_text", ""),
-                "show_hidden": settings.get("lan_show_hidden", False),
-                "max_depth": settings.get("lan_max_depth", 0),
-                "include_types": settings.get("lan_include_types", None),
-                "exclude_patterns": settings.get("lan_exclude_patterns", None),
+                server_key: settings.get(setting_key, HOT_SHARING_DEFAULTS[setting_key])
+                for setting_key, server_key in HOT_SHARING_SETTINGS.items()
             }
             self._lan_server.reload_settings(hot_settings)
 

@@ -16,8 +16,8 @@ from AssetsManager.core.settings import AppSettings
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager.dialogs._share_api import ShareApiTask
 from AssetsManager.widgets.toast import Toast
-from AssetsManager.widgets.collapsible_panel import CollapsiblePanel
 from AssetsManager import i18n
+from AssetsManager.widgets.lan_sharing import HOT_SHARING_SETTINGS, RESTART_SHARING_SETTINGS
 
 tr = i18n.tr
 _log = logging.getLogger(__name__)
@@ -86,6 +86,7 @@ class SharingSettingsDialog(TabbedDialog):
             self._load_settings()
         finally:
             self._loading_settings = False
+        self._update_configuration_summary()
 
         self._status_timer = QTimer(self)
         self._status_timer.setInterval(2000)
@@ -147,9 +148,9 @@ class SharingSettingsDialog(TabbedDialog):
 
         btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         apply_btn = btn_box.addButton(tr("dialog.apply"), QDialogButtonBox.ButtonRole.ApplyRole)
-        apply_btn.clicked.connect(self._on_apply)
-        apply_btn.clicked.connect(self.settings_changed.emit)
-        btn_box.accepted.connect(self._on_accept)
+        self._dialog_apply_btn = apply_btn
+        apply_btn.clicked.connect(lambda: self._apply_configuration_changes(force=True))
+        btn_box.accepted.connect(self._accept_configuration_changes)
         btn_box.rejected.connect(self.reject)
         root.addWidget(btn_box)
         self._select_page(self._initial_page)
@@ -237,6 +238,8 @@ class SharingSettingsDialog(TabbedDialog):
                 f"padding: 8px; background: {t['panel']}; "
                 f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px;")
         self._apply_table_theme()
+        if hasattr(self, "_configuration_nav"):
+            self._apply_configuration_theme()
 
     def _apply_table_theme(self):
         t = _t()
@@ -584,12 +587,36 @@ class SharingSettingsDialog(TabbedDialog):
         layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
         layout.setSpacing(scaled_px(10))
 
-        # ── Network (expanded) ────────────────────────────────
-        network_panel = CollapsiblePanel(
-            tr("sharing.settings.network"),
-            tr("sharing.settings.network_desc"),
-            expanded=True, parent=parent)
-        nl = network_panel.content_layout()
+        body = QHBoxLayout()
+        body.setSpacing(scaled_px(12))
+        self._configuration_nav = QFrame()
+        self._configuration_nav.setFixedWidth(scaled_px(170))
+        nav_layout = QVBoxLayout(self._configuration_nav)
+        nav_layout.setContentsMargins(scaled_px(6), scaled_px(6), scaled_px(6), scaled_px(6))
+        nav_layout.setSpacing(scaled_px(4))
+        self._configuration_stack = QStackedWidget()
+        self._configuration_nav_buttons = []
+
+        def section(key):
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(scaled_px(12), scaled_px(8), scaled_px(12), scaled_px(8))
+            page_layout.setSpacing(scaled_px(10))
+            heading = self.make_heading(tr(f"sharing.configuration.{key}"))
+            heading.setStyleSheet(f"font-size: {scaled_pt(15)}px; color: {_t()['heading']};")
+            page_layout.addWidget(heading)
+            description = self.make_muted(tr(f"sharing.configuration.{key}_desc"))
+            description.setWordWrap(True)
+            page_layout.addWidget(description)
+            page_layout.addSpacing(scaled_px(4))
+            self._configuration_stack.addWidget(page)
+            index = self._configuration_stack.count() - 1
+            button = self._make_configuration_nav_button(tr(f"sharing.configuration.{key}"), index, nav_layout)
+            self._configuration_nav_buttons.append(button)
+            return page_layout
+
+        # Network
+        nl = section("network")
 
         self._name_edit = self.make_input("AssetManager")
         name_row = self.make_labeled_row(tr("sharing.label_share_name"), self._name_edit)
@@ -616,14 +643,10 @@ class SharingSettingsDialog(TabbedDialog):
             lambda: self._browse_file(self._ssl_key))
         nl.addLayout(key_row)
 
-        layout.addWidget(network_panel)
+        nl.addStretch()
 
-        # ── Security (expanded) ───────────────────────────────
-        security_panel = CollapsiblePanel(
-            tr("sharing.settings.security"),
-            tr("sharing.settings.security_desc"),
-            expanded=True, parent=parent)
-        sl = security_panel.content_layout()
+        # Protection
+        sl = section("protection")
 
         auth_row = QHBoxLayout()
         auth_row.addWidget(self.make_label(tr("sharing.label_auth_mode")))
@@ -681,14 +704,10 @@ class SharingSettingsDialog(TabbedDialog):
         self._ip_whitelist.setPlaceholderText(tr("sharing.placeholder_ip_whitelist"))
         sl.addWidget(self._ip_whitelist)
 
-        layout.addWidget(security_panel)
+        sl.addStretch()
 
-        # ── Branding (collapsed) ──────────────────────────────
-        branding_panel = CollapsiblePanel(
-            tr("sharing.settings.branding"),
-            tr("sharing.settings.branding_desc"),
-            expanded=False, parent=parent)
-        bl = branding_panel.content_layout()
+        # Presentation
+        bl = section("presentation")
 
         color_row = QHBoxLayout()
         color_row.addWidget(self.make_label(tr("sharing.label_theme_color")))
@@ -711,14 +730,10 @@ class SharingSettingsDialog(TabbedDialog):
         footer_row.addWidget(self._footer_edit)
         bl.addLayout(footer_row)
 
-        layout.addWidget(branding_panel)
+        bl.addStretch()
 
-        # ── Advanced (collapsed) ──────────────────────────────
-        advanced_panel = CollapsiblePanel(
-            tr("sharing.settings.advanced"),
-            tr("sharing.settings.advanced_desc"),
-            expanded=False, parent=parent)
-        al = advanced_panel.content_layout()
+        # Library scope
+        al = section("library_scope")
 
         al.addWidget(self.make_label(tr("sharing.label_include_types")))
         types_row = QHBoxLayout()
@@ -759,31 +774,27 @@ class SharingSettingsDialog(TabbedDialog):
         al.addWidget(self._blur_tags)
         al.addWidget(self.make_muted(tr("sharing.helper_blur_tags")))
 
+        al.addStretch()
+
+        # Diagnostics
+        dl = section("diagnostics")
         self._enable_log = self.make_checkbox(tr("sharing.enable_access_log"))
-        al.addWidget(self._enable_log)
-
-        log_path_row, self._log_path = self.make_browse_row(tr("sharing.label_log_path"), tr("sharing.placeholder_log_path"),
-            self._browse_log_path)
-        al.addLayout(log_path_row)
-
+        dl.addWidget(self._enable_log)
+        log_path_row, self._log_path = self.make_browse_row(tr("sharing.label_log_path"), tr("sharing.placeholder_log_path"), self._browse_log_path)
+        dl.addLayout(log_path_row)
         rotation_row = QHBoxLayout()
         rotation_row.addWidget(self.make_label(tr("sharing.label_log_rotation")))
         self._log_rotation = self.make_spinbox(1, 100, 10)
         rotation_row.addWidget(self._log_rotation)
         rotation_row.addWidget(self.make_muted(tr("sharing.helper_mb_per_file")))
         rotation_row.addStretch()
-        al.addLayout(rotation_row)
+        dl.addLayout(rotation_row)
+        dl.addStretch()
 
-        layout.addWidget(advanced_panel)
-
-        # ── Tunnel (collapsed) ────────────────────────────────
+        # Internet access is omitted when the tunnel dependency is unavailable.
         from AssetsManager.lan.tunnel import is_available as is_tunnel_available
         if is_tunnel_available():
-            tunnel_panel = CollapsiblePanel(
-                tr("sharing.settings.tunnel"),
-                tr("sharing.settings.tunnel_desc"),
-                expanded=False, parent=parent)
-            tl = tunnel_panel.content_layout()
+            tl = section("internet_access")
 
             self._settings_tunnel_status = self.make_muted(tr("sharing.tunnel_not_connected"))
             tl.addWidget(self._settings_tunnel_status)
@@ -794,9 +805,151 @@ class SharingSettingsDialog(TabbedDialog):
             self._settings_tunnel_url.setVisible(False)
             tl.addWidget(self._settings_tunnel_url)
 
-            layout.addWidget(tunnel_panel)
+            tl.addStretch()
 
-        layout.addStretch()
+        nav_layout.addStretch()
+        body.addWidget(self._configuration_nav)
+        body.addWidget(self._configuration_stack, 1)
+        layout.addLayout(body, 1)
+
+        self._configuration_summary = QFrame()
+        summary_layout = QHBoxLayout(self._configuration_summary)
+        summary_layout.setContentsMargins(scaled_px(10), scaled_px(8), scaled_px(10), scaled_px(8))
+        self._configuration_summary_label = QLabel()
+        self._configuration_summary_label.setWordWrap(True)
+        summary_layout.addWidget(self._configuration_summary_label, 1)
+        self._configuration_discard_btn = self.make_secondary_btn(tr("sharing.configuration.discard"), self._discard_configuration_changes)
+        summary_layout.addWidget(self._configuration_discard_btn)
+        self._configuration_apply_btn = self.make_primary_btn(tr("sharing.configuration.apply"), self._apply_configuration_changes)
+        summary_layout.addWidget(self._configuration_apply_btn)
+        layout.addWidget(self._configuration_summary)
+        self._select_configuration_section(0)
+        self._connect_configuration_tracking()
+        self._apply_configuration_theme()
+
+    def _make_configuration_nav_button(self, label, index, layout):
+        button = QPushButton(label)
+        button.setCheckable(True)
+        button.setAccessibleName(label)
+        button.setToolTip(label)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setMinimumHeight(scaled_px(34))
+        button.clicked.connect(lambda _checked=False, section_index=index: self._select_configuration_section(section_index))
+        layout.addWidget(button)
+        return button
+
+    def _select_configuration_section(self, index):
+        self._configuration_stack.setCurrentIndex(index)
+        for button_index, button in enumerate(self._configuration_nav_buttons):
+            button.setChecked(button_index == index)
+
+    def _apply_configuration_theme(self):
+        t = _t()
+        nav_style = (
+            f"QFrame {{ background: {t['base']}; border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px; }}"
+            f"QPushButton {{ text-align: left; background: transparent; color: {t['body']}; border: none; "
+            f"border-radius: {scaled_px(4)}px; padding: {scaled_px(7)}px {scaled_px(8)}px; }}"
+            f"QPushButton:hover {{ background: {t['hover_overlay']}; }}"
+            f"QPushButton:checked {{ background: {t['accent']}; color: {t['on_accent']}; font-weight: bold; }}"
+        )
+        self._configuration_nav.setStyleSheet(nav_style)
+        self._configuration_summary.setStyleSheet(
+            f"QFrame {{ background: {t['panel']}; border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px; }}"
+        )
+
+    def _connect_configuration_tracking(self):
+        tracked_widgets = (
+            self._name_edit, self._port_spin, self._bind_combo, self._auto_start, self._auth_combo,
+            self._pw_edit, self._max_conn, self._timeout, self._rate_limit, self._blocked_ips,
+            self._ip_whitelist, self._ssl_cert, self._ssl_key, self._color_edit, self._welcome_edit,
+            self._footer_edit, self._show_hidden, self._max_depth, self._exclude_patterns,
+            self._blur_tags, self._enable_log, self._log_path, self._log_rotation,
+        ) + tuple(self._type_checks.values())
+        for widget in tracked_widgets:
+            signal = getattr(widget, "textChanged", None) or getattr(widget, "valueChanged", None) or getattr(widget, "toggled", None) or getattr(widget, "currentIndexChanged", None)
+            if signal is not None:
+                signal.connect(self._update_configuration_summary)
+
+    @staticmethod
+    def _lines(widget):
+        return [line.strip() for line in widget.toPlainText().splitlines() if line.strip()]
+
+    def _configuration_values(self):
+        return {
+            "lan_share_name": self._name_edit.text() or "AssetManager",
+            "lan_port": self._port_spin.value(),
+            "lan_bind": "0.0.0.0" if self._bind_combo.currentIndex() == 0 else "127.0.0.1",
+            "lan_auto_start": self._auto_start.isChecked(),
+            "lan_auth_mode": self._auth_mode(),
+            # Existing password remains unchanged unless the user explicitly enters one.
+            "lan_password": self._pw_edit.text() if self._pw_edit.text() else None,
+            "lan_max_connections": self._max_conn.value(),
+            "lan_session_timeout": self._timeout.value(),
+            "lan_rate_limit": self._rate_limit.value(),
+            "lan_blocked_ips": self._lines(self._blocked_ips),
+            "lan_ip_whitelist": self._lines(self._ip_whitelist),
+            "lan_ssl_cert": self._ssl_cert.text() or None,
+            "lan_ssl_key": self._ssl_key.text() or None,
+            "lan_theme_color": self._color_edit.text() or "#5b7ff5",
+            "lan_welcome_msg": self._welcome_edit.toPlainText(),
+            "lan_footer_text": self._footer_edit.text(),
+            "lan_include_types": [key for key, check in self._type_checks.items() if check.isChecked()],
+            "lan_show_hidden": self._show_hidden.isChecked(),
+            "lan_max_depth": self._max_depth.value(),
+            "lan_exclude_patterns": self._lines(self._exclude_patterns),
+            "lan_blur_tags": self._lines(self._blur_tags),
+            "lan_enable_log": self._enable_log.isChecked(),
+            "lan_log_path": self._log_path.text(),
+            "lan_log_rotation_mb": self._log_rotation.value(),
+        }
+
+    def _configuration_changes(self):
+        values = self._configuration_values()
+        changes = {key for key, value in values.items() if self._configuration_snapshot.get(key) != value}
+        if "lan_password" in changes and not values["lan_password"]:
+            changes.remove("lan_password")
+        return changes
+
+    def _update_configuration_summary(self, *_args):
+        if getattr(self, "_loading_settings", False) or not hasattr(self, "_configuration_snapshot"):
+            return
+        changes = self._configuration_changes()
+        live_count = len(changes & HOT_SHARING_SETTINGS.keys())
+        restart_count = len(changes & RESTART_SHARING_SETTINGS)
+        saved_count = len(changes - HOT_SHARING_SETTINGS.keys() - RESTART_SHARING_SETTINGS)
+        if not changes:
+            text = tr("sharing.configuration.no_unsaved_changes")
+        else:
+            text = tr("sharing.configuration.change_summary").format(
+                live=live_count, restart=restart_count, saved=saved_count)
+        self._configuration_summary_label.setText(text)
+        self._configuration_discard_btn.setEnabled(bool(changes))
+        self._configuration_apply_btn.setEnabled(bool(changes))
+
+    def _discard_configuration_changes(self):
+        self._loading_settings = True
+        try:
+            self._load_settings()
+        finally:
+            self._loading_settings = False
+        self._sync_configuration_snapshot()
+        self._update_configuration_summary()
+
+    def _sync_configuration_snapshot(self):
+        if hasattr(self, "_name_edit"):
+            self._configuration_snapshot = self._configuration_values()
+
+    def _apply_configuration_changes(self, force=False):
+        if not force and not self._configuration_changes():
+            return
+        self._save_settings()
+        self._sync_configuration_snapshot()
+        self.settings_changed.emit()
+        self._update_configuration_summary()
+
+    def _accept_configuration_changes(self):
+        self._apply_configuration_changes(force=True)
+        self.accept()
 
     # ══════════════════════════════════════════════════════════
     # Overview: Status & Actions
@@ -913,6 +1066,8 @@ class SharingSettingsDialog(TabbedDialog):
         self._toggle_btn.setEnabled(False)
         self._toggle_btn.setText(tr("sharing.btn_connecting"))
         self._save_settings()
+        self._sync_configuration_snapshot()
+        self._update_configuration_summary()
 
         host = getattr(self, "_host", None)
         if host is not None and hasattr(host, "_toggle_sharing"):
@@ -1542,9 +1697,11 @@ class SharingSettingsDialog(TabbedDialog):
         self._guest_download.setChecked(s.get("lan_guest_download", False))
         self._guest_preview.setChecked(s.get("lan_guest_preview", True))
         self._guest_list.setChecked(s.get("lan_guest_list", True))
+        self._configuration_snapshot = self._configuration_values()
+        self._update_configuration_summary()
 
     def _on_apply(self):
-        self._save_settings()
+        self._apply_configuration_changes()
 
     def _save_guest_permissions(self):
         """Persist guest policy immediately; routes read these settings per request."""
