@@ -35,3 +35,27 @@ def test_sidebar_prepare_invalidates_pending_library_search(monkeypatch, tmp_pat
 
 def test_sidebar_treats_missing_tree_item_as_unroutable():
     assert SidebarPanel._get_vtype(None) == ""
+
+
+def test_sidebar_restores_section_visibility_preferences(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+
+    class _Settings:
+        def get(self, key, default=None):
+            if key == "sidebar_depth_cfg":
+                return {"show_favs": False, "show_recs": False, "show_filter": False}
+            return default
+
+    monkeypatch.setattr(
+        "AssetsManager.core.settings.AppSettings.instance", classmethod(lambda _cls: _Settings())
+    )
+    panel = SidebarPanel()
+    try:
+        assert not panel._show_favs
+        assert not panel._show_recs
+        assert not panel._show_filter
+        assert panel._search.isHidden()
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()

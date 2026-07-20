@@ -258,7 +258,6 @@ class WorkspaceBar(QTabBar):
 
         menu = QMenu(self)
         menu.addAction(tr("workspace.rename"), lambda: self._start_rename(idx))
-        menu.addAction(tr("workspace.duplicate"), lambda: self._duplicate(idx))
         menu.addSeparator()
         menu.addAction(tr("workspace.close"), lambda: self._on_close(idx))
         if self.count() > 1:
@@ -277,7 +276,6 @@ class WorkspaceBar(QTabBar):
             editor.setStyleSheet(self._renamer_style)
         editor.setFocus()
         editor.editingFinished.connect(lambda: self._finish_rename(editor, idx))
-        editor.returnPressed.connect(lambda: self._finish_rename(editor, idx))
         editor.show()
 
     def _finish_rename(self, editor, idx):
@@ -286,11 +284,6 @@ class WorkspaceBar(QTabBar):
         if name and idx == self._rename_idx:
             self.setTabText(idx, name)
         self._rename_idx = -1
-
-    def _duplicate(self, idx):
-        data = self.tabData(idx)
-        if data:
-            self.add_library(str(data))
 
     def _close_others(self, keep_idx):
         keep_path = self.tabData(keep_idx)

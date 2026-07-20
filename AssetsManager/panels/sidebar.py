@@ -172,10 +172,11 @@ class SidebarPanel(PanelContent):
 
         self._depth = 2
         self._branch_depths: dict[str, int] = {}
-        self._restore_depth_cfg()
         self._show_favs = True
         self._show_recs = True
         self._show_filter = True
+        self._restore_depth_cfg()
+        self._search.setVisible(self._show_filter)
         self._fav_expanded: bool | None = None
         self._rec_expanded: bool | None = None
         self._state = {"depth": 2, "expanded": set()}
@@ -192,6 +193,9 @@ class SidebarPanel(PanelContent):
             if isinstance(cfg, dict):
                 self._depth = cfg.get("depth", 2)
                 self._branch_depths = cfg.get("branch_depths", {}) or {}
+                self._show_favs = cfg.get("show_favs", True)
+                self._show_recs = cfg.get("show_recs", True)
+                self._show_filter = cfg.get("show_filter", True)
                 bus().sidebar_depth_changed.emit(self._depth, dict(self._branch_depths))
         except Exception:
             pass
@@ -883,7 +887,13 @@ class SidebarPanel(PanelContent):
             self._branch_depths = r["branch_depths"]
             bus().sidebar_depth_changed.emit(self._depth, dict(self._branch_depths))
             from AssetsManager.core.settings import AppSettings
-            cfg = {"depth": self._depth, "branch_depths": self._branch_depths}
+            cfg = {
+                "depth": self._depth,
+                "branch_depths": self._branch_depths,
+                "show_favs": self._show_favs,
+                "show_recs": self._show_recs,
+                "show_filter": self._show_filter,
+            }
             AppSettings.instance().set("sidebar_depth_cfg", cfg)
             AppSettings.instance().save()
             self._populate()
