@@ -19,6 +19,13 @@ def test_quick_share_uses_server_status_url():
     assert LanSharingMixin._quick_share_api_url(_Server()) == "http://192.168.1.10:9090/api/shares"
 
 
+def test_sharing_dialog_uses_stable_auth_mode_key():
+    dialog = SharingSettingsDialog.__new__(SharingSettingsDialog)
+    dialog._auth_combo = type("_Combo", (), {"currentData": lambda _self: "password"})()
+
+    assert dialog._auth_mode() == "password"
+
+
 def test_toggle_sharing_uses_injected_library_session(monkeypatch, tmp_path):
     from AssetsManager import lan
     from AssetsManager.core.settings import AppSettings

@@ -4,47 +4,18 @@ Independent dialog for creating share links with password, expiry, and download 
 """
 import logging
 
-from PySide6.QtCore import Qt, QObject, Signal, QRunnable, QThreadPool
+from PySide6.QtCore import Qt, QThreadPool
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLineEdit,
     QApplication, QMessageBox,
 )
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
+from AssetsManager.dialogs._share_api import ShareApiTask
 from AssetsManager import i18n
 from AssetsManager.core.ui_scale import scaled_px
 
 tr = i18n.tr
 _log = logging.getLogger(__name__)
-
-
-class _ApiResult(QObject):
-    """Signals for async API call results."""
-    finished = Signal(bool, object)  # (success, data_or_error)
-
-
-class _CreateShareTask(QRunnable):
-    """Background task for creating a share link."""
-
-    def __init__(self, url, data, headers):
-        super().__init__()
-        self._url = url
-        self._data = data
-        self._headers = headers
-        self.signals = _ApiResult()
-
-    def run(self):
-        try:
-            import requests
-            resp = requests.post(self._url, json=self._data, headers=self._headers, timeout=10)
-            if resp.status_code == 200:
-                self.signals.finished.emit(True, resp.json())
-            else:
-                error = resp.json().get("error", tr("sharelink.error.unknown"))
-                self.signals.finished.emit(False, error)
-        except ImportError:
-            self.signals.finished.emit(False, tr("sharelink.error.requests_missing"))
-        except Exception as e:
-            self.signals.finished.emit(False, str(e))
 
 
 class ShareLinkDialog(TabbedDialog):
@@ -183,7 +154,7 @@ class ShareLinkDialog(TabbedDialog):
         self._create_btn.setEnabled(False)
         self._create_btn.setText(tr("sharelink.btn.creating"))
 
-        self._create_task = _CreateShareTask(url, data, headers)
+        self._create_task = ShareApiTask("POST", url, headers, data, success_statuses=(200, 201))
         self._create_task.signals.finished.connect(self._on_create_result)
         QThreadPool.globalInstance().start(self._create_task)
 
@@ -206,7 +177,8 @@ class ShareLinkDialog(TabbedDialog):
             self._create_btn.setEnabled(True)
         else:
             self._create_btn.setEnabled(True)
-            QMessageBox.warning(self, tr("sharelink.msg.error_title"), tr("sharelink.error.create_failed").format(data=data))
+            error = data.get("error") if isinstance(data, dict) else tr("sharelink.error.unknown")
+            QMessageBox.warning(self, tr("sharelink.msg.error_title"), tr("sharelink.error.create_failed").format(data=error))
 
     def _copy_link(self):
         """Copy share link to clipboard."""

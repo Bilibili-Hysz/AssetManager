@@ -4,65 +4,19 @@ Dialog for listing, viewing, and deleting share links.
 """
 import logging
 
-from PySide6.QtCore import Qt, QTimer, QObject, Signal, QRunnable, QThreadPool
+from PySide6.QtCore import Qt, QTimer, QThreadPool
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
     QApplication, QAbstractItemView, QWidget,
 )
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
+from AssetsManager.dialogs._share_api import ShareApiTask
 from AssetsManager import i18n
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 
 tr = i18n.tr
 _log = logging.getLogger(__name__)
-
-
-class _ApiResult(QObject):
-    """Signals for async API call results."""
-    finished = Signal(bool, object)  # (success, data_or_error)
-
-
-class _HttpGetTask(QRunnable):
-    """Background task for GET requests."""
-
-    def __init__(self, url, headers):
-        super().__init__()
-        self._url = url
-        self._headers = headers
-        self.signals = _ApiResult()
-
-    def run(self):
-        try:
-            import requests
-            resp = requests.get(self._url, headers=self._headers, timeout=10)
-            if resp.status_code == 200:
-                self.signals.finished.emit(True, resp.json())
-            else:
-                self.signals.finished.emit(False, tr("sharemgr.error.load_failed"))
-        except Exception as e:
-            self.signals.finished.emit(False, str(e))
-
-
-class _HttpDeleteTask(QRunnable):
-    """Background task for DELETE requests."""
-
-    def __init__(self, url, headers):
-        super().__init__()
-        self._url = url
-        self._headers = headers
-        self.signals = _ApiResult()
-
-    def run(self):
-        try:
-            import requests
-            resp = requests.delete(self._url, headers=self._headers, timeout=10)
-            if resp.status_code == 200:
-                self.signals.finished.emit(True, None)
-            else:
-                self.signals.finished.emit(False, tr("sharemgr.error.delete_failed_generic"))
-        except Exception as e:
-            self.signals.finished.emit(False, str(e))
 
 
 class ShareLinkManager(TabbedDialog):
@@ -162,7 +116,7 @@ class ShareLinkManager(TabbedDialog):
             from AssetsManager.lan.utils import get_auth_headers
             headers.update(get_auth_headers(self._server.token_secret))
 
-        self._load_task = _HttpGetTask(url, headers)
+        self._load_task = ShareApiTask("GET", url, headers)
         self._load_task.signals.finished.connect(self._on_load_result)
         QThreadPool.globalInstance().start(self._load_task)
 
@@ -321,7 +275,7 @@ class ShareLinkManager(TabbedDialog):
             headers.update(get_auth_headers(server.token_secret))
 
         captured_row = row
-        self._delete_task = _HttpDeleteTask(url, headers)
+        self._delete_task = ShareApiTask("DELETE", url, headers)
         self._delete_task.signals.finished.connect(lambda ok, msg: self._on_delete_result(ok, msg, captured_row, share_id))
         QThreadPool.globalInstance().start(self._delete_task)
 

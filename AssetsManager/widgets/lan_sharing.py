@@ -258,31 +258,10 @@ class LanSharingMixin:
             from AssetsManager.lan.utils import get_auth_headers
             headers.update(get_auth_headers(self._lan_server.token_secret))
 
-        from PySide6.QtCore import QObject, Signal, QRunnable, QThreadPool
+        from PySide6.QtCore import QThreadPool
+        from AssetsManager.dialogs._share_api import ShareApiTask
 
-        class _Result(QObject):
-            finished = Signal(bool, object)
-
-        class _Task(QRunnable):
-            def __init__(self):
-                super().__init__()
-                self.setAutoDelete(False)
-                self.signals = _Result()
-            def run(self):
-                try:
-                    import requests
-                    resp = requests.post(url, json=data, headers=headers, timeout=10)
-                    if resp.status_code == 200:
-                        self.signals.finished.emit(True, resp.json())
-                    else:
-                        err = resp.json().get("error", "Unknown error")
-                        self.signals.finished.emit(False, err)
-                except ImportError:
-                    self.signals.finished.emit(False, "requests not installed")
-                except Exception as e:
-                    self.signals.finished.emit(False, str(e))
-
-        task = _Task()
+        task = ShareApiTask("POST", url, headers, data, success_statuses=(200, 201))
         task.signals.finished.connect(self._on_quick_share_result)
         QThreadPool.globalInstance().start(task)
 
@@ -341,32 +320,10 @@ class LanSharingMixin:
             from AssetsManager.lan.utils import get_auth_headers
             headers.update(get_auth_headers(self._lan_server.token_secret))
 
-        from PySide6.QtCore import QObject, Signal, QRunnable, QThreadPool
+        from PySide6.QtCore import QThreadPool
+        from AssetsManager.dialogs._share_api import ShareApiTask
 
-        class _CardResult(QObject):
-            finished = Signal(bool, object)
-
-        class _CardTask(QRunnable):
-            def __init__(self):
-                super().__init__()
-                self.setAutoDelete(False)
-                self.signals = _CardResult()
-
-            def run(self):
-                try:
-                    import requests
-                    resp = requests.post(url, json=api_data, headers=headers, timeout=10)
-                    if resp.status_code == 200:
-                        self.signals.finished.emit(True, resp.json())
-                    else:
-                        err = resp.json().get("error", "Unknown error")
-                        self.signals.finished.emit(False, err)
-                except ImportError:
-                    self.signals.finished.emit(False, "requests not installed")
-                except Exception as e:
-                    self.signals.finished.emit(False, str(e))
-
-        task = _CardTask()
+        task = ShareApiTask("POST", url, headers, api_data, success_statuses=(200, 201))
         task.signals.finished.connect(self._on_quick_share_card_result)
         QThreadPool.globalInstance().start(task)
 

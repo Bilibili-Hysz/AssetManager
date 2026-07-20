@@ -22,6 +22,7 @@ from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
+from AssetsManager.dialogs._share_api import ShareApiTask
 from AssetsManager.widgets.toast import Toast
 from AssetsManager.widgets.collapsible_panel import CollapsiblePanel
 from AssetsManager import i18n
@@ -32,72 +33,6 @@ _log = logging.getLogger(__name__)
 
 def _t():
     return themes.get()
-
-
-class _ApiSignals(QObject):
-    finished = Signal(bool, object)
-
-
-class _HttpGetTask(QRunnable):
-    def __init__(self, url, headers):
-        super().__init__()
-        self._url = url
-        self._headers = headers
-        self.signals = _ApiResult()
-
-    def run(self):
-        try:
-            import requests
-            resp = requests.get(self._url, headers=self._headers, timeout=10)
-            if resp.status_code == 200:
-                self.signals.finished.emit(True, resp.json())
-            else:
-                self.signals.finished.emit(False, None)
-        except Exception:
-            self.signals.finished.emit(False, None)
-
-
-class _HttpDeleteTask(QRunnable):
-    def __init__(self, url, headers):
-        super().__init__()
-        self._url = url
-        self._headers = headers
-        self.signals = _ApiResult()
-
-    def run(self):
-        try:
-            import requests
-            resp = requests.delete(self._url, headers=self._headers, timeout=10)
-            if resp.status_code == 200:
-                self.signals.finished.emit(True, None)
-            else:
-                self.signals.finished.emit(False, None)
-        except Exception:
-            self.signals.finished.emit(False, None)
-
-
-class _HttpPostTask(QRunnable):
-    def __init__(self, url, headers, json_data=None):
-        super().__init__()
-        self._url = url
-        self._headers = headers
-        self._json = json_data
-        self.signals = _ApiResult()
-
-    def run(self):
-        try:
-            import requests
-            resp = requests.post(self._url, headers=self._headers, json=self._json, timeout=10)
-            if resp.status_code in (200, 201):
-                self.signals.finished.emit(True, resp.json())
-            else:
-                self.signals.finished.emit(False, resp.json() if resp.content else None)
-        except Exception:
-            self.signals.finished.emit(False, None)
-
-
-class _ApiResult(QObject):
-    finished = Signal(bool, object)
 
 
 class SharingSettingsDialog(TabbedDialog):
@@ -678,7 +613,9 @@ class SharingSettingsDialog(TabbedDialog):
         auth_row = QHBoxLayout()
         auth_row.addWidget(self.make_label(tr("sharing.label_auth_mode")))
         self._auth_combo = self.make_combobox([tr("sharing.auth_none"), tr("sharing.auth_password")])
-        self._auth_combo.currentTextChanged.connect(self._on_auth_changed)
+        self._auth_combo.setItemData(0, "none")
+        self._auth_combo.setItemData(1, "password")
+        self._auth_combo.currentIndexChanged.connect(self._on_auth_changed)
         auth_row.addWidget(self._auth_combo)
         auth_row.addStretch()
         sl.addLayout(auth_row)
@@ -771,10 +708,16 @@ class SharingSettingsDialog(TabbedDialog):
         al.addWidget(self.make_label(tr("sharing.label_include_types")))
         types_row = QHBoxLayout()
         self._type_checks = {}
-        for cat in [tr("sharing.type_images"), tr("sharing.type_3d_models"), tr("sharing.type_videos"), tr("sharing.type_documents"), tr("sharing.type_archives")]:
-            chk = self.make_checkbox(cat, checked=True)
+        for key, label in (
+            ("images", tr("sharing.type_images")),
+            ("models", tr("sharing.type_3d_models")),
+            ("videos", tr("sharing.type_videos")),
+            ("documents", tr("sharing.type_documents")),
+            ("archives", tr("sharing.type_archives")),
+        ):
+            chk = self.make_checkbox(label, checked=True)
             types_row.addWidget(chk)
-            self._type_checks[cat.lower().replace(" ", "_")] = chk
+            self._type_checks[key] = chk
         al.addLayout(types_row)
 
         opts_row = QHBoxLayout()
@@ -1085,7 +1028,7 @@ class SharingSettingsDialog(TabbedDialog):
             return
         headers = self._get_auth_headers()
         headers["Content-Type"] = "application/json"
-        task = _HttpPostTask(f"{base}/api/shares", headers, json_data=data)
+        task = ShareApiTask("POST", f"{base}/api/shares", headers, data, success_statuses=(200, 201))
         task.signals.finished.connect(self._on_quick_share_result)
         QThreadPool.globalInstance().start(task)
         self._quick_share_task = task
@@ -1121,7 +1064,7 @@ class SharingSettingsDialog(TabbedDialog):
             return
         self._links_status.setText(tr("sharing.links.loading"))
         headers = self._get_auth_headers()
-        task = _HttpGetTask(f"{base}/api/shares", headers)
+        task = ShareApiTask("GET", f"{base}/api/shares", headers)
         task.signals.finished.connect(self._on_shares_loaded)
         QThreadPool.globalInstance().start(task)
         self._links_load_task = task
@@ -1263,7 +1206,7 @@ class SharingSettingsDialog(TabbedDialog):
             return
         base = self._get_api_base()
         headers = self._get_auth_headers()
-        task = _HttpDeleteTask(f"{base}/api/shares/{share_id}", headers)
+        task = ShareApiTask("DELETE", f"{base}/api/shares/{share_id}", headers)
         task.signals.finished.connect(lambda ok, _: self._on_single_delete(ok, share_id))
         QThreadPool.globalInstance().start(task)
         self._delete_task = task
@@ -1305,7 +1248,7 @@ class SharingSettingsDialog(TabbedDialog):
             if not share_id:
                 self._batch_remaining -= 1
                 continue
-            task = _HttpDeleteTask(f"{base}/api/shares/{share_id}", headers)
+            task = ShareApiTask("DELETE", f"{base}/api/shares/{share_id}", headers)
             task.signals.finished.connect(lambda ok, _, sid=share_id: self._on_batch_item_deleted(ok, sid))
             QThreadPool.globalInstance().start(task)
             self._batch_tasks.append(task)
@@ -1330,7 +1273,7 @@ class SharingSettingsDialog(TabbedDialog):
         if not base:
             return
         headers = self._get_auth_headers()
-        task = _HttpGetTask(f"{base}/api/invites", headers)
+        task = ShareApiTask("GET", f"{base}/api/invites", headers)
         task.signals.finished.connect(self._on_invites_loaded)
         QThreadPool.globalInstance().start(task)
         self._invites_task = task
@@ -1395,7 +1338,7 @@ class SharingSettingsDialog(TabbedDialog):
         if not base:
             return
         headers = self._get_auth_headers()
-        task = _HttpPostTask(f"{base}/api/invites/create", headers)
+        task = ShareApiTask("POST", f"{base}/api/invites/create", headers, success_statuses=(200, 201))
         task.signals.finished.connect(lambda ok, data: self._on_generate_code_result(ok, data))
         QThreadPool.globalInstance().start(task)
         self._gen_task = task
@@ -1416,7 +1359,7 @@ class SharingSettingsDialog(TabbedDialog):
         if not base:
             return
         headers = self._get_auth_headers()
-        task = _HttpDeleteTask(f"{base}/api/invites/{code}/revoke", headers)
+        task = ShareApiTask("DELETE", f"{base}/api/invites/{code}/revoke", headers)
         task.signals.finished.connect(lambda ok, _: self._on_revoke_result(ok, row))
         QThreadPool.globalInstance().start(task)
         self._revoke_task = task
@@ -1433,7 +1376,7 @@ class SharingSettingsDialog(TabbedDialog):
         if not base:
             return
         headers = self._get_auth_headers()
-        task = _HttpGetTask(f"{base}/api/online-users", headers)
+        task = ShareApiTask("GET", f"{base}/api/online-users", headers)
         task.signals.finished.connect(self._on_online_users_loaded)
         QThreadPool.globalInstance().start(task)
         self._online_task = task
@@ -1473,7 +1416,7 @@ class SharingSettingsDialog(TabbedDialog):
         if not base:
             return
         headers = self._get_auth_headers()
-        task = _HttpGetTask(f"{base}/api/activity", headers)
+        task = ShareApiTask("GET", f"{base}/api/activity", headers)
         task.signals.finished.connect(self._on_activity_loaded)
         QThreadPool.globalInstance().start(task)
         self._activity_task = task
@@ -1591,8 +1534,11 @@ class SharingSettingsDialog(TabbedDialog):
 
     # ── Auth ──────────────────────────────────────────────────
 
-    def _on_auth_changed(self, text):
-        self._pw_widget.setVisible(text == tr("sharing.auth_password"))
+    def _on_auth_changed(self, _index):
+        self._pw_widget.setVisible(self._auth_mode() == "password")
+
+    def _auth_mode(self):
+        return self._auth_combo.currentData()
 
     # ── Browse ────────────────────────────────────────────────
 
@@ -1619,7 +1565,7 @@ class SharingSettingsDialog(TabbedDialog):
         self._auto_start.setChecked(s.get("lan_auto_start", False))
 
         auth = s.get("lan_auth_mode", "none")
-        self._auth_combo.setCurrentText(tr("sharing.auth_password") if auth == "password" else tr("sharing.auth_none"))
+        self._auth_combo.setCurrentIndex(1 if auth == "password" else 0)
         self._pw_edit.setText("")
         self._has_existing_password = s.get("lan_password") is not None
         if self._has_existing_password:
@@ -1666,12 +1612,13 @@ class SharingSettingsDialog(TabbedDialog):
         s.set("lan_bind", "0.0.0.0" if self._bind_combo.currentIndex() == 0 else "127.0.0.1")
         s.set("lan_auto_start", self._auto_start.isChecked())
 
-        s.set("lan_auth_mode", "password" if self._auth_combo.currentText() == tr("sharing.auth_password") else "none")
-        pw = self._pw_edit.text() if self._auth_combo.currentText() == tr("sharing.auth_password") else None
+        auth_mode = self._auth_mode()
+        s.set("lan_auth_mode", auth_mode)
+        pw = self._pw_edit.text() if auth_mode == "password" else None
         if pw:
             from AssetsManager.lan.auth import hash_password
             s.set("lan_password", hash_password(pw))
-        elif self._auth_combo.currentText() == tr("sharing.auth_password") and self._has_existing_password:
+        elif auth_mode == "password" and self._has_existing_password:
             pass
         else:
             s.set("lan_password", None)
