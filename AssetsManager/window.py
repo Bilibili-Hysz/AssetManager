@@ -249,7 +249,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         tools_menu.addSeparator()
         from AssetsManager import lan
         if lan.is_available():
-            self._menu_act_share = tools_menu.addAction(f"🌐  {tr('menu.share_system')}", self._open_sharing_settings)
+            self._menu_act_share = tools_menu.addAction(tr('menu.share_system'), self._open_sharing_settings)
         else:
             a = tools_menu.addAction(tr("menu.sharing_unavailable"))
             a.setEnabled(False)
@@ -487,7 +487,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         if hasattr(self, '_menu_tools'):
             self._menu_tools.setTitle(tr("menu.tools"))
         if hasattr(self, '_menu_act_share'):
-            self._menu_act_share.setText(f"🌐  {tr('menu.share_system')}")
+            self._menu_act_share.setText(tr('menu.share_system'))
 
     def _save_dock_layout(self):
         """Save dock sizes to AppSettings for session restore."""

@@ -233,33 +233,3 @@ class LanSharingMixin:
             logging.getLogger(__name__).exception("Failed to open share link dialog")
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), str(e))
-
-    def _open_share_link_manager(self):
-        """Open dialog to manage share links."""
-        if not self._lan_server or not self._lan_server.is_running():
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self._dialog_parent(), tr("sharing.not_running"), tr("sharing.start_to_manage"))
-            return
-
-        try:
-            from AssetsManager.dialogs.sharing_settings_dialog import SharingSettingsDialog
-            dlg = SharingSettingsDialog(
-                self._dialog_parent(),
-                server_status=self._lan_server.status(),
-                server=self._lan_server,
-                initial_page="links",
-            )
-            dlg.exec()
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).exception("Failed to open share link manager")
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), str(e))
-
-    def _quick_share(self, path: str):
-        """Route legacy quick-share callers through the canonical creator."""
-        self._open_share_link_dialog(path=path)
-
-    def _show_quick_share_card(self, paths: list[str], _global_pos):
-        """Compatibility entry point for FileList while its caller migrates."""
-        self._open_share_link_dialog(paths=paths)

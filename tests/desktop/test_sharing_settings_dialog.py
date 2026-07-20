@@ -1,3 +1,5 @@
+from unittest.mock import Mock
+
 from PySide6.QtWidgets import QApplication
 
 from AssetsManager.dialogs.sharing_settings_dialog import SharingSettingsDialog
@@ -16,6 +18,12 @@ def test_sharing_shell_uses_named_pages_and_desktop_navigation(monkeypatch):
     assert [button.text() for button in dialog._nav_buttons] == [
         "Endpoint", "Links", "Access", "Configuration",
     ]
+    assert [button.accessibleName() for button in dialog._nav_buttons] == [
+        "Endpoint", "Links", "Access", "Configuration",
+    ]
+    assert [button.toolTip() for button in dialog._nav_buttons] == [
+        "Endpoint", "Links", "Access", "Configuration",
+    ]
     assert dialog._nav_rail.isVisible() is False
 
     dialog.show()
@@ -26,6 +34,30 @@ def test_sharing_shell_uses_named_pages_and_desktop_navigation(monkeypatch):
     QApplication.processEvents()
     assert dialog._nav_rail.isVisible() is False
     assert dialog._top_nav.isVisible() is True
+
+
+def test_configuration_navigation_is_named_and_theme_refreshes(monkeypatch):
+    monkeypatch.setattr(
+        "AssetsManager.dialogs.sharing_settings_dialog.AppSettings.instance",
+        classmethod(lambda _cls: type("_Settings", (), {"get": lambda _self, _key, default=None: default})()),
+    )
+    dialog = SharingSettingsDialog()
+    refresh = Mock(wraps=dialog._apply_configuration_theme)
+    dialog._apply_configuration_theme = refresh
+    dialog.show()
+    QApplication.processEvents()
+
+    labels = [button.text() for button in dialog._configuration_nav_buttons]
+    assert labels[:5] == ["Network", "Protection", "Presentation", "Library scope", "Diagnostics"]
+    assert [button.accessibleName() for button in dialog._configuration_nav_buttons] == labels
+    dialog._select_configuration_section(2)
+    from AssetsManager.core.signal_bus import get as bus
+    bus().theme_changed.emit("default")
+    QApplication.processEvents()
+
+    assert dialog._configuration_nav_buttons[2].isChecked()
+    refresh.assert_called_once()
+    dialog.close()
 
 
 def test_endpoint_public_primary_action_stops_tunnel_only():
