@@ -1,0 +1,32 @@
+name: Nightly Performance Artifacts
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+env:
+  QT_QPA_PLATFORM: offscreen
+
+jobs:
+  grid-telemetry:
+    name: Grid Telemetry Trend Artifact
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install benchmark dependencies
+        run: pip install -r requirements-perf.txt
+      - name: Generate local trend artifact
+        run: python -m tests.perf.grid_telemetry_benchmark --output-dir artifacts/perf/grid
+      - name: Upload grid telemetry artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grid-telemetry-${{ github.run_id }}
+          path: artifacts/perf/grid/
+          if-no-files-found: warn
+          retention-days: 30
