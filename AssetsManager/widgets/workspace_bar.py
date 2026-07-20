@@ -138,8 +138,9 @@ class WorkspaceBar(QTabBar):
     # ── Public API ──────────────────────────────────────────────
 
     def add_library(self, path: str):
-        name = Path(path).name or path
-        existing = self.find_tab(path)
+        canonical_path = str(Path(path).resolve())
+        name = Path(canonical_path).name or canonical_path
+        existing = self.find_tab(canonical_path)
         if existing >= 0:
             self.setCurrentIndex(existing)
             return existing
@@ -147,7 +148,7 @@ class WorkspaceBar(QTabBar):
         # Block the intermediate Qt signal and notify once the tab is complete.
         with QSignalBlocker(self):
             idx = self.addTab(name)
-            self.setTabData(idx, path)
+            self.setTabData(idx, canonical_path)
             self.setCurrentIndex(idx)
         self._on_current_changed(idx)
         # Initialize indicator position
@@ -158,8 +159,9 @@ class WorkspaceBar(QTabBar):
         return idx
 
     def find_tab(self, path: str) -> int:
+        canonical_path = str(Path(path).resolve())
         for i in range(self.count()):
-            if str(self.tabData(i)) == path:
+            if str(self.tabData(i)) == canonical_path:
                 return i
         return -1
 

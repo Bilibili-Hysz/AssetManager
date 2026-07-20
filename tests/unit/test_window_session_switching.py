@@ -92,6 +92,11 @@ class _Window:
         self.sidebar = _LifecyclePanel("sidebar")
         self.tag_tree = _LifecyclePanel("tag-tree")
         self._bootstrap = _Bootstrap()
+        self.share_states = []
+        self._tray_manager = Mock()
+
+    def _update_share_status(self, running):
+        self.share_states.append(running)
 
     def _library_service(self):
         return _Service()
@@ -126,6 +131,8 @@ def test_switch_library_stops_lan_and_invalidates_thumbnails_before_closing(monk
         "sidebar.navigate",
         "file-list.navigate",
     ]
+    assert window.share_states == [False]
+    window._tray_manager.update_sharing_state.assert_called_once_with(False)
 
 
 def test_switch_library_is_noop_for_active_canonical_root(tmp_path):

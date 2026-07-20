@@ -26,6 +26,12 @@ class WindowLifecycleCoordinator:
         lan_server = getattr(window, "_lan_server", None)
         if lan_server and lan_server.is_running():
             lan_server.stop()
+            update_status = getattr(window, "_update_share_status", None)
+            if callable(update_status):
+                update_status(False)
+            tray = getattr(window, "_tray_manager", None)
+            if tray is not None:
+                tray.update_sharing_state(False)
 
         for name in ("info", "file_list", "sidebar", "tag_tree"):
             panel = getattr(window, name, None)

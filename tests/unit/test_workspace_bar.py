@@ -23,6 +23,23 @@ def test_adding_a_library_emits_one_switch_per_new_tab(tmp_path):
     app.processEvents()
 
 
+def test_adding_equivalent_library_path_reuses_existing_tab(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    library = tmp_path / "library"
+    library.mkdir()
+    bar = WorkspaceBar()
+    switched = []
+    bar.library_switched.connect(switched.append)
+
+    bar.add_library(str(library))
+    bar.add_library(str(library / "."))
+
+    assert bar.count() == 1
+    assert switched == [str(library.resolve())]
+    bar.deleteLater()
+    app.processEvents()
+
+
 def test_closing_inactive_tab_does_not_switch_library(tmp_path):
     app = QApplication.instance() or QApplication([])
     bar = WorkspaceBar()

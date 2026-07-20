@@ -37,7 +37,13 @@ class SystemTrayManager(QObject):
         self._tray.setContextMenu(self._menu)
         self._tray.activated.connect(self._on_activated)
         self._tray.setToolTip(tr("app.name"))
-        self._tray.show()
+        self._available = QSystemTrayIcon.isSystemTrayAvailable()
+        if self._available:
+            self._tray.show()
+
+    @property
+    def is_available(self) -> bool:
+        return self._available
 
     def _load_icon(self, icon_path: str | None) -> QIcon:
         """Load icon from file or generate a fallback."""

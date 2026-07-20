@@ -68,7 +68,7 @@ def main():
     from AssetsManager.widgets.tray import SystemTrayManager
     icon_path = str(Path(__file__).resolve().parent.parent / "assets" / "icons" / "icon.ico")
     tray = SystemTrayManager(icon_path)
-    app.setProperty("has_tray", True)
+    app.setProperty("has_tray", tray.is_available)
 
     # ── Startup Window ───────────────────────────────────────
     from AssetsManager.dialogs.startup import StartupWindow
@@ -91,10 +91,9 @@ def main():
             window = None
 
         window = MainWindow(bootstrap)
-        # window.__init__ already restores workspace tabs via _restore_workspace_tabs().
-        # If no saved tabs, add the startup-selected path.
-        if not window._workspace.tab_paths():
-            window._workspace.add_library(path)
+        # A direct Startup selection is the user's current intent and takes
+        # precedence over restored workspace history.
+        window._workspace.add_library(path)
         window.show()
         # Expose tray to window for state updates
         window._tray_manager = tray
