@@ -107,7 +107,6 @@ __all__ = [
     "_format_size",
     "build_zip_async",
     "build_zip_sync",
-    "batch_cached_stats",
     "find_first_image",
     "get_asset_service",
     "get_auth_service",
@@ -169,15 +168,25 @@ def _build_lan_services(lan) -> LanScopedServices:
     auth_service = getattr(lan, "_auth_service", None)
     if auth_service is None:
         auth_service = AuthService(lan.db_conn, lan.token_secret)
-    share_service = ShareService(auth_service.db_conn, lan.token_secret)
+    share_service = getattr(lan, "_share_service", None)
+    if share_service is None:
+        share_service = ShareService(auth_service.db_conn, lan.token_secret)
     return LanScopedServices(
         auth_service=auth_service,
         metadata_service=MetadataService(connection_provider=provider),
         project_service=ProjectService(connection_provider=provider),
         tag_service=TagService(connection_provider=provider),
-        search_service=SearchService(),
-        thumbnail_service=ThumbnailService(),
-        asset_service=AssetService(directory_cache=DirectoryCache(lan.db_conn)),
+        search_service=SearchService(
+            connection_provider=provider,
+            performance_recorder=getattr(lan, "performance_recorder", None),
+            session_token=getattr(lan, "session_token", None),
+        ),
+        thumbnail_service=ThumbnailService(connection_provider=provider),
+        asset_service=AssetService(
+            directory_cache=DirectoryCache(lan.db_conn),
+            performance_recorder=getattr(lan, "performance_recorder", None),
+            session_token=getattr(lan, "session_token", None),
+        ),
         share_service=share_service,
     )
 
@@ -367,11 +376,6 @@ def find_first_image(dir_path: Path) -> str | None:
         return best_entry.path if best_entry is not None else None
     except OSError:
         return None
-
-
-def batch_cached_stats(lib_root: str, file_paths: list[str], connection_provider=None) -> dict[str, tuple[int, float]]:
-    from AssetsManager.application import MetadataService
-    return MetadataService(connection_provider=connection_provider).get_cached_stats(lib_root, file_paths)
 
 
 def build_zip_sync(target_paths: list[tuple[Path, str | None]], zip_path: str) -> str | None:

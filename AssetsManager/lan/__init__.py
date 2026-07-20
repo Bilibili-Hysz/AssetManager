@@ -42,7 +42,8 @@ class LanServer:
                   rate_limit: int = 100, blocked_ips: list[str] | None = None,
                   ip_whitelist: list[str] | None = None,
                   blur_tags: list[str] | None = None,
-                  ssl_cert: str | None = None, ssl_key: str | None = None):
+                  ssl_cert: str | None = None, ssl_key: str | None = None,
+                  performance_recorder=None, session_token: str | None = None):
         if not _HAS_AIOHTTP:
             raise RuntimeError(
                 "LAN sharing requires aiohttp. Install with: pip install aiohttp"
@@ -61,6 +62,8 @@ class LanServer:
             blur_tags=blur_tags,
             ssl_cert=ssl_cert,
             ssl_key=ssl_key,
+            performance_recorder=performance_recorder,
+            session_token=session_token,
         )
 
     def start(self, port: int = 8080, bind: str = "0.0.0.0"):

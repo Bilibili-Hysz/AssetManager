@@ -1,5 +1,6 @@
 """Metadata routes: /api/meta/{path}, /api/search, /api/home, /api/tree, /api/projects, /api/projects/{path}."""
 import asyncio
+from time import perf_counter
 from urllib.parse import unquote
 from urllib.parse import urlparse
 
@@ -40,44 +41,69 @@ async def handle_meta(request):
 
 
 async def handle_search(request):
-    if not require_permission(request, "browse"):
-        return web.json_response({"error": "Browse access required"}, status=403)
     lan = get_lan(request)
-    query = request.query.get("q", "").lower()
-    tags_param = request.query.get("tags", "")
-    category = request.query.get("category", "all")
+    started = perf_counter()
+    outcome = "error"
+    status = 500
+    result_count = -1
+    try:
+        if not require_permission(request, "browse"):
+            status = 403
+            return web.json_response({"error": "Browse access required"}, status=status)
+        query = request.query.get("q", "").lower()
+        tags_param = request.query.get("tags", "")
+        category = request.query.get("category", "all")
 
-    tag_filter = [t.strip() for t in tags_param.split(",") if t.strip()] if tags_param else []
+        tag_filter = [t.strip() for t in tags_param.split(",") if t.strip()] if tags_param else []
 
-    svc = get_search_service(request)
+        svc = get_search_service(request)
 
-    def _search():
-        if tag_filter:
-            return svc.search_by_tags(
-                lan.library_root, tag_filter, query=query, category=category, db_conn=lan.db_conn,
-            )
-        elif query:
-            results = svc.search_by_name(query, category=category, scanner=lan.scanner)
-            if not results:
-                results = svc.search_by_name_indexed(
-                    lan.library_root, query, category=category, db_conn=lan.db_conn,
+        def _search():
+            if tag_filter:
+                return svc.search_by_tags(
+                    lan.library_root, tag_filter, query=query, category=category,
                 )
-            return results
-        else:
+            if query:
+                results = svc.search_by_name(query, category=category, scanner=lan.scanner)
+                if not results:
+                    results = svc.search_by_name_indexed(
+                        lan.library_root, query, category=category,
+                    )
+                return results
             return []
 
-    search_results = await asyncio.to_thread(_search)
+        search_results = await asyncio.to_thread(_search)
 
-    results = [
-        {
-            "name": r.name, "path": r.path, "type": "file",
-            "extension": r.extension, "category": r.category,
-            "thumbnail_url": r.thumbnail_url,
-        }
-        for r in search_results
-    ]
+        results = [
+            {
+                "name": r.name, "path": r.path, "type": "file",
+                "extension": r.extension, "category": r.category,
+                "thumbnail_url": r.thumbnail_url,
+            }
+            for r in search_results
+        ]
+        outcome = "success"
+        status = 200
+        result_count = len(results)
+        return web.json_response({"results": results, "count": result_count})
+    finally:
+        _record_search_route(lan, started, outcome, status, result_count)
 
-    return web.json_response({"results": results, "count": len(results)})
+
+def _record_search_route(lan, started: float, outcome: str, status: int, result_count: int) -> None:
+    recorder = getattr(lan, "performance_recorder", None)
+    if recorder is None or not recorder.enabled:
+        return
+    try:
+        recorder.record(
+            "lan.search",
+            (perf_counter() - started) * 1000,
+            session_token=getattr(lan, "session_token", None),
+            attributes={"outcome": outcome, "status": status, "result_count": result_count},
+        )
+    except Exception:
+        # Observability must not change a route response or search fallback.
+        pass
 
 
 async def handle_home(request):
@@ -90,7 +116,7 @@ async def handle_home(request):
 
     home = await asyncio.to_thread(
         get_project_service(request).get_home,
-        lan.library_root, depth_config=depth_config, db_conn=lan.db_conn,
+        lan.library_root, depth_config=depth_config,
     )
     return web.json_response(home.to_response())
 
@@ -137,7 +163,7 @@ async def handle_projects(request):
             get_project_service(request).list_projects,
             lan.library_root, target,
             rel_path=rel_path, sort_by=sort_by, order=order, search=search,
-            depth_config=depth_config, db_conn=lan.db_conn,
+            depth_config=depth_config,
             offset=offset, limit=limit,
         )
     except PermissionError:
@@ -160,7 +186,7 @@ async def handle_project_detail(request):
     try:
         detail = await asyncio.to_thread(
             get_project_service(request).get_project_detail,
-            lan.library_root, target, rel_path=rel_path, db_conn=lan.db_conn,
+            lan.library_root, target, rel_path=rel_path,
         )
     except OSError:
         return web.json_response({"error": "Failed to load project"}, status=500)

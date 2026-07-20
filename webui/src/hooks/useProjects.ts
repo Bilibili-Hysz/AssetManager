@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from './useAuth';
 import { createFilesApi } from '../api/files';
 import type { FilesResponse } from '../types/api';
@@ -17,6 +17,8 @@ interface UseProjectsReturn {
   navigateTo: (path: string) => void;
   setSort: (config: SortConfig) => void;
   refresh: () => void;
+  listingGeneration: number;
+  hydrateDirectories: (paths: string[], signal: AbortSignal, generation: number) => Promise<void>;
 }
 
 export function useProjects(initialPath = ''): UseProjectsReturn {
@@ -29,13 +31,17 @@ export function useProjects(initialPath = ''): UseProjectsReturn {
   const [error, setError] = useState<string | null>(null);
   const [sort, setSortState] = useState<SortConfig>({ sort: 'name', order: 'asc' });
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const generationRef = useRef(0);
+  const [listingGeneration, setListingGeneration] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
+    const generation = ++generationRef.current;
+    setListingGeneration(generation);
     setIsLoading(true);
     setError(null);
     filesApi.list(
-      { path: currentPath || undefined, sort: sort.sort, order: sort.order },
+      { path: currentPath || undefined, sort: sort.sort, order: sort.order, summaries: 'false' },
       controller.signal,
     )
       .then(response => {
@@ -62,5 +68,22 @@ export function useProjects(initialPath = ''): UseProjectsReturn {
     setRefreshVersion(version => version + 1);
   }, []);
 
-  return { data, isLoading, error, currentPath, sort, navigateTo, setSort, refresh };
+  const hydrateDirectories = useCallback(async (paths: string[], signal: AbortSignal, generation: number) => {
+    if (paths.length === 0) return;
+    const response = await filesApi.summaries(currentPath, paths, signal);
+    if (signal.aborted || generation !== generationRef.current) return;
+    setData(previous => {
+      if (!previous || previous.current_path !== currentPath || generation !== generationRef.current) return previous;
+      const summaries = new Map(response.items.map(item => [item.path, item]));
+      return {
+        ...previous,
+        items: previous.items.map(item => {
+          const summary = item.type === 'dir' ? summaries.get(item.path) : undefined;
+          return summary ? { ...item, size_fmt: summary.size_fmt, thumbnail_url: summary.thumbnail_url ?? undefined } : item;
+        }),
+      };
+    });
+  }, [currentPath, filesApi]);
+
+  return { data, isLoading, error, currentPath, sort, navigateTo, setSort, refresh, listingGeneration, hydrateDirectories };
 }

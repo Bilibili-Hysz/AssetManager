@@ -26,7 +26,7 @@ export default function BrowsePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const initialPath = searchParams.get('path') || '';
-  const { data, isLoading, error, currentPath, sort, navigateTo, setSort, refresh } = useProjects(initialPath);
+  const { data, isLoading, error, currentPath, sort, navigateTo, setSort, refresh, listingGeneration, hydrateDirectories } = useProjects(initialPath);
   const { loadThumbnails, getThumbnail, revision: thumbnailRevision } = useThumbnailCache();
   const { api, user } = useAuth();
   const filesApi = useMemo(() => createFilesApi(api), [api]);
@@ -74,12 +74,47 @@ export default function BrowsePage() {
   const tagSearchGeneration = useRef(0);
   const metadataGeneration = useRef(0);
   const metadataAbort = useRef<AbortController | null>(null);
+  const summaryAbort = useRef<AbortController | null>(null);
+  const summaryPaths = useRef(new Set<string>());
+  const summaryPending = useRef<string[]>([]);
+  const summaryFlushScheduled = useRef(false);
 
   useEffect(() => () => {
     tagSearchGeneration.current += 1;
     metadataGeneration.current += 1;
     metadataAbort.current?.abort();
+    summaryAbort.current?.abort();
   }, []);
+
+  useEffect(() => {
+    summaryAbort.current?.abort();
+    summaryAbort.current = new AbortController();
+    summaryPaths.current.clear();
+    summaryPending.current = [];
+    summaryFlushScheduled.current = false;
+  }, [listingGeneration]);
+
+  const handleDirectoryVisible = useCallback((path: string) => {
+    if (!path || summaryPaths.current.has(path)) return;
+    summaryPaths.current.add(path);
+    summaryPending.current.push(path);
+    if (summaryFlushScheduled.current) return;
+    summaryFlushScheduled.current = true;
+    queueMicrotask(async () => {
+      try {
+        while (summaryPending.current.length) {
+          const paths = summaryPending.current.splice(0, 48);
+          const controller = summaryAbort.current;
+          if (!controller || controller.signal.aborted) return;
+          await hydrateDirectories(paths, controller.signal, listingGeneration);
+        }
+      } catch {
+        // A later visibility event can retry; do not spin on a failed request.
+      } finally {
+        summaryFlushScheduled.current = false;
+      }
+    });
+  }, [hydrateDirectories, listingGeneration]);
 
   // WebSocket real-time updates
   useWebSocket({
@@ -350,6 +385,7 @@ export default function BrowsePage() {
           onDoubleClick={handleCardDoubleClick}
           onContextMenu={handleContextMenu}
           thumbnailMap={thumbnailMap}
+          onDirectoryVisible={handleDirectoryVisible}
         />
       ) : (
         <ProjectList
@@ -360,6 +396,7 @@ export default function BrowsePage() {
           selectionMode={selectMode}
           onDoubleClick={handleCardDoubleClick}
           onContextMenu={handleContextMenu}
+          onDirectoryVisible={handleDirectoryVisible}
         />
       )}
 

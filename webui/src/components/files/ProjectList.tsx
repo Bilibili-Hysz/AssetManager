@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Folder, File, MoreHorizontal } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 import type { ProjectItem } from '../../types/api';
@@ -10,10 +11,23 @@ interface ProjectListProps {
   selectionMode?: boolean;
   onDoubleClick?: (item: ProjectItem) => void;
   onContextMenu?: (e: React.MouseEvent, item: ProjectItem) => void;
+  onDirectoryVisible?: (path: string) => void;
 }
 
-export function ProjectList({ items, selected, onSelect, onCardClick, selectionMode = false, onDoubleClick, onContextMenu }: ProjectListProps) {
+export function ProjectList({ items, selected, onSelect, onCardClick, selectionMode = false, onDoubleClick, onContextMenu, onDirectoryVisible }: ProjectListProps) {
   const { t } = useI18n();
+  const nodes = useRef(new Map<string, HTMLTableRowElement>());
+
+  useEffect(() => {
+    if (!onDirectoryVisible || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) onDirectoryVisible(entry.target.getAttribute('data-directory-path') ?? '');
+      }
+    }, { rootMargin: '160px' });
+    for (const node of nodes.current.values()) observer.observe(node);
+    return () => observer.disconnect();
+  }, [items, onDirectoryVisible]);
 
   return (
     <div className="p-4">
@@ -34,6 +48,11 @@ export function ProjectList({ items, selected, onSelect, onCardClick, selectionM
               return (
                 <tr
                   key={item.path}
+                  data-directory-path={isDir ? item.path : undefined}
+                  ref={node => {
+                    if (node && isDir) nodes.current.set(item.path, node);
+                    else nodes.current.delete(item.path);
+                  }}
                   className={`border-b border-slate-800/50 transition-colors cursor-pointer
                     ${selected.has(item.path) ? 'bg-indigo-500/5' : 'hover:bg-slate-800/30'}`}
                   onClick={() => { onSelect(item.path); if (!selectionMode) onCardClick?.(item); }}

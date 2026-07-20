@@ -2,6 +2,7 @@
 import asyncio
 import os
 import sqlite3
+import threading
 from pathlib import Path
 
 import pytest
@@ -215,6 +216,8 @@ class _FakeLan:
         self._ssl_key = None
         self._port = 8080
         self.broadcasts = []
+        self.performance_recorder = None
+        self.session_token = None
         from AssetsManager.lan.ws import WebSocketManager
         self.ws_manager = WebSocketManager()
         from AssetsManager.lan.scanner import DirectoryScanner
@@ -232,12 +235,20 @@ class _FakeLan:
         pass
 
 
+def _init_lan_schemas(conn):
+    from AssetsManager.repositories.auth_repository import AuthRepository
+    from AssetsManager.repositories.share_repository import ShareRepository
+
+    AuthRepository(conn).init_tables()
+    ShareRepository(conn).init_table()
+
+
 def _make_lan_app(tmp_path, *, authenticated_context_only=False):
     from aiohttp import web
     from AssetsManager.application.auth_service import AuthService
     from AssetsManager.core import database
     from AssetsManager.lan.api import setup_routes
-    from AssetsManager.lan.auth import init_users_table, verify_auth_token
+    from AssetsManager.lan.auth import verify_auth_token
     from AssetsManager.lan.routes._helpers import (
         AUTH_SERVICE_APP_KEY,
         LAN_APP_KEY,
@@ -256,7 +267,7 @@ def _make_lan_app(tmp_path, *, authenticated_context_only=False):
     try:
         conn.executescript(database._SCHEMA)
         conn.commit()
-        init_users_table(conn)
+        _init_lan_schemas(conn)
 
         @web.middleware
         async def _test_auth_middleware(request, handler):
@@ -386,6 +397,196 @@ async def test_files_route_lists_library_items(tmp_path):
         assert "visible.txt" in names
         assert "folder" in names
         assert ".hidden.txt" not in names
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_files_route_uses_scoped_metadata_service_for_cached_stats(tmp_path, monkeypatch):
+    from AssetsManager.lan.routes import files
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    asset = library / "visible.txt"
+    asset.write_text("hello", encoding="utf-8")
+    calls = []
+
+    class _MetadataService:
+        def get_cached_stats(self, root, paths):
+            calls.append((root, paths))
+            return {}
+
+    monkeypatch.setattr(files, "get_metadata_service", lambda _request: _MetadataService())
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/files")
+
+        assert response.status == 200
+        assert calls == [(library, [str(asset)])]
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_files_route_honors_explicit_summaries_false(tmp_path):
+    app, library, _conn = _make_lan_app(tmp_path)
+    (library / "folder").mkdir()
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/files?summaries=false")
+        assert response.status == 200
+        assert (await response.json())["items"][0]["size_fmt"] == "0.0 B"
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_directory_summaries_route_hydrates_direct_child_directories(tmp_path):
+    app, library, _conn = _make_lan_app(tmp_path)
+    parent = library / "projects"
+    child = parent / "avatar"
+    child.mkdir(parents=True)
+    (child / "cover.png").write_bytes(b"image")
+    client = await _make_client(app)
+    try:
+        response = await client.post(
+            "/api/files/summaries",
+            json={"parent_path": "projects", "paths": ["projects/avatar"]},
+        )
+        assert response.status == 200
+        assert (await response.json())["items"] == [{
+            "path": "projects/avatar", "item_count": 1, "size_fmt": "1 items",
+            "thumbnail_url": "/api/thumbnails/projects/avatar/cover.png",
+        }]
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_directory_summaries_route_rejects_non_direct_or_invalid_paths(tmp_path):
+    app, library, _conn = _make_lan_app(tmp_path)
+    parent = library / "projects"
+    (parent / "avatar" / "nested").mkdir(parents=True)
+    (library / "outside").mkdir()
+    client = await _make_client(app)
+    try:
+        nested = await client.post(
+            "/api/files/summaries",
+            json={"parent_path": "projects", "paths": ["projects/avatar/nested"]},
+        )
+        escaped = await client.post(
+            "/api/files/summaries",
+            json={"parent_path": "projects", "paths": ["outside"]},
+        )
+        assert nested.status == 400
+        assert escaped.status == 400
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_directory_summaries_route_rejects_duplicate_and_over_limit_paths(tmp_path):
+    app, library, _conn = _make_lan_app(tmp_path)
+    (library / "projects").mkdir()
+    client = await _make_client(app)
+    try:
+        duplicate = await client.post(
+            "/api/files/summaries",
+            json={"parent_path": "", "paths": ["projects", "projects"]},
+        )
+        over_limit = await client.post(
+            "/api/files/summaries",
+            json={"parent_path": "", "paths": ["projects"] * 49},
+        )
+        assert duplicate.status == 400
+        assert over_limit.status == 400
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_files_route_records_session_scoped_performance_event(tmp_path):
+    from AssetsManager.core.performance import PerformanceRecorder
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    (library / "visible.txt").write_text("hello", encoding="utf-8")
+    recorder = PerformanceRecorder(enabled=True)
+    lan = app[LAN_APP_KEY]
+    assert isinstance(lan, _FakeLan)
+    lan.performance_recorder = recorder
+    lan.session_token = "session-a"
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/files")
+        assert response.status == 200
+
+        event = next(event for event in recorder.recent() if event.name == "lan.files")
+        assert event.elapsed_ms >= 0
+        assert event.session_token == "session-a"
+        assert event.path == str(library.resolve())
+        assert event.attributes == {"outcome": "success", "status": 200, "item_count": 1}
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_files_route_records_path_validation_error(tmp_path):
+    from AssetsManager.core.performance import PerformanceRecorder
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, _library, _conn = _make_lan_app(tmp_path)
+    recorder = PerformanceRecorder(enabled=True)
+    app[LAN_APP_KEY].performance_recorder = recorder
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/files?path=../../outside")
+        assert response.status == 400
+
+        event = next(event for event in recorder.recent() if event.name == "lan.files")
+        assert event.attributes == {"outcome": "error", "status": 400, "item_count": -1}
+        assert event.path is None
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_files_route_records_forbidden_without_request_path(tmp_path, monkeypatch):
+    from AssetsManager.core.performance import PerformanceRecorder
+    from AssetsManager.lan.routes import _helpers
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, _library, _conn = _make_lan_app(tmp_path, authenticated_context_only=True)
+    recorder = PerformanceRecorder(enabled=True)
+    app[LAN_APP_KEY].performance_recorder = recorder
+    monkeypatch.setattr(_helpers, "get_user_permissions", lambda _user: {"browse": False})
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/files?path=private")
+        assert response.status == 403
+
+        event = next(event for event in recorder.recent() if event.name == "lan.files")
+        assert event.path is None
+        assert event.attributes == {"outcome": "error", "status": 403, "item_count": -1}
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_files_route_ignores_disabled_performance_recorder(tmp_path):
+    from AssetsManager.core.performance import PerformanceRecorder
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    (library / "visible.txt").write_text("hello", encoding="utf-8")
+    recorder = PerformanceRecorder()
+    lan = app[LAN_APP_KEY]
+    assert isinstance(lan, _FakeLan)
+    lan.performance_recorder = recorder
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/files")
+        assert response.status == 200
+        assert recorder.recent() == ()
     finally:
         await client.close()
 
@@ -717,6 +918,30 @@ def test_lan_server_facade_accepts_ip_whitelist(monkeypatch):
     assert captured["ip_whitelist"] == ["127.0.0.1"]
 
 
+def test_lan_service_bundle_reuses_server_share_service(tmp_path):
+    from AssetsManager.core import database
+    from AssetsManager.lan.routes._helpers import _build_lan_services
+    from AssetsManager.lan.server import _LanServerImpl
+
+    library = tmp_path / "library"
+    library.mkdir()
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.executescript(database._SCHEMA)
+        _init_lan_schemas(conn)
+        server = _LanServerImpl(
+            library_root=str(library),
+            thumbnail_dir=str(tmp_path / "thumbs"),
+            db_conn=conn,
+        )
+
+        services = _build_lan_services(server)
+
+        assert services.share_service is server._share_service
+    finally:
+        conn.close()
+
+
 @pytest.mark.anyio
 async def test_download_route_serves_file(tmp_path):
     app, library, conn = _make_lan_app(tmp_path)
@@ -727,6 +952,227 @@ async def test_download_route_serves_file(tmp_path):
         resp = await client.get("/api/download/asset.txt", headers=_local_ui_headers(app))
         assert resp.status == 200
         assert await _read_body(resp) == b"download me"
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_download_routes_record_response_ready_metrics(tmp_path):
+    from AssetsManager.core.performance import PerformanceRecorder
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    (library / "asset.txt").write_text("download me", encoding="utf-8")
+    recorder = PerformanceRecorder(enabled=True)
+    app[LAN_APP_KEY].performance_recorder = recorder
+    app[LAN_APP_KEY].session_token = "session-a"
+    client = await _make_client(app)
+    try:
+        single = await client.get("/api/download/asset.txt", headers=_local_ui_headers(app))
+        assert single.status == 200
+        await _read_body(single)
+
+        single_event = next(event for event in recorder.recent() if event.name == "lan.download")
+        assert single_event.session_token == "session-a"
+        assert single_event.path == str((library / "asset.txt").resolve())
+        assert single_event.attributes == {
+            "outcome": "response_ready",
+            "status": 200,
+            "phase": "response_ready",
+            "kind": "file",
+        }
+
+        recorder.clear()
+        batch = await client.post(
+            "/api/download/batch",
+            json={"paths": ["asset.txt"]},
+            headers=_local_ui_headers(app),
+        )
+        assert batch.status == 200
+        await _read_body(batch)
+
+        batch_event = next(event for event in recorder.recent() if event.name == "lan.download_batch")
+        assert batch_event.path is None
+        assert batch_event.attributes == {
+            "outcome": "response_ready",
+            "status": 200,
+            "phase": "response_ready",
+            "target_count": 1,
+        }
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_download_routes_record_response_ready_without_delivery_claims(tmp_path):
+    from AssetsManager.core.performance import PerformanceRecorder
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    (library / "asset.txt").write_text("download me", encoding="utf-8")
+    recorder = PerformanceRecorder(enabled=True)
+    app[LAN_APP_KEY].performance_recorder = recorder
+    app[LAN_APP_KEY].session_token = "session-a"
+    client = await _make_client(app)
+    try:
+        direct = await client.get("/api/download/asset.txt", headers=_local_ui_headers(app))
+        assert direct.status == 200
+        direct_event = next(event for event in recorder.recent() if event.name == "lan.download")
+        assert direct_event.session_token == "session-a"
+        assert direct_event.path == str((library / "asset.txt").resolve())
+        assert direct_event.attributes == {
+            "outcome": "response_ready", "status": 200, "phase": "response_ready", "kind": "file"
+        }
+        assert not {"bytes_delivered", "completed", "delivery_success"} & set(direct_event.attributes)
+
+        recorder.clear()
+        batch = await client.post(
+            "/api/download/batch", json={"paths": ["asset.txt"]}, headers=_local_ui_headers(app)
+        )
+        assert batch.status == 200
+        batch_event = next(event for event in recorder.recent() if event.name == "lan.download_batch")
+        assert batch_event.path is None
+        assert batch_event.attributes == {
+            "outcome": "response_ready", "status": 200, "phase": "response_ready", "target_count": 1
+        }
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_download_route_failure_is_pathless_and_recorder_safe(tmp_path, monkeypatch):
+    from AssetsManager.core.performance import PerformanceRecorder
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    (library / "asset.txt").write_text("download me", encoding="utf-8")
+    recorder = PerformanceRecorder(enabled=True)
+    app[LAN_APP_KEY].performance_recorder = recorder
+    client = await _make_client(app)
+    try:
+        escaped = await client.get("/api/download/..%2Fprivate.txt", headers=_local_ui_headers(app))
+        assert escaped.status == 400
+        escaped_event = next(event for event in recorder.recent() if event.name == "lan.download")
+        assert escaped_event.path is None
+        assert escaped_event.attributes == {
+            "outcome": "error", "status": 400, "phase": "failed", "kind": "none"
+        }
+
+        monkeypatch.setattr(recorder, "record", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError()))
+        response = await client.get("/api/download/asset.txt", headers=_local_ui_headers(app))
+        assert response.status == 200
+        assert await _read_body(response) == b"download me"
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_directory_download_zip_failure_records_pathless_error(tmp_path, monkeypatch):
+    from AssetsManager.core.performance import PerformanceRecorder
+    from AssetsManager.lan.routes import downloads
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    folder = library / "folder"
+    folder.mkdir()
+    (folder / "asset.txt").write_text("download me", encoding="utf-8")
+    recorder = PerformanceRecorder(enabled=True)
+    app[LAN_APP_KEY].performance_recorder = recorder
+
+    async def fail_zip(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(downloads, "build_zip_async", fail_zip)
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/download/folder", headers=_local_ui_headers(app))
+        assert response.status == 500
+        event = next(event for event in recorder.recent() if event.name == "lan.download")
+        assert event.path is None
+        assert event.attributes == {
+            "outcome": "error", "status": 500, "phase": "failed", "kind": "none"
+        }
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("batch", [False, True])
+async def test_directory_download_size_estimation_does_not_block_event_loop(tmp_path, monkeypatch, batch):
+    from AssetsManager.lan.routes import downloads
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    folder = library / "folder"
+    folder.mkdir()
+    (folder / "asset.txt").write_text("download me", encoding="utf-8")
+    loop = asyncio.get_running_loop()
+    started = asyncio.Event()
+    release = threading.Event()
+
+    def block_size(_target):
+        loop.call_soon_threadsafe(started.set)
+        assert release.wait(timeout=2)
+        return 0
+
+    monkeypatch.setattr(downloads, "_estimate_download_size", block_size)
+    client = await _make_client(app)
+    try:
+        if batch:
+            download_task = asyncio.create_task(
+                client.post("/api/download/batch", json={"paths": ["folder"]}, headers=_local_ui_headers(app))
+            )
+        else:
+            download_task = asyncio.create_task(client.get("/api/download/folder", headers=_local_ui_headers(app)))
+        await asyncio.wait_for(started.wait(), timeout=1)
+
+        status = await asyncio.wait_for(client.get("/api/tunnel/status", headers=_local_ui_headers(app)), timeout=0.5)
+        assert status.status == 200
+        release.set()
+        response = await asyncio.wait_for(download_task, timeout=3)
+        assert response.status == 200
+    finally:
+        release.set()
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_file_only_batch_download_does_not_offload_size_estimation(tmp_path, monkeypatch):
+    from AssetsManager.lan.routes import downloads
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    (library / "asset.txt").write_text("download me", encoding="utf-8")
+
+    async def fail_offload(*_args, **_kwargs):
+        raise AssertionError("file-only batch must not use a worker")
+
+    monkeypatch.setattr(downloads.asyncio, "to_thread", fail_offload)
+    client = await _make_client(app)
+    try:
+        response = await client.post(
+            "/api/download/batch", json={"paths": ["asset.txt"]}, headers=_local_ui_headers(app)
+        )
+        assert response.status == 200
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_batch_download_recorder_failure_does_not_change_archive_response(tmp_path, monkeypatch):
+    from AssetsManager.core.performance import PerformanceRecorder
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    (library / "asset.txt").write_text("download me", encoding="utf-8")
+    recorder = PerformanceRecorder(enabled=True)
+    app[LAN_APP_KEY].performance_recorder = recorder
+    monkeypatch.setattr(recorder, "record", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError()))
+    client = await _make_client(app)
+    try:
+        response = await client.post(
+            "/api/download/batch", json={"paths": ["asset.txt"]}, headers=_local_ui_headers(app)
+        )
+        assert response.status == 200
+        assert response.headers["Content-Type"].startswith("application/zip")
     finally:
         await client.close()
 
@@ -843,6 +1289,117 @@ async def test_share_routes_create_and_download_scoped_file(tmp_path):
 
         blocked = await client.get(f"/api/shares/{share_id}/download/private.txt")
         assert blocked.status == 403
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_share_download_records_response_ready_and_pathless_rejection(tmp_path):
+    from AssetsManager.core.performance import PerformanceRecorder
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    folder = library / "project"
+    folder.mkdir()
+    asset = folder / "asset.txt"
+    asset.write_text("shared asset", encoding="utf-8")
+    (library / "private.txt").write_text("private", encoding="utf-8")
+    recorder = PerformanceRecorder(enabled=True)
+    app[LAN_APP_KEY].performance_recorder = recorder
+    client = await _make_client(app)
+    try:
+        create = await client.post(
+            "/api/shares",
+            json={"paths": ["project"], "allow_preview": True},
+            headers=_local_ui_headers(app),
+        )
+        assert create.status == 200
+        share_id = (await create.json())["id"]
+
+        success = await client.get(f"/api/shares/{share_id}/download/project/asset.txt")
+        assert success.status == 200
+        await _read_body(success)
+        success_event = next(event for event in recorder.recent() if event.name == "lan.share_download")
+        assert success_event.path == str(asset.resolve())
+        assert success_event.attributes == {
+            "outcome": "response_ready",
+            "status": 200,
+            "phase": "response_ready",
+            "kind": "share_file",
+        }
+
+        recorder.clear()
+        rejected = await client.get(f"/api/shares/{share_id}/download/private.txt")
+        assert rejected.status == 403
+        rejected_event = next(event for event in recorder.recent() if event.name == "lan.share_download")
+        assert rejected_event.path is None
+        assert rejected_event.attributes["outcome"] == "error"
+        assert rejected_event.attributes["status"] == 403
+        assert rejected_event.attributes["phase"] == "failed"
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_share_download_records_response_ready_and_scope_failure_is_pathless(tmp_path):
+    from AssetsManager.core.performance import PerformanceRecorder
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    folder = library / "project"
+    folder.mkdir()
+    (folder / "asset.txt").write_text("shared asset", encoding="utf-8")
+    (library / "private.txt").write_text("private", encoding="utf-8")
+    recorder = PerformanceRecorder(enabled=True)
+    app[LAN_APP_KEY].performance_recorder = recorder
+    client = await _make_client(app)
+    try:
+        create = await client.post(
+            "/api/shares", json={"paths": ["project"], "allow_preview": True}, headers=_local_ui_headers(app)
+        )
+        share_id = (await create.json())["id"]
+
+        response = await client.get(f"/api/shares/{share_id}/download/project/asset.txt")
+        assert response.status == 200
+        event = next(event for event in recorder.recent() if event.name == "lan.share_download")
+        assert event.path == str((folder / "asset.txt").resolve())
+        assert event.attributes == {
+            "outcome": "response_ready", "status": 200, "phase": "response_ready", "kind": "share_file"
+        }
+
+        recorder.clear()
+        denied = await client.get(f"/api/shares/{share_id}/download/private.txt")
+        assert denied.status == 403
+        denied_event = next(event for event in recorder.recent() if event.name == "lan.share_download")
+        assert denied_event.path is None
+        assert denied_event.attributes == {
+            "outcome": "error", "status": 403, "phase": "failed", "kind": "share_file"
+        }
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_share_download_recorder_failure_preserves_admission_and_counter(tmp_path, monkeypatch):
+    from AssetsManager.core.performance import PerformanceRecorder
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, library, conn = _make_lan_app(tmp_path)
+    (library / "asset.txt").write_text("shared asset", encoding="utf-8")
+    recorder = PerformanceRecorder(enabled=True)
+    app[LAN_APP_KEY].performance_recorder = recorder
+    client = await _make_client(app)
+    try:
+        create = await client.post(
+            "/api/shares", json={"paths": ["asset.txt"], "allow_preview": True}, headers=_local_ui_headers(app)
+        )
+        share_id = (await create.json())["id"]
+        monkeypatch.setattr(recorder, "record", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError()))
+
+        response = await client.get(f"/api/shares/{share_id}/download/asset.txt")
+        assert response.status == 200
+        assert await _read_body(response) == b"shared asset"
+        assert conn.execute("SELECT download_count FROM share_links WHERE id=?", (share_id,)).fetchone() == (1,)
     finally:
         await client.close()
 
@@ -1515,7 +2072,6 @@ class TestShareSecurity:
         from aiohttp.test_utils import TestClient, TestServer
         from aiohttp.web import NotAppKeyWarning
         from AssetsManager.core import database
-        from AssetsManager.lan.auth import init_users_table
         from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY
         from AssetsManager.lan.server import _LanServerImpl
 
@@ -1526,7 +2082,7 @@ class TestShareSecurity:
         try:
             conn.executescript(database._SCHEMA)
             conn.commit()
-            init_users_table(conn)
+            _init_lan_schemas(conn)
             server = _LanServerImpl(
                 library_root=str(library),
                 thumbnail_dir=str(tmp_path / "thumbs"),
@@ -1599,7 +2155,7 @@ class TestMiddlewarePrecedenceRegression:
     async def test_non_get_share_endpoints_require_auth(self, tmp_path):
         """POST /api/shares/{id}/verify is now public (share links must be accessible)."""
         from AssetsManager.lan.server import _LanServerImpl
-        from AssetsManager.lan.auth import hash_password, init_users_table
+        from AssetsManager.lan.auth import hash_password
         from AssetsManager.core import database
 
         library = tmp_path / "library"
@@ -1609,7 +2165,7 @@ class TestMiddlewarePrecedenceRegression:
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         try:
             conn.executescript(database._SCHEMA)
-            init_users_table(conn)
+            _init_lan_schemas(conn)
             conn.commit()
 
             server = _LanServerImpl(
@@ -1638,7 +2194,7 @@ class TestMiddlewarePrecedenceRegression:
     async def test_spa_assets_are_public_when_server_auth_is_enabled(self, tmp_path):
         """The SPA must load its hashed bundles before a user can log in."""
         from AssetsManager.lan.server import _LanServerImpl
-        from AssetsManager.lan.auth import hash_password, init_users_table
+        from AssetsManager.lan.auth import hash_password
         from AssetsManager.core import database
         from aiohttp.test_utils import TestClient, TestServer
 
@@ -1647,7 +2203,7 @@ class TestMiddlewarePrecedenceRegression:
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         try:
             conn.executescript(database._SCHEMA)
-            init_users_table(conn)
+            _init_lan_schemas(conn)
             conn.commit()
             server = _LanServerImpl(
                 library_root=str(library),
@@ -1672,7 +2228,7 @@ class TestMiddlewarePrecedenceRegression:
         """A public password-share flow must work while server auth protects APIs."""
         from aiohttp.test_utils import TestClient, TestServer
         from AssetsManager.core import database
-        from AssetsManager.lan.auth import hash_password, init_users_table
+        from AssetsManager.lan.auth import hash_password
         from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY
         from AssetsManager.lan.server import _LanServerImpl
 
@@ -1682,7 +2238,7 @@ class TestMiddlewarePrecedenceRegression:
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         try:
             conn.executescript(database._SCHEMA)
-            init_users_table(conn)
+            _init_lan_schemas(conn)
             conn.commit()
             server = _LanServerImpl(
                 library_root=str(library),
@@ -1726,7 +2282,7 @@ class TestPasswordHashLeakRegression:
     @pytest.mark.anyio
     async def test_users_endpoint_strips_password_hash(self, tmp_path):
         from AssetsManager.lan.server import _LanServerImpl
-        from AssetsManager.lan.auth import hash_password, init_users_table
+        from AssetsManager.lan.auth import hash_password
         from AssetsManager.core import database
 
         library = tmp_path / "library"
@@ -1735,7 +2291,7 @@ class TestPasswordHashLeakRegression:
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         try:
             conn.executescript(database._SCHEMA)
-            init_users_table(conn)
+            _init_lan_schemas(conn)
             conn.execute(
                 "INSERT INTO users (username, password, role, is_active) VALUES (?, ?, 'admin', 1)",
                 ("admin", hash_password("Admin@1234")),
@@ -1977,6 +2533,132 @@ class TestThumbnailSecurity:
     """Security regression tests for thumbnail endpoints."""
 
     @pytest.mark.anyio
+    async def test_thumbnail_records_canonical_route_metric(self, tmp_path):
+        from AssetsManager.core.performance import PerformanceRecorder
+        from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+        app, library, _conn = _make_lan_app(tmp_path)
+        (library / "image.png").write_bytes(b"\x89PNG" + b"\x00" * 100)
+        recorder = PerformanceRecorder(enabled=True)
+        app[LAN_APP_KEY].performance_recorder = recorder
+        app[LAN_APP_KEY].session_token = "session-a"
+        client = await _make_client(app)
+        try:
+            response = await client.get("/api/thumbnails/image.png")
+            assert response.status in (200, 404)
+
+            event = next(event for event in recorder.recent() if event.name == "lan.thumbnail")
+            assert event.session_token == "session-a"
+            assert event.path == str((library / "image.png").resolve())
+            assert event.attributes["status"] == response.status
+            assert event.attributes["outcome"] == ("success" if response.status == 200 else "error")
+            assert event.attributes["delivery"] in {"original", "processed", "none"}
+            assert isinstance(event.attributes["cache_hit"], bool)
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_thumbnail_denial_and_path_escape_are_pathless(self, tmp_path, monkeypatch):
+        from AssetsManager.core.performance import PerformanceRecorder
+        from AssetsManager.lan.routes import _helpers
+        from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+        app, _library, _conn = _make_lan_app(tmp_path, authenticated_context_only=True)
+        recorder = PerformanceRecorder(enabled=True)
+        app[LAN_APP_KEY].performance_recorder = recorder
+        monkeypatch.setattr(_helpers, "get_user_permissions", lambda _user: {"preview": False})
+        client = await _make_client(app)
+        try:
+            denied = await client.get("/api/thumbnails/private.png")
+            assert denied.status == 403
+            denied_event = next(event for event in recorder.recent() if event.name == "lan.thumbnail")
+            assert denied_event.path is None
+            assert denied_event.attributes == {
+                "outcome": "error", "status": 403, "delivery": "none", "cache_hit": False
+            }
+
+            recorder.clear()
+            monkeypatch.setattr(_helpers, "get_user_permissions", lambda _user: {"preview": True})
+            escaped = await client.get("/api/thumbnails/..%2Fprivate.png")
+            assert escaped.status == 400
+            escaped_event = next(event for event in recorder.recent() if event.name == "lan.thumbnail")
+            assert escaped_event.path is None
+            assert escaped_event.attributes["status"] == 400
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_thumbnail_batch_records_aggregate_metric_without_paths(self, tmp_path):
+        from AssetsManager.core.performance import PerformanceRecorder
+        from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+        app, library, _conn = _make_lan_app(tmp_path)
+        (library / "image.png").write_bytes(b"\x89PNG" + b"\x00" * 100)
+        recorder = PerformanceRecorder(enabled=True)
+        app[LAN_APP_KEY].performance_recorder = recorder
+        client = await _make_client(app)
+        try:
+            response = await client.post("/api/thumbnails/batch", json={"paths": ["image.png"]})
+            assert response.status == 200
+
+            event = next(event for event in recorder.recent() if event.name == "lan.thumbnail_batch")
+            assert event.path is None
+            assert event.attributes == {
+                "outcome": "success",
+                "status": 200,
+                "requested_count": 1,
+                "result_count": 0,
+                "failed_count": 0,
+            }
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_thumbnail_batch_records_partial_and_path_escape_outcomes(self, tmp_path, monkeypatch):
+        from AssetsManager.core.performance import PerformanceRecorder
+        from AssetsManager.lan.routes import thumbnails
+        from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+        app, library, _conn = _make_lan_app(tmp_path)
+        (library / "image.png").write_bytes(b"image")
+        recorder = PerformanceRecorder(enabled=True)
+        app[LAN_APP_KEY].performance_recorder = recorder
+
+        class _FailingThumbnailService:
+            def resolve(self, *_args, **_kwargs):
+                raise RuntimeError("resolution failed")
+
+        monkeypatch.setattr(thumbnails, "get_thumbnail_service", lambda _request: _FailingThumbnailService())
+        client = await _make_client(app)
+        try:
+            partial = await client.post("/api/thumbnails/batch", json={"paths": ["image.png"]})
+            assert partial.status == 200
+            partial_event = next(event for event in recorder.recent() if event.name == "lan.thumbnail_batch")
+            assert partial_event.path is None
+            assert partial_event.attributes == {
+                "outcome": "partial",
+                "status": 200,
+                "requested_count": 1,
+                "result_count": 0,
+                "failed_count": 1,
+            }
+
+            recorder.clear()
+            escaped = await client.post("/api/thumbnails/batch", json={"paths": ["../private.png"]})
+            assert escaped.status == 400
+            escaped_event = next(event for event in recorder.recent() if event.name == "lan.thumbnail_batch")
+            assert escaped_event.path is None
+            assert escaped_event.attributes == {
+                "outcome": "error",
+                "status": 400,
+                "requested_count": 1,
+                "result_count": 0,
+                "failed_count": 0,
+            }
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
     async def test_thumbnail_max_size_capped_at_2048(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
         (library / "image.png").write_bytes(b"\x89PNG" + b"\x00" * 100)
@@ -2083,7 +2765,7 @@ class TestP0ShareCookieAuthentication:
     async def test_tunnel_status_requires_auth_when_server_auth_is_enabled(self, tmp_path):
         from aiohttp.test_utils import TestClient, TestServer
         from AssetsManager.core import database
-        from AssetsManager.lan.auth import hash_password, init_users_table
+        from AssetsManager.lan.auth import hash_password
         from AssetsManager.lan.server import _LanServerImpl
 
         library = tmp_path / "library"
@@ -2091,7 +2773,7 @@ class TestP0ShareCookieAuthentication:
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         try:
             conn.executescript(database._SCHEMA)
-            init_users_table(conn)
+            _init_lan_schemas(conn)
             server = _LanServerImpl(
                 library_root=str(library), thumbnail_dir=str(tmp_path / "thumbs"),
                 db_conn=conn, password=hash_password("Test@1234"),
@@ -2110,7 +2792,6 @@ class TestP0ShareCookieAuthentication:
     async def test_static_backup_artifacts_are_not_served(self, tmp_path):
         from aiohttp.test_utils import TestClient, TestServer
         from AssetsManager.core import database
-        from AssetsManager.lan.auth import init_users_table
         from AssetsManager.lan.server import _LanServerImpl
 
         library = tmp_path / "library"
@@ -2118,7 +2799,7 @@ class TestP0ShareCookieAuthentication:
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         try:
             conn.executescript(database._SCHEMA)
-            init_users_table(conn)
+            _init_lan_schemas(conn)
             server = _LanServerImpl(
                 library_root=str(library), thumbnail_dir=str(tmp_path / "thumbs"), db_conn=conn,
             )
@@ -2156,7 +2837,6 @@ class TestP0ShareCookieAuthentication:
     async def test_static_route_blocks_path_escape(self, tmp_path):
         from aiohttp.test_utils import TestClient, TestServer
         from AssetsManager.core import database
-        from AssetsManager.lan.auth import init_users_table
         from AssetsManager.lan.server import _LanServerImpl
 
         library = tmp_path / "library"
@@ -2165,7 +2845,7 @@ class TestP0ShareCookieAuthentication:
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         try:
             conn.executescript(database._SCHEMA)
-            init_users_table(conn)
+            _init_lan_schemas(conn)
             server = _LanServerImpl(
                 library_root=str(library), thumbnail_dir=str(tmp_path / "thumbs"), db_conn=conn,
             )
@@ -2184,7 +2864,7 @@ class TestP0ShareCookieAuthentication:
         from aiohttp import web
         from aiohttp.test_utils import TestClient, TestServer
         from AssetsManager.core import database
-        from AssetsManager.lan.auth import hash_password, init_users_table
+        from AssetsManager.lan.auth import hash_password
         from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY
         from AssetsManager.lan.server import _LanServerImpl
 
@@ -2193,7 +2873,7 @@ class TestP0ShareCookieAuthentication:
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         try:
             conn.executescript(database._SCHEMA)
-            init_users_table(conn)
+            _init_lan_schemas(conn)
             server = _LanServerImpl(
                 library_root=str(library), thumbnail_dir=str(tmp_path / "thumbs"),
                 db_conn=conn, password=hash_password("Test@1234"),
@@ -2576,6 +3256,79 @@ class TestPasswordHashDetection:
 class TestSearchEndpoint:
 
     @pytest.mark.anyio
+    async def test_search_records_session_scoped_route_metric(self, tmp_path):
+        from AssetsManager.core.performance import PerformanceRecorder
+        from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+        app, library, _conn = _make_lan_app(tmp_path)
+        (library / "hero.png").write_bytes(b"image")
+        recorder = PerformanceRecorder(enabled=True)
+        lan = app[LAN_APP_KEY]
+        assert isinstance(lan, _FakeLan)
+        lan.performance_recorder = recorder
+        lan.session_token = "session-a"
+        client = await _make_client(app)
+        try:
+            response = await client.get("/api/search?q=hero")
+            assert response.status == 200
+
+            event = next(event for event in recorder.recent() if event.name == "lan.search")
+            assert event.session_token == "session-a"
+            assert event.path is None
+            assert event.attributes["outcome"] == "success"
+            assert event.attributes["status"] == 200
+            assert event.attributes["result_count"] >= 0
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_search_denial_records_no_sensitive_request_data(self, tmp_path, monkeypatch):
+        from AssetsManager.core.performance import PerformanceRecorder
+        from AssetsManager.lan.routes import _helpers
+        from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+        app, _library, _conn = _make_lan_app(tmp_path, authenticated_context_only=True)
+        recorder = PerformanceRecorder(enabled=True)
+        app[LAN_APP_KEY].performance_recorder = recorder
+        monkeypatch.setattr(_helpers, "get_user_permissions", lambda _user: {"browse": False})
+        client = await _make_client(app)
+        try:
+            response = await client.get("/api/search?q=secret&tags=private&category=images")
+            assert response.status == 403
+
+            events = recorder.recent()
+            assert [(event.name, event.path, event.attributes) for event in events] == [
+                ("lan.search", None, {"outcome": "error", "status": 403, "result_count": -1})
+            ]
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_search_failure_records_error_route_metric(self, tmp_path, monkeypatch):
+        from AssetsManager.core.performance import PerformanceRecorder
+        from AssetsManager.lan.routes import metadata
+        from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+        app, _library, _conn = _make_lan_app(tmp_path)
+        recorder = PerformanceRecorder(enabled=True)
+        app[LAN_APP_KEY].performance_recorder = recorder
+
+        def fail_service(_request):
+            raise RuntimeError("search service failed")
+
+        monkeypatch.setattr(metadata, "get_search_service", fail_service)
+        client = await _make_client(app)
+        try:
+            response = await client.get("/api/search?q=secret")
+            assert response.status == 500
+
+            event = next(event for event in recorder.recent() if event.name == "lan.search")
+            assert event.path is None
+            assert event.attributes == {"outcome": "error", "status": 500, "result_count": -1}
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
     async def test_search_returns_empty_for_no_query(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
         client = await _make_client(app)
@@ -2655,9 +3408,8 @@ class TestInfoEndpoint:
 
 class TestUserCacheInvalidation:
 
-    def test_toggle_user_invalidates_active_users_cache(self, tmp_path):
+    def test_active_user_cache_delegates_to_auth_service(self, tmp_path, monkeypatch):
         from AssetsManager.core import database
-        from AssetsManager.lan.auth import init_users_table
         from AssetsManager.lan.server import _LanServerImpl
 
         library = tmp_path / "library"
@@ -2665,7 +3417,35 @@ class TestUserCacheInvalidation:
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         try:
             conn.executescript(database._SCHEMA)
-            init_users_table(conn)
+            _init_lan_schemas(conn)
+            server = _LanServerImpl(
+                library_root=str(library),
+                thumbnail_dir=str(tmp_path / "thumbs"),
+                db_conn=conn,
+            )
+            calls = []
+            monkeypatch.setattr(
+                server._auth_service,
+                "has_active_users",
+                lambda *, raise_on_error: calls.append(raise_on_error) or True,
+            )
+
+            assert server._has_active_users() is True
+            assert calls == [True]
+            assert server._has_users_cache is True
+        finally:
+            conn.close()
+
+    def test_toggle_user_invalidates_active_users_cache(self, tmp_path):
+        from AssetsManager.core import database
+        from AssetsManager.lan.server import _LanServerImpl
+
+        library = tmp_path / "library"
+        library.mkdir()
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        try:
+            conn.executescript(database._SCHEMA)
+            _init_lan_schemas(conn)
             conn.execute(
                 "INSERT INTO users (username, password, role, is_active) VALUES ('target', 'x', 'viewer', 1)"
             )
@@ -2699,7 +3479,6 @@ class TestUserCacheInvalidation:
         from aiohttp.test_utils import TestClient, TestServer
         from AssetsManager.core import database
         from AssetsManager.lan.auth import hash_password
-        from AssetsManager.lan.auth import init_users_table
         from AssetsManager.lan.server import _LanServerImpl
 
         library = tmp_path / "library"
@@ -2707,7 +3486,7 @@ class TestUserCacheInvalidation:
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         try:
             conn.executescript(database._SCHEMA)
-            init_users_table(conn)
+            _init_lan_schemas(conn)
             conn.execute(
                 "INSERT INTO users (username, password, role, is_active) VALUES (?, ?, 'viewer', 1)",
                 ("target", hash_password("Target@1234")),

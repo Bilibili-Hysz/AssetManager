@@ -13,6 +13,7 @@ from AssetsManager.lan.routes import (
     handle_login_page,
     handle_browse_page,
     handle_files,
+    handle_directory_summaries,
     handle_thumbnail,
     handle_thumbnail_batch,
     handle_download,
@@ -73,6 +74,7 @@ def setup_routes(app: web.Application, static_dir: Path):
     app.router.add_get("/detail", handle_detail_page)
     app.router.add_get("/login", handle_login_page)
     app.router.add_get("/api/files", handle_files)
+    app.router.add_post("/api/files/summaries", handle_directory_summaries)
     app.router.add_get("/api/thumbnails/{path:.*}", handle_thumbnail)
     app.router.add_post("/api/thumbnails/batch", handle_thumbnail_batch)
     app.router.add_get("/api/download/{path:.*}", handle_download)

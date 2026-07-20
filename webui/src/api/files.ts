@@ -1,5 +1,5 @@
 import type { ApiClient } from './client';
-import type { FilesResponse } from '../types/api';
+import type { DirectorySummariesResponse, FilesResponse } from '../types/api';
 
 export function createFilesApi(api: ApiClient) {
   return {
@@ -11,6 +11,9 @@ export function createFilesApi(api: ApiClient) {
       search?: string;
       summaries?: string;
     }, signal?: AbortSignal) => api.get<FilesResponse>('files', params as Record<string, string | undefined>, signal),
+
+    summaries: (parent_path: string, paths: string[], signal?: AbortSignal) =>
+      api.post<DirectorySummariesResponse>('files/summaries', { parent_path, paths }, signal),
 
     download: (path: string) => {
       const encoded = encodeURIComponent(path);

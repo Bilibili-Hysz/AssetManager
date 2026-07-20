@@ -1,6 +1,8 @@
 """Download routes: /api/download/{path}, /api/download/batch."""
+import asyncio
 import os
 from pathlib import Path
+from time import perf_counter
 from urllib.parse import quote, unquote
 
 from aiohttp import web
@@ -58,110 +60,201 @@ def _estimate_download_size(target: Path) -> int:
     return 0
 
 
-async def handle_download(request):
-    if not require_permission(request, "download"):
-        return web.json_response({"error": "Forbidden"}, status=403)
-
-    lan = get_lan(request)
-    rel_path = unquote(request.match_info["path"])
-    target = validate_path(lan, rel_path)
-
-    if target.is_file():
-        return web.FileResponse(
-            target,
-            headers={"Content-Disposition": _content_disposition_filename(target.name)},
-        )
-
-    if target.is_dir():
-        try:
-            total_bytes = _estimate_download_size(target)
-        except OSError:
-            total_bytes = 0
-        if total_bytes > MAX_BATCH_DOWNLOAD_BYTES:
-            return web.json_response({
-                "error": f"Total size exceeds limit ({MAX_BATCH_DOWNLOAD_BYTES // (1024*1024)} MB)",
-                "total_bytes": total_bytes,
-                "limit_bytes": MAX_BATCH_DOWNLOAD_BYTES,
-            }, status=413)
-
-        import tempfile
-        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip")
-        os.close(tmp_fd)
-        result = await build_zip_async([(target, None)], tmp_path)
-        if result is None:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-            return web.json_response({"error": "Failed to create ZIP"}, status=500)
-        zip_name = f"{target.name}.zip"
-        return _file_response_with_cleanup(tmp_path, filename=zip_name)
-
-    return web.json_response({"error": "File not found"}, status=404)
-
-
-async def handle_batch_download(request):
-    if not require_permission(request, "download"):
-        return web.json_response({"error": "Forbidden"}, status=403)
-
-    lan = get_lan(request)
-    try:
-        body = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid request body"}, status=400)
-
-    paths = body.get("paths", [])
-    if not paths:
-        return web.json_response({"error": "No paths provided"}, status=400)
-    if not isinstance(paths, list):
-        return web.json_response({"error": "Invalid paths format"}, status=400)
-    if len(paths) > MAX_BATCH_DOWNLOAD_PATHS:
-        return web.json_response({"error": f"Too many paths (max {MAX_BATCH_DOWNLOAD_PATHS})"}, status=400)
-
-    targets = []
-    for rel_path in paths:
-        if not isinstance(rel_path, str):
-            continue
-        try:
-            target = validate_path(lan, rel_path)
-            if target.exists():
-                targets.append((rel_path, target))
-        except web.HTTPException:
-            raise
-        except Exception:
-            continue
-
-    if not targets:
-        return web.json_response({"error": "No valid paths"}, status=400)
-
-    # Enforce total-size limit
+def _estimate_batch_download_size(targets: list[tuple[str, Path]]) -> int:
     total_bytes = 0
     for _, target in targets:
         try:
             total_bytes += _estimate_download_size(target)
         except OSError:
             pass
-    if total_bytes > MAX_BATCH_DOWNLOAD_BYTES:
-        return web.json_response({
-            "error": f"Total size exceeds limit ({MAX_BATCH_DOWNLOAD_BYTES // (1024*1024)} MB)",
-            "total_bytes": total_bytes,
-            "limit_bytes": MAX_BATCH_DOWNLOAD_BYTES,
-        }, status=413)
+    return total_bytes
 
-    import tempfile
-    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip")
-    os.close(tmp_fd)
-    result = await build_zip_async([(target, None) for _, target in targets], tmp_path)
-    if result is None:
+
+async def handle_download(request):
+    lan = get_lan(request)
+    started = perf_counter()
+    status = 500
+    outcome = "error"
+    kind = "none"
+    response_path = None
+    try:
+        if not require_permission(request, "download"):
+            status = 403
+            return web.json_response({"error": "Forbidden"}, status=status)
+
+        rel_path = unquote(request.match_info["path"])
+        target = validate_path(lan, rel_path)
+
+        if target.is_file():
+            status = 200
+            outcome = "response_ready"
+            kind = "file"
+            response_path = target
+            return web.FileResponse(
+                target,
+                headers={"Content-Disposition": _content_disposition_filename(target.name)},
+            )
+
+        if target.is_dir():
+            try:
+                total_bytes = await asyncio.to_thread(_estimate_download_size, target)
+            except OSError:
+                total_bytes = 0
+            if total_bytes > MAX_BATCH_DOWNLOAD_BYTES:
+                status = 413
+                return web.json_response({
+                    "error": f"Total size exceeds limit ({MAX_BATCH_DOWNLOAD_BYTES // (1024*1024)} MB)",
+                    "total_bytes": total_bytes,
+                    "limit_bytes": MAX_BATCH_DOWNLOAD_BYTES,
+                }, status=status)
+
+            import tempfile
+            tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip")
+            os.close(tmp_fd)
+            result = await build_zip_async([(target, None)], tmp_path)
+            if result is None:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                return web.json_response({"error": "Failed to create ZIP"}, status=status)
+            status = 200
+            outcome = "response_ready"
+            kind = "directory_zip"
+            response_path = target
+            zip_name = f"{target.name}.zip"
+            return _file_response_with_cleanup(tmp_path, filename=zip_name)
+
+        status = 404
+        return web.json_response({"error": "File not found"}, status=status)
+    except web.HTTPException as exc:
+        status = exc.status
+        raise
+    finally:
+        _record_download_route(lan, started, response_path, outcome, status, kind)
+
+
+async def handle_batch_download(request):
+    lan = get_lan(request)
+    started = perf_counter()
+    status = 500
+    outcome = "error"
+    target_count = 0
+    try:
+        if not require_permission(request, "download"):
+            status = 403
+            return web.json_response({"error": "Forbidden"}, status=status)
         try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        return web.json_response({"error": "Failed to create ZIP"}, status=500)
+            body = await request.json()
+        except Exception:
+            status = 400
+            return web.json_response({"error": "Invalid request body"}, status=status)
 
-    if len(targets) == 1:
-        zip_name = f"{targets[0][1].name}.zip"
-    else:
-        zip_name = f"download_{len(targets)}_items.zip"
+        paths = body.get("paths", [])
+        if not paths:
+            status = 400
+            return web.json_response({"error": "No paths provided"}, status=status)
+        if not isinstance(paths, list):
+            status = 400
+            return web.json_response({"error": "Invalid paths format"}, status=status)
+        if len(paths) > MAX_BATCH_DOWNLOAD_PATHS:
+            status = 400
+            return web.json_response({"error": f"Too many paths (max {MAX_BATCH_DOWNLOAD_PATHS})"}, status=status)
 
-    return _file_response_with_cleanup(tmp_path, filename=zip_name)
+        targets = []
+        for rel_path in paths:
+            if not isinstance(rel_path, str):
+                continue
+            try:
+                target = validate_path(lan, rel_path)
+                if target.exists():
+                    targets.append((rel_path, target))
+            except web.HTTPException:
+                raise
+            except Exception:
+                continue
+
+        if not targets:
+            status = 400
+            return web.json_response({"error": "No valid paths"}, status=status)
+        target_count = len(targets)
+
+        # Enforce total-size limit
+        if any(target.is_dir() for _, target in targets):
+            total_bytes = await asyncio.to_thread(_estimate_batch_download_size, targets)
+        else:
+            total_bytes = _estimate_batch_download_size(targets)
+        if total_bytes > MAX_BATCH_DOWNLOAD_BYTES:
+            status = 413
+            return web.json_response({
+                "error": f"Total size exceeds limit ({MAX_BATCH_DOWNLOAD_BYTES // (1024*1024)} MB)",
+                "total_bytes": total_bytes,
+                "limit_bytes": MAX_BATCH_DOWNLOAD_BYTES,
+            }, status=status)
+
+        import tempfile
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip")
+        os.close(tmp_fd)
+        result = await build_zip_async([(target, None) for _, target in targets], tmp_path)
+        if result is None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            return web.json_response({"error": "Failed to create ZIP"}, status=status)
+
+        if len(targets) == 1:
+            zip_name = f"{targets[0][1].name}.zip"
+        else:
+            zip_name = f"download_{len(targets)}_items.zip"
+        status = 200
+        outcome = "response_ready"
+        return _file_response_with_cleanup(tmp_path, filename=zip_name)
+    except web.HTTPException as exc:
+        status = exc.status
+        raise
+    finally:
+        _record_batch_download_route(lan, started, outcome, status, target_count)
+
+
+def _record_download_route(lan, started: float, response_path, outcome: str, status: int, kind: str) -> None:
+    recorder = getattr(lan, "performance_recorder", None)
+    if recorder is None or not recorder.enabled:
+        return
+    try:
+        recorder.record(
+            "lan.download",
+            (perf_counter() - started) * 1000,
+            session_token=getattr(lan, "session_token", None),
+            path=str(response_path) if response_path is not None else None,
+            attributes={
+                "outcome": outcome,
+                "status": status,
+                "phase": "response_ready" if outcome == "response_ready" else "failed",
+                "kind": kind,
+            },
+        )
+    except Exception:
+        # Diagnostics must not alter response construction or transfer semantics.
+        pass
+
+
+def _record_batch_download_route(lan, started: float, outcome: str, status: int, target_count: int) -> None:
+    recorder = getattr(lan, "performance_recorder", None)
+    if recorder is None or not recorder.enabled:
+        return
+    try:
+        recorder.record(
+            "lan.download_batch",
+            (perf_counter() - started) * 1000,
+            session_token=getattr(lan, "session_token", None),
+            attributes={
+                "outcome": outcome,
+                "status": status,
+                "phase": "response_ready" if outcome == "response_ready" else "failed",
+                "target_count": target_count,
+            },
+        )
+    except Exception:
+        # Diagnostics must not alter response construction or transfer semantics.
+        pass

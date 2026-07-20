@@ -10,7 +10,6 @@ from aiohttp import web
 
 from AssetsManager.lan.api import setup_routes
 from AssetsManager.lan.auth import hash_key, hash_password, is_password_hash, verify_key, verify_token, verify_auth_token
-from AssetsManager.repositories.auth_repository import AuthRepository
 from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY, LAN_APP_KEY
 from AssetsManager.lan.ws import WebSocketManager
 from AssetsManager.lan.scanner import DirectoryScanner
@@ -30,12 +29,15 @@ class _LanServerImpl:
                  share_name: str = "AssetManager", password: str | None = None,
                  access_key: str | None = None,
                  rate_limit: int = 100, blocked_ips: list[str] | None = None,
-                 ip_whitelist: list[str] | None = None,
-                 blur_tags: list[str] | None = None,
-                 ssl_cert: str | None = None, ssl_key: str | None = None):
+                  ip_whitelist: list[str] | None = None,
+                  blur_tags: list[str] | None = None,
+                  ssl_cert: str | None = None, ssl_key: str | None = None,
+                  performance_recorder=None, session_token: str | None = None):
         self._library_root = Path(library_root)
         self._thumbnail_dir = Path(thumbnail_dir)
         self._db_conn = db_conn
+        self.performance_recorder = performance_recorder
+        self.session_token = session_token
         self._share_name = share_name
         # Accept both plaintext and pre-hashed passwords for backward compatibility.
         # New settings save hashes; old settings may contain plaintext.
@@ -103,7 +105,9 @@ class _LanServerImpl:
         # Auth service — initialized here so middleware can use it even before
         # _startup() runs (e.g. in test scenarios).
         from AssetsManager.application.auth_service import AuthService
+        from AssetsManager.application.share_service import ShareService
         self._auth_service = AuthService(self._db_conn, self._token_secret)
+        self._share_service = ShareService(self._db_conn, self._token_secret)
 
         setup_routes(self._app, STATIC_DIR)
 
@@ -290,7 +294,8 @@ class _LanServerImpl:
         self._loop.run_until_complete(self._startup())
 
     async def _startup(self):
-        AuthRepository(self._db_conn).init_tables()
+        self._auth_service.init_tables()
+        self._share_service.init_table()
         self._app[AUTH_SERVICE_APP_KEY] = self._auth_service
         self._runner = web.AppRunner(
             self._app,
@@ -352,10 +357,7 @@ class _LanServerImpl:
         if self._has_users_cache is not None and (now - self._has_users_cache_time) < self._has_users_cache_ttl:
             return self._has_users_cache
         try:
-            row = self._db_conn.execute(
-                "SELECT COUNT(*) FROM users WHERE is_active=1"
-            ).fetchone()
-            result = row[0] > 0 if row else False
+            result = self._auth_service.has_active_users(raise_on_error=True)
             self._has_users_cache = result
             self._has_users_cache_time = now
             return result

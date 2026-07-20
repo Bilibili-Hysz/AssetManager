@@ -3,13 +3,10 @@ from __future__ import annotations
 
 import logging
 import secrets
-import string
-import time
 from sqlite3 import Connection
 
 from AssetsManager.domain import auth as auth_crypto
 from AssetsManager.repositories.auth_repository import AuthRepository
-from AssetsManager.repositories.share_repository import ShareRepository
 
 _log = logging.getLogger(__name__)
 
@@ -25,7 +22,6 @@ class AuthService:
         self._conn = db_conn
         self._secret = token_secret
         self._repo = AuthRepository(db_conn)
-        self._share_repo = ShareRepository(db_conn)
 
     @property
     def db_conn(self) -> Connection:
@@ -40,9 +36,9 @@ class AuthService:
         """No-op placeholder for server-level cache invalidation."""
         pass
 
-    def has_active_users(self) -> bool:
+    def has_active_users(self, *, raise_on_error: bool = False) -> bool:
         """Check if there are any active users in the database."""
-        return self._repo.has_active_users()
+        return self._repo.has_active_users(raise_on_error=raise_on_error)
 
     # ── Password / key hashing ──────────────────────────────────
 
@@ -154,54 +150,3 @@ class AuthService:
 
     def revoke_invite_code(self, code: str) -> bool:
         return self._repo.deactivate_invite_code(code)
-
-    # ── Share links ─────────────────────────────────────────────
-
-    @staticmethod
-    def _generate_share_id() -> str:
-        alphabet = string.ascii_letters + string.digits
-        return "".join(secrets.choice(alphabet) for _ in range(12))
-
-    def create_share_link(
-        self,
-        paths: list[str],
-        password: str | None = None,
-        expires_hours: int | None = None,
-        max_downloads: int | None = None,
-        allow_preview: bool = True,
-        created_by: str | None = None,
-    ) -> dict | None:
-        share_id = self._generate_share_id()
-        password_hash = auth_crypto.hash_password(password) if password else None
-        expires_at = (time.time() + expires_hours * 3600) if expires_hours else None
-        ok = self._share_repo.insert(
-            share_id, paths, password_hash, expires_at,
-            max_downloads, allow_preview, created_by,
-        )
-        if not ok:
-            return None
-        return self._share_repo.get(share_id)
-
-    def get_share_link(self, share_id: str) -> dict | None:
-        return self._share_repo.get(share_id)
-
-    def list_share_links(self, created_by: str | None = None) -> list[dict]:
-        return self._share_repo.list_all(created_by)
-
-    def delete_share_link(self, share_id: str) -> bool:
-        return self._share_repo.delete(share_id)
-
-    def verify_share_password(self, share_id: str, password: str) -> bool:
-        stored_hash = self._share_repo.get_password_hash(share_id)
-        if not stored_hash:
-            return True
-        return auth_crypto.verify_password(password, stored_hash)
-
-    def generate_share_token(self, share_id: str) -> str:
-        return auth_crypto.generate_share_token(share_id, self._secret)
-
-    def verify_share_token(self, token: str, share_id: str) -> bool:
-        return auth_crypto.verify_share_token(token, share_id, self._secret)
-
-    def increment_share_download(self, share_id: str) -> bool:
-        return self._share_repo.increment_download(share_id)

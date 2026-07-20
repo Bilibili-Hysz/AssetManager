@@ -1,6 +1,7 @@
 """Share link routes: /api/shares/*, /s/{id}."""
 import logging
 from pathlib import Path
+from time import perf_counter
 
 from urllib.parse import quote, unquote
 
@@ -229,43 +230,80 @@ async def handle_verify_share_password(request):
 
 async def handle_share_download(request):
     lan = get_lan(request)
-    share_svc = get_share_service(request)
-    share_id = request.match_info.get("id", "")
-    rel_path = unquote(request.match_info.get("path", ""))
+    started = perf_counter()
+    status = 500
+    outcome = "error"
+    response_path = None
+    try:
+        share_svc = get_share_service(request)
+        share_id = request.match_info.get("id", "")
+        rel_path = unquote(request.match_info.get("path", ""))
 
-    share = share_svc.get_share_record(share_id)
-    if not share:
-        return web.json_response({"error": "Share not found"}, status=404)
+        share = share_svc.get_share_record(share_id)
+        if not share:
+            status = 404
+            return web.json_response({"error": "Share not found"}, status=status)
 
-    token = get_share_token(request) if share.has_password else None
-    if share.has_password and not share_svc.verify_token(token or "", share_id):
-        return web.json_response({"error": "Unauthorized"}, status=401)
+        token = get_share_token(request) if share.has_password else None
+        if share.has_password and not share_svc.verify_token(token or "", share_id):
+            status = 401
+            return web.json_response({"error": "Unauthorized"}, status=status)
 
-    if share.is_download_limit_reached():
-        return web.json_response({"error": "Download limit reached"}, status=403)
+        if share.is_download_limit_reached():
+            status = 403
+            return web.json_response({"error": "Download limit reached"}, status=status)
 
-    if share.is_expired():
-        return web.json_response({"error": "Share expired"}, status=410)
+        if share.is_expired():
+            status = 410
+            return web.json_response({"error": "Share expired"}, status=status)
 
-    target = _resolve_share_target(lan, share, rel_path)
+        target = _resolve_share_target(lan, share, rel_path)
 
-    if not target:
-        library_root = lan.library_root.resolve()
-        candidate = (library_root / rel_path).resolve()
-        if candidate.exists() and candidate.is_relative_to(library_root):
-            return web.json_response({"error": "File not in share scope"}, status=403)
-        return web.json_response({"error": "File not found in share"}, status=404)
+        if not target:
+            library_root = lan.library_root.resolve()
+            candidate = (library_root / rel_path).resolve()
+            status = 403 if candidate.exists() and candidate.is_relative_to(library_root) else 404
+            return web.json_response(
+                {"error": "File not in share scope" if status == 403 else "File not found in share"}, status=status
+            )
 
-    if target.is_file():
+        if not target.is_file():
+            status = 400
+            return web.json_response({"error": "Not a file"}, status=status)
         if not share_svc.increment_download(share_id):
-            return web.json_response({"error": "Download limit reached"}, status=403)
-        response = web.FileResponse(
+            status = 403
+            return web.json_response({"error": "Download limit reached"}, status=status)
+        status = 200
+        outcome = "response_ready"
+        response_path = target
+        return web.FileResponse(
             target,
             headers={"Content-Disposition": _content_disposition_filename(target.name)},
         )
-        return response
+    finally:
+        _record_share_download_route(lan, started, response_path, outcome, status)
 
-    return web.json_response({"error": "Not a file"}, status=400)
+
+def _record_share_download_route(lan, started: float, response_path, outcome: str, status: int) -> None:
+    recorder = getattr(lan, "performance_recorder", None)
+    if recorder is None or not recorder.enabled:
+        return
+    try:
+        recorder.record(
+            "lan.share_download",
+            (perf_counter() - started) * 1000,
+            session_token=getattr(lan, "session_token", None),
+            path=str(response_path) if response_path is not None else None,
+            attributes={
+                "outcome": outcome,
+                "status": status,
+                "phase": "response_ready" if outcome == "response_ready" else "failed",
+                "kind": "share_file",
+            },
+        )
+    except Exception:
+        # Diagnostics must not alter share admission or response transfer semantics.
+        pass
 
 
 async def handle_share_preview(request):

@@ -61,6 +61,17 @@ export interface FilesResponse {
   total_size_fmt: string;
 }
 
+export interface DirectorySummaryItem {
+  path: string;
+  item_count: number;
+  size_fmt: string;
+  thumbnail_url: string | null;
+}
+
+export interface DirectorySummariesResponse {
+  items: DirectorySummaryItem[];
+}
+
 export interface ProjectFile {
   name: string;
   size: number;

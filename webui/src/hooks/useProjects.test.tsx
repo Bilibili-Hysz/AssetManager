@@ -3,9 +3,12 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useProjects } from './useProjects';
 
-const list = vi.fn<(...args: unknown[]) => Promise<{ items: Array<{ path: string }> }>>(
+type ListItem = { path: string; type?: 'dir' | 'file'; size_fmt?: string };
+
+const list = vi.fn<(...args: unknown[]) => Promise<{ current_path?: string; items: ListItem[] }>>(
   () => Promise.resolve({ items: [] }),
 );
+const summaries = vi.fn();
 const api = {};
 
 vi.mock('./useAuth', () => ({
@@ -13,12 +16,13 @@ vi.mock('./useAuth', () => ({
 }));
 
 vi.mock('../api/files', () => ({
-  createFilesApi: () => ({ list }),
+  createFilesApi: () => ({ list, summaries }),
 }));
 
 describe('useProjects', () => {
   beforeEach(() => {
     list.mockClear();
+    summaries.mockClear();
   });
 
   it('refreshes the listing when the requested path changes', async () => {
@@ -32,6 +36,15 @@ describe('useProjects', () => {
 
     await waitFor(() => expect(list).toHaveBeenLastCalledWith(
       expect.objectContaining({ path: 'two' }),
+      expect.any(AbortSignal),
+    ));
+  });
+
+  it('explicitly requests an initial listing without eager summaries', async () => {
+    renderHook(() => useProjects('one'));
+
+    await waitFor(() => expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'one', summaries: 'false' }),
       expect.any(AbortSignal),
     ));
   });
@@ -60,11 +73,11 @@ describe('useProjects', () => {
   });
 
   it('ignores a response from a superseded listing request', async () => {
-    let resolveFirst!: (value: { items: Array<{ path: string }> }) => void;
-    let resolveSecond!: (value: { items: Array<{ path: string }> }) => void;
+    let resolveFirst!: (value: { current_path?: string; items: ListItem[] }) => void;
+    let resolveSecond!: (value: { current_path?: string; items: ListItem[] }) => void;
     list
-      .mockImplementationOnce(() => new Promise<{ items: Array<{ path: string }> }>(resolve => { resolveFirst = resolve; }))
-      .mockImplementationOnce(() => new Promise<{ items: Array<{ path: string }> }>(resolve => { resolveSecond = resolve; }));
+      .mockImplementationOnce(() => new Promise<{ current_path?: string; items: ListItem[] }>(resolve => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise<{ current_path?: string; items: ListItem[] }>(resolve => { resolveSecond = resolve; }));
 
     const { result } = renderHook(() => useProjects('one'));
     await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
@@ -75,5 +88,23 @@ describe('useProjects', () => {
     expect(result.current.data?.items[0]?.path).toBe('two');
     await act(async () => { resolveFirst({ items: [{ path: 'one' }] }); });
     expect(result.current.data?.items[0]?.path).toBe('two');
+  });
+
+  it('ignores an old hydration response after a same-path refresh', async () => {
+    let resolveSummary!: (value: { items: Array<{ path: string; size_fmt: string; thumbnail_url: null }> }) => void;
+    list
+      .mockResolvedValueOnce({ current_path: 'one', items: [{ path: 'folder', type: 'dir', size_fmt: '0 B' }] })
+      .mockResolvedValueOnce({ current_path: 'one', items: [{ path: 'folder', type: 'dir', size_fmt: 'fresh' }] });
+    summaries.mockImplementationOnce(() => new Promise(resolve => { resolveSummary = resolve; }));
+
+    const { result } = renderHook(() => useProjects('one'));
+    await waitFor(() => expect(result.current.data?.items[0]?.path).toBe('folder'));
+    const signal = new AbortController().signal;
+    const hydration = result.current.hydrateDirectories(['folder'], signal, result.current.listingGeneration);
+    act(() => result.current.refresh());
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+    await act(async () => { resolveSummary({ items: [{ path: 'folder', size_fmt: 'stale', thumbnail_url: null }] }); await hydration; });
+
+    expect(result.current.data?.items[0]?.size_fmt).toBe('fresh');
   });
 });

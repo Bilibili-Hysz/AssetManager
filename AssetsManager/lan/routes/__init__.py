@@ -14,7 +14,7 @@ from AssetsManager.lan.routes.downloads import (
     handle_download,
     handle_batch_download,
 )
-from AssetsManager.lan.routes.files import handle_files
+from AssetsManager.lan.routes.files import handle_directory_summaries, handle_files
 from AssetsManager.lan.routes.metadata import (
     handle_meta,
     handle_search,
@@ -71,6 +71,7 @@ __all__ = [
     "handle_login_page",
     "handle_browse_page",
     "handle_files",
+    "handle_directory_summaries",
     "handle_thumbnail",
     "handle_thumbnail_batch",
     "handle_download",
