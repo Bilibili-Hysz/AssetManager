@@ -19,6 +19,7 @@ interface AppLayoutProps {
   onSidebarToggle: () => void;
   onInfoToggle: () => void;
   onViewModeToggle?: () => void;
+  viewMode?: 'grid' | 'list';
   onSelectModeToggle?: () => void;
   selectMode?: boolean;
 }
@@ -35,7 +36,7 @@ export function AppLayout({
   sidebarWidth, infoWidth,
   onSidebarDragStart, onInfoDragStart,
   onSidebarToggle, onInfoToggle,
-  onViewModeToggle, onSelectModeToggle, selectMode = false,
+  onViewModeToggle, viewMode = 'grid', onSelectModeToggle, selectMode = false,
 }: AppLayoutProps) {
   const { t } = useI18n();
   const isMobile = useMediaQuery('(max-width: 768px)');
@@ -62,7 +63,7 @@ export function AppLayout({
 
         {/* ── Sidebar ── */}
         {sidebar && !isMobile && sidebarOpen && (
-          <div className="flex-shrink-0 border-r border-slate-700/50 overflow-hidden relative" style={{ width: sidebarWidth }}>
+          <div className="relative flex-shrink-0 overflow-hidden border-r border-slate-700 bg-slate-900" style={{ width: sidebarWidth }}>
             {sidebar}
             {/* Drag handle */}
             <div
@@ -76,7 +77,7 @@ export function AppLayout({
         {sidebar && mobileDialog === 'sidebar' && (
           <>
             <div className="fixed inset-0 bg-black/50 z-40" onClick={onSidebarToggle} aria-hidden="true" />
-            <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label={t('mobile.menu')} tabIndex={-1} className="fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 border-r border-slate-700/50 shadow-xl overflow-hidden">
+            <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label={t('mobile.menu')} tabIndex={-1} className="fixed inset-y-0 left-0 z-50 w-72 overflow-hidden border-r border-slate-700 bg-slate-900">
               {sidebar}
             </div>
           </>
@@ -100,7 +101,7 @@ export function AppLayout({
 
         {/* ── Info Panel ── */}
         {infoPanel && !isMobile && infoOpen && (
-          <div className="flex-shrink-0 border-l border-slate-700/50 overflow-hidden relative" style={{ width: infoWidth }}>
+          <div className="relative flex-shrink-0 overflow-hidden border-l border-slate-700 bg-slate-900" style={{ width: infoWidth }}>
             {/* Drag handle */}
             <div
               className="absolute left-0 top-0 w-1.5 h-full cursor-col-resize hover:bg-brand-500/50 active:bg-brand-500 transition-colors z-10"
@@ -113,7 +114,7 @@ export function AppLayout({
         {infoPanel && mobileDialog === 'info' && (
           <>
             <div className="fixed inset-0 bg-black/50 z-40" onClick={onInfoToggle} aria-hidden="true" />
-            <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label={t('info.title')} tabIndex={-1} className="fixed inset-x-0 bottom-0 z-50 max-h-[55vh] border-t border-slate-700/50 bg-slate-900 shadow-xl">
+            <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label={t('info.title')} tabIndex={-1} className="fixed inset-x-0 bottom-0 z-50 max-h-[55vh] border-t border-slate-700 bg-slate-900">
               {infoPanel}
             </div>
           </>
@@ -131,7 +132,7 @@ export function AppLayout({
             <span className="text-[10px]">{t('mobile.menu')}</span>
           </button>
           {onViewModeToggle && (
-            <button onClick={onViewModeToggle} aria-label={t('mobile.view')} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
+            <button onClick={onViewModeToggle} aria-label={t('mobile.view')} aria-pressed={viewMode === 'list'} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
               <Grid3x3 size={18} aria-hidden="true" />
               <span className="text-[10px]">{t('mobile.view')}</span>
             </button>

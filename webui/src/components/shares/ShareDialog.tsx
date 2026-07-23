@@ -35,7 +35,11 @@ export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialog
         max_downloads: maxDownloads > 0 ? maxDownloads : undefined,
         allow_preview: allowPreview,
       });
-      setShareUrl(res.url!);
+      if (!res.url) {
+        showToast('Share URL was not returned by the server', 'error');
+        return;
+      }
+      setShareUrl(res.url);
       showToast('Share link created!', 'success');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to create share', 'error');
@@ -44,9 +48,13 @@ export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialog
     }
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(shareUrl).catch(() => {});
-    showToast(t('action.copied'), 'success');
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      showToast(t('action.copied'), 'success');
+    } catch {
+      showToast('Failed to copy share link', 'error');
+    }
   };
 
   return (
@@ -62,7 +70,9 @@ export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialog
               className="flex-1 bg-transparent text-sm text-slate-200 outline-none"
             />
             <button
+              type="button"
               onClick={handleCopy}
+              aria-label={t('action.copy')}
               className="px-3 py-1 text-xs text-white bg-brand-500 hover:bg-brand-600 rounded-md transition-colors"
             >
               {t('action.copy')}
@@ -121,6 +131,7 @@ export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialog
           </label>
 
           <button
+            type="button"
             onClick={handleCreate}
             disabled={creating}
             className="w-full py-2 text-sm text-white bg-brand-500 hover:bg-brand-600 disabled:opacity-50 rounded-lg transition-colors"

@@ -1,20 +1,22 @@
 import { useEffect, useRef } from 'react';
-import type { ProjectItem } from '../../types/api';
+import type { BrowsableItem } from '../../types/api';
 import { ProjectCard } from './ProjectCard';
 
 interface ProjectGridProps {
-  items: ProjectItem[];
+  items: BrowsableItem[];
   selected: Set<string>;
   onSelect: (path: string) => void;
-  onCardClick?: (item: ProjectItem) => void;
+  onZipSelect?: (path: string) => void;
+  onInspect?: (item: BrowsableItem) => void;
+  onNavigate?: (path: string) => void;
   selectionMode?: boolean;
-  onDoubleClick?: (item: ProjectItem) => void;
-  onContextMenu?: (e: React.MouseEvent, item: ProjectItem) => void;
+  onDoubleClick?: (item: BrowsableItem) => void;
+  onContextMenu?: (e: React.MouseEvent, item: BrowsableItem) => void;
   thumbnailMap: Record<string, string>;
   onDirectoryVisible?: (path: string) => void;
 }
 
-export function ProjectGrid({ items, selected, onSelect, onCardClick, selectionMode = false, onDoubleClick, onContextMenu, thumbnailMap, onDirectoryVisible }: ProjectGridProps) {
+export function ProjectGrid({ items, selected, onSelect, onZipSelect = onSelect, onInspect, onNavigate, selectionMode = false, onDoubleClick, onContextMenu, thumbnailMap, onDirectoryVisible }: ProjectGridProps) {
   const nodes = useRef(new Map<string, HTMLDivElement>());
 
   useEffect(() => {
@@ -37,13 +39,18 @@ export function ProjectGrid({ items, selected, onSelect, onCardClick, selectionM
             else nodes.current.delete(item.path);
           }}>
           <ProjectCard
-          item={item}
-          selected={selected.has(item.path)}
-          onSelect={() => {
-            onSelect(item.path);
-            if (!selectionMode) onCardClick?.(item);
-          }}
-          onOpen={() => onDoubleClick?.(item)}
+            item={item}
+            selected={selected.has(item.path)}
+            onSelect={() => {
+              if (item.type === 'dir') onNavigate?.(item.path);
+              else if (selectionMode) onSelect(item.path);
+              else onInspect?.(item);
+            }}
+            onZipSelect={() => onZipSelect(item.path)}
+           onOpen={() => {
+             if (item.type === 'dir') onNavigate?.(item.path);
+             else onDoubleClick?.(item);
+           }}
           onContextMenu={e => onContextMenu?.(e, item)}
           thumbnail={thumbnailMap[item.path]}
           />

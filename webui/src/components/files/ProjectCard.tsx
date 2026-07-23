@@ -1,17 +1,18 @@
 import { useState } from 'react';
 import { Folder, File, MoreHorizontal } from 'lucide-react';
-import type { ProjectItem } from '../../types/api';
+import type { BrowsableItem } from '../../types/api';
 
 interface ProjectCardProps {
-  item: ProjectItem;
+  item: BrowsableItem;
   selected?: boolean;
   onSelect?: () => void;
+  onZipSelect?: () => void;
   onOpen?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
   thumbnail?: string;
 }
 
-export function ProjectCard({ item, selected, onSelect, onOpen, onContextMenu, thumbnail }: ProjectCardProps) {
+export function ProjectCard({ item, selected, onSelect, onZipSelect = onSelect, onOpen, onContextMenu, thumbnail }: ProjectCardProps) {
   const [hover, setHover] = useState(false);
   const isDir = item.type === 'dir';
 
@@ -31,8 +32,7 @@ export function ProjectCard({ item, selected, onSelect, onOpen, onContextMenu, t
       <button
         type="button"
         className="block w-full text-left rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400"
-        aria-label={`${item.name}, ${item.size_fmt}`}
-        aria-pressed={selected}
+        aria-label={item.size_fmt ? `${item.name}, ${item.size_fmt}` : item.name}
         onClick={onSelect}
         onDoubleClick={onOpen}
         onKeyDown={e => {
@@ -55,16 +55,23 @@ export function ProjectCard({ item, selected, onSelect, onOpen, onContextMenu, t
         {/* Info */}
         <div className="p-2.5">
           <p className="text-xs text-slate-200 truncate font-medium">{item.name}</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">{item.size_fmt}</p>
+          {item.size_fmt && <p className="text-[11px] text-slate-500 mt-0.5">{item.size_fmt}</p>}
         </div>
       </button>
-      {/* Selection checkbox */}
-      <div className={`absolute top-2 left-2 transition-opacity ${hover || selected ? 'opacity-100' : 'opacity-0'}`}>
-        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center
-          ${selected ? 'bg-indigo-500 border-indigo-500' : 'bg-slate-900/80 border-slate-500'}`}>
-          {selected && <span className="text-white text-[10px] font-bold">✓</span>}
-        </div>
-      </div>
+      {!isDir && (
+        <button
+          type="button"
+          aria-label={`Select ${item.name} for ZIP download`}
+          aria-pressed={Boolean(selected)}
+          className={`absolute top-2 left-2 flex h-5 w-5 items-center justify-center rounded border-2 text-[10px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${selected ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-500 bg-slate-900/80 text-transparent hover:border-indigo-400'}`}
+          onClick={e => {
+            e.stopPropagation();
+            onZipSelect?.();
+          }}
+        >
+          <span aria-hidden="true">✓</span>
+        </button>
+      )}
       <button
         type="button"
         className="absolute top-1.5 right-1.5 rounded p-1.5 text-slate-300 opacity-0 transition-opacity hover:bg-slate-700/80 hover:text-white focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 group-hover:opacity-100"

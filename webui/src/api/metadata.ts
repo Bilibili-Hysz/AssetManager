@@ -10,7 +10,7 @@ export function createMetadataApi(api: ApiClient) {
     search: (q: string, tags?: string, category?: string) =>
       api.get<SearchResponse>('search', { q, tags, category }),
     getTree: () => api.get<TreeResponse>('tree'),
-    getHome: () => api.get<HomeData>('home'),
+    getHome: (signal?: AbortSignal) => api.get<HomeData>('home', undefined, signal),
   };
 }
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, ChevronDown, Folder, FileText, Search } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Folder, FileText, Search } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useI18n } from '../../hooks/useI18n';
 import { createMetadataApi } from '../../api/metadata';
@@ -11,9 +11,40 @@ interface SidebarProps {
   currentPath: string;
 }
 
-function TreeNode({ node, depth, onNavigate, onNavigateDetail, currentPath, filter }: {
+function matchesFilter(node: TreeItem, filter: string): boolean {
+  if (!filter) return true;
+  const query = filter.toLowerCase();
+  return node.name.toLowerCase().includes(query) || node.children?.some(child => matchesFilter(child, filter)) === true;
+}
+
+function collectExpandablePaths(nodes: TreeItem[]): Set<string> {
+  const paths = new Set<string>();
+  for (const node of nodes) {
+    if (node.children?.length) {
+      paths.add(node.path);
+      for (const path of collectExpandablePaths(node.children)) paths.add(path);
+    }
+  }
+  return paths;
+}
+
+function collectActiveAncestors(nodes: TreeItem[], currentPath: string): Set<string> {
+  const paths = new Set<string>();
+  if (!currentPath) return paths;
+  for (const node of nodes) {
+    if (node.children?.length && (currentPath === node.path || currentPath.startsWith(`${node.path}/`))) {
+      paths.add(node.path);
+      for (const path of collectActiveAncestors(node.children, currentPath)) paths.add(path);
+    }
+  }
+  return paths;
+}
+
+function TreeNode({ node, depth, expandedPaths, onToggle, onNavigate, onNavigateDetail, currentPath, filter }: {
   node: TreeItem;
   depth: number;
+  expandedPaths: Set<string>;
+  onToggle: (path: string) => void;
   onNavigate: (path: string) => void;
   onNavigateDetail: (path: string) => void;
   currentPath: string;
@@ -21,19 +52,15 @@ function TreeNode({ node, depth, onNavigate, onNavigateDetail, currentPath, filt
 }) {
   const isLeaf = node.is_leaf === true;
   const hasChildren = !!node.children?.length;
-  const [expanded, setExpanded] = useState(depth < 1 || currentPath.startsWith(node.path));
+  const isFiltering = Boolean(filter);
+  const expanded = expandedPaths.has(node.path) || isFiltering;
   const isActive = currentPath === node.path;
+  const { t } = useI18n();
+  const expansionControlTitle = isFiltering
+    ? t('sidebar.clearFilterToChangeExpansion')
+    : undefined;
 
-  // Auto-expand when filtering
-  useEffect(() => {
-    if (filter) setExpanded(true);
-  }, [filter]);
-
-  // Filter check
-  if (filter && !node.name.toLowerCase().includes(filter.toLowerCase())) {
-    const hasMatchingChild = node.children?.some(c => c.name.toLowerCase().includes(filter.toLowerCase()));
-    if (!hasMatchingChild) return null;
-  }
+  if (!matchesFilter(node, filter)) return null;
 
   const handleClick = () => {
     if (isLeaf) onNavigateDetail(node.path);
@@ -42,37 +69,49 @@ function TreeNode({ node, depth, onNavigate, onNavigateDetail, currentPath, filt
 
   return (
     <div>
-      <button
-        className={`w-full flex items-center gap-1.5 px-2 py-1.5 text-sm rounded-md transition-colors text-left
-          ${isActive
-            ? 'bg-indigo-500/10 text-indigo-300'
-            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-          }`}
-        style={{ paddingLeft: `${8 + depth * 14}px` }}
-        onClick={handleClick}
+      <div
+        className="relative min-h-8"
       >
-        {/* Arrow */}
-        {hasChildren ? (
+        <button
+          type="button"
+          data-testid={`tree-node-row-${node.path}`}
+          className={`flex min-h-8 w-full min-w-0 items-center gap-1.5 px-2 text-left text-xs transition-colors
+            ${isActive ? 'bg-indigo-500/10 text-indigo-300' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}
+          onClick={handleClick}
+        >
           <span
-            onClick={e => { e.stopPropagation(); setExpanded(!expanded); }}
-            className="flex-shrink-0 w-4 h-4 flex items-center justify-center text-slate-500 hover:text-slate-300"
+            aria-hidden="true"
+            data-testid={`tree-node-indent-${node.path}`}
+            className="flex-shrink-0"
+            style={{ width: `${depth * 14 + 16}px` }}
+          />
+          <span className="flex-shrink-0" data-testid={`tree-node-icon-${node.path}`}>
+            {isLeaf
+              ? <FileText size={14} className="text-indigo-400" />
+              : <Folder size={14} className="text-amber-400" />
+            }
+          </span>
+          <span className="block truncate">{node.name}</span>
+        </button>
+        {hasChildren ? (
+          <button
+            type="button"
+            aria-label={t(expanded ? 'sidebar.collapseNode' : 'sidebar.expandNode', node.name)}
+            aria-disabled={isFiltering}
+            aria-expanded={expanded}
+            disabled={isFiltering}
+            title={expansionControlTitle}
+            onClick={event => {
+              event.stopPropagation();
+              onToggle(node.path);
+            }}
+            className="absolute top-1/2 z-10 flex h-4 w-4 -translate-y-1/2 items-center justify-center text-slate-500 hover:text-slate-300"
+            style={{ left: `${8 + depth * 14}px` }}
           >
             {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-          </span>
-        ) : (
-          <span className="w-4 flex-shrink-0" />
-        )}
-        {/* Icon */}
-        <span className="flex-shrink-0">
-          {isLeaf
-            ? <FileText size={14} className="text-indigo-400" />
-            : <Folder size={14} className="text-amber-400" />
-          }
-        </span>
-        {/* Name */}
-        <span className="truncate flex-1 text-xs">{node.name}</span>
-      </button>
-      {/* Children */}
+          </button>
+        ) : null}
+      </div>
       {hasChildren && expanded && (
         <div>
           {node.children!.map(child => (
@@ -80,6 +119,8 @@ function TreeNode({ node, depth, onNavigate, onNavigateDetail, currentPath, filt
               key={child.path}
               node={child}
               depth={depth + 1}
+              expandedPaths={expandedPaths}
+              onToggle={onToggle}
               onNavigate={onNavigate}
               onNavigateDetail={onNavigateDetail}
               currentPath={currentPath}
@@ -94,6 +135,7 @@ function TreeNode({ node, depth, onNavigate, onNavigateDetail, currentPath, filt
 
 export function Sidebar({ onNavigate, currentPath }: SidebarProps) {
   const [tree, setTree] = useState<TreeItem[]>([]);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set());
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const { api } = useAuth();
@@ -115,28 +157,57 @@ export function Sidebar({ onNavigate, currentPath }: SidebarProps) {
     return () => { disposed = true; };
   }, [metaApi]);
 
+  useEffect(() => {
+    const ancestors = collectActiveAncestors(tree, currentPath);
+    if (ancestors.size) {
+      setExpandedPaths(paths => new Set([...paths, ...ancestors]));
+    }
+  }, [currentPath, tree]);
+
+  const togglePath = useCallback((path: string) => {
+    setExpandedPaths(paths => {
+      const next = new Set(paths);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  const expandAll = useCallback(() => setExpandedPaths(collectExpandablePaths(tree)), [tree]);
+  const collapseAll = useCallback(() => setExpandedPaths(new Set()), []);
+  const isFiltering = filter.length > 0;
+  const expansionControlTitle = isFiltering
+    ? t('sidebar.clearFilterToChangeExpansion')
+    : undefined;
+
   return (
     <div className="flex flex-col h-full">
-      {/* Search */}
-      <div className="p-2 border-b border-slate-700/50">
+      <div className="border-b border-slate-700 bg-slate-900 p-2">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <h2 className="text-xs font-medium text-slate-300">{t('sidebar.folders')}</h2>
+          <div className="flex items-center gap-1">
+            <button type="button" aria-label={t('sidebar.expandAll')} aria-disabled={isFiltering} disabled={isFiltering} title={expansionControlTitle} onClick={expandAll} className="flex h-10 w-10 items-center justify-center text-slate-400 hover:bg-slate-800 hover:text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"><ChevronsUpDown size={14} aria-hidden="true" /></button>
+            <button type="button" aria-label={t('sidebar.collapseAll')} aria-disabled={isFiltering} disabled={isFiltering} title={expansionControlTitle} onClick={collapseAll} className="flex h-10 w-10 items-center justify-center text-slate-400 hover:bg-slate-800 hover:text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"><ChevronsDownUp size={14} aria-hidden="true" /></button>
+          </div>
+        </div>
         <div className="relative">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
           <input
             type="text"
             value={filter}
             onChange={e => setFilter(e.target.value)}
+            aria-label={t('sidebar.search')}
             placeholder={t('sidebar.search')}
-            className="w-full pl-8 pr-2 py-1.5 bg-slate-800 border border-slate-700/50 rounded-md text-xs
+            className="w-full border border-slate-700 bg-slate-800 py-1.5 pl-8 pr-2 text-xs
               text-slate-300 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 transition-colors"
           />
         </div>
       </div>
-      {/* Tree */}
       <div className="flex-1 overflow-auto py-1">
         {loading ? (
           <div className="space-y-1.5 p-2">
             {[1,2,3,4,5].map(i => (
-              <div key={i} className="h-6 bg-slate-800/50 rounded-md animate-pulse" />
+              <div key={i} className="h-6 bg-slate-800 animate-pulse" />
             ))}
           </div>
         ) : tree.length === 0 ? (
@@ -147,6 +218,8 @@ export function Sidebar({ onNavigate, currentPath }: SidebarProps) {
               key={node.path}
               node={node}
               depth={0}
+              expandedPaths={expandedPaths}
+              onToggle={togglePath}
               onNavigate={onNavigate}
               onNavigateDetail={handleNavigateDetail}
               currentPath={currentPath}

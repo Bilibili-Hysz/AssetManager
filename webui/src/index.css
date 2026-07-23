@@ -14,12 +14,14 @@
   :root {
     --color-bg: #020617;
     --color-surface: #0f172a;
+    --color-elevated: #1e293b;
     --color-border: #334155;
   }
 
   .light {
     --color-bg: #f8fafc;
     --color-surface: #ffffff;
+    --color-elevated: #f1f5f9;
     --color-border: #e2e8f0;
   }
 

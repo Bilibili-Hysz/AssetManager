@@ -17,6 +17,12 @@ const en = {
   },
   sidebar: {
     title: 'Directory',
+    folders: 'Folders',
+    expandAll: 'Expand all',
+    collapseAll: 'Collapse all',
+    expandNode: 'Expand {0}',
+    collapseNode: 'Collapse {0}',
+    clearFilterToChangeExpansion: 'Clear the search filter to change manual expansion',
     search: 'Filter directories...',
     no_results: 'No matching directories',
   },

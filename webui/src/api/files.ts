@@ -1,4 +1,4 @@
-import type { ApiClient } from './client';
+import type { ApiClient, DownloadProgress } from './client';
 import type { DirectorySummariesResponse, FilesResponse } from '../types/api';
 
 export function createFilesApi(api: ApiClient) {
@@ -20,8 +20,8 @@ export function createFilesApi(api: ApiClient) {
       window.open(`/api/download/${encoded}`, '_blank');
     },
 
-    batchDownload: async (paths: string[]) => {
-      const blob = await api.postBlob('download/batch', { paths });
+    batchDownload: async (paths: string[], onProgress?: (progress: DownloadProgress) => void) => {
+      const blob = await api.postBlobWithProgress('download/batch', { paths }, onProgress ?? (() => {}));
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

@@ -20,7 +20,9 @@ import { useMediaQuery } from '../hooks/useMediaQuery';
 import { createFilesApi } from '../api/files';
 import { createMetadataApi } from '../api/metadata';
 import { useI18n } from '../hooks/useI18n';
-import type { ProjectItem, Metadata } from '../types/api';
+import { useToast } from '../components/ui/Toast';
+import { useDownloadProgress } from '../components/ui/DownloadProgress';
+import type { BrowsableItem, Metadata } from '../types/api';
 
 export default function BrowsePage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -32,6 +34,8 @@ export default function BrowsePage() {
   const filesApi = useMemo(() => createFilesApi(api), [api]);
   const metaApi = useMemo(() => createMetadataApi(api), [api]);
   const { t } = useI18n();
+  const { showToast } = useToast();
+  const downloadProgress = useDownloadProgress();
   const isMobile = useMediaQuery('(max-width: 768px)');
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
@@ -39,11 +43,15 @@ export default function BrowsePage() {
   });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: ProjectItem; trigger?: HTMLElement } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: BrowsableItem; trigger?: HTMLElement } | null>(null);
   const [sharePaths, setSharePaths] = useState<string[] | null>(null);
   const [shareDialogTrigger, setShareDialogTrigger] = useState<HTMLElement | null | undefined>(undefined);
   const [selectedMetadata, setSelectedMetadata] = useState<Metadata | null>(null);
+  const [selectedItem, setSelectedItem] = useState<BrowsableItem | null>(null);
   const [metadataLoading, setMetadataLoading] = useState(false);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [tagResults, setTagResults] = useState<BrowsableItem[] | null>(null);
+  const [isDownloadInFlight, setIsDownloadInFlight] = useState(false);
 
   // ── Sidebar / Info panel state ──
   const [sidebarOpen, setSidebarOpen] = useState(() => {
@@ -72,6 +80,7 @@ export default function BrowsePage() {
   const infoStartW = useRef(0);
   const rafId = useRef<number | null>(null);
   const tagSearchGeneration = useRef(0);
+  const downloadInFlight = useRef(false);
   const metadataGeneration = useRef(0);
   const metadataAbort = useRef<AbortController | null>(null);
   const summaryAbort = useRef<AbortController | null>(null);
@@ -132,6 +141,8 @@ export default function BrowsePage() {
       tagSearchGeneration.current += 1;
       metadataGeneration.current += 1;
       metadataAbort.current?.abort();
+      setActiveTag(null);
+      setTagResults(null);
       navigateTo(requestedPath);
     }
   }, [currentPath, navigateTo, searchParams]);
@@ -191,7 +202,10 @@ export default function BrowsePage() {
     navigateTo(path);
     setSearchParams(path ? { path } : {}, { replace: true });
     setSelected(new Set());
+    setSelectedItem(null);
     setSelectedMetadata(null);
+    setActiveTag(null);
+    setTagResults(null);
   }, [navigateTo, setSearchParams]);
 
   const handleNavigateDetail = useCallback((path: string) => {
@@ -213,16 +227,12 @@ export default function BrowsePage() {
     });
   }, []);
 
-  const handleActivate = useCallback((path: string) => {
-    if (isMobile && !selectMode) handleNavigateDetail(path);
-    else handleSelect(path);
-  }, [handleNavigateDetail, handleSelect, isMobile, selectMode]);
-
-  const handleCardClick = useCallback((item: ProjectItem) => {
+  const handleCardClick = useCallback((item: BrowsableItem) => {
     const generation = ++metadataGeneration.current;
     metadataAbort.current?.abort();
     const abortController = new AbortController();
     metadataAbort.current = abortController;
+    setSelectedItem(item);
     setMetadataLoading(true);
     metaApi.getMeta(item.path, abortController.signal)
       .then(metadata => {
@@ -236,11 +246,16 @@ export default function BrowsePage() {
       });
   }, [metaApi]);
 
-  const handleCardDoubleClick = useCallback((item: ProjectItem) => {
+  const handleInspect = useCallback((item: BrowsableItem) => {
+    if (isMobile) handleNavigateDetail(item.path);
+    else handleCardClick(item);
+  }, [handleCardClick, handleNavigateDetail, isMobile]);
+
+  const handleCardDoubleClick = useCallback((item: BrowsableItem) => {
     handleNavigateDetail(item.path);
   }, [handleNavigateDetail]);
 
-  const handleContextMenu = useCallback((e: React.MouseEvent, item: ProjectItem) => {
+  const handleContextMenu = useCallback((e: React.MouseEvent, item: BrowsableItem) => {
     e.preventDefault();
     const trigger = e.type === 'click' ? e.currentTarget as HTMLElement : undefined;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -256,24 +271,59 @@ export default function BrowsePage() {
     filesApi.download(path);
   }, [filesApi]);
 
+  const handleInfoDownload = useCallback((item: BrowsableItem) => {
+    handleDownload(item.path);
+  }, [handleDownload]);
+
+  const handleInfoShare = useCallback((item: BrowsableItem) => {
+    setShareDialogTrigger(document.activeElement instanceof HTMLElement ? document.activeElement : undefined);
+    setSharePaths([item.path]);
+  }, []);
+
   const handleCopyPath = useCallback((path: string) => {
     navigator.clipboard.writeText(path).catch(() => {});
   }, []);
 
   const handleTagFilter = useCallback((tag: string) => {
     const generation = ++tagSearchGeneration.current;
-    // Navigate to browse with search query for this tag
-    navigateTo('');
-    setSearchParams({}, { replace: true });
-    // Trigger search via URL params — useSearch will pick it up
-    // For now, use the search API directly
+    setActiveTag(tag);
+    setSelected(new Set());
+    setTagResults(null);
     metaApi.search('', tag).then(res => {
-      if (generation === tagSearchGeneration.current && res.results.length > 0) {
-        const path = res.results[0]?.path ?? '';
-        setSearchParams(path ? { path } : {}, { replace: true });
+      if (generation === tagSearchGeneration.current) {
+        setTagResults(res.results);
       }
-    }).catch(() => {});
-  }, [metaApi, navigateTo, setSearchParams]);
+    }).catch(() => {
+      if (generation === tagSearchGeneration.current) {
+        setActiveTag(null);
+        setTagResults(null);
+        showToast('Failed to filter by tag', 'error');
+      }
+    });
+  }, [metaApi, showToast]);
+
+  const handleClearTagFilter = useCallback(() => {
+    tagSearchGeneration.current += 1;
+    setActiveTag(null);
+    setTagResults(null);
+  }, []);
+
+  const handleDownloadSelected = useCallback(async () => {
+    const paths = Array.from(selected);
+    if (paths.length === 0 || downloadInFlight.current) return;
+    downloadInFlight.current = true;
+    setIsDownloadInFlight(true);
+    downloadProgress.start();
+    try {
+      await filesApi.batchDownload(paths, downloadProgress.update);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to download ZIP archive', 'error');
+    } finally {
+      downloadProgress.finish();
+      downloadInFlight.current = false;
+      setIsDownloadInFlight(false);
+    }
+  }, [downloadProgress, filesApi, selected, showToast]);
 
   const handleSidebarToggle = useCallback(() => {
     if (isMobile) {
@@ -300,9 +350,10 @@ export default function BrowsePage() {
   }, [infoOpen, isMobile]);
 
   // ── Thumbnails ──
-  const imagePaths = useMemo(() => data?.items
+  const visibleItems = tagResults ?? data?.items ?? [];
+  const imagePaths = useMemo(() => visibleItems
     .filter(item => item.category === 'image' || /\.(jpg|jpeg|png|gif|webp)$/i.test(item.extension))
-    .map(item => item.path) ?? [], [data]);
+    .map(item => item.path), [visibleItems]);
   useEffect(() => {
     if (viewMode === 'grid') void loadThumbnails(imagePaths);
   }, [imagePaths, loadThumbnails, viewMode]);
@@ -316,6 +367,42 @@ export default function BrowsePage() {
     }
     return thumbnails;
   }, [getThumbnail, imagePaths, thumbnailRevision, viewMode]);
+
+  useEffect(() => {
+    const handleWorkspaceShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isEditable = target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || target?.isContentEditable;
+      if (isEditable || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+
+      if (event.key === 'g') {
+        event.preventDefault();
+        handleViewModeChange(viewMode === 'grid' ? 'list' : 'grid');
+      } else if (event.key === 's') {
+        event.preventDefault();
+        setSelectMode(current => !current);
+        setSelected(new Set());
+      } else if (event.key === 'Escape') {
+        if (activeTag) {
+          event.preventDefault();
+          handleClearTagFilter();
+        } else if (selected.size > 0) {
+          event.preventDefault();
+          setSelected(new Set());
+        } else if (isMobile && (sidebarOpen || infoOpen)) {
+          event.preventDefault();
+          if (infoOpen) handleInfoToggle();
+          else handleSidebarToggle();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleWorkspaceShortcut);
+    return () => document.removeEventListener('keydown', handleWorkspaceShortcut);
+  }, [activeTag, handleClearTagFilter, handleInfoToggle, handleSidebarToggle, handleViewModeChange, infoOpen, isMobile, selected.size, sidebarOpen, viewMode]);
+
   return (
     <AppLayout
       header={
@@ -327,7 +414,7 @@ export default function BrowsePage() {
         />
       }
       sidebar={<Sidebar onNavigate={handleNavigate} currentPath={currentPath} />}
-      infoPanel={<InfoPanel metadata={selectedMetadata} loading={metadataLoading} onTagClick={handleTagFilter} onClose={handleInfoToggle} />}
+        infoPanel={<InfoPanel metadata={selectedMetadata} selected={selectedItem} loading={metadataLoading} onTagFilter={handleTagFilter} onDownload={handleInfoDownload} onShare={handleInfoShare} onClose={handleInfoToggle} />}
       sidebarOpen={sidebarOpen}
       infoOpen={infoOpen}
       sidebarWidth={sidebarWidth}
@@ -337,6 +424,7 @@ export default function BrowsePage() {
       onSidebarToggle={handleSidebarToggle}
       onInfoToggle={handleInfoToggle}
       onViewModeToggle={() => handleViewModeChange(viewMode === 'grid' ? 'list' : 'grid')}
+      viewMode={viewMode}
       selectMode={selectMode}
       onSelectModeToggle={() => {
         setSelectMode(prev => !prev);
@@ -351,7 +439,10 @@ export default function BrowsePage() {
         viewMode={viewMode}
         onViewModeChange={handleViewModeChange}
         selectedCount={selected.size}
-        onDownloadSelected={() => filesApi.batchDownload(Array.from(selected))}
+        onDownloadSelected={handleDownloadSelected}
+        isDownloadInFlight={isDownloadInFlight}
+        activeTag={activeTag}
+        onClearTag={handleClearTagFilter}
       />
 
       {isLoading ? (
@@ -371,16 +462,18 @@ export default function BrowsePage() {
           <p className="text-base">{t('browse.error')}</p>
           <p className="text-sm mt-1">{error}</p>
         </div>
-      ) : data?.items.length === 0 ? (
+      ) : visibleItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 text-slate-500">
           <p className="text-base">{t('browse.empty')}</p>
         </div>
       ) : viewMode === 'grid' ? (
         <ProjectGrid
-          items={data?.items ?? []}
+          items={visibleItems}
           selected={selected}
-          onSelect={handleActivate}
-          onCardClick={handleCardClick}
+          onSelect={handleSelect}
+          onZipSelect={handleSelect}
+          onInspect={handleInspect}
+          onNavigate={handleNavigate}
           selectionMode={selectMode}
           onDoubleClick={handleCardDoubleClick}
           onContextMenu={handleContextMenu}
@@ -389,10 +482,12 @@ export default function BrowsePage() {
         />
       ) : (
         <ProjectList
-          items={data?.items ?? []}
+          items={visibleItems}
           selected={selected}
-          onSelect={handleActivate}
-          onCardClick={handleCardClick}
+          onSelect={handleSelect}
+          onZipSelect={handleSelect}
+          onInspect={handleInspect}
+          onNavigate={handleNavigate}
           selectionMode={selectMode}
           onDoubleClick={handleCardDoubleClick}
           onContextMenu={handleContextMenu}
@@ -409,7 +504,7 @@ export default function BrowsePage() {
           onClose={() => setContextMenu(null)}
           items={[
             { label: t('action.download'), icon: <Download size={13} />, onClick: () => handleDownload(contextMenu.item.path) },
-            { label: t('action.detail'), icon: <Eye size={13} />, onClick: () => handleNavigateDetail(contextMenu.item.path) },
+            ...(contextMenu.item.type === 'dir' ? [] : [{ label: t('action.detail'), icon: <Eye size={13} />, onClick: () => handleNavigateDetail(contextMenu.item.path) }]),
             { label: t('action.share'), icon: <Share2 size={13} />, onClick: () => {
               setShareDialogTrigger(contextMenu?.trigger);
               setSharePaths([contextMenu.item.path]);

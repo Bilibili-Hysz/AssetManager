@@ -19,6 +19,12 @@ const ja: I18nDict = {
   },
   sidebar: {
     title: 'ディレクトリ',
+    folders: 'フォルダー',
+    expandAll: 'すべて展開',
+    collapseAll: 'すべて折りたたむ',
+    expandNode: '{0} を展開',
+    collapseNode: '{0} を折りたたむ',
+    clearFilterToChangeExpansion: '手動での展開状態を変更するには検索フィルターをクリアしてください',
     search: 'ディレクトリをフィルター...',
     no_results: '一致するディレクトリがありません',
   },

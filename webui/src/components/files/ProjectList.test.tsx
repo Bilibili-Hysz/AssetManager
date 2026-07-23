@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectList } from './ProjectList';
 
@@ -37,5 +37,50 @@ describe('ProjectList translations', () => {
     expect(screen.getByRole('columnheader', { name: size })).toBeDefined();
     expect(screen.getByRole('columnheader', { name: modified })).toBeDefined();
     expect(screen.getByRole('button', { name: actions })).toBeDefined();
+  });
+
+  it('navigates directories without inspecting, opening details, or selecting ZIP items', () => {
+    const onNavigate = vi.fn();
+    const onInspect = vi.fn();
+    const onDoubleClick = vi.fn();
+    const onZipSelect = vi.fn();
+    render(
+      <ProjectList
+        items={[{ name: 'nested', path: 'parent/nested', type: 'dir', extension: '', category: 'other' }]}
+        selected={new Set()}
+        onSelect={vi.fn()}
+        onZipSelect={onZipSelect}
+        onInspect={onInspect}
+        onDoubleClick={onDoubleClick}
+        onNavigate={onNavigate}
+      />,
+    );
+
+    const directory = screen.getByRole('button', { name: 'nested' });
+    fireEvent.click(directory);
+    fireEvent.doubleClick(directory);
+    fireEvent.keyDown(directory, { key: 'Enter' });
+
+    expect(onNavigate).toHaveBeenCalledTimes(3);
+    expect(onNavigate).toHaveBeenCalledWith('parent/nested');
+    expect(onInspect).not.toHaveBeenCalled();
+    expect(onDoubleClick).not.toHaveBeenCalled();
+    expect(onZipSelect).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Select nested for ZIP download' })).toBeNull();
+  });
+
+  it('keeps the ZIP selection control for files', () => {
+    const onZipSelect = vi.fn();
+    render(
+      <ProjectList
+        items={[{ name: 'asset.png', path: 'asset.png', type: 'file', extension: '.png', category: 'image' }]}
+        selected={new Set()}
+        onSelect={vi.fn()}
+        onZipSelect={onZipSelect}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select asset.png for ZIP download' }));
+    expect(onZipSelect).toHaveBeenCalledWith('asset.png');
   });
 });
