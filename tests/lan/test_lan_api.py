@@ -2054,6 +2054,34 @@ class TestShareSecurity:
             await client.close()
 
     @pytest.mark.anyio
+    async def test_share_create_and_list_serialize_server_share_url_and_key_requirement(self, tmp_path):
+        from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("content", encoding="utf-8")
+        app[LAN_APP_KEY].access_key_hash = "configured-key-hash"
+
+        client = await _make_client(app)
+        try:
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
+            assert create.status == 200
+            created = await create.json()
+            assert created["url"].endswith(f"/s/{created['id']}")
+            assert created["requires_key"] is True
+
+            listed = await client.get("/api/shares", headers=_local_ui_headers(app))
+            assert listed.status == 200
+            shares = (await listed.json())["shares"]
+            assert shares[0]["url"] == created["url"]
+            assert shares[0]["requires_key"] is True
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
     async def test_list_shares_rejects_missing_user_after_permission_check(self, monkeypatch):
         from AssetsManager.lan.routes import shares
 

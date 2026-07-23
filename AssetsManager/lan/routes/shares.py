@@ -156,6 +156,7 @@ async def handle_list_shares(request):
     for share in shares:
         info = share.to_public_dict()
         info["url"] = f"{protocol}://{ip}:{lan._port}/s/{share.id}"
+        info["requires_key"] = bool(lan.access_key_hash)
         result.append(info)
 
     return web.json_response({"shares": result})

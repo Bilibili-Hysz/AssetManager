@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectCard } from './ProjectCard';
 
 const item = {
@@ -15,6 +15,8 @@ const item = {
 };
 
 describe('ProjectCard', () => {
+  afterEach(cleanup);
+
   it('uses Space for selection and Enter for details without conflating the actions', () => {
     const onSelect = vi.fn();
     const onOpen = vi.fn();
@@ -31,5 +33,18 @@ describe('ProjectCard', () => {
     fireEvent.keyDown(asset, { key: 'Enter' });
     expect(onOpen).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'Actions for asset.png' })).not.toBe(asset);
+  });
+
+  it('selects for ZIP download from its explicit control without inspecting the card', () => {
+    const onSelect = vi.fn();
+    const onOpen = vi.fn();
+    render(<ProjectCard item={item} onSelect={onSelect} onOpen={onOpen} />);
+
+    const zipSelect = screen.getByRole('button', { name: 'Select asset.png for ZIP download' });
+    expect(zipSelect.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(zipSelect);
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onOpen).not.toHaveBeenCalled();
   });
 });

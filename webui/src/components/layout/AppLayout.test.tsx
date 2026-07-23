@@ -94,6 +94,17 @@ describe('AppLayout', () => {
     expect(screen.getByRole('button', { name: 'Done' }).getAttribute('aria-pressed')).toBe('true');
   });
 
+  it('exposes the mobile view control as a pressed state', () => {
+    setLang('en');
+    window.matchMedia = () => ({ matches: true, media: '(max-width: 768px)', onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => true });
+    render(
+      <AppLayout sidebarOpen={false} infoOpen={false} sidebarWidth={240} infoWidth={320} onSidebarDragStart={() => {}} onInfoDragStart={() => {}} onSidebarToggle={() => {}} onInfoToggle={() => {}} onViewModeToggle={() => {}}>
+        <div>Content</div>
+      </AppLayout>,
+    );
+    expect(screen.getByRole('button', { name: 'View' }).getAttribute('aria-pressed')).toBe('false');
+  });
+
   it('labels the mobile information action as close when open', () => {
     setLang('en');
     window.matchMedia = () => ({ matches: true, media: '(max-width: 768px)', onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => true });

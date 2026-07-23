@@ -66,7 +66,12 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
   // Keyboard shortcut: / to focus search
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === '/' && !e.ctrlKey && !e.metaKey && document.activeElement?.tagName !== 'INPUT') {
+      const target = e.target as HTMLElement | null;
+      const isEditable = target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || target?.isContentEditable;
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !isEditable) {
         e.preventDefault();
         const input = document.querySelector<HTMLInputElement>('#header-search-input');
         input?.focus();
@@ -104,6 +109,8 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
         <input
           id="header-search-input"
           type="text"
+          role="searchbox"
+          aria-label={t('header.search')}
           value={query}
           onChange={e => { setQuery(e.target.value); setShowResults(true); }}
           onFocus={() => { if (results.length > 0) setShowResults(true); }}

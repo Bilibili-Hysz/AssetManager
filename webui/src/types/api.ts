@@ -150,6 +150,8 @@ export interface SearchResponse {
   count: number;
 }
 
+export type BrowsableItem = SearchResult & Partial<Pick<ProjectItem, 'size' | 'size_fmt' | 'modified'>>;
+
 // ============ Tags ============
 export interface Tag {
   id: number;

@@ -53,8 +53,24 @@ describe('Header menus', () => {
   ])('renders localized empty search state in %s', (lang, message) => {
     testLang = lang;
     render(<Header onSidebarToggle={() => {}} onInfoToggle={() => {}} sidebarOpen={false} infoOpen={false} />);
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'missing' } });
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'missing' } });
     expect(screen.getByText(message)).toBeDefined();
+  });
+
+  it('exposes the workspace search by name and does not steal slash from editable elements', () => {
+    testLang = 'en';
+    render(<Header onSidebarToggle={() => {}} onInfoToggle={() => {}} sidebarOpen={false} infoOpen={false} />);
+
+    const search = screen.getByRole('searchbox', { name: 'header.search' });
+    fireEvent.keyDown(document, { key: '/' });
+    expect(document.activeElement).toBe(search);
+
+    const textarea = document.createElement('textarea');
+    document.body.append(textarea);
+    textarea.focus();
+    fireEvent.keyDown(textarea, { key: '/' });
+    expect(document.activeElement).toBe(textarea);
+    textarea.remove();
   });
 
   it.each([
