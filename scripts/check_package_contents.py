@@ -11,7 +11,6 @@ REQUIRED_PATHS = (
     "AssetManager.exe",
     "webui/dist/index.html",
     "webui/dist/assets",
-    "AssetsManager/lan/static/index.html",
     "AssetsManager/i18n/en.json",
     "Assets/Themes",
     "RuntimeData/Shared",

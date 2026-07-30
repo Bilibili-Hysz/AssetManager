@@ -284,6 +284,8 @@
   "tab.close_others": "他をすべて閉じる",
   "tab.close_all": "すべて閉じる",
   "dialog.apply": "適用",
+  "dialog.ok": "OK",
+  "dialog.cancel": "キャンセル",
   "dialog.browse": "参照",
   "dialog.close": "閉じる",
   "dialog.confirm": "確認",

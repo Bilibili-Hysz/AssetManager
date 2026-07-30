@@ -8,6 +8,7 @@ import { setLang } from '../../i18n';
 
 let api: object = {};
 const getTree = vi.fn();
+const { useInvalidationMock } = vi.hoisted(() => ({ useInvalidationMock: vi.fn() }));
 
 const tree = [
   {
@@ -39,6 +40,9 @@ vi.mock('../../hooks/useAuth', () => ({
 vi.mock('../../api/metadata', () => ({
   createMetadataApi: () => ({ getTree }),
 }));
+vi.mock('../../hooks/useInvalidation', () => ({
+  useInvalidation: useInvalidationMock,
+}));
 
 describe('Sidebar', () => {
   afterEach(cleanup);
@@ -47,6 +51,12 @@ describe('Sidebar', () => {
     setLang('en');
     getTree.mockReset();
     api = {};
+    useInvalidationMock.mockReset();
+  });
+
+  it('registers only the tree projection domain', async () => {
+    await renderTree();
+    expect(useInvalidationMock.mock.calls[0]?.[0]).toEqual(['tree']);
   });
 
   it('uses translated folder controls after switching to Chinese', async () => {
@@ -163,9 +173,10 @@ describe('Sidebar', () => {
       .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
       .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
 
-    const view = render(<Sidebar onNavigate={() => {}} currentPath="" />, { wrapper: MemoryRouter });
-    api = {};
-    view.rerender(<Sidebar onNavigate={() => {}} currentPath="" />);
+    render(<Sidebar onNavigate={() => {}} currentPath="" />, { wrapper: MemoryRouter });
+    await act(async () => {
+      useInvalidationMock.mock.calls[0]![1]!();
+    });
 
     await act(async () => {
       resolveSecond({ tree: [{ name: 'Current', path: 'current', is_leaf: false }] });

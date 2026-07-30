@@ -413,3 +413,32 @@ def test_scoped_copy_publishes_session_scoped_file_change(tmp_path, monkeypatch)
         assert events[0].paths == (str((destination / source.name).resolve()),)
     finally:
         bootstrap.library_service.close()
+
+
+def test_runtime_router_receives_scoped_service_events_once(tmp_path, monkeypatch):
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+    from AssetsManager.domain.event_bus import EventBus
+    from AssetsManager.domain.events import AssetTagsChanged
+
+    bus = EventBus()
+    import AssetsManager.domain.event_bus as eb
+    monkeypatch.setattr(eb, "_instance", bus)
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path)
+    runtime = bootstrap.runtime_for(session)
+    received = []
+    runtime.event_router.subscribe(received.append)
+    event = AssetTagsChanged(
+        library_root=session.root_str,
+        session_token=session.event_token,
+        file_path=str(tmp_path / "asset.png"),
+        new_tags=("hero",),
+    )
+    try:
+        bus.publish(event)
+        assert len(received) == 1
+        assert received[0].revision == 1
+        assert runtime.revision == 1
+        assert received[0].paths == ("asset.png",)
+    finally:
+        bootstrap.library_service.close()

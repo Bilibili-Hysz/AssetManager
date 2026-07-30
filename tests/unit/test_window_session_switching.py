@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from AssetsManager.window import MainWindow
 from AssetsManager.window_lifecycle_coordinator import WindowLifecycleCoordinator
 from unittest.mock import Mock
@@ -135,6 +137,228 @@ def test_switch_library_stops_lan_and_invalidates_thumbnails_before_closing(monk
     window._tray_manager.update_sharing_state.assert_called_once_with(False)
 
 
+def test_switch_library_continues_window_cleanup_after_lan_and_panel_failures():
+    global events
+    events = []
+
+    class _FailingServer(_Server):
+        def stop(self):
+            events.append("lan.stop")
+            raise RuntimeError("lan stop failed")
+
+    class _FailingSidebar(_LifecyclePanel):
+        def prepare_library_switch(self):
+            events.append(f"{self.name}.prepare")
+            raise RuntimeError("sidebar failed")
+
+    window = _Window()
+    window._lan_server = _FailingServer()
+    window.sidebar = _FailingSidebar("sidebar")
+
+    with pytest.raises(RuntimeError, match="lan stop failed"):
+        WindowLifecycleCoordinator(window, lambda widget: widget is not None).switch_library(
+            "new-root"
+        )
+
+    assert events == [
+        "lan.stop",
+        "notes.flush",
+        "notes.stop",
+        "loader.invalidate",
+        "loader.wait",
+        "sidebar.prepare",
+        "tag-tree.prepare",
+        "session.close",
+        "session.cleanup",
+    ]
+    assert window.share_states == [False]
+    window._tray_manager.update_sharing_state.assert_called_once_with(False)
+
+
+def test_switch_library_reports_panel_failure_after_successful_lan_stop_once():
+    global events
+    events = []
+
+    class _FailingSidebar(_LifecyclePanel):
+        def prepare_library_switch(self):
+            events.append(f"{self.name}.prepare")
+            raise RuntimeError("sidebar failed")
+
+    window = _Window()
+    window.sidebar = _FailingSidebar("sidebar")
+
+    with pytest.raises(RuntimeError, match="sidebar failed"):
+        WindowLifecycleCoordinator(window, lambda widget: widget is not None).switch_library(
+            "new-root"
+        )
+
+    assert events == [
+        "lan.stop",
+        "notes.flush",
+        "notes.stop",
+        "loader.invalidate",
+        "loader.wait",
+        "sidebar.prepare",
+        "tag-tree.prepare",
+        "session.close",
+        "session.cleanup",
+    ]
+    assert window.share_states == [False]
+    window._tray_manager.update_sharing_state.assert_called_once_with(False)
+
+
+def test_switch_library_status_failure_does_not_skip_cleanup_or_tray():
+    global events
+    events = []
+
+    class _FailureWindow(_Window):
+        def _update_share_status(self, running):
+            events.append(f"status.{running}")
+            raise RuntimeError("status failed")
+
+        def _open_library_session(self, path):
+            raise AssertionError("replacement must not open")
+
+    window = _FailureWindow()
+
+    with pytest.raises(RuntimeError, match="status failed"):
+        WindowLifecycleCoordinator(window, lambda widget: widget is not None).switch_library(
+            "new-root"
+        )
+
+    assert events == [
+        "lan.stop",
+        "status.False",
+        "notes.flush",
+        "notes.stop",
+        "loader.invalidate",
+        "loader.wait",
+        "sidebar.prepare",
+        "tag-tree.prepare",
+        "session.close",
+        "session.cleanup",
+    ]
+    window._tray_manager.update_sharing_state.assert_called_once_with(False)
+
+
+def test_switch_library_stop_error_wins_over_compensation_tray_failure():
+    global events
+    events = []
+
+    class _FailingServer(_Server):
+        def stop(self):
+            events.append("lan.stop")
+            raise RuntimeError("lan stop failed")
+
+    class _FailureWindow(_Window):
+        def __init__(self):
+            super().__init__()
+            self._lan_server = _FailingServer()
+            self._tray_manager.update_sharing_state.side_effect = RuntimeError("tray failed")
+
+        def _open_library_session(self, path):
+            raise AssertionError("replacement must not open")
+
+    window = _FailureWindow()
+
+    with pytest.raises(RuntimeError, match="lan stop failed"):
+        WindowLifecycleCoordinator(window, lambda widget: widget is not None).switch_library(
+            "new-root"
+        )
+
+    assert events == [
+        "lan.stop",
+        "notes.flush",
+        "notes.stop",
+        "loader.invalidate",
+        "loader.wait",
+        "sidebar.prepare",
+        "tag-tree.prepare",
+        "session.close",
+        "session.cleanup",
+    ]
+    assert window.share_states == [False]
+    window._tray_manager.update_sharing_state.assert_called_once_with(False)
+
+
+def test_switch_library_panel_getter_failure_does_not_skip_later_cleanup():
+    global events
+    events = []
+
+    class _FailureWindow(_Window):
+        def __init__(self):
+            self._lan_server = _Server()
+            self._library_session = _Session()
+            self.file_list = _FileList()
+            self.info = _Info()
+            self._sidebar = _LifecyclePanel("sidebar")
+            self.tag_tree = _LifecyclePanel("tag-tree")
+            self._bootstrap = _Bootstrap()
+            self.share_states = []
+            self._tray_manager = Mock()
+
+        @property
+        def sidebar(self):
+            raise RuntimeError("sidebar getter failed")
+
+        def _open_library_session(self, path):
+            raise AssertionError("replacement must not open")
+
+    window = _FailureWindow()
+
+    with pytest.raises(RuntimeError, match="sidebar getter failed"):
+        WindowLifecycleCoordinator(window, lambda widget: widget is not None).switch_library(
+            "new-root"
+        )
+
+    assert events == [
+        "lan.stop",
+        "notes.flush",
+        "notes.stop",
+        "loader.invalidate",
+        "loader.wait",
+        "tag-tree.prepare",
+        "session.close",
+        "session.cleanup",
+    ]
+    window._tray_manager.update_sharing_state.assert_called_once_with(False)
+
+
+def test_switch_library_is_running_failure_does_not_skip_cleanup():
+    global events
+    events = []
+
+    class _FailingServer:
+        def is_running(self):
+            raise RuntimeError("is_running failed")
+
+    class _FailureWindow(_Window):
+        def __init__(self):
+            super().__init__()
+            self._lan_server = _FailingServer()
+
+        def _open_library_session(self, path):
+            raise AssertionError("replacement must not open")
+
+    window = _FailureWindow()
+
+    with pytest.raises(RuntimeError, match="is_running failed"):
+        WindowLifecycleCoordinator(window, lambda widget: widget is not None).switch_library(
+            "new-root"
+        )
+
+    assert events == [
+        "notes.flush",
+        "notes.stop",
+        "loader.invalidate",
+        "loader.wait",
+        "sidebar.prepare",
+        "tag-tree.prepare",
+        "session.close",
+        "session.cleanup",
+    ]
+
+
 def test_switch_library_is_noop_for_active_canonical_root(tmp_path):
     global events
     events = []
@@ -262,6 +486,116 @@ def test_shutdown_resources_stops_public_panel_lifecycles_in_order():
         "sidebar.shutdown",
         "tag-tree.shutdown",
         "dock.save",
+        "workspace.save",
+        "file-list.shutdown",
+    ]
+
+
+def test_shutdown_resources_continues_after_lan_failure_and_reraises_first_error():
+    global events
+    events = []
+
+    class _FailingServer(_Server):
+        def stop(self):
+            events.append("lan.stop")
+            raise RuntimeError("lan stop failed")
+
+    class _Window:
+        _lan_server = _FailingServer()
+        info = _LifecyclePanel("info")
+        file_list = _LifecyclePanel("file-list")
+        sidebar = _LifecyclePanel("sidebar")
+        tag_tree = _LifecyclePanel("tag-tree")
+
+        def _save_dock_layout(self):
+            events.append("dock.save")
+
+        def _save_workspace_tabs(self):
+            events.append("workspace.save")
+
+    with pytest.raises(RuntimeError, match="lan stop failed"):
+        WindowLifecycleCoordinator(_Window(), lambda widget: widget is not None).shutdown_resources()
+
+    assert events == [
+        "lan.stop",
+        "info.shutdown",
+        "sidebar.shutdown",
+        "tag-tree.shutdown",
+        "dock.save",
+        "workspace.save",
+        "file-list.shutdown",
+    ]
+
+
+def test_shutdown_resources_continues_after_panel_failure_and_reraises_lan_error():
+    global events
+    events = []
+
+    class _FailingServer(_Server):
+        def stop(self):
+            events.append("lan.stop")
+            raise RuntimeError("lan stop failed")
+
+    class _FailingPanel(_LifecyclePanel):
+        def shutdown(self):
+            events.append(f"{self.name}.shutdown")
+            raise RuntimeError("sidebar failed")
+
+    class _Window:
+        _lan_server = _FailingServer()
+        info = _LifecyclePanel("info")
+        file_list = _LifecyclePanel("file-list")
+        sidebar = _FailingPanel("sidebar")
+        tag_tree = _LifecyclePanel("tag-tree")
+
+        def _save_dock_layout(self):
+            events.append("dock.save")
+
+        def _save_workspace_tabs(self):
+            events.append("workspace.save")
+
+    with pytest.raises(RuntimeError, match="lan stop failed"):
+        WindowLifecycleCoordinator(_Window(), lambda widget: widget is not None).shutdown_resources()
+
+    assert events == [
+        "lan.stop",
+        "info.shutdown",
+        "sidebar.shutdown",
+        "tag-tree.shutdown",
+        "dock.save",
+        "workspace.save",
+        "file-list.shutdown",
+    ]
+
+
+def test_shutdown_resources_continues_after_dock_layout_getter_failure():
+    global events
+    events = []
+
+    class _Window:
+        _lan_server = _Server()
+        info = _LifecyclePanel("info")
+        file_list = _LifecyclePanel("file-list")
+        sidebar = _LifecyclePanel("sidebar")
+        tag_tree = _LifecyclePanel("tag-tree")
+
+        @property
+        def _save_dock_layout(self):
+            events.append("dock.get")
+            raise RuntimeError("dock getter failed")
+
+        def _save_workspace_tabs(self):
+            events.append("workspace.save")
+
+    with pytest.raises(RuntimeError, match="dock getter failed"):
+        WindowLifecycleCoordinator(_Window(), lambda widget: widget is not None).shutdown_resources()
+
+    assert events == [
+        "lan.stop",
+        "info.shutdown",
+        "sidebar.shutdown",
+        "tag-tree.shutdown",
+        "dock.get",
         "workspace.save",
         "file-list.shutdown",
     ]

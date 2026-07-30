@@ -295,6 +295,8 @@
   "tab.close_others": "Close Others",
   "tab.close_all": "Close All",
   "dialog.apply": "Apply",
+  "dialog.ok": "OK",
+  "dialog.cancel": "Cancel",
   "dialog.browse": "Browse",
   "dialog.close": "Close",
   "dialog.confirm": "Confirm",

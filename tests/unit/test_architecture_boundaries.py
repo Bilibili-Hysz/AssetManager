@@ -78,6 +78,120 @@ def _attribute_reads(path: Path) -> set[tuple[str, str]]:
     return found
 
 
+def _qualified_attribute_reads(path: Path) -> list[tuple[str, str, str, str, int, int]]:
+    """Return conservative DatabaseManager.current syntax occurrences with locations.
+
+    This is a syntax gate, not Python name resolution: direct
+    DatabaseManager.current and obvious qualified .DatabaseManager.current
+    chains are reported regardless of assignments, scopes, or control flow.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    manager_names = {"DatabaseManager"}
+    database_module_names: set[str] = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                bound_name = alias.asname or alias.name
+                if (
+                    node.module == "AssetsManager.core.database"
+                    and alias.name == "DatabaseManager"
+                ):
+                    manager_names.add(bound_name)
+                elif node.module == "AssetsManager.core" and alias.name == "database":
+                    database_module_names.add(bound_name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "AssetsManager.core.database" and alias.asname:
+                    database_module_names.add(alias.asname)
+
+    found: list[tuple[str, str, str, str, int, int]] = []
+
+    def chain(node: ast.expr) -> str | None:
+        if isinstance(node, ast.Name):
+            return node.id
+        if isinstance(node, ast.Attribute):
+            parent = chain(node.value)
+            return f"{parent}.{node.attr}" if parent else None
+        return None
+
+    def visit(node: ast.AST, scope: str) -> None:
+        next_scope = (
+            node.name
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            else scope
+        )
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.ctx, ast.Load)
+            and node.attr == "current"
+        ):
+            owner: str | None = None
+            value_chain = chain(node.value)
+            if isinstance(node.value, ast.Name) and node.value.id in manager_names:
+                owner = "DatabaseManager"
+            elif (
+                isinstance(node.value, ast.Attribute)
+                and node.value.attr == "DatabaseManager"
+                and value_chain
+            ):
+                module_chain = chain(node.value.value)
+                if (
+                    module_chain == "AssetsManager.core.database"
+                    or (
+                        isinstance(node.value.value, ast.Name)
+                        and node.value.value.id in database_module_names
+                    )
+                    or (module_chain is not None and "." in module_chain)
+                ):
+                    owner = "DatabaseManager"
+            if owner and value_chain:
+                found.append(
+                    (scope, owner, node.attr, f"{value_chain}.{node.attr}", node.lineno, node.col_offset)
+                )
+        for child in ast.iter_child_nodes(node):
+            visit(child, next_scope)
+
+    visit(tree, "<module>")
+    return found
+
+
+def _database_manager_current_violations(files: list[Path]) -> list[str]:
+    """Return location-preserving conservative DatabaseManager.current syntax violations."""
+    violations: list[str] = []
+    for path in files:
+        module = _module_name(path) if path.is_relative_to(ROOT) else str(path)
+        for scope, owner, attr, _chain, lineno, col_offset in sorted(
+            _qualified_attribute_reads(path), key=lambda occurrence: occurrence[4:]
+        ):
+            if owner == "DatabaseManager" and attr == "current":
+                violations.append(
+                    f"{module}:{lineno}:{col_offset} {scope} reads DatabaseManager.current"
+                )
+    return violations
+
+
+def _public_dto_files(root: Path = SRC) -> list[Path]:
+    """Discover current and future public DTO modules without a fixed allowlist."""
+    return sorted(
+        path
+        for path in root.rglob("*.py")
+        if path.name in {"dto.py", "dtos.py"}
+        or path.name.endswith("_dto.py")
+        or path.name.endswith("_dtos.py")
+    )
+
+
+def _public_dto_qt_import_violations(paths: list[Path]) -> list[str]:
+    """Return Qt imports found by the public-DTO AST boundary check."""
+    violations: list[str] = []
+    for path in paths:
+        for imported in sorted(_imports(path)):
+            if imported == "PySide6" or imported.startswith("PySide6."):
+                violations.append(f"{path} imports {imported}")
+    return violations
+
+
 def _session_raw_resource_reads(path: Path) -> set[tuple[str, str]]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     found: set[tuple[str, str]] = set()
@@ -424,7 +538,7 @@ def test_thumbnail_routes_use_scoped_connection_provider() -> None:
 
     assert "lan.db_conn" not in source
     assert "library_root=lan.library_root" in source
-    assert "ThumbnailService(connection_provider=provider)" in helpers
+    assert "ThumbnailService" not in helpers
 
 
 def test_search_routes_use_scoped_connection_provider() -> None:
@@ -434,7 +548,74 @@ def test_search_routes_use_scoped_connection_provider() -> None:
     end = source.index("def _record_search_route", start)
 
     assert "lan.db_conn" not in source[start:end]
-    assert "SearchService(\n            connection_provider=provider," in helpers
+    assert "SearchService" not in helpers
+
+
+def test_lan_helpers_do_not_assemble_application_services() -> None:
+    source = (SRC / "lan" / "routes" / "_helpers.py").read_text(encoding="utf-8")
+
+    for service in (
+        "MetadataService", "ProjectService", "TagService", "SearchService",
+        "ThumbnailService", "AssetService",
+    ):
+        assert service not in source
+    assert "def _build_lan_services" not in source
+    assert "_build_lan_services(" not in source
+
+
+def test_lan_get_services_is_direct_eager_bundle_lookup() -> None:
+    source = (SRC / "lan" / "routes" / "_helpers.py").read_text(encoding="utf-8")
+    start = source.index("def get_services(")
+    end = source.index("\ndef get_auth_service", start)
+    lookup = source[start:end]
+
+    assert "return lan.services" in lookup
+    assert "_build_lan_services" not in lookup
+    assert "LanScopedServices(" not in lookup
+
+
+def test_runtime_is_constructed_only_by_bootstrap() -> None:
+    source_root = SRC
+    allowed = source_root / "application" / "bootstrap.py"
+    for path in source_root.rglob("*.py"):
+        if path == allowed or "__pycache__" in path.parts:
+            continue
+        source = path.read_text(encoding="utf-8")
+        assert "LibraryRuntime(" not in source, path
+
+
+def test_lan_routes_use_canonical_principal_without_legacy_user_dict_adapter() -> None:
+    for path in (SRC / "lan" / "routes").glob("*.py"):
+        if path.name == "_helpers.py":
+            continue
+        source = path.read_text(encoding="utf-8")
+        assert "get_request_user(" not in source, path
+
+
+def test_page_components_do_not_consume_websocket_transport_directly() -> None:
+    for root in (SRC / "webui" / "src" / "pages", SRC / "webui" / "src" / "components"):
+        for path in root.rglob("*.tsx"):
+            source = path.read_text(encoding="utf-8")
+            assert "useWebSocket(" not in source, path
+
+
+def test_public_types_are_backed_by_contract_fixture() -> None:
+    api_types = (ROOT / "webui" / "src" / "types" / "api.ts").read_text(encoding="utf-8")
+    contracts = (ROOT / "tests" / "contracts" / "lan_public_contracts.json").read_text(encoding="utf-8")
+    for field in ("connections", "requests", "bytes_transferred", "uptime"):
+        assert f'"{field}"' in contracts
+        assert field in api_types
+
+
+def test_production_lan_entrypoints_have_no_legacy_factory_path() -> None:
+    for relative in (
+        "lan/__init__.py",
+        "lan/manager.py",
+        "widgets/lan_sharing.py",
+    ):
+        source = (SRC / relative).read_text(encoding="utf-8")
+        assert "from_legacy_connection" not in source, relative
+        assert "_legacy" not in source, relative
 
 
 def test_file_operation_service_delegates_deleted_projection_cleanup() -> None:
@@ -506,6 +687,120 @@ def test_panels_do_not_import_legacy_unscoped_mutation_events() -> None:
         "Panels must refresh through session-scoped domain events, not legacy unscoped mutation events:\n"
         + "\n".join(violations)
     )
+
+
+def test_lan_routes_do_not_import_repositories() -> None:
+    _assert_no_import_prefixes(
+        _files(SRC, "lan", "routes"),
+        ("AssetsManager.repositories",),
+    )
+
+
+def test_lan_routes_do_not_read_database_manager_current() -> None:
+    violations = _database_manager_current_violations(_files(SRC, "lan", "routes"))
+    assert not violations, "LAN routes must use request-scoped services:\n" + "\n".join(violations)
+
+
+def test_qualified_attribute_reads_flags_direct_database_manager_current_syntax(
+    tmp_path: Path,
+) -> None:
+    route = tmp_path / "direct_database_manager_route.py"
+    route.write_text(
+        "DatabaseManager = object()\n"
+        "\n"
+        "def handle_request():\n"
+        "    return DatabaseManager.current\n",
+        encoding="utf-8",
+    )
+
+    assert _database_manager_current_violations([route]) == [
+        f"{route}:4:11 handle_request reads DatabaseManager.current",
+    ]
+
+
+def test_qualified_attribute_reads_flags_known_database_manager_import_alias(
+    tmp_path: Path,
+) -> None:
+    route = tmp_path / "database_manager_import_alias_route.py"
+    route.write_text(
+        "from AssetsManager.core.database import DatabaseManager as DB\n"
+        "\n"
+        "def handle_request():\n"
+        "    return DB.current\n",
+        encoding="utf-8",
+    )
+
+    assert _database_manager_current_violations([route]) == [
+        f"{route}:4:11 handle_request reads DatabaseManager.current",
+    ]
+
+
+def test_qualified_attribute_reads_flags_database_module_and_full_qualified_chains(
+    tmp_path: Path,
+) -> None:
+    route = tmp_path / "database_module_chains_route.py"
+    route.write_text(
+        "import AssetsManager.core.database as database\n"
+        "from AssetsManager.core import database as db\n"
+        "\n"
+        "def handle_request():\n"
+        "    first = database.DatabaseManager.current\n"
+        "    second = db.DatabaseManager.current\n"
+        "    return AssetsManager.core.database.DatabaseManager.current\n",
+        encoding="utf-8",
+    )
+
+    assert _database_manager_current_violations([route]) == [
+        f"{route}:5:12 handle_request reads DatabaseManager.current",
+        f"{route}:6:13 handle_request reads DatabaseManager.current",
+        f"{route}:7:11 handle_request reads DatabaseManager.current",
+    ]
+
+
+def test_qualified_attribute_reads_preserves_each_occurrence_location(tmp_path: Path) -> None:
+    route = tmp_path / "duplicate_database_manager_current_reads_route.py"
+    route.write_text(
+        "def handle_request():\n"
+        "    first = DatabaseManager.current\n"
+        "    second = DatabaseManager.current\n"
+        "    return first, second\n",
+        encoding="utf-8",
+    )
+
+    occurrences = _qualified_attribute_reads(route)
+
+    assert [(chain, lineno, col_offset) for _, _, _, chain, lineno, col_offset in occurrences] == [
+        ("DatabaseManager.current", 2, 12),
+        ("DatabaseManager.current", 3, 13),
+    ]
+
+
+def test_qualified_attribute_reads_ignores_unrelated_current_attribute(tmp_path: Path) -> None:
+    route = tmp_path / "ordinary_current_route.py"
+    route.write_text(
+        "def handle_request():\n"
+        "    return Other.current\n",
+        encoding="utf-8",
+    )
+
+    assert _database_manager_current_violations([route]) == []
+
+
+def test_future_public_dto_modules_do_not_import_qt() -> None:
+    violations = _public_dto_qt_import_violations(_public_dto_files())
+    assert not violations, "Public DTO modules must not depend on Qt:\n" + "\n".join(violations)
+
+
+def test_public_dto_qt_gate_detects_a_synthetic_named_dto_module(tmp_path: Path) -> None:
+    dto = tmp_path / "transport_dto.py"
+    dto.write_text("from PySide6.QtCore import QObject\n", encoding="utf-8")
+
+    discovered = _public_dto_files(tmp_path)
+
+    assert discovered == [dto]
+    assert _public_dto_qt_import_violations(discovered) == [
+        f"{dto} imports PySide6.QtCore"
+    ]
 
 
 def test_startup_window_tracks_theme_and_language_connection_handles() -> None:

@@ -46,58 +46,61 @@ class PluginCard(QFrame):
         self._enabled = enabled
         self._state = state
         self._selected = False
+        self._name = name
+        self._version = version
+        self._description = description
 
-        t = themes.get()
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedHeight(scaled_px(72))
-        self._update_style(t)
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(scaled_px(12), scaled_px(8), scaled_px(12), scaled_px(8))
-        layout.setSpacing(scaled_px(12))
+        self._layout = QHBoxLayout(self)
 
         # Status indicator (colored dot)
         self._status_dot = QLabel()
-        self._status_dot.setFixedSize(scaled_px(10), scaled_px(10))
-        self._update_dot()
-        layout.addWidget(self._status_dot, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._layout.addWidget(self._status_dot, 0, Qt.AlignmentFlag.AlignVCenter)
 
         # Plugin info (name + description)
-        info_layout = QVBoxLayout()
-        info_layout.setSpacing(2)
+        self._info_layout = QVBoxLayout()
 
-        name_label = QLabel(name)
-        name_label.setStyleSheet(
-            f"font-size: {scaled_pt(13)}px; font-weight: bold; color: {t['heading']}; background: transparent; border: none;"
-        )
-        info_layout.addWidget(name_label)
+        self._name_label = QLabel(name)
+        self._info_layout.addWidget(self._name_label)
 
         desc_text = description[:60] + ("..." if len(description) > 60 else "") if description else plugin_id
-        desc_label = QLabel(desc_text)
-        desc_label.setStyleSheet(
-            f"font-size: {scaled_pt(11)}px; color: {t['muted']}; background: transparent; border: none;"
-        )
-        info_layout.addWidget(desc_label)
+        self._desc_label = QLabel(desc_text)
+        self._info_layout.addWidget(self._desc_label)
 
-        layout.addLayout(info_layout, 1)
+        self._layout.addLayout(self._info_layout, 1)
 
         # Version badge
-        ver_label = QLabel(f"v{version}" if version else "")
-        ver_label.setStyleSheet(
-            f"font-size: {scaled_pt(10)}px; color: {t['muted']}; "
-            f"background: {t['header']}; border: 1px solid {t['border']}; "
-            f"border-radius: {scaled_px(3)}px; padding: {scaled_px(2)}px {scaled_px(6)}px;"
-        )
-        layout.addWidget(ver_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._version_label = QLabel(f"v{version}" if version else "")
+        self._layout.addWidget(self._version_label, 0, Qt.AlignmentFlag.AlignVCenter)
 
         # Toggle button
         self._toggle = QToolButton()
         self._toggle.setCheckable(True)
         self._toggle.setChecked(enabled)
-        self._toggle.setFixedSize(scaled_px(44), scaled_px(24))
         self._toggle.toggled.connect(self._on_toggle)
+        self._layout.addWidget(self._toggle, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.refresh_presentation()
+
+    def refresh_presentation(self):
+        t = themes.get()
+        self.setFixedHeight(scaled_px(72))
+        self._layout.setContentsMargins(scaled_px(12), scaled_px(8), scaled_px(12), scaled_px(8))
+        self._layout.setSpacing(scaled_px(12))
+        self._info_layout.setSpacing(scaled_px(2))
+        self._status_dot.setFixedSize(scaled_px(10), scaled_px(10))
+        self._name_label.setStyleSheet(
+            f"font-size: {scaled_pt(13)}px; font-weight: bold; color: {t['heading']}; background: transparent; border: none;")
+        self._desc_label.setStyleSheet(
+            f"font-size: {scaled_pt(11)}px; color: {t['muted']}; background: transparent; border: none;")
+        self._version_label.setStyleSheet(
+            f"font-size: {scaled_pt(10)}px; color: {t['muted']}; background: {t['header']}; "
+            f"border: 1px solid {t['border']}; border-radius: {scaled_px(3)}px; "
+            f"padding: {scaled_px(2)}px {scaled_px(6)}px;")
+        self._toggle.setFixedSize(scaled_px(44), scaled_px(24))
+        self._update_dot()
+        self._update_style(t)
         self._update_toggle_style(t)
-        layout.addWidget(self._toggle, 0, Qt.AlignmentFlag.AlignVCenter)
 
     def _update_dot(self):
         t = themes.get()
@@ -161,81 +164,74 @@ class PluginDetailPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        t = themes.get()
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16))
-        layout.setSpacing(scaled_px(12))
+        self._layout = QVBoxLayout(self)
 
         # Plugin name header
         self._name_label = QLabel(tr("plugins.select_hint", default="Select a plugin"))
-        self._name_label.setStyleSheet(
-            f"font-size: {scaled_pt(18)}px; font-weight: bold; color: {t['heading']};"
-        )
         self._name_label.setWordWrap(True)
-        layout.addWidget(self._name_label)
+        self._layout.addWidget(self._name_label)
 
         # Status badge
         self._status_badge = QLabel("")
-        self._status_badge.setStyleSheet(
-            f"font-size: {scaled_pt(11)}px; font-weight: bold; "
-            f"border-radius: {scaled_px(3)}px; padding: {scaled_px(2)}px {scaled_px(8)}px;"
-        )
-        layout.addWidget(self._status_badge)
+        self._layout.addWidget(self._status_badge)
 
         # Separator
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color: {t['border']};")
-        layout.addWidget(sep)
+        self._separator = sep
+        self._layout.addWidget(sep)
 
         # Info fields
         self._fields_widget = QWidget()
         self._fields_layout = QVBoxLayout(self._fields_widget)
         self._fields_layout.setContentsMargins(0, 0, 0, 0)
-        self._fields_layout.setSpacing(scaled_px(6))
-        layout.addWidget(self._fields_widget)
+        self._layout.addWidget(self._fields_widget)
 
         # Description
         self._desc_label = QLabel("")
         self._desc_label.setWordWrap(True)
-        self._desc_label.setStyleSheet(
-            f"font-size: {scaled_pt(12)}px; color: {t['body']}; padding: {scaled_px(4)}px 0;"
-        )
-        layout.addWidget(self._desc_label)
+        self._layout.addWidget(self._desc_label)
 
         # Diagnostics (error messages)
         self._diag_label = QLabel("")
         self._diag_label.setWordWrap(True)
-        self._diag_label.setStyleSheet(
-            f"font-size: {scaled_pt(11)}px; color: {t.get('danger', '#e74c3c')}; "
-            f"background: {t.get('danger', '#e74c3c')}15; border: 1px solid {t.get('danger', '#e74c3c')}30; "
-            f"border-radius: {scaled_px(4)}px; padding: {scaled_px(8)}px;"
-        )
         self._diag_label.setVisible(False)
-        layout.addWidget(self._diag_label)
+        self._layout.addWidget(self._diag_label)
 
-        layout.addStretch()
+        self._layout.addStretch()
 
         # Action buttons
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(scaled_px(8))
+        self._button_layout = QHBoxLayout()
 
         self._toggle_btn = QPushButton(tr("plugins.toggle", default="Toggle Enabled"))
+        self._toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._toggle_btn.clicked.connect(self._on_toggle)
+        self._button_layout.addWidget(self._toggle_btn)
+
+        self._layout.addLayout(self._button_layout)
+
+        self._current_pid = None
+        self._current_enabled = False
+        self.refresh_presentation()
+
+    def refresh_presentation(self):
+        t = themes.get()
+        self._layout.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16))
+        self._layout.setSpacing(scaled_px(12))
+        self._fields_layout.setSpacing(scaled_px(6))
+        self._button_layout.setSpacing(scaled_px(8))
+        self._name_label.setStyleSheet(f"font-size: {scaled_pt(18)}px; font-weight: bold; color: {t['heading']};")
+        self._separator.setStyleSheet(f"color: {t['border']};")
+        self._desc_label.setStyleSheet(f"font-size: {scaled_pt(12)}px; color: {t['body']}; padding: {scaled_px(4)}px 0;")
+        danger = t.get("danger", "#e74c3c")
+        self._diag_label.setStyleSheet(
+            f"font-size: {scaled_pt(11)}px; color: {danger}; background: {danger}15; "
+            f"border: 1px solid {danger}30; border-radius: {scaled_px(4)}px; padding: {scaled_px(8)}px;")
         self._toggle_btn.setStyleSheet(
             f"QPushButton {{ background: {t['accent']}; color: {t.get('on_accent', 'white')}; border: none; "
             f"padding: {scaled_px(8)}px {scaled_px(16)}px; border-radius: {scaled_px(4)}px; "
             f"font-size: {scaled_pt(12)}px; font-weight: bold; }}"
-            f"QPushButton:hover {{ background: {t['accent']}cc; }}"
-        )
-        self._toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._toggle_btn.clicked.connect(self._on_toggle)
-        btn_layout.addWidget(self._toggle_btn)
-
-        layout.addLayout(btn_layout)
-
-        self._current_pid = None
-        self._current_enabled = False
+            f"QPushButton:hover {{ background: {t['accent']}cc; }}")
 
     def show_plugin(self, plugin_id: str, record):
         """Display plugin details."""
@@ -352,70 +348,101 @@ class PluginDetailPanel(QWidget):
 class PluginManagerDialog(TabbedDialog):
     """Modern plugin manager with card-based layout."""
 
+    supports_runtime_refresh = True
+
     def __init__(self, parent: QWidget | None = None):
         self._manager = PluginManagerService.get()
         self._cards: dict[str, PluginCard] = {}
+        self._selected_plugin_id: str | None = None
         super().__init__(parent, title=tr("plugins.title", default="Plugin Manager"),
                          min_size=(scaled_px(780), scaled_px(500)))
         self.resize(scaled_px(900), scaled_px(620))
         self._load_plugins()
 
     def _build_ui(self):
-        t = self._t
         self.setStyleSheet(self._dialog_qss())
 
-        main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        self._main_layout = QHBoxLayout(self)
+        self._main_layout.setContentsMargins(0, 0, 0, 0)
+        self._main_layout.setSpacing(0)
 
         # ── Left panel (plugin list) ─────────────────────────
-        left_panel = QWidget()
-        left_panel.setFixedWidth(scaled_px(360))
-        left_panel.setStyleSheet(f"background: {t['header']};")
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(12))
-        left_layout.setSpacing(scaled_px(10))
+        self._left_panel = QWidget()
+        self._left_layout = QVBoxLayout(self._left_panel)
 
         # Title + count
         title_row = QHBoxLayout()
-        title = QLabel(tr("plugins.title", default="Plugin Manager"))
-        title.setStyleSheet(
-            f"font-size: {scaled_pt(16)}px; font-weight: bold; color: {t['heading']}; background: transparent;"
-        )
-        title_row.addWidget(title)
+        self._title_label = QLabel(tr("plugins.title", default="Plugin Manager"))
+        title_row.addWidget(self._title_label)
 
         self._count_label = QLabel("")
-        self._count_label.setStyleSheet(
-            f"font-size: {scaled_pt(11)}px; color: {t['muted']}; background: transparent;"
-        )
         title_row.addWidget(self._count_label)
         title_row.addStretch()
-        left_layout.addLayout(title_row)
+        self._left_layout.addLayout(title_row)
 
         # Search
         self._search = QLineEdit()
         self._search.setPlaceholderText(tr("plugins.search", default="Search plugins..."))
         self._search.textChanged.connect(self._on_filter)
-        left_layout.addWidget(self._search)
+        self._left_layout.addWidget(self._search)
 
         # Plugin list scroll area
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._list_scroll = QScrollArea()
+        self._list_scroll.setWidgetResizable(True)
+        self._list_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._list_widget = QWidget()
         self._list_layout = QVBoxLayout(self._list_widget)
         self._list_layout.setContentsMargins(0, 0, 0, 0)
         self._list_layout.setSpacing(scaled_px(6))
         self._list_layout.addStretch()
-        scroll.setWidget(self._list_widget)
-        left_layout.addWidget(scroll, 1)
+        self._list_scroll.setWidget(self._list_widget)
+        self._left_layout.addWidget(self._list_scroll, 1)
 
-        main_layout.addWidget(left_panel)
+        self._main_layout.addWidget(self._left_panel)
 
         # ── Right panel (detail) ─────────────────────────────
         self._detail = PluginDetailPanel()
         self._detail.toggle_requested.connect(self._on_toggle_plugin)
-        main_layout.addWidget(self._detail, 1)
+        self._main_layout.addWidget(self._detail, 1)
+        self._refresh_presentation()
+
+    def _on_theme_changed(self, name):
+        super()._on_theme_changed(name)
+        self._refresh_presentation()
+
+    def retranslate_ui(self):
+        self.setWindowTitle(tr("plugins.title", default="Plugin Manager"))
+        self._title_label.setText(tr("plugins.title", default="Plugin Manager"))
+        self._search.setPlaceholderText(tr("plugins.search", default="Search plugins..."))
+        self._refresh_selected_detail()
+
+    def refresh_scaled_geometry(self, _scale: float | None = None):
+        self._refresh_presentation()
+
+    def _refresh_presentation(self):
+        t = themes.get()
+        self._left_panel.setFixedWidth(scaled_px(360))
+        self._left_panel.setStyleSheet(f"background: {t['header']};")
+        self._left_layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(12))
+        self._left_layout.setSpacing(scaled_px(10))
+        self._list_layout.setSpacing(scaled_px(6))
+        self._title_label.setStyleSheet(
+            f"font-size: {scaled_pt(16)}px; font-weight: bold; color: {t['heading']}; background: transparent;")
+        self._count_label.setStyleSheet(
+            f"font-size: {scaled_pt(11)}px; color: {t['muted']}; background: transparent;")
+        for card in self._cards.values():
+            card.refresh_presentation()
+        self._detail.refresh_presentation()
+        self._refresh_selected_detail()
+
+    def _refresh_selected_detail(self):
+        if self._selected_plugin_id is None:
+            self._detail._name_label.setText(tr("plugins.select_hint", default="Select a plugin"))
+            self._detail._update_toggle_text()
+            return
+        record = self._manager.plugin_record(self._selected_plugin_id)
+        if record:
+            self._detail.show_plugin(self._selected_plugin_id, record)
 
     def _load_plugins(self):
         records = self._manager._records
@@ -465,6 +492,7 @@ class PluginManagerDialog(TabbedDialog):
         self._select_plugin(plugin_id)
 
     def _select_plugin(self, plugin_id: str):
+        self._selected_plugin_id = plugin_id
         for pid, card in self._cards.items():
             card.set_selected(pid == plugin_id)
 

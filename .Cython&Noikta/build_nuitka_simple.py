@@ -68,7 +68,7 @@ def build():
         f"--include-data-files={root / 'AssetsManager' / 'i18n' / 'zh.json'}=AssetsManager/i18n/zh.json",
         f"--include-data-files={root / 'AssetsManager' / 'i18n' / 'ja.json'}=AssetsManager/i18n/ja.json",
         f"--include-data-dir={root / 'AssetsManager' / 'themes'}=AssetsManager/themes",
-        f"--include-data-dir={root / 'AssetsManager' / 'lan' / 'static'}=AssetsManager/lan/static",
+        f"--include-data-dir={root / 'webui' / 'dist'}=webui/dist",
         
         # Include binary files
         f"--include-data-files={root / 'cloudflared-windows-amd64.exe'}=cloudflared-windows-amd64.exe",

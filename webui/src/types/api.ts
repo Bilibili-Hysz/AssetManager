@@ -13,30 +13,61 @@ export interface ServerInfo {
     total_size: number;
     total_size_fmt: string;
   };
+  principal?: SessionPrincipal;
+  capabilities?: Capabilities;
 }
 
 // ============ Auth ============
-export interface LoginResponse {
-  token: string;
-  user?: User;
+export interface Capabilities {
+  browse: boolean;
+  preview: boolean;
+  download: boolean;
+  upload: boolean;
+  manage_links: boolean;
+  manage_users: boolean;
+  settings: boolean;
+  realtime: boolean;
 }
 
-export interface RegisterResponse {
-  token: string;
-  user: User;
+export interface RuntimeCursor {
+  epoch: string;
+  revision: number;
 }
 
-export interface User {
+export interface UserResponse {
   id: number;
   username: string;
   role: 'admin' | 'user';
   active: boolean;
-  created_at: string;
-  last_login?: string;
+  created_at: number;
+}
+
+export type User = UserResponse;
+
+export interface SessionPrincipal {
+  kind: 'user' | 'password' | 'access_key' | 'local_ui' | 'guest' | 'share';
+  authenticated: boolean;
+  role: 'admin' | 'user' | 'guest';
+  display_name: string;
+  capabilities: Capabilities;
+  user_profile?: UserResponse;
+}
+
+export interface LoginResponse {
+  token: string;
+  user?: UserResponse;
+  principal?: SessionPrincipal;
+}
+
+export interface RegisterResponse {
+  token: string;
+  user: UserResponse;
+  principal?: SessionPrincipal;
 }
 
 export interface MeResponse {
-  user: User;
+  principal: SessionPrincipal;
+  user?: UserResponse;
 }
 
 // ============ Files / Projects ============
@@ -49,6 +80,16 @@ export interface ProjectItem {
   modified: number;
   extension: string;
   category: string;
+  thumbnail_url?: string;
+  tags?: string[];
+  view_only?: boolean;
+  downloadable?: boolean;
+  password_protected?: boolean;
+}
+
+export interface PreviewPoolItem {
+  name: string;
+  path: string;
   thumbnail_url?: string;
 }
 
@@ -106,8 +147,8 @@ export interface ProjectDetail {
 export interface TreeItem {
   name: string;
   path: string;
-  type: 'file' | 'dir';
-  is_leaf?: boolean;
+  type: 'dir';
+  is_leaf: boolean;
   children?: TreeItem[];
 }
 
@@ -127,6 +168,7 @@ export interface PopularTag {
 
 export interface HomeData {
   recent_projects: ProjectItem[];
+  preview_pool?: PreviewPoolItem[];
   popular_tags: PopularTag[];
   stats: {
     total_projects: number;
@@ -150,11 +192,13 @@ export interface SearchResponse {
   count: number;
 }
 
-export type BrowsableItem = SearchResult & Partial<Pick<ProjectItem, 'size' | 'size_fmt' | 'modified'>>;
+export type BrowsableItem = SearchResult & Partial<Pick<ProjectItem, 'size' | 'size_fmt' | 'modified' | 'tags' | 'view_only' | 'downloadable' | 'password_protected'>> & {
+  is_project?: boolean;
+};
 
 // ============ Tags ============
 export interface Tag {
-  id: number;
+  id: number | null;
   name: string;
   count: number;
 }
@@ -226,22 +270,24 @@ export interface ShareInfoResponse {
 export interface StatsResponse {
   connections: number;
   requests: number;
-  bytes_transferred: number;
-  bytes_transferred_fmt: string;
+  bytes_transferred: number | null;
+  bytes_transferred_fmt: string | null;
   uptime: number;
 }
 
 // ============ Users ============
 export interface UsersResponse {
-  users: User[];
+  users: UserResponse[];
 }
 
-export interface InviteCode {
+export interface InviteResponse {
   code: string;
-  created_at: string;
-  used_by?: string;
+  created_at: number;
+  used_by: string | null;
   revoked: boolean;
 }
+
+export type InviteCode = InviteResponse;
 
 export interface InvitesResponse {
   invites: InviteCode[];

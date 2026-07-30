@@ -48,7 +48,7 @@ class ShareManager:
               rate_limit: int = 1000, blocked_ips: list[str] | None = None,
               blur_tags: list[str] | None = None,
               ssl_cert: str | None = None, ssl_key: str | None = None,
-              lib_root: str, thumb_dir: str, db_conn) -> dict:
+              runtime=None) -> dict:
         """Start the LAN server. Returns status dict."""
         if self._state["running"]:
             return self.status()
@@ -58,19 +58,15 @@ class ShareManager:
             _log.error("aiohttp not installed")
             return self.status()
 
-        self._server = lan.LanServer(
-            library_root=lib_root,
-            thumbnail_dir=thumb_dir,
-            db_conn=db_conn,
-            share_name=share_name,
-            password=password,
-            access_key=access_key,
-            rate_limit=rate_limit,
-            blocked_ips=blocked_ips,
-            blur_tags=blur_tags,
-            ssl_cert=ssl_cert,
-            ssl_key=ssl_key,
+        options = dict(
+            share_name=share_name, password=password, access_key=access_key,
+            rate_limit=rate_limit, blocked_ips=blocked_ips, blur_tags=blur_tags,
+            ssl_cert=ssl_cert, ssl_key=ssl_key,
         )
+        if runtime is not None:
+            self._server = lan.LanServer(runtime=runtime, **options)
+        else:
+            raise TypeError("ShareManager.start requires runtime")
         self._server.start(port=port, bind=bind)
 
         from AssetsManager.lan.server import get_local_ip

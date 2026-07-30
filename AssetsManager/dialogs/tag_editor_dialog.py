@@ -16,6 +16,8 @@ tr = i18n.tr
 
 
 class TagEditorDialog(TabbedDialog):
+    supports_runtime_refresh = True
+
     def __init__(self, store: TagStoreProtocol, file_path: str, parent=None):
         self._store = store
         self._file_path = file_path
@@ -26,11 +28,15 @@ class TagEditorDialog(TabbedDialog):
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
+        self._root_layout = layout
+        self._root_layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
+        self._root_layout.setSpacing(scaled_px(10))
         self.setStyleSheet(self._dialog_qss())
 
         # ── Current Tags ─────────────────────────────────────
 
-        current_grp = QGroupBox(tr("tageditor.current_tags"))
+        self._current_group = QGroupBox(tr("tageditor.current_tags"))
+        current_grp = self._current_group
         current_layout = QVBoxLayout(current_grp)
 
         self._current_flow = QWidget()
@@ -47,16 +53,17 @@ class TagEditorDialog(TabbedDialog):
         self._add_input.setPlaceholderText(tr("tageditor.placeholder"))
         self._add_input.returnPressed.connect(self._add_current_tag)
         add_row.addWidget(self._add_input)
-        add_btn = self.make_secondary_btn(tr("tageditor.add"), self._add_current_tag)
-        add_btn.setToolTip(tr("tageditor.add_tooltip"))
-        add_row.addWidget(add_btn)
+        self._add_btn = self.make_secondary_btn(tr("tageditor.add"), self._add_current_tag)
+        self._add_btn.setToolTip(tr("tageditor.add_tooltip"))
+        add_row.addWidget(self._add_btn)
         current_layout.addLayout(add_row)
 
         layout.addWidget(current_grp)
 
         # ── Suggestions (all tags in library) ─────────────────
 
-        sug_grp = QGroupBox(tr("tageditor.all_tags"))
+        self._suggestions_group = QGroupBox(tr("tageditor.all_tags"))
+        sug_grp = self._suggestions_group
         sug_layout = QVBoxLayout(sug_grp)
 
         self._sug_filter = QLineEdit()
@@ -75,7 +82,8 @@ class TagEditorDialog(TabbedDialog):
 
         # ── Danger zone ───────────────────────────────────────
 
-        danger = QGroupBox(tr("tageditor.maintenance"))
+        self._maintenance_group = QGroupBox(tr("tageditor.maintenance"))
+        danger = self._maintenance_group
         danger_layout = QHBoxLayout(danger)
         self._del_unused_btn = self.make_secondary_btn(tr("tageditor.delete_unused"), self._delete_unused)
         self._del_unused_btn.setToolTip(tr("tageditor.delete_unused_tooltip"))
@@ -92,12 +100,39 @@ class TagEditorDialog(TabbedDialog):
 
         bottom = QHBoxLayout()
         bottom.addStretch()
-        close_btn = self.make_primary_btn(tr("tageditor.done"), self.accept)
-        bottom.addWidget(close_btn)
+        self._done_btn = self.make_primary_btn(tr("tageditor.done"), self.accept)
+        bottom.addWidget(self._done_btn)
         layout.addLayout(bottom)
 
         self._refresh_current()
         self._refresh_suggestions()
+
+    def _on_theme_changed(self, name):
+        super()._on_theme_changed(name)
+        self._refresh_current()
+
+    def retranslate_ui(self):
+        file_name = Path(self._file_path).name if self._file_path else "Unknown"
+        self.setWindowTitle(tr("tageditor.title", name=file_name))
+        self._current_group.setTitle(tr("tageditor.current_tags"))
+        self._add_input.setPlaceholderText(tr("tageditor.placeholder"))
+        self._add_btn.setText(tr("tageditor.add"))
+        self._add_btn.setToolTip(tr("tageditor.add_tooltip"))
+        self._suggestions_group.setTitle(tr("tageditor.all_tags"))
+        self._sug_filter.setPlaceholderText(tr("tageditor.filter"))
+        self._sug_filter.setToolTip(tr("tageditor.filter_tooltip"))
+        self._maintenance_group.setTitle(tr("tageditor.maintenance"))
+        self._del_unused_btn.setText(tr("tageditor.delete_unused"))
+        self._del_unused_btn.setToolTip(tr("tageditor.delete_unused_tooltip"))
+        self._done_btn.setText(tr("tageditor.done"))
+
+    def refresh_scaled_geometry(self, _scale: float | None = None):
+        self._root_layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
+        self._root_layout.setSpacing(scaled_px(10))
+        self._current_flow_layout.setSpacing(scaled_px(4))
+        self._sug_list.setMaximumHeight(scaled_px(160))
+        self._del_progress.setFixedHeight(scaled_px(4))
+        self._refresh_current()
 
     def was_modified(self) -> bool:
         return self._modified

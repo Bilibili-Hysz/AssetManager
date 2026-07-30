@@ -19,8 +19,6 @@ def _create_bundle(bundle: Path) -> None:
         '<script src="/assets/app.js"></script>', encoding="utf-8"
     )
     (internal / "webui" / "dist" / "assets" / "app.js").touch()
-    (internal / "AssetsManager" / "lan" / "static").mkdir(parents=True)
-    (internal / "AssetsManager" / "lan" / "static" / "index.html").touch()
     (internal / "AssetsManager" / "i18n").mkdir(parents=True)
     (internal / "AssetsManager" / "i18n" / "en.json").touch()
     (internal / "Assets" / "Themes").mkdir(parents=True)
@@ -29,7 +27,7 @@ def _create_bundle(bundle: Path) -> None:
     (internal / "Plugins").mkdir(parents=True)
 
 
-def test_checker_accepts_bundle_with_expected_resources(tmp_path):
+def test_checker_accepts_spa_only_bundle_without_legacy_static_index(tmp_path):
     bundle = tmp_path / "AssetManager"
     _create_bundle(bundle)
 

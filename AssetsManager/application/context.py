@@ -215,15 +215,28 @@ class LibrarySession:
             return
         self._close_direct()
 
-    def _close_direct(self) -> None:
-        """Reject new operations and drain existing ones without service locks."""
+    def _begin_close(self) -> None:
+        """Mark closed so new operation leases are rejected."""
         if self.has_current_thread_operation:
             raise RuntimeError("Cannot close a LibrarySession from an active operation")
         with self._operation_condition:
             object.__setattr__(self, "_closed", True)
+
+    def _finish_close(self) -> None:
+        """Drain existing leases and clear owned caches once."""
+        if self.has_current_thread_operation:
+            raise RuntimeError("Cannot close a LibrarySession from an active operation")
+        with self._operation_condition:
             self._operation_condition.wait_for(lambda: self._active_operations == 0)
             if self._cache_cleared:
                 return
             object.__setattr__(self, "_cache_cleared", True)
         if hasattr(self.context.tag_store, "clear_cache"):
             self.context.tag_store.clear_cache()
+
+    def _close_direct(self) -> None:
+        """Reject new operations and drain existing ones without service locks."""
+        if self.has_current_thread_operation:
+            raise RuntimeError("Cannot close a LibrarySession from an active operation")
+        self._begin_close()
+        self._finish_close()

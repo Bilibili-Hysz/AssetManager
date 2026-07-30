@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 from aiohttp import web
 
-from AssetsManager.application import DirectoryListOptions
+from AssetsManager.application import DirectoryListOptions, ProjectDepthConfig
 from AssetsManager.core.format_utils import format_size
 from AssetsManager.lan.routes._helpers import get_lan, get_asset_service, get_metadata_service, require_permission, validate_path
 
@@ -34,6 +34,8 @@ async def handle_files(request):
             return web.json_response({"error": "Not a directory"}, status=status)
 
         settings = lan.current_settings
+        from AssetsManager.core.settings import AppSettings
+        depth_config = ProjectDepthConfig.from_dict(AppSettings.instance().get("sidebar_depth_cfg"))
         show_hidden = settings.get("show_hidden", False)
         include_types = settings.get("include_types", None)
         exclude_patterns = settings.get("exclude_patterns", [])
@@ -56,6 +58,9 @@ async def handle_files(request):
                     max_depth=max_depth,
                     current_depth=current_depth,
                     scan_summaries=scan_summaries,
+                    project_depth=depth_config.global_depth,
+                    branch_name=rel_path.strip("/").split("/", 1)[0] if rel_path.strip("/") else None,
+                    branch_depths=depth_config.branches,
                 ),
             )
 
@@ -84,6 +89,7 @@ async def handle_files(request):
                     "name": item.name, "path": item.path, "type": "dir",
                     "size": 0, "size_fmt": item.size_fmt,
                     "modified": item.modified, "extension": item.extension, "category": item.category,
+                    "is_project": item.is_project,
                     "thumbnail_url": thumb_url,
                 })
             else:
@@ -98,6 +104,7 @@ async def handle_files(request):
                     "name": item.name, "path": item.path, "type": "file",
                     "size": fs, "size_fmt": format_size(fs),
                     "modified": mtime, "extension": item.extension, "category": item.category,
+                    "is_project": False,
                     "thumbnail_url": thumb_url,
                 })
 

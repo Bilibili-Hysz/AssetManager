@@ -11,7 +11,9 @@ a library is opened and the LAN server is started.  They are created by
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from AssetsManager.application.asset_index_service import AssetIndexService
 from AssetsManager.application.asset_service import AssetService
@@ -32,6 +34,9 @@ from AssetsManager.core.plugins import PluginHostContext
 from AssetsManager.di import ServiceContainer
 
 _log = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from AssetsManager.application.runtime import LibraryRuntime
 
 
 @dataclass(frozen=True)
@@ -76,8 +81,11 @@ class ApplicationBootstrap:
         self._performance_recorder = performance_recorder
         self._plugin_host: PluginHostContext | None = None
         self._plugin_svc: PluginService | None = None
-        self._undo_services: dict[int, tuple[LibrarySession, UndoService]] = {}
+        self._runtimes: dict[int, "LibraryRuntime"] = {}
+        self._runtime_lock = threading.Lock()
+        self._runtime_creation: dict[int, threading.Event] = {}
         self._register_services()
+        self.library_service.add_session_closing_listener(self._close_runtime)
         self.library_service.add_session_close_listener(self._cleanup_session)
 
     # ── Service registration ─────────────────────────────────────
@@ -142,23 +150,64 @@ class ApplicationBootstrap:
 
     def for_library(self, session: LibrarySession) -> LibraryScopedServices:
         """Return a bundle of services scoped to a specific library session."""
+        return self.runtime_for(session).services
+
+    def runtime_for(self, session: LibrarySession) -> "LibraryRuntime":
+        """Return the one Runtime owned by this bootstrap for ``session``."""
         if not self.library_service.owns_live_session(session):
             raise ValueError(
                 "LibrarySession must be the live canonical session owned by this bootstrap"
             )
-        provider = session.connection_for
         key = id(session)
-        cached = self._undo_services.get(key)
-        if cached is None or cached[0] is not session:
-            cached = (
-                session,
-                UndoService(
-                    library_root=session.root_str,
-                    session=session,
-                    performance_recorder=self._performance_recorder,
-                ),
-            )
-            self._undo_services[key] = cached
+        from AssetsManager.application.runtime import LibraryRuntime
+        while True:
+            with self._runtime_lock:
+                cached = self._runtimes.get(key)
+                if cached is not None and cached.session is session:
+                    return cached
+                gate = self._runtime_creation.get(key)
+                if gate is None:
+                    gate = threading.Event()
+                    self._runtime_creation[key] = gate
+                    creator = True
+                else:
+                    creator = False
+            if creator:
+                break
+            gate.wait()
+
+        try:
+            runtime = LibraryRuntime(session=session, services=self._build_services(session))
+            with self._runtime_lock:
+                if (
+                    not self.library_service.owns_live_session(session)
+                    or session.is_closed
+                ):
+                    reject = True
+                    cached = None
+                else:
+                    reject = False
+                    cached = self._runtimes.get(key)
+                if not reject and (cached is None or cached.session is not session):
+                    self._runtimes[key] = runtime
+                    return runtime
+            if reject:
+                runtime.close()
+                raise ValueError(
+                    "LibrarySession was closed while its Runtime was being created"
+                )
+            runtime.close()
+            if cached is None:
+                raise RuntimeError("Runtime cache disappeared during creation")
+            return cached
+        finally:
+            with self._runtime_lock:
+                gate = self._runtime_creation.pop(key, None)
+                if gate is not None:
+                    gate.set()
+
+    def _build_services(self, session: LibrarySession) -> LibraryScopedServices:
+        provider = session.connection_for
         return LibraryScopedServices(
             session=session,
             asset_service=AssetService(
@@ -169,34 +218,52 @@ class ApplicationBootstrap:
             metadata_service=MetadataService(connection_provider=provider, session=session),
             tag_service=TagService(connection_provider=provider, session=session),
             project_service=ProjectService(connection_provider=provider, session=session),
-            thumbnail_service=self.container.resolve(ThumbnailService),
+            thumbnail_service=ThumbnailService(connection_provider=provider),
             search_service=SearchService(
                 performance_recorder=self._performance_recorder,
                 session_token=session.event_token,
+                connection_provider=provider,
             ),
             file_operation_service=FileOperationService(
                 session=session,
                 asset_index_service=self.container.resolve(AssetIndexService),
                 performance_recorder=self._performance_recorder,
             ),
-            undo_service=cached[1],
+            undo_service=UndoService(
+                library_root=session.root_str,
+                session=session,
+                performance_recorder=self._performance_recorder,
+            ),
             plugin_service=self.container.resolve(PluginService),
             asset_index_service=self.container.resolve(AssetIndexService),
             performance_recorder=self._performance_recorder,
         )
 
+    def _close_runtime(self, session: LibrarySession) -> None:
+        with self._runtime_lock:
+            runtime = self._runtimes.get(id(session))
+        if runtime is not None and runtime.session is session:
+            runtime.mark_closing()
+
     def _cleanup_session(self, session: LibrarySession) -> None:
-        cached = self._undo_services.get(id(session))
-        if cached is not None and cached[0] is session:
-            self._undo_services.pop(id(session))
-            cached[1].cleanup()
+        with self._runtime_lock:
+            runtime = self._runtimes.get(id(session))
+        if runtime is not None and runtime.session is session:
+            runtime.close()
+            with self._runtime_lock:
+                if self._runtimes.get(id(session)) is runtime:
+                    self._runtimes.pop(id(session), None)
 
     def cleanup_library(self, library_root: str) -> None:
         """Clean up undo services for closed sessions at a legacy call site."""
-        for session, service in tuple(self._undo_services.values()):
+        for session, runtime in tuple(
+            (runtime.session, runtime) for runtime in self._runtimes.values()
+        ):
             if session.root_str == library_root and session.is_closed:
-                self._undo_services.pop(id(session), None)
-                service.cleanup()
+                runtime.close()
+                with self._runtime_lock:
+                    if self._runtimes.get(id(session)) is runtime:
+                        self._runtimes.pop(id(session), None)
 
     @property
     def library_service(self) -> LibraryService:

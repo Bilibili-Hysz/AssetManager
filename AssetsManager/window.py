@@ -656,6 +656,10 @@ class MainWindow(LanSharingMixin, QMainWindow):
             event.ignore()
             return
         # True exit: clean up everything
-        self._shutdown_resources()
-        super().closeEvent(event)
-        self._library_service().close()
+        try:
+            self._shutdown_resources()
+        finally:
+            try:
+                super().closeEvent(event)
+            finally:
+                self._library_service().close()

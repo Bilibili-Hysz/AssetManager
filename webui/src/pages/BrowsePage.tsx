@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Download, Share2, Copy, Eye } from 'lucide-react';
+import { Download, Share2, Copy, Eye, Link2, X } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { Header } from '../components/layout/Header';
 import { Sidebar } from '../components/layout/Sidebar';
@@ -13,7 +13,7 @@ import { ContextMenu } from '../components/ui/ContextMenu';
 import { Skeleton } from '../components/ui/Skeleton';
 import { ShareDialog } from '../components/shares/ShareDialog';
 import { useAuth } from '../hooks/useAuth';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useInvalidation } from '../hooks/useInvalidation';
 import { useProjects } from '../hooks/useProjects';
 import { useThumbnailCache } from '../hooks/useThumbnailCache';
 import { useMediaQuery } from '../hooks/useMediaQuery';
@@ -22,7 +22,7 @@ import { createMetadataApi } from '../api/metadata';
 import { useI18n } from '../hooks/useI18n';
 import { useToast } from '../components/ui/Toast';
 import { useDownloadProgress } from '../components/ui/DownloadProgress';
-import type { BrowsableItem, Metadata } from '../types/api';
+import type { BrowsableItem, Metadata, ProjectDetail } from '../types/api';
 
 export default function BrowsePage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -30,7 +30,7 @@ export default function BrowsePage() {
   const initialPath = searchParams.get('path') || '';
   const { data, isLoading, error, currentPath, sort, navigateTo, setSort, refresh, listingGeneration, hydrateDirectories } = useProjects(initialPath);
   const { loadThumbnails, getThumbnail, revision: thumbnailRevision } = useThumbnailCache();
-  const { api, user } = useAuth();
+  const { api } = useAuth();
   const filesApi = useMemo(() => createFilesApi(api), [api]);
   const metaApi = useMemo(() => createMetadataApi(api), [api]);
   const { t } = useI18n();
@@ -47,11 +47,13 @@ export default function BrowsePage() {
   const [sharePaths, setSharePaths] = useState<string[] | null>(null);
   const [shareDialogTrigger, setShareDialogTrigger] = useState<HTMLElement | null | undefined>(undefined);
   const [selectedMetadata, setSelectedMetadata] = useState<Metadata | null>(null);
+  const [selectedProjectDetail, setSelectedProjectDetail] = useState<ProjectDetail | null>(null);
   const [selectedItem, setSelectedItem] = useState<BrowsableItem | null>(null);
   const [metadataLoading, setMetadataLoading] = useState(false);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [tagResults, setTagResults] = useState<BrowsableItem[] | null>(null);
   const [isDownloadInFlight, setIsDownloadInFlight] = useState(false);
+  const [tagLoading, setTagLoading] = useState(false);
 
   // ── Sidebar / Info panel state ──
   const [sidebarOpen, setSidebarOpen] = useState(() => {
@@ -60,12 +62,37 @@ export default function BrowsePage() {
   const [infoOpen, setInfoOpen] = useState(() => {
     try { return localStorage.getItem('am_info_open') !== 'false'; } catch { return true; }
   });
+  const desktopPanelsRef = useRef({ sidebar: sidebarOpen, info: infoOpen });
+  const wasMobileRef = useRef(false);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     try { return parseInt(localStorage.getItem('am_sidebar_w') || '260', 10); } catch { return 260; }
   });
   const [infoWidth, setInfoWidth] = useState(() => {
     try { return parseInt(localStorage.getItem('am_info_w') || '320', 10); } catch { return 320; }
   });
+
+  useEffect(() => {
+    if (isMobile) {
+      if (!wasMobileRef.current) {
+        desktopPanelsRef.current = { sidebar: sidebarOpen, info: infoOpen };
+        setSidebarOpen(false);
+        setInfoOpen(false);
+        try {
+          localStorage.setItem('am_sidebar_open', '0');
+          localStorage.setItem('am_info_open', '0');
+        } catch {}
+      }
+    } else if (wasMobileRef.current) {
+      const desktopPanels = desktopPanelsRef.current;
+      setSidebarOpen(desktopPanels.sidebar);
+      setInfoOpen(desktopPanels.info);
+      try {
+        localStorage.setItem('am_sidebar_open', desktopPanels.sidebar ? '1' : '0');
+        localStorage.setItem('am_info_open', desktopPanels.info ? '1' : '0');
+      } catch {}
+    }
+    wasMobileRef.current = isMobile;
+  }, [isMobile]);
 
   // Persist widths
   useEffect(() => { try { localStorage.setItem('am_sidebar_w', String(sidebarWidth)); } catch {} }, [sidebarWidth]);
@@ -81,6 +108,7 @@ export default function BrowsePage() {
   const rafId = useRef<number | null>(null);
   const tagSearchGeneration = useRef(0);
   const downloadInFlight = useRef(false);
+  const tagSearchAbort = useRef<AbortController | null>(null);
   const metadataGeneration = useRef(0);
   const metadataAbort = useRef<AbortController | null>(null);
   const summaryAbort = useRef<AbortController | null>(null);
@@ -90,6 +118,7 @@ export default function BrowsePage() {
 
   useEffect(() => () => {
     tagSearchGeneration.current += 1;
+    tagSearchAbort.current?.abort();
     metadataGeneration.current += 1;
     metadataAbort.current?.abort();
     summaryAbort.current?.abort();
@@ -125,18 +154,9 @@ export default function BrowsePage() {
     });
   }, [hydrateDirectories, listingGeneration]);
 
-  // WebSocket real-time updates
-  useWebSocket({
-    onEvent: (type) => {
-      if (type === 'file_changed' || type === 'file_added' || type === 'file_removed') {
-        refresh();
-      }
-    },
-    enabled: Boolean(user),
-  });
-
   useEffect(() => {
     const requestedPath = searchParams.get('path') || '';
+    if (searchParams.get('tag')) return;
     if (requestedPath !== currentPath) {
       tagSearchGeneration.current += 1;
       metadataGeneration.current += 1;
@@ -194,16 +214,20 @@ export default function BrowsePage() {
     };
   }, []);
 
-  // ── Handlers ──
   const handleNavigate = useCallback((path: string) => {
     tagSearchGeneration.current += 1;
     metadataGeneration.current += 1;
     metadataAbort.current?.abort();
+    tagSearchAbort.current?.abort();
+    setActiveTag(null);
+    setTagResults(null);
+    setTagLoading(false);
     navigateTo(path);
     setSearchParams(path ? { path } : {}, { replace: true });
     setSelected(new Set());
     setSelectedItem(null);
     setSelectedMetadata(null);
+    setSelectedProjectDetail(null);
     setActiveTag(null);
     setTagResults(null);
   }, [navigateTo, setSearchParams]);
@@ -233,10 +257,17 @@ export default function BrowsePage() {
     const abortController = new AbortController();
     metadataAbort.current = abortController;
     setSelectedItem(item);
+    setSelectedMetadata(null);
+    setSelectedProjectDetail(null);
     setMetadataLoading(true);
-    metaApi.getMeta(item.path, abortController.signal)
-      .then(metadata => {
-        if (generation === metadataGeneration.current) setSelectedMetadata(metadata);
+    const detailRequest = item.type === 'dir'
+      ? metaApi.getProjectDetail(item.path, abortController.signal)
+      : metaApi.getMeta(item.path, abortController.signal);
+    detailRequest
+      .then(detail => {
+        if (generation !== metadataGeneration.current) return;
+        if (item.type === 'dir') setSelectedProjectDetail(detail as ProjectDetail);
+        else setSelectedMetadata(detail as Metadata);
       })
       .catch(() => {
         if (generation === metadataGeneration.current) setSelectedMetadata(null);
@@ -246,14 +277,35 @@ export default function BrowsePage() {
       });
   }, [metaApi]);
 
+  const refreshSelected = useCallback(() => {
+    if (selectedItem) handleCardClick(selectedItem);
+  }, [handleCardClick, selectedItem]);
+
+  useInvalidation(['files', 'metadata', 'tags', 'project_detail'], event => {
+    refresh();
+    if (!event || (selectedItem && event.paths.some(path => path === selectedItem.path || selectedItem.path.startsWith(`${path}/`) || path.startsWith(`${selectedItem.path}/`)))) {
+      refreshSelected();
+    }
+  });
+
   const handleInspect = useCallback((item: BrowsableItem) => {
     if (isMobile) handleNavigateDetail(item.path);
     else handleCardClick(item);
   }, [handleCardClick, handleNavigateDetail, isMobile]);
 
-  const handleCardDoubleClick = useCallback((item: BrowsableItem) => {
+  const handleItemOpen = useCallback((item: BrowsableItem) => {
+    if (item.type === 'dir' && !item.is_project) {
+      handleNavigate(item.path);
+      return;
+    }
     handleNavigateDetail(item.path);
-  }, [handleNavigateDetail]);
+  }, [handleNavigate, handleNavigateDetail]);
+
+  const handleNavigateItem = useCallback((path: string) => {
+    const item = (tagResults ?? data?.items ?? []).find(candidate => candidate.path === path);
+    if (item && 'is_project' in item && item.is_project) handleNavigateDetail(path);
+    else handleNavigate(path);
+  }, [data?.items, handleNavigate, handleNavigateDetail, tagResults]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent, item: BrowsableItem) => {
     e.preventDefault();
@@ -280,33 +332,56 @@ export default function BrowsePage() {
     setSharePaths([item.path]);
   }, []);
 
+  const visibleItems = tagResults ?? data?.items ?? [];
+
   const handleCopyPath = useCallback((path: string) => {
     navigator.clipboard.writeText(path).catch(() => {});
   }, []);
 
+  const handleCopyLink = useCallback((path: string) => {
+    const href = `${window.location.origin}/api/download/${encodeURIComponent(path)}`;
+    navigator.clipboard.writeText(href)
+      .then(() => showToast('Download link copied', 'success'))
+      .catch(() => showToast('Could not copy the download link', 'error'));
+  }, [showToast]);
+
   const handleTagFilter = useCallback((tag: string) => {
     const generation = ++tagSearchGeneration.current;
+    tagSearchAbort.current?.abort();
+    const controller = new AbortController();
+    tagSearchAbort.current = controller;
     setActiveTag(tag);
-    setSelected(new Set());
     setTagResults(null);
-    metaApi.search('', tag).then(res => {
-      if (generation === tagSearchGeneration.current) {
-        setTagResults(res.results);
-      }
-    }).catch(() => {
-      if (generation === tagSearchGeneration.current) {
+    setTagLoading(true);
+    setSelected(new Set());
+    setSelectedMetadata(null);
+    setSelectedProjectDetail(null);
+    setSearchParams({ tag }, { replace: true });
+    metaApi.search('', tag, undefined, controller.signal)
+      .then(response => {
+        if (generation !== tagSearchGeneration.current) return;
+        setTagResults(response.results);
+      })
+      .catch(() => {
+        if (controller.signal.aborted || generation !== tagSearchGeneration.current) return;
         setActiveTag(null);
         setTagResults(null);
+        setSearchParams(currentPath ? { path: currentPath } : {}, { replace: true });
         showToast('Failed to filter by tag', 'error');
-      }
-    });
-  }, [metaApi, showToast]);
+      })
+      .finally(() => {
+        if (generation === tagSearchGeneration.current) setTagLoading(false);
+      });
+  }, [metaApi, setSearchParams, showToast]);
 
   const handleClearTagFilter = useCallback(() => {
     tagSearchGeneration.current += 1;
+    tagSearchAbort.current?.abort();
     setActiveTag(null);
     setTagResults(null);
-  }, []);
+    setTagLoading(false);
+    setSearchParams(currentPath ? { path: currentPath } : {}, { replace: true });
+  }, [currentPath, setSearchParams]);
 
   const handleDownloadSelected = useCallback(async () => {
     const paths = Array.from(selected);
@@ -314,15 +389,9 @@ export default function BrowsePage() {
     downloadInFlight.current = true;
     setIsDownloadInFlight(true);
     downloadProgress.start();
-    try {
-      await filesApi.batchDownload(paths, downloadProgress.update);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to download ZIP archive', 'error');
-    } finally {
-      downloadProgress.finish();
-      downloadInFlight.current = false;
-      setIsDownloadInFlight(false);
-    }
+    try { await filesApi.batchDownload(paths, downloadProgress.update); }
+    catch (err) { showToast(err instanceof Error ? err.message : 'Failed to download ZIP archive', 'error'); }
+    finally { downloadProgress.finish(); downloadInFlight.current = false; setIsDownloadInFlight(false); }
   }, [downloadProgress, filesApi, selected, showToast]);
 
   const handleSidebarToggle = useCallback(() => {
@@ -332,6 +401,7 @@ export default function BrowsePage() {
     }
     setSidebarOpen(prev => {
       const next = !prev;
+      if (!isMobile) desktopPanelsRef.current.sidebar = next;
       try { localStorage.setItem('am_sidebar_open', next ? '1' : '0'); } catch {}
       return next;
     });
@@ -344,38 +414,45 @@ export default function BrowsePage() {
     }
     setInfoOpen(prev => {
       const next = !prev;
+      if (!isMobile) desktopPanelsRef.current.info = next;
       try { localStorage.setItem('am_info_open', next ? '1' : '0'); } catch {}
       return next;
     });
   }, [infoOpen, isMobile]);
 
+  const isEditableTarget = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false;
+    return target instanceof HTMLInputElement
+      || target instanceof HTMLTextAreaElement
+      || target instanceof HTMLSelectElement
+      || target.isContentEditable
+      || target.getAttribute('contenteditable') !== null
+      || target.closest('[contenteditable]') !== null;
+  };
+
   // ── Thumbnails ──
-  const visibleItems = tagResults ?? data?.items ?? [];
+  const visibleLoading = activeTag ? tagLoading : isLoading;
   const imagePaths = useMemo(() => visibleItems
     .filter(item => item.category === 'image' || /\.(jpg|jpeg|png|gif|webp)$/i.test(item.extension))
     .map(item => item.path), [visibleItems]);
   useEffect(() => {
-    if (viewMode === 'grid') void loadThumbnails(imagePaths);
-  }, [imagePaths, loadThumbnails, viewMode]);
+    void loadThumbnails(imagePaths);
+  }, [imagePaths, loadThumbnails]);
   const thumbnailMap = useMemo(() => {
     const thumbnails: Record<string, string> = {};
-    if (viewMode === 'grid') {
-      imagePaths.forEach(path => {
-        const thumbnail = getThumbnail(path);
-        if (thumbnail) thumbnails[path] = `data:image/jpeg;base64,${thumbnail}`;
-      });
-    }
+    imagePaths.forEach(path => {
+      const thumbnail = getThumbnail(path);
+      if (thumbnail) thumbnails[path] = `data:image/jpeg;base64,${thumbnail}`;
+    });
+    visibleItems.forEach(item => {
+      if (item.type === 'dir' && item.thumbnail_url) thumbnails[item.path] = item.thumbnail_url;
+    });
     return thumbnails;
-  }, [getThumbnail, imagePaths, thumbnailRevision, viewMode]);
+  }, [getThumbnail, imagePaths, thumbnailRevision, visibleItems]);
 
   useEffect(() => {
     const handleWorkspaceShortcut = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const isEditable = target instanceof HTMLInputElement
-        || target instanceof HTMLTextAreaElement
-        || target instanceof HTMLSelectElement
-        || target?.isContentEditable;
-      if (isEditable || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      if (isEditableTarget(event.target) || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
 
       if (event.key === 'g') {
         event.preventDefault();
@@ -391,6 +468,9 @@ export default function BrowsePage() {
         } else if (selected.size > 0) {
           event.preventDefault();
           setSelected(new Set());
+        } else if (selectMode) {
+          event.preventDefault();
+          setSelectMode(false);
         } else if (isMobile && (sidebarOpen || infoOpen)) {
           event.preventDefault();
           if (infoOpen) handleInfoToggle();
@@ -401,20 +481,15 @@ export default function BrowsePage() {
 
     document.addEventListener('keydown', handleWorkspaceShortcut);
     return () => document.removeEventListener('keydown', handleWorkspaceShortcut);
-  }, [activeTag, handleClearTagFilter, handleInfoToggle, handleSidebarToggle, handleViewModeChange, infoOpen, isMobile, selected.size, sidebarOpen, viewMode]);
+  }, [activeTag, handleClearTagFilter, handleInfoToggle, handleSidebarToggle, handleViewModeChange, infoOpen, isMobile, selectMode, selected.size, sidebarOpen, viewMode]);
 
   return (
     <AppLayout
       header={
-        <Header
-          onSidebarToggle={handleSidebarToggle}
-          onInfoToggle={handleInfoToggle}
-          sidebarOpen={sidebarOpen}
-          infoOpen={infoOpen}
-        />
+        <Header />
       }
       sidebar={<Sidebar onNavigate={handleNavigate} currentPath={currentPath} />}
-        infoPanel={<InfoPanel metadata={selectedMetadata} selected={selectedItem} loading={metadataLoading} onTagFilter={handleTagFilter} onDownload={handleInfoDownload} onShare={handleInfoShare} onClose={handleInfoToggle} />}
+        infoPanel={<InfoPanel metadata={selectedMetadata} projectDetail={selectedProjectDetail} selected={selectedItem} loading={metadataLoading} onTagFilter={handleTagFilter} onDownload={handleInfoDownload} onShare={handleInfoShare} onClose={handleInfoToggle} />}
       sidebarOpen={sidebarOpen}
       infoOpen={infoOpen}
       sidebarWidth={sidebarWidth}
@@ -431,7 +506,25 @@ export default function BrowsePage() {
         setSelected(new Set());
       }}
     >
-      <Breadcrumb path={currentPath} onNavigate={handleNavigate} />
+      <div data-testid="browse-workspace" className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
+       <div data-testid="file-list-header" className="flex-shrink-0">
+        <Breadcrumb
+         path={currentPath}
+         onNavigate={handleNavigate}
+         onSidebarToggle={!isMobile ? handleSidebarToggle : undefined}
+         onInfoToggle={!isMobile ? handleInfoToggle : undefined}
+         sidebarOpen={sidebarOpen}
+         infoOpen={infoOpen}
+        />
+
+       {activeTag && (
+         <div className="mx-4 mt-3 flex items-center justify-between border-b border-indigo-500/20 bg-indigo-500/5 px-3 py-2 text-xs text-indigo-200">
+           <span>Tag: {activeTag}</span>
+           <button type="button" onClick={handleClearTagFilter} className="rounded p-1 text-indigo-200 hover:bg-indigo-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" aria-label="Clear tag filter" title="Clear tag filter">
+             <X size={14} />
+           </button>
+         </div>
+       )}
 
       <FileToolbar
         sort={sort}
@@ -444,9 +537,11 @@ export default function BrowsePage() {
         activeTag={activeTag}
         onClearTag={handleClearTagFilter}
       />
+       </div>
 
-      {isLoading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 p-4">
+      <div data-testid="file-list-canvas" className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+       {visibleLoading ? (
+        <div data-testid="file-list-loading-grid" className="grid w-full min-w-0 grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3 p-4">
           {Array.from({ length: 12 }).map((_, i) => (
             <div key={i} className="rounded-lg border border-slate-700/50 overflow-hidden">
               <Skeleton className="aspect-square rounded-none" />
@@ -473,12 +568,15 @@ export default function BrowsePage() {
           onSelect={handleSelect}
           onZipSelect={handleSelect}
           onInspect={handleInspect}
-          onNavigate={handleNavigate}
+          onNavigate={handleNavigateItem}
           selectionMode={selectMode}
-          onDoubleClick={handleCardDoubleClick}
+          onDoubleClick={handleItemOpen}
+          isMobile={isMobile}
           onContextMenu={handleContextMenu}
           thumbnailMap={thumbnailMap}
-          onDirectoryVisible={handleDirectoryVisible}
+           onDirectoryVisible={handleDirectoryVisible}
+           onTagClick={handleTagFilter}
+           onCopyLink={handleCopyLink}
         />
       ) : (
         <ProjectList
@@ -487,13 +585,17 @@ export default function BrowsePage() {
           onSelect={handleSelect}
           onZipSelect={handleSelect}
           onInspect={handleInspect}
-          onNavigate={handleNavigate}
+          onNavigate={handleNavigateItem}
           selectionMode={selectMode}
-          onDoubleClick={handleCardDoubleClick}
-          onContextMenu={handleContextMenu}
-          onDirectoryVisible={handleDirectoryVisible}
+          onDoubleClick={handleItemOpen}
+          isMobile={isMobile}
+           onContextMenu={handleContextMenu}
+           onDirectoryVisible={handleDirectoryVisible}
+           onCopyLink={handleCopyLink}
+           thumbnailMap={thumbnailMap}
         />
       )}
+      </div>
 
       {/* Context Menu */}
       {contextMenu && (
@@ -508,11 +610,13 @@ export default function BrowsePage() {
             { label: t('action.share'), icon: <Share2 size={13} />, onClick: () => {
               setShareDialogTrigger(contextMenu?.trigger);
               setSharePaths([contextMenu.item.path]);
-            }},
+             }},
+             { label: 'Copy download link', icon: <Link2 size={13} />, onClick: () => handleCopyLink(contextMenu.item.path) },
             { label: t('action.copy_path'), icon: <Copy size={13} />, onClick: () => handleCopyPath(contextMenu.item.path) },
           ]}
         />
       )}
+      </div>
 
       {/* Share Dialog */}
       {sharePaths && (

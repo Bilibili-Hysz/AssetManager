@@ -1,7 +1,7 @@
 # AssetsManager Architecture Diagram
 
-**Version:** 2026-06-16
-**Tests:** 603 passed, 0 warnings
+**Version:** 2026-07-27
+**Tests:** 1427 passed, 1 platform skip; WebUI 251 passed
 
 ---
 
@@ -29,14 +29,15 @@
 └──────────────────────────┼─────────────────────────────────────────┘
                            │
 ┌──────────────────────────▼─────────────────────────────────────────┐
-│                   APPLICATION SERVICES (16)                        │
+│                 APPLICATION + RUNTIME LAYER                       │
 │                                                                     │
 │  LibraryService    AssetService      TagService                    │
 │  MetadataService   ThumbnailService  SearchService                 │
 │  ProjectService    FileOpService     UndoService                   │
 │  AuthService       PluginService     AssetIndexService             │
 │  AssetFilters      ThumbnailRepository                             │
-│  LibraryContext     (dataclass)                                     │
+│  LibraryContext  LibrarySession  LibraryRuntime                    │
+│  RuntimeEventRouter  DTOs  SessionPrincipal                         │
 └──────────────────────────┬─────────────────────────────────────────┘
                            │
 ┌──────────────────────────▼─────────────────────────────────────────┐
@@ -60,12 +61,12 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    LAN LAYER (OPTIONAL)                              │
 │                                                                     │
-│  lan/server.py → lan/api.py → lan/routes/*                         │
+│  LanServer(runtime) → lan/api.py → lan/routes/*                    │
 │  lan/auth.py   lan/security.py  lan/path_guard.py                  │
 │  lan/scanner.py  lan/ws.py  lan/tunnel.py                          │
 │  lan/manager.py (lifecycle)                                         │
 │                                                                     │
-│  LAN → application services (auth, project, asset, search, tags)   │
+│  LAN → Runtime services → auth/principal/capabilities              │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -79,7 +80,7 @@ StartupWindow.library_opened
     → DatabaseManager.connection_for(path) → SQLite
     → TagStore(root) → ProjectData(root)
     → LibraryContext → LibrarySession (scoped connection provider)
-    → ApplicationBootstrap.for_library(session) → LibraryScopedServices
+    → ApplicationBootstrap.runtime_for(session) → LibraryRuntime.services
   → MainWindow
   → SidebarPanel.navigate_to(root)
   → FileListPanel.navigate_to(root, set_root=True)
@@ -102,13 +103,13 @@ SidebarPanel.directory_selected
 ## Data Flow: LAN Request
 
 ```
-HTTP → aiohttp
-  → security_middleware (rate limit, IP blacklist)
-  → _auth_middleware (token verification)
-  → route handler
-    → PathGuard.resolve() (path traversal protection)
-    → application service (AssetService, ProjectService, etc.)
-    → JSON response
+HTTP → aiohttp security/auth middleware
+  → SessionPrincipal + Capabilities
+  → route handler → PathGuard
+  → Runtime-owned application service → DTO response
+Runtime DomainEvent → RuntimeEventRouter
+  → epoch/revision invalidation → authenticated WebSocket
+  → React RealtimeProvider → authoritative HTTP refetch
 ```
 
 ## Data Flow: Theme Change
@@ -126,12 +127,12 @@ SettingsDialog → themes.set_theme(name)
 ## Dependency Rules
 
 1. `domain/` should not depend on presentation, LAN, controllers, or repositories
-2. `application/` depends on `core/`
-3. `lan/` depends on `application/` + `core/`
-4. `panels/` + `widgets/` depend on `application/` + `core/`
+2. `application/` owns runtime assembly and depends on `core/`
+3. `lan/` consumes an injected `LibraryRuntime`; routes do not assemble services
+4. `panels/` + `widgets/` depend on scoped application services and runtime
 5. `panels/` do NOT depend on `lan/` (except `lan_sharing.py` mixin)
 6. `SignalBus` is the Qt presentation communication channel; `domain.event_bus` is the application/domain event channel
-7. `tests/unit/test_architecture_boundaries.py` guards these rules with documented transitional exceptions
+7. `tests/unit/test_architecture_boundaries.py` guards runtime, principal, DTO, and teardown rules
 
 ---
 
@@ -145,4 +146,4 @@ SettingsDialog → themes.set_theme(name)
 | `panels/` | 18 | ~6,100 | 3 test files |
 | `widgets/` | 6 | ~900 | 0 test files |
 | `tests/` | 50+ | ~5,000+ | — |
-| **Total** | **140+** | **~25,000+** | **603 passed, 0 warnings** |
+| **Total** | **150+** | **~27,000+** | **1427 passed, 1 platform skip; WebUI 251 passed** |

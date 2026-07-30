@@ -32,6 +32,9 @@ class DirectoryListOptions:
     max_depth: int = 0
     current_depth: int = 0
     scan_summaries: bool = True
+    project_depth: int | None = None
+    branch_name: str | None = None
+    branch_depths: dict[str, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -45,6 +48,7 @@ class AssetListItem:
     extension: str
     category: str
     absolute_path: Path
+    is_project: bool = False
     preview_path: Path | None = None
     item_count: int | None = None
 
@@ -88,6 +92,8 @@ class AssetService:
             if not target.is_relative_to(root):
                 raise ValueError('target must be under library_root')
             rel_path = "" if target == root else os.path.relpath(target, root).replace("\\", "/")
+            target_depth = len([part for part in rel_path.split("/") if part])
+            branch_name = options.branch_name or (rel_path.split("/", 1)[0] if rel_path else None)
             entries = list(os.scandir(target))
             search = options.search.lower()
             items: list[AssetListItem] = []
@@ -97,6 +103,7 @@ class AssetService:
             for entry in entries:
                 item = self._entry_to_item(
                     root, entry, options, summary_cache_writes, summary_cache_entries, cache_lookup_complete,
+                    target_depth=target_depth, branch_name=branch_name,
                 )
                 if item is None:
                     continue
@@ -152,6 +159,7 @@ class AssetService:
                        summary_cache_writes: list[tuple[str, int, str | None, float]] | None = None,
                        summary_cache_entries: dict[str, DirCacheEntry] | None = None,
                        cache_lookup_complete: bool = False,
+                       *, target_depth: int = 0, branch_name: str | None = None,
                        ) -> AssetListItem | None:
         name = entry.name
         if not options.show_hidden and is_hidden(name):
@@ -200,6 +208,13 @@ class AssetService:
             extension=ext,
             category=category,
             absolute_path=Path(entry.path),
+            is_project=(
+                is_dir
+                and options.project_depth is not None
+                and target_depth + 1 >= (options.branch_depths or {}).get(
+                    rel.split("/", 1)[0], options.project_depth,
+                )
+            ),
             preview_path=preview,
             item_count=item_count,
         )

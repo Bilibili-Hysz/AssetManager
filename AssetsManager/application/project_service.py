@@ -13,8 +13,11 @@ from AssetsManager.application.context import ConnectionProvider, LibrarySession
 from AssetsManager.application.metadata_service import MetadataService
 from AssetsManager.application.tag_service import TagService
 from AssetsManager.core.format_utils import CATEGORY_MAP, format_size
+from AssetsManager.core.directory_cache import DirectoryCache
+from AssetsManager.core.path_resolver import thumb_dir
 from AssetsManager.repositories.metadata_repository import MetadataRepository
 from AssetsManager.repositories.asset_index_repository import AssetIndexRepository
+from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
 
 _log = logging.getLogger(__name__)
 
@@ -148,6 +151,7 @@ class ProjectTree:
 @dataclass(frozen=True)
 class ProjectHome:
     recent_projects: list[dict]
+    preview_pool: list[dict]
     popular_tags: list[dict]
     total_projects: int
     total_size: int
@@ -155,6 +159,7 @@ class ProjectHome:
     def to_response(self) -> dict:
         return {
             "recent_projects": self.recent_projects,
+            "preview_pool": self.preview_pool,
             "popular_tags": self.popular_tags,
             "stats": {
                 "total_projects": self.total_projects,
@@ -284,11 +289,22 @@ class ProjectService:
         db_conn = db_conn or self._connection_provider(root)
         depth_config = depth_config or ProjectDepthConfig()
         projects = self._collect_projects(root, root, 0, "", depth_config)
+        self._attach_cached_thumbnails(root, projects, db_conn)
         recent = sorted(projects, key=lambda p: p["mtime"], reverse=True)[:20]
+        preview_pool = [
+            {
+                "name": project["name"],
+                "path": project["path"],
+                "thumbnail_url": project["thumbnail_url"],
+            }
+            for project in projects
+            if project.get("thumbnail_url")
+        ]
         popular_tags = self._popular_tags(root, db_conn)
         total_size = self._library_total_size(root, db_conn)
         return ProjectHome(
             recent_projects=recent,
+            preview_pool=preview_pool,
             popular_tags=popular_tags,
             total_projects=len(projects),
             total_size=total_size,
@@ -321,8 +337,104 @@ class ProjectService:
                     mtime = 0
                 projects.append({"name": entry.name, "path": rel, "mtime": mtime})
             else:
-                projects.extend(self._collect_projects(library_root, Path(entry.path), depth + 1, child_branch, depth_config))
+                projects.extend(self._collect_projects(
+                    library_root, Path(entry.path), depth + 1, child_branch, depth_config,
+                ))
         return projects
+
+    @staticmethod
+    def _attach_cached_thumbnails(
+        library_root: Path,
+        projects: list[dict],
+        db_conn: sqlite3.Connection | None,
+    ) -> None:
+        if db_conn is None:
+            return
+        try:
+            root = library_root.resolve()
+            paths = [str((root / project["path"]).resolve()) for project in projects]
+            cached_entries = DirectoryCache(db_conn).get_batch(paths)
+            attached_paths: set[str] = set()
+            for project, path in zip(projects, paths):
+                try:
+                    cached = cached_entries.get(path)
+                    if not cached or cached.mtime != project["mtime"] or not cached.preview_path:
+                        continue
+                    project_path = (root / project["path"]).resolve()
+                    preview = Path(cached.preview_path).resolve()
+                    preview.relative_to(root)
+                    preview.relative_to(project_path)
+                    if not preview.is_file():
+                        continue
+                    rel_preview = os.path.relpath(preview, root).replace("\\", "/")
+                    project["thumbnail_url"] = f"/api/thumbnails/{quote(rel_preview, safe='/')}"
+                    attached_paths.add(path)
+                except (OSError, ValueError):
+                    continue
+            ProjectService._attach_baked_thumbnails(
+                root, projects, paths, attached_paths, db_conn,
+            )
+        except (OSError, ValueError):
+            return
+
+    @staticmethod
+    def _attach_baked_thumbnails(
+        library_root: Path,
+        projects: list[dict],
+        project_paths: list[str],
+        attached_paths: set[str],
+        db_conn: sqlite3.Connection,
+    ) -> None:
+        """Project baked thumbnail rows onto projects without directory previews."""
+        try:
+            rows = ThumbnailRepository(db_conn).list_all_with_metadata()
+        except sqlite3.Error:
+            _log.debug("baked thumbnail cache query failed")
+            return
+
+        baked_root = thumb_dir(str(library_root)).resolve()
+        project_by_path = {
+            Path(project_path): project_path
+            for project_path in project_paths
+            if project_path not in attached_paths
+        }
+        candidates: dict[str, tuple[Path, str]] = {}
+        for row in rows:
+            try:
+                cache_key, source_path, source_mtime = row
+                source = Path(source_path).resolve()
+                source.relative_to(library_root)
+                source_stat = source.stat()
+                if source_stat.st_mtime != source_mtime or not source.is_file():
+                    continue
+                baked = (baked_root / f"{cache_key}.webp").resolve()
+                baked.relative_to(baked_root)
+                baked_stat = baked.stat()
+                if not baked.is_file() or baked_stat.st_mtime <= 0:
+                    continue
+                project_path = source.parent
+                while project_path != library_root.parent:
+                    project_key = project_by_path.get(project_path)
+                    if project_key is not None:
+                        source.relative_to(project_path)
+                        if project_key not in candidates:
+                            candidates[project_key] = (source, cache_key)
+                        break
+                    if project_path == library_root:
+                        break
+                    project_path = project_path.parent
+            except (OSError, TypeError, ValueError):
+                continue
+
+        for project, project_path in zip(projects, project_paths):
+            if project_path in attached_paths:
+                continue
+            candidate = candidates.get(project_path)
+            if candidate is None:
+                continue
+            source, _cache_key = candidate
+            rel_source = os.path.relpath(source, library_root).replace("\\", "/")
+            project["thumbnail_url"] = f"/api/thumbnails/{quote(rel_source, safe='/')}"
 
     @session_operation
     def count_projects(

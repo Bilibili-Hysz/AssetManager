@@ -1,4 +1,7 @@
 from unittest.mock import Mock
+import asyncio
+
+from aiohttp import web
 
 from PySide6.QtWidgets import QApplication
 
@@ -54,8 +57,7 @@ def test_sharing_configuration_impact_keys_match_reload_contract():
         "lan_include_types": "include_types",
         "lan_exclude_patterns": "exclude_patterns",
     }
-    assert {"lan_port", "lan_bind", "lan_password", "lan_rate_limit", "lan_ip_whitelist", "lan_ssl_cert"} <= RESTART_SHARING_SETTINGS
-    assert "lan_auth_mode" not in RESTART_SHARING_SETTINGS
+    assert {"lan_port", "lan_bind", "lan_auth_mode", "lan_password", "lan_rate_limit", "lan_ip_whitelist", "lan_ssl_cert"} <= RESTART_SHARING_SETTINGS
 
 
 def test_sharing_configuration_summary_counts_hot_and_restart_changes():
@@ -148,23 +150,211 @@ def test_toggle_sharing_uses_injected_library_session(monkeypatch, tmp_path):
         def __init__(self):
             self._lan_server = None
             self._library_session = _Session()
+            self._bootstrap = Mock()
+            self._bootstrap.runtime_for.return_value = object()
             self.status_updates = []
 
         def _update_share_status(self, running, port=8080):
             self.status_updates.append((running, port))
 
     server = Mock()
+    lan_facade = Mock(return_value=server)
     monkeypatch.setattr(AppSettings, "instance", classmethod(lambda cls: _Settings()))
-    monkeypatch.setattr(lan, "LanServer", Mock(return_value=server))
+    monkeypatch.setattr(lan, "LanServer", lan_facade)
     host = _Host()
 
     host._toggle_sharing()
 
-    host._library_session.connection_for.assert_called_once_with(tmp_path)
-    assert lan.LanServer.call_args.kwargs["library_root"] == str(tmp_path)
-    assert lan.LanServer.call_args.kwargs["performance_recorder"] is None
-    assert lan.LanServer.call_args.kwargs["session_token"] is None
+    host._bootstrap.runtime_for.assert_called_once_with(host._library_session)
+    assert lan_facade.call_args.kwargs["runtime"] is host._bootstrap.runtime_for.return_value
     server.start.assert_called_once_with(port=8080, bind="0.0.0.0")
+
+
+def test_toggle_sharing_injects_bootstrap_runtime(monkeypatch, tmp_path):
+    from AssetsManager import lan
+    from AssetsManager.core.settings import AppSettings
+
+    class _Settings:
+        def get(self, key, default=None):
+            return default
+
+    session = type("Session", (), {"is_closed": False})()
+    runtime = object()
+    bootstrap = Mock()
+    bootstrap.runtime_for.return_value = runtime
+
+    class _Host(LanSharingMixin):
+        _library_session = session
+        _bootstrap = bootstrap
+        _lan_server = None
+
+        def _update_share_status(self, running, port=8080):
+            pass
+
+    server = Mock()
+    monkeypatch.setattr(AppSettings, "instance", classmethod(lambda cls: _Settings()))
+    monkeypatch.setattr(lan, "LanServer", Mock(return_value=server))
+    host = _Host()
+    host._toggle_sharing()
+
+    bootstrap.runtime_for.assert_called_once_with(session)
+    assert lan.LanServer.call_args.kwargs["runtime"] is runtime
+    assert lan.LanServer.call_args.kwargs["auth_mode"] == "none"
+
+
+def test_runtime_service_providers_are_isolated_across_lan_servers(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.lan.server import _LanServerImpl
+
+    bootstrap = ApplicationBootstrap()
+    session_a = bootstrap.library_service.open_session(tmp_path / "library-a")
+    session_b = bootstrap.library_service.open_session(tmp_path / "library-b")
+    runtime_a = bootstrap.runtime_for(session_a)
+    runtime_b = bootstrap.runtime_for(session_b)
+
+    server_a = _LanServerImpl(runtime=runtime_a)
+    provider_a = runtime_a.services.thumbnail_service._connection_provider
+    server_b = _LanServerImpl(runtime=runtime_b)
+
+    assert runtime_a.services.thumbnail_service is not runtime_b.services.thumbnail_service
+    assert runtime_a.services.search_service is not runtime_b.services.search_service
+    assert provider_a is runtime_a.services.search_service._connection_provider
+    assert provider_a.__self__ is session_a
+    assert runtime_b.services.thumbnail_service._connection_provider.__self__ is session_b
+    assert runtime_b.services.search_service._connection_provider.__self__ is session_b
+    assert server_a.services.thumbnail_service is runtime_a.services.thumbnail_service
+    assert server_b.services.thumbnail_service is runtime_b.services.thumbnail_service
+    assert runtime_a.services.thumbnail_service._connection_provider is provider_a
+
+
+def test_toggle_sharing_requires_bootstrap_runtime(monkeypatch):
+    from AssetsManager.core.settings import AppSettings
+    from AssetsManager.widgets import lan_sharing
+
+    class _Settings:
+        def get(self, key, default=None):
+            return default
+
+    session = type("Session", (), {
+        "is_closed": False,
+        "root": "library",
+        "root_str": "library",
+        "thumb_dir_str": "thumbs",
+        "connection_for": Mock(return_value=object()),
+    })()
+    class _Host(LanSharingMixin):
+        _library_session = session
+        _bootstrap = None
+        _lan_server = None
+
+        def _update_share_status(self, running, port=8080):
+            pass
+
+    warning = Mock()
+    monkeypatch.setattr(AppSettings, "instance", classmethod(lambda cls: _Settings()))
+    monkeypatch.setattr(lan_sharing.QMessageBox, "warning", warning)
+
+    _Host()._toggle_sharing()
+
+    warning.assert_called_once()
+
+
+def test_lan_server_runtime_constructor_is_only_public_constructor(monkeypatch):
+    from AssetsManager import lan
+
+    runtime = Mock()
+    runtime.session.is_closed = False
+    runtime.services.session = runtime.session
+    impl = Mock()
+    monkeypatch.setattr("AssetsManager.lan.server._LanServerImpl", impl)
+    monkeypatch.setattr(lan, "_HAS_AIOHTTP", True)
+
+    lan.LanServer(runtime=runtime)
+    assert impl.call_args.kwargs["runtime"] is runtime
+    assert not hasattr(lan.LanServer, "from_legacy_connection")
+
+
+def test_lan_server_stop_does_not_close_runtime_or_session(monkeypatch):
+    from AssetsManager import lan
+
+    runtime = Mock()
+    runtime.session.is_closed = False
+    runtime.services.session = runtime.session
+    impl = Mock()
+    monkeypatch.setattr("AssetsManager.lan.server._LanServerImpl", impl)
+    monkeypatch.setattr(lan, "_HAS_AIOHTTP", True)
+    server = lan.LanServer(runtime=runtime)
+    server.stop()
+
+    impl.return_value.stop.assert_called_once_with()
+    runtime.close.assert_not_called()
+    runtime.session.close.assert_not_called()
+
+
+def test_lan_server_restart_keeps_one_runtime_subscription_and_one_broadcast(monkeypatch):
+    from AssetsManager.lan.api import setup_routes
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    class _Subscription:
+        def __init__(self, router, callback):
+            self.router = router
+            self.callback = callback
+            self.closed = False
+
+        def close(self):
+            if not self.closed:
+                self.closed = True
+                self.router.subscriptions.remove(self)
+
+    class _Router:
+        def __init__(self):
+            self.subscriptions = []
+
+        def subscribe(self, callback):
+            subscription = _Subscription(self, callback)
+            self.subscriptions.append(subscription)
+            return subscription
+
+        def emit(self, event):
+            for subscription in tuple(self.subscriptions):
+                subscription.callback(event)
+
+    class _Manager:
+        def __init__(self):
+            self.broadcasts = []
+
+        async def broadcast(self, event_type, payload):
+            self.broadcasts.append((event_type, payload))
+
+        async def close_all(self):
+            pass
+
+    runtime = type("Runtime", (), {
+        "epoch": "epoch", "revision": 0, "event_router": _Router(),
+    })()
+    lan = type("Lan", (), {"runtime": runtime, "ws_manager": _Manager()})()
+    app = web.Application()
+    app[LAN_APP_KEY] = lan
+    setup_routes(app)
+    loop = asyncio.new_event_loop()
+    try:
+        app.freeze()
+        loop.run_until_complete(app.startup())
+        assert len(runtime.event_router.subscriptions) == 1
+        loop.run_until_complete(app.cleanup())
+        assert len(runtime.event_router.subscriptions) == 0
+        loop.run_until_complete(app.startup())
+        assert len(runtime.event_router.subscriptions) == 1
+        event = type("Event", (), {
+            "epoch": "epoch", "revision": 1, "domains": ("files",), "paths": ("x",),
+        })()
+        loop.call_soon(runtime.event_router.emit, event)
+        loop.run_until_complete(asyncio.sleep(0))
+        assert len(lan.ws_manager.broadcasts) == 1
+        loop.run_until_complete(app.cleanup())
+        assert len(runtime.event_router.subscriptions) == 0
+    finally:
+        loop.close()
 
 
 class _RestartServer:
@@ -363,7 +553,7 @@ def test_sharing_dialog_stop_syncs_status_from_parent(monkeypatch):
     assert dialog._server is None
     assert dialog._server_status == {}
     assert dialog._status_timer.stopped is True
-    assert dialog.settings_changed.emitted is True
+    assert dialog.settings_changed.emitted is False
 
 
 def test_sharing_dialog_api_base_requires_running_server():

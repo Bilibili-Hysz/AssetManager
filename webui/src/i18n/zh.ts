@@ -27,6 +27,8 @@ const zh: I18nDict = {
     clearFilterToChangeExpansion: '清除搜索筛选条件以更改手动展开状态',
     search: '筛选目录...',
     no_results: '没有匹配的目录',
+    expand_all: '展开全部',
+    collapse_all: '折叠全部',
   },
   browse: {
     empty: '此文件夹为空',

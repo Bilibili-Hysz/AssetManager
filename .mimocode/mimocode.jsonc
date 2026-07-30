@@ -1,0 +1,38 @@
+{
+  "$schema": "https://mimo.xiaomi.com/mimocode/config.json",
+  "instructions": [
+    "{file:../SUBAGENT_DISPATCH_RULES.md}"
+  ],
+  "agent": {
+    "general": {
+      "description": "Default cost-efficient subagent for bounded implementation, diagnosis, exploration, verification, and ordinary review.",
+      "mode": "subagent",
+      "model": "CustomProvideri/gpt-5.6-luna",
+      "variant": "medium"
+    },
+    "explore": {
+      "description": "Read-only subagent for search, file location, narrow diagnosis, and focused verification.",
+      "mode": "subagent",
+      "model": "CustomProvider/gpt-5.6-luna",
+      "variant": "low"
+    },
+    "code-reviewer": {
+      "description": "Bounded defect-first review of a specified diff or contract.",
+      "mode": "subagent",
+      "model": "CustomProvider/gpt-5.6-luna",
+      "variant": "medium"
+    },
+    "integrator": {
+      "description": "Balanced multi-file implementation and cross-module diagnosis after the task scope is understood.",
+      "mode": "subagent",
+      "model": "CustomProvider/gpt-5.6-terra",
+      "variant": "medium"
+    },
+    "architecture-reviewer": {
+      "description": "High-risk architecture, protocol, persistence, concurrency, security, release, and data-integrity review.",
+      "mode": "subagent",
+      "model": "CustomProvider/gpt-5.6-sol",
+      "variant": "high"
+    }
+  }
+}

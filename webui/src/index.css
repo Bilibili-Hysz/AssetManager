@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+img {
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.asset-preview-surface {
+  display: block;
+  max-height: 100%;
+  max-width: 100%;
+  color-scheme: only light;
+  forced-color-adjust: none;
+  filter: none;
+}
+
 @layer base {
   * {
     @apply border-slate-700/50;
@@ -9,6 +23,8 @@
 
   body {
     @apply bg-slate-950 text-slate-100 antialiased;
+    background-color: var(--color-bg);
+    color: var(--color-text);
   }
 
   :root {
@@ -16,6 +32,8 @@
     --color-surface: #0f172a;
     --color-elevated: #1e293b;
     --color-border: #334155;
+    --color-text: #f1f5f9;
+    --color-muted: #94a3b8;
   }
 
   .light {
@@ -23,6 +41,100 @@
     --color-surface: #ffffff;
     --color-elevated: #f1f5f9;
     --color-border: #e2e8f0;
+    --color-text: #1e293b;
+    --color-muted: #64748b;
+  }
+
+  :root.light body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+  }
+
+  :root.light input,
+  :root.light select,
+  :root.light textarea {
+    color-scheme: light;
+  }
+
+  /* The app still uses Tailwind slate utilities throughout its shared surfaces.
+     Keep those existing class names, but make light mode use the theme tokens. */
+  html.light .bg-slate-950,
+  html.light .bg-slate-900,
+  html.light .bg-slate-900\/20,
+  html.light .bg-slate-900\/30,
+  html.light .bg-slate-900\/50,
+  html.light .bg-slate-900\/80,
+  html.light .bg-slate-900\/90 {
+    background-color: var(--color-bg);
+  }
+
+  html.light .bg-slate-800,
+  html.light .bg-slate-800\/20,
+  html.light .bg-slate-800\/30,
+  html.light .bg-slate-800\/40,
+  html.light .bg-slate-800\/50,
+  html.light .bg-slate-800\/80,
+  html.light .bg-slate-800\/90 {
+    background-color: var(--color-surface);
+  }
+
+  html.light .bg-slate-600,
+  html.light .bg-slate-600\/50,
+  html.light .bg-slate-600\/70,
+  html.light .bg-slate-700,
+  html.light .bg-slate-700\/20,
+  html.light .bg-slate-700\/30,
+  html.light .bg-slate-700\/50,
+  html.light .bg-slate-700\/70,
+  html.light .bg-slate-700\/80 {
+    background-color: var(--color-elevated);
+  }
+
+  html.light .text-slate-100,
+  html.light .text-slate-200,
+  html.light .text-slate-300 {
+    color: var(--color-text);
+  }
+
+  html.light .text-slate-400,
+  html.light .text-slate-500,
+  html.light .text-slate-600 {
+    color: var(--color-muted);
+  }
+
+  html.light .text-white {
+    color: var(--color-text);
+  }
+
+  html.light .text-white\/60,
+  html.light .text-white\/70 {
+    color: var(--color-muted);
+  }
+
+  html.light .border-slate-800,
+  html.light .border-slate-800\/50,
+  html.light .border-slate-700,
+  html.light .border-slate-700\/50,
+  html.light .border-slate-600,
+  html.light .border-slate-600\/50,
+  html.light .border-slate-500 {
+    border-color: var(--color-border);
+  }
+
+  html.light .hover\:bg-slate-800\/50:hover,
+  html.light .hover\:bg-slate-800:hover,
+  html.light .hover\:bg-slate-700\/50:hover,
+  html.light .hover\:bg-slate-700\/80:hover,
+  html.light .hover\:bg-slate-800\/30:hover,
+  html.light .hover\:bg-slate-900\/30:hover,
+  html.light .hover\:bg-slate-700:hover {
+    background-color: var(--color-elevated);
+  }
+
+  html.light .hover\:text-slate-300:hover,
+  html.light .hover\:text-slate-200:hover,
+  html.light .hover\:text-white:hover {
+    color: var(--color-text);
   }
 
   ::-webkit-scrollbar {

@@ -20,7 +20,7 @@ export function InviteManagement() {
   const handleCreate = async () => {
     try {
       const res = await usersApi.createInvite();
-      setInvites(prev => [{ code: res.code, created_at: new Date().toISOString(), revoked: false }, ...prev]);
+      setInvites(prev => [{ code: res.code, created_at: Date.now() / 1000, used_by: null, revoked: false }, ...prev]);
       showToast(t('admin.invite_created'), 'success');
     } catch {}
   };

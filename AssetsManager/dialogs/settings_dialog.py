@@ -5,16 +5,17 @@ Inherits TabbedDialog for consistent dark theme and widget factories.
 from typing import Protocol, cast, runtime_checkable
 
 from shiboken6 import Shiboken
-from PySide6.QtCore import Qt, Signal, QObject
+from PySide6.QtCore import Qt, Signal, QObject, QSignalBlocker
 from PySide6.QtWidgets import (
     QMessageBox, QProgressBar, QVBoxLayout, QHBoxLayout, QWidget,
     QRadioButton, QFrame, QPushButton, QFileDialog, QSlider,
-    QInputDialog,
+    QInputDialog, QLabel,
 )
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core import themes
+from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager import i18n
 tr = i18n.tr
 
@@ -45,8 +46,12 @@ class _ProgressSignals(QObject):
 
 
 class SettingsDialog(TabbedDialog):
+    supports_runtime_refresh = True
+
     def __init__(self, parent=None):
-        super().__init__(parent, title=tr("settings.title"), min_size=(460, 520))
+        self._logical_min_size = (460, 520)
+        super().__init__(parent, title=tr("settings.title"),
+                         min_size=(scaled_px(460), scaled_px(520)))
 
     def _make_theme_row(self, name):
         """Create a row widget with color swatch and radio button."""
@@ -80,6 +85,7 @@ class SettingsDialog(TabbedDialog):
         from AssetsManager.core.ui_scale import scaled_px
         tab = QWidget()
         layout = QVBoxLayout(tab)
+        self._appearance_layout = layout
         layout.setSpacing(scaled_px(12))
         layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
 
@@ -87,7 +93,8 @@ class SettingsDialog(TabbedDialog):
 
         # ── Background ─────────────────────────────────
 
-        layout.addWidget(self.make_heading(tr("settings.background")))
+        self._background_heading = self.make_heading(tr("settings.background"))
+        layout.addWidget(self._background_heading)
         self._bg_enabled_cb = self.make_checkbox(tr("settings.bg_enabled"),
             themes.bg_enabled())
         self._bg_enabled_cb.toggled.connect(self._on_bg_setting_changed)
@@ -95,6 +102,11 @@ class SettingsDialog(TabbedDialog):
 
         path_row, self._bg_path_edit = self.make_browse_row(
             tr("settings.bg_image"), tr("settings.bg_placeholder"), callback=self._browse_bg_image)
+        bg_image_item = path_row.itemAt(0)
+        bg_browse_item = path_row.itemAt(2)
+        assert bg_image_item is not None and bg_browse_item is not None
+        self._bg_image_label = cast(QLabel, bg_image_item.widget())
+        self._bg_browse_btn = cast(QPushButton, bg_browse_item.widget())
         current_path = themes.bg_image()
         if current_path:
             self._bg_path_edit.setText(current_path)
@@ -103,17 +115,29 @@ class SettingsDialog(TabbedDialog):
 
         self._bg_panel_slider = self._make_pct_slider(themes.bg_panel_opacity())
         self._bg_panel_slider.valueChanged.connect(self._on_bg_setting_changed)
-        layout.addLayout(self.make_labeled_row(tr("settings.bg_panel_opacity"), self._bg_panel_slider))
+        self._bg_panel_row = self.make_labeled_row(
+            tr("settings.bg_panel_opacity"), self._bg_panel_slider)
+        bg_panel_label_item = self._bg_panel_row.itemAt(0)
+        assert bg_panel_label_item is not None
+        self._bg_panel_label = cast(QLabel, bg_panel_label_item.widget())
+        layout.addLayout(self._bg_panel_row)
 
         self._bg_header_slider = self._make_pct_slider(themes.bg_header_opacity())
         self._bg_header_slider.valueChanged.connect(self._on_bg_setting_changed)
-        layout.addLayout(self.make_labeled_row(tr("settings.bg_header_opacity"), self._bg_header_slider))
+        self._bg_header_row = self.make_labeled_row(
+            tr("settings.bg_header_opacity"), self._bg_header_slider)
+        bg_header_label_item = self._bg_header_row.itemAt(0)
+        assert bg_header_label_item is not None
+        self._bg_header_label = cast(QLabel, bg_header_label_item.widget())
+        layout.addLayout(self._bg_header_row)
 
         # ── Image Effects ──────────────────────────────
 
-        layout.addWidget(self.make_heading(tr("settings.bg_effects")))
+        self._effects_heading = self.make_heading(tr("settings.bg_effects"))
+        layout.addWidget(self._effects_heading)
 
         btn_row = QHBoxLayout()
+        self._effects_layout = btn_row
         btn_row.setSpacing(scaled_px(8))
         current_effect = themes.bg_effect()
         effect_label = {"none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"), "mosaic": tr("settings.bg_mosaic")}.get(current_effect, tr("settings.bg_effect_none"))
@@ -132,18 +156,20 @@ class SettingsDialog(TabbedDialog):
         layout.addLayout(btn_row)
         self._current_effect = current_effect
 
-        clear_btn = self.make_secondary_btn(tr("settings.bg_clear"), self._clear_bg)
-        layout.addWidget(clear_btn)
+        self._clear_bg_btn = self.make_secondary_btn(tr("settings.bg_clear"), self._clear_bg)
+        layout.addWidget(self._clear_bg_btn)
 
         layout.addStretch()
-        self._add_tab(tab, "  " + tr("settings.appearance") + "  ", scrollable=True)
+        self._add_tab(tab, tr("settings.appearance"), scrollable=True, label_key="settings.appearance")
 
     def _setup_theme_section(self, layout):
         from AssetsManager.core.ui_scale import scaled_px
 
-        layout.addWidget(self.make_heading(tr("settings.theme")))
+        self._theme_heading = self.make_heading(tr("settings.theme"))
+        layout.addWidget(self._theme_heading)
 
         btn_row = QHBoxLayout()
+        self._theme_layout = btn_row
         btn_row.setSpacing(scaled_px(8))
 
         current_mode = AppSettings.instance().get("appearance_mode", "dark")
@@ -431,30 +457,32 @@ class SettingsDialog(TabbedDialog):
         from AssetsManager.core.ui_scale import scaled_px
         tab = QWidget()
         layout = QVBoxLayout(tab)
+        self._general_layout = layout
         layout.setSpacing(scaled_px(12))
         layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
 
         lang_map = i18n.languages()
         lang_opts = {code: lang_map.get(code, code) for code in ("en", "zh", "ja")}
-        lang_group, self._lang_group = self.make_radio_group(
+        self._lang_group_box, self._lang_group = self.make_radio_group(
             tr("settings.language"), lang_opts, i18n.current_language(), on_changed=self._on_lang_clicked)
-        layout.addWidget(lang_group)
+        layout.addWidget(self._lang_group_box)
 
         # UI Scale
         from AssetsManager.core.ui_scale import get_ui_scale
-        layout.addWidget(self.make_heading(tr("settings.ui_scale")))
+        self._scale_heading = self.make_heading(tr("settings.ui_scale"))
+        layout.addWidget(self._scale_heading)
         self._ui_scale_slider = QSlider(Qt.Orientation.Horizontal)
         self._ui_scale_slider.setRange(50, 200)
         self._ui_scale_slider.setValue(int(get_ui_scale() * 100))
         self._ui_scale_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self._ui_scale_slider.setTickInterval(25)
-        self._ui_scale_slider.valueChanged.connect(self._on_ui_scale_changed)
+        self._ui_scale_slider.valueChanged.connect(self._set_ui_scale)
         layout.addWidget(self._ui_scale_slider)
         self._ui_scale_label = self.make_muted(f"{get_ui_scale() * 100:.0f}%")
         layout.addWidget(self._ui_scale_label)
 
         layout.addStretch()
-        self._add_tab(tab, "  " + tr("settings.general") + "  ", scrollable=True)
+        self._add_tab(tab, tr("settings.general"), scrollable=True, label_key="settings.general")
 
     # ── Tab 3: Thumbnails ────────────────────────────────
 
@@ -462,6 +490,7 @@ class SettingsDialog(TabbedDialog):
         from AssetsManager.core.ui_scale import scaled_px
         tab = QWidget()
         layout = QVBoxLayout(tab)
+        self._thumbnails_layout = layout
         layout.setSpacing(scaled_px(12))
         layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
 
@@ -471,13 +500,14 @@ class SettingsDialog(TabbedDialog):
             "high": tr("settings.thumb_quality_high"), "original": tr("settings.thumb_quality_original"),
         }
         thumb_opts = {k: quality_labels[k] for k in ("fast", "default", "high", "original")}
-        thumb_group, self._thumb_group = self.make_radio_group(
+        self._thumb_group_box, self._thumb_group = self.make_radio_group(
             tr("settings.thumb_quality"), thumb_opts, current_quality, on_changed=self._on_thumb_quality_clicked)
-        layout.addWidget(thumb_group)
+        layout.addWidget(self._thumb_group_box)
 
-        cache_group = self.make_groupbox(tr("settings.thumb_cache"))
+        self._cache_group = self.make_groupbox(tr("settings.thumb_cache"))
 
-        cl = QVBoxLayout(cache_group)
+        cl = QVBoxLayout(self._cache_group)
+        self._cache_layout = cl
         cl.setSpacing(scaled_px(6))
         cl.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(8))
 
@@ -496,19 +526,86 @@ class SettingsDialog(TabbedDialog):
         self._progress_signals.updated.connect(self._on_progress)
         self._progress_signals.finished.connect(self._on_regenerate_done)
 
-        layout.addWidget(cache_group)
+        layout.addWidget(self._cache_group)
         layout.addStretch()
-        self._add_tab(tab, "  " + tr("settings.thumbnails") + "  ", scrollable=True)
+        self._add_tab(tab, tr("settings.thumbnails"), scrollable=True, label_key="settings.thumbnails")
 
     def _on_lang_clicked(self, key):
         i18n.set_language(key)
 
-    def _on_ui_scale_changed(self, val):
+    def _set_ui_scale(self, val):
         scale = val / 100.0
         AppSettings.instance().set("ui_scale", scale)
         AppSettings.instance().save()
         self._ui_scale_label.setText(f"{val:.0f}%")
         bus().ui_scale_changed.emit(scale)
+
+    def retranslate_ui(self):
+        self.setWindowTitle(tr("settings.title"))
+        self._theme_heading.setText(tr("settings.theme"))
+        self._background_heading.setText(tr("settings.background"))
+        self._effects_heading.setText(tr("settings.bg_effects"))
+        self._bg_enabled_cb.setText(tr("settings.bg_enabled"))
+        self._bg_image_label.setText(tr("settings.bg_image"))
+        self._bg_browse_btn.setText(tr("dialog.browse"))
+        self._bg_path_edit.setPlaceholderText(tr("settings.bg_placeholder"))
+        self._bg_panel_label.setText(tr("settings.bg_panel_opacity"))
+        self._bg_header_label.setText(tr("settings.bg_header_opacity"))
+        self._clear_bg_btn.setText(tr("settings.bg_clear"))
+        self._lang_group_box.setTitle(tr("settings.language"))
+        for button in self._lang_group.buttons():
+            key = cast(str, button.property("option_key"))
+            button.setText(i18n.languages().get(key, key))
+        self._scale_heading.setText(tr("settings.ui_scale"))
+        self._thumb_group_box.setTitle(tr("settings.thumb_quality"))
+        self._cache_group.setTitle(tr("settings.thumb_cache"))
+        self._clear_btn.setText(tr("settings.thumb_clear"))
+        self._regen_btn.setText(tr("settings.thumb_regenerate"))
+        mode_label = {
+            "dark": tr("settings.dark_mode"), "light": tr("settings.light_mode"),
+            "custom": tr("settings.custom_themes"),
+        }.get(self._current_mode, self._current_mode)
+        self._mode_btn.setText(mode_label + " ▾")
+        effect_label = {
+            "none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"),
+            "mosaic": tr("settings.bg_mosaic"),
+        }.get(self._current_effect, tr("settings.bg_effect_none"))
+        self._effect_btn.setText(effect_label + " ▾")
+        quality_keys = ("fast", "default", "high", "original")
+        for button in self._thumb_group.buttons():
+            key = cast(str, button.property("option_key"))
+            if key in quality_keys:
+                button.setText(tr(f"settings.thumb_quality_{key}"))
+
+    def refresh_scaled_geometry(self, scale: float | None = None):
+        if scale is None:
+            configured_scale = AppSettings.instance().get("ui_scale", 1.0)
+            scale = configured_scale if isinstance(configured_scale, (int, float)) else 1.0
+        percentage = round(scale * 100)
+        if self._ui_scale_slider.value() != percentage:
+            blocker = QSignalBlocker(self._ui_scale_slider)
+            self._ui_scale_slider.setValue(percentage)
+            del blocker
+        self._ui_scale_label.setText(f"{percentage}%")
+        self.setMinimumSize(
+            scaled_px(self._logical_min_size[0]), scaled_px(self._logical_min_size[1]))
+        for layout in (self._appearance_layout, self._general_layout, self._thumbnails_layout):
+            layout.setSpacing(scaled_px(12))
+            layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
+        self._effects_layout.setSpacing(scaled_px(8))
+        self._theme_layout.setSpacing(scaled_px(8))
+        self._cache_layout.setSpacing(scaled_px(6))
+        self._cache_layout.setContentsMargins(
+            scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(8))
+        self._mode_btn.setMinimumWidth(scaled_px(100))
+        self._theme_btn.setMinimumWidth(scaled_px(160))
+        self._effect_btn.setMinimumWidth(scaled_px(120))
+        self._bg_browse_btn.setFixedWidth(scaled_px(60))
+        self.refresh_radio_group_geometry(self._lang_group_box)
+        self.refresh_radio_group_geometry(self._thumb_group_box)
+        for group in (self._lang_group, self._thumb_group):
+            for button in group.buttons():
+                button.setMinimumHeight(scaled_px(24))
 
     def _on_thumb_quality_clicked(self, key):
         AppSettings.instance().set("thumb_quality", key)

@@ -17,6 +17,7 @@ from AssetsManager import i18n
 if TYPE_CHECKING:
     from AssetsManager.application.context import LibrarySession
     from AssetsManager.lan import LanServer
+    from AssetsManager.lan.routes._helpers import LanScopedServices
     from AssetsManager.widgets.tray import SystemTrayManager
 
 tr = i18n.tr
@@ -43,7 +44,7 @@ HOT_SHARING_DEFAULTS = {
     "lan_max_depth": 0, "lan_include_types": None, "lan_exclude_patterns": None,
 }
 RESTART_SHARING_SETTINGS = frozenset({
-    "lan_port", "lan_bind", "lan_password", "lan_access_key",
+    "lan_port", "lan_bind", "lan_auth_mode", "lan_password", "lan_access_key",
     "lan_rate_limit", "lan_blocked_ips", "lan_ip_whitelist", "lan_ssl_cert", "lan_ssl_key",
 })
 
@@ -54,6 +55,9 @@ class LanSharingMixin:
 
     # Supplied by the QMainWindow host. Annotations preserve the mixin's MRO.
     _lan_server: LanServer | None
+    # Compatibility-only bundle injected by pre-runtime hosts. The mixin must
+    # never assemble LAN/application services from legacy connection inputs.
+    _lan_services: LanScopedServices | None
     _library_session: LibrarySession | None
     _tray_manager: SystemTrayManager | None
     _share_status_label: QLabel
@@ -81,6 +85,7 @@ class LanSharingMixin:
         bind = settings.get("lan_bind", "0.0.0.0")
         password = settings.get("lan_password")
         access_key = settings.get("lan_access_key")
+        auth_mode = settings.get("lan_auth_mode", "none")
         share_name = settings.get("lan_share_name", "AssetManager")
 
         session = getattr(self, "_library_session", None)
@@ -90,22 +95,25 @@ class LanSharingMixin:
 
         try:
             bootstrap = getattr(self, "_bootstrap", None)
-            server = lan.LanServer(
-                library_root=session.root_str,
-                thumbnail_dir=session.thumb_dir_str,
-                db_conn=session.connection_for(session.root),
+            options = dict(
                 share_name=share_name,
                 password=password,
                 access_key=access_key,
+                auth_mode=auth_mode,
                 rate_limit=settings.get("lan_rate_limit", 1000),
                 blocked_ips=settings.get("lan_blocked_ips", []),
                 ip_whitelist=settings.get("lan_ip_whitelist", []),
                 blur_tags=settings.get("lan_blur_tags", []),
                 ssl_cert=settings.get("lan_ssl_cert"),
                 ssl_key=settings.get("lan_ssl_key"),
-                performance_recorder=getattr(bootstrap, "performance_recorder", None),
-                session_token=getattr(session, "event_token", None),
             )
+            if bootstrap is not None and hasattr(bootstrap, "runtime_for"):
+                runtime = bootstrap.runtime_for(session)
+                server = lan.LanServer(runtime=runtime, **options)
+            else:
+                _log.error("Cannot start LAN sharing without the canonical application bootstrap")
+                QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), tr("sharing.no_library"))
+                return
             self._lan_server = server
             server.start(port=port, bind=bind)
             self._update_share_status(True, port)
@@ -187,6 +195,9 @@ class LanSharingMixin:
             if settings.get("lan_bind", "0.0.0.0") != self._lan_server._bind:
                 restart_required = True
             restart_settings = {
+                "lan_auth_mode": getattr(
+                    server_config, "_auth_mode", settings.get("lan_auth_mode", "none")
+                ),
                 "lan_password": getattr(server_config, "_password_value", None),
                 "lan_access_key": getattr(server_config, "_access_key_value", None),
                 "lan_rate_limit": getattr(server_config, "_rate_limit_value", 1000),

@@ -108,12 +108,14 @@ export function createApiClient(options: ApiClientOptions = {}) {
     path: string,
     body: unknown,
     onProgress: (progress: DownloadProgress) => void,
+    signal?: AbortSignal,
   ): Promise<Blob> {
     const url = new URL(`${baseUrl}/api/${path}`, window.location.origin);
     const response = await fetch(url.toString(), {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal,
       credentials: 'same-origin',
     });
 
@@ -160,8 +162,8 @@ export function createApiClient(options: ApiClientOptions = {}) {
     postBlob: (path: string, body?: unknown, signal?: AbortSignal) =>
       requestBlob('POST', path, body, signal),
 
-    postBlobWithProgress: (path: string, body: unknown, onProgress: (progress: DownloadProgress) => void) =>
-      requestBlobWithProgress('POST', path, body, onProgress),
+    postBlobWithProgress: (path: string, body: unknown, onProgress: (progress: DownloadProgress) => void, signal?: AbortSignal) =>
+      requestBlobWithProgress('POST', path, body, onProgress, signal),
 
     put: <T>(path: string, body?: unknown) =>
       request<T>('PUT', path, body),

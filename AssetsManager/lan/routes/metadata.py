@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from aiohttp import web
 
 from AssetsManager.application import ProjectDepthConfig
+from AssetsManager.lan.dto import TreeItemResponse
 from AssetsManager.lan.routes._helpers import (
     get_lan, validate_path, get_metadata_service, get_project_service,
     get_search_service, require_permission,
@@ -132,7 +133,9 @@ async def handle_tree(request):
     tree = await asyncio.to_thread(
         get_project_service(request).build_tree, lan.library_root, depth_config=depth_config
     )
-    return web.json_response(tree.to_response())
+    response = tree.to_response()
+    response["tree"] = [TreeItemResponse.from_record(item).to_dict() for item in response["tree"]]
+    return web.json_response(response)
 
 
 async def handle_projects(request):

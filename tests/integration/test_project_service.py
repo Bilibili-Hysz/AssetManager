@@ -244,6 +244,318 @@ def test_get_home_returns_recent_projects_and_stats(tmp_path, schema_db):
     assert len(home["recent_projects"]) == 2
 
 
+def test_get_home_uses_directory_cache_preview_path(tmp_path, schema_db):
+    from AssetsManager.core.directory_cache import DirectoryCache
+
+    library = tmp_path / "library"
+    project = library / "alpha"
+    project.mkdir(parents=True)
+    preview = project / "cover.png"
+    preview.write_bytes(b"png")
+
+    DirectoryCache(schema_db).set(
+        str(project.resolve()),
+        item_count=1,
+        preview_path=str(preview.resolve()),
+        mtime=project.stat().st_mtime,
+    )
+
+    home = ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
+    ).to_response()
+
+    assert home["recent_projects"] == [{
+        "name": "alpha",
+        "path": "alpha",
+        "mtime": project.stat().st_mtime,
+        "thumbnail_url": "/api/thumbnails/alpha/cover.png",
+    }]
+
+
+def test_get_home_rejects_directory_cache_preview_from_another_project(
+    tmp_path, schema_db,
+):
+    from AssetsManager.core.directory_cache import DirectoryCache
+
+    library = tmp_path / "library"
+    alpha = library / "alpha"
+    beta = library / "beta"
+    alpha.mkdir(parents=True)
+    beta.mkdir()
+    beta_preview = beta / "cover.png"
+    beta_preview.write_bytes(b"png")
+
+    cache = DirectoryCache(schema_db)
+    cache.set(
+        str(alpha.resolve()),
+        item_count=1,
+        preview_path=str(beta_preview.resolve()),
+        mtime=alpha.stat().st_mtime,
+    )
+    cache.set(
+        str(beta.resolve()),
+        item_count=1,
+        preview_path=str(beta_preview.resolve()),
+        mtime=beta.stat().st_mtime,
+    )
+
+    home = ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
+    ).to_response()
+
+    projects = {project["path"]: project for project in home["recent_projects"]}
+    assert "thumbnail_url" not in projects["alpha"]
+    assert projects["beta"]["thumbnail_url"] == "/api/thumbnails/beta/cover.png"
+
+
+def test_get_home_uses_baked_thumbnail_cache_when_directory_cache_has_no_preview(
+    tmp_path, schema_db,
+):
+    from AssetsManager.application.thumbnail_service import thumbnail_cache_key
+    from AssetsManager.core.path_resolver import thumb_dir
+
+    library = tmp_path / "library"
+    project = library / "alpha"
+    project.mkdir(parents=True)
+    source = project / "cover.png"
+    source.write_bytes(b"png")
+
+    cache_key = thumbnail_cache_key(source)
+    baked = thumb_dir(str(library)) / f"{cache_key}.webp"
+    baked.parent.mkdir(parents=True)
+    baked.write_bytes(b"webp")
+    schema_db.execute(
+        """
+        INSERT INTO thumbnail_cache
+        (cache_key, source_path, source_mtime, source_size, baked_size, cache_size)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            cache_key,
+            str(source.resolve()),
+            source.stat().st_mtime,
+            source.stat().st_size,
+            256,
+            baked.stat().st_size,
+        ),
+    )
+    schema_db.commit()
+
+    home = ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
+    ).to_response()
+
+    assert home["recent_projects"][0]["thumbnail_url"] == "/api/thumbnails/alpha/cover.png"
+
+
+def test_get_home_ignores_baked_thumbnail_source_outside_library_via_symlink(
+    tmp_path, schema_db,
+):
+    import os
+    from AssetsManager.application.thumbnail_service import thumbnail_cache_key
+    from AssetsManager.core.path_resolver import thumb_dir
+
+    library = tmp_path / "library"
+    external = tmp_path / "external"
+    library.mkdir()
+    external.mkdir()
+    project = library / "linked"
+    try:
+        project.symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        import pytest
+        pytest.skip("directory symlinks are unavailable on this platform")
+
+    source = external / "cover.png"
+    source.write_bytes(b"png")
+    cache_key = thumbnail_cache_key(source)
+    baked = thumb_dir(str(library)) / f"{cache_key}.webp"
+    baked.parent.mkdir(parents=True)
+    baked.write_bytes(b"webp")
+    schema_db.execute(
+        """
+        INSERT INTO thumbnail_cache
+        (cache_key, source_path, source_mtime, source_size, baked_size, cache_size)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            cache_key,
+            str(source.resolve()),
+            source.stat().st_mtime,
+            source.stat().st_size,
+            256,
+            baked.stat().st_size,
+        ),
+    )
+    schema_db.commit()
+
+    home = ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
+    ).to_response()
+
+    assert os.path.samefile(project, external)
+    assert "thumbnail_url" not in home["recent_projects"][0]
+
+
+def test_get_home_baked_thumbnail_matching_ignores_unrelated_cache_rows(
+    tmp_path, schema_db,
+):
+    from AssetsManager.application.thumbnail_service import thumbnail_cache_key
+    from AssetsManager.core.path_resolver import thumb_dir
+
+    library = tmp_path / "library"
+    project = library / "alpha"
+    unrelated = tmp_path / "unrelated"
+    project.mkdir(parents=True)
+    unrelated.mkdir()
+    source = project / "cover.png"
+    source.write_bytes(b"png")
+
+    rows = []
+    for index in range(100):
+        other = unrelated / f"other-{index}.png"
+        other.write_bytes(b"png")
+        key = thumbnail_cache_key(other)
+        baked = thumb_dir(str(library)) / f"{key}.webp"
+        baked.parent.mkdir(parents=True, exist_ok=True)
+        baked.write_bytes(b"webp")
+        rows.append((key, str(other.resolve()), other.stat().st_mtime, other.stat().st_size, 256, baked.stat().st_size))
+
+    key = thumbnail_cache_key(source)
+    baked = thumb_dir(str(library)) / f"{key}.webp"
+    baked.write_bytes(b"webp")
+    rows.append((key, str(source.resolve()), source.stat().st_mtime, source.stat().st_size, 256, baked.stat().st_size))
+    schema_db.executemany(
+        """
+        INSERT INTO thumbnail_cache
+        (cache_key, source_path, source_mtime, source_size, baked_size, cache_size)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        rows,
+    )
+    schema_db.commit()
+
+    home = ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
+    ).to_response()
+
+    projects = {item["path"]: item for item in home["recent_projects"]}
+    assert projects["alpha"]["thumbnail_url"] == "/api/thumbnails/alpha/cover.png"
+
+
+def test_get_home_baked_thumbnail_matching_does_not_scan_projects_per_cache_row(
+    tmp_path, schema_db, monkeypatch,
+):
+    from pathlib import Path
+    from AssetsManager.application.thumbnail_service import thumbnail_cache_key
+    from AssetsManager.core.path_resolver import thumb_dir
+
+    library = tmp_path / "library"
+    library.mkdir()
+    for index in range(100):
+        (library / f"project-{index}").mkdir()
+
+    rows = []
+    for index in range(100):
+        source = library / f"project-{index}" / "cover.png"
+        source.write_bytes(b"png")
+        key = thumbnail_cache_key(source)
+        baked = thumb_dir(str(library)) / f"{key}.webp"
+        baked.parent.mkdir(parents=True, exist_ok=True)
+        baked.write_bytes(b"webp")
+        rows.append((key, str(source.resolve()), source.stat().st_mtime, source.stat().st_size, 256, baked.stat().st_size))
+    schema_db.executemany(
+        """
+        INSERT INTO thumbnail_cache
+        (cache_key, source_path, source_mtime, source_size, baked_size, cache_size)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        rows,
+    )
+    schema_db.commit()
+
+    real_relative_to = Path.relative_to
+    relative_to_calls = {"count": 0}
+
+    def counting_relative_to(self, *other):
+        relative_to_calls["count"] += 1
+        return real_relative_to(self, *other)
+
+    monkeypatch.setattr(Path, "relative_to", counting_relative_to)
+    ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
+    )
+
+    assert relative_to_calls["count"] < 1000
+
+
+def test_get_home_ignores_stale_or_missing_directory_cache_preview(tmp_path, schema_db):
+    from AssetsManager.core.directory_cache import DirectoryCache
+
+    library = tmp_path / "library"
+    stale = library / "stale"
+    missing = library / "missing"
+    stale.mkdir(parents=True)
+    missing.mkdir()
+    stale_preview = stale / "cover.png"
+    stale_preview.write_bytes(b"png")
+
+    cache = DirectoryCache(schema_db)
+    cache.set(
+        str(stale.resolve()),
+        item_count=1,
+        preview_path=str(stale_preview.resolve()),
+        mtime=stale.stat().st_mtime - 1,
+    )
+    cache.set(
+        str(missing.resolve()),
+        item_count=1,
+        preview_path=str((missing / "cover.png").resolve()),
+        mtime=missing.stat().st_mtime,
+    )
+
+    home = ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
+    ).to_response()
+
+    assert all("thumbnail_url" not in project for project in home["recent_projects"])
+
+
+def test_get_home_batches_directory_cache_reads(tmp_path, schema_db, monkeypatch):
+    from AssetsManager.core.directory_cache import DirectoryCache as RealDirectoryCache
+
+    library = tmp_path / "library"
+    first = library / "first"
+    second = library / "second"
+    first.mkdir(parents=True)
+    second.mkdir()
+    calls = {"get": 0, "get_batch": 0}
+
+    class SpyDirectoryCache:
+        def __init__(self, conn):
+            self._real = RealDirectoryCache(conn)
+
+        def get(self, *args, **kwargs):
+            calls["get"] += 1
+            raise AssertionError("Home must batch directory cache reads")
+
+        def get_batch(self, paths):
+            calls["get_batch"] += 1
+            return self._real.get_batch(paths)
+
+    monkeypatch.setattr(
+        "AssetsManager.application.project_service.DirectoryCache",
+        SpyDirectoryCache,
+    )
+
+    ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
+    )
+
+    assert calls["get_batch"] == 1
+    assert calls["get"] == 0
+
+
 def test_get_home_limits_recent_projects_to_20(tmp_path, schema_db):
     library = tmp_path / "library"
     library.mkdir()
@@ -257,6 +569,83 @@ def test_get_home_limits_recent_projects_to_20(tmp_path, schema_db):
 
     assert home["stats"]["total_projects"] == 25
     assert len(home["recent_projects"]) == 20
+
+
+def test_get_home_preview_pool_covers_all_valid_cached_thumbnails(tmp_path, schema_db):
+    import os
+
+    from AssetsManager.application.thumbnail_service import thumbnail_cache_key
+    from AssetsManager.core.directory_cache import DirectoryCache
+    from AssetsManager.core.path_resolver import thumb_dir
+
+    library = tmp_path / "library"
+    library.mkdir()
+    projects = []
+    for index in range(25):
+        project = library / f"project_{index:02d}"
+        project.mkdir()
+        os.utime(project, (index + 1, index + 1))
+        projects.append(project)
+
+    directory_preview = projects[0] / "directory-cover.png"
+    directory_preview.write_bytes(b"png")
+    DirectoryCache(schema_db).set(
+        str(projects[0].resolve()),
+        item_count=1,
+        preview_path=str(directory_preview.resolve()),
+        mtime=projects[0].stat().st_mtime,
+    )
+
+    baked_source = projects[1] / "baked-cover.png"
+    baked_source.write_bytes(b"png")
+    baked_key = thumbnail_cache_key(baked_source)
+    baked_preview = thumb_dir(str(library)) / f"{baked_key}.webp"
+    baked_preview.parent.mkdir(parents=True)
+    baked_preview.write_bytes(b"webp")
+
+    stale_source = projects[2] / "stale-cover.png"
+    stale_source.write_bytes(b"png")
+    stale_key = thumbnail_cache_key(stale_source)
+    stale_preview = thumb_dir(str(library)) / f"{stale_key}.webp"
+    stale_preview.write_bytes(b"webp")
+    schema_db.executemany(
+        """
+        INSERT INTO thumbnail_cache
+        (cache_key, source_path, source_mtime, source_size, baked_size, cache_size)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                baked_key,
+                str(baked_source.resolve()),
+                baked_source.stat().st_mtime,
+                baked_source.stat().st_size,
+                256,
+                baked_preview.stat().st_size,
+            ),
+            (
+                stale_key,
+                str(stale_source.resolve()),
+                stale_source.stat().st_mtime - 1,
+                stale_source.stat().st_size,
+                256,
+                stale_preview.stat().st_size,
+            ),
+        ],
+    )
+    schema_db.commit()
+
+    home = ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
+    ).to_response()
+
+    assert len(home["recent_projects"]) == 20
+    preview_pool = {item["path"]: item for item in home["preview_pool"]}
+    assert preview_pool["project_00"]["thumbnail_url"] == \
+        "/api/thumbnails/project_00/directory-cover.png"
+    assert preview_pool["project_01"]["thumbnail_url"] == \
+        "/api/thumbnails/project_01/baked-cover.png"
+    assert "project_02" not in preview_pool
 
 
 def test_get_home_returns_empty_tags_without_error(tmp_path, schema_db):

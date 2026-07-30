@@ -17,7 +17,6 @@ from typing import Any
 from aiohttp import web
 
 from AssetsManager.application.asset_service import matches_exclude
-from AssetsManager.core.directory_cache import DirectoryCache
 from AssetsManager.core.format_utils import CATEGORY_MAP, format_size
 from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.lan.path_guard import MissingPathError, PathEscapeError, PathGuard
@@ -28,8 +27,7 @@ _zip_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
 LAN_APP_KEY = web.AppKey("lan", object)
 AUTH_SERVICE_APP_KEY = web.AppKey("auth_service", object)
-AUTH_USER_REQUEST_KEY = web.RequestKey("user", dict)
-AUTH_KIND_REQUEST_KEY = web.RequestKey("auth_kind", str)
+PRINCIPAL_REQUEST_KEY = web.RequestKey("principal", object)
 
 _format_size = format_size
 
@@ -44,15 +42,19 @@ class ActivityLog:
     def __init__(self, max_entries=100):
         self._entries = deque(maxlen=max_entries)
         self._lock = threading.Lock()
+        self._next_id = 1
 
-    def add(self, user, action, detail=""):
+    def add(self, user, action, detail="", *, ip="unknown"):
         with self._lock:
             self._entries.append({
-                "time": time.time(),
-                "user": user or "guest",
+                "id": self._next_id,
+                "username": user or "guest",
                 "action": action,
-                "detail": detail,
+                "details": detail,
+                "ip": ip or "unknown",
+                "timestamp": time.time(),
             })
+            self._next_id += 1
 
     def recent(self, count=10):
         with self._lock:
@@ -62,15 +64,22 @@ class ActivityLog:
 class OnlineUsers:
     def __init__(self):
         self._users = {}
+        self._counts = {}
         self._lock = threading.Lock()
 
     def connect(self, user_id, username, ip):
         with self._lock:
-            self._users[user_id] = {"username": username, "ip": ip, "connected_at": time.time()}
+            self._counts[user_id] = self._counts.get(user_id, 0) + 1
+            self._users.setdefault(user_id, {"username": username, "ip": ip, "connected_at": time.time()})
 
     def disconnect(self, user_id):
         with self._lock:
-            self._users.pop(user_id, None)
+            count = self._counts.get(user_id, 0) - 1
+            if count > 0:
+                self._counts[user_id] = count
+            else:
+                self._counts.pop(user_id, None)
+                self._users.pop(user_id, None)
 
     def list_all(self):
         with self._lock:
@@ -97,8 +106,7 @@ __all__ = [
     "CATEGORY_MAP",
     "IMAGE_EXTS",
     "AUTH_SERVICE_APP_KEY",
-    "AUTH_KIND_REQUEST_KEY",
-    "AUTH_USER_REQUEST_KEY",
+    "PRINCIPAL_REQUEST_KEY",
     "LAN_APP_KEY",
     "LanScopedServices",
     "ROLE_ADMIN",
@@ -114,8 +122,6 @@ __all__ = [
     "get_lan",
     "get_metadata_service",
     "get_project_service",
-    "get_request_auth_kind",
-    "get_request_user",
     "get_search_service",
     "get_share_token",
     "get_services",
@@ -128,7 +134,7 @@ __all__ = [
     "require_permission",
     "require_role",
     "sanitize_filename",
-    "set_request_auth_context",
+    "set_request_principal",
     "set_auth_cookie",
     "set_share_cookie",
     "validate_path",
@@ -155,67 +161,26 @@ class LanScopedServices:
     share_service: Any
     activity_log: Any = field(default_factory=ActivityLog)
     online_users: Any = field(default_factory=OnlineUsers)
-
-
-def _build_lan_services(lan) -> LanScopedServices:
-    """Build a LanScopedServices bundle from a LAN server instance."""
-    from AssetsManager.application import MetadataService, ProjectService, TagService
-    from AssetsManager.application import SearchService, ThumbnailService, AssetService
-    from AssetsManager.application.auth_service import AuthService
-    from AssetsManager.application.share_service import ShareService
-
-    provider = lan.connection_for
-    auth_service = getattr(lan, "_auth_service", None)
-    if auth_service is None:
-        auth_service = AuthService(lan.db_conn, lan.token_secret)
-    share_service = getattr(lan, "_share_service", None)
-    if share_service is None:
-        share_service = ShareService(auth_service.db_conn, lan.token_secret)
-    return LanScopedServices(
-        auth_service=auth_service,
-        metadata_service=MetadataService(connection_provider=provider),
-        project_service=ProjectService(connection_provider=provider),
-        tag_service=TagService(connection_provider=provider),
-        search_service=SearchService(
-            connection_provider=provider,
-            performance_recorder=getattr(lan, "performance_recorder", None),
-            session_token=getattr(lan, "session_token", None),
-        ),
-        thumbnail_service=ThumbnailService(connection_provider=provider),
-        asset_service=AssetService(
-            directory_cache=DirectoryCache(lan.db_conn),
-            performance_recorder=getattr(lan, "performance_recorder", None),
-            session_token=getattr(lan, "session_token", None),
-        ),
-        share_service=share_service,
-    )
+    runtime_services: Any = None
 
 
 def get_lan(request) -> Any:
     return request.app[LAN_APP_KEY]
 
 
-def set_request_auth_context(request, auth_kind: str, user: dict[str, Any]) -> None:
-    request[AUTH_KIND_REQUEST_KEY] = auth_kind
-    request[AUTH_USER_REQUEST_KEY] = user
+def set_request_principal(request, principal, user: dict[str, Any] | None = None) -> None:
+    """Attach canonical identity to the request."""
+    request[PRINCIPAL_REQUEST_KEY] = principal
 
 
-def get_request_user(request) -> dict[str, Any] | None:
-    return request.get(AUTH_USER_REQUEST_KEY)
-
-
-def get_request_auth_kind(request) -> str | None:
-    return request.get(AUTH_KIND_REQUEST_KEY)
+def get_request_principal(request):
+    return request.get(PRINCIPAL_REQUEST_KEY) or request.get("principal")
 
 
 def require_role(request, *roles):
-    """Return user dict if user has one of the required roles, else None."""
-    user = get_request_user(request)
-    if not user:
-        return None
-    if user.get("role") in roles:
-        return user
-    return None
+    """Return the canonical principal when its role is allowed."""
+    principal = get_request_principal(request)
+    return principal if principal is not None and principal.role in roles else None
 
 
 def require_admin(request):
@@ -225,7 +190,10 @@ def require_admin(request):
 
 def require_permission(request, permission: str) -> bool:
     """Return True when the current request user has a named LAN permission."""
-    return bool(get_user_permissions(get_request_user(request)).get(permission, False))
+    principal = get_request_principal(request)
+    if principal is not None:
+        return bool(getattr(principal.capabilities, permission, False))
+    return False
 
 
 def get_user_permissions(user):
@@ -253,13 +221,11 @@ def get_user_permissions(user):
 
 
 def get_services(request) -> LanScopedServices:
-    """Return the cached LAN service bundle, creating it on first access."""
+    """Return the eagerly attached LAN service bundle."""
     lan = get_lan(request)
-    services = getattr(lan, "_services", None)
-    if services is None:
-        services = _build_lan_services(lan)
-        lan._services = services
-    return services
+    if getattr(lan, "services", None) is None:
+        raise RuntimeError("LAN service bundle is absent; compose the server with a Runtime")
+    return lan.services
 
 
 def get_auth_service(request):

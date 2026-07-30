@@ -36,26 +36,29 @@ def is_available() -> bool:
 class LanServer:
     """LAN sharing server facade. Wraps _LanServerImpl when aiohttp is available."""
 
-    def __init__(self, library_root: str, thumbnail_dir: str, db_conn,
+    def __init__(self, runtime=None,
                  *, share_name: str = "AssetManager", password: str | None = None,
                   access_key: str | None = None,
+                  auth_mode: str | None = None,
                   rate_limit: int = 100, blocked_ips: list[str] | None = None,
                   ip_whitelist: list[str] | None = None,
                   blur_tags: list[str] | None = None,
                   ssl_cert: str | None = None, ssl_key: str | None = None,
-                  performance_recorder=None, session_token: str | None = None):
+                  performance_recorder=None, session_token: str | None = None,
+                  services=None):
+        if runtime is None:
+            raise TypeError("LanServer(runtime=...) requires a live LibraryRuntime")
         if not _HAS_AIOHTTP:
             raise RuntimeError(
                 "LAN sharing requires aiohttp. Install with: pip install aiohttp"
             )
         from AssetsManager.lan.server import _LanServerImpl
         self._impl = _LanServerImpl(
-            library_root=library_root,
-            thumbnail_dir=thumbnail_dir,
-            db_conn=db_conn,
+            runtime=runtime,
             share_name=share_name,
             password=password,
             access_key=access_key,
+            auth_mode=auth_mode,
             rate_limit=rate_limit,
             blocked_ips=blocked_ips,
             ip_whitelist=ip_whitelist,
@@ -64,6 +67,7 @@ class LanServer:
             ssl_key=ssl_key,
             performance_recorder=performance_recorder,
             session_token=session_token,
+            services=services,
         )
 
     def start(self, port: int = 8080, bind: str = "0.0.0.0"):

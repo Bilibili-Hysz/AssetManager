@@ -1,18 +1,30 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { createUsersApi } from '../../api/users';
 import { useI18n } from '../../hooks/useI18n';
 import type { OnlineUsersResponse } from '../../types/api';
+import { useInvalidation } from '../../hooks/useInvalidation';
 
 export function OnlineUsers() {
   const { api } = useAuth();
   const usersApi = useMemo(() => createUsersApi(api), [api]);
   const { t } = useI18n();
   const [users, setUsers] = useState<OnlineUsersResponse['users']>([]);
+  const requestGeneration = useRef(0);
+  const mounted = useRef(true);
 
-  useEffect(() => {
-    usersApi.getOnlineUsers().then(res => setUsers(res.users)).catch(() => {});
+  const refreshUsers = useCallback(() => {
+    const generation = ++requestGeneration.current;
+    usersApi.getOnlineUsers().then(res => {
+      if (mounted.current && generation === requestGeneration.current) setUsers(res.users);
+    }).catch(() => {});
   }, [usersApi]);
+  useEffect(() => {
+    mounted.current = true;
+    refreshUsers();
+    return () => { mounted.current = false; requestGeneration.current += 1; };
+  }, [refreshUsers]);
+  useInvalidation(['users', 'shares', 'stats'], refreshUsers);
 
   return (
     <div>

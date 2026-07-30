@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, Tag, FileText, Link as LinkIcon, File } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -7,6 +7,8 @@ import type { ProjectDetail } from '../types/api';
 import { ImageViewer } from '../components/viewer/ImageViewer';
 import { Skeleton } from '../components/ui/Skeleton';
 import { useI18n } from '../hooks/useI18n';
+import { useTheme } from '../hooks/useTheme';
+import { useInvalidation } from '../hooks/useInvalidation';
 
 export default function DetailPage() {
   const [searchParams] = useSearchParams();
@@ -15,25 +17,35 @@ export default function DetailPage() {
   const { api } = useAuth();
   const metaApi = useMemo(() => createMetadataApi(api), [api]);
   const { t } = useI18n();
+  useTheme();
 
   const [data, setData] = useState<ProjectDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const detailGeneration = useRef(0);
+  const detailAbort = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    let disposed = false;
+  const refreshDetail = useCallback(() => {
+    const generation = ++detailGeneration.current;
+    detailAbort.current?.abort();
+    const controller = new AbortController();
+    detailAbort.current = controller;
     if (!path) {
       setData(null);
       setLoading(false);
-      return () => { disposed = true; };
+      return () => controller.abort();
     }
     setLoading(true);
-    metaApi.getProjectDetail(path)
-      .then(detail => { if (!disposed) setData(detail); })
-      .catch(() => { if (!disposed) setData(null); })
-      .finally(() => { if (!disposed) setLoading(false); });
-    return () => { disposed = true; };
+    metaApi.getProjectDetail(path, controller.signal)
+      .then(detail => { if (!controller.signal.aborted && generation === detailGeneration.current) setData(detail); })
+      .catch(() => { if (!controller.signal.aborted && generation === detailGeneration.current) setData(null); })
+      .finally(() => { if (!controller.signal.aborted && generation === detailGeneration.current) setLoading(false); });
+    return () => controller.abort();
   }, [path, metaApi]);
+  useEffect(() => refreshDetail(), [refreshDetail]);
+  useInvalidation(['project_detail', 'metadata', 'tags'], event => {
+    if (!event || event.paths.some(invalidatedPath => path === invalidatedPath || path.startsWith(`${invalidatedPath}/`) || invalidatedPath.startsWith(`${path}/`))) void refreshDetail();
+  });
 
   const externalUrls = data?.urls?.filter(url => {
     try {
@@ -77,7 +89,7 @@ export default function DetailPage() {
             {/* Hero */}
             <div className="relative rounded-xl overflow-hidden bg-slate-900 border border-slate-700/50 mb-8">
               {data.thumbnail_url && (
-                <img src={data.thumbnail_url} alt="" className="w-full h-48 object-cover opacity-50" />
+                <img src={data.thumbnail_url} alt="" draggable={false} className="w-full h-48 object-cover opacity-50" />
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/60 to-transparent" />
               <div className="relative p-6">
@@ -152,7 +164,7 @@ export default function DetailPage() {
                       onClick={() => setViewerIndex(i)}
                       className="aspect-square rounded-lg overflow-hidden border border-slate-700/50 hover:border-indigo-500/50 transition-colors bg-slate-900"
                     >
-                      <img src={img.thumb_url} alt={img.name} className="w-full h-full object-cover" />
+                      <img src={img.thumb_url} alt={img.name} draggable={false} className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>

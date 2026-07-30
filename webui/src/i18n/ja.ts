@@ -27,6 +27,8 @@ const ja: I18nDict = {
     clearFilterToChangeExpansion: '手動での展開状態を変更するには検索フィルターをクリアしてください',
     search: 'ディレクトリをフィルター...',
     no_results: '一致するディレクトリがありません',
+    expand_all: 'すべて展開',
+    collapse_all: 'すべて折りたたむ',
   },
   browse: {
     empty: 'このフォルダは空です',

@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
-import { Search, LogOut, Sun, Moon, Globe, User, File, Folder, PanelLeft, PanelRight } from 'lucide-react';
+import { Search, LogOut, Sun, Moon, Globe, User, File, Folder } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useI18n } from '../../hooks/useI18n';
@@ -7,14 +7,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { useSearch } from '../../hooks/useSearch';
 import type { SearchResult } from '../../types/api';
 
-interface HeaderProps {
-  onSidebarToggle: () => void;
-  onInfoToggle: () => void;
-  sidebarOpen: boolean;
-  infoOpen: boolean;
-}
-
-export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }: HeaderProps) {
+export function Header() {
   const { user, role, logout, serverInfo } = useAuth();
   const { t, lang, setLang, supportedLangs } = useI18n();
   const { theme, toggleTheme } = useTheme();
@@ -26,8 +19,6 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
   const userTriggerRef = useRef<HTMLButtonElement>(null);
   const [showResults, setShowResults] = useState(false);
   const [openMenu, setOpenMenu] = useState<'language' | 'user' | null>(null);
-  const sidebarToggleLabel = t(sidebarOpen ? 'action.close_sidebar' : 'action.open_sidebar');
-  const infoToggleLabel = t(infoOpen ? 'action.close_info' : 'mobile.info');
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -80,19 +71,10 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, []);
-
   return (
     <header className="flex items-center gap-3 px-4 h-14 border-b border-slate-700/50 bg-slate-900/80 backdrop-blur-md">
-      {/* Left: sidebar toggle + brand */}
+      {/* Left: brand */}
       <div className="flex items-center gap-2 flex-shrink-0">
-        <button
-          onClick={onSidebarToggle}
-          aria-label={sidebarToggleLabel}
-          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors"
-          title={sidebarToggleLabel}
-        >
-          <PanelLeft size={18} aria-hidden="true" />
-        </button>
         <Link to="/" className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-md bg-indigo-500 flex items-center justify-center text-sm font-bold text-white">
             A
@@ -180,16 +162,6 @@ export function Header({ onSidebarToggle, onInfoToggle, sidebarOpen, infoOpen }:
           title={t('theme.toggle')}
         >
           {theme === 'dark' ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
-        </button>
-
-        {/* Info panel toggle */}
-        <button
-          onClick={onInfoToggle}
-          aria-label={infoToggleLabel}
-          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors"
-          title={infoToggleLabel}
-        >
-          <PanelRight size={17} aria-hidden="true" />
         </button>
 
         {/* User / Login */}

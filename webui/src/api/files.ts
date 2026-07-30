@@ -20,8 +20,11 @@ export function createFilesApi(api: ApiClient) {
       window.open(`/api/download/${encoded}`, '_blank');
     },
 
-    batchDownload: async (paths: string[], onProgress?: (progress: DownloadProgress) => void) => {
-      const blob = await api.postBlobWithProgress('download/batch', { paths }, onProgress ?? (() => {}));
+    batchDownload: async (paths: string[], onProgress?: (progress: DownloadProgress) => void, signal?: AbortSignal) => {
+      const progress = onProgress ?? (() => {});
+      const blob = signal === undefined
+        ? await api.postBlobWithProgress('download/batch', { paths }, progress)
+        : await api.postBlobWithProgress('download/batch', { paths }, progress, signal);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

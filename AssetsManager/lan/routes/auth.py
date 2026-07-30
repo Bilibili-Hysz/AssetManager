@@ -1,8 +1,15 @@
 """Auth routes: /api/auth/*."""
 from aiohttp import web
 
-from AssetsManager.lan.routes._helpers import get_auth_service, get_lan, get_request_user, set_auth_cookie
+from AssetsManager.lan.routes._helpers import get_auth_service, get_lan, get_request_principal, set_auth_cookie
 from AssetsManager.lan.utils import generate_auth_token
+
+
+def _record_activity(request, action, details, username=None):
+    services = getattr(get_lan(request), "services", None)
+    activity_log = getattr(services, "activity_log", None)
+    if activity_log is not None:
+        activity_log.add(username, action, details, ip=request.remote or "unknown")
 
 
 async def handle_login(request):
@@ -22,6 +29,7 @@ async def handle_login(request):
             token = auth_service.generate_user_token(user["id"], user["username"], user["role"])
             response = web.json_response({"token": token, "user": user})
             set_auth_cookie(response, token)
+            _record_activity(request, "login", "signed in", user["username"])
             return response
         return web.json_response({"error": err}, status=401)
 
@@ -30,6 +38,7 @@ async def handle_login(request):
             token = auth_service.generate_token(lan.password_hash)
             response = web.json_response({"token": token})
             set_auth_cookie(response, token)
+            _record_activity(request, "login", "signed in")
             return response
         return web.json_response({"error": "Invalid password"}, status=401)
 
@@ -82,6 +91,7 @@ async def handle_verify_key(request):
         token = generate_auth_token(lan.token_secret)
         response = web.json_response({"token": token})
         set_auth_cookie(response, token)
+        _record_activity(request, "login", "verified access key")
         return response
     return web.json_response({"error": "Invalid key"}, status=401)
 
@@ -93,7 +103,11 @@ async def handle_logout(request):
 
 
 async def handle_me(request):
-    user = get_request_user(request)
-    if user:
-        return web.json_response({"user": user})
+    principal = get_request_principal(request)
+    if principal is not None:
+        payload = {"principal": principal.to_dict()}
+        if principal.kind == "user":
+            if principal.user_profile is not None:
+                payload["user"] = dict(principal.user_profile)
+        return web.json_response(payload)
     return web.json_response({"error": "Not authenticated"}, status=401)

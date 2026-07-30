@@ -218,6 +218,10 @@ async def handle_batch_download(request):
 
 
 def _record_download_route(lan, started: float, response_path, outcome: str, status: int, kind: str) -> None:
+    services = getattr(lan, "services", None)
+    activity_log = getattr(services, "activity_log", None)
+    if activity_log is not None and outcome == "response_ready":
+        activity_log.add(None, "download", str(response_path or kind), ip="unknown")
     recorder = getattr(lan, "performance_recorder", None)
     if recorder is None or not recorder.enabled:
         return

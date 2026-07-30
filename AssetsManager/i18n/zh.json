@@ -284,6 +284,8 @@
   "tab.close_others": "关闭其他",
   "tab.close_all": "关闭全部",
   "dialog.apply": "应用",
+  "dialog.ok": "确定",
+  "dialog.cancel": "取消",
   "dialog.browse": "浏览",
   "dialog.close": "关闭",
   "dialog.confirm": "确认",

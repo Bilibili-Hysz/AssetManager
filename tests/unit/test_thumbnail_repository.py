@@ -47,6 +47,17 @@ class TestThumbnailRepository:
         assert "/a.png" in paths
         assert "/b.png" in paths
 
+    def test_list_all_with_metadata_returns_stably_sorted_rows(self, repo):
+        repo.upsert_entry("key-b", "/b.png", 2.0, 100, 80, 50)
+        repo.upsert_entry("key-a", "/a.png", 2.0, 100, 80, 50)
+        repo.upsert_entry("key-c", "/c.png", 1.0, 100, 80, 50)
+
+        assert repo.list_all_with_metadata() == [
+            ("key-a", "/a.png", 2.0),
+            ("key-b", "/b.png", 2.0),
+            ("key-c", "/c.png", 1.0),
+        ]
+
     def test_clear_all(self, repo, conn):
         repo.upsert_entry("key1", "/a.png", 1.0, 100, 80, 50)
         repo.upsert_entry("key2", "/b.png", 2.0, 200, 160, 100)

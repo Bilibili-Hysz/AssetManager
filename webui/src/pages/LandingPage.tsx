@@ -1,101 +1,255 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, SlidersHorizontal, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { ArrowRight, Moon, SlidersHorizontal, Sun, X } from 'lucide-react';
 import { Link, Navigate } from 'react-router-dom';
 import { createMetadataApi } from '../api/metadata';
+import { LayeredPreview } from '../components/files/LayeredPreview';
 import { useAuth } from '../hooks/useAuth';
-import type { ProjectItem } from '../types/api';
+import { useTheme } from '../hooks/useTheme';
+import { useInvalidation } from '../hooks/useInvalidation';
+import type { PreviewPoolItem } from '../types/api';
+import './LandingPage.css';
+
+type FeaturedStatus = 'loading' | 'online' | 'empty' | 'unavailable' | 'decode-error';
+type MotionQuery = MediaQueryList & { addListener?: (listener: (event: MediaQueryListEvent) => void) => void; removeListener?: (listener: (event: MediaQueryListEvent) => void) => void };
 
 interface BackgroundSettings {
   blur: number;
   brightness: number;
   saturation: number;
-  opacity: number;
+  canvasOpacity: number;
+  itemOpacity: number;
 }
 
-const defaultBackgroundSettings: BackgroundSettings = {
-  blur: 4,
-  brightness: 55,
-  saturation: 75,
-  opacity: 38,
+const darkBackgroundDefaults: BackgroundSettings = {
+  blur: 6,
+  brightness: 12,
+  saturation: 70,
+  canvasOpacity: 100,
+  itemOpacity: 60,
 };
 
-function summaryText(count: number) {
-  return `${count} ${count === 1 ? 'asset' : 'assets'}`;
+const lightBackgroundDefaults: BackgroundSettings = {
+  blur: 4,
+  brightness: 100,
+  saturation: 85,
+  canvasOpacity: 55,
+  itemOpacity: 60,
+};
+
+const backgroundFields = [
+  ['blur', 'Blur', 0, 16, 'px'],
+  ['brightness', 'Brightness', 5, 150, '%'],
+  ['saturation', 'Saturation', 0, 150, '%'],
+  ['canvasOpacity', 'Canvas opacity', 10, 100, '%'],
+  ['itemOpacity', 'Item opacity', 10, 100, '%'],
+] as const;
+
+const fallbackAccent = '#6366f1';
+function isValidAccent(value: string | undefined): value is string {
+  return Boolean(value && /^#[\da-f]{6}$/i.test(value));
 }
 
-function backgroundStorageKey(theme: string | undefined) {
-  return `assets-manager.gate-background.${theme || 'default'}`;
+function themeName(isLight: boolean): 'dark' | 'light' {
+  return isLight ? 'light' : 'dark';
 }
 
-function readBackgroundSettings(key: string): BackgroundSettings {
+function defaultsForTheme(isLight: boolean): BackgroundSettings {
+  return isLight ? lightBackgroundDefaults : darkBackgroundDefaults;
+}
+
+function backgroundStorageKey(accent: string | undefined): string {
+  return `assets-manager.gate-background.${accent || 'default'}`;
+}
+
+function readBackgroundSettings(key: string, isLight: boolean): BackgroundSettings {
+  const defaults = defaultsForTheme(isLight);
   try {
-    const saved = window.localStorage.getItem(key);
-    if (!saved) return defaultBackgroundSettings;
-    const parsed = JSON.parse(saved) as Partial<BackgroundSettings>;
-    if (typeof parsed.blur !== 'number' || typeof parsed.brightness !== 'number' || typeof parsed.saturation !== 'number' || typeof parsed.opacity !== 'number') {
-      return defaultBackgroundSettings;
-    }
-    return parsed as BackgroundSettings;
+    const stored = JSON.parse(window.localStorage.getItem(key) || 'null') as Record<string, unknown> | null;
+    const themeSettings = stored?.[themeName(isLight)];
+    const source: Partial<BackgroundSettings> = themeSettings && typeof themeSettings === 'object'
+      ? themeSettings as Partial<BackgroundSettings>
+      : stored as Partial<BackgroundSettings> | null || {};
+    return {
+      blur: typeof source.blur === 'number' ? source.blur : defaults.blur,
+      brightness: typeof source.brightness === 'number' ? source.brightness : defaults.brightness,
+      saturation: typeof source.saturation === 'number' ? source.saturation : defaults.saturation,
+      canvasOpacity: typeof source.canvasOpacity === 'number' ? source.canvasOpacity : defaults.canvasOpacity,
+      itemOpacity: typeof source.itemOpacity === 'number' ? source.itemOpacity : defaults.itemOpacity,
+    };
   } catch {
-    return defaultBackgroundSettings;
+    return defaults;
   }
 }
 
-type FeaturedStatus = 'loading' | 'online' | 'unavailable';
+function saveBackgroundSettings(key: string, isLight: boolean, settings: BackgroundSettings): void {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(key) || 'null') as { dark?: BackgroundSettings; light?: BackgroundSettings } | null;
+    window.localStorage.setItem(key, JSON.stringify({
+      ...(stored && typeof stored === 'object' ? stored : {}),
+      [themeName(isLight)]: settings,
+    }));
+  } catch {
+    // Visual tuning remains usable when storage is unavailable.
+  }
+}
+
+function calculateWallCount(): number {
+  const width = typeof window === 'undefined' ? 1440 : window.innerWidth;
+  const height = typeof window === 'undefined' ? 900 : window.innerHeight;
+  return Math.min(72, Math.max(12, Math.ceil(width / 160) * Math.ceil(height / 130)));
+}
+
+function summaryText(count: number): string {
+  return `${count} ${count === 1 ? 'asset' : 'assets'}`;
+}
+
+function shuffle<T>(items: T[]): T[] {
+  const result = [...items];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    const current = result[index]!;
+    result[index] = result[swapIndex]!;
+    result[swapIndex] = current;
+  }
+  return result;
+}
+
+function useReducedMotion(): boolean {
+  const [reducedMotion, setReducedMotion] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)') as MotionQuery;
+    const update = (event: MediaQueryListEvent) => setReducedMotion(event.matches);
+    if (typeof query.addEventListener === 'function') {
+      query.addEventListener('change', update);
+    } else {
+      query.addListener?.(update);
+    }
+    return () => {
+      if (typeof query.removeEventListener === 'function') {
+        query.removeEventListener('change', update);
+      } else {
+        query.removeListener?.(update);
+      }
+    };
+  }, []);
+
+  return reducedMotion;
+}
 
 export default function LandingPage() {
   const { serverInfo, isLoading, isAuthenticated, role, api } = useAuth();
-  const [featured, setFeatured] = useState<ProjectItem[]>([]);
-  const [failedFeatured, setFailedFeatured] = useState<Set<string>>(() => new Set());
-  const [featuredStatus, setFeaturedStatus] = useState<FeaturedStatus>('loading');
-  const [tuningOpen, setTuningOpen] = useState(false);
-  const [settings, setSettings] = useState(defaultBackgroundSettings);
-  const [isPageVisible, setIsPageVisible] = useState(() => document.visibilityState !== 'hidden');
-
-  const isProtected = serverInfo?.auth_enabled && (!isAuthenticated || role === 'guest');
   const metadataApi = useMemo(() => createMetadataApi(api), [api]);
-  const storageKey = useMemo(() => backgroundStorageKey(serverInfo?.theme_color), [serverInfo?.theme_color]);
-  const visibleFeatured = featured.filter(item => !failedFeatured.has(item.path));
+  const { theme, toggleTheme: toggleSharedTheme } = useTheme();
+  const isProtected = Boolean(serverInfo?.auth_enabled && (!isAuthenticated || role === 'guest'));
+  const [previewPool, setPreviewPool] = useState<PreviewPoolItem[]>([]);
+  const [showcaseUrls, setShowcaseUrls] = useState<string[]>([]);
+  const [failedUrls, setFailedUrls] = useState<Set<string>>(() => new Set());
+  const [featuredStatus, setFeaturedStatus] = useState<FeaturedStatus>('loading');
+  const [homeStats, setHomeStats] = useState<{ total_projects: number; total_size: number; total_size_fmt: string } | null>(null);
+  const [tuningOpen, setTuningOpen] = useState(false);
+  const isLight = theme === 'light';
+  const [settings, setSettings] = useState<BackgroundSettings>(() => readBackgroundSettings(backgroundStorageKey(serverInfo?.theme_color), isLight));
+  const [isPageVisible, setIsPageVisible] = useState(() => typeof document === 'undefined' || document.visibilityState !== 'hidden');
+  const [wallCount, setWallCount] = useState(calculateWallCount);
+  const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
+  const reducedMotion = useReducedMotion();
+  const effectNodes = useRef<HTMLElement[]>([]);
+  const effectTimers = useRef<ReturnType<typeof window.setTimeout>[]>([]);
+  const lastParticleAt = useRef(0);
+  const mounted = useRef(true);
+  const homeRefreshGeneration = useRef(0);
+  const homeRefreshAbort = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    setSettings(readBackgroundSettings(storageKey));
-  }, [storageKey]);
+  const serverAccent = serverInfo?.theme_color;
+  const accent = isValidAccent(serverAccent) ? serverAccent : fallbackAccent;
+  const storageKey = useMemo(() => backgroundStorageKey(accent), [accent]);
+  const visiblePool = useMemo(() => previewPool.filter(item => item.thumbnail_url && !failedUrls.has(item.thumbnail_url)), [failedUrls, previewPool]);
+  const stats = homeStats ?? serverInfo?.library_stats ?? { total_projects: 0, total_size: 0, total_size_fmt: '0 B' };
+  const canRotate = featuredStatus === 'online' && isPageVisible && !reducedMotion && visiblePool.length > showcaseUrls.length;
+  const wallItems = visiblePool.length
+    ? Array.from({ length: wallCount }, (_, index) => visiblePool[index % visiblePool.length])
+    : [];
 
-  useEffect(() => {
-    if (isLoading || isProtected) return;
+  const handleFeaturedFailure = useCallback((url: string) => {
+    setFailedUrls(current => {
+      if (current.has(url)) return current;
+      const next = new Set(current);
+      next.add(url);
+      return next;
+    });
+  }, [visiblePool]);
 
+  const refreshHome = useCallback(() => {
+    if (isLoading || isProtected) return undefined;
+    const generation = ++homeRefreshGeneration.current;
+    homeRefreshAbort.current?.abort();
     const controller = new AbortController();
-    let active = true;
+    homeRefreshAbort.current = controller;
     setFeaturedStatus('loading');
     metadataApi.getHome(controller.signal)
       .then(response => {
-        if (!active) return;
-        setFeatured(response.recent_projects.slice(0, 6));
-        setFailedFeatured(new Set());
-        setFeaturedStatus('online');
+        if (controller.signal.aborted || generation !== homeRefreshGeneration.current) return;
+        const projects = response.preview_pool === undefined ? response.recent_projects : response.preview_pool;
+        const seenUrls = new Set<string>();
+        const candidates = projects.reduce<PreviewPoolItem[]>((items, item) => {
+          const url = item.thumbnail_url?.trim();
+          if (!url || seenUrls.has(url)) return items;
+          seenUrls.add(url);
+          items.push({ name: item.name, path: item.path, thumbnail_url: url });
+          return items;
+        }, []);
+        const shuffledPool = shuffle(candidates);
+        setPreviewPool(shuffledPool);
+        setShowcaseUrls(shuffledPool.slice(0, 6).flatMap(item => item.thumbnail_url ? [item.thumbnail_url] : []));
+        setFailedUrls(new Set());
+        setHomeStats(response.stats);
+        setFeaturedStatus(shuffledPool.length ? 'online' : 'empty');
       })
       .catch(() => {
-        if (active) setFeaturedStatus('unavailable');
+        if (!controller.signal.aborted && generation === homeRefreshGeneration.current) {
+          setPreviewPool([]);
+          setShowcaseUrls([]);
+          setFeaturedStatus('unavailable');
+        }
       });
-
     return () => {
-      active = false;
       controller.abort();
+      if (homeRefreshAbort.current === controller) homeRefreshAbort.current = null;
     };
   }, [isLoading, isProtected, metadataApi]);
 
   useEffect(() => {
-    const preloaders = featured.flatMap(item => {
-      if (!item.thumbnail_url || failedFeatured.has(item.path)) return [];
+    const cleanup = refreshHome();
+    return cleanup;
+  }, [refreshHome]);
+  useInvalidation(['home'], () => { void refreshHome(); });
+
+  useEffect(() => {
+    if (previewPool.length === 0) return undefined;
+    const preloaders = previewPool.map(item => {
+      const url = item.thumbnail_url!;
       const image = new Image();
-      const onError = () => setFailedFeatured(current => new Set(current).add(item.path));
+      const onError = () => {
+        setFailedUrls(current => {
+          if (current.has(url)) return current;
+          const next = new Set(current);
+          next.add(url);
+          return next;
+        });
+      };
       image.addEventListener('error', onError);
-      image.src = item.thumbnail_url;
-      return [[image, onError] as const];
+      image.src = url;
+      return [image, onError] as const;
     });
 
     return () => preloaders.forEach(([image, onError]) => image.removeEventListener('error', onError));
-  }, [featured, failedFeatured]);
+  }, [previewPool]);
+
+  useEffect(() => {
+    setSettings(readBackgroundSettings(storageKey, isLight));
+  }, [isLight, storageKey]);
 
   useEffect(() => {
     const updateVisibility = () => setIsPageVisible(document.visibilityState !== 'hidden');
@@ -104,7 +258,20 @@ export default function LandingPage() {
   }, []);
 
   useEffect(() => {
-    if (!tuningOpen) return;
+    let resizeTimer: ReturnType<typeof window.setTimeout> | undefined;
+    const onResize = () => {
+      if (resizeTimer) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => setWallCount(calculateWallCount()), 200);
+    };
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      if (resizeTimer) window.clearTimeout(resizeTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!tuningOpen) return undefined;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setTuningOpen(false);
     };
@@ -112,108 +279,204 @@ export default function LandingPage() {
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [tuningOpen]);
 
+  useEffect(() => {
+    if (!canRotate || showcaseUrls.length === 0) return undefined;
+    let rotationIndex = 0;
+    let preloader: HTMLImageElement | null = null;
+    const interval = window.setInterval(() => {
+      const candidates = visiblePool.filter(item => item.thumbnail_url && !showcaseUrls.includes(item.thumbnail_url));
+      if (!candidates.length) return;
+      const target = candidates[rotationIndex % candidates.length];
+      if (!target) return;
+      const slot = rotationIndex % showcaseUrls.length;
+      rotationIndex += 1;
+      preloader = new Image();
+      preloader.onload = () => {
+        if (!mounted.current) return;
+          setShowcaseUrls(current => current.map((url, index) => index === slot && target.thumbnail_url ? target.thumbnail_url : url));
+      };
+      preloader.onerror = () => target.thumbnail_url && handleFeaturedFailure(target.thumbnail_url);
+      preloader.src = target.thumbnail_url || '';
+    }, 20_000);
+    return () => {
+      window.clearInterval(interval);
+      if (preloader) {
+        preloader.onload = null;
+        preloader.onerror = null;
+      }
+    };
+  }, [canRotate, handleFeaturedFailure, showcaseUrls, visiblePool]);
+
+  const removeEffectNode = useCallback((node: HTMLElement) => {
+    effectNodes.current = effectNodes.current.filter(current => current !== node);
+    node.remove();
+  }, []);
+
+  const onPointerMove = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    if (reducedMotion || !isPageVisible || !mounted.current || event.pointerType === 'touch') return;
+    setCursorPosition({ x: event.clientX, y: event.clientY });
+    const now = Date.now();
+    if (now - lastParticleAt.current < 66) return;
+    lastParticleAt.current = now;
+    Array.from({ length: 3 }, (_, index) => {
+      const particle = document.createElement('span');
+      particle.className = 'gate-particle';
+      particle.style.setProperty('--gate-effect-color', accent);
+      particle.style.left = `${event.clientX + (Math.random() - 0.5) * (16 + index * 10)}px`;
+      particle.style.top = `${event.clientY + (Math.random() - 0.5) * (16 + index * 10)}px`;
+      particle.style.animationDelay = `${index * 35}ms`;
+      document.body.appendChild(particle);
+      effectNodes.current.push(particle);
+      let timer: ReturnType<typeof window.setTimeout>;
+      timer = window.setTimeout(() => {
+        effectTimers.current = effectTimers.current.filter(current => current !== timer);
+        removeEffectNode(particle);
+      }, 700 + index * 35);
+      effectTimers.current.push(timer);
+    });
+  }, [accent, isPageVisible, reducedMotion, removeEffectNode]);
+
+  const onPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    if (reducedMotion || !isPageVisible || !mounted.current || event.pointerType === 'touch') return;
+    [700, 900].forEach((duration, index) => {
+      const ripple = document.createElement('span');
+      ripple.className = `gate-ripple gate-ripple-${index + 1}`;
+      ripple.style.setProperty('--gate-effect-color', accent);
+      ripple.style.borderColor = accent;
+      ripple.style.left = `${event.clientX}px`;
+      ripple.style.top = `${event.clientY}px`;
+      ripple.style.animationDuration = `${duration}ms`;
+      document.body.appendChild(ripple);
+      effectNodes.current.push(ripple);
+      let timer: ReturnType<typeof window.setTimeout>;
+      timer = window.setTimeout(() => {
+        effectTimers.current = effectTimers.current.filter(current => current !== timer);
+        removeEffectNode(ripple);
+      }, duration + 80);
+      effectTimers.current.push(timer);
+    });
+  }, [accent, isPageVisible, reducedMotion, removeEffectNode]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      effectTimers.current.forEach(timer => window.clearTimeout(timer));
+      effectTimers.current = [];
+      effectNodes.current.forEach(node => node.remove());
+      effectNodes.current = [];
+    };
+  }, []);
+
+  const updateSetting = (key: keyof BackgroundSettings, value: number) => {
+    const next = { ...settings, [key]: value };
+    setSettings(next);
+    saveBackgroundSettings(storageKey, isLight, next);
+  };
+
+  const resetSettings = () => {
+    const next = defaultsForTheme(isLight);
+    setSettings(next);
+    saveBackgroundSettings(storageKey, isLight, next);
+  };
+
+  const toggleTheme = () => {
+    toggleSharedTheme();
+  };
+
+  const gateStyle = {
+    '--gate-accent': accent,
+    '--gate-wall-blur': `${settings.blur}px`,
+    '--gate-wall-brightness': `${settings.brightness}%`,
+    '--gate-wall-saturation': `${settings.saturation}%`,
+    '--gate-wall-opacity': `${settings.canvasOpacity / 100}`,
+    '--gate-item-opacity': `${settings.itemOpacity / 100}`,
+  } as CSSProperties;
+
   if (isLoading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-[#07070d] p-6" aria-label="Loading library">
-        <div className="h-1 w-32 overflow-hidden rounded-full bg-slate-800"><div className="h-full w-1/2 bg-indigo-400" /></div>
-      </main>
-    );
+    return <main className="gate gate-loading" aria-label="Loading library"><div className="gate-loading-bar" /></main>;
   }
 
   if (isProtected) return <Navigate to="/login" replace />;
 
-  const name = serverInfo?.share_name || 'AssetManager';
-  const stats = serverInfo?.library_stats;
-  const backgroundStyle = {
-    '--gate-blur': `${settings.blur}px`,
-    '--gate-brightness': `${settings.brightness}%`,
-    '--gate-saturation': `${settings.saturation}%`,
-    '--gate-opacity': `${settings.opacity}%`,
-  } as React.CSSProperties;
-
-  const updateSetting = (key: keyof BackgroundSettings, value: number) => {
-    const next = { ...settings, [key]: value };
-    try {
-      window.localStorage.setItem(storageKey, JSON.stringify(next));
-    } catch {
-      // Visual tuning remains usable when storage is unavailable.
-    }
-    setSettings(next);
-  };
+  const name = serverInfo?.share_name || 'My Asset Library';
+  const username = 'Designer';
+  const avatar = username.slice(0, 1).toUpperCase();
+  const imageStatus = featuredStatus === 'online' || featuredStatus === 'empty' ? String(homeStats?.total_projects ?? stats.total_projects) : featuredStatus === 'unavailable' ? 'Unavailable' : featuredStatus === 'decode-error' ? 'Error' : 'Checking';
+  const serviceStatus = serverInfo ? 'Online' : 'Unavailable';
+  const rotationStatus = canRotate ? 'Auto' : 'Static';
 
   return (
-    <main className="gate min-h-screen overflow-x-hidden bg-[#07070d] text-slate-100" style={backgroundStyle}>
-      <style>{`
-        .gate { --gate-blur: 4px; --gate-brightness: 55%; --gate-saturation: 75%; --gate-opacity: 38%; font-family: "Segoe UI", system-ui, sans-serif; }
-        .gate-wall { filter: blur(var(--gate-blur)) brightness(var(--gate-brightness)) saturate(var(--gate-saturation)); opacity: calc(var(--gate-opacity) / 100); }
-        @media (prefers-reduced-motion: no-preference) { .gate-wall { animation: gate-drift 24s ease-in-out infinite alternate; } .gate-wall-paused { animation-play-state: paused; } .gate-enter-icon { transition: transform 160ms ease; } .gate-enter:hover .gate-enter-icon { transform: translateX(3px); } }
-        @keyframes gate-drift { from { transform: scale(1.04) translate3d(-0.5%, -0.5%, 0); } to { transform: scale(1.1) translate3d(0.5%, 0.5%, 0); } }
-      `}</style>
+    <main className={`gate ${isLight ? 'gate-light' : ''} ${isPageVisible ? '' : 'gate-paused'}`} style={gateStyle} onPointerMove={onPointerMove} onPointerDown={onPointerDown}>
+      {cursorPosition && <span className="gate-cursor-glow" aria-hidden="true" style={{ left: `${cursorPosition.x}px`, top: `${cursorPosition.y}px` }} />}
+      <button type="button" className="gate-theme-toggle" aria-label={isLight ? 'Switch to dark theme' : 'Switch to light theme'} aria-pressed={isLight} onClick={toggleTheme} title={isLight ? 'Switch to dark theme' : 'Switch to light theme'}>
+        {isLight ? <Moon size={17} aria-hidden="true" /> : <Sun size={17} aria-hidden="true" />}
+      </button>
 
-      <div className={`gate-wall pointer-events-none fixed inset-0 grid grid-cols-2 gap-3 p-3 sm:grid-cols-3${isPageVisible ? '' : ' gate-wall-paused'}`} aria-hidden="true">
-        {visibleFeatured.map(item => item.thumbnail_url && (
-          <img key={item.path} src={item.thumbnail_url} alt="" className="h-full min-h-40 w-full object-cover" />
-        ))}
-          {!visibleFeatured.length && <div className="col-span-full bg-[#111122]" />}
-      </div>
-      <div className="pointer-events-none fixed inset-0 bg-[#07070d]/70" aria-hidden="true" />
-
-      <section className="relative mx-auto flex min-h-screen w-full max-w-2xl flex-col items-center justify-center px-5 py-16 text-center sm:px-8">
-        <div className="mb-7 grid h-16 w-16 place-items-center rounded-full border border-indigo-300/60 bg-indigo-400/15 shadow-[0_0_42px_rgba(129,140,248,0.35)]" aria-hidden="true">
-          <span className="font-mono text-xl font-semibold text-indigo-100">AM</span>
-        </div>
-        <p className="mb-3 font-mono text-xs uppercase tracking-[0.2em] text-indigo-200">Local asset library</p>
-        <h1 className="max-w-full break-words text-4xl font-semibold tracking-normal text-slate-50 sm:text-5xl">{name}</h1>
-        <p className="mt-4 max-w-xl text-base leading-7 text-slate-300">{serverInfo?.welcome_msg || 'Your local files are ready to browse.'}</p>
-
-        <div className="mt-7 flex flex-wrap justify-center gap-x-5 gap-y-2 font-mono text-xs text-slate-300" aria-live="polite">
-          <span>
-            <span className={`mr-2 inline-block h-2 w-2 rounded-full ${featuredStatus === 'online' ? 'bg-emerald-400' : featuredStatus === 'unavailable' ? 'bg-rose-400' : 'bg-amber-300'}`} aria-hidden="true" />
-            {featuredStatus === 'online' ? 'Library online' : featuredStatus === 'unavailable' ? 'Library unavailable' : 'Library loading'}
-          </span>
-          {stats && <span>{summaryText(stats.total_projects)}</span>}
-          {stats?.total_size_fmt && <span>{stats.total_size_fmt}</span>}
-        </div>
-
-          {visibleFeatured.length > 0 && (
-            <div className="mt-9 grid w-full grid-cols-3 gap-2 sm:grid-cols-6" aria-label="Featured assets">
-              {visibleFeatured.map(item => (
-               <figure key={item.path} className="aspect-square overflow-hidden border border-white/10 bg-[#111122]">
-                  {item.thumbnail_url ? (
-                   <img
-                    src={item.thumbnail_url}
-                    alt={item.name}
-                    className="h-full w-full object-cover"
-                     onError={() => setFailedFeatured(current => new Set(current).add(item.path))}
-                  />
-                 ) : null}
-              </figure>
-            ))}
+      <div className={`gate-image-wall ${isPageVisible ? '' : 'gate-wall-paused'}`} aria-hidden="true">
+        {wallItems.length ? wallItems.map((item, index) => item && item.thumbnail_url && (
+          <div className="gate-wall-item" key={`${item.thumbnail_url}-${index}`} style={{ '--gate-index': index } as CSSProperties}>
+            <img src={item.thumbnail_url} alt="" loading="lazy" draggable={false} onError={() => handleFeaturedFailure(item.thumbnail_url!)} />
           </div>
-        )}
-        {featuredStatus === 'online' && featured.length === 0 && <p className="mt-7 text-sm text-slate-400">No featured assets are available yet.</p>}
-        {featuredStatus === 'unavailable' && <p className="mt-7 text-sm text-slate-400" role="alert">Featured assets are unavailable. You can still enter the library.</p>}
+        )) : Array.from({ length: wallCount }, (_, index) => <div className="gate-wall-item gate-wall-placeholder" key={`placeholder-${index}`} style={{ '--gate-index': index } as CSSProperties} />)}
+      </div>
+      <div className="gate-overlay" aria-hidden="true" />
+      <div className="gate-decoration gate-decoration-primary" aria-hidden="true" />
+      <div className="gate-decoration gate-decoration-secondary" aria-hidden="true" />
+      <div className="gate-sweep" aria-hidden="true" />
 
-        <Link to="/browse" className="gate-enter mt-10 inline-flex min-h-12 items-center gap-3 border border-indigo-300/70 bg-indigo-500 px-5 py-3 font-medium text-white shadow-lg shadow-indigo-950/40 outline-none hover:bg-indigo-400 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#07070d]">
-          Enter Library <ArrowRight className="gate-enter-icon" size={18} aria-hidden="true" />
+      <section className="gate-center">
+        <div className="gate-avatar-ring gate-rise" aria-hidden="true"><div className="gate-avatar">{avatar}</div></div>
+        <p className="gate-username gate-rise">{username}</p>
+        <h1 className="gate-repository gate-rise">{name}</h1>
+
+        {showcaseUrls.length > 0 && <div className="gate-showcase gate-rise" aria-label="Featured assets">
+          {showcaseUrls.map(url => {
+            const item = previewPool.find(candidate => candidate.thumbnail_url === url);
+            if (!item) return null;
+            return <div className="gate-showcase-item" key={url}>
+              <div data-testid="gate-showcase-image" data-src={url} onErrorCapture={() => handleFeaturedFailure(url)}>
+                <LayeredPreview src={url} alt={item.name} isDir size="grid" />
+              </div>
+            </div>;
+          })}
+        </div>}
+
+        <div className="gate-status-row gate-rise" aria-label="Library status" role="status" aria-live="polite">
+          <span className={`gate-status-pill ${featuredStatus === 'unavailable' || featuredStatus === 'decode-error' ? 'gate-status-error' : ''}`}><span className="sr-only">{featuredStatus === 'unavailable' || featuredStatus === 'decode-error' ? 'Library unavailable' : featuredStatus === 'online' ? 'Library online' : 'Library loading'}</span><span className="gate-status-value">{imageStatus}</span> assets</span>
+          <span className={`gate-status-pill ${serviceStatus === 'Unavailable' ? 'gate-status-error' : ''}`}><span className="gate-status-value">{serviceStatus}</span> local service</span>
+          <span className={`gate-status-pill ${rotationStatus === 'Static' ? 'gate-status-paused' : ''}`}><span className="gate-status-value">{rotationStatus}</span> showcase</span>
+        </div>
+
+        {featuredStatus === 'unavailable' && <p className="gate-message gate-message-error" role="alert">Featured assets are unavailable. You can still enter the library.</p>}
+        {featuredStatus === 'empty' && <p className="gate-message">No images found in this library.</p>}
+        {featuredStatus === 'decode-error' && <p className="gate-message gate-message-error" role="alert">Image previews could not be loaded.</p>}
+
+        <Link className="gate-enter gate-rise" to="/browse" aria-label="Enter Library">
+          <ArrowRight size={18} aria-hidden="true" />
+          <span>Enter Library</span>
         </Link>
+        <p className="gate-stats gate-rise">{summaryText(stats.total_projects)} · {stats.total_size_fmt || '0 B'} · {serverInfo?.footer_text || 'Local service · Ready when you are.'}</p>
       </section>
 
-      <button type="button" aria-label="Tune background" aria-expanded={tuningOpen} aria-controls="background-tuning" onClick={() => setTuningOpen(open => !open)} className="fixed bottom-4 right-4 grid h-11 w-11 place-items-center border border-slate-600 bg-[#111122]/90 text-slate-200 outline-none hover:border-indigo-300 hover:text-white focus-visible:ring-2 focus-visible:ring-white">
-        <SlidersHorizontal size={18} aria-hidden="true" />
+      <button type="button" className="gate-tuning-toggle" aria-label="Tune background" aria-expanded={tuningOpen} aria-controls="background-tuning" onClick={() => setTuningOpen(open => !open)}>
+        <SlidersHorizontal size={16} aria-hidden="true" />
+        <span>Background</span>
       </button>
 
       {tuningOpen && (
-        <section id="background-tuning" role="dialog" aria-modal="false" aria-label="Background tuning" className="fixed bottom-4 right-4 max-h-[calc(100dvh-2rem)] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto border border-slate-600 bg-[#111122]/95 p-4 shadow-2xl backdrop-blur">
-          <div className="mb-4 flex items-center justify-between"><h2 className="font-medium text-slate-100">Background</h2><button type="button" aria-label="Close background tuning" onClick={() => setTuningOpen(false)} className="grid h-9 w-9 place-items-center text-slate-300 outline-none hover:text-white focus-visible:ring-2 focus-visible:ring-white"><X size={18} aria-hidden="true" /></button></div>
-          {([
-            ['blur', 'Blur', 0, 16, 'px'],
-            ['brightness', 'Brightness', 25, 100, '%'],
-            ['saturation', 'Saturation', 0, 150, '%'],
-            ['opacity', 'Image opacity', 0, 100, '%'],
-          ] as const).map(([key, label, min, max, suffix]) => (
-            <label key={key} className="mb-3 block text-sm text-slate-300">{label} <output className="float-right font-mono text-xs text-slate-400">{settings[key]}{suffix}</output><input aria-label={label} className="mt-2 block w-full accent-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" type="range" min={min} max={max} value={settings[key]} onChange={event => updateSetting(key, Number(event.target.value))} /></label>
-          ))}
+        <section id="background-tuning" role="dialog" aria-modal="false" aria-label="Background tuning" className="gate-tuning-panel max-h-[calc(100dvh-2rem)] overflow-y-auto">
+          <div className="gate-tuning-header"><h2>Background tuning</h2><button type="button" className="gate-icon-button" aria-label="Close background tuning" onClick={() => setTuningOpen(false)}><X size={18} aria-hidden="true" /></button></div>
+          <div className="gate-tuning-fields">
+            {backgroundFields.map(([key, label, min, max, suffix]) => (
+              <label className="gate-tuning-field" key={key}>
+                <span>{label}</span>
+                <output>{settings[key]}{suffix}</output>
+                <input type="range" aria-label={label} min={min} max={max} value={settings[key]} onChange={event => updateSetting(key, Number(event.target.value))} />
+              </label>
+            ))}
+          </div>
+          <button type="button" className="gate-reset-button" onClick={resetSettings}>Reset this theme</button>
         </section>
       )}
     </main>

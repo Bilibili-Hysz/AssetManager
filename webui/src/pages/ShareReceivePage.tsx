@@ -4,6 +4,7 @@ import { Download, Lock, Folder } from 'lucide-react';
 import { createApiClient } from '../api/client';
 import { createSharesApi } from '../api/shares';
 import { useI18n } from '../hooks/useI18n';
+import { useTheme } from '../hooks/useTheme';
 import { useToast } from '../components/ui/Toast';
 import type { ShareInfoResponse } from '../types/api';
 
@@ -12,6 +13,7 @@ export default function ShareReceivePage() {
   const api = useMemo(() => createApiClient(), []);
   const sharesApi = useMemo(() => createSharesApi(api), [api]);
   const { t } = useI18n();
+  useTheme();
   const { showToast } = useToast();
 
   const [shareInfo, setShareInfo] = useState<ShareInfoResponse | null>(null);

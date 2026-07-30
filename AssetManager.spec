@@ -22,8 +22,6 @@ a = Analysis(
         (str(_root / 'AssetsManager' / 'i18n' / 'ja.json'), 'AssetsManager/i18n'),
         # Theme JSON files
         (str(_root / 'Assets' / 'Themes'), 'Assets/Themes'),
-        # LAN sharing static files
-        (str(_root / 'AssetsManager' / 'lan' / 'static'), 'AssetsManager/lan/static'),
         # Web UI SPA build served by the LAN server
         (str(_root / 'webui' / 'dist'), 'webui/dist'),
         # Plugin addons
@@ -87,6 +85,8 @@ a = Analysis(
         'AssetsManager.lan.scanner',
         'AssetsManager.lan.tunnel',
         'AssetsManager.lan.manager',
+        'AssetsManager.lan.dto',
+        'AssetsManager.lan.principal',
         'AssetsManager.lan.path_guard',
         'AssetsManager.lan.utils',
         'AssetsManager.lan.routes',
@@ -109,6 +109,8 @@ a = Analysis(
         'AssetsManager.application.asset_service',
         'AssetsManager.application.auth_service',
         'AssetsManager.application.context',
+        'AssetsManager.application.runtime',
+        'AssetsManager.application.runtime_events',
         'AssetsManager.application.file_operation_service',
         'AssetsManager.application.library_service',
         'AssetsManager.application.metadata_service',

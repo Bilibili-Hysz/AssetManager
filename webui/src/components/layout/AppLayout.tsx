@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { PanelLeftClose, PanelRightClose, Menu, Grid3x3, CheckSquare } from 'lucide-react';
+import { PanelRightClose, Menu, Grid3x3, CheckSquare } from 'lucide-react';
 import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useI18n } from '../../hooks/useI18n';
@@ -50,17 +50,6 @@ export function AppLayout({
 
       {/* ── Body: 三栏 ── */}
       <div className="flex-1 flex overflow-hidden relative">
-        {/* Sidebar toggle button (desktop, when sidebar is closed) */}
-        {sidebar && !isMobile && !sidebarOpen && (
-          <button
-            onClick={onSidebarToggle}
-            className="absolute left-0 top-2 z-30 p-1 text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 rounded-r-md transition-colors"
-            aria-label={t('mobile.menu')}
-          >
-            <PanelLeftClose size={16} aria-hidden="true" />
-          </button>
-        )}
-
         {/* ── Sidebar ── */}
         {sidebar && !isMobile && sidebarOpen && (
           <div className="relative flex-shrink-0 overflow-hidden border-r border-slate-700 bg-slate-900" style={{ width: sidebarWidth }}>
@@ -84,20 +73,9 @@ export function AppLayout({
         )}
 
         {/* ── Main Content ── */}
-        <main className="flex-1 overflow-auto min-w-0">
+        <main className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           {children}
         </main>
-
-        {/* Info panel toggle button (desktop, when info is closed) */}
-        {infoPanel && !isMobile && !infoOpen && (
-          <button
-            onClick={onInfoToggle}
-            className="absolute right-0 top-2 z-30 p-1 text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 rounded-l-md transition-colors"
-            aria-label={t('mobile.info')}
-          >
-            <PanelRightClose size={16} aria-hidden="true" />
-          </button>
-        )}
 
         {/* ── Info Panel ── */}
         {infoPanel && !isMobile && infoOpen && (

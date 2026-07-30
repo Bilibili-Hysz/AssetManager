@@ -29,7 +29,7 @@ The current codebase is being migrated gradually. Existing `core`, `panels`, `wi
 | `AuthService` | `auth_service.py` | LAN users, tokens, invite codes, share links | — | `/api/auth/*`, `/api/users/*`, `/api/invites/*`, `/api/shares/*` | 8 |
 | `UndoService` | `undo_service.py` | Undo/redo stack for file operations | `_actions.py` | — | 8 |
 
-`LibraryContext` (`context.py`) is a frozen dataclass bundling root, data_dir, thumb_dir, db_conn, tag_store, and project_data for an opened library. It also exposes `connection_for()` so services can receive a scoped `ConnectionProvider` without falling back to mutable current-library state. ADR 0002 defines `LibrarySession` as the target public opened-library boundary; it currently exists as a thin wrapper around `LibraryContext` while call sites migrate. Desktop presentation code obtains per-library services through the QApplication bootstrap and `ApplicationBootstrap.for_library(session)`, which now requires a `LibrarySession`. `InfoPanel` and `TagTreePanel` require scoped services after `library_opened`, while `FileListPanel` requires scoped runtime when bootstrap is present and only keeps fallback for isolated bootstrap-free panel tests.
+`LibraryContext` (`context.py`) is a frozen dataclass bundling root, data_dir, thumb_dir, db_conn, tag_store, and project_data for an opened library. `LibrarySession` is the public opened-library boundary and exposes `connection_for()` so services receive a scoped `ConnectionProvider` without falling back to mutable current-library state. `ApplicationBootstrap.runtime_for(session)` is the only production assembly path for the cached `LibraryRuntime`; Desktop and LAN consume the same runtime and its session-bound service bundle.
 
 ## LAN Route Structure
 
@@ -134,7 +134,17 @@ Legacy unscoped events (`FileCreated`, `FileRenamed`, `FileDeleted`, `FileCopied
 
 ## Application Bootstrap
 
-`ApplicationBootstrap` (`application/bootstrap.py`) wires long-lived application services into a `ServiceContainer`. `AuthService` and `ShareService` are excluded because they require `db_conn` + `token_secret` from the LAN server at runtime. `ApplicationBootstrap.for_library(session)` returns a `LibraryScopedServices` bundle that binds `MetadataService`, `TagService`, and `ProjectService` to the target scoped `connection_for()` provider.
+`ApplicationBootstrap` (`application/bootstrap.py`) owns the one application-service assembly path. `ApplicationBootstrap.runtime_for(session)` composes a canonical `LibraryRuntime` and its eager `LibraryScopedServices` bundle. A runtime LAN server receives that object, wraps the runtime bundle with its LAN auth/share services, and eagerly attaches `LanScopedServices` before routes are installed. Route helpers only perform direct lookup of `lan.services`; a missing bundle is a loud lifecycle error. Raw LAN service construction and legacy LAN factories are not supported production boundaries.
+
+LAN server stop closes websocket/site and scanner resources when supported. It does not close an injected `LibraryRuntime` or `LibrarySession`; runtime adapters and database close belong to the `ApplicationBootstrap`/`LibraryService` session lifecycle. `LanServer`, `ShareManager`, and desktop sharing accept only the canonical runtime in production.
+
+### Realtime lifecycle hardening
+
+The canonical realtime path is `LibraryRuntime` → `RuntimeEventRouter` → authenticated LAN WebSocket → React `RealtimeContext` projection invalidation. WebSocket payloads carry only `epoch`, `revision`, domains, and relative paths; SQLite and the filesystem remain authoritative.
+
+WebSocket admission sends a `runtime_ready` baseline before broadcast registration and then reconciles the cursor through an admission barrier. Active connections retain canonical principal authority and are revalidated across authority transitions, heartbeat, and delivery; revocation uses the same idempotent eviction path as transport failure. Eviction removes clients and pong waiters, closes the socket, updates connection accounting, and releases `OnlineUsers` presence exactly once.
+
+`LanServer.stop()` retains an explicit lifecycle state and actionable owner thread/loop references until shutdown and thread termination are confirmed. Shutdown timeout, join timeout, and failed startup cleanup remain observable as non-stopped states; a failed startup cleanup is retried on the original owner loop without overlapping pending cleanup or automatically retrying ordinary stop failures. See [`docs/compose/reports/realtime-dataflow-hardening.md`](compose/reports/realtime-dataflow-hardening.md) for the final evidence.
 
 ## Architecture Governance
 

@@ -2,10 +2,183 @@
 import asyncio
 import os
 import sqlite3
+from types import SimpleNamespace
 import threading
 from pathlib import Path
 
 import pytest
+from unittest.mock import Mock
+
+from AssetsManager.lan.principal import principal_for_request
+from AssetsManager.lan.routes._helpers import PRINCIPAL_REQUEST_KEY
+
+
+def set_request_auth_context(request, kind, user=None):
+    request[PRINCIPAL_REQUEST_KEY] = principal_for_request(
+        kind, user=user if kind == "user" else None
+    )
+
+
+def test_task4_principal_serialization_matrix_and_permissions(monkeypatch):
+
+    class Settings:
+        def get(self, key, default=None):
+            return {"lan_guest_list": False, "lan_guest_download": True, "lan_guest_preview": False}.get(key, default)
+
+    user = {"id": 7, "username": "alice", "role": "user", "is_active": 1, "created_at": 12.5,
+            "password_hash": "must-not-leak"}
+    for kind in ("guest", "password", "access_key", "local_ui", "user", "share"):
+        principal = principal_for_request(kind, user=user if kind == "user" else None, settings=Settings())
+        payload = principal.to_dict()
+        assert set(payload["capabilities"]) == {"browse", "preview", "download", "upload", "manage_links", "manage_users", "settings", "realtime"}
+        assert all(isinstance(value, bool) for value in payload["capabilities"].values())
+        serialized_keys = str(set(payload) | set(payload.get("user_profile", {}))).lower()
+        assert not any(secret in serialized_keys for secret in ("token", "password_hash", "access_key"))
+        assert ("user_profile" in payload) is (kind == "user")
+    guest = principal_for_request("guest", settings=Settings())
+    assert guest.capabilities.browse is False
+    assert guest.capabilities.download is True
+    assert guest.capabilities.preview is False
+    assert guest.capabilities.realtime is False
+    assert principal_for_request("user", user=user).user_profile["username"] == "alice"
+
+
+def test_task4_canonical_principal_wins_over_legacy_context():
+    from aiohttp.test_utils import make_mocked_request
+    from AssetsManager.lan.principal import principal_for_request
+    from AssetsManager.lan.routes._helpers import require_permission, require_role
+
+    request = make_mocked_request("GET", "/")
+    set_request_auth_context(request, "guest", {"username": "legacy", "role": "admin"})
+    request[PRINCIPAL_REQUEST_KEY] = principal_for_request("guest", settings={"lan_guest_list": False})
+    assert require_permission(request, "browse") is False
+    assert require_role(request, "admin") is None
+
+
+@pytest.mark.anyio
+async def test_task4_auth_me_exposes_unified_principal_for_all_kinds():
+    import json
+
+    from aiohttp.test_utils import make_mocked_request
+
+    from AssetsManager.lan.routes.auth import handle_me
+
+    user = {
+        "id": 7,
+        "username": "alice",
+        "role": "user",
+        "is_active": 1,
+        "created_at": 12.5,
+        "password_hash": "must-not-leak",
+    }
+    for kind in ("guest", "password", "access_key", "local_ui", "user", "share"):
+        request = make_mocked_request("GET", "/api/auth/me")
+        set_request_auth_context(request, kind, user if kind == "user" else {})
+
+        response = await handle_me(request)
+        assert response.status == 200
+        payload = json.loads(response.body)
+        assert set(payload["principal"]) == {
+            "kind", "authenticated", "role", "display_name", "capabilities",
+        } | ({"user_profile"} if kind == "user" else set())
+        assert set(payload) == {"principal", "user"} if kind == "user" else {"principal"}
+        def keys(value):
+            if isinstance(value, dict):
+                yield from value.keys()
+                for child in value.values():
+                    yield from keys(child)
+            elif isinstance(value, list):
+                for child in value:
+                    yield from keys(child)
+
+        assert not {str(key).lower() for key in keys(payload)} & {
+            "password", "password_hash", "access_key", "token", "secret",
+        }
+
+
+@pytest.mark.anyio
+async def test_task4_auth_me_accepts_minimal_user_token_record():
+    import json
+
+    from aiohttp.test_utils import make_mocked_request
+
+    from AssetsManager.lan.routes.auth import handle_me
+
+    request = make_mocked_request("GET", "/api/auth/me")
+    set_request_auth_context(request, "user", {"id": 7, "username": "alice", "role": "user"})
+
+    response = await handle_me(request)
+    assert response.status == 200
+    payload = json.loads(response.body)
+    assert payload["user"] == {
+        "id": 7,
+        "username": "alice",
+        "role": "user",
+        "active": True,
+        "created_at": 0.0,
+    }
+
+
+def test_task4_info_public_bypass_preserves_authenticated_principal():
+    from AssetsManager.lan.server import _LanServerImpl
+
+    assert "/api/info" not in _LanServerImpl._PUBLIC_PATHS
+
+
+@pytest.mark.anyio
+async def test_task4_auth_me_without_auth_context_remains_unauthorized():
+    from aiohttp.test_utils import make_mocked_request
+
+    from AssetsManager.lan.routes.auth import handle_me
+
+    response = await handle_me(make_mocked_request("GET", "/api/auth/me"))
+    assert response.status == 401
+
+
+@pytest.mark.anyio
+async def test_task4_share_verify_sets_share_principal_before_response(tmp_path):
+    from unittest.mock import AsyncMock
+
+    from aiohttp.test_utils import make_mocked_request
+
+    from AssetsManager.lan.routes._helpers import PRINCIPAL_REQUEST_KEY
+    from AssetsManager.lan.routes.shares import handle_verify_share_password
+
+    class Share:
+        id = "share-id"
+        has_password = False
+
+        def is_expired(self):
+            return False
+
+        def to_public_dict(self):
+            return {"id": self.id, "has_password": False}
+
+    class ShareService:
+        def get_share_record(self, share_id):
+            assert share_id == "share-id"
+            return Share()
+
+        def generate_token(self, share_id):
+            return "share-secret"
+
+    import AssetsManager.lan.routes.shares as shares_routes
+
+    request = make_mocked_request("POST", "/api/shares/share-id/verify")
+    request.json = AsyncMock(return_value={})
+    request.match_info["id"] = "share-id"
+    set_request_auth_context(request, "guest", {})
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(shares_routes, "get_share_service", lambda _request: ShareService())
+
+    try:
+        response = await handle_verify_share_password(request)
+        assert response.status == 200
+        assert request[PRINCIPAL_REQUEST_KEY].kind == "share"
+        assert request[PRINCIPAL_REQUEST_KEY].authenticated is True
+    finally:
+        monkeypatch.undo()
+
 
 
 @pytest.mark.anyio
@@ -193,6 +366,478 @@ async def test_websocket_heartbeat_cycle_is_bounded_with_slow_clients(monkeypatc
 
     assert manager._clients == set()
 
+
+@pytest.mark.anyio
+async def test_websocket_broadcast_failure_evicts_only_dead_peer_and_updates_lifecycle():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    changes = []
+    lifecycle = []
+
+    class Client:
+        def __init__(self, fails=False):
+            self.fails = fails
+            self.closed = False
+            self.messages = []
+
+        async def send_str(self, message):
+            if self.fails:
+                raise ConnectionResetError("broadcast peer disconnected")
+            self.messages.append(message)
+
+        async def close(self, **_kwargs):
+            self.closed = True
+            lifecycle.append((self, "close"))
+
+    manager = WebSocketManager(on_connection_change=lambda count: changes.append(count))
+    dead = Client(fails=True)
+    healthy = Client()
+    def presence():
+        lifecycle.append((dead, "presence"))
+    assert await manager.add(dead, on_remove=presence) is True
+    assert await manager.add(healthy) is True
+    manager._pong_waiters[dead] = (b"pending", asyncio.Event())
+
+    await manager.broadcast("asset_changed", {"path": "hero.png"})
+    await manager._evict(dead)
+
+    assert dead.closed
+    assert dead not in manager._clients
+    assert dead not in manager._pong_waiters
+    assert healthy in manager._clients
+    assert healthy.messages == ['{"type": "asset_changed", "path": "hero.png"}']
+    assert lifecycle.count((dead, "presence")) == 1
+    assert lifecycle.count((dead, "close")) == 1
+    assert changes == [1, 2, 1]
+
+
+@pytest.mark.anyio
+async def test_websocket_broadcast_times_out_slow_peer_and_delivers_to_healthy_peer(monkeypatch):
+    from AssetsManager.lan import ws as ws_module
+
+    monkeypatch.setattr(ws_module, "WS_OPERATION_TIMEOUT", 0.01)
+    changes = []
+
+    class Client:
+        def __init__(self, slow=False):
+            self.slow = slow
+            self.messages = []
+            self.closed = False
+
+        async def send_str(self, message):
+            if self.slow:
+                await asyncio.sleep(1)
+            else:
+                self.messages.append(message)
+
+        async def close(self, **_kwargs):
+            self.closed = True
+
+    slow = Client(slow=True)
+    healthy = Client()
+    manager = ws_module.WebSocketManager(on_connection_change=changes.append)
+    assert await manager.add(slow) is True
+    assert await manager.add(healthy) is True
+
+    await asyncio.wait_for(manager.broadcast("asset_changed", {"path": "hero.png"}), timeout=0.1)
+
+    assert healthy.messages == ['{"type": "asset_changed", "path": "hero.png"}']
+    assert slow.closed
+    assert slow not in manager._clients
+    assert healthy in manager._clients
+    assert changes == [1, 2, 1]
+
+
+@pytest.mark.anyio
+async def test_websocket_admission_callback_failure_rolls_back_registration_and_presence():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    changes = []
+    cleanup = []
+
+    class Client:
+        def __init__(self):
+            self.closed = False
+
+        async def close(self, **_kwargs):
+            self.closed = True
+
+    client = Client()
+
+    def on_admission():
+        raise RuntimeError("presence publication failed")
+
+    def on_remove():
+        cleanup.append("removed")
+
+    manager = WebSocketManager(on_connection_change=changes.append)
+    with pytest.raises(RuntimeError, match="presence publication failed"):
+        await manager.add(client, on_admission=on_admission, on_remove=on_remove)
+
+    assert client not in manager._clients
+    assert client not in manager._leases
+    assert client not in manager._on_remove
+    assert cleanup == ["removed"]
+    assert changes == [0]
+
+
+@pytest.mark.anyio
+async def test_websocket_admission_callback_can_reenter_manager_without_deadlock():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    lifecycle = []
+
+    class Client:
+        async def close(self, **_kwargs):
+            lifecycle.append("close")
+
+    manager = WebSocketManager()
+    client = Client()
+
+    async def on_admission():
+        lifecycle.append("admission")
+        assert await manager.remove(client) is True
+
+    async def on_remove():
+        lifecycle.append("remove")
+
+    assert await asyncio.wait_for(
+        manager.add(client, on_admission=on_admission, on_remove=on_remove),
+        timeout=0.2,
+    ) is True
+    assert lifecycle == ["admission", "remove"]
+    assert client not in manager._clients
+
+
+@pytest.mark.anyio
+async def test_websocket_remove_callback_can_reenter_manager_without_deadlock():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    lifecycle = []
+
+    class Client:
+        async def close(self, **_kwargs):
+            pass
+
+    manager = WebSocketManager()
+    client = Client()
+
+    async def on_remove():
+        lifecycle.append("remove")
+        await manager.start_accepting()
+
+    assert await manager.add(client, on_remove=on_remove) is True
+    assert await asyncio.wait_for(manager.remove(client), timeout=0.2) is True
+    assert lifecycle == ["remove"]
+
+
+@pytest.mark.anyio
+async def test_websocket_reentrant_authorize_callback_does_not_hold_authority_lock():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    class Client:
+        async def close(self, **_kwargs):
+            pass
+
+    manager = WebSocketManager()
+    client = Client()
+
+    async def authorize():
+        assert await manager.revoke_authority("user-1", lambda: False) is False
+        return True
+
+    assert await asyncio.wait_for(
+        manager.add(client, authorize=authorize, authority="user-1"),
+        timeout=0.2,
+    ) is True
+    assert client in manager._clients
+
+
+@pytest.mark.anyio
+async def test_websocket_reentrant_revoke_callback_does_not_hold_authority_lock():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    class Client:
+        async def close(self, **_kwargs):
+            pass
+
+    manager = WebSocketManager()
+    client = Client()
+    assert await manager.add(client, authority="user-1") is True
+
+    async def revoke():
+        assert await manager.remove(client) is True
+        return True
+
+    assert await asyncio.wait_for(
+        manager.revoke_authority("user-1", revoke),
+        timeout=0.2,
+    ) is True
+    assert client not in manager._clients
+
+
+@pytest.mark.anyio
+async def test_websocket_revoke_transition_blocks_same_authority_admission_and_broadcast():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    revoke_started = asyncio.Event()
+    release_revoke = asyncio.Event()
+
+    class Client:
+        def __init__(self):
+            self.messages = []
+
+        async def send_str(self, message):
+            self.messages.append(message)
+
+        async def close(self, **_kwargs):
+            pass
+
+    manager = WebSocketManager()
+    existing = Client()
+    admitted = Client()
+    authority = "user-1"
+    assert await manager.add(existing, authority=authority) is True
+
+    async def revoke():
+        revoke_started.set()
+        await release_revoke.wait()
+        return True
+
+    revoke_task = asyncio.create_task(manager.revoke_authority(authority, revoke))
+    await revoke_started.wait()
+
+    admission_task = asyncio.create_task(manager.add(admitted, authority=authority))
+    broadcast_task = asyncio.create_task(manager.broadcast("asset_changed"))
+    await asyncio.sleep(0)
+
+    assert not admission_task.done()
+    assert not broadcast_task.done()
+    assert existing.messages == []
+    assert admitted.messages == []
+
+    release_revoke.set()
+    assert await revoke_task is True
+    assert await admission_task is True
+    await broadcast_task
+
+    assert existing not in manager._clients
+    assert admitted in manager._clients
+    assert existing.messages == []
+    assert admitted.messages == []
+
+    await manager.broadcast("asset_changed")
+    assert admitted.messages == ['{"type": "asset_changed"}']
+
+
+@pytest.mark.anyio
+async def test_websocket_cancelled_revoke_restores_same_authority_admission_and_broadcast():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    revoke_started = asyncio.Event()
+    suspend_revoke = asyncio.Event()
+
+    class Client:
+        def __init__(self):
+            self.messages = []
+
+        async def send_str(self, message):
+            self.messages.append(message)
+
+        async def close(self, **_kwargs):
+            pass
+
+    manager = WebSocketManager()
+    existing = Client()
+    admitted = Client()
+    authority = "user-1"
+    assert await manager.add(existing, authority=authority) is True
+
+    async def revoke():
+        revoke_started.set()
+        await suspend_revoke.wait()
+        return True
+
+    revoke_task = asyncio.create_task(manager.revoke_authority(authority, revoke))
+    await revoke_started.wait()
+    revoke_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await revoke_task
+
+    assert manager._authority_transitions[authority].state == "ready"
+    assert await asyncio.wait_for(
+        manager.add(admitted, authority=authority),
+        timeout=0.2,
+    ) is True
+    await asyncio.wait_for(manager.broadcast("asset_changed"), timeout=0.2)
+
+    assert existing.messages == ['{"type": "asset_changed"}']
+    assert admitted.messages == ['{"type": "asset_changed"}']
+
+
+@pytest.mark.anyio
+async def test_websocket_close_all_isolates_removal_callback_failures():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    changes = []
+    removed = []
+
+    class Client:
+        def __init__(self, name):
+            self.name = name
+            self.closed = False
+
+        async def close(self, **_kwargs):
+            self.closed = True
+
+    def failing_remove():
+        removed.append("failing")
+        raise RuntimeError("cleanup failed")
+
+    def healthy_remove():
+        removed.append("healthy")
+
+    failing = Client("failing")
+    healthy = Client("healthy")
+    manager = WebSocketManager(on_connection_change=changes.append)
+    assert await manager.add(failing, on_remove=failing_remove) is True
+    assert await manager.add(healthy, on_remove=healthy_remove) is True
+
+    await manager.close_all()
+
+    assert failing.closed and healthy.closed
+    assert manager._clients == set()
+    assert manager._leases == {}
+    assert set(removed) == {"failing", "healthy"}
+    assert changes == [1, 2, 0]
+
+
+@pytest.mark.anyio
+async def test_websocket_close_all_contains_cancelled_removal_callback_and_finishes_cleanup():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    lifecycle = []
+
+    class Client:
+        def __init__(self, name):
+            self.name = name
+            self.closed = False
+
+        async def close(self, **_kwargs):
+            self.closed = True
+            lifecycle.append(f"close:{self.name}")
+
+    def cancelled_remove():
+        lifecycle.append("remove:cancelled")
+        raise asyncio.CancelledError
+
+    def healthy_remove():
+        lifecycle.append("remove:healthy")
+
+    manager = WebSocketManager(
+        on_connection_change=lambda count: lifecycle.append(f"count:{count}"),
+    )
+    cancelled = Client("cancelled")
+    healthy = Client("healthy")
+    assert await manager.add(cancelled, on_remove=cancelled_remove) is True
+    assert await manager.add(healthy, on_remove=healthy_remove) is True
+
+    await asyncio.wait_for(manager.close_all(), timeout=0.2)
+
+    assert cancelled.closed and healthy.closed
+    assert manager._clients == set()
+    assert manager._leases == {}
+    assert {"remove:cancelled", "remove:healthy"}.issubset(lifecycle)
+    assert lifecycle.count("count:0") == 1
+
+    marker = asyncio.Event()
+
+    async def after_close():
+        marker.set()
+
+    await asyncio.wait_for(manager._invoke_callback(after_close), timeout=0.2)
+    assert marker.is_set()
+
+
+@pytest.mark.anyio
+async def test_websocket_close_all_contains_connection_callback_failure_and_closes_all():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    removed = []
+
+    class Client:
+        def __init__(self):
+            self.closed = False
+
+        async def close(self, **_kwargs):
+            self.closed = True
+
+    def on_change(count):
+        if count == 0:
+            raise RuntimeError("status publication failed")
+
+    clients = [Client(), Client()]
+    manager = WebSocketManager(on_connection_change=on_change)
+    for client in clients:
+        assert await manager.add(client, on_remove=lambda: removed.append("removed"))
+
+    await asyncio.wait_for(manager.close_all(), timeout=0.2)
+
+    assert all(client.closed for client in clients)
+    assert len(removed) == len(clients)
+    assert manager._clients == set()
+
+
+@pytest.mark.anyio
+async def test_websocket_close_all_removal_callback_can_reenter_manager_without_deadlock():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    lifecycle = []
+
+    class Client:
+        async def close(self, **_kwargs):
+            lifecycle.append("close")
+
+    manager = WebSocketManager()
+    client = Client()
+
+    async def on_remove():
+        lifecycle.append("remove")
+        assert await manager.remove(client) is False
+        assert await manager.start_accepting() is None
+
+    assert await manager.add(client, on_remove=on_remove) is True
+    await asyncio.wait_for(manager.close_all(), timeout=0.2)
+
+    assert lifecycle == ["remove", "close"]
+    assert client not in manager._clients
+
+
+@pytest.mark.anyio
+async def test_websocket_heartbeat_failure_cleanup_is_idempotent_and_accounted():
+    from AssetsManager.lan import ws as ws_module
+
+    changes = []
+    lifecycle = []
+
+    class Client:
+        async def ping(self, _payload):
+            raise ConnectionResetError("heartbeat peer disconnected")
+
+        async def close(self, **_kwargs):
+            lifecycle.append("close")
+
+    manager = ws_module.WebSocketManager(on_connection_change=changes.append)
+    client = Client()
+    await manager.add(client, on_remove=lambda: lifecycle.append("presence"))
+    await manager._heartbeat_cycle()
+    await manager._evict(client)
+
+    assert client not in manager._clients
+    assert client not in manager._pong_waiters
+    assert lifecycle == ["presence", "close"]
+    assert changes == [1, 0]
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
@@ -222,6 +867,26 @@ class _FakeLan:
         self.ws_manager = WebSocketManager()
         from AssetsManager.lan.scanner import DirectoryScanner
         self.scanner = DirectoryScanner(str(library_root), db_conn)
+        from AssetsManager.application import (
+            AssetService, MetadataService, ProjectService, SearchService,
+            TagService, ThumbnailService,
+        )
+        from AssetsManager.application.auth_service import AuthService
+        from AssetsManager.application.share_service import ShareService
+        from AssetsManager.lan.routes._helpers import LanScopedServices
+        provider = self.connection_for
+        self._auth_service = AuthService(db_conn, self.token_secret)
+        self._share_service = ShareService(db_conn, self.token_secret)
+        self.services = LanScopedServices(
+            auth_service=self._auth_service,
+            metadata_service=MetadataService(connection_provider=provider),
+            project_service=ProjectService(connection_provider=provider),
+            tag_service=TagService(connection_provider=provider),
+            search_service=SearchService(connection_provider=provider),
+            thumbnail_service=ThumbnailService(connection_provider=provider),
+            asset_service=AssetService(),
+            share_service=self._share_service,
+        )
 
     def broadcast(self, event_type, data=None):
         self.broadcasts.append((event_type, data or {}))
@@ -243,7 +908,63 @@ def _init_lan_schemas(conn):
     ShareRepository(conn).init_table()
 
 
-def _make_lan_app(tmp_path, *, authenticated_context_only=False):
+def _legacy_server(**kwargs):
+    """Build a canonical runtime-shaped LAN fixture for low-level route tests."""
+    from types import SimpleNamespace
+    from AssetsManager.lan.server import _LanServerImpl
+    from AssetsManager.application import (
+        AssetService, MetadataService, ProjectService, SearchService,
+        TagService, ThumbnailService,
+    )
+    from AssetsManager.core.directory_cache import DirectoryCache
+    from AssetsManager.lan.routes._helpers import LanScopedServices
+    from AssetsManager.application.auth_service import AuthService
+    from AssetsManager.application.share_service import ShareService
+
+    db_conn = kwargs["db_conn"]
+    class Session:
+        root = Path(kwargs["library_root"])
+        thumb_dir = Path(kwargs["thumbnail_dir"])
+        is_closed = False
+        event_token = "runtime-test-session"
+
+        def connection_for(self, library_root=None):
+            if library_root is not None and Path(library_root).resolve() != self.root.resolve():
+                raise ValueError("wrong library")
+            return db_conn
+
+    session = Session()
+    secret = "runtime-test-secret"
+    bundle = LanScopedServices(
+        auth_service=AuthService(db_conn, secret),
+        metadata_service=MetadataService(connection_provider=session.connection_for),
+        project_service=ProjectService(connection_provider=session.connection_for),
+        tag_service=TagService(connection_provider=session.connection_for),
+        search_service=SearchService(connection_provider=session.connection_for),
+        thumbnail_service=ThumbnailService(connection_provider=session.connection_for),
+        asset_service=AssetService(directory_cache=DirectoryCache(db_conn)),
+        share_service=ShareService(db_conn, secret),
+    )
+
+    class EventRouter:
+        def subscribe(self, _callback):
+            return SimpleNamespace(close=lambda: None)
+
+    runtime = SimpleNamespace(
+        session=session,
+        services=bundle,
+        epoch="runtime-test-epoch",
+        revision=0,
+        event_router=EventRouter(),
+    )
+    options = dict(kwargs)
+    options.pop("library_root")
+    options.pop("thumbnail_dir")
+    options.pop("db_conn")
+    return _LanServerImpl(runtime=runtime, **options)
+
+
+def _make_lan_app(tmp_path, *, authenticated_context_only=False, canonical_context_only=False):
     from aiohttp import web
     from AssetsManager.application.auth_service import AuthService
     from AssetsManager.core import database
@@ -253,15 +974,12 @@ def _make_lan_app(tmp_path, *, authenticated_context_only=False):
         AUTH_SERVICE_APP_KEY,
         LAN_APP_KEY,
         get_auth_token,
-        set_request_auth_context,
+        set_request_principal,
     )
+    from AssetsManager.lan.principal import principal_for_request
 
     library = tmp_path / "library"
     library.mkdir()
-    static_dir = tmp_path / "static"
-    static_dir.mkdir()
-    (static_dir / "index.html").write_text("<html></html>", encoding="utf-8")
-    (static_dir / "share.html").write_text("<html>share</html>", encoding="utf-8")
 
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     try:
@@ -272,17 +990,20 @@ def _make_lan_app(tmp_path, *, authenticated_context_only=False):
         @web.middleware
         async def _test_auth_middleware(request, handler):
             if authenticated_context_only:
-                set_request_auth_context(request, "user", {"username": "middleware-user", "role": "user"})
+                user = {"username": "middleware-user", "role": "user"}
+                set_request_principal(request, principal_for_request("user", user=user))
                 return await handler(request)
             token = get_auth_token(request)
             if token:
                 lan = request.app[LAN_APP_KEY]
                 if verify_auth_token(token, lan.token_secret):
-                    set_request_auth_context(request, "local_ui", {"username": "local_ui", "role": "admin"})
+                    set_request_principal(request, principal_for_request("local_ui"))
                 else:
                     user = request.app[AUTH_SERVICE_APP_KEY].verify_user_token(token)
                     if user:
-                        set_request_auth_context(request, "user", user)
+                        set_request_principal(request, principal_for_request("user", user=user))
+            if request.get(PRINCIPAL_REQUEST_KEY) is None:
+                set_request_principal(request, principal_for_request("guest"))
             return await handler(request)
 
         app = web.Application(middlewares=[_test_auth_middleware])
@@ -293,7 +1014,7 @@ def _make_lan_app(tmp_path, *, authenticated_context_only=False):
             close_all_dbs()
             conn.close()
         app.on_cleanup.append(_close_db)
-        setup_routes(app, static_dir)
+        setup_routes(app)
         return app, library, conn
     except Exception:
         conn.close()
@@ -365,6 +1086,35 @@ async def test_security_middleware_enforces_ip_whitelist():
         await denied_client.close()
 
 
+@pytest.mark.anyio
+async def test_security_middleware_rate_limit_asset_prefix_is_segment_bounded():
+    from aiohttp import web
+    from AssetsManager.lan.security import IPBlacklist, RateLimiter, create_security_middleware
+
+    async def handler(_request):
+        return web.json_response({"ok": True})
+
+    app = web.Application(
+        middlewares=[
+            create_security_middleware(
+                RateLimiter(max_requests=1),
+                IPBlacklist(),
+            )
+        ]
+    )
+    app.router.add_get("/assets", handler)
+    app.router.add_get("/assets/app.js", handler)
+    app.router.add_get("/assets-admin", handler)
+    client = await _make_client(app)
+    try:
+        assert (await client.get("/assets")).status == 200
+        assert (await client.get("/assets/app.js")).status == 200
+        assert (await client.get("/assets-admin")).status == 200
+        assert (await client.get("/assets-admin")).status == 429
+    finally:
+        await client.close()
+
+
 def _local_ui_headers(app):
     from AssetsManager.lan.utils import get_auth_headers
     from AssetsManager.lan.routes._helpers import LAN_APP_KEY
@@ -397,7 +1147,40 @@ async def test_files_route_lists_library_items(tmp_path):
         assert "visible.txt" in names
         assert "folder" in names
         assert ".hidden.txt" not in names
+        assert all(isinstance(item["is_project"], bool) for item in data["items"])
     finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_files_route_marks_projects_from_sidebar_depth_config(tmp_path):
+    from AssetsManager.core.settings import AppSettings
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    category = library / "category"
+    (category / "project" / "nested_project").mkdir(parents=True)
+    (library / "asset.txt").write_text("hello", encoding="utf-8")
+    settings = AppSettings.instance()
+    original = settings.get("sidebar_depth_cfg")
+    settings.set("sidebar_depth_cfg", {"depth": 2, "branch_depths": {"category": 3}})
+    client = await _make_client(app)
+    try:
+        root = await client.get("/api/files")
+        nested = await client.get("/api/files?path=category")
+        deeply_nested = await client.get("/api/files?path=category/project")
+        assert root.status == nested.status == deeply_nested.status == 200
+        root_items = {item["name"]: item for item in (await root.json())["items"]}
+        nested_items = {item["name"]: item for item in (await nested.json())["items"]}
+        deeply_nested_items = {item["name"]: item for item in (await deeply_nested.json())["items"]}
+        assert root_items["category"]["is_project"] is False
+        assert root_items["asset.txt"]["is_project"] is False
+        assert nested_items["project"]["is_project"] is False
+        assert deeply_nested_items["nested_project"]["is_project"] is True
+    finally:
+        if original is None:
+            settings.set("sidebar_depth_cfg", None)
+        else:
+            settings.set("sidebar_depth_cfg", original)
         await client.close()
 
 
@@ -552,13 +1335,13 @@ async def test_files_route_records_path_validation_error(tmp_path):
 @pytest.mark.anyio
 async def test_files_route_records_forbidden_without_request_path(tmp_path, monkeypatch):
     from AssetsManager.core.performance import PerformanceRecorder
-    from AssetsManager.lan.routes import _helpers
     from AssetsManager.lan.routes._helpers import LAN_APP_KEY
 
     app, _library, _conn = _make_lan_app(tmp_path, authenticated_context_only=True)
     recorder = PerformanceRecorder(enabled=True)
     app[LAN_APP_KEY].performance_recorder = recorder
-    monkeypatch.setattr(_helpers, "get_user_permissions", lambda _user: {"browse": False})
+    from AssetsManager.lan.routes import files
+    monkeypatch.setattr(files, "require_permission", lambda _request, _permission: False)
     client = await _make_client(app)
     try:
         response = await client.get("/api/files?path=private")
@@ -633,7 +1416,9 @@ async def test_websocket_accepts_middleware_authenticated_cookie_context(tmp_pat
 @pytest.mark.anyio
 async def test_websocket_accepts_existing_middleware_context_without_raw_token(tmp_path):
     """The route must not re-parse credentials after middleware authenticates a request."""
-    app, library, conn = _make_lan_app(tmp_path, authenticated_context_only=True)
+    app, library, conn = _make_lan_app(
+        tmp_path, authenticated_context_only=True, canonical_context_only=True
+    )
 
     client = await _make_client(app)
     try:
@@ -908,38 +1693,190 @@ def test_lan_server_facade_accepts_ip_whitelist(monkeypatch):
     monkeypatch.setattr(lan, "_HAS_AIOHTTP", True)
     monkeypatch.setattr("AssetsManager.lan.server._LanServerImpl", _Impl)
 
-    lan.LanServer(
-        library_root="library",
-        thumbnail_dir="thumbs",
-        db_conn=object(),
-        ip_whitelist=["127.0.0.1"],
-    )
+    runtime = object()
+    lan.LanServer(runtime=runtime, ip_whitelist=["127.0.0.1"])
 
+    assert captured["runtime"] is runtime
     assert captured["ip_whitelist"] == ["127.0.0.1"]
 
 
-def test_lan_service_bundle_reuses_server_share_service(tmp_path):
-    from AssetsManager.core import database
-    from AssetsManager.lan.routes._helpers import _build_lan_services
+def test_lan_server_requires_runtime_before_server_startup(monkeypatch):
+    import AssetsManager.lan as lan
+    with pytest.raises(TypeError, match="runtime"):
+        lan.LanServer()
+
+
+def test_share_manager_requires_runtime(monkeypatch):
+    from AssetsManager.lan.manager import ShareManager
+
+    class _Lan:
+        @staticmethod
+        def is_available():
+            return True
+
+    import AssetsManager as package
+    monkeypatch.setattr(package, "lan", _Lan)
+
+    with pytest.raises(TypeError, match="runtime"):
+        ShareManager().start()
+
+
+def test_share_manager_passes_runtime_to_server(monkeypatch):
+    from AssetsManager.lan.manager import ShareManager
+
+    captured = {}
+    runtime = object()
+
+    class _Server:
+        def start(self, **kwargs):
+            pass
+
+        def status(self):
+            return {}
+
+    class _Lan:
+        @staticmethod
+        def is_available():
+            return True
+
+        class LanServer:
+            def __new__(cls, **kwargs):
+                captured.update(kwargs)
+                return _Server()
+
+    import AssetsManager as package
+    monkeypatch.setattr(package, "lan", _Lan)
+    ShareManager().start(runtime=runtime)
+    assert captured["runtime"] is runtime
+
+
+def test_runtime_injection_uses_canonical_session_resources_and_services(tmp_path):
+    from AssetsManager.application import (
+        MetadataService, ProjectService, SearchService, TagService, ThumbnailService,
+    )
+    from AssetsManager.lan.routes._helpers import LanScopedServices
     from AssetsManager.lan.server import _LanServerImpl
 
-    library = tmp_path / "library"
-    library.mkdir()
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    session = SimpleNamespace(
+        root=tmp_path / "canonical",
+        thumb_dir=tmp_path / "canonical" / "thumbs",
+        event_token="session-token",
+        is_closed=False,
+    )
+    connection = object()
+    session.connection_for = Mock(return_value=connection)
+    services = SimpleNamespace(
+        session=session,
+        metadata_service=MetadataService(connection_provider=session.connection_for),
+        project_service=ProjectService(connection_provider=session.connection_for),
+        tag_service=TagService(connection_provider=session.connection_for),
+        search_service=SearchService(connection_provider=session.connection_for),
+        thumbnail_service=ThumbnailService(connection_provider=session.connection_for),
+        asset_service=object(),
+    )
+    runtime = SimpleNamespace(
+        session=session,
+        services=services,
+        register_lifecycle_adapter=Mock(),
+        unregister_lifecycle_adapter=Mock(),
+    )
+    server = _LanServerImpl(runtime=runtime)
+
+    assert isinstance(server.services, LanScopedServices)
+    assert server.services.search_service is services.search_service
+    assert server.services.thumbnail_service is services.thumbnail_service
+    assert server.services.search_service._connection_provider is session.connection_for
+    assert server.services.thumbnail_service._connection_provider is session.connection_for
+    assert server.library_root == session.root
+    assert server.thumbnail_dir == session.thumb_dir
+    assert server.db_conn is connection
+    assert server.session_token == session.event_token
+    assert server.services.runtime_services is services
+    assert server.connection_for(session.root) is connection
+    runtime.register_lifecycle_adapter.assert_called_once_with(server)
+
+    server.stop()
+    server.stop()
+    runtime.unregister_lifecycle_adapter.assert_called_once_with(server)
+
+
+@pytest.mark.parametrize(
+    "service_name",
+    ("metadata_service", "project_service", "tag_service", "search_service", "thumbnail_service"),
+)
+def test_runtime_server_failed_construction_does_not_register_lifecycle_adapter(tmp_path, service_name):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.lan.server import _LanServerImpl
+
+    bootstrap = ApplicationBootstrap()
     try:
-        conn.executescript(database._SCHEMA)
-        _init_lan_schemas(conn)
-        server = _LanServerImpl(
-            library_root=str(library),
-            thumbnail_dir=str(tmp_path / "thumbs"),
-            db_conn=conn,
-        )
+        session = bootstrap.library_service.open_session(tmp_path / "library")
+        runtime = bootstrap.runtime_for(session)
+        getattr(runtime.services, service_name)._connection_provider = lambda _root: object()
 
-        services = _build_lan_services(server)
+        with pytest.raises(ValueError, match=f"{service_name} provider"):
+            _LanServerImpl(runtime=runtime)
 
-        assert services.share_service is server._share_service
+        assert runtime._lifecycle_adapters == []
     finally:
-        conn.close()
+        bootstrap.library_service.close()
+
+
+def test_runtime_server_does_not_rebind_runtime_service_providers(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.lan.server import _LanServerImpl
+
+    bootstrap = ApplicationBootstrap()
+    session_a = bootstrap.library_service.open_session(tmp_path / "library-a")
+    session_b = bootstrap.library_service.open_session(tmp_path / "library-b")
+    runtime_a = bootstrap.runtime_for(session_a)
+    runtime_b = bootstrap.runtime_for(session_b)
+    provider_a = runtime_a.services.search_service._connection_provider
+    thumbnail_provider_a = runtime_a.services.thumbnail_service._connection_provider
+
+    _LanServerImpl(runtime=runtime_a)
+    _LanServerImpl(runtime=runtime_b)
+
+    assert runtime_a.services.search_service._connection_provider is provider_a
+    assert runtime_a.services.thumbnail_service._connection_provider is thumbnail_provider_a
+    assert provider_a.__self__ is session_a
+    assert thumbnail_provider_a.__self__ is session_a
+    assert runtime_b.services.search_service._connection_provider.__self__ is session_b
+    assert runtime_b.services.thumbnail_service._connection_provider.__self__ is session_b
+
+
+def test_lan_server_rejects_legacy_constructor_arguments(tmp_path):
+    import AssetsManager.lan as lan
+
+    session = SimpleNamespace(
+        root=tmp_path / "canonical",
+        thumb_dir=tmp_path / "canonical" / "thumbs",
+        is_closed=False,
+        connection_for=Mock(return_value=object()),
+    )
+    runtime = SimpleNamespace(session=session, services=SimpleNamespace(session=session))
+
+    with pytest.raises(TypeError, match="library_root"):
+        lan.LanServer(runtime=runtime, library_root=str(tmp_path / "other"))
+
+
+def test_lan_service_bundle_is_explicitly_attached_by_fixture():
+    app = SimpleNamespace()
+    app.services = object()
+    assert app.services is not None
+
+
+def test_lan_service_lookup_requires_eager_runtime_bundle():
+    from aiohttp.test_utils import make_mocked_request
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY, get_services
+
+    bundle = object()
+    request = make_mocked_request("GET", "/", app={LAN_APP_KEY: SimpleNamespace(services=bundle)})
+    assert get_services(request) is bundle
+
+    missing = make_mocked_request("GET", "/", app={LAN_APP_KEY: SimpleNamespace()})
+    with pytest.raises(RuntimeError, match="LAN service bundle"):
+        get_services(missing)
 
 
 @pytest.mark.anyio
@@ -2088,7 +3025,7 @@ class TestShareSecurity:
         monkeypatch.setattr(shares, "require_permission", lambda request, permission: True)
         monkeypatch.setattr(shares, "get_lan", lambda request: object())
         monkeypatch.setattr(shares, "get_share_service", lambda request: object())
-        monkeypatch.setattr(shares, "get_request_user", lambda request: None)
+        monkeypatch.setattr(shares, "get_request_principal", lambda request: None)
 
         response = await shares.handle_list_shares(object())
 
@@ -2101,7 +3038,6 @@ class TestShareSecurity:
         from aiohttp.web import NotAppKeyWarning
         from AssetsManager.core import database
         from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY
-        from AssetsManager.lan.server import _LanServerImpl
 
         library = tmp_path / "library"
         library.mkdir()
@@ -2111,7 +3047,7 @@ class TestShareSecurity:
             conn.executescript(database._SCHEMA)
             conn.commit()
             _init_lan_schemas(conn)
-            server = _LanServerImpl(
+            server = _legacy_server(
                 library_root=str(library),
                 thumbnail_dir=str(tmp_path / "thumbs"),
                 db_conn=conn,
@@ -2182,7 +3118,6 @@ class TestMiddlewarePrecedenceRegression:
     @pytest.mark.anyio
     async def test_non_get_share_endpoints_require_auth(self, tmp_path):
         """POST /api/shares/{id}/verify is now public (share links must be accessible)."""
-        from AssetsManager.lan.server import _LanServerImpl
         from AssetsManager.lan.auth import hash_password
         from AssetsManager.core import database
 
@@ -2196,7 +3131,7 @@ class TestMiddlewarePrecedenceRegression:
             _init_lan_schemas(conn)
             conn.commit()
 
-            server = _LanServerImpl(
+            server = _legacy_server(
                 library_root=str(library),
                 thumbnail_dir=str(tmp_path / "thumbs"),
                 db_conn=conn,
@@ -2221,7 +3156,6 @@ class TestMiddlewarePrecedenceRegression:
     @pytest.mark.anyio
     async def test_spa_assets_are_public_when_server_auth_is_enabled(self, tmp_path):
         """The SPA must load its hashed bundles before a user can log in."""
-        from AssetsManager.lan.server import _LanServerImpl
         from AssetsManager.lan.auth import hash_password
         from AssetsManager.core import database
         from aiohttp.test_utils import TestClient, TestServer
@@ -2233,7 +3167,7 @@ class TestMiddlewarePrecedenceRegression:
             conn.executescript(database._SCHEMA)
             _init_lan_schemas(conn)
             conn.commit()
-            server = _LanServerImpl(
+            server = _legacy_server(
                 library_root=str(library),
                 thumbnail_dir=str(tmp_path / "thumbs"),
                 db_conn=conn,
@@ -2258,7 +3192,6 @@ class TestMiddlewarePrecedenceRegression:
         from AssetsManager.core import database
         from AssetsManager.lan.auth import hash_password
         from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY
-        from AssetsManager.lan.server import _LanServerImpl
 
         library = tmp_path / "library"
         library.mkdir()
@@ -2268,7 +3201,7 @@ class TestMiddlewarePrecedenceRegression:
             conn.executescript(database._SCHEMA)
             _init_lan_schemas(conn)
             conn.commit()
-            server = _LanServerImpl(
+            server = _legacy_server(
                 library_root=str(library),
                 thumbnail_dir=str(tmp_path / "thumbs"),
                 db_conn=conn,
@@ -2309,7 +3242,6 @@ class TestPasswordHashLeakRegression:
 
     @pytest.mark.anyio
     async def test_users_endpoint_strips_password_hash(self, tmp_path):
-        from AssetsManager.lan.server import _LanServerImpl
         from AssetsManager.lan.auth import hash_password
         from AssetsManager.core import database
 
@@ -2326,7 +3258,7 @@ class TestPasswordHashLeakRegression:
             )
             conn.commit()
 
-            server = _LanServerImpl(
+            server = _legacy_server(
                 library_root=str(library),
                 thumbnail_dir=str(tmp_path / "thumbs"),
                 db_conn=conn,
@@ -2446,48 +3378,6 @@ def test_file_response_cleanup_runs_when_write_fails(tmp_path):
     assert not os.path.exists(zip_path)
 
 
-def test_legacy_viewer_css_matches_script_visibility_class():
-    static_dir = Path(__file__).parents[2] / "AssetsManager" / "lan" / "static"
-    stylesheet = (static_dir / "style.css").read_text(encoding="utf-8")
-
-    assert ".image-viewer.visible" in stylesheet
-    for script_name in ("app.js", "detail.js", "share.js"):
-        script = (static_dir / script_name).read_text(encoding="utf-8")
-        assert 'classList.add("visible")' in script
-        assert 'classList.remove("visible")' in script
-
-
-def test_legacy_user_dropdown_outside_click_uses_current_header_selector():
-    app_js = (Path(__file__).parents[2] / "AssetsManager" / "lan" / "static" / "app.js").read_text(
-        encoding="utf-8"
-    )
-
-    assert 'e.target.closest(".app-header__user")' in app_js
-    assert 'e.target.closest(".header__user")' not in app_js
-
-
-def test_legacy_index_avoids_mandatory_external_assets():
-    index = (Path(__file__).parents[2] / "AssetsManager" / "lan" / "static" / "index.html").read_text(
-        encoding="utf-8"
-    )
-
-    assert "fonts.googleapis.com" not in index
-    assert "unpkg.com" not in index
-
-
-def test_legacy_pages_use_local_icon_fallback_without_cdn():
-    static_dir = Path(__file__).parents[2] / "AssetsManager" / "lan" / "static"
-    fallback = (static_dir / "icons.js").read_text(encoding="utf-8")
-
-    assert "data-lucide" in fallback
-    assert "lucide" in fallback
-    for page in ("index.html", "detail.html", "share.html", "login.html"):
-        html = (static_dir / page).read_text(encoding="utf-8")
-        assert "unpkg.com" not in html
-        assert "fonts.googleapis.com" not in html
-        assert "/static/icons.js" in html
-
-
 @pytest.mark.anyio
 async def test_batch_download_rejects_over_size_limit(tmp_path):
     app, library, conn = _make_lan_app(tmp_path)
@@ -2561,6 +3451,27 @@ class TestThumbnailSecurity:
     """Security regression tests for thumbnail endpoints."""
 
     @pytest.mark.anyio
+    async def test_thumbnail_route_serves_nested_image_for_browser_preview(self, tmp_path):
+        pytest.importorskip("PIL")
+        from PIL import Image
+
+        app, library, _conn = _make_lan_app(tmp_path)
+        target = library / "characters" / "hero image.png"
+        target.parent.mkdir()
+        Image.new("RGB", (32, 24), color="red").save(target)
+        client = await _make_client(app)
+        try:
+            response = await client.get(
+                "/api/thumbnails/characters/hero%20image.png?size=512"
+            )
+            body = await response.read()
+            assert response.status == 200
+            assert response.headers["Content-Type"].startswith("image/")
+            assert body
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
     async def test_thumbnail_records_canonical_route_metric(self, tmp_path):
         from AssetsManager.core.performance import PerformanceRecorder
         from AssetsManager.lan.routes._helpers import LAN_APP_KEY
@@ -2588,13 +3499,13 @@ class TestThumbnailSecurity:
     @pytest.mark.anyio
     async def test_thumbnail_denial_and_path_escape_are_pathless(self, tmp_path, monkeypatch):
         from AssetsManager.core.performance import PerformanceRecorder
-        from AssetsManager.lan.routes import _helpers
+        from AssetsManager.lan.routes import thumbnails
         from AssetsManager.lan.routes._helpers import LAN_APP_KEY
 
         app, _library, _conn = _make_lan_app(tmp_path, authenticated_context_only=True)
         recorder = PerformanceRecorder(enabled=True)
         app[LAN_APP_KEY].performance_recorder = recorder
-        monkeypatch.setattr(_helpers, "get_user_permissions", lambda _user: {"preview": False})
+        monkeypatch.setattr(thumbnails, "require_permission", lambda _request, _permission: False)
         client = await _make_client(app)
         try:
             denied = await client.get("/api/thumbnails/private.png")
@@ -2606,7 +3517,7 @@ class TestThumbnailSecurity:
             }
 
             recorder.clear()
-            monkeypatch.setattr(_helpers, "get_user_permissions", lambda _user: {"preview": True})
+            monkeypatch.setattr(thumbnails, "require_permission", lambda _request, _permission: True)
             escaped = await client.get("/api/thumbnails/..%2Fprivate.png")
             assert escaped.status == 400
             escaped_event = next(event for event in recorder.recent() if event.name == "lan.thumbnail")
@@ -2749,7 +3660,6 @@ class TestAuthTokenVerification:
     @pytest.mark.anyio
     async def test_middleware_accepts_local_ui_token(self, tmp_path):
         """Verify that a token generated by get_auth_token() passes the real middleware."""
-        from AssetsManager.lan.server import _LanServerImpl
         from AssetsManager.lan.utils import get_auth_headers
 
         library = tmp_path / "library"
@@ -2766,7 +3676,7 @@ class TestAuthTokenVerification:
             """)
             conn.commit()
 
-            server = _LanServerImpl(
+            server = _legacy_server(
                 library_root=str(library),
                 thumbnail_dir=str(tmp_path / "thumbs"),
                 db_conn=conn,
@@ -2794,7 +3704,6 @@ class TestP0ShareCookieAuthentication:
         from aiohttp.test_utils import TestClient, TestServer
         from AssetsManager.core import database
         from AssetsManager.lan.auth import hash_password
-        from AssetsManager.lan.server import _LanServerImpl
 
         library = tmp_path / "library"
         library.mkdir()
@@ -2802,7 +3711,7 @@ class TestP0ShareCookieAuthentication:
         try:
             conn.executescript(database._SCHEMA)
             _init_lan_schemas(conn)
-            server = _LanServerImpl(
+            server = _legacy_server(
                 library_root=str(library), thumbnail_dir=str(tmp_path / "thumbs"),
                 db_conn=conn, password=hash_password("Test@1234"),
             )
@@ -2820,7 +3729,6 @@ class TestP0ShareCookieAuthentication:
     async def test_static_backup_artifacts_are_not_served(self, tmp_path):
         from aiohttp.test_utils import TestClient, TestServer
         from AssetsManager.core import database
-        from AssetsManager.lan.server import _LanServerImpl
 
         library = tmp_path / "library"
         library.mkdir()
@@ -2828,7 +3736,7 @@ class TestP0ShareCookieAuthentication:
         try:
             conn.executescript(database._SCHEMA)
             _init_lan_schemas(conn)
-            server = _LanServerImpl(
+            server = _legacy_server(
                 library_root=str(library), thumbnail_dir=str(tmp_path / "thumbs"), db_conn=conn,
             )
             client = TestClient(TestServer(server._app))
@@ -2847,25 +3755,10 @@ class TestP0ShareCookieAuthentication:
         finally:
             conn.close()
 
-    def test_legacy_static_viewer_uses_local_icons_and_mobile_info_access(self):
-        static_dir = Path(__file__).parents[2] / "AssetsManager" / "lan" / "static"
-        index = (static_dir / "index.html").read_text(encoding="utf-8")
-        app_js = (static_dir / "app.js").read_text(encoding="utf-8")
-        i18n = (static_dir / "i18n.js").read_text(encoding="utf-8")
-
-        assert "/static/icons.js" in index
-        assert 'id="mobileInfoBtn"' in index
-        assert 'aria-label="Open information panel"' in index
-        assert 'mobileInfoBtn.addEventListener("click", toggleInfoPanel)' in app_js
-        assert "document.documentElement.lang = this._lang" in i18n
-        assert "location.reload()" not in i18n
-        assert "await this.load(lang)" in i18n
-
     @pytest.mark.anyio
     async def test_static_route_blocks_path_escape(self, tmp_path):
         from aiohttp.test_utils import TestClient, TestServer
         from AssetsManager.core import database
-        from AssetsManager.lan.server import _LanServerImpl
 
         library = tmp_path / "library"
         library.mkdir()
@@ -2874,7 +3767,7 @@ class TestP0ShareCookieAuthentication:
         try:
             conn.executescript(database._SCHEMA)
             _init_lan_schemas(conn)
-            server = _LanServerImpl(
+            server = _legacy_server(
                 library_root=str(library), thumbnail_dir=str(tmp_path / "thumbs"), db_conn=conn,
             )
             client = TestClient(TestServer(server._app))
@@ -2894,7 +3787,6 @@ class TestP0ShareCookieAuthentication:
         from AssetsManager.core import database
         from AssetsManager.lan.auth import hash_password
         from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY
-        from AssetsManager.lan.server import _LanServerImpl
 
         library = tmp_path / "library"
         library.mkdir()
@@ -2902,7 +3794,7 @@ class TestP0ShareCookieAuthentication:
         try:
             conn.executescript(database._SCHEMA)
             _init_lan_schemas(conn)
-            server = _LanServerImpl(
+            server = _legacy_server(
                 library_root=str(library), thumbnail_dir=str(tmp_path / "thumbs"),
                 db_conn=conn, password=hash_password("Test@1234"),
             )
@@ -2923,7 +3815,7 @@ class TestP0ShareCookieAuthentication:
                 assert await response.text() == "app"
 
                 static = await client.get("/static/foo")
-                assert static.status != 401
+                assert static.status == 401
 
                 protected = await client.get("/assets-admin")
                 assert protected.status == 401
@@ -3130,7 +4022,6 @@ class TestP0ShareCookieAuthentication:
     @pytest.mark.anyio
     async def test_middleware_rejects_invalid_token_when_password_set(self, tmp_path):
         """When password auth is enabled, invalid tokens get 401."""
-        from AssetsManager.lan.server import _LanServerImpl
 
         library = tmp_path / "library"
         library.mkdir()
@@ -3146,7 +4037,7 @@ class TestP0ShareCookieAuthentication:
             conn.commit()
 
             from AssetsManager.lan.auth import hash_password
-            server = _LanServerImpl(
+            server = _legacy_server(
                 library_root=str(library),
                 thumbnail_dir=str(tmp_path / "thumbs"),
                 db_conn=conn,
@@ -3172,7 +4063,6 @@ class TestP0ShareCookieAuthentication:
     @pytest.mark.anyio
     async def test_middleware_accepts_access_key_via_query_param(self, tmp_path):
         """Verify that access key works via ?key= query parameter."""
-        from AssetsManager.lan.server import _LanServerImpl
 
         library = tmp_path / "library"
         library.mkdir()
@@ -3189,7 +4079,7 @@ class TestP0ShareCookieAuthentication:
             conn.commit()
 
             raw_key = "my-access-key"
-            server = _LanServerImpl(
+            server = _legacy_server(
                 library_root=str(library),
                 thumbnail_dir=str(tmp_path / "thumbs"),
                 db_conn=conn,
@@ -3220,7 +4110,6 @@ class TestP0ShareCookieAuthentication:
     @pytest.mark.anyio
     async def test_middleware_accepts_plaintext_password(self, tmp_path):
         """Verify that plaintext password from old settings still works."""
-        from AssetsManager.lan.server import _LanServerImpl
         from AssetsManager.lan.auth import generate_token
 
         library = tmp_path / "library"
@@ -3238,7 +4127,7 @@ class TestP0ShareCookieAuthentication:
 
             # Pass plaintext password (simulating old settings)
             plaintext_pw = "myplainpassword"
-            server = _LanServerImpl(
+            server = _legacy_server(
                 library_root=str(library),
                 thumbnail_dir=str(tmp_path / "thumbs"),
                 db_conn=conn,
@@ -3312,13 +4201,13 @@ class TestSearchEndpoint:
     @pytest.mark.anyio
     async def test_search_denial_records_no_sensitive_request_data(self, tmp_path, monkeypatch):
         from AssetsManager.core.performance import PerformanceRecorder
-        from AssetsManager.lan.routes import _helpers
+        from AssetsManager.lan.routes import metadata
         from AssetsManager.lan.routes._helpers import LAN_APP_KEY
 
         app, _library, _conn = _make_lan_app(tmp_path, authenticated_context_only=True)
         recorder = PerformanceRecorder(enabled=True)
         app[LAN_APP_KEY].performance_recorder = recorder
-        monkeypatch.setattr(_helpers, "get_user_permissions", lambda _user: {"browse": False})
+        monkeypatch.setattr(metadata, "require_permission", lambda _request, _permission: False)
         client = await _make_client(app)
         try:
             response = await client.get("/api/search?q=secret&tags=private&category=images")
@@ -3433,12 +4322,10 @@ class TestInfoEndpoint:
         finally:
             await client.close()
 
-
-class TestUserCacheInvalidation:
-
-    def test_active_user_cache_delegates_to_auth_service(self, tmp_path, monkeypatch):
+    @pytest.mark.anyio
+    async def test_explicit_none_auth_mode_ignores_active_users(self, tmp_path):
+        from AssetsManager.application.auth_service import AuthService
         from AssetsManager.core import database
-        from AssetsManager.lan.server import _LanServerImpl
 
         library = tmp_path / "library"
         library.mkdir()
@@ -3446,7 +4333,422 @@ class TestUserCacheInvalidation:
         try:
             conn.executescript(database._SCHEMA)
             _init_lan_schemas(conn)
-            server = _LanServerImpl(
+            user_id, error = AuthService(conn, "test-secret").register_user(
+                "existing-user", "Test@1234"
+            )
+            assert user_id is not None, error
+
+            server = _legacy_server(
+                library_root=str(library),
+                thumbnail_dir=str(tmp_path / "thumbs"),
+                db_conn=conn,
+                auth_mode="none",
+            )
+            client = await _make_client(server._app)
+            try:
+                info_response = await client.get("/api/info")
+                info = await info_response.json()
+                assert info_response.status == 200
+                assert info["auth_enabled"] is False
+                assert info["auth_mode"] == "none"
+                assert server.status()["auth_enabled"] is False
+
+                user = server._auth_service.list_users()[0]
+                stale_user_token = server._auth_service.generate_user_token(
+                    user_id, user["username"], user["role"]
+                )
+                stale_info_response = await client.get(
+                    "/api/info",
+                    headers={"Authorization": f"Bearer {stale_user_token}"},
+                )
+                stale_info = await stale_info_response.json()
+                assert stale_info["principal"]["kind"] == "guest"
+
+                me_response = await client.get("/api/auth/me")
+                me = await me_response.json()
+                assert me_response.status == 200
+                assert me["principal"]["kind"] == "guest"
+                assert me["principal"]["authenticated"] is False
+            finally:
+                await client.close()
+        finally:
+            conn.close()
+
+
+def test_activity_log_and_online_users_expose_normalized_records():
+    from AssetsManager.lan.routes._helpers import ActivityLog, OnlineUsers
+
+    activity = ActivityLog()
+    activity.add("alice", "login", "signed in", ip="10.0.0.4")
+    record = activity.recent(1)[0]
+    assert set(record) == {"id", "username", "action", "details", "ip", "timestamp"}
+    assert record["username"] == "alice"
+    assert record["details"] == "signed in"
+    assert record["ip"] == "10.0.0.4"
+
+    online = OnlineUsers()
+    online.connect("user:1", "alice", "10.0.0.4")
+    online.connect("user:1", "alice", "10.0.0.4")
+    assert online.list_all()[0]["user_id"] == "user:1"
+    online.disconnect("user:1")
+    assert online.list_all()[0]["user_id"] == "user:1"
+    online.disconnect("user:1")
+    assert online.list_all() == []
+
+
+@pytest.mark.anyio
+async def test_server_stats_count_requests_and_report_uptime(tmp_path):
+    library = tmp_path / "library"
+    library.mkdir()
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    _init_lan_schemas(conn)
+    server = _legacy_server(
+        library_root=str(library), thumbnail_dir=str(tmp_path / "thumbs"), db_conn=conn
+    )
+    client = await _make_client(server._app)
+    try:
+        before = server.status()
+        await client.get("/api/info")
+        after = server.status()
+        assert after["requests"] > before["requests"]
+        assert after["uptime"] >= 0
+    finally:
+        await client.close()
+        conn.close()
+
+
+@pytest.mark.anyio
+async def test_websocket_manager_reports_live_connection_count():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    changes = []
+    manager = WebSocketManager(on_connection_change=lambda count: changes.append(count))
+
+    class Client:
+        async def close(self, **_kwargs):
+            pass
+
+    ws = Client()
+    assert await manager.add(ws) is True
+    await manager.remove(ws)
+    assert changes == [1, 0]
+
+
+@pytest.mark.anyio
+async def test_websocket_connection_counts_stay_ordered_during_async_removal():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    changes = []
+    cleanup_started = asyncio.Event()
+    release_cleanup = asyncio.Event()
+
+    async def pause_cleanup():
+        cleanup_started.set()
+        await release_cleanup.wait()
+
+    manager = WebSocketManager(on_connection_change=changes.append)
+
+    class Client:
+        async def close(self, **_kwargs):
+            pass
+
+    removed_client = Client()
+    added_client = Client()
+    assert await manager.add(removed_client, on_remove=pause_cleanup) is True
+
+    remove_task = asyncio.create_task(manager.remove(removed_client))
+    await cleanup_started.wait()
+    add_task = asyncio.create_task(manager.add(added_client))
+    await asyncio.sleep(0)
+
+    assert changes == [1]
+    assert not add_task.done()
+
+    release_cleanup.set()
+    assert await remove_task is True
+    assert await add_task is True
+
+    assert changes == [1, 0, 1]
+    assert changes[-1] == len(manager._clients)
+
+
+@pytest.mark.anyio
+async def test_websocket_cancelled_admission_reservation_rolls_back_and_unblocks_callbacks(
+    monkeypatch,
+):
+    from AssetsManager.lan.ws import WebSocketManager
+
+    lifecycle = []
+
+    class Client:
+        async def close(self, **_kwargs):
+            lifecycle.append("close")
+
+    manager = WebSocketManager(on_connection_change=lambda count: lifecycle.append(count))
+    original_run_reserved = manager._run_reserved
+    first_run = True
+
+    async def run_reserved(reservation):
+        nonlocal first_run
+        if first_run:
+            first_run = False
+            asyncio.current_task().cancel()
+            await asyncio.sleep(0)
+        await original_run_reserved(reservation)
+
+    monkeypatch.setattr(manager, "_run_reserved", run_reserved)
+    cancelled = Client()
+    admission = asyncio.create_task(manager.add(
+        cancelled,
+        on_admission=lambda: lifecycle.append("admission"),
+        on_remove=lambda: lifecycle.append("remove"),
+    ))
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(admission, timeout=0.2)
+    await asyncio.sleep(0)
+
+    assert cancelled not in manager._clients
+    assert manager._leases == {}
+    assert lifecycle == ["remove", 0, "close"]
+
+    healthy = Client()
+    assert await asyncio.wait_for(manager.add(healthy), timeout=0.2) is True
+    assert healthy in manager._clients
+
+
+@pytest.mark.anyio
+async def test_websocket_cancelled_removal_reservation_unblocks_following_callback(
+    monkeypatch,
+):
+    from AssetsManager.lan.ws import WebSocketManager
+
+    lifecycle = []
+
+    class Client:
+        async def close(self, **_kwargs):
+            lifecycle.append("close")
+
+    manager = WebSocketManager()
+    client = Client()
+    assert await manager.add(client) is True
+    def run_reserved(_reservation):
+        asyncio.current_task().cancel()
+        return asyncio.sleep(0)
+
+    monkeypatch.setattr(manager, "_run_reserved", run_reserved)
+    removal = asyncio.create_task(manager.remove(client))
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(removal, timeout=0.2)
+
+    assert client not in manager._clients
+    assert manager._on_remove == {}
+
+    callback = asyncio.create_task(manager._notify_connection_change(0))
+    await asyncio.wait_for(callback, timeout=0.2)
+
+
+@pytest.mark.anyio
+async def test_websocket_cancelled_admission_behind_blocked_callback_unblocks_queue():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    predecessor_started = asyncio.Event()
+    release_predecessor = asyncio.Event()
+    lifecycle = []
+
+    async def predecessor(_value):
+        predecessor_started.set()
+        await release_predecessor.wait()
+
+    class Client:
+        async def close(self, **_kwargs):
+            lifecycle.append("close")
+
+    manager = WebSocketManager(
+        on_connection_change=lambda count: lifecycle.append(("count", count)),
+    )
+    predecessor_task = asyncio.create_task(
+        manager._invoke_callback(predecessor, "predecessor")
+    )
+    await predecessor_started.wait()
+
+    client = Client()
+    admission = asyncio.create_task(manager.add(client))
+    await asyncio.sleep(0)
+    admission.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await admission
+
+    release_predecessor.set()
+    await asyncio.wait_for(predecessor_task, timeout=0.2)
+    third = asyncio.create_task(manager._notify_connection_change(0))
+    await asyncio.wait_for(third, timeout=0.2)
+
+    assert client not in manager._clients
+    assert client not in manager._leases
+    assert manager._leases == {}
+    assert lifecycle == [("count", 0), "close", ("count", 0)]
+
+
+@pytest.mark.anyio
+async def test_websocket_cancelled_reserved_follower_preserves_predecessor_future():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    predecessor_started = asyncio.Event()
+    release_predecessor = asyncio.Event()
+    lifecycle = []
+
+    async def predecessor(_count):
+        predecessor_started.set()
+        await release_predecessor.wait()
+        lifecycle.append("predecessor")
+
+    manager = WebSocketManager(on_connection_change=predecessor)
+    predecessor_task = asyncio.create_task(manager._invoke_callback(predecessor, 0))
+    await predecessor_started.wait()
+    predecessor_future = manager._callback_tail
+    assert predecessor_future is not None
+
+    reservation = manager._reserve_callback(manager._admission_callbacks, None, 1)
+    follower_task = asyncio.create_task(manager._run_reserved(reservation))
+    await asyncio.sleep(0)
+    follower_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await follower_task
+
+    assert not predecessor_future.cancelled()
+    assert not predecessor_future.done()
+
+    release_predecessor.set()
+    await asyncio.wait_for(predecessor_task, timeout=0.2)
+    assert not predecessor_future.cancelled()
+    assert predecessor_future.done()
+
+    await asyncio.wait_for(manager._invoke_callback(lambda: lifecycle.append("later")), timeout=0.2)
+    assert lifecycle == ["predecessor", "later"]
+
+
+@pytest.mark.anyio
+async def test_websocket_direct_callback_cancelled_behind_blocked_callback_unblocks_queue():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    lifecycle = []
+    predecessor_completions = 0
+    predecessor_future_completions = []
+
+    async def first_callback():
+        nonlocal predecessor_completions
+        first_started.set()
+        await release_first.wait()
+        predecessor_completions += 1
+        lifecycle.append("first")
+
+    async def third_callback():
+        lifecycle.append("third")
+
+    manager = WebSocketManager()
+    first = asyncio.create_task(manager._invoke_callback(first_callback))
+    await first_started.wait()
+    predecessor = manager._callback_tail
+    assert predecessor is not None
+    predecessor.add_done_callback(
+        lambda _future: predecessor_future_completions.append(None)
+    )
+    second = asyncio.create_task(manager._invoke_callback(lambda: lifecycle.append("second")))
+    await asyncio.sleep(0)
+    second.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await second
+
+    release_first.set()
+    await asyncio.wait_for(first, timeout=0.2)
+    await asyncio.sleep(0)
+    assert not predecessor.cancelled()
+    assert predecessor.done()
+    assert predecessor_completions == 1
+    assert len(predecessor_future_completions) == 1
+    await asyncio.wait_for(manager._invoke_callback(third_callback), timeout=0.2)
+
+    assert lifecycle == ["first", "third"]
+    assert manager._callback_tail is not None
+    assert manager._callback_tail.done()
+
+
+@pytest.mark.anyio
+async def test_websocket_cancelled_removal_behind_blocked_callback_unblocks_queue():
+    from AssetsManager.lan.ws import WebSocketManager
+
+    predecessor_started = asyncio.Event()
+    release_predecessor = asyncio.Event()
+    lifecycle = []
+
+    async def predecessor(_value):
+        predecessor_started.set()
+        await release_predecessor.wait()
+
+    class Client:
+        async def close(self, **_kwargs):
+            pass
+
+    manager = WebSocketManager()
+    client = Client()
+    assert await manager.add(client) is True
+
+    predecessor_task = asyncio.create_task(
+        manager._invoke_callback(predecessor, "predecessor")
+    )
+    await predecessor_started.wait()
+    removal = asyncio.create_task(
+        manager.remove(client)
+    )
+    await asyncio.sleep(0)
+    removal.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await removal
+
+    release_predecessor.set()
+    await asyncio.wait_for(predecessor_task, timeout=0.2)
+
+    async def third_callback():
+        lifecycle.append("third")
+
+    third = asyncio.create_task(manager._invoke_callback(third_callback))
+    await asyncio.wait_for(third, timeout=0.2)
+
+    assert client not in manager._clients
+    assert manager._leases == {}
+    assert manager._on_remove == {}
+    assert lifecycle == ["third"]
+
+
+def test_server_status_tracks_websocket_manager_connections(tmp_path):
+    library = tmp_path / "library"
+    library.mkdir()
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    _init_lan_schemas(conn)
+    server = _legacy_server(
+        library_root=str(library), thumbnail_dir=str(tmp_path / "thumbs"), db_conn=conn
+    )
+    try:
+        server.ws_manager._on_connection_change(3)
+        assert server.status()["connections"] == 3
+    finally:
+        conn.close()
+
+
+class TestUserCacheInvalidation:
+
+    def test_active_user_cache_delegates_to_auth_service(self, tmp_path, monkeypatch):
+        from AssetsManager.core import database
+
+        library = tmp_path / "library"
+        library.mkdir()
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        try:
+            conn.executescript(database._SCHEMA)
+            _init_lan_schemas(conn)
+            server = _legacy_server(
                 library_root=str(library),
                 thumbnail_dir=str(tmp_path / "thumbs"),
                 db_conn=conn,
@@ -3466,7 +4768,6 @@ class TestUserCacheInvalidation:
 
     def test_toggle_user_invalidates_active_users_cache(self, tmp_path):
         from AssetsManager.core import database
-        from AssetsManager.lan.server import _LanServerImpl
 
         library = tmp_path / "library"
         library.mkdir()
@@ -3479,7 +4780,7 @@ class TestUserCacheInvalidation:
             )
             conn.commit()
 
-            server = _LanServerImpl(
+            server = _legacy_server(
                 library_root=str(library),
                 thumbnail_dir=str(tmp_path / "thumbs"),
                 db_conn=conn,
@@ -3507,7 +4808,6 @@ class TestUserCacheInvalidation:
         from aiohttp.test_utils import TestClient, TestServer
         from AssetsManager.core import database
         from AssetsManager.lan.auth import hash_password
-        from AssetsManager.lan.server import _LanServerImpl
 
         library = tmp_path / "library"
         library.mkdir()
@@ -3521,7 +4821,7 @@ class TestUserCacheInvalidation:
             )
             conn.commit()
 
-            server = _LanServerImpl(
+            server = _legacy_server(
                 library_root=str(library),
                 thumbnail_dir=str(tmp_path / "thumbs"),
                 db_conn=conn,
@@ -3531,6 +4831,21 @@ class TestUserCacheInvalidation:
             client = TestClient(TestServer(server._app))
             await client.start_server()
             try:
+                class UserSocket:
+                    def __init__(self):
+                        self.closed = False
+
+                    async def close(self, **_kwargs):
+                        self.closed = True
+
+                user_socket = UserSocket()
+                await server.ws_manager.add(
+                    user_socket,
+                    authorize=lambda: bool(conn.execute(
+                        "SELECT is_active FROM users WHERE id=1",
+                    ).fetchone()[0]),
+                    authority=("user", 1),
+                )
                 assert server._has_active_users() is True
                 server._has_users_cache = True
                 server._has_users_cache_time = 9999999999
@@ -3547,6 +4862,8 @@ class TestUserCacheInvalidation:
 
                 row = conn.execute("SELECT is_active FROM users WHERE id=1").fetchone()
                 assert row[0] == 0
+                assert user_socket.closed
+                assert user_socket not in server.ws_manager._clients
             finally:
                 await client.close()
         finally:

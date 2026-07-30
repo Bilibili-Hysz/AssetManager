@@ -4,6 +4,7 @@ from urllib.parse import unquote
 
 from aiohttp import web
 
+from AssetsManager.lan.dto import TagResponse
 from AssetsManager.lan.routes._helpers import (
     get_lan, get_tag_service, require_admin, require_permission, validated_existing_key,
 )
@@ -21,7 +22,7 @@ async def handle_tags(request):
     except Exception:
         _log.exception("Failed to list LAN tags")
         return web.json_response({"error": "Failed to list tags"}, status=500)
-    return web.json_response({"tags": tags})
+    return web.json_response({"tags": [TagResponse.from_record(tag).to_dict() for tag in tags]})
 
 
 async def handle_create_tag(request):

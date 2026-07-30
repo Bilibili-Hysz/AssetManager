@@ -1,0 +1,380 @@
+// @vitest-environment jsdom
+import { act, render, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useEffect, type ReactNode } from 'react';
+import { RealtimeProvider, useRealtimeContext } from './RealtimeContext';
+
+const authState = {
+  capabilities: { realtime: true },
+  principal: { kind: 'user', authenticated: true, role: 'user', display_name: 'alice', user_profile: { id: 1, username: 'alice' } },
+};
+const transport = {
+  onEvent: undefined as ((type: string, data: Record<string, unknown>) => void) | undefined,
+  enabled: false,
+  close: vi.fn(),
+};
+
+vi.mock('./AuthContext', () => ({
+  useAuthContext: () => authState,
+}));
+
+vi.mock('../hooks/useWebSocket', () => ({
+  useWebSocket: ({ onEvent, enabled }: { onEvent?: typeof transport.onEvent; enabled?: boolean }) => {
+    useEffect(() => () => { transport.enabled = false; }, []);
+    transport.onEvent = onEvent;
+    transport.enabled = Boolean(enabled);
+    return { status: enabled ? 'connected' : 'disconnected' };
+  },
+  WebSocketTransportHost: ({ children, enabled, onEvent, onStatus }: { children: ReactNode; enabled: boolean; onEvent?: typeof transport.onEvent; onStatus?: (status: 'connected' | 'disconnected') => void }) => {
+    useEffect(() => {
+      transport.onEvent = onEvent;
+      transport.enabled = Boolean(enabled);
+      onStatus?.(enabled ? 'connected' : 'disconnected');
+      return () => {
+        transport.close();
+        transport.enabled = false;
+      };
+    }, [enabled, onEvent, onStatus]);
+    return <>{children}</>;
+  },
+}));
+
+function wrapper({ children }: { children: ReactNode }) {
+  return <RealtimeProvider>{children}</RealtimeProvider>;
+}
+
+function emit(data: Record<string, unknown>) {
+  act(() => transport.onEvent?.(String(data.type), data));
+}
+
+describe('RealtimeProvider', () => {
+  beforeEach(() => {
+    authState.capabilities.realtime = true;
+    authState.principal = { kind: 'user', authenticated: true, role: 'user', display_name: 'alice', user_profile: { id: 1, username: 'alice' } };
+    transport.onEvent = undefined;
+    transport.enabled = false;
+    transport.close.mockClear();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ epoch: 'a', revision: 3 }) })));
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('shares exactly one enabled transport between multiple consumers', () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    function Consumers() {
+      const realtime = useRealtimeContext();
+      useEffect(() => realtime.registerInvalidation(['files'], first), [realtime]);
+      useEffect(() => realtime.registerInvalidation(['tree'], second), [realtime]);
+      return null;
+    }
+    render(<RealtimeProvider><Consumers /></RealtimeProvider>);
+    expect(transport.enabled).toBe(true);
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 0 });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 1, domains: ['files'], paths: [] });
+    expect(first).toHaveBeenCalledOnce();
+    expect(second).not.toHaveBeenCalled();
+  });
+
+  it('enables and disables the socket with realtime capability', () => {
+    const { rerender } = render(<RealtimeProvider><div /></RealtimeProvider>);
+    expect(transport.enabled).toBe(true);
+    authState.capabilities.realtime = false;
+    rerender(<RealtimeProvider><div /></RealtimeProvider>);
+    expect(transport.enabled).toBe(false);
+  });
+
+  it('establishes cursor, delivers only the next revision, and suppresses duplicates', () => {
+    const callback = vi.fn();
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => result.current.registerInvalidation(['files'], callback));
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 4 });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 5, domains: ['files'], paths: ['x'] });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 5, domains: ['files'], paths: ['x'] });
+    expect(result.current.revision).toBe(5);
+    expect(callback).toHaveBeenCalledOnce();
+  });
+
+  it('ignores an older runtime_ready in the same epoch', () => {
+    const callback = vi.fn();
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => result.current.registerInvalidation(['files'], callback));
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 9 });
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 2 });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 3, domains: ['files'], paths: [] });
+    expect(result.current.revision).toBe(9);
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it('recovers and fans out when a newer runtime_ready advances the same epoch', async () => {
+    const callback = vi.fn();
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ epoch: 'a', revision: 4 }),
+    })));
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => result.current.registerInvalidation(['files'], callback));
+
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 1 });
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 4 });
+
+    await waitFor(() => expect(callback).toHaveBeenCalledOnce());
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(callback.mock.calls[0]?.[0]).toBeNull();
+    expect(result.current.epoch).toBe('a');
+    expect(result.current.revision).toBe(4);
+  });
+
+  it('replaces the transport when the principal identity changes while realtime remains enabled', () => {
+    const firstConsumer = vi.fn();
+    const { rerender } = render(<RealtimeProvider><div /></RealtimeProvider>);
+    expect(transport.enabled).toBe(true);
+    authState.principal = { kind: 'user', authenticated: true, role: 'user', display_name: 'bob', user_profile: { id: 2, username: 'bob' } };
+    rerender(<RealtimeProvider><div /></RealtimeProvider>);
+    expect(firstConsumer).not.toHaveBeenCalled();
+    expect(transport.close).toHaveBeenCalledOnce();
+    expect(transport.enabled).toBe(true);
+  });
+
+  it('recovers once for a gap and notifies every registered projection', async () => {
+    const files = vi.fn();
+    const tree = vi.fn();
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => {
+      result.current.registerInvalidation(['files'], files);
+      result.current.registerInvalidation(['tree'], tree);
+    });
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 1 });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 4, domains: ['files'], paths: [] });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 5, domains: ['files'], paths: [] });
+    await waitFor(() => expect(files).toHaveBeenCalledOnce());
+    expect(tree).toHaveBeenCalledOnce();
+    expect(files.mock.calls[0]?.[0]).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries once for a same-epoch stale recovery response without regressing or notifying', async () => {
+    const callback = vi.fn();
+    let resolveRecovery!: (value: unknown) => void;
+    const recoveryResponse = new Promise<unknown>(resolve => { resolveRecovery = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => recoveryResponse,
+    })));
+
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => result.current.registerInvalidation(['files'], callback));
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 10 });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 12, domains: ['files'], paths: [] });
+
+    resolveRecovery({ epoch: 'a', revision: 9 });
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(result.current.epoch).toBe('a');
+    expect(result.current.revision).toBe(10);
+    expect(callback).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('isolates callback failures during recovery fan-out', async () => {
+    const files = vi.fn(() => { throw new Error('files failed'); });
+    const tree = vi.fn();
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => {
+      result.current.registerInvalidation(['files'], files);
+      result.current.registerInvalidation(['tree'], tree);
+    });
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 1 });
+
+    expect(() => emit({
+      type: 'projection_invalidated', epoch: 'a', revision: 4, domains: ['files'], paths: [],
+    })).not.toThrow();
+    await waitFor(() => expect(tree).toHaveBeenCalledOnce());
+    expect(files).toHaveBeenCalledOnce();
+    expect(tree.mock.calls[0]?.[0]).toBeNull();
+  });
+
+  it('replaces the epoch on ready and recovers on mismatched events', async () => {
+    const callback = vi.fn();
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => result.current.registerInvalidation(['files'], callback));
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 9 });
+    emit({ type: 'runtime_ready', epoch: 'b', revision: 2 });
+    expect(result.current.epoch).toBe('b');
+    expect(result.current.revision).toBe(2);
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 10, domains: ['files'], paths: [] });
+    await waitFor(() => expect(callback).toHaveBeenCalledOnce());
+    expect(callback.mock.calls[0]?.[0]).toBeNull();
+  });
+
+  it('recovers and notifies immediately for a new runtime epoch, once per ready', async () => {
+    const callback = vi.fn();
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => result.current.registerInvalidation(['files'], callback));
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 1 });
+
+    emit({ type: 'runtime_ready', epoch: 'b', revision: 2 });
+    emit({ type: 'runtime_ready', epoch: 'b', revision: 2 });
+
+    await waitFor(() => expect(callback).toHaveBeenCalledOnce());
+    expect(callback.mock.calls[0]?.[0]).toBeNull();
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('fans out once when a new epoch keeps the same revision after equal recovery', async () => {
+    const callback = vi.fn();
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ epoch: 'b', revision: 4 }),
+    })));
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => result.current.registerInvalidation(['files'], callback));
+
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 4 });
+    emit({ type: 'runtime_ready', epoch: 'b', revision: 4 });
+
+    await waitFor(() => expect(callback).toHaveBeenCalledOnce());
+    expect(callback.mock.calls[0]?.[0]).toBeNull();
+    expect(result.current.epoch).toBe('b');
+    expect(result.current.revision).toBe(4);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('drops a stale recovery response and allows recovery for the new epoch', async () => {
+    const callback = vi.fn();
+    let resolveFirst!: (value: unknown) => void;
+    let resolveSecond!: (value: unknown) => void;
+    const firstResponse = new Promise<unknown>(resolve => { resolveFirst = resolve; });
+    const secondResponse = new Promise<unknown>(resolve => { resolveSecond = resolve; });
+    vi.stubGlobal('fetch', vi.fn()
+      .mockImplementationOnce(async () => ({ ok: true, json: async () => firstResponse }))
+      .mockImplementationOnce(async () => ({ ok: true, json: async () => secondResponse })));
+
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => result.current.registerInvalidation(['files'], callback));
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 1 });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 4, domains: ['files'], paths: [] });
+    emit({ type: 'runtime_ready', epoch: 'b', revision: 2 });
+
+    resolveFirst({ epoch: 'a', revision: 99 });
+    await Promise.resolve();
+    expect(result.current.epoch).toBe('b');
+    expect(result.current.revision).toBe(2);
+    expect(callback).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    resolveSecond({ epoch: 'b', revision: 3 });
+    await waitFor(() => expect(callback).toHaveBeenCalledOnce());
+    expect(result.current.epoch).toBe('b');
+    expect(result.current.revision).toBe(3);
+    expect(callback.mock.calls[0]?.[0]).toBeNull();
+  });
+
+  it('retries recovery when a valid event advances the cursor during recovery', async () => {
+    const callback = vi.fn();
+    let resolveFirst!: (value: unknown) => void;
+    let resolveSecond!: (value: unknown) => void;
+    const firstResponse = new Promise<unknown>(resolve => { resolveFirst = resolve; });
+    const secondResponse = new Promise<unknown>(resolve => { resolveSecond = resolve; });
+    vi.stubGlobal('fetch', vi.fn()
+      .mockImplementationOnce(async () => ({ ok: true, json: async () => firstResponse }))
+      .mockImplementationOnce(async () => ({ ok: true, json: async () => secondResponse })));
+
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => result.current.registerInvalidation(['files'], callback));
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 1 });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 4, domains: ['files'], paths: [] });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 2, domains: ['files'], paths: [] });
+
+    resolveFirst({ epoch: 'a', revision: 5 });
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect(result.current.epoch).toBe('a');
+    expect(result.current.revision).toBe(2);
+    expect(callback).toHaveBeenCalledOnce();
+    expect(callback.mock.calls[0]?.[0]?.revision).toBe(2);
+
+    resolveSecond({ epoch: 'a', revision: 5 });
+    await waitFor(() => expect(callback).toHaveBeenCalledTimes(2));
+    expect(result.current.revision).toBe(5);
+    expect(callback.mock.calls[1]?.[0]).toBeNull();
+  });
+
+  it('retries recovery when a stale response still leaves the current gap unresolved', async () => {
+    const callback = vi.fn();
+    let resolveFirst!: (value: unknown) => void;
+    let resolveSecond!: (value: unknown) => void;
+    const firstResponse = new Promise<unknown>(resolve => { resolveFirst = resolve; });
+    const secondResponse = new Promise<unknown>(resolve => { resolveSecond = resolve; });
+    vi.stubGlobal('fetch', vi.fn()
+      .mockImplementationOnce(async () => ({ ok: true, json: async () => firstResponse }))
+      .mockImplementationOnce(async () => ({ ok: true, json: async () => secondResponse })));
+
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => result.current.registerInvalidation(['files'], callback));
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 1 });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 4, domains: ['files'], paths: [] });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 2, domains: ['files'], paths: [] });
+
+    resolveFirst({ epoch: 'a', revision: 2 });
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect(result.current.epoch).toBe('a');
+    expect(result.current.revision).toBe(2);
+    expect(callback).toHaveBeenCalledOnce();
+    expect(callback.mock.calls[0]?.[0]?.revision).toBe(2);
+
+    resolveSecond({ epoch: 'a', revision: 4 });
+    await waitFor(() => expect(callback).toHaveBeenCalledTimes(2));
+    expect(result.current.revision).toBe(4);
+    expect(callback.mock.calls[1]?.[0]).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a stale response when the gap cursor has not advanced yet', async () => {
+    const callback = vi.fn();
+    let resolveFirst!: (value: unknown) => void;
+    let resolveSecond!: (value: unknown) => void;
+    const firstResponse = new Promise<unknown>(resolve => { resolveFirst = resolve; });
+    const secondResponse = new Promise<unknown>(resolve => { resolveSecond = resolve; });
+    vi.stubGlobal('fetch', vi.fn()
+      .mockImplementationOnce(async () => ({ ok: true, json: async () => firstResponse }))
+      .mockImplementationOnce(async () => ({ ok: true, json: async () => secondResponse })));
+
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => result.current.registerInvalidation(['files'], callback));
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 1 });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 4, domains: ['files'], paths: [] });
+
+    resolveFirst({ epoch: 'a', revision: 1 });
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+
+    resolveSecond({ epoch: 'a', revision: 4 });
+    await waitFor(() => expect(callback).toHaveBeenCalledOnce());
+    expect(result.current.epoch).toBe('a');
+    expect(result.current.revision).toBe(4);
+    expect(callback.mock.calls[0]?.[0]).toBeNull();
+  });
+
+  it('ignores malformed and unrelated messages safely', () => {
+    const callback = vi.fn();
+    renderHook(() => useRealtimeContext(), { wrapper });
+    expect(() => {
+      emit({ type: 'projection_invalidated', epoch: 3, revision: 'bad' });
+      transport.onEvent?.('unknown', { type: 'unknown' });
+    }).not.toThrow();
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it('unsubscribes callbacks and cleans them on unmount', () => {
+    const callback = vi.fn();
+    const { result, unmount } = renderHook(() => useRealtimeContext(), { wrapper });
+    let unsubscribe: (() => void) | undefined;
+    act(() => { unsubscribe = result.current.registerInvalidation(['files'], callback); });
+    unsubscribe?.();
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 0 });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 1, domains: ['files'], paths: [] });
+    expect(callback).not.toHaveBeenCalled();
+    unmount();
+    expect(transport.enabled).toBe(false);
+  });
+});

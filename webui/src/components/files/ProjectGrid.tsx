@@ -5,7 +5,7 @@ import { ProjectCard } from './ProjectCard';
 interface ProjectGridProps {
   items: BrowsableItem[];
   selected: Set<string>;
-  onSelect: (path: string) => void;
+  onSelect: ((value: string | BrowsableItem) => void) | ((path: string) => void);
   onZipSelect?: (path: string) => void;
   onInspect?: (item: BrowsableItem) => void;
   onNavigate?: (path: string) => void;
@@ -14,9 +14,12 @@ interface ProjectGridProps {
   onContextMenu?: (e: React.MouseEvent, item: BrowsableItem) => void;
   thumbnailMap: Record<string, string>;
   onDirectoryVisible?: (path: string) => void;
+  onTagClick?: (tag: string) => void;
+  onCopyLink?: (path: string) => void;
+  isMobile?: boolean;
 }
 
-export function ProjectGrid({ items, selected, onSelect, onZipSelect = onSelect, onInspect, onNavigate, selectionMode = false, onDoubleClick, onContextMenu, thumbnailMap, onDirectoryVisible }: ProjectGridProps) {
+export function ProjectGrid({ items, selected, onSelect, onZipSelect = onSelect, onInspect, onNavigate, selectionMode = false, onDoubleClick, onContextMenu, thumbnailMap, onDirectoryVisible, onTagClick, onCopyLink, isMobile = false }: ProjectGridProps) {
   const nodes = useRef(new Map<string, HTMLDivElement>());
 
   useEffect(() => {
@@ -31,7 +34,7 @@ export function ProjectGrid({ items, selected, onSelect, onZipSelect = onSelect,
   }, [items, onDirectoryVisible]);
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 p-4">
+    <div data-testid="project-grid" className="grid w-full min-w-0 grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3 p-4">
       {items.map(item => (
         <div key={item.path} data-directory-path={item.type === 'dir' ? item.path : undefined}
           ref={node => {
@@ -41,19 +44,23 @@ export function ProjectGrid({ items, selected, onSelect, onZipSelect = onSelect,
           <ProjectCard
             item={item}
             selected={selected.has(item.path)}
-            onSelect={() => {
-              if (item.type === 'dir') onNavigate?.(item.path);
-              else if (selectionMode) onSelect(item.path);
-              else onInspect?.(item);
+            selectionMode={selectionMode}
+            isMobile={isMobile}
+            onNavigate={onNavigate}
+            onSelect={selectedItem => {
+              const selectedPath = typeof selectedItem === 'string' ? selectedItem : selectedItem.path;
+              const selectedItemValue = typeof selectedItem === 'string' ? item : selectedItem;
+              if (selectionMode) (onSelect as (path: string) => void)(selectedPath);
+              else if (isMobile && selectedItemValue.type === 'dir') onNavigate?.(selectedPath);
+              else onInspect?.(selectedItemValue);
             }}
             onZipSelect={() => onZipSelect(item.path)}
-           onOpen={() => {
-             if (item.type === 'dir') onNavigate?.(item.path);
-             else onDoubleClick?.(item);
-           }}
+           onOpen={() => onDoubleClick?.(item)}
           onContextMenu={e => onContextMenu?.(e, item)}
           thumbnail={thumbnailMap[item.path]}
-          />
+           onTagClick={onTagClick}
+           onCopyLink={onCopyLink}
+           />
         </div>
       ))}
     </div>

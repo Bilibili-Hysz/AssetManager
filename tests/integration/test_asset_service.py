@@ -65,6 +65,46 @@ def test_asset_service_applies_max_depth_to_child_dirs(tmp_path):
     assert [item.name for item in listing.items] == ["asset.txt"]
 
 
+def test_asset_service_marks_directories_using_project_depth_config(tmp_path):
+    from AssetsManager.application import AssetService, DirectoryListOptions
+
+    category = tmp_path / "category"
+    project = category / "project"
+    project.mkdir(parents=True)
+    (tmp_path / "asset.txt").write_text("doc", encoding="utf-8")
+
+    service = AssetService()
+    root_listing = service.list_directory(
+        tmp_path,
+        tmp_path,
+        DirectoryListOptions(project_depth=1, branch_depths={"category": 3}),
+    )
+    child_listing = service.list_directory(
+        tmp_path, category, DirectoryListOptions(project_depth=2, branch_name="category"),
+    )
+
+    assert {item.name: item.is_project for item in root_listing.items} == {
+        "category": False, "asset.txt": False,
+    }
+    assert {item.name: item.is_project for item in child_listing.items} == {"project": True}
+
+
+def test_asset_service_uses_branch_project_depth(tmp_path):
+    from AssetsManager.application import AssetService, DirectoryListOptions
+
+    branch = tmp_path / "branch"
+    project = branch / "project"
+    project.mkdir(parents=True)
+
+    listing = AssetService().list_directory(
+        tmp_path,
+        branch,
+        DirectoryListOptions(project_depth=2, branch_name="branch", branch_depths={"branch": 3}),
+    )
+
+    assert [(item.name, item.is_project) for item in listing.items] == [("project", False)]
+
+
 def test_asset_service_records_directory_summary_cache_hit_and_miss(tmp_path, memory_db):
     from AssetsManager.application import AssetService
     from AssetsManager.core.directory_cache import DirectoryCache

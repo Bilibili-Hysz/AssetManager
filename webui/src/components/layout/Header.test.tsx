@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { Header } from './Header';
 
 let testLang = 'en';
@@ -46,20 +46,24 @@ vi.mock('react-router-dom', () => ({ Link: ({ children }: { children: React.Reac
 describe('Header menus', () => {
   afterEach(cleanup);
 
+  it('does not expose workspace panel controls as public props', () => {
+    expectTypeOf(Header).parameters.toEqualTypeOf<[]>();
+  });
+
   it.each([
     ['en', 'No results'],
     ['zh', '无结果'],
     ['ja', '結果がありません'],
   ])('renders localized empty search state in %s', (lang, message) => {
     testLang = lang;
-    render(<Header onSidebarToggle={() => {}} onInfoToggle={() => {}} sidebarOpen={false} infoOpen={false} />);
+    render(<Header />);
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'missing' } });
     expect(screen.getByText(message)).toBeDefined();
   });
 
   it('exposes the workspace search by name and does not steal slash from editable elements', () => {
     testLang = 'en';
-    render(<Header onSidebarToggle={() => {}} onInfoToggle={() => {}} sidebarOpen={false} infoOpen={false} />);
+    render(<Header />);
 
     const search = screen.getByRole('searchbox', { name: 'header.search' });
     fireEvent.keyDown(document, { key: '/' });
@@ -73,21 +77,17 @@ describe('Header menus', () => {
     textarea.remove();
   });
 
-  it.each([
-    ['en', 'Open sidebar', 'Open information panel'],
-    ['zh', '打开侧栏', '打开信息面板'],
-    ['ja', 'サイドバーを開く', '情報パネルを開く'],
-  ])('renders localized toggle labels and titles in %s', (lang, sidebarLabel, infoLabel) => {
-    testLang = lang;
-    render(<Header onSidebarToggle={() => {}} onInfoToggle={() => {}} sidebarOpen={false} infoOpen={false} />);
+  it('leaves workspace panel controls to the breadcrumb row', () => {
+    testLang = 'en';
+    render(<Header />);
 
-    expect(screen.getByRole('button', { name: sidebarLabel }).getAttribute('title')).toBe(sidebarLabel);
-    expect(screen.getByRole('button', { name: infoLabel }).getAttribute('title')).toBe(infoLabel);
+    expect(screen.queryByRole('button', { name: 'Open sidebar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open information panel' })).toBeNull();
   });
 
   it.each(['header.language', 'alice'])('toggles %s once per native Enter and Space activation', async triggerName => {
     const user = userEvent.setup();
-    render(<Header onSidebarToggle={() => {}} onInfoToggle={() => {}} sidebarOpen={false} infoOpen={false} />);
+    render(<Header />);
 
     const trigger = screen.getByRole('button', { name: triggerName });
     const clickListener = vi.fn();
@@ -113,7 +113,7 @@ describe('Header menus', () => {
     ['language', 'header.language', 'English'],
     ['user', 'alice', 'header.logout'],
   ])('closes the %s menu on Escape from an item and restores trigger focus', (_menu, triggerName, itemName) => {
-    render(<Header onSidebarToggle={() => {}} onInfoToggle={() => {}} sidebarOpen={false} infoOpen={false} />);
+    render(<Header />);
 
     const trigger = screen.getByRole('button', { name: triggerName });
     fireEvent.click(trigger);
@@ -131,7 +131,7 @@ describe('Header menus', () => {
     ['header.language', 'English'],
     ['alice', 'header.logout'],
   ])('reactivating %s closes its menu while focus remains within the disclosure', (triggerName, itemName) => {
-    render(<Header onSidebarToggle={() => {}} onInfoToggle={() => {}} sidebarOpen={false} infoOpen={false} />);
+    render(<Header />);
 
     const trigger = screen.getByRole('button', { name: triggerName });
     fireEvent.click(trigger);

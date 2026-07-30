@@ -130,6 +130,7 @@ class TabbedDialog(QDialog):
 
     settings_changed = Signal()
     _ID_SEQ = 0
+    supports_runtime_refresh = False
 
     def __init__(self, parent=None, title="Dialog", min_size=(360, 400)):
         super().__init__(parent)
@@ -137,9 +138,11 @@ class TabbedDialog(QDialog):
         self.setMinimumSize(*min_size)
         self.resize(*min_size)
         self._t = themes.get()
-        self._theme_connected = False
+        self._bus_connected = False
+        self._refresh_bus_connected = False
         self._heading_labels: list[QLabel] = []
         self._muted_labels: list[QLabel] = []
+        self._tab_label_keys: dict[int, str] = {}
 
         if hasattr(self, '_setup_tabs') and type(self)._setup_tabs is not TabbedDialog._setup_tabs:
             # Subclass uses tabbed layout
@@ -151,20 +154,37 @@ class TabbedDialog(QDialog):
 
     def showEvent(self, event):
         super().showEvent(event)
-        if not self._theme_connected:
-            self._theme_connected = True
+        if not self._bus_connected:
+            self._bus_connected = True
             from AssetsManager.core.signal_bus import get as bus
             bus().theme_changed.connect(self._on_theme_changed)
+            if self.supports_runtime_refresh:
+                bus().language_changed.connect(self._on_language_changed)
+                bus().ui_scale_changed.connect(self._on_ui_scale_changed)
+                self._refresh_bus_connected = True
 
     def closeEvent(self, event):
-        if self._theme_connected:
-            from AssetsManager.core.signal_bus import get as bus
-            try:
-                bus().theme_changed.disconnect(self._on_theme_changed)
-            except (RuntimeError, TypeError):
-                pass
-            self._theme_connected = False
+        self._disconnect_bus()
         super().closeEvent(event)
+
+    def done(self, result):
+        # accept()/reject() hide modal dialogs without necessarily closing them.
+        self._disconnect_bus()
+        super().done(result)
+
+    def _disconnect_bus(self):
+        if not self._bus_connected:
+            return
+        from AssetsManager.core.signal_bus import get as bus
+        try:
+            bus().theme_changed.disconnect(self._on_theme_changed)
+            if self._refresh_bus_connected:
+                bus().language_changed.disconnect(self._on_language_changed)
+                bus().ui_scale_changed.disconnect(self._on_ui_scale_changed)
+        except (RuntimeError, TypeError):
+            pass
+        self._bus_connected = False
+        self._refresh_bus_connected = False
 
     # ── Theme ─────────────────────────────────────────────────
 
@@ -178,6 +198,39 @@ class TabbedDialog(QDialog):
             section.refresh_theme()
         for scroll_area in self.findChildren(QScrollArea):
             self._apply_viewport_color(scroll_area)
+
+    def _on_language_changed(self, _code: str):
+        if hasattr(self, "_button_box"):
+            ok_btn = self._button_box.button(QDialogButtonBox.StandardButton.Ok)
+            cancel_btn = self._button_box.button(QDialogButtonBox.StandardButton.Cancel)
+            if ok_btn:
+                ok_btn.setText(tr("dialog.ok"))
+            if cancel_btn:
+                cancel_btn.setText(tr("dialog.cancel"))
+            if hasattr(self, "_apply_btn"):
+                self._apply_btn.setText(tr("dialog.apply"))
+        if hasattr(self, "_tabs"):
+            for index, key in self._tab_label_keys.items():
+                self._tabs.setTabText(index, tr(key))
+        self.retranslate_ui()
+
+    def _on_ui_scale_changed(self, _scale: float):
+        self._on_theme_changed("")
+        if hasattr(self, "_tabs") and hasattr(self, "_root_layout"):
+            self._root_layout.setContentsMargins(
+                scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
+            self._root_layout.setSpacing(scaled_px(10))
+        self.refresh_scaled_geometry(_scale)
+        layout = self.layout()
+        if layout is not None:
+            layout.invalidate()
+            layout.activate()
+
+    def retranslate_ui(self):
+        """Refresh subclass-owned visible text without reconstructing controls."""
+
+    def refresh_scaled_geometry(self, _scale: float | None = None):
+        """Refresh subclass-owned scaled constraints without changing dialog state."""
 
     def _refresh_static_labels(self):
         t = self._t
@@ -245,27 +298,27 @@ class TabbedDialog(QDialog):
     # ── Tabbed layout (used by subclasses with _setup_tabs) ───
 
     def _setup_tabbed_ui(self):
-        root = QVBoxLayout(self)
-        root.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
-        root.setSpacing(scaled_px(10))
+        self._root_layout = QVBoxLayout(self)
+        self._root_layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
+        self._root_layout.setSpacing(scaled_px(10))
 
         self._tabs = QTabWidget()
         self._tabs.setStyleSheet(self._tab_qss())
         self._setup_tabs()
-        root.addWidget(self._tabs)
+        self._root_layout.addWidget(self._tabs)
 
-        btn_box = QDialogButtonBox(
+        self._button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        apply_btn = btn_box.addButton(tr("dialog.apply"), QDialogButtonBox.ButtonRole.ApplyRole)
-        apply_btn.clicked.connect(self._on_apply)
-        apply_btn.clicked.connect(self.settings_changed.emit)
-        btn_box.accepted.connect(self._on_accept)
-        btn_box.rejected.connect(self.reject)
-        for btn in btn_box.buttons():
+        self._apply_btn = self._button_box.addButton(tr("dialog.apply"), QDialogButtonBox.ButtonRole.ApplyRole)
+        self._apply_btn.clicked.connect(self._on_apply)
+        self._apply_btn.clicked.connect(self.settings_changed.emit)
+        self._button_box.accepted.connect(self._on_accept)
+        self._button_box.rejected.connect(self.reject)
+        for btn in self._button_box.buttons():
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        root.addWidget(btn_box)
+        self._root_layout.addWidget(self._button_box)
 
-        self._set_default_tab_order(btn_box)
+        self._set_default_tab_order(self._button_box)
 
     def _set_default_tab_order(self, btn_box):
         """Set tab order: tab widget → OK → Apply → Cancel."""
@@ -284,7 +337,7 @@ class TabbedDialog(QDialog):
     def _setup_tabs(self):
         pass
 
-    def _add_tab(self, widget, label, scrollable=False):
+    def _add_tab(self, widget, label, scrollable=False, label_key: str | None = None):
         widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         if scrollable:
             scroll = QScrollArea()
@@ -294,9 +347,11 @@ class TabbedDialog(QDialog):
             self._apply_viewport_color(scroll)
             scroll.setWidget(widget)
             widget.setAutoFillBackground(False)
-            self._tabs.addTab(scroll, label)
+            index = self._tabs.addTab(scroll, label)
         else:
-            self._tabs.addTab(widget, label)
+            index = self._tabs.addTab(widget, label)
+        if label_key is not None:
+            self._tab_label_keys[index] = label_key
 
     def _apply_viewport_color(self, scroll):
         pal = scroll.viewport().palette()
@@ -445,6 +500,14 @@ class TabbedDialog(QDialog):
             btn_group.buttonClicked.connect(
                 lambda btn: on_changed(btn.property("option_key")))
         return group, btn_group
+
+    @staticmethod
+    def refresh_radio_group_geometry(group: QGroupBox):
+        layout = group.layout()
+        if layout is None:
+            return
+        layout.setSpacing(scaled_px(2))
+        layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(8))
 
     # ── Style helpers (used by SharingSettingsDialog) ──────────
 

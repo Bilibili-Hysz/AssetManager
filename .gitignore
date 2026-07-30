@@ -42,7 +42,10 @@ Thumbs.db
 .opencode/node_modules/
 
 # React/Vite local dependencies and generated metadata.
+/.vite/
 /webui/node_modules/
+/webui/dist/
+/webui/.vite/
 /webui/tsconfig.tsbuildinfo
 
 # Local snapshots retained beside legacy static assets.

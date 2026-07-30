@@ -1117,7 +1117,8 @@ class SharingSettingsDialog(TabbedDialog):
                     self._refresh_all_tabs()
             else:
                 self._toggle_btn.setEnabled(True)
-        self.settings_changed.emit()
+        if self._server and self._server.is_running():
+            self.settings_changed.emit()
 
     def _copy_link(self):
         url = self._server_status.get("url", "")

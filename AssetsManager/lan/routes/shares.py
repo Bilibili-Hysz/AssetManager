@@ -9,8 +9,8 @@ from aiohttp import web
 
 from AssetsManager.domain.share import ShareLink
 from AssetsManager.domain.asset import IMAGE_EXTS
-from AssetsManager.lan.routes._helpers import get_share_service, get_lan, get_request_user, get_share_token, require_permission, sanitize_filename, set_share_cookie, validate_path
-from AssetsManager.lan.routes.pages import _spa_index
+from AssetsManager.lan.routes._helpers import get_share_service, get_lan, get_request_principal, get_share_token, require_permission, sanitize_filename, set_share_cookie, set_request_principal, validate_path
+from AssetsManager.lan.principal import principal_for_request
 from AssetsManager.lan.utils import get_local_ip
 
 _log = logging.getLogger(__name__)
@@ -58,7 +58,7 @@ async def handle_create_share(request):
 
     lan = get_lan(request)
     share_svc = get_share_service(request)
-    user = get_request_user(request)
+    principal = get_request_principal(request)
 
     try:
         body = await request.json()
@@ -120,7 +120,7 @@ async def handle_create_share(request):
         paths=valid_paths, password=password,
         expires_hours=expires_hours, max_downloads=max_downloads,
         allow_preview=allow_preview,
-        created_by=user.get("username") if user else None,
+        created_by=principal.display_name if principal and principal.authenticated else None,
     )
 
     if not share:
@@ -133,6 +133,10 @@ async def handle_create_share(request):
     result = share.to_public_dict()
     result["requires_key"] = bool(lan.access_key_hash)
     result["url"] = share_url
+    services = getattr(lan, "services", None)
+    activity_log = getattr(services, "activity_log", None)
+    if activity_log is not None:
+        activity_log.add(principal.display_name if principal else None, "share", "created share link", ip=request.remote or "unknown")
 
     return web.json_response(result)
 
@@ -143,11 +147,11 @@ async def handle_list_shares(request):
 
     lan = get_lan(request)
     share_svc = get_share_service(request)
-    user = get_request_user(request)
-    if user is None:
+    principal = get_request_principal(request)
+    if principal is None:
         return web.json_response({"error": "Unauthorized"}, status=401)
 
-    created_by = None if user.get("role") == "admin" else user.get("username")
+    created_by = None if principal.role == "admin" else principal.display_name
     shares = share_svc.list_shares(created_by=created_by)
 
     ip = get_local_ip()
@@ -167,7 +171,7 @@ async def handle_delete_share(request):
         return web.json_response({"error": "Forbidden"}, status=403)
 
     share_svc = get_share_service(request)
-    user = get_request_user(request)
+    principal = get_request_principal(request)
     share_id = request.match_info.get("id", "")
 
     share = share_svc.get_share_record(share_id)
@@ -176,9 +180,9 @@ async def handle_delete_share(request):
     if share.is_expired():
         return web.json_response({"error": "Share expired"}, status=410)
 
-    if user and user.get("role") == "admin":
+    if principal and principal.role == "admin":
         pass
-    elif share.created_by and user and share.created_by == user.get("username"):
+    elif share.created_by and principal and share.created_by == principal.display_name:
         pass
     else:
         return web.json_response({"error": "Access denied"}, status=403)
@@ -188,15 +192,9 @@ async def handle_delete_share(request):
 
 
 async def handle_share_page(request):
-    spa_index = _spa_index()
-    if spa_index:
-        return web.FileResponse(spa_index)
-    # Fallback to old share page
-    static_dir = Path(__file__).parent.parent / "static"
-    share_file = static_dir / "share.html"
-    if share_file.exists():
-        return web.FileResponse(share_file)
-    return web.Response(text="Share page not found", status=404)
+    from AssetsManager.lan.routes.pages import _spa_response
+
+    return _spa_response()
 
 
 async def handle_verify_share_password(request):
@@ -217,6 +215,7 @@ async def handle_verify_share_password(request):
         return web.json_response({"error": "Share expired"}, status=410)
 
     if not share.has_password or share_svc.verify_password(share_id, password):
+        set_request_principal(request, principal_for_request("share"))
         token = share_svc.generate_token(share_id)
         result = {"share": share.to_public_dict()}
         if request.headers.get("X-AssetsManager-API-Client") == "1":
@@ -249,7 +248,6 @@ async def handle_share_download(request):
         if share.has_password and not share_svc.verify_token(token or "", share_id):
             status = 401
             return web.json_response({"error": "Unauthorized"}, status=status)
-
         if share.is_download_limit_reached():
             status = 403
             return web.json_response({"error": "Download limit reached"}, status=status)
@@ -274,6 +272,7 @@ async def handle_share_download(request):
         if not share_svc.increment_download(share_id):
             status = 403
             return web.json_response({"error": "Download limit reached"}, status=status)
+        set_request_principal(request, principal_for_request("share"))
         status = 200
         outcome = "response_ready"
         response_path = target
@@ -326,7 +325,6 @@ async def handle_share_preview(request):
         token = get_share_token(request)
         if not share_svc.verify_token(token, share_id):
             return web.json_response({"error": "Unauthorized"}, status=401)
-
     target = _resolve_share_target(lan, share, rel_path)
 
     if not target:
@@ -335,6 +333,7 @@ async def handle_share_preview(request):
     if target.suffix.lower() not in IMAGE_EXTS:
         return web.json_response({"error": "Not an image"}, status=400)
 
+    set_request_principal(request, principal_for_request("share"))
     return web.FileResponse(target)
 
 
@@ -356,4 +355,5 @@ async def handle_share_info(request):
                 "allow_preview": share.allow_preview,
             })
 
+    set_request_principal(request, principal_for_request("share"))
     return web.json_response(share.to_public_dict())

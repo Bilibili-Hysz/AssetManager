@@ -76,4 +76,147 @@ describe('InfoPanel', () => {
     }
     expect(download.closest('header')).toBeNull();
   });
+
+  it('opens the selected image in the high-resolution viewer and restores focus', () => {
+    render(<InfoPanel
+      metadata={null}
+      selected={{ name: 'hero.png', path: 'characters/hero.png', type: 'file', extension: '.png', category: 'images', thumbnail_url: '/api/thumbnails/characters/hero.png?size=512' }}
+    />);
+
+    const trigger = screen.getByRole('button', { name: 'Open hero.png preview' });
+    const preview = screen.getByAltText('hero.png preview');
+    expect(trigger.className).toContain('aspect-video');
+    expect(preview.className).toContain('object-contain');
+    expect(preview.className).not.toContain('object-cover');
+    fireEvent.click(trigger);
+
+    expect(screen.getByRole('dialog', { name: 'Image viewer' })).toBeDefined();
+    expect(screen.getByRole('img', { name: 'Image 1' }).getAttribute('src')).toBe(
+      '/api/thumbnails/characters/hero.png?size=2048',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close image viewer' }));
+    expect(screen.queryByRole('dialog', { name: 'Image viewer' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('renders the selected project cover and opens its legacy image gallery', () => {
+    render(<InfoPanel
+      metadata={null}
+      selected={{ name: 'Project Alpha', path: 'projects/alpha', type: 'dir', extension: '', category: 'folder', is_project: true }}
+      projectDetail={{
+        name: 'Project Alpha',
+        path: 'projects/alpha',
+        tags: [],
+        notes: '',
+        urls: [],
+        total_size: 30,
+        total_size_fmt: '30 B',
+        file_count: 2,
+        files: [],
+        images: [
+          { name: 'first.png', url: '/api/thumbnails/projects/alpha/first.png?size=1920', thumb_url: '/api/thumbnails/projects/alpha/first.png?size=512' },
+          { name: 'cover.png', url: '/api/thumbnails/projects/alpha/cover.png?size=1920', thumb_url: '/api/thumbnails/projects/alpha/cover.png?size=512' },
+        ],
+        thumbnail_url: '/api/thumbnails/projects/alpha/cover.png?size=512',
+        modified: 1_700_000_000,
+        download_url: '/api/download/projects/alpha',
+      }}
+    />);
+
+    const cover = screen.getByAltText('Project Alpha preview');
+    expect(cover.getAttribute('src')).toBe('/api/thumbnails/projects/alpha/cover.png?size=512');
+    fireEvent.click(screen.getByRole('button', { name: 'Open Project Alpha preview' }));
+    expect(screen.getByRole('img', { name: 'Image 2' }).getAttribute('src')).toBe(
+      '/api/thumbnails/projects/alpha/cover.png?size=1920',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Previous image' }));
+    expect(screen.getByRole('img', { name: 'Image 1' }).getAttribute('src')).toBe(
+      '/api/thumbnails/projects/alpha/first.png?size=1920',
+    );
+  });
+
+  it('renders and opens a project cover when the project gallery is empty', () => {
+    render(<InfoPanel
+      metadata={null}
+      selected={{ name: 'Nested Project', path: 'projects/nested', type: 'dir', extension: '', category: 'folder', is_project: true }}
+      projectDetail={{
+        name: 'Nested Project', path: 'projects/nested', tags: [], notes: '', urls: [],
+        total_size: 1, total_size_fmt: '1 B', file_count: 0, files: [], images: [],
+        thumbnail_url: '/api/thumbnails/projects/nested/cover.png', modified: 1,
+        download_url: '/api/download/projects/nested',
+      }}
+    />);
+
+    expect(screen.getByAltText('Nested Project preview').getAttribute('src')).toBe(
+      '/api/thumbnails/projects/nested/cover.png',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open Nested Project preview' }));
+    expect(screen.getByRole('img', { name: 'Image 1' }).getAttribute('src')).toBe(
+      '/api/thumbnails/projects/nested/cover.png',
+    );
+  });
+
+  it('renders a preview from the selected image path without a thumbnail URL', () => {
+    render(<InfoPanel
+      metadata={null}
+      selected={{ name: 'hero.png', path: 'characters/hero.png', type: 'file', extension: '.png', category: 'images' }}
+    />);
+
+    expect(screen.getByAltText('hero.png preview').getAttribute('src')).toBe(
+      '/api/thumbnails/characters/hero.png?size=512',
+    );
+  });
+
+  it('shows a loading status until the preview image finishes loading', () => {
+    render(<InfoPanel
+      metadata={null}
+      selected={{ name: 'hero.png', path: 'characters/hero.png', type: 'file', extension: '.png', category: 'images' }}
+    />);
+
+    expect(screen.getByRole('status', { name: 'Loading preview' })).toBeDefined();
+  });
+
+  it('starts the image preview while metadata details are still loading', () => {
+    render(<InfoPanel
+      metadata={null}
+      loading
+      selected={{ name: 'hero.png', path: 'characters/hero.png', type: 'file', extension: '.png', category: 'images' }}
+    />);
+
+    expect(screen.getByRole('button', { name: 'Open hero.png preview' })).toBeDefined();
+    expect(screen.getByAltText('hero.png preview').getAttribute('src')).toBe(
+      '/api/thumbnails/characters/hero.png?size=512',
+    );
+  });
+
+  it('shows a visible preview error when the thumbnail request fails', () => {
+    render(<InfoPanel
+      metadata={null}
+      selected={{ name: 'hero.png', path: 'hero.png', type: 'file', extension: '.png', category: 'images' }}
+    />);
+
+    fireEvent.error(screen.getByAltText('hero.png preview'));
+
+    expect(screen.getByText('Preview unavailable')).toBeDefined();
+  });
+
+  it.each(['.bmp', '.tiff', '.ico', '.svg'])('shows a preview for %s images', extension => {
+    render(<InfoPanel
+      metadata={null}
+      selected={{ name: `asset${extension}`, path: `asset${extension}`, type: 'file', extension, category: 'images', thumbnail_url: `/api/thumbnails/asset${extension}` }}
+    />);
+
+    expect(screen.getByRole('button', { name: `Open asset${extension} preview` })).toBeDefined();
+    cleanup();
+  });
+
+  it('does not show a preview trigger for non-image assets', () => {
+    render(<InfoPanel
+      metadata={null}
+      selected={{ name: 'notes.txt', path: 'notes.txt', type: 'file', extension: '.txt', category: 'document', thumbnail_url: '/api/thumbnails/notes.txt' }}
+    />);
+
+    expect(screen.queryByRole('button', { name: 'Open notes.txt preview' })).toBeNull();
+  });
 });

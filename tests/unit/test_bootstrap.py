@@ -111,7 +111,7 @@ class TestApplicationBootstrap:
             assert not reopened
             assert db_close_calls == []
             assert notifications == []
-            assert id(session) in bootstrap._undo_services
+            assert id(session) in bootstrap._runtimes
             assert session.context.db_conn.execute("SELECT 1").fetchone() == (1,)
         finally:
             release_operation.set()
@@ -126,7 +126,7 @@ class TestApplicationBootstrap:
 
         assert notifications.count(session) == 1
         assert operation_errors == []
-        assert id(session) not in bootstrap._undo_services
+        assert id(session) not in bootstrap._runtimes
         assert not scoped.undo_service.undo_dir.exists()
         assert db_close_calls == ["close"]
         assert len(reopened) == 1
@@ -369,11 +369,11 @@ class TestApplicationBootstrap:
             bootstrap.library_service.close_session(first_session)
 
         assert first_session.is_closed
-        assert id(first_session) not in bootstrap._undo_services
+        assert id(first_session) not in bootstrap._runtimes
         assert not first.undo_service.undo_dir.exists()
         assert notifications == [first_session]
         assert bootstrap.library_service.owns_live_session(second_session)
-        assert bootstrap._undo_services[id(second_session)][1] is second.undo_service
+        assert bootstrap._runtimes[id(second_session)].services.undo_service is second.undo_service
         assert second.undo_service.can_undo()
         assert second.undo_service.undo_dir.exists()
 
@@ -401,7 +401,7 @@ class TestApplicationBootstrap:
 
         assert first_session.is_closed
         assert second_session.is_closed
-        assert bootstrap._undo_services == {}
+        assert bootstrap._runtimes == {}
         assert not first.undo_service.undo_dir.exists()
         assert not second.undo_service.undo_dir.exists()
         assert notifications.count(first_session) == 1
@@ -524,6 +524,18 @@ class TestApplicationBootstrap:
         canonical = bootstrap.library_service.open_session(root)
 
         assert bootstrap.for_library(canonical).session is canonical
+
+    def test_repeated_for_library_uses_the_exact_canonical_session(self, tmp_path):
+        root = tmp_path / "library"
+        root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        canonical = bootstrap.library_service.open_session(root)
+
+        first = bootstrap.for_library(canonical)
+        second = bootstrap.for_library(canonical)
+
+        assert first.session is canonical
+        assert second.session is canonical
 
     def test_for_library_preserves_session_identity_and_resources(self, tmp_path, monkeypatch):
         root = tmp_path / "library"

@@ -37,6 +37,23 @@ class LibraryService:
         self._contexts: dict[str, LibraryContext] = {}
         self._sessions: dict[str, LibrarySession] = {}
         self._session_close_listeners: list[Callable[[LibrarySession], None]] = []
+        self._session_closing_listeners: list[Callable[[LibrarySession], None]] = []
+
+    def add_session_closing_listener(
+        self, listener: Callable[[LibrarySession], None]
+    ) -> None:
+        """Notify an owner after new operations are rejected, before drain."""
+        with self._lock:
+            self._session_closing_listeners.append(listener)
+
+    def _notify_session_closing(self, session: LibrarySession) -> None:
+        with self._lock:
+            listeners = tuple(self._session_closing_listeners)
+        for listener in listeners:
+            try:
+                listener(session)
+            except Exception:
+                _log.exception("Library session pre-close listener failed")
 
     def add_session_close_listener(
         self, listener: Callable[[LibrarySession], None]
@@ -48,11 +65,16 @@ class LibraryService:
     def _notify_session_closed(self, session: LibrarySession) -> None:
         with self._lock:
             listeners = tuple(self._session_close_listeners)
+        first_error: Exception | None = None
         for listener in listeners:
             try:
                 listener(session)
-            except Exception:
+            except Exception as exc:
                 _log.exception("Library session close listener failed")
+                if first_error is None:
+                    first_error = exc
+        if first_error is not None:
+            raise first_error
 
     def open_library(self, root_path: str | Path) -> LibraryContext:
         """Open or reuse a library and return its raw context.
@@ -169,11 +191,18 @@ class LibraryService:
         try:
             for session in sessions:
                 try:
-                    session._close_direct()
+                    session._begin_close()
+                    self._notify_session_closing(session)
+                    session._finish_close()
                 except Exception:
                     pass
-                finally:
+                try:
                     self._notify_session_closed(session)
+                except Exception:
+                    # Keep closing remaining sessions and the DB even when a
+                    # post-close owner reports a cleanup failure. The owner
+                    # retains its resource for an explicit retry.
+                    pass
             self._db.close()
         finally:
             with self._lifecycle:
@@ -202,11 +231,15 @@ class LibraryService:
                 if self._current is context:
                     self._current = None
         if not current:
-            session._close_direct()
+            session._begin_close()
+            self._notify_session_closing(session)
+            session._finish_close()
             return
         try:
             try:
-                session._close_direct()
+                session._begin_close()
+                self._notify_session_closing(session)
+                session._finish_close()
             finally:
                 self._notify_session_closed(session)
         finally:

@@ -5,6 +5,38 @@ import { ImageViewer } from './ImageViewer';
 
 describe('ImageViewer', () => {
   afterEach(cleanup);
+  it('fits the complete image to the canvas and allows zooming below fit scale', () => {
+    render(<ImageViewer images={['square.png']} currentIndex={0} onClose={vi.fn()} />);
+
+    const image = screen.getByAltText('Image 1');
+    expect(image.className).toContain('object-contain');
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom out' }));
+    expect(image.style.transform).toContain('scale(0.5)');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset zoom' }));
+    expect(image.style.transform).toContain('scale(1)');
+  });
+
+  it('allows wheel zooming below the fit scale', () => {
+    render(<ImageViewer images={['portrait.png']} currentIndex={0} onClose={vi.fn()} />);
+
+    fireEvent.wheel(screen.getByTestId('image-viewer-content'), { deltaY: 50, clientX: 100, clientY: 100 });
+    expect(screen.getByAltText('Image 1').style.transform).toContain('scale(0.5)');
+  });
+
+  it('clamps zoom out at 25 percent and restores fit scale after navigation', () => {
+    render(<ImageViewer images={['first.png', 'second.png']} currentIndex={0} onClose={vi.fn()} />);
+
+    const zoomOut = screen.getByRole('button', { name: 'Zoom out' });
+    fireEvent.click(zoomOut);
+    fireEvent.click(zoomOut);
+    fireEvent.click(zoomOut);
+    expect(screen.getByAltText('Image 1').style.transform).toContain('scale(0.25)');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next image' }));
+    expect(screen.getByAltText('Image 2').style.transform).toContain('scale(1)');
+  });
+
   it('resets zoom with 0 without closing and navigates with arrow keys inside the viewer', () => {
     const onClose = vi.fn();
     const onIndexChange = vi.fn();

@@ -35,6 +35,7 @@ from AssetsManager.application.tag_service import TagService
 from AssetsManager.application.thumbnail_service import ThumbnailResult, ThumbnailService, clear_thumbnail_cache_keys, thumbnail_cache_key
 from AssetsManager.application.undo_service import UndoEntry, UndoService
 from AssetsManager.application.bootstrap import ApplicationBootstrap, LibraryScopedServices
+from AssetsManager.application.runtime import LibraryRuntime
 
 __all__ = [
     "FILTER_CATEGORY_EXTS",
@@ -52,6 +53,7 @@ __all__ = [
     "FileOperationService",
     "LibraryScopedServices",
     "LibraryService",
+    "LibraryRuntime",
     "LibrarySession",
     "MetadataService",
     "PluginService",

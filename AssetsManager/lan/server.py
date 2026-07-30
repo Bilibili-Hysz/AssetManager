@@ -1,16 +1,18 @@
 """LAN server — aiohttp application lifecycle management."""
 import asyncio
+import concurrent.futures
 import logging
 import os
 import ssl
 import threading
+import time
 from pathlib import Path
 
 from aiohttp import web
 
-from AssetsManager.lan.api import setup_routes
+from AssetsManager.lan.api import setup_routes, stop_runtime_realtime
 from AssetsManager.lan.auth import hash_key, hash_password, is_password_hash, verify_key, verify_token, verify_auth_token
-from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY, LAN_APP_KEY
+from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY, LAN_APP_KEY, ActivityLog, OnlineUsers, LanScopedServices
 from AssetsManager.lan.ws import WebSocketManager
 from AssetsManager.lan.scanner import DirectoryScanner
 from AssetsManager.lan.tunnel import TunnelManager
@@ -19,26 +21,41 @@ from AssetsManager.lan.utils import get_local_ip
 
 _log = logging.getLogger(__name__)
 
-STATIC_DIR = Path(__file__).parent / "static"
-
 
 class _LanServerImpl:
     """Internal server implementation. Do not use directly — use LanServer facade."""
 
-    def __init__(self, *, library_root: str, thumbnail_dir: str, db_conn,
+    def __init__(self, *, runtime=None,
                  share_name: str = "AssetManager", password: str | None = None,
                  access_key: str | None = None,
+                 auth_mode: str | None = None,
                  rate_limit: int = 100, blocked_ips: list[str] | None = None,
                   ip_whitelist: list[str] | None = None,
                   blur_tags: list[str] | None = None,
                   ssl_cert: str | None = None, ssl_key: str | None = None,
-                  performance_recorder=None, session_token: str | None = None):
+                  performance_recorder=None, session_token: str | None = None,
+                  services=None):
+        self._runtime_adapter_registered = False
+        self._runtime_adapter_lock = threading.Lock()
+        self.runtime = runtime
+        session = getattr(runtime, "session", None)
+        runtime_services = getattr(runtime, "services", None)
+        if session is None or runtime_services is None or getattr(runtime_services, "session", session) is not session:
+            raise ValueError("runtime must be live and canonical for its LibrarySession")
+        if getattr(session, "is_closed", False):
+            raise ValueError("runtime session must be live")
+        library_root = session.root
+        thumbnail_dir = session.thumb_dir
+        db_conn = session.connection_for(session.root)
+        performance_recorder = getattr(runtime_services, "performance_recorder", performance_recorder)
+        session_token = session.event_token
         self._library_root = Path(library_root)
         self._thumbnail_dir = Path(thumbnail_dir)
         self._db_conn = db_conn
         self.performance_recorder = performance_recorder
         self.session_token = session_token
         self._share_name = share_name
+        self._auth_mode = auth_mode
         # Accept both plaintext and pre-hashed passwords for backward compatibility.
         # New settings save hashes; old settings may contain plaintext.
         if password:
@@ -48,7 +65,7 @@ class _LanServerImpl:
         self._access_key_hash = hash_key(access_key) if access_key else None
         self._password_value = password
         self._access_key_value = access_key
-        self._ws_manager = WebSocketManager()
+        self._ws_manager = WebSocketManager(on_connection_change=self._set_connection_count)
         self._scanner = DirectoryScanner(library_root, db_conn)
         self._tunnel = TunnelManager()
         self._blur_tags = set(blur_tags or [])
@@ -77,25 +94,32 @@ class _LanServerImpl:
         self._include_types = None
         self._exclude_patterns = None
 
-        # Build middleware chain
-        security_mw = create_security_middleware(
-            self._rate_limiter,
-            self._ip_blacklist,
-            self._auth_rate_limiter,
-            ip_whitelist=self._ip_whitelist,
-        )
-        self._app = web.Application(middlewares=[security_mw, self._auth_middleware])
-        self._app[LAN_APP_KEY] = self
+        self._app: web.Application | None = None
+
         self._runner: web.AppRunner | None = None
         self._site: web.TCPSite | None = None
         self._port: int = 8080
         self._bind: str = "0.0.0.0"
         self._running = False
+        self._lifecycle_state = "stopped"
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
+        self._cleanup_complete = True
+        self._shutdown_future = None
+        self._lifecycle_lock = threading.Lock()
+        self._lifecycle_generation = 0
+        self._stop_reservations = 0
+        self._stop_reservation_generation = 0
+        self._startup_result_event = None
+        self._startup_result = None
+        self._startup_cancel_generation = None
+        self._cleanup_started_event = None
+        self._startup_cleanup_failed = False
         self._connections: int = 0
         self._requests: int = 0
-        self._bytes_transferred: int = 0
+        self._bytes_transferred: int | None = None
+        self._started_at: float | None = None
+        self._metrics_lock = threading.Lock()
 
         # User existence cache (avoid DB query on every request)
         self._has_users_cache: bool | None = None
@@ -109,59 +133,337 @@ class _LanServerImpl:
         self._auth_service = AuthService(self._db_conn, self._token_secret)
         self._share_service = ShareService(self._db_conn, self._token_secret)
 
-        setup_routes(self._app, STATIC_DIR)
+        if runtime is not None:
+            for name in (
+                "metadata_service",
+                "project_service",
+                "tag_service",
+                "search_service",
+                "thumbnail_service",
+            ):
+                service = getattr(runtime_services, name, None)
+                provider = getattr(service, "_connection_provider", None)
+                provider_self = getattr(provider, "__self__", None)
+                provider_func = getattr(provider, "__func__", None)
+                expected_provider = session.connection_for
+                provider_matches = provider == expected_provider
+                if provider_self is not None:
+                    provider_matches = (
+                        provider_self is session
+                        and provider_func is getattr(expected_provider, "__func__", None)
+                    )
+                if service is None or not provider_matches:
+                    raise ValueError(
+                        f"runtime {name} provider is not bound to its LibrarySession"
+                    )
+            self.services = LanScopedServices(
+                auth_service=self._auth_service,
+                metadata_service=runtime_services.metadata_service,
+                project_service=runtime_services.project_service,
+                tag_service=runtime_services.tag_service,
+                search_service=runtime_services.search_service,
+                thumbnail_service=runtime_services.thumbnail_service,
+                asset_service=runtime_services.asset_service,
+                share_service=self._share_service,
+                activity_log=ActivityLog(),
+                online_users=OnlineUsers(),
+                runtime_services=runtime_services,
+            )
+        self._services = self.services
+        self._build_app()
+        register_adapter = getattr(self.runtime, "register_lifecycle_adapter", None)
+        if callable(register_adapter):
+            with self._runtime_adapter_lock:
+                self._runtime_adapter_registered = True
+            try:
+                register_adapter(self)
+            except BaseException:
+                with self._runtime_adapter_lock:
+                    self._runtime_adapter_registered = False
+                raise
+
+    def _build_app(self) -> None:
+        """Build a fresh aiohttp application for the next event loop."""
+        security_mw = create_security_middleware(
+            self._rate_limiter,
+            self._ip_blacklist,
+            self._auth_rate_limiter,
+            ip_whitelist=self._ip_whitelist,
+        )
+        self._app = web.Application(middlewares=[security_mw, self._metrics_middleware, self._auth_middleware])
+        self._app[LAN_APP_KEY] = self
+        setup_routes(self._app)
+
+    @web.middleware
+    async def _metrics_middleware(self, request, handler):
+        with self._metrics_lock:
+            self._requests += 1
+        return await handler(request)
 
     # ── Public API ──────────────────────────────────────────────
 
     def start(self, port: int = 8080, bind: str = "0.0.0.0"):
         """Start the server on the given port."""
-        if self._running:
-            _log.warning("Server already running on port %d", self._port)
-            return
-        self._port = port
-        self._bind = bind
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
-        # Wait briefly for startup to complete
-        self._thread.join(timeout=2)
-        if not self._running:
+        with self._lifecycle_lock:
+            if (self._lifecycle_state == "stopping"
+                    or getattr(self, "_stop_reservations", 0)):
+                raise RuntimeError("Cannot start while previous stop is still finalizing")
+            if self._thread is not None:
+                if self._thread.is_alive() and self._running and self._lifecycle_state == "running":
+                    _log.warning("Server already running on port %d", self._port)
+                    return
+                if self._thread.is_alive():
+                    raise RuntimeError("Cannot start while previous server thread is still alive")
+                if not self._cleanup_complete:
+                    raise RuntimeError("Cannot start: previous server cleanup incomplete")
+            if not self._cleanup_complete:
+                raise RuntimeError("Cannot start: previous server cleanup incomplete")
+            if self._running:
+                _log.warning("Server already running on port %d", self._port)
+                return
+            self._loop = None
+            self._thread = None
+            self._lifecycle_generation = getattr(self, "_lifecycle_generation", 0) + 1
+            generation = self._lifecycle_generation
+            self._startup_result_event = threading.Event()
+            self._startup_result = None
+            self._startup_cancel_generation = None
+            self._cleanup_started_event = threading.Event()
+            self._startup_cleanup_failed = False
+            self._lifecycle_state = "starting"
+            self._cleanup_complete = False
+            self._port = port
+            self._bind = bind
+            self._build_app()
+            self._thread = threading.Thread(target=self._run, daemon=True)
+        try:
+            self._thread.start()
+        except Exception:
+            if not self._thread.is_alive() and self._loop is None:
+                self._thread = None
+                self._lifecycle_state = "stopped"
+                self._cleanup_complete = True
+                with self._lifecycle_lock:
+                    self._shutdown_future = None
+            else:
+                self._lifecycle_state = "failed"
+            raise
+        # Lightweight test/thread adapters may set the running state directly;
+        # treat that state as the worker's explicit completion publication.
+        if self._running and self._lifecycle_state == "running":
+            self._publish_startup_result("success")
+        # Startup has a definitive per-generation result.  The timeout is only
+        # a bounded wait: it requests cancellation and leaves reconciliation to
+        # the owner loop before this generation may be replaced.
+        startup_event = self._startup_result_event
+        if not startup_event.wait(timeout=8):
+            with self._lifecycle_lock:
+                if self._lifecycle_generation == generation:
+                    self._startup_cancel_generation = generation
+                    self._lifecycle_state = "failed"
+            raise OSError(f"Failed to start server on port {port}: startup timed out")
+        cleanup_started = getattr(self, "_cleanup_started_event", None)
+        if self._startup_result and self._startup_result[0] == "failure" and cleanup_started:
+            cleanup_started.wait(timeout=8)
+        result = self._startup_result
+        if not result or result[0] != "success":
+            with self._lifecycle_lock:
+                if (self._lifecycle_generation == generation
+                        and self._thread is not None
+                        and not self._thread.is_alive()
+                        and self._cleanup_complete):
+                    self._lifecycle_state = "stopped"
+                    self._loop = None
+                    self._thread = None
             raise OSError(f"Failed to start server on port {port}. Port may be in use.")
 
     def stop(self):
         """Stop the server gracefully."""
-        if not self._running or not self._loop:
-            return
+        with self._lifecycle_lock:
+            thread = self._thread
+            generation = getattr(self, "_lifecycle_generation", 0)
+            if thread is None:
+                self._running = False
+                self._lifecycle_state = "stopped"
+                self._loop = None
+                self._thread = None
+                self._shutdown_future = None
+                self._unregister_runtime_adapter()
+                return
+            if not thread.is_alive():
+                if not self._cleanup_complete:
+                    self._lifecycle_state = "failed"
+                    raise RuntimeError("Server thread terminated with cleanup incomplete")
+                self._running = False
+                self._lifecycle_state = "stopped"
+                self._loop = None
+                self._thread = None
+                self._shutdown_future = None
+                self._unregister_runtime_adapter()
+                return
+            if self._loop is None:
+                self._lifecycle_state = "failed"
+                raise RuntimeError("Cannot stop live server thread without its event loop")
+
+            self._lifecycle_state = "stopping"
+            future = self._shutdown_future
+            if future is not None and getattr(future, "done", lambda: False)():
+                future_failed = False
+                try:
+                    future_failed = future.exception() is not None
+                except concurrent.futures.CancelledError:
+                    future_failed = True
+                except Exception:
+                    pass
+                if future_failed and not self._cleanup_complete:
+                    self._shutdown_future = None
+                    future = None
+            if future is None:
+                future = asyncio.run_coroutine_threadsafe(self._shutdown(), self._loop)
+                self._shutdown_future = future
+            reservation_generation = generation
+            if getattr(self, "_stop_reservation_generation", generation) != generation:
+                self._stop_reservations = 0
+            self._stop_reservation_generation = generation
+            self._stop_reservations = getattr(self, "_stop_reservations", 0) + 1
+
         try:
-            future = asyncio.run_coroutine_threadsafe(self._shutdown(), self._loop)
-            future.result(timeout=8)
-        except (TimeoutError, Exception) as e:
-            _log.warning("Server shutdown timed out or failed: %s", e)
+            while True:
+                shutdown_error = None
+                try:
+                    future.result(timeout=8)
+                except TimeoutError as exc:
+                    with self._lifecycle_lock:
+                        future_done = getattr(future, "done", lambda: False)()
+                        retry_startup_cleanup = (
+                            self._shutdown_future is future
+                            and future_done
+                            and getattr(self, "_startup_cleanup_failed", False)
+                            and not self._cleanup_complete
+                        )
+                        if self._shutdown_future is future and (future_done or retry_startup_cleanup):
+                            self._shutdown_future = None
+                        if retry_startup_cleanup:
+                            self._startup_cleanup_failed = False
+                    if retry_startup_cleanup:
+                        with self._lifecycle_lock:
+                            future = asyncio.run_coroutine_threadsafe(
+                                self._shutdown(), self._loop
+                            )
+                            self._shutdown_future = future
+                        continue
+                    shutdown_error = exc
+                    _log.warning("Server shutdown timed out or failed: %s", exc)
+                except BaseException as exc:
+                    with self._lifecycle_lock:
+                        retry_startup_cleanup = (
+                            self._shutdown_future is future
+                            and getattr(self, "_startup_cleanup_failed", False)
+                            and not self._cleanup_complete
+                        )
+                        if self._shutdown_future is future:
+                            self._shutdown_future = None
+                        if retry_startup_cleanup:
+                            self._startup_cleanup_failed = False
+                    if retry_startup_cleanup:
+                        with self._lifecycle_lock:
+                            future = asyncio.run_coroutine_threadsafe(
+                                self._shutdown(), self._loop
+                            )
+                            self._shutdown_future = future
+                        continue
+                    shutdown_error = exc
+                    _log.warning("Server shutdown timed out or failed: %s", exc)
+                break
+
+            if shutdown_error is not None:
+                with self._lifecycle_lock:
+                    self._lifecycle_state = "failed"
+                raise shutdown_error
+
+            if thread is not threading.current_thread():
+                thread.join(timeout=8)
+
+            if thread.is_alive():
+                with self._lifecycle_lock:
+                    self._lifecycle_state = "failed"
+                raise TimeoutError("Server thread did not terminate after shutdown")
+
+            with self._lifecycle_lock:
+                if (self._thread is not thread
+                        or getattr(self, "_lifecycle_generation", 0) != generation):
+                    return
+                self._running = False
+                self._cleanup_complete = True
+                self._lifecycle_state = "stopped"
+                self._loop = None
+                self._thread = None
+                self._shutdown_future = None
+                self._startup_cleanup_failed = False
+            self._unregister_runtime_adapter()
         finally:
-            try:
-                self._loop.call_soon_threadsafe(self._loop.stop)
-            except Exception:
-                pass
-            self._running = False
-            self._loop = None
-            self._thread = None
+            with self._lifecycle_lock:
+                if (getattr(self, "_stop_reservation_generation", None)
+                        == reservation_generation):
+                    self._stop_reservations = max(
+                        0, getattr(self, "_stop_reservations", 0) - 1
+                    )
+
+    def _unregister_runtime_adapter(self):
+        runtime = getattr(self, "runtime", None)
+        unregister_adapter = getattr(runtime, "unregister_lifecycle_adapter", None)
+        if not callable(unregister_adapter):
+            return
+        lock = getattr(self, "_runtime_adapter_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._runtime_adapter_lock = lock
+        with lock:
+            if not getattr(self, "_runtime_adapter_registered", False):
+                return
+            self._runtime_adapter_registered = False
+        try:
+            unregister_adapter(self)
+        except BaseException:
+            with lock:
+                self._runtime_adapter_registered = True
+            raise
 
     def is_running(self) -> bool:
-        return self._running
+        return self._lifecycle_state != "stopped"
 
     def status(self) -> dict:
         ip = get_local_ip()
         return {
-            "running": self._running,
+            "running": self.is_running(),
+            "lifecycle_state": self._lifecycle_state,
             "ip": ip,
             "port": self._port,
             "url": f"http://{ip}:{self._port}",
             "share_name": self._share_name,
             "library_root": str(self._library_root),
-            "auth_enabled": self._password_hash is not None,
+            "auth_enabled": self.auth_status()[0],
             "connections": self._connections,
             "requests": self._requests,
             "bytes_transferred": self._bytes_transferred,
+            "uptime": max(0.0, time.monotonic() - self._started_at) if self._started_at else 0.0,
         }
+
+    def auth_status(self) -> tuple[bool, str]:
+        """Return the effective LAN authentication state and mode."""
+        has_key = self._access_key_hash is not None
+        has_password = self._password_hash is not None
+        has_users = self._has_active_users()
+
+        if has_key:
+            mode = "key"
+        elif has_users:
+            mode = "user"
+        elif has_password:
+            mode = "password"
+        else:
+            mode = "none"
+        return has_key or has_password or has_users, mode
 
     def broadcast(self, event_type: str, data: dict | None = None):
         """Send a WebSocket event to all connected clients."""
@@ -205,6 +507,10 @@ class _LanServerImpl:
     @property
     def ws_manager(self) -> WebSocketManager:
         return self._ws_manager
+
+    def _set_connection_count(self, count: int) -> None:
+        with self._metrics_lock:
+            self._connections = count
 
     @property
     def password_hash(self) -> str | None:
@@ -291,9 +597,83 @@ class _LanServerImpl:
         """Run the asyncio event loop in a background thread."""
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
-        self._loop.run_until_complete(self._startup())
+        try:
+            try:
+                self._loop.run_until_complete(self._startup())
+            except BaseException:
+                self._running = False
+                self._lifecycle_state = "failed"
+                _log.exception("LAN server startup failed")
+                with self._lifecycle_lock:
+                    cleanup_future = self._shutdown_future
+                    cleanup_owned_here = cleanup_future is None
+                    if cleanup_future is None:
+                        cleanup_future = concurrent.futures.Future()
+                        self._shutdown_future = cleanup_future
+                    elif not self._cleanup_complete:
+                        # A concurrent stop owns cleanup.  If that shared
+                        # future fails, stop() must be allowed to resubmit it
+                        # during this same call.
+                        self._startup_cleanup_failed = True
+                if cleanup_owned_here and not cleanup_future.done():
+                    cleanup_started = getattr(self, "_cleanup_started_event", None)
+                    if cleanup_started is not None:
+                        cleanup_started.set()
+                    self._publish_startup_result("failure")
+                    try:
+                        self._loop.run_until_complete(self._shutdown())
+                    except BaseException as exc:
+                        self._startup_cleanup_failed = True
+                        cleanup_future.set_exception(exc)
+                        _log.exception("LAN server startup cleanup failed")
+                    else:
+                        cleanup_future.set_result(None)
+                self._publish_startup_result("failure")
+                while not self._cleanup_complete:
+                    self._loop.run_until_complete(asyncio.sleep(0.01))
+            else:
+                with self._lifecycle_lock:
+                    startup_cancelled = (
+                        getattr(self, "_startup_cancel_generation", None)
+                        == getattr(self, "_lifecycle_generation", 0)
+                    )
+                if startup_cancelled and self._running:
+                    self._running = False
+                    with self._lifecycle_lock:
+                        cleanup_future = self._shutdown_future
+                        cleanup_owned_here = cleanup_future is None
+                        if cleanup_owned_here:
+                            cleanup_future = concurrent.futures.Future()
+                            self._shutdown_future = cleanup_future
+                        elif not self._cleanup_complete:
+                            self._startup_cleanup_failed = True
+                    if cleanup_owned_here and not cleanup_future.done():
+                        try:
+                            cleanup_started = getattr(self, "_cleanup_started_event", None)
+                            if cleanup_started is not None:
+                                cleanup_started.set()
+                            self._loop.run_until_complete(self._shutdown())
+                        except BaseException as exc:
+                            self._startup_cleanup_failed = True
+                            cleanup_future.set_exception(exc)
+                        else:
+                            cleanup_future.set_result(None)
+                self._publish_startup_result(
+                    "failure" if startup_cancelled else ("success" if self._running else "failure")
+                )
+                while not self._cleanup_complete:
+                    self._loop.run_until_complete(asyncio.sleep(0.01))
+        finally:
+            loop = self._loop
+            loop.close()
+            if self._cleanup_complete and not self._running:
+                try:
+                    self._unregister_runtime_adapter()
+                except BaseException:
+                    _log.exception("Failed to unregister LAN runtime lifecycle adapter")
 
     async def _startup(self):
+        await self._ws_manager.start_accepting()
         self._auth_service.init_tables()
         self._share_service.init_table()
         self._app[AUTH_SERVICE_APP_KEY] = self._auth_service
@@ -326,8 +706,27 @@ class _LanServerImpl:
             _log.error("Failed to start server on port %d: %s", self._port, e)
             self._running = False
             await self._runner.cleanup()
+            self._cleanup_complete = True
+            cleanup_started = getattr(self, "_cleanup_started_event", None)
+            if cleanup_started is not None:
+                cleanup_started.set()
             return
-        self._running = True
+        if self._port == 0:
+            sockets = getattr(getattr(self._site, "_server", None), "sockets", None)
+            if sockets:
+                self._port = int(sockets[0].getsockname()[1])
+        with self._lifecycle_lock:
+            cancelled = getattr(self, "_startup_cancel_generation", None) == self._lifecycle_generation
+            if not cancelled:
+                self._started_at = time.monotonic()
+                self._running = True
+                self._lifecycle_state = "running"
+                self._publish_startup_result("success")
+        if cancelled:
+            self._running = False
+            await self._runner.cleanup()
+            self._cleanup_complete = True
+            raise RuntimeError("startup cancelled")
         protocol = "https" if ssl_context else "http"
         _log.info("LAN sharing started on %s://%s:%d", protocol, get_local_ip(), self._port)
 
@@ -336,22 +735,37 @@ class _LanServerImpl:
 
         # Keep the loop running
         try:
-            while self._running:
+            while not self._cleanup_complete:
                 await asyncio.sleep(1)
         except asyncio.CancelledError:
             pass
 
     async def _shutdown(self):
         self._running = False
-        await self._ws_manager.close_all()
-        if self._site:
-            await self._site.stop()
-        if self._runner:
-            await self._runner.cleanup()
+        try:
+            stop_runtime_realtime(self)
+            await self._ws_manager.close_all()
+            if self._site:
+                await self._site.stop()
+            if self._runner:
+                await self._runner.cleanup()
+        except BaseException:
+            self._cleanup_complete = False
+            raise
+        self._cleanup_complete = True
         _log.info("LAN sharing stopped")
+
+    def _publish_startup_result(self, status: str) -> None:
+        event = getattr(self, "_startup_result_event", None)
+        if event is None or event.is_set():
+            return
+        self._startup_result = (status, getattr(self, "_lifecycle_generation", 0))
+        event.set()
 
     def _has_active_users(self) -> bool:
         """Check if there are active users, with caching to avoid DB query on every request."""
+        if self._auth_mode == "none":
+            return False
         import time
         now = time.time()
         if self._has_users_cache is not None and (now - self._has_users_cache_time) < self._has_users_cache_ttl:
@@ -374,15 +788,15 @@ class _LanServerImpl:
         "/api/auth/login",
         "/api/auth/register",
         "/api/auth/verify_key",
-        "/api/info",
         "/login",
+        "/browse",
+        "/detail",
         "/",
         "/favicon.ico",
     })
 
     _PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
         "/assets",
-        "/static",
         "/s",
     )
 
@@ -413,16 +827,51 @@ class _LanServerImpl:
     @web.middleware
     async def _auth_middleware(self, request, handler):
         """Authentication middleware — skip for public endpoints."""
+        from AssetsManager.lan.principal import principal_for_request
+        from AssetsManager.lan.routes._helpers import get_request_principal, set_request_principal
+
+        def ensure_guest():
+            if get_request_principal(request) is None:
+                set_request_principal(request, principal_for_request("guest"))
+
+        if request.path == "/api/info":
+            # Keep the endpoint publicly readable, but reflect a valid
+            # credential in its normalized identity when one is supplied.
+            if self._auth_mode == "none":
+                ensure_guest()
+                return await handler(request)
+            from AssetsManager.lan.routes._helpers import get_auth_token
+            token = get_auth_token(request, allow_query=False)
+            if token:
+                if self._access_key_hash is not None and verify_key(token, self._access_key_hash):
+                    set_request_principal(request, principal_for_request("access_key"))
+                    return await handler(request)
+                if self._token_secret and verify_auth_token(token, self._token_secret):
+                    set_request_principal(request, principal_for_request("local_ui"))
+                    return await handler(request)
+                user = self._auth_service.verify_user_token(token)
+                if user:
+                    set_request_principal(request, principal_for_request("user", user=user))
+                    return await handler(request)
+                if self._password_hash is not None and verify_token(token, self._password_hash):
+                    set_request_principal(request, principal_for_request("password"))
+                    return await handler(request)
+            ensure_guest()
+            return await handler(request)
         if request.path in self._PUBLIC_PATHS:
+            ensure_guest()
             return await handler(request)
         for prefix in self._PUBLIC_PATH_PREFIXES:
             if self._path_matches_prefix(request.path, prefix):
+                ensure_guest()
                 return await handler(request)
         if self._is_public_share_endpoint(request.method, request.path):
+            ensure_guest()
             return await handler(request)
         if request.method == "GET":
             for prefix in self._PUBLIC_PATH_PREFIX_GET:
                 if self._path_matches_prefix(request.path, prefix):
+                    ensure_guest()
                     return await handler(request)
 
         # Check if any auth is configured
@@ -432,35 +881,36 @@ class _LanServerImpl:
 
         # No auth required if nothing configured
         if not has_key and not has_password and not has_users:
+            set_request_principal(request, principal_for_request("guest"))
             return await handler(request)
 
         # Get token from cookie, header, or query param
-        from AssetsManager.lan.routes._helpers import get_auth_token, set_request_auth_context
+        from AssetsManager.lan.routes._helpers import get_auth_token
         token = get_auth_token(request, allow_query=request.path != "/ws")
 
         # Try access key auth
         if has_key and token and self._access_key_hash is not None:
             if verify_key(token, self._access_key_hash):
-                set_request_auth_context(request, "access_key", {"username": "access_key", "role": "admin"})
+                set_request_principal(request, principal_for_request("access_key"))
                 return await handler(request)
 
         # Try local UI API token (signed with token_secret)
         if self._token_secret and token:
             if verify_auth_token(token, self._token_secret):
-                set_request_auth_context(request, "local_ui", {"username": "local_ui", "role": "admin"})
+                set_request_principal(request, principal_for_request("local_ui"))
                 return await handler(request)
 
         # Try user-based token
         if token:
             user = self._auth_service.verify_user_token(token)
             if user:
-                set_request_auth_context(request, "user", user)
+                set_request_principal(request, principal_for_request("user", user=user))
                 return await handler(request)
 
         # Try simple password token
         if has_password and token and self._password_hash is not None:
             if verify_token(token, self._password_hash):
-                set_request_auth_context(request, "password", {"username": "password", "role": "admin"})
+                set_request_principal(request, principal_for_request("password"))
                 return await handler(request)
 
         return web.json_response({"error": "Unauthorized"}, status=401)

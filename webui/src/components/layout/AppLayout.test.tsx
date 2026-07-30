@@ -114,4 +114,31 @@ describe('AppLayout', () => {
     const closeButton = screen.getByRole('button', { name: 'Close information panel' });
     expect(closeButton.getAttribute('aria-expanded')).toBe('true');
   });
+
+  it('exposes mobile view and selection controls as pressed states', () => {
+    setLang('en');
+    window.matchMedia = () => ({ matches: true, media: '(max-width: 768px)', onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => true });
+    render(
+      <AppLayout
+        infoPanel={<aside>Info</aside>}
+        sidebarOpen={false}
+        infoOpen={false}
+        sidebarWidth={240}
+        infoWidth={320}
+        onSidebarDragStart={() => {}}
+        onInfoDragStart={() => {}}
+        onSidebarToggle={() => {}}
+        onInfoToggle={() => {}}
+        onViewModeToggle={() => {}}
+        viewMode="list"
+        onSelectModeToggle={() => {}}
+        selectMode={true}
+      >
+        <div>Content</div>
+      </AppLayout>,
+    );
+
+    expect(screen.getByRole('button', { name: 'View' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Done' }).getAttribute('aria-pressed')).toBe('true');
+  });
 });

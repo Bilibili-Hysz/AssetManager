@@ -6,12 +6,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BrowsePage from './BrowsePage';
 import { DownloadProgressProvider } from '../components/ui/DownloadProgress';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import type { BrowsableItem } from '../types/api';
 
 const search = vi.fn();
 const getMeta = vi.fn();
+const getProjectDetail = vi.fn();
 const batchDownload = vi.fn();
 const showToast = vi.fn();
-let listingItems = [{ path: 'asset.png', name: 'asset.png', type: 'file', extension: '.png', category: 'image', size_fmt: '1 KB', modified: 0 }];
+const getThumbnail = vi.fn();
+const loadThumbnails = vi.fn();
+const { useInvalidationMock } = vi.hoisted(() => ({ useInvalidationMock: vi.fn() }));
+let listingItems: BrowsableItem[] = [{ path: 'asset.png', name: 'asset.png', type: 'file', extension: '.png', category: 'image', size_fmt: '1 KB', modified: 0 }];
 
 vi.mock('../hooks/useAuth', () => ({
   useAuth: () => ({ api: {}, user: null }),
@@ -36,23 +41,27 @@ vi.mock('../hooks/useProjects', () => ({
 }));
 
 vi.mock('../hooks/useWebSocket', () => ({ useWebSocket: vi.fn() }));
+vi.mock('../hooks/useInvalidation', () => ({
+  useInvalidation: useInvalidationMock,
+}));
 vi.mock('../hooks/useThumbnailCache', () => ({
-  useThumbnailCache: () => ({ loadThumbnails: vi.fn(), getThumbnail: vi.fn(), revision: 0 }),
+  useThumbnailCache: () => ({ loadThumbnails, getThumbnail, revision: 0 }),
 }));
 vi.mock('../hooks/useMediaQuery', () => ({ useMediaQuery: vi.fn(() => false) }));
 vi.mock('../hooks/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
 vi.mock('../components/ui/Toast', () => ({ useToast: () => ({ showToast }) }));
 vi.mock('../api/files', () => ({ createFilesApi: () => ({ download: vi.fn(), batchDownload }) }));
 vi.mock('../api/metadata', () => ({
-  createMetadataApi: () => ({ getMeta, search }),
+  createMetadataApi: () => ({ getMeta, getProjectDetail, search }),
 }));
 vi.mock('../components/layout/AppLayout', () => ({ AppLayout: ({ children, infoPanel, onSelectModeToggle, selectMode, viewMode }: { children: React.ReactNode; infoPanel: React.ReactNode; onSelectModeToggle?: () => void; selectMode?: boolean; viewMode?: string }) => <>{infoPanel}<output data-testid="view-mode">{viewMode}</output><button aria-label={selectMode ? 'mobile.done' : 'mobile.select'} onClick={onSelectModeToggle}>Toggle selection</button>{children}</> }));
 vi.mock('../components/layout/Header', () => ({ Header: () => null }));
 vi.mock('../components/layout/Sidebar', () => ({ Sidebar: () => null }));
 vi.mock('../components/layout/InfoPanel', () => ({
-  InfoPanel: ({ onTagFilter, metadata, selected, loading }: { onTagFilter?: (tag: string) => void; metadata?: { path?: string } | null; selected?: { path?: string; size?: number; size_fmt?: string; modified?: number } | null; loading?: boolean }) => (
+  InfoPanel: ({ onTagFilter, metadata, projectDetail, selected, loading }: { onTagFilter?: (tag: string) => void; metadata?: { path?: string } | null; projectDetail?: { thumbnail_url?: string | null } | null; selected?: { path?: string; size?: number; size_fmt?: string; modified?: number } | null; loading?: boolean }) => (
     <>
       <output data-testid="metadata">{loading ? 'loading' : metadata?.path ?? 'none'}</output>
+      <output data-testid="project-preview">{projectDetail?.thumbnail_url ?? 'none'}</output>
       <output data-testid="inspected-item">{selected?.path ?? 'none'}</output>
       <output data-testid="inspected-technical-fields">{JSON.stringify({ size: selected?.size, size_fmt: selected?.size_fmt, modified: selected?.modified })}</output>
       <button onClick={() => onTagFilter?.('featured')}>Filter tag</button>
@@ -62,14 +71,18 @@ vi.mock('../components/layout/InfoPanel', () => ({
   ),
 }));
 vi.mock('../components/files/Breadcrumb', () => ({ Breadcrumb: () => null }));
-vi.mock('../components/files/FileToolbar', () => ({ FileToolbar: ({ selectedCount, activeTag, onClearTag, onDownloadSelected, isDownloadInFlight }: { selectedCount: number; activeTag?: string | null; onClearTag?: () => void; onDownloadSelected: () => void; isDownloadInFlight?: boolean }) => <><output data-testid="selected-count">{selectedCount}</output>{activeTag && <><output data-testid="active-tag">{activeTag}</output><button onClick={onClearTag}>Clear tag filter</button></>}{selectedCount > 0 && <button onClick={onDownloadSelected} disabled={isDownloadInFlight}>{isDownloadInFlight ? 'Downloading selected' : 'Download selected'}</button>}</> }));
-vi.mock('../components/files/ProjectGrid', () => ({ ProjectGrid: (props: { items: Array<{ name: string; path: string; type: string; size?: number; size_fmt?: string; modified?: number }>; onSelect: (path: string) => void; onInspect: (item: { path: string; size?: number; size_fmt?: string; modified?: number }) => void; onZipSelect?: (path: string) => void; onDoubleClick: (item: { path: string }) => void; onContextMenu?: (event: React.MouseEvent, item: { path: string; type: string }) => void; selectionMode?: boolean }) => <><output data-testid="file-list">{props.items.map(item => item.name).join(',')}</output><output data-testid="file-list-technical-fields">{JSON.stringify(props.items.map(({ size, size_fmt, modified }) => ({ size, size_fmt, modified })))}</output><button onClick={() => props.selectionMode ? props.onSelect('asset.png') : props.onInspect(props.items[0]!)}>Select asset</button><button onClick={() => props.onZipSelect?.('asset.png')}>Select asset for ZIP</button><button onClick={() => props.onInspect(props.items[0]!)}>Inspect asset</button><button onClick={() => props.onDoubleClick({ path: 'asset.png' })}>Open asset</button><button onContextMenu={event => props.onContextMenu?.(event, props.items[0]!)}>Open item context menu</button></> }));
-vi.mock('../components/files/ProjectList', () => ({ ProjectList: (props: { onSelect: (path: string) => void; onInspect: (item: { path: string }) => void; selectionMode?: boolean }) => <button onClick={() => props.selectionMode ? props.onSelect('asset.png') : props.onInspect({ path: 'asset.png' })}>List asset</button> }));
+vi.mock('../components/files/FileToolbar', () => ({ FileToolbar: ({ selectedCount, activeTag, onClearTag, onDownloadSelected, isDownloadInFlight }: { selectedCount: number; activeTag?: string | null; onClearTag?: () => void; onDownloadSelected: () => void; isDownloadInFlight?: boolean }) => <div data-testid="file-toolbar"><output data-testid="selected-count">{selectedCount}</output>{activeTag && <><output data-testid="active-tag">{activeTag}</output><button onClick={onClearTag}>Clear tag filter</button></>}{selectedCount > 0 && <button onClick={onDownloadSelected} disabled={isDownloadInFlight}>{isDownloadInFlight ? 'Downloading selected' : 'Download selected'}</button>}</div> }));
+vi.mock('../components/files/ProjectGrid', () => ({ ProjectGrid: (props: { items: Array<{ name: string; path: string; type: string; is_project?: boolean; size?: number; size_fmt?: string; modified?: number }>; onSelect: (path: string) => void; onInspect: (item: { path: string; size?: number; size_fmt?: string; modified?: number }) => void; onNavigate?: (path: string) => void; onZipSelect?: (path: string) => void; onDoubleClick: (item: { path: string; type: string; is_project?: boolean }) => void; onContextMenu?: (event: React.MouseEvent, item: { path: string; type: string }) => void; selectionMode?: boolean; thumbnailMap: Record<string, string>; isMobile?: boolean }) => <><output data-testid="file-list">{props.items.map(item => item.name).join(',')}</output><output data-testid="file-list-technical-fields">{JSON.stringify(props.items.map(({ size, size_fmt, modified }) => ({ size, size_fmt, modified })))}</output><output data-testid="thumbnail-map">{JSON.stringify(props.thumbnailMap)}</output><button onClick={() => props.selectionMode ? props.onSelect(props.items[0]!.path) : props.onInspect(props.items[0]!)}>Select asset</button><button onClick={() => props.onZipSelect?.('asset.png')}>Select asset for ZIP</button><button onClick={() => props.onInspect(props.items[0]!)}>Inspect asset</button><button onClick={() => props.onDoubleClick(props.items[0]!)}>Open asset</button><button onClick={() => props.isMobile && props.items[0]?.type === 'dir' ? props.onNavigate?.(props.items[0].path) : props.onInspect(props.items[0]!)}>Click directory</button><button onClick={() => props.isMobile && props.items[0]?.type === 'dir' ? props.onNavigate?.(props.items[0].path) : props.onDoubleClick(props.items[0]!)}>Double click directory</button><button onContextMenu={event => props.onContextMenu?.(event, props.items[0]!)}>Open item context menu</button></> }));
+vi.mock('../components/files/ProjectList', () => ({ ProjectList: (props: { items: Array<{ path: string; type?: string }>; onSelect: (path: string) => void; onInspect: (item: { path: string }) => void; onNavigate?: (path: string) => void; onDoubleClick?: (item: { path: string }) => void; selectionMode?: boolean; thumbnailMap?: Record<string, string>; isMobile?: boolean }) => <><output data-testid="thumbnail-map">{JSON.stringify(props.thumbnailMap)}</output><button onClick={() => props.selectionMode ? props.onSelect(props.items[0]!.path) : props.onInspect(props.items[0]!)}>List asset</button><button onClick={() => props.isMobile && props.items[0]?.type === 'dir' ? props.onNavigate?.(props.items[0].path) : props.onInspect(props.items[0]!)}>Click directory</button><button onClick={() => props.isMobile && props.items[0]?.type === 'dir' ? props.onNavigate?.(props.items[0].path) : props.onDoubleClick?.(props.items[0]!)}>Double click directory</button></> }));
 vi.mock('../components/ui/Skeleton', () => ({ Skeleton: () => null }));
 vi.mock('../components/shares/ShareDialog', () => ({ ShareDialog: () => null }));
 
 function LocationSearch() {
   return <output data-testid="location-search">{useLocation().search}</output>;
+}
+
+function LocationPath() {
+  return <output data-testid="location-path">{useLocation().pathname}</output>;
 }
 
 function NavigateToNewPath() {
@@ -101,13 +114,31 @@ describe('BrowsePage', () => {
     localStorage.removeItem('am_view');
     listingItems = [{ path: 'asset.png', name: 'asset.png', type: 'file', extension: '.png', category: 'image', size_fmt: '1 KB', modified: 0 }];
     vi.mocked(useMediaQuery).mockReturnValue(false);
+    localStorage.clear();
     search.mockReset();
     search.mockResolvedValue({ results: [{ path: 'tagged/item', name: 'item', type: 'file', extension: '', category: 'other' }] });
     getMeta.mockReset();
     getMeta.mockResolvedValue({ path: 'asset.png' });
+    getProjectDetail.mockReset();
+    getProjectDetail.mockResolvedValue({
+      path: 'folder',
+      thumbnail_url: '/api/thumbnails/folder/cover.png',
+      images: [],
+      tags: [],
+      notes: '',
+      urls: [],
+    });
     batchDownload.mockReset();
     batchDownload.mockResolvedValue(undefined);
     showToast.mockReset();
+    getThumbnail.mockReset();
+    loadThumbnails.mockReset();
+    useInvalidationMock.mockReset();
+  });
+
+  it('registers exactly the Browse projection domains', () => {
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+    expect(useInvalidationMock.mock.calls[0]?.[0]).toEqual(['files', 'metadata', 'tags', 'project_detail']);
   });
 
   it('omits Detail from directory context menus while retaining it for files', () => {
@@ -135,9 +166,9 @@ describe('BrowsePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Filter tag' }));
 
     await waitFor(() => expect(screen.getByTestId('active-tag').textContent).toBe('featured'));
-    expect(search).toHaveBeenCalledWith('', 'featured');
-    expect(screen.getByTestId('location-search').textContent).toBe('?path=original');
-    fireEvent.click(screen.getByRole('button', { name: 'Clear tag filter' }));
+    expect(search).toHaveBeenCalledWith('', 'featured', undefined, expect.any(AbortSignal));
+    expect(screen.getByTestId('location-search').textContent).toBe('?tag=featured');
+    fireEvent.click(screen.getByTitle('Clear tag filter'));
     expect(screen.queryByTestId('active-tag')).toBeNull();
   });
 
@@ -162,6 +193,57 @@ describe('BrowsePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Select asset' }));
     fireEvent.click(screen.getByRole('button', { name: 'Download selected' }));
     await waitFor(() => expect(batchDownload).toHaveBeenCalledWith(['asset.png'], expect.any(Function)));
+  });
+
+  it('closes and persists both workspace panels when the viewport becomes mobile', async () => {
+    vi.mocked(useMediaQuery).mockReturnValue(false);
+    const view = render(<MemoryRouter><TestBrowsePage /></MemoryRouter>);
+    localStorage.setItem('am_sidebar_open', '1');
+    localStorage.setItem('am_info_open', '1');
+
+    vi.mocked(useMediaQuery).mockReturnValue(true);
+    view.rerender(<MemoryRouter><TestBrowsePage /></MemoryRouter>);
+
+    await waitFor(() => {
+      expect(localStorage.getItem('am_sidebar_open')).toBe('0');
+      expect(localStorage.getItem('am_info_open')).toBe('0');
+    });
+  });
+
+  it('keeps the FileList controls outside the scrolling asset canvas', () => {
+    render(<MemoryRouter><TestBrowsePage /></MemoryRouter>);
+
+    const workspace = screen.getByTestId('browse-workspace');
+    const header = screen.getByTestId('file-list-header');
+    const canvas = screen.getByTestId('file-list-canvas');
+    const toolbar = screen.getByTestId('file-toolbar');
+
+    expect(workspace.className).toContain('overflow-hidden');
+    expect(header.className).toContain('flex-shrink-0');
+    expect(canvas.className).toContain('flex-1');
+    expect(canvas.className).toContain('min-h-0');
+    expect(canvas.className).toContain('overflow-y-auto');
+    expect(header.contains(toolbar)).toBe(true);
+    expect(canvas.contains(toolbar)).toBe(false);
+  });
+
+  it('restores the desktop panel state when the viewport leaves mobile', async () => {
+    localStorage.setItem('am_sidebar_open', '1');
+    localStorage.setItem('am_info_open', '1');
+    vi.mocked(useMediaQuery).mockReturnValue(false);
+    const view = render(<MemoryRouter><TestBrowsePage /></MemoryRouter>);
+
+    vi.mocked(useMediaQuery).mockReturnValue(true);
+    view.rerender(<MemoryRouter><TestBrowsePage /></MemoryRouter>);
+    await waitFor(() => expect(localStorage.getItem('am_sidebar_open')).toBe('0'));
+
+    vi.mocked(useMediaQuery).mockReturnValue(false);
+    view.rerender(<MemoryRouter><TestBrowsePage /></MemoryRouter>);
+
+    await waitFor(() => {
+      expect(localStorage.getItem('am_sidebar_open')).toBe('1');
+      expect(localStorage.getItem('am_info_open')).toBe('1');
+    });
   });
 
   it('reports a selected ZIP download failure and clears progress', async () => {
@@ -318,6 +400,58 @@ describe('BrowsePage', () => {
     expect(screen.getByTestId('selected-count').textContent).toBe('0');
   });
 
+  it('keeps the browse URL and loads legacy project preview detail when a desktop directory is clicked once', async () => {
+    listingItems = [{ path: 'folder', name: 'folder', type: 'dir', extension: '', category: 'other', size_fmt: '', modified: 0 }];
+    getProjectDetail.mockResolvedValueOnce({
+      path: 'folder',
+      thumbnail_url: '/api/thumbnails/folder/cover.png',
+      images: [{ name: 'cover.png', url: '/api/thumbnails/folder/cover.png?size=1920', thumb_url: '/api/thumbnails/folder/cover.png' }],
+      tags: [], notes: '', urls: [],
+    });
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /><LocationSearch /><LocationPath /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Click directory' }));
+
+    await waitFor(() => expect(screen.getByTestId('inspected-item').textContent).toBe('folder'));
+    expect(getProjectDetail).toHaveBeenCalledWith('folder', expect.any(AbortSignal));
+    expect(getMeta).not.toHaveBeenCalled();
+    expect(screen.getByTestId('project-preview').textContent).toBe('/api/thumbnails/folder/cover.png');
+    expect(screen.getByTestId('location-search').textContent).toBe('');
+  });
+
+  it('browses into an ordinary directory on desktop double click', async () => {
+    listingItems = [{ path: 'folder', name: 'folder', type: 'dir', extension: '', category: 'other', size_fmt: '', modified: 0 }];
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /><LocationSearch /><LocationPath /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Double click directory' }));
+
+    await waitFor(() => expect(screen.getByTestId('location-search').textContent).toBe('?path=folder'));
+    expect(screen.getByTestId('inspected-item').textContent).toBe('none');
+  });
+
+  it('opens a project directory detail on desktop double click', async () => {
+    listingItems = [{ path: 'project', name: 'project', type: 'dir', is_project: true, extension: '', category: 'other', size_fmt: '', modified: 0 }];
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /><LocationSearch /><LocationPath /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Double click directory' }));
+
+    await waitFor(() => expect(screen.getByTestId('location-path').textContent).toBe('/detail'));
+  });
+
+  it('routes mobile project and ordinary directory clicks according to directory type', async () => {
+    vi.mocked(useMediaQuery).mockReturnValue(true);
+    listingItems = [{ path: 'project', name: 'project', type: 'dir', is_project: true, extension: '', category: 'other', size_fmt: '', modified: 0 }];
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /><LocationSearch /><LocationPath /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Click directory' }));
+    await waitFor(() => expect(screen.getByTestId('location-path').textContent).toBe('/detail'));
+
+    cleanup();
+    listingItems = [{ path: 'folder', name: 'folder', type: 'dir', extension: '', category: 'other', size_fmt: '', modified: 0 }];
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /><LocationSearch /><LocationPath /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Click directory' }));
+    await waitFor(() => expect(screen.getByTestId('location-search').textContent).toBe('?path=folder'));
+  });
+
   it('selects from the desktop ZIP control without opening InfoPanel, while the card still inspects', async () => {
     vi.mocked(useMediaQuery).mockReturnValue(false);
     render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
@@ -394,5 +528,64 @@ describe('BrowsePage', () => {
     fireEvent.keyDown(input, { key: 's' });
     expect(screen.getByRole('button', { name: 'mobile.done' })).toBeDefined();
     input.remove();
+  });
+
+  it('passes file and directory thumbnails to the project view', () => {
+    listingItems = [
+      { path: 'asset.png', name: 'asset.png', type: 'file', extension: '.png', category: 'image', size_fmt: '1 KB', modified: 0 },
+      { path: 'folder', name: 'folder', type: 'dir', extension: '', category: 'other', thumbnail_url: '/api/thumbnails/folder.jpg', size_fmt: '', modified: 0 },
+    ];
+    getThumbnail.mockReturnValue('ZmFrZQ==');
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+
+    expect(screen.getByTestId('thumbnail-map').textContent).toBe(JSON.stringify({
+      'asset.png': 'data:image/jpeg;base64,ZmFrZQ==',
+      folder: '/api/thumbnails/folder.jpg',
+    }));
+
+    cleanup();
+    localStorage.setItem('am_view', 'list');
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+    expect(screen.getByTestId('thumbnail-map').textContent).toBe(JSON.stringify({
+      'asset.png': 'data:image/jpeg;base64,ZmFrZQ==',
+      folder: '/api/thumbnails/folder.jpg',
+    }));
+  });
+
+  it('loads file thumbnails in list view', async () => {
+    localStorage.setItem('am_view', 'list');
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+
+    await waitFor(() => expect(loadThumbnails).toHaveBeenCalledWith(['asset.png']));
+  });
+
+  it('exposes the workspace search as a searchbox and does not intercept editable fields', async () => {
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+    const search = document.createElement('input');
+    search.id = 'header-search-input';
+    search.setAttribute('role', 'searchbox');
+    document.body.append(search);
+    search.focus();
+    fireEvent.keyDown(search, { key: 'g' });
+    fireEvent.keyDown(search, { key: 's' });
+    expect(screen.getByRole('button', { name: 'mobile.select' })).toBeDefined();
+    expect(document.activeElement).toBe(search);
+    search.remove();
+  });
+
+  it('focuses the workspace search with slash only outside editable elements', () => {
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+    const search = document.createElement('input');
+    search.id = 'header-search-input';
+    search.setAttribute('role', 'searchbox');
+    document.body.append(search);
+    const editor = document.createElement('div');
+    editor.setAttribute('contenteditable', 'true');
+    document.body.append(editor);
+    editor.focus();
+    fireEvent.keyDown(editor, { key: '/' });
+    expect(document.activeElement).toBe(editor);
+    editor.remove();
+    search.remove();
   });
 });

@@ -62,6 +62,14 @@ class ThumbnailRepository:
         ).fetchall()
         return [(r[0], r[1]) for r in rows]
 
+    def list_all_with_metadata(self) -> list[tuple[str, str, float]]:
+        """Return all cache rows needed for baked-thumbnail validation."""
+        rows = self._conn.execute(
+            "SELECT cache_key, source_path, source_mtime "
+            "FROM thumbnail_cache ORDER BY source_mtime DESC, cache_key"
+        ).fetchall()
+        return [(row[0], row[1], row[2]) for row in rows]
+
     def delete_by_key(self, cache_key: str) -> None:
         """Delete entry by cache key (for orphan cleanup)."""
         with db_write_lock(self._conn):

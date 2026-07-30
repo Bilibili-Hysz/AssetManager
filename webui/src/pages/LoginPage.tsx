@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { KeyRound, User, Lock, Eye, EyeOff, UserPlus, LogIn, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useI18n } from '../hooks/useI18n';
+import { useTheme } from '../hooks/useTheme';
 
 type LoginView = 'login' | 'register' | 'key';
 
 export default function LoginPage() {
-  const { serverInfo, authMode, authApi, setToken, isLoading } = useAuth();
+  const { serverInfo, authMode, authApi, setToken, refreshMe, isLoading } = useAuth();
   const { t } = useI18n();
+  useTheme();
   const navigate = useNavigate();
 
   const [view, setView] = useState<LoginView>('login');
@@ -71,10 +73,12 @@ export default function LoginPage() {
       if (showPasswordMode && !loginUsername) {
         // Password-only mode
         res = await authApi.loginWithPassword(loginPassword);
+        setToken(res.token, res.user);
+        if (!await refreshMe()) throw new Error(t('auth.login_failed'));
       } else {
         res = await authApi.login(loginUsername, loginPassword);
+        setToken(res.token, res.user);
       }
-      setToken(res.token, res.user);
       navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -90,6 +94,7 @@ export default function LoginPage() {
     try {
       const res = await authApi.verifyKey(accessKey.trim());
       setToken(res.token);
+      if (!await refreshMe()) throw new Error(t('auth.invalid_key'));
       navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid key');

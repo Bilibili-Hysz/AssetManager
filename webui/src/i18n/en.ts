@@ -25,6 +25,8 @@ const en = {
     clearFilterToChangeExpansion: 'Clear the search filter to change manual expansion',
     search: 'Filter directories...',
     no_results: 'No matching directories',
+    expand_all: 'Expand All',
+    collapse_all: 'Collapse All',
   },
   browse: {
     empty: 'This folder is empty',

@@ -8,6 +8,10 @@ from aiohttp import web
 _log = logging.getLogger(__name__)
 
 
+def _path_matches_prefix(path: str, prefix: str) -> bool:
+    return path == prefix or path.startswith(f"{prefix}/")
+
+
 class RateLimiter:
     """Per-IP rate limiter using sliding window with LRU eviction."""
 
@@ -105,8 +109,9 @@ def create_security_middleware(
         "/api/tags",
         "/api/info",
         "/api/tunnel/status",
+        "/assets",
     )
-    _RATE_LIMIT_SKIP_PREFIX = ("/static",)
+    _RATE_LIMIT_SKIP_PREFIX = ("/assets",)
 
     # Auth endpoints that need stricter rate limiting
     _AUTH_ENDPOINTS = (
@@ -120,7 +125,7 @@ def create_security_middleware(
 
         # Skip rate limiting for browsing/thumbnail paths
         skip_rate = (
-            any(path.startswith(p) for p in _RATE_LIMIT_SKIP_PREFIX)
+            any(_path_matches_prefix(path, p) for p in _RATE_LIMIT_SKIP_PREFIX)
             or path in _RATE_LIMIT_SKIP
             or path.startswith("/api/thumbnails/")
         )

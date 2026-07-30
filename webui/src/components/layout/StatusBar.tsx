@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
-import { useWebSocket } from '../../hooks/useWebSocket';
+import { useInvalidation } from '../../hooks/useInvalidation';
+import { useRealtimeContext } from '../../stores/RealtimeContext';
 import { useI18n } from '../../hooks/useI18n';
 import type { StatsResponse } from '../../types/api';
 
@@ -10,25 +11,30 @@ interface StatusBarProps {
 }
 
 export function StatusBar(_props: StatusBarProps) {
-  const { systemApi, user } = useAuth();
+  const { systemApi } = useAuth();
   const { t } = useI18n();
   const [stats, setStats] = useState<StatsResponse | null>(null);
-  const { status: wsStatus } = useWebSocket({ enabled: Boolean(user) });
+  const { status: wsStatus } = useRealtimeContext();
+  const mountedRef = useRef(false);
+  const generationRef = useRef(0);
+  const load = useCallback(() => {
+    const generation = ++generationRef.current;
+    systemApi.getStats().then(stats => {
+      if (mountedRef.current && generation === generationRef.current) setStats(stats);
+    }).catch(() => {});
+  }, [systemApi]);
+
+  useInvalidation(['stats'], load);
 
   useEffect(() => {
-    let disposed = false;
-    const load = () => {
-      systemApi.getStats().then(stats => {
-        if (!disposed) setStats(stats);
-      }).catch(() => {});
-    };
+    mountedRef.current = true;
     load();
     const timer = setInterval(load, 10000);
     return () => {
-      disposed = true;
+      mountedRef.current = false;
       clearInterval(timer);
     };
-  }, [systemApi]);
+  }, [load]);
 
   return (
     <div className="h-7 flex items-center text-[10px] text-slate-500 px-3 border-t border-slate-700/50 bg-slate-900/80 flex-shrink-0">
@@ -39,7 +45,7 @@ export function StatusBar(_props: StatusBarProps) {
             <span>·</span>
             <span>{t('status.requests', stats.requests)}</span>
             <span>·</span>
-            <span>{stats.bytes_transferred_fmt}</span>
+            <span>{stats.bytes_transferred_fmt ?? 'Unavailable'}</span>
           </>
         )}
       </div>

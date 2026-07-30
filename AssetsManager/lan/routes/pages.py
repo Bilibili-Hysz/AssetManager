@@ -1,15 +1,9 @@
-"""Index and static page routes.
-
-When the new SPA build exists at webui/dist/, page routes serve the SPA index.html
-so React Router can handle client-side routing. Falls back to the old static HTML
-when the SPA is not built.
-"""
+"""React/Vite SPA page routes."""
 from pathlib import Path
 
 from aiohttp import web
 
 
-STATIC_DIR = Path(__file__).parent.parent / "static"
 SPA_DIR = Path(__file__).parent.parent.parent.parent / "webui" / "dist"
 
 
@@ -19,32 +13,27 @@ def _spa_index() -> Path | None:
     return idx if idx.exists() else None
 
 
+def _spa_response() -> web.StreamResponse:
+    index = _spa_index()
+    if index:
+        return web.FileResponse(index)
+    return web.Response(
+        text="WebUI/build is unavailable. Build the React WebUI before starting the LAN server.",
+        status=503,
+    )
+
+
 async def handle_index(request):
-    spa = _spa_index()
-    if spa:
-        return web.FileResponse(spa)
-    return web.FileResponse(STATIC_DIR / "index.html")
+    return _spa_response()
 
 
 async def handle_detail_page(request):
-    spa = _spa_index()
-    if spa:
-        return web.FileResponse(spa)
-    detail_file = STATIC_DIR / "detail.html"
-    if detail_file.exists():
-        return web.FileResponse(detail_file)
-    return web.Response(text="Detail page not found", status=404)
+    return _spa_response()
 
 
 async def handle_login_page(request):
-    spa = _spa_index()
-    if spa:
-        return web.FileResponse(spa)
-    return web.FileResponse(STATIC_DIR / "login.html")
+    return _spa_response()
 
 
 async def handle_browse_page(request):
-    spa = _spa_index()
-    if spa:
-        return web.FileResponse(spa)
-    return web.FileResponse(STATIC_DIR / "index.html")
+    return _spa_response()

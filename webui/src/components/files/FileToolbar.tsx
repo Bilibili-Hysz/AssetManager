@@ -21,7 +21,7 @@ export function FileToolbar({
   const { t } = useI18n();
 
   return (
-    <div className="flex items-center gap-3 px-4 py-1.5 border-b border-slate-700/50 bg-slate-900/30 flex-shrink-0">
+    <div data-testid="file-toolbar" className="flex items-center gap-3 px-4 py-1.5 border-b border-slate-700/50 bg-slate-900/30 flex-shrink-0">
       {/* Sort */}
       <div className="flex items-center gap-1.5">
         <ArrowUpDown size={13} className="text-slate-500" />
