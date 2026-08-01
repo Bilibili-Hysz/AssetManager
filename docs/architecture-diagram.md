@@ -1,7 +1,7 @@
 # AssetsManager Architecture Diagram
 
-**Version:** 2026-07-27
-**Tests:** 1427 passed, 1 platform skip; WebUI 251 passed
+**Version:** 2026-07-21 current-state audit
+**Tests:** Python 1568 passed, 1 Windows platform skip plus Ubuntu WSL symlink gate passed; WebUI 37 files / 286 passed; Task E cross-surface 186 passed; typecheck and build passed
 
 ---
 
@@ -67,6 +67,8 @@
 │  lan/manager.py (lifecycle)                                         │
 │                                                                     │
 │  LAN → Runtime services → auth/principal/capabilities              │
+│  Windows Task E matrix: Chromium + Desktop + LAN passed            │
+│  Linux directory-symlink gate: Ubuntu WSL passed                  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -146,4 +148,4 @@ SettingsDialog → themes.set_theme(name)
 | `panels/` | 18 | ~6,100 | 3 test files |
 | `widgets/` | 6 | ~900 | 0 test files |
 | `tests/` | 50+ | ~5,000+ | — |
-| **Total** | **150+** | **~27,000+** | **1427 passed, 1 platform skip; WebUI 251 passed** |
+| **Total** | **150+** | **~27,000+** | **Python 1568 passed, 1 Windows skip; Linux symlink gate passed; WebUI 37 files / 286 passed; Task E 186 passed** |

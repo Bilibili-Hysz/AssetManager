@@ -2,7 +2,13 @@
 
 ## Status
 
-Accepted — Phase 5 Task 17.
+Accepted target decision; the Windows implementation, cross-surface acceptance
+and Linux directory-symlink platform gate are evidenced. The current-state
+report and recalibration report are authoritative:
+
+- [`desktop-lan-webui-architecture-migration.md`](../compose/reports/desktop-lan-webui-architecture-migration.md)
+- [`desktop-lan-webui-architecture-recalibration.md`](../compose/reports/desktop-lan-webui-architecture-recalibration.md)
+- [`2026-07-21-desktop-lan-webui-architecture-recalibration.md`](../compose/plans/2026-07-21-desktop-lan-webui-architecture-recalibration.md)
 
 ## Decision
 
@@ -23,18 +29,24 @@ loudly.
 
 LAN server stop closes websocket/site and scanner resources when supported. It
 does not close an injected `LibraryRuntime` or `LibrarySession`. Runtime
-adapters and the database connection are closed by the
-`ApplicationBootstrap`/`LibraryService` session lifecycle, after the LAN
-server has stopped, preventing routes or background work from using a closed
-session.
+adapters and the database connection are intended to be closed by the
+`ApplicationBootstrap`/`LibraryService` session lifecycle, with adapters
+stopped before the session releases caches or the database connection. The
+current implementation covers the explicit pre-close barrier, retryable
+failure semantics, restart-generation ownership and the Windows cross-surface
+acceptance matrix. The Linux directory-symlink gate passed in Ubuntu WSL, so
+this ADR records the delivered architecture for the recalibrated scope.
 
 ## Public construction boundary
 
-`LanServer`, `ShareManager`, and desktop LAN sharing accept only a canonical
-`LibraryRuntime`. The removed migration factories and request-user dictionary
-adapters are not compatibility boundaries. Tests that need low-level route
-fixtures must build a runtime-shaped session fixture explicitly; production
-code never assembles LAN application services from raw connections.
+`LanServer`, `ShareManager`, and desktop LAN sharing accept a canonical
+`LibraryRuntime` on the primary production path. The route-level raw
+connection assembly has been removed. Task D also removed the
+`ApplicationBootstrap.for_library()` and `cleanup_library()` composition
+helpers, and the browser bearer-token compatibility state is no longer part of
+the WebUI contract. The recalibration report records the completed lifecycle
+and cross-surface acceptance evidence; no release gate remains open for that
+scope, and there is no second Runtime composition path.
 
 ## Rejected alternative
 
