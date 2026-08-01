@@ -26,7 +26,8 @@ def test_list_projects_marks_projects_at_global_depth(tmp_path, schema_db):
     assert response["folder_count"] == 0
     assert response["items"][0]["name"] == "alpha"
     assert response["items"][0]["is_project"] is True
-    assert response["items"][0]["thumbnail_url"] == "/api/thumbnails/alpha/cover.png"
+    assert response["items"][0]["thumbnail_path"] == "alpha/cover.png"
+    assert "/api/" not in response["items"][0]["thumbnail_path"]
     assert response["items"][0]["file_count"] == 2
 
 
@@ -95,7 +96,7 @@ def test_list_projects_sorts_folders_before_projects(tmp_path, schema_db):
     assert [item.is_project for item in listing.items] == [False, True]
 
 
-def test_get_project_detail_returns_files_images_and_download_url(tmp_path, schema_db):
+def test_get_project_detail_returns_relative_resource_references(tmp_path, schema_db):
     library = tmp_path / "library"
     project = library / "alpha"
     project.mkdir(parents=True)
@@ -111,14 +112,10 @@ def test_get_project_detail_returns_files_images_and_download_url(tmp_path, sche
     assert detail["name"] == "alpha"
     assert detail["path"] == "alpha"
     assert detail["file_count"] == 2
-    assert detail["thumbnail_url"] == "/api/thumbnails/alpha/cover.png"
-    assert detail["download_url"] == "/api/download/alpha"
+    assert detail["thumbnail_path"] == "alpha/cover.png"
+    assert "download_url" not in detail
     assert [file["name"] for file in detail["files"]] == ["cover.png", "readme.txt"]
-    assert detail["images"] == [{
-        "name": "cover.png",
-        "url": "/api/thumbnails/alpha/cover.png?size=1920",
-        "thumb_url": "/api/thumbnails/alpha/cover.png?size=512",
-    }]
+    assert detail["images"] == [{"name": "cover.png", "path": "alpha/cover.png"}]
 
 
 def test_get_project_detail_includes_tags(tmp_path, schema_db):
@@ -268,7 +265,7 @@ def test_get_home_uses_directory_cache_preview_path(tmp_path, schema_db):
         "name": "alpha",
         "path": "alpha",
         "mtime": project.stat().st_mtime,
-        "thumbnail_url": "/api/thumbnails/alpha/cover.png",
+        "thumbnail_path": "alpha/cover.png",
     }]
 
 
@@ -304,8 +301,8 @@ def test_get_home_rejects_directory_cache_preview_from_another_project(
     ).to_response()
 
     projects = {project["path"]: project for project in home["recent_projects"]}
-    assert "thumbnail_url" not in projects["alpha"]
-    assert projects["beta"]["thumbnail_url"] == "/api/thumbnails/beta/cover.png"
+    assert "thumbnail_path" not in projects["alpha"]
+    assert projects["beta"]["thumbnail_path"] == "beta/cover.png"
 
 
 def test_get_home_uses_baked_thumbnail_cache_when_directory_cache_has_no_preview(
@@ -345,7 +342,7 @@ def test_get_home_uses_baked_thumbnail_cache_when_directory_cache_has_no_preview
         library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
     ).to_response()
 
-    assert home["recent_projects"][0]["thumbnail_url"] == "/api/thumbnails/alpha/cover.png"
+    assert home["recent_projects"][0]["thumbnail_path"] == "alpha/cover.png"
 
 
 def test_get_home_ignores_baked_thumbnail_source_outside_library_via_symlink(
@@ -394,7 +391,7 @@ def test_get_home_ignores_baked_thumbnail_source_outside_library_via_symlink(
     ).to_response()
 
     assert os.path.samefile(project, external)
-    assert "thumbnail_url" not in home["recent_projects"][0]
+    assert "thumbnail_path" not in home["recent_projects"][0]
 
 
 def test_get_home_baked_thumbnail_matching_ignores_unrelated_cache_rows(
@@ -440,7 +437,7 @@ def test_get_home_baked_thumbnail_matching_ignores_unrelated_cache_rows(
     ).to_response()
 
     projects = {item["path"]: item for item in home["recent_projects"]}
-    assert projects["alpha"]["thumbnail_url"] == "/api/thumbnails/alpha/cover.png"
+    assert projects["alpha"]["thumbnail_path"] == "alpha/cover.png"
 
 
 def test_get_home_baked_thumbnail_matching_does_not_scan_projects_per_cache_row(
@@ -518,7 +515,7 @@ def test_get_home_ignores_stale_or_missing_directory_cache_preview(tmp_path, sch
         library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
     ).to_response()
 
-    assert all("thumbnail_url" not in project for project in home["recent_projects"])
+    assert all("thumbnail_path" not in project for project in home["recent_projects"])
 
 
 def test_get_home_batches_directory_cache_reads(tmp_path, schema_db, monkeypatch):
@@ -641,10 +638,10 @@ def test_get_home_preview_pool_covers_all_valid_cached_thumbnails(tmp_path, sche
 
     assert len(home["recent_projects"]) == 20
     preview_pool = {item["path"]: item for item in home["preview_pool"]}
-    assert preview_pool["project_00"]["thumbnail_url"] == \
-        "/api/thumbnails/project_00/directory-cover.png"
-    assert preview_pool["project_01"]["thumbnail_url"] == \
-        "/api/thumbnails/project_01/baked-cover.png"
+    assert preview_pool["project_00"]["thumbnail_path"] == \
+        "project_00/directory-cover.png"
+    assert preview_pool["project_01"]["thumbnail_path"] == \
+        "project_01/baked-cover.png"
     assert "project_02" not in preview_pool
 
 

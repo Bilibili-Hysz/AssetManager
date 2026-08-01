@@ -42,6 +42,9 @@ class UndoService:
     _OWNER_MARKER = ".assetsmanager-owner"
     _STALE_AFTER_SECONDS = 7 * 24 * 60 * 60
     _MAX_STARTUP_CLEANUP = 256
+    _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    _ERROR_ACCESS_DENIED = 5
+    _ERROR_INVALID_PARAMETER = 87
     _active_undo_dirs: set[str] = set()
     _active_dirs_lock = threading.Lock()
     _startup_cleanup_done = False
@@ -113,6 +116,38 @@ class UndoService:
         return removed
 
     @classmethod
+    def _windows_process_is_live(cls, pid: int) -> bool:
+        """Return whether a Windows PID should be treated as live.
+
+        ``OpenProcess`` returns access denied for processes that exist but are
+        not queryable by this user.  Only ``ERROR_INVALID_PARAMETER`` is a
+        definitive indication that the PID does not exist; all other failures
+        retain the directory under the conservative cleanup policy.
+        """
+        try:
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.OpenProcess(
+                cls._PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+            )
+            if handle:
+                kernel32.CloseHandle(handle)
+                return True
+            error_code = kernel32.GetLastError()
+        except (AttributeError, OSError, TypeError):
+            # API availability or call-shape uncertainty is treated as live.
+            return True
+
+        if error_code == cls._ERROR_INVALID_PARAMETER:
+            return False
+        if error_code == cls._ERROR_ACCESS_DENIED:
+            return True
+        # Unknown failures, including an unavailable error code, are unsafe
+        # grounds for deletion and therefore retain the directory.
+        return True
+
+    @classmethod
     def _owned_by_live_process(cls, undo_dir: Path) -> bool:
         # New instances use a sidecar so the backup directory contains only
         # actual undo payloads.  Keep recognizing the original in-directory
@@ -129,16 +164,9 @@ class UndoService:
             if pid <= 0:
                 continue
             if os.name == "nt":
-                try:
-                    import ctypes
-                    handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
-                    if handle:
-                        ctypes.windll.kernel32.CloseHandle(handle)
-                        return True
-                    continue
-                except (AttributeError, OSError):
-                    # Access uncertainty is treated conservatively as live.
+                if cls._windows_process_is_live(pid):
                     return True
+                continue
             try:
                 os.kill(pid, 0)
             except ProcessLookupError:

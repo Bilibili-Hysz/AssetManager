@@ -374,6 +374,114 @@ def test_startup_cleanup_does_not_remove_directory_owned_by_live_process(tmp_pat
     assert active_dir.exists()
 
 
+def test_startup_cleanup_removes_at_most_256_undo_dirs(tmp_path):
+    stale_dirs = []
+    for index in range(UndoService._MAX_STARTUP_CLEANUP + 1):
+        stale_dir = tmp_path / f"AssetsManager_undo_stale_{index}"
+        stale_dir.mkdir()
+        os.utime(stale_dir, (0, 0))
+        stale_dirs.append(stale_dir)
+
+    removed = UndoService.cleanup_stale_undo_dirs(
+        tmp_path, max_age_seconds=10, now=100
+    )
+
+    assert removed == UndoService._MAX_STARTUP_CLEANUP
+    assert sum(stale_dir.exists() for stale_dir in stale_dirs) == 1
+
+
+def test_startup_cleanup_removes_sidecar_with_stale_undo_dir(tmp_path):
+    stale_dir = tmp_path / "AssetsManager_undo_sidecar"
+    stale_dir.mkdir()
+    sidecar = tmp_path / f"{stale_dir.name}{UndoService._OWNER_MARKER}"
+    sidecar.write_text("999999999", encoding="ascii")
+    os.utime(stale_dir, (0, 0))
+
+    removed = UndoService.cleanup_stale_undo_dirs(
+        tmp_path, max_age_seconds=10, now=100
+    )
+
+    assert removed == 1
+    assert not stale_dir.exists()
+    assert not sidecar.exists()
+
+
+def test_startup_cleanup_accepts_legacy_in_directory_owner_marker(tmp_path):
+    stale_dir = tmp_path / "AssetsManager_undo_legacy"
+    stale_dir.mkdir()
+    (stale_dir / UndoService._OWNER_MARKER).write_text(
+        "999999999", encoding="ascii"
+    )
+    os.utime(stale_dir, (0, 0))
+
+    removed = UndoService.cleanup_stale_undo_dirs(
+        tmp_path, max_age_seconds=10, now=100
+    )
+
+    assert removed == 1
+    assert not stale_dir.exists()
+
+
+def test_startup_cleanup_retains_windows_process_when_query_is_denied(
+    tmp_path, monkeypatch
+):
+    import ctypes
+    from types import SimpleNamespace
+
+    class _Kernel32:      # noqa: D101 - test double
+        def OpenProcess(self, access, inherit_handle, pid):
+            return 0
+
+        def GetLastError(self):
+            return UndoService._ERROR_ACCESS_DENIED
+
+    active_dir = tmp_path / "AssetsManager_undo_access_denied"
+    active_dir.mkdir()
+    (tmp_path / f"{active_dir.name}{UndoService._OWNER_MARKER}").write_text(
+        "12345", encoding="ascii"
+    )
+    os.utime(active_dir, (0, 0))
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(
+        ctypes, "windll", SimpleNamespace(kernel32=_Kernel32()), raising=False
+    )
+
+    assert UndoService.cleanup_stale_undo_dirs(
+        tmp_path, max_age_seconds=10, now=100
+    ) == 0
+    assert active_dir.exists()
+
+
+def test_startup_cleanup_removes_windows_directory_for_missing_process(
+    tmp_path, monkeypatch
+):
+    import ctypes
+    from types import SimpleNamespace
+
+    class _Kernel32:      # noqa: D101 - test double
+        def OpenProcess(self, access, inherit_handle, pid):
+            return 0
+
+        def GetLastError(self):
+            return UndoService._ERROR_INVALID_PARAMETER
+
+    stale_dir = tmp_path / "AssetsManager_undo_missing_process"
+    stale_dir.mkdir()
+    (tmp_path / f"{stale_dir.name}{UndoService._OWNER_MARKER}").write_text(
+        "12345", encoding="ascii"
+    )
+    os.utime(stale_dir, (0, 0))
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(
+        ctypes, "windll", SimpleNamespace(kernel32=_Kernel32()), raising=False
+    )
+
+    assert UndoService.cleanup_stale_undo_dirs(
+        tmp_path, max_age_seconds=10, now=100
+    ) == 1
+    assert not stale_dir.exists()
+
+
 def test_startup_cleanup_does_not_remove_directory_registered_in_process(tmp_path):
     active_dir = tmp_path / "AssetsManager_undo_registered"
     active_dir.mkdir()
@@ -435,11 +543,14 @@ def test_redo_rename_through_file_operations(tmp_path):
     assert not (tmp_path / "old.txt").exists()
 
 
-def test_cleanup_removes_undo_dir(tmp_path):
+def test_cleanup_removes_undo_dir_and_sidecar(tmp_path):
     svc = UndoService()
+    sidecar = f"{svc._undo_dir}{UndoService._OWNER_MARKER}"
     assert os.path.isdir(svc._undo_dir)
+    assert os.path.isfile(sidecar)
     svc.cleanup()
     assert not os.path.isdir(svc._undo_dir)
+    assert not os.path.exists(sidecar)
 
 
 def test_clear_removes_all_entries(tmp_path):

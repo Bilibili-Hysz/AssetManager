@@ -6,7 +6,6 @@ import os
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import quote
 
 from AssetsManager.application.asset_filters import IMAGE_EXTS, find_first_image
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
@@ -45,7 +44,7 @@ class ProjectListItem:
     name: str
     path: str
     is_project: bool
-    thumbnail_url: str | None
+    thumbnail_path: str | None
     tags: list[str]
     total_size: int
     file_count: int
@@ -57,7 +56,7 @@ class ProjectListItem:
             "name": self.name,
             "path": self.path,
             "is_project": self.is_project,
-            "thumbnail_url": self.thumbnail_url,
+            "thumbnail_path": self.thumbnail_path,
             "tags": self.tags[:10],
             "total_size": self.total_size,
             "total_size_fmt": format_size(self.total_size),
@@ -112,7 +111,7 @@ class ProjectDetail:
     file_count: int
     files: list[dict]
     images: list[dict]
-    thumbnail_url: str | None
+    thumbnail_path: str | None
     modified: float
 
     def to_response(self) -> dict:
@@ -127,9 +126,8 @@ class ProjectDetail:
             "file_count": self.file_count,
             "files": self.files,
             "images": self.images,
-            "thumbnail_url": self.thumbnail_url,
+            "thumbnail_path": self.thumbnail_path,
             "modified": self.modified,
-            "download_url": f"/api/download/{quote(self.path, safe='/')}",
         }
 
 
@@ -295,10 +293,10 @@ class ProjectService:
             {
                 "name": project["name"],
                 "path": project["path"],
-                "thumbnail_url": project["thumbnail_url"],
+                "thumbnail_path": project["thumbnail_path"],
             }
             for project in projects
-            if project.get("thumbnail_url")
+            if project.get("thumbnail_path")
         ]
         popular_tags = self._popular_tags(root, db_conn)
         total_size = self._library_total_size(root, db_conn)
@@ -367,7 +365,7 @@ class ProjectService:
                     if not preview.is_file():
                         continue
                     rel_preview = os.path.relpath(preview, root).replace("\\", "/")
-                    project["thumbnail_url"] = f"/api/thumbnails/{quote(rel_preview, safe='/')}"
+                    project["thumbnail_path"] = rel_preview
                     attached_paths.add(path)
                 except (OSError, ValueError):
                     continue
@@ -434,7 +432,7 @@ class ProjectService:
                 continue
             source, _cache_key = candidate
             rel_source = os.path.relpath(source, library_root).replace("\\", "/")
-            project["thumbnail_url"] = f"/api/thumbnails/{quote(rel_source, safe='/')}"
+            project["thumbnail_path"] = rel_source
 
     @session_operation
     def count_projects(
@@ -504,10 +502,10 @@ class ProjectService:
         notes, urls = self._notes_and_urls(root, target_path)
         files, images = self._project_files(root, target_path)
         preview = find_first_image(target_path)
-        thumb_url = None
+        thumb_path = None
         if preview:
             rel_preview = os.path.relpath(preview, root).replace("\\", "/")
-            thumb_url = f"/api/thumbnails/{quote(rel_preview, safe='/')}"
+            thumb_path = rel_preview
         try:
             modified = target_path.stat().st_mtime
         except OSError:
@@ -523,7 +521,7 @@ class ProjectService:
             file_count=len(files),
             files=files,
             images=images,
-            thumbnail_url=thumb_url,
+            thumbnail_path=thumb_path,
             modified=modified,
         )
 
@@ -584,10 +582,10 @@ class ProjectService:
         is_project = child_depth >= effective_depth
 
         preview = find_first_image(entry_path)
-        thumb_url = None
+        thumb_path = None
         if preview:
             rel_preview = os.path.relpath(preview, root).replace("\\", "/")
-            thumb_url = f"/api/thumbnails/{quote(rel_preview, safe='/')}"
+            thumb_path = rel_preview
 
         total_size = self._dir_size(root, entry_path)
         file_count = self._file_count(root, entry_path, db_conn)
@@ -602,7 +600,7 @@ class ProjectService:
             name=entry.name,
             path=rel,
             is_project=is_project,
-            thumbnail_url=thumb_url,
+            thumbnail_path=thumb_path,
             tags=tags,
             total_size=total_size,
             file_count=file_count,
@@ -636,11 +634,7 @@ class ProjectService:
             })
             if ext in IMAGE_EXTS:
                 rel_img = os.path.relpath(entry.path, root).replace("\\", "/")
-                images.append({
-                    "name": entry.name,
-                    "url": f"/api/thumbnails/{quote(rel_img, safe='/')}?size=1920",
-                    "thumb_url": f"/api/thumbnails/{quote(rel_img, safe='/')}?size=512",
-                })
+                images.append({"name": entry.name, "path": rel_img})
         return files, images
 
     @staticmethod

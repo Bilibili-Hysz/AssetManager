@@ -102,12 +102,12 @@ def test_search_by_name_returns_empty_without_scanner():
     assert svc.search_by_name("query", scanner=None) == []
 
 
-def test_search_result_thumbnail_url():
+def test_search_result_exposes_relative_thumbnail_reference_only():
     from AssetsManager.application.search_service import SearchResult
 
     r = SearchResult(name="a.png", path="sub/a.png", extension=".png", category="images")
-    assert "/api/thumbnails/" in r.thumbnail_url
-    assert "sub/a.png" in r.thumbnail_url
+    assert r.thumbnail_path == "sub/a.png"
+    assert "/api/" not in r.thumbnail_path
 
 
 def test_search_by_name_indexed_finds_files(tmp_path, schema_db):

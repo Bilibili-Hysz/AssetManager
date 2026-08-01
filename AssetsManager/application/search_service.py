@@ -27,9 +27,9 @@ class SearchResult:
     category: str
 
     @property
-    def thumbnail_url(self) -> str:
-        from urllib.parse import quote
-        return f"/api/thumbnails/{quote(self.path, safe='/')}"
+    def thumbnail_path(self) -> str:
+        """Relative asset reference; transport layers decide how to expose it."""
+        return self.path
 
 
 class SearchService:

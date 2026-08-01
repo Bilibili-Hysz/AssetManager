@@ -12,6 +12,10 @@ from AssetsManager.lan.routes._helpers import (
     get_lan, validate_path, get_metadata_service, get_project_service,
     get_search_service, require_permission,
 )
+from AssetsManager.lan.routes._resource_urls import (
+    project_detail_response, project_home_response, project_listing_response,
+    search_result_response,
+)
 
 
 async def handle_meta(request):
@@ -75,14 +79,7 @@ async def handle_search(request):
 
         search_results = await asyncio.to_thread(_search)
 
-        results = [
-            {
-                "name": r.name, "path": r.path, "type": "file",
-                "extension": r.extension, "category": r.category,
-                "thumbnail_url": r.thumbnail_url,
-            }
-            for r in search_results
-        ]
+        results = [search_result_response(result) for result in search_results]
         outcome = "success"
         status = 200
         result_count = len(results)
@@ -119,7 +116,7 @@ async def handle_home(request):
         get_project_service(request).get_home,
         lan.library_root, depth_config=depth_config,
     )
-    return web.json_response(home.to_response())
+    return web.json_response(project_home_response(home))
 
 
 async def handle_tree(request):
@@ -173,7 +170,7 @@ async def handle_projects(request):
         return web.json_response({"error": "Permission denied"}, status=403)
     except OSError:
         return web.json_response({"error": "Failed to list projects"}, status=500)
-    return web.json_response(listing.to_response())
+    return web.json_response(project_listing_response(listing))
 
 
 async def handle_project_detail(request):
@@ -193,4 +190,4 @@ async def handle_project_detail(request):
         )
     except OSError:
         return web.json_response({"error": "Failed to load project"}, status=500)
-    return web.json_response(detail.to_response())
+    return web.json_response(project_detail_response(detail))
