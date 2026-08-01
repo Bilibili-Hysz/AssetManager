@@ -4,7 +4,7 @@ status: delivered
 as_of: 2026-08-01
 branch: master
 head_before_baseline: 945fd1e
-baseline_commit: recorded after validation
+baseline_commit: f7f9e14de6c644c60575ed28f16567b8b717133a
 remote: none configured
 ---
 
