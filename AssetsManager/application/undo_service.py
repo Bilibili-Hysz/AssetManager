@@ -9,7 +9,7 @@ from contextlib import nullcontext
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from time import perf_counter
+from time import perf_counter, time
 from typing import TYPE_CHECKING
 
 from AssetsManager.application.context import session_operation
@@ -38,6 +38,116 @@ class UndoService:
     omitted (legacy callers) a shared default stack is used.
     """
 
+    _UNDO_DIR_PREFIX = "AssetsManager_undo_"
+    _OWNER_MARKER = ".assetsmanager-owner"
+    _STALE_AFTER_SECONDS = 7 * 24 * 60 * 60
+    _MAX_STARTUP_CLEANUP = 256
+    _active_undo_dirs: set[str] = set()
+    _active_dirs_lock = threading.Lock()
+    _startup_cleanup_done = False
+    _startup_cleanup_lock = threading.Lock()
+
+    @classmethod
+    def _run_startup_cleanup(cls) -> None:
+        """Run the process-wide startup scan once."""
+        with cls._startup_cleanup_lock:
+            if cls._startup_cleanup_done:
+                return
+            cls.cleanup_stale_undo_dirs()
+            cls._startup_cleanup_done = True
+
+    @classmethod
+    def cleanup_stale_undo_dirs(
+        cls,
+        temp_dir: str | Path | None = None,
+        *,
+        max_age_seconds: float | None = None,
+        now: float | None = None,
+    ) -> int:
+        """Remove only provably stale, app-owned undo directories.
+
+        The scan is deliberately limited to direct children of the system
+        temporary directory.  Recent directories and directories marked as
+        owned by a live process are retained so startup cleanup cannot race
+        with another active application instance.
+        """
+        root = Path(temp_dir) if temp_dir is not None else Path(tempfile.gettempdir())
+        age_limit = cls._STALE_AFTER_SECONDS if max_age_seconds is None else max_age_seconds
+        current_time = time() if now is None else now
+        removed = 0
+        try:
+            entries = os.scandir(root)
+        except OSError:
+            return 0
+
+        try:
+            for entry in entries:
+                if not entry.name.startswith(cls._UNDO_DIR_PREFIX):
+                    continue
+                try:
+                    if not entry.is_dir(follow_symlinks=False):
+                        continue
+                    resolved = os.path.abspath(entry.path)
+                    with cls._active_dirs_lock:
+                        if resolved in cls._active_undo_dirs:
+                            continue
+                    age = current_time - entry.stat(follow_symlinks=False).st_mtime
+                    if age < age_limit:
+                        continue
+                    if cls._owned_by_live_process(Path(entry.path)):
+                        continue
+                    shutil.rmtree(entry.path)
+                    try:
+                        Path(f"{entry.path}{cls._OWNER_MARKER}").unlink()
+                    except OSError:
+                        pass
+                except (OSError, ValueError):
+                    # A directory can disappear or change while startup scans it.
+                    # Uncertainty is treated as a reason to retain it.
+                    continue
+                removed += 1
+                if removed >= cls._MAX_STARTUP_CLEANUP:
+                    break
+        finally:
+            entries.close()
+        return removed
+
+    @classmethod
+    def _owned_by_live_process(cls, undo_dir: Path) -> bool:
+        # New instances use a sidecar so the backup directory contains only
+        # actual undo payloads.  Keep recognizing the original in-directory
+        # marker for directories created by the first cleanup implementation.
+        markers = (
+            Path(f"{undo_dir}{cls._OWNER_MARKER}"),
+            undo_dir / cls._OWNER_MARKER,
+        )
+        for marker in markers:
+            try:
+                pid = int(marker.read_text(encoding="ascii").strip())
+            except (OSError, ValueError):
+                continue
+            if pid <= 0:
+                continue
+            if os.name == "nt":
+                try:
+                    import ctypes
+                    handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+                    if handle:
+                        ctypes.windll.kernel32.CloseHandle(handle)
+                        return True
+                    continue
+                except (AttributeError, OSError):
+                    # Access uncertainty is treated conservatively as live.
+                    return True
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                continue
+            except OSError:
+                return True
+            return True
+        return False
+
     def __init__(self, max_depth: int = 20, library_root: str = "",
                  session: LibrarySession | None = None,
                  performance_recorder: PerformanceRecorder | None = None):
@@ -46,7 +156,17 @@ class UndoService:
         self._closed = False
         self._lock = threading.Lock()
         self._max_depth = max_depth
-        self._undo_dir = tempfile.mkdtemp(prefix="AssetsManager_undo_")
+        self._run_startup_cleanup()
+        self._undo_dir = tempfile.mkdtemp(prefix=self._UNDO_DIR_PREFIX)
+        resolved_undo_dir = str(Path(self._undo_dir).resolve())
+        with self._active_dirs_lock:
+            self._active_undo_dirs.add(resolved_undo_dir)
+        try:
+            Path(f"{self._undo_dir}{self._OWNER_MARKER}").write_text(
+                str(os.getpid()), encoding="ascii"
+            )
+        except OSError:
+            pass
         self._stacks: dict[str, tuple[deque[UndoEntry], list[UndoEntry]]] = {}
         self._stacks[self._library_root] = (
             deque[UndoEntry](maxlen=max_depth), [],
@@ -279,8 +399,15 @@ class UndoService:
     def cleanup(self) -> None:
         """Remove the undo backup directory."""
         self._closed = True
+        resolved_undo_dir = str(Path(self._undo_dir).resolve())
+        with self._active_dirs_lock:
+            self._active_undo_dirs.discard(resolved_undo_dir)
         try:
             shutil.rmtree(self._undo_dir, ignore_errors=True)
+        except OSError:
+            pass
+        try:
+            Path(f"{self._undo_dir}{self._OWNER_MARKER}").unlink()
         except OSError:
             pass
 

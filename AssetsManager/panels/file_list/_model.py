@@ -52,6 +52,11 @@ class _ScanTask(QRunnable):
 class FileSystemModel(QAbstractListModel):
     """Model backed by os.scandir. Supports sort, filter, and per-item roles."""
 
+    # Keep the single worker responsive to the current viewport when a
+    # thumbnail/detail prefetch touches many directories at once.  The active
+    # task is not part of this budget and is always allowed to finish.
+    _DIR_SIZE_QUEUE_LIMIT = 64
+
     dir_size_ready = Signal(str, str, int)  # (dir_path, formatted_size, generation)
     rename_requested = Signal(int, str)
     scan_started = Signal(int)  # scan generation; emitted before loading state
@@ -390,7 +395,13 @@ class FileSystemModel(QAbstractListModel):
     def _subtitle(self, entry: os.DirEntry) -> str:
         path = entry.path
         if path in self._subtitle_cache:
-            return self._subtitle_cache[path]
+            result = self._subtitle_cache[path]
+            # A queued prefetch may have been evicted to keep the queue bounded.
+            # Retain the placeholder, but make the next visible read eligible
+            # to enqueue the work again.
+            if result == "..." and path not in self._pending_dir_sizes:
+                self._start_async_dir_size(path)
+            return result
         try:
             if entry.is_dir():
                 # Return placeholder immediately, compute size in background
@@ -431,6 +442,7 @@ class FileSystemModel(QAbstractListModel):
             self._size_pool.setMaxThreadCount(1)
         self._pending_dir_sizes.add(dir_path)
         self._dir_size_queue.append(dir_path)
+        self._trim_dir_size_queue()
         self._dispatch_next_dir_size()
 
     def prioritize_dir_sizes(self, paths) -> None:
@@ -447,10 +459,28 @@ class FileSystemModel(QAbstractListModel):
             seen.add(path)
             wanted.append(path)
         if not wanted:
+            self._trim_dir_size_queue()
             return
         self._dir_size_queue = deque(
             [*wanted, *(path for path in self._dir_size_queue if path not in seen)]
         )
+        self._trim_dir_size_queue(seen)
+
+    def _trim_dir_size_queue(self, keep_paths=()) -> None:
+        """Bound queued work while retaining the active task and visible work."""
+        if len(self._dir_size_queue) <= self._DIR_SIZE_QUEUE_LIMIT:
+            return
+        keep = set(keep_paths)
+        retained = deque()
+        evicted = []
+        for path in self._dir_size_queue:
+            if path in keep or len(retained) < self._DIR_SIZE_QUEUE_LIMIT:
+                retained.append(path)
+            else:
+                evicted.append(path)
+        self._dir_size_queue = retained
+        for path in evicted:
+            self._pending_dir_sizes.discard(path)
 
     def _dispatch_next_dir_size(self) -> None:
         if self._is_shutdown or self._dir_size_active is not None:

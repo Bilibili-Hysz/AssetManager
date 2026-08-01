@@ -334,6 +334,63 @@ def test_undo_service_uses_unique_backup_dir():
         second.cleanup()
 
 
+def test_startup_cleanup_removes_only_old_undo_dirs(tmp_path):
+    old_dir = tmp_path / "AssetsManager_undo_old"
+    old_dir.mkdir()
+    (old_dir / "backup").write_text("stale", encoding="utf-8")
+    recent_dir = tmp_path / "AssetsManager_undo_recent"
+    recent_dir.mkdir()
+    unrelated = tmp_path / "other_temp_dir"
+    unrelated.mkdir()
+    os.utime(old_dir, (0, 0))
+    os.utime(recent_dir, (95, 95))
+
+    removed = UndoService.cleanup_stale_undo_dirs(
+        tmp_path, max_age_seconds=10, now=100
+    )
+
+    assert removed == 1
+    assert not old_dir.exists()
+    assert recent_dir.exists()
+    assert unrelated.exists()
+
+
+def test_startup_cleanup_does_not_remove_directory_owned_by_live_process(tmp_path):
+    active_dir = tmp_path / "AssetsManager_undo_active"
+    active_dir.mkdir()
+    (tmp_path / f"{active_dir.name}{UndoService._OWNER_MARKER}").write_text(
+        "999999999", encoding="ascii"
+    )
+    (active_dir / UndoService._OWNER_MARKER).write_text(
+        str(os.getpid()), encoding="ascii"
+    )
+    os.utime(active_dir, (0, 0))
+
+    removed = UndoService.cleanup_stale_undo_dirs(
+        tmp_path, max_age_seconds=10, now=100
+    )
+
+    assert removed == 0
+    assert active_dir.exists()
+
+
+def test_startup_cleanup_does_not_remove_directory_registered_in_process(tmp_path):
+    active_dir = tmp_path / "AssetsManager_undo_registered"
+    active_dir.mkdir()
+    os.utime(active_dir, (0, 0))
+    resolved = str(active_dir.resolve())
+    with UndoService._active_dirs_lock:
+        UndoService._active_undo_dirs.add(resolved)
+    try:
+        assert UndoService.cleanup_stale_undo_dirs(
+            tmp_path, max_age_seconds=0, now=100
+        ) == 0
+        assert active_dir.exists()
+    finally:
+        with UndoService._active_dirs_lock:
+            UndoService._active_undo_dirs.discard(resolved)
+
+
 def test_max_depth_evicts_old_entries(tmp_path):
     svc = UndoService(max_depth=2)
     for i in range(5):

@@ -221,6 +221,29 @@ class TestFileSystemModel:
         assert model._dir_size_gen == 8
         assert not model._pending_dir_sizes
 
+    def test_directory_size_queue_bounds_prefetch_but_keeps_visible_first(self, model):
+        paths = [f"/library/folder-{i}" for i in range(model._DIR_SIZE_QUEUE_LIMIT + 8)]
+        model._dir_size_queue.extend(paths)
+        model._pending_dir_sizes.update(paths)
+
+        visible = paths[-1]
+        model.prioritize_dir_sizes([visible])
+
+        assert len(model._dir_size_queue) <= model._DIR_SIZE_QUEUE_LIMIT
+        assert model._dir_size_queue[0] == visible
+        assert visible in model._pending_dir_sizes
+        assert len(model._pending_dir_sizes) <= model._DIR_SIZE_QUEUE_LIMIT
+
+    def test_evicted_directory_size_prefetch_requeues_from_placeholder(self, model, tmp_dir, monkeypatch):
+        entry = next(entry for entry in os.scandir(tmp_dir) if entry.is_dir())
+        model._subtitle_cache[entry.path] = "..."
+        model._pending_dir_sizes.clear()
+        start = Mock()
+        monkeypatch.setattr(model, "_start_async_dir_size", start)
+
+        assert model._subtitle(entry) == "..."
+        start.assert_called_once_with(entry.path)
+
     def test_clear_scoped_services_releases_closed_library_references(self, model, tmp_path):
         session = Mock()
         metadata_service = Mock()
