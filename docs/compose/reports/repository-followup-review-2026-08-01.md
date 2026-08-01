@@ -15,10 +15,10 @@ remote: none configured
 
 当前可以明确为：
 
-- 阶段 1 数据安全：G6-4（Undo 残留启动清理）已完成一个受限实现，阶段整体仍未闭环。
+- 阶段 1 数据安全：G6-4（Undo 残留启动清理）已完成 Windows 安全判定、清理上限和 sidecar 兼容补强，阶段整体仍未闭环。
 - 阶段 2 性能：目录大小任务队列治理的一个子项已完成，reset 最小化、真实图片 IO 和发布机阈值仍待验收。
-- 阶段 3 Desktop–LAN–WebUI：本轮只做只读核查，应用层 `/api/` URL 生成和 ThumbnailLoader 直连 SQLite 均未改动，仍是独立后续任务。
-- 工作树清理完成后，只保留本轮明确的代码/测试/文档改动；本轮创建的测试临时目录已删除，未删除未知用户文件。
+- 阶段 3 Desktop–LAN–WebUI：A1 应用层 `/api/` URL 剥离已完成并通过契约/路由测试；B2 ThumbnailLoader 直连 SQLite 经高风险审查确认仍需先完成服务设计。
+- 本阶段创建的测试临时目录已按精确路径清理，未删除未知用户文件。
 
 ## 2. 本轮代码变更
 
@@ -32,6 +32,8 @@ remote: none configured
 - 单次最多清理 256 项，删除失败或目录状态不确定时安全跳过。
 - 新实例的 PID 标记放在 Undo 目录旁的 sidecar，保持 Undo 目录内部只包含真实备份；同时兼容早期放在目录内的标记。
 - `cleanup()` 会移除 Undo 目录和 sidecar 标记。
+- Windows PID 判定区分 `ERROR_INVALID_PARAMETER`（进程不存在）与 `ERROR_ACCESS_DENIED`/未知错误（保守保留）。
+- 回归测试覆盖单次 256 项上限、sidecar/旧标记兼容、sidecar 清理和 Windows 权限不确定性。
 
 这是对崩溃残留的受限缓解，不是完整数据安全闭环。单实例锁、数据库自检、导出/恢复和防误删仍未实现。
 
@@ -45,22 +47,33 @@ remote: none configured
 - 未改变浏览、排序、过滤、刷新、关闭和目录大小缓存语义。
 - 批量缓存预热、“仅可见行排队”、reset 最小化仍是后续任务。
 
-### 2.3 服务边界只读核查
+### 2.3 A1 应用层 URL 边界
 
-确认但未修改：
+- 已修改：`AssetsManager/application/project_service.py`、`search_service.py`、`AssetsManager/lan/routes/metadata.py`，并新增 `AssetsManager/lan/routes/_resource_urls.py`。
 
-- `AssetsManager/application/project_service.py` 与 `search_service.py` 仍生成 `/api/...` URL，属于阶段 3 A1。
-- `AssetsManager/panels/file_list/_loader.py` 仍直接持有 SQLite/`ThumbnailRepository`，属于阶段 3 B2。
+- 应用服务现在只返回相对业务引用（`thumbnail_path`/图片 `path`），LAN route 层统一生成 `/api/thumbnails`、`/api/download` URL。
+- 通过契约测试保持 LAN 最终 JSON 字段、可选字段、URL 编码和图片结构不变；`rg "/api/" AssetsManager/application` 不再命中 URL 生成。
 
-建议保持后续顺序：先扩展 `ThumbnailService`，再迁移 ThumbnailLoader，最后增加架构边界门禁；URL 剥离则单独以最终 JSON 契约测试锁定。
+### 2.4 B2 ThumbnailLoader 服务化审查结论
+
+本阶段没有合并 B2 代码。高风险审查确认：
+
+- `_loader.py` 仍直接持有 `sqlite3.Connection` 和 `ThumbnailRepository`，包括 mtime 查询、touch、upsert、orphan cleanup 和 clear cache。
+- `_base.py` 仍通过 `session.connection_for(...)` 向 Loader 传递原始连接。
+- 不能只注入一个当前 `ThumbnailService` 字段；服务引用必须进入 `_Runtime` 快照，避免切库后旧任务写入新库。
+- `ThumbnailService` 需要先补齐缓存元数据读写 API 和 session operation 租约，再迁移 Loader。
+
+B2 已转为下一阶段设计任务，保持现有优先级、取消、generation、磁盘缓存 fallback 和关闭语义不变。
 
 ## 3. 验证证据
 
 | 检查 | 结果 | 解释 |
 |---|---|---|
-| Undo + FileList 目标测试 | `63 passed` | 使用隔离 TEMP 与工作区 pytest 基目录，包含本轮新增测试 |
-| 非 E2E Python 回归 | `1586 passed, 1 skipped, 3 deselected` | 排除 Playwright E2E；3 个路径格式测试因临时基目录位于仓库内而显式排除 |
-| 静态质量 | Ruff passed；compileall passed | 覆盖本轮修改文件及 `AssetsManager` |
+| A1 应用服务/URL 契约测试 | `42 passed, 1 skipped` | 项目、搜索和新建 URL projection contract 测试 |
+| A1 相关 LAN route 测试 | `9 passed, 183 deselected` | 搜索、home、projects、project detail 相关用例 |
+| G6-4 Undo 测试 | `32 passed` | 含 Windows 权限、256 上限和 sidecar/旧标记测试 |
+| A1 架构边界 | `74 passed` | 完整 `tests/unit/test_architecture_boundaries.py` |
+| 静态质量 | Ruff passed；compileall passed；`git diff --check` passed | 覆盖本阶段修改文件及 `AssetsManager` |
 | 外部基目录全量尝试 | `1589 passed, 1 skipped, 1 failed, 5 errors` | 1 个失败是外部 visualization 目录 ACL 造成的回收站删除失败；5 个错误均为 Chromium `spawn EPERM` |
 
 因此，本轮不宣称“受当前 Windows 沙箱约束下的浏览器 E2E 全量通过”。目标代码测试、非 E2E 回归和静态检查均已通过；基线报告中的 Python `1590 passed, 1 skipped` 仍作为历史快照保留。
@@ -76,4 +89,4 @@ remote: none configured
 1. 先把本报告和路线图状态作为新的工作树事实入口。
 2. 数据安全线：单实例锁、数据库 quick check/孤儿修剪、导出/恢复、防误删策略分别立项；不要把 G6-4 的部分缓解误判为阶段 1 完成。
 3. 性能线：继续 reset 最小化和真实图片 IO/发布机验收；目录大小队列治理可视为已完成子项。
-4. 服务边界线：按 A1（URL 剥离）与 B2（ThumbnailLoader 服务化）拆成互不重叠的后续任务。
+4. 服务边界线：A1 已完成；B2 先完成 ThumbnailService 缓存元数据 API、session 租约和 Runtime 快照设计，再进入实现。
