@@ -6,7 +6,7 @@ specs:
 plans:
   - docs/compose/plans/2026-07-21-desktop-lan-webui-architecture-recalibration.md
 branch: master
-commits: uncommitted-workspace
+commits: 77492fe2b3ee9e4bb26e17b982d421993d545136
 ---
 
 # Session Closeout — Desktop–LAN–WebUI Recalibration
@@ -87,6 +87,24 @@ The recalibrated Desktop–LAN–WebUI scope is `delivered` based on the complet
 T151, T530 and T533 evidence. The Windows full Python suite still reports its
 expected directory-symlink skip; the passing Ubuntu WSL gate supplies the
 platform-specific evidence that Windows cannot provide.
+
+## Commit and Push
+
+The scoped documentation closeout was committed as:
+
+```text
+77492fe2b3ee9e4bb26e17b982d421993d545136
+```
+
+A push was attempted immediately after the commit. It was not performed
+because this checkout has no configured Git remote or push destination.
+Git returned exit code `128` with:
+
+```text
+fatal: No configured push destination.
+```
+
+No remote was added or modified. The commit remains local on `master`.
 
 ## Journey Log
 
