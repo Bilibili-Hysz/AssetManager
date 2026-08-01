@@ -1,9 +1,12 @@
 # Desktop–LAN–WebUI 渐进式架构改造设计
 
 > [!NOTE]
-> **Status:** Accepted and verified by Phase 5 Task 17.
-> See the final report for exact evidence and residual risks:
+> **Status:** Accepted target architecture; the recalibrated implementation is
+> delivered for the current Desktop–LAN–WebUI scope. The original Phase 5 Task 17
+> checkboxes are historical traceability; use the current-state report and
+> roadmap for future work:
 > [Desktop–LAN–WebUI Architecture Migration — Final Report](../reports/desktop-lan-webui-architecture-migration.md)
+> [Repository Baseline](../reports/repository-baseline-2026-08-01.md)
 
 ## [S1] 背景与目标
 

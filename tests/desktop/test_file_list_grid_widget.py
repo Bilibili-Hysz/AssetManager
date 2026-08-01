@@ -7,8 +7,8 @@ from shiboken6 import Shiboken
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, Qt
-from PySide6.QtGui import QEnterEvent, QMouseEvent, QPixmap, QPointingDevice
+from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPoint, QPointF, QRect, QSize, Qt
+from PySide6.QtGui import QEnterEvent, QMouseEvent, QPainter, QPixmap, QPointingDevice
 from PySide6.QtWidgets import QApplication
 
 from AssetsManager.core.performance import PerformanceRecorder
@@ -49,6 +49,38 @@ def _visible_grid(tmp_path):
     app.processEvents()
     _visible_grids.append((model, widget))
     return app, model, widget
+
+
+def test_grid_layout_uses_stable_left_aligned_column_tracks():
+    layout = GridLayout()
+
+    layout.compute(5, 320, item_size=88, spacing=12)
+
+    assert layout.columns == 3
+    assert [layout.rect_at(row).x() for row in range(3)] == [12, 112, 212]
+    assert [layout.rect_at(row).x() for row in range(3, 5)] == [12, 112]
+
+
+def test_grid_layout_hit_testing_keeps_blank_last_row_columns_empty():
+    layout = GridLayout()
+    layout.compute(5, 320, item_size=88, spacing=12)
+    first = layout.rect_at(3)
+    second = layout.rect_at(4)
+    empty_column = layout.rect_at(2)
+
+    assert layout.row_at(first.center().x(), first.center().y()) == 3
+    assert layout.row_at(second.center().x(), second.center().y()) == 4
+    assert layout.row_at(first.left() - 1, first.center().y()) == -1
+    assert layout.row_at(empty_column.center().x(), first.center().y()) == -1
+
+
+def test_grid_layout_recomputes_when_item_hint_changes_without_count_change():
+    layout = GridLayout()
+    assert layout.compute(20, 600, item_size=96, spacing=12, item_hint=QSize(120, 170))
+    assert layout.item_hint == QSize(120, 170)
+
+    assert layout.compute(20, 600, item_size=96, spacing=12, item_hint=QSize(180, 260))
+    assert layout.item_hint == QSize(180, 260)
 
 
 def test_grid_frame_records_scoped_counts_without_model_content(tmp_path):
@@ -790,6 +822,24 @@ def test_grid_reduce_motion_keeps_hover_feedback_without_transition(monkeypatch)
     assert requested == [({1}, {"overlay": True})]
 
 
+def test_grid_rounded_draws_enable_antialiasing_only_locally():
+    widget = FileListGridWidget()
+    painter = Mock()
+
+    widget._draw_texture_placeholder(painter, QRect(0, 0, 100, 100))
+    assert painter.setRenderHint.call_args_list == [
+        ((QPainter.RenderHint.Antialiasing, True),),
+    ]
+    painter.reset_mock()
+
+    widget._selection = {0}
+    widget._draw_interaction_overlay(painter, 0, QRect(0, 0, 100, 100), 1.0)
+
+    assert painter.setRenderHint.call_args_list == [
+        ((QPainter.RenderHint.Antialiasing, True),),
+    ]
+
+
 def test_grid_light_relayout_preserves_cached_textures_and_dirty_rows():
     widget = FileListGridWidget()
     widget.set_layout_ref(GridLayout())
@@ -875,7 +925,67 @@ def test_zoom_start_captures_target_layout_before_animation():
 
     QWidgetFileListPanel._on_zoom_changed(panel, "128px")
 
-    panel._grid_widget.begin_zoom.assert_called_once_with(128)
+    panel._grid_widget.begin_zoom.assert_called_once_with(128, None)
+    assert panel._zoom_anim.duration() == 185
+    assert panel._zoom_anim.easingCurve().type() == QEasingCurve.Type.OutCubic
+    panel._zoom_anim.stop()
+
+
+def test_zoom_start_forwards_a_pending_pointer_anchor():
+    panel = QObject()
+    panel._thumb_size = 96
+    panel._zoom_anim = None
+    panel._zoom_generation = 0
+    panel._pending_zoom_anchor = QPoint(84, 126)
+    panel._grid_widget = Mock()
+    panel._on_zoom_frame = Mock()
+    panel._on_zoom_done = Mock()
+
+    QWidgetFileListPanel._on_zoom_changed(panel, "128px")
+
+    panel._grid_widget.begin_zoom.assert_called_once_with(128, QPoint(84, 126))
+    assert panel._pending_zoom_anchor is None
+    panel._zoom_anim.stop()
+
+
+def test_zoom_reduce_motion_commits_without_starting_an_animation():
+    panel = type("_Panel", (), {})()
+    panel._thumb_size = 96
+    panel._zoom_anim = None
+    panel._zoom_generation = 0
+    panel._grid_widget = Mock()
+    panel._grid_widget._zoom_relayout_active = False
+    panel._grid_widget._reduce_motion = True
+    panel._on_zoom_done = Mock()
+
+    QWidgetFileListPanel._on_zoom_changed(panel, "128px")
+
+    assert panel._thumb_size == 128
+    panel._grid_widget.begin_zoom.assert_called_once_with(128, None)
+    panel._grid_widget.set_zoom_thumb_size.assert_called_once_with(128)
+    panel._on_zoom_done.assert_called_once_with(1, 128)
+    assert panel._zoom_anim is None
+
+
+def test_wheel_zoom_captures_the_pointer_as_the_zoom_anchor():
+    panel = type("_Panel", (), {})()
+    panel._grid_widget = Mock()
+    panel._grid_widget.rect.return_value = QRect(0, 0, 400, 300)
+    panel._zoom_combo = Mock()
+    panel._zoom_combo.currentIndex.return_value = 1
+    captured = []
+    panel._zoom_combo.setCurrentIndex.side_effect = (
+        lambda index: captured.append((index, panel._pending_zoom_anchor))
+    )
+    event = Mock()
+    event.modifiers.return_value = Qt.KeyboardModifier.ControlModifier
+    event.angleDelta.return_value = QPoint(0, 120)
+    event.position.return_value = QPointF(90, 70)
+
+    QWidgetFileListPanel._wheel_zoom_evt(panel, event, panel._grid_widget)
+
+    assert captured == [(2, QPoint(90, 70))]
+    assert panel._pending_zoom_anchor is None
 
 
 def test_zoom_same_interpolated_size_commits_active_layout():
@@ -890,6 +1000,7 @@ def test_zoom_same_interpolated_size_commits_active_layout():
 
     QWidgetFileListPanel._on_zoom_changed(panel, "128px")
 
+    panel._grid_widget.begin_zoom.assert_called_once_with(128, None)
     panel._on_zoom_done.assert_called_once_with(1)
 
 
@@ -1014,6 +1125,53 @@ def test_grid_zoom_interpolates_toward_target_layout():
     assert widget._zoom_relayout_active is True
     assert middle != start
     assert middle.x() != widget._layout.rect_at(4).x()
+
+
+def test_grid_zoom_retargets_from_the_current_visual_geometry():
+    widget = FileListGridWidget()
+    widget.set_layout_ref(GridLayout())
+    widget.resize(800, 600)
+    widget.update_layout(40, 800)
+    widget._scroll_y = 240
+    widget.begin_zoom(180)
+    widget.set_zoom_thumb_size(128)
+    visual_rects = [
+        widget._zoom_texture_rect(rect, row)
+        for row, rect in enumerate(widget._layout._rects)
+    ]
+
+    widget.begin_zoom(48)
+
+    assert widget._zoom_source_rects == visual_rects
+    assert widget._zoom_start_size == 128
+    assert widget._zoom_target_size == 48
+
+
+def test_grid_zoom_keeps_the_pointer_position_inside_its_card():
+    widget = FileListGridWidget()
+    widget.set_layout_ref(GridLayout())
+    widget.resize(800, 600)
+    widget.update_layout(100, 800)
+    widget._scroll_y = 300
+    visible = widget._layout.visible_rows(widget._scroll_y, widget.height())
+    row = next(
+        row for row in visible
+        if widget._layout.rect_at(row).top() >= widget._scroll_y
+        and widget._layout.rect_at(row).bottom() <= widget._scroll_y + widget.height()
+    )
+    source = widget._layout.rect_at(row)
+    anchor_pos = QPoint(
+        source.center().x(),
+        source.top() - widget._scroll_y + source.height() // 3,
+    )
+    relative_y = (widget._scroll_y + anchor_pos.y() - source.top()) / source.height()
+
+    widget.begin_zoom(48, anchor_pos)
+    widget.set_zoom_thumb_size(48)
+    target = widget._zoom_texture_rect(widget._layout.rect_at(row), row)
+    target_focus_y = target.top() + target.height() * relative_y
+
+    assert abs(target_focus_y - (widget._scroll_y + anchor_pos.y())) <= 1
 
 
 def test_grid_zoom_keeps_center_anchor_and_includes_target_visible_rows():

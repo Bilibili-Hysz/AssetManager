@@ -6,6 +6,8 @@ import secrets
 from sqlite3 import Connection
 
 from AssetsManager.domain import auth as auth_crypto
+from AssetsManager.domain.event_bus import get_event_bus
+from AssetsManager.domain.events import InviteChanged, UserChanged
 from AssetsManager.repositories.auth_repository import AuthRepository
 
 _log = logging.getLogger(__name__)
@@ -22,6 +24,19 @@ class AuthService:
         self._conn = db_conn
         self._secret = token_secret
         self._repo = AuthRepository(db_conn)
+        self._event_bus = get_event_bus()
+        self._library_root = ""
+        self._session_token = ""
+
+    def _publish(self, event_type: type) -> None:
+        if self._library_root and self._session_token:
+            try:
+                self._event_bus.publish(event_type(
+                    library_root=self._library_root,
+                    session_token=self._session_token,
+                ))
+            except Exception:
+                _log.exception("Auth projection notification failed for %s", event_type.__name__)
 
     @property
     def db_conn(self) -> Connection:
@@ -120,28 +135,38 @@ class AuthService:
             user_id = self._repo.insert_user_with_invite(username, pw_hash, invite_code, email=email)
             if user_id is None:
                 return None, "Invalid or already used invite code"
+            self._publish(UserChanged)
+            self._publish(InviteChanged)
             return user_id, ""
 
         user_id = self._repo.insert_user(username, pw_hash, email=email)
         if user_id is None:
             return None, "Failed to create user"
 
+        self._publish(UserChanged)
         return user_id, ""
 
     def list_users(self) -> list[dict]:
         return self._repo.list_users()
 
     def activate_user(self, user_id: int) -> bool:
-        return self._repo.set_user_active(user_id, True)
+        ok = self._repo.set_user_active(user_id, True)
+        if ok:
+            self._publish(UserChanged)
+        return ok
 
     def deactivate_user(self, user_id: int) -> bool:
-        return self._repo.set_user_active(user_id, False)
+        ok = self._repo.set_user_active(user_id, False)
+        if ok:
+            self._publish(UserChanged)
+        return ok
 
     # ── Invite codes ────────────────────────────────────────────
 
     def generate_invite_code(self, created_by: str = "admin") -> str:
         code = secrets.token_urlsafe(16)
         if self._repo.insert_invite_code(code, created_by):
+            self._publish(InviteChanged)
             return code
         return ""
 
@@ -149,4 +174,7 @@ class AuthService:
         return self._repo.list_invite_codes()
 
     def revoke_invite_code(self, code: str) -> bool:
-        return self._repo.deactivate_invite_code(code)
+        ok = self._repo.deactivate_invite_code(code)
+        if ok:
+            self._publish(InviteChanged)
+        return ok

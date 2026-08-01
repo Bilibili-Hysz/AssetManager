@@ -102,7 +102,7 @@ class ApplicationBootstrap:
         c.register(FileOperationService)
         c.register(ThumbnailService)
         c.register(SearchService)
-        # ProjectService is created directly in for_library() with connection_provider
+        # ProjectService is created directly in _build_services() with connection_provider
         c.register(AssetIndexService)
         c.register(UndoService)
         c.register(PluginService)
@@ -147,10 +147,6 @@ class ApplicationBootstrap:
     def resolve(self, service_type):
         """Resolve a service from the container."""
         return self.container.resolve(service_type)
-
-    def for_library(self, session: LibrarySession) -> LibraryScopedServices:
-        """Return a bundle of services scoped to a specific library session."""
-        return self.runtime_for(session).services
 
     def runtime_for(self, session: LibrarySession) -> "LibraryRuntime":
         """Return the one Runtime owned by this bootstrap for ``session``."""
@@ -244,6 +240,7 @@ class ApplicationBootstrap:
             runtime = self._runtimes.get(id(session))
         if runtime is not None and runtime.session is session:
             runtime.mark_closing()
+            runtime.close_adapters()
 
     def _cleanup_session(self, session: LibrarySession) -> None:
         with self._runtime_lock:
@@ -253,17 +250,6 @@ class ApplicationBootstrap:
             with self._runtime_lock:
                 if self._runtimes.get(id(session)) is runtime:
                     self._runtimes.pop(id(session), None)
-
-    def cleanup_library(self, library_root: str) -> None:
-        """Clean up undo services for closed sessions at a legacy call site."""
-        for session, runtime in tuple(
-            (runtime.session, runtime) for runtime in self._runtimes.values()
-        ):
-            if session.root_str == library_root and session.is_closed:
-                runtime.close()
-                with self._runtime_lock:
-                    if self._runtimes.get(id(session)) is runtime:
-                        self._runtimes.pop(id(session), None)
 
     @property
     def library_service(self) -> LibraryService:

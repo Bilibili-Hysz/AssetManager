@@ -73,9 +73,7 @@ class WindowLifecycleCoordinator:
             run_window_step(prepare_panel)
 
         if old_session is not None:
-            old_root = old_session.root_str
             window._library_service().close_session(old_session)
-            window._bootstrap.cleanup_library(old_root)
 
         if stop_error is not None:
             run_window_step(notify_status)

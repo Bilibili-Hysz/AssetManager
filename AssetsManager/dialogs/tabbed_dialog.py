@@ -53,7 +53,7 @@ Architecture:
     No per-widget setStyleSheet — everything inherits from the dialog QSS.
     ObjectName prefix __td_ distinguishes primary/secondary buttons.
 """
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QSize, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QLineEdit,
@@ -64,6 +64,8 @@ from AssetsManager import i18n
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+from AssetsManager.core.settings import AppSettings
+from AssetsManager.core import icons
 
 tr = i18n.tr
 
@@ -78,7 +80,9 @@ class _CollapsibleSection(QWidget):
         self._header = QPushButton()
         self._header.setCheckable(True)
         self._header.setChecked(False)
-        self._update_header_text()
+        self._header.setAccessibleName(self._title)
+        self._header.setToolTip(self._title)
+        self._update_header_presentation()
         self._apply_header_style()
         self._header.toggled.connect(self._on_toggle)
         self._header.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -102,11 +106,26 @@ class _CollapsibleSection(QWidget):
         return self._content_layout
 
     def refresh_theme(self):
+        self._update_header_presentation()
         self._apply_header_style()
 
-    def _update_header_text(self):
-        arrow = "\u25BE" if self._expanded else "\u25B8"
-        self._header.setText(f"  {arrow} {self._title}")
+    def refresh_scaled_geometry(self):
+        self._header.setFixedHeight(scaled_px(28))
+        self._header.setIconSize(QSize(scaled_px(14), scaled_px(14)))
+        self._content_layout.setContentsMargins(
+            scaled_px(8), scaled_px(4), 0, scaled_px(4))
+        self._content_layout.setSpacing(scaled_px(6))
+        self._apply_header_style()
+
+    def _update_header_presentation(self):
+        t = themes.get()
+        icon_name = "chevron_down" if self._expanded else "chevron_right"
+        self._header.setText(self._title)
+        self._header.setIcon(
+            icons.icon(icon_name, color=t["heading"], size=scaled_px(14)))
+        self._header.setIconSize(QSize(scaled_px(14), scaled_px(14)))
+        self._header.setAccessibleName(self._title)
+        self._header.setToolTip(self._title)
 
     def _apply_header_style(self):
         t = themes.get()
@@ -121,7 +140,7 @@ class _CollapsibleSection(QWidget):
     def _on_toggle(self, checked):
         self._expanded = checked
         self._content.setVisible(checked)
-        self._update_header_text()
+        self._update_header_presentation()
         self._apply_header_style()
 
 
@@ -143,6 +162,7 @@ class TabbedDialog(QDialog):
         self._heading_labels: list[QLabel] = []
         self._muted_labels: list[QLabel] = []
         self._tab_label_keys: dict[int, str] = {}
+        self._dialog_fade_anim: QPropertyAnimation | None = None
 
         if hasattr(self, '_setup_tabs') and type(self)._setup_tabs is not TabbedDialog._setup_tabs:
             # Subclass uses tabbed layout
@@ -154,6 +174,7 @@ class TabbedDialog(QDialog):
 
     def showEvent(self, event):
         super().showEvent(event)
+        self._start_dialog_fade()
         if not self._bus_connected:
             self._bus_connected = True
             from AssetsManager.core.signal_bus import get as bus
@@ -164,11 +185,13 @@ class TabbedDialog(QDialog):
                 self._refresh_bus_connected = True
 
     def closeEvent(self, event):
+        self._stop_dialog_fade()
         self._disconnect_bus()
         super().closeEvent(event)
 
     def done(self, result):
         # accept()/reject() hide modal dialogs without necessarily closing them.
+        self._stop_dialog_fade()
         self._disconnect_bus()
         super().done(result)
 
@@ -188,6 +211,33 @@ class TabbedDialog(QDialog):
 
     # ── Theme ─────────────────────────────────────────────────
 
+    @staticmethod
+    def _reduce_motion() -> bool:
+        try:
+            return bool(AppSettings.instance().get("reduce_motion", False))
+        except Exception:
+            return False
+
+    def _stop_dialog_fade(self):
+        if self._dialog_fade_anim is not None:
+            self._dialog_fade_anim.stop()
+            self._dialog_fade_anim = None
+        self.setWindowOpacity(1.0)
+
+    def _start_dialog_fade(self):
+        self._stop_dialog_fade()
+        if self._reduce_motion():
+            return
+        self.setWindowOpacity(0.0)
+        animation = QPropertyAnimation(self, b"windowOpacity", self)
+        animation.setDuration(150)
+        animation.setStartValue(0.0)
+        animation.setEndValue(1.0)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.finished.connect(lambda: self.setWindowOpacity(1.0))
+        animation.start()
+        self._dialog_fade_anim = animation
+
     def _on_theme_changed(self, _name):
         self._t = themes.get()
         self.setStyleSheet(self._dialog_qss())
@@ -196,6 +246,7 @@ class TabbedDialog(QDialog):
         self._refresh_static_labels()
         for section in self.findChildren(_CollapsibleSection):
             section.refresh_theme()
+        self._refresh_semantic_button_icons()
         for scroll_area in self.findChildren(QScrollArea):
             self._apply_viewport_color(scroll_area)
 
@@ -216,6 +267,9 @@ class TabbedDialog(QDialog):
 
     def _on_ui_scale_changed(self, _scale: float):
         self._on_theme_changed("")
+        for section in self.findChildren(_CollapsibleSection):
+            section.refresh_scaled_geometry()
+        self._refresh_semantic_button_icons()
         if hasattr(self, "_tabs") and hasattr(self, "_root_layout"):
             self._root_layout.setContentsMargins(
                 scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
@@ -231,6 +285,17 @@ class TabbedDialog(QDialog):
 
     def refresh_scaled_geometry(self, _scale: float | None = None):
         """Refresh subclass-owned scaled constraints without changing dialog state."""
+
+    def _refresh_semantic_button_icons(self):
+        t = self._t
+        for button in self.findChildren(QPushButton):
+            icon_name = button.property("semanticIcon")
+            if not icon_name:
+                continue
+            color_name = str(button.property("semanticIconColor") or "heading")
+            color = t.get(color_name, t["heading"])
+            button.setIcon(icons.icon(str(icon_name), color=color, size=scaled_px(15)))
+            button.setIconSize(QSize(scaled_px(15), scaled_px(15)))
 
     def _refresh_static_labels(self):
         t = self._t
@@ -256,6 +321,19 @@ class TabbedDialog(QDialog):
             f"background: {t['input_bg']}; color: {t['input_text']}; "
             f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; padding: 3px 6px; }}"
             f"QComboBox::drop-down {{ border: none; }}"
+            f"QListWidget {{ background: {t['input_bg']}; color: {t['input_text']}; "
+            f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; "
+            f"padding: {scaled_px(2)}px; }}"
+            f"QListWidget::item {{ padding: {scaled_px(5)}px {scaled_px(6)}px; "
+            f"border-radius: {scaled_px(3)}px; }}"
+            f"QListWidget::item:hover {{ background: {hover}; }}"
+            f"QListWidget::item:selected {{ background: {alpha(t['accent'], 0.25)}; "
+            f"color: {t['heading']}; }}"
+            f"QProgressBar {{ background: {t['input_bg']}; color: {t['body']}; "
+            f"border: 1px solid {t['border']}; border-radius: {scaled_px(3)}px; "
+            f"text-align: center; }}"
+            f"QProgressBar::chunk {{ background: {t['accent']}; "
+            f"border-radius: {scaled_px(2)}px; }}"
             f"QRadioButton, QCheckBox {{ color: {t['body']}; background: transparent; }}"
             f"QRadioButton:checked {{ color: {t['accent']}; font-weight: bold; }}"
             f"QRadioButton::indicator:checked {{ background: {t['accent']}; border: 2px solid {t['accent']}; "
@@ -267,6 +345,25 @@ class TabbedDialog(QDialog):
             f"QPushButton {{ background: {t['accent']}; color: {t['on_accent']}; "
             f"border: none; border-radius: {scaled_px(4)}px; padding: 6px 16px; }}"
             f"QPushButton:hover {{ background: {hover}; }}"
+            f"QPushButton:focus {{ border: 1px solid {t['border_focus']}; }}"
+            f"QPushButton[buttonVariant=\"primary\"] {{ "
+            f"background: {t['accent']}; color: {t['on_accent']}; }}"
+            f"QPushButton[buttonVariant=\"primary\"]:hover {{ "
+            f"background: {alpha(t['accent'], 0.85)}; }}"
+            f"QPushButton[buttonVariant=\"secondary\"] {{ "
+            f"background: {t['panel']}; color: {t['heading']}; "
+            f"border: 1px solid {t['border']}; }}"
+            f"QPushButton[buttonVariant=\"secondary\"]:hover {{ "
+            f"background: {hover}; }}"
+            f"QPushButton[buttonVariant=\"ghost\"] {{ "
+            f"background: transparent; color: {t['body']}; "
+            f"border: 1px solid transparent; }}"
+            f"QPushButton[buttonVariant=\"ghost\"]:hover {{ "
+            f"background: {hover}; color: {t['heading']}; }}"
+            f"QPushButton[buttonVariant=\"danger\"] {{ "
+            f"background: {t['danger']}; color: {t['on_accent']}; }}"
+            f"QPushButton[buttonVariant=\"danger\"]:hover {{ "
+            f"background: {alpha(t['danger'], 0.85)}; }}"
             f"QScrollBar:vertical {{ background: {t['scrollbar_track']}; width: 8px; }}"
             f"QScrollBar::handle:vertical {{ background: {t['scrollbar_thumb']}; "
             f"border-radius: {scaled_px(4)}px; min-height: 20px; }}"
@@ -428,6 +525,7 @@ class TabbedDialog(QDialog):
     def make_primary_btn(self, text, callback=None):
         btn = QPushButton(text)
         btn.setObjectName(f"__td_primary_{self._next_id()}")
+        themes.set_button_variant(btn, "primary")
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         if callback:
             btn.clicked.connect(callback)
@@ -437,21 +535,25 @@ class TabbedDialog(QDialog):
         btn = QPushButton(text)
         btn.setObjectName(f"__td_secondary_{self._next_id()}")
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        themes.set_button_variant(btn, "secondary")
         if callback:
             btn.clicked.connect(callback)
         return btn
 
     @staticmethod
     def make_gear_btn(callback) -> QPushButton:
-        from AssetsManager.core.ui_scale import scaled_px, scaled_pt
         t = themes.get()
-        btn = QPushButton("⚙")
+        btn = QPushButton()
+        btn.setIcon(icons.icon("settings", color=t['heading'], size=scaled_px(16)))
+        btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         btn.setToolTip(tr("panel.settings"))
+        btn.setAccessibleName(tr("panel.settings"))
         btn.setFixedSize(scaled_px(20), scaled_px(20))
         btn.setFlat(True)
+        themes.set_button_variant(btn, "ghost")
         btn.setStyleSheet(
-            f"color: {t['heading']}; font-size: {scaled_pt(13)}px; font-weight: bold; "
-            f"padding: 0; background: transparent; border: none; border-radius: {scaled_px(3)}px;")
+            f"color: {t['heading']}; padding: 0; background: transparent; "
+            f"border: none; border-radius: {scaled_px(3)}px;")
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         if callback:
             btn.clicked.connect(callback)
@@ -471,6 +573,12 @@ class TabbedDialog(QDialog):
         edit.setPlaceholderText(placeholder)
         row.addWidget(edit)
         btn = self.make_secondary_btn(tr("dialog.browse"), callback)
+        btn.setProperty("semanticIcon", "folder")
+        btn.setProperty("semanticIconColor", "heading")
+        btn.setIcon(icons.icon("folder", color=self._t["heading"], size=scaled_px(15)))
+        btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        btn.setAccessibleName(f"{label_text}: {tr('dialog.browse')}")
+        btn.setToolTip(tr("dialog.browse"))
         btn.setFixedWidth(scaled_px(60))
         row.addWidget(btn)
         return row, edit

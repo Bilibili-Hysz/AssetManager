@@ -109,8 +109,12 @@ def _run_scenario(
     app = QApplication.instance() or QApplication([])
     recorder = PerformanceRecorder(enabled=True, max_events=2_000)
     model = FileSystemModel()
+    model.set_performance_context(recorder, f"manual-{scenario}")
     model.set_directory(str(root))
     model._wait_for_scan()
+    baseline_reset_events = tuple(
+        event for event in recorder.recent() if event.name == "model.reset"
+    )
     widget = FileListGridWidget()
     widget.set_model(model)
     widget.set_layout_ref(GridLayout())
@@ -181,7 +185,10 @@ def _run_scenario(
                 raise RuntimeError(f"Timed out waiting for previews: got {len(ready)}, expected {len(preview_requests)}")
             if scenario == "delivery":
                 widget.repaint()
-                events = [_event_dict(event) for event in recorder.recent()]
+                events = [
+                    *(_event_dict(event) for event in baseline_reset_events),
+                    *(_event_dict(event) for event in recorder.recent()),
+                ]
                 widget.deleteLater()
                 model.shutdown()
                 app.processEvents()
@@ -226,7 +233,10 @@ def _run_scenario(
         widget._anim_tick()
         app.processEvents()
 
-    events = [_event_dict(event) for event in recorder.recent()]
+    events = [
+        *(_event_dict(event) for event in baseline_reset_events),
+        *(_event_dict(event) for event in recorder.recent()),
+    ]
     widget.deleteLater()
     model.shutdown()
     app.processEvents()
@@ -236,8 +246,8 @@ def _run_scenario(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Create local grid telemetry trend artifacts")
     parser.add_argument(
-        "--items", type=int, choices=(1000, 10000), nargs="+", default=[1000, 10000],
-        help="Fixture sizes to include; defaults to the complete 1k/10k matrix.",
+        "--items", type=int, choices=(1000, 10000, 50000), nargs="+", default=[1000, 10000],
+        help="Fixture sizes to include; 50k is available for explicit acceptance runs.",
     )
     parser.add_argument("--output-dir", type=Path, default=Path("artifacts/perf/grid"))
     parser.add_argument("--library-root", type=Path, help="Read-only real-library grid sample.")
@@ -332,6 +342,7 @@ def main() -> None:
             name: {
                 "events": events,
                 "grid_frame": _summary(events, "grid.frame"),
+                "model_reset": _summary(events, "model.reset"),
                 "animation_tick": _summary(events, "grid.animation_tick"),
                 "frame_request": _summary(events, "grid.frame_request"),
                 "invalidation_reasons": _invalidation_summary(events),
@@ -381,7 +392,7 @@ def main() -> None:
         "|---|---|---:|---:|---:|---:|---:|---:|",
     ])
     for scenario, result in payload["scenarios"].items():
-        for event_name, summary in (("grid.frame", result["grid_frame"]), ("grid.texture", _summary(result["events"], "grid.texture")), ("grid.animation_tick", result["animation_tick"]), ("grid.frame_request", result["frame_request"])):
+        for event_name, summary in (("model.reset", result["model_reset"]), ("grid.frame", result["grid_frame"]), ("grid.texture", _summary(result["events"], "grid.texture")), ("grid.animation_tick", result["animation_tick"]), ("grid.frame_request", result["frame_request"])):
             lines.append(
                 f"| {scenario} | {event_name} | {summary['count']} | {summary['min_ms']:.3f} | "
                 f"{summary['p50_ms']:.3f} | {summary['p95_ms']:.3f} | {summary['p99_ms']:.3f} | {summary['max_ms']:.3f} |"

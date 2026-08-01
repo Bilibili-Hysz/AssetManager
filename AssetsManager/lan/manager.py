@@ -87,10 +87,7 @@ class ShareManager:
         """Stop server AND tunnel. Cleans up all resources."""
         self.stop_tunnel()
         if self._server:
-            try:
-                self._server.stop()
-            except Exception:
-                _log.exception("Error stopping server")
+            self._server.stop()
             self._server = None
         self._state.update(
             running=False,

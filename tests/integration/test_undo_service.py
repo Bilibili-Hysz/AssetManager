@@ -133,7 +133,7 @@ def test_undo_records_session_scoped_execution_outcomes(tmp_path):
     old.write_text("data", encoding="utf-8")
     recorder = PerformanceRecorder(enabled=True)
     bootstrap = ApplicationBootstrap(performance_recorder=recorder)
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     undo = scoped.undo_service
     undo.record_rename(str(old), str(new))
     assert scoped.file_operation_service.move(old, new) == new
@@ -247,7 +247,7 @@ def test_delete_undo_and_redo_reconcile_file_projections(tmp_path):
     source = library / "asset.txt"
     source.write_text("data", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     index.index_directory(conn, library, library)
@@ -292,7 +292,7 @@ def test_rename_undo_and_redo_reconcile_metadata_thumbnails_and_index(tmp_path):
     new = library / "new.txt"
     old.write_text("data", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     index.index_directory(conn, library, library)
@@ -468,8 +468,8 @@ def test_two_library_undo_redo_uses_each_session_file_operations(tmp_path):
     old_a.write_text("a", encoding="utf-8")
     old_b.write_text("b", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped_a = bootstrap.for_library(bootstrap.library_service.open_session(lib_a))
-    scoped_b = bootstrap.for_library(bootstrap.library_service.open_session(lib_b))
+    scoped_a = bootstrap.runtime_for(bootstrap.library_service.open_session(lib_a)).services
+    scoped_b = bootstrap.runtime_for(bootstrap.library_service.open_session(lib_b)).services
 
     scoped_a.undo_service.record_rename(str(old_a), str(new_a))
     scoped_b.undo_service.record_rename(str(old_b), str(new_b))
@@ -496,8 +496,8 @@ def test_close_one_library_rejects_its_undo_but_other_library_remains_functional
     old_b.write_text("b", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
     session_a = bootstrap.library_service.open_session(lib_a)
-    scoped_a = bootstrap.for_library(session_a)
-    scoped_b = bootstrap.for_library(bootstrap.library_service.open_session(lib_b))
+    scoped_a = bootstrap.runtime_for(session_a).services
+    scoped_b = bootstrap.runtime_for(bootstrap.library_service.open_session(lib_b)).services
     scoped_a.undo_service.record_rename(str(lib_a / "old"), str(lib_a / "new"))
     scoped_b.undo_service.record_rename(str(old_b), str(new_b))
     scoped_b.file_operation_service.move(old_b, new_b)

@@ -1,11 +1,14 @@
 ---
 feature: session-07d28cba9ffeR7yeBnz5N4prK7-organization
-status: delivered
+status: historical_snapshot
 branch: master
-commits: uncommitted-workspace
+snapshot_head: pre-baseline working tree
+superseded_by: repository-baseline-2026-08-01.md
 ---
 
-# 本会话任务、代码与工作树整理报告
+# 本会话任务、代码与工作树整理报告（历史快照）
+
+> 本文记录较早时间点的组织盘点，保留原始证据但不再作为当前任务状态入口。当前状态以 `repository-baseline-2026-08-01.md` 为准。
 
 ## 1. 整理范围与结论
 
@@ -15,7 +18,7 @@ commits: uncommitted-workspace
 
 - 已核对并关闭有明确后续完成证据的陈旧 `in_progress` 任务。
 - 保留 `T151 blocked`、`T39/T102 abandoned` 等历史状态，不伪造完成。
-- 没有执行 `reset`、`checkout`、`clean`、删除、物理移动、提交、暂存或推送。
+- 在该历史快照时没有执行 `reset`、`checkout`、`clean`、删除、物理移动、提交、暂存或推送；随后基线整理已按新报告完成。
 - 不把当前 dirty worktree 归因给单一任务；它包含多个此前阶段的用户改动和本会话延续的架构/WebUI/LAN 改动。
 
 ## 2. 任务总览
@@ -58,7 +61,7 @@ commits: uncommitted-workspace
 
 ### 2.3 保留的非完成状态
 
-- `T151 blocked`：SPA 测试契约迁移被明确标记为阻塞，未强行关闭。
+- `T151 blocked`：这是该历史快照时的任务状态；后续 closeout 已提供 `209 passed` 证据并交付。
 - `T39 abandoned`、`T102 abandoned`：历史放弃项保持原状态。
 
 ## 3. 代码与文件地图
@@ -128,7 +131,7 @@ commits: uncommitted-workspace
 
 ## 4. 工作树状态
 
-当前仓库：`master`，普通 Git 工作区，不是 Compose 创建的隔离 worktree。
+该节是历史快照：当时仓库为 `master` 的普通 Git 工作区。当前 Git 状态见基线报告。
 
 `git status --short` 盘点结果：
 
@@ -181,7 +184,7 @@ commits: uncommitted-workspace
 - `tests/lan/test_t2_t4_contracts.py:2` 存在已有未使用 `sqlite3` import；它不影响本次 hardening-scoped Ruff，因为被排除在该范围之外。
 - React Router v7 future-flag warnings 仍会在部分测试 stderr 出现，但不是失败。
 - Windows 环境无法运行依赖目录 symlink 的测试时，相关 skip 应保留并交由 Linux CI 覆盖。
-- `T151 blocked` 仍是任务数据库中的阻塞历史，不应在没有新证据时标为完成。
+- `T151 blocked` 仅保留为历史状态；后续 T151 closeout 已完成，不应把旧阻塞状态当作当前状态。
 
 ## 6. 后续建议
 
@@ -193,4 +196,4 @@ commits: uncommitted-workspace
 
 ## 7. 收口决策
 
-本次整理已完成任务盘点、陈旧状态收口、代码/文件地图和工作树报告。工作区保持原状：没有提交、暂存、推送、删除、移动、reset、checkout 或 clean。
+本历史快照完成了当时的任务盘点、陈旧状态收口、代码/文件地图和工作树报告。之后的提交与工作树收口不在本文时间点内；请使用当前基线报告。

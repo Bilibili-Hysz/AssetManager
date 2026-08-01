@@ -24,10 +24,7 @@ def _resolve_connection(
     root = str(Path(library_root).resolve())
     if connection_provider is not None:
         return connection_provider(root)
-    raise RuntimeError(
-        "TagService requires either db_conn or a ConnectionProvider. "
-        "Use ApplicationBootstrap.for_library() or pass connection_provider explicitly."
-    )
+    raise RuntimeError("TagService requires an explicit db_conn or ConnectionProvider.")
 
 
 def _get_repo(

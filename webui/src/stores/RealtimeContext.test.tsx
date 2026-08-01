@@ -6,6 +6,7 @@ import { RealtimeProvider, useRealtimeContext } from './RealtimeContext';
 
 const authState = {
   capabilities: { realtime: true },
+  identityGeneration: 0,
   principal: { kind: 'user', authenticated: true, role: 'user', display_name: 'alice', user_profile: { id: 1, username: 'alice' } },
 };
 const transport = {
@@ -50,6 +51,7 @@ function emit(data: Record<string, unknown>) {
 describe('RealtimeProvider', () => {
   beforeEach(() => {
     authState.capabilities.realtime = true;
+    authState.identityGeneration = 0;
     authState.principal = { kind: 'user', authenticated: true, role: 'user', display_name: 'alice', user_profile: { id: 1, username: 'alice' } };
     transport.onEvent = undefined;
     transport.enabled = false;
@@ -134,6 +136,43 @@ describe('RealtimeProvider', () => {
     expect(firstConsumer).not.toHaveBeenCalled();
     expect(transport.close).toHaveBeenCalledOnce();
     expect(transport.enabled).toBe(true);
+  });
+
+  it('resets the cursor on identity change and recovers once from the first ready', async () => {
+    const callback = vi.fn();
+    const { result, rerender } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => result.current.registerInvalidation(['files'], callback));
+    emit({ type: 'runtime_ready', epoch: 'old-epoch', revision: 8 });
+    expect(result.current).toMatchObject({ epoch: 'old-epoch', revision: 8 });
+
+    authState.identityGeneration += 1;
+    authState.principal = { kind: 'user', authenticated: true, role: 'user', display_name: 'bob', user_profile: { id: 2, username: 'bob' } };
+    rerender();
+
+    await waitFor(() => expect(result.current).toMatchObject({ epoch: '', revision: 0 }));
+
+    act(() => result.current.registerInvalidation(['files'], callback));
+    emit({ type: 'runtime_ready', epoch: 'new-epoch', revision: 0 });
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    expect(callback).toHaveBeenCalledOnce();
+    expect(callback.mock.calls[0]?.[0]).toBeNull();
+  });
+
+  it('drops projection registrations when identity changes', async () => {
+    const callback = vi.fn();
+    const { result, rerender } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => result.current.registerInvalidation(['files'], callback));
+
+    authState.identityGeneration += 1;
+    authState.principal = { kind: 'user', authenticated: true, role: 'user', display_name: 'bob', user_profile: { id: 2, username: 'bob' } };
+    rerender();
+
+    emit({ type: 'runtime_ready', epoch: 'new-epoch', revision: 0 });
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    emit({ type: 'projection_invalidated', epoch: 'new-epoch', revision: 1, domains: ['files'], paths: ['stale.txt'] });
+
+    expect(callback).not.toHaveBeenCalled();
   });
 
   it('recovers once for a gap and notifies every registered projection', async () => {

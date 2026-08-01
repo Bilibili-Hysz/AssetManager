@@ -20,18 +20,31 @@ class LibraryRuntime:
         self._condition = threading.Condition(threading.Lock())
         self._state = "open"
         self._cleanup_in_progress = False
+        self._adapters_stopped = False
+        self._adapter_cleanup_in_progress = False
+        self._adapter_cleanup_thread_id: int | None = None
         self._lifecycle_adapters: list[object] = []
         self.event_router = RuntimeEventRouter(self)
 
-    def register_lifecycle_adapter(self, adapter: object) -> None:
+    def register_lifecycle_adapter(self, adapter: object) -> bool:
         """Register an adapter that must stop before runtime-owned cleanup."""
         with self._condition:
             if self._state == "open":
                 if not any(current is adapter for current in self._lifecycle_adapters):
                     self._lifecycle_adapters.append(adapter)
-                return
+                return True
             stop = getattr(adapter, "stop")
         stop()
+        return False
+
+    def try_register_lifecycle_adapter(self, adapter: object) -> bool:
+        """Register an adapter only while this Runtime is still accepting work."""
+        with self._condition:
+            if self._state != "open":
+                return False
+            if not any(current is adapter for current in self._lifecycle_adapters):
+                self._lifecycle_adapters.append(adapter)
+            return True
 
     def unregister_lifecycle_adapter(self, adapter: object) -> None:
         with self._condition:
@@ -53,6 +66,41 @@ class LibraryRuntime:
             if self._state == "open":
                 self._state = "closing"
 
+    def close_adapters(self) -> None:
+        """Stop external adapters while the owning session is still usable."""
+        current_thread_id = threading.get_ident()
+        with self._condition:
+            if self._state == "closed":
+                return
+            if self._adapters_stopped:
+                return
+            while self._adapter_cleanup_in_progress:
+                if self._adapter_cleanup_thread_id == current_thread_id:
+                    return
+                self._condition.wait()
+                if self._state == "closed" or self._adapters_stopped:
+                    return
+            self._state = "closing"
+            self._adapter_cleanup_in_progress = True
+            self._adapter_cleanup_thread_id = current_thread_id
+            lifecycle_adapters = tuple(self._lifecycle_adapters)
+        try:
+            for adapter in lifecycle_adapters:
+                adapter.stop()
+        except BaseException:
+            with self._condition:
+                self._state = "open"
+                self._adapters_stopped = False
+                self._adapter_cleanup_in_progress = False
+                self._adapter_cleanup_thread_id = None
+                self._condition.notify_all()
+            raise
+        with self._condition:
+            self._adapters_stopped = True
+            self._adapter_cleanup_in_progress = False
+            self._adapter_cleanup_thread_id = None
+            self._condition.notify_all()
+
     def close(self) -> None:
         """Release runtime-owned adapters, without closing the session/DB."""
         callback_thread = self.event_router.callback_active_on_current_thread()
@@ -65,8 +113,6 @@ class LibraryRuntime:
                 return
             self._cleanup_in_progress = True
         self.event_router.close()
-        with self._condition:
-            self._state = "closing"
         if self.event_router.callback_active_on_current_thread():
             self.event_router.defer_after_drain(self._cleanup_adapters)
             return
@@ -74,20 +120,18 @@ class LibraryRuntime:
 
     def _cleanup_adapters(self) -> None:
         try:
-            with self._condition:
-                lifecycle_adapters = tuple(self._lifecycle_adapters)
-            for adapter in lifecycle_adapters:
-                adapter.stop()
+            self.close_adapters()
             self.services.undo_service.cleanup()
-            with self._condition:
-                self._lifecycle_adapters.clear()
         except BaseException:
             with self._condition:
                 self._state = "open"
                 self._cleanup_in_progress = False
+                self._adapters_stopped = False
                 self._condition.notify_all()
             raise
         with self._condition:
+            self._lifecycle_adapters.clear()
+            self._adapters_stopped = False
             self._state = "closed"
             self._cleanup_in_progress = False
             self._condition.notify_all()

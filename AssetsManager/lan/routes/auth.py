@@ -1,6 +1,7 @@
 """Auth routes: /api/auth/*."""
 from aiohttp import web
 
+from AssetsManager.lan.dto import UserResponse
 from AssetsManager.lan.routes._helpers import get_auth_service, get_lan, get_request_principal, set_auth_cookie
 from AssetsManager.lan.utils import generate_auth_token
 
@@ -27,7 +28,7 @@ async def handle_login(request):
         user, err = auth_service.authenticate_user(username, password)
         if user:
             token = auth_service.generate_user_token(user["id"], user["username"], user["role"])
-            response = web.json_response({"token": token, "user": user})
+            response = web.json_response({"user": UserResponse.from_record(user).to_dict()})
             set_auth_cookie(response, token)
             _record_activity(request, "login", "signed in", user["username"])
             return response
@@ -36,13 +37,13 @@ async def handle_login(request):
     if lan.password_hash:
         if auth_service.verify_password(password, lan.password_hash):
             token = auth_service.generate_token(lan.password_hash)
-            response = web.json_response({"token": token})
+            response = web.json_response({"ok": True})
             set_auth_cookie(response, token)
             _record_activity(request, "login", "signed in")
             return response
         return web.json_response({"error": "Invalid password"}, status=401)
 
-    return web.json_response({"token": "no-auth"})
+    return web.json_response({"ok": True})
 
 
 async def handle_register(request):
@@ -67,7 +68,7 @@ async def handle_register(request):
             return web.json_response({"error": auth_err or "Registration failed"}, status=500)
         token = auth_service.generate_user_token(user["id"], user["username"], user["role"])
         lan.invalidate_user_cache()
-        response = web.json_response({"token": token, "user": user})
+        response = web.json_response({"user": UserResponse.from_record(user).to_dict()})
         set_auth_cookie(response, token)
         return response
     return web.json_response({"error": err}, status=400)
@@ -89,7 +90,7 @@ async def handle_verify_key(request):
     auth_service = get_auth_service(request)
     if auth_service.verify_key(key, lan.access_key_hash):
         token = generate_auth_token(lan.token_secret)
-        response = web.json_response({"token": token})
+        response = web.json_response({"ok": True})
         set_auth_cookie(response, token)
         _record_activity(request, "login", "verified access key")
         return response

@@ -4,12 +4,12 @@ This refactor treats AssetManager as a platform with two first-class presentatio
 
 ## Layers
 
-- `presentation`: PySide6 windows, panels, widgets, dialogs, LAN HTTP routes, and static web UI.
+- `presentation`: PySide6 windows, panels, widgets, dialogs, LAN HTTP routes, and React SPA assets served by LAN.
 - `application`: use-case services such as opening libraries, browsing assets, editing metadata, generating thumbnails, sharing libraries, and searching.
 - `domain`: stable concepts such as libraries, assets, projects, tags, metadata, shares, users, and domain errors.
 - `infrastructure`: SQLite, file-system access, settings storage, thumbnail cache, aiohttp, tunnel processes, and path resolution.
 
-The current codebase is being migrated gradually. Existing `core`, `panels`, `widgets`, and `lan` modules remain valid until their responsibilities are moved behind application services.
+The recalibrated Desktop–LAN–WebUI architecture is delivered for the current Runtime/session/LAN/WebUI scope. Existing `core`, `panels`, `widgets`, and `lan` modules remain valid presentation and infrastructure modules; future work is tracked separately in the repository baseline and DeepSeek roadmap.
 
 ## Application Services
 

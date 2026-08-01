@@ -6,7 +6,7 @@ specs:
 plans:
   - docs/compose/plans/2026-07-21-realtime-dataflow-hardening.md
 branch: master
-commits: uncommitted-workspace
+evidence_state: pre-baseline working tree; baseline captured in repository-baseline-2026-08-01.md
 ---
 
 # Desktop–WebUI Realtime Dataflow Hardening — Final Report

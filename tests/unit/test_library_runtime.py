@@ -5,6 +5,7 @@ from unittest.mock import Mock
 import pytest
 
 from AssetsManager.application import ApplicationBootstrap
+from AssetsManager.application.context import LibrarySession
 from AssetsManager.application.library_service import LibraryService
 from AssetsManager.application.runtime import LibraryRuntime
 
@@ -20,7 +21,7 @@ def test_runtime_is_cached_for_exact_session_and_services(tmp_path):
     assert first is second
     assert first.session is session
     assert first.services is second.services
-    assert bootstrap.for_library(session) is first.services
+    assert bootstrap.runtime_for(session).services is first.services
 
 
 def test_runtime_rejects_foreign_and_stale_sessions(tmp_path):
@@ -372,3 +373,223 @@ def test_lifecycle_notifies_closing_before_drain_and_closed_before_db_close(tmp_
     worker.join(5)
     closer.join(5)
     assert events == ["closing", "closed", "db"]
+
+
+def test_session_close_stops_runtime_adapter_before_drain_and_cache_release(
+    tmp_path, monkeypatch
+):
+    bootstrap = ApplicationBootstrap()
+    service = bootstrap.library_service
+    session = service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    events = []
+    adapter_observations = []
+    lease_entered = threading.Event()
+    release_lease = threading.Event()
+    lease_exited = threading.Event()
+    finish_started = threading.Event()
+    original_finish = LibrarySession._finish_close
+    original_close_library = service._db.close_library
+
+    def tracked_finish(current):
+        events.append("finish")
+        finish_started.set()
+        original_finish(current)
+
+    def tracked_close_library(root):
+        events.append("db")
+        return original_close_library(root)
+
+    def leased_operation():
+        with session.operation():
+            lease_entered.set()
+            assert release_lease.wait(5)
+        lease_exited.set()
+
+    def stop_adapter():
+        events.append("adapter")
+        adapter_observations.append(
+            (
+                service.current_session is session,
+                session.context.db_conn.execute("SELECT 1").fetchone(),
+                not lease_exited.is_set(),
+            )
+        )
+
+    monkeypatch.setattr(LibrarySession, "_finish_close", tracked_finish)
+    monkeypatch.setattr(service._db, "close_library", tracked_close_library)
+    runtime.register_lifecycle_adapter(SimpleNamespace(stop=stop_adapter))
+    worker = threading.Thread(target=leased_operation)
+    closer = threading.Thread(target=session.close)
+    worker.start()
+    assert lease_entered.wait(5)
+    closer.start()
+    try:
+        assert finish_started.wait(5)
+    finally:
+        release_lease.set()
+        worker.join(5)
+        closer.join(5)
+
+    assert not worker.is_alive()
+    assert not closer.is_alive()
+    assert events == ["adapter", "finish", "db"]
+    assert adapter_observations == [(True, (1,), True)]
+
+
+def test_close_session_retains_runtime_and_database_after_adapter_stop_failure(
+    tmp_path, monkeypatch
+):
+    bootstrap = ApplicationBootstrap()
+    service = bootstrap.library_service
+    session = service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    stop_calls = []
+    db_close_calls = []
+    original_close_library = service._db.close_library
+
+    def stop_adapter():
+        stop_calls.append("stop")
+        if len(stop_calls) == 1:
+            raise RuntimeError("adapter stop failed")
+
+    def tracked_close_library(root):
+        db_close_calls.append(root)
+        return original_close_library(root)
+
+    monkeypatch.setattr(service._db, "close_library", tracked_close_library)
+    runtime.register_lifecycle_adapter(SimpleNamespace(stop=stop_adapter))
+
+    with pytest.raises(RuntimeError, match="adapter stop failed"):
+        service.close_session(session)
+
+    assert stop_calls == ["stop"]
+    assert db_close_calls == []
+    assert bootstrap._runtimes[id(session)] is runtime
+    assert service.current_session is session
+    assert session.context.db_conn.execute("SELECT 1").fetchone() == (1,)
+
+    service.close_session(session)
+
+    assert stop_calls == ["stop", "stop"]
+    assert db_close_calls == [str(session.root)]
+    assert id(session) not in bootstrap._runtimes
+    assert service.current_session is None
+
+
+def test_close_session_retains_runtime_and_database_after_postclose_failure(
+    tmp_path, monkeypatch
+):
+    bootstrap = ApplicationBootstrap()
+    service = bootstrap.library_service
+    session = service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    cleanup_calls = []
+    connection = session.connection_for(session.root)
+
+    def flaky_cleanup():
+        cleanup_calls.append("cleanup")
+        if len(cleanup_calls) == 1:
+            raise RuntimeError("undo cleanup failed")
+
+    monkeypatch.setattr(runtime.services.undo_service, "cleanup", flaky_cleanup)
+
+    with pytest.raises(RuntimeError, match="undo cleanup failed"):
+        service.close_session(session)
+
+    assert service.current_session is session
+    assert bootstrap._runtimes[id(session)] is runtime
+    assert connection.execute("SELECT 1").fetchone() == (1,)
+
+    service.close_session(session)
+
+    assert cleanup_calls == ["cleanup", "cleanup"]
+    assert service.current_session is None
+    assert id(session) not in bootstrap._runtimes
+    with pytest.raises(Exception):
+        connection.execute("SELECT 1")
+
+
+def test_runtime_close_adapters_serializes_with_full_runtime_close(tmp_path, monkeypatch):
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    stop_entered = threading.Event()
+    release_stop = threading.Event()
+    stop_calls = []
+
+    def stop_adapter():
+        stop_calls.append(threading.get_ident())
+        if len(stop_calls) == 1:
+            stop_entered.set()
+        assert release_stop.wait(5)
+
+    runtime.register_lifecycle_adapter(SimpleNamespace(stop=stop_adapter))
+    monkeypatch.setattr(runtime.services.undo_service, "cleanup", lambda: None)
+    closer = threading.Thread(target=runtime.close)
+    precloser = threading.Thread(target=runtime.close_adapters)
+    closer.start()
+    assert stop_entered.wait(5)
+    precloser.start()
+    release_stop.set()
+    closer.join(5)
+    precloser.join(5)
+
+    assert not closer.is_alive()
+    assert not precloser.is_alive()
+    assert stop_calls == [closer.ident]
+
+
+def test_concurrent_session_close_runs_runtime_and_database_teardown_once(tmp_path):
+    bootstrap = ApplicationBootstrap()
+    service = bootstrap.library_service
+    session = service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    adapter_entered = threading.Event()
+    release_adapter = threading.Event()
+    second_started = threading.Event()
+    second_done = threading.Event()
+    close_calls = []
+    stop_calls = []
+    original_close_library = service._db.close_library
+
+    def stop_adapter():
+        stop_calls.append("stop")
+        adapter_entered.set()
+        assert release_adapter.wait(5)
+
+    def close_library(root):
+        close_calls.append(root)
+        return original_close_library(root)
+
+    service._db.close_library = close_library
+    runtime.register_lifecycle_adapter(SimpleNamespace(stop=stop_adapter))
+    first = threading.Thread(target=session.close)
+    second = threading.Thread(
+        target=lambda: (second_started.set(), session.close(), second_done.set())
+    )
+    first.start()
+    assert adapter_entered.wait(5)
+    second.start()
+    assert second_started.wait(5)
+    assert not second_done.is_set()
+    release_adapter.set()
+    first.join(5)
+    second.join(5)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert stop_calls == ["stop"]
+    assert close_calls == [str(session.root)]
+
+
+def test_successful_session_close_does_not_replay_preclose_listeners(tmp_path):
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    preclose_calls = []
+    bootstrap.library_service.add_session_closing_listener(preclose_calls.append)
+
+    session.close()
+    session.close()
+
+    assert preclose_calls == [session]

@@ -9,7 +9,7 @@ Visual: card-based with theme gradients, property-based styling, snapshot diffin
 """
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject, Qt, Signal, QSize
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFileDialog, QFrame, QWidget, QScrollArea, QSizePolicy,
@@ -20,6 +20,8 @@ from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.color_utils import alpha
+from AssetsManager.core import icons
+from AssetsManager.widgets.elevation import apply_elevation, refresh_elevation
 from AssetsManager import i18n
 tr = i18n.tr
 
@@ -54,6 +56,7 @@ class _DetailPanel(QFrame):
 
     def _setup(self):
         self.setStyleSheet(self._card_qss("detailPanel"))
+        apply_elevation(self, level=1)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(scaled_px(16), scaled_px(14), scaled_px(16), scaled_px(14))
         layout.setSpacing(scaled_px(8))
@@ -102,9 +105,23 @@ class _DetailPanel(QFrame):
         self._remove_btn.hide()
         layout.addWidget(self._remove_btn)
 
+        self._refresh_button_icons()
+
         self._path_data = ""
         self._open_cb = None
         self._remove_cb = None
+
+    def _refresh_button_icons(self):
+        t = themes.get()
+        icon_size = QSize(scaled_px(15), scaled_px(15))
+        self._open_btn.setIcon(icons.icon("folder", color=t["on_accent"], size=scaled_px(15)))
+        self._remove_btn.setIcon(icons.icon("close", color=t["muted"], size=scaled_px(15)))
+        self._open_btn.setIconSize(icon_size)
+        self._remove_btn.setIconSize(icon_size)
+        self._open_btn.setAccessibleName(tr("startup.open_btn"))
+        self._remove_btn.setAccessibleName(tr("startup.remove_btn"))
+        self._open_btn.setToolTip(tr("startup.open_btn"))
+        self._remove_btn.setToolTip(tr("startup.remove_btn"))
 
     def refresh_theme(self):
         t = themes.get()
@@ -118,6 +135,7 @@ class _DetailPanel(QFrame):
         self._path.setStyleSheet(
             f"font-size: {scaled_pt(10)}px; color: {t['muted']}; "
             f"padding: 0; background: transparent; border: none;")
+        self._refresh_button_icons()
         self._open_btn.setStyleSheet(self._primary_btn_qss())
         self._remove_btn.setStyleSheet(self._ghost_btn_qss())
         if self._path_data:
@@ -227,8 +245,8 @@ class _LibraryCard(QFrame):
         layout.setContentsMargins(scaled_px(12), scaled_px(6), scaled_px(12), scaled_px(6))
         layout.setSpacing(scaled_px(10))
 
-        self._dot = QLabel("\u25CF")
-        self._dot.setFixedWidth(scaled_px(16))
+        self._dot = QLabel()
+        self._dot.setFixedSize(scaled_px(10), scaled_px(10))
         self._dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._dot)
 
@@ -241,6 +259,9 @@ class _LibraryCard(QFrame):
         info.addWidget(self._path_label)
         layout.addLayout(info, 1)
 
+        self.setAccessibleName(name)
+        self.setToolTip(self._path)
+
         self._apply_style()
 
     def set_selected(self, sel: bool):
@@ -252,10 +273,11 @@ class _LibraryCard(QFrame):
         # Dot indicator
         dot_fg = t["success"] if self._exists else t["danger"]
         dot_bg = alpha(dot_fg, 0.25) if self._exists else alpha(dot_fg, 0.13)
+        self._dot.setAccessibleName(
+            tr("startup.ready" if self._exists else "startup.missing"))
         self._dot.setStyleSheet(
-            f"font-size: {scaled_pt(10)}px; color: {dot_fg}; "
-            f"background: {dot_bg}; border-radius: {scaled_px(8)}px; "
-            f"padding: 0;")
+            f"background: {dot_bg}; border: 2px solid {dot_fg}; "
+            f"border-radius: {scaled_px(5)}px; padding: 0;")
         # Name and path labels
         self._name_label.setStyleSheet(
             f"font-size: {scaled_pt(13)}px; font-weight: bold; color: {t['heading']}; "
@@ -406,6 +428,7 @@ class StartupWindow(QMainWindow):
             f"    stop:0 {_interpolate_color(t['panel'], 0.03)}, stop:1 {t['base']}); "
             f"  border: 1px solid {alpha(t['border'], 0.188)}; border-radius: {scaled_px(10)}px; "
             f"}}")
+        apply_elevation(self._list_panel, level=1)
         right_layout = QVBoxLayout(self._list_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
@@ -442,6 +465,10 @@ class StartupWindow(QMainWindow):
             f"  padding: 6px 14px; font-size: {scaled_pt(12)}px; "
             f"}}"
             f"QPushButton:hover {{ background: {alpha(t['border'], 0.188)}; }}")
+        self._browse_btn.setIcon(icons.icon("folder", color=t["body"], size=scaled_px(15)))
+        self._browse_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        self._browse_btn.setAccessibleName(tr("startup.browse_btn"))
+        self._browse_btn.setToolTip(tr("startup.browse_btn"))
         self._browse_btn.clicked.connect(self._browse)
         bot.addWidget(self._browse_btn)
         bot.addStretch()
@@ -466,6 +493,12 @@ class StartupWindow(QMainWindow):
         self._detail._open_btn.setText(tr("startup.open_btn"))
         self._detail._remove_btn.setText(tr("startup.remove_btn"))
         self._browse_btn.setText(tr("startup.browse_btn"))
+        self._detail._refresh_button_icons()
+        t = themes.get()
+        self._browse_btn.setIcon(icons.icon("folder", color=t["body"], size=scaled_px(15)))
+        self._browse_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        self._browse_btn.setAccessibleName(tr("startup.browse_btn"))
+        self._browse_btn.setToolTip(tr("startup.browse_btn"))
         self._populate()
 
     # ── Menu theming ───────────────────────────────────────────
@@ -575,7 +608,7 @@ class StartupWindow(QMainWindow):
 
     def refresh_theme(self, _name: str = ""):
         """Re-apply all theme-dependent styles on startup window."""
-        self.setStyleSheet(themes.stylesheet())
+        themes.apply_to(self)
         t = themes.get()
         self._central.setStyleSheet(f"background: {t['base']};")
         self._apply_menu_theme()
@@ -600,6 +633,10 @@ class StartupWindow(QMainWindow):
 
         # Detail panel
         self._detail.refresh_theme()
+        refresh_elevation(self._detail, level=1)
+        refresh_elevation(self._list_panel, level=1)
+        self._browse_btn.setIcon(icons.icon("folder", color=t["body"], size=scaled_px(15)))
+        self._browse_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
 
         # Hero text
         self._hero_title.setStyleSheet(

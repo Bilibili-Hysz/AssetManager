@@ -23,8 +23,8 @@ _log = logging.getLogger(__name__)
 TOOLS_PATH = SHARED_DIR / "tools.json"
 
 DEFAULT_TOOLS = [
-    {"name": "Blender", "cmd": "blender", "args": ["{file}"], "icon": "🧊"},
-    {"name": "VS Code", "cmd": "code", "args": ["{folder}"], "icon": "📝"},
+    {"name": "Blender", "cmd": "blender", "args": ["{file}"], "icon": "cube"},
+    {"name": "VS Code", "cmd": "code", "args": ["{folder}"], "icon": "code"},
 ]
 
 

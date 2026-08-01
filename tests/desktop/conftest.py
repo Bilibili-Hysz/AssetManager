@@ -15,7 +15,7 @@ def _bootstrap_app():
     """Set up ApplicationBootstrap on QApplication for panel tests.
 
     Tests may use this bootstrap to open canonical sessions and explicitly
-    inject ``bootstrap.for_library(session)`` into panels.
+    inject ``bootstrap.runtime_for(session).services`` into panels.
     """
     app = QApplication.instance() or QApplication([])
     bootstrap = ApplicationBootstrap()

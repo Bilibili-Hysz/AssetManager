@@ -1,24 +1,43 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Shield, ShieldOff } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { createUsersApi } from '../../api/users';
 import type { User } from '../../types/api';
 import { useI18n } from '../../hooks/useI18n';
+import { useInvalidation } from '../../hooks/useInvalidation';
 
 export function UserManagement() {
-  const { api } = useAuth();
+  const { api, identityGeneration } = useAuth();
   const usersApi = useMemo(() => createUsersApi(api), [api]);
   const { t } = useI18n();
   const [users, setUsers] = useState<User[]>([]);
+  const requestGeneration = useRef(0);
+  const identityGenerationRef = useRef(identityGeneration);
+
+  const refreshUsers = useCallback(() => {
+    const generation = ++requestGeneration.current;
+    return usersApi.list().then(res => {
+      if (generation === requestGeneration.current) setUsers(res.users);
+    });
+  }, [usersApi]);
 
   useEffect(() => {
-    usersApi.list().then(res => setUsers(res.users)).catch(() => {});
-  }, [usersApi]);
+    refreshUsers().catch(() => {});
+    return () => { requestGeneration.current += 1; };
+  }, [refreshUsers]);
+  useEffect(() => {
+    if (identityGenerationRef.current === identityGeneration) return;
+    identityGenerationRef.current = identityGeneration;
+    requestGeneration.current += 1;
+    setUsers([]);
+    refreshUsers().catch(() => {});
+  }, [identityGeneration, refreshUsers]);
+  useInvalidation(['users'], refreshUsers);
 
   const handleToggle = async (id: number, current: boolean) => {
     try {
       await usersApi.toggleUser(id, !current);
-      setUsers(prev => prev.map(u => u.id === id ? { ...u, active: !current } : u));
+      await refreshUsers();
     } catch {}
   };
 

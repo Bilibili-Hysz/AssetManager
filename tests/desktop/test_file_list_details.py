@@ -18,7 +18,7 @@ def _make_panel(tmp_path):
     bootstrap = app.property("bootstrap")
     panel = QWidgetFileListPanel()
     session = bootstrap.library_service.open_session(tmp_path)
-    panel.set_scoped_services(bootstrap.for_library(session))
+    panel.set_scoped_services(bootstrap.runtime_for(session).services)
     panel.navigate_to(str(tmp_path), set_root=True)
     panel._model._wait_for_scan()
     return app, panel

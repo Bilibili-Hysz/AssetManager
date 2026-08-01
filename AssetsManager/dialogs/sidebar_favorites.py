@@ -55,7 +55,7 @@ class SidebarFavorites(JsonStore):
         self._ensure_loaded()
         return list(self._items)
 
-    def add(self, path: str, name: str | None = None, icon: str = "⭐"):
+    def add(self, path: str, name: str | None = None, icon: str = "star"):
         self._ensure_loaded()
         path = str(Path(path).resolve())
         for item in self._items:

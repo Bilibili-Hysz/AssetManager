@@ -1,26 +1,45 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Plus, X } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { createUsersApi } from '../../api/users';
 import type { InviteCode } from '../../types/api';
 import { useI18n } from '../../hooks/useI18n';
 import { useToast } from '../ui/Toast';
+import { useInvalidation } from '../../hooks/useInvalidation';
 
 export function InviteManagement() {
-  const { api } = useAuth();
+  const { api, identityGeneration } = useAuth();
   const usersApi = useMemo(() => createUsersApi(api), [api]);
   const { t } = useI18n();
   const { showToast } = useToast();
   const [invites, setInvites] = useState<InviteCode[]>([]);
+  const requestGeneration = useRef(0);
+  const identityGenerationRef = useRef(identityGeneration);
+
+  const refreshInvites = useCallback(() => {
+    const generation = ++requestGeneration.current;
+    return usersApi.listInvites().then(res => {
+      if (generation === requestGeneration.current) setInvites(res.invites);
+    });
+  }, [usersApi]);
 
   useEffect(() => {
-    usersApi.listInvites().then(res => setInvites(res.invites)).catch(() => {});
-  }, [usersApi]);
+    refreshInvites().catch(() => {});
+    return () => { requestGeneration.current += 1; };
+  }, [refreshInvites]);
+  useEffect(() => {
+    if (identityGenerationRef.current === identityGeneration) return;
+    identityGenerationRef.current = identityGeneration;
+    requestGeneration.current += 1;
+    setInvites([]);
+    refreshInvites().catch(() => {});
+  }, [identityGeneration, refreshInvites]);
+  useInvalidation(['users'], refreshInvites);
 
   const handleCreate = async () => {
     try {
-      const res = await usersApi.createInvite();
-      setInvites(prev => [{ code: res.code, created_at: Date.now() / 1000, used_by: null, revoked: false }, ...prev]);
+      await usersApi.createInvite();
+      await refreshInvites();
       showToast(t('admin.invite_created'), 'success');
     } catch {}
   };
@@ -28,7 +47,7 @@ export function InviteManagement() {
   const handleRevoke = async (code: string) => {
     try {
       await usersApi.revokeInvite(code);
-      setInvites(prev => prev.map(i => i.code === code ? { ...i, revoked: true } : i));
+      await refreshInvites();
     } catch {}
   };
 

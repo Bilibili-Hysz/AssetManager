@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Protocol, cast
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSize
 from PySide6.QtWidgets import (
     QDockWidget, QMainWindow, QMenu, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton,
 )
@@ -27,6 +27,7 @@ from AssetsManager.panels.tag_tree import TagTreePanel
 from AssetsManager.panels.image_viewer import ImageViewer
 from AssetsManager.widgets.tab_container import TabContainer
 from AssetsManager import i18n
+from AssetsManager.core import icons
 from AssetsManager.core import themes
 from AssetsManager.core.signal_bus import get as bus
 
@@ -127,6 +128,11 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
         if isinstance(ext, QWidget):
             layout.addWidget(ext, 1)
 
+    for btn in extra_buttons:
+        semantic_icon = btn.property("semanticIcon")
+        if semantic_icon:
+            btn.setIcon(icons.icon(semantic_icon, color=t["heading"], size=scaled_px(15)))
+
     layout.addStretch()
 
     for btn in extra_buttons:
@@ -137,19 +143,27 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
         f"padding: 0; background: transparent; border: none; border-radius: {scaled_px(3)}px;")
 
     _dock = dock
-    float_btn = QPushButton("⛶")
+    float_btn = QPushButton()
+    float_btn.setIcon(icons.icon("maximize", color=t["heading"], size=scaled_px(15)))
+    float_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
     float_btn.setToolTip(tr("dock.float"))
+    float_btn.setAccessibleName(tr("dock.float"))
     float_btn.setFixedSize(scaled_px(20), scaled_px(20))
     float_btn.setFlat(True)
+    themes.set_button_variant(float_btn, "ghost")
     float_btn.setStyleSheet(btn_style)
     float_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     float_btn.clicked.connect(lambda: _dock.setFloating(not _dock.isFloating()))
     layout.addWidget(float_btn)
 
-    close_btn = QPushButton("×")
+    close_btn = QPushButton()
+    close_btn.setIcon(icons.icon("close", color=t["heading"], size=scaled_px(15)))
+    close_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
     close_btn.setToolTip(tr("dock.close"))
+    close_btn.setAccessibleName(tr("dock.close"))
     close_btn.setFixedSize(scaled_px(20), scaled_px(20))
     close_btn.setFlat(True)
+    themes.set_button_variant(close_btn, "ghost")
     close_btn.setStyleSheet(btn_style)
     close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     close_btn.clicked.connect(lambda: _close_dock(_dock))

@@ -28,7 +28,7 @@ class TestApplicationBootstrap:
         root.mkdir()
         bootstrap = ApplicationBootstrap()
         session = bootstrap.library_service.open_session(root)
-        scoped = bootstrap.for_library(session)
+        scoped = bootstrap.runtime_for(session).services
         scoped.undo_service.record_rename("old", "new")
         notifications = []
         bootstrap.library_service.add_session_close_listener(notifications.append)
@@ -47,7 +47,7 @@ class TestApplicationBootstrap:
             assert not session.is_closed
             assert session.connection_for(root).execute("SELECT 1").fetchone() == (1,)
             assert notifications == []
-            assert bootstrap.for_library(session).undo_service is scoped.undo_service
+            assert bootstrap.runtime_for(session).services.undo_service is scoped.undo_service
             assert scoped.undo_service.can_undo()
 
     def test_global_close_serializes_with_selective_close_teardown(
@@ -58,7 +58,7 @@ class TestApplicationBootstrap:
         bootstrap = ApplicationBootstrap()
         service = bootstrap.library_service
         session = service.open_session(root)
-        scoped = bootstrap.for_library(session)
+        scoped = bootstrap.runtime_for(session).services
         scoped.undo_service.record_rename("old", "new")
         operation_entered = threading.Event()
         release_operation = threading.Event()
@@ -141,7 +141,7 @@ class TestApplicationBootstrap:
         bootstrap = ApplicationBootstrap()
         service = bootstrap.library_service
         session = service.open_session(root)
-        scoped = bootstrap.for_library(session)
+        scoped = bootstrap.runtime_for(session).services
         scoped.undo_service.record_rename("old", "new")
         notifications = []
         db_close_calls = []
@@ -158,7 +158,7 @@ class TestApplicationBootstrap:
             assert session.connection_for(root).execute("SELECT 1").fetchone() == (1,)
             assert notifications == []
             assert db_close_calls == []
-            assert bootstrap.for_library(session).undo_service is scoped.undo_service
+            assert bootstrap.runtime_for(session).services.undo_service is scoped.undo_service
             assert scoped.undo_service.can_undo()
 
     def test_global_close_inside_draining_operation_rejects_without_deadlock(
@@ -247,13 +247,13 @@ class TestApplicationBootstrap:
         # After discovery, plugin_service should be set (even if no plugins found)
         assert bootstrap.plugin_service is not None
 
-    def test_for_library_returns_scoped_services(self, tmp_path):
+    def test_runtime_for_returns_scoped_services(self, tmp_path):
         root = tmp_path / "library"
         root.mkdir()
 
         bootstrap = ApplicationBootstrap()
         session = bootstrap.library_service.open_session(root)
-        scoped = bootstrap.for_library(session)
+        scoped = bootstrap.runtime_for(session).services
 
         assert scoped.session is session
         assert isinstance(scoped.asset_service, AssetService)
@@ -269,7 +269,7 @@ class TestApplicationBootstrap:
         assert isinstance(scoped.plugin_service, PluginService)
         assert isinstance(scoped.asset_index_service, AssetIndexService)
 
-    def test_for_library_injects_explicit_performance_recorder(self, tmp_path):
+    def test_runtime_for_injects_explicit_performance_recorder(self, tmp_path):
         from AssetsManager.core.performance import PerformanceRecorder
 
         root = tmp_path / "library"
@@ -278,12 +278,12 @@ class TestApplicationBootstrap:
         bootstrap = ApplicationBootstrap(performance_recorder=recorder)
         session = bootstrap.library_service.open_session(root)
 
-        scoped = bootstrap.for_library(session)
+        scoped = bootstrap.runtime_for(session).services
 
         assert scoped.asset_service._performance_recorder is recorder
         assert scoped.asset_service._session_token == session.event_token
 
-    def test_for_library_asset_service_reuses_session_directory_summary_cache(self, tmp_path):
+    def test_runtime_for_asset_service_reuses_session_directory_summary_cache(self, tmp_path):
         from AssetsManager.core.performance import PerformanceRecorder
 
         root = tmp_path / "library"
@@ -293,7 +293,7 @@ class TestApplicationBootstrap:
         recorder = PerformanceRecorder(enabled=True)
         bootstrap = ApplicationBootstrap(performance_recorder=recorder)
         session = bootstrap.library_service.open_session(root)
-        scoped = bootstrap.for_library(session)
+        scoped = bootstrap.runtime_for(session).services
 
         scoped.asset_service.list_directory(root, root)
         scoped.asset_service.list_directory(root, root)
@@ -301,15 +301,15 @@ class TestApplicationBootstrap:
         summaries = [event for event in recorder.recent() if event.name == "directory.summary"]
         assert [event.attributes["cache_hit"] for event in summaries] == [False, True]
 
-    def test_for_library_creates_library_scoped_undo_service(self, tmp_path):
+    def test_runtime_for_creates_library_scoped_undo_service(self, tmp_path):
         first_root = tmp_path / "first"
         second_root = tmp_path / "second"
         first_root.mkdir()
         second_root.mkdir()
 
         bootstrap = ApplicationBootstrap()
-        first = bootstrap.for_library(bootstrap.library_service.open_session(first_root))
-        second = bootstrap.for_library(bootstrap.library_service.open_session(second_root))
+        first = bootstrap.runtime_for(bootstrap.library_service.open_session(first_root)).services
+        second = bootstrap.runtime_for(bootstrap.library_service.open_session(second_root)).services
 
         try:
             assert first.undo_service is not second.undo_service
@@ -328,8 +328,8 @@ class TestApplicationBootstrap:
         bootstrap = ApplicationBootstrap()
         first_session = bootstrap.library_service.open_session(first_root)
         second_session = bootstrap.library_service.open_session(second_root)
-        first = bootstrap.for_library(first_session)
-        second = bootstrap.for_library(second_session)
+        first = bootstrap.runtime_for(first_session).services
+        second = bootstrap.runtime_for(second_session).services
         first.undo_service.record_rename(str(first_root / "a"), str(first_root / "b"))
         second.undo_service.record_rename(str(second_root / "a"), str(second_root / "b"))
 
@@ -353,8 +353,8 @@ class TestApplicationBootstrap:
         bootstrap = ApplicationBootstrap()
         first_session = bootstrap.library_service.open_session(first_root)
         second_session = bootstrap.library_service.open_session(second_root)
-        first = bootstrap.for_library(first_session)
-        second = bootstrap.for_library(second_session)
+        first = bootstrap.runtime_for(first_session).services
+        second = bootstrap.runtime_for(second_session).services
         first.undo_service.record_rename("old-a", "new-a")
         second.undo_service.record_rename("old-b", "new-b")
         notifications = []
@@ -387,8 +387,8 @@ class TestApplicationBootstrap:
         bootstrap = ApplicationBootstrap()
         first_session = bootstrap.library_service.open_session(first_root)
         second_session = bootstrap.library_service.open_session(second_root)
-        first = bootstrap.for_library(first_session)
-        second = bootstrap.for_library(second_session)
+        first = bootstrap.runtime_for(first_session).services
+        second = bootstrap.runtime_for(second_session).services
         notifications = []
         bootstrap.library_service.add_session_close_listener(notifications.append)
 
@@ -407,41 +407,70 @@ class TestApplicationBootstrap:
         assert notifications.count(first_session) == 1
         assert notifications.count(second_session) == 1
 
+    def test_global_close_retains_session_when_runtime_cleanup_fails(
+        self, tmp_path, monkeypatch
+    ):
+        root = tmp_path / "library"
+        root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        session = bootstrap.library_service.open_session(root)
+        runtime = bootstrap.runtime_for(session)
+        cleanup_calls = []
+
+        def flaky_cleanup():
+            cleanup_calls.append("cleanup")
+            if len(cleanup_calls) == 1:
+                raise RuntimeError("undo cleanup failed")
+
+        monkeypatch.setattr(runtime.services.undo_service, "cleanup", flaky_cleanup)
+
+        with pytest.raises(RuntimeError, match="undo cleanup failed"):
+            bootstrap.library_service.close()
+
+        assert bootstrap.library_service.current_session is session
+        assert bootstrap._runtimes[id(session)] is runtime
+        assert session.context.db_conn.execute("SELECT 1").fetchone() == (1,)
+
+        bootstrap.library_service.close()
+
+        assert cleanup_calls == ["cleanup", "cleanup"]
+        assert bootstrap._runtimes == {}
+
     def test_reopening_same_root_gets_fresh_undo_service(self, tmp_path):
         root = tmp_path / "library"
         root.mkdir()
         bootstrap = ApplicationBootstrap()
         old_session = bootstrap.library_service.open_session(root)
-        old = bootstrap.for_library(old_session)
+        old = bootstrap.runtime_for(old_session).services
         old.undo_service.record_rename(str(root / "a"), str(root / "b"))
 
         old_session.close()
         new_session = bootstrap.library_service.open_session(root)
-        new = bootstrap.for_library(new_session)
+        new = bootstrap.runtime_for(new_session).services
 
         assert new_session is not old_session
         assert new.undo_service is not old.undo_service
         assert not new.undo_service.can_undo()
 
-    def test_for_library_binds_provider_to_context_connection(self, tmp_path):
+    def test_runtime_for_binds_provider_to_context_connection(self, tmp_path):
         root = tmp_path / "library"
         root.mkdir()
 
         bootstrap = ApplicationBootstrap()
         session = bootstrap.library_service.open_session(root)
-        scoped = bootstrap.for_library(session)
+        scoped = bootstrap.runtime_for(session).services
 
         assert scoped.metadata_service._connection(root) is session.connection_for(root)
         assert scoped.tag_service.list_tags(root) == []
 
-    def test_for_library_binds_file_operations_to_session(self, tmp_path):
+    def test_runtime_for_binds_file_operations_to_session(self, tmp_path):
         root = tmp_path / "library"
         root.mkdir()
 
         bootstrap = ApplicationBootstrap()
         session = bootstrap.library_service.open_session(root)
 
-        assert bootstrap.for_library(session).file_operation_service.session is session
+        assert bootstrap.runtime_for(session).services.file_operation_service.session is session
 
     def test_library_session_delegates_context_resources(self, tmp_path):
         root = tmp_path / "library"
@@ -460,7 +489,7 @@ class TestApplicationBootstrap:
         assert session.thumb_dir_str == context.thumb_dir_str
         assert session.connection_for(root) is context.db_conn
 
-    def test_for_library_accepts_library_session(self, tmp_path):
+    def test_runtime_for_accepts_library_session(self, tmp_path):
         root = tmp_path / "library"
         other = tmp_path / "other"
         root.mkdir()
@@ -468,14 +497,14 @@ class TestApplicationBootstrap:
 
         bootstrap = ApplicationBootstrap()
         session = bootstrap.library_service.open_session(root)
-        scoped = bootstrap.for_library(session)
+        scoped = bootstrap.runtime_for(session).services
 
         assert scoped.session is session
         assert scoped.metadata_service._connection(root) is session.connection_for(root)
         with pytest.raises(ValueError):
             scoped.metadata_service._connection(other)
 
-    def test_for_library_rejects_closed_canonical_session(self, tmp_path):
+    def test_runtime_for_rejects_closed_canonical_session(self, tmp_path):
         root = tmp_path / "library"
         root.mkdir()
         bootstrap = ApplicationBootstrap()
@@ -484,9 +513,9 @@ class TestApplicationBootstrap:
         session.close()
 
         with pytest.raises(ValueError, match="live canonical"):
-            bootstrap.for_library(session)
+            bootstrap.runtime_for(session).services
 
-    def test_for_library_rejects_stale_session_after_reopen(self, tmp_path):
+    def test_runtime_for_rejects_stale_session_after_reopen(self, tmp_path):
         root = tmp_path / "library"
         root.mkdir()
         bootstrap = ApplicationBootstrap()
@@ -495,10 +524,10 @@ class TestApplicationBootstrap:
         canonical = bootstrap.library_service.open_session(root)
 
         with pytest.raises(ValueError, match="live canonical"):
-            bootstrap.for_library(stale)
-        assert bootstrap.for_library(canonical).session is canonical
+            bootstrap.runtime_for(stale).services
+        assert bootstrap.runtime_for(canonical).services.session is canonical
 
-    def test_for_library_rejects_reconstructed_session(self, tmp_path):
+    def test_runtime_for_rejects_reconstructed_session(self, tmp_path):
         root = tmp_path / "library"
         root.mkdir()
         bootstrap = ApplicationBootstrap()
@@ -506,38 +535,38 @@ class TestApplicationBootstrap:
         reconstructed = LibrarySession.from_context(canonical.context)
 
         with pytest.raises(ValueError, match="live canonical"):
-            bootstrap.for_library(reconstructed)
+            bootstrap.runtime_for(reconstructed).services
 
-    def test_for_library_rejects_session_from_another_service(self, tmp_path):
+    def test_runtime_for_rejects_session_from_another_service(self, tmp_path):
         root = tmp_path / "library"
         root.mkdir()
         bootstrap = ApplicationBootstrap()
         foreign = LibraryService().open_session(root)
 
         with pytest.raises(ValueError, match="live canonical"):
-            bootstrap.for_library(foreign)
+            bootstrap.runtime_for(foreign).services
 
-    def test_for_library_accepts_exact_live_canonical_session(self, tmp_path):
+    def test_runtime_for_accepts_exact_live_canonical_session(self, tmp_path):
         root = tmp_path / "library"
         root.mkdir()
         bootstrap = ApplicationBootstrap()
         canonical = bootstrap.library_service.open_session(root)
 
-        assert bootstrap.for_library(canonical).session is canonical
+        assert bootstrap.runtime_for(canonical).services.session is canonical
 
-    def test_repeated_for_library_uses_the_exact_canonical_session(self, tmp_path):
+    def test_repeated_runtime_for_uses_the_exact_canonical_session(self, tmp_path):
         root = tmp_path / "library"
         root.mkdir()
         bootstrap = ApplicationBootstrap()
         canonical = bootstrap.library_service.open_session(root)
 
-        first = bootstrap.for_library(canonical)
-        second = bootstrap.for_library(canonical)
+        first = bootstrap.runtime_for(canonical).services
+        second = bootstrap.runtime_for(canonical).services
 
         assert first.session is canonical
         assert second.session is canonical
 
-    def test_for_library_preserves_session_identity_and_resources(self, tmp_path, monkeypatch):
+    def test_runtime_for_preserves_session_identity_and_resources(self, tmp_path, monkeypatch):
         root = tmp_path / "library"
         other = tmp_path / "other"
         root.mkdir()
@@ -547,10 +576,10 @@ class TestApplicationBootstrap:
         session = bootstrap.library_service.open_session(root)
 
         def reject_session_reconstruction(cls, context):
-            raise AssertionError("for_library must not reconstruct a LibrarySession")
+            raise AssertionError("runtime_for must not reconstruct a LibrarySession")
 
         monkeypatch.setattr(type(session), "from_context", classmethod(reject_session_reconstruction))
-        scoped = bootstrap.for_library(session)
+        scoped = bootstrap.runtime_for(session).services
 
         assert scoped.session is session
         assert scoped.file_operation_service.session is session

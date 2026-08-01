@@ -17,7 +17,7 @@
     "danger": "#f06060",
     "favorite": "#f0d060",
     "recent": "#70b8e0",
-    "on_accent": "#ffffff",
+    "on_accent": "#000000",
     "hover_overlay": "#ffffff",
     "selected_overlay": "#5b7cf0",
     "border_focus": "#5b7cf0",

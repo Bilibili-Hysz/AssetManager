@@ -28,6 +28,18 @@ def test_file_list_ignores_foreign_session_file_events(monkeypatch):
         app.processEvents()
 
 
+def test_file_list_debounces_filesystem_refreshes():
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        assert panel._file_op_timer.isSingleShot()
+        assert panel._file_op_timer.interval() == 500
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
 def test_file_list_shutdown_ignores_filesystem_watcher(monkeypatch):
     app = QApplication.instance() or QApplication([])
     panel = QWidgetFileListPanel()

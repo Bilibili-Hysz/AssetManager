@@ -8,7 +8,7 @@ import { useTheme } from '../hooks/useTheme';
 type LoginView = 'login' | 'register' | 'key';
 
 export default function LoginPage() {
-  const { serverInfo, authMode, authApi, setToken, refreshMe, isLoading } = useAuth();
+  const { serverInfo, authMode, authApi, refreshMe, isLoading } = useAuth();
   const { t } = useI18n();
   useTheme();
   const navigate = useNavigate();
@@ -69,15 +69,13 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      let res;
       if (showPasswordMode && !loginUsername) {
         // Password-only mode
-        res = await authApi.loginWithPassword(loginPassword);
-        setToken(res.token, res.user);
+        await authApi.loginWithPassword(loginPassword);
         if (!await refreshMe()) throw new Error(t('auth.login_failed'));
       } else {
-        res = await authApi.login(loginUsername, loginPassword);
-        setToken(res.token, res.user);
+        await authApi.login(loginUsername, loginPassword);
+        if (!await refreshMe()) throw new Error(t('auth.login_failed'));
       }
       navigate('/');
     } catch (err) {
@@ -92,8 +90,7 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const res = await authApi.verifyKey(accessKey.trim());
-      setToken(res.token);
+      await authApi.verifyKey(accessKey.trim());
       if (!await refreshMe()) throw new Error(t('auth.invalid_key'));
       navigate('/');
     } catch (err) {
@@ -134,12 +131,12 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      const res = await authApi.register(
+      await authApi.register(
         regUsername, regPassword,
         regEmail || undefined,
         regInvite || undefined,
       );
-      setToken(res.token, res.user);
+      if (!await refreshMe()) throw new Error(t('auth.login_failed'));
       navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
@@ -149,7 +146,6 @@ export default function LoginPage() {
   };
 
   const handleGuest = () => {
-    setToken(null);
     navigate('/');
   };
 

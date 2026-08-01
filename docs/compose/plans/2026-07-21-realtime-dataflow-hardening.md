@@ -1,5 +1,11 @@
 # Desktop–WebUI Realtime Dataflow Hardening Implementation Plan
 
+> [!NOTE]
+> **Scope status:** Focused hardening tasks and the parent recalibrated
+> Desktop–LAN–WebUI scope are delivered for their named acceptance boundaries.
+> Do not reopen this historical checkbox plan; future work belongs to the
+> repository baseline and DeepSeek roadmap.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use compose:subagent (recommended) or compose:execute to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Close the audited realtime correctness, authorization, shutdown, and failed-socket lifecycle gaps before continuing unrelated implementation-plan work.

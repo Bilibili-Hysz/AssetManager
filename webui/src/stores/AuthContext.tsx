@@ -2,7 +2,9 @@ import { createContext, useContext, useState, useCallback, useEffect, useMemo, u
 import { createApiClient, type ApiClient } from '../api/client';
 import { createAuthApi, type AuthApi } from '../api/auth';
 import { createSystemApi, type SystemApi } from '../api/system';
-import type { Capabilities, ServerInfo, SessionPrincipal, User } from '../types/api';
+import type { Capabilities, ServerInfo, SessionPrincipal } from '../types/api';
+
+const THUMBNAIL_CACHE_STORAGE_KEY = 'lan_thumb_cache';
 
 const emptyCapabilities: Capabilities = {
   browse: false, preview: false, download: false, upload: false,
@@ -14,14 +16,18 @@ const guestPrincipal: SessionPrincipal = {
   capabilities: emptyCapabilities,
 };
 
+function principalIdentity(principal: SessionPrincipal): string {
+  return `${principal.kind}:${principal.authenticated}:${principal.user_profile?.id ?? ''}:${principal.user_profile?.username ?? principal.display_name}`;
+}
+
 export interface AuthState {
-  token: string | null;
-  user: User | null;
+  user: SessionPrincipal['user_profile'] | null;
   role: 'admin' | 'user' | 'guest' | null;
   permissions: string[];
   principal: SessionPrincipal;
   capabilities: Capabilities;
   isAuthenticated: boolean;
+  identityGeneration: number;
   isLoading: boolean;
   authMode: ServerInfo['auth_mode'];
   serverInfo: ServerInfo | null;
@@ -31,7 +37,6 @@ export interface AuthContextValue extends AuthState {
   api: ApiClient;
   authApi: AuthApi;
   systemApi: SystemApi;
-  setToken: (token: string | null, user?: User | null) => void;
   logout: () => void;
   refreshMe: () => Promise<boolean>;
 }
@@ -39,7 +44,6 @@ export interface AuthContextValue extends AuthState {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setTokenState] = useState<string | null>(null);
   const [role, setRole] = useState<AuthState['role']>(null);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [principal, setPrincipal] = useState<SessionPrincipal>(guestPrincipal);
@@ -47,19 +51,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authMode, setAuthMode] = useState<ServerInfo['auth_mode']>('none');
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
   const generationRef = useRef(0);
+  const [identityGeneration, setIdentityGeneration] = useState(0);
+  const principalRef = useRef(guestPrincipal);
   const inFlightMeRef = useRef<{ generation: number; promise: Promise<boolean> } | null>(null);
 
-  const clearGuest = useCallback(() => {
-    setTokenState(null);
-    setPrincipal(guestPrincipal);
-    setRole('guest');
+  const applyPrincipal = useCallback((nextPrincipal: SessionPrincipal, forceGeneration = false) => {
+    if (forceGeneration || principalIdentity(principalRef.current) !== principalIdentity(nextPrincipal)) {
+      setIdentityGeneration(value => value + 1);
+    }
+    principalRef.current = nextPrincipal;
+    setPrincipal(nextPrincipal);
+    setRole(nextPrincipal.role);
     setPermissions([]);
+  }, []);
+
+  const clearGuest = useCallback((forceGeneration = false) => {
+    applyPrincipal(guestPrincipal, forceGeneration);
+    setRole('guest');
+  }, [applyPrincipal]);
+
+  const clearIdentityStorage = useCallback(() => {
+    try {
+      sessionStorage.removeItem(THUMBNAIL_CACHE_STORAGE_KEY);
+    } catch { /* ignore storage failures */ }
   }, []);
 
   const handleUnauthorized = useCallback(() => {
     generationRef.current += 1;
-    clearGuest();
-  }, [clearGuest]);
+    inFlightMeRef.current = null;
+    clearIdentityStorage();
+    clearGuest(true);
+  }, [clearGuest, clearIdentityStorage]);
 
   const api = useMemo(
     () => createApiClient({ onUnauthorized: handleUnauthorized }),
@@ -79,9 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         display_name: res.user.username, capabilities: emptyCapabilities,
         user_profile: res.user,
       } : guestPrincipal);
-      setPrincipal(nextPrincipal);
-      setRole(nextPrincipal.role);
-      setPermissions([]);
+      applyPrincipal(nextPrincipal);
       return true;
     }).catch(() => {
       if (generation !== generationRef.current) return false;
@@ -92,29 +112,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     inFlightMeRef.current = { generation, promise };
     return promise;
-  }, [authApi, clearGuest]);
-
-  const setToken = useCallback((newToken: string | null, newUser?: User | null) => {
-    const generation = ++generationRef.current;
-    setTokenState(newToken);
-    if (newToken) {
-      setRole('guest');
-      setPrincipal(newUser ? {
-        kind: 'user', authenticated: true, role: 'user',
-        display_name: newUser.username, capabilities: emptyCapabilities,
-        user_profile: newUser,
-      } : { ...guestPrincipal, authenticated: true, kind: 'password', role: 'user', display_name: 'Authenticated' });
-      setPermissions([]);
-      void refreshMeForGeneration(generation);
-    } else {
-      clearGuest();
-    }
-  }, [clearGuest, refreshMeForGeneration]);
+  }, [applyPrincipal, authApi, clearGuest]);
 
   const logout = useCallback(() => {
     authApi.logout().catch(() => {});
-    setToken(null);
-  }, [authApi, setToken]);
+    generationRef.current += 1;
+    inFlightMeRef.current = null;
+    clearIdentityStorage();
+    clearGuest(true);
+  }, [authApi, clearGuest, clearIdentityStorage]);
 
   const refreshMe = useCallback(async () => {
     const current = inFlightMeRef.current;
@@ -132,9 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (!info.auth_enabled) {
           const nextPrincipal = info.principal ?? guestPrincipal;
-          setPrincipal(nextPrincipal);
-          setRole(nextPrincipal.role);
-          setPermissions([]);
+          applyPrincipal(nextPrincipal);
           setIsLoading(false);
           return;
         }
@@ -152,20 +156,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshMe, systemApi]);
 
   const value: AuthContextValue = {
-    token,
     user: principal.user_profile ?? null,
     role,
     permissions,
     principal,
     capabilities: principal.capabilities,
     isAuthenticated: principal.authenticated,
+    identityGeneration,
     isLoading,
     authMode,
     serverInfo,
     api,
     authApi,
     systemApi,
-    setToken,
     logout,
     refreshMe,
   };

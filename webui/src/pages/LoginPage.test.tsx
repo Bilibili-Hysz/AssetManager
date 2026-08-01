@@ -18,7 +18,6 @@ vi.mock('../hooks/useAuth', () => ({
     serverInfo: { auth_enabled: true, share_name: 'Library' },
     authMode,
     authApi,
-    setToken: vi.fn(),
     refreshMe,
     isLoading: false,
   }),
@@ -43,7 +42,7 @@ describe('LoginPage registration policy', () => {
 
   it('does not navigate after password login when the session refresh fails', async () => {
     authMode = 'password';
-    authApi.loginWithPassword.mockResolvedValue({ token: 'login-token' });
+    authApi.loginWithPassword.mockResolvedValue({ ok: true });
     refreshMe.mockResolvedValue(false);
     const user = userEvent.setup();
 
@@ -57,7 +56,7 @@ describe('LoginPage registration policy', () => {
 
   it('does not navigate after key login when the session refresh fails', async () => {
     authMode = 'key';
-    authApi.verifyKey.mockResolvedValue({ token: 'key-token' });
+    authApi.verifyKey.mockResolvedValue({ ok: true });
     refreshMe.mockResolvedValue(false);
     const user = userEvent.setup();
 

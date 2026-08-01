@@ -6,17 +6,20 @@ sharded per library — no cross-library tag mixing.
 """
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer, QSize
 from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QLineEdit, QPushButton, QHBoxLayout,
     QMenu, QInputDialog, QMessageBox,
 )
-from AssetsManager.core.ui_scale import scaled_px
+from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+from AssetsManager.core.color_utils import alpha
+from AssetsManager.core import themes, icons
 from AssetsManager.panels.base import PanelContent
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.controllers.tag_tree_controller import TagTreeController
 from AssetsManager import i18n
 tr = i18n.tr
+_ICON_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
 class TagTreePanel(PanelContent):
@@ -32,7 +35,11 @@ class TagTreePanel(PanelContent):
 
         self._tree = QTreeWidget()
         self._tree.setHeaderHidden(True)
-        self._tree.setIndentation(12)
+        self._tree.setIndentation(scaled_px(16))
+        self._tree.setUniformRowHeights(True)
+        self._tree.setAlternatingRowColors(False)
+        self._tree.setIconSize(QSize(scaled_px(18), scaled_px(18)))
+        self._tree.setAllColumnsShowFocus(False)
         self._tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._tree.customContextMenuRequested.connect(self._ctx_menu)
         self._tree.itemClicked.connect(self._on_click)
@@ -45,34 +52,116 @@ class TagTreePanel(PanelContent):
         bar = QHBoxLayout()
         bar.addWidget(self._search)
         add_btn = QPushButton(tr("tagtree.new_tag"))
+        add_btn.setIcon(icons.icon("tag", color=themes.get()["body"], size=scaled_px(16)))
+        add_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
+        add_btn.setAccessibleName(tr("tagtree.new_tag"))
         add_btn.clicked.connect(self._add_tag)
-        add_btn.setMaximumWidth(scaled_px(50))
+        add_btn.setMaximumWidth(scaled_px(72))
         bar.addWidget(add_btn)
+        self._add_btn = add_btn
+        self._apply_tree_style()
         self.content_layout.addLayout(bar)
 
         # Subscribe to domain events through a Qt bridge for UI-safe delivery.
         from AssetsManager.domain.events import TagCatalogChanged
         self._connect_domain_event(TagCatalogChanged, self._on_domain_tags_changed)
         self._connect_bus(bus().directory_changed, self._on_directory_changed)
-        self._connect_bus(bus().theme_changed, lambda _: self._populate())
-        self._connect_bus(bus().language_changed, lambda _: self._populate())
-        self._connect_bus(bus().ui_scale_changed, lambda _: self._populate())
+        self._connect_bus(bus().theme_changed, self._on_visual_theme_changed)
+        self._connect_bus(bus().language_changed, self._on_language_changed)
+        self._connect_bus(bus().ui_scale_changed, self._on_visual_theme_changed)
         self._populate()
+
+    def _apply_tree_style(self):
+        """Apply the compact tree presentation shared by the desktop panels."""
+        t = themes.get()
+        self._tree.setIconSize(QSize(scaled_px(18), scaled_px(18)))
+        self._tree.setStyleSheet(
+            f"QTreeWidget {{"
+            f"  background: transparent; color: {t['body']}; border: none; outline: none; "
+            f"  font-size: {scaled_pt(11)}px; "
+            f"}}"
+            f"QTreeWidget::item {{"
+            f"  padding: {scaled_px(4)}px {scaled_px(6)}px; "
+            f"  border: none; border-radius: {scaled_px(5)}px; "
+            f"}}"
+            f"QTreeWidget::item:hover {{"
+            f"  background: {alpha(t['accent'], 0.12)}; "
+            f"}}"
+            f"QTreeWidget::item:selected {{"
+            f"  background: {alpha(t['accent'], 0.28)}; color: {t['heading']}; "
+            f"}}"
+            f"QTreeWidget::item:disabled {{ color: {t['muted']}; }}")
+        self._add_btn.setIcon(icons.icon("tag", color=t["body"], size=scaled_px(16)))
+        self._add_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
+
+    @staticmethod
+    def _set_item_icon(item: QTreeWidgetItem, icon_name: str, color: str | None = None):
+        normalized = icons.normalize(icon_name, fallback="file")
+        item.setData(0, _ICON_ROLE, normalized)
+        item.setIcon(0, icons.icon(
+            normalized,
+            color=color or themes.get()["body"],
+            size=scaled_px(18),
+        ))
+
+    def _refresh_item_icons(self):
+        root = self._tree.invisibleRootItem()
+        t = themes.get()
+        stack = [root]
+        while stack:
+            parent = stack.pop()
+            for i in range(parent.childCount()):
+                item = parent.child(i)
+                if item is None:
+                    continue
+                icon_name = item.data(0, _ICON_ROLE)
+                if icon_name:
+                    item.setIcon(0, icons.icon(
+                        str(icon_name), color=t["body"], size=scaled_px(18)
+                    ))
+                stack.append(item)
+
+    def _on_visual_theme_changed(self, _value=None):
+        """Retint the existing tree; theme/scale changes must not refetch tags."""
+        self._apply_tree_style()
+        self._refresh_item_icons()
+
+    def _on_language_changed(self, _value=None):
+        self._search.setPlaceholderText(tr("tagtree.filter_placeholder"))
+        self._add_btn.setText(tr("tagtree.new_tag"))
+        self._add_btn.setAccessibleName(tr("tagtree.new_tag"))
+        self._populate()
+
+    def _begin_tree_update_batch(self):
+        self._tree.setUpdatesEnabled(False)
+        if getattr(self, "_tree_update_restore_pending", False):
+            return
+        self._tree_update_restore_pending = True
+        QTimer.singleShot(0, self._finish_tree_update_batch)
+
+    def _finish_tree_update_batch(self):
+        self._tree_update_restore_pending = False
+        self._tree.setUpdatesEnabled(True)
+        self._tree.viewport().update()
+        self._tree.update()
 
     def _populate(self):
         if not self._controller:
             return
+        self._begin_tree_update_batch()
         self._tree.clear()
         tags_with_files = self._controller.get_tag_with_files()
         if not tags_with_files:
             item = QTreeWidgetItem([tr("tagtree.no_tags")])
             item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self._set_item_icon(item, "tag", themes.get()["muted"])
             self._tree.addTopLevelItem(item)
             return
 
         if self._active_tag_filter:
             show_all = QTreeWidgetItem([tr("tagtree.show_all")])
             show_all.setData(0, Qt.ItemDataRole.UserRole, "__clear_filter__")
+            self._set_item_icon(show_all, "arrow_left")
             show_all.setForeground(0, Qt.GlobalColor.gray)
             self._tree.addTopLevelItem(show_all)
 
@@ -80,13 +169,15 @@ class TagTreePanel(PanelContent):
             tag = entry["tag"]
             count = entry["count"]
             files = entry["files"]
-            item = QTreeWidgetItem([f"🏷 {tag}  ({count})"])
+            item = QTreeWidgetItem([f"{tag}  ({count})"])
             item.setData(0, Qt.ItemDataRole.UserRole, tag)
+            self._set_item_icon(item, "tag")
             self._tree.addTopLevelItem(item)
             for f in files:
                 name = Path(f).name
-                child = QTreeWidgetItem([f"  {name}"])
+                child = QTreeWidgetItem([name])
                 child.setData(0, Qt.ItemDataRole.UserRole, f)
+                self._set_item_icon(child, "file")
                 child.setToolTip(0, f)
                 item.addChild(child)
 
@@ -157,6 +248,7 @@ class TagTreePanel(PanelContent):
             self._controller.remove_tag_from_file(filepath, tag)
 
     def _on_search(self, text):
+        self._begin_tree_update_batch()
         search = text.lower()
         for i in range(self._tree.topLevelItemCount()):
             item = self._tree.topLevelItem(i)

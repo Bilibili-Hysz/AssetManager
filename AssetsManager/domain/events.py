@@ -25,6 +25,41 @@ class LibraryOpened(DomainEvent):
     session_token: str = ""
 
 
+@dataclass(frozen=True)
+class ShareChanged(DomainEvent):
+    """Share links changed within a specific library session."""
+    library_root: str = ""
+    session_token: str = ""
+
+
+@dataclass(frozen=True)
+class UserChanged(DomainEvent):
+    """Users changed within a specific library session."""
+    library_root: str = ""
+    session_token: str = ""
+
+
+@dataclass(frozen=True)
+class InviteChanged(DomainEvent):
+    """Invite codes changed within a specific library session."""
+    library_root: str = ""
+    session_token: str = ""
+
+
+@dataclass(frozen=True)
+class ActivityChanged(DomainEvent):
+    """Activity log entries changed within a specific library session."""
+    library_root: str = ""
+    session_token: str = ""
+
+
+@dataclass(frozen=True)
+class PresenceChanged(DomainEvent):
+    """Online presence changed within a specific library session."""
+    library_root: str = ""
+    session_token: str = ""
+
+
 # ── File events ──────────────────────────────────────────────────
 
 @dataclass(frozen=True)

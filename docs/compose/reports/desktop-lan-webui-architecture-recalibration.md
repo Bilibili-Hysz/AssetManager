@@ -6,7 +6,8 @@ specs:
 plans:
   - docs/compose/plans/2026-07-21-desktop-lan-webui-architecture-recalibration.md
 branch: master
-commits: uncommitted-workspace
+commits: 77492fe2b3ee9e4bb26e17b982d421993d545136, 945fd1e51a85ce2384f277c1bb9e89396b8fbe7d
+evidence_state: tested against the then-current working tree; product baseline captured separately
 ---
 
 # Desktop–LAN–WebUI Architecture Recalibration — Final Report
@@ -104,8 +105,8 @@ the Linux execution closes that platform-specific gate.
 
 | Gate | Result |
 |---|---|
-| Python full suite | `1568 passed, 1 skipped`; skip is the Windows directory-symlink case |
-| WebUI full suite | `37 files / 286 tests passed` |
+| Python full suite | `1590 passed, 1 skipped`; skip is the Windows directory-symlink case |
+| WebUI full suite | `37 files / 289 tests passed` |
 | WebUI typecheck | Passed |
 | WebUI production build | Passed; `1632 modules transformed` |
 | Packaging gates | `8 passed` |

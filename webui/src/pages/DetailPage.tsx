@@ -14,7 +14,7 @@ export default function DetailPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const path = searchParams.get('path') || '';
-  const { api } = useAuth();
+  const { api, identityGeneration } = useAuth();
   const metaApi = useMemo(() => createMetadataApi(api), [api]);
   const { t } = useI18n();
   useTheme();
@@ -24,6 +24,7 @@ export default function DetailPage() {
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const detailGeneration = useRef(0);
   const detailAbort = useRef<AbortController | null>(null);
+  const identityGenerationRef = useRef(identityGeneration);
 
   const refreshDetail = useCallback(() => {
     const generation = ++detailGeneration.current;
@@ -43,6 +44,15 @@ export default function DetailPage() {
     return () => controller.abort();
   }, [path, metaApi]);
   useEffect(() => refreshDetail(), [refreshDetail]);
+  useEffect(() => {
+    if (identityGenerationRef.current === identityGeneration) return;
+    identityGenerationRef.current = identityGeneration;
+    detailGeneration.current += 1;
+    detailAbort.current?.abort();
+    setData(null);
+    setLoading(false);
+    void refreshDetail();
+  }, [identityGeneration, refreshDetail]);
   useInvalidation(['project_detail', 'metadata', 'tags'], event => {
     if (!event || event.paths.some(invalidatedPath => path === invalidatedPath || path.startsWith(`${invalidatedPath}/`) || invalidatedPath.startsWith(`${path}/`))) void refreshDetail();
   });

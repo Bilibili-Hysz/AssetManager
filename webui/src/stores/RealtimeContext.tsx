@@ -4,7 +4,7 @@ import { WebSocketTransportHost, type WebSocketStatus } from '../hooks/useWebSoc
 
 export type ProjectionDomain =
   | 'files' | 'tree' | 'home' | 'project_detail' | 'metadata'
-  | 'tags' | 'shares' | 'users' | 'stats';
+  | 'tags' | 'shares' | 'users' | 'activity' | 'online_users' | 'stats';
 
 export interface RuntimeCursor { epoch: string; revision: number }
 export interface InvalidationEvent extends RuntimeCursor {
@@ -23,7 +23,7 @@ export interface RealtimeContextValue extends RuntimeCursor {
 }
 
 const RealtimeContext = createContext<RealtimeContextValue | null>(null);
-type Registration = { domains: Set<ProjectionDomain>; callback: (event: InvalidationEvent | null) => void };
+type Registration = { identity: string; domains: Set<ProjectionDomain>; callback: (event: InvalidationEvent | null) => void };
 type PendingRecovery = { generation: number; promise: Promise<void> };
 type RecoveryIntent = {
   generation: number;
@@ -33,7 +33,7 @@ type RecoveryIntent = {
   retried: boolean;
 };
 const projectionDomains = new Set<ProjectionDomain>([
-  'files', 'tree', 'home', 'project_detail', 'metadata', 'tags', 'shares', 'users', 'stats',
+  'files', 'tree', 'home', 'project_detail', 'metadata', 'tags', 'shares', 'users', 'activity', 'online_users', 'stats',
 ]);
 
 function isCursor(value: unknown): value is RuntimeCursor {
@@ -54,9 +54,9 @@ function asEvent(data: Record<string, unknown>): InvalidationEvent | null {
 }
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {
-  const { capabilities, principal } = useAuthContext();
+  const { capabilities, principal, identityGeneration } = useAuthContext();
   const enabled = capabilities.realtime;
-  const identity = `${principal.kind}:${principal.authenticated}:${principal.user_profile?.id ?? ''}:${principal.user_profile?.username ?? principal.display_name}`;
+  const identity = `${identityGeneration}:${principal.kind}:${principal.authenticated}:${principal.user_profile?.id ?? ''}:${principal.user_profile?.username ?? principal.display_name}`;
   const [cursor, setCursor] = useState<RuntimeCursor>({ epoch: '', revision: 0 });
   const [status, setStatus] = useState<WebSocketStatus>('disconnected');
   const cursorRef = useRef(cursor);
@@ -66,10 +66,15 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const recoveryRef = useRef<PendingRecovery | null>(null);
   const recoveryIntentRef = useRef<RecoveryIntent | null>(null);
   const mountedRef = useRef(true);
+  const identityRef = useRef(identity);
+  const activeIdentityRef = useRef(identity);
+  const initialReadyRecoveryRef = useRef(false);
+  activeIdentityRef.current = identity;
   cursorRef.current = cursor;
 
   const notify = useCallback((event: InvalidationEvent | null) => {
     for (const registration of registrationsRef.current.values()) {
+      if (registration.identity !== activeIdentityRef.current) continue;
       if (event === null || event.domains.some(domain => registration.domains.has(domain))) {
         try {
           registration.callback(event);
@@ -142,12 +147,15 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       if (!isCursor(data)) return;
       const current = cursorRef.current;
       if (current.epoch === data.epoch && data.revision <= current.revision) return;
+      const shouldRecoverAfterIdentityReset = initialReadyRecoveryRef.current;
+      initialReadyRecoveryRef.current = false;
       const epochChanged = Boolean(current.epoch) && current.epoch !== data.epoch;
       recoveryGenerationRef.current += 1;
       recoveryIntentRef.current = null;
       cursorRef.current = data;
       setCursor(data);
-      if (epochChanged || (current.epoch === data.epoch && data.revision > current.revision)) void recover(true);
+      if (shouldRecoverAfterIdentityReset || epochChanged
+        || (current.epoch === data.epoch && data.revision > current.revision)) void recover(true);
       return;
     }
     if (type !== 'projection_invalidated') return;
@@ -180,6 +188,17 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   }, [notify, recover]);
 
   useEffect(() => {
+    if (identityRef.current === identity) return;
+    identityRef.current = identity;
+    recoveryGenerationRef.current += 1;
+    recoveryRef.current = null;
+    recoveryIntentRef.current = null;
+    initialReadyRecoveryRef.current = true;
+    cursorRef.current = { epoch: '', revision: 0 };
+    setCursor({ epoch: '', revision: 0 });
+  }, [identity]);
+
+  useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
@@ -189,7 +208,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
   const registerInvalidation = useCallback((domains: readonly ProjectionDomain[], callback: (event: InvalidationEvent | null) => void) => {
     const id = nextRegistrationRef.current++;
-    registrationsRef.current.set(id, { domains: new Set(domains), callback });
+    registrationsRef.current.set(id, { identity: activeIdentityRef.current, domains: new Set(domains), callback });
     return () => registrationsRef.current.delete(id);
   }, []);
 

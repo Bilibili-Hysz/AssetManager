@@ -1,7 +1,7 @@
 """Shared tag chip widget creation."""
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton
-from PySide6.QtCore import Qt
-from AssetsManager.core import themes
+from PySide6.QtCore import Qt, QSize
+from AssetsManager.core import icons, themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.tag_library import get_library
 
@@ -29,7 +29,10 @@ def create_tag_chip(tag: str, on_remove=None, parent=None) -> QWidget:
     layout.addWidget(name)
 
     if on_remove:
-        close_btn = QPushButton("×")
+        close_btn = QPushButton()
+        close_btn.setIcon(icons.icon("close", color=t["heading"], size=scaled_px(12)))
+        close_btn.setIconSize(QSize(scaled_px(12), scaled_px(12)))
+        close_btn.setAccessibleName(f"Remove tag: {tag}")
         close_btn.setFixedSize(scaled_px(14), scaled_px(14))
         close_btn.setFlat(True)
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)

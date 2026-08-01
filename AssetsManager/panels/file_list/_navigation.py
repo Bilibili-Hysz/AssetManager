@@ -15,6 +15,8 @@ from AssetsManager.panels.file_list._model import FileSystemModel
 
 _log = logging.getLogger(__name__)
 
+_FS_REFRESH_DEBOUNCE_MS = 500
+
 
 class NavigationMixin:
     """Provides navigate_to, back/forward/up, breadcrumb, and FS watcher."""
@@ -48,6 +50,11 @@ class NavigationMixin:
     def _start_fs_watcher(self):
         self._fs_watcher = QFileSystemWatcher(cast(QWidget, self))
         self._fs_watcher.directoryChanged.connect(self._on_fs_changed)
+        self._fs_refresh_timer = QTimer(cast(QWidget, self))
+        self._fs_refresh_timer.setSingleShot(True)
+        self._fs_refresh_timer.setInterval(_FS_REFRESH_DEBOUNCE_MS)
+        self._fs_refresh_timer.timeout.connect(self._flush_fs_changed)
+        self._pending_fs_changed_path: str | None = None
 
     def _watch_current_dir(self):
         if hasattr(self, '_fs_watcher') and self._current:
@@ -56,12 +63,46 @@ class NavigationMixin:
                 self._fs_watcher.removePaths(dirs)
             self._fs_watcher.addPath(str(self._current))
 
-    def _on_fs_changed(self, _path):
+    def _on_fs_changed(self, path):
+        """Coalesce bursty watcher notifications into one model refresh."""
         if self._model._is_shutdown:
             return
-        self._first_image_cache.clear()
-        if hasattr(self, '_loader'):
-            self._loader.clear_cache()
+        domain_timer = getattr(self, "_file_op_timer", None)
+        if domain_timer is not None and domain_timer.isActive():
+            # A scoped domain event already owns the pending refresh. The
+            # watcher will observe the same filesystem mutation shortly after
+            # the event and must not schedule a second full model reset.
+            return
+        self._pending_fs_changed_path = str(path)
+        timer = getattr(self, "_fs_refresh_timer", None)
+        if timer is not None:
+            timer.start(_FS_REFRESH_DEBOUNCE_MS)
+            return
+        self._flush_fs_changed()
+
+    def _flush_fs_changed(self):
+        """Refresh only the directory that is still being displayed.
+
+        Keep the thumbnail loader's memory cache warm across a filesystem
+        refresh.  The model scan and thumbnail delivery path will replace
+        changed entries, while unchanged cards can be painted immediately.
+        """
+        if self._model._is_shutdown:
+            return
+
+        changed_path = self._pending_fs_changed_path
+        self._pending_fs_changed_path = None
+        if not changed_path or not getattr(self, "_current", None):
+            return
+
+        changed_key = os.path.normcase(os.path.abspath(changed_path))
+        current_key = os.path.normcase(os.path.abspath(str(self._current)))
+        if changed_key != current_key:
+            return
+
+        self._first_image_cache.pop(str(self._current), None)
+        if hasattr(self, "_loader"):
+            self._loader.clear_queue()
         self._post_refresh()
         self._update_status()
 

@@ -1,7 +1,7 @@
 """Tag editor dialog — manage tags for the current file with suggestions."""
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QThread
+from PySide6.QtCore import Qt, Signal, QThread, QSize
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLineEdit, QGroupBox, QListWidget, QListWidgetItem,
     QMessageBox, QWidget, QProgressBar,
@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 from AssetsManager.core.protocols import TagStoreProtocol
 from AssetsManager.core.tag_library import get_library
 from AssetsManager.core.ui_scale import scaled_px
+from AssetsManager.core import icons, themes
 from AssetsManager.widgets.tag_chip import create_tag_chip
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager import i18n
@@ -51,6 +52,7 @@ class TagEditorDialog(TabbedDialog):
         add_row = QHBoxLayout()
         self._add_input = QLineEdit()
         self._add_input.setPlaceholderText(tr("tageditor.placeholder"))
+        self._add_input.setAccessibleName(tr("tageditor.placeholder"))
         self._add_input.returnPressed.connect(self._add_current_tag)
         add_row.addWidget(self._add_input)
         self._add_btn = self.make_secondary_btn(tr("tageditor.add"), self._add_current_tag)
@@ -68,12 +70,14 @@ class TagEditorDialog(TabbedDialog):
 
         self._sug_filter = QLineEdit()
         self._sug_filter.setPlaceholderText(tr("tageditor.filter"))
+        self._sug_filter.setAccessibleName(tr("tageditor.filter"))
         self._sug_filter.setClearButtonEnabled(True)
         self._sug_filter.setToolTip(tr("tageditor.filter_tooltip"))
         self._sug_filter.textChanged.connect(self._refresh_suggestions)
         sug_layout.addWidget(self._sug_filter)
 
         self._sug_list = QListWidget()
+        self._sug_list.setAccessibleName(tr("tageditor.all_tags"))
         self._sug_list.setMaximumHeight(scaled_px(160))
         self._sug_list.itemDoubleClicked.connect(self._add_suggested_tag)
         sug_layout.addWidget(self._sug_list)
@@ -104,11 +108,26 @@ class TagEditorDialog(TabbedDialog):
         bottom.addWidget(self._done_btn)
         layout.addLayout(bottom)
 
+        self._refresh_button_icons()
+
         self._refresh_current()
         self._refresh_suggestions()
 
+    def _refresh_button_icons(self):
+        t = themes.get()
+        buttons = (
+            (self._add_btn, "tag", t["heading"], tr("tageditor.add")),
+            (self._del_unused_btn, "trash", t["danger"], tr("tageditor.delete_unused")),
+            (self._done_btn, "check", t["on_accent"], tr("tageditor.done")),
+        )
+        for button, icon_name, color, label in buttons:
+            button.setIcon(icons.icon(icon_name, color=color, size=scaled_px(15)))
+            button.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+            button.setAccessibleName(label)
+
     def _on_theme_changed(self, name):
         super()._on_theme_changed(name)
+        self._refresh_button_icons()
         self._refresh_current()
 
     def retranslate_ui(self):
@@ -121,10 +140,13 @@ class TagEditorDialog(TabbedDialog):
         self._suggestions_group.setTitle(tr("tageditor.all_tags"))
         self._sug_filter.setPlaceholderText(tr("tageditor.filter"))
         self._sug_filter.setToolTip(tr("tageditor.filter_tooltip"))
+        self._sug_filter.setAccessibleName(tr("tageditor.filter"))
+        self._sug_list.setAccessibleName(tr("tageditor.all_tags"))
         self._maintenance_group.setTitle(tr("tageditor.maintenance"))
         self._del_unused_btn.setText(tr("tageditor.delete_unused"))
         self._del_unused_btn.setToolTip(tr("tageditor.delete_unused_tooltip"))
         self._done_btn.setText(tr("tageditor.done"))
+        self._refresh_button_icons()
 
     def refresh_scaled_geometry(self, _scale: float | None = None):
         self._root_layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
@@ -132,6 +154,7 @@ class TagEditorDialog(TabbedDialog):
         self._current_flow_layout.setSpacing(scaled_px(4))
         self._sug_list.setMaximumHeight(scaled_px(160))
         self._del_progress.setFixedHeight(scaled_px(4))
+        self._refresh_button_icons()
         self._refresh_current()
 
     def was_modified(self) -> bool:
@@ -214,7 +237,7 @@ class TagEditorDialog(TabbedDialog):
         if not unused:
             QMessageBox.information(self, tr("tageditor.no_unused"), tr("tageditor.no_unused"))
             return
-        names = "\n".join(f"  • {t}" for t in unused[:20])
+        names = "\n".join(f"  - {t}" for t in unused[:20])
         if len(unused) > 20:
             names += f"\n  ... {tr('tageditor.and_more', count=len(unused) - 20)}"
         reply = QMessageBox.question(

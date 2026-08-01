@@ -3,20 +3,30 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSearch } from './useSearch';
 
-const search = vi.fn();
+const { search, useInvalidationMock, authState } = vi.hoisted(() => ({
+  search: vi.fn(),
+  useInvalidationMock: vi.fn(),
+  authState: { api: {}, identityGeneration: 0 },
+}));
 
 vi.mock('./useAuth', () => ({
-  useAuth: () => ({ api: {} }),
+  useAuth: () => authState,
 }));
 
 vi.mock('../api/metadata', () => ({
   createMetadataApi: () => ({ search }),
 }));
 
+vi.mock('./useInvalidation', () => ({
+  useInvalidation: useInvalidationMock,
+}));
+
 describe('useSearch', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     search.mockReset();
+    useInvalidationMock.mockReset();
+    authState.identityGeneration = 0;
     search.mockResolvedValue({ results: [] });
   });
 
@@ -56,5 +66,65 @@ describe('useSearch', () => {
 
     expect(result.current.results).toEqual([]);
     expect(result.current.isSearching).toBe(false);
+  });
+
+  it('refetches the active query after files or metadata invalidation', async () => {
+    const first = Promise.resolve({ results: [{ path: 'before.jpg' }] });
+    const refreshed = Promise.resolve({ results: [{ path: 'after.jpg' }] });
+    search.mockReturnValueOnce(first).mockReturnValueOnce(refreshed);
+    const { result } = renderHook(() => useSearch());
+
+    act(() => result.current.setQuery('report'));
+    act(() => vi.advanceTimersByTime(200));
+    await act(async () => { await first; });
+    expect(result.current.results).toEqual([{ path: 'before.jpg' }]);
+
+    expect(useInvalidationMock).toHaveBeenCalledWith(['files', 'metadata'], expect.any(Function));
+    const onInvalidation = useInvalidationMock.mock.calls[0]?.[1] as ((event: unknown) => void) | undefined;
+    expect(onInvalidation).toEqual(expect.any(Function));
+    await act(async () => { onInvalidation?.({ domains: ['metadata'] }); });
+    expect(search).toHaveBeenCalledTimes(2);
+    await act(async () => { await refreshed; });
+    expect(result.current.results).toEqual([{ path: 'after.jpg' }]);
+  });
+
+  it('ignores an older search response after invalidation refetch', async () => {
+    let resolveFirst!: (value: { results: Array<{ path: string }> }) => void;
+    let resolveSecond!: (value: { results: Array<{ path: string }> }) => void;
+    search
+      .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
+    const { result } = renderHook(() => useSearch());
+
+    act(() => result.current.setQuery('report'));
+    act(() => vi.advanceTimersByTime(200));
+    expect(useInvalidationMock).toHaveBeenCalledWith(['files', 'metadata'], expect.any(Function));
+    const onInvalidation = useInvalidationMock.mock.calls[0]?.[1] as ((event: unknown) => void) | undefined;
+    if (!onInvalidation) return;
+    await act(async () => { onInvalidation({ domains: ['files'] }); });
+    await act(async () => { resolveSecond({ results: [{ path: 'new.jpg' }] }); });
+    await act(async () => { resolveFirst({ results: [{ path: 'stale.jpg' }] }); });
+
+    expect(result.current.results).toEqual([{ path: 'new.jpg' }]);
+  });
+
+  it('clears search state and rejects an older response after identity changes', async () => {
+    let resolveSearch!: (value: { results: Array<{ path: string }> }) => void;
+    search.mockImplementationOnce(() => new Promise(resolve => { resolveSearch = resolve; }));
+    const { result, rerender } = renderHook(() => useSearch());
+
+    act(() => result.current.setQuery('private'));
+    act(() => vi.advanceTimersByTime(200));
+
+    act(() => {
+      authState.identityGeneration = 1;
+      rerender();
+    });
+    expect(result.current.query).toBe('');
+    expect(result.current.results).toEqual([]);
+    expect(result.current.isSearching).toBe(false);
+
+    await act(async () => resolveSearch({ results: [{ path: 'stale-private.jpg' }] }));
+    expect(result.current.results).toEqual([]);
   });
 });

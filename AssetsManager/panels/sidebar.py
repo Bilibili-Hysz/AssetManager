@@ -11,7 +11,7 @@ Features:
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QObject, QRunnable, QThreadPool
+from PySide6.QtCore import Qt, Signal, QObject, QRunnable, QThreadPool, QTimer, QSize
 from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QLineEdit, QPushButton, QHBoxLayout,
     QMenu, QInputDialog, QApplication, QAbstractItemView, QLabel, QWidget,
@@ -23,19 +23,33 @@ from AssetsManager import i18n
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
-from AssetsManager.core import themes
+from AssetsManager.core import themes, icons
 from AssetsManager.dialogs.sidebar_favorites import SidebarFavorites
 from AssetsManager.dialogs.sidebar_recent import SidebarRecentFolders
 
 tr = i18n.tr
 
-ICONS = ["⭐", "📁", "📂", "🔖", "💾", "🖥", "🎨", "📌", "🏠", "🔥"]
+ICONS = ["star", "folder", "tag", "home", "file", "clock"]
 
 VTYPE_FAV_HEADER = "fav_header"
 VTYPE_REC_HEADER = "rec_header"
 VTYPE_FAV_CHILD = "fav_child"
 VTYPE_REC_CHILD = "rec_child"
 VTYPE_FS = "fs"
+_ICON_ROLE = Qt.ItemDataRole.UserRole + 2
+
+_FAVORITE_ICON_MAP = {
+    "\u2b50": "star",
+    "\U0001f4c1": "folder",
+    "\U0001f4c2": "folder",
+    "\U0001f516": "tag",
+    "\U0001f4be": "folder",
+    "\U0001f5a5": "home",
+    "\U0001f3a8": "file",
+    "\U0001f4cc": "tag",
+    "\U0001f3e0": "home",
+    "\U0001f525": "clock",
+}
 
 
 def _fs_level(item: QTreeWidgetItem) -> int:
@@ -120,8 +134,12 @@ class SidebarPanel(PanelContent):
 
         self._tree = QTreeWidget()
         self._tree.setHeaderHidden(True)
-        self._tree.setIndentation(16)
+        self._tree.setIndentation(scaled_px(18))
         self._tree.setAnimated(True)
+        self._tree.setUniformRowHeights(True)
+        self._tree.setAlternatingRowColors(False)
+        self._tree.setIconSize(QSize(scaled_px(18), scaled_px(18)))
+        self._tree.setAllColumnsShowFocus(False)
         self._tree.setExpandsOnDoubleClick(False)
         self._tree.setDragDropMode(QAbstractItemView.DragDropMode.DropOnly)
         self._tree.setAcceptDrops(True)
@@ -138,11 +156,17 @@ class SidebarPanel(PanelContent):
         bar = QHBoxLayout()
         bar.setContentsMargins(scaled_px(4), scaled_px(4), scaled_px(4), scaled_px(2))
         bar.addWidget(self._search)
-        self._expand_btn = QPushButton("+")
+        self._expand_btn = QPushButton()
+        self._expand_btn.setIcon(icons.icon("arrow_down", color=t["body"], size=scaled_px(16)))
         self._expand_btn.setToolTip(tr("sidebar.expand_all"))
+        self._expand_btn.setAccessibleName(tr("sidebar.expand_all"))
+        self._expand_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         self._expand_btn.clicked.connect(self._tree.expandAll)
-        self._collapse_btn = QPushButton("−")
+        self._collapse_btn = QPushButton()
+        self._collapse_btn.setIcon(icons.icon("arrow_up", color=t["body"], size=scaled_px(16)))
         self._collapse_btn.setToolTip(tr("sidebar.collapse_all"))
+        self._collapse_btn.setAccessibleName(tr("sidebar.collapse_all"))
+        self._collapse_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         self._collapse_btn.clicked.connect(self._tree.collapseAll)
         for btn in (self._expand_btn, self._collapse_btn):
             btn.setFixedSize(scaled_px(26), scaled_px(26))
@@ -153,6 +177,7 @@ class SidebarPanel(PanelContent):
                 f"border: 1px solid {alpha(t['border'], 0.375)};")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             bar.addWidget(btn)
+        self._apply_tree_style()
         self.content_layout.addLayout(bar)
 
         self.content_layout.addWidget(self._tree, 1)
@@ -183,7 +208,7 @@ class SidebarPanel(PanelContent):
         self._populate()
         self._connect_bus(bus().refresh_requested, self._populate)
         self._connect_bus(bus().theme_changed, self._on_theme_changed)
-        self._connect_bus(bus().language_changed, self._on_theme_changed)
+        self._connect_bus(bus().language_changed, self._on_language_changed)
         self._connect_bus(bus().ui_scale_changed, self._on_theme_changed)
 
     def _restore_depth_cfg(self):
@@ -229,6 +254,40 @@ class SidebarPanel(PanelContent):
         item.setData(0, Qt.ItemDataRole.UserRole + 1, vtype)
 
     @staticmethod
+    def _favorite_icon_name(value: str | None) -> str:
+        """Map legacy emoji preferences to stable semantic SVG names."""
+        legacy = str(value or "star")
+        return _FAVORITE_ICON_MAP.get(legacy, icons.normalize(legacy, fallback="star"))
+
+    @staticmethod
+    def _set_item_icon(item: QTreeWidgetItem, icon_name: str, color: str | None = None):
+        """Store an icon semantic name so theme refreshes stay in-place."""
+        normalized = icons.normalize(icon_name, fallback="file")
+        item.setData(0, _ICON_ROLE, normalized)
+        tint = color or themes.get()["body"]
+        item.setIcon(0, icons.icon(normalized, color=tint, size=scaled_px(18)))
+
+    def _refresh_item_icons(self, item: QTreeWidgetItem | None = None):
+        """Retint existing tree icons without rebuilding or losing expansion."""
+        root = item or self._tree.invisibleRootItem()
+        t = themes.get()
+        for i in range(root.childCount()):
+            child = root.child(i)
+            if child is None:
+                continue
+            icon_name = child.data(0, _ICON_ROLE)
+            if icon_name:
+                vtype = self._get_vtype(child)
+                if vtype == VTYPE_FAV_HEADER:
+                    tint = t["favorite"]
+                elif vtype == VTYPE_REC_HEADER:
+                    tint = t["recent"]
+                else:
+                    tint = t["body"]
+                child.setIcon(0, icons.icon(str(icon_name), color=tint, size=scaled_px(18)))
+            self._refresh_item_icons(child)
+
+    @staticmethod
     def _get_vtype(item: QTreeWidgetItem | None) -> str:
         if item is None:
             return ""
@@ -242,7 +301,24 @@ class SidebarPanel(PanelContent):
         if color:
             item.setForeground(0, QBrush(QColor(color)))
 
+    def _begin_tree_update_batch(self):
+        """Suppress intermediate tree paints during bulk item changes."""
+        self._tree.setUpdatesEnabled(False)
+        if getattr(self, "_tree_update_restore_pending", False):
+            return
+        self._tree_update_restore_pending = True
+        QTimer.singleShot(0, self._finish_tree_update_batch)
+
+    def _finish_tree_update_batch(self):
+        self._tree_update_restore_pending = False
+        if not self._tree:
+            return
+        self._tree.setUpdatesEnabled(True)
+        self._tree.viewport().update()
+        self._tree.update()
+
     def _populate(self):
+        self._begin_tree_update_batch()
         self._tree_generation += 1
         self._tree.clear()
 
@@ -252,14 +328,15 @@ class SidebarPanel(PanelContent):
             fav_count = len(favs)
             fav_header = QTreeWidgetItem([tr("sidebar.favorites", count=fav_count)])
             self._set_vtype(fav_header, VTYPE_FAV_HEADER)
+            self._set_item_icon(fav_header, "star", themes.get()["favorite"])
             self._bold_item(fav_header, themes.get()["favorite"])
             self._tree.addTopLevelItem(fav_header)
 
             for fav in favs:
-                icon = fav.get("icon", "⭐")
                 name = fav.get("name", Path(fav["path"]).name)
-                child = QTreeWidgetItem([f"  {icon}  {name}"])
+                child = QTreeWidgetItem([name])
                 self._set_vtype(child, VTYPE_FAV_CHILD, fav["path"])
+                self._set_item_icon(child, self._favorite_icon_name(fav.get("icon")))
                 child.setToolTip(0, fav["path"])
                 fav_header.addChild(child)
 
@@ -269,6 +346,7 @@ class SidebarPanel(PanelContent):
             rec_count = len(recs)
             rec_header = QTreeWidgetItem([tr("sidebar.recent_folders", count=rec_count)])
             self._set_vtype(rec_header, VTYPE_REC_HEADER)
+            self._set_item_icon(rec_header, "clock", themes.get()["recent"])
             self._bold_item(rec_header, themes.get()["recent"])
             self._tree.addTopLevelItem(rec_header)
 
@@ -276,8 +354,9 @@ class SidebarPanel(PanelContent):
                 path = r["path"]
                 name = Path(path).name
                 time_lbl = r.get("_time_label", "")
-                child = QTreeWidgetItem([f"  📁  {name}  · {time_lbl}"])
+                child = QTreeWidgetItem([f"{name}  · {time_lbl}"])
                 self._set_vtype(child, VTYPE_REC_CHILD, path)
+                self._set_item_icon(child, "folder")
                 child.setToolTip(0, f"{path}\n{time_lbl}")
                 rec_header.addChild(child)
 
@@ -295,9 +374,9 @@ class SidebarPanel(PanelContent):
             for entry in entries:
                 if entry.name.startswith("."):
                     continue
-                icon = "📁 " if entry.is_dir() else "   "
-                item = QTreeWidgetItem([f"{icon}{entry.name}"])
+                item = QTreeWidgetItem([entry.name])
                 self._set_vtype(item, VTYPE_FS, entry.path)
+                self._set_item_icon(item, "folder" if entry.is_dir() else "file")
                 self._tree.addTopLevelItem(item)
                 branch_depth = self._branch_depths.get(entry.name, self._depth)
                 if entry.is_dir() and branch_depth > 1:
@@ -363,12 +442,13 @@ class SidebarPanel(PanelContent):
                              key=lambda e: (not e.is_dir(), e.name.lower()))
         except OSError:
             return
+        self._begin_tree_update_batch()
         for entry in entries:
             if entry.name.startswith("."):
                 continue
-            icon = "📁 " if entry.is_dir() else "   "
-            child = QTreeWidgetItem([f"{icon}{entry.name}"])
+            child = QTreeWidgetItem([entry.name])
             self._set_vtype(child, VTYPE_FS, entry.path)
+            self._set_item_icon(child, "folder" if entry.is_dir() else "file")
             parent_item.addChild(child)
             if entry.is_dir() and level + 1 < branch_depth:
                 QTreeWidgetItem(child, ["..."])
@@ -492,9 +572,14 @@ class SidebarPanel(PanelContent):
             menu.addAction(tr("sidebar.menu.rename"), lambda p=path: self._fav_rename(p))
             icons_menu = menu.addMenu(tr("sidebar.menu.change_icon"))
             for ic in ICONS:
-                icons_menu.addAction(ic,
-                    lambda checked, p=path, i=ic: (
+                action = icons_menu.addAction(ic.replace("_", " ").title(),
+                    lambda checked=False, p=path, i=ic: (
                         self._favs.set_icon(p, i), self._populate()))
+                action.setIcon(icons.icon(
+                    self._favorite_icon_name(ic),
+                    color=themes.get()["body"],
+                    size=scaled_px(16),
+                ))
             menu.addSeparator()
             menu.addAction(tr("sidebar.menu.remove_fav"),
                            lambda p=path: (self._favs.remove(p), self._populate()))
@@ -564,6 +649,7 @@ class SidebarPanel(PanelContent):
 
     def _do_search(self):
         """Execute debounced search: preload children, filter, expand matches."""
+        self._begin_tree_update_batch()
         text = self._search_pending
         self._clear_search_highlights()
         if text:
@@ -592,6 +678,7 @@ class SidebarPanel(PanelContent):
 
     def _on_preload_done(self, text, results, gen, root=None):
         """Apply preload results and filter."""
+        self._begin_tree_update_batch()
         if root != self._library_root or not self._controller.is_current_search(gen):
             return
         for parent_path, entries in results:
@@ -617,6 +704,7 @@ class SidebarPanel(PanelContent):
         parent_item = self._find_item_by_path(parent_path)
         if not parent_item:
             return
+        self._begin_tree_update_batch()
         placeholder = parent_item.child(0) if parent_item.childCount() == 1 else None
         if placeholder is not None and placeholder.text(0) == "...":
             parent_item.removeChild(placeholder)
@@ -633,9 +721,9 @@ class SidebarPanel(PanelContent):
                 break
             it = it.parent()
         for name, path, is_dir in entries:
-            icon = "📁 " if is_dir else "   "
-            child = QTreeWidgetItem([f"{icon}{name}"])
+            child = QTreeWidgetItem([name])
             self._set_vtype(child, VTYPE_FS, path)
+            self._set_item_icon(child, "folder" if is_dir else "file")
             parent_item.addChild(child)
             if is_dir and level + 1 < branch_depth:
                 QTreeWidgetItem(child, ["..."])
@@ -792,6 +880,35 @@ class SidebarPanel(PanelContent):
 
     # ── Navigation ──────────────────────────────────────────────────
 
+    def _on_language_changed(self, _code: str = ""):
+        self._search.setPlaceholderText(tr("sidebar.filter_placeholder"))
+        self._expand_btn.setToolTip(tr("sidebar.expand_all"))
+        self._expand_btn.setAccessibleName(tr("sidebar.expand_all"))
+        self._collapse_btn.setToolTip(tr("sidebar.collapse_all"))
+        self._collapse_btn.setAccessibleName(tr("sidebar.collapse_all"))
+        self._populate()
+
+    def _apply_tree_style(self):
+        """Apply compact, theme-aware tree styling without rebuilding items."""
+        t = themes.get()
+        self._tree.setIconSize(QSize(scaled_px(18), scaled_px(18)))
+        self._tree.setStyleSheet(
+            f"QTreeWidget {{"
+            f"  background: transparent; color: {t['body']}; border: none; outline: none; "
+            f"  font-size: {scaled_pt(11)}px; "
+            f"}}"
+            f"QTreeWidget::item {{"
+            f"  padding: {scaled_px(4)}px {scaled_px(6)}px; "
+            f"  border: none; border-radius: {scaled_px(5)}px; "
+            f"}}"
+            f"QTreeWidget::item:hover {{"
+            f"  background: {alpha(t['accent'], 0.12)}; "
+            f"}}"
+            f"QTreeWidget::item:selected {{"
+            f"  background: {alpha(t['accent'], 0.28)}; color: {t['heading']}; "
+            f"}}"
+            f"QTreeWidget::item:disabled {{ color: {t['muted']}; }}")
+
     def _on_theme_changed(self, _name: str = ""):
         """Refresh sidebar styles when theme changes (in-place, no tree rebuild)."""
         t = themes.get()
@@ -804,6 +921,8 @@ class SidebarPanel(PanelContent):
                 self._bold_item(item, t["favorite"])
             elif vtype == VTYPE_REC_HEADER:
                 self._bold_item(item, t["recent"])
+        self._apply_tree_style()
+        self._refresh_item_icons()
         self._apply_status_style()
         self._apply_nav_btn_style()
 
@@ -817,7 +936,12 @@ class SidebarPanel(PanelContent):
 
     def _apply_nav_btn_style(self):
         t = themes.get()
-        for btn in (self._expand_btn, self._collapse_btn):
+        for btn, icon_name in (
+            (self._expand_btn, "arrow_down"),
+            (self._collapse_btn, "arrow_up"),
+        ):
+            btn.setIcon(icons.icon(icon_name, color=t["body"], size=scaled_px(16)))
+            btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
             btn.setStyleSheet(
                 f"color: {t['body']}; padding: 0; font-size: {scaled_pt(14)}px; font-weight: bold; "
                 f"background: transparent; border-radius: {scaled_px(6)}px; "
@@ -857,10 +981,14 @@ class SidebarPanel(PanelContent):
     def title_bar_buttons(self) -> list:
         from AssetsManager.core import themes
         t = themes.get()
-        gear = QPushButton("⚙")
+        gear = QPushButton()
+        gear.setIcon(icons.icon("settings", color=t["heading"], size=scaled_px(16)))
+        gear.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         gear.setToolTip(tr("sidebar_settings.title"))
+        gear.setAccessibleName(tr("sidebar_settings.title"))
         gear.setFixedSize(scaled_px(20), scaled_px(20))
         gear.setFlat(True)
+        gear.setProperty("semanticIcon", "settings")
         gear.setStyleSheet(
             f"color: {t['heading']}; font-size: {scaled_pt(13)}px; font-weight: bold; "
             f"padding: 0; background: transparent; border: none; border-radius: {scaled_px(3)}px;")

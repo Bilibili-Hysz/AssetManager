@@ -11,8 +11,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, cast
 
+from PySide6.QtCore import QSize
 from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QWidget
 from AssetsManager import i18n
+from AssetsManager.core import icons
+from AssetsManager.core.ui_scale import scaled_px
 
 if TYPE_CHECKING:
     from AssetsManager.application.context import LibrarySession
@@ -136,7 +139,7 @@ class LanSharingMixin:
                 from AssetsManager.lan.server import get_local_ip
                 ip = get_local_ip()
                 url = f"http://{ip}:{port}"
-                self._share_status_label.setText(f"🟢 {url}")
+                self._share_status_label.setText(f"{tr('sharing.status_active')} · {url}")
                 self._share_status_label.setStyleSheet(f"color: {t['accent']}; padding: 0 8px;")
                 self._share_status_label.setToolTip(tr("sharing.click_to_copy"))
             else:
@@ -147,11 +150,16 @@ class LanSharingMixin:
         # Update toolbar button
         if hasattr(self, '_share_toggle_btn'):
             if running:
-                self._share_toggle_btn.setText("🟢")
+                self._share_toggle_btn.setIcon(
+                    icons.icon("close", color=t["heading"], size=scaled_px(16)))
                 self._share_toggle_btn.setToolTip(tr("sharing.stop_tooltip"))
             else:
-                self._share_toggle_btn.setText("🌐")
+                self._share_toggle_btn.setIcon(
+                    icons.icon("share", color=t["heading"], size=scaled_px(16)))
                 self._share_toggle_btn.setToolTip(tr("sharing.start_tooltip"))
+            self._share_toggle_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
+            self._share_toggle_btn.setText("")
+            self._share_toggle_btn.setAccessibleName(self._share_toggle_btn.toolTip())
 
 
     # ── Settings ────────────────────────────────────────────────

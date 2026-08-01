@@ -81,8 +81,7 @@ class _Service:
 
 
 class _Bootstrap:
-    def cleanup_library(self, _root):
-        events.append("session.cleanup")
+    pass
 
 
 class _Window:
@@ -93,7 +92,7 @@ class _Window:
         self.info = _Info()
         self.sidebar = _LifecyclePanel("sidebar")
         self.tag_tree = _LifecyclePanel("tag-tree")
-        self._bootstrap = _Bootstrap()
+        self._bootstrap = Mock()
         self.share_states = []
         self._tray_manager = Mock()
 
@@ -127,7 +126,6 @@ def test_switch_library_stops_lan_and_invalidates_thumbnails_before_closing(monk
         "sidebar.prepare",
         "tag-tree.prepare",
         "session.close",
-        "session.cleanup",
         "session.open",
         "scoped.apply",
         "sidebar.navigate",
@@ -169,7 +167,6 @@ def test_switch_library_continues_window_cleanup_after_lan_and_panel_failures():
         "sidebar.prepare",
         "tag-tree.prepare",
         "session.close",
-        "session.cleanup",
     ]
     assert window.share_states == [False]
     window._tray_manager.update_sharing_state.assert_called_once_with(False)
@@ -201,7 +198,6 @@ def test_switch_library_reports_panel_failure_after_successful_lan_stop_once():
         "sidebar.prepare",
         "tag-tree.prepare",
         "session.close",
-        "session.cleanup",
     ]
     assert window.share_states == [False]
     window._tray_manager.update_sharing_state.assert_called_once_with(False)
@@ -236,7 +232,6 @@ def test_switch_library_status_failure_does_not_skip_cleanup_or_tray():
         "sidebar.prepare",
         "tag-tree.prepare",
         "session.close",
-        "session.cleanup",
     ]
     window._tray_manager.update_sharing_state.assert_called_once_with(False)
 
@@ -275,7 +270,6 @@ def test_switch_library_stop_error_wins_over_compensation_tray_failure():
         "sidebar.prepare",
         "tag-tree.prepare",
         "session.close",
-        "session.cleanup",
     ]
     assert window.share_states == [False]
     window._tray_manager.update_sharing_state.assert_called_once_with(False)
@@ -319,7 +313,6 @@ def test_switch_library_panel_getter_failure_does_not_skip_later_cleanup():
         "loader.wait",
         "tag-tree.prepare",
         "session.close",
-        "session.cleanup",
     ]
     window._tray_manager.update_sharing_state.assert_called_once_with(False)
 
@@ -355,7 +348,6 @@ def test_switch_library_is_running_failure_does_not_skip_cleanup():
         "sidebar.prepare",
         "tag-tree.prepare",
         "session.close",
-        "session.cleanup",
     ]
 
 
@@ -440,7 +432,7 @@ def test_switch_library_reopens_closed_same_root_session(tmp_path):
         str(tmp_path)
     )
 
-    assert events == ["session.close", "session.cleanup", "session.open", "scoped.apply"]
+    assert events == ["session.close", "session.open", "scoped.apply"]
 
 
 def test_main_window_delegates_library_switch_to_lifecycle_coordinator():

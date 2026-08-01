@@ -1128,7 +1128,7 @@ async def _register_user_token(client, username="alice"):
         json={"username": username, "password": "Test@1234"},
     )
     assert resp.status == 200
-    return (await resp.json())["token"]
+    return resp.cookies["lan_token"].value
 
 
 @pytest.mark.anyio
@@ -1387,7 +1387,80 @@ async def test_auth_register_route_returns_user_token(tmp_path):
         assert resp.status == 200
         data = await resp.json()
         assert data["user"]["username"] == "newuser"
-        assert data["token"]
+        assert "token" not in data
+        assert "password_hash" not in data["user"]
+        assert resp.cookies["lan_token"]["httponly"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_auth_user_login_route_returns_cookie_only_response(tmp_path):
+    app, library, conn = _make_lan_app(tmp_path)
+
+    client = await _make_client(app)
+    try:
+        registered = await client.post(
+            "/api/auth/register",
+            json={"username": "login-user", "password": "Test@1234"},
+        )
+        assert registered.status == 200
+        client.session.cookie_jar.clear()
+
+        response = await client.post(
+            "/api/auth/login",
+            json={"username": "login-user", "password": "Test@1234"},
+        )
+
+        assert response.status == 200
+        data = await response.json()
+        assert "token" not in data
+        assert "password_hash" not in data["user"]
+        assert response.cookies["lan_token"]["httponly"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_auth_password_login_route_returns_cookie_only_response(tmp_path):
+    from AssetsManager.lan.auth import hash_password
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, library, conn = _make_lan_app(tmp_path)
+    app[LAN_APP_KEY].password_hash = hash_password("Test@1234")
+
+    client = await _make_client(app)
+    try:
+        response = await client.post(
+            "/api/auth/login",
+            json={"password": "Test@1234"},
+        )
+
+        assert response.status == 200
+        assert "token" not in await response.json()
+        assert response.cookies["lan_token"]["httponly"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_auth_verify_key_route_returns_cookie_only_response(tmp_path):
+    from AssetsManager.lan.auth import hash_key
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, library, conn = _make_lan_app(tmp_path)
+    app[LAN_APP_KEY].access_key_hash = hash_key("access-key")
+
+    client = await _make_client(app)
+    try:
+        response = await client.post(
+            "/api/auth/verify_key",
+            json={"key": "access-key"},
+        )
+
+        assert response.status == 200
+        assert "token" not in await response.json()
+        assert response.cookies["lan_token"]["httponly"] is True
     finally:
         await client.close()
 
@@ -1793,8 +1866,10 @@ def test_runtime_injection_uses_canonical_session_resources_and_services(tmp_pat
     assert server.session_token == session.event_token
     assert server.services.runtime_services is services
     assert server.connection_for(session.root) is connection
-    runtime.register_lifecycle_adapter.assert_called_once_with(server)
+    runtime.register_lifecycle_adapter.assert_not_called()
 
+    server._register_runtime_adapter()
+    runtime.register_lifecycle_adapter.assert_called_once_with(server)
     server.stop()
     server.stop()
     runtime.unregister_lifecycle_adapter.assert_called_once_with(server)

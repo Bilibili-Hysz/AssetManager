@@ -74,8 +74,13 @@ class WindowCoordinator:
 
     def _apply_theme(self) -> None:
         w = self._window
-        QApplication.instance().setStyleSheet(themes.stylesheet())
+        app = QApplication.instance()
+        if app is not None:
+            themes.apply_to(app)
         themes.apply_to(w)
+        refresh_icons = getattr(w, "_refresh_ui_icons", None)
+        if callable(refresh_icons):
+            refresh_icons()
         self.apply_menu_theme()
         self.apply_status_bar_theme()
         w._workspace._apply_style()

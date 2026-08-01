@@ -1,6 +1,12 @@
 # Desktop–WebUI Realtime Dataflow Hardening
 
 > [!NOTE]
+> **Scope status:** The named realtime hardening scope and its parent
+> recalibrated Desktop–LAN–WebUI acceptance boundary are delivered.
+> Product roadmap work remains separate and is tracked in the repository
+> baseline and DeepSeek roadmap.
+
+> [!NOTE]
 > This design records the supplemental hardening scope identified by the dataflow audit. The implementation plan and final report are authoritative for the delivered state.
 
 ## [S1] Scope and invariants

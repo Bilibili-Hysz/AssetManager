@@ -181,10 +181,18 @@ async def _scenario(tmp_path):
                 with pytest.raises(RuntimeError, match="explicit window stop failed"):
                     raise worker_error
 
-            try:
-                close_message = await asyncio.wait_for(ws.receive(), timeout=2)
-            except asyncio.TimeoutError:
-                close_message = None
+            close_message = None
+            deadline = asyncio.get_running_loop().time() + 2
+            while close_message is None or close_message.type not in {WSMsgType.CLOSE, WSMsgType.CLOSED}:
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    break
+                try:
+                    message = await asyncio.wait_for(ws.receive(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    break
+                if message.type in {WSMsgType.CLOSE, WSMsgType.CLOSED}:
+                    close_message = message
             assert close_message is not None, (
                 f"old websocket was not closed; stop attempts={len(shutdown_attempts)}, "
                 f"session_closed={session.is_closed}"
@@ -275,7 +283,14 @@ async def _exit_scenario(tmp_path):
             with pytest.raises(RuntimeError, match="explicit window stop failed"):
                 MainWindow.closeEvent(window, close_event)
             assert close_event.isAccepted()
-            close_message = await asyncio.wait_for(ws.receive(), timeout=2)
+            close_message = None
+            deadline = asyncio.get_running_loop().time() + 2
+            while close_message is None or close_message.type not in {WSMsgType.CLOSE, WSMsgType.CLOSED}:
+                remaining = deadline - asyncio.get_running_loop().time()
+                assert remaining > 0, "old websocket was not closed"
+                message = await asyncio.wait_for(ws.receive(), timeout=remaining)
+                if message.type in {WSMsgType.CLOSE, WSMsgType.CLOSED}:
+                    close_message = message
             assert close_message.type in {WSMsgType.CLOSE, WSMsgType.CLOSED}
             await ws.close()
             _assert_exit_teardown(

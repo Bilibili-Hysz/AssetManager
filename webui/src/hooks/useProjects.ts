@@ -22,7 +22,7 @@ interface UseProjectsReturn {
 }
 
 export function useProjects(initialPath = ''): UseProjectsReturn {
-  const { api } = useAuth();
+  const { api, identityGeneration } = useAuth();
   const filesApi = useMemo(() => createFilesApi(api), [api]);
 
   const [currentPath, setCurrentPath] = useState(initialPath);
@@ -32,12 +32,19 @@ export function useProjects(initialPath = ''): UseProjectsReturn {
   const [sort, setSortState] = useState<SortConfig>({ sort: 'name', order: 'asc' });
   const [refreshVersion, setRefreshVersion] = useState(0);
   const generationRef = useRef(0);
+  const identityGenerationRef = useRef(identityGeneration);
   const [listingGeneration, setListingGeneration] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
+    const identityChanged = identityGenerationRef.current !== identityGeneration;
+    identityGenerationRef.current = identityGeneration;
     const generation = ++generationRef.current;
     setListingGeneration(generation);
+    if (identityChanged) {
+      setData(null);
+      setError(null);
+    }
     setIsLoading(true);
     setError(null);
     filesApi.list(
@@ -45,16 +52,18 @@ export function useProjects(initialPath = ''): UseProjectsReturn {
       controller.signal,
     )
       .then(response => {
-        if (!controller.signal.aborted) setData(response);
+        if (!controller.signal.aborted && identityGenerationRef.current === identityGeneration) setData(response);
       })
       .catch(err => {
-        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Failed to load files');
+        if (!controller.signal.aborted && identityGenerationRef.current === identityGeneration) {
+          setError(err instanceof Error ? err.message : 'Failed to load files');
+        }
       })
       .finally(() => {
-        if (!controller.signal.aborted) setIsLoading(false);
+        if (!controller.signal.aborted && identityGenerationRef.current === identityGeneration) setIsLoading(false);
       });
     return () => controller.abort();
-  }, [currentPath, filesApi, refreshVersion, sort]);
+  }, [currentPath, filesApi, identityGeneration, refreshVersion, sort]);
 
   const navigateTo = useCallback((path: string) => {
     setCurrentPath(path);

@@ -163,6 +163,16 @@ def _load_saved():
 _load_saved()
 
 
+def _invalidate_icon_cache() -> None:
+    """Drop theme-tinted SVG pixmaps without creating a core import cycle."""
+    try:
+        from AssetsManager.core import icons
+        icons.clear_cache()
+    except Exception:
+        # Theme loading must remain usable before the icon registry is ready.
+        pass
+
+
 # ── Public API ────────────────────────────────────────────
 
 def get(name: str | None = None) -> dict:
@@ -197,6 +207,7 @@ def set_theme(name: str):
             return
         _current = migrated
         _cached_stylesheet = None
+        _invalidate_icon_cache()
     try:
         settings = AppSettings.instance()
         settings.set("theme", migrated)
@@ -226,6 +237,7 @@ def reload_themes():
     if _current not in _THEMES and _THEMES:
         _current = _THEME_NAMES[0] if _THEME_NAMES else "Default"
     invalidate_cache()
+    _invalidate_icon_cache()
     bus().theme_changed.emit(_current)
 
 
@@ -290,6 +302,25 @@ def prop(category: str, key: str) -> int | float:
     props = get().get("properties", {})
     cat = props.get(category, {})
     return cat.get(key, 0)
+
+
+def set_button_variant(widget, variant: str = "primary"):
+    """Apply a semantic button variant and repolish the widget.
+
+    Variants are represented by a dynamic property so global QSS and dialog
+    local stylesheets can share the same semantic vocabulary.
+    """
+    allowed = {"primary", "secondary", "ghost", "danger"}
+    normalized = str(variant or "primary").strip().lower()
+    if normalized not in allowed:
+        normalized = "primary"
+    widget.setProperty("buttonVariant", normalized)
+    style = widget.style()
+    if style is not None:
+        style.unpolish(widget)
+        style.polish(widget)
+    widget.update()
+    return widget
 
 
 # ── Background image API ─────────────────────────────────
@@ -457,6 +488,34 @@ def stylesheet() -> str:
     }}
     QPushButton:hover {{ background: {hov}; }}
     QPushButton:pressed {{ background: {t['muted']}; }}
+    QPushButton:focus {{ border: 1px solid {t['border_focus']}; }}
+    QPushButton[buttonVariant="primary"] {{
+        background: {t['accent']}; color: {t['on_accent']};
+    }}
+    QPushButton[buttonVariant="primary"]:hover {{
+        background: {alpha(t['accent'], 0.85)};
+    }}
+    QPushButton[buttonVariant="secondary"] {{
+        background: {t['panel']}; color: {t['heading']};
+        border: 1px solid {t['border']};
+    }}
+    QPushButton[buttonVariant="secondary"]:hover {{
+        background: {alpha(t['hover_overlay'], 0.10)};
+    }}
+    QPushButton[buttonVariant="ghost"] {{
+        background: transparent; color: {t['body']};
+        border: 1px solid transparent;
+    }}
+    QPushButton[buttonVariant="ghost"]:hover {{
+        background: {alpha(t['hover_overlay'], 0.10)};
+        color: {t['heading']};
+    }}
+    QPushButton[buttonVariant="danger"] {{
+        background: {t['danger']}; color: {t['on_accent']};
+    }}
+    QPushButton[buttonVariant="danger"]:hover {{
+        background: {alpha(t['danger'], 0.85)};
+    }}
     QPushButton:disabled {{
         background: {t['disabled_bg']}; color: {t['disabled_text']};
     }}
@@ -508,7 +567,12 @@ def stylesheet() -> str:
 
 def apply_to(widget):
     """Apply the global stylesheet to a given widget."""
-    widget.setStyleSheet(stylesheet())
+    style = stylesheet()
+    # QApplication/QWidget style application reparses and repolishes the
+    # complete widget tree. Avoid doing that when a refresh did not actually
+    # change the generated stylesheet (common during dialog/theme cascades).
+    if widget.styleSheet() != style:
+        widget.setStyleSheet(style)
 
 
 def theme_mode_for_base(hex_color: str) -> str:

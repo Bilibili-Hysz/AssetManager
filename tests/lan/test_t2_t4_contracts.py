@@ -1,6 +1,4 @@
 """Acceptance contracts for the LAN SPA runtime paths."""
-import sqlite3
-
 import pytest
 
 from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app
@@ -78,7 +76,7 @@ async def test_websocket_valid_query_token_does_not_authenticate_a_connection(tm
             "/api/auth/register",
             json={"username": "query-user", "password": "Test@1234"},
         )
-        token = (await registered.json())["token"]
+        token = registered.cookies["lan_token"].value
         client.session.cookie_jar.clear()
 
         with pytest.raises(WSServerHandshakeError) as error:

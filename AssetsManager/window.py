@@ -2,12 +2,13 @@
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QTimer
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QTimer, QSize
 from PySide6.QtGui import QPixmap, QPainter
 from PySide6.QtWidgets import QMainWindow, QWidget, QApplication, QLabel, QPushButton, QStatusBar
 
 from AssetsManager import dock_factory as dock
 from AssetsManager.core import themes
+from AssetsManager.core import icons
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_pt, scaled_px
@@ -72,7 +73,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         return session
 
     def _scoped_services_for_session(self, session):
-        return self._bootstrap.for_library(session)
+        return self._bootstrap.runtime_for(session).services
 
     def _apply_scoped_services(self, session):
         scoped = self._scoped_services_for_session(session)
@@ -177,7 +178,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         """Re-apply stylesheet and refresh title-bars when bg opacity changes."""
         app = QApplication.instance()
         if isinstance(app, QApplication):
-            app.setStyleSheet(themes.stylesheet())
+            themes.apply_to(app)
         self._apply_menu_theme()
         from AssetsManager import dock_factory as dk
         for dock_widget, (i18n_key, title, extra_buttons) in dk._DOCK_TITLES.items():
@@ -219,16 +220,18 @@ class MainWindow(LanSharingMixin, QMainWindow):
         # External tools
         tools = list_tools()
         for t in tools:
-            icon = t.get("icon", "") or "🔧"
             name = t.get("name", "Tool")
-            text = f"{icon}  {name}"
-            tools_menu.addAction(text,
+            action = tools_menu.addAction(name,
                 lambda checked, tool=t: run_tool(tool,
                     file_path=getattr(self.file_list, '_current', str(Path.home()))))
+            action.setIcon(icons.icon(t.get("icon_name") or t.get("icon"), color=themes.get()["heading"], size=scaled_px(16), fallback="wrench"))
 
         # Plugin Manager
         tools_menu.addSeparator()
-        tools_menu.addAction(tr("menu.plugin_manager"), self._open_plugin_manager)
+        self._menu_act_plugin_manager = tools_menu.addAction(
+            tr("menu.plugin_manager"), self._open_plugin_manager)
+        self._menu_act_plugin_manager.setIcon(
+            icons.icon("puzzle", color=themes.get()["heading"], size=scaled_px(16)))
 
         # Plugin contributions
         app = QApplication.instance()
@@ -242,8 +245,9 @@ class MainWindow(LanSharingMixin, QMainWindow):
                         title = getattr(contrib, 'title', None) or getattr(contrib, 'id', 'Plugin')
                         cmd_id = getattr(contrib, 'command_id', None)
                         if isinstance(cmd_id, str):
-                            tools_menu.addAction(f"🧩  {title}",
+                            action = tools_menu.addAction(title,
                                 lambda checked, cid=cmd_id: self._run_plugin_command(cid))
+                            action.setIcon(icons.icon("puzzle", color=themes.get()["heading"], size=scaled_px(16)))
 
         # LAN Sharing
         tools_menu.addSeparator()
@@ -287,12 +291,16 @@ class MainWindow(LanSharingMixin, QMainWindow):
         layout.addSpacerItem(self._ws_right)
 
         # Share toggle button in menu bar
-        self._share_toggle_btn = QPushButton("🌐")
+        self._share_toggle_btn = QPushButton()
+        self._share_toggle_btn.setIcon(icons.icon("share", color=themes.get()["heading"], size=scaled_px(16)))
+        self._share_toggle_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         self._share_toggle_btn.setToolTip(tr("sharing.toggle_tooltip"))
+        self._share_toggle_btn.setAccessibleName(tr("sharing.toggle_tooltip"))
         self._share_toggle_btn.setFixedSize(scaled_px(28), scaled_px(28))
         self._share_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        themes.set_button_variant(self._share_toggle_btn, "ghost")
         self._share_toggle_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: none; font-size: {scaled_pt(14)}px; }}"
+            f"QPushButton {{ background: transparent; border: none; }}"
             f"QPushButton:hover {{ background: {alpha('#ffffff', 0.1)}; border-radius: {scaled_px(4)}px; }}"
         )
         self._share_toggle_btn.clicked.connect(self._toggle_sharing)
@@ -477,6 +485,16 @@ class MainWindow(LanSharingMixin, QMainWindow):
     def _on_theme_refresh(self):
         self._coordinator.on_theme_refresh()
 
+    def _refresh_ui_icons(self):
+        if hasattr(self, "_share_toggle_btn"):
+            server = getattr(self, "_lan_server", None)
+            running = bool(server is not None and server.is_running())
+            icon_name = "close" if running else "share"
+            self._share_toggle_btn.setIcon(
+                icons.icon(icon_name, color=themes.get()["heading"], size=scaled_px(16)))
+            self._share_toggle_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
+
+
     def _refresh_language(self, _code: str = ""):
         self.setWindowTitle(tr("app.name"))
         self._menu_lib.setTitle(tr("menu.library"))
@@ -486,6 +504,8 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._menu_act_settings.setText(tr("menu.settings"))
         if hasattr(self, '_menu_tools'):
             self._menu_tools.setTitle(tr("menu.tools"))
+        if hasattr(self, '_menu_act_plugin_manager'):
+            self._menu_act_plugin_manager.setText(tr("menu.plugin_manager"))
         if hasattr(self, '_menu_act_share'):
             self._menu_act_share.setText(tr('menu.share_system'))
 
@@ -606,7 +626,9 @@ class MainWindow(LanSharingMixin, QMainWindow):
         app = QApplication.instance()
         if not isinstance(app, QApplication):
             return
+        from AssetsManager.core import icons
         from AssetsManager.core.ui_scale import scaled_pt
+        icons.clear_cache()
         themes.apply_to(self)
         font = app.font()
         base_pt = app.property("base_font_size")

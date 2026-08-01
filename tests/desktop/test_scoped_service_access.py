@@ -12,7 +12,7 @@ def test_main_window_injects_one_scoped_bundle_into_all_applicable_panels(monkey
     session = object()
     services = object()
     bootstrap = Mock()
-    bootstrap.for_library.return_value = services
+    bootstrap.runtime_for.return_value.services = services
     panels = [Mock(), Mock(), Mock(), Mock()]
 
     class Window:
@@ -25,7 +25,7 @@ def test_main_window_injects_one_scoped_bundle_into_all_applicable_panels(monkey
     window._bootstrap = bootstrap
     MainWindow._apply_scoped_services(window, session)
 
-    bootstrap.for_library.assert_called_once_with(session)
+    bootstrap.runtime_for.assert_called_once_with(session)
     for panel in panels:
         panel.set_scoped_services.assert_called_once_with(services)
         assert panel.set_scoped_services.call_args.args[0] is services
@@ -58,9 +58,9 @@ def test_main_window_switch_injects_new_active_bundle_without_clearing_it(monkey
             return new_session
 
     bootstrap = Mock()
-    bootstrap.for_library.side_effect = lambda session: (
+    bootstrap.runtime_for.side_effect = lambda session: Mock(services=(
         old_bundle if session is old_session else new_bundle
-    )
+    ))
     library_service = bootstrap.library_service
     monkeypatch.setattr("AssetsManager.window._alive", lambda panel: panel is not None)
     window = Window()
@@ -72,7 +72,7 @@ def test_main_window_switch_injects_new_active_bundle_without_clearing_it(monkey
 
     library_service.close_session.assert_called_once_with(old_session)
     old_bundle.undo_service.clear.assert_not_called()
-    bootstrap.for_library.assert_called_once_with(new_session)
+    bootstrap.runtime_for.assert_called_once_with(new_session)
     for panel in panels:
         panel.set_scoped_services.assert_called_once_with(new_bundle)
     new_bundle.undo_service.clear.assert_not_called()
@@ -125,7 +125,7 @@ def test_normal_window_switch_injects_each_panel_and_cleans_file_list_once(monke
             return new_session
 
     bootstrap = Mock()
-    bootstrap.for_library.return_value = new_bundle
+    bootstrap.runtime_for.return_value.services = new_bundle
     library_service = bootstrap.library_service
     monkeypatch.setattr("AssetsManager.window._alive", lambda panel: panel is not None)
 

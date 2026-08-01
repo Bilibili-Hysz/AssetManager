@@ -5,9 +5,10 @@ import { useThumbnailCache } from './useThumbnailCache';
 
 const batch = vi.fn(() => Promise.resolve({ thumbnails: { 'cover.jpg': 'encoded' } }));
 const api = {};
+const authState = { api, identityGeneration: 0 };
 
 vi.mock('./useAuth', () => ({
-  useAuth: () => ({ api }),
+  useAuth: () => authState,
 }));
 
 vi.mock('../api/thumbnails', () => ({
@@ -18,6 +19,7 @@ describe('useThumbnailCache', () => {
   afterEach(() => {
     batch.mockClear();
     sessionStorage.clear();
+    authState.identityGeneration = 0;
   });
 
   it('keeps the thumbnail loader stable after cache updates', async () => {
@@ -30,5 +32,46 @@ describe('useThumbnailCache', () => {
 
     await waitFor(() => expect(result.current.getThumbnail('cover.jpg')).toBe('encoded'));
     expect(result.current.loadThumbnails).toBe(initialLoader);
+  });
+
+  it('clears identity-scoped thumbnails after logout or user switch', async () => {
+    const { result, rerender } = renderHook(() => useThumbnailCache());
+    await act(async () => { await result.current.loadThumbnails(['cover.jpg']); });
+    await waitFor(() => expect(result.current.getThumbnail('cover.jpg')).toBe('encoded'));
+
+    authState.identityGeneration = 1;
+    rerender();
+
+    await waitFor(() => expect(result.current.getThumbnail('cover.jpg')).toBeUndefined());
+  });
+
+  it('removes the persisted thumbnail cache when identity changes', async () => {
+    const { result, rerender } = renderHook(() => useThumbnailCache());
+
+    act(() => {
+      sessionStorage.setItem('lan_thumb_cache', JSON.stringify({ 'private.jpg': 'private-encoded' }));
+      authState.identityGeneration = 1;
+      rerender();
+    });
+
+    await waitFor(() => expect(sessionStorage.getItem('lan_thumb_cache')).toBeNull());
+    expect(result.current.getThumbnail('private.jpg')).toBeUndefined();
+  });
+
+  it('does not commit a thumbnail response from the previous identity', async () => {
+    let resolveBatch!: (value: { thumbnails: { 'cover.jpg': string } }) => void;
+    batch.mockReturnValueOnce(new Promise(resolve => { resolveBatch = resolve; }));
+    const { result, rerender } = renderHook(() => useThumbnailCache());
+
+    const staleRequest = result.current.loadThumbnails(['cover.jpg']);
+    authState.identityGeneration = 1;
+    rerender();
+
+    await act(async () => {
+      resolveBatch({ thumbnails: { 'cover.jpg': 'stale-encoded' } });
+      await staleRequest;
+    });
+
+    expect(result.current.getThumbnail('cover.jpg')).toBeUndefined();
   });
 });

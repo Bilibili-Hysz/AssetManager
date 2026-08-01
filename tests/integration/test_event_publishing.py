@@ -89,7 +89,7 @@ def test_scoped_tag_add_publishes_asset_and_catalog_events(tmp_path, monkeypatch
     monkeypatch.setattr(eb, "_instance", bus)
     bootstrap = ApplicationBootstrap()
     session = bootstrap.library_service.open_session(tmp_path)
-    service = bootstrap.for_library(session).tag_service
+    service = bootstrap.runtime_for(session).services.tag_service
     asset = tmp_path / "file.txt"
     try:
         service.add_tag(tmp_path, asset, "hero")
@@ -118,7 +118,7 @@ def test_scoped_tag_rename_updates_each_affected_asset_once(tmp_path, monkeypatc
     monkeypatch.setattr(eb, "_instance", bus)
     bootstrap = ApplicationBootstrap()
     session = bootstrap.library_service.open_session(tmp_path)
-    service = bootstrap.for_library(session).tag_service
+    service = bootstrap.runtime_for(session).services.tag_service
     first = tmp_path / "first.txt"
     second = tmp_path / "second.txt"
     try:
@@ -283,7 +283,7 @@ def test_scoped_metadata_events_include_session_identity(tmp_path, monkeypatch):
     monkeypatch.setattr(eb, "_instance", bus)
     bootstrap = ApplicationBootstrap()
     session = bootstrap.library_service.open_session(tmp_path)
-    service = bootstrap.for_library(session).metadata_service
+    service = bootstrap.runtime_for(session).services.metadata_service
     asset = tmp_path / "file.txt"
     try:
         service.set_notes(tmp_path, asset, "hello")
@@ -401,7 +401,7 @@ def test_scoped_copy_publishes_session_scoped_file_change(tmp_path, monkeypatch)
     monkeypatch.setattr(eb, "_instance", bus)
     bootstrap = ApplicationBootstrap()
     session = bootstrap.library_service.open_session(tmp_path)
-    service = bootstrap.for_library(session).file_operation_service
+    service = bootstrap.runtime_for(session).services.file_operation_service
     try:
         service.copy_to_directory([source], destination)
 

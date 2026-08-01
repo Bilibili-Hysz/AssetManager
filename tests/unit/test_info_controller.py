@@ -153,6 +153,19 @@ def test_discover_urls_in_dir(tmp_path):
     assert any("https://example.com/page" in u for u in urls)
 
 
+def test_classify_dir_uses_text_categories_without_double_counting_blend(tmp_path):
+    from AssetsManager.controllers.info_controller import InfoController
+
+    (tmp_path / "texture.png").write_bytes(b"")
+    (tmp_path / "scene.blend").write_bytes(b"")
+
+    summary = InfoController.classify_dir(str(tmp_path))
+
+    assert "Images 1" in summary
+    assert "3D Models 1" in summary
+    assert "3D Models 2" not in summary
+
+
 def test_get_file_info_preserves_existing_urls(lib_env):
     from AssetsManager.controllers.info_controller import InfoController
 

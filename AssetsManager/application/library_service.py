@@ -49,11 +49,16 @@ class LibraryService:
     def _notify_session_closing(self, session: LibrarySession) -> None:
         with self._lock:
             listeners = tuple(self._session_closing_listeners)
+        first_error: BaseException | None = None
         for listener in listeners:
             try:
                 listener(session)
-            except Exception:
+            except BaseException as exc:
                 _log.exception("Library session pre-close listener failed")
+                if first_error is None:
+                    first_error = exc
+        if first_error is not None:
+            raise first_error
 
     def add_session_close_listener(
         self, listener: Callable[[LibrarySession], None]
@@ -101,7 +106,11 @@ class LibraryService:
         opened_session = False
         with self._lifecycle:
             self._lifecycle.wait_for(
-                lambda: not self._closing and key not in self._closing_roots
+                lambda: (
+                    not self._closing
+                    and key not in self._closing_roots
+                    and key not in self._closing_sessions
+                )
             )
             cached = self._contexts.get(key)
             if cached is not None:
@@ -185,25 +194,66 @@ class LibraryService:
             self._closing = True
             self._lifecycle.wait_for(lambda: not self._closing_roots)
             sessions = list(self._sessions.values())
-            self._contexts.clear()
-            self._sessions.clear()
-            self._current = None
+        failed = False
+        first_error: BaseException | None = None
         try:
             for session in sessions:
+                key = str(session.root)
+                with self._lifecycle:
+                    self._closing_roots.add(key)
+                    self._closing_sessions[key] = session
+                    context = self._contexts.get(key)
                 try:
                     session._begin_close()
                     self._notify_session_closing(session)
+                except BaseException as exc:
+                    failed = True
+                    if first_error is None:
+                        first_error = exc
+                    with self._lifecycle:
+                        self._closing_roots.discard(key)
+                        self._lifecycle.notify_all()
+                    continue
+                try:
                     session._finish_close()
-                except Exception:
-                    pass
+                except BaseException:
+                    _log.exception("Library session cache cleanup failed during service close")
                 try:
                     self._notify_session_closed(session)
-                except Exception:
-                    # Keep closing remaining sessions and the DB even when a
-                    # post-close owner reports a cleanup failure. The owner
-                    # retains its resource for an explicit retry.
-                    pass
-            self._db.close()
+                except BaseException as exc:
+                    failed = True
+                    if first_error is None:
+                        first_error = exc
+                    _log.exception("Library session close listener failed during service close")
+                    with self._lifecycle:
+                        self._closing_roots.discard(key)
+                        self._lifecycle.notify_all()
+                    continue
+                try:
+                    self._db.close_library(key)
+                except BaseException as exc:
+                    failed = True
+                    if first_error is None:
+                        first_error = exc
+                    _log.exception("Library database close failed during service close")
+                    with self._lifecycle:
+                        self._closing_roots.discard(key)
+                        self._lifecycle.notify_all()
+                    continue
+                with self._lifecycle:
+                    if self._sessions.get(key) is session:
+                        self._sessions.pop(key, None)
+                    if self._contexts.get(key) is context:
+                        self._contexts.pop(key, None)
+                    if self._current is context:
+                        self._current = None
+                    self._closing_roots.discard(key)
+                    self._closing_sessions.pop(key, None)
+                    self._lifecycle.notify_all()
+            if not failed:
+                self._db.close()
+            if first_error is not None:
+                raise first_error
         finally:
             with self._lifecycle:
                 self._closing = False
@@ -219,37 +269,60 @@ class LibraryService:
             raise RuntimeError("Cannot close a LibrarySession from an active operation")
         key = str(session.root)
         with self._lifecycle:
-            self._lifecycle.wait_for(lambda: not self._closing)
+            self._lifecycle.wait_for(
+                lambda: not self._closing and key not in self._closing_roots
+            )
+            if session.is_closed and key not in self._closing_sessions:
+                return
             if self._sessions.get(key) is not session:
                 current = False
             else:
                 current = True
                 self._closing_roots.add(key)
                 self._closing_sessions[key] = session
-                self._sessions.pop(key)
-                context = self._contexts.pop(key, None)
-                if self._current is context:
-                    self._current = None
+                context = self._contexts.get(key)
         if not current:
             session._begin_close()
             self._notify_session_closing(session)
             session._finish_close()
             return
+        close_committed = False
         try:
+            session._begin_close()
+            self._notify_session_closing(session)
+            finish_error: BaseException | None = None
             try:
-                session._begin_close()
-                self._notify_session_closing(session)
                 session._finish_close()
-            finally:
-                self._notify_session_closed(session)
-        finally:
+            except BaseException as exc:
+                finish_error = exc
+            postclose_error: BaseException | None = None
             try:
-                self._db.close_library(key)
-            finally:
-                with self._lifecycle:
-                    self._closing_roots.discard(key)
+                self._notify_session_closed(session)
+            except BaseException as exc:
+                postclose_error = exc
+            if postclose_error is not None:
+                raise postclose_error
+            self._db.close_library(key)
+            with self._lifecycle:
+                if self._sessions.get(key) is session:
+                    self._sessions.pop(key, None)
+                if self._contexts.get(key) is context:
+                    self._contexts.pop(key, None)
+                if self._current is context:
+                    self._current = None
+            close_committed = True
+            if postclose_error is not None:
+                raise postclose_error
+            if finish_error is not None:
+                raise finish_error
+        finally:
+            with self._lifecycle:
+                self._closing_roots.discard(key)
+                if close_committed:
                     self._closing_sessions.pop(key, None)
-                    self._lifecycle.notify_all()
+                else:
+                    self._closing_sessions[key] = session
+                self._lifecycle.notify_all()
 
 
 def get_library_service() -> LibraryService:

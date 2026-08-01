@@ -12,7 +12,7 @@ Features:
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QRectF, QRect, QTimer
+from PySide6.QtCore import Qt, Signal, QRectF, QRect, QTimer, QSize
 from PySide6.QtGui import (
     QPixmap, QColor, QPainter, QPen, QFont,
     QImageReader,
@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QApplication,
 )
 
-from AssetsManager.core import themes
+from AssetsManager.core import icons, themes
 from AssetsManager.core.constants import IMAGE_EXTS
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager import i18n
@@ -264,11 +264,14 @@ class ImageViewerOverlay(QFrame):
             p.setPen(QColor("white"))
         else:
             p.setPen(QColor(t["muted"]))
-        f2 = QFont()
-        f2.setPointSize(scaled_pt(16))
-        f2.setBold(True)
-        p.setFont(f2)
-        p.drawText(close_r, Qt.AlignmentFlag.AlignCenter, "×")
+        close_color = QColor("white") if close_hover else QColor(t["muted"])
+        close_icon = icons.icon("close", color=close_color.name(), size=scaled_px(16))
+        close_pixmap = close_icon.pixmap(QSize(scaled_px(16), scaled_px(16)))
+        p.drawPixmap(
+            close_r.center().x() - close_pixmap.width() // 2,
+            close_r.center().y() - close_pixmap.height() // 2,
+            close_pixmap,
+        )
 
         # ── Footer ──
         footer = self._footer_rect()

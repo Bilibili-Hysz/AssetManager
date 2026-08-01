@@ -58,7 +58,7 @@ def _wait_for_connection_count(server: LanServer, expected: int, timeout: float 
 def browser_page():
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
-        context = browser.new_context()
+        context = browser.new_context(locale="en-US")
         page = context.new_page()
         try:
             yield page
@@ -94,6 +94,39 @@ def test_browser_realtime_refreshes_after_desktop_mutation(browser_page, lan_run
     runtime.services.file_operation_service.create_folder(runtime.session.root, "desktop-created")
 
     _wait_for_name(page, "desktop-created")
+
+
+def test_browser_logout_redirects_and_closes_realtime(browser_page, lan_runtime):
+    _bootstrap, _session, _runtime, server = lan_runtime
+    page = browser_page
+    _open_browse(page, server)
+    _wait_for_connection_count(server, 1)
+
+    page.get_by_role("button", name="Admin", exact=True).click()
+    page.get_by_role("button", name="Logout", exact=True).click()
+
+    page.wait_for_url("**/login")
+    page.locator("input[type='password']").wait_for()
+    _wait_for_connection_count(server, 0)
+
+    response = page.evaluate(
+        """async () => (await fetch('/api/files', {credentials: 'same-origin'})).status"""
+    )
+    assert response == 401
+
+
+def test_browser_401_resets_identity_and_closes_realtime(browser_page, lan_runtime):
+    _bootstrap, _session, _runtime, server = lan_runtime
+    page = browser_page
+    _open_browse(page, server)
+    _wait_for_connection_count(server, 1)
+
+    server._impl._token_secret = "rotated-token-secret"
+    page.reload(wait_until="networkidle")
+
+    page.wait_for_url("**/login")
+    page.locator("input[type='password']").wait_for()
+    _wait_for_connection_count(server, 0)
 
 
 def test_real_lan_server_restarts_on_same_port(lan_runtime):

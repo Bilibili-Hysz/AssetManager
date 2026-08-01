@@ -46,7 +46,7 @@ export function AppLayout({
   return (
     <div className="h-screen flex flex-col bg-slate-950 overflow-hidden">
       {/* ── Header ── */}
-      {header && <div className="flex-shrink-0">{header}</div>}
+      {header && <div className="relative z-20 flex-shrink-0">{header}</div>}
 
       {/* ── Body: 三栏 ── */}
       <div className="flex-1 flex overflow-hidden relative">

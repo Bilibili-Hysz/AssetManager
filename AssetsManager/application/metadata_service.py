@@ -43,10 +43,7 @@ class MetadataService:
         root = str(Path(library_root).resolve())
         if self._connection_provider is not None:
             return self._connection_provider(root)
-        raise RuntimeError(
-            "MetadataService requires a ConnectionProvider. "
-            "Use ApplicationBootstrap.for_library() or pass connection_provider explicitly."
-        )
+        raise RuntimeError("MetadataService requires an explicit ConnectionProvider.")
 
     def _repo(self, library_root: str | Path) -> MetadataRepository:
         """Return a MetadataRepository for the given library root."""

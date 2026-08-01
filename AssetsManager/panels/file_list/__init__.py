@@ -8,12 +8,13 @@ import os
 from pathlib import Path
 
 from PySide6.QtCore import (
-    Qt, QTimer, QEasingCurve, QVariantAnimation, QModelIndex, QRect, QPoint, QEvent, Signal, QFileInfo, QObject,
+    Qt, QTimer, QEasingCurve, QVariantAnimation, QModelIndex, QRect, QPoint, QEvent, Signal, QFileInfo, QObject, QSize,
     QItemSelectionModel,
 )
 from PySide6.QtWidgets import (
-    QWidget, QMenu, QApplication, QSizePolicy, QTreeView, QAbstractItemView,
+    QWidget, QMenu, QApplication, QSizePolicy, QTreeView, QAbstractItemView, QHeaderView, QStyledItemDelegate,
 )
+from AssetsManager.core import icons
 
 from AssetsManager.core import themes
 from AssetsManager.core.signal_bus import get as bus
@@ -31,6 +32,15 @@ from AssetsManager.application.tag_service import TagServiceAdapter
 
 _log = logging.getLogger(__name__)
 tr = i18n.tr
+
+
+class _DetailsItemDelegate(QStyledItemDelegate):
+    """Keep Details rows comfortably readable without per-row widgets."""
+
+    def sizeHint(self, option, index):
+        size = super().sizeHint(option, index)
+        size.setHeight(max(size.height(), scaled_px(32)))
+        return size
 
 
 class _ListShim:
@@ -191,9 +201,26 @@ class QWidgetFileListPanel(FileListPanel):
         self._detail_view.setRootIsDecorated(False)
         self._detail_view.setItemsExpandable(False)
         self._detail_view.setIndentation(0)
+        self._detail_view.setItemDelegate(_DetailsItemDelegate(self._detail_view))
+        self._detail_view.setUniformRowHeights(True)
+        self._detail_view.setAlternatingRowColors(True)
+        self._detail_view.setIconSize(QSize(scaled_px(18), scaled_px(18)))
+        self._detail_view.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self._detail_view.setAllColumnsShowFocus(False)
+        detail_header = self._detail_view.header()
+        detail_header.setStretchLastSection(True)
+        detail_header.setDefaultAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        detail_header.setMinimumHeight(scaled_px(30))
+        detail_header.setMinimumSectionSize(scaled_px(72))
+        detail_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        detail_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        detail_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        detail_header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        detail_header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
         self._detail_view.selectionModel().selectionChanged.connect(self._on_detail_selection_changed)
-        self._detail_view.header().setStretchLastSection(True)
-        self._detail_view.header().setSortIndicatorShown(True)
+        detail_header.setSortIndicatorShown(True)
         self._detail_view.setSortingEnabled(True)
         self._detail_view.sortByColumn(0, Qt.SortOrder.AscendingOrder)
         self._detail_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -214,12 +241,13 @@ class QWidgetFileListPanel(FileListPanel):
 
         self._list_view = _ListShim(self)
         self._connect_bus(bus().language_changed, self._refresh_language)
+        self._connect_bus(bus().ui_scale_changed, self._on_ui_scale_changed)
         self.initialize_navigation()
 
         from AssetsManager.domain.events import FileSystemChanged
         self._file_op_timer = QTimer(self)
         self._file_op_timer.setSingleShot(True)
-        self._file_op_timer.setInterval(200)
+        self._file_op_timer.setInterval(500)
         self._file_op_timer.timeout.connect(self._post_refresh)
         self._connect_domain_event(FileSystemChanged, self._on_file_operation)
 
@@ -232,12 +260,25 @@ class QWidgetFileListPanel(FileListPanel):
             Qt.Orientation.Horizontal, 0, len(self._detail_model.HEADER_KEYS) - 1)
         self._update_status()
 
+    def _on_ui_scale_changed(self, _scale: float) -> None:
+        """Re-measure canvas text and Details chrome after a live scale change."""
+        self._grid_widget.refresh_scale()
+        self._grid_widget.update_layout(self._model.rowCount(), self._grid_widget.width())
+        self._detail_view.setIconSize(QSize(scaled_px(18), scaled_px(18)))
+        self._detail_view.header().setMinimumHeight(scaled_px(30))
+        self._apply_detail_theme()
+
     def _on_file_operation(self, event):
         if getattr(self._model, "_is_shutdown", False):
             return
         scoped = self._scoped_services
         if scoped is None or event.session_token != scoped.session.event_token:
             return
+        fs_timer = getattr(self, "_fs_refresh_timer", None)
+        if fs_timer is not None:
+            fs_timer.stop()
+        if hasattr(self, "_pending_fs_changed_path"):
+            self._pending_fs_changed_path = None
         self._file_op_timer.start()
 
     def clone(self):
@@ -298,9 +339,11 @@ class QWidgetFileListPanel(FileListPanel):
                 from AssetsManager.core.tool_scheduler import list_tools, run_tool
                 for tool in list_tools():
                     if "{file}" in str(tool.get("args", [])):
-                        icon = tool.get("icon", "") or "🔧"
-                        text = f"{icon}  {tool.get('name', 'Tool')}"
-                        open_with.addAction(text, lambda checked, t=tool, fp=p: run_tool(t, file_path=fp))
+                        action = open_with.addAction(
+                            tool.get("name", "Tool"),
+                            lambda checked, t=tool, fp=p: run_tool(t, file_path=fp),
+                        )
+                        action.setIcon(icons.icon(tool.get("icon_name") or tool.get("icon"), color=themes.get()["heading"], size=scaled_px(16), fallback="wrench"))
             self._add_command_group(menu, commands, context, "clipboard")
             self._add_command_group(menu, commands, context, "mutate")
             self._add_command_group(menu, commands, context, "history")
@@ -662,6 +705,14 @@ class QWidgetFileListPanel(FileListPanel):
             return
         self._presentation_generation = generation
         result_paths = self._consume_operation_selection()
+        scan_reused = bool(getattr(self._model, "_last_scan_reused", False))
+        self._model._last_scan_reused = False
+        if scan_reused:
+            self._grid_widget.set_performance_generation(generation)
+            if result_paths:
+                self._restore_operation_selection(result_paths)
+            self._update_status()
+            return
         if self._view_mode == "Grid":
             self._restore_grid_selection()
         if not self._model.rowCount():
@@ -693,24 +744,36 @@ class QWidgetFileListPanel(FileListPanel):
             f"QHeaderView::section {{"
             f"  background: {t['header']}; color: {t['heading']}; "
             f"  border: none; border-right: 1px solid {alpha(t['border'], 0.25)}; "
-            f"  padding: 4px 8px; font-size: {scaled_pt(12)}px; font-weight: bold; "
+            f"  padding: {scaled_px(5)}px {scaled_px(8)}px; "
+            f"  font-size: {scaled_pt(12)}px; font-weight: bold; "
             f"}}"
             f"QHeaderView::down-arrow, QHeaderView::up-arrow {{ "
-            f"  width: 10px; height: 10px; "
+            f"  width: {scaled_px(10)}px; height: {scaled_px(10)}px; "
+            f"}}"
+            f"QHeaderView::section:hover {{"
+            f"  background: {alpha(t['accent'], 0.12)}; "
             f"}}")
         self._detail_view.setStyleSheet(
             f"QTreeView {{"
             f"  background: {t['panel']}; color: {t['body']}; "
-            f"  border: none; font-size: {scaled_pt(12)}px; "
+            f"  alternate-background-color: {alpha(t['header'], 0.24)}; "
+            f"  selection-background-color: {alpha(t['accent'], 0.28)}; "
+            f"  selection-color: {t['heading']}; "
+            f"  border: none; outline: none; font-size: {scaled_pt(12)}px; "
             f"}}"
             f"QTreeView::item {{"
-            f"  padding: 3px 6px; border: none; "
+            f"  padding: {scaled_px(4)}px {scaled_px(8)}px; "
+            f"  border: none; border-bottom: 1px solid {alpha(t['border'], 0.18)}; "
             f"}}"
-            f"QTreeView::item:selected {{"
-            f"  background: {alpha(t['accent'], 0.30)}; color: {t['heading']}; "
+            f"QTreeView::item:alternate {{"
+            f"  background: {alpha(t['header'], 0.24)}; "
             f"}}"
             f"QTreeView::item:hover {{"
             f"  background: {alpha(t['accent'], 0.12)}; "
+            f"}}"
+            f"QTreeView::item:selected {{"
+            f"  background: {alpha(t['accent'], 0.28)}; color: {t['heading']}; "
+            f"  border-left: {scaled_px(2)}px solid {t['accent']}; "
             f"}}")
 
     def _on_theme_changed(self, _name):
@@ -863,6 +926,8 @@ class QWidgetFileListPanel(FileListPanel):
 
     def _on_zoom_changed(self, val):
         target = int(val.replace("px", ""))
+        anchor_pos = getattr(self, "_pending_zoom_anchor", None)
+        self._pending_zoom_anchor = None
         if not hasattr(self, '_zoom_anim'):
             self._zoom_anim = None
         self._zoom_generation = getattr(self, "_zoom_generation", 0) + 1
@@ -871,14 +936,24 @@ class QWidgetFileListPanel(FileListPanel):
             self._zoom_anim.stop()
         start = self._thumb_size
         if start == target:
-            # A cancelled animation may already have an active interpolated
-            # layout. Commit it instead of leaving mixed geometry behind.
+            # Rebase an interrupted transition before committing its current
+            # size, otherwise the previous target's scroll anchor can snap.
             if self._grid_widget._zoom_relayout_active:
+                self._grid_widget.begin_zoom(target, anchor_pos)
                 self._on_zoom_done(generation)
             return
-        self._grid_widget.begin_zoom(target)
+
+        self._grid_widget.begin_zoom(target, anchor_pos)
+        if getattr(self._grid_widget, "_reduce_motion", False) is True:
+            self._thumb_size = target
+            self._grid_widget.set_zoom_thumb_size(target)
+            self._on_zoom_done(generation, target)
+            return
+
+        distance = abs(target - start)
+        duration = min(220, 150 + round(distance * 1.1))
         self._zoom_anim = QVariantAnimation(self)
-        self._zoom_anim.setDuration(180)
+        self._zoom_anim.setDuration(duration)
         self._zoom_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._zoom_anim.setStartValue(start)
         self._zoom_anim.setEndValue(target)
@@ -906,14 +981,26 @@ class QWidgetFileListPanel(FileListPanel):
         self._grid_widget.invalidate_textures()
         self._load_visible()
 
-    def _wheel_zoom_evt(self, event):
+    def _wheel_zoom_evt(self, event, source=None):
         if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             delta = event.angleDelta().y()
             idx = self._zoom_combo.currentIndex()
+            target_idx = idx
             if delta > 0 and idx < len(ZOOM_PRESETS) - 1:
-                self._zoom_combo.setCurrentIndex(idx + 1)
+                target_idx = idx + 1
             elif delta < 0 and idx > 0:
-                self._zoom_combo.setCurrentIndex(idx - 1)
+                target_idx = idx - 1
+            if target_idx != idx:
+                anchor_pos = None
+                if source is self._grid_widget and callable(getattr(event, "position", None)):
+                    candidate = event.position().toPoint()
+                    if self._grid_widget.rect().contains(candidate):
+                        anchor_pos = candidate
+                self._pending_zoom_anchor = anchor_pos
+                try:
+                    self._zoom_combo.setCurrentIndex(target_idx)
+                finally:
+                    self._pending_zoom_anchor = None
             return
         self._grid_widget._scrollbar.wheelEvent(event)
 
@@ -994,7 +1081,7 @@ class QWidgetFileListPanel(FileListPanel):
         if self._view_mode != "Details":
             self._grid_widget.update_layout(self._model.rowCount(), self._grid_widget.width())
             self._load_visible()
-        self._hidden_btn.setText("◉" if self._model._show_hidden else "•")
+        self._refresh_state_icons()
         self._update_status()
 
     def _update_status(self):
@@ -1061,7 +1148,7 @@ class QWidgetFileListPanel(FileListPanel):
         if obj is self._grid_widget or obj is self._search:
             if t == QEvent.Type.Wheel:
                 if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
-                    self._wheel_zoom_evt(event)
+                    self._wheel_zoom_evt(event, obj)
                     return True
                 self._smooth_scroll(event)
                 return True

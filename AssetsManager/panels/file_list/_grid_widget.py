@@ -9,6 +9,7 @@ import weakref
 from PySide6.QtCore import Qt, QSize, QRect, QPoint, QTimer, Signal
 from PySide6.QtGui import QPainter, QPixmap, QColor, QPen, QFont, QFontMetrics
 from PySide6.QtWidgets import QWidget, QScrollBar, QSizePolicy
+from AssetsManager.core import icons
 from shiboken6 import Shiboken
 from AssetsManager.core import themes
 from AssetsManager.core.color_utils import _hex_to_rgb
@@ -39,6 +40,7 @@ def _make_folder_highlight(t: dict) -> QColor:
 _BADGE_PAD_H = scaled_px(5)
 _FULL_REBUILD_TEXTURE_BUDGET = 12
 _ZOOM_FALLBACK_TEXTURE_BUDGET = 2
+_PATH_TEXTURE_CACHE_LIMIT = 200
 
 
 class FileListGridWidget(QWidget):
@@ -61,6 +63,7 @@ class FileListGridWidget(QWidget):
 
         self._scroll_y = 0
         self._textures: OrderedDict[int, QPixmap] = OrderedDict()
+        self._path_textures: OrderedDict[str, QPixmap] = OrderedDict()
         self._texture_bytes: dict[int, int] = {}
         self._texture_cache_bytes = 0
         self._zoom_relayout_active = False
@@ -107,14 +110,7 @@ class FileListGridWidget(QWidget):
         self._font_sub = QFont()
         self._font_sub.setPointSize(scaled_pt(8))
         self._fm_sub = QFontMetrics(self._font_sub)
-        self._font_badge = QFont()
-        self._font_badge.setPointSize(scaled_pt(6))
-        self._font_badge.setBold(True)
-        self._fm_badge = QFontMetrics(self._font_badge)
-
-        # Computed item hint matching delegate sizeHint
-        self._t_h = _TEXT_TOP_GAP + self._fm_name.height() + _TEXT_LINE_GAP + self._fm_sub.height()
-        self._update_item_hint()
+        self._refresh_text_metrics()
 
         self._scrollbar = QScrollBar(Qt.Orientation.Vertical, self)
         self._scrollbar.valueChanged.connect(self._on_scroll)
@@ -150,11 +146,28 @@ class FileListGridWidget(QWidget):
         self._item_h = _CARD_PAD * 2 + _PREVIEW_MARGIN * 2 + self._thumb_size + self._t_h + 2
         self._item_hint = QSize(self._item_w, self._item_h)
 
+    def _refresh_text_metrics(self) -> None:
+        """Refresh card text metrics after theme or UI-scale changes."""
+        self._font_name = QFont()
+        self._font_name.setPointSize(scaled_pt(9))
+        self._font_name.setBold(True)
+        self._fm_name = QFontMetrics(self._font_name)
+        self._font_sub = QFont()
+        self._font_sub.setPointSize(scaled_pt(8))
+        self._fm_sub = QFontMetrics(self._font_sub)
+        self._font_badge = QFont()
+        self._font_badge.setPointSize(scaled_pt(8))
+        self._font_badge.setBold(True)
+        self._fm_badge = QFontMetrics(self._font_badge)
+        self._t_h = _TEXT_TOP_GAP + self._fm_name.height() + _TEXT_LINE_GAP + self._fm_sub.height()
+        self._update_item_hint()
     # ── Public API ──────────────────────────────────────────
 
     def set_model(self, model):
         self._model = model
         model.modelReset.connect(self._on_model_reset)
+        model.modelAboutToBeReset.connect(self._capture_path_textures)
+        model.scan_started.connect(self._on_scan_started)
         model.dataChanged.connect(self._on_data_changed)
 
     def set_layout_ref(self, layout):
@@ -179,13 +192,58 @@ class FileListGridWidget(QWidget):
             self._performance_generation = generation
 
     def set_thumb_size(self, size: int):
+        if size != self._thumb_size:
+            self._path_textures.clear()
         self._thumb_size = size
         self._update_item_hint()
 
-    def begin_zoom(self, target_size: int) -> None:
-        """Capture the current cards and their target layout for interpolation."""
+    def _zoom_anchor_row(
+        self,
+        rows: set[int],
+        rects: list[QRect],
+        anchor_pos: QPoint | None = None,
+    ) -> int:
+        """Pick the card nearest the pointer, or the viewport center."""
+        valid_rows = [row for row in rows if 0 <= row < len(rects)]
+        if not valid_rows:
+            return -1
+        if anchor_pos is not None and self.rect().contains(anchor_pos):
+            anchor_x = anchor_pos.x()
+            anchor_y = self._scroll_y + anchor_pos.y()
+        else:
+            anchor_x = self.width() // 2
+            anchor_y = self._scroll_y + self.height() // 2
+        return min(
+            valid_rows,
+            key=lambda row: (
+                abs(rects[row].center().y() - anchor_y),
+                abs(rects[row].center().x() - anchor_x),
+                row,
+            ),
+        )
+
+    def begin_zoom(self, target_size: int, anchor_pos: QPoint | None = None) -> None:
+        """Capture the current visual cards and their target layout."""
         if self._layout is None:
             return
+        previous_zoom_visible = self._zoom_visible_rows.copy()
+        source_rects = [
+            self._current_visual_rect(rect, row)
+            for row, rect in enumerate(self._layout._rects)
+        ]
+        source_visible_rows = set(self._layout.visible_rows(self._scroll_y, self.height()))
+        source_visible_rows.update(previous_zoom_visible)
+        viewport_top = self._scroll_y
+        viewport_bottom = viewport_top + self.height()
+        source_visible_rows = {
+            row for row in source_visible_rows
+            if 0 <= row < len(source_rects)
+            and source_rects[row].bottom() >= viewport_top
+            and source_rects[row].top() <= viewport_bottom
+        }
+        if not source_visible_rows:
+            source_visible_rows = set(self._layout.visible_rows(self._scroll_y, self.height()))
+
         # Zoom owns the visual timeline. Entrance and thumbnail fades would
         # otherwise advance only the already-textured rows while the rest of
         # the viewport follows the geometry interpolation.
@@ -193,7 +251,7 @@ class FileListGridWidget(QWidget):
         self._entrance_visible.clear()
         self._thumb_opacity.clear()
         self._zoom_fallback_textures.clear()
-        self._zoom_source_rects = [self._zoom_texture_rect(rect, row) for row, rect in enumerate(self._layout._rects)]
+        self._zoom_source_rects = source_rects
         self._zoom_start_size = self._thumb_size
         self._zoom_target_size = target_size
         target_hint = QSize(
@@ -208,19 +266,35 @@ class FileListGridWidget(QWidget):
             item_hint=target_hint,
         )
         self._zoom_target_rects = target_layout._rects
-        anchor_row = self._layout.row_at(self.width() // 2, self._scroll_y + self.height() // 2)
-        if anchor_row < 0:
-            visible = self._layout.visible_rows(self._scroll_y, self.height())
-            anchor_row = visible[len(visible) // 2] if visible else -1
+        anchor_row = self._zoom_anchor_row(
+            source_visible_rows,
+            self._zoom_source_rects,
+            anchor_pos,
+        )
         if 0 <= anchor_row < len(self._zoom_target_rects):
-            self._zoom_anchor_y_offset = (
-                self._zoom_source_rects[anchor_row].center().y()
-                - self._zoom_target_rects[anchor_row].center().y()
+            source_anchor = self._zoom_source_rects[anchor_row]
+            target_anchor = self._zoom_target_rects[anchor_row]
+            pointer_content_pos = (
+                QPoint(anchor_pos.x(), self._scroll_y + anchor_pos.y())
+                if anchor_pos is not None
+                else None
             )
+            if pointer_content_pos is not None and source_anchor.contains(pointer_content_pos):
+                relative_y = (
+                    (pointer_content_pos.y() - source_anchor.top())
+                    / max(1, source_anchor.height())
+                )
+                source_focus_y = source_anchor.top() + source_anchor.height() * relative_y
+                target_focus_y = target_anchor.top() + target_anchor.height() * relative_y
+                self._zoom_anchor_y_offset = round(source_focus_y - target_focus_y)
+            else:
+                self._zoom_anchor_y_offset = (
+                    source_anchor.center().y() - target_anchor.center().y()
+                )
         else:
             self._zoom_anchor_y_offset = 0
         target_scroll = max(0, self._scroll_y - self._zoom_anchor_y_offset)
-        self._zoom_visible_rows = set(self._layout.visible_rows(self._scroll_y, self.height()))
+        self._zoom_visible_rows = source_visible_rows
         self._zoom_visible_rows.update(target_layout.visible_rows(target_scroll, self.height()))
         self._zoom_relayout_active = bool(self._zoom_source_rects)
 
@@ -233,7 +307,7 @@ class FileListGridWidget(QWidget):
         self._request_frame(full=True)
 
     def finish_zoom(self) -> None:
-        """Commit the target layout while retaining the viewport-center anchor."""
+        """Commit the target layout while retaining the active zoom anchor."""
         if not self._zoom_relayout_active:
             return
         self._scrollbar.setValue(max(0, self._scroll_y - self._zoom_anchor_y_offset))
@@ -248,6 +322,7 @@ class FileListGridWidget(QWidget):
     def invalidate_textures(self):
         previous_count = len(self._textures)
         self._full_rebuild_epoch += 1
+        self._path_textures.clear()
         # Keep the prior card textures on screen until their replacements are
         # ready. Clearing them made a paced rebuild visibly turn into blanks.
         self._dirty = set(range(self._model_rows))
@@ -264,6 +339,9 @@ class FileListGridWidget(QWidget):
     def commit_thumbnail_rows(self, rows: list[int]) -> None:
         """Apply one authoritative visual invalidation for a validated thumbnail batch."""
         for r in rows:
+            path = self._model.path_at(r) if self._model is not None else None
+            if path:
+                self._path_textures.pop(path, None)
             has_visible_texture = r in self._textures
             self._dirty.add(r)
             if r not in self._thumbnail_rows:
@@ -287,7 +365,29 @@ class FileListGridWidget(QWidget):
     def record_thumbnail_batch(self, count: int) -> None:
         self._record_thumbnail_delivery("grid.thumbnail_batch", None, count)
 
+    def _on_scan_started(self, _generation: int):
+        """Drop path textures before a new filesystem scan can change files."""
+        self._scan_reset_pending = True
+        self._path_textures.clear()
+
+    def _capture_path_textures(self):
+        """Keep card textures available across sort/filter model resets."""
+        if getattr(self, "_scan_reset_pending", False):
+            self._path_textures.clear()
+            return
+        if self._model is None:
+            return
+        for row, texture in list(self._textures.items()):
+            path = self._model.path_at(row)
+            if not path:
+                continue
+            self._path_textures[path] = texture
+            self._path_textures.move_to_end(path)
+        while len(self._path_textures) > _PATH_TEXTURE_CACHE_LIMIT:
+            self._path_textures.popitem(last=False)
+
     def _on_model_reset(self):
+        self._scan_reset_pending = False
         previous_count = len(self._textures)
         self._full_rebuild_epoch += 1
         self._clear_textures()
@@ -321,6 +421,9 @@ class FileListGridWidget(QWidget):
         changed_count = bottom_right.row() - top_left.row() + 1
         previous_count = len(self._textures)
         for r in range(top_left.row(), bottom_right.row() + 1):
+            path = self._model.path_at(r) if self._model is not None else None
+            if path:
+                self._path_textures.pop(path, None)
             self._dirty.add(r)
             self._textures.pop(r, None)
             self._remove_texture_bytes(r)
@@ -388,13 +491,87 @@ class FileListGridWidget(QWidget):
 
     # ── Painting ────────────────────────────────────────────
 
+    def _empty_state_presentation(self) -> tuple[str, str] | None:
+        """Return the semantic icon and localized copy for an empty canvas."""
+        state = getattr(self._model, "list_state", "") if self._model is not None else ""
+        state_loading = getattr(self._model, "STATE_LOADING", "loading")
+        state_error = getattr(self._model, "STATE_SCAN_ERROR", "scan_error")
+        state_filtered = getattr(self._model, "STATE_EMPTY_FILTERED", "empty_filtered")
+        state_empty = getattr(self._model, "STATE_EMPTY_FOLDER", "empty_folder")
+        states = {
+            state_loading: ("refresh", "filelist.state.loading"),
+            state_error: ("folder", "filelist.state.scan_error"),
+            state_filtered: ("search", "filelist.state.empty_filtered"),
+            state_empty: ("folder", "filelist.empty"),
+        }
+        value = states.get(state)
+        if value is None:
+            return None
+        icon_name, text_key = value
+        return icon_name, tr(text_key)
+
+    def _draw_empty_state(self, painter: QPainter) -> None:
+        """Paint a calm, centered state without creating extra child widgets."""
+        presentation = self._empty_state_presentation()
+        if presentation is None:
+            return
+        icon_name, text = presentation
+        icon_size = scaled_px(34)
+        text_font = QFont()
+        text_font.setPointSize(scaled_pt(11))
+        text_font.setBold(True)
+        text_metrics = QFontMetrics(text_font)
+        gap = scaled_px(12)
+        content_height = icon_size + gap + text_metrics.height()
+        top = max(scaled_px(20), (self.height() - content_height) // 2)
+        icon_rect = QRect(
+            (self.width() - icon_size) // 2,
+            top,
+            icon_size,
+            icon_size,
+        )
+        state_icon = icons.icon(
+            icon_name,
+            color=self._clr_muted.name(),
+            size=icon_size,
+            fallback="file",
+        )
+        icon_pixmap = state_icon.pixmap(QSize(icon_size, icon_size))
+        painter.drawPixmap(icon_rect, icon_pixmap)
+
+        text_rect = QRect(
+            scaled_px(20),
+            icon_rect.bottom() + gap,
+            max(1, self.width() - scaled_px(40)),
+            text_metrics.height(),
+        )
+        painter.setFont(text_font)
+        painter.setPen(self._clr_heading)
+        painter.drawText(
+            text_rect,
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+            text,
+        )
+        if getattr(self._model, "list_state", "") == getattr(
+            self._model, "STATE_LOADING", "loading"
+        ):
+            line_width = scaled_px(56)
+            line_y = text_rect.bottom() + scaled_px(10)
+            painter.setPen(QPen(self._clr_accent, scaled_px(2)))
+            painter.drawLine(
+                (self.width() - line_width) // 2,
+                line_y,
+                (self.width() + line_width) // 2,
+                line_y,
+            )
+
     def showEvent(self, event):
         super().showEvent(event)
         if self._pending_presentation is not None:
             QTimer.singleShot(0, self._present_pending_generation)
 
     def paintEvent(self, _evt):
-        if not self._model or not self._layout or not self.isVisible():
+        if not self._model or not self.isVisible():
             return
         if self.width() == 0 or self.height() == 0:
             return
@@ -403,18 +580,25 @@ class FileListGridWidget(QWidget):
         session_token = self._performance_session_token
         generation = self._performance_generation
         p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # Cached textures already contain antialiased card geometry. Keep the
+        # hot path pixmap-only; rounded overlays enable AA locally below.
+        p.setRenderHint(
+            QPainter.RenderHint.SmoothPixmapTransform,
+            self._zoom_relayout_active and not self._reduce_motion,
+        )
         dpr = max(1.0, float(self.devicePixelRatioF() or 1.0))
         if dpr != self._texture_dpr:
             self._texture_dpr = dpr
             self._full_rebuild_epoch += 1
             self._clear_textures()
+            self._path_textures.clear()
             self._dirty = set(range(self._model_rows))
             self._full_rebuild_pending = True
         if not themes.bg_enabled():
             p.fillRect(self.rect(), self._clr_panel)
 
-        if self._model_rows == 0:
+        if self._model_rows == 0 or self._layout is None:
+            self._draw_empty_state(p)
             p.end()
             self._record_performance("grid.frame", started, session_token, generation, 0, 0)
             return
@@ -424,6 +608,14 @@ class FileListGridWidget(QWidget):
         visible = self._layout.visible_rows(sy, vh)
         if self._zoom_relayout_active:
             visible = sorted(set(visible) | self._zoom_visible_rows)
+        prioritize_sizes = getattr(self._model, "prioritize_dir_sizes", None)
+        if callable(prioritize_sizes) and getattr(self._model, "_dir_size_queue", None):
+            visible_dir_paths = []
+            for row in visible:
+                entry = self._model.entry_at(row)
+                if entry is not None and entry.is_dir():
+                    visible_dir_paths.append(entry.path)
+            prioritize_sizes(visible_dir_paths)
         if not visible:
             p.end()
             self._record_performance("grid.frame", started, session_token, generation, 0, 0)
@@ -440,6 +632,15 @@ class FileListGridWidget(QWidget):
                 continue
             dirty = row in self._dirty
             tex = self._textures.get(row)
+            if tex is None and self._path_textures and not self._zoom_relayout_active:
+                path = self._model.path_at(row)
+                if path:
+                    cached = self._path_textures.pop(path, None)
+                    if cached is not None:
+                        tex = cached
+                        self._cache_texture(row, cached)
+                        self._dirty.discard(row)
+                        dirty = False
             if tex is not None:
                 self._textures.move_to_end(row)
             elif self._zoom_relayout_active:
@@ -885,24 +1086,23 @@ class FileListGridWidget(QWidget):
                 self._draw_badge(tp, preview, ext)
 
         tp.setFont(self._font_name)
-        name_color = self._ext_name_color(ext) if not is_dir else self._clr_body
-        tp.setPen(name_color)
+        tp.setPen(self._clr_heading)
         name_y = preview.bottom() + _TEXT_TOP_GAP
-        name_rect = QRect(card.x() + _CARD_PAD // 2, name_y,
-                          card.width() - _CARD_PAD, self._fm_name.height())
+        text_left = preview.left()
+        text_width = max(1, preview.width())
+        name_rect = QRect(text_left, name_y, text_width, self._fm_name.height())
         elided = self._fm_name.elidedText(
             name or "", Qt.TextElideMode.ElideRight, name_rect.width())
-        tp.drawText(name_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, elided)
+        tp.drawText(name_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, elided)
 
         if subtitle:
             tp.setFont(self._font_sub)
             tp.setPen(self._clr_muted)
             sub_y = name_rect.bottom() + _TEXT_LINE_GAP
-            sub_rect = QRect(card.x() + _CARD_PAD // 2, sub_y,
-                             card.width() - _CARD_PAD, self._fm_sub.height())
+            sub_rect = QRect(text_left, sub_y, text_width, self._fm_sub.height())
             elided_sub = self._fm_sub.elidedText(
                 subtitle or "", Qt.TextElideMode.ElideRight, sub_rect.width())
-            tp.drawText(sub_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+            tp.drawText(sub_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
                         elided_sub)
 
         tp.end()
@@ -911,9 +1111,12 @@ class FileListGridWidget(QWidget):
 
     def _draw_texture_placeholder(self, painter: QPainter, item_rect: QRect) -> None:
         card = self._card_rect_in_item(item_rect)
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setPen(QPen(self._clr_border, 1))
         painter.setBrush(QColor(self._clr_heading.red(), self._clr_heading.green(), self._clr_heading.blue(), 6))
         painter.drawRoundedRect(card, _CORNER_R, _CORNER_R)
+        painter.restore()
 
     def _render_zoom_fallback(self, row: int, rect: QRect) -> QPixmap | None:
         """Render a source-sized temporary card for a newly visible zoom row."""
@@ -927,7 +1130,15 @@ class FileListGridWidget(QWidget):
         finally:
             self._thumb_size = original_size
 
-    def _zoom_texture_rect(self, rect: QRect, row: int | None = None) -> QRect:
+    def _zoom_progress(self) -> float:
+        distance = self._zoom_target_size - self._zoom_start_size
+        if distance == 0:
+            return 1.0
+        progress = (self._thumb_size - self._zoom_start_size) / distance
+        return max(0.0, min(1.0, progress))
+
+    def _current_visual_rect(self, rect: QRect, row: int | None = None) -> QRect:
+        """Return the card geometry currently presented on screen."""
         if (
             self._zoom_relayout_active
             and row is not None
@@ -936,9 +1147,7 @@ class FileListGridWidget(QWidget):
         ):
             start = self._zoom_source_rects[row]
             end = self._zoom_target_rects[row]
-            distance = self._zoom_target_size - self._zoom_start_size
-            progress = 1.0 if distance == 0 else (self._thumb_size - self._zoom_start_size) / distance
-            progress = max(0.0, min(1.0, progress))
+            progress = self._zoom_progress()
             return QRect(
                 round(start.x() + (end.x() - start.x()) * progress),
                 round(start.y() + (end.y() + self._zoom_anchor_y_offset - start.y()) * progress),
@@ -956,6 +1165,9 @@ class FileListGridWidget(QWidget):
             width,
             height,
         )
+
+    def _zoom_texture_rect(self, rect: QRect, row: int | None = None) -> QRect:
+        return self._current_visual_rect(rect, row)
 
     def _queue_full_rebuild_update(self) -> None:
         if self._full_rebuild_update_queued:
@@ -1038,6 +1250,7 @@ class FileListGridWidget(QWidget):
         card = self._card_rect_in_item(QRect(0, 0, item_rect.width(), item_rect.height()))
         card.translate(item_rect.topLeft())
         p.save()
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         p.setOpacity(opacity)
         if selection_progress > 0.01:
             fill = QColor(self._clr_accent)
@@ -1191,6 +1404,7 @@ class FileListGridWidget(QWidget):
         self._clr_base = QColor(t["base"])
         self._clr_panel = QColor(t["panel"])
         self._clr_border = QColor(t["border"])
+        self._refresh_text_metrics()
         self._apply_scrollbar_theme()
 
     def _apply_scrollbar_theme(self):
@@ -1206,9 +1420,23 @@ class FileListGridWidget(QWidget):
         self._full_rebuild_epoch += 1
         self._rebuild_theme()
         self._clear_textures()
+        self._path_textures.clear()
         self._dirty = set(range(self._model_rows))
         self._full_rebuild_pending = True
         self._record_invalidation("theme", self._model_rows, previous_count)
+        self._request_frame(full=True)
+
+    def refresh_scale(self):
+        """Refresh scale-dependent metrics and repaint cached card textures."""
+        previous_count = len(self._textures)
+        self._full_rebuild_epoch += 1
+        self._refresh_text_metrics()
+        self._apply_scrollbar_theme()
+        self._clear_textures()
+        self._path_textures.clear()
+        self._dirty = set(range(self._model_rows))
+        self._full_rebuild_pending = True
+        self._record_invalidation("scale", self._model_rows, previous_count)
         self._request_frame(full=True)
 
     # ── Scroll ───────────────────────────────────────────────

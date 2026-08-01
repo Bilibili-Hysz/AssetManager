@@ -1,7 +1,7 @@
 # AssetsManager Architecture Diagram
 
-**Version:** 2026-07-21 current-state audit
-**Tests:** Python 1568 passed, 1 Windows platform skip plus Ubuntu WSL symlink gate passed; WebUI 37 files / 286 passed; Task E cross-surface 186 passed; typecheck and build passed
+**Version:** 2026-08-01 repository baseline
+**Tests:** Python 1590 passed, 1 Windows platform skip plus Ubuntu WSL symlink gate passed; WebUI 37 files / 289 passed; Task E cross-surface 186 passed; typecheck and build passed
 
 ---
 
@@ -148,4 +148,4 @@ SettingsDialog → themes.set_theme(name)
 | `panels/` | 18 | ~6,100 | 3 test files |
 | `widgets/` | 6 | ~900 | 0 test files |
 | `tests/` | 50+ | ~5,000+ | — |
-| **Total** | **150+** | **~27,000+** | **Python 1568 passed, 1 Windows skip; Linux symlink gate passed; WebUI 37 files / 286 passed; Task E 186 passed** |
+| **Total** | **150+** | **~27,000+** | **Python 1590 passed, 1 Windows skip; Linux symlink gate passed; WebUI 37 files / 289 passed; Task E 186 passed** |

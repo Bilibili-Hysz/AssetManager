@@ -30,7 +30,7 @@ export default function BrowsePage() {
   const initialPath = searchParams.get('path') || '';
   const { data, isLoading, error, currentPath, sort, navigateTo, setSort, refresh, listingGeneration, hydrateDirectories } = useProjects(initialPath);
   const { loadThumbnails, getThumbnail, revision: thumbnailRevision } = useThumbnailCache();
-  const { api } = useAuth();
+  const { api, identityGeneration } = useAuth();
   const filesApi = useMemo(() => createFilesApi(api), [api]);
   const metaApi = useMemo(() => createMetadataApi(api), [api]);
   const { t } = useI18n();
@@ -115,6 +115,24 @@ export default function BrowsePage() {
   const summaryPaths = useRef(new Set<string>());
   const summaryPending = useRef<string[]>([]);
   const summaryFlushScheduled = useRef(false);
+  const identityGenerationRef = useRef(identityGeneration);
+
+  useEffect(() => {
+    if (identityGenerationRef.current === identityGeneration) return;
+    identityGenerationRef.current = identityGeneration;
+    tagSearchGeneration.current += 1;
+    tagSearchAbort.current?.abort();
+    metadataGeneration.current += 1;
+    metadataAbort.current?.abort();
+    setSelected(new Set());
+    setSelectedItem(null);
+    setSelectedMetadata(null);
+    setSelectedProjectDetail(null);
+    setMetadataLoading(false);
+    setActiveTag(null);
+    setTagResults(null);
+    setTagLoading(false);
+  }, [identityGeneration]);
 
   useEffect(() => () => {
     tagSearchGeneration.current += 1;

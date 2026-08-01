@@ -329,18 +329,14 @@ class InfoController:
     ) -> str:
         """Return a human-readable summary of file types in a directory.
 
-        Uses an emoji-based breakdown (e.g. "🖼 5  📄 3") for display in
-        the InfoPanel.  The optional *classify_cache* avoids re-scanning
-        directories on repeated selections.
+        Uses a compact semantic breakdown (for example ``Images 5  Documents 3``)
+        for display in the InfoPanel. The optional *classify_cache* avoids
+        re-scanning directories on repeated selections.
         """
         cache = classify_cache if classify_cache is not None else {}
         if dir_path in cache:
             return cache[dir_path]
         from AssetsManager.panels.file_list._common import FILTER_CATEGORIES
-        emoji_map = {
-            "Images": "🖼", "3D Models": "🔷", "Videos": "🎬",
-            "Documents": "📄", "Archives": "🗜",
-        }
         try:
             counts: dict[str, int] = {}
             for entry in os.scandir(dir_path):
@@ -349,13 +345,13 @@ class InfoController:
                 ext = Path(entry.name).suffix.lower()
                 for cat, exts in FILTER_CATEGORIES.items():
                     if ext in exts:
-                        emoji = emoji_map.get(cat, "📄")
-                        counts[emoji] = counts.get(emoji, 0) + 1
+                        counts[cat] = counts.get(cat, 0) + 1
                         break
-                if ext == ".blend":
-                    counts["🧊"] = counts.get("🧊", 0) + 1
             if counts:
-                result = "  ".join(f"{k} {v}" for k, v in sorted(counts.items(), key=lambda x: -x[1]))
+                result = "  ".join(
+                    f"{category} {count}"
+                    for category, count in sorted(counts.items(), key=lambda x: -x[1])
+                )
                 cache[dir_path] = result
                 return result
         except OSError:

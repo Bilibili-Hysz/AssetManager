@@ -35,8 +35,8 @@
 
 ## Current baseline and historical mapping
 
-The final Windows baseline after Task E is `1568 passed, 1 skipped` for Python,
-`37 files / 286 tests passed` for WebUI, and `210 passed` in the final Task A
+The final Windows baseline after Task E is `1590 passed, 1 skipped` for Python,
+`37 files / 289 tests passed` for WebUI, and `210 passed` in the final Task A
 Runtime/LAN lifecycle focus. One earlier combined invocation exposed a flaky
 startup rollback thread assertion; run lifecycle gates serially and retain the
 regression until it is deterministic. The Task E cross-surface focused slice is
@@ -330,7 +330,7 @@ release evidence gate and may not be used to paper over an open P1.
   with `1632 modules transformed`; measured stats kept unavailable bytes
   explicit as `null`/`Unavailable`. The full Python suite passed with
   `1555 passed, 1 skipped`; the full WebUI suite passed with
-  `37 files / 286 tests passed`. The one Python skip is the Windows directory
+  `37 files / 289 tests passed`. The one Python skip is the Windows directory
   symlink case.
 
 ---
@@ -404,7 +404,7 @@ release evidence gate and may not be used to paper over an open P1.
   contains the canonical Runtime/DTO/principal modules.
 
   Actual: Task D focused Python gate `402 passed`; full Python suite
-  `1564 passed, 1 skipped`; full WebUI suite `37 files / 286 tests passed`;
+  `1590 passed, 1 skipped`; full WebUI suite `37 files / 289 tests passed`;
   WebUI typecheck and build passed with `1632 modules transformed`. The only
   Python skip is the Windows directory-symlink case. Production scans contain
   no `for_library(` or `cleanup_library(` residue; the intentionally retained
@@ -444,7 +444,7 @@ release evidence gate and may not be used to paper over an open P1.
   python -m pytest tests/core/test_packaging_entrypoints.py tests/core/test_package_contents.py -q
   ```
 
-  Actual: Python `1568 passed, 1 skipped`; WebUI `37 files / 286 tests`;
+  Actual: Python `1590 passed, 1 skipped`; WebUI `37 files / 289 tests`;
   typecheck passed; build passed with `1632 modules transformed`; packaging
   gates `8 passed`. The skip is the Windows directory-symlink case. No
   standalone flaky startup rollback was reproduced in the serial Task E run.

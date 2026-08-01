@@ -12,6 +12,8 @@ import time
 from sqlite3 import Connection
 
 from AssetsManager.domain import auth as auth_crypto
+from AssetsManager.domain.event_bus import get_event_bus
+from AssetsManager.domain.events import ShareChanged
 from AssetsManager.domain.share import ShareLink
 from AssetsManager.repositories.share_repository import ShareRepository
 
@@ -25,6 +27,19 @@ class ShareService:
         self._conn = db_conn
         self._secret = token_secret
         self._repo = ShareRepository(db_conn)
+        self._event_bus = get_event_bus()
+        self._library_root = ""
+        self._session_token = ""
+
+    def _publish_changed(self) -> None:
+        if self._library_root and self._session_token:
+            try:
+                self._event_bus.publish(ShareChanged(
+                    library_root=self._library_root,
+                    session_token=self._session_token,
+                ))
+            except Exception:
+                _log.exception("Share projection notification failed")
 
     def init_table(self) -> None:
         """Initialize the share-link persistence schema."""
@@ -54,6 +69,8 @@ class ShareService:
         ok = self._repo.insert(share_id, paths, password_hash, expires_at, max_downloads, allow_preview, created_by)
         if not ok:
             return None
+
+        self._publish_changed()
 
         return ShareLink(
             id=share_id,
@@ -88,7 +105,10 @@ class ShareService:
 
     def delete_share(self, share_id: str) -> bool:
         """Delete a share link. Returns True if deleted."""
-        return self._repo.delete(share_id)
+        ok = self._repo.delete(share_id)
+        if ok:
+            self._publish_changed()
+        return ok
 
     # ── Authentication ──────────────────────────────────────────
 
@@ -111,7 +131,10 @@ class ShareService:
 
     def increment_download(self, share_id: str) -> bool:
         """Increment the download counter for a share link."""
-        return self._repo.increment_download(share_id)
+        ok = self._repo.increment_download(share_id)
+        if ok:
+            self._publish_changed()
+        return ok
 
     # ── Validation helpers ──────────────────────────────────────
 

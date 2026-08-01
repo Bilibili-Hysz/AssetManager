@@ -17,9 +17,10 @@ const getThumbnail = vi.fn();
 const loadThumbnails = vi.fn();
 const { useInvalidationMock } = vi.hoisted(() => ({ useInvalidationMock: vi.fn() }));
 let listingItems: BrowsableItem[] = [{ path: 'asset.png', name: 'asset.png', type: 'file', extension: '.png', category: 'image', size_fmt: '1 KB', modified: 0 }];
+const authState = { api: {}, identityGeneration: 0 };
 
 vi.mock('../hooks/useAuth', () => ({
-  useAuth: () => ({ api: {}, user: null }),
+  useAuth: () => authState,
 }));
 
 vi.mock('../hooks/useProjects', () => ({
@@ -134,11 +135,29 @@ describe('BrowsePage', () => {
     getThumbnail.mockReset();
     loadThumbnails.mockReset();
     useInvalidationMock.mockReset();
+    authState.identityGeneration = 0;
   });
 
   it('registers exactly the Browse projection domains', () => {
     render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
     expect(useInvalidationMock.mock.calls[0]?.[0]).toEqual(['files', 'metadata', 'tags', 'project_detail']);
+  });
+
+  it('clears an inspected projection before a previous identity response resolves', async () => {
+    const stale = deferred<{ path: string }>();
+    getMeta.mockReturnValueOnce(stale.promise);
+    const { rerender } = render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect asset' }));
+    await waitFor(() => expect(screen.getByTestId('inspected-item').textContent).toBe('asset.png'));
+
+    authState.identityGeneration = 1;
+    rerender(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('inspected-item').textContent).toBe('none'));
+
+    stale.resolve({ path: 'asset.png' });
+    await Promise.resolve();
+    expect(screen.getByTestId('metadata').textContent).toBe('none');
   });
 
   it('omits Detail from directory context menus while retaining it for files', () => {

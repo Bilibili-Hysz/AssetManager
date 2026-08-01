@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QSize
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton
 
 from AssetsManager import i18n
-from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+from AssetsManager.core.ui_scale import scaled_px
 
 tr = i18n.tr
 
@@ -87,16 +87,21 @@ class PanelContent(QWidget):
     def title_bar_buttons(self) -> list:
         """Override to add extra buttons to the dock title bar (e.g. settings gear)."""
         from PySide6.QtCore import Qt
-        from AssetsManager.core import themes
+        from AssetsManager.core import icons, themes
         from AssetsManager.dialogs.generic_settings_dialog import generic_settings_dialog
         t = themes.get()
-        gear = QPushButton("⚙")
+        gear = QPushButton()
+        gear.setIcon(icons.icon("settings", color=t["heading"], size=scaled_px(16)))
+        gear.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         gear.setToolTip(tr("panel.settings"))
+        gear.setAccessibleName(tr("panel.settings"))
         gear.setFixedSize(scaled_px(20), scaled_px(20))
         gear.setFlat(True)
+        gear.setProperty("semanticIcon", "settings")
+        themes.set_button_variant(gear, "ghost")
         gear.setStyleSheet(
-            f"color: {t['heading']}; font-size: {scaled_pt(13)}px; font-weight: bold; "
-            f"padding: 0; background: transparent; border: none; border-radius: {scaled_px(3)}px;")
+            f"color: {t['heading']}; padding: 0; background: transparent; border: none; "
+            f"border-radius: {scaled_px(3)}px;")
         gear.setCursor(Qt.CursorShape.PointingHandCursor)
         gear.clicked.connect(lambda: generic_settings_dialog(self))
         return [gear]

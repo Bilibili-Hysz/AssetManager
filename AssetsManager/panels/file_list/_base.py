@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from AssetsManager.panels.base import PanelContent
 from AssetsManager.core.signal_bus import get as bus
+from AssetsManager.core import icons
 from AssetsManager.core import themes
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
@@ -111,9 +112,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
         self._nav_buttons = []
         self._nav_tooltip_keys = ("filelist.back", "filelist.forward", "filelist.up")
-        self._nav_buttons.append(self._make_nav_button("◀", tr("filelist.back"), self._go_back, font_size=10))
-        self._nav_buttons.append(self._make_nav_button("▶", tr("filelist.forward"), self._go_forward, font_size=10))
-        self._nav_buttons.append(self._make_nav_button("▲", tr("filelist.up"), self._go_up, font_size=10))
+        self._nav_buttons.append(self._make_nav_button("arrow_left", tr("filelist.back"), self._go_back, font_size=10))
+        self._nav_buttons.append(self._make_nav_button("arrow_right", tr("filelist.forward"), self._go_forward, font_size=10))
+        self._nav_buttons.append(self._make_nav_button("arrow_up", tr("filelist.up"), self._go_up, font_size=10))
         for b in self._nav_buttons:
             tb.addWidget(b)
 
@@ -128,7 +129,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._sort_combo.currentTextChanged.connect(self._on_sort_changed)
         tb.addWidget(self._sort_combo)
 
-        self._sort_btn = self._make_nav_button("↑", tr("filelist.sort_dir"), self._toggle_sort_dir, font_size=14)
+        self._sort_btn = self._make_nav_button("arrow_up_down", tr("filelist.sort_dir"), self._toggle_sort_dir, font_size=14)
         tb.addWidget(self._sort_btn)
 
         self._filter_combo = QComboBox()
@@ -151,9 +152,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         tb.addWidget(self._zoom_combo)
 
         tb.addStretch()
-        self._hidden_btn = self._make_nav_button("◉", tr("filelist.hidden"), self._toggle_hidden, font_size=12)
+        self._hidden_btn = self._make_nav_button("eye", tr("filelist.hidden"), self._toggle_hidden, font_size=12)
         tb.addWidget(self._hidden_btn)
-        self._refresh_btn = self._make_nav_button("⟳", tr("filelist.refresh"), self._do_refresh, font_size=15)
+        self._refresh_btn = self._make_nav_button("refresh", tr("filelist.refresh"), self._do_refresh, font_size=15)
         tb.addWidget(self._refresh_btn)
 
         # Search — inline at end of toolbar
@@ -167,6 +168,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         tb.addWidget(self._search, stretch=1)
         self._search_timer: QTimer | None = None
         self.content_layout.addLayout(tb)
+        self._refresh_state_icons()
 
         # ── Breadcrumb ──────────────────────────────────────────
 
@@ -237,9 +239,12 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._root = services.session.root
         self._model.set_library_root(services.session.root_str, services.session)
         self._model.set_metadata_service(services.metadata_service)
-        self._loader.set_performance_context(
-            getattr(services, "performance_recorder", None), services.session.event_token
-        )
+        performance_recorder = getattr(services, "performance_recorder", None)
+        session_token = services.session.event_token
+        self._loader.set_performance_context(performance_recorder, session_token)
+        set_model_context = getattr(self._model, "set_performance_context", None)
+        if callable(set_model_context):
+            set_model_context(performance_recorder, session_token)
         set_grid_context = getattr(self, "_set_grid_performance_context", None)
         if set_grid_context is not None:
             set_grid_context(
@@ -369,6 +374,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             f"background: transparent; border: none; padding: 2px 4px;")
         self._fst_status_style()
         for btn in self._nav_buttons:
+            semantic_icon = btn.property("semanticIcon")
+            if semantic_icon:
+                btn.setIcon(icons.icon(semantic_icon, color=t["body"], size=scaled_px(16)))
             btn.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {t['body']}; "
                 f"border: none; padding: 0; font-size: {scaled_pt(10)}px; }} "
@@ -416,7 +424,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def _toggle_sort_dir(self):
         self._model._sort_asc = not self._model._sort_asc
-        self._sort_btn.setText("↑" if self._model._sort_asc else "↓")
+        self._refresh_state_icons()
         self._model.set_sort(self._sort_key(), self._model._sort_asc)
         if self._view_mode == "Details":
             self._populate_details()
@@ -424,8 +432,8 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def _toggle_hidden(self):
         self._model._show_hidden = not self._model._show_hidden
+        self._refresh_state_icons()
         self._post_refresh()
-        self._hidden_btn.setText("◉" if self._model._show_hidden else "•")
 
     def _post_refresh(self):
         """Refresh model and update display — call after any data change."""
@@ -434,7 +442,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             self._populate_details()
         else:
             self._load_visible()
-        self._hidden_btn.setText("◉" if self._model._show_hidden else "•")
+        self._refresh_state_icons()
         self._update_status()
 
     def _clear_selection_for_navigation(self) -> None:
@@ -525,7 +533,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         cat = self._filter_key()
         text = self._search.text().lower()
         self._model.set_filter(text=text, category=cat)
-        self._hidden_btn.setText("◉" if self._model._show_hidden else "•")
+        self._refresh_state_icons()
         self._update_status()
         if self._view_mode == "Details":
             self._populate_details()
@@ -544,7 +552,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._model.set_filter(
             text=self._search.text().lower(),
             category=self._filter_key())
-        self._hidden_btn.setText("◉" if self._model._show_hidden else "•")
+        self._refresh_state_icons()
         self._update_status()
         if self._view_mode == "Details":
             self._populate_details()
@@ -683,12 +691,18 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         CHUNK = 100
         store = self._detail_store
         end = min(self._detail_index + CHUNK, self._detail_total)
+        prioritize_sizes = getattr(self._model, "prioritize_dir_sizes", None)
+        if callable(prioritize_sizes):
+            prioritize_sizes(
+                self._model._entries[i].path
+                for i in range(self._detail_index, end)
+                if self._model._entries[i].is_dir()
+            )
         for i in range(self._detail_index, end):
             entry = self._model._entries[i]
             name = entry.name
             is_dir = entry.is_dir()
             path = entry.path
-            icon = "📁 " if is_dir else "  "
             if is_dir:
                 # Read from subtitle cache (async result) first, then fallback to DIR_SIZE_ROLE
                 sz = self._model._subtitle_cache.get(path)
@@ -714,7 +728,15 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             tags_text = ", ".join(store.get_tags(path)[:3]) if store and not is_dir else ""
             ext = Path(name).suffix.upper() if not is_dir else tr("filelist.prop_folder")
             item = QTreeWidgetItem()
-            for column, text in enumerate((f"{icon}{name}", ext, size, date, tags_text)):
+            item.setIcon(
+                0,
+                icons.icon(
+                    "folder" if is_dir else "file",
+                    color=themes.get()["heading"],
+                    size=scaled_px(16),
+                ),
+            )
+            for column, text in enumerate((name, ext, size, date, tags_text)):
                 item.setText(column, str(text))
             item.setData(0, Qt.ItemDataRole.UserRole, path)
             detail_view.addTopLevelItem(item)
@@ -1119,17 +1141,36 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     # ── Helpers ─────────────────────────────────────────────────
 
+    def _refresh_state_icons(self) -> None:
+        """Keep stateful toolbar controls icon-only across every refresh path."""
+        t = themes.get()
+        sort_icon = "arrow_up" if self._model._sort_asc else "arrow_down"
+        hidden_icon = "eye" if self._model._show_hidden else "eye_off"
+        for button, icon_name in (
+            (self._sort_btn, sort_icon),
+            (self._hidden_btn, hidden_icon),
+        ):
+            button.setIcon(icons.icon(icon_name, color=t["body"], size=scaled_px(16)))
+            button.setIconSize(QSize(scaled_px(16), scaled_px(16)))
+            button.setProperty("semanticIcon", icon_name)
+            button.setText("")
+
     @staticmethod
-    def _make_nav_button(text, tooltip, callback, font_size=13):
+    def _make_nav_button(icon_name, tooltip, callback, font_size=13):
         from AssetsManager.core import themes
         t = themes.get()
-        btn = QPushButton(text)
+        btn = QPushButton()
+        btn.setIcon(icons.icon(icon_name, color=t["body"], size=scaled_px(16)))
+        btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
+        btn.setProperty("semanticIcon", icon_name)
         btn.setFixedSize(scaled_px(26), scaled_px(26))
         btn.setToolTip(tooltip)
+        btn.setAccessibleName(tooltip)
+        themes.set_button_variant(btn, "ghost")
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(
             f"QPushButton {{ background: transparent; color: {t['body']}; "
-            f"border: none; padding: 0; font-size: {scaled_pt(font_size)}px; }} "
+            f"border: none; padding: 0; min-width: {scaled_px(26)}px; }} "
             f"QPushButton:hover {{ background: {t['panel']}80; border-radius: {scaled_px(3)}px; color: {t['heading']}; }}")
         btn.clicked.connect(callback)
         return btn
@@ -1138,6 +1179,11 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def prepare_library_switch(self):
         """Drain all session-bound background work before its session closes."""
+        fs_refresh_timer = getattr(self, "_fs_refresh_timer", None)
+        if fs_refresh_timer is not None:
+            fs_refresh_timer.stop()
+        if hasattr(self, "_pending_fs_changed_path"):
+            self._pending_fs_changed_path = None
         generation = self._loader.invalidate_tasks()
         self._loader.wait_for_runtime(generation)
         self._model.prepare_library_switch()
@@ -1154,10 +1200,12 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
     def shutdown(self):
         """Clean up bus connections and worker threads."""
         self._operation_feedback_generation += 1
-        for timer_name in ("_search_timer", "_scroll_debounce", "_file_op_timer", "_operation_feedback_timer"):
+        for timer_name in ("_search_timer", "_scroll_debounce", "_file_op_timer", "_operation_feedback_timer", "_fs_refresh_timer"):
             timer = getattr(self, timer_name, None)
             if timer is not None:
                 timer.stop()
+        if hasattr(self, "_pending_fs_changed_path"):
+            self._pending_fs_changed_path = None
         watcher = getattr(self, "_fs_watcher", None)
         if watcher is not None:
             watched = watcher.directories()

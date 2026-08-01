@@ -1,24 +1,43 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Trash2, Link as LinkIcon } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { createSharesApi } from '../../api/shares';
 import type { ShareLink } from '../../types/api';
 import { useI18n } from '../../hooks/useI18n';
+import { useInvalidation } from '../../hooks/useInvalidation';
 
 export function ShareManagement() {
-  const { api } = useAuth();
+  const { api, identityGeneration } = useAuth();
   const sharesApi = useMemo(() => createSharesApi(api), [api]);
   const { t } = useI18n();
   const [shares, setShares] = useState<ShareLink[]>([]);
+  const requestGeneration = useRef(0);
+  const identityGenerationRef = useRef(identityGeneration);
+
+  const refreshShares = useCallback(() => {
+    const generation = ++requestGeneration.current;
+    return sharesApi.list().then(res => {
+      if (generation === requestGeneration.current) setShares(res.shares);
+    });
+  }, [sharesApi]);
 
   useEffect(() => {
-    sharesApi.list().then(res => setShares(res.shares)).catch(() => {});
-  }, [sharesApi]);
+    refreshShares().catch(() => {});
+    return () => { requestGeneration.current += 1; };
+  }, [refreshShares]);
+  useEffect(() => {
+    if (identityGenerationRef.current === identityGeneration) return;
+    identityGenerationRef.current = identityGeneration;
+    requestGeneration.current += 1;
+    setShares([]);
+    refreshShares().catch(() => {});
+  }, [identityGeneration, refreshShares]);
+  useInvalidation(['shares'], refreshShares);
 
   const handleDelete = async (id: string) => {
     try {
       await sharesApi.delete(id);
-      setShares(prev => prev.filter(s => s.id !== id));
+      await refreshShares();
     } catch {}
   };
 

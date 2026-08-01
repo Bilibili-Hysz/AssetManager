@@ -21,7 +21,7 @@ from AssetsManager.core.cache import LRUCache
 from AssetsManager.core.constants import IMAGE_EXTS
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
-from AssetsManager.core import themes
+from AssetsManager.core import themes, icons
 from AssetsManager.widgets.tag_chip import create_tag_chip
 
 from AssetsManager import i18n
@@ -30,6 +30,7 @@ _log = logging.getLogger(__name__)
 tr = i18n.tr
 
 PREVIEW_LOAD_MAX = 2000
+_MAX_ANIMATED_TAGS = 8
 
 
 class _DragLabel(QLabel):
@@ -267,13 +268,16 @@ class InfoPanel(PanelContent):
         self._controller = None
         self._current_path = ""
         self._preview_pixmap: QPixmap | None = None
+        self._preview_icon_name = ""
         self._notes_timer = None
+        self._rendered_tags: tuple[str, ...] = ()
         self._sidebar_depth = 2
         self._branch_depths: dict[str, int] = {}
         self._urls_scanned: set[str] = set()  # avoid re-scanning URL discovery
         self._pending_task: _FileInfoTask | None = None
         self._async_generation = 0
         self._async_request: _AsyncRequest | None = None
+        self._reduce_motion = self._detect_reduce_motion()
 
         # ── Splitter ──────────────────────────────────────────
 
@@ -297,6 +301,23 @@ class InfoPanel(PanelContent):
         self._preview.setCursor(Qt.CursorShape.PointingHandCursor)
         self._preview.setToolTip(tr("info.preview_dbl_click"))
         preview_layout.addWidget(self._preview, 1)
+
+        self._empty_preview_state = QWidget()
+        empty_layout = QVBoxLayout(self._empty_preview_state)
+        empty_layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
+        empty_layout.setSpacing(scaled_px(8))
+        empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._empty_preview_icon = QLabel()
+        self._empty_preview_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._empty_preview_icon.setAccessibleName(tr("info.no_file_selected"))
+        empty_layout.addWidget(self._empty_preview_icon, 0, Qt.AlignmentFlag.AlignCenter)
+        self._empty_preview_label = QLabel()
+        self._empty_preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._empty_preview_label.setWordWrap(True)
+        self._empty_preview_label.setAccessibleName(tr("info.no_file_selected"))
+        empty_layout.addWidget(self._empty_preview_label, 0, Qt.AlignmentFlag.AlignCenter)
+        preview_layout.addWidget(self._empty_preview_state, 1)
+        self._empty_preview_state.hide()
         self._splitter.addWidget(self._preview_host)
         # Install event filter AFTER all children are set up
         self._preview_host.installEventFilter(self)
@@ -374,6 +395,9 @@ class InfoPanel(PanelContent):
 
         add_row = QHBoxLayout()
         self._add_tag_btn = QPushButton(tr("info.add_tag"))
+        self._add_tag_btn.setIcon(icons.icon("tag", color=t["muted"], size=scaled_px(14)))
+        self._add_tag_btn.setIconSize(QSize(scaled_px(14), scaled_px(14)))
+        self._add_tag_btn.setAccessibleName(tr("info.add_tag"))
         self._add_tag_btn.clicked.connect(self._add_tag)
         self._add_tag_btn.setStyleSheet(
             f"background: transparent; color: {t['muted']}; border: 1px dashed {t['border']}; "
@@ -381,6 +405,9 @@ class InfoPanel(PanelContent):
         self._add_tag_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_row.addWidget(self._add_tag_btn)
         self._manage_btn = QPushButton(tr("info.manage_tags"))
+        self._manage_btn.setIcon(icons.icon("settings", color=t["muted"], size=scaled_px(14)))
+        self._manage_btn.setIconSize(QSize(scaled_px(14), scaled_px(14)))
+        self._manage_btn.setAccessibleName(tr("info.manage_tags"))
         self._manage_btn.clicked.connect(self._open_tag_editor)
         self._manage_btn.setStyleSheet(
             f"background: transparent; color: {t['muted']}; border: 1px solid {t['border']}; "
@@ -422,6 +449,9 @@ class InfoPanel(PanelContent):
         act_layout.setSpacing(scaled_px(8))
         act_layout.addStretch()
         self._open_btn = QPushButton(tr("info.open"))
+        self._open_btn.setIcon(icons.icon("folder", color=t["heading"], size=scaled_px(15)))
+        self._open_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        self._open_btn.setAccessibleName(tr("info.open"))
         self._open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._open_btn.setToolTip(tr("info.open_tooltip"))
         self._open_btn.setStyleSheet(
@@ -430,6 +460,9 @@ class InfoPanel(PanelContent):
             f"padding: {scaled_px(2)}px {scaled_px(12)}px; font-size: {scaled_pt(12)}px;")
         self._open_btn.clicked.connect(lambda: self.open_requested.emit(self._current_path))
         self._copy_btn = QPushButton(tr("info.copy_path"))
+        self._copy_btn.setIcon(icons.icon("file", color=t["body"], size=scaled_px(15)))
+        self._copy_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        self._copy_btn.setAccessibleName(tr("info.copy_path"))
         self._copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._copy_btn.setToolTip(tr("info.copy_tooltip"))
         self._copy_btn.setStyleSheet(
@@ -473,13 +506,20 @@ class InfoPanel(PanelContent):
                 f"QGroupBox {{ color: {t['heading']}; border: 1px solid {t['border']}; "
                 f"border-radius: {scaled_px(6)}px; margin-top: {scaled_px(8)}px; padding-top: {scaled_px(12)}px; }}"
                 f"QGroupBox::title {{ subcontrol-origin: margin; left: {scaled_px(10)}px; padding: 0 {scaled_px(5)}px; }}")
-        for btn, color in [(self._add_tag_btn, t['muted']), (self._manage_btn, t['muted'])]:
+        for btn, color, icon_name in [
+            (self._add_tag_btn, t['muted'], "tag"),
+            (self._manage_btn, t['muted'], "settings"),
+        ]:
+            btn.setIcon(icons.icon(icon_name, color=color, size=scaled_px(14)))
+            btn.setIconSize(QSize(scaled_px(14), scaled_px(14)))
             btn.setStyleSheet(
                 f"background: transparent; color: {color}; font-size: {scaled_pt(12)}px; "
                 f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; padding: {scaled_px(2)}px {scaled_px(10)}px;")
         self._act_bar.setStyleSheet(
             f"background: transparent; border-top: 1px solid {t['border']}; "
             f"padding: {scaled_px(4)}px {scaled_px(8)}px;")
+        self._open_btn.setIcon(icons.icon("folder", color=t["heading"], size=scaled_px(15)))
+        self._open_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         self._open_btn.setStyleSheet(
             f"background: {t['accent']}; color: {t['heading']}; font-size: {scaled_pt(13)}px; "
             f"border: 1px solid {t['accent']}; border-radius: {scaled_px(4)}px; padding: {scaled_px(2)}px {scaled_px(12)}px;")
@@ -487,6 +527,9 @@ class InfoPanel(PanelContent):
             f"background: transparent; color: {t['body']}; "
             f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; "
             f"padding: {scaled_px(2)}px {scaled_px(10)}px; font-size: {scaled_pt(12)}px;")
+        self._copy_btn.setIcon(icons.icon("file", color=t["body"], size=scaled_px(15)))
+        self._copy_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        self._refresh_empty_preview_state()
         self._name.setStyleSheet(f"color: {t['heading']}; font-size: {scaled_pt(16)}px; font-weight: bold; "
                                   f"background: transparent; border: none; padding: 2px 0;")
         # Update field labels and values
@@ -496,17 +539,29 @@ class InfoPanel(PanelContent):
         # Update plugin fields
         self._refresh_plugin_fields_style()
 
+    @staticmethod
+    def _detect_reduce_motion() -> bool:
+        try:
+            from AssetsManager.core.settings import AppSettings
+            return bool(AppSettings.instance().get("reduce_motion", False))
+        except Exception:
+            return False
+
     def _refresh_language(self, _code: str = ""):
         self._meta_grp.setTitle(tr("info.title"))
         self._tags_grp.setTitle(tr("info.tags"))
         self._notes_grp.setTitle(tr("info.notes"))
         self._add_tag_btn.setText(tr("info.add_tag"))
+        self._add_tag_btn.setAccessibleName(tr("info.add_tag"))
         self._manage_btn.setText(tr("info.manage_tags"))
+        self._manage_btn.setAccessibleName(tr("info.manage_tags"))
         self._notes.setPlaceholderText(tr("info.notes_placeholder"))
         self._preview.setToolTip(tr("info.preview_dbl_click"))
         self._open_btn.setText(tr("info.open"))
+        self._open_btn.setAccessibleName(tr("info.open"))
         self._open_btn.setToolTip(tr("info.open_tooltip"))
         self._copy_btn.setText(tr("info.copy_path"))
+        self._copy_btn.setAccessibleName(tr("info.copy_path"))
         self._copy_btn.setToolTip(tr("info.copy_tooltip"))
         labels = ("info.field_type", "info.field_size", "info.field_contains", "info.field_modified", "info.field_path")
         for key, label_key in zip(("type", "size", "summary", "date", "path"), labels):
@@ -563,6 +618,17 @@ class InfoPanel(PanelContent):
                 elif isinstance(w, _DragLabel):
                     if not w.text() or w.text() == "—":
                         w.setStyleSheet(f"color: {t['body']}; font-size: {scaled_pt(12)}px;")
+        for button in row.findChildren(QPushButton):
+            icon_name = button.property("semanticIcon")
+            if not icon_name:
+                continue
+            button.setIcon(icons.icon(str(icon_name), color=t["muted"], size=scaled_px(15)))
+            button.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+            button.setAccessibleName(button.toolTip())
+            button.setStyleSheet(
+                f"QPushButton {{ color: {t['muted']}; padding: 0; background: transparent; "
+                f"border: none; border-radius: {scaled_px(3)}px; }}"
+                f"QPushButton:hover {{ color: {t['heading']}; background: {t['accent']}; }}")
 
     def _refresh_plugin_fields_style(self):
         """Update plugin field stylesheets for current theme."""
@@ -683,8 +749,12 @@ class InfoPanel(PanelContent):
             link_label.setCursor(Qt.CursorShape.PointingHandCursor)
             link_label.setStyleSheet(
                 f"color: {t['body']}; font-size: {scaled_pt(12)}px; text-decoration: underline;")
-            rm_btn = QPushButton("×")
+            rm_btn = QPushButton()
+            rm_btn.setIcon(icons.icon("close", color=t["muted"], size=scaled_px(15)))
+            rm_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+            rm_btn.setProperty("semanticIcon", "close")
             rm_btn.setToolTip(tr("info.link_remove"))
+            rm_btn.setAccessibleName(tr("info.link_remove"))
             rm_btn.setFixedSize(scaled_px(18), scaled_px(18))
             rm_btn.setFlat(True)
             rm_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -701,8 +771,12 @@ class InfoPanel(PanelContent):
             link_label.setCursor(Qt.CursorShape.ArrowCursor)
             link_label.setStyleSheet(
                 f"color: {t['body']}; font-size: {scaled_pt(12)}px;")
-            add_btn = QPushButton("+")
+            add_btn = QPushButton()
+            add_btn.setIcon(icons.icon("plus", color=t["muted"], size=scaled_px(15)))
+            add_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+            add_btn.setProperty("semanticIcon", "plus")
             add_btn.setToolTip(tr("info.link_add"))
+            add_btn.setAccessibleName(tr("info.link_add"))
             add_btn.setFixedSize(scaled_px(18), scaled_px(18))
             add_btn.setFlat(True)
             add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -712,8 +786,12 @@ class InfoPanel(PanelContent):
                 f"QPushButton:hover {{ color: {t['heading']}; background: {t['accent']}; }}")
             add_btn.clicked.connect(self._add_link_dialog)
             button_layout.addWidget(add_btn)
-            scan_btn = QPushButton("↻")
+            scan_btn = QPushButton()
+            scan_btn.setIcon(icons.icon("refresh", color=t["muted"], size=scaled_px(15)))
+            scan_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+            scan_btn.setProperty("semanticIcon", "refresh")
             scan_btn.setToolTip(tr("info.scanner.desc"))
+            scan_btn.setAccessibleName(tr("info.scanner.desc"))
             scan_btn.setFixedSize(scaled_px(18), scaled_px(18))
             scan_btn.setFlat(True)
             scan_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -732,10 +810,14 @@ class InfoPanel(PanelContent):
     def title_bar_buttons(self) -> list:
         """Return extra buttons for the dock title bar."""
         t = themes.get()
-        gear = QPushButton("⚙")
+        gear = QPushButton()
+        gear.setIcon(icons.icon("settings", color=t["heading"], size=scaled_px(16)))
+        gear.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         gear.setToolTip(tr("panel.settings"))
+        gear.setAccessibleName(tr("panel.settings"))
         gear.setFixedSize(scaled_px(20), scaled_px(20))
         gear.setFlat(True)
+        gear.setProperty("semanticIcon", "settings")
         gear.setStyleSheet(
             f"color: {t['heading']}; font-size: {scaled_pt(13)}px; font-weight: bold; "
             f"padding: 0; background: transparent; border: none; border-radius: {scaled_px(3)}px;")
@@ -765,8 +847,11 @@ class InfoPanel(PanelContent):
 
     def _clear_preview(self):
         self._preview_pixmap = None
+        self._preview_icon_name = ""
         self._preview.clear()
         self._preview.setStyleSheet("")
+        self._empty_preview_state.hide()
+        self._preview.show()
 
     def _apply_scaled_preview(self):
         if self._preview_pixmap is None or self._preview_pixmap.isNull():
@@ -786,6 +871,9 @@ class InfoPanel(PanelContent):
 
     def _animate_preview_in(self):
         """Animate preview image fade-in."""
+        if self._reduce_motion:
+            self._preview.setWindowOpacity(1.0)
+            return
         if hasattr(self, '_preview_anim') and self._preview_anim:
             self._preview_anim.stop()
         anim = QPropertyAnimation(self._preview, b"windowOpacity")
@@ -828,8 +916,22 @@ class InfoPanel(PanelContent):
 
     def _show_empty_state(self):
         self._clear_preview()
-        self._preview.setText(tr("info.no_file_selected"))
-        self._preview.setStyleSheet(f"color: {themes.get()['muted']}; font-size: {scaled_pt(32)}px;")
+        self._preview.hide()
+        self._refresh_empty_preview_state()
+        self._empty_preview_state.show()
+
+    def _refresh_empty_preview_state(self):
+        if not hasattr(self, "_empty_preview_state"):
+            return
+        t = themes.get()
+        icon_size = scaled_px(48)
+        self._empty_preview_icon.setPixmap(
+            icons.icon("file", color=t["muted"], size=icon_size).pixmap(
+                QSize(icon_size, icon_size)))
+        self._empty_preview_label.setText(tr("info.no_file_selected"))
+        self._empty_preview_label.setStyleSheet(
+            f"color: {t['muted']}; font-size: {scaled_pt(12)}px; "
+            f"background: transparent; border: none;")
 
     # ── Preview loader ─────────────────────────────────────────
 
@@ -949,21 +1051,37 @@ class InfoPanel(PanelContent):
             self._tags_flow_layout.removeWidget(w)
             w.deleteLater()
         self._tags_widgets.clear()
+        self._rendered_tags = ()
 
     def _make_tag_chip(self, tag: str) -> QWidget:
         return create_tag_chip(tag, on_remove=self._remove_tag)
 
     def _render_tags(self, tags: list[str]):
-        self._clear_tags()
-        for i, tag in enumerate(tags):
-            chip = self._make_tag_chip(tag)
-            self._tags_widgets.append(chip)
-            self._tags_flow_layout.addWidget(chip)
-            # Staggered fade-in animation
-            self._animate_tag_in(chip, delay=i * 50)
+        normalized = tuple(str(tag) for tag in tags)
+        if normalized == self._rendered_tags and self._tags_widgets:
+            return
+        self._tags_flow.setUpdatesEnabled(False)
+        try:
+            self._clear_tags()
+            self._rendered_tags = normalized
+            for i, tag in enumerate(normalized):
+                chip = self._make_tag_chip(tag)
+                self._tags_widgets.append(chip)
+                self._tags_flow_layout.addWidget(chip)
+                if i < _MAX_ANIMATED_TAGS:
+                    # Staggered fade-in animation for the first visible chips.
+                    self._animate_tag_in(chip, delay=i * 50)
+                else:
+                    chip.setWindowOpacity(1.0)
+        finally:
+            self._tags_flow.setUpdatesEnabled(True)
+            self._tags_flow.update()
 
     def _animate_tag_in(self, chip, delay=0):
         """Animate tag chip entrance with fade-in."""
+        if self._reduce_motion:
+            chip.setWindowOpacity(1.0)
+            return
         chip.setWindowOpacity(0.0)
         from PySide6.QtCore import QTimer
         generation = self._tag_render_generation
@@ -1257,36 +1375,48 @@ class InfoPanel(PanelContent):
         if not self._is_current_async_request(request):
             return
         if pixmap:
+            self._empty_preview_state.hide()
+            self._preview.show()
+            self._preview_icon_name = ""
             self._preview_pixmap = pixmap
             self._apply_scaled_preview()
         else:
             self._show_preview_fallback()
 
     def _show_preview_fallback(self):
-        """Show emoji hint when no preview image is available."""
-        suffix = Path(self._current_path).suffix.lower()
+        """Show a theme-aware semantic icon when no preview image is available."""
+        self._empty_preview_state.hide()
+        self._preview.show()
+        suffix = Path(self._current_path).suffix.lower().lstrip(".")
         is_dir = os.path.isdir(self._current_path)
         hints = {
-            "png": "🖼", "jpg": "🖼", "jpeg": "🖼", "gif": "🖼", "bmp": "🖼",
-            "webp": "🖼", "svg": "🖼",
-            "blend": "🧊", "fbx": "🧊", "obj": "🧊", "gltf": "🧊", "glb": "🧊",
-            "mp4": "🎬", "mov": "🎬", "avi": "🎬", "mkv": "🎬", "webm": "🎬",
-            "txt": "📄", "json": "📄", "py": "📄", "md": "📄", "xml": "📄",
-            "zip": "🗜", "rar": "🗜", "7z": "🗜", "tar": "🗜", "gz": "🗜",
+            "png": "image", "jpg": "image", "jpeg": "image", "gif": "image", "bmp": "image",
+            "webp": "image", "svg": "image",
+            "blend": "cube", "fbx": "cube", "obj": "cube", "gltf": "cube", "glb": "cube",
+            "mp4": "video", "mov": "video", "avi": "video", "mkv": "video", "webm": "video",
+            "zip": "archive", "rar": "archive", "7z": "archive", "tar": "archive", "gz": "archive",
         }
-        muted = themes.get()['muted']
-        self._preview.setText(hints.get(suffix, "📄" if not is_dir else "📁"))
-        self._preview.setStyleSheet(f"color: {muted}; font-size: {scaled_pt(40)}px;")
+        icon_name = hints.get(suffix, "folder" if is_dir else "file")
+        self._preview_icon_name = icon_name
+        self._preview.setText("")
+        icon_size = scaled_px(64)
+        self._preview.setPixmap(icons.icon(
+            icon_name,
+            color=themes.get()["muted"],
+            size=icon_size,
+            fallback="file",
+        ).pixmap(QSize(icon_size, icon_size)))
+        self._preview.setStyleSheet("background: transparent;")
 
     def _render_plugin_fields(self, plugin_fields):
         """Render plugin-contributed metadata fields from FileInfo."""
-        while self._plugin_fields_layout.count():
-            item = self._plugin_fields_layout.takeAt(0)
-            w = item.widget() if item else None
-            if w is not None:
-                w.deleteLater()
-
+        self._plugin_fields_widget.setUpdatesEnabled(False)
         try:
+            while self._plugin_fields_layout.count():
+                item = self._plugin_fields_layout.takeAt(0)
+                w = item.widget() if item else None
+                if w is not None:
+                    w.deleteLater()
             for field in plugin_fields:
                 self._plugin_fields_layout.addWidget(
                     self._make_field(field.key.capitalize(), str(field.value))
@@ -1295,6 +1425,9 @@ class InfoPanel(PanelContent):
         except Exception:
             _log.exception("Plugin field rendering failed")
             self._plugin_fields_widget.setVisible(False)
+        finally:
+            self._plugin_fields_widget.setUpdatesEnabled(True)
+            self._plugin_fields_widget.update()
 
     def clone(self):
         return InfoPanel()

@@ -194,6 +194,32 @@ async def test_route_responses_are_normalized_and_keep_envelopes(tmp_path, monke
 
 
 @pytest.mark.anyio
+async def test_stats_route_preserves_unavailable_bytes_as_null(tmp_path, monkeypatch):
+    from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app
+
+    app, _library, _conn = _make_lan_app(tmp_path)
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    lan = app[LAN_APP_KEY]
+    monkeypatch.setattr(lan, "status", lambda: {
+        "connections": 3, "requests": 11, "bytes_transferred": None, "uptime": 4.25,
+    }, raising=False)
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/stats", headers=_local_ui_headers(app))
+        assert response.status == 200
+        assert await response.json() == {
+            "connections": 3,
+            "requests": 11,
+            "bytes_transferred": None,
+            "bytes_transferred_fmt": None,
+            "uptime": 4.25,
+        }
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
 async def test_users_route_enforces_admin_and_exposes_only_public_user_keys(tmp_path):
     from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app
 

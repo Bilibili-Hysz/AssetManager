@@ -423,7 +423,38 @@ def test_successful_stop_without_runtime_remains_idempotent(monkeypatch):
     _submit_future(monkeypatch, _ShutdownFuture())
 
     server.stop()
+
+
+def test_stop_calls_runtime_unregister_outside_server_lifecycle_lock():
+    server = object.__new__(_LanServerImpl)
+    thread = _ThreadThatStopsOnJoin()
+    thread._alive = False
+    server._running = False
+    server._lifecycle_state = "running"
+    server._cleanup_complete = True
+    server._shutdown_future = None
+    server._lifecycle_lock = threading.Lock()
+    server._thread = thread
+    server._loop = object()
+    server._runtime_adapter_registered = True
+    server._runtime_adapter_lock = threading.Lock()
+    unregister_acquired = threading.Event()
+
+    def unregister(_adapter):
+        def acquire_server_lock():
+            with server._lifecycle_lock:
+                unregister_acquired.set()
+
+        waiter = threading.Thread(target=acquire_server_lock)
+        waiter.start()
+        waiter.join(1)
+        assert unregister_acquired.is_set()
+
+    server.runtime = SimpleNamespace(unregister_lifecycle_adapter=unregister)
+
     server.stop()
+
+    assert unregister_acquired.is_set()
 
     assert server._thread is None
     assert server._loop is None
@@ -431,6 +462,224 @@ def test_successful_stop_without_runtime_remains_idempotent(monkeypatch):
     assert not server.is_running()
 
     server.stop()
+
+
+def test_server_registers_each_successful_generation_only_after_start(
+        monkeypatch, tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    server = _LanServerImpl(runtime=runtime)
+
+    class _ImmediateThread:
+        def __init__(self, target, daemon=False):
+            self._target = target
+            self._alive = False
+
+        def start(self):
+            self._alive = True
+            self._target()
+            self._alive = False
+
+        def is_alive(self):
+            return self._alive
+
+        def join(self, timeout=None):
+            self._alive = False
+
+    def run_generation():
+        server._running = True
+        server._lifecycle_state = "running"
+        server._cleanup_complete = True
+        assert server._register_runtime_adapter() is True
+
+    server._build_app = lambda: None
+    server._run = run_generation
+    monkeypatch.setattr("AssetsManager.lan.server.threading.Thread", _ImmediateThread)
+
+    try:
+        assert runtime._lifecycle_adapters == []
+
+        server.start(port=8765, bind="127.0.0.1")
+        assert runtime._lifecycle_adapters == [server]
+
+        server.stop()
+        assert runtime._lifecycle_adapters == []
+
+        server.start(port=8765, bind="127.0.0.1")
+        assert runtime._lifecycle_adapters == [server]
+
+        server.stop()
+        assert runtime._lifecycle_adapters == []
+    finally:
+        if server._thread is not None:
+            server.stop()
+        bootstrap.library_service.close()
+
+
+def test_server_registration_race_with_stop_cannot_leave_stale_runtime_adapter():
+    registered = []
+    registration_entered = threading.Event()
+    release_registration = threading.Event()
+    unregister_done = threading.Event()
+
+    server = object.__new__(_LanServerImpl)
+    server._runtime_adapter_registered = False
+    server._runtime_adapter_lock = threading.Lock()
+
+    def register(adapter):
+        registered.append(adapter)
+        registration_entered.set()
+        assert release_registration.wait(5)
+        return True
+
+    def unregister(adapter):
+        registered.remove(adapter)
+        unregister_done.set()
+
+    server.runtime = SimpleNamespace(
+        register_lifecycle_adapter=register,
+        unregister_lifecycle_adapter=unregister,
+    )
+
+    registration_thread = threading.Thread(target=server._register_runtime_adapter)
+    registration_thread.start()
+    assert registration_entered.wait(5)
+    stop_thread = threading.Thread(target=server._unregister_runtime_adapter)
+    stop_thread.start()
+    release_registration.set()
+    registration_thread.join(5)
+    stop_thread.join(5)
+
+    assert not registration_thread.is_alive()
+    assert not stop_thread.is_alive()
+    assert unregister_done.is_set()
+    assert registered == []
+    assert server._runtime_adapter_registered is False
+
+
+def test_start_rejects_generation_that_runtime_does_not_retain():
+    runtime = SimpleNamespace(register_lifecycle_adapter=Mock(return_value=False))
+    server = object.__new__(_LanServerImpl)
+    server.runtime = runtime
+    server._runtime_adapter_registered = False
+    server._runtime_adapter_lock = threading.Lock()
+    server._running = False
+    server._lifecycle_state = "stopped"
+    server._cleanup_complete = True
+    server._shutdown_future = None
+    server._lifecycle_lock = threading.Lock()
+    server._loop = None
+    server._thread = None
+    server._build_app = lambda: None
+
+    def run_generation():
+        server._running = True
+        server._lifecycle_state = "running"
+        server._cleanup_complete = True
+        retained = server._register_runtime_adapter()
+        if retained is False:
+            server._running = False
+            server._lifecycle_state = "failed"
+            server._publish_startup_result("failure")
+
+    class _ImmediateThread:
+        def __init__(self, target, daemon=False):
+            self._target = target
+            self._alive = False
+
+        def start(self):
+            self._alive = True
+            self._target()
+            self._alive = False
+
+        def is_alive(self):
+            return self._alive
+
+        def join(self, timeout=None):
+            self._alive = False
+
+    server._run = run_generation
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr("AssetsManager.lan.server.threading.Thread", _ImmediateThread)
+        with pytest.raises(OSError, match="Failed to start server"):
+            server.start(port=8765, bind="127.0.0.1")
+
+    assert server._lifecycle_state == "stopped"
+    assert not server._running
+    assert server._runtime_adapter_registered is False
+
+
+def test_startup_registration_does_not_hold_server_lifecycle_lock(
+        monkeypatch, tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    server = _LanServerImpl(runtime=runtime)
+    lock_acquired = threading.Event()
+    registration_finished = threading.Event()
+    registration_errors = []
+
+    async def start_accepting():
+        pass
+
+    class _Runner:
+        async def setup(self):
+            pass
+
+        async def cleanup(self):
+            pass
+
+    class _Site:
+        async def start(self):
+            pass
+
+    monkeypatch.setattr(server._ws_manager, "start_accepting", start_accepting)
+    monkeypatch.setattr(server._auth_service, "init_tables", lambda: None)
+    monkeypatch.setattr(server._share_service, "init_table", lambda: None)
+    monkeypatch.setattr(server._scanner, "start_background_scan", lambda: None)
+    monkeypatch.setattr("AssetsManager.lan.server.web.AppRunner", lambda *args, **kwargs: _Runner())
+    monkeypatch.setattr("AssetsManager.lan.server.web.TCPSite", lambda *args, **kwargs: _Site())
+    server._lifecycle_generation = 1
+    server._startup_cancel_generation = None
+    server._startup_result_event = threading.Event()
+    server._startup_result = None
+    server._cleanup_complete = False
+    server._lifecycle_state = "starting"
+    server._lifecycle_lock = threading.Lock()
+
+    def register(adapter):
+        assert adapter is server
+
+        def acquire_lock():
+            try:
+                with server._lifecycle_lock:
+                    lock_acquired.set()
+            except BaseException as exc:  # pragma: no cover - diagnostic transfer
+                registration_errors.append(exc)
+
+        waiter = threading.Thread(target=acquire_lock)
+        waiter.start()
+        try:
+            assert lock_acquired.wait(1), "registration called while lifecycle lock was held"
+        finally:
+            waiter.join(2)
+        server._cleanup_complete = True
+        registration_finished.set()
+        return True
+
+    monkeypatch.setattr(runtime, "try_register_lifecycle_adapter", register)
+    try:
+        asyncio.run(server._startup())
+        assert registration_finished.is_set()
+        assert not registration_errors
+    finally:
+        server._unregister_runtime_adapter()
+        bootstrap.library_service.close()
 
 
 @pytest.mark.parametrize("failing_stage", ["close_all", "site_stop", "runner_cleanup"])

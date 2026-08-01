@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from AssetsManager.core import themes
+from AssetsManager.core import icons
 from AssetsManager.core.plugins.descriptor import (
     PLUGIN_STATE_ACTIVE,
     PLUGIN_STATE_DISABLED,
@@ -25,6 +26,7 @@ from AssetsManager.core.plugins.descriptor import (
 )
 from AssetsManager.core.plugins.manager import PluginManagerService
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+from AssetsManager.widgets.elevation import apply_elevation, refresh_elevation
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager import i18n
 
@@ -78,6 +80,8 @@ class PluginCard(QFrame):
         self._toggle = QToolButton()
         self._toggle.setCheckable(True)
         self._toggle.setChecked(enabled)
+        self._toggle.setAccessibleName(tr("plugins.toggle", default="Toggle Enabled"))
+        self._toggle.setToolTip(tr("plugins.toggle", default="Toggle Enabled"))
         self._toggle.toggled.connect(self._on_toggle)
         self._layout.addWidget(self._toggle, 0, Qt.AlignmentFlag.AlignVCenter)
         self.refresh_presentation()
@@ -120,8 +124,13 @@ class PluginCard(QFrame):
         accent = t.get("accent", "#4a60b0")
         muted = t.get("muted", "#666666")
         self._toggle.setStyleSheet(
-            f"QToolButton {{ background: {muted}; border-radius: {scaled_px(12)}px; border: none; }}"
-            f"QToolButton:checked {{ background: {accent}; }}"
+            f"QToolButton {{ background: {muted}; border-radius: {scaled_px(12)}px; "
+            f"border: 1px solid {t['border']}; }}"
+            f"QToolButton:checked {{ background: {accent}; border-color: {accent}; }}"
+            f"QToolButton:focus {{ border: 2px solid {t['border_focus']}; }}"
+        )
+        self._toggle.setAccessibleName(
+            f"{self._name} — {tr('plugins.disable' if self._toggle.isChecked() else 'plugins.enable', default='Toggle Enabled')}"
         )
 
     def _update_style(self, t):
@@ -164,6 +173,7 @@ class PluginDetailPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        apply_elevation(self, level=1)
         self._layout = QVBoxLayout(self)
 
         # Plugin name header
@@ -205,6 +215,7 @@ class PluginDetailPanel(QWidget):
 
         self._toggle_btn = QPushButton(tr("plugins.toggle", default="Toggle Enabled"))
         self._toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._toggle_btn.setAccessibleName(tr("plugins.toggle", default="Toggle Enabled"))
         self._toggle_btn.clicked.connect(self._on_toggle)
         self._button_layout.addWidget(self._toggle_btn)
 
@@ -232,6 +243,7 @@ class PluginDetailPanel(QWidget):
             f"padding: {scaled_px(8)}px {scaled_px(16)}px; border-radius: {scaled_px(4)}px; "
             f"font-size: {scaled_pt(12)}px; font-weight: bold; }}"
             f"QPushButton:hover {{ background: {t['accent']}cc; }}")
+        self._update_toggle_text()
 
     def show_plugin(self, plugin_id: str, record):
         """Display plugin details."""
@@ -331,10 +343,19 @@ class PluginDetailPanel(QWidget):
                 w.deleteLater()
 
     def _update_toggle_text(self):
+        t = themes.get()
         if self._current_enabled:
-            self._toggle_btn.setText(tr("plugins.disable", default="Disable"))
+            label = tr("plugins.disable", default="Disable")
+            icon_name = "close"
         else:
-            self._toggle_btn.setText(tr("plugins.enable", default="Enable"))
+            label = tr("plugins.enable", default="Enable")
+            icon_name = "check"
+        self._toggle_btn.setText(label)
+        self._toggle_btn.setIcon(
+            icons.icon(icon_name, color=t.get("on_accent", "#ffffff"), size=scaled_px(15)))
+        self._toggle_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        self._toggle_btn.setAccessibleName(label)
+        self._toggle_btn.setToolTip(label)
 
     def _on_toggle(self):
         if self._current_pid:
@@ -433,6 +454,7 @@ class PluginManagerDialog(TabbedDialog):
         for card in self._cards.values():
             card.refresh_presentation()
         self._detail.refresh_presentation()
+        refresh_elevation(self._detail, level=1)
         self._refresh_selected_detail()
 
     def _refresh_selected_detail(self):

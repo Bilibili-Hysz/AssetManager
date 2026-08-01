@@ -8,7 +8,7 @@ plans:
   - docs/compose/plans/2026-07-21-session-close-lan-websocket-regression.md
   - docs/compose/plans/2026-07-21-runtime-adapter-failure-ownership.md
 branch: master
-commits: uncommitted-workspace
+evidence_state: pre-baseline working tree; baseline captured in repository-baseline-2026-08-01.md
 ---
 
 # Runtime Adapter Failure Ownership — Final Report

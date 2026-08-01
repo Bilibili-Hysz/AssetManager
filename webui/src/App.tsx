@@ -8,6 +8,7 @@ import LoginPage from './pages/LoginPage';
 import BrowsePage from './pages/BrowsePage';
 import DetailPage from './pages/DetailPage';
 import ShareReceivePage from './pages/ShareReceivePage';
+import ProtectedRoute from './components/auth/ProtectedRoute';
 
 function App() {
   return (
@@ -19,8 +20,10 @@ function App() {
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/login" element={<LoginPage />} />
-                <Route path="/browse" element={<BrowsePage />} />
-                <Route path="/detail" element={<DetailPage />} />
+                <Route element={<ProtectedRoute capability="browse" />}>
+                  <Route path="/browse" element={<BrowsePage />} />
+                  <Route path="/detail" element={<DetailPage />} />
+                </Route>
                 <Route path="/s/:shareId" element={<ShareReceivePage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

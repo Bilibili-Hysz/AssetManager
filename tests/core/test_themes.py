@@ -50,6 +50,26 @@ def test_get_named_theme():
     assert t["accent"] == "#40b870"
 
 
+def test_selectable_themes_meet_text_contrast_contract():
+    from AssetsManager.core.color_utils import contrast_ratio
+
+    checks = (
+        ("heading", "base", 4.5),
+        ("heading", "panel", 4.5),
+        ("body", "base", 4.5),
+        ("body", "panel", 4.5),
+        ("muted", "base", 3.0),
+        ("muted", "panel", 3.0),
+        ("on_accent", "accent", 4.5),
+    )
+    for name in themes.names():
+        palette = themes.get(name)
+        for foreground, background, threshold in checks:
+            assert contrast_ratio(palette[foreground], palette[background]) >= threshold, (
+                f"{name}: {foreground}/{background} contrast is below {threshold}:1"
+            )
+
+
 def test_set_theme():
     themes.set_theme("Slate")
     assert themes.get() == themes.get("Slate")
@@ -66,6 +86,24 @@ def test_stylesheet():
     assert "QMainWindow" in qss
     assert "QDockWidget" in qss
     assert "QPushButton" in qss
+
+
+def test_stylesheet_contains_semantic_button_variants_and_focus_state():
+    qss = themes.stylesheet()
+
+    for variant in ("primary", "secondary", "ghost", "danger"):
+        assert f'buttonVariant="{variant}"' in qss
+    assert "QPushButton:focus" in qss
+
+
+def test_set_button_variant_updates_dynamic_property():
+    from PySide6.QtWidgets import QPushButton
+
+    button = QPushButton()
+    themes.set_button_variant(button, "danger")
+    assert button.property("buttonVariant") == "danger"
+    themes.set_button_variant(button, "invalid")
+    assert button.property("buttonVariant") == "primary"
 
 
 def test_theme_mode_for_base():

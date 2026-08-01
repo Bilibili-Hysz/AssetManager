@@ -7,7 +7,7 @@ plans:
   - docs/compose/plans/2026-07-21-desktop-lan-webui-architecture-task-d.md
   - docs/compose/plans/2026-07-21-desktop-lan-webui-architecture-recalibration.md
 branch: master
-commits: uncommitted-workspace
+evidence_state: pre-baseline working tree; baseline captured in repository-baseline-2026-08-01.md
 ---
 
 # Desktop–LAN–WebUI Architecture Task D — Final Report
@@ -107,8 +107,8 @@ Fresh evidence from the completed Task D pass:
 | Gate | Result |
 |---|---|
 | Task D focused Python gate | `402 passed` |
-| Python full suite | `1564 passed, 1 skipped` |
-| WebUI full suite | `37 files / 286 tests passed` |
+| Python full suite | `1590 passed, 1 skipped` |
+| WebUI full suite | `37 files / 289 tests passed` |
 | WebUI typecheck | Passed |
 | WebUI production build | Passed; `1632 modules transformed` |
 | Production compatibility scan | No `for_library(` or `cleanup_library(` residue |

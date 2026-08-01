@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QWidget, QDialogButtonBox,
 )
 from AssetsManager.core.ui_scale import scaled_px
+from AssetsManager.core import icons, themes
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager import i18n
 tr = i18n.tr
@@ -99,7 +100,13 @@ class SidebarSettingsDialog(TabbedDialog):
                     continue
                 seen_branches.add(name)
                 row = QHBoxLayout()
-                lbl = QLabel(f"📁 {name}")
+                lbl = QLabel(name)
+                lbl.setPixmap(
+                    icons.icon("folder", color=themes.get()["body"], size=scaled_px(15))
+                    .pixmap(scaled_px(15), scaled_px(15))
+                )
+                lbl.setToolTip(name)
+                lbl.setAccessibleName(name)
                 lbl.setMinimumWidth(scaled_px(180))
                 row.addWidget(lbl)
                 sb = QSpinBox()

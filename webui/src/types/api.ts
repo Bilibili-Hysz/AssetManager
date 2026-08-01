@@ -54,13 +54,11 @@ export interface SessionPrincipal {
 }
 
 export interface LoginResponse {
-  token: string;
   user?: UserResponse;
   principal?: SessionPrincipal;
 }
 
 export interface RegisterResponse {
-  token: string;
   user: UserResponse;
   principal?: SessionPrincipal;
 }

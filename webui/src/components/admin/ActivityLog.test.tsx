@@ -3,13 +3,14 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActivityLogView } from './ActivityLog';
 
-const { getActivity, useInvalidationMock } = vi.hoisted(() => ({
+const { getActivity, useInvalidationMock, authState } = vi.hoisted(() => ({
   getActivity: vi.fn(),
   useInvalidationMock: vi.fn(),
+  authState: { api: {}, identityGeneration: 0 },
 }));
 let api: object = {};
 
-vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ api }) }));
+vi.mock('../../hooks/useAuth', () => ({ useAuth: () => authState }));
 vi.mock('../../api/users', () => ({ createUsersApi: () => ({ getActivity }) }));
 vi.mock('../../hooks/useInvalidation', () => ({ useInvalidation: useInvalidationMock }));
 
@@ -17,8 +18,11 @@ describe('ActivityLogView', () => {
   afterEach(cleanup);
   beforeEach(() => {
     getActivity.mockReset();
+    getActivity.mockResolvedValue({ activities: [] });
     useInvalidationMock.mockReset();
     api = {};
+    authState.api = api;
+    authState.identityGeneration = 0;
   });
 
   it('ignores an older activity response after invalidation refresh', async () => {
@@ -36,5 +40,22 @@ describe('ActivityLogView', () => {
     await act(async () => { resolveFirst({ activities: [{ id: 'old', username: 'old-user', action: 'created', details: '', timestamp: '2025-01-01T00:00:00Z' }] }); });
     expect(screen.queryByText('old-user')).toBeNull();
     expect(screen.getByText('new-user')).toBeDefined();
+  });
+
+  it('registers only the users domain', () => {
+    render(<ActivityLogView />);
+    expect(useInvalidationMock.mock.calls[0]?.[0]).toEqual(['activity']);
+  });
+
+  it('clears the prior identity snapshot when identity generation changes', async () => {
+    getActivity.mockResolvedValueOnce({ activities: [{ id: 'old', username: 'old-user', action: 'created', details: '', timestamp: '2025-01-01T00:00:00Z' }] });
+
+    const { rerender } = render(<ActivityLogView />);
+    expect(await screen.findByText('old-user')).toBeDefined();
+
+    authState.identityGeneration = 1;
+    rerender(<ActivityLogView />);
+
+    expect(screen.queryByText('old-user')).toBeNull();
   });
 });

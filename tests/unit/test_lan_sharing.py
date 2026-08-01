@@ -1,6 +1,7 @@
 from unittest.mock import Mock
 import asyncio
 
+import pytest
 from aiohttp import web
 
 from PySide6.QtWidgets import QApplication
@@ -289,6 +290,37 @@ def test_lan_server_stop_does_not_close_runtime_or_session(monkeypatch):
     impl.return_value.stop.assert_called_once_with()
     runtime.close.assert_not_called()
     runtime.session.close.assert_not_called()
+
+
+def test_share_manager_stop_retains_server_for_retry_after_stop_failure():
+    from AssetsManager.lan.manager import ShareManager
+
+    class _FlakyServer:
+        def __init__(self):
+            self.stop_calls = 0
+
+        def stop(self):
+            self.stop_calls += 1
+            if self.stop_calls == 1:
+                raise RuntimeError("server stop failed")
+
+    manager = ShareManager()
+    server = _FlakyServer()
+    manager._server = server
+    manager._state["running"] = True
+
+    with pytest.raises(RuntimeError, match="server stop failed"):
+        manager.stop()
+
+    assert server.stop_calls == 1
+    assert manager._server is server
+    assert manager._state["running"] is True
+
+    manager.stop()
+
+    assert server.stop_calls == 2
+    assert manager._server is None
+    assert manager._state["running"] is False
 
 
 def test_lan_server_restart_keeps_one_runtime_subscription_and_one_broadcast(monkeypatch):

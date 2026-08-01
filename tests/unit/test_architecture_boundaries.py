@@ -6,6 +6,7 @@ New code should not expand those exceptions without updating the architecture AD
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 
@@ -20,6 +21,17 @@ def _module_name(path: Path) -> str:
 
 def _python_files(package: str) -> list[Path]:
     return sorted((SRC / package).rglob("*.py"))
+
+
+def _production_python_files() -> list[Path]:
+    return sorted(path for path in SRC.rglob("*.py") if "__pycache__" not in path.parts)
+
+
+def test_production_compatibility_gate_uses_entire_package() -> None:
+    files = _production_python_files()
+
+    assert SRC / "application" / "bootstrap.py" in files
+    assert SRC / "core" / "database.py" in files
 
 
 def _imports(path: Path) -> set[str]:
@@ -597,6 +609,84 @@ def test_page_components_do_not_consume_websocket_transport_directly() -> None:
         for path in root.rglob("*.tsx"):
             source = path.read_text(encoding="utf-8")
             assert "useWebSocket(" not in source, path
+
+
+def test_desktop_uses_canonical_runtime_for_session() -> None:
+    source = (SRC / "window.py").read_text(encoding="utf-8")
+    assert "runtime_for(session)" in source
+    assert "for_library(session)" not in source
+
+
+def test_production_has_no_cleanup_library_compatibility_call() -> None:
+    violations = []
+    for path in _production_python_files():
+        source = path.read_text(encoding="utf-8")
+        if re.search(r"(?<![A-Za-z0-9_])cleanup_library\s*\(", source):
+            violations.append(path)
+    assert not violations, "production cleanup_library compatibility residue: " + ", ".join(map(str, violations))
+
+
+def test_bootstrap_no_longer_exposes_removed_compatibility_api() -> None:
+    source = (SRC / "application" / "bootstrap.py").read_text(encoding="utf-8")
+    assert "def for_library(" not in source
+    assert "def cleanup_library(" not in source
+
+
+def test_production_has_no_for_library_compatibility_calls() -> None:
+    violations = []
+    for path in _production_python_files():
+        source = path.read_text(encoding="utf-8")
+        if re.search(r"(?<![A-Za-z0-9_])for_library\s*\(", source):
+            violations.append(path)
+    assert not violations, "production for_library compatibility residue: " + ", ".join(map(str, violations))
+
+
+def test_realtime_transport_has_one_central_host_consumer() -> None:
+    webui_src = ROOT / "webui" / "src"
+    realtime = (webui_src / "stores" / "RealtimeContext.tsx").read_text(encoding="utf-8")
+    assert "WebSocketTransportHost" in realtime
+    consumers = []
+    for path in webui_src.rglob("*.tsx"):
+        if path.name.endswith(".test.tsx"):
+            continue
+        source = path.read_text(encoding="utf-8")
+        if "WebSocketTransportHost" in source:
+            consumers.append(path.relative_to(webui_src).as_posix())
+    assert consumers == ["stores/RealtimeContext.tsx"]
+
+
+def test_browser_auth_contract_has_no_bearer_token_state() -> None:
+    files = (
+        ROOT / "webui" / "src" / "types" / "api.ts",
+        ROOT / "webui" / "src" / "stores" / "AuthContext.tsx",
+        ROOT / "webui" / "src" / "pages" / "LoginPage.tsx",
+    )
+    for path in files:
+        source = path.read_text(encoding="utf-8")
+        assert "setToken" not in source, path
+    auth_types = files[0].read_text(encoding="utf-8")
+    assert "token?:" not in auth_types
+    assert "token:" not in auth_types
+
+
+def test_lan_routes_do_not_construct_raw_connection_services() -> None:
+    forbidden = (
+        "MetadataService(", "ProjectService(", "TagService(",
+        "SearchService(", "ThumbnailService(", "AssetService(",
+    )
+    for path in (ROOT / "AssetsManager" / "lan" / "routes").glob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        for expression in forbidden:
+            assert expression not in source, f"{expression} in {path}"
+
+
+def test_service_provider_errors_are_single_explicit_messages() -> None:
+    metadata = (SRC / "application" / "metadata_service.py").read_text(encoding="utf-8")
+    tags = (SRC / "application" / "tag_service.py").read_text(encoding="utf-8")
+    assert metadata.count("MetadataService requires an explicit ConnectionProvider.") == 1
+    assert "MetadataService requires a ConnectionProvider." not in metadata
+    assert tags.count("TagService requires an explicit db_conn or ConnectionProvider.") == 1
+    assert "TagService requires either db_conn or a ConnectionProvider." not in tags
 
 
 def test_public_types_are_backed_by_contract_fixture() -> None:

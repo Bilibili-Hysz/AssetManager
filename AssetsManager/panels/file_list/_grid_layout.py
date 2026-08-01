@@ -19,24 +19,24 @@ class GridLayout:
 
     def compute(self, item_count: int, widget_width: int, item_size: int = 96,
                 spacing: int = 12, item_hint: QSize | None = None):
+        next_item_w = item_hint.width() if item_hint is not None else item_size + spacing
+        next_item_h = item_hint.height() if item_hint is not None else item_size + spacing + 30
         if (item_count == self._item_count and widget_width == self._widget_width
                 and item_size == self._item_size and spacing == self._spacing
+                and next_item_w == self._item_w and next_item_h == self._item_h
                 and self._rects):
             return False
         self._item_count = item_count
         self._widget_width = widget_width
         self._item_size = item_size
         self._spacing = spacing
-        if item_hint is not None:
-            self._item_w = item_hint.width()
-            self._item_h = item_hint.height()
-        else:
-            self._item_w = item_size + spacing
-            self._item_h = item_size + spacing + 30
+        self._item_w = next_item_w
+        self._item_h = next_item_h
         self._cols = max(1, widget_width // self._item_w)
         self._rows = (item_count + self._cols - 1) // self._cols if self._cols else 0
-        total_w = self._cols * self._item_w - spacing
-        self._x0 = max(0, (widget_width - total_w) // 2)
+        # File-manager grids need stable column tracks. Keep the first column
+        # fixed instead of recentering the whole array as width or count changes.
+        self._x0 = max(0, spacing)
         self._rects = self._build_rects(item_count)
         return True
 
@@ -60,12 +60,14 @@ class GridLayout:
         return None
 
     def row_at(self, x: int, y: int) -> int:
-        if not self._rects or x < self._x0:
+        if not self._rects or x < self._x0 or y < self._spacing:
             return -1
         col = (x - self._x0) // self._item_w
         if col < 0 or col >= self._cols:
             return -1
         grid_row = (y - self._spacing) // self._item_h
+        if grid_row < 0 or grid_row >= self._rows:
+            return -1
         idx = grid_row * self._cols + col
         return idx if 0 <= idx < self._item_count else -1
 

@@ -1,7 +1,7 @@
 """CollapsiblePanel — animated expand/collapse container with title and description."""
-from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QSize
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton
-from AssetsManager.core import themes
+from AssetsManager.core import icons, themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 
 
@@ -42,14 +42,19 @@ class CollapsiblePanel(QWidget):
         return self._content_layout
 
     def refresh_theme(self):
+        self._update_header_text()
         self._apply_header_style()
 
     def _update_header_text(self):
-        arrow = "\u25BE" if self._expanded else "\u25B8"
-        text = f"  {arrow} {self._title}"
+        arrow = "chevron_down" if self._expanded else "chevron_right"
+        t = themes.get()
+        self._header_btn.setIcon(icons.icon(arrow, color=t["heading"], size=scaled_px(14)))
+        self._header_btn.setIconSize(QSize(scaled_px(14), scaled_px(14)))
+        text = self._title
         if self._description:
-            text += f"  \u2014  {self._description}"
+            text += f" — {self._description}"
         self._header_btn.setText(text)
+        self._header_btn.setAccessibleName(self._title)
 
     def _apply_header_style(self):
         t = themes.get()

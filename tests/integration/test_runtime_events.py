@@ -13,15 +13,20 @@ from AssetsManager.application.runtime_events import (
 )
 from AssetsManager.domain.event_bus import EventBus
 from AssetsManager.domain.events import (
+    ActivityChanged,
     AssetNotesChanged,
     AssetTagsChanged,
     AssetUrlsChanged,
     DomainEvent,
     FileSystemChanged,
+    InviteChanged,
     NotesChanged,
+    PresenceChanged,
+    ShareChanged,
     TagCatalogChanged,
     TagsChanged,
     UrlsChanged,
+    UserChanged,
 )
 
 
@@ -36,6 +41,11 @@ def _runtime(tmp_path, bus):
 
 def _identity(session, **kwargs):
     return {"library_root": session.root_str, "session_token": session.event_token, **kwargs}
+
+
+def _projection_domain(name: str):
+    member = getattr(ProjectionDomain, name.upper(), None)
+    return member if member is not None else name
 
 
 def test_model_is_frozen_and_mapping_is_exact(tmp_path):
@@ -61,6 +71,48 @@ def test_model_is_frozen_and_mapping_is_exact(tmp_path):
     assert RuntimeEventRouter.domains_for(AssetUrlsChanged) == (
         ProjectionDomain.METADATA, ProjectionDomain.PROJECT_DETAIL,
     )
+    assert _projection_domain("shares") == "shares"
+    assert _projection_domain("users") == "users"
+    assert _projection_domain("activity") == "activity"
+    assert _projection_domain("online_users") == "online_users"
+    assert RuntimeEventRouter.domains_for(ShareChanged) == (_projection_domain("shares"),)
+    assert RuntimeEventRouter.domains_for(UserChanged) == (_projection_domain("users"),)
+    assert RuntimeEventRouter.domains_for(InviteChanged) == (_projection_domain("users"),)
+    assert RuntimeEventRouter.domains_for(ActivityChanged) == (_projection_domain("activity"),)
+    assert RuntimeEventRouter.domains_for(PresenceChanged) == (_projection_domain("online_users"),)
+
+
+@pytest.mark.parametrize(
+    ("event_type", "expected_domain"),
+    [
+        (ShareChanged, _projection_domain("shares")),
+        (UserChanged, _projection_domain("users")),
+        (InviteChanged, _projection_domain("users")),
+        (ActivityChanged, _projection_domain("activity")),
+        (PresenceChanged, _projection_domain("online_users")),
+    ],
+)
+def test_router_maps_share_and_identity_events_only_for_current_session(
+    tmp_path, event_type, expected_domain,
+):
+    bus = EventBus()
+    bootstrap, session, runtime = _runtime(tmp_path, bus)
+    received = []
+    runtime.event_router.subscribe(received.append)
+    try:
+        event = event_type(**_identity(session))
+        bus.publish(event)
+        assert len(received) == 1
+        assert received[0].domains == (expected_domain,)
+        assert received[0].paths == ()
+
+        bus.publish(event_type(**_identity(session, session_token="wrong-token")))
+        bus.publish(event_type(**_identity(session, library_root=str(tmp_path / "other"))))
+        assert len(received) == 1
+        assert runtime.revision == 1
+    finally:
+        runtime.close()
+        bootstrap.library_service.close()
 
 
 def test_router_maps_paths_deterministically_and_filters_invalid_events(tmp_path):

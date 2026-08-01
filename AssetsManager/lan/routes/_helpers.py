@@ -19,6 +19,8 @@ from aiohttp import web
 from AssetsManager.application.asset_service import matches_exclude
 from AssetsManager.core.format_utils import CATEGORY_MAP, format_size
 from AssetsManager.domain.asset import IMAGE_EXTS
+from AssetsManager.domain.event_bus import get_event_bus
+from AssetsManager.domain.events import ActivityChanged, PresenceChanged
 from AssetsManager.lan.path_guard import MissingPathError, PathEscapeError, PathGuard
 
 _log = logging.getLogger(__name__)
@@ -39,10 +41,13 @@ _SANITIZE_RE = re.compile(r'[\x00-\x1f\x7f"\\/]')
 
 
 class ActivityLog:
-    def __init__(self, max_entries=100):
+    def __init__(self, max_entries=100, *, event_bus=None, library_root="", session_token=""):
         self._entries = deque(maxlen=max_entries)
         self._lock = threading.Lock()
         self._next_id = 1
+        self._event_bus = event_bus or get_event_bus()
+        self._library_root = library_root
+        self._session_token = session_token
 
     def add(self, user, action, detail="", *, ip="unknown"):
         with self._lock:
@@ -55,6 +60,14 @@ class ActivityLog:
                 "timestamp": time.time(),
             })
             self._next_id += 1
+        if self._library_root and self._session_token:
+            try:
+                self._event_bus.publish(ActivityChanged(
+                    library_root=self._library_root,
+                    session_token=self._session_token,
+                ))
+            except Exception:
+                _log.exception("Activity projection notification failed")
 
     def recent(self, count=10):
         with self._lock:
@@ -62,24 +75,46 @@ class ActivityLog:
 
 
 class OnlineUsers:
-    def __init__(self):
+    def __init__(self, *, event_bus=None, library_root="", session_token=""):
         self._users = {}
         self._counts = {}
         self._lock = threading.Lock()
+        self._event_bus = event_bus or get_event_bus()
+        self._library_root = library_root
+        self._session_token = session_token
+
+    def _publish_changed(self):
+        if self._library_root and self._session_token:
+            try:
+                self._event_bus.publish(PresenceChanged(
+                    library_root=self._library_root,
+                    session_token=self._session_token,
+                ))
+            except Exception:
+                _log.exception("Presence projection notification failed")
 
     def connect(self, user_id, username, ip):
+        visible_change = False
         with self._lock:
             self._counts[user_id] = self._counts.get(user_id, 0) + 1
-            self._users.setdefault(user_id, {"username": username, "ip": ip, "connected_at": time.time()})
+            if user_id not in self._users:
+                self._users[user_id] = {"username": username, "ip": ip, "connected_at": time.time()}
+                visible_change = True
+        if visible_change:
+            self._publish_changed()
 
     def disconnect(self, user_id):
+        visible_change = False
         with self._lock:
             count = self._counts.get(user_id, 0) - 1
             if count > 0:
                 self._counts[user_id] = count
             else:
                 self._counts.pop(user_id, None)
+                visible_change = user_id in self._users
                 self._users.pop(user_id, None)
+        if visible_change:
+            self._publish_changed()
 
     def list_all(self):
         with self._lock:

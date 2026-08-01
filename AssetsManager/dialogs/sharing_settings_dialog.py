@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
 from AssetsManager.core import themes
+from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
@@ -245,18 +246,31 @@ class SharingSettingsDialog(TabbedDialog):
         t = _t()
         table_style = (
             f"QTableWidget {{ background: {t['panel']}; color: {t['body']}; "
-            f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; }}"
-            f"QTableWidget::item {{ padding: {scaled_px(4)}px; }}"
-            f"QTableWidget::item:selected {{ background: {t['accent']}; }}"
+            f"alternate-background-color: {alpha(t['header'], 0.18)}; "
+            f"selection-background-color: {alpha(t['accent'], 0.24)}; "
+            f"selection-color: {t['heading']}; "
+            f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px; outline: none; }}"
+            f"QTableWidget::item {{ padding: {scaled_px(5)}px {scaled_px(8)}px; border: none; "
+            f"border-bottom: 1px solid {alpha(t['border'], 0.16)}; }}"
+            f"QTableWidget::item:hover {{ background: {alpha(t['accent'], 0.10)}; }}"
+            f"QTableWidget::item:selected {{ background: {alpha(t['accent'], 0.24)}; color: {t['heading']}; }}"
             f"QHeaderView::section {{ background: {t['header']}; color: {t['heading']}; "
-            f"padding: {scaled_px(4)}px; border: none; border-right: 1px solid {t['border']}; }}"
+            f"padding: {scaled_px(6)}px {scaled_px(8)}px; border: none; "
+            f"border-right: 1px solid {alpha(t['border'], 0.24)}; "
+            f"font-weight: bold; }}"
         )
-        if hasattr(self, '_links_table'):
-            self._links_table.setStyleSheet(table_style)
-        if hasattr(self, '_codes_table'):
-            self._codes_table.setStyleSheet(table_style)
-        if hasattr(self, '_online_table'):
-            self._online_table.setStyleSheet(table_style)
+        for table in (
+            getattr(self, "_links_table", None),
+            getattr(self, "_codes_table", None),
+            getattr(self, "_online_table", None),
+        ):
+            if table is None:
+                continue
+            table.setAlternatingRowColors(True)
+            table.setShowGrid(False)
+            table.verticalHeader().setDefaultSectionSize(scaled_px(30))
+            table.horizontalHeader().setMinimumHeight(scaled_px(30))
+            table.setStyleSheet(table_style)
 
     # ══════════════════════════════════════════════════════════
     # Endpoint
@@ -309,6 +323,7 @@ class SharingSettingsDialog(TabbedDialog):
         status_row.addWidget(self._exposure_label)
         status_row.addStretch()
         self._toggle_btn = self.make_primary_btn(tr("sharing.btn_start_sharing"), self._on_primary_endpoint_action)
+        self._set_action_icon(self._toggle_btn, "share")
         status_row.addWidget(self._toggle_btn)
         endpoint_layout.addLayout(status_row)
 
@@ -319,8 +334,11 @@ class SharingSettingsDialog(TabbedDialog):
         endpoint_layout.addWidget(self._url_label)
         action_row = QHBoxLayout()
         self._copy_btn = self.make_secondary_btn(tr("sharing.btn_copy_link"), self._copy_link)
+        self._set_action_icon(self._copy_btn, "copy")
         self._open_btn = self.make_secondary_btn(tr("sharing.btn_open"), self._open_endpoint)
+        self._set_action_icon(self._open_btn, "arrow_right")
         self._qr_btn = self.make_secondary_btn(tr("sharing.qr.show"), self._show_endpoint_qr)
+        self._set_action_icon(self._qr_btn, "qr_code")
         action_row.addWidget(self._copy_btn)
         action_row.addWidget(self._open_btn)
         action_row.addWidget(self._qr_btn)
@@ -350,9 +368,12 @@ class SharingSettingsDialog(TabbedDialog):
             tunnel_cl.addWidget(self._tunnel_url_label)
             tunnel_btn_row = QHBoxLayout()
             self._tunnel_btn = self.make_primary_btn(tr("sharing.btn_start_tunnel"), self._toggle_tunnel)
+            self._set_action_icon(self._tunnel_btn, "share")
             self._tunnel_copy_btn = self.make_secondary_btn(tr("sharing.btn_copy"), self._copy_tunnel_url)
+            self._set_action_icon(self._tunnel_copy_btn, "copy")
             self._tunnel_copy_btn.setVisible(False)
             self._tunnel_open_btn = self.make_secondary_btn(tr("sharing.btn_open"), self._open_tunnel_url)
+            self._set_action_icon(self._tunnel_open_btn, "arrow_right")
             self._tunnel_open_btn.setVisible(False)
             tunnel_btn_row.addWidget(self._tunnel_btn)
             tunnel_btn_row.addWidget(self._tunnel_copy_btn)
@@ -957,6 +978,12 @@ class SharingSettingsDialog(TabbedDialog):
     # Overview: Status & Actions
     # ══════════════════════════════════════════════════════════
 
+    def _set_action_icon(self, button: QPushButton, icon_name: str) -> None:
+        """Register a semantic icon so TabbedDialog refreshes it with the theme."""
+        button.setProperty("semanticIcon", icon_name)
+        button.setProperty("semanticIconColor", "heading")
+        self._refresh_semantic_button_icons()
+
     def _update_status(self):
         t = _t()
         tunnel_running = bool(self._server and hasattr(self._server, "is_tunnel_running") and self._server.is_tunnel_running())
@@ -970,10 +997,18 @@ class SharingSettingsDialog(TabbedDialog):
             "failed": (tr("sharing.endpoint.failed"), t["danger"], tr("sharing.endpoint.try_again")),
         }
         label, color, action_label = details[state]
+        action_icon = {
+            "off": "share",
+            "starting": "refresh",
+            "local": "close",
+            "public": "close",
+            "failed": "refresh",
+        }[state]
         self._status_icon.setStyleSheet(
             f"background: {color}; border-radius: {scaled_px(6)}px; border: none;")
         self._status_label.setText(label)
         self._toggle_btn.setText(action_label)
+        self._set_action_icon(self._toggle_btn, action_icon)
         self._toggle_btn.setEnabled(action != "busy")
         self._toggle_btn.setStyleSheet(self.toggle_btn_style(action in {"stop_server", "stop_tunnel"}))
         self._status_frame.setStyleSheet(self.status_style(state in {"local", "public"}))
@@ -1576,6 +1611,7 @@ class SharingSettingsDialog(TabbedDialog):
         if self._server.is_tunnel_running():
             self._server.stop_tunnel()
             self._tunnel_btn.setText(tr("sharing.btn_start_tunnel"))
+            self._set_action_icon(self._tunnel_btn, "share")
             self._tunnel_btn.setStyleSheet(self.primary_btn_style())
             self._tunnel_status.setText(tr("sharing.tunnel_not_connected"))
             self._tunnel_status.setStyleSheet(f"font-size: {scaled_pt(12)}px; color: {t['muted']};")
@@ -1587,6 +1623,7 @@ class SharingSettingsDialog(TabbedDialog):
         else:
             self._tunnel_btn.setEnabled(False)
             self._tunnel_btn.setText(tr("sharing.btn_connecting"))
+            self._set_action_icon(self._tunnel_btn, "refresh")
             self._tunnel_status.setText(tr("sharing.tunnel_starting"))
             self._tunnel_status.setStyleSheet(f"font-size: {scaled_pt(12)}px; color: {t['muted']};")
 
@@ -1624,6 +1661,7 @@ class SharingSettingsDialog(TabbedDialog):
             self._tunnel_url_label.setText(public_url)
             self._tunnel_url_label.setVisible(True)
             self._tunnel_btn.setText(tr("sharing.btn_stop_tunnel"))
+            self._set_action_icon(self._tunnel_btn, "close")
             self._tunnel_btn.setStyleSheet(self.toggle_btn_style(True))
             self._tunnel_btn.setEnabled(True)
             self._tunnel_copy_btn.setVisible(True)
@@ -1634,6 +1672,7 @@ class SharingSettingsDialog(TabbedDialog):
             self._tunnel_status.setText(tr("sharing.tunnel_failed"))
             self._tunnel_status.setStyleSheet(f"font-size: {scaled_pt(12)}px; color: {t['danger']};")
             self._tunnel_btn.setText(tr("sharing.btn_start_tunnel"))
+            self._set_action_icon(self._tunnel_btn, "share")
             self._tunnel_btn.setStyleSheet(self.primary_btn_style())
             self._tunnel_btn.setEnabled(True)
             self._update_status()

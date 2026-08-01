@@ -9,9 +9,10 @@ const { getProjectDetail, useInvalidationMock, authApi } = vi.hoisted(() => ({
   useInvalidationMock: vi.fn(),
   authApi: {},
 }));
+const authState = { identityGeneration: 0 };
 
 vi.mock('../hooks/useAuth', () => ({
-  useAuth: () => ({ api: authApi, user: null }),
+  useAuth: () => ({ api: authApi, identityGeneration: authState.identityGeneration }),
 }));
 vi.mock('../api/metadata', () => ({
   createMetadataApi: () => ({ getProjectDetail }),
@@ -50,6 +51,7 @@ describe('DetailPage', () => {
     getProjectDetail.mockReset();
     getProjectDetail.mockResolvedValue(detail);
     useInvalidationMock.mockReset();
+    authState.identityGeneration = 0;
   });
 
   afterEach(() => cleanup());
@@ -57,6 +59,29 @@ describe('DetailPage', () => {
   it('registers the detail projection domains', async () => {
     render(<MemoryRouter initialEntries={['/detail?path=folder%2FProject']}><DetailPage /></MemoryRouter>);
     await waitFor(() => expect(useInvalidationMock.mock.calls[0]?.[0]).toEqual(['project_detail', 'metadata', 'tags']));
+  });
+
+  it('does not restore detail data from the previous identity generation', async () => {
+    let resolveStale!: (value: typeof detail) => void;
+    let resolveCurrent!: (value: typeof detail) => void;
+    const stale = new Promise<typeof detail>(resolve => { resolveStale = resolve; });
+    const current = new Promise<typeof detail>(resolve => { resolveCurrent = resolve; });
+    getProjectDetail.mockReset();
+    getProjectDetail.mockReturnValueOnce(stale).mockReturnValueOnce(current);
+
+    const { rerender } = render(<MemoryRouter initialEntries={['/detail?path=folder%2FProject']}><DetailPage /></MemoryRouter>);
+    await waitFor(() => expect(getProjectDetail).toHaveBeenCalledTimes(1));
+
+    authState.identityGeneration = 1;
+    rerender(<MemoryRouter initialEntries={['/detail?path=folder%2FProject']}><DetailPage /></MemoryRouter>);
+    await waitFor(() => expect(getProjectDetail).toHaveBeenCalledTimes(2));
+
+    resolveStale(detail);
+    await Promise.resolve();
+    expect(screen.queryByRole('heading', { name: 'Project' })).toBeNull();
+
+    resolveCurrent(detail);
+    await screen.findByRole('heading', { name: 'Project' });
   });
 
   it('decodes the project path before loading detail data and renders its sections', async () => {

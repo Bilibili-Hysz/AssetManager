@@ -207,6 +207,9 @@ class LibrarySession:
         """
         if self.has_current_thread_operation:
             raise RuntimeError("Cannot close a LibrarySession from an active operation")
+        if self._closed and self._close_callback is not None:
+            self._close_callback(self)
+            return
         if self._closed:
             self._close_direct()
             return

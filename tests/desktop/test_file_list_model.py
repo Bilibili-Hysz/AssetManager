@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 from AssetsManager.panels.file_list._model import FileSystemModel
 from AssetsManager.application.bootstrap import ApplicationBootstrap
+from AssetsManager.core.performance import PerformanceRecorder
 
 _app = QApplication.instance() or QApplication([])
 
@@ -49,6 +50,13 @@ class TestFileSystemModel:
         model.set_filter(text="missing")
 
         assert model.list_state == model.STATE_EMPTY_FILTERED
+
+    def test_disabled_model_reset_telemetry_has_no_events(self, model, tmp_path):
+        model.set_performance_context(PerformanceRecorder(enabled=False), "session-a")
+        model.set_directory(str(tmp_path))
+        model._wait_for_scan()
+
+        assert model._performance_recorder is None
 
     def test_scan_error_is_retained_as_current_state(self, model, tmp_path, monkeypatch):
         def fail_scan(_path):
@@ -248,6 +256,31 @@ class TestFileSystemModel:
         # 3 files (excl .hidden) + 1 folder = 4 items
         assert model.rowCount() == 4
         assert lifecycle == [("started", 1), ("committed", 1)]
+
+    def test_model_reset_records_reason_rows_and_scan_context(self, model, tmp_path):
+        recorder = PerformanceRecorder(enabled=True)
+        model.set_performance_context(recorder, "session-a")
+        (tmp_path / "asset.txt").write_text("asset", encoding="utf-8")
+
+        model.set_directory(str(tmp_path))
+        model._wait_for_scan()
+        model.set_filter(text="missing")
+
+        events = [event for event in recorder.recent() if event.name == "model.reset"]
+        assert [event.attributes["reason"] for event in events] == [
+            "directory_loading", "scan_commit", "filter",
+        ]
+        loading, committed, filtered = events
+        assert loading.session_token == "session-a"
+        assert loading.generation == 1
+        assert loading.attributes["previous_row_count"] == 0
+        assert loading.attributes["row_count"] == 0
+        assert loading.attributes["scan_loading"] is True
+        assert committed.attributes["row_count"] == 1
+        assert committed.attributes["scan_loading"] is False
+        assert filtered.attributes["previous_row_count"] == 1
+        assert filtered.attributes["row_count"] == 0
+        assert all(event.elapsed_ms >= 0 for event in events)
 
     def test_empty_directory_resolves_empty_folder_state(self, model, tmp_path):
         model.set_directory(str(tmp_path))

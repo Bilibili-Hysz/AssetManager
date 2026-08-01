@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from './useAuth';
+import { useInvalidation } from './useInvalidation';
 import { createMetadataApi } from '../api/metadata';
 import type { SearchResult } from '../types/api';
 
@@ -12,16 +13,32 @@ interface UseSearchReturn {
 }
 
 export function useSearch(): UseSearchReturn {
-  const { api } = useAuth();
+  const { api, identityGeneration } = useAuth();
   const metaApi = useMemo(() => createMetadataApi(api), [api]);
   const [query, setQueryState] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
   const generationRef = useRef(0);
+  const queryRef = useRef(query);
+  const identityGenerationRef = useRef(identityGeneration);
+
+  const searchNow = useCallback((value: string, generation: number) => {
+    metaApi.search(value.trim())
+      .then(res => {
+        if (generation === generationRef.current) setResults(res.results ?? []);
+      })
+      .catch(() => {
+        if (generation === generationRef.current) setResults([]);
+      })
+      .finally(() => {
+        if (generation === generationRef.current) setIsSearching(false);
+      });
+  }, [metaApi]);
 
   const setQuery = useCallback((q: string) => {
     setQueryState(q);
+    queryRef.current = q;
     if (timerRef.current) clearTimeout(timerRef.current);
     const generation = ++generationRef.current;
 
@@ -33,26 +50,38 @@ export function useSearch(): UseSearchReturn {
 
     setIsSearching(true);
     timerRef.current = setTimeout(() => {
-      metaApi.search(q.trim())
-        .then(res => {
-          if (generation === generationRef.current) setResults(res.results ?? []);
-        })
-        .catch(() => {
-          if (generation === generationRef.current) setResults([]);
-        })
-        .finally(() => {
-          if (generation === generationRef.current) setIsSearching(false);
-        });
+      searchNow(q, generation);
     }, 200);
-  }, [metaApi]);
+  }, [searchNow]);
 
   const clear = useCallback(() => {
     ++generationRef.current;
     if (timerRef.current) clearTimeout(timerRef.current);
     setQueryState('');
+    queryRef.current = '';
     setResults([]);
     setIsSearching(false);
   }, []);
+
+  useInvalidation(['files', 'metadata'], () => {
+    const activeQuery = queryRef.current.trim();
+    if (!activeQuery) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    const generation = ++generationRef.current;
+    setIsSearching(true);
+    searchNow(activeQuery, generation);
+  });
+
+  useEffect(() => {
+    if (identityGenerationRef.current === identityGeneration) return;
+    identityGenerationRef.current = identityGeneration;
+    ++generationRef.current;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    queryRef.current = '';
+    setQueryState('');
+    setResults([]);
+    setIsSearching(false);
+  }, [identityGeneration]);
 
   useEffect(() => {
     return () => {

@@ -37,6 +37,9 @@ class _LanServerImpl:
                   services=None):
         self._runtime_adapter_registered = False
         self._runtime_adapter_lock = threading.Lock()
+        self._runtime_adapter_condition_lock = threading.Condition(self._runtime_adapter_lock)
+        self._runtime_adapter_state = "unregistered"
+        self._runtime_adapter_registration_thread = None
         self.runtime = runtime
         session = getattr(runtime, "session", None)
         runtime_services = getattr(runtime, "services", None)
@@ -132,6 +135,10 @@ class _LanServerImpl:
         from AssetsManager.application.share_service import ShareService
         self._auth_service = AuthService(self._db_conn, self._token_secret)
         self._share_service = ShareService(self._db_conn, self._token_secret)
+        event_library_root = getattr(session, "root_str", str(library_root))
+        for service in (self._auth_service, self._share_service):
+            service._library_root = event_library_root
+            service._session_token = session.event_token
 
         if runtime is not None:
             for name in (
@@ -165,22 +172,18 @@ class _LanServerImpl:
                 thumbnail_service=runtime_services.thumbnail_service,
                 asset_service=runtime_services.asset_service,
                 share_service=self._share_service,
-                activity_log=ActivityLog(),
-                online_users=OnlineUsers(),
+                activity_log=ActivityLog(
+                    library_root=event_library_root,
+                    session_token=session.event_token,
+                ),
+                online_users=OnlineUsers(
+                    library_root=event_library_root,
+                    session_token=session.event_token,
+                ),
                 runtime_services=runtime_services,
             )
         self._services = self.services
         self._build_app()
-        register_adapter = getattr(self.runtime, "register_lifecycle_adapter", None)
-        if callable(register_adapter):
-            with self._runtime_adapter_lock:
-                self._runtime_adapter_registered = True
-            try:
-                register_adapter(self)
-            except BaseException:
-                with self._runtime_adapter_lock:
-                    self._runtime_adapter_registered = False
-                raise
 
     def _build_app(self) -> None:
         """Build a fresh aiohttp application for the next event loop."""
@@ -276,9 +279,9 @@ class _LanServerImpl:
                     self._loop = None
                     self._thread = None
             raise OSError(f"Failed to start server on port {port}. Port may be in use.")
-
     def stop(self):
         """Stop the server gracefully."""
+        unregister_after_lock = False
         with self._lifecycle_lock:
             thread = self._thread
             generation = getattr(self, "_lifecycle_generation", 0)
@@ -288,9 +291,8 @@ class _LanServerImpl:
                 self._loop = None
                 self._thread = None
                 self._shutdown_future = None
-                self._unregister_runtime_adapter()
-                return
-            if not thread.is_alive():
+                unregister_after_lock = True
+            elif not thread.is_alive():
                 if not self._cleanup_complete:
                     self._lifecycle_state = "failed"
                     raise RuntimeError("Server thread terminated with cleanup incomplete")
@@ -299,33 +301,41 @@ class _LanServerImpl:
                 self._loop = None
                 self._thread = None
                 self._shutdown_future = None
-                self._unregister_runtime_adapter()
-                return
+                unregister_after_lock = True
             if self._loop is None:
-                self._lifecycle_state = "failed"
-                raise RuntimeError("Cannot stop live server thread without its event loop")
-
-            self._lifecycle_state = "stopping"
-            future = self._shutdown_future
-            if future is not None and getattr(future, "done", lambda: False)():
-                future_failed = False
-                try:
-                    future_failed = future.exception() is not None
-                except concurrent.futures.CancelledError:
-                    future_failed = True
-                except Exception:
+                if unregister_after_lock:
                     pass
-                if future_failed and not self._cleanup_complete:
-                    self._shutdown_future = None
-                    future = None
-            if future is None:
-                future = asyncio.run_coroutine_threadsafe(self._shutdown(), self._loop)
-                self._shutdown_future = future
-            reservation_generation = generation
-            if getattr(self, "_stop_reservation_generation", generation) != generation:
-                self._stop_reservations = 0
-            self._stop_reservation_generation = generation
-            self._stop_reservations = getattr(self, "_stop_reservations", 0) + 1
+                else:
+                    self._lifecycle_state = "failed"
+                    raise RuntimeError("Cannot stop live server thread without its event loop")
+            elif unregister_after_lock:
+                pass
+            else:
+                self._lifecycle_state = "stopping"
+                future = self._shutdown_future
+                if future is not None and getattr(future, "done", lambda: False)():
+                    future_failed = False
+                    try:
+                        future_failed = future.exception() is not None
+                    except concurrent.futures.CancelledError:
+                        future_failed = True
+                    except Exception:
+                        pass
+                    if future_failed and not self._cleanup_complete:
+                        self._shutdown_future = None
+                        future = None
+                if future is None:
+                    future = asyncio.run_coroutine_threadsafe(self._shutdown(), self._loop)
+                    self._shutdown_future = future
+                reservation_generation = generation
+                if getattr(self, "_stop_reservation_generation", generation) != generation:
+                    self._stop_reservations = 0
+                self._stop_reservation_generation = generation
+                self._stop_reservations = getattr(self, "_stop_reservations", 0) + 1
+
+        if unregister_after_lock:
+            self._unregister_runtime_adapter()
+            return
 
         try:
             while True:
@@ -414,20 +424,82 @@ class _LanServerImpl:
         unregister_adapter = getattr(runtime, "unregister_lifecycle_adapter", None)
         if not callable(unregister_adapter):
             return
-        lock = getattr(self, "_runtime_adapter_lock", None)
-        if lock is None:
-            lock = threading.Lock()
-            self._runtime_adapter_lock = lock
-        with lock:
-            if not getattr(self, "_runtime_adapter_registered", False):
+        condition = self._runtime_adapter_condition()
+        with condition:
+            while getattr(self, "_runtime_adapter_state", "unregistered") == "registering":
+                if getattr(self, "_runtime_adapter_registration_thread", None) == threading.get_ident():
+                    return
+                condition.wait()
+            if getattr(self, "_runtime_adapter_state", "unregistered") != "registered":
                 return
+            self._runtime_adapter_state = "unregistering"
             self._runtime_adapter_registered = False
         try:
             unregister_adapter(self)
         except BaseException:
-            with lock:
+            with condition:
+                self._runtime_adapter_state = "registered"
                 self._runtime_adapter_registered = True
+                condition.notify_all()
             raise
+        with condition:
+            self._runtime_adapter_state = "unregistered"
+            condition.notify_all()
+
+    def _register_runtime_adapter(self):
+        runtime = getattr(self, "runtime", None)
+        register_adapter = getattr(runtime, "try_register_lifecycle_adapter", None)
+        if not callable(register_adapter):
+            register_adapter = getattr(runtime, "register_lifecycle_adapter", None)
+        if not callable(register_adapter):
+            return True
+        condition = self._runtime_adapter_condition()
+        with condition:
+            state = getattr(self, "_runtime_adapter_state", "unregistered")
+            if state == "registered":
+                return True
+            if state == "registering":
+                if getattr(self, "_runtime_adapter_registration_thread", None) == threading.get_ident():
+                    return False
+                while getattr(self, "_runtime_adapter_state", "unregistered") == "registering":
+                    condition.wait()
+                if getattr(self, "_runtime_adapter_state", "unregistered") == "registered":
+                    return True
+            self._runtime_adapter_state = "registering"
+            self._runtime_adapter_registration_thread = threading.get_ident()
+        try:
+            retained = register_adapter(self)
+        except BaseException:
+            with condition:
+                self._runtime_adapter_state = "unregistered"
+                self._runtime_adapter_registration_thread = None
+                condition.notify_all()
+            raise
+        with condition:
+            self._runtime_adapter_registration_thread = None
+            self._runtime_adapter_state = "registered" if retained is not False else "unregistered"
+            self._runtime_adapter_registered = retained is not False
+            condition.notify_all()
+            return retained is not False
+
+    def _runtime_adapter_condition(self):
+        condition = getattr(self, "_runtime_adapter_condition_lock", None)
+        if condition is None:
+            lock = getattr(self, "_runtime_adapter_lock", None)
+            if lock is None:
+                lock = threading.Lock()
+                self._runtime_adapter_lock = lock
+            condition = threading.Condition(lock)
+            self._runtime_adapter_condition_lock = condition
+        if not hasattr(self, "_runtime_adapter_state"):
+            self._runtime_adapter_state = (
+                "registered"
+                if getattr(self, "_runtime_adapter_registered", False)
+                else "unregistered"
+            )
+        if not hasattr(self, "_runtime_adapter_registration_thread"):
+            self._runtime_adapter_registration_thread = None
+        return condition
 
     def is_running(self) -> bool:
         return self._lifecycle_state != "stopped"
@@ -720,13 +792,48 @@ class _LanServerImpl:
             if not cancelled:
                 self._started_at = time.monotonic()
                 self._running = True
-                self._lifecycle_state = "running"
-                self._publish_startup_result("success")
         if cancelled:
             self._running = False
             await self._runner.cleanup()
             self._cleanup_complete = True
             raise RuntimeError("startup cancelled")
+
+        try:
+            retained = self._register_runtime_adapter()
+        except BaseException:
+            with self._lifecycle_lock:
+                self._running = False
+                if self._lifecycle_state == "starting":
+                    self._lifecycle_state = "failed"
+            raise
+
+        registration_cancelled = False
+        with self._lifecycle_lock:
+            registration_cancelled = (
+                getattr(self, "_startup_cancel_generation", None)
+                == self._lifecycle_generation
+                or self._lifecycle_state != "starting"
+                or not self._running
+            )
+            if retained is False:
+                self._running = False
+                self._lifecycle_state = "failed"
+                raise RuntimeError("Runtime did not retain the LAN server lifecycle adapter")
+            if not registration_cancelled:
+                self._lifecycle_state = "running"
+                self._publish_startup_result("success")
+
+        if registration_cancelled:
+            self._running = False
+            self._unregister_runtime_adapter()
+            with self._lifecycle_lock:
+                cleanup_owned_here = self._shutdown_future is None
+                if self._lifecycle_state == "starting":
+                    self._lifecycle_state = "failed"
+            if cleanup_owned_here:
+                await self._runner.cleanup()
+                self._cleanup_complete = True
+            return
         protocol = "https" if ssl_context else "http"
         _log.info("LAN sharing started on %s://%s:%d", protocol, get_local_ip(), self._port)
 

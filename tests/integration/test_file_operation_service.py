@@ -53,7 +53,7 @@ def test_bound_copy_to_directory_allows_external_sources(tmp_path):
     library.mkdir()
     external.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
 
     result = scoped.file_operation_service.copy_to_directory([external], library)
 
@@ -73,7 +73,7 @@ def test_file_copied_observers_see_new_file_indexed(tmp_path):
     library.mkdir()
     external.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     observed = []
@@ -101,7 +101,7 @@ def test_file_commands_record_after_projection_and_event_publication(tmp_path):
     external.write_text("asset", encoding="utf-8")
     recorder = PerformanceRecorder(enabled=True)
     bootstrap = ApplicationBootstrap(performance_recorder=recorder)
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     observed = []
 
     def observe(_event):
@@ -132,7 +132,7 @@ def test_file_command_recorder_failure_does_not_change_operation(tmp_path, monke
     recorder = PerformanceRecorder(enabled=True)
     monkeypatch.setattr(recorder, "record", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError()))
     bootstrap = ApplicationBootstrap(performance_recorder=recorder)
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
 
     result = scoped.file_operation_service.copy_to_directory([external], library)
 
@@ -167,7 +167,7 @@ def test_rename_migrates_metadata(tmp_path):
     old = library / "old.txt"
     old.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     store = TagStore(str(library), db_conn=scoped.session.connection_for(library))
     store.add_tag(str(old), "hero")
 
@@ -201,7 +201,7 @@ def test_rename_reindexes_parent_after_metadata_migration(tmp_path):
     old = library / "old.txt"
     old.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     conn = scoped.session.connection_for(library)
     scoped.asset_index_service.index_directory(conn, library, library)
 
@@ -222,7 +222,7 @@ def test_copy_and_move_reindex_source_and_destination_parents(tmp_path):
     source = source_dir / "asset.txt"
     source.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     index = scoped.asset_index_service
     conn = scoped.session.connection_for(library)
     index.index_directory(conn, library, source_dir)
@@ -249,7 +249,7 @@ def test_directory_copy_reindexes_copied_tree(tmp_path):
     destination_dir.mkdir()
     asset.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
 
@@ -300,7 +300,7 @@ def test_bound_duplicate_rejects_external_source_and_destination(tmp_path):
     library.mkdir()
     external.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
 
     with pytest.raises(ValueError, match="outside library root"):
         scoped.file_operation_service.duplicate(external)
@@ -320,7 +320,7 @@ def test_bound_duplicate_rejects_external_destination(tmp_path, monkeypatch):
     library.mkdir()
     source.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     monkeypatch.setattr(
         "AssetsManager.application.file_operation_service.unique_destination",
         lambda path: external_destination,
@@ -343,7 +343,7 @@ def test_bound_duplicate_rejects_closed_session_without_mutating(tmp_path):
     library.mkdir()
     source.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     bootstrap.library_service.close_session(scoped.session)
 
     with pytest.raises(RuntimeError, match="closed LibrarySession"):
@@ -376,7 +376,7 @@ def test_permanent_delete_clears_projection_subtree_and_reindexes_parent(tmp_pat
     child.parent.mkdir(parents=True)
     child.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     index.index_directory(conn, library, library)
@@ -411,7 +411,7 @@ def test_trash_delete_clears_projections_before_file_deleted_subscribers_run(tmp
     child.parent.mkdir(parents=True)
     child.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     index.index_directory(conn, library, library)
@@ -452,7 +452,7 @@ def test_bound_trash_delete_rejects_path_outside_library(tmp_path):
     library.mkdir()
     external.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
 
     with pytest.raises(ValueError, match="outside library root"):
         scoped.file_operation_service.delete_to_trash([external])
@@ -473,7 +473,7 @@ def test_directory_move_reindexes_new_hierarchy_and_removes_old_subtree(tmp_path
     destination_parent.mkdir()
     asset.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     for directory in (library, source_parent, old_dir, nested_dir, destination_parent):
@@ -504,7 +504,7 @@ def test_file_renamed_observers_see_moved_directory_projection(tmp_path):
     old_child.write_text("asset", encoding="utf-8")
     destination.mkdir()
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     index.index_directory(conn, library, library)
@@ -545,7 +545,7 @@ def test_restore_backup_reindexes_directory_tree_before_publishing_created(tmp_p
     shutil.copytree(target, backup)
     shutil.rmtree(target)
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     observed = []
@@ -577,7 +577,7 @@ def test_create_and_duplicate_reindex_before_publishing_created(tmp_path):
     source.parent.mkdir()
     source.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
     conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     observed = []
@@ -605,7 +605,7 @@ def test_bound_restore_backup_rejects_destination_outside_library(tmp_path):
     library.mkdir()
     backup.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
-    scoped = bootstrap.for_library(bootstrap.library_service.open_session(library))
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
 
     with pytest.raises(ValueError, match="outside library root"):
         scoped.file_operation_service.restore_backup(backup, external)

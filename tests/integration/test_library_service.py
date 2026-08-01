@@ -666,7 +666,7 @@ def test_scoped_public_operation_lease_drains_before_close(
     (root / "asset.txt").write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
     session = bootstrap.library_service.open_session(root)
-    scoped = bootstrap.for_library(session)
+    scoped = bootstrap.runtime_for(session).services
     target = getattr(scoped, service_name)
     entered = threading.Event()
     release = threading.Event()

@@ -1,15 +1,31 @@
 # Desktop–LAN–WebUI Architecture Migration Implementation Plan
 
 > [!NOTE]
-> **Status:** Completed through Phase 5 Task 17.
-> See the final report for exact evidence and residual risks:
+> **Current status (2026-07-21 HEAD):** Partial; not release-ready.
+> This is the original migration plan and its historical checkboxes are not
+> the current source of truth. Some tasks were executed through supplemental
+> hardening plans, while the integration closure still has open P1/P2 items.
+> **Historical-plan rule:** Do not execute any unchecked checkbox in this
+> document. It is retained for traceability only; the recalibrated plan below
+> is the sole executable task chain for the current workspace.
+> See the current-state report and recalibrated plan for the authoritative
+> ledger:
 > [Desktop–LAN–WebUI Architecture Migration — Final Report](../reports/desktop-lan-webui-architecture-migration.md)
+> [Recalibrated Architecture Plan](2026-07-21-desktop-lan-webui-architecture-recalibration.md)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use compose:subagent (recommended) or compose:execute to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> This historical plan is retained for traceability. Do not dispatch workers
+> from it; use the recalibrated plan for current execution.
 
 **Goal:** 将 AssetsManager 渐进改造成以唯一 `LibraryRuntime` 为核心、具有显式公共契约和可自愈跨端失效同步的模块化单体。
 
-**Architecture:** 扩展现有 `ApplicationBootstrap.for_library()`，使一个 canonical `LibrarySession` 只对应一个缓存的 `LibraryRuntime`；Desktop 与 LAN 注入并共享该 Runtime。业务数据继续通过 HTTP 快照读取，session-scoped DomainEvent 经 Event Router 映射为带 `epoch + revision` 的 WebSocket 投影失效通知，React 由统一 provider 完成重连、gap 检测与按域补拉。
+**Architecture:** This original plan began with
+`ApplicationBootstrap.for_library()` as a temporary compatibility entry. The
+current implementation uses `ApplicationBootstrap.runtime_for(session).services`
+as the canonical Desktop composition boundary; Desktop and LAN inject and
+share the cached `LibraryRuntime`. Business data continues through HTTP
+snapshots, session-scoped DomainEvents are mapped by the Event Router to
+WebSocket projection invalidations carrying `epoch + revision`, and React uses
+one provider for reconnect, gap detection and domain refetch.
 
 **Tech Stack:** Python 3、PySide6、SQLite、aiohttp、React 18、TypeScript 5、Vitest、pytest。
 
@@ -26,6 +42,47 @@
 - 不引入独立服务、微服务、Redis、Kafka、数据库替换或强制 React Query 迁移。
 - 不修改无关用户改动；只有用户明确授权时才创建阶段 checkpoint commit。
 
+## Current Status Ledger (2026-07-21 HEAD)
+
+This section supersedes the historical checkbox count below. The original
+task bodies remain useful implementation context, but a task is only
+`delivered` when the current-state report names passing evidence for its full
+contract. A green test suite does not close lifecycle ordering, identity
+teardown, or producer-coverage requirements that have no corresponding test.
+
+| Phase | Current status | Delivered scope | Closure condition |
+|---|---|---|---|
+| Phase 0 | delivered | Baseline session/security characterization and persistent WebSocket reconnect behavior | Keep the existing gates green while closing later phases |
+| Phase 1 | delivered for Task B scope | DTOs, principal/capabilities, cookie-only browser identity and protected projection teardown | Run the complete auth/identity cross-surface matrix in Task E |
+| Phase 2 | partial | Cached `LibraryRuntime` and eager LAN runtime composition | Stop adapters before session resources are released; make restart generations re-register ownership; remove duplicate/legacy entry points |
+| Phase 3 | partial | Session-filtered event router, epoch/revision, authenticated invalidation transport | Complete admission ordering and add producers for all advertised projection domains |
+| Phase 4 | partial | Shared React provider, cursor recovery machinery, major page invalidation consumers | Recover on the first runtime baseline, clear identity-scoped projections, refresh search/admin projections canonically |
+| Phase 5 | partial / unproven | Truthful connection/request/uptime plumbing and supplemental realtime hardening | Close P1/P2 ledger, remove fallbacks, and execute the complete cross-surface matrix on current HEAD |
+
+### Task-level status
+
+| Tasks | Status | Reason |
+|---|---|---|
+| 1–4 | delivered | Baseline gates, DTOs and principal model have current implementation and regression evidence |
+| 5 | delivered for Task B scope | React consumes principal/capabilities; login/register/key responses and `AuthContext` no longer retain browser bearer-token compatibility | Prove all auth modes and logout/401 teardown in Task E |
+| 6 | partial | Runtime caching is present, but adapter stop occurs from the post-session-close callback rather than the required pre-close boundary |
+| 7 | partial | LAN receives the canonical Runtime, but a stopped server does not re-register itself on a later successful `start()` |
+| 8 | delivered for Task D scope | Production route construction and bootstrap composition fallbacks are removed; remaining lifecycle and restart-generation gaps are tracked separately |
+| 9 | partial | Router covers `files/tree/home/project_detail/metadata/tags`; `shares/users/stats` have no runtime producer |
+| 10 | partial | Cursor and authority hardening are present, but the first `runtime_ready` frame is sent before authoritative WS admission |
+| 11 | partial | Same-root and shutdown isolation have evidence; restart-after-stop ownership and failure retry still need explicit tests |
+| 12 | partial | Provider/gap/epoch recovery is implemented; the first ready frame does not force an authoritative snapshot recovery |
+| 13 | partial | Main projections use `useInvalidation`; search and invite/admin state still use query-time or local-patch refreshes |
+| 14 | partial / unproven | Chromium mutation, gap and epoch scenarios exist, but the full auth, identity teardown and LAN↔Desktop matrix is not proven |
+| 15 | partial | Metrics are more truthful, but complete activity/online/users/shares producer coverage is not established |
+| 16 | delivered for Task D scope | Bootstrap composition fallbacks and browser bearer-token compatibility state are removed; final cross-surface acceptance remains open |
+| 17 | partial / unproven | The historical Phase 5 gate was overstated; current full-suite green evidence does not close the open lifecycle and identity contracts |
+
+The unresolved work is intentionally split into an executable follow-up plan:
+[`2026-07-21-desktop-lan-webui-architecture-closure.md`](2026-07-21-desktop-lan-webui-architecture-closure.md),
+with requirements in
+[`2026-07-21-desktop-lan-webui-architecture-closure-design.md`](../specs/2026-07-21-desktop-lan-webui-architecture-closure-design.md).
+
 ---
 
 ## File Responsibility Map
@@ -34,7 +91,7 @@
 
 - `AssetsManager/application/runtime.py`：新增 `LibraryRuntime`，拥有 session、共享服务、event router、epoch、revision 和幂等关闭。
 - `AssetsManager/application/runtime_events.py`：新增投影 domain、`InvalidationEvent`、领域事件映射与订阅生命周期。
-- `AssetsManager/application/bootstrap.py`：成为 Runtime 唯一工厂与缓存所有者；`for_library()` 保持兼容返回 Runtime 的 services。
+- `AssetsManager/application/bootstrap.py`：成为 Runtime 唯一工厂与缓存所有者；当前调用方使用 `runtime_for(session).services`，旧的 `for_library()` 兼容入口已由 Task D 删除。
 - `AssetsManager/application/library_service.py`：提供 `session_closing` 前置通知和 `session_closed` 后置通知，保证 Runtime adapter 在连接释放前退出。
 - `AssetsManager/application/context.py`：保持 operation lease 和直接关闭语义，不吸收 transport 逻辑。
 
@@ -90,9 +147,10 @@ class LibraryRuntime:
 
 class ApplicationBootstrap:
     def runtime_for(self, session: LibrarySession) -> LibraryRuntime: ...
-    def for_library(self, session: LibrarySession) -> LibraryScopedServices:
-        return self.runtime_for(session).services
 ```
+
+The historical forwarding `for_library()` method was removed in Task D after
+all callers migrated to `runtime_for(session).services`.
 
 ```python
 # AssetsManager/application/runtime_events.py
@@ -188,10 +246,10 @@ export interface RealtimeContextValue extends RuntimeCursor {
 - Modify: `tests/unit/test_architecture_boundaries.py`
 
 **Interfaces:**
-- Consumes: `ApplicationBootstrap.for_library(session)`, `LibraryService.owns_live_session()`, LAN path/auth middleware.
+- Consumes: `ApplicationBootstrap.runtime_for(session).services`, `LibraryService.owns_live_session()`, LAN path/auth middleware.
 - Produces: regression gates that all later Runtime and LAN changes must preserve.
 
-- [ ] **Step 1: Add canonical-session characterization tests** asserting repeated `for_library(session)` calls use the exact same canonical session, stale/synthetic sessions are rejected, and session close removes all scoped cache entries. Do not assert scoped service object identity yet.
+- [ ] **Step 1: Add canonical-session characterization tests** asserting repeated `runtime_for(session)` calls use the exact same canonical session, stale/synthetic sessions are rejected, and session close removes all scoped cache entries. Do not assert scoped service object identity yet.
 - [ ] **Step 2: Run the focused tests.** Run: `python -m pytest tests/unit/test_bootstrap.py -q`. Expected: PASS before production changes.
 - [ ] **Step 3: Add application-event characterization tests** proving Desktop-facing scoped FileOperation/Tag/Metadata services publish `FileSystemChanged`, `AssetTagsChanged`, `TagCatalogChanged`, `AssetNotesChanged` and `AssetUrlsChanged` with the exact canonical `session.event_token`; do not assert transport behavior yet.
 - [ ] **Step 4: Run event baseline.** Run: `python -m pytest tests/integration/test_event_publishing.py -q`. Expected: PASS before the Event Router exists.
@@ -363,7 +421,11 @@ def test_principal_serialization_never_contains_credentials(kind, principal_fact
 
 ## Phase 2 — One Canonical LibraryRuntime
 
-### Task 6: Turn the existing scoped bundle into a cached Runtime
+### Task 6: Turn the existing scoped bundle into a cached Runtime (Historical)
+
+> This task was implemented through the recalibrated Task A chain. The
+> unchecked steps below are historical implementation notes and must not be
+> executed; current callers use `runtime_for(session).services`.
 
 **Covers:** [S1, S2, S3, S4, S5, S12]
 
@@ -380,7 +442,7 @@ def test_principal_serialization_never_contains_credentials(kind, principal_fact
 - Produces: `LibraryRuntime.session`, `.services`, `.epoch`, `.revision`, `.next_revision()`, `.close()`.
 - Produces: `ApplicationBootstrap.runtime_for(session) -> LibraryRuntime`.
 - Produces: `LibraryService.add_session_closing_listener(listener)` before connection teardown; existing `add_session_close_listener(listener)` remains the post-close hook.
-- Compatibility: `ApplicationBootstrap.for_library(session) -> LibraryScopedServices` delegates to `runtime_for(session).services` for one Phase.
+- Current: `ApplicationBootstrap.runtime_for(session).services -> LibraryScopedServices` is the only Desktop composition path. The former `for_library()` forwarding method was removed in Task D after callers migrated.
 
 **Implementation sketch:**
 
@@ -402,7 +464,7 @@ def test_runtime_is_cached_for_exact_canonical_session(tmp_path):
     bootstrap = ApplicationBootstrap()
     session = bootstrap.library_service.open_session(tmp_path)
     assert bootstrap.runtime_for(session) is bootstrap.runtime_for(session)
-    assert bootstrap.for_library(session) is bootstrap.runtime_for(session).services
+    assert bootstrap.runtime_for(session).services is bootstrap.runtime_for(session).services
 ```
 
 The lifecycle split is internal and must preserve public `session.close()`:
@@ -427,9 +489,9 @@ self._notify_session_closed(session)
 
 - [ ] **Step 1: Write failing tests** for one Runtime per exact canonical session, shared service identity on repeated resolution, different Runtime/epoch after same-root reopen, monotonic revision, foreign/stale session rejection and idempotent close. Add a lifecycle-order test requiring: new operations already fail inside `session_closing`; an existing leased operation may finish; `session_closed` occurs after lease drain; DB closure occurs last.
 - [ ] **Step 2: Verify RED.** Run: `python -m pytest tests/unit/test_library_runtime.py tests/unit/test_bootstrap.py -q`. Expected: FAIL because Runtime APIs do not exist.
-- [ ] **Step 3: Implement the minimal Runtime** around the existing `LibraryScopedServices`; move all per-session service construction from `for_library()` into one private Bootstrap factory.
+- [ ] **Step 3: Implement the minimal Runtime** around the existing `LibraryScopedServices`; move all per-session service construction into one private Bootstrap factory used by `runtime_for()`.
 - [ ] **Step 4: Add the pre-close lifecycle hook and replace `_undo_services` with `_runtimes`** keyed by `id(session)` and guarded by exact object identity. The pre-close listener calls `runtime.close_adapters()` before `session._close_direct()`; the existing post-close listener removes the exact Runtime and runs final cache cleanup.
-- [ ] **Step 5: Keep `for_library()` as a thin compatibility method** and add a test that it returns the exact `runtime.services` object.
+- [x] **Step 5: Remove the historical forwarding method** after all callers migrate; direct callers and tests use `runtime_for(session).services` and preserve the exact `runtime.services` identity.
 - [ ] **Step 6: Verify GREEN.** Run the command from Step 2 plus `python -m pytest tests/integration/test_library_service.py tests/integration/test_file_operation_service.py -q`.
 
 ### Task 7: Inject Runtime into the LAN server lifecycle
@@ -457,7 +519,11 @@ self._notify_session_closed(session)
 - [ ] **Step 5: Update Desktop and ShareManager call sites** to resolve/inject canonical Runtime. Do not reconstruct `LibrarySession` from a context or root.
 - [ ] **Step 6: Verify GREEN.** Run full `tests/unit/test_lan_sharing.py`, `tests/unit/test_bootstrap.py` and `tests/lan/test_lan_api.py`.
 
-### Task 8: Remove duplicate LAN application-service assembly
+### Task 8: Remove duplicate LAN application-service assembly (Historical)
+
+> This task was implemented through the recalibrated Task A and Task D chain.
+> The unchecked steps below are historical implementation notes and must not
+> be executed; the current production path is already Runtime-injected.
 
 **Covers:** [S2, S4, S5, S12, S13]
 
@@ -758,7 +824,12 @@ async def test_stats_report_live_websocket_count(client, ws_url):
 - [x] **Step 4: Serialize unavailable byte counts explicitly** unless aiohttp response lifecycle gives a verified byte value. Update UI to show unavailable rather than zero.
 - [x] **Step 5: Verify GREEN.** Run the command from Step 2 and relevant admin Vitest files.
 
-### Task 16: Delete migration fallbacks and enforce architecture boundaries
+### Task 16: Delete migration fallbacks and enforce architecture boundaries (Historical; Task D delivered)
+
+> This task is delivered for the recalibrated Task D scope. The unchecked
+> steps below are historical notes from the superseded plan, not pending work;
+> the current architecture gates and verification evidence are in the Task D
+> report and recalibration plan.
 
 **Covers:** [S2, S3, S4, S5, S6, S7, S8, S9, S12, S14]
 

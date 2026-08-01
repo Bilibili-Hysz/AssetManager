@@ -13,8 +13,13 @@ from AssetsManager.domain.events import (
     AssetNotesChanged,
     AssetTagsChanged,
     AssetUrlsChanged,
+    ActivityChanged,
     FileSystemChanged,
+    InviteChanged,
+    PresenceChanged,
+    ShareChanged,
     TagCatalogChanged,
+    UserChanged,
 )
 
 if TYPE_CHECKING:
@@ -30,6 +35,10 @@ class ProjectionDomain(StrEnum):
     PROJECT_DETAIL = "project_detail"
     METADATA = "metadata"
     TAGS = "tags"
+    SHARES = "shares"
+    USERS = "users"
+    ACTIVITY = "activity"
+    ONLINE_USERS = "online_users"
 
 
 @dataclass(frozen=True)
@@ -72,6 +81,11 @@ EVENT_DOMAINS: dict[type, tuple[ProjectionDomain, ...]] = {
     TagCatalogChanged: (ProjectionDomain.TAGS, ProjectionDomain.HOME),
     AssetNotesChanged: (ProjectionDomain.METADATA, ProjectionDomain.PROJECT_DETAIL),
     AssetUrlsChanged: (ProjectionDomain.METADATA, ProjectionDomain.PROJECT_DETAIL),
+    ShareChanged: (ProjectionDomain.SHARES,),
+    UserChanged: (ProjectionDomain.USERS,),
+    InviteChanged: (ProjectionDomain.USERS,),
+    ActivityChanged: (ProjectionDomain.ACTIVITY,),
+    PresenceChanged: (ProjectionDomain.ONLINE_USERS,),
 }
 
 

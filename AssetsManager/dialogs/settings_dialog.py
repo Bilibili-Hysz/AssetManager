@@ -5,7 +5,7 @@ Inherits TabbedDialog for consistent dark theme and widget factories.
 from typing import Protocol, cast, runtime_checkable
 
 from shiboken6 import Shiboken
-from PySide6.QtCore import Qt, Signal, QObject, QSignalBlocker
+from PySide6.QtCore import Qt, Signal, QObject, QSignalBlocker, QSize
 from PySide6.QtWidgets import (
     QMessageBox, QProgressBar, QVBoxLayout, QHBoxLayout, QWidget,
     QRadioButton, QFrame, QPushButton, QFileDialog, QSlider,
@@ -15,6 +15,7 @@ from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core import themes
+from AssetsManager.core import icons
 from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager import i18n
 tr = i18n.tr
@@ -52,6 +53,32 @@ class SettingsDialog(TabbedDialog):
         self._logical_min_size = (460, 520)
         super().__init__(parent, title=tr("settings.title"),
                          min_size=(scaled_px(460), scaled_px(520)))
+
+    def _set_menu_button_presentation(self, button: QPushButton, text: str):
+        t = themes.get()
+        button.setText(text)
+        button.setIcon(icons.icon("chevron_down", color=t["heading"], size=scaled_px(14)))
+        button.setIconSize(QSize(scaled_px(14), scaled_px(14)))
+        button.setAccessibleName(text)
+        button.setToolTip(text)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        themes.set_button_variant(button, "secondary")
+
+    def _refresh_menu_button_icons(self):
+        t = themes.get()
+        for button in (
+            getattr(self, "_mode_btn", None),
+            getattr(self, "_theme_btn", None),
+            getattr(self, "_effect_btn", None),
+        ):
+            if button is not None:
+                button.setIcon(
+                    icons.icon("chevron_down", color=t["heading"], size=scaled_px(14)))
+                button.setIconSize(QSize(scaled_px(14), scaled_px(14)))
+
+    def _on_theme_changed(self, name):
+        super()._on_theme_changed(name)
+        self._refresh_menu_button_icons()
 
     def _make_theme_row(self, name):
         """Create a row widget with color swatch and radio button."""
@@ -141,7 +168,8 @@ class SettingsDialog(TabbedDialog):
         btn_row.setSpacing(scaled_px(8))
         current_effect = themes.bg_effect()
         effect_label = {"none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"), "mosaic": tr("settings.bg_mosaic")}.get(current_effect, tr("settings.bg_effect_none"))
-        self._effect_btn = QPushButton(effect_label + " \u25be")
+        self._effect_btn = QPushButton()
+        self._set_menu_button_presentation(self._effect_btn, effect_label)
         self._effect_btn.setMinimumWidth(scaled_px(120))
         self._effect_btn.clicked.connect(self._on_effect_menu)
         btn_row.addWidget(self._effect_btn)
@@ -174,13 +202,15 @@ class SettingsDialog(TabbedDialog):
 
         current_mode = AppSettings.instance().get("appearance_mode", "dark")
         mode_text = tr("settings.dark_mode") if current_mode == "dark" else tr("settings.light_mode")
-        self._mode_btn = QPushButton(mode_text + " \u25be")
+        self._mode_btn = QPushButton()
+        self._set_menu_button_presentation(self._mode_btn, mode_text)
         self._mode_btn.setMinimumWidth(scaled_px(100))
         self._mode_btn.clicked.connect(self._on_mode_menu_requested)
         btn_row.addWidget(self._mode_btn)
 
         current_theme = themes.name()
-        self._theme_btn = QPushButton(current_theme + " \u25be")
+        self._theme_btn = QPushButton()
+        self._set_menu_button_presentation(self._theme_btn, current_theme)
         self._theme_btn.setMinimumWidth(scaled_px(160))
         self._theme_btn.clicked.connect(self._on_theme_menu_requested)
         btn_row.addWidget(self._theme_btn)
@@ -207,7 +237,7 @@ class SettingsDialog(TabbedDialog):
     def _apply_mode(self, mode: str):
         self._current_mode = mode
         mode_label = {"dark": tr("settings.dark_mode"), "light": tr("settings.light_mode"), "custom": tr("settings.custom_themes")}.get(mode, mode)
-        self._mode_btn.setText(mode_label + " \u25be")
+        self._set_menu_button_presentation(self._mode_btn, mode_label)
         AppSettings.instance().set("appearance_mode", mode)
         AppSettings.instance().save()
         from AssetsManager.core.themes import _get_loader
@@ -222,7 +252,7 @@ class SettingsDialog(TabbedDialog):
             first = theme_list[0].get("name", "")
             if first:
                 themes.set_theme(first)
-                self._theme_btn.setText(first + " \u25be")
+                self._set_menu_button_presentation(self._theme_btn, first)
 
     def _on_theme_menu_requested(self):
         from PySide6.QtWidgets import QMenu
@@ -301,7 +331,7 @@ class SettingsDialog(TabbedDialog):
         chosen_name = chosen.data()
         if chosen_name:
             themes.set_theme(chosen_name)
-            self._theme_btn.setText(chosen_name + " \u25be")
+            self._set_menu_button_presentation(self._theme_btn, chosen_name)
         elif chosen == new_action:
             self._on_new_custom_theme_btn()
         elif chosen == edit_action:
@@ -336,7 +366,7 @@ class SettingsDialog(TabbedDialog):
         if loader.create_custom_theme(name, base):
             themes.reload_themes()
             themes.set_theme(name)
-            self._theme_btn.setText(name + " \u25be")
+            self._set_menu_button_presentation(self._theme_btn, name)
         else:
             QMessageBox.warning(self, tr("dialog.error"), tr("settings.theme_exists"))
 
@@ -373,7 +403,7 @@ class SettingsDialog(TabbedDialog):
             shutil.copy2(path, dest)
             themes.reload_themes()
             themes.set_theme(name)
-            self._theme_btn.setText(name + " \u25be")
+            self._set_menu_button_presentation(self._theme_btn, name)
         except Exception as e:
             QMessageBox.warning(self, tr("dialog.error"), str(e))
 
@@ -390,7 +420,7 @@ class SettingsDialog(TabbedDialog):
             if theme_list:
                 first = theme_list[0].get("name", "")
                 themes.set_theme(first)
-                self._theme_btn.setText(first + " \u25be")
+                self._set_menu_button_presentation(self._theme_btn, first)
         else:
             QMessageBox.warning(self, tr("dialog.error"), tr("settings.cannot_delete_builtin"))
 
@@ -448,7 +478,7 @@ class SettingsDialog(TabbedDialog):
         else:
             return
         label = {"none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"), "mosaic": tr("settings.bg_mosaic")}.get(self._current_effect, tr("settings.bg_effect_none"))
-        self._effect_btn.setText(label + " \u25be")
+        self._set_menu_button_presentation(self._effect_btn, label)
         self._on_bg_setting_changed()
 
     # ── Tab 2: General ────────────────────────────────────
@@ -565,12 +595,12 @@ class SettingsDialog(TabbedDialog):
             "dark": tr("settings.dark_mode"), "light": tr("settings.light_mode"),
             "custom": tr("settings.custom_themes"),
         }.get(self._current_mode, self._current_mode)
-        self._mode_btn.setText(mode_label + " ▾")
+        self._set_menu_button_presentation(self._mode_btn, mode_label)
         effect_label = {
             "none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"),
             "mosaic": tr("settings.bg_mosaic"),
         }.get(self._current_effect, tr("settings.bg_effect_none"))
-        self._effect_btn.setText(effect_label + " ▾")
+        self._set_menu_button_presentation(self._effect_btn, effect_label)
         quality_keys = ("fast", "default", "high", "original")
         for button in self._thumb_group.buttons():
             key = cast(str, button.property("option_key"))
@@ -601,6 +631,7 @@ class SettingsDialog(TabbedDialog):
         self._theme_btn.setMinimumWidth(scaled_px(160))
         self._effect_btn.setMinimumWidth(scaled_px(120))
         self._bg_browse_btn.setFixedWidth(scaled_px(60))
+        self._refresh_menu_button_icons()
         self.refresh_radio_group_geometry(self._lang_group_box)
         self.refresh_radio_group_geometry(self._thumb_group_box)
         for group in (self._lang_group, self._thumb_group):

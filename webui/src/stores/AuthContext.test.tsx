@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { AuthProvider, useAuthContext } from './AuthContext';
 import type { Capabilities, ServerInfo } from '../types/api';
@@ -11,6 +11,7 @@ const info: ServerInfo = {
 };
 const getInfo = vi.fn().mockResolvedValue(info);
 const me = vi.fn();
+let onUnauthorized: (() => void) | undefined;
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -23,7 +24,10 @@ function deferred<T>() {
 }
 
 vi.mock('../api/client', () => ({
-  createApiClient: () => ({}),
+  createApiClient: (options: { onUnauthorized?: () => void }) => {
+    onUnauthorized = options.onUnauthorized;
+    return {};
+  },
 }));
 
 vi.mock('../api/auth', () => ({
@@ -38,9 +42,11 @@ describe('AuthProvider', () => {
   beforeEach(() => {
     me.mockReset();
     getInfo.mockResolvedValue(info);
+    onUnauthorized = undefined;
+    sessionStorage.clear();
   });
 
-  it('retains the supplied token after login', async () => {
+  it('does not expose browser-readable server credentials', async () => {
     me.mockResolvedValueOnce({ principal: {
       ...{
         kind: 'guest', authenticated: false, role: 'guest', display_name: 'Guest',
@@ -49,26 +55,8 @@ describe('AuthProvider', () => {
     } });
     const { result } = renderHook(() => useAuthContext(), { wrapper: AuthProvider });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    let resolveRefresh!: (value: unknown) => void;
-    me.mockImplementationOnce(() => new Promise(resolve => { resolveRefresh = resolve; }));
-
-    result.current.setToken('session-token', {
-      id: 1,
-      username: 'member',
-      role: 'user',
-      active: true,
-      created_at: 1752537600,
-    });
-
-    await waitFor(() => expect(result.current.token).toBe('session-token'));
-    expect(result.current.role).toBe('guest');
-    expect(result.current.principal.role).toBe('user');
-    resolveRefresh({ principal: {
-      kind: 'user', authenticated: true, role: 'admin', display_name: 'member',
-      capabilities: { browse: true, preview: true, download: true, upload: true, manage_links: true, manage_users: true, settings: true, realtime: true },
-      user_profile: { id: 1, username: 'member', role: 'user', active: true, created_at: 1752537600 },
-    } });
-    await waitFor(() => expect(result.current.capabilities.manage_users).toBe(true));
+    expect('token' in result.current).toBe(false);
+    expect('setToken' in result.current).toBe(false);
   });
 
   it.each(['local_ui', 'share'] as const)('preserves %s principal from refresh', async kind => {
@@ -129,11 +117,11 @@ describe('AuthProvider', () => {
       expect(result.current.principal.authenticated).toBe(false);
       expect(result.current.isAuthenticated).toBe(false);
       expect(result.current.user).toBeNull();
-      expect(result.current.token).toBeNull();
+      expect(result.current.principal.kind).toBe('guest');
     });
   });
 
-  it('does not restore an authenticated principal from a stale refresh after logout', async () => {
+  it('increments identity generation and does not restore stale identity after logout', async () => {
     getInfo.mockResolvedValueOnce({ ...info, auth_enabled: false, auth_mode: 'none' });
     const pending = deferred<{ principal: { kind: 'user'; authenticated: true; role: 'user'; display_name: string; capabilities: Capabilities } }>();
     me.mockReturnValueOnce(pending.promise);
@@ -141,7 +129,7 @@ describe('AuthProvider', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     me.mockReturnValueOnce(pending.promise);
-    result.current.setToken('session-token');
+    const initialGeneration = result.current.identityGeneration;
     result.current.logout();
     pending.resolve({ principal: {
       kind: 'user', authenticated: true, role: 'user', display_name: 'stale',
@@ -150,17 +138,77 @@ describe('AuthProvider', () => {
 
     await waitFor(() => expect(result.current.principal.authenticated).toBe(false));
     expect(result.current.principal.kind).toBe('guest');
-    expect(result.current.token).toBeNull();
+    expect(result.current.identityGeneration).toBeGreaterThan(initialGeneration);
   });
 
-  it('dedupes setToken and explicit refreshMe and uses server capabilities', async () => {
+  it('clears identity-scoped thumbnail storage on logout', async () => {
+    me.mockResolvedValueOnce({ principal: {
+      kind: 'user', authenticated: true, role: 'user', display_name: 'alice',
+      capabilities: { browse: true, preview: true, download: true, upload: false, manage_links: false, manage_users: false, settings: false, realtime: true },
+    } });
+    sessionStorage.setItem('lan_thumb_cache', JSON.stringify({ 'private.jpg': 'private-encoded' }));
+
+    const { result } = renderHook(() => useAuthContext(), { wrapper: AuthProvider });
+    await waitFor(() => expect(result.current.principal.display_name).toBe('alice'));
+
+    act(() => result.current.logout());
+
+    expect(sessionStorage.getItem('lan_thumb_cache')).toBeNull();
+  });
+
+  it('allows a new refresh after logout instead of reusing the stale refresh promise', async () => {
+    getInfo.mockResolvedValueOnce({ ...info, auth_enabled: false, auth_mode: 'none' });
+    const stale = deferred<{ principal: { kind: 'user'; authenticated: true; role: 'user'; display_name: string; capabilities: Capabilities } }>();
+    me.mockReturnValueOnce(stale.promise);
+    const { result } = renderHook(() => useAuthContext(), { wrapper: AuthProvider });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const staleRefresh = result.current.refreshMe();
+    await waitFor(() => expect(me).toHaveBeenCalledTimes(1));
+    result.current.logout();
+
+    me.mockResolvedValueOnce({ principal: {
+      kind: 'user', authenticated: true, role: 'user', display_name: 'new-user',
+      capabilities: { browse: true, preview: true, download: true, upload: false, manage_links: false, manage_users: false, settings: false, realtime: true },
+    } });
+    const currentRefresh = result.current.refreshMe();
+
+    await waitFor(() => expect(me).toHaveBeenCalledTimes(2));
+    await expect(currentRefresh).resolves.toBe(true);
+    await waitFor(() => expect(result.current.principal.display_name).toBe('new-user'));
+
+    stale.resolve({ principal: {
+      kind: 'user', authenticated: true, role: 'user', display_name: 'stale-user',
+      capabilities: { browse: true, preview: true, download: true, upload: false, manage_links: false, manage_users: false, settings: false, realtime: true },
+    } });
+    await expect(staleRefresh).resolves.toBe(true);
+    expect(result.current.principal.display_name).toBe('new-user');
+  });
+
+  it('increments identity generation when an API request becomes unauthorized', async () => {
+    me.mockResolvedValueOnce({ principal: {
+      kind: 'user', authenticated: true, role: 'user', display_name: 'alice',
+      capabilities: { browse: true, preview: true, download: true, upload: false, manage_links: false, manage_users: false, settings: false, realtime: true },
+    } });
+    const { result } = renderHook(() => useAuthContext(), { wrapper: AuthProvider });
+    await waitFor(() => expect(result.current.principal.authenticated).toBe(true));
+    const initialGeneration = result.current.identityGeneration;
+    sessionStorage.setItem('lan_thumb_cache', JSON.stringify({ 'private.jpg': 'private-encoded' }));
+
+    act(() => onUnauthorized?.());
+
+    await waitFor(() => expect(result.current.principal.kind).toBe('guest'));
+    expect(result.current.identityGeneration).toBeGreaterThan(initialGeneration);
+    expect(sessionStorage.getItem('lan_thumb_cache')).toBeNull();
+  });
+
+  it('dedupes refreshMe and uses server capabilities without token state', async () => {
     getInfo.mockResolvedValueOnce({ ...info, auth_enabled: false, auth_mode: 'none' });
     const pending = deferred<{ principal: { kind: 'user'; authenticated: true; role: 'admin'; display_name: string; capabilities: Capabilities } }>();
     me.mockReturnValueOnce(pending.promise);
     const { result } = renderHook(() => useAuthContext(), { wrapper: AuthProvider });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    result.current.setToken('session-token');
     const refresh = result.current.refreshMe();
     expect(me).toHaveBeenCalledTimes(1);
     pending.resolve({ principal: {

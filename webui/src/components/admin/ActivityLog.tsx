@@ -7,12 +7,13 @@ import { useI18n } from '../../hooks/useI18n';
 import { useInvalidation } from '../../hooks/useInvalidation';
 
 export function ActivityLogView() {
-  const { api } = useAuth();
+  const { api, identityGeneration } = useAuth();
   const usersApi = useMemo(() => createUsersApi(api), [api]);
   const { t } = useI18n();
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const requestGeneration = useRef(0);
   const mounted = useRef(true);
+  const identityGenerationRef = useRef(identityGeneration);
 
   const refreshActivity = useCallback(() => {
     const generation = ++requestGeneration.current;
@@ -25,7 +26,14 @@ export function ActivityLogView() {
     refreshActivity();
     return () => { mounted.current = false; requestGeneration.current += 1; };
   }, [refreshActivity]);
-  useInvalidation(['users', 'shares', 'stats'], refreshActivity);
+  useEffect(() => {
+    if (identityGenerationRef.current === identityGeneration) return;
+    identityGenerationRef.current = identityGeneration;
+    requestGeneration.current += 1;
+    setActivities([]);
+    refreshActivity();
+  }, [identityGeneration, refreshActivity]);
+  useInvalidation(['activity'], refreshActivity);
 
   return (
     <div>

@@ -10,7 +10,8 @@ plans:
   - docs/compose/plans/2026-07-21-desktop-lan-webui-architecture-recalibration.md
   - docs/compose/plans/2026-07-21-desktop-lan-webui-architecture-task-d.md
 branch: master
-commits: uncommitted-workspace
+commits: 77492fe2b3ee9e4bb26e17b982d421993d545136, 945fd1e51a85ce2384f277c1bb9e89396b8fbe7d
+evidence_state: tested against the then-current working tree; product baseline captured separately
 ---
 
 # Desktop–LAN–WebUI Architecture Migration — Final Report (Current State)
@@ -28,7 +29,7 @@ platform gate has also passed in Ubuntu WSL with isolated test data.
 The completed Task A gate is `210 passed`; the Task B focused WebUI gate is
 `74 passed`; the Task C producer/router gate is `77 passed` and its focused
 WebUI gate is `7 files / 35 tests passed`; the latest Python full suite is
-`1568 passed, 1 skipped`, and the WebUI full suite is `37 files / 286 tests
+`1590 passed, 1 skipped`, and the WebUI full suite is `37 files / 289 tests
 passed`. Task D's focused Python gate is `402 passed`. Startup rollback passes
 repeatedly, and the real
 LAN/WebSocket close-session and window stop-failure journeys pass. The one
@@ -178,8 +179,8 @@ Fresh commands run during this documentation update:
 | Task C producer/router gate | `python -m pytest tests/integration/test_task_c_producers.py tests/integration/test_runtime_events.py tests/lan/test_runtime_realtime.py tests/lan/test_public_contracts.py -q` | **77 passed** |
 | Task C WebUI focus | `npm --prefix webui test -- --run src/hooks/useSearch.test.tsx src/components/admin/AdminManagement.test.tsx src/components/admin/InviteManagement.test.tsx src/components/admin/ShareManagement.test.tsx src/components/admin/ActivityLog.test.tsx src/components/admin/OnlineUsers.test.tsx src/components/layout/StatusBar.test.tsx` | **7 files, 35 tests passed** |
 | Task D focused Python gate | `python -m pytest tests/unit/test_architecture_boundaries.py tests/core/test_package_contents.py tests/unit/test_bootstrap.py tests/unit/test_library_runtime.py tests/unit/test_window_session_switching.py tests/desktop/test_scoped_service_access.py tests/desktop/test_file_list_details.py tests/desktop/test_file_list_shim.py tests/integration/test_event_publishing.py tests/integration/test_file_operation_service.py tests/integration/test_library_service.py tests/integration/test_undo_service.py -q` | **402 passed** |
-| Python full suite | `python -m pytest -q` | **1568 passed, 1 skipped**; the skip is the Windows directory-symlink case |
-| WebUI full suite | `npm --prefix webui test -- --run` | **37 files, 286 tests passed** |
+| Python full suite | `python -m pytest -q` | **1590 passed, 1 skipped**; the skip is the Windows directory-symlink case |
+| WebUI full suite | `npm --prefix webui test -- --run` | **37 files, 289 tests passed** |
 | WebUI typecheck | `npm --prefix webui run typecheck` | Passed |
 | WebUI production build | `npm --prefix webui run build` | Passed; **1632 modules transformed** |
 | Task E cross-surface slice | Focused Desktop/LAN/Chromium acceptance command | **186 passed** |

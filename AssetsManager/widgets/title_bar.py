@@ -10,13 +10,16 @@ Other panels can add filters, tool buttons, search bars, etc.
 Provides window dragging, themed min/max/close, double-click maximize,
 and border resize via nativeEvent on Windows.
 """
-from PySide6.QtCore import Qt, QPoint
+from PySide6.QtCore import Qt, QPoint, QSize
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QMenuBar, QPushButton,
     QSizePolicy,
 )
-from AssetsManager.core import themes
+from AssetsManager import i18n
+from AssetsManager.core import icons, themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+
+tr = i18n.tr
 
 
 class TitleBarWidget(QWidget):
@@ -74,17 +77,25 @@ class TitleBarWidget(QWidget):
             f"QPushButton:hover {{ background: {t['danger']}; color: white; }} "
         )
 
-        for text, slot, style in [
-            ("─", self._on_minimize, btn_base),
-            ("□", self._on_maximize, btn_base),
-            ("×", self._on_close, close_style),
+        self._window_controls = []
+        for icon_name, label, slot, style, is_close in [
+            ("minimize", tr("window.minimize"), self._on_minimize, btn_base, False),
+            ("maximize", tr("window.maximize"), self._on_maximize, btn_base, False),
+            ("close", tr("window.close"), self._on_close, close_style, True),
         ]:
-            btn = QPushButton(text)
+            btn = QPushButton()
+            btn.setIcon(icons.icon(icon_name, color=t["body"], size=scaled_px(16)))
+            btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
+            btn.setToolTip(label)
+            btn.setAccessibleName(label)
+            btn.setProperty("semanticIcon", icon_name)
+            btn.setProperty("isCloseControl", is_close)
             btn.setFixedSize(scaled_px(36), scaled_px(28))
             btn.setStyleSheet(style)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(slot)
             layout.addWidget(btn)
+            self._window_controls.append(btn)
 
     # ── Public API ──────────────────────────────────────────────
 
@@ -107,11 +118,11 @@ class TitleBarWidget(QWidget):
             f"font-size: {scaled_pt(14)}px; padding: 0; margin: 0; }} "
             f"QPushButton:hover {{ background: {t['danger']}; color: white; }} "
         )
-        buttons = self.findChildren(QPushButton)
-        if len(buttons) >= 3:
-            for btn in buttons[:-1]:
-                btn.setStyleSheet(btn_base)
-            buttons[-1].setStyleSheet(close_style)
+        for btn in getattr(self, "_window_controls", ()):
+            icon_name = str(btn.property("semanticIcon") or "file")
+            btn.setIcon(icons.icon(icon_name, color=t["body"], size=scaled_px(16)))
+            btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
+            btn.setStyleSheet(close_style if btn.property("isCloseControl") else btn_base)
 
     def menu_bar(self) -> QMenuBar:
         """Return the integrated menu bar for building menus."""
@@ -164,6 +175,7 @@ class TitleBarWidget(QWidget):
                 self._window.showNormal()
             else:
                 self._window.showMaximized()
+            self.refresh_theme()
 
     def _on_close(self):
         if self._window:

@@ -1,7 +1,10 @@
 # ═══════════════════════════════════════════════════════════════════
 # FileSystemModel
 # ═══════════════════════════════════════════════════════════════════
+from collections import deque
+from contextlib import contextmanager
 import logging
+from time import perf_counter
 import os
 from pathlib import Path
 import weakref
@@ -51,7 +54,7 @@ class FileSystemModel(QAbstractListModel):
 
     dir_size_ready = Signal(str, str, int)  # (dir_path, formatted_size, generation)
     rename_requested = Signal(int, str)
-    scan_started = Signal(int)  # scan generation; emitted before the loading reset
+    scan_started = Signal(int)  # scan generation; emitted before loading state
     scan_committed = Signal(int)  # populated scan generation; excludes the loading reset
     state_changed = Signal(str, int, object)  # (state, generation, OSError | None)
 
@@ -82,14 +85,22 @@ class FileSystemModel(QAbstractListModel):
         self._session: LibrarySession | None = None
         self._size_pool: QThreadPool | None = None
         self._pending_dir_sizes: set[str] = set()
+        self._dir_size_queue: deque[str] = deque()
+        self._dir_size_active: str | None = None
+        self._dir_size_active_generation: int | None = None
         self._dir_size_gen = 0
         self._scan_gen = 0
+        self._preserve_scan_generation: int | None = None
+        self._preserve_scan_view_state: tuple | None = None
+        self._last_scan_reused = False
         self._committing_scan_gen: int | None = None
         self._active_scan_task: _ScanTask | None = None  # prevent GC of running task + signals
         self._scan_error: OSError | None = None
         self._scan_loading = False
         self._path_index: dict[str, int] = {}
         self._is_shutdown = False
+        self._performance_recorder = None
+        self._performance_session_token: str | None = None
         self.dir_size_ready.connect(self._on_dir_size_ready)
 
     SUBTITLE_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -129,26 +140,82 @@ class FileSystemModel(QAbstractListModel):
     def set_metadata_service(self, metadata_service):
         self._metadata_service = metadata_service
 
-    def set_directory(self, path: str):
+    def set_performance_context(self, recorder, session_token: str | None) -> None:
+        """Bind optional scoped diagnostics without changing model behavior."""
+        try:
+            enabled = bool(getattr(recorder, "enabled", False)) and callable(
+                getattr(recorder, "record", None)
+            )
+        except Exception:
+            enabled = False
+        self._performance_recorder = recorder if enabled else None
+        self._performance_session_token = session_token if enabled else None
+
+    @contextmanager
+    def _reset_model(self, reason: str):
+        recorder = self._performance_recorder
+        started = perf_counter() if recorder is not None else None
+        previous_row_count = len(self._entries)
+        self.beginResetModel()
+        try:
+            yield
+        finally:
+            self.endResetModel()
+            if recorder is not None and started is not None:
+                try:
+                    recorder.record(
+                        "model.reset",
+                        (perf_counter() - started) * 1000,
+                        session_token=self._performance_session_token,
+                        generation=self._scan_gen,
+                        attributes={
+                            "reason": reason,
+                            "previous_row_count": previous_row_count,
+                            "row_count": len(self._entries),
+                            "scan_loading": self._scan_loading,
+                        },
+                    )
+                except Exception:
+                    # Diagnostics must never change model reset behavior.
+                    pass
+
+    def _invalidate_dir_size_work(self) -> None:
+        active = self._dir_size_active
+        self._dir_size_queue.clear()
+        self._pending_dir_sizes.clear()
+        if active is not None:
+            self._pending_dir_sizes.add(active)
+        self._dir_size_gen += 1
+
+    def set_directory(self, path: str, *, preserve_existing: bool = False):
+        preserve_existing = bool(preserve_existing and self._dir_path and self._dir_path == path)
         self._dir_path = path
         self._scan_gen += 1
         gen = self._scan_gen
+        self._preserve_scan_generation = gen if preserve_existing else None
+        self._preserve_scan_view_state = (
+            self._sort_key,
+            self._sort_asc,
+            self._filter_text,
+            self._filter_cat,
+            self._show_hidden,
+        ) if preserve_existing else None
+        self._last_scan_reused = False
         self._scan_loading = True
         self._scan_error = None
         self.scan_started.emit(gen)
         self._active_scan_task = None  # release previous task
-        self._icons.clear()
-        self._raw_pixmaps.clear()
-        self._dir_size_cache.clear()
-        self._subtitle_cache.clear()
-        self._stat_cache.clear()
-        self._pending_dir_sizes.clear()
-        self._dir_size_gen += 1
-        self.beginResetModel()
-        self._raw_entries = []
-        self._entries = []
-        self._path_index = {}
-        self.endResetModel()
+        if not preserve_existing:
+            self._icons.clear()
+            self._raw_pixmaps.clear()
+            self._dir_size_cache.clear()
+            self._subtitle_cache.clear()
+            self._stat_cache.clear()
+            self._invalidate_dir_size_work()
+            with self._reset_model("directory_loading"):
+                self._raw_entries = []
+                self._entries = []
+                self._path_index = {}
         self._emit_state()
 
         task = _ScanTask(path, gen)
@@ -164,6 +231,30 @@ class FileSystemModel(QAbstractListModel):
         task.signals.scan_done.connect(complete)
         QThreadPool.globalInstance().start(task)
 
+    @staticmethod
+    def _scan_signature(entries: list[os.DirEntry], stat_cache: dict[str, os.stat_result]):
+        signature = {}
+        for entry in entries:
+            try:
+                is_dir = entry.is_dir(follow_symlinks=False)
+            except OSError:
+                is_dir = False
+            stat = stat_cache.get(entry.path)
+            if stat is None:
+                try:
+                    stat = entry.stat(follow_symlinks=False)
+                except OSError:
+                    stat = os.stat_result((0,) * 10)
+            signature[entry.path] = (
+                entry.path,
+                is_dir,
+                stat.st_size,
+                getattr(stat, "st_mtime_ns", int(stat.st_mtime * 1_000_000_000)),
+                getattr(stat, "st_ctime_ns", int(stat.st_ctime * 1_000_000_000)),
+                getattr(stat, "st_ino", 0),
+            )
+        return signature
+
     def _on_scan_done(self, entries: list, stat_cache: dict, error: OSError | None, gen: int):
         if self._is_shutdown:
             return
@@ -172,20 +263,61 @@ class FileSystemModel(QAbstractListModel):
         self._active_scan_task = None  # release reference after processing
         self._scan_loading = False
         self._scan_error = error
+        self._last_scan_reused = False
+        preserve_scan = self._preserve_scan_generation == gen
+        if preserve_scan and error is None:
+            previous_signature = self._scan_signature(self._raw_entries, self._stat_cache)
+            next_signature = self._scan_signature(entries, stat_cache)
+            if previous_signature == next_signature:
+                self._raw_entries = entries
+                self._stat_cache = stat_cache
+                current_view_state = (
+                    self._sort_key, self._sort_asc, self._filter_text,
+                    self._filter_cat, self._show_hidden,
+                )
+                if current_view_state != self._preserve_scan_view_state:
+                    self._apply_sort()
+                self._preserve_scan_generation = None
+                self._preserve_scan_view_state = None
+                self._last_scan_reused = True
+                self.scan_committed.emit(gen)
+                self._emit_state()
+                return
+        if preserve_scan:
+            self._icons.clear()
+            self._raw_pixmaps.clear()
+            self._dir_size_cache.clear()
+            self._subtitle_cache.clear()
+            self._invalidate_dir_size_work()
+        self._preserve_scan_generation = None
         self._committing_scan_gen = gen
         try:
-            self.beginResetModel()
-            self._raw_entries = entries
-            self._stat_cache = stat_cache
-            self._apply_sort()
-            self.endResetModel()
+            with self._reset_model("scan_commit"):
+                self._raw_entries = entries
+                self._stat_cache = stat_cache
+                self._apply_sort()
         finally:
             self._committing_scan_gen = None
         self.scan_committed.emit(gen)
         self._emit_state()
 
     def _on_dir_size_ready(self, dir_path: str, _size: str, _gen: int):
+        if _gen != self._dir_size_gen:
+            if (
+                self._dir_size_active == dir_path
+                and self._dir_size_active_generation == _gen
+            ):
+                self._dir_size_active = None
+                self._dir_size_active_generation = None
+                if dir_path not in self._dir_size_queue:
+                    self._pending_dir_sizes.discard(dir_path)
+                self._dispatch_next_dir_size()
+            return
         self._pending_dir_sizes.discard(dir_path)
+        if self._dir_size_active == dir_path and self._dir_size_active_generation == _gen:
+            self._dir_size_active = None
+            self._dir_size_active_generation = None
+            self._dispatch_next_dir_size()
 
     def _wait_for_scan(self):
         """Block until the background scan completes. For testing only."""
@@ -197,16 +329,15 @@ class FileSystemModel(QAbstractListModel):
 
     def refresh(self):
         if self._dir_path:
-            self.set_directory(self._dir_path)
+            self.set_directory(self._dir_path, preserve_existing=True)
 
     def set_sort(self, key: str, asc: bool = True):
         self._sort_key = self._normalize_sort_key(key)
         self._sort_asc = asc
         # Icons and pixmaps use path keys — survive sort changes
         if self._dir_path:
-            self.beginResetModel()
-            self._apply_sort()
-            self.endResetModel()
+            with self._reset_model("sort"):
+                self._apply_sort()
             self._emit_state()
 
     def set_filter(self, text: str = "", category: str = "All"):
@@ -215,9 +346,8 @@ class FileSystemModel(QAbstractListModel):
         self._subtitle_cache.clear()
         # Icons and pixmaps use path keys — survive filter changes
         if self._dir_path:
-            self.beginResetModel()
-            self._apply_sort()
-            self.endResetModel()
+            with self._reset_model("filter"):
+                self._apply_sort()
             self._emit_state()
 
     def rowCount(self, parent=QModelIndex()):
@@ -276,16 +406,65 @@ class FileSystemModel(QAbstractListModel):
         return result
 
     def _start_async_dir_size(self, dir_path: str):
-        """Queue directory size computation on a background thread.
-        Deduplicates by path and discards stale results after library switch."""
+        """Queue one directory-size task without flooding the thread pool."""
         if self._is_shutdown:
             return
+        if (
+            self._dir_size_active is not None
+            and self._dir_size_active not in self._pending_dir_sizes
+            and self._dir_size_active_generation == self._dir_size_gen
+        ):
+            # A direct task runner used by tests can execute the QRunnable
+            # without delivering its queued Qt signal first.
+            self._dir_size_active = None
+            self._dir_size_active_generation = None
         if dir_path in self._pending_dir_sizes:
+            if (
+                dir_path == self._dir_size_active
+                and self._dir_size_active_generation != self._dir_size_gen
+                and dir_path not in self._dir_size_queue
+            ):
+                self._dir_size_queue.append(dir_path)
             return
         if self._size_pool is None:
             self._size_pool = QThreadPool()
-            self._size_pool.setMaxThreadCount(2)
+            self._size_pool.setMaxThreadCount(1)
         self._pending_dir_sizes.add(dir_path)
+        self._dir_size_queue.append(dir_path)
+        self._dispatch_next_dir_size()
+
+    def prioritize_dir_sizes(self, paths) -> None:
+        """Move currently visible directory paths ahead of queued work."""
+        if not self._dir_size_queue:
+            return
+        queued = set(self._dir_size_queue)
+        wanted = []
+        seen = set()
+        for path in paths:
+            path = str(path)
+            if path in seen or path not in queued:
+                continue
+            seen.add(path)
+            wanted.append(path)
+        if not wanted:
+            return
+        self._dir_size_queue = deque(
+            [*wanted, *(path for path in self._dir_size_queue if path not in seen)]
+        )
+
+    def _dispatch_next_dir_size(self) -> None:
+        if self._is_shutdown or self._dir_size_active is not None:
+            return
+        while self._dir_size_queue:
+            dir_path = self._dir_size_queue.popleft()
+            if dir_path not in self._pending_dir_sizes:
+                continue
+            self._dir_size_active = dir_path
+            self._dir_size_active_generation = self._dir_size_gen
+            self._submit_dir_size_task(dir_path)
+            return
+
+    def _submit_dir_size_task(self, dir_path: str) -> None:
         gen = self._dir_size_gen
         # All mutable scoped dependencies are captured before the task is queued.
         lib_root = self._lib_root
@@ -294,11 +473,18 @@ class FileSystemModel(QAbstractListModel):
         metadata_service = self._metadata_service if session is not None else None
         model = self
 
+        def abort_task() -> None:
+            if model._dir_size_active == dir_path and model._dir_size_active_generation == gen:
+                model._dir_size_active = None
+                model._dir_size_active_generation = None
+                model._pending_dir_sizes.discard(dir_path)
+
         class _SizeTask(QRunnable):
             def run(self):
                 self.setAutoDelete(False)  # prevent destruction before signal delivery
                 if session is None:
                     if model._is_shutdown:
+                        abort_task()
                         return
                     total = FileSystemModel._cached_dir_size(dir_path, lib_root, metadata_service)
                 else:
@@ -310,13 +496,21 @@ class FileSystemModel(QAbstractListModel):
                     except RuntimeError:
                         # A caller that closes before a queued task starts must not
                         # leak an exception from the Qt worker thread.
+                        abort_task()
                         return
                 if model._is_shutdown:
+                    abort_task()
                     return
                 result = FileSystemModel._fmt_size(total) if total > 0 else "Empty"
                 model.dir_size_ready.emit(dir_path, result, gen)
 
-        self._size_pool.start(_SizeTask())
+        try:
+            self._size_pool.start(_SizeTask())
+        except Exception:
+            self._dir_size_active = None
+            self._dir_size_active_generation = None
+            self._pending_dir_sizes.discard(dir_path)
+            self._dispatch_next_dir_size()
 
     @staticmethod
     def _cached_dir_size(dir_path: str, lib_root: str, metadata_svc=None) -> int:
@@ -400,6 +594,9 @@ class FileSystemModel(QAbstractListModel):
         if self._size_pool is not None:
             self._size_pool.waitForDone()
             self._size_pool = None
+        self._dir_size_active = None
+        self._dir_size_active_generation = None
+        self._dir_size_queue.clear()
         self._pending_dir_sizes.clear()
 
     def prepare_library_switch(self):
@@ -407,6 +604,9 @@ class FileSystemModel(QAbstractListModel):
         self._dir_size_gen += 1
         if self._size_pool is not None:
             self._size_pool.waitForDone()
+        self._dir_size_active = None
+        self._dir_size_active_generation = None
+        self._dir_size_queue.clear()
         self._pending_dir_sizes.clear()
 
     def clear_scoped_services(self) -> None:

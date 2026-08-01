@@ -36,6 +36,7 @@ dist/
 Thumbs.db
 
 # Local agent tooling dependencies.
+/.codex/
 .worktrees/
 .mimocode/node_modules/
 .mimocode/.cron-lock

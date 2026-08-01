@@ -6,12 +6,13 @@ import type { OnlineUsersResponse } from '../../types/api';
 import { useInvalidation } from '../../hooks/useInvalidation';
 
 export function OnlineUsers() {
-  const { api } = useAuth();
+  const { api, identityGeneration } = useAuth();
   const usersApi = useMemo(() => createUsersApi(api), [api]);
   const { t } = useI18n();
   const [users, setUsers] = useState<OnlineUsersResponse['users']>([]);
   const requestGeneration = useRef(0);
   const mounted = useRef(true);
+  const identityGenerationRef = useRef(identityGeneration);
 
   const refreshUsers = useCallback(() => {
     const generation = ++requestGeneration.current;
@@ -24,7 +25,14 @@ export function OnlineUsers() {
     refreshUsers();
     return () => { mounted.current = false; requestGeneration.current += 1; };
   }, [refreshUsers]);
-  useInvalidation(['users', 'shares', 'stats'], refreshUsers);
+  useEffect(() => {
+    if (identityGenerationRef.current === identityGeneration) return;
+    identityGenerationRef.current = identityGeneration;
+    requestGeneration.current += 1;
+    setUsers([]);
+    refreshUsers();
+  }, [identityGeneration, refreshUsers]);
+  useInvalidation(['online_users'], refreshUsers);
 
   return (
     <div>

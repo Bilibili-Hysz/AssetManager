@@ -1296,6 +1296,7 @@ async def test_real_library_close_session_stops_lan_server_and_websocket(
 
     try:
         server.start(port=0, bind="127.0.0.1")
+        initial_revision = runtime.revision
         client = ClientSession()
         ws = await client.ws_connect(
             f"http://127.0.0.1:{server._port}/ws",
@@ -1308,7 +1309,7 @@ async def test_real_library_close_session_stops_lan_server_and_websocket(
         assert await ws.receive_json() == {
             "type": "runtime_ready",
             "epoch": runtime.epoch,
-            "revision": runtime.revision,
+            "revision": initial_revision,
         }
         assert len(server._ws_manager._clients) == 1
         assert server._runtime_subscription is not None
@@ -1319,8 +1320,14 @@ async def test_real_library_close_session_stops_lan_server_and_websocket(
             "session",
             observe_close_session, session,
         ))
-        close_message = await asyncio.wait_for(ws.receive(), timeout=8)
-        assert close_message.type in {WSMsgType.CLOSE, WSMsgType.CLOSED}
+        deadline = asyncio.get_running_loop().time() + 8
+        while True:
+            remaining = deadline - asyncio.get_running_loop().time()
+            assert remaining > 0
+            message = await asyncio.wait_for(ws.receive(), timeout=remaining)
+            if message.type in {WSMsgType.CLOSE, WSMsgType.CLOSED}:
+                break
+            assert message.type is WSMsgType.TEXT
         await close_future
         lifecycle_order.append("close_session_returned")
 
