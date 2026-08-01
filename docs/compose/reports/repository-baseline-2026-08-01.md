@@ -12,7 +12,7 @@ remote: none configured
 
 ## 1. 结论
 
-本报告是当前仓库的唯一状态入口，负责把代码、测试、DeepSeek Docs、Compose 证据和 Git 工作树放到同一条时间线上。Desktop–LAN–WebUI recalibration 的 Tasks A–E 已交付；T151、T530、T533 的证据已闭合。桌面 UI 视觉 V1 的主要实现也已完成。性能路线已经有实现和 50,000 项本地遥测，但性能发布阈值尚未闭合。
+本报告是 2026-08-01 基线提交时的状态快照，负责把代码、测试、DeepSeek Docs、Compose 证据和 Git 工作树放到同一条时间线上。Desktop–LAN–WebUI recalibration 的 Tasks A–E 已交付；T151、T530、T533 的证据已闭合。桌面 UI 视觉 V1 的主要实现也已完成。性能路线已经有实现和 50,000 项本地遥测，但性能发布阈值尚未闭合。基线之后的增量代码与路线状态见 [`repository-followup-review-2026-08-01.md`](repository-followup-review-2026-08-01.md)。
 
 本轮基线整理不使用 reset、checkout、clean 或未知范围的删除。原工作树中的产品代码、测试和文档按目录核对后纳入基线；项目本地的 .codex/ 仅是 Codex 运行元数据，已加入 .gitignore，内容保留但不进入产品提交。
 
@@ -71,7 +71,7 @@ Desktop UI-07 收口报告记录了 SVG 语义图标、按钮变体、字阶/缩
 
 50,000 synthetic/offscreen Grid 指标：cold grid.frame P50 6.436ms；scroll/zoom P50 3.713ms、P95 10.853ms；warm 场景 texture_build_count=0。该结果是本机趋势证据，fixture 为 empty text entries，不能替代真实图片 IO 和发布机验收。
 
-## 5. DeepSeek 总路线状态
+## 5. DeepSeek 总路线状态（基线快照）
 
 | 阶段 | 当前状态 | 下一步判断 |
 |---|---|---|
@@ -84,7 +84,7 @@ Desktop UI-07 收口报告记录了 SVG 语义图标、按钮变体、字阶/缩
 | 阶段 6：P1 功能精选 | ⏳ 未开始/零散基础 | 以 ROI 清单逐项立项 |
 | 阶段 7：契约化收尾 | ⏳ 未开始 | OpenAPI、桌面端口层、插件权限门禁 |
 
-## 6. 当前真实缺口
+## 6. 基线时真实缺口
 
 1. AssetsManager/core/database.py:302-315 的 clean_orphan_dirs() 仍直接 shutil.rmtree；AssetsManager/window.py:414 仍是调用点，需要改为可审计、可恢复的移走/回收策略。
 2. 未发现 QLockFile 或其它单实例锁；双开拒绝门未实现。
@@ -101,6 +101,7 @@ Desktop UI-07 收口报告记录了 SVG 语义图标、按钮变体、字阶/缩
 
 - 当前任务入口：DeepSeek Docs/施行路线图.md。
 - 当前事实入口：本报告。
+- 基线之后的增量事实入口：[`repository-followup-review-2026-08-01.md`](repository-followup-review-2026-08-01.md)。
 - 架构交付证据：docs/compose/reports/desktop-lan-webui-architecture-recalibration.md。
 - UI 交付证据：docs/compose/reports/desktop-ui-visual-closure-2026-08-01.md。
 - 性能计划：DeepSeek Docs/未来方向/07-桌面端性能优化计划.md。
