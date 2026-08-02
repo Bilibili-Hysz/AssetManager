@@ -2,7 +2,7 @@
 
 > 审计日期：2026-08-01
 > 审计基线：`master` @ `945fd1e`，随后将本轮已存在的代码、测试与文档改动纳入仓库基线；完整状态见 [`docs/compose/reports/repository-baseline-2026-08-01.md`](../docs/compose/reports/repository-baseline-2026-08-01.md)。
-> 测试基线：Python **1590 passed, 1 skipped**（隔离临时目录运行）；WebUI **37 files / 289 tests passed**。
+> 测试基线快照（2026-08-01）：Python **1590 passed, 1 skipped**（隔离临时目录运行）；WebUI **37 files / 289 tests passed**。2026-08-02 当前 WebUI 全量为 **37 files / 292 tests passed**，Python 增量门禁见后续复核报告。
 
 ## 文档索引
 

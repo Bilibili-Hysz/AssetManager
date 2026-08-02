@@ -1,6 +1,6 @@
 # AssetsManager Architecture Diagram
 
-**Version:** 2026-08-02 B2/B3 working-tree follow-up (baseline figures retained as snapshots)
+**Version:** 2026-08-02 A2 tag-validation + B3 Web TAGS follow-up (baseline figures retained as snapshots)
 **Tests:** Python 1590 passed, 1 Windows platform skip plus Ubuntu WSL symlink gate passed; WebUI 37 files / 289 passed; Task E cross-surface 186 passed; typecheck and build passed
 
 ---
@@ -117,7 +117,8 @@ HTTP → aiohttp security/auth middleware
   → Runtime-owned application service → DTO response
 Runtime DomainEvent → RuntimeEventRouter
   → epoch/revision invalidation → authenticated WebSocket
-  → React RealtimeProvider → authoritative HTTP refetch
+  → React RealtimeProvider → domain consumer
+    → explicit TAGS or recovery(null) → active tag authoritative HTTP refetch
 ```
 
 ## Data Flow: Theme Change

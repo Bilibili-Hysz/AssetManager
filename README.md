@@ -4,7 +4,7 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库（元数据、标签、缩略图），也可以通过局域网内的浏览器远程浏览和下载资产。
 
-> 当前基线（2026-08-01）：Python 1590 passed, 1 skipped；WebUI 37 files / 289 tests passed；Desktop–LAN–WebUI recalibration 已交付。当前未完成项以 docs/compose/reports/repository-baseline-2026-08-01.md 和 DeepSeek Docs/施行路线图.md 为准。
+> 基线快照（2026-08-01）：Python 1590 passed, 1 skipped；WebUI 37 files / 289 tests passed；Desktop–LAN–WebUI recalibration 已交付。2026-08-02 当前 WebUI 全量为 37 files / 292 tests passed；增量 Python 证据与未完成项以 docs/compose/reports/repository-followup-review-2026-08-01.md 和 DeepSeek Docs/施行路线图.md 为准。
 
 ---
 

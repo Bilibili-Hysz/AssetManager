@@ -11,7 +11,7 @@ This refactor treats AssetManager as a platform with two first-class presentatio
 
 The recalibrated Desktop–LAN–WebUI architecture is delivered for the current Runtime/session/LAN/WebUI scope. Existing `core`, `panels`, `widgets`, and `lan` modules remain valid presentation and infrastructure modules; future work is tracked separately in the repository baseline and DeepSeek roadmap.
 
-The B2 thumbnail boundary is implemented in the current working tree: ThumbnailLoader consumes a scoped ThumbnailService through an immutable runtime snapshot. Its incremental desktop evidence and remaining performance/full-regression work are recorded separately until the next baseline commit.
+The B2 thumbnail boundary is part of the local `master` baseline: ThumbnailLoader consumes a scoped ThumbnailService through an immutable runtime snapshot. Post-commit focused regression is reproducible; real-image I/O, performance and wider regression evidence remain tracked separately.
 
 ## Application Services
 
@@ -54,7 +54,7 @@ LAN API routes are split into focused modules under `AssetsManager/lan/routes/`:
 | `websocket.py` | `/ws` | — |
 | `_helpers.py` | Shared: `validate_path`, `get_auth_token`, `build_zip_async`, etc. | — |
 
-`AssetsManager/lan/api.py` is a thin wrapper (~98 lines) that imports all handlers from `routes/` and registers them in `setup_routes()`.
+`AssetsManager/lan/api.py` is a thin wrapper (~98 lines) that imports all handlers from `routes/` and registers them in `setup_routes()`. Tag-name rules belong to `TagService`: add/rename trim and reject empty, non-string or over-200-character names with `ValidationError`; `routes/tags.py` translates only that domain error to the existing HTTP 400 contract while preserving unrelated failures as 500.
 
 ## Desktop File List Integration
 
@@ -133,7 +133,7 @@ Application services publish immutable facts via `AssetsManager.domain.event_bus
 | `MetadataService` | note or URL mutation | `AssetNotesChanged` or `AssetUrlsChanged` |
 | `FileOperationService` | bound file mutation after projection updates | `FileSystemChanged` |
 
-Desktop panels subscribe to session-scoped mutation facts through `panels/_event_bridge.py`. The normal path forwards domain events via Qt signals before invoking UI handlers; the B3 TagTree pilot instead subscribes to `LibraryRuntime.event_router` through `RuntimeEventSubscription`, filters `ProjectionDomain.TAGS`, and still queues delivery onto the Qt thread. Panel handlers reject stale session/runtime identity, while asset-detail handlers also reject unrelated paths. `EventBus.subscribe()` returns a subscription token, `subscribe_weak()` avoids keeping bound-method owners alive, and both bridge types close their tokens during panel shutdown.
+Desktop panels subscribe to session-scoped mutation facts through `panels/_event_bridge.py`. The normal path forwards domain events via Qt signals before invoking UI handlers; the B3 TagTree pilot instead subscribes to `LibraryRuntime.event_router` through `RuntimeEventSubscription`, filters `ProjectionDomain.TAGS`, and still queues delivery onto the Qt thread. WebUI Browse uses the same TAGS invalidation to re-run the active tag search, and treats realtime recovery `null` as an all-projections authoritative refetch. Panel handlers reject stale session/runtime identity, while asset-detail handlers also reject unrelated paths. `EventBus.subscribe()` returns a subscription token, `subscribe_weak()` avoids keeping bound-method owners alive, and both bridge types close their tokens during panel shutdown.
 
 Legacy unscoped events (`FileCreated`, `FileRenamed`, `FileDeleted`, `FileCopied`, `TagsChanged`, `NotesChanged`, `UrlsChanged`) remain available for plugins and compatibility consumers. Panels must not subscribe to them because they do not carry session identity. `core.signal_bus` remains a separate Qt-only presentation mechanism for navigation, focused-file, theme, language, and UI-scale coordination; it must not carry application mutation facts.
 
@@ -145,7 +145,7 @@ LAN server stop closes websocket/site and scanner resources when supported. It d
 
 ### Realtime lifecycle hardening
 
-The canonical realtime path is `LibraryRuntime` → `RuntimeEventRouter` → authenticated LAN WebSocket → React `RealtimeContext` projection invalidation. WebSocket payloads carry only `epoch`, `revision`, domains, and relative paths; SQLite and the filesystem remain authoritative.
+The canonical realtime path is `LibraryRuntime` → `RuntimeEventRouter` → authenticated LAN WebSocket → React `RealtimeContext` projection invalidation. WebSocket payloads carry only `epoch`, `revision`, domains, and relative paths; SQLite and the filesystem remain authoritative. Consumers therefore refetch rather than treating invalidation payloads as data: explicit `tags` events and cursor recovery both refresh an active tag-filter projection.
 
 WebSocket admission uses a pending-client barrier and reconciles the cursor after registration. Active connections retain canonical principal authority and are revalidated across authority transitions, heartbeat, and delivery; revocation uses the same idempotent eviction path as transport failure. The initial application frame is sent before the final authoritative admission step; this is a known P2 protocol note covered by the completed Task E acceptance evidence. Eviction removes clients and pong waiters, closes the socket, updates connection accounting, and releases `OnlineUsers` presence exactly once.
 
