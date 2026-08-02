@@ -9,6 +9,8 @@ from typing import Callable
 
 from AssetsManager.application.context import LibraryContext, LibrarySession
 from AssetsManager.core.database import DatabaseManager
+from AssetsManager.core.library_lock import LibraryLock
+from AssetsManager.core.path_resolver import library_lock_path
 from AssetsManager.core.project_data import ProjectData
 from AssetsManager.core.singleton import ThreadSafeSingleton
 from AssetsManager.core.tag_store import TagStore
@@ -36,8 +38,30 @@ class LibraryService:
         self._current: LibraryContext | None = None
         self._contexts: dict[str, LibraryContext] = {}
         self._sessions: dict[str, LibrarySession] = {}
+        self._library_locks: dict[str, LibraryLock] = {}
         self._session_close_listeners: list[Callable[[LibrarySession], None]] = []
         self._session_closing_listeners: list[Callable[[LibrarySession], None]] = []
+
+    def _acquire_library_lock(self, key: str) -> LibraryLock:
+        """Acquire the cross-process lock owned by a canonical session."""
+        if key in self._library_locks:
+            raise RuntimeError(f"Library lock is already owned by this service: {key}")
+        return LibraryLock(library_lock_path(key))
+
+    def _release_library_lock(self, key: str) -> None:
+        """Release a lock only after the canonical session is fully closed."""
+        lock = self._library_locks.get(key)
+        if lock is None:
+            return
+        try:
+            released = lock.release()
+        except BaseException:
+            # Keep the object registered so a later open cannot accidentally
+            # assume that a failed unlock made the library available.
+            _log.exception("Failed to release library lock for %s", key)
+            return
+        if released and self._library_locks.get(key) is lock:
+            self._library_locks.pop(key, None)
 
     def add_session_closing_listener(
         self, listener: Callable[[LibrarySession], None]
@@ -123,22 +147,34 @@ class LibraryService:
                 result = (cached, session)
             else:
                 mgr = self._db
-                conn = mgr.connection_for(key)
+                lock = self._acquire_library_lock(key)
+                try:
+                    conn = mgr.connection_for(key)
 
-                context = LibraryContext(
-                    root=root,
-                    data_dir=mgr.data_dir_for(key),
-                    thumb_dir=mgr.thumb_dir_for(key),
-                    db_conn=conn,
-                    tag_store=TagStore(key, db_conn=conn),
-                    project_data=ProjectData(key, db_conn=conn),
-                )
-                session = LibrarySession.from_context(context, self.close_session)
-                self._contexts[key] = context
-                self._sessions[key] = session
-                self._current = context
-                opened_session = True
-                result = (context, session)
+                    context = LibraryContext(
+                        root=root,
+                        data_dir=mgr.data_dir_for(key),
+                        thumb_dir=mgr.thumb_dir_for(key),
+                        db_conn=conn,
+                        tag_store=TagStore(key, db_conn=conn),
+                        project_data=ProjectData(key, db_conn=conn),
+                    )
+                    session = LibrarySession.from_context(context, self.close_session)
+                    self._contexts[key] = context
+                    self._sessions[key] = session
+                    self._library_locks[key] = lock
+                    self._current = context
+                    opened_session = True
+                    result = (context, session)
+                except BaseException:
+                    try:
+                        mgr.close_library(key)
+                    except BaseException:
+                        _log.exception(
+                            "Failed to roll back database initialization for %s", key
+                        )
+                    lock.release()
+                    raise
         if opened_session:
             get_event_bus().publish(LibraryOpened(
                 library_root=key, session_token=result[1].event_token,
@@ -247,6 +283,7 @@ class LibraryService:
                         self._contexts.pop(key, None)
                     if self._current is context:
                         self._current = None
+                    self._release_library_lock(key)
                     self._closing_roots.discard(key)
                     self._closing_sessions.pop(key, None)
                     self._lifecycle.notify_all()
@@ -317,6 +354,8 @@ class LibraryService:
                 raise finish_error
         finally:
             with self._lifecycle:
+                if close_committed:
+                    self._release_library_lock(key)
                 self._closing_roots.discard(key)
                 if close_committed:
                     self._closing_sessions.pop(key, None)

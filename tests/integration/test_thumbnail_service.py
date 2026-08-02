@@ -129,6 +129,33 @@ def test_check_blur_degrades_for_closed_connection(tmp_path):
     assert ThumbnailService()._check_blur(asset, {"nsfw"}, conn) is False
 
 
+def test_resolve_degrades_when_connection_provider_fails(tmp_path):
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    library.mkdir()
+    asset = library / "photo.jpg"
+    asset.write_bytes(b"fake")
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    calls = []
+
+    def failing_provider(root):
+        calls.append(root)
+        raise RuntimeError("provider unavailable")
+
+    result = ThumbnailService(
+        connection_provider=failing_provider, session=session
+    ).resolve(
+        asset, tmp_path / "thumbs", blur_tags={"nsfw"}, library_root=library
+    )
+
+    assert result.source_path == asset
+    assert result.should_blur is False
+    assert calls == [library.resolve()]
+    session.close()
+
+
 def test_process_image_returns_none_for_missing_file(tmp_path):
     svc = ThumbnailService()
     result = svc.process_image(tmp_path / "missing.jpg", max_size=256)
@@ -209,3 +236,97 @@ def test_thumbnail_cache_key_changes_on_mtime(tmp_path):
     k2 = thumbnail_cache_key(asset)
 
     assert k1 != k2
+
+
+def test_cache_metadata_round_trip(tmp_path):
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    library.mkdir()
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    service = bootstrap.runtime_for(session).services.thumbnail_service
+
+    assert service.get_cached_source_mtime(library, "key-1") is None
+
+    service.upsert_cache_metadata(
+        library,
+        "key-1",
+        str(library / "image.png"),
+        1234.5,
+        100,
+        512,
+        80,
+    )
+
+    assert service.get_cached_source_mtime(library, "key-1") == 1234.5
+    assert service.list_cache_metadata(library) == [
+        ("key-1", str(library / "image.png"), 1234.5)
+    ]
+
+    conn = session.connection_for(library)
+    conn.execute(
+        "UPDATE thumbnail_cache SET last_access=0 WHERE cache_key=?", ("key-1",)
+    )
+    conn.commit()
+    service.touch_cache_metadata(library, "key-1")
+    assert conn.execute(
+        "SELECT last_access FROM thumbnail_cache WHERE cache_key=?", ("key-1",)
+    ).fetchone()[0] > 0
+
+    service.delete_cache_metadata(library, "key-1")
+    assert service.get_cached_source_mtime(library, "key-1") is None
+
+
+def test_clear_cache_metadata(tmp_path):
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    library.mkdir()
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    service = bootstrap.runtime_for(session).services.thumbnail_service
+    for key in ("key-1", "key-2"):
+        service.upsert_cache_metadata(
+            library, key, str(library / f"{key}.png"), 1.0, 10, 512, 5
+        )
+
+    service.clear_cache_metadata(library)
+
+    assert service.list_cache_metadata(library) == []
+
+
+def test_cache_metadata_rejects_closed_session(tmp_path):
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    library.mkdir()
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    service = bootstrap.runtime_for(session).services.thumbnail_service
+    bootstrap.library_service.close_session(session)
+
+    with pytest.raises(RuntimeError, match="closed LibrarySession"):
+        service.get_cached_source_mtime(library, "key-1")
+
+
+def test_cache_metadata_provider_failure_releases_session_lease(tmp_path):
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    library.mkdir()
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    calls = []
+
+    def failing_provider(root):
+        calls.append(root)
+        raise RuntimeError("provider unavailable")
+
+    service = ThumbnailService(connection_provider=failing_provider, session=session)
+
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        service.get_cached_source_mtime(library, "key-1")
+
+    assert calls == [library.resolve()]
+    session.close()

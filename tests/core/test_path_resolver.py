@@ -24,6 +24,24 @@ def test_library_data_name_is_stable(tmp_path):
     assert library_data_name(str(lib)) == library_data_name(str(lib))
 
 
+def test_library_lock_path_is_stable_and_per_library(tmp_path, monkeypatch):
+    from AssetsManager.core import path_resolver
+
+    runtime = tmp_path / "RuntimeData"
+    monkeypatch.setattr(path_resolver, "runtime_root", lambda: runtime)
+    lib_a = tmp_path / "A" / "Assets"
+    lib_b = tmp_path / "B" / "Assets"
+
+    lock_a = path_resolver.library_lock_path(lib_a)
+    lock_a_again = path_resolver.library_lock_path(str(lib_a))
+    lock_b = path_resolver.library_lock_path(lib_b)
+
+    assert lock_a == lock_a_again
+    assert lock_a != lock_b
+    assert lock_a.parent == runtime / "Shared"
+    assert not lock_a.parent.exists()
+
+
 def test_database_migrates_legacy_library_dir(tmp_path, monkeypatch):
     from AssetsManager.core import database, path_resolver
 

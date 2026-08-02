@@ -214,7 +214,9 @@ class ApplicationBootstrap:
             metadata_service=MetadataService(connection_provider=provider, session=session),
             tag_service=TagService(connection_provider=provider, session=session),
             project_service=ProjectService(connection_provider=provider, session=session),
-            thumbnail_service=ThumbnailService(connection_provider=provider),
+            thumbnail_service=ThumbnailService(
+                connection_provider=provider, session=session
+            ),
             search_service=SearchService(
                 performance_recorder=self._performance_recorder,
                 session_token=session.event_token,

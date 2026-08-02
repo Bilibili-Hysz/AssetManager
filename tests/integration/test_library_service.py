@@ -1,7 +1,29 @@
 from pathlib import Path
+import subprocess
+import sys
 import threading
 
 import pytest
+
+
+def _probe_library_lock_in_child(lock_path: Path) -> subprocess.CompletedProcess:
+    script = (
+        "from AssetsManager.core.library_lock import LibraryAlreadyOpenError, LibraryLock\n"
+        "import sys\n"
+        "try:\n"
+        "    lock = LibraryLock(sys.argv[1])\n"
+        "except LibraryAlreadyOpenError:\n"
+        "    raise SystemExit(1)\n"
+        "else:\n"
+        "    lock.release()\n"
+        "    raise SystemExit(0)\n"
+    )
+    return subprocess.run(
+        [sys.executable, "-c", script, str(lock_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 def test_open_library_returns_context(tmp_path):
@@ -29,6 +51,154 @@ def test_current_session_is_none_before_open():
     service = LibraryService()
 
     assert service.current_session is None
+
+
+def test_library_lock_is_shared_within_process_and_scoped_per_library(
+    tmp_path, monkeypatch
+):
+    from AssetsManager.application.library_service import LibraryService
+    from AssetsManager.core import path_resolver
+
+    monkeypatch.setattr(path_resolver, "runtime_root", lambda: tmp_path / "RuntimeData")
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    first_root.mkdir()
+    second_root.mkdir()
+
+    first_service = LibraryService()
+    first_session = first_service.open_session(first_root)
+    second_service = LibraryService()
+
+    same_root_session = second_service.open_session(first_root)
+    assert same_root_session.root == first_root.resolve()
+
+    second_session = second_service.open_session(second_root)
+    assert second_session.root == second_root.resolve()
+
+    second_service.close_session(second_session)
+    first_service.close_session(first_session)
+    assert _probe_library_lock_in_child(path_resolver.library_lock_path(first_root)).returncode == 1
+    second_service.close_session(same_root_session)
+    assert _probe_library_lock_in_child(path_resolver.library_lock_path(first_root)).returncode == 0
+    second_service.close()
+    first_service.close()
+
+
+def test_library_lock_rejects_another_process(tmp_path):
+    from AssetsManager.core.library_lock import LibraryLock
+
+    lock_path = tmp_path / "locks" / "library.lock"
+    owner = LibraryLock(lock_path)
+
+    try:
+        result = _probe_library_lock_in_child(lock_path)
+        assert result.returncode == 1, result.stderr
+    finally:
+        assert owner.release()
+
+
+def test_library_lock_is_released_after_successful_close(tmp_path, monkeypatch):
+    from AssetsManager.application.library_service import LibraryService
+    from AssetsManager.core import path_resolver
+
+    monkeypatch.setattr(path_resolver, "runtime_root", lambda: tmp_path / "RuntimeData")
+    root = tmp_path / "library"
+    root.mkdir()
+
+    first_service = LibraryService()
+    first_session = first_service.open_session(root)
+    lock_path = path_resolver.library_lock_path(root)
+    assert _probe_library_lock_in_child(lock_path).returncode == 1
+
+    first_service.close_session(first_session)
+    assert _probe_library_lock_in_child(lock_path).returncode == 0
+    first_service.close()
+
+
+def test_initialization_failure_releases_library_lock(tmp_path, monkeypatch):
+    from AssetsManager.application import library_service as library_service_module
+    from AssetsManager.application.library_service import LibraryService
+    from AssetsManager.core import path_resolver
+
+    monkeypatch.setattr(path_resolver, "runtime_root", lambda: tmp_path / "RuntimeData")
+    root = tmp_path / "library"
+    root.mkdir()
+
+    class FailingTagStore:
+        def __init__(self, *_args, **_kwargs):
+            raise RuntimeError("tag store initialization failed")
+
+    service = LibraryService()
+    with monkeypatch.context() as patch:
+        patch.setattr(library_service_module, "TagStore", FailingTagStore)
+        with pytest.raises(RuntimeError, match="tag store initialization failed"):
+            service.open_session(root)
+
+    assert service.current_session is None
+    assert service._library_locks == {}
+
+    replacement_service = LibraryService()
+    replacement = replacement_service.open_session(root)
+    replacement_service.close_session(replacement)
+    service.close()
+    replacement_service.close()
+
+
+def test_failed_close_keeps_library_lock_until_retry_succeeds(tmp_path, monkeypatch):
+    from AssetsManager.application.library_service import LibraryService
+    from AssetsManager.core import path_resolver
+
+    monkeypatch.setattr(path_resolver, "runtime_root", lambda: tmp_path / "RuntimeData")
+    root = tmp_path / "library"
+    root.mkdir()
+
+    first_service = LibraryService()
+    first_session = first_service.open_session(root)
+    real_close_library = first_service._db.close_library
+    calls = 0
+
+    def fail_once(library_root):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("database close failed")
+        return real_close_library(library_root)
+
+    monkeypatch.setattr(first_service._db, "close_library", fail_once)
+    with pytest.raises(RuntimeError, match="database close failed"):
+        first_service.close_session(first_session)
+
+    lock_path = path_resolver.library_lock_path(root)
+    assert _probe_library_lock_in_child(lock_path).returncode == 1
+
+    monkeypatch.setattr(first_service._db, "close_library", real_close_library)
+    first_service.close_session(first_session)
+    assert _probe_library_lock_in_child(lock_path).returncode == 0
+    first_service.close()
+
+
+def test_stale_session_close_does_not_release_replacement_library_lock(
+    tmp_path, monkeypatch
+):
+    from AssetsManager.application.library_service import LibraryService
+    from AssetsManager.core import path_resolver
+
+    monkeypatch.setattr(path_resolver, "runtime_root", lambda: tmp_path / "RuntimeData")
+    root = tmp_path / "library"
+    root.mkdir()
+
+    service = LibraryService()
+    old = service.open_session(root)
+    old.close()
+    replacement = service.open_session(root)
+    lock_path = path_resolver.library_lock_path(root)
+
+    service.close_session(old)
+    assert _probe_library_lock_in_child(lock_path).returncode == 1
+
+    service.close_session(replacement)
+    assert _probe_library_lock_in_child(lock_path).returncode == 0
+    service.close()
 
 
 def test_current_context_remains_legacy_compatibility_api(tmp_path):

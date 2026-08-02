@@ -36,6 +36,18 @@ def library_data_name(library_root: str) -> str:
     return f"{base}_{digest}"
 
 
+def library_lock_path(library_root: str | Path) -> Path:
+    """Return the cross-process lock path for one canonical library root.
+
+    The lock lives under ``RuntimeData/Shared`` so acquiring it never creates
+    or changes a library's data directory before ``DatabaseManager`` has had
+    a chance to perform its legacy-directory migration.
+    """
+    resolved = str(Path(library_root).resolve())
+    digest = hashlib.sha256(resolved.casefold().encode("utf-8")).hexdigest()[:16]
+    return runtime_root() / "Shared" / f"library-{digest}.lock"
+
+
 def legacy_library_data_dir(library_root: str) -> Path:
     """Return the pre-hash data directory used by older versions."""
     name = Path(library_root).resolve().name if library_root else ""

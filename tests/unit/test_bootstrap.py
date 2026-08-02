@@ -461,6 +461,8 @@ class TestApplicationBootstrap:
         scoped = bootstrap.runtime_for(session).services
 
         assert scoped.metadata_service._connection(root) is session.connection_for(root)
+        assert scoped.thumbnail_service._session is session
+        assert scoped.thumbnail_service._connection(root) is session.connection_for(root)
         assert scoped.tag_service.list_tags(root) == []
 
     def test_runtime_for_binds_file_operations_to_session(self, tmp_path):

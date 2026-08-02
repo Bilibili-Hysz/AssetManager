@@ -9,9 +9,14 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from AssetsManager.application.context import ConnectionProvider
+from AssetsManager.application.context import (
+    ConnectionProvider,
+    LibrarySession,
+    session_operation,
+)
 from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.repositories.tag_repository import TagRepository
+from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
 
 _log = logging.getLogger(__name__)
 
@@ -76,9 +81,82 @@ class ThumbnailResult:
 class ThumbnailService:
     """Resolve and process thumbnails for assets."""
 
-    def __init__(self, connection_provider: ConnectionProvider | None = None):
-        self._connection_provider = connection_provider
+    def __init__(
+        self,
+        connection_provider: ConnectionProvider | None = None,
+        session: LibrarySession | None = None,
+    ):
+        self._session = session
+        self._connection_provider = connection_provider or (
+            session.connection_for if session is not None else None
+        )
 
+    def _connection(self, library_root: str | Path) -> sqlite3.Connection:
+        if self._connection_provider is None:
+            raise RuntimeError(
+                "ThumbnailService cache metadata requires an explicit "
+                "ConnectionProvider."
+            )
+        return self._connection_provider(Path(library_root).resolve())
+
+    def _repo(self, library_root: str | Path) -> ThumbnailRepository:
+        return ThumbnailRepository(self._connection(library_root))
+
+    @session_operation
+    def get_cached_source_mtime(
+        self, library_root: str | Path, cache_key: str
+    ) -> float | None:
+        """Return the source mtime recorded for ``cache_key``, if present."""
+        return self._repo(library_root).get_source_mtime(cache_key)
+
+    @session_operation
+    def touch_cache_metadata(
+        self, library_root: str | Path, cache_key: str
+    ) -> None:
+        """Mark a cache metadata entry as recently accessed."""
+        self._repo(library_root).touch_access(cache_key)
+
+    @session_operation
+    def delete_cache_metadata(
+        self, library_root: str | Path, cache_key: str
+    ) -> None:
+        """Delete the cache metadata entry identified by ``cache_key``."""
+        self._repo(library_root).delete_entry(cache_key)
+
+    @session_operation
+    def upsert_cache_metadata(
+        self,
+        library_root: str | Path,
+        cache_key: str,
+        source_path: str | Path,
+        source_mtime: float,
+        source_size: int,
+        baked_size: int,
+        cache_size: int,
+    ) -> None:
+        """Insert or replace one thumbnail cache metadata entry."""
+        self._repo(library_root).upsert_entry(
+            cache_key,
+            str(source_path),
+            source_mtime,
+            source_size,
+            baked_size,
+            cache_size,
+        )
+
+    @session_operation
+    def list_cache_metadata(
+        self, library_root: str | Path
+    ) -> list[tuple[str, str, float]]:
+        """Return ``(cache_key, source_path, source_mtime)`` metadata rows."""
+        return self._repo(library_root).list_all_with_metadata()
+
+    @session_operation
+    def clear_cache_metadata(self, library_root: str | Path) -> None:
+        """Delete all thumbnail cache metadata for a library."""
+        self._repo(library_root).clear_all()
+
+    @session_operation
     def resolve(
         self,
         target: Path,
