@@ -1,8 +1,11 @@
 import sqlite3
 
+import pytest
+
 from AssetsManager.application.tag_service import TagService, TagServiceAdapter
 from AssetsManager.core import database
 from AssetsManager.core.db_migrations import migrate
+from AssetsManager.domain.errors import ValidationError
 
 
 def test_adapter_batch_methods_resolve_paths_and_hold_service_boundary(tmp_path):
@@ -25,3 +28,23 @@ def test_adapter_batch_methods_resolve_paths_and_hold_service_boundary(tmp_path)
         assert service.get_tags(library, path) == []
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize("tag", ["", "   ", "x" * 201, None, 42])
+def test_tag_service_rejects_invalid_add_tag_names(tmp_path, tag):
+    service = TagService()
+
+    with pytest.raises(ValidationError) as exc_info:
+        service.add_tag(tmp_path, tmp_path / "asset.txt", tag)
+
+    assert exc_info.value.field == "tag"
+
+
+@pytest.mark.parametrize("new_name", ["", "   ", "x" * 201, None, 42])
+def test_tag_service_rejects_invalid_rename_targets(tmp_path, new_name):
+    service = TagService()
+
+    with pytest.raises(ValidationError) as exc_info:
+        service.rename_tag(tmp_path, "hero", new_name)
+
+    assert exc_info.value.field == "new_name"

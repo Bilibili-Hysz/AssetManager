@@ -4,6 +4,7 @@ from urllib.parse import unquote
 
 from aiohttp import web
 
+from AssetsManager.domain.errors import ValidationError
 from AssetsManager.lan.dto import TagResponse
 from AssetsManager.lan.routes._helpers import (
     get_lan, get_tag_service, require_admin, require_permission, validated_existing_key,
@@ -34,10 +35,11 @@ async def handle_create_tag(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "Invalid request"}, status=400)
-    tag = body.get("tag", "").strip()
-    file_path = body.get("file_path", "")
-    if not tag or len(tag) > 200:
+    try:
+        tag = svc.validate_tag_name(body.get("tag", ""))
+    except ValidationError:
         return web.json_response({"error": "Invalid tag name"}, status=400)
+    file_path = body.get("file_path", "")
     if not file_path:
         return web.json_response({"error": "file_path required"}, status=400)
     try:
@@ -46,6 +48,8 @@ async def handle_create_tag(request):
         return web.json_response({"ok": True})
     except web.HTTPException:
         raise
+    except ValidationError:
+        return web.json_response({"error": "Invalid tag name"}, status=400)
     except Exception:
         _log.exception("Failed to create LAN tag")
         return web.json_response({"error": "Failed to create tag"}, status=500)
@@ -61,12 +65,15 @@ async def handle_rename_tag(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "Invalid request"}, status=400)
-    new_name = body.get("new_name", "").strip()
-    if not new_name or len(new_name) > 200:
+    try:
+        new_name = svc.validate_tag_name(body.get("new_name", ""), field="new_name")
+    except ValidationError:
         return web.json_response({"error": "Invalid tag name"}, status=400)
     try:
         svc.rename_tag(lan.library_root, old_name, new_name)
         return web.json_response({"ok": True})
+    except ValidationError:
+        return web.json_response({"error": "Invalid tag name"}, status=400)
     except Exception:
         _log.exception("Failed to rename LAN tag")
         return web.json_response({"error": "Failed to rename tag"}, status=500)

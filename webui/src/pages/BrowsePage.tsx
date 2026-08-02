@@ -299,8 +299,40 @@ export default function BrowsePage() {
     if (selectedItem) handleCardClick(selectedItem);
   }, [handleCardClick, selectedItem]);
 
+  const runTagSearch = useCallback(
+    (tag: string, options: { clearResults: boolean; resetFilterOnFailure: boolean; notifyOnFailure: boolean }) => {
+      const generation = ++tagSearchGeneration.current;
+      tagSearchAbort.current?.abort();
+      const controller = new AbortController();
+      tagSearchAbort.current = controller;
+      if (options.clearResults) setTagResults(null);
+      setTagLoading(true);
+      metaApi.search('', tag, undefined, controller.signal)
+        .then(response => {
+          if (generation !== tagSearchGeneration.current) return;
+          setTagResults(response.results);
+        })
+        .catch(() => {
+          if (controller.signal.aborted || generation !== tagSearchGeneration.current) return;
+          if (options.resetFilterOnFailure) {
+            setActiveTag(null);
+            setTagResults(null);
+            setSearchParams(currentPath ? { path: currentPath } : {}, { replace: true });
+          }
+          if (options.notifyOnFailure) showToast('Failed to filter by tag', 'error');
+        })
+        .finally(() => {
+          if (generation === tagSearchGeneration.current) setTagLoading(false);
+        });
+    },
+    [currentPath, metaApi, setSearchParams, showToast],
+  );
+
   useInvalidation(['files', 'metadata', 'tags', 'project_detail'], event => {
     refresh();
+    if (activeTag && (!event || event.domains.includes('tags'))) {
+      runTagSearch(activeTag, { clearResults: false, resetFilterOnFailure: false, notifyOnFailure: false });
+    }
     if (!event || (selectedItem && event.paths.some(path => path === selectedItem.path || selectedItem.path.startsWith(`${path}/`) || path.startsWith(`${selectedItem.path}/`)))) {
       refreshSelected();
     }
@@ -364,33 +396,13 @@ export default function BrowsePage() {
   }, [showToast]);
 
   const handleTagFilter = useCallback((tag: string) => {
-    const generation = ++tagSearchGeneration.current;
-    tagSearchAbort.current?.abort();
-    const controller = new AbortController();
-    tagSearchAbort.current = controller;
     setActiveTag(tag);
-    setTagResults(null);
-    setTagLoading(true);
     setSelected(new Set());
     setSelectedMetadata(null);
     setSelectedProjectDetail(null);
     setSearchParams({ tag }, { replace: true });
-    metaApi.search('', tag, undefined, controller.signal)
-      .then(response => {
-        if (generation !== tagSearchGeneration.current) return;
-        setTagResults(response.results);
-      })
-      .catch(() => {
-        if (controller.signal.aborted || generation !== tagSearchGeneration.current) return;
-        setActiveTag(null);
-        setTagResults(null);
-        setSearchParams(currentPath ? { path: currentPath } : {}, { replace: true });
-        showToast('Failed to filter by tag', 'error');
-      })
-      .finally(() => {
-        if (generation === tagSearchGeneration.current) setTagLoading(false);
-      });
-  }, [metaApi, setSearchParams, showToast]);
+    runTagSearch(tag, { clearResults: true, resetFilterOnFailure: true, notifyOnFailure: true });
+  }, [runTagSearch, setSearchParams]);
 
   const handleClearTagFilter = useCallback(() => {
     tagSearchGeneration.current += 1;

@@ -169,6 +169,30 @@ async def test_websocket_sends_ready_then_exact_projection_invalidation_dto():
 
 
 @pytest.mark.anyio
+async def test_websocket_preserves_tags_projection_domain():
+    app, runtime, _lan = _app()
+    client = await _client(app)
+    try:
+        ws = await client.ws_connect("/ws")
+        assert await ws.receive_json() == {
+            "type": "runtime_ready",
+            "epoch": "epoch-a",
+            "revision": 7,
+        }
+        runtime.event_router.emit(_Event("epoch-a", 8, ("tags",), ()))
+        assert await ws.receive_json() == {
+            "type": "projection_invalidated",
+            "epoch": "epoch-a",
+            "revision": 8,
+            "domains": ["tags"],
+            "paths": [],
+        }
+        await ws.close()
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
 async def test_revoked_user_websocket_is_closed_before_runtime_invalidation_delivery():
     app, runtime, lan = _user_cookie_app()
     client = await _client(app)

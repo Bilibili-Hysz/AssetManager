@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { useState } from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BrowsePage from './BrowsePage';
@@ -362,6 +362,69 @@ describe('BrowsePage', () => {
     pending.resolve({ path: 'stale' });
   });
 
+  it('authoritatively refetches the active tag results when tags projection invalidates', async () => {
+    const initial = deferred<{ results: Array<{ path: string; name: string; type: string; extension: string; category: string }> }>();
+    const refreshed = deferred<{ results: Array<{ path: string; name: string; type: string; extension: string; category: string }> }>();
+    search.mockReset();
+    search.mockReturnValueOnce(initial.promise).mockReturnValueOnce(refreshed.promise);
+
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Filter tag' }));
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
+
+    const invalidate = useInvalidationMock.mock.calls[useInvalidationMock.mock.calls.length - 1]?.[1] as ((event: unknown) => void) | undefined;
+    invalidate?.({ type: 'projection_invalidated', domains: ['tags'], paths: [], epoch: 'epoch', revision: 1 });
+
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
+    expect(search).toHaveBeenNthCalledWith(2, '', 'featured', undefined, expect.any(AbortSignal));
+    expect(search.mock.calls[0]?.[3].aborted).toBe(true);
+
+    refreshed.resolve({ results: [{ path: 'refreshed/item', name: 'refreshed', type: 'file', extension: '', category: 'other' }] });
+    await waitFor(() => expect(screen.getByTestId('file-list').textContent).toBe('refreshed'));
+
+    initial.resolve({ results: [{ path: 'stale/item', name: 'stale', type: 'file', extension: '', category: 'other' }] });
+    await act(async () => { await initial.promise; });
+    expect(screen.getByTestId('file-list').textContent).toBe('refreshed');
+  });
+
+  it('authoritatively refetches the active tag results after null recovery invalidation', async () => {
+    const initial = deferred<{ results: Array<{ path: string; name: string; type: string; extension: string; category: string }> }>();
+    const refreshed = deferred<{ results: Array<{ path: string; name: string; type: string; extension: string; category: string }> }>();
+    search.mockReset();
+    search.mockReturnValueOnce(initial.promise).mockReturnValueOnce(refreshed.promise);
+
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Filter tag' }));
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
+
+    const invalidate = useInvalidationMock.mock.calls[useInvalidationMock.mock.calls.length - 1]?.[1] as ((event: unknown) => void) | undefined;
+    invalidate?.(null);
+
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
+    expect(search).toHaveBeenNthCalledWith(2, '', 'featured', undefined, expect.any(AbortSignal));
+    expect(search.mock.calls[0]?.[3].aborted).toBe(true);
+
+    refreshed.resolve({ results: [{ path: 'recovered/item', name: 'recovered', type: 'file', extension: '', category: 'other' }] });
+    await waitFor(() => expect(screen.getByTestId('file-list').textContent).toBe('recovered'));
+
+    initial.resolve({ results: [{ path: 'stale/item', name: 'stale', type: 'file', extension: '', category: 'other' }] });
+    await act(async () => { await initial.promise; });
+    expect(screen.getByTestId('file-list').textContent).toBe('recovered');
+  });
+
+  it('does not refetch the active tag for unrelated projection invalidations', async () => {
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Filter tag' }));
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
+
+    const invalidate = useInvalidationMock.mock.calls[useInvalidationMock.mock.calls.length - 1]?.[1] as ((event: unknown) => void) | undefined;
+    for (const domain of ['files', 'metadata', 'project_detail']) {
+      invalidate?.({ type: 'projection_invalidated', domains: [domain], paths: [], epoch: 'epoch', revision: 1 });
+    }
+
+    expect(search).toHaveBeenCalledTimes(1);
+  });
+
   it('ignores an older tag search that resolves after a newer one', async () => {
     const first = deferred<{ results: Array<{ path: string; name: string; type: string; extension: string; category: string }> }>();
     const second = deferred<{ results: Array<{ path: string; name: string; type: string; extension: string; category: string }> }>();
@@ -379,11 +442,12 @@ describe('BrowsePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Filter second tag' }));
 
     second.resolve({ results: [{ path: 'newer/item', name: 'newer', type: 'file', extension: '', category: 'other' }] });
-    await waitFor(() => expect(screen.getByTestId('active-tag').textContent).toBe('second'));
+    await waitFor(() => expect(screen.getByTestId('file-list').textContent).toBe('newer'));
 
     first.resolve({ results: [{ path: 'older/item', name: 'older', type: 'file', extension: '', category: 'other' }] });
-    await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
+    await act(async () => { await first.promise; });
     expect(screen.getByTestId('active-tag').textContent).toBe('second');
+    expect(screen.getByTestId('file-list').textContent).toBe('newer');
   });
 
   it('ignores a pending tag search after router search params change', async () => {

@@ -2259,6 +2259,124 @@ async def test_tags_route_writes_only_library_paths(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_tag_routes_translate_service_validation_to_bad_request(tmp_path):
+    app, library, conn = _make_lan_app(tmp_path)
+    target = library / "asset.txt"
+    target.write_text("tag me", encoding="utf-8")
+    headers = _local_ui_headers(app)
+
+    client = await _make_client(app)
+    try:
+        for invalid_tag in ("", "   ", "x" * 201, None, 42):
+            response = await client.post(
+                "/api/tags",
+                json={"tag": invalid_tag, "file_path": "asset.txt"},
+                headers=headers,
+            )
+            assert response.status == 400
+            assert await response.json() == {"error": "Invalid tag name"}
+
+        for invalid_request in (
+            {"tag": "   "},
+            {"tag": "   ", "file_path": "../outside.txt"},
+        ):
+            response = await client.post(
+                "/api/tags",
+                json=invalid_request,
+                headers=headers,
+            )
+            assert response.status == 400
+            assert await response.json() == {"error": "Invalid tag name"}
+
+        created = await client.post(
+            "/api/tags",
+            json={"tag": "  hero  ", "file_path": "asset.txt"},
+            headers=headers,
+        )
+        assert created.status == 200
+        assert conn.execute(
+            "SELECT tag FROM file_tags WHERE file_path=?", (str(target.resolve()),)
+        ).fetchone() == ("hero",)
+
+        accepted_tag = "a" * 200
+        accepted = await client.post(
+            "/api/tags",
+            json={"tag": accepted_tag, "file_path": "asset.txt"},
+            headers=headers,
+        )
+        assert accepted.status == 200
+
+        for invalid_name in ("", "   ", "x" * 201, None, 42):
+            response = await client.put(
+                "/api/tags/hero",
+                json={"new_name": invalid_name},
+                headers=headers,
+            )
+            assert response.status == 400
+            assert await response.json() == {"error": "Invalid tag name"}
+
+        renamed = await client.put(
+            "/api/tags/hero",
+            json={"new_name": "  villain  "},
+            headers=headers,
+        )
+        assert renamed.status == 200
+        accepted_rename = "b" * 200
+        boundary_rename = await client.put(
+            "/api/tags/villain",
+            json={"new_name": accepted_rename},
+            headers=headers,
+        )
+        assert boundary_rename.status == 200
+        rows = {
+            row[0]
+            for row in conn.execute(
+                "SELECT tag FROM file_tags WHERE file_path=?", (str(target.resolve()),)
+            )
+        }
+        assert rows == {accepted_tag, accepted_rename}
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_tag_routes_keep_non_validation_service_errors_as_500(
+    tmp_path, monkeypatch
+):
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    (library / "asset.txt").write_text("tag me", encoding="utf-8")
+    headers = _local_ui_headers(app)
+    service = app[LAN_APP_KEY].services.tag_service
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("service failed")
+
+    client = await _make_client(app)
+    try:
+        monkeypatch.setattr(service, "add_tag", fail)
+        created = await client.post(
+            "/api/tags",
+            json={"tag": "hero", "file_path": "asset.txt"},
+            headers=headers,
+        )
+        assert created.status == 500
+        assert await created.json() == {"error": "Failed to create tag"}
+
+        monkeypatch.setattr(service, "rename_tag", fail)
+        renamed = await client.put(
+            "/api/tags/hero",
+            json={"new_name": "villain"},
+            headers=headers,
+        )
+        assert renamed.status == 500
+        assert await renamed.json() == {"error": "Failed to rename tag"}
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
 async def test_download_route_uses_safe_rfc5987_filename_for_unicode_file(tmp_path):
     app, library, conn = _make_lan_app(tmp_path)
     (library / "报告.txt").write_text("download me", encoding="utf-8")

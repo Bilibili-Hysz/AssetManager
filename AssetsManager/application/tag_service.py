@@ -8,10 +8,24 @@ from sqlite3 import Connection
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.core.tag_library import get_library
 from AssetsManager.domain.event_bus import get_event_bus
+from AssetsManager.domain.errors import ValidationError
 from AssetsManager.domain.events import AssetTagsChanged, TagCatalogChanged, TagsChanged
 from AssetsManager.repositories.tag_repository import TagRepository
 
 _log = logging.getLogger(__name__)
+_MAX_TAG_NAME_LENGTH = 200
+
+
+def _validated_tag_name(value: str, *, field: str) -> str:
+    """Return one normalized tag name or raise a domain validation error."""
+    if not isinstance(value, str):
+        raise ValidationError(field, "must be a string")
+    clean = value.strip()
+    if not clean:
+        raise ValidationError(field, "must not be empty")
+    if len(clean) > _MAX_TAG_NAME_LENGTH:
+        raise ValidationError(field, f"must be at most {_MAX_TAG_NAME_LENGTH} characters")
+    return clean
 
 
 def _resolve_connection(
@@ -47,6 +61,11 @@ class TagService:
                  session: LibrarySession | None = None):
         self._connection_provider = connection_provider
         self._session = session
+
+    @staticmethod
+    def validate_tag_name(value: str, *, field: str = "tag") -> str:
+        """Validate and normalize one tag name without touching persistence."""
+        return _validated_tag_name(value, field=field)
 
     def _publish_asset_tags_changed(
         self, file_path: str, tags: tuple[str, ...], *, publish_catalog: bool = True
@@ -94,9 +113,8 @@ class TagService:
     def add_tag(self, library_root: str | Path, path: str | Path, tag: str,
                 db_conn: Connection | None = None) -> None:
         """Add a tag to a file, resolving to canonical form."""
+        tag = self.validate_tag_name(tag)
         canonical = get_library().canonical(tag)
-        if not canonical:
-            return
         repo = _get_repo(db_conn, library_root, self._connection_provider)
         key = str(Path(path).resolve())
         existing = {t.lower() for t in repo.get_tags(key)}
@@ -132,6 +150,7 @@ class TagService:
     def rename_tag(self, library_root: str | Path, old_name: str, new_name: str,
                    db_conn: Connection | None = None) -> None:
         """Rename a tag across all files."""
+        new_name = self.validate_tag_name(new_name, field="new_name")
         repo = _get_repo(db_conn, library_root, self._connection_provider)
         paths = repo.get_files_by_tag(old_name)
         repo.rename_tag(old_name, new_name)
