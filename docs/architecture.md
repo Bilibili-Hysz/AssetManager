@@ -13,12 +13,14 @@ The recalibrated Desktop–LAN–WebUI architecture is delivered for the current
 
 The B2 thumbnail boundary is part of the local `master` baseline: ThumbnailLoader consumes a scoped ThumbnailService through an immutable runtime snapshot. Post-commit focused regression is reproducible; real-image I/O, performance and wider regression evidence remain tracked separately.
 
+A2 service validation downshift is also delivered: `TagService`, `ShareService`, and `AssetService` own their tag-name, share-option, and bounded directory-summary rules. A3 presentation-specific service assembly and B1 Runtime-owned Auth/Share lifecycle remain future work.
+
 ## Application Services
 
 | Service | Module | Purpose | Desktop | LAN | Tests |
 |---|---|---|---|---|---|
 | `LibraryService` | `library_service.py` | Open libraries, expose `LibraryContext`, hold per-library QLockFile | `app.py`, `window.py`, `lan_sharing.py` | indirect | 3 |
-| `AssetService` | `asset_service.py` | Directory listing, filtering, sorting | — | `/api/files` | 4 |
+| `AssetService` | `asset_service.py` | Directory listing, filtering, sorting, validated bounded direct-child summaries | — | `/api/files`, `/api/files/summaries` | service + LAN route tests |
 | `MetadataService` | `metadata_service.py` | Notes, URLs, dir size, tags-for-asset | — | `/api/meta`, `/api/projects` | 5 |
 | `TagService` | `tag_service.py` | Tag list, assign, rename, delete | — | `/api/tags/*` | 4 |
 | `FileOperationService` | `file_operation_service.py` | Copy, move, rename, trash, duplicate, delete | `_actions.py` (7 ops) | — | 6 |
@@ -28,7 +30,8 @@ The B2 thumbnail boundary is part of the local `master` baseline: ThumbnailLoade
 | `PluginService` | `plugin_service.py` | Plugin discovery, load, enable, disable | `app.py` (startup) | — | 7 |
 | `ProjectService` | `project_service.py` | Project listing/detail/tree/home, depth rules, preview metadata | — | `/api/projects`, `/api/projects/{path}`, `/api/tree`, `/api/home` | 10 |
 | `AssetIndexService` | `asset_index_service.py` | Populate and query `assets` table | — | — | 9 |
-| `AuthService` | `auth_service.py` | LAN users, tokens, invite codes, share links | — | `/api/auth/*`, `/api/users/*`, `/api/invites/*`, `/api/shares/*` | 8 |
+| `AuthService` | `auth_service.py` | LAN users, tokens, and invite codes | — | `/api/auth/*`, `/api/users/*`, `/api/invites/*` | service + LAN route tests |
+| `ShareService` | `share_service.py` | Share-link lifecycle, password/expiry/download-limit validation, access tokens | — | `/api/shares/*`, `/s/*` | service + LAN route tests |
 | `UndoService` | `undo_service.py` | Undo/redo stack for file operations | `_actions.py` | — | 8 |
 
 `LibraryContext` (`context.py`) is a frozen dataclass bundling root, data_dir, thumb_dir, db_conn, tag_store, and project_data for an opened library. `LibrarySession` is the public opened-library boundary and exposes `connection_for()` so services receive a scoped `ConnectionProvider` without falling back to mutable current-library state. `ApplicationBootstrap.runtime_for(session)` is the canonical production assembly path for the cached `LibraryRuntime`; Desktop and LAN consume the same runtime and its session-bound service bundle. Runtime caching, LAN injection, the pre-close adapter barrier, restart-generation ownership, Task D fallback removal, the Windows Task E cross-surface matrix and the Ubuntu WSL directory-symlink gate are delivered. See [`docs/compose/reports/desktop-lan-webui-architecture-migration.md`](compose/reports/desktop-lan-webui-architecture-migration.md) and [`docs/compose/reports/desktop-lan-webui-architecture-recalibration.md`](compose/reports/desktop-lan-webui-architecture-recalibration.md).
@@ -42,19 +45,19 @@ LAN API routes are split into focused modules under `AssetsManager/lan/routes/`:
 | Module | Routes | Application Service |
 |---|---|---|
 | `pages.py` | `/`, `/detail` | — |
-| `files.py` | `/api/files` | `AssetService` |
+| `files.py` | `/api/files`, `/api/files/summaries` | `AssetService` |
 | `metadata.py` | `/api/meta`, `/api/search`, `/api/home`, `/api/tree`, `/api/projects` | `MetadataService`, `SearchService`, `TagService`, `ProjectService` |
 | `tags.py` | `/api/tags/*` | `TagService` |
 | `thumbnails.py` | `/api/thumbnails/*` | `ThumbnailService` |
 | `downloads.py` | `/api/download/*` | — |
 | `auth.py` | `/api/auth/*` | `AuthService` |
 | `users.py` | `/api/users/*`, `/api/invites/*` | `AuthService` |
-| `shares.py` | `/api/shares/*`, `/s/*` | `AuthService` |
+| `shares.py` | `/api/shares/*`, `/s/*` | `ShareService`; `AuthService`/principal helpers for identity and permission context |
 | `system.py` | `/api/info`, `/api/tunnel/status`, `/api/stats` | — |
 | `websocket.py` | `/ws` | — |
 | `_helpers.py` | Shared: `validate_path`, `get_auth_token`, `build_zip_async`, etc. | — |
 
-`AssetsManager/lan/api.py` is a thin wrapper (~98 lines) that imports all handlers from `routes/` and registers them in `setup_routes()`. Tag-name rules belong to `TagService`: add/rename trim and reject empty, non-string or over-200-character names with `ValidationError`; `routes/tags.py` translates only that domain error to the existing HTTP 400 contract while preserving unrelated failures as 500.
+`AssetsManager/lan/api.py` is a thin wrapper (~98 lines) that imports all handlers from `routes/` and registers them in `setup_routes()`. A2 business rules belong to application services: `TagService` owns tag-name validation, `ShareService` owns password/expiry/download-limit validation, and `AssetService` owns bounded directory-summary validation. LAN routes retain permission, JSON, `PathGuard`, and transport-normalization responsibilities, translate only `ValidationError` to the existing HTTP 400 contracts, and preserve unrelated failures as 500.
 
 ## Desktop File List Integration
 

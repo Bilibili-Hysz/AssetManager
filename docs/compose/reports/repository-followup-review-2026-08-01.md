@@ -111,10 +111,17 @@ B3 仍未宣称完整交付：WebSocket/React authoritative refetch、桌面/Web
 
 本阶段在只读并行审查后选择了两个互不冲突的最小切片：
 
-- **A2 标签校验下沉**：`TagService.add_tag` / `rename_tag` 统一 trim，并拒绝空值、非字符串和超过 200 字符的名称；LAN 标签路由删除重复业务条件，只把 `ValidationError` 翻译为既有 HTTP 400。新增测试先得到 `10 failed`，实现后直接切片 `13 passed`，标签相关服务、事件、Desktop 与 LAN 聚焦回归 `37 passed, 199 deselected`，相关 unit + LAN 两个完整测试文件 `205 passed`。首轮独立审查发现“标签与路径同时无效”时错误优先级变化；随后增加无副作用的 `TagService.validate_tag_name()` 预校验，恢复原有标签错误优先级，并补齐 200 字符边界、trim、`None`/非字符串及非校验异常保持 500 的测试，复审通过。A2 的分享密码/过期/限次与目录摘要规则仍待下沉。
+- **A2 标签校验下沉**：`TagService.add_tag` / `rename_tag` 统一 trim，并拒绝空值、非字符串和超过 200 字符的名称；LAN 标签路由删除重复业务条件，只把 `ValidationError` 翻译为既有 HTTP 400。新增测试先得到 `10 failed`，实现后直接切片 `13 passed`，标签相关服务、事件、Desktop 与 LAN 聚焦回归 `37 passed, 199 deselected`，相关 unit + LAN 两个完整测试文件 `205 passed`。首轮独立审查发现“标签与路径同时无效”时错误优先级变化；随后增加无副作用的 `TagService.validate_tag_name()` 预校验，恢复原有标签错误优先级，并补齐 200 字符边界、trim、`None`/非字符串及非校验异常保持 500 的测试，复审通过。该检查点时 A2 的分享密码/过期/限次与目录摘要规则仍待下沉；后续收口见 2.10。
 - **B3 Web 活动标签投影**：后端原有 `TAGS` 广播链路已确认，并新增显式 WebSocket DTO 契约；`BrowsePage` 复用现有 generation/AbortController 搜索路径，在显式 `tags` invalidation 和 cursor recovery `null` 时重新拉取当前标签结果。BrowsePage `34 passed`、WebUI 全量 `37 files / 292 tests passed`、TypeScript typecheck 通过，后端 TAGS DTO `1 passed`。首轮独立审查指出 recovery `null` 与旧请求晚到测试不足；实现与测试补齐后复审通过。真实浏览器 WebSocket → React → HTTP refetch 与 Desktop/Web 最终状态一致性仍待验收。
 
 B1 审查确认 Desktop 创建分享仍要求 LAN server 运行，并通过 localhost HTTP 调用 `/api/shares`；`token_secret` 和 `ShareService` 当前由 `_LanServerImpl` 创建，`ShareService.init_table()` 也在 LAN startup。该任务涉及 secret 生命周期、表初始化和 Runtime/LAN 共用连接语义，不能作为顺手重构；应先形成专项设计与生命周期测试，再实施 Desktop direct-call。
+
+### 2.10 A2 分享与目录摘要校验收口（2026-08-02）
+
+- **分享创建**：`ShareService` 新增密码、过期小时和下载次数校验，并在 `create_share()` 入口内再次执行，服务直接调用不能绕过；空密码统一规范化为无密码，持久化与 DTO 的 `has_password` 一致。LAN 保留整数字符串兼容，但拒绝布尔值、浮点数和溢出数，路径校验仍优先，普通异常仍为 500。
+- **目录摘要**：`AssetService.summarize_directories(directories, parent=None)` 在缓存读取或扫描前校验 1–48 条、路径类型/唯一性、父目录和直子目录关系；LAN 保留权限、JSON、PathGuard、精确错误顺序/文本与成功 DTO，并修复混合不可哈希元素意外 500。旧位置参数与 `directories=` 关键字调用均保留兼容。
+- **独立审查**：分享首轮发现宽松 `int()` 会接受 bool/float 且无穷值可触发未捕获 `OverflowError`；修复后复审通过。目录摘要首轮发现公开方法签名兼容风险，继续补齐旧位置参数和旧关键字入口后复审通过。两条审查均无剩余问题。
+- **当前证据**：受影响的 domain/share/asset/LAN 四个完整测试文件 `283 passed`；架构边界 `74 passed`；Ruff、compileall、`git diff --check`、文档尾随空白与相对链接检查通过。A2 三类校验至此完成，但不改变 A3、B1、B2 性能/全量与 B3 真实浏览器验收的未完成状态。
 
 ## 3. 验证证据
 
@@ -125,7 +132,7 @@ B1 审查确认 Desktop 创建分享仍要求 LAN server 运行，并通过 loca
 | G6-4 Undo 测试 | `32 passed` | 含 Windows 权限、256 上限和 sidecar/旧标记测试 |
 | G6-3/B2 生命周期与服务交叉回归 | `163 passed` | 覆盖按库锁、跨进程竞争探针、初始化/关闭异常、Bootstrap、Runtime、窗口切换与 ThumbnailService |
 | B2 ThumbnailService/Repository 目标测试 | `64 passed` | 缓存元数据 round-trip、session 拒绝、provider 失败降级与租约释放 |
-| A2 标签校验下沉 | `13 passed` 直接切片；`37 passed, 199 deselected` 标签聚焦回归；相关完整文件 `205 passed` | 服务层空值/类型/长度规则、trim、LAN 400 翻译与既有事件/Desktop 路径 |
+| A2 服务层校验下沉 | 标签既有证据 + 本轮受影响的 domain/share/asset/LAN 四个完整文件 `283 passed`；架构边界 `74 passed` | 标签 trim/空值/类型/长度；分享密码/过期/限次类型与边界；目录摘要批次/唯一性/父目录/直子目录；精确 LAN 400、普通异常 500 与公开 API 兼容 |
 | B3 Web TAGS 最小闭环 | BrowsePage `34 passed`；WebUI `37 files / 292 tests passed`；typecheck passed；LAN TAGS DTO `1 passed` | 显式 TAGS 与 recovery null 重拉、旧请求 abort、WebSocket domain 契约 |
 | Core/unit/integration/LAN 非浏览器 sweep | `1264 passed, 1 skipped, 1 environment failure` | 唯一失败来自外部 visualization 基目录 ACL；将同一用例切换到工作区隔离基目录后 `1 passed` |
 | A1 架构边界 | `74 passed` | 完整 `tests/unit/test_architecture_boundaries.py` |
@@ -145,5 +152,5 @@ B1 审查确认 Desktop 创建分享仍要求 LAN server 运行，并通过 loca
 1. 先把本报告和路线图状态作为新的工作树事实入口。
 2. 数据安全线：G6-3 已完成；继续立项数据库 quick check/孤儿修剪、导出/恢复、防误删策略，不要把单实例锁与 G6-4 的部分缓解误判为阶段 1 完成。
 3. 性能线：继续 reset 最小化和真实图片 IO/发布机验收；目录大小队列治理可视为已完成子项。
-4. 服务边界线：A1、B2 服务边界、A2 标签子切片与 B3 Desktop/Web TAGS 最小闭环已完成；下一步先补齐 A2 分享/目录摘要校验，再分别处理 A3 按端装配与 B1 Runtime-owned 分享服务设计，避免混合 secret/DB 生命周期变更。
+4. 服务边界线：A1、A2 三类校验、B2 服务边界与 B3 Desktop/Web TAGS 最小闭环已完成；下一步分别处理 A3 按端装配与 B1 Runtime-owned 分享服务设计，避免混合 secret/DB 生命周期变更，同时继续补齐 B2 性能/全量证据。
 5. 跨端线：为 B3 增加真实浏览器 WebSocket → React → HTTP refetch 与 Desktop/Web 最终标签状态一致性验收；组件级测试不能替代该门禁。

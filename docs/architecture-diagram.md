@@ -1,7 +1,7 @@
 # AssetsManager Architecture Diagram
 
-**Version:** 2026-08-02 A2 tag-validation + B3 Web TAGS follow-up (baseline figures retained as snapshots)
-**Tests:** Python 1590 passed, 1 Windows platform skip plus Ubuntu WSL symlink gate passed; WebUI 37 files / 289 passed; Task E cross-surface 186 passed; typecheck and build passed
+**Version:** 2026-08-02 A2 validation downshift (tags + shares + directory summaries) + B3 Web TAGS follow-up (baseline figures retained as snapshots)
+**Tests:** Python 1590 passed, 1 Windows platform skip plus Ubuntu WSL symlink gate passed; WebUI 37 files / 292 passed; Task E cross-surface 186 passed; typecheck and build passed
 
 ---
 
@@ -34,10 +34,11 @@
 │  LibraryService    AssetService      TagService                    │
 │  MetadataService   ThumbnailService  SearchService                 │
 │  ProjectService    FileOpService     UndoService                   │
-│  AuthService       PluginService     AssetIndexService             │
-│  AssetFilters                                                      │
+│  AuthService       ShareService      PluginService                 │
+│  AssetIndexService AssetFilters                                    │
 │  LibraryContext  LibrarySession  LibraryRuntime                    │
 │  RuntimeEventRouter  DTOs  SessionPrincipal                         │
+│  AuthService/ShareService are LAN-owned until B1                  │
 └──────────────────────────┬─────────────────────────────────────────┘
                            │
 ┌──────────────────────────▼─────────────────────────────────────────┐
@@ -67,7 +68,8 @@
 │  lan/scanner.py  lan/ws.py  lan/tunnel.py                          │
 │  lan/manager.py (lifecycle)                                         │
 │                                                                     │
-│  LAN → Runtime services → auth/principal/capabilities              │
+│  LAN → injected Runtime services + LAN-owned Auth/Share services  │
+│      → auth/principal/capabilities                                  │
 │  Windows Task E matrix: Chromium + Desktop + LAN passed            │
 │  Linux directory-symlink gate: Ubuntu WSL passed                  │
 └─────────────────────────────────────────────────────────────────────┘
@@ -142,7 +144,8 @@ SettingsDialog → themes.set_theme(name)
 5. `panels/` do NOT depend on `lan/` (except `lan_sharing.py` mixin)
 6. `SignalBus` is the Qt presentation communication channel; `domain.event_bus` is the application/domain event channel
 7. `ThumbnailLoader` may depend on the scoped `ThumbnailService` and immutable runtime snapshot, but must not depend directly on SQLite connections or `ThumbnailRepository`
-8. `tests/unit/test_architecture_boundaries.py` guards runtime, principal, DTO, and teardown rules
+8. `TagService`, `ShareService`, and `AssetService` own A2 business validation; LAN routes own transport and `PathGuard` boundaries
+9. `tests/unit/test_architecture_boundaries.py` guards runtime, principal, DTO, and teardown rules
 
 ---
 
@@ -156,4 +159,4 @@ SettingsDialog → themes.set_theme(name)
 | `panels/` | 18 | ~6,100 | 3 test files |
 | `widgets/` | 6 | ~900 | 0 test files |
 | `tests/` | 50+ | ~5,000+ | — |
-| **Total** | **150+** | **~27,000+** | **Python 1590 passed, 1 Windows skip; Linux symlink gate passed; WebUI 37 files / 289 passed; Task E 186 passed** |
+| **Total** | **150+** | **~27,000+** | **Python 1590 passed, 1 Windows skip; Linux symlink gate passed; WebUI 37 files / 292 passed; Task E 186 passed** |
