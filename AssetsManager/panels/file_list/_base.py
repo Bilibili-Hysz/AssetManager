@@ -247,7 +247,6 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._model.set_metadata_service(services.metadata_service)
         performance_recorder = getattr(services, "performance_recorder", None)
         session_token = services.session.event_token
-        self._loader.set_performance_context(performance_recorder, session_token)
         set_model_context = getattr(self._model, "set_performance_context", None)
         if callable(set_model_context):
             set_model_context(performance_recorder, session_token)
@@ -258,9 +257,13 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
                 services.session.event_token,
                 self._model.scan_generation,
             )
-        self._loader.set_cache_db(services.session.connection_for(services.session.root))
-        self._loader.set_cache_dir(services.session.thumb_dir_str)
-        self._loader.set_lib_root(services.session.root_str)
+        self._loader.bind_runtime(
+            services.thumbnail_service,
+            services.session.thumb_dir_str,
+            services.session.root_str,
+            performance_recorder,
+            session_token,
+        )
         self._loader.orphan_cleanup()
         if hasattr(services, "undo_service"):
             self._undo_svc = services.undo_service
@@ -429,8 +432,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         if self._root:
             self._configure_library_runtime(str(self._root))
         else:
-            self._loader.set_cache_db(None)
-            self._loader.set_cache_dir("")
+            self._loader.bind_runtime(None, "", "", None, None)
 
     def _toggle_sort_dir(self):
         self._model._sort_asc = not self._model._sort_asc

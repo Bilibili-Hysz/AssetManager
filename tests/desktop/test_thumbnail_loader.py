@@ -1,6 +1,7 @@
 import os
 import threading
 import time
+from unittest.mock import Mock
 
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
@@ -233,21 +234,13 @@ def test_thumbnail_loader_runtime_invalidation_clears_memory_and_failed_paths(mo
     assert loader._pending_items == {}
 
 
-def test_thumbnail_loader_invalidation_rejects_old_bake_cache_and_repository_writes(tmp_path):
-    class Repository:
-        def __init__(self):
-            self.entries = []
-
-        def upsert_entry(self, *args):
-            self.entries.append(args)
-
+def test_thumbnail_loader_invalidation_rejects_old_bake_cache_and_service_writes(tmp_path):
     source = tmp_path / "source.png"
     source.write_bytes(b"source")
     cache_dir = tmp_path / "cache"
+    service = Mock()
     loader = ThumbnailLoader()
-    loader.set_cache_dir(str(cache_dir))
-    repository = Repository()
-    loader._repo = repository
+    loader.bind_runtime(service, str(cache_dir), str(tmp_path))
     runtime = loader._runtime()
     loader.invalidate_tasks()
 
@@ -255,7 +248,7 @@ def test_thumbnail_loader_invalidation_rejects_old_bake_cache_and_repository_wri
     loader._store_baked_image("old", str(source), 96, img, runtime)
 
     assert not (cache_dir / "old.webp").exists()
-    assert repository.entries == []
+    service.upsert_cache_metadata.assert_not_called()
 
 
 def test_thumbnail_loader_emits_all_waiting_items_for_same_source(tmp_path):
@@ -316,18 +309,19 @@ def test_wait_for_runtime_waits_only_for_invalidated_generation(monkeypatch):
     loader._pool.waitForDone(5000)
 
 
-def test_old_thumbnail_runtime_quiesces_before_repository_close(tmp_path):
+def test_old_thumbnail_runtime_quiesces_before_thumbnail_service_close(tmp_path):
     loader = ThumbnailLoader()
-    entered_repository = threading.Event()
-    release_repository = threading.Event()
-    repository_finished = threading.Event()
+    entered_service = threading.Event()
+    release_service = threading.Event()
+    service_finished = threading.Event()
 
-    class Repository:
-        def get_source_mtime(self, key):
-            entered_repository.set()
-            assert release_repository.wait(5)
-            repository_finished.set()
-            return None
+    service = Mock()
+    def get_mtime(_root, _key):
+        entered_service.set()
+        assert release_service.wait(5)
+        service_finished.set()
+        return None
+    service.get_cached_source_mtime.side_effect = get_mtime
 
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
@@ -335,8 +329,7 @@ def test_old_thumbnail_runtime_quiesces_before_repository_close(tmp_path):
     source.write_bytes(b"source")
     key = loader._disk_key(str(source))
     (cache_dir / f"{key}.webp").write_bytes(b"cached")
-    loader.set_cache_dir(str(cache_dir))
-    loader._repo = Repository()
+    loader.bind_runtime(service, str(cache_dir), str(tmp_path))
     runtime = loader._runtime()
 
     class CacheTask:
@@ -344,7 +337,7 @@ def test_old_thumbnail_runtime_quiesces_before_repository_close(tmp_path):
             loader._try_load_cached(key, str(source), runtime)
 
     loader._start_task(CacheTask(), runtime.generation)
-    assert entered_repository.wait(5)
+    assert entered_service.wait(5)
     invalidated = loader.invalidate_runtime()
     closed = threading.Event()
     closer = threading.Thread(
@@ -352,11 +345,125 @@ def test_old_thumbnail_runtime_quiesces_before_repository_close(tmp_path):
     )
     closer.start()
     assert not closed.wait(0.2)
-    release_repository.set()
+    release_service.set()
     assert closed.wait(5)
-    assert repository_finished.is_set()
+    assert service_finished.is_set()
     closer.join(5)
 
+
+def test_thumbnail_loader_orphan_cleanup_uses_thumbnail_service(tmp_path):
+    loader = ThumbnailLoader()
+    service = Mock()
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    orphan_source = tmp_path / "missing" / "source.png"
+    key = loader._disk_key(str(orphan_source))
+    cached_file = cache_dir / f"{key}.webp"
+    cached_file.write_bytes(b"cached")
+    service.list_cache_metadata.return_value = [(key, str(orphan_source), 1.0)]
+
+    loader.bind_runtime(service, str(cache_dir), str(tmp_path))
+    loader.orphan_cleanup()
+
+    assert not cached_file.exists()
+    service.delete_cache_metadata.assert_called_once_with(str(tmp_path.resolve()), key)
+
+
+def test_thumbnail_loader_clear_thumb_cache_uses_service_and_disk_runtime(tmp_path):
+    loader = ThumbnailLoader()
+    service = Mock()
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    webp = cache_dir / "one.webp"
+    temp = cache_dir / "two.webp.tmp"
+    keep = cache_dir / "keep.txt"
+    webp.write_bytes(b"one")
+    temp.write_bytes(b"two")
+    keep.write_text("keep", encoding="utf-8")
+
+    loader.bind_runtime(service, str(cache_dir), str(tmp_path))
+    assert loader.clear_thumb_cache() == 2
+
+    assert not webp.exists()
+    assert not temp.exists()
+    assert keep.exists()
+    service.clear_cache_metadata.assert_called_once_with(str(tmp_path.resolve()))
+
+
+def test_thumbnail_loader_bind_publishes_complete_runtime_before_drain(monkeypatch, tmp_path):
+    loader = ThumbnailLoader()
+    service = Mock()
+    observed = {}
+
+    def capture_wait(generation):
+        observed["generation"] = generation
+        observed["runtime"] = loader._runtime()
+
+    monkeypatch.setattr(loader, "wait_for_runtime", capture_wait)
+    loader.bind_runtime(service, str(tmp_path / "cache"), str(tmp_path))
+
+    runtime = observed["runtime"]
+    assert runtime.generation == observed["generation"] + 1
+    assert runtime.thumbnail_service is service
+    assert runtime.cache_dir == str(tmp_path / "cache")
+    assert runtime.lib_root == str(tmp_path.resolve())
+
+
+def test_thumbnail_loader_cache_clear_rejects_old_bake_runtime(tmp_path):
+    source = tmp_path / "source.png"
+    source.write_bytes(b"source")
+    cache_dir = tmp_path / "cache"
+    service = Mock()
+    loader = ThumbnailLoader()
+    loader.bind_runtime(service, str(cache_dir), str(tmp_path))
+    runtime = loader._runtime()
+
+    loader.clear_thumb_cache()
+    loader._store_baked_image(
+        "old", str(source), 96,
+        QImage(1, 1, QImage.Format.Format_RGB32), runtime,
+    )
+
+    assert not (cache_dir / "old.webp").exists()
+    service.upsert_cache_metadata.assert_not_called()
+
+
+def test_thumbnail_loader_clear_cache_drops_pending_items():
+    loader = ThumbnailLoader()
+    loader._pending_items["source.png"].append((1, "old-item.png"))
+
+    loader.clear_cache()
+
+    assert loader._pending_items == {}
+
+
+def test_thumbnail_loader_wait_releases_invalidated_runtime_snapshot():
+    loader = ThumbnailLoader()
+    generation = loader.invalidate_runtime()
+
+    loader.wait_for_runtime(generation)
+
+    assert generation not in loader._invalidated_runtimes
+
+
+def test_thumbnail_loader_orphan_cleanup_removes_missing_source_with_existing_parent(tmp_path):
+    loader = ThumbnailLoader()
+    service = Mock()
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    source = assets / "deleted.png"
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    key = loader._disk_key(str(source))
+    cached_file = cache_dir / f"{key}.webp"
+    cached_file.write_bytes(b"cached")
+    service.list_cache_metadata.return_value = [(key, str(source), 1.0)]
+
+    loader.bind_runtime(service, str(cache_dir), str(tmp_path))
+    loader.orphan_cleanup()
+
+    assert not cached_file.exists()
+    service.delete_cache_metadata.assert_called_once_with(str(tmp_path.resolve()), key)
 
 def test_thumbnail_loader_defers_unique_request_at_capacity_and_retries(tmp_path, monkeypatch):
     first = tmp_path / "first.png"

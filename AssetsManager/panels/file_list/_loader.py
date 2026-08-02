@@ -5,7 +5,6 @@ eliminating main-thread format conversion. Bake depth limited by sidebar cfg.
 """
 import logging
 import os
-import sqlite3
 import contextlib
 import threading
 from collections import OrderedDict, defaultdict
@@ -31,8 +30,9 @@ _stderr_redirect_lock = threading.Lock()
 class _Runtime:
     generation: int
     cache_dir: str
-    repo: Any | None
     lib_root: str
+    thumbnail_service: Any | None
+    cache_epoch: int
     session_token: str | None
     recorder: PerformanceRecorder | None
 
@@ -182,9 +182,9 @@ class ThumbnailLoader(QObject):
         self._failed_paths: set[str] = set()
         self._failed_paths_max: int = 2000
         self._cache_dir: str = ""
-        self._db_conn: sqlite3.Connection | None = None
-        self._db_mutex = QMutex()
         self._lib_root: str = ""
+        self._cache_epoch = 0
+        self._cache_io_lock = threading.Lock()
         self._pool = QThreadPool()
         self._pool.setMaxThreadCount(3)
         self._regen_cancel = False
@@ -193,8 +193,7 @@ class ThumbnailLoader(QObject):
         self._task_condition = threading.Condition()
         self._active_tasks: dict[int, int] = defaultdict(int)
         self._invalidated_runtimes: dict[int, _Runtime] = {}
-        from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
-        self._repo: ThumbnailRepository | None = None
+        self._thumbnail_service: Any | None = None
         self._performance_recorder: PerformanceRecorder | None = None
         self._session_token: str | None = None
 
@@ -221,19 +220,50 @@ class ThumbnailLoader(QObject):
         if path:
             os.makedirs(path, exist_ok=True)
 
-    def set_cache_db(self, conn):
-        self._db_mutex.lock()
+    def _invalidate_runtime_locked(self) -> int:
+        """Invalidate the current generation while ``_mutex`` is held."""
+        with self._task_condition:
+            old_generation = self._runtime_generation
+            self._invalidated_runtimes[old_generation] = self._runtime_locked()
+            self._runtime_generation += 1
+            self._task_condition.notify_all()
+        self._cache.clear()
+        self._cache_bytes = 0
+        self._failed_paths.clear()
+        self._queued_keys.clear()
+        self._queued_generations.clear()
+        self._deferred_loads.clear()
+        self._pending_items.clear()
+        self._regen_cancel = True
+        return old_generation
+
+    def bind_runtime(
+        self,
+        thumbnail_service: Any | None,
+        cache_dir: str,
+        lib_root: str,
+        recorder: PerformanceRecorder | None = None,
+        session_token: str | None = None,
+    ) -> None:
+        """Atomically bind one service/filesystem runtime snapshot."""
         self._mutex.lock()
         try:
-            self._db_conn = conn
-            if conn:
-                from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
-                self._repo = ThumbnailRepository(conn)
-            else:
-                self._repo = None
+            old_generation = self._invalidate_runtime_locked()
+            self._thumbnail_service = thumbnail_service
+            self._cache_dir = str(cache_dir or "")
+            self._lib_root = str(Path(lib_root).resolve()) if lib_root else ""
+            try:
+                self._performance_recorder = (
+                    recorder if recorder is not None and recorder.enabled else None
+                )
+            except Exception:
+                self._performance_recorder = None
+            self._session_token = session_token
         finally:
             self._mutex.unlock()
-            self._db_mutex.unlock()
+        self.wait_for_runtime(old_generation)
+        if cache_dir:
+            os.makedirs(cache_dir, exist_ok=True)
 
     def set_lib_root(self, path: str):
         self._mutex.lock()
@@ -250,19 +280,7 @@ class ThumbnailLoader(QObject):
         """Discard state and queued work from the previous library runtime."""
         self._mutex.lock()
         try:
-            with self._task_condition:
-                old_generation = self._runtime_generation
-                self._invalidated_runtimes[old_generation] = self._runtime_locked()
-                self._runtime_generation += 1
-                self._task_condition.notify_all()
-            self._cache.clear()
-            self._cache_bytes = 0
-            self._failed_paths.clear()
-            self._queued_keys.clear()
-            self._queued_generations.clear()
-            self._deferred_loads.clear()
-            self._pending_items.clear()
-            self._regen_cancel = True
+            old_generation = self._invalidate_runtime_locked()
         finally:
             self._mutex.unlock()
         return old_generation
@@ -275,15 +293,20 @@ class ThumbnailLoader(QObject):
         """Wait without timeout for exactly one invalidated runtime's tasks."""
         self._mutex.lock()
         try:
-            telemetry = self._invalidated_runtimes.get(generation, self._runtime_locked())
+            telemetry = self._invalidated_runtimes.get(generation)
         finally:
             self._mutex.unlock()
-        started = perf_counter() if telemetry.recorder is not None else None
+        started = perf_counter() if telemetry is not None and telemetry.recorder is not None else None
         with self._task_condition:
             self._task_condition.wait_for(
                 lambda: self._active_tasks.get(generation, 0) == 0
             )
-        if telemetry.recorder is not None:
+        self._mutex.lock()
+        try:
+            self._invalidated_runtimes.pop(generation, None)
+        finally:
+            self._mutex.unlock()
+        if telemetry is not None and telemetry.recorder is not None:
             self._record("thumbnail.drain", runtime=telemetry, generation=generation, started=started, attributes={"outcome": "completed"})
 
     def _start_task(self, task, generation: int, priority: int = 0, runtime: _Runtime | None = None) -> bool:
@@ -387,12 +410,13 @@ class ThumbnailLoader(QObject):
         with self._task_condition:
             generation = self._runtime_generation
         return _Runtime(
-            generation,
-            self._cache_dir,
-            self._repo,
-            self._lib_root,
-            self._session_token,
-            self._performance_recorder,
+            generation=generation,
+            cache_dir=self._cache_dir,
+            thumbnail_service=self._thumbnail_service,
+            lib_root=self._lib_root,
+            cache_epoch=self._cache_epoch,
+            session_token=self._session_token,
+            recorder=self._performance_recorder,
         )
 
     def _is_current_generation(self, generation: int) -> bool:
@@ -405,6 +429,16 @@ class ThumbnailLoader(QObject):
     def _is_current_generation_locked(self, generation: int) -> bool:
         with self._task_condition:
             return self._runtime_generation == generation
+
+    def _is_current_cache_epoch(self, runtime: _Runtime) -> bool:
+        self._mutex.lock()
+        try:
+            return (
+                self._is_current_generation_locked(runtime.generation)
+                and self._cache_epoch == runtime.cache_epoch
+            )
+        finally:
+            self._mutex.unlock()
 
     def _is_active_runtime(self, runtime: _Runtime) -> bool:
         self._mutex.lock()
@@ -662,6 +696,7 @@ class ThumbnailLoader(QObject):
         self._queued_keys.clear()
         self._queued_generations.clear()
         self._deferred_loads.clear()
+        self._pending_items.clear()
         self._mutex.unlock()
 
     def stop(self):
@@ -762,14 +797,12 @@ class ThumbnailLoader(QObject):
         if not runtime.cache_dir:
             return None
         cached_file = os.path.join(runtime.cache_dir, f"{key}.webp")
-        if not os.path.isfile(cached_file):
+        if not os.path.isfile(cached_file) or not self._is_current_generation(runtime.generation):
             return None
-        if not self._is_current_generation(runtime.generation):
-            return None
-        self._db_mutex.lock()
-        try:
-            if runtime.repo:
-                cached_mtime = runtime.repo.get_source_mtime(key)
+        service = runtime.thumbnail_service
+        if service is not None:
+            try:
+                cached_mtime = service.get_cached_source_mtime(runtime.lib_root, key)
                 if cached_mtime is not None:
                     try:
                         current_mtime = os.path.getmtime(source_path)
@@ -781,14 +814,12 @@ class ThumbnailLoader(QObject):
                         except OSError:
                             pass
                         if self._is_current_generation(runtime.generation):
-                            runtime.repo.delete_entry(key)
+                            service.delete_cache_metadata(runtime.lib_root, key)
                         return None
                     if self._is_current_generation(runtime.generation):
-                        runtime.repo.touch_access(key)
-        except Exception:
-            _log.exception("Cache DB query failed")
-        finally:
-            self._db_mutex.unlock()
+                        service.touch_cache_metadata(runtime.lib_root, key)
+            except Exception:
+                _log.exception("Cache metadata query failed")
         if not os.path.isfile(cached_file):
             return None
         reader = QImageReader(cached_file)
@@ -810,25 +841,34 @@ class ThumbnailLoader(QObject):
         return self._start_task(task, task._runtime.generation, runtime=task._runtime)
 
     def _store_baked_image(self, key, source_path, bake_size, img, runtime: _Runtime):
+        tmp = os.path.join(
+            runtime.cache_dir,
+            f"{key}.{runtime.generation}.{runtime.cache_epoch}.webp.tmp",
+        )
+        final = os.path.join(runtime.cache_dir, f"{key}.webp")
         try:
-            if not self._is_current_generation(runtime.generation):
-                return
-            tmp = os.path.join(runtime.cache_dir, f"{key}.webp.tmp")
-            final = os.path.join(runtime.cache_dir, f"{key}.webp")
-            os.makedirs(runtime.cache_dir, exist_ok=True)
-            img.save(tmp, "WEBP", quality=85)
-            os.replace(tmp, final)
-            self._db_mutex.lock()
-            try:
-                if runtime.repo and self._is_current_generation(runtime.generation):
-                    runtime.repo.upsert_entry(
-                        key, source_path, os.path.getmtime(source_path),
+            with self._cache_io_lock:
+                if not self._is_current_cache_epoch(runtime):
+                    return
+                os.makedirs(runtime.cache_dir, exist_ok=True)
+                img.save(tmp, "WEBP", quality=85)
+                if not self._is_current_cache_epoch(runtime):
+                    return
+                os.replace(tmp, final)
+                service = runtime.thumbnail_service
+                if service is not None and self._is_current_cache_epoch(runtime):
+                    service.upsert_cache_metadata(
+                        runtime.lib_root, key, source_path, os.path.getmtime(source_path),
                         os.path.getsize(source_path), bake_size, os.path.getsize(final),
                     )
-            finally:
-                self._db_mutex.unlock()
         except Exception:
-            _log.exception("Bake DB insert failed")
+            _log.exception("Bake cache metadata insert failed")
+        finally:
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
 
     # ── Utility ──────────────────────────────────────────────────
 
@@ -837,43 +877,50 @@ class ThumbnailLoader(QObject):
         return thumbnail_cache_key(path)
 
     def orphan_cleanup(self):
-        if not self._cache_dir or not self._repo:
+        runtime = self._runtime()
+        service = runtime.thumbnail_service
+        if not runtime.cache_dir or service is None:
             return
-        self._db_mutex.lock()
         try:
-            entries = self._repo.list_all()
-            for cache_key, source_path in entries:
-                if not os.path.isfile(source_path) and not os.path.isdir(
-                        os.path.dirname(source_path)):
+            entries = service.list_cache_metadata(runtime.lib_root)
+            for cache_key, source_path, _source_mtime in entries:
+                if not self._is_current_generation(runtime.generation):
+                    return
+                if not os.path.isfile(source_path):
                     try:
-                        os.remove(os.path.join(self._cache_dir, f"{cache_key}.webp"))
+                        os.remove(os.path.join(runtime.cache_dir, f"{cache_key}.webp"))
                     except OSError:
                         pass
-                    self._repo.delete_by_key(cache_key)
-            self._repo.commit()
+                    if self._is_current_generation(runtime.generation):
+                        service.delete_cache_metadata(runtime.lib_root, cache_key)
         except Exception:
-            pass
-        finally:
-            self._db_mutex.unlock()
+            _log.exception("Thumbnail orphan cleanup failed")
 
     def clear_thumb_cache(self) -> int:
         count = 0
-        if self._cache_dir and os.path.isdir(self._cache_dir):
-            for f in os.listdir(self._cache_dir):
-                if f.endswith('.webp') or f.endswith('.webp.tmp'):
-                    try:
-                        os.remove(os.path.join(self._cache_dir, f))
-                        count += 1
-                    except OSError:
-                        pass
-        if self._repo:
-            self._db_mutex.lock()
+        with self._cache_io_lock:
+            self._mutex.lock()
             try:
-                self._repo.clear_all()
-            except Exception:
-                pass
+                self._cache_epoch += 1
+                runtime = self._runtime_locked()
+                if runtime.cache_dir and os.path.isdir(runtime.cache_dir):
+                    for f in os.listdir(runtime.cache_dir):
+                        if f.endswith('.webp') or f.endswith('.webp.tmp'):
+                            try:
+                                os.remove(os.path.join(runtime.cache_dir, f))
+                                count += 1
+                            except OSError:
+                                pass
+                if (
+                    runtime.thumbnail_service is not None
+                    and self._is_current_generation_locked(runtime.generation)
+                ):
+                    try:
+                        runtime.thumbnail_service.clear_cache_metadata(runtime.lib_root)
+                    except Exception:
+                        _log.exception("Thumbnail metadata clear failed")
             finally:
-                self._db_mutex.unlock()
+                self._mutex.unlock()
         return count
 
     def regenerate_all(self, lib_root: str, on_progress=None, on_complete=None) -> bool:

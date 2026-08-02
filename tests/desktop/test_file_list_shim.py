@@ -863,14 +863,16 @@ def test_set_root_uses_injected_scoped_library_runtime(tmp_path):
     panel = QWidgetFileListPanel()
     try:
         session = bootstrap.library_service.open_session(tmp_path)
-        panel.set_scoped_services(bootstrap.runtime_for(session).services)
+        services = bootstrap.runtime_for(session).services
+        panel.set_scoped_services(services)
 
         panel.navigate_to(str(tmp_path), set_root=True)
 
         assert panel._model._metadata_service is not None
         conn = session.connection_for(tmp_path)
         assert panel._model._metadata_service._connection(tmp_path) is conn
-        assert panel._loader._db_conn is conn
+        assert panel._loader._thumbnail_service is services.thumbnail_service
+        assert not hasattr(panel._loader, "_db_conn")
         assert panel._loader._cache_dir == session.thumb_dir_str
         assert panel._loader._lib_root == session.root_str
     finally:
