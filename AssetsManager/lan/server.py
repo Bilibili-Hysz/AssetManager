@@ -1,5 +1,7 @@
 """LAN server — aiohttp application lifecycle management."""
 import asyncio
+from contextlib import nullcontext
+import inspect
 import concurrent.futures
 import logging
 import os
@@ -21,6 +23,106 @@ from AssetsManager.lan.utils import get_local_ip
 
 _log = logging.getLogger(__name__)
 
+_MISSING = object()
+
+
+def _runtime_services_snapshot(runtime):
+    """Return the canonical snapshot and whether test-double fallback was used."""
+    if inspect.getattr_static(runtime, "services_snapshot", _MISSING) is not _MISSING:
+        return runtime.services_snapshot, False
+    # Temporary compatibility for legacy runtime-shaped test doubles. Remove
+    # after those fixtures expose the canonical services_snapshot contract.
+    return getattr(runtime, "services", None), True
+
+
+def _runtime_operation(runtime, session):
+    operation = getattr(session, "operation", None)
+    if callable(operation):
+        return operation()
+
+    # Real LibraryRuntime instances always carry a LibrarySession operation
+    # boundary. Only lightweight legacy test doubles may omit it.
+    from AssetsManager.application.runtime import LibraryRuntime
+
+    if isinstance(runtime, LibraryRuntime):
+        raise ValueError("runtime session must provide an operation boundary")
+    return nullcontext()
+
+
+def _provider_matches_session(service, session) -> bool:
+    provider = getattr(service, "_connection_provider", None)
+    expected_provider = session.connection_for
+    provider_self = getattr(provider, "__self__", None)
+    provider_func = getattr(provider, "__func__", None)
+    if provider_self is not None:
+        return (
+            provider_self is session
+            and provider_func is getattr(expected_provider, "__func__", None)
+        )
+    return provider == expected_provider
+
+
+def _service_session_matches(service, session, *, required: bool) -> bool:
+    has_session_binding = (
+        inspect.getattr_static(service, "_session", _MISSING) is not _MISSING
+    )
+    if not has_session_binding:
+        return not required
+    bound_session = service._session
+    if required:
+        return bound_session is session
+    return bound_session is None or bound_session is session
+
+
+def _validate_runtime_service_bindings(
+    runtime_services,
+    lan_services,
+    session,
+    db_conn,
+    *,
+    strict_session_binding: bool,
+) -> None:
+    for owner, name, requires_session in (
+        (runtime_services, "metadata_service", True),
+        (runtime_services, "tag_service", True),
+        (runtime_services, "thumbnail_service", True),
+        (lan_services, "project_service", True),
+        (lan_services, "search_service", False),
+    ):
+        service = getattr(owner, name, None)
+        if (
+            service is None
+            or not _provider_matches_session(service, session)
+            or not _service_session_matches(
+                service,
+                session,
+                required=strict_session_binding and requires_session,
+            )
+        ):
+            raise ValueError(
+                f"runtime {name} provider is not bound to its LibrarySession"
+            )
+
+    project_service = getattr(lan_services, "project_service", None)
+    for name in ("_metadata_svc", "_tag_svc"):
+        nested = getattr(project_service, name, None)
+        if (
+            nested is None
+            or not _provider_matches_session(nested, session)
+            or not _service_session_matches(
+                nested, session, required=strict_session_binding
+            )
+        ):
+            raise ValueError(
+                "runtime project_service internals are not bound to its LibrarySession"
+            )
+
+    asset_service = getattr(lan_services, "asset_service", None)
+    directory_cache = getattr(asset_service, "_directory_cache", None)
+    if directory_cache is None or getattr(directory_cache, "_conn", _MISSING) is not db_conn:
+        raise ValueError(
+            "runtime asset_service cache is not bound to its LibrarySession"
+        )
 
 class _LanServerImpl:
     """Internal server implementation. Do not use directly — use LanServer facade."""
@@ -42,21 +144,10 @@ class _LanServerImpl:
         self._runtime_adapter_registration_thread = None
         self.runtime = runtime
         session = getattr(runtime, "session", None)
-        runtime_services = getattr(runtime, "services", None)
-        if session is None or runtime_services is None or getattr(runtime_services, "session", session) is not session:
+        if session is None:
             raise ValueError("runtime must be live and canonical for its LibrarySession")
         if getattr(session, "is_closed", False):
             raise ValueError("runtime session must be live")
-        library_root = session.root
-        thumbnail_dir = session.thumb_dir
-        db_conn = session.connection_for(session.root)
-        performance_recorder = getattr(runtime_services, "performance_recorder", performance_recorder)
-        session_token = session.event_token
-        self._library_root = Path(library_root)
-        self._thumbnail_dir = Path(thumbnail_dir)
-        self._db_conn = db_conn
-        self.performance_recorder = performance_recorder
-        self.session_token = session_token
         self._share_name = share_name
         self._auth_mode = auth_mode
         # Accept both plaintext and pre-hashed passwords for backward compatibility.
@@ -69,7 +160,6 @@ class _LanServerImpl:
         self._password_value = password
         self._access_key_value = access_key
         self._ws_manager = WebSocketManager(on_connection_change=self._set_connection_count)
-        self._scanner = DirectoryScanner(library_root, db_conn)
         self._tunnel = TunnelManager()
         self._blur_tags = set(blur_tags or [])
         self._token_secret = os.urandom(32).hex()  # Random secret for token signing
@@ -129,59 +219,114 @@ class _LanServerImpl:
         self._has_users_cache_time: float = 0
         self._has_users_cache_ttl: float = 30.0  # Cache for 30 seconds
 
-        # Auth service — initialized here so middleware can use it even before
-        # _startup() runs (e.g. in test scenarios).
-        from AssetsManager.application.auth_service import AuthService
-        from AssetsManager.application.share_service import ShareService
-        self._auth_service = AuthService(self._db_conn, self._token_secret)
-        self._share_service = ShareService(self._db_conn, self._token_secret)
-        event_library_root = getattr(session, "root_str", str(library_root))
-        for service in (self._auth_service, self._share_service):
-            service._library_root = event_library_root
-            service._session_token = session.event_token
+        with _runtime_operation(runtime, session):
+            runtime_services, legacy_fallback = _runtime_services_snapshot(runtime)
+            if runtime_services is None:
+                raise ValueError(
+                    "runtime must be live and canonical for its LibrarySession"
+                )
 
-        if runtime is not None:
-            for name in (
-                "metadata_service",
-                "project_service",
-                "tag_service",
-                "search_service",
-                "thumbnail_service",
-            ):
-                service = getattr(runtime_services, name, None)
-                provider = getattr(service, "_connection_provider", None)
-                provider_self = getattr(provider, "__self__", None)
-                provider_func = getattr(provider, "__func__", None)
-                expected_provider = session.connection_for
-                provider_matches = provider == expected_provider
-                if provider_self is not None:
-                    provider_matches = (
-                        provider_self is session
-                        and provider_func is getattr(expected_provider, "__func__", None)
-                    )
-                if service is None or not provider_matches:
+            has_snapshot_session = (
+                inspect.getattr_static(runtime_services, "session", _MISSING)
+                is not _MISSING
+            )
+            snapshot_session = (
+                runtime_services.session if has_snapshot_session else _MISSING
+            )
+            if legacy_fallback:
+                if has_snapshot_session and snapshot_session is not session:
                     raise ValueError(
-                        f"runtime {name} provider is not bound to its LibrarySession"
+                        "runtime must be live and canonical for its LibrarySession"
                     )
-            self.services = LanScopedServices(
-                auth_service=self._auth_service,
+            elif snapshot_session is not session:
+                raise ValueError(
+                    "runtime must be live and canonical for its LibrarySession"
+                )
+
+            has_lan_projection = (
+                inspect.getattr_static(runtime_services, "lan_services", _MISSING)
+                is not _MISSING
+            )
+            if has_lan_projection:
+                lan_runtime_services = runtime_services.lan_services
+            elif legacy_fallback:
+                # Legacy low-level route fixtures used LanScopedServices itself
+                # as runtime.services. Production snapshots must expose the
+                # explicit LAN-only projection.
+                lan_runtime_services = runtime_services
+            else:
+                raise ValueError("runtime snapshot has no LAN service projection")
+            if lan_runtime_services is None:
+                raise ValueError("runtime snapshot has no LAN service projection")
+
+            library_root = session.root
+            thumbnail_dir = session.thumb_dir
+            db_conn = session.connection_for(session.root)
+            runtime_performance_recorder = getattr(
+                runtime_services, "performance_recorder", performance_recorder
+            )
+            runtime_session_token = session.event_token
+
+            _validate_runtime_service_bindings(
+                runtime_services,
+                lan_runtime_services,
+                session,
+                db_conn,
+                strict_session_binding=not legacy_fallback,
+            )
+
+            # Auth/Share remain LAN-owned. A3 only changes when the three
+            # LAN-only application services are materialized.
+            from AssetsManager.application.auth_service import AuthService
+            from AssetsManager.application.share_service import ShareService
+
+            auth_service = AuthService(db_conn, self._token_secret)
+            share_service = ShareService(db_conn, self._token_secret)
+            event_library_root = getattr(session, "root_str", str(library_root))
+            for service in (auth_service, share_service):
+                service._library_root = event_library_root
+                service._session_token = runtime_session_token
+
+            scanner = DirectoryScanner(library_root, db_conn)
+            scoped_services = LanScopedServices(
+                auth_service=auth_service,
                 metadata_service=runtime_services.metadata_service,
-                project_service=runtime_services.project_service,
+                project_service=lan_runtime_services.project_service,
                 tag_service=runtime_services.tag_service,
-                search_service=runtime_services.search_service,
+                search_service=lan_runtime_services.search_service,
                 thumbnail_service=runtime_services.thumbnail_service,
-                asset_service=runtime_services.asset_service,
-                share_service=self._share_service,
+                asset_service=lan_runtime_services.asset_service,
+                share_service=share_service,
                 activity_log=ActivityLog(
                     library_root=event_library_root,
-                    session_token=session.event_token,
+                    session_token=runtime_session_token,
                 ),
                 online_users=OnlineUsers(
                     library_root=event_library_root,
-                    session_token=session.event_token,
+                    session_token=runtime_session_token,
                 ),
                 runtime_services=runtime_services,
             )
+
+            def publish_runtime_binding():
+                self._library_root = Path(library_root)
+                self._thumbnail_dir = Path(thumbnail_dir)
+                self._db_conn = db_conn
+                self.performance_recorder = runtime_performance_recorder
+                self.session_token = runtime_session_token
+                self._scanner = scanner
+                self._auth_service = auth_service
+                self._share_service = share_service
+                self.services = scoped_services
+
+            publish_while_live = getattr(session, "_publish_while_live", None)
+            if callable(publish_while_live):
+                publish_while_live(publish_runtime_binding)
+            else:
+                if getattr(session, "is_closed", False):
+                    raise ValueError("runtime session must be live")
+                publish_runtime_binding()
+
         self._services = self.services
         self._build_app()
 

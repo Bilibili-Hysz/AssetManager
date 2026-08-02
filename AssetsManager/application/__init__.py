@@ -34,7 +34,7 @@ from AssetsManager.application.share_service import ShareService
 from AssetsManager.application.tag_service import TagService
 from AssetsManager.application.thumbnail_service import ThumbnailResult, ThumbnailService, clear_thumbnail_cache_keys, thumbnail_cache_key
 from AssetsManager.application.undo_service import UndoEntry, UndoService
-from AssetsManager.application.bootstrap import ApplicationBootstrap, LibraryScopedServices
+from AssetsManager.application.bootstrap import ApplicationBootstrap, LanRuntimeServices, LibraryScopedServices
 from AssetsManager.application.runtime import LibraryRuntime
 
 __all__ = [
@@ -55,6 +55,7 @@ __all__ = [
     "LibraryService",
     "LibraryRuntime",
     "LibrarySession",
+    "LanRuntimeServices",
     "MetadataService",
     "PluginService",
     "ProjectDepthConfig",

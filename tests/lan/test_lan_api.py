@@ -1936,10 +1936,30 @@ def test_share_manager_passes_runtime_to_server(monkeypatch):
     assert captured["runtime"] is runtime
 
 
+def _make_runtime_services_for_fake_session(session, connection):
+    from AssetsManager.application import (
+        AssetService, MetadataService, ProjectService, SearchService, TagService, ThumbnailService,
+    )
+    from AssetsManager.core.directory_cache import DirectoryCache
+
+    return SimpleNamespace(
+        session=session,
+        metadata_service=MetadataService(connection_provider=session.connection_for, session=session),
+        tag_service=TagService(connection_provider=session.connection_for, session=session),
+        thumbnail_service=ThumbnailService(connection_provider=session.connection_for, session=session),
+        lan_services=SimpleNamespace(
+            asset_service=AssetService(directory_cache=DirectoryCache(connection)),
+            project_service=ProjectService(connection_provider=session.connection_for, session=session),
+            search_service=SearchService(connection_provider=session.connection_for),
+        ),
+    )
+
+
 def test_runtime_injection_uses_canonical_session_resources_and_services(tmp_path):
     from AssetsManager.application import (
-        MetadataService, ProjectService, SearchService, TagService, ThumbnailService,
+        AssetService, MetadataService, ProjectService, SearchService, TagService, ThumbnailService,
     )
+    from AssetsManager.core.directory_cache import DirectoryCache
     from AssetsManager.lan.routes._helpers import LanScopedServices
     from AssetsManager.lan.server import _LanServerImpl
 
@@ -1953,15 +1973,19 @@ def test_runtime_injection_uses_canonical_session_resources_and_services(tmp_pat
     session.connection_for = Mock(return_value=connection)
     services = SimpleNamespace(
         session=session,
-        metadata_service=MetadataService(connection_provider=session.connection_for),
-        project_service=ProjectService(connection_provider=session.connection_for),
-        tag_service=TagService(connection_provider=session.connection_for),
-        search_service=SearchService(connection_provider=session.connection_for),
-        thumbnail_service=ThumbnailService(connection_provider=session.connection_for),
-        asset_service=object(),
+        metadata_service=MetadataService(connection_provider=session.connection_for, session=session),
+        tag_service=TagService(connection_provider=session.connection_for, session=session),
+        thumbnail_service=ThumbnailService(connection_provider=session.connection_for, session=session),
     )
+    lan_services = SimpleNamespace(
+        project_service=ProjectService(connection_provider=session.connection_for, session=session),
+        search_service=SearchService(connection_provider=session.connection_for),
+        asset_service=AssetService(directory_cache=DirectoryCache(connection)),
+    )
+    services.lan_services = lan_services
     runtime = SimpleNamespace(
         session=session,
+        services_snapshot=services,
         services=services,
         register_lifecycle_adapter=Mock(),
         unregister_lifecycle_adapter=Mock(),
@@ -1969,7 +1993,7 @@ def test_runtime_injection_uses_canonical_session_resources_and_services(tmp_pat
     server = _LanServerImpl(runtime=runtime)
 
     assert isinstance(server.services, LanScopedServices)
-    assert server.services.search_service is services.search_service
+    assert server.services.search_service is lan_services.search_service
     assert server.services.thumbnail_service is services.thumbnail_service
     assert server.services.search_service._connection_provider is session.connection_for
     assert server.services.thumbnail_service._connection_provider is session.connection_for
@@ -1986,6 +2010,143 @@ def test_runtime_injection_uses_canonical_session_resources_and_services(tmp_pat
     server.stop()
     server.stop()
     runtime.unregister_lifecycle_adapter.assert_called_once_with(server)
+
+
+def test_runtime_injection_prefers_services_snapshot_over_legacy_services(tmp_path):
+    from AssetsManager.application import AssetService, MetadataService, ProjectService, SearchService, TagService, ThumbnailService
+    from AssetsManager.core.directory_cache import DirectoryCache
+    from AssetsManager.lan.server import _LanServerImpl
+
+    session = SimpleNamespace(
+        root=tmp_path / "canonical",
+        thumb_dir=tmp_path / "canonical" / "thumbs",
+        event_token="session-token",
+        is_closed=False,
+    )
+    connection = object()
+    session.connection_for = Mock(return_value=connection)
+    canonical = SimpleNamespace(
+        session=session,
+        metadata_service=MetadataService(connection_provider=session.connection_for, session=session),
+        tag_service=TagService(connection_provider=session.connection_for, session=session),
+        thumbnail_service=ThumbnailService(connection_provider=session.connection_for, session=session),
+        lan_services=SimpleNamespace(
+            asset_service=AssetService(directory_cache=DirectoryCache(connection)),
+            project_service=ProjectService(connection_provider=session.connection_for, session=session),
+            search_service=SearchService(connection_provider=session.connection_for),
+        ),
+    )
+    class Runtime:
+        def __init__(self):
+            self.session = session
+            self.services_snapshot = canonical
+            self.register_lifecycle_adapter = Mock()
+            self.unregister_lifecycle_adapter = Mock()
+
+        @property
+        def services(self):
+            raise AssertionError("legacy .services must not be read")
+
+    runtime = Runtime()
+
+    server = _LanServerImpl(runtime=runtime)
+
+    assert server.services.runtime_services is canonical
+    assert server.services.metadata_service is canonical.metadata_service
+    assert server.services.project_service is canonical.lan_services.project_service
+    assert server.services.search_service is canonical.lan_services.search_service
+    assert server.services.thumbnail_service is canonical.thumbnail_service
+
+
+def test_runtime_injection_falls_back_to_services_only_when_snapshot_is_missing(tmp_path):
+    from AssetsManager.application import AssetService, MetadataService, ProjectService, SearchService, TagService, ThumbnailService
+    from AssetsManager.core.directory_cache import DirectoryCache
+    from AssetsManager.lan.server import _LanServerImpl
+
+    session = SimpleNamespace(
+        root=tmp_path / "canonical",
+        thumb_dir=tmp_path / "canonical" / "thumbs",
+        event_token="session-token",
+        is_closed=False,
+    )
+    connection = object()
+    session.connection_for = Mock(return_value=connection)
+    services = SimpleNamespace(
+        session=session,
+        metadata_service=MetadataService(connection_provider=session.connection_for, session=session),
+        tag_service=TagService(connection_provider=session.connection_for, session=session),
+        thumbnail_service=ThumbnailService(connection_provider=session.connection_for, session=session),
+        lan_services=SimpleNamespace(
+            asset_service=AssetService(directory_cache=DirectoryCache(connection)),
+            project_service=ProjectService(connection_provider=session.connection_for, session=session),
+            search_service=SearchService(connection_provider=session.connection_for),
+        ),
+    )
+    services.asset_service = services.lan_services.asset_service
+    services.project_service = services.lan_services.project_service
+    services.search_service = services.lan_services.search_service
+    runtime = SimpleNamespace(
+        session=session,
+        services=services,
+        register_lifecycle_adapter=Mock(),
+        unregister_lifecycle_adapter=Mock(),
+    )
+
+    server = _LanServerImpl(runtime=runtime)
+    assert server.services.runtime_services is services
+
+
+@pytest.mark.parametrize("snapshot", [None], ids=["none"])
+def test_runtime_injection_rejects_none_snapshot_without_fallback(tmp_path, snapshot):
+    from AssetsManager.lan.server import _LanServerImpl
+
+    session = SimpleNamespace(
+        root=tmp_path / "canonical",
+        thumb_dir=tmp_path / "canonical" / "thumbs",
+        event_token="session-token",
+        is_closed=False,
+        connection_for=Mock(return_value=object()),
+    )
+    services = _make_runtime_services_for_fake_session(session, session.connection_for.return_value)
+    services.asset_service = services.lan_services.asset_service
+    services.project_service = services.lan_services.project_service
+    services.search_service = services.lan_services.search_service
+    runtime = SimpleNamespace(
+        session=session,
+        services_snapshot=snapshot,
+        services=services,
+    )
+
+    with pytest.raises(ValueError, match="runtime"):
+        _LanServerImpl(runtime=runtime)
+
+
+def test_runtime_injection_propagates_snapshot_getter_error_without_fallback(tmp_path):
+    from AssetsManager.lan.server import _LanServerImpl
+
+    session = SimpleNamespace(
+        root=tmp_path / "canonical",
+        thumb_dir=tmp_path / "canonical" / "thumbs",
+        event_token="session-token",
+        is_closed=False,
+        connection_for=Mock(return_value=object()),
+    )
+    services = _make_runtime_services_for_fake_session(session, session.connection_for.return_value)
+    services.asset_service = services.lan_services.asset_service
+    services.project_service = services.lan_services.project_service
+    services.search_service = services.lan_services.search_service
+
+    class Runtime:
+        def __init__(self):
+            self.session = session
+            self.services = services
+
+        @property
+        def services_snapshot(self):
+            raise AttributeError("snapshot getter failed")
+
+    with pytest.raises(AttributeError, match="snapshot getter failed"):
+        _LanServerImpl(runtime=Runtime())
 
 
 @pytest.mark.parametrize(
@@ -2009,6 +2170,123 @@ def test_runtime_server_failed_construction_does_not_register_lifecycle_adapter(
     finally:
         bootstrap.library_service.close()
 
+
+
+@pytest.mark.parametrize(
+    ("binding", "message"),
+    (
+        ("asset_cache", "asset_service cache"),
+        ("project_internal", "project_service internals"),
+        ("metadata_session", "metadata_service provider"),
+        ("metadata_session_none", "metadata_service provider"),
+    ),
+)
+def test_runtime_server_rejects_deep_session_binding_mismatches(
+    tmp_path, binding, message
+):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.lan.server import _LanServerImpl
+
+    bootstrap = ApplicationBootstrap()
+    try:
+        session = bootstrap.library_service.open_session(tmp_path / "library")
+        runtime = bootstrap.runtime_for(session)
+        lan_services = runtime.services.lan_services
+
+        if binding == "asset_cache":
+            lan_services.asset_service._directory_cache._conn = object()
+        elif binding == "project_internal":
+            lan_services.project_service._metadata_svc._connection_provider = (
+                lambda _root: object()
+            )
+        elif binding == "metadata_session":
+            foreign_session = bootstrap.library_service.open_session(
+                tmp_path / "foreign"
+            )
+            runtime.services.metadata_service._session = foreign_session
+        else:
+            runtime.services.metadata_service._session = None
+
+        with pytest.raises(ValueError, match=message):
+            _LanServerImpl(runtime=runtime)
+
+        assert runtime._lifecycle_adapters == []
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_runtime_server_close_race_does_not_publish_partial_binding(
+    tmp_path, monkeypatch
+):
+    from AssetsManager.application import ApplicationBootstrap
+    import AssetsManager.lan.server as server_module
+
+    bootstrap = ApplicationBootstrap()
+    scanner_entered = threading.Event()
+    release_scanner = threading.Event()
+    final_publish_attempted = threading.Event()
+    closing_started = threading.Event()
+    close_done = threading.Event()
+    servers = []
+    server_errors = []
+    close_errors = []
+
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    materialized_lan_services = runtime.services.lan_services
+    original_publish = type(session)._publish_while_live
+
+    def blocking_scanner(_library_root, _db_conn):
+        scanner_entered.set()
+        assert release_scanner.wait(5)
+        return object()
+
+    def recording_publish(current_session, publish):
+        final_publish_attempted.set()
+        return original_publish(current_session, publish)
+
+    monkeypatch.setattr(server_module, "DirectoryScanner", blocking_scanner)
+    monkeypatch.setattr(type(session), "_publish_while_live", recording_publish)
+    bootstrap.library_service.add_session_closing_listener(
+        lambda closing_session: closing_started.set()
+    )
+
+    def build_server():
+        try:
+            servers.append(server_module._LanServerImpl(runtime=runtime))
+        except Exception as exc:
+            server_errors.append(exc)
+
+    def close_session():
+        try:
+            session.close()
+        except Exception as exc:
+            close_errors.append(exc)
+        finally:
+            close_done.set()
+
+    server_thread = threading.Thread(target=build_server)
+    server_thread.start()
+    assert scanner_entered.wait(5)
+    close_thread = threading.Thread(target=close_session)
+    close_thread.start()
+    assert closing_started.wait(5)
+    assert not close_done.wait(0.05)
+
+    release_scanner.set()
+    server_thread.join(5)
+    close_thread.join(5)
+
+    assert not server_thread.is_alive()
+    assert not close_thread.is_alive()
+    assert final_publish_attempted.is_set()
+    assert servers == []
+    assert len(server_errors) == 1
+    assert isinstance(server_errors[0], RuntimeError)
+    assert close_errors == []
+    assert session.is_closed
+    assert runtime.services.lan_services is materialized_lan_services
+    assert runtime._lifecycle_adapters == []
 
 def test_runtime_server_does_not_rebind_runtime_service_providers(tmp_path):
     from AssetsManager.application import ApplicationBootstrap

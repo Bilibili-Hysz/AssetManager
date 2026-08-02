@@ -1,5 +1,6 @@
 """Tests for ApplicationBootstrap."""
 import threading
+from types import SimpleNamespace
 
 import pytest
 
@@ -254,16 +255,17 @@ class TestApplicationBootstrap:
         bootstrap = ApplicationBootstrap()
         session = bootstrap.library_service.open_session(root)
         scoped = bootstrap.runtime_for(session).services
+        lan_services = scoped.lan_services
 
         assert scoped.session is session
-        assert isinstance(scoped.asset_service, AssetService)
-        assert scoped.asset_service._session_token == session.event_token
-        assert scoped.asset_service._directory_cache._conn is session.connection_for(session.root)
+        assert isinstance(lan_services.asset_service, AssetService)
+        assert lan_services.asset_service._session_token == session.event_token
+        assert lan_services.asset_service._directory_cache._conn is session.connection_for(session.root)
         assert isinstance(scoped.metadata_service, MetadataService)
         assert isinstance(scoped.tag_service, TagService)
-        assert isinstance(scoped.project_service, ProjectService)
+        assert isinstance(lan_services.project_service, ProjectService)
         assert isinstance(scoped.thumbnail_service, ThumbnailService)
-        assert isinstance(scoped.search_service, SearchService)
+        assert isinstance(lan_services.search_service, SearchService)
         assert isinstance(scoped.file_operation_service, FileOperationService)
         assert isinstance(scoped.undo_service, UndoService)
         assert isinstance(scoped.plugin_service, PluginService)
@@ -279,9 +281,10 @@ class TestApplicationBootstrap:
         session = bootstrap.library_service.open_session(root)
 
         scoped = bootstrap.runtime_for(session).services
+        lan_services = scoped.lan_services
 
-        assert scoped.asset_service._performance_recorder is recorder
-        assert scoped.asset_service._session_token == session.event_token
+        assert lan_services.asset_service._performance_recorder is recorder
+        assert lan_services.asset_service._session_token == session.event_token
 
     def test_runtime_for_asset_service_reuses_session_directory_summary_cache(self, tmp_path):
         from AssetsManager.core.performance import PerformanceRecorder
@@ -294,9 +297,10 @@ class TestApplicationBootstrap:
         bootstrap = ApplicationBootstrap(performance_recorder=recorder)
         session = bootstrap.library_service.open_session(root)
         scoped = bootstrap.runtime_for(session).services
+        asset_service = scoped.lan_services.asset_service
 
-        scoped.asset_service.list_directory(root, root)
-        scoped.asset_service.list_directory(root, root)
+        asset_service.list_directory(root, root)
+        asset_service.list_directory(root, root)
 
         summaries = [event for event in recorder.recent() if event.name == "directory.summary"]
         assert [event.attributes["cache_hit"] for event in summaries] == [False, True]
@@ -582,13 +586,392 @@ class TestApplicationBootstrap:
 
         monkeypatch.setattr(type(session), "from_context", classmethod(reject_session_reconstruction))
         scoped = bootstrap.runtime_for(session).services
+        lan_services = scoped.lan_services
 
         assert scoped.session is session
         assert scoped.file_operation_service.session is session
         assert scoped.metadata_service._repo(root)._conn is session.connection_for(root)
         assert scoped.tag_service._connection_provider(root) is session.connection_for(root)
-        assert scoped.project_service._metadata_svc._repo(root)._conn is session.connection_for(root)
-        assert scoped.project_service._tag_svc._connection_provider(root) is session.connection_for(root)
+        assert lan_services.project_service._metadata_svc._repo(root)._conn is session.connection_for(root)
+        assert lan_services.project_service._tag_svc._connection_provider(root) is session.connection_for(root)
         assert scoped.file_operation_service._library_root is session.root
         with pytest.raises(ValueError):
             scoped.metadata_service._connection(other)
+
+
+def test_runtime_for_keeps_lan_only_services_lazy_and_thumbnail_eager(tmp_path, monkeypatch):
+    import AssetsManager.application.bootstrap as bootstrap_module
+
+    calls = {name: 0 for name in ("asset", "project", "search", "thumbnail")}
+    original_thumbnail = bootstrap_module.ThumbnailService
+
+    def forbidden_asset(*args, **kwargs):
+        calls["asset"] += 1
+        raise AssertionError("AssetService must be lazy for Desktop runtime creation")
+
+    def forbidden_project(*args, **kwargs):
+        calls["project"] += 1
+        raise AssertionError("ProjectService must be lazy for Desktop runtime creation")
+
+    def forbidden_search(*args, **kwargs):
+        calls["search"] += 1
+        raise AssertionError("SearchService must be lazy for Desktop runtime creation")
+
+    def counted_thumbnail(*args, **kwargs):
+        calls["thumbnail"] += 1
+        return original_thumbnail(*args, **kwargs)
+
+    monkeypatch.setattr(bootstrap_module, "AssetService", forbidden_asset)
+    monkeypatch.setattr(bootstrap_module, "ProjectService", forbidden_project)
+    monkeypatch.setattr(bootstrap_module, "SearchService", forbidden_search)
+    monkeypatch.setattr(bootstrap_module, "ThumbnailService", counted_thumbnail)
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+
+    assert calls == {"asset": 0, "project": 0, "search": 0, "thumbnail": 1}
+    assert runtime.services_snapshot is runtime.services
+    assert repr(runtime.services_snapshot)
+    assert runtime.services_snapshot == runtime.services_snapshot
+    assert calls == {"asset": 0, "project": 0, "search": 0, "thumbnail": 1}
+
+
+def test_lan_services_success_is_single_flight_and_legacy_properties_share_identity(
+    tmp_path, monkeypatch
+):
+    bootstrap = ApplicationBootstrap()
+    calls = []
+    entered = threading.Event()
+    release = threading.Event()
+    bundle = SimpleNamespace(
+        asset_service=object(), project_service=object(), search_service=object()
+    )
+
+    def build_lan_services(session, *, connection_provider=None):
+        calls.append(session)
+        entered.set()
+        assert release.wait(5)
+        return bundle
+
+    monkeypatch.setattr(bootstrap, "_build_lan_services", build_lan_services, raising=False)
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    scoped = bootstrap.runtime_for(session).services
+    results = []
+    errors = []
+
+    def read_bundle():
+        try:
+            results.append(scoped.lan_services)
+        except Exception as exc:  # pragma: no cover - assertion below reports it
+            errors.append(exc)
+
+    workers = [threading.Thread(target=read_bundle) for _ in range(8)]
+    for worker in workers:
+        worker.start()
+    assert entered.wait(5)
+    release.set()
+    for worker in workers:
+        worker.join(5)
+
+    assert errors == []
+    assert calls == [session]
+    assert results and all(result is bundle for result in results)
+    assert scoped.lan_services is bundle
+    assert scoped.asset_service is bundle.asset_service
+    assert scoped.project_service is bundle.project_service
+    assert scoped.search_service is bundle.search_service
+
+
+def test_lan_services_failed_attempt_is_single_flight_and_can_retry(tmp_path, monkeypatch):
+    import time
+
+    bootstrap = ApplicationBootstrap()
+    first_entered = threading.Event()
+    first_release = threading.Event()
+    retry_entered = threading.Event()
+    retry_release = threading.Event()
+    calls = []
+    bundle = SimpleNamespace(
+        asset_service=object(), project_service=object(), search_service=object()
+    )
+
+    def build_lan_services(session, *, connection_provider=None):
+        calls.append(session)
+        if len(calls) == 1:
+            first_entered.set()
+            assert first_release.wait(5)
+            raise ValueError("first LAN construction failed")
+        retry_entered.set()
+        assert retry_release.wait(5)
+        return bundle
+
+    monkeypatch.setattr(bootstrap, "_build_lan_services", build_lan_services)
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    scoped = bootstrap.runtime_for(session).services
+    holder = scoped._lan_holder
+    snapshot_hash = hash(scoped)
+    worker_count = 6
+
+    def wait_for_joined_waiters(expected):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            with holder._condition:
+                joined = holder._waiters.get(holder._generation, 0)
+            if joined == expected:
+                return
+            time.sleep(0.005)
+        pytest.fail(f"only {joined} of {expected} waiters joined the generation")
+
+    first_barrier = threading.Barrier(worker_count + 1)
+    first_errors = []
+
+    def read_first_attempt():
+        first_barrier.wait()
+        try:
+            scoped.lan_services
+        except Exception as exc:
+            first_errors.append(exc)
+
+    first_workers = [
+        threading.Thread(target=read_first_attempt) for _ in range(worker_count)
+    ]
+    for worker in first_workers:
+        worker.start()
+    first_barrier.wait()
+    assert first_entered.wait(5)
+    wait_for_joined_waiters(worker_count - 1)
+    first_release.set()
+    for worker in first_workers:
+        worker.join(5)
+
+    assert all(not worker.is_alive() for worker in first_workers)
+    assert calls == [session]
+    assert len(first_errors) == worker_count
+    assert all(isinstance(error, ValueError) for error in first_errors)
+    assert hash(scoped) == snapshot_hash
+
+    retry_barrier = threading.Barrier(worker_count + 1)
+    retry_results = []
+    retry_errors = []
+
+    def read_retry():
+        retry_barrier.wait()
+        try:
+            retry_results.append(scoped.lan_services)
+        except Exception as exc:
+            retry_errors.append(exc)
+
+    retry_workers = [threading.Thread(target=read_retry) for _ in range(worker_count)]
+    for worker in retry_workers:
+        worker.start()
+    retry_barrier.wait()
+    assert retry_entered.wait(5)
+    wait_for_joined_waiters(worker_count - 1)
+    retry_release.set()
+    for worker in retry_workers:
+        worker.join(5)
+
+    assert all(not worker.is_alive() for worker in retry_workers)
+    assert retry_errors == []
+    assert calls == [session, session]
+    assert retry_results and all(result is bundle for result in retry_results)
+    assert scoped.lan_services is bundle
+    assert hash(scoped) == snapshot_hash
+
+def test_lan_services_rejects_recursive_access_and_closed_or_closing_session(
+    tmp_path, monkeypatch
+):
+    bootstrap = ApplicationBootstrap()
+    recursive_scoped = {}
+
+    def recursive_factory(_session, *, connection_provider=None):
+        return recursive_scoped["scoped"].lan_services
+
+    monkeypatch.setattr(bootstrap, "_build_lan_services", recursive_factory, raising=False)
+    session = bootstrap.library_service.open_session(tmp_path / "recursive")
+    recursive_scoped["scoped"] = bootstrap.runtime_for(session).services
+    with pytest.raises(RuntimeError, match="(?i)recurs|reentr|building"):
+        recursive_scoped["scoped"].lan_services
+
+    closed_bootstrap = ApplicationBootstrap()
+    closed_session = closed_bootstrap.library_service.open_session(tmp_path / "closed")
+    closed_scoped = closed_bootstrap.runtime_for(closed_session).services
+    closed_session.close()
+    with pytest.raises(RuntimeError, match="closed|closing"):
+        closed_scoped.lan_services
+
+    closing_bootstrap = ApplicationBootstrap()
+    closing_session = closing_bootstrap.library_service.open_session(tmp_path / "closing")
+    closing_scoped = closing_bootstrap.runtime_for(closing_session).services
+    closing_session._begin_close()
+    with pytest.raises(RuntimeError, match="closed|closing"):
+        closing_scoped.lan_services
+
+
+def test_lan_services_are_isolated_per_library_and_runtime_close_does_not_materialize(
+    tmp_path, monkeypatch
+):
+    bootstrap = ApplicationBootstrap()
+    calls = []
+
+    def build_lan_services(session, *, connection_provider=None):
+        calls.append(session)
+        return SimpleNamespace(
+            asset_service=object(), project_service=object(), search_service=object()
+        )
+
+    monkeypatch.setattr(bootstrap, "_build_lan_services", build_lan_services, raising=False)
+    first_session = bootstrap.library_service.open_session(tmp_path / "first")
+    second_session = bootstrap.library_service.open_session(tmp_path / "second")
+    first_runtime = bootstrap.runtime_for(first_session)
+    second_runtime = bootstrap.runtime_for(second_session)
+
+    assert first_runtime.services.lan_services is not second_runtime.services.lan_services
+    assert first_runtime.services.lan_services.asset_service is not second_runtime.services.lan_services.asset_service
+    assert first_runtime.services.lan_services.project_service is not second_runtime.services.lan_services.project_service
+    assert first_runtime.services.lan_services.search_service is not second_runtime.services.lan_services.search_service
+    assert calls == [first_session, second_session]
+
+    untouched_bootstrap = ApplicationBootstrap()
+    untouched_session = untouched_bootstrap.library_service.open_session(tmp_path / "untouched")
+    untouched_calls = []
+    monkeypatch.setattr(
+        untouched_bootstrap,
+        "_build_lan_services",
+        lambda session, connection_provider=None: untouched_calls.append(session),
+        raising=False,
+    )
+    untouched_runtime = untouched_bootstrap.runtime_for(untouched_session)
+    untouched_runtime.close()
+    assert untouched_calls == []
+
+
+def test_runtime_bundle_does_not_own_auth_or_share_services(tmp_path):
+    from AssetsManager.application.auth_service import AuthService
+    from AssetsManager.application.share_service import ShareService
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    scoped = bootstrap.runtime_for(session).services
+
+    assert not isinstance(getattr(scoped, "auth_service", None), AuthService)
+    assert not isinstance(getattr(scoped, "share_service", None), ShareService)
+    assert not isinstance(getattr(scoped.lan_services, "auth_service", None), AuthService)
+    assert not isinstance(getattr(scoped.lan_services, "share_service", None), ShareService)
+
+def test_lan_services_close_race_rejects_publication_and_retry(tmp_path, monkeypatch):
+    bootstrap = ApplicationBootstrap()
+    factory_entered = threading.Event()
+    release_factory = threading.Event()
+    closing_started = threading.Event()
+    close_done = threading.Event()
+    calls = []
+    read_results = []
+    read_errors = []
+    close_errors = []
+
+    def build_lan_services(session, *, connection_provider=None):
+        calls.append(session)
+        factory_entered.set()
+        assert release_factory.wait(5)
+        return SimpleNamespace(
+            asset_service=object(), project_service=object(), search_service=object()
+        )
+
+    monkeypatch.setattr(bootstrap, "_build_lan_services", build_lan_services)
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    scoped = bootstrap.runtime_for(session).services
+    bootstrap.library_service.add_session_closing_listener(
+        lambda closing_session: closing_started.set()
+    )
+
+    def read_bundle():
+        try:
+            read_results.append(scoped.lan_services)
+        except Exception as exc:
+            read_errors.append(exc)
+
+    def close_session():
+        try:
+            session.close()
+        except Exception as exc:
+            close_errors.append(exc)
+        finally:
+            close_done.set()
+
+    reader = threading.Thread(target=read_bundle)
+    reader.start()
+    assert factory_entered.wait(5)
+    closer = threading.Thread(target=close_session)
+    closer.start()
+    assert closing_started.wait(5)
+    assert session.is_closed
+    assert not close_done.wait(0.05)
+
+    release_factory.set()
+    reader.join(5)
+    closer.join(5)
+
+    assert not reader.is_alive()
+    assert not closer.is_alive()
+    assert read_results == []
+    assert len(read_errors) == 1
+    assert isinstance(read_errors[0], RuntimeError)
+    assert close_errors == []
+    assert calls == [session]
+    with pytest.raises(RuntimeError, match="closed|closing"):
+        scoped.lan_services
+    assert calls == [session]
+
+
+def test_lan_holder_is_excluded_from_snapshot_value_semantics(tmp_path, monkeypatch):
+    from dataclasses import fields, replace
+
+    bootstrap = ApplicationBootstrap()
+    calls = []
+    bundle = SimpleNamespace(
+        asset_service=object(), project_service=object(), search_service=object()
+    )
+
+    def build_lan_services(session, *, connection_provider=None):
+        calls.append(session)
+        return bundle
+
+    monkeypatch.setattr(bootstrap, "_build_lan_services", build_lan_services)
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    snapshot = bootstrap.runtime_for(session).services_snapshot
+    comparison_peer = replace(snapshot, _lan_holder=object())
+    holder_field = next(field for field in fields(snapshot) if field.name == "_lan_holder")
+    repr_before = repr(snapshot)
+    snapshot_hash = hash(snapshot)
+    session_hash = hash(session)
+    snapshot_lookup = {snapshot: "snapshot"}
+    session_lookup = {session: "session"}
+
+    assert holder_field.repr is False
+    assert holder_field.compare is False
+    assert holder_field.hash is False
+    assert "_lan_holder=" not in repr_before
+    assert "lan_services=" not in repr_before
+    assert snapshot == comparison_peer
+    assert snapshot_lookup[comparison_peer] == "snapshot"
+    assert calls == []
+
+    assert snapshot.lan_services is bundle
+
+    assert repr(snapshot) == repr_before
+    assert snapshot == comparison_peer
+    assert hash(snapshot) == snapshot_hash
+    assert hash(session) == session_hash
+    assert snapshot_lookup[snapshot] == "snapshot"
+    assert session_lookup[session] == "session"
+    assert calls == [session]
+
+    session.close()
+
+    assert hash(snapshot) == snapshot_hash
+    assert hash(session) == session_hash
+    assert snapshot_lookup[snapshot] == "snapshot"
+    assert session_lookup[session] == "session"
+    assert calls == [session]

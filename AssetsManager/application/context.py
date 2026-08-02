@@ -82,7 +82,7 @@ class LibrarySession:
 
     context: LibraryContext
     event_token: str = field(default_factory=lambda: uuid.uuid4().hex, init=False)
-    _closed: bool = False
+    _closed: bool = field(default=False, compare=False, hash=False)
     _close_callback: Callable[[LibrarySession], None] | None = field(
         default=None, repr=False, compare=False
     )
@@ -198,6 +198,21 @@ class LibrarySession:
                 if remaining_depth == 0:
                     object.__setattr__(self, "_active_operations", self._active_operations - 1)
                     self._operation_condition.notify_all()
+
+    def _publish_while_live(self, publish: Callable[[], R]) -> R:
+        """Publish session-bound state atomically against close admission.
+
+        The caller must already hold an operation lease. Close marks the
+        session closed under the same condition, so executing the callback
+        gives lazy runtime assembly a precise linearization point: either the
+        value is published before close starts, or publication is rejected.
+        """
+        if not self.has_current_thread_operation:
+            raise RuntimeError("Session-bound publication requires an active operation")
+        with self._operation_condition:
+            if self._closed:
+                raise RuntimeError("Cannot publish services for a closing LibrarySession")
+            return publish()
 
     def close(self) -> None:
         """Close this session and release owned resources.

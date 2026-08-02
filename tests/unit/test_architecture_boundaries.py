@@ -586,6 +586,40 @@ def test_lan_get_services_is_direct_eager_bundle_lookup() -> None:
     assert "LanScopedServices(" not in lookup
 
 
+
+def test_lan_runtime_services_are_built_only_by_bootstrap() -> None:
+    bootstrap = (SRC / "application" / "bootstrap.py").read_text(encoding="utf-8")
+    eager_start = bootstrap.index("    def _build_services(")
+    lazy_start = bootstrap.index("    def _build_lan_services(")
+    lazy_end = bootstrap.index("    def _close_runtime(", lazy_start)
+    eager_assembly = bootstrap[eager_start:lazy_start]
+    lazy_assembly = bootstrap[lazy_start:lazy_end]
+
+    assert "ThumbnailService(" in eager_assembly
+    assert "partial(self._build_lan_services, connection_provider=provider)" in eager_assembly
+    for constructor in ("AssetService(", "ProjectService(", "SearchService("):
+        assert constructor not in eager_assembly
+        assert constructor in lazy_assembly
+
+    allowed = SRC / "application" / "bootstrap.py"
+    for path in _production_python_files():
+        if path == allowed:
+            continue
+        source = path.read_text(encoding="utf-8")
+        assert "_build_lan_services(" not in source, path
+
+
+def test_lan_server_projects_runtime_services_without_reassembly() -> None:
+    source = (SRC / "lan" / "server.py").read_text(encoding="utf-8")
+
+    assert "runtime.services_snapshot" in source
+    assert "runtime_services.lan_services" in source
+    assert "runtime_services=runtime_services" in source
+    for constructor in ("AssetService(", "ProjectService(", "SearchService("):
+        assert constructor not in source
+    assert "AuthService(" in source
+    assert "ShareService(" in source
+
 def test_runtime_is_constructed_only_by_bootstrap() -> None:
     source_root = SRC
     allowed = source_root / "application" / "bootstrap.py"

@@ -5,19 +5,20 @@ does not scatter singleton calls throughout the startup sequence.
 
 Note: AuthService and ShareService are NOT registered here because they
 require a ``db_conn`` and ``token_secret`` that are only available after
-a library is opened and the LAN server is started.  They are created by
-``_LanServerImpl._startup()`` and passed to route handlers at runtime.
+a library is opened and the LAN server is composed. They are created by
+``_LanServerImpl`` and passed to route handlers at runtime.
 """
 from __future__ import annotations
 
 import logging
 import threading
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
+from functools import partial
+from typing import TYPE_CHECKING, Callable
 
 from AssetsManager.application.asset_index_service import AssetIndexService
 from AssetsManager.application.asset_service import AssetService
-from AssetsManager.application.context import LibrarySession
+from AssetsManager.application.context import ConnectionProvider, LibrarySession
 from AssetsManager.application.file_operation_service import FileOperationService
 from AssetsManager.application.library_service import LibraryService
 from AssetsManager.application.metadata_service import MetadataService
@@ -40,27 +41,160 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
+class LanRuntimeServices:
+    """Application services materialized only when a LAN adapter is composed."""
+
+    asset_service: AssetService
+    project_service: ProjectService
+    search_service: SearchService
+
+
+_MISSING = object()
+
+
+class _LanServicesHolder:
+    """Single-flight lazy projection owned by one service snapshot.
+
+    A failed attempt is observed by every thread that joined that generation,
+    while a later caller may start a new attempt. The mutable holder is kept
+    outside the frozen snapshot's repr/equality/hash value semantics.
+    """
+
+    def __init__(
+        self,
+        session: LibrarySession,
+        factory: Callable[[LibrarySession], LanRuntimeServices],
+    ) -> None:
+        self._session = session
+        self._factory = factory
+        self._condition = threading.Condition(threading.Lock())
+        self._state = "empty"
+        self._generation = 0
+        self._building_thread_id: int | None = None
+        self._value: LanRuntimeServices | None = None
+        self._failures: dict[int, BaseException] = {}
+        self._waiters: dict[int, int] = {}
+
+    def get(self) -> LanRuntimeServices:
+        current_thread_id = threading.get_ident()
+        while True:
+            with self._condition:
+                if self._state == "ready":
+                    assert self._value is not None
+                    return self._value
+                if self._state == "building":
+                    if self._building_thread_id == current_thread_id:
+                        raise RuntimeError(
+                            "Recursive LAN service materialization is not allowed"
+                        )
+                    return self._wait_for_generation(self._generation)
+
+            # Avoid taking the session lifecycle lock while holding the holder
+            # lock. Publication intentionally uses the reverse lock order.
+            if self._session.is_closed:
+                raise RuntimeError(
+                    "Cannot materialize LAN services for a closed LibrarySession"
+                )
+
+            with self._condition:
+                if self._state != "empty":
+                    continue
+                self._generation += 1
+                generation = self._generation
+                self._state = "building"
+                self._building_thread_id = current_thread_id
+                break
+
+        try:
+            with self._session.operation():
+                value = self._factory(self._session)
+                return self._session._publish_while_live(
+                    lambda: self._publish(generation, value)
+                )
+        except BaseException as exc:
+            with self._condition:
+                if self._state == "building" and self._generation == generation:
+                    self._state = "empty"
+                    self._building_thread_id = None
+                    if self._waiters.get(generation, 0):
+                        self._failures[generation] = exc
+                    self._condition.notify_all()
+            raise
+
+    def _publish(
+        self, generation: int, value: LanRuntimeServices
+    ) -> LanRuntimeServices:
+        with self._condition:
+            if self._state != "building" or self._generation != generation:
+                raise RuntimeError("LAN service materialization attempt lost ownership")
+            self._value = value
+            self._state = "ready"
+            self._building_thread_id = None
+            self._condition.notify_all()
+            return value
+
+    def _wait_for_generation(self, generation: int) -> LanRuntimeServices:
+        self._waiters[generation] = self._waiters.get(generation, 0) + 1
+        while True:
+            failure = self._failures.get(generation, _MISSING)
+            if failure is not _MISSING:
+                self._release_waiter(generation)
+                assert isinstance(failure, BaseException)
+                raise failure
+            if self._state == "ready":
+                assert self._value is not None
+                self._release_waiter(generation)
+                return self._value
+            self._condition.wait()
+
+    def _release_waiter(self, generation: int) -> None:
+        remaining = self._waiters[generation] - 1
+        if remaining:
+            self._waiters[generation] = remaining
+            return
+        self._waiters.pop(generation, None)
+        self._failures.pop(generation, None)
+
+
+@dataclass(frozen=True)
 class LibraryScopedServices:
     """Service bundle bound to a specific ``LibrarySession``.
 
-    Services that need per-library database access receive
-    ``session.connection_for`` as their connection provider. Stateless services
-    are resolved from the application container.
+    The snapshot itself and its Desktop/shared fields are created eagerly.
+    LAN-only application services are projected once through a private holder
+    without changing this frozen snapshot's visible value semantics.
     """
 
     session: LibrarySession
-    asset_service: AssetService
     metadata_service: MetadataService
     tag_service: TagService
-    project_service: ProjectService
     thumbnail_service: ThumbnailService
-    search_service: SearchService
     file_operation_service: FileOperationService
     undo_service: UndoService
     plugin_service: PluginService
     asset_index_service: AssetIndexService
+    _lan_holder: _LanServicesHolder = field(repr=False, compare=False, hash=False)
     performance_recorder: PerformanceRecorder | None = None
 
+    @property
+    def lan_services(self) -> LanRuntimeServices:
+        """Return the once-materialized LAN-only application projection."""
+        return self._lan_holder.get()
+
+    @property
+    def asset_service(self) -> AssetService:
+        """Compatibility read-through to the LAN-only service projection."""
+        return self.lan_services.asset_service
+
+    @property
+    def project_service(self) -> ProjectService:
+        """Compatibility read-through to the LAN-only service projection."""
+        return self.lan_services.project_service
+
+    @property
+    def search_service(self) -> SearchService:
+        """Compatibility read-through to the LAN-only service projection."""
+        return self.lan_services.search_service
 
 class ApplicationBootstrap:
     """Wires all application services into a ``ServiceContainer``.
@@ -102,7 +236,8 @@ class ApplicationBootstrap:
         c.register(FileOperationService)
         c.register(ThumbnailService)
         c.register(SearchService)
-        # ProjectService is created directly in _build_services() with connection_provider
+        # ProjectService is created in the lazy LAN projection with its
+        # session provider.
         c.register(AssetIndexService)
         c.register(UndoService)
         c.register(PluginService)
@@ -206,21 +341,10 @@ class ApplicationBootstrap:
         provider = session.connection_for
         return LibraryScopedServices(
             session=session,
-            asset_service=AssetService(
-                directory_cache=DirectoryCache(session.connection_for(session.root)),
-                performance_recorder=self._performance_recorder,
-                session_token=session.event_token,
-            ),
             metadata_service=MetadataService(connection_provider=provider, session=session),
             tag_service=TagService(connection_provider=provider, session=session),
-            project_service=ProjectService(connection_provider=provider, session=session),
             thumbnail_service=ThumbnailService(
                 connection_provider=provider, session=session
-            ),
-            search_service=SearchService(
-                performance_recorder=self._performance_recorder,
-                session_token=session.event_token,
-                connection_provider=provider,
             ),
             file_operation_service=FileOperationService(
                 session=session,
@@ -234,7 +358,36 @@ class ApplicationBootstrap:
             ),
             plugin_service=self.container.resolve(PluginService),
             asset_index_service=self.container.resolve(AssetIndexService),
+            _lan_holder=_LanServicesHolder(
+                session,
+                partial(self._build_lan_services, connection_provider=provider),
+            ),
             performance_recorder=self._performance_recorder,
+        )
+
+    def _build_lan_services(
+        self,
+        session: LibrarySession,
+        *,
+        connection_provider: ConnectionProvider | None = None,
+    ) -> LanRuntimeServices:
+        provider = (
+            connection_provider
+            if connection_provider is not None
+            else session.connection_for
+        )
+        return LanRuntimeServices(
+            asset_service=AssetService(
+                directory_cache=DirectoryCache(provider(session.root)),
+                performance_recorder=self._performance_recorder,
+                session_token=session.event_token,
+            ),
+            project_service=ProjectService(connection_provider=provider, session=session),
+            search_service=SearchService(
+                performance_recorder=self._performance_recorder,
+                session_token=session.event_token,
+                connection_provider=provider,
+            ),
         )
 
     def _close_runtime(self, session: LibrarySession) -> None:
