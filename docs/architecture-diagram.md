@@ -79,6 +79,7 @@
 ```
 StartupWindow.library_opened
   → LibraryService.open_session(path)
+    → per-library QLockFile admission (RuntimeData/Shared/library-<hash>.lock)
     → DatabaseManager.connection_for(path) → SQLite
     → TagStore(root) → ProjectData(root)
     → LibraryContext → LibrarySession (scoped connection provider)

@@ -15,12 +15,12 @@ The recalibrated Desktop–LAN–WebUI architecture is delivered for the current
 
 | Service | Module | Purpose | Desktop | LAN | Tests |
 |---|---|---|---|---|---|
-| `LibraryService` | `library_service.py` | Open libraries, expose `LibraryContext` | `app.py`, `window.py`, `lan_sharing.py` | indirect | 3 |
+| `LibraryService` | `library_service.py` | Open libraries, expose `LibraryContext`, hold per-library QLockFile | `app.py`, `window.py`, `lan_sharing.py` | indirect | 3 |
 | `AssetService` | `asset_service.py` | Directory listing, filtering, sorting | — | `/api/files` | 4 |
 | `MetadataService` | `metadata_service.py` | Notes, URLs, dir size, tags-for-asset | — | `/api/meta`, `/api/projects` | 5 |
 | `TagService` | `tag_service.py` | Tag list, assign, rename, delete | — | `/api/tags/*` | 4 |
 | `FileOperationService` | `file_operation_service.py` | Copy, move, rename, trash, duplicate, delete | `_actions.py` (7 ops) | — | 6 |
-| `ThumbnailService` | `thumbnail_service.py` | Resolve source, blur check, image processing | — | `/api/thumbnails/*` | 7 |
+| `ThumbnailService` | `thumbnail_service.py` | Session-bound source/blur/image processing and thumbnail-cache metadata API | — | `/api/thumbnails/*` | 7 |
 | `ThumbnailRepository` | `thumbnail_repository.py` | Desktop thumbnail cache table access | `_loader.py` | — | via loader tests |
 | `SearchService` | `search_service.py` | Search by tags or name | — | `/api/search` | 6 |
 | `PluginService` | `plugin_service.py` | Plugin discovery, load, enable, disable | `app.py` (startup) | — | 7 |
@@ -30,6 +30,8 @@ The recalibrated Desktop–LAN–WebUI architecture is delivered for the current
 | `UndoService` | `undo_service.py` | Undo/redo stack for file operations | `_actions.py` | — | 8 |
 
 `LibraryContext` (`context.py`) is a frozen dataclass bundling root, data_dir, thumb_dir, db_conn, tag_store, and project_data for an opened library. `LibrarySession` is the public opened-library boundary and exposes `connection_for()` so services receive a scoped `ConnectionProvider` without falling back to mutable current-library state. `ApplicationBootstrap.runtime_for(session)` is the canonical production assembly path for the cached `LibraryRuntime`; Desktop and LAN consume the same runtime and its session-bound service bundle. Runtime caching, LAN injection, the pre-close adapter barrier, restart-generation ownership, Task D fallback removal, the Windows Task E cross-surface matrix and the Ubuntu WSL directory-symlink gate are delivered. See [`docs/compose/reports/desktop-lan-webui-architecture-migration.md`](compose/reports/desktop-lan-webui-architecture-migration.md) and [`docs/compose/reports/desktop-lan-webui-architecture-recalibration.md`](compose/reports/desktop-lan-webui-architecture-recalibration.md).
+
+`LibraryService` acquires a stable per-library `QLockFile` before database initialization and releases it only after the canonical session, runtime listeners and database close successfully complete. Initialization failures release the lock; close failures retain it for retry. Multiple service objects in one process share the underlying lock lease, while another process opening the same library is rejected; different libraries remain parallelizable.
 
 ## LAN Route Structure
 
@@ -101,6 +103,7 @@ The assets table is populated lazily by application services, not by the migrati
 
 - `TagStore` and `ProjectData` instance caches use `threading.Lock` for safe concurrent access.
 - `DatabaseManager` uses `threading.RLock` for cross-thread SQLite writes.
+- `LibraryService` uses a per-library `QLockFile` lease for cross-process open admission; lock ownership follows the canonical session lifecycle.
 - `EventBus` uses `threading.Lock` for subscribe/unsubscribe/publish.
 - `ServiceContainer` uses `threading.RLock` for reentrant resolution.
 - `conftest.py` provides `_cleanup_stores` autouse fixture to close DB connections and reset EventBus after each test.

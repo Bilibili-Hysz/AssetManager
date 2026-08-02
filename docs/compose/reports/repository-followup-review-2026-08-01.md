@@ -2,12 +2,13 @@
 feature: repository-followup-review-2026-08-01
 status: delivered
 as_of: 2026-08-01
+last_review: 2026-08-02
 branch: master
 base_commit: f7f9e14de6c644c60575ed28f16567b8b717133a
 remote: none configured
 ---
 
-# Repository Follow-up Review — 2026-08-01
+# Repository Follow-up Review — 2026-08-01（2026-08-02 增量复核）
 
 ## 1. 结论
 
@@ -65,6 +66,24 @@ remote: none configured
 
 B2 已转为下一阶段设计任务，保持现有优先级、取消、generation、磁盘缓存 fallback 和关闭语义不变。
 
+### 2.5 G6-3 按库单实例锁
+
+涉及：`AssetsManager/core/library_lock.py`、`AssetsManager/core/path_resolver.py`、`AssetsManager/application/library_service.py`、对应路径与生命周期测试。
+
+- 使用 Qt `QLockFile`，按规范化库根路径生成稳定散列锁名，锁文件位于 `RuntimeData/Shared/library-<hash>.lock`。
+- 不使用全局 `instance.lock`：不同库可以并行打开；同一进程内多个 `LibraryService` 对象共享底层锁，保持既有 foreign/stale session 测试与服务隔离语义；不同进程打开同一库会被拒绝。
+- 锁由 canonical library session 生命周期持有。初始化失败会关闭已打开的数据库并释放锁；session/runtime/数据库全部成功关闭后释放锁；关闭监听器或数据库关闭失败时保留锁，等待重试。
+- stale session 关闭不会释放 replacement session 的锁；锁实现不读取 PID 或手工删除锁文件。
+
+### 2.6 B2-A ThumbnailService 缓存元数据 API 与 session 租约
+
+涉及：`AssetsManager/application/thumbnail_service.py`、`AssetsManager/application/bootstrap.py`、对应集成/单元测试。
+
+- 新增缓存元数据服务 API：mtime 查询、访问时间更新、upsert、列表、单项删除和清空；调用方不再需要取得 SQLite 连接。
+- Bootstrap 将 canonical `LibrarySession` 和 `session.connection_for` 注入 ThumbnailService；元数据操作与 `resolve()` 由 `session_operation` 覆盖完整 operation lease。
+- session 关闭后拒绝新操作；`resolve()` 的数据库 provider 失败仍保持原有降级到原图且不遗留 operation lease 的行为。
+- Loader 尚未迁移；下一阶段仍需把 ThumbnailService 引用纳入 Runtime 快照，并保持 generation、取消、优先级、磁盘 fallback 和 orphan cleanup 语义。
+
 ## 3. 验证证据
 
 | 检查 | 结果 | 解释 |
@@ -72,6 +91,9 @@ B2 已转为下一阶段设计任务，保持现有优先级、取消、generati
 | A1 应用服务/URL 契约测试 | `42 passed, 1 skipped` | 项目、搜索和新建 URL projection contract 测试 |
 | A1 相关 LAN route 测试 | `9 passed, 183 deselected` | 搜索、home、projects、project detail 相关用例 |
 | G6-4 Undo 测试 | `32 passed` | 含 Windows 权限、256 上限和 sidecar/旧标记测试 |
+| G6-3/B2 生命周期与服务交叉回归 | `163 passed` | 覆盖按库锁、跨进程竞争探针、初始化/关闭异常、Bootstrap、Runtime、窗口切换与 ThumbnailService |
+| B2 ThumbnailService/Repository 目标测试 | `64 passed` | 缓存元数据 round-trip、session 拒绝、provider 失败降级与租约释放 |
+| Core/unit/integration/LAN 非浏览器 sweep | `1264 passed, 1 skipped, 1 environment failure` | 唯一失败来自外部 visualization 基目录 ACL；将同一用例切换到工作区隔离基目录后 `1 passed` |
 | A1 架构边界 | `74 passed` | 完整 `tests/unit/test_architecture_boundaries.py` |
 | 静态质量 | Ruff passed；compileall passed；`git diff --check` passed | 覆盖本阶段修改文件及 `AssetsManager` |
 | 外部基目录全量尝试 | `1589 passed, 1 skipped, 1 failed, 5 errors` | 1 个失败是外部 visualization 目录 ACL 造成的回收站删除失败；5 个错误均为 Chromium `spawn EPERM` |
@@ -87,6 +109,6 @@ B2 已转为下一阶段设计任务，保持现有优先级、取消、generati
 ## 5. 下一步入口
 
 1. 先把本报告和路线图状态作为新的工作树事实入口。
-2. 数据安全线：单实例锁、数据库 quick check/孤儿修剪、导出/恢复、防误删策略分别立项；不要把 G6-4 的部分缓解误判为阶段 1 完成。
+2. 数据安全线：G6-3 已完成；继续立项数据库 quick check/孤儿修剪、导出/恢复、防误删策略，不要把单实例锁与 G6-4 的部分缓解误判为阶段 1 完成。
 3. 性能线：继续 reset 最小化和真实图片 IO/发布机验收；目录大小队列治理可视为已完成子项。
-4. 服务边界线：A1 已完成；B2 先完成 ThumbnailService 缓存元数据 API、session 租约和 Runtime 快照设计，再进入实现。
+4. 服务边界线：A1 与 B2-A 已完成；下一步进入 ThumbnailLoader 的 Runtime 快照迁移，完成后再做完整服务化行为回归。

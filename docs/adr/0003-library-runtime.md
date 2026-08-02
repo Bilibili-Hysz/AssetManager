@@ -18,6 +18,13 @@ caches one `LibraryRuntime` with one eager `LibraryScopedServices` bundle.
 The runtime is the ownership boundary for services that are scoped to a
 library and its connection provider.
 
+`LibraryService` acquires a per-library Qt `QLockFile` before opening the
+database. The lock name is derived from the normalized library root and lives
+under `RuntimeData/Shared`; different libraries remain parallelizable, while a
+second process opening the same library is rejected. Same-process service
+objects share the underlying lock lease for compatibility with existing
+session-identity tests.
+
 `LanServer` receives the `LibraryRuntime`, validates that it is live and
 canonical for its session, and eagerly attaches a `LanScopedServices` bundle
 before route registration. The LAN route helper `get_services(request)` is a
@@ -32,6 +39,9 @@ does not close an injected `LibraryRuntime` or `LibrarySession`. Runtime
 adapters and the database connection are intended to be closed by the
 `ApplicationBootstrap`/`LibraryService` session lifecycle, with adapters
 stopped before the session releases caches or the database connection. The
+library lock is released only after that close path commits; initialization or
+failure paths release the newly acquired lock, while close failures retain the
+lock for a later retry path.
 current implementation covers the explicit pre-close barrier, retryable
 failure semantics, restart-generation ownership and the Windows cross-surface
 acceptance matrix. The Linux directory-symlink gate passed in Ubuntu WSL, so
