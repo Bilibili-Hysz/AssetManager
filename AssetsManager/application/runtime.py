@@ -26,6 +26,18 @@ class LibraryRuntime:
         self._lifecycle_adapters: list[object] = []
         self.event_router = RuntimeEventRouter(self)
 
+    @property
+    def services_snapshot(self) -> LibraryScopedServices:
+        """Return the immutable service bundle for this runtime's session.
+
+        ``LibraryScopedServices`` is a frozen dataclass.  Keeping this access
+        point on the runtime makes the lifetime boundary explicit for UI
+        consumers: a panel must capture the bundle belonging to the runtime
+        it was bound to, rather than resolving services again after a library
+        switch.
+        """
+        return self.services
+
     def register_lifecycle_adapter(self, adapter: object) -> bool:
         """Register an adapter that must stop before runtime-owned cleanup."""
         with self._condition:

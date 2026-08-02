@@ -21,6 +21,8 @@ def test_runtime_is_cached_for_exact_session_and_services(tmp_path):
     assert first is second
     assert first.session is session
     assert first.services is second.services
+    assert first.services_snapshot is first.services
+    assert second.services_snapshot is second.services
     assert bootstrap.runtime_for(session).services is first.services
 
 

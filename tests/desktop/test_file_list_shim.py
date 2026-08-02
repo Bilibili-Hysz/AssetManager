@@ -115,6 +115,36 @@ def test_lan_mutation_event_refreshes_desktop_file_list_for_same_session(tmp_pat
         bootstrap.library_service.close_session(session)
 
 
+def test_file_list_captures_thumbnail_service_from_runtime_snapshot_and_clears_on_shutdown(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path)
+    runtime = bootstrap.runtime_for(session)
+    panel = QWidgetFileListPanel()
+
+    try:
+        panel.set_runtime(runtime)
+        assert panel._scoped_services is runtime.services_snapshot
+        assert panel._thumbnail_service is runtime.services_snapshot.thumbnail_service
+
+        replacement_session = bootstrap.library_service.open_session(tmp_path / "other")
+        replacement_runtime = bootstrap.runtime_for(replacement_session)
+        panel.set_runtime(replacement_runtime)
+        assert panel._thumbnail_service is replacement_runtime.services_snapshot.thumbnail_service
+        assert panel._scoped_services is replacement_runtime.services_snapshot
+        assert panel._thumbnail_service is not runtime.services_snapshot.thumbnail_service
+
+        panel.shutdown()
+        assert panel._thumbnail_service is None
+    finally:
+        if getattr(panel, "_thumbnail_service", None) is not None:
+            panel.shutdown()
+        bootstrap.library_service.close_session(session)
+        if not replacement_session.is_closed:
+            bootstrap.library_service.close_session(replacement_session)
+        app.processEvents()
+
+
 def test_real_lan_tag_mutation_refreshes_desktop_tag_tree(tmp_path):
     """A real LAN tag mutation reaches the Desktop tag projection."""
     import asyncio

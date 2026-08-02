@@ -70,6 +70,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._drag_origin_pos = None
         self._drag_started = False
         self._scoped_services = None
+        self._thumbnail_service = None
         self._operation_feedback_generation = 0
 
         # Controller for non-UI business logic
@@ -236,6 +237,11 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         if callable(clear_feedback):
             clear_feedback()
         self._scoped_services = services
+        # Capture the service object together with the session bundle.  This
+        # is intentionally a snapshot, not a later lookup through a mutable
+        # application container; async thumbnail work must retain the service
+        # belonging to the generation that created it.
+        self._thumbnail_service = services.thumbnail_service
         self._root = services.session.root
         self._model.set_library_root(services.session.root_str, services.session)
         self._model.set_metadata_service(services.metadata_service)
@@ -260,6 +266,10 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             self._undo_svc = services.undo_service
         self._controller.set_file_operations(
             services.file_operation_service, self._undo_svc)
+
+    def set_runtime(self, runtime):
+        """Bind the immutable service snapshot owned by ``LibraryRuntime``."""
+        self.set_scoped_services(runtime.services_snapshot)
 
     def _get_scoped_services(self):
         return self._scoped_services
@@ -1235,6 +1245,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._model.clear_scoped_services()
         self._controller.set_file_operations(None, None)
         self._scoped_services = None
+        self._thumbnail_service = None
         self._undo_svc = None
         self._clear_operation_feedback()
         super().shutdown()
