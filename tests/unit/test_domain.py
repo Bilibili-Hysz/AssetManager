@@ -124,6 +124,7 @@ class TestDomainErrors:
     def test_validation_error(self):
         e = ValidationError(field="password", message="too short")
         assert e.field == "password"
+        assert e.message == "too short"
         assert "too short" in str(e)
 
     def test_operation_not_permitted_hierarchy(self):

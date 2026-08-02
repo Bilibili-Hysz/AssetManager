@@ -7,6 +7,7 @@ from urllib.parse import quote, unquote
 
 from aiohttp import web
 
+from AssetsManager.domain.errors import ValidationError
 from AssetsManager.domain.share import ShareLink
 from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.lan.routes._helpers import get_share_service, get_lan, get_request_principal, get_share_token, require_permission, sanitize_filename, set_share_cookie, set_request_principal, validate_path
@@ -87,41 +88,48 @@ async def handle_create_share(request):
     if not valid_paths:
         return web.json_response({"error": "No valid paths"}, status=400)
 
-    password = body.get("password")
-    if password is not None:
-        if not isinstance(password, str):
-            return web.json_response({"error": "Invalid password format"}, status=400)
-        if len(password) > 0 and len(password) < 4:
-            return web.json_response({"error": "Password must be at least 4 characters"}, status=400)
-        if len(password) > 128:
-            return web.json_response({"error": "Password must be less than 128 characters"}, status=400)
+    try:
+        password = share_svc.validate_password(body.get("password"))
+    except ValidationError as exc:
+        return web.json_response({"error": exc.message}, status=400)
 
     expires_hours = body.get("expires_hours")
     if expires_hours is not None:
+        if isinstance(expires_hours, bool) or not isinstance(expires_hours, (int, str)):
+            return web.json_response({"error": "Invalid expiry format"}, status=400)
         try:
             expires_hours = int(expires_hours)
-            if expires_hours < 1 or expires_hours > 8760:
-                return web.json_response({"error": "Expiry must be between 1 and 8760 hours"}, status=400)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, OverflowError):
             return web.json_response({"error": "Invalid expiry format"}, status=400)
+        try:
+            expires_hours = share_svc.validate_expires_hours(expires_hours)
+        except ValidationError as exc:
+            return web.json_response({"error": exc.message}, status=400)
 
     max_downloads = body.get("max_downloads")
     if max_downloads is not None:
+        if isinstance(max_downloads, bool) or not isinstance(max_downloads, (int, str)):
+            return web.json_response({"error": "Invalid max downloads format"}, status=400)
         try:
             max_downloads = int(max_downloads)
-            if max_downloads < 1 or max_downloads > 10000:
-                return web.json_response({"error": "Max downloads must be between 1 and 10000"}, status=400)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, OverflowError):
             return web.json_response({"error": "Invalid max downloads format"}, status=400)
+        try:
+            max_downloads = share_svc.validate_max_downloads(max_downloads)
+        except ValidationError as exc:
+            return web.json_response({"error": exc.message}, status=400)
 
     allow_preview = body.get("allow_preview", True)
 
-    share = share_svc.create_share(
-        paths=valid_paths, password=password,
-        expires_hours=expires_hours, max_downloads=max_downloads,
-        allow_preview=allow_preview,
-        created_by=principal.display_name if principal and principal.authenticated else None,
-    )
+    try:
+        share = share_svc.create_share(
+            paths=valid_paths, password=password,
+            expires_hours=expires_hours, max_downloads=max_downloads,
+            allow_preview=allow_preview,
+            created_by=principal.display_name if principal and principal.authenticated else None,
+        )
+    except ValidationError as exc:
+        return web.json_response({"error": exc.message}, status=400)
 
     if not share:
         return web.json_response({"error": "Failed to create share link"}, status=500)

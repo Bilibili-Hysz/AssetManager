@@ -13,6 +13,7 @@ from sqlite3 import Connection
 
 from AssetsManager.domain import auth as auth_crypto
 from AssetsManager.domain.event_bus import get_event_bus
+from AssetsManager.domain.errors import ValidationError
 from AssetsManager.domain.events import ShareChanged
 from AssetsManager.domain.share import ShareLink
 from AssetsManager.repositories.share_repository import ShareRepository
@@ -30,6 +31,41 @@ class ShareService:
         self._event_bus = get_event_bus()
         self._library_root = ""
         self._session_token = ""
+
+    @staticmethod
+    def validate_password(value: object) -> str | None:
+        """Validate a share password and normalize an empty string to no password."""
+        if value is None or value == "":
+            return None
+        if not isinstance(value, str):
+            raise ValidationError("password", "Invalid password format")
+        if len(value) < 4:
+            raise ValidationError("password", "Password must be at least 4 characters")
+        if len(value) > 128:
+            raise ValidationError("password", "Password must be less than 128 characters")
+        return value
+
+    @staticmethod
+    def validate_expires_hours(value: object) -> int | None:
+        """Validate an optional expiry in hours."""
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValidationError("expires_hours", "Invalid expiry format")
+        if value < 1 or value > 8760:
+            raise ValidationError("expires_hours", "Expiry must be between 1 and 8760 hours")
+        return value
+
+    @staticmethod
+    def validate_max_downloads(value: object) -> int | None:
+        """Validate an optional download limit."""
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValidationError("max_downloads", "Invalid max downloads format")
+        if value < 1 or value > 10000:
+            raise ValidationError("max_downloads", "Max downloads must be between 1 and 10000")
+        return value
 
     def _publish_changed(self) -> None:
         if self._library_root and self._session_token:
@@ -57,6 +93,10 @@ class ShareService:
         created_by: str | None = None,
     ) -> ShareLink | None:
         """Create a new share link. Returns ShareLink or None on failure."""
+        password = self.validate_password(password)
+        expires_hours = self.validate_expires_hours(expires_hours)
+        max_downloads = self.validate_max_downloads(max_downloads)
+
         share_id = self._generate_share_id()
         for _ in range(5):
             if self._repo.get(share_id) is None:
@@ -64,7 +104,7 @@ class ShareService:
             share_id = self._generate_share_id()
 
         password_hash = auth_crypto.hash_password(password) if password else None
-        expires_at = (time.time() + expires_hours * 3600) if expires_hours else None
+        expires_at = (time.time() + expires_hours * 3600) if expires_hours is not None else None
 
         ok = self._repo.insert(share_id, paths, password_hash, expires_at, max_downloads, allow_preview, created_by)
         if not ok:
@@ -81,7 +121,7 @@ class ShareService:
             max_downloads=max_downloads,
             download_count=0,
             allow_preview=allow_preview,
-            has_password=password is not None,
+            has_password=password_hash is not None,
         )
 
     def get_share(self, share_id: str) -> ShareLink | None:

@@ -4,6 +4,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
+from AssetsManager.domain.errors import ValidationError
 from AssetsManager.domain.share import ShareLink
 from AssetsManager.application.share_service import ShareService
 from AssetsManager.core import database
@@ -118,6 +119,65 @@ class TestShareService:
         retrieved = svc.get_share(share.id)
         assert retrieved is not None
         assert retrieved.id == share.id
+
+    @pytest.mark.parametrize(
+        ("kwargs", "field", "message"),
+        [
+            ({"password": 42}, "password", "Invalid password format"),
+            ({"password": "abc"}, "password", "Password must be at least 4 characters"),
+            ({"password": "x" * 129}, "password", "Password must be less than 128 characters"),
+            ({"expires_hours": "1"}, "expires_hours", "Invalid expiry format"),
+            ({"expires_hours": True}, "expires_hours", "Invalid expiry format"),
+            ({"expires_hours": 1.0}, "expires_hours", "Invalid expiry format"),
+            ({"expires_hours": 0}, "expires_hours", "Expiry must be between 1 and 8760 hours"),
+            ({"expires_hours": 8761}, "expires_hours", "Expiry must be between 1 and 8760 hours"),
+            ({"max_downloads": "1"}, "max_downloads", "Invalid max downloads format"),
+            ({"max_downloads": False}, "max_downloads", "Invalid max downloads format"),
+            ({"max_downloads": 1.0}, "max_downloads", "Invalid max downloads format"),
+            ({"max_downloads": 0}, "max_downloads", "Max downloads must be between 1 and 10000"),
+            ({"max_downloads": 10001}, "max_downloads", "Max downloads must be between 1 and 10000"),
+        ],
+    )
+    def test_create_share_rejects_invalid_options(self, memory_db, kwargs, field, message):
+        conn = _make_db(memory_db)
+        svc = ShareService(conn, "test-secret")
+
+        with pytest.raises(ValidationError) as exc_info:
+            svc.create_share(paths=["project"], **kwargs)
+
+        assert exc_info.value.field == field
+        assert exc_info.value.message == message
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"password": "abcd"},
+            {"password": "x" * 128},
+            {"expires_hours": 1},
+            {"expires_hours": 8760},
+            {"max_downloads": 1},
+            {"max_downloads": 10000},
+        ],
+    )
+    def test_create_share_accepts_option_boundaries(self, memory_db, kwargs):
+        conn = _make_db(memory_db)
+        svc = ShareService(conn, "test-secret")
+
+        share = svc.create_share(paths=["project"], **kwargs)
+
+        assert share is not None
+
+    def test_empty_password_is_consistently_unprotected(self, memory_db):
+        conn = _make_db(memory_db)
+        svc = ShareService(conn, "test-secret")
+
+        share = svc.create_share(paths=["project"], password="")
+
+        assert share is not None
+        assert share.has_password is False
+        persisted = svc.get_share(share.id)
+        assert persisted is not None
+        assert persisted.has_password is False
 
     def test_list_shares(self, tmp_path, memory_db):
         conn = _make_db(memory_db)

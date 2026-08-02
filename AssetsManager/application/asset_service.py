@@ -17,6 +17,7 @@ from AssetsManager.application.asset_filters import (
 from AssetsManager.core.directory_cache import DirCacheEntry, DirectoryCache
 from AssetsManager.core.performance import PerformanceRecorder
 from AssetsManager.domain.asset import category_for_extension
+from AssetsManager.domain.errors import ValidationError
 from AssetsManager.core.format_utils import format_size
 
 
@@ -133,10 +134,49 @@ class AssetService:
         self._record_listing_performance(target, options, started, listing)
         return listing
 
-    def summarize_directories(self, directories: list[Path]) -> dict[str, tuple[Path | None, int]]:
-        """Return cached-or-fresh summaries for a bounded, validated directory set."""
-        paths = [str(directory) for directory in directories]
-        cached_entries = self._directory_cache.get_batch(paths) if self._directory_cache else {}
+    @staticmethod
+    def validate_directory_summary_paths(paths: Sequence[object]) -> tuple[str, ...]:
+        """Validate the bounded, unique path batch before any summary I/O."""
+        if len(paths) < 1 or len(paths) > 48:
+            raise ValidationError("paths", "parent_path and 1-48 paths are required")
+
+        path_values: list[str] = []
+        for path in paths:
+            try:
+                value = os.fspath(path)
+            except TypeError:
+                raise ValidationError("paths", "paths must be unique strings") from None
+            if not isinstance(value, str):
+                raise ValidationError("paths", "paths must be unique strings")
+            path_values.append(value)
+        if len(path_values) != len(set(path_values)):
+            raise ValidationError("paths", "paths must be unique strings")
+        return tuple(path_values)
+
+    @staticmethod
+    def validate_directory_summary_parent(parent: Path) -> Path:
+        """Require an existing directory before resolving child batches."""
+        parent = Path(parent)
+        if not parent.is_dir():
+            raise ValidationError("parent_path", "Parent is not a directory")
+        return parent
+
+    def summarize_directories(
+        self,
+        directories: Sequence[Path],
+        parent: Path | None = None,
+    ) -> dict[str, tuple[Path | None, int]]:
+        """Return validated summaries while retaining the legacy directories-only API."""
+        directory_batch = tuple(directories)
+        path_values = self.validate_directory_summary_paths(directory_batch)
+        directory_paths = tuple(Path(path) for path in path_values)
+        parent_path = directory_paths[0].parent if parent is None else Path(parent)
+
+        parent_path = self.validate_directory_summary_parent(parent_path)
+        if any(not directory.is_dir() or directory.parent != parent_path for directory in directory_paths):
+            raise ValidationError("paths", "paths must be direct child directories")
+
+        cached_entries = self._directory_cache.get_batch(path_values) if self._directory_cache else {}
         cache_writes: list[tuple[str, int, str | None, float]] = []
         summaries = {
             str(directory): _scan_dir_summary(
@@ -148,7 +188,7 @@ class AssetService:
                 cached_entry=cached_entries.get(str(directory)),
                 cache_lookup_complete=self._directory_cache is not None,
             )
-            for directory in directories
+            for directory in directory_paths
         }
         if cache_writes and self._directory_cache is not None:
             self._directory_cache.set_batch(cache_writes)

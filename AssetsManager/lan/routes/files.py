@@ -8,6 +8,7 @@ from aiohttp import web
 
 from AssetsManager.application import DirectoryListOptions, ProjectDepthConfig
 from AssetsManager.core.format_utils import format_size
+from AssetsManager.domain.errors import ValidationError
 from AssetsManager.lan.routes._helpers import get_lan, get_asset_service, get_metadata_service, require_permission, validate_path
 
 
@@ -146,27 +147,37 @@ async def handle_directory_summaries(request):
             return web.json_response({"error": "Invalid JSON body"}, status=status)
         parent_path = payload.get("parent_path") if isinstance(payload, dict) else None
         paths = payload.get("paths") if isinstance(payload, dict) else None
-        if not isinstance(parent_path, str) or not isinstance(paths, list) or not paths or len(paths) > 48:
+        if not isinstance(parent_path, str) or not isinstance(paths, list):
             status = 400
             return web.json_response({"error": "parent_path and 1-48 paths are required"}, status=status)
-        if len(paths) != len(set(paths)) or not all(isinstance(path, str) for path in paths):
+
+        asset_service = get_asset_service(request)
+        try:
+            asset_service.validate_directory_summary_paths(paths)
+        except ValidationError as exc:
             status = 400
-            return web.json_response({"error": "paths must be unique strings"}, status=status)
+            return web.json_response({"error": exc.message}, status=status)
         requested_count = len(paths)
+
         try:
             parent = validate_path(lan, parent_path)
-            if not parent.is_dir():
+            try:
+                parent = asset_service.validate_directory_summary_parent(parent)
+            except ValidationError as exc:
                 status = 400
-                return web.json_response({"error": "Parent is not a directory"}, status=status)
+                return web.json_response({"error": exc.message}, status=status)
             directories = [validate_path(lan, path) for path in paths]
         except (web.HTTPException, OSError):
             status = 400
             return web.json_response({"error": "Invalid directory path"}, status=status)
-        if any(not directory.is_dir() or directory.parent != parent for directory in directories):
-            status = 400
-            return web.json_response({"error": "paths must be direct child directories"}, status=status)
 
-        summaries = await asyncio.to_thread(get_asset_service(request).summarize_directories, directories)
+        try:
+            summaries = await asyncio.to_thread(
+                asset_service.summarize_directories, directories, parent=parent
+            )
+        except ValidationError as exc:
+            status = 400
+            return web.json_response({"error": exc.message}, status=status)
         items = []
         for path, directory in zip(paths, directories, strict=True):
             preview, item_count = summaries[str(directory)]
@@ -181,7 +192,6 @@ async def handle_directory_summaries(request):
         return web.json_response({"items": items})
     finally:
         _record_directory_summaries_route(lan, started, outcome, status, requested_count, result_count)
-
 
 def _record_files_route(lan, started: float, target, outcome: str, status: int, item_count: int) -> None:
     recorder = getattr(lan, "performance_recorder", None)

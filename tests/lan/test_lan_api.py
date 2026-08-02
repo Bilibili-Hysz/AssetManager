@@ -1250,18 +1250,27 @@ async def test_directory_summaries_route_rejects_non_direct_or_invalid_paths(tmp
     parent = library / "projects"
     (parent / "avatar" / "nested").mkdir(parents=True)
     (library / "outside").mkdir()
+    (tmp_path / "outside").mkdir()
     client = await _make_client(app)
     try:
         nested = await client.post(
             "/api/files/summaries",
             json={"parent_path": "projects", "paths": ["projects/avatar/nested"]},
         )
-        escaped = await client.post(
+        sibling = await client.post(
             "/api/files/summaries",
             json={"parent_path": "projects", "paths": ["outside"]},
         )
+        escaped = await client.post(
+            "/api/files/summaries",
+            json={"parent_path": "projects", "paths": ["../outside"]},
+        )
         assert nested.status == 400
+        assert await nested.json() == {"error": "paths must be direct child directories"}
+        assert sibling.status == 400
+        assert await sibling.json() == {"error": "paths must be direct child directories"}
         assert escaped.status == 400
+        assert await escaped.json() == {"error": "Invalid directory path"}
     finally:
         await client.close()
 
@@ -1281,7 +1290,111 @@ async def test_directory_summaries_route_rejects_duplicate_and_over_limit_paths(
             json={"parent_path": "", "paths": ["projects"] * 49},
         )
         assert duplicate.status == 400
+        assert await duplicate.json() == {"error": "paths must be unique strings"}
         assert over_limit.status == 400
+        assert await over_limit.json() == {
+            "error": "parent_path and 1-48 paths are required",
+        }
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_directory_summaries_route_preserves_validation_error_priority_and_exact_json(tmp_path):
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    parent = library / "projects"
+    child = parent / "child"
+    parent.mkdir()
+    child.mkdir()
+    (child / "nested").mkdir()
+    (library / "parent-file").write_text("file", encoding="utf-8")
+    client = await _make_client(app)
+    try:
+        cases = [
+            ("not-json", "Invalid JSON body"),
+            ({}, "parent_path and 1-48 paths are required"),
+            ({"parent_path": "missing", "paths": []}, "parent_path and 1-48 paths are required"),
+            ({"parent_path": "missing", "paths": ["projects/child", []]}, "paths must be unique strings"),
+            ({"parent_path": "parent-file", "paths": ["missing"]}, "Parent is not a directory"),
+            ({"parent_path": "projects", "paths": ["../outside"]}, "Invalid directory path"),
+            ({"parent_path": "projects", "paths": ["projects/child/nested"]}, "paths must be direct child directories"),
+        ]
+        for payload, expected_error in cases:
+            if payload == "not-json":
+                response = await client.post(
+                    "/api/files/summaries",
+                    data="{not-json",
+                    headers={"Content-Type": "application/json"},
+                )
+            else:
+                response = await client.post("/api/files/summaries", json=payload)
+            assert response.status == 400
+            assert await response.json() == {"error": expected_error}
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_directory_summaries_route_returns_forbidden_before_body_parsing(tmp_path, monkeypatch):
+    from AssetsManager.lan.routes import files
+
+    app, _library, _conn = _make_lan_app(tmp_path)
+    monkeypatch.setattr(files, "require_permission", lambda _request, _permission: False)
+    client = await _make_client(app)
+    try:
+        response = await client.post("/api/files/summaries", data="{not-json")
+        assert response.status == 403
+        assert await response.json() == {"error": "Forbidden"}
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_directory_summaries_route_returns_exact_json_for_unhashable_path_element(tmp_path):
+    app, library, _conn = _make_lan_app(tmp_path)
+    parent = library / "projects"
+    parent.mkdir()
+    client = await _make_client(app)
+    try:
+        response = await client.post(
+            "/api/files/summaries",
+            json={"parent_path": "projects", "paths": ["projects", []]},
+        )
+        assert response.status == 400
+        assert await response.json() == {"error": "paths must be unique strings"}
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_directory_summaries_route_keeps_runtime_errors_as_500_and_records_performance(tmp_path, monkeypatch):
+    from AssetsManager.core.performance import PerformanceRecorder
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    parent = library / "projects"
+    child = parent / "child"
+    child.mkdir(parents=True)
+    recorder = PerformanceRecorder(enabled=True)
+    lan = app[LAN_APP_KEY]
+    lan.performance_recorder = recorder
+
+    def raise_runtime_error(*_args, **_kwargs):
+        raise RuntimeError("summary failed")
+
+    monkeypatch.setattr(lan.services.asset_service, "summarize_directories", raise_runtime_error)
+    client = await _make_client(app)
+    try:
+        response = await client.post(
+            "/api/files/summaries",
+            json={"parent_path": "projects", "paths": ["projects/child"]},
+        )
+        assert response.status == 500
+        event = next(event for event in recorder.recent() if event.name == "lan.directory_summaries")
+        assert event.attributes == {
+            "outcome": "error", "status": 500, "requested_count": 1, "result_count": 0,
+        }
     finally:
         await client.close()
 
@@ -2419,6 +2532,155 @@ async def test_share_routes_create_and_download_scoped_file(tmp_path):
 
         blocked = await client.get(f"/api/shares/{share_id}/download/private.txt")
         assert blocked.status == 403
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_create_share_validation_contract(tmp_path):
+    app, library, conn = _make_lan_app(tmp_path)
+    (library / "asset.txt").write_text("shared asset", encoding="utf-8")
+    headers = _local_ui_headers(app)
+
+    client = await _make_client(app)
+    try:
+        invalid_cases = [
+            ({"password": 42}, "Invalid password format"),
+            ({"password": "abc"}, "Password must be at least 4 characters"),
+            ({"password": "x" * 129}, "Password must be less than 128 characters"),
+            ({"expires_hours": "invalid"}, "Invalid expiry format"),
+            ({"expires_hours": True}, "Invalid expiry format"),
+            ({"expires_hours": False}, "Invalid expiry format"),
+            ({"expires_hours": 1.0}, "Invalid expiry format"),
+            ({"expires_hours": 1.5}, "Invalid expiry format"),
+            ({"expires_hours": float("inf")}, "Invalid expiry format"),
+            ({"expires_hours": 0}, "Expiry must be between 1 and 8760 hours"),
+            ({"expires_hours": 8761}, "Expiry must be between 1 and 8760 hours"),
+            ({"max_downloads": "invalid"}, "Invalid max downloads format"),
+            ({"max_downloads": True}, "Invalid max downloads format"),
+            ({"max_downloads": False}, "Invalid max downloads format"),
+            ({"max_downloads": 1.0}, "Invalid max downloads format"),
+            ({"max_downloads": 1.5}, "Invalid max downloads format"),
+            ({"max_downloads": float("inf")}, "Invalid max downloads format"),
+            ({"max_downloads": 0}, "Max downloads must be between 1 and 10000"),
+            ({"max_downloads": 10001}, "Max downloads must be between 1 and 10000"),
+        ]
+        for options, expected_error in invalid_cases:
+            response = await client.post(
+                "/api/shares",
+                json={"paths": ["asset.txt"], **options},
+                headers=headers,
+            )
+            assert response.status == 400
+            assert await response.json() == {"error": expected_error}
+
+        no_paths = await client.post(
+            "/api/shares",
+            json={"paths": [], "password": "abc"},
+            headers=headers,
+        )
+        assert no_paths.status == 400
+        assert await no_paths.json() == {"error": "No paths provided"}
+
+        no_valid_paths = await client.post(
+            "/api/shares",
+            json={
+                "paths": ["missing.txt"],
+                "password": "abc",
+                "expires_hours": "invalid",
+                "max_downloads": "invalid",
+            },
+            headers=headers,
+        )
+        assert no_valid_paths.status == 400
+        assert await no_valid_paths.json() == {"error": "No valid paths"}
+
+        password_first = await client.post(
+            "/api/shares",
+            json={"paths": ["asset.txt"], "password": "abc", "expires_hours": "invalid"},
+            headers=headers,
+        )
+        assert password_first.status == 400
+        assert await password_first.json() == {"error": "Password must be at least 4 characters"}
+
+        expiry_first = await client.post(
+            "/api/shares",
+            json={"paths": ["asset.txt"], "expires_hours": 0, "max_downloads": 0},
+            headers=headers,
+        )
+        assert expiry_first.status == 400
+        assert await expiry_first.json() == {"error": "Expiry must be between 1 and 8760 hours"}
+
+        valid_cases = [
+            {"password": "abcd"},
+            {"password": "x" * 128},
+            {"expires_hours": 1},
+            {"expires_hours": 8760},
+            {"max_downloads": 1},
+            {"max_downloads": 10000},
+            {"expires_hours": "3", "max_downloads": "4"},
+        ]
+        for options in valid_cases:
+            response = await client.post(
+                "/api/shares",
+                json={"paths": ["asset.txt"], **options},
+                headers=headers,
+            )
+            assert response.status == 200
+
+        empty_password = await client.post(
+            "/api/shares",
+            json={"paths": ["asset.txt"], "password": ""},
+            headers=headers,
+        )
+        assert empty_password.status == 200
+        empty_data = await empty_password.json()
+        assert empty_data["has_password"] is False
+        row = conn.execute(
+            "SELECT password_hash FROM share_links WHERE id=?", (empty_data["id"],)
+        ).fetchone()
+        assert row == (None,)
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_create_share_keeps_non_validation_failures_as_500(tmp_path, monkeypatch):
+    from AssetsManager.domain.errors import ValidationError
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    (library / "asset.txt").write_text("shared asset", encoding="utf-8")
+    headers = _local_ui_headers(app)
+    service = app[LAN_APP_KEY].services.share_service
+
+    client = await _make_client(app)
+    try:
+        def raise_validation_error(**_kwargs):
+            raise ValidationError("password", "Password must be at least 4 characters")
+
+        monkeypatch.setattr(service, "create_share", raise_validation_error)
+        invalid = await client.post(
+            "/api/shares", json={"paths": ["asset.txt"]}, headers=headers,
+        )
+        assert invalid.status == 400
+        assert await invalid.json() == {"error": "Password must be at least 4 characters"}
+
+        monkeypatch.setattr(service, "create_share", lambda **_kwargs: None)
+        failed = await client.post(
+            "/api/shares", json={"paths": ["asset.txt"]}, headers=headers,
+        )
+        assert failed.status == 500
+        assert await failed.json() == {"error": "Failed to create share link"}
+
+        def raise_runtime_error(**_kwargs):
+            raise RuntimeError("share creation failed")
+
+        monkeypatch.setattr(service, "create_share", raise_runtime_error)
+        errored = await client.post(
+            "/api/shares", json={"paths": ["asset.txt"]}, headers=headers,
+        )
+        assert errored.status == 500
     finally:
         await client.close()
 
