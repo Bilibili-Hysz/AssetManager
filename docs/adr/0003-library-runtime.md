@@ -8,15 +8,20 @@ report and recalibration report are authoritative:
 
 - [`desktop-lan-webui-architecture-migration.md`](../compose/reports/desktop-lan-webui-architecture-migration.md)
 - [`desktop-lan-webui-architecture-recalibration.md`](../compose/reports/desktop-lan-webui-architecture-recalibration.md)
+- [`a3-service-assembly-2026-08-02.md`](../compose/reports/a3-service-assembly-2026-08-02.md)
 - [`2026-07-21-desktop-lan-webui-architecture-recalibration.md`](../compose/plans/2026-07-21-desktop-lan-webui-architecture-recalibration.md)
 
 ## Decision
 
 `ApplicationBootstrap` owns application-service construction. For each live
 `LibrarySession`, `ApplicationBootstrap.runtime_for(session)` creates and
-caches one `LibraryRuntime` with one eager `LibraryScopedServices` bundle.
-The runtime is the ownership boundary for services that are scoped to a
-library and its connection provider.
+caches one `LibraryRuntime` with one eager, frozen `LibraryScopedServices`
+snapshot object. The snapshot eagerly owns the Desktop/shared session,
+Metadata, Tag, Thumbnail, FileOperation, Undo, Plugin and AssetIndex fields. A
+private holder inside that same snapshot materializes one frozen
+`LanRuntimeServices` projection (Asset, Project and Search) only when LAN is
+composed. This projection is not a second Runtime or a second application
+composition root.
 
 `LibraryService` acquires a per-library Qt `QLockFile` before opening the
 database. The lock name is derived from the normalized library root and lives
@@ -25,14 +30,22 @@ second process opening the same library is rejected. Same-process service
 objects share the underlying lock lease for compatibility with existing
 session-identity tests.
 
-`LanServer` receives the `LibraryRuntime`, validates that it is live and
-canonical for its session, and eagerly attaches a `LanScopedServices` bundle
-before route registration. The LAN route helper `get_services(request)` is a
-direct lookup of `lan.services`; it never constructs, caches, or silently
-falls back to application services. Missing runtime/service composition fails
-loudly.
+`LanServer` receives the `LibraryRuntime`, prefers its canonical
+`services_snapshot`, and performs the complete projection inside one session
+operation lease. It materializes the snapshot's LAN-only bundle, validates
+common and LAN-only provider/session/cache identity, constructs LAN-owned
+Auth/Share services, and atomically publishes one `LanScopedServices` bundle
+before route registration. A temporary `.services` fallback exists only for
+legacy runtime-shaped test doubles when `services_snapshot` is statically
+absent; a present snapshot that returns `None` or raises never falls back.
+`LanScopedServices.runtime_services` continues to reference the canonical
+`LibraryScopedServices` snapshot. The LAN route helper
+`get_services(request)` remains a direct lookup of `lan.services`; it never
+constructs or caches application services. Missing composition fails loudly.
 
 ## Lifecycle and teardown
+
+LAN-only materialization is generation-based single-flight. A successful result is cached permanently; one failed generation invokes the factory once and is observed by every waiter, while a later caller may retry. Recursive access fails explicitly. Construction and final LAN publication are protected by `LibrarySession.operation()` plus an atomic publication gate, so close either follows a completed publication or prevents the result from being published. Closing a Runtime that never materialized the LAN bundle must not create it for cleanup; the current Asset/Project/Search services own no closeable resources.
 
 LAN server stop closes websocket/site and scanner resources when supported. It
 does not close an injected `LibraryRuntime` or `LibrarySession`. Runtime
@@ -42,12 +55,14 @@ stopped before the session releases caches or the database connection. The
 library lock is released only after that close path commits; initialization or
 failure paths release the newly acquired lock, while close failures retain the
 lock for a later retry path.
-current implementation covers the explicit pre-close barrier, retryable
+The current implementation covers the explicit pre-close barrier, retryable
 failure semantics, restart-generation ownership and the Windows cross-surface
 acceptance matrix. The Linux directory-symlink gate passed in Ubuntu WSL, so
 this ADR records the delivered architecture for the recalibrated scope.
 
 ## Public construction boundary
+
+The instance-level `asset_service`, `project_service`, and `search_service` accessors remain compatibility read-throughs to the same `lan_services` object. A3 does not preserve the previous dataclass constructor signature or reflection shape for those fields; callers must consume a Runtime snapshot rather than constructing `LibraryScopedServices` directly.
 
 `LanServer`, `ShareManager`, and desktop LAN sharing accept a canonical
 `LibraryRuntime` on the primary production path. The route-level raw

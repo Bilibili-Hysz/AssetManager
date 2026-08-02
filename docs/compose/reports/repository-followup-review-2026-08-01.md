@@ -18,7 +18,7 @@ remote: none configured
 
 - 阶段 1 数据安全：G6-4（Undo 残留启动清理）已完成 Windows 安全判定、清理上限和 sidecar 兼容补强，阶段整体仍未闭环。
 - 阶段 2 性能：目录大小任务队列治理的一个子项已完成，reset 最小化、真实图片 IO 和发布机阈值仍待验收。
-- 阶段 3 Desktop–LAN–WebUI：A1 应用层 `/api/` URL 剥离已完成并通过契约/路由测试；B2 ThumbnailLoader 直连 SQLite 经高风险审查确认仍需先完成服务设计。
+- 阶段 3 Desktop–LAN–WebUI：A1、A2 与 A3 已完成；B2 ThumbnailLoader 服务边界和 B3 Desktop/Web TAGS 最小闭环已落位。B1、B2 真实性能/发布机验收与 B3 最终跨端状态验收仍待独立推进。
 - 本阶段创建的测试临时目录已按精确路径清理，未删除未知用户文件。
 
 ## 2. 本轮代码变更
@@ -121,7 +121,23 @@ B1 审查确认 Desktop 创建分享仍要求 LAN server 运行，并通过 loca
 - **分享创建**：`ShareService` 新增密码、过期小时和下载次数校验，并在 `create_share()` 入口内再次执行，服务直接调用不能绕过；空密码统一规范化为无密码，持久化与 DTO 的 `has_password` 一致。LAN 保留整数字符串兼容，但拒绝布尔值、浮点数和溢出数，路径校验仍优先，普通异常仍为 500。
 - **目录摘要**：`AssetService.summarize_directories(directories, parent=None)` 在缓存读取或扫描前校验 1–48 条、路径类型/唯一性、父目录和直子目录关系；LAN 保留权限、JSON、PathGuard、精确错误顺序/文本与成功 DTO，并修复混合不可哈希元素意外 500。旧位置参数与 `directories=` 关键字调用均保留兼容。
 - **独立审查**：分享首轮发现宽松 `int()` 会接受 bool/float 且无穷值可触发未捕获 `OverflowError`；修复后复审通过。目录摘要首轮发现公开方法签名兼容风险，继续补齐旧位置参数和旧关键字入口后复审通过。两条审查均无剩余问题。
-- **当前证据**：受影响的 domain/share/asset/LAN 四个完整测试文件 `283 passed`；架构边界 `74 passed`；Ruff、compileall、`git diff --check`、文档尾随空白与相对链接检查通过。A2 三类校验至此完成，但不改变 A3、B1、B2 性能/全量与 B3 真实浏览器验收的未完成状态。
+- **当前证据**：受影响的 domain/share/asset/LAN 四个完整测试文件 `283 passed`；架构边界 `74 passed`；Ruff、compileall、`git diff --check`、文档尾随空白与相对链接检查通过。A2 三类校验至此完成；A3 状态由后续 2.11 节更新，B1、B2 性能/全量与 B3 最终跨端状态验收仍独立跟踪。
+
+### 2.11 A3 服务按端装配收口（2026-08-02）
+
+A3 已按实际引用矩阵完成，并对原计划中“Desktop 可移除 ThumbnailService”的假设做了代码校准：
+
+- `LibraryRuntime` 与 frozen `LibraryScopedServices` snapshot 仍各库唯一；Desktop/shared eager 字段为 Metadata、Tag、Thumbnail、FileOperation、Undo、Plugin、AssetIndex。B2 已使 Thumbnail 成为 FileList 的真实依赖，不能延迟。
+- 新增 `LanRuntimeServices`，只包含 Asset、Project、Search。snapshot 内部 holder 以 generation + `Condition` 实现 single-flight，成功永久缓存，同代失败共享、后续可重试，递归访问显式失败。
+- lazy factory 与 `_LanServerImpl` 最终投影均在 session operation/publication 边界内；close 先获胜时不缓存 lazy 结果，也不发布 partial LAN binding。`LibrarySession._closed` 不参与 compare/hash，保持 session/snapshot 作为映射键时的哈希稳定。
+- LAN 优先读取 `services_snapshot`；仅在属性静态缺失的旧测试桩上 fallback 到 `.services`。canonical 服务、Project 内部服务与 Asset DirectoryCache 均校验为同一 session/connection；eager/lazy 服务复用同一个 bound provider 对象。
+- 兼容 property `asset_service` / `project_service` / `search_service` 委托到同一 lazy bundle；旧 dataclass 构造签名与反射形状不属于兼容承诺。
+- AuthService、ShareService、`token_secret`、Auth/Share 表初始化和桌面分享直调均未迁移，B1 范围保持未开始。
+- 两轮独立高风险审查先后发现并关闭失败代际、关闭竞态、hash 稳定性、canonical `_session=None`、snapshot fallback 与最终 LAN publication race 等问题；最终 P0–P3 均为零。
+- 当前证据：A3/架构聚焦 `347 passed`；Task D Runtime/Desktop `431 passed`；Desktop/LAN/Chromium `190 passed`；完整 Python `1695 passed, 1 skipped`；Ruff、compileall 与 `git diff --check` 通过。
+- 代码提交：`7b9532d05c66b84f1526870ae349ff022f1b268a`（`refactor: assemble services by presentation`）。
+
+详细设计和验证记录见 [`a3-service-assembly-2026-08-02.md`](a3-service-assembly-2026-08-02.md)。
 
 ## 3. 验证证据
 
@@ -133,13 +149,14 @@ B1 审查确认 Desktop 创建分享仍要求 LAN server 运行，并通过 loca
 | G6-3/B2 生命周期与服务交叉回归 | `163 passed` | 覆盖按库锁、跨进程竞争探针、初始化/关闭异常、Bootstrap、Runtime、窗口切换与 ThumbnailService |
 | B2 ThumbnailService/Repository 目标测试 | `64 passed` | 缓存元数据 round-trip、session 拒绝、provider 失败降级与租约释放 |
 | A2 服务层校验下沉 | 标签既有证据 + 本轮受影响的 domain/share/asset/LAN 四个完整文件 `283 passed`；架构边界 `74 passed` | 标签 trim/空值/类型/长度；分享密码/过期/限次类型与边界；目录摘要批次/唯一性/父目录/直子目录；精确 LAN 400、普通异常 500 与公开 API 兼容 |
+| A3 服务按端装配 | 聚焦/架构 `347 passed`；Task D `431 passed`；跨端 `190 passed`；完整 Python `1695 passed, 1 skipped` | Desktop 不创建 Asset/Project/Search；Thumbnail 保持 eager；single-flight、失败重试、递归拒绝、close race、provider/session/cache identity、strict snapshot fallback 与 B1 边界 |
 | B3 Web TAGS 最小闭环 | BrowsePage `34 passed`；WebUI `37 files / 292 tests passed`；typecheck passed；LAN TAGS DTO `1 passed` | 显式 TAGS 与 recovery null 重拉、旧请求 abort、WebSocket domain 契约 |
 | Core/unit/integration/LAN 非浏览器 sweep | `1264 passed, 1 skipped, 1 environment failure` | 唯一失败来自外部 visualization 基目录 ACL；将同一用例切换到工作区隔离基目录后 `1 passed` |
 | A1 架构边界 | `74 passed` | 完整 `tests/unit/test_architecture_boundaries.py` |
 | 静态质量 | Ruff passed；compileall passed；`git diff --check` passed | 覆盖本阶段修改文件及 `AssetsManager` |
 | 外部基目录全量尝试 | `1589 passed, 1 skipped, 1 failed, 5 errors` | 1 个失败是外部 visualization 目录 ACL 造成的回收站删除失败；5 个错误均为 Chromium `spawn EPERM` |
 
-因此，本轮不宣称“受当前 Windows 沙箱约束下的浏览器 E2E 全量通过”。目标代码测试、非 E2E 回归和静态检查均已通过；基线报告中的 Python `1590 passed, 1 skipped` 仍作为历史快照保留。
+历史外部基目录尝试仍按当时环境结果保留；A3 收口时已在沙箱外使用显式 basetemp 重跑 Chromium、Windows spawn、回收站和完整 Python 回归，当前结果为 `1695 passed, 1 skipped`。基线报告中的 `1590 passed, 1 skipped` 继续作为历史快照，不再代表当前计数。
 
 ## 4. 系统临时目录风险披露
 
@@ -152,5 +169,5 @@ B1 审查确认 Desktop 创建分享仍要求 LAN server 运行，并通过 loca
 1. 先把本报告和路线图状态作为新的工作树事实入口。
 2. 数据安全线：G6-3 已完成；继续立项数据库 quick check/孤儿修剪、导出/恢复、防误删策略，不要把单实例锁与 G6-4 的部分缓解误判为阶段 1 完成。
 3. 性能线：继续 reset 最小化和真实图片 IO/发布机验收；目录大小队列治理可视为已完成子项。
-4. 服务边界线：A1、A2 三类校验、B2 服务边界与 B3 Desktop/Web TAGS 最小闭环已完成；下一步分别处理 A3 按端装配与 B1 Runtime-owned 分享服务设计，避免混合 secret/DB 生命周期变更，同时继续补齐 B2 性能/全量证据。
+4. 服务边界线：A1、A2、A3、B2 服务边界与 B3 Desktop/Web TAGS 最小闭环已完成；下一步单独设计 B1 Runtime-owned Auth/Share、`token_secret` 与桌面直调，不回改 A3 的 single Runtime/snapshot 所有权，同时继续补齐 B2 性能/全量证据。
 5. 跨端线：为 B3 增加真实浏览器 WebSocket → React → HTTP refetch 与 Desktop/Web 最终标签状态一致性验收；组件级测试不能替代该门禁。

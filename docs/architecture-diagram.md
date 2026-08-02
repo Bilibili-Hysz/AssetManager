@@ -1,7 +1,7 @@
 # AssetsManager Architecture Diagram
 
-**Version:** 2026-08-02 A2 validation downshift (tags + shares + directory summaries) + B3 Web TAGS follow-up (baseline figures retained as snapshots)
-**Tests:** Python 1590 passed, 1 Windows platform skip plus Ubuntu WSL symlink gate passed; WebUI 37 files / 292 passed; Task E cross-surface 186 passed; typecheck and build passed
+**Version:** 2026-08-02 A3 per-presentation service assembly + A2/B2/B3 delivered boundaries
+**Tests:** Python 1695 passed, 1 Windows platform skip plus Ubuntu WSL symlink gate passed; A3/architecture focused 347 passed; Task D Runtime/Desktop 431 passed; current Desktop/LAN/Chromium matrix 190 passed; WebUI 37 files / 292 passed snapshot
 
 ---
 
@@ -31,14 +31,13 @@
 ┌──────────────────────────▼─────────────────────────────────────────┐
 │                 APPLICATION + RUNTIME LAYER                       │
 │                                                                     │
-│  LibraryService    AssetService      TagService                    │
-│  MetadataService   ThumbnailService  SearchService                 │
-│  ProjectService    FileOpService     UndoService                   │
-│  AuthService       ShareService      PluginService                 │
-│  AssetIndexService AssetFilters                                    │
+│  Eager Desktop/shared: Metadata  Tag  Thumbnail  FileOp  Undo     │
+│  Shared stateless: Plugin  AssetIndex  AssetFilters                │
+│  Lazy LAN-only projection: Asset  Project  Search                  │
 │  LibraryContext  LibrarySession  LibraryRuntime                    │
+│  LibraryScopedServices → LanRuntimeServices (single-flight)        │
 │  RuntimeEventRouter  DTOs  SessionPrincipal                         │
-│  AuthService/ShareService are LAN-owned until B1                  │
+│  AuthService/ShareService remain LAN-owned until B1               │
 └──────────────────────────┬─────────────────────────────────────────┘
                            │
 ┌──────────────────────────▼─────────────────────────────────────────┐
@@ -68,9 +67,9 @@
 │  lan/scanner.py  lan/ws.py  lan/tunnel.py                          │
 │  lan/manager.py (lifecycle)                                         │
 │                                                                     │
-│  LAN → injected Runtime services + LAN-owned Auth/Share services  │
+│  LAN → canonical snapshot + lazy LAN projection + Auth/Share      │
 │      → auth/principal/capabilities                                  │
-│  Windows Task E matrix: Chromium + Desktop + LAN passed            │
+│  Current A3 matrix: Chromium + Desktop + LAN = 190 passed          │
 │  Linux directory-symlink gate: Ubuntu WSL passed                  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -86,7 +85,9 @@ StartupWindow.library_opened
     → DatabaseManager.connection_for(path) → SQLite
     → TagStore(root) → ProjectData(root)
     → LibraryContext → LibrarySession (scoped connection provider)
-    → ApplicationBootstrap.runtime_for(session) → LibraryRuntime.services
+    → ApplicationBootstrap.runtime_for(session)
+      → LibraryRuntime.services_snapshot
+        → eager Desktop/shared fields + private LAN single-flight holder
   → MainWindow
   → SidebarPanel.navigate_to(root)
   → FileListPanel.navigate_to(root, set_root=True)
@@ -116,7 +117,7 @@ SidebarPanel.directory_selected
 HTTP → aiohttp security/auth middleware
   → SessionPrincipal + Capabilities
   → route handler → PathGuard
-  → Runtime-owned application service → DTO response
+  → snapshot common service or once-materialized LanRuntimeServices → DTO response
 Runtime DomainEvent → RuntimeEventRouter
   → epoch/revision invalidation → authenticated WebSocket
   → React RealtimeProvider → domain consumer
@@ -145,7 +146,8 @@ SettingsDialog → themes.set_theme(name)
 6. `SignalBus` is the Qt presentation communication channel; `domain.event_bus` is the application/domain event channel
 7. `ThumbnailLoader` may depend on the scoped `ThumbnailService` and immutable runtime snapshot, but must not depend directly on SQLite connections or `ThumbnailRepository`
 8. `TagService`, `ShareService`, and `AssetService` own A2 business validation; LAN routes own transport and `PathGuard` boundaries
-9. `tests/unit/test_architecture_boundaries.py` guards runtime, principal, DTO, and teardown rules
+9. A3 keeps one Runtime/snapshot: Desktop/shared fields are eager; Asset/Project/Search may be constructed only by Bootstrap's lazy LAN projection; Auth/Share remain LAN-owned until B1
+10. `tests/unit/test_architecture_boundaries.py` guards runtime, principal, DTO, assembly, and teardown rules
 
 ---
 
@@ -159,4 +161,4 @@ SettingsDialog → themes.set_theme(name)
 | `panels/` | 18 | ~6,100 | 3 test files |
 | `widgets/` | 6 | ~900 | 0 test files |
 | `tests/` | 50+ | ~5,000+ | — |
-| **Total** | **150+** | **~27,000+** | **Python 1590 passed, 1 Windows skip; Linux symlink gate passed; WebUI 37 files / 292 passed; Task E 186 passed** |
+| **Total** | **150+** | **~27,000+** | **Python 1695 passed, 1 Windows skip; Linux symlink gate passed; WebUI 37 files / 292 snapshot; current cross-surface 190 passed** |
