@@ -1,6 +1,6 @@
 # AssetsManager Architecture Diagram
 
-**Version:** 2026-08-02 B2 working-tree follow-up (baseline figures retained as snapshots)
+**Version:** 2026-08-02 B2/B3 working-tree follow-up (baseline figures retained as snapshots)
 **Tests:** Python 1590 passed, 1 Windows platform skip plus Ubuntu WSL symlink gate passed; WebUI 37 files / 289 passed; Task E cross-surface 186 passed; typecheck and build passed
 
 ---
@@ -89,8 +89,10 @@ StartupWindow.library_opened
   → SidebarPanel.navigate_to(root)
   → FileListPanel.navigate_to(root, set_root=True)
     → FileListPanel._configure_library_runtime(root)
-  → InfoPanel / TagTreePanel library_opened handlers
+  → InfoPanel library_opened handler
     → scoped services required
+  → TagTreePanel.set_runtime(runtime)
+    → RuntimeEventSubscription → ProjectionDomain.TAGS
 ```
 
 ## Data Flow: File Browsing
@@ -135,7 +137,7 @@ SettingsDialog → themes.set_theme(name)
 1. `domain/` should not depend on presentation, LAN, controllers, or repositories
 2. `application/` owns runtime assembly and depends on `core/`
 3. `lan/` consumes an injected `LibraryRuntime`; routes do not assemble services
-4. `panels/` + `widgets/` depend on scoped application services and runtime
+4. `panels/` + `widgets/` depend on scoped application services and runtime; projection subscribers use the Qt bridge rather than calling widgets directly from worker/event-bus threads
 5. `panels/` do NOT depend on `lan/` (except `lan_sharing.py` mixin)
 6. `SignalBus` is the Qt presentation communication channel; `domain.event_bus` is the application/domain event channel
 7. `ThumbnailLoader` may depend on the scoped `ThumbnailService` and immutable runtime snapshot, but must not depend directly on SQLite connections or `ThumbnailRepository`

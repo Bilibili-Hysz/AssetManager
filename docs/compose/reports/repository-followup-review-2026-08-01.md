@@ -93,6 +93,18 @@ B2 已转为下一阶段设计任务，保持现有优先级、取消、generati
 - 增量目标测试：`tests/desktop/test_thumbnail_loader.py` 为 `38 passed`；`tests/desktop/test_file_list_shim.py` 为 `103 passed`，其中 1 个 LAN TagTree 用例在整文件批量运行时出现事件顺序抖动，单独重跑通过，未归因于 Loader 改动。
 - 静态边界检查：`rg -n "ThumbnailRepository|sqlite3|set_cache_db|_db_conn|_repo" AssetsManager/panels` 无命中；compileall 通过。真实图片 IO、性能基准、全量回归与提交后的基线验证仍未闭合。
 
+### 2.8 B3 TagTree Runtime 投影试点（2026-08-02）
+
+在 B2 Loader 服务边界收口后，当前工作树完成了 TagTree 的最小 Runtime 投影切片：
+
+- `TagTreePanel.set_runtime(runtime)` 绑定 immutable service snapshot 与 `LibraryRuntime.event_router`；仅处理 `ProjectionDomain.TAGS` invalidation。
+- `RuntimeEventSubscription` 通过 Qt queued signal 投递，不在 EventBus/Router 发布线程直接访问 Qt widgets。
+- 旧的 TagTree `TagCatalogChanged` 自动订阅已移除，避免 Runtime Router 与全局 domain bridge 双路径造成重复刷新；兼容性 handler 保留用于 session-scoped 直接调用与过渡测试。
+- 切库/关闭时主动关闭旧 router subscription，并通过 binding generation、runtime identity、session token 和 epoch 拒绝延迟旧事件。
+- B3 聚焦测试 `15 passed`；Runtime Router/事件发布筛选回归 `30 passed`；架构边界 `74 passed`；LAN 标签变更到桌面 TagTree 的真实用例单独重跑通过。
+
+B3 仍未宣称完整交付：WebSocket/React authoritative refetch、桌面/Web 最终状态一致性、发布环境复测和提交后基线证据仍待完成。
+
 ## 3. 验证证据
 
 | 检查 | 结果 | 解释 |
