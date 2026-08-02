@@ -164,7 +164,7 @@ def test_real_lan_tag_mutation_refreshes_desktop_tag_tree(tmp_path):
     event_bus = get_event_bus()
     baseline_catalog_handlers = event_bus.handler_count(TagCatalogChanged)
     tag_tree = TagTreePanel()
-    tag_tree.set_scoped_services(runtime.services)
+    tag_tree.set_runtime(runtime)
     catalog_events = []
     catalog_subscription = event_bus.subscribe(TagCatalogChanged, catalog_events.append)
 

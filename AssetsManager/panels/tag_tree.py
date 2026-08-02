@@ -17,6 +17,9 @@ from AssetsManager.core import themes, icons
 from AssetsManager.panels.base import PanelContent
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.controllers.tag_tree_controller import TagTreeController
+from AssetsManager.application.runtime_events import ProjectionDomain
+from AssetsManager.panels._event_bridge import RuntimeEventSubscription
+from AssetsManager.domain.events import TagCatalogChanged
 from AssetsManager import i18n
 tr = i18n.tr
 _ICON_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -32,6 +35,10 @@ class TagTreePanel(PanelContent):
         self._controller: TagTreeController | None = None
         self._active_tag_filter: str | None = None
         self._scoped_services = None
+        self._runtime = None
+        self._runtime_subscription = None
+        self._binding_generation = 0
+
 
         self._tree = QTreeWidget()
         self._tree.setHeaderHidden(True)
@@ -62,9 +69,6 @@ class TagTreePanel(PanelContent):
         self._apply_tree_style()
         self.content_layout.addLayout(bar)
 
-        # Subscribe to domain events through a Qt bridge for UI-safe delivery.
-        from AssetsManager.domain.events import TagCatalogChanged
-        self._connect_domain_event(TagCatalogChanged, self._on_domain_tags_changed)
         self._connect_bus(bus().directory_changed, self._on_directory_changed)
         self._connect_bus(bus().theme_changed, self._on_visual_theme_changed)
         self._connect_bus(bus().language_changed, self._on_language_changed)
@@ -257,26 +261,63 @@ class TagTreePanel(PanelContent):
             match = not search or search in item.text(0).lower()
             item.setHidden(not match)
 
-    def _on_domain_tags_changed(self, event):
-        """Handle a session-scoped tag catalog update."""
+    def _on_domain_tags_changed(self, event: TagCatalogChanged):
+        """Handle a legacy session-scoped tag catalog update."""
         scoped = self._scoped_services
         if scoped is None or event.session_token != scoped.session.event_token:
             return
         self._populate()
 
-    def set_scoped_services(self, services):
-        """Bind library-scoped services resolved by MainWindow."""
+    def _close_runtime_subscription(self) -> None:
+        subscription = self._runtime_subscription
+        self._runtime_subscription = None
+        if subscription is not None:
+            subscription.close()
+
+    def _on_runtime_invalidation(self, generation, runtime, invalidation) -> None:
+        if generation != self._binding_generation or runtime is not self._runtime:
+            return
+        if invalidation.epoch != runtime.epoch:
+            return
+        scoped = self._scoped_services
+        if scoped is None or runtime.session.event_token != scoped.session.event_token:
+            return
+        if ProjectionDomain.TAGS not in invalidation.domains:
+            return
+        self._populate()
+
+    def set_runtime(self, runtime) -> None:
+        """Bind the immutable service snapshot and runtime projection router."""
+        self.set_scoped_services(runtime.services_snapshot, runtime=runtime)
+
+    def set_scoped_services(self, services, *, runtime=None):
+        """Bind library-scoped services and an optional runtime projection router."""
+        self._close_runtime_subscription()
+        self._binding_generation += 1
+        binding_generation = self._binding_generation
         old_root = self._library_root
+        self._runtime = runtime
         self._scoped_services = services
         self._library_root = services.session.root_str
         self._current_path = services.session.root_str
         self._controller = TagTreeController(self._library_root, tag_svc=services.tag_service)
         if self._active_tag_filter and old_root != self._library_root:
             self._active_tag_filter = None
+        if runtime is not None:
+            self._runtime_subscription = RuntimeEventSubscription(
+                runtime,
+                lambda invalidation: self._on_runtime_invalidation(
+                    binding_generation, runtime, invalidation,
+                ),
+                self,
+            )
         self._populate()
 
     def prepare_library_switch(self) -> None:
         """Drop service-bound state before the old session closes."""
+        self._binding_generation += 1
+        self._close_runtime_subscription()
+        self._runtime = None
         self._controller = None
         self._scoped_services = None
         self._active_tag_filter = None

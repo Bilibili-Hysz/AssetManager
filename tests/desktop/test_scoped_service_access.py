@@ -139,3 +139,36 @@ def test_normal_window_switch_injects_each_panel_and_cleans_file_list_once(monke
     file_list._loader.orphan_cleanup.assert_called_once_with()
     for panel in panels:
         panel.set_scoped_services.assert_called_once_with(new_bundle)
+
+
+def test_main_window_binds_runtime_to_projection_capable_tag_tree(monkeypatch):
+    from unittest.mock import Mock
+
+    from AssetsManager.window import MainWindow
+
+    class TagTree:
+        def set_runtime(self, runtime):
+            self.runtime = runtime
+
+    session = object()
+    services = object()
+    runtime = Mock(services=services)
+    bootstrap = Mock()
+    bootstrap.runtime_for.return_value = runtime
+    panels = [Mock(), Mock(), Mock()]
+    tag_tree = TagTree()
+
+    class Window:
+        file_list, info, sidebar = panels
+        _scoped_services_for_session = MainWindow._scoped_services_for_session
+
+    monkeypatch.setattr("AssetsManager.window._alive", lambda panel: True)
+
+    window = Window()
+    window._bootstrap = bootstrap
+    window.tag_tree = tag_tree
+    MainWindow._apply_scoped_services(window, session)
+
+    assert tag_tree.runtime is runtime
+    for panel in panels:
+        panel.set_scoped_services.assert_called_once_with(services)

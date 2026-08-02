@@ -1,6 +1,7 @@
 import os
 import threading
 import time
+from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -8,6 +9,8 @@ from PySide6.QtWidgets import QApplication
 
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import TagsChanged
+from AssetsManager.application.runtime_events import InvalidationEvent, ProjectionDomain
+from AssetsManager.panels._event_bridge import RuntimeEventSubscription
 from AssetsManager.panels.base import PanelContent
 
 
@@ -113,5 +116,54 @@ def test_domain_event_bridge_delivers_multiple_events_from_multiple_workers():
         assert all(t == main_thread for t in [main_thread] * len(received))
     finally:
         panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+class _FakeRuntimeSubscription:
+    def close(self):
+        pass
+
+
+class _FakeRuntimeRouter:
+    def __init__(self):
+        self.callback = None
+
+    def subscribe(self, callback):
+        self.callback = callback
+        return _FakeRuntimeSubscription()
+
+    def emit(self, event):
+        assert self.callback is not None
+        self.callback(event)
+
+
+def test_runtime_event_bridge_delivers_on_qt_thread_from_worker():
+    app = QApplication.instance() or QApplication([])
+    panel = PanelContent()
+    router = _FakeRuntimeRouter()
+    runtime = SimpleNamespace(event_router=router)
+    received_threads: list[int] = []
+    main_thread = threading.get_ident()
+    subscription = RuntimeEventSubscription(
+        runtime,
+        lambda _event: received_threads.append(threading.get_ident()),
+        panel,
+    )
+
+    try:
+        worker = threading.Thread(
+            target=lambda: router.emit(
+                InvalidationEvent(
+                    "epoch", 1, (ProjectionDomain.TAGS,), (),
+                )
+            )
+        )
+        worker.start()
+        worker.join(timeout=1.0)
+        _process_until(app, lambda: bool(received_threads))
+
+        assert received_threads == [main_thread]
+    finally:
+        subscription.close()
         panel.deleteLater()
         app.processEvents()

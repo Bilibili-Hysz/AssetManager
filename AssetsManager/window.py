@@ -76,7 +76,8 @@ class MainWindow(LanSharingMixin, QMainWindow):
         return self._bootstrap.runtime_for(session).services
 
     def _apply_scoped_services(self, session):
-        scoped = self._scoped_services_for_session(session)
+        runtime = self._bootstrap.runtime_for(session)
+        scoped = runtime.services
         if scoped is None:
             return
         for panel in (
@@ -88,9 +89,13 @@ class MainWindow(LanSharingMixin, QMainWindow):
             if _alive(panel) and callable(set_services):
                 set_services(scoped)
         tag_tree = getattr(self, "tag_tree", None)
+        set_runtime = getattr(type(tag_tree), "set_runtime", None) if tag_tree is not None else None
         set_tag_services = getattr(tag_tree, "set_scoped_services", None)
-        if _alive(tag_tree) and callable(set_tag_services):
-            set_tag_services(scoped)
+        if _alive(tag_tree):
+            if callable(set_runtime):
+                set_runtime(tag_tree, runtime)
+            elif callable(set_tag_services):
+                set_tag_services(scoped)
 
     def showEvent(self, event):
         """Override to add startup fade-in animation."""

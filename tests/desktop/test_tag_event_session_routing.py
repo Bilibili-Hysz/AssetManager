@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication
 from AssetsManager.domain.events import (
     AssetNotesChanged, AssetTagsChanged, AssetUrlsChanged, TagCatalogChanged,
 )
+from AssetsManager.application.runtime_events import InvalidationEvent, ProjectionDomain
 from AssetsManager.panels.info import InfoPanel
 from AssetsManager.panels.tag_tree import TagTreePanel
 
@@ -70,6 +71,95 @@ def test_info_ignores_foreign_metadata_events(tmp_path):
 
         panel._controller.get_notes.assert_called_once_with(asset)
         panel._controller.get_urls.assert_called_once_with(asset)
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+class _FakeRuntimeSubscription:
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+class _FakeRuntimeRouter:
+    def __init__(self):
+        self.callback = None
+        self.subscription = _FakeRuntimeSubscription()
+
+    def subscribe(self, callback):
+        self.callback = callback
+        return self.subscription
+
+    def emit(self, invalidation):
+        assert self.callback is not None
+        self.callback(invalidation)
+
+
+def _fake_runtime(token, epoch):
+    session = SimpleNamespace(root_str="/library", event_token=token)
+    services = SimpleNamespace(session=session, tag_service=Mock())
+    router = _FakeRuntimeRouter()
+    runtime = SimpleNamespace(
+        session=session,
+        services_snapshot=services,
+        event_router=router,
+        epoch=epoch,
+    )
+    return runtime, router
+
+
+def test_tag_tree_runtime_router_filters_domains_and_refreshes_once(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    panel = TagTreePanel()
+    populated = Mock()
+    monkeypatch.setattr(panel, "_populate", populated)
+    runtime, router = _fake_runtime("current", "epoch-current")
+    try:
+        panel.set_runtime(runtime)
+        populated.reset_mock()
+
+        router.emit(InvalidationEvent(
+            "epoch-current", 1, (ProjectionDomain.TAGS,), (),
+        ))
+        app.processEvents()
+        assert populated.call_count == 1
+
+        router.emit(InvalidationEvent(
+            "epoch-current", 2, (ProjectionDomain.FILES,), (),
+        ))
+        app.processEvents()
+        assert populated.call_count == 1
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_tag_tree_runtime_switch_ignores_old_router_events(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    panel = TagTreePanel()
+    populated = Mock()
+    monkeypatch.setattr(panel, "_populate", populated)
+    runtime_a, router_a = _fake_runtime("session-a", "epoch-a")
+    runtime_b, router_b = _fake_runtime("session-b", "epoch-b")
+    try:
+        panel.set_runtime(runtime_a)
+        panel.set_runtime(runtime_b)
+        populated.reset_mock()
+        assert router_a.subscription.closed
+
+        router_a.emit(InvalidationEvent(
+            "epoch-a", 1, (ProjectionDomain.TAGS,), (),
+        ))
+        router_b.emit(InvalidationEvent(
+            "epoch-b", 1, (ProjectionDomain.TAGS,), (),
+        ))
+        app.processEvents()
+
+        assert populated.call_count == 1
     finally:
         panel.shutdown()
         panel.deleteLater()
