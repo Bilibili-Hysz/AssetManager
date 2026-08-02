@@ -84,6 +84,15 @@ B2 已转为下一阶段设计任务，保持现有优先级、取消、generati
 - session 关闭后拒绝新操作；`resolve()` 的数据库 provider 失败仍保持原有降级到原图且不遗留 operation lease 的行为。
 - Loader 尚未迁移；下一阶段仍需把 ThumbnailService 引用纳入 Runtime 快照，并保持 generation、取消、优先级、磁盘 fallback 和 orphan cleanup 语义。
 
+### 2.7 B2 后续工作树进展（2026-08-02）
+
+本节记录本报告历史检查点之后的当前工作树状态，不改写 2.4/2.6 节所记录的 2026-08-01 事实，也不把未提交改动冒充新的基线提交。
+
+- `ThumbnailLoader` 已迁移为只持有 `ThumbnailService` 与 immutable `_Runtime` 快照；`_base.py` 不再向 Loader 传递 SQLite 连接，缓存元数据、orphan cleanup 和显式清理均通过 `ThumbnailService` API 完成。
+- 已保留并补强 generation、取消、优先级、deferred queue、stale result、旧 runtime drain、缓存清理与磁盘 fallback 语义；清理操作使用 cache epoch 防止旧 bake 回写。
+- 增量目标测试：`tests/desktop/test_thumbnail_loader.py` 为 `38 passed`；`tests/desktop/test_file_list_shim.py` 为 `103 passed`，其中 1 个 LAN TagTree 用例在整文件批量运行时出现事件顺序抖动，单独重跑通过，未归因于 Loader 改动。
+- 静态边界检查：`rg -n "ThumbnailRepository|sqlite3|set_cache_db|_db_conn|_repo" AssetsManager/panels` 无命中；compileall 通过。真实图片 IO、性能基准、全量回归与提交后的基线验证仍未闭合。
+
 ## 3. 验证证据
 
 | 检查 | 结果 | 解释 |

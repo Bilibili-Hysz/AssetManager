@@ -11,6 +11,8 @@ This refactor treats AssetManager as a platform with two first-class presentatio
 
 The recalibrated Desktop–LAN–WebUI architecture is delivered for the current Runtime/session/LAN/WebUI scope. Existing `core`, `panels`, `widgets`, and `lan` modules remain valid presentation and infrastructure modules; future work is tracked separately in the repository baseline and DeepSeek roadmap.
 
+The B2 thumbnail boundary is implemented in the current working tree: ThumbnailLoader consumes a scoped ThumbnailService through an immutable runtime snapshot. Its incremental desktop evidence and remaining performance/full-regression work are recorded separately until the next baseline commit.
+
 ## Application Services
 
 | Service | Module | Purpose | Desktop | LAN | Tests |
@@ -20,8 +22,8 @@ The recalibrated Desktop–LAN–WebUI architecture is delivered for the current
 | `MetadataService` | `metadata_service.py` | Notes, URLs, dir size, tags-for-asset | — | `/api/meta`, `/api/projects` | 5 |
 | `TagService` | `tag_service.py` | Tag list, assign, rename, delete | — | `/api/tags/*` | 4 |
 | `FileOperationService` | `file_operation_service.py` | Copy, move, rename, trash, duplicate, delete | `_actions.py` (7 ops) | — | 6 |
-| `ThumbnailService` | `thumbnail_service.py` | Session-bound source/blur/image processing and thumbnail-cache metadata API | — | `/api/thumbnails/*` | 7 |
-| `ThumbnailRepository` | `thumbnail_repository.py` | Desktop thumbnail cache table access | `_loader.py` | — | via loader tests |
+| `ThumbnailService` | `thumbnail_service.py` | Session-bound source/blur/image processing and thumbnail-cache metadata API | `FileListPanel`, `_loader.py` | `/api/thumbnails/*` | service + desktop Loader tests |
+| `ThumbnailRepository` | `thumbnail_repository.py` | Infrastructure adapter behind thumbnail persistence APIs; not a presentation dependency | — | — | service/repository tests |
 | `SearchService` | `search_service.py` | Search by tags or name | — | `/api/search` | 6 |
 | `PluginService` | `plugin_service.py` | Plugin discovery, load, enable, disable | `app.py` (startup) | — | 7 |
 | `ProjectService` | `project_service.py` | Project listing/detail/tree/home, depth rules, preview metadata | — | `/api/projects`, `/api/projects/{path}`, `/api/tree`, `/api/home` | 10 |
@@ -118,7 +120,7 @@ Controllers provide testable business logic that panels delegate to. They have n
 | `FileListController` | `FileListPanel` | Search history, status text, first-image cache, total size |
 | `TagTreeController` | `TagTreePanel` | Tag CRUD, file lookup by tag |
 
-Panels receive controllers via library-scoped initialization paths. `InfoPanel` and `TagTreePanel` initialize from `library_opened` with scoped services and no global store fallback. `FileListPanel` configures its model metadata service and thumbnail cache through `_configure_library_runtime(root)`, using scoped runtime whenever the QApplication bootstrap exists. All data operations go through controllers or scoped application services; panels remain UI renderers.
+Panels receive controllers via library-scoped initialization paths. `InfoPanel` and `TagTreePanel` initialize from `library_opened` with scoped services and no global store fallback. `FileListPanel` configures its model metadata service and binds an immutable thumbnail runtime through `_configure_library_runtime(root)` / scoped service injection; the panel and `ThumbnailLoader` do not receive SQLite connections or `ThumbnailRepository`. All data operations go through controllers or scoped application services; panels remain UI renderers.
 
 ## Domain Events
 
@@ -163,5 +165,5 @@ All pure crypto functions (password hashing, token generation/verification) live
 ## Future Work
 
 - **Type checking**: Pyright covers `application`, `domain`, `di`, `repositories`, `controllers`, `lan`, core non-UI modules. Next: tackle `dialogs/`, `panels/`, `widgets/` type noise.
-- **Desktop/service unification**: `FileSystemModel` and `AssetService` now share sort/filter/category rules via `application/asset_filters.py`; next step is to unify stat/thumbnail caching.
+- **Desktop/service unification**: `FileSystemModel` and `AssetService` now share sort/filter/category rules via `application/asset_filters.py`; `ThumbnailLoader` also uses the scoped `ThumbnailService` for cache metadata and the shared `thumbnail_cache_key`. Remaining work is stat/file-count cache unification plus real-image performance baselines.
 - **Performance baselines**: Track large directory listing, search, thumbnail cache, and LAN response times with real libraries.

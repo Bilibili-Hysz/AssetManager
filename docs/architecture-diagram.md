@@ -1,6 +1,6 @@
 # AssetsManager Architecture Diagram
 
-**Version:** 2026-08-01 repository baseline
+**Version:** 2026-08-02 B2 working-tree follow-up (baseline figures retained as snapshots)
 **Tests:** Python 1590 passed, 1 Windows platform skip plus Ubuntu WSL symlink gate passed; WebUI 37 files / 289 passed; Task E cross-surface 186 passed; typecheck and build passed
 
 ---
@@ -35,7 +35,7 @@
 │  MetadataService   ThumbnailService  SearchService                 │
 │  ProjectService    FileOpService     UndoService                   │
 │  AuthService       PluginService     AssetIndexService             │
-│  AssetFilters      ThumbnailRepository                             │
+│  AssetFilters                                                      │
 │  LibraryContext  LibrarySession  LibraryRuntime                    │
 │  RuntimeEventRouter  DTOs  SessionPrincipal                         │
 └──────────────────────────┬─────────────────────────────────────────┘
@@ -50,6 +50,7 @@
 │  cache.py          json_store.py      config_migrator.py           │
 │  protocols.py      crash_handler.py   tool_scheduler.py            │
 │  library_manager.py  ui_scale.py                                  │
+│  repositories/thumbnail_repository.py                              │
 │  plugins/ (descriptor, loader, manager, host_context)              │
 └──────────────────────────┬─────────────────────────────────────────┘
                            │
@@ -100,6 +101,8 @@ SidebarPanel.directory_selected
     → FileSystemModel.set_directory(path) → os.scandir()
     → AssetFilters (sort/filter/category)
     → ThumbnailLoader (background threads)
+      → immutable Runtime snapshot → ThumbnailService
+      → memory LRU / disk WEBP cache metadata
     → InfoPanel.update_info()
 ```
 
@@ -135,7 +138,8 @@ SettingsDialog → themes.set_theme(name)
 4. `panels/` + `widgets/` depend on scoped application services and runtime
 5. `panels/` do NOT depend on `lan/` (except `lan_sharing.py` mixin)
 6. `SignalBus` is the Qt presentation communication channel; `domain.event_bus` is the application/domain event channel
-7. `tests/unit/test_architecture_boundaries.py` guards runtime, principal, DTO, and teardown rules
+7. `ThumbnailLoader` may depend on the scoped `ThumbnailService` and immutable runtime snapshot, but must not depend directly on SQLite connections or `ThumbnailRepository`
+8. `tests/unit/test_architecture_boundaries.py` guards runtime, principal, DTO, and teardown rules
 
 ---
 
