@@ -31,7 +31,7 @@
 
 新增 `webui/src/pages/ShareReceivePage.test.tsx`，覆盖 info、文件/目录、不存在、过期、密码错误/成功、preview/download URL 编码、单/批量下载、重复提交和缺字段降级。
 
-> ✅ 2026-08-04 完成：14 个用例 + 页面缺失行为补齐（过期/空 paths/加载失败降级、`getPreviewUrl` preview 链接、验证防重复提交、stale 防护、i18n 三语 6 key）。契约注记：**公开分享无批量下载端点**（`POST /api/download/batch` 是登录态接口），页面按"下载链接"处理；密码保护首页 `getInfo` 返回 sanitized 响应无 `paths`（有路径即 cookie 已授权 `verified`）。收口提交信息 `test: add ShareReceivePage coverage and degrade-gracefully states`（hash 待回填）。另修复全量 flaky：`AuthContext.test.tsx` logout identity-generation 断言并入 `waitFor`（guest `authenticated=false` 初始即满足，原断言在 state flush 前通过）。
+> ✅ 2026-08-04 完成：14 个用例 + 页面缺失行为补齐（过期/空 paths/加载失败降级、`getPreviewUrl` preview 链接、验证防重复提交、stale 防护、i18n 三语 6 key）。契约注记：**公开分享无批量下载端点**（`POST /api/download/batch` 是登录态接口），页面按"下载链接"处理；密码保护首页 `getInfo` 返回 sanitized 响应无 `paths`（有路径即 cookie 已授权 `verified`）。收口提交 `7582a78`：`test: add ShareReceivePage coverage and degrade-gracefully states`。另修复全量 flaky：`AuthContext.test.tsx` logout identity-generation 断言并入 `waitFor`（guest `authenticated=false` 初始即满足，原断言在 state flush 前通过）。
 
 ### P0：API 工厂合约
 
