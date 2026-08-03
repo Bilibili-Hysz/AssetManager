@@ -1,0 +1,94 @@
+# 05 — 优先级任务队列
+
+任务按“先冻结事实，再补证据，再做体验”的顺序排列。第二会话可先做纯前端工作，但不得隐去 G6-5 blocker 或把未经真实浏览器验证的结论写成发布门禁。
+
+## W0 — 保持 G6-5 blocker 可见并修复
+
+责任主体主要是 Desktop/application 线，不是 WebUI 视觉线；如果第二会话不负责后端修复，也必须在报告中引用并跟踪。
+
+- 在写锁内重新验证 `file_meta` 孤儿状态，避免判断后删除竞态。
+- 对 thumbnail cache 做相同的并发复核和 containment 对抗性测试。
+- 为后台完整性检查设计可取消、有界 drain 或明确的关闭降级语义，避免切库/退出无限等待。
+- `Thread.start()` 失败时回滚 `_running`，并补 single-flight 启动失败测试。
+- 覆盖 `../victim`、绝对路径、UNC、malformed key、symlink/junction 等 key。
+- 修复后重新运行 G6-5 targeted gate，再更新报告；在此之前不要宣称 G6-5 PASS。
+
+## W1 — 冻结 WebUI/LAN 契约矩阵
+
+本交接包的 [`03-api-and-cross-surface-contracts.md`](./03-api-and-cross-surface-contracts.md) 是起点，第二会话应把它转成可审计的测试/记录：
+
+- 每个 API 标记 read、mutation、admin、capability、share-public、cookie 语义。
+- 为 `auth.ts`、`metadata.ts`、`shares.ts`、`users.ts`、`tags.ts`、`thumbnails.ts`、`system.ts` 增加方法级 contract tests。
+- 补 `/api/tunnel/status` 的文档-代码差异记录，按当前 route 的 admin 要求处理。
+- 检查所有 path/query/body 字段名和中文、空格、斜杠、`..` 的 encoding。
+- 禁止修改后端协议而不更新 `webui` contract test、`tests/lan` 和本交接矩阵。
+
+## W2 — 补齐前端直接证据
+
+建议第二会话的第一批代码任务：
+
+### P0：ShareReceivePage 测试
+
+新增 `webui/src/pages/ShareReceivePage.test.tsx`，覆盖 info、文件/目录、不存在、过期、密码错误/成功、preview/download URL 编码、单/批量下载、重复提交和缺字段降级。
+
+> ✅ 2026-08-04 完成：14 个用例 + 页面缺失行为补齐（过期/空 paths/加载失败降级、`getPreviewUrl` preview 链接、验证防重复提交、stale 防护、i18n 三语 6 key）。契约注记：**公开分享无批量下载端点**（`POST /api/download/batch` 是登录态接口），页面按"下载链接"处理；密码保护首页 `getInfo` 返回 sanitized 响应无 `paths`（有路径即 cookie 已授权 `verified`）。收口提交信息 `test: add ShareReceivePage coverage and degrade-gracefully states`（hash 待回填）。另修复全量 flaky：`AuthContext.test.tsx` logout identity-generation 断言并入 `waitFor`（guest `authenticated=false` 初始即满足，原断言在 state flush 前通过）。
+
+### P0：API 工厂合约
+
+按优先级：`auth.ts` → `metadata.ts` → `shares.ts` → `users.ts` → `tags.ts` → `thumbnails.ts` → `system.ts` → `files.ts` 非下载路径。每个测试至少断言 HTTP method、endpoint、query/body、encode、AbortSignal 透传和返回 DTO。
+
+### P1：基础交互组件
+
+新增 `ContextMenu.test.tsx`、`Modal.test.tsx`、`ResizablePanel.test.tsx`，覆盖 Escape、outside click、focus、disabled item、键盘导航、pointer capture、最小/最大尺寸和卸载清理。
+
+### P1：页面组合与字典
+
+- 新增 `App.test.tsx`，覆盖公开/受保护/share/未知路由和 Provider 组合。
+- 新增 i18n key parity test，保证 `en`、`zh`、`ja` 结构一致。
+- 为 `UserManagement` 补独立测试，覆盖 toggle、空态、错误 toast、旧响应丢弃和实时刷新。
+
+## W3 — 真实 Desktop/LAN/WebUI 验收
+
+在 W1/W2 稳定后，建立真实跨端矩阵：
+
+- Desktop 启动真实 library root 和 Runtime；
+- Desktop 开启 LAN；
+- 第二个真实浏览器通过 LAN origin 进入；
+- login/access-key/password/user/guest/share 权限分别验证；
+- 浏览、预览、下载、批量下载；
+- WebUI 修改标签/文件后 Desktop 观察；
+- Desktop 修改后 WebUI 不刷新页面即可恢复；
+- LAN stop/start、同端口恢复、同 root reopen 的 revision/epoch recovery；
+- 窄屏/移动浏览器、触控、焦点和 reduced motion；
+- 记录浏览器、OS、端口、库 root 形态、认证模式、截图/日志和失败原因。
+
+现有 Chromium acceptance 是自动化基础，但不能直接写成上述完整矩阵已完成。
+
+## W4 — 真实图片与布局性能协议
+
+性能改动前先定义可复现数据集协议：dataset ID/version、不含绝对路径的 manifest、规范化相对路径稳定排序、hash-based fixed sampling、thumbnail sample limit、directory/grid parent limit、cold/warm 定义、预热、5 次重复、P50/P95、异常剔除规则，以及 CPU/内存/存储/OS/浏览器/DPI/后台负载。
+
+可复用入口：
+
+- `tests/perf/thumbnail_telemetry_benchmark.py`
+- `tests/perf/directory_telemetry_benchmark.py`
+- `tests/perf/grid_telemetry_benchmark.py`
+- `tests/performance/test_baselines.py`
+
+先生成趋势证据，不要马上把真实数据接成阻断式 PR 门禁。
+
+## W5 — 视觉和体验切片
+
+契约和验收稳定后再处理：BrowsePage loading/empty/error/retry、ProjectCard/Grid/List 视觉和键盘状态、ShareDialog 错误和复制失败、ShareReceivePage 状态、Admin 页面状态、375px/触控/focus/reduced motion、预览交互和真实图片性能。
+
+每个视觉切片都要保留行为测试，不能用 CSS 改动掩盖 loading、授权或 stale response 问题。
+
+## W6 — DeepSeek 视觉与 WebUI 扩展路线
+
+新增的 [`09-visual-optimization-and-design-system.md`](./09-visual-optimization-and-design-system.md) 定义卡片 Grid、缩放动画、token、状态、无障碍和视觉验收；新增的 [`10-deepseek-webui-expansion-roadmap.md`](./10-deepseek-webui-expansion-roadmap.md) 对照 G5-1～G5-9、A/B/C 阶段和未来 Storefront。
+
+- V0：先冻结 token、按钮/图标语义、loading/empty/error/retry 和 reduced-motion 规则。
+- V1：统一 Browse/FileList 的卡片尺寸、左对齐 Grid、正方形 thumbnail、hover/selected/focus 状态。
+- V2：统一 Detail、ShareDialog、Admin 的反馈与移动端状态；补浏览器截图证据。
+- V3：真实数据证明有必要后，再推进 G5-4 虚拟滚动或后端分页。
+- S1 Storefront、G5-1 编辑、G5-2 上传、S2/S3 商品化均单独立项，不混入当前 Browse 视觉切片。

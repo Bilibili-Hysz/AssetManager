@@ -134,6 +134,12 @@ const en = {
     verify_btn: 'Verify',
     download: 'Download',
     preview: 'Preview',
+    title: 'Shared Files',
+    not_found: 'Share not found',
+    failed_to_load: 'Failed to load share',
+    invalid_password: 'Invalid password',
+    expired: 'This share has expired',
+    no_files: 'No files available in this share',
   },
   detail: {
     files: 'Files',

@@ -136,9 +136,14 @@ describe('AuthProvider', () => {
       capabilities: { browse: true, preview: true, download: true, upload: true, manage_links: false, manage_users: false, settings: false, realtime: true },
     } });
 
-    await waitFor(() => expect(result.current.principal.authenticated).toBe(false));
+    // The guest principal already has authenticated=false, so waiting only on
+    // that flag would pass before logout's state updates flush. Wait for the
+    // identity-generation bump instead, which only happens on logout.
+    await waitFor(() => {
+      expect(result.current.principal.authenticated).toBe(false);
+      expect(result.current.identityGeneration).toBeGreaterThan(initialGeneration);
+    });
     expect(result.current.principal.kind).toBe('guest');
-    expect(result.current.identityGeneration).toBeGreaterThan(initialGeneration);
   });
 
   it('clears identity-scoped thumbnail storage on logout', async () => {
