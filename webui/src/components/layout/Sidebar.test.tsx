@@ -89,7 +89,9 @@ describe('Sidebar', () => {
   it('expands every ancestor of the active path', async () => {
     await renderTree('workspace/assets/logo.svg');
 
-    expect(screen.getByText('Assets')).toBeDefined();
+    // Active-ancestor expansion runs in a follow-up effect after the tree
+    // loads, so wait for it instead of asserting synchronously.
+    await screen.findByText('Assets');
     expect(screen.getByText('logo.svg')).toBeDefined();
   });
 
@@ -97,7 +99,7 @@ describe('Sidebar', () => {
     const user = userEvent.setup();
     await renderTree('workspace/assets/logo.svg');
 
-    expect(screen.getByText('Assets')).toBeDefined();
+    await screen.findByText('Assets');
     await user.click(screen.getByRole('button', { name: /collapse all/i }));
 
     expect(screen.queryByText('Assets')).toBeNull();
