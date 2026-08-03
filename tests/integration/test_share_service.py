@@ -1,6 +1,8 @@
 """Tests for ShareService and ShareLink domain model."""
 import time
+from contextlib import nullcontext
 from dataclasses import FrozenInstanceError
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +20,16 @@ def _make_db(memory_db):
     migrate(conn)
     ShareRepository(conn).init_table()
     return conn
+
+
+def _bound_service(memory_db, root):
+    conn = _make_db(memory_db)
+    session = SimpleNamespace(
+        root_str=str(root),
+        event_token="test-session-token",
+        operation=nullcontext,
+    )
+    return ShareService(conn, "test-secret", session=session)
 
 
 # ── ShareLink domain tests ──────────────────────────────────────
@@ -119,6 +131,62 @@ class TestShareService:
         retrieved = svc.get_share(share.id)
         assert retrieved is not None
         assert retrieved.id == share.id
+
+    def test_bound_create_share_rejects_empty_path(self, tmp_path, memory_db):
+        svc = _bound_service(memory_db, tmp_path)
+
+        with pytest.raises(ValidationError) as exc_info:
+            svc.create_share(paths=[""])
+
+        assert exc_info.value.field == "paths"
+        assert exc_info.value.message == "No valid paths"
+
+    def test_bound_create_share_rejects_more_than_100_paths(self, tmp_path, memory_db):
+        svc = _bound_service(memory_db, tmp_path)
+
+        with pytest.raises(ValidationError) as exc_info:
+            svc.create_share(paths=["asset.txt"] * 101)
+
+        assert exc_info.value.field == "paths"
+        assert exc_info.value.message == "Too many paths (max 100)"
+
+    def test_bound_create_share_rejects_path_outside_library(self, tmp_path, memory_db):
+        root = tmp_path / "library"
+        root.mkdir()
+        outside = tmp_path / "outside.txt"
+        outside.write_text("outside", encoding="utf-8")
+        svc = _bound_service(memory_db, root)
+
+        with pytest.raises(ValidationError) as exc_info:
+            svc.create_share(paths=[str(outside)])
+
+        assert exc_info.value.field == "paths"
+        assert exc_info.value.message == "Path escape detected"
+
+    def test_bound_create_share_rejects_missing_path(self, tmp_path, memory_db):
+        svc = _bound_service(memory_db, tmp_path)
+
+        with pytest.raises(ValidationError) as exc_info:
+            svc.create_share(paths=["missing.txt"])
+
+        assert exc_info.value.field == "paths"
+        assert exc_info.value.message == "No valid paths"
+
+    def test_bound_create_share_normalizes_relative_and_absolute_paths(self, tmp_path, memory_db):
+        root = tmp_path / "library"
+        nested = root / "folder"
+        nested.mkdir(parents=True)
+        asset = nested / "asset.txt"
+        asset.write_text("asset", encoding="utf-8")
+        svc = _bound_service(memory_db, root)
+
+        relative_share = svc.create_share(paths=["folder\\asset.txt"])
+        absolute_share = svc.create_share(paths=[str(asset)])
+
+        assert relative_share is not None
+        assert absolute_share is not None
+        assert relative_share.paths == ("folder/asset.txt",)
+        assert absolute_share.paths == ("folder/asset.txt",)
 
     @pytest.mark.parametrize(
         ("kwargs", "field", "message"),

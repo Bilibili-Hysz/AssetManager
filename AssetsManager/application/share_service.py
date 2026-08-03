@@ -9,7 +9,11 @@ import logging
 import secrets
 import string
 import time
+from pathlib import Path
 from sqlite3 import Connection
+from typing import TYPE_CHECKING
+
+from AssetsManager.application.context import session_operation
 
 from AssetsManager.domain import auth as auth_crypto
 from AssetsManager.domain.event_bus import get_event_bus
@@ -20,17 +24,33 @@ from AssetsManager.repositories.share_repository import ShareRepository
 
 _log = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from AssetsManager.application.context import LibrarySession
+
 
 class ShareService:
     """Share link lifecycle management using ShareRepository."""
 
-    def __init__(self, db_conn: Connection, token_secret: str):
+    def __init__(
+        self,
+        db_conn: Connection,
+        token_secret: str,
+        *,
+        session: LibrarySession | None = None,
+    ):
         self._conn = db_conn
         self._secret = token_secret
+        self._session = session
         self._repo = ShareRepository(db_conn)
         self._event_bus = get_event_bus()
-        self._library_root = ""
-        self._session_token = ""
+        self._library_root = (
+            getattr(session, "root_str", str(getattr(session, "root", "")))
+            if session is not None
+            else ""
+        )
+        self._session_token = (
+            getattr(session, "event_token", "") if session is not None else ""
+        )
 
     @staticmethod
     def validate_password(value: object) -> str | None:
@@ -77,12 +97,55 @@ class ShareService:
             except Exception:
                 _log.exception("Share projection notification failed")
 
+    def _validate_paths(self, paths: list[str]) -> list[str]:
+        """Validate share paths and normalize paths for bound library sessions.
+
+        Unbound services are retained for legacy callers and tests that use
+        virtual paths.  A session-bound service, however, must only persist
+        existing paths inside its library and stores them as stable relative
+        POSIX-style keys.
+        """
+        if not isinstance(paths, list) or not paths:
+            raise ValidationError("paths", "No paths provided")
+        if len(paths) > 100:
+            raise ValidationError("paths", "Too many paths (max 100)")
+
+        if self._session is None:
+            return paths
+
+        root = Path(self._library_root).resolve()
+        normalized: list[str] = []
+        for raw_path in paths:
+            if not isinstance(raw_path, str) or not raw_path.strip():
+                raise ValidationError("paths", "No valid paths")
+
+            candidate_path = Path(raw_path)
+            if not candidate_path.is_absolute():
+                candidate_path = root / candidate_path
+
+            try:
+                candidate = candidate_path.resolve()
+            except (OSError, RuntimeError, ValueError):
+                raise ValidationError("paths", "No valid paths") from None
+
+            if not candidate.is_relative_to(root):
+                raise ValidationError("paths", "Path escape detected")
+            if not candidate.exists():
+                raise ValidationError("paths", "No valid paths")
+
+            relative = candidate.relative_to(root).as_posix()
+            normalized.append(relative or ".")
+
+        return normalized
+
+    @session_operation
     def init_table(self) -> None:
         """Initialize the share-link persistence schema."""
         self._repo.init_table()
 
     # ── CRUD ────────────────────────────────────────────────────
 
+    @session_operation
     def create_share(
         self,
         paths: list[str],
@@ -93,6 +156,7 @@ class ShareService:
         created_by: str | None = None,
     ) -> ShareLink | None:
         """Create a new share link. Returns ShareLink or None on failure."""
+        paths = self._validate_paths(paths)
         password = self.validate_password(password)
         expires_hours = self.validate_expires_hours(expires_hours)
         max_downloads = self.validate_max_downloads(max_downloads)
@@ -124,6 +188,7 @@ class ShareService:
             has_password=password_hash is not None,
         )
 
+    @session_operation
     def get_share(self, share_id: str) -> ShareLink | None:
         """Get a share link by ID. Returns ShareLink or None if not found."""
         raw = self._repo.get(share_id)
@@ -131,6 +196,7 @@ class ShareService:
             return None
         return ShareLink.from_db_row(raw)
 
+    @session_operation
     def get_share_record(self, share_id: str) -> ShareLink | None:
         """Get a share link even if it is expired or over its download limit."""
         raw = self._repo.get(share_id, include_unavailable=True)
@@ -138,11 +204,13 @@ class ShareService:
             return None
         return ShareLink.from_db_row(raw)
 
+    @session_operation
     def list_shares(self, created_by: str | None = None) -> list[ShareLink]:
         """List share links, optionally filtered by creator."""
         raw_list = self._repo.list_all(created_by)
         return [ShareLink.from_db_row(r) for r in raw_list]
 
+    @session_operation
     def delete_share(self, share_id: str) -> bool:
         """Delete a share link. Returns True if deleted."""
         ok = self._repo.delete(share_id)
@@ -152,6 +220,7 @@ class ShareService:
 
     # ── Authentication ──────────────────────────────────────────
 
+    @session_operation
     def verify_password(self, share_id: str, password: str) -> bool:
         """Verify a share link's password."""
         pw_hash = self._repo.get_password_hash(share_id)
@@ -159,16 +228,19 @@ class ShareService:
             return True  # No password required
         return auth_crypto.verify_password(password, pw_hash)
 
+    @session_operation
     def generate_token(self, share_id: str) -> str:
         """Generate a time-limited share access token."""
         return auth_crypto.generate_share_token(share_id, self._secret)
 
+    @session_operation
     def verify_token(self, token: str, share_id: str) -> bool:
         """Verify a share access token."""
         return auth_crypto.verify_share_token(token, share_id, self._secret)
 
     # ── Downloads ───────────────────────────────────────────────
 
+    @session_operation
     def increment_download(self, share_id: str) -> bool:
         """Increment the download counter for a share link."""
         ok = self._repo.increment_download(share_id)
@@ -178,6 +250,7 @@ class ShareService:
 
     # ── Validation helpers ──────────────────────────────────────
 
+    @session_operation
     def validate_access(
         self,
         share_id: str,

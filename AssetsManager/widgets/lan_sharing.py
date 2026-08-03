@@ -69,6 +69,18 @@ class LanSharingMixin:
     def _dialog_parent(self) -> QWidget:
         return cast(QWidget, self)
 
+    def _active_share_url(self, port: int) -> str:
+        server = getattr(self, "_lan_server", None)
+        if server is not None:
+            status = server.status()
+            if isinstance(status, dict):
+                url = status.get("url")
+                if isinstance(url, str) and url:
+                    return url
+        from AssetsManager.lan.server import get_local_ip
+
+        return f"http://{get_local_ip()}:{port}"
+
     # ── Toggle sharing ──────────────────────────────────────────
 
     def _toggle_sharing(self):
@@ -121,8 +133,9 @@ class LanSharingMixin:
             server.start(port=port, bind=bind)
             self._update_share_status(True, port)
             if hasattr(self, '_tray_manager') and self._tray_manager:
-                from AssetsManager.lan.server import get_local_ip
-                self._tray_manager.update_sharing_state(True, f"http://{get_local_ip()}:{port}")
+                self._tray_manager.update_sharing_state(
+                    True, self._active_share_url(port)
+                )
         except OSError:
             QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), tr("sharing.port_in_use", port=port))
 
@@ -136,15 +149,19 @@ class LanSharingMixin:
         # Update status bar label
         if hasattr(self, '_share_status_label'):
             if running:
-                from AssetsManager.lan.server import get_local_ip
-                ip = get_local_ip()
-                url = f"http://{ip}:{port}"
-                self._share_status_label.setText(f"{tr('sharing.status_active')} · {url}")
-                self._share_status_label.setStyleSheet(f"color: {t['accent']}; padding: 0 8px;")
+                url = self._active_share_url(port)
+                self._share_status_label.setText(
+                    f"{tr('sharing.status_active')} · {url}"
+                )
+                self._share_status_label.setStyleSheet(
+                    f"color: {t['accent']}; padding: 0 8px;"
+                )
                 self._share_status_label.setToolTip(tr("sharing.click_to_copy"))
             else:
                 self._share_status_label.setText(tr("sharing.off"))
-                self._share_status_label.setStyleSheet(f"color: {t['muted']}; padding: 0 8px;")
+                self._share_status_label.setStyleSheet(
+                    f"color: {t['muted']}; padding: 0 8px;"
+                )
                 self._share_status_label.setToolTip(tr("sharing.click_to_share"))
 
         # Update toolbar button
@@ -230,25 +247,54 @@ class LanSharingMixin:
 
     def _open_share_link_dialog(self, path: str = "", paths: list[str] | None = None):
         """Open dialog to create a share link for a path."""
-        if not self._lan_server or not self._lan_server.is_running():
-            from PySide6.QtWidgets import QMessageBox
-            reply = QMessageBox.question(
-                self._dialog_parent(), tr("sharing.not_running"),
-                tr("sharing.start_to_share"),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                self._toggle_sharing()
-            else:
+        try:
+            from AssetsManager.core.settings import AppSettings
+            from AssetsManager.dialogs.share_link_dialog import ShareLinkDialog
+
+            session = getattr(self, "_library_session", None)
+            if session is None or session.is_closed:
+                QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), tr("sharing.no_library"))
+                return
+            bootstrap = getattr(self, "_bootstrap", None)
+            runtime_for = getattr(bootstrap, "runtime_for", None)
+            if not callable(runtime_for):
+                QMessageBox.warning(
+                    self._dialog_parent(), tr("dialog.error"), tr("sharing.no_library")
+                )
+                return
+            runtime = runtime_for(session)
+            sharing_services = getattr(runtime, "sharing_services", None)
+            share_service = getattr(sharing_services, "share_service", None)
+            if share_service is None:
+                QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), tr("sharelink.error.server_unavailable"))
                 return
 
-        try:
-            from AssetsManager.dialogs.share_link_dialog import ShareLinkDialog
+            settings = AppSettings.instance()
+            server = getattr(self, "_lan_server", None)
+            running = bool(server and server.is_running())
+            server_config = getattr(server, "_impl", server) if running else None
+            port = getattr(server, "_port", None) if running else None
+            if port is None:
+                port = settings.get("lan_port", 8080)
+
+            if running:
+                requires_key = bool(
+                    getattr(server_config, "access_key_hash", None)
+                )
+            else:
+                requires_key = bool(settings.get("lan_access_key"))
+
             selected_paths = list(paths) if paths is not None else ([path] if path else [])
-            dlg = ShareLinkDialog(self._dialog_parent(), paths=selected_paths, server=self._lan_server)
+            base_url = self._active_share_url(port)
+            dlg = ShareLinkDialog(
+                self._dialog_parent(),
+                paths=selected_paths,
+                server=server,
+                share_service=share_service,
+                base_url=base_url,
+                requires_key=requires_key,
+            )
             dlg.exec()
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).exception("Failed to open share link dialog")
-            from PySide6.QtWidgets import QMessageBox
+            _log.exception("Failed to open share link dialog")
             QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), str(e))

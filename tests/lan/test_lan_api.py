@@ -1,5 +1,6 @@
 """Unit tests for LAN API security and basic functionality."""
 import asyncio
+from contextlib import nullcontext
 import os
 import sqlite3
 from types import SimpleNamespace
@@ -857,6 +858,8 @@ class _FakeLan:
         self.password_hash = None
         self.share_name = "Test Share"
         self.token_secret = "test-secret"
+        self.local_ui_auth_secret = "test-secret"
+        self.endpoint_protocol = "http"
         self._ssl_cert = None
         self._ssl_key = None
         self._port = 8080
@@ -909,19 +912,25 @@ def _init_lan_schemas(conn):
 
 
 def _legacy_server(**kwargs):
-    """Build a canonical runtime-shaped LAN fixture for low-level route tests."""
+    """Build a runtime-shaped LAN fixture for low-level route tests."""
     from types import SimpleNamespace
-    from AssetsManager.lan.server import _LanServerImpl
+
     from AssetsManager.application import (
-        AssetService, MetadataService, ProjectService, SearchService,
-        TagService, ThumbnailService,
+        AssetService,
+        AuthService,
+        MetadataService,
+        ProjectService,
+        RuntimeSharingServices,
+        SearchService,
+        ShareService,
+        TagService,
+        ThumbnailService,
     )
     from AssetsManager.core.directory_cache import DirectoryCache
-    from AssetsManager.lan.routes._helpers import LanScopedServices
-    from AssetsManager.application.auth_service import AuthService
-    from AssetsManager.application.share_service import ShareService
+    from AssetsManager.lan.server import _LanServerImpl
 
     db_conn = kwargs["db_conn"]
+
     class Session:
         root = Path(kwargs["library_root"])
         thumb_dir = Path(kwargs["thumbnail_dir"])
@@ -929,21 +938,32 @@ def _legacy_server(**kwargs):
         event_token = "runtime-test-session"
 
         def connection_for(self, library_root=None):
-            if library_root is not None and Path(library_root).resolve() != self.root.resolve():
+            if (
+                library_root is not None
+                and Path(library_root).resolve() != self.root.resolve()
+            ):
                 raise ValueError("wrong library")
             return db_conn
 
     session = Session()
     secret = "runtime-test-secret"
-    bundle = LanScopedServices(
-        auth_service=AuthService(db_conn, secret),
+    auth_service = AuthService(db_conn, secret)
+    share_service = ShareService(db_conn, secret)
+    bundle = SimpleNamespace(
+        session=session,
+        sharing_services=RuntimeSharingServices(
+            token_secret=secret,
+            auth_service=auth_service,
+            share_service=share_service,
+        ),
+        auth_service=auth_service,
         metadata_service=MetadataService(connection_provider=session.connection_for),
         project_service=ProjectService(connection_provider=session.connection_for),
         tag_service=TagService(connection_provider=session.connection_for),
         search_service=SearchService(connection_provider=session.connection_for),
         thumbnail_service=ThumbnailService(connection_provider=session.connection_for),
         asset_service=AssetService(directory_cache=DirectoryCache(db_conn)),
-        share_service=ShareService(db_conn, secret),
+        share_service=share_service,
     )
 
     class EventRouter:
@@ -961,7 +981,9 @@ def _legacy_server(**kwargs):
     options.pop("library_root")
     options.pop("thumbnail_dir")
     options.pop("db_conn")
-    return _LanServerImpl(runtime=runtime, **options)
+    return _LanServerImpl(
+        runtime=runtime, _allow_legacy_runtime=True, **options
+    )
 
 
 def _make_lan_app(tmp_path, *, authenticated_context_only=False, canonical_context_only=False):
@@ -996,7 +1018,10 @@ def _make_lan_app(tmp_path, *, authenticated_context_only=False, canonical_conte
             token = get_auth_token(request)
             if token:
                 lan = request.app[LAN_APP_KEY]
-                if verify_auth_token(token, lan.token_secret):
+                local_ui_secret = getattr(
+                    lan, "local_ui_auth_secret", getattr(lan, "token_secret", None)
+                )
+                if local_ui_secret and verify_auth_token(token, local_ui_secret):
                     set_request_principal(request, principal_for_request("local_ui"))
                 else:
                     user = request.app[AUTH_SERVICE_APP_KEY].verify_user_token(token)
@@ -1119,7 +1144,13 @@ def _local_ui_headers(app):
     from AssetsManager.lan.utils import get_auth_headers
     from AssetsManager.lan.routes._helpers import LAN_APP_KEY
 
-    return get_auth_headers(app[LAN_APP_KEY].token_secret)
+    return get_auth_headers(
+        getattr(
+            app[LAN_APP_KEY],
+            "local_ui_auth_secret",
+            app[LAN_APP_KEY].token_secret,
+        )
+    )
 
 
 async def _register_user_token(client, username="alice"):
@@ -1892,6 +1923,26 @@ def test_lan_server_requires_runtime_before_server_startup(monkeypatch):
         lan.LanServer()
 
 
+def test_lan_server_facade_separates_desktop_and_runtime_token_secrets(monkeypatch):
+    import AssetsManager.lan as lan
+
+    class _Impl:
+        token_secret = "local-ui-secret"
+        runtime_token_secret = "runtime-secret"
+        local_ui_auth_secret = "local-ui-secret"
+
+        def __init__(self, **_kwargs):
+            pass
+
+    monkeypatch.setattr(lan, "_HAS_AIOHTTP", True)
+    monkeypatch.setattr("AssetsManager.lan.server._LanServerImpl", _Impl)
+
+    server = lan.LanServer(runtime=object())
+    assert server.token_secret == "local-ui-secret"
+    assert server.local_ui_auth_secret == "local-ui-secret"
+    assert server.runtime_token_secret == "runtime-secret"
+
+
 def test_share_manager_requires_runtime(monkeypatch):
     from AssetsManager.lan.manager import ShareManager
 
@@ -1937,29 +1988,54 @@ def test_share_manager_passes_runtime_to_server(monkeypatch):
 
 
 def _make_runtime_services_for_fake_session(session, connection):
+    if not callable(getattr(session, "operation", None)):
+        session.operation = nullcontext
+
     from AssetsManager.application import (
-        AssetService, MetadataService, ProjectService, SearchService, TagService, ThumbnailService,
+        AssetService,
+        AuthService,
+        MetadataService,
+        ProjectService,
+        RuntimeSharingServices,
+        SearchService,
+        ShareService,
+        TagService,
+        ThumbnailService,
     )
     from AssetsManager.core.directory_cache import DirectoryCache
 
+    token_secret = "runtime-test-secret"
     return SimpleNamespace(
         session=session,
-        metadata_service=MetadataService(connection_provider=session.connection_for, session=session),
-        tag_service=TagService(connection_provider=session.connection_for, session=session),
-        thumbnail_service=ThumbnailService(connection_provider=session.connection_for, session=session),
+        sharing_services=RuntimeSharingServices(
+            token_secret=token_secret,
+            auth_service=AuthService(
+                connection, token_secret, session=session
+            ),
+            share_service=ShareService(
+                connection, token_secret, session=session
+            ),
+        ),
+        metadata_service=MetadataService(
+            connection_provider=session.connection_for, session=session
+        ),
+        tag_service=TagService(
+            connection_provider=session.connection_for, session=session
+        ),
+        thumbnail_service=ThumbnailService(
+            connection_provider=session.connection_for, session=session
+        ),
         lan_services=SimpleNamespace(
             asset_service=AssetService(directory_cache=DirectoryCache(connection)),
-            project_service=ProjectService(connection_provider=session.connection_for, session=session),
+            project_service=ProjectService(
+                connection_provider=session.connection_for, session=session
+            ),
             search_service=SearchService(connection_provider=session.connection_for),
         ),
     )
 
 
 def test_runtime_injection_uses_canonical_session_resources_and_services(tmp_path):
-    from AssetsManager.application import (
-        AssetService, MetadataService, ProjectService, SearchService, TagService, ThumbnailService,
-    )
-    from AssetsManager.core.directory_cache import DirectoryCache
     from AssetsManager.lan.routes._helpers import LanScopedServices
     from AssetsManager.lan.server import _LanServerImpl
 
@@ -1971,18 +2047,8 @@ def test_runtime_injection_uses_canonical_session_resources_and_services(tmp_pat
     )
     connection = object()
     session.connection_for = Mock(return_value=connection)
-    services = SimpleNamespace(
-        session=session,
-        metadata_service=MetadataService(connection_provider=session.connection_for, session=session),
-        tag_service=TagService(connection_provider=session.connection_for, session=session),
-        thumbnail_service=ThumbnailService(connection_provider=session.connection_for, session=session),
-    )
-    lan_services = SimpleNamespace(
-        project_service=ProjectService(connection_provider=session.connection_for, session=session),
-        search_service=SearchService(connection_provider=session.connection_for),
-        asset_service=AssetService(directory_cache=DirectoryCache(connection)),
-    )
-    services.lan_services = lan_services
+    services = _make_runtime_services_for_fake_session(session, connection)
+    lan_services = services.lan_services
     runtime = SimpleNamespace(
         session=session,
         services_snapshot=services,
@@ -1995,6 +2061,9 @@ def test_runtime_injection_uses_canonical_session_resources_and_services(tmp_pat
     assert isinstance(server.services, LanScopedServices)
     assert server.services.search_service is lan_services.search_service
     assert server.services.thumbnail_service is services.thumbnail_service
+    assert server.services.auth_service is services.sharing_services.auth_service
+    assert server.services.share_service is services.sharing_services.share_service
+    assert server.runtime_token_secret == services.sharing_services.token_secret
     assert server.services.search_service._connection_provider is session.connection_for
     assert server.services.thumbnail_service._connection_provider is session.connection_for
     assert server.library_root == session.root
@@ -2012,9 +2081,218 @@ def test_runtime_injection_uses_canonical_session_resources_and_services(tmp_pat
     runtime.unregister_lifecycle_adapter.assert_called_once_with(server)
 
 
-def test_runtime_injection_prefers_services_snapshot_over_legacy_services(tmp_path):
-    from AssetsManager.application import AssetService, MetadataService, ProjectService, SearchService, TagService, ThumbnailService
-    from AssetsManager.core.directory_cache import DirectoryCache
+def test_runtime_injection_reuses_runtime_owned_sharing_bundle(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.lan.server import _LanServerImpl
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    sharing = runtime.sharing_services
+    assert sharing.auth_service._library_root == session.root_str
+    assert sharing.auth_service._session_token == session.event_token
+    assert sharing.share_service._library_root == session.root_str
+    assert sharing.share_service._session_token == session.event_token
+
+    first = _LanServerImpl(runtime=runtime)
+    second = _LanServerImpl(runtime=runtime)
+
+    assert first.services.auth_service is sharing.auth_service
+    assert first.services.share_service is sharing.share_service
+    assert first._auth_service is sharing.auth_service
+    assert first._share_service is sharing.share_service
+    assert first.runtime_token_secret == sharing.token_secret
+    assert second.services.auth_service is sharing.auth_service
+    assert second.services.share_service is sharing.share_service
+    assert second.runtime_token_secret == sharing.token_secret
+
+
+def test_lan_status_does_not_claim_https_before_tls_starts(tmp_path, monkeypatch):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.lan import server as server_module
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    monkeypatch.setattr(server_module, "get_local_ip", lambda: "192.0.2.20")
+
+    server = server_module._LanServerImpl(
+        runtime=runtime, ssl_cert="server.crt", ssl_key="server.key"
+    )
+
+    assert server.status()["url"] == "http://192.0.2.20:8080"
+    assert server.status()["ssl_active"] is False
+
+
+@pytest.mark.anyio
+async def test_lan_startup_publishes_actual_tls_result_and_resets_on_restart(
+    tmp_path, monkeypatch
+):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.lan import server as server_module
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    server = server_module._LanServerImpl(
+        runtime=runtime, ssl_cert="server.crt", ssl_key="server.key"
+    )
+    outcomes = iter((True, False))
+
+    class FakeSSLContext:
+        def __init__(self, _protocol):
+            self.loads = next(outcomes)
+
+        def load_cert_chain(self, _cert, _key):
+            if not self.loads:
+                raise OSError("bad certificate")
+
+    class FakeRunner:
+        def __init__(self, _app, **_kwargs):
+            pass
+
+        async def setup(self):
+            pass
+
+        async def cleanup(self):
+            pass
+
+    class FakeSite:
+        def __init__(self, _runner, _bind, _port, *, ssl_context):
+            self.ssl_context = ssl_context
+
+        async def start(self):
+            pass
+
+        async def stop(self):
+            pass
+
+    monkeypatch.setattr(server_module.ssl, "SSLContext", FakeSSLContext)
+    monkeypatch.setattr(server_module.web, "AppRunner", FakeRunner)
+    monkeypatch.setattr(server_module.web, "TCPSite", FakeSite)
+    monkeypatch.setattr(server._scanner, "start_background_scan", lambda: None)
+    monkeypatch.setattr(server, "_register_runtime_adapter", lambda: True)
+
+    server._cleanup_complete = True
+    server._lifecycle_state = "starting"
+    await server._startup()
+    assert server.ssl_active is True
+    assert server.endpoint_protocol == "https"
+
+    server._running = False
+    server._lifecycle_state = "starting"
+    await server._startup()
+    assert server.ssl_active is False
+    assert server.endpoint_protocol == "http"
+
+
+@pytest.mark.anyio
+async def test_local_ui_tokens_are_stable_for_same_auth_config_and_revoked_on_change(
+    tmp_path,
+):
+    from aiohttp.test_utils import TestClient, TestServer
+
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.lan.server import _LanServerImpl
+    from AssetsManager.lan.utils import generate_auth_token
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    first = _LanServerImpl(
+        runtime=runtime, access_key="admin-key", password="pw", auth_mode="key"
+    )
+    same = _LanServerImpl(
+        runtime=runtime, access_key="admin-key", password="pw", auth_mode="key"
+    )
+    changed = _LanServerImpl(
+        runtime=runtime, access_key="rotated-key", password="pw", auth_mode="key"
+    )
+
+    assert first.runtime_token_secret == runtime.sharing_services.token_secret
+    assert same.runtime_token_secret == first.runtime_token_secret
+    assert changed.runtime_token_secret == first.runtime_token_secret
+    assert same.token_secret == first.token_secret == first.local_ui_auth_secret
+    assert changed.token_secret != first.token_secret
+
+    token = generate_auth_token(first.local_ui_auth_secret)
+    same_client = TestClient(TestServer(same._app))
+    changed_client = TestClient(TestServer(changed._app))
+    await same_client.start_server()
+    await changed_client.start_server()
+    try:
+        accepted = await same_client.get(
+            "/api/shares", headers={"Authorization": f"Bearer {token}"}
+        )
+        rejected = await changed_client.get(
+            "/api/shares", headers={"Authorization": f"Bearer {token}"}
+        )
+        assert accepted.status == 200
+        assert rejected.status == 401
+    finally:
+        await same_client.close()
+        await changed_client.close()
+        bootstrap.library_service.close_session(session)
+
+
+@pytest.mark.parametrize(
+    "changed",
+    (
+        {"access_key": "other-key"},
+        {"password": "other-password"},
+        {"auth_mode": "password"},
+    ),
+)
+def test_local_ui_auth_secret_is_bound_to_authentication_config(tmp_path, changed):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.lan.server import _LanServerImpl
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    config = {"access_key": "key", "password": "password", "auth_mode": "key"}
+    baseline = _LanServerImpl(runtime=runtime, **config)
+    modified = _LanServerImpl(runtime=runtime, **(config | changed))
+
+    assert modified.runtime_token_secret == baseline.runtime_token_secret
+    assert modified.token_secret != baseline.token_secret
+    assert modified.local_ui_auth_secret != baseline.local_ui_auth_secret
+
+
+@pytest.mark.anyio
+async def test_desktop_share_created_before_lan_is_visible_over_http(tmp_path):
+    from aiohttp.test_utils import TestClient, TestServer
+
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.lan.server import _LanServerImpl
+    from AssetsManager.lan.utils import get_auth_headers
+
+    library = tmp_path / "library"
+    library.mkdir()
+    (library / "asset.txt").write_text("asset", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    runtime = bootstrap.runtime_for(session)
+
+    share = runtime.sharing_services.share_service.create_share(paths=["asset.txt"])
+    assert share is not None
+
+    server = _LanServerImpl(runtime=runtime, access_key="test-access-key")
+    client = TestClient(TestServer(server._app))
+    await client.start_server()
+    try:
+        response = await client.get(
+            "/api/shares", headers=get_auth_headers(server.local_ui_auth_secret)
+        )
+        assert response.status == 200
+        payload = await response.json()
+        assert [item["id"] for item in payload["shares"]] == [share.id]
+    finally:
+        await client.close()
+        bootstrap.library_service.close_session(session)
+
+
+def test_runtime_injection_requires_operation_boundary_even_with_snapshot(tmp_path):
     from AssetsManager.lan.server import _LanServerImpl
 
     session = SimpleNamespace(
@@ -2025,17 +2303,27 @@ def test_runtime_injection_prefers_services_snapshot_over_legacy_services(tmp_pa
     )
     connection = object()
     session.connection_for = Mock(return_value=connection)
-    canonical = SimpleNamespace(
-        session=session,
-        metadata_service=MetadataService(connection_provider=session.connection_for, session=session),
-        tag_service=TagService(connection_provider=session.connection_for, session=session),
-        thumbnail_service=ThumbnailService(connection_provider=session.connection_for, session=session),
-        lan_services=SimpleNamespace(
-            asset_service=AssetService(directory_cache=DirectoryCache(connection)),
-            project_service=ProjectService(connection_provider=session.connection_for, session=session),
-            search_service=SearchService(connection_provider=session.connection_for),
-        ),
+    services = _make_runtime_services_for_fake_session(session, connection)
+    del session.operation
+    runtime = SimpleNamespace(session=session, services_snapshot=services)
+
+    with pytest.raises(ValueError, match="operation boundary"):
+        _LanServerImpl(runtime=runtime)
+
+
+def test_runtime_injection_prefers_services_snapshot_over_legacy_services(tmp_path):
+    from AssetsManager.lan.server import _LanServerImpl
+
+    session = SimpleNamespace(
+        root=tmp_path / "canonical",
+        thumb_dir=tmp_path / "canonical" / "thumbs",
+        event_token="session-token",
+        is_closed=False,
     )
+    connection = object()
+    session.connection_for = Mock(return_value=connection)
+    canonical = _make_runtime_services_for_fake_session(session, connection)
+
     class Runtime:
         def __init__(self):
             self.session = session
@@ -2056,11 +2344,11 @@ def test_runtime_injection_prefers_services_snapshot_over_legacy_services(tmp_pa
     assert server.services.project_service is canonical.lan_services.project_service
     assert server.services.search_service is canonical.lan_services.search_service
     assert server.services.thumbnail_service is canonical.thumbnail_service
+    assert server.services.auth_service is canonical.sharing_services.auth_service
+    assert server.services.share_service is canonical.sharing_services.share_service
 
 
-def test_runtime_injection_falls_back_to_services_only_when_snapshot_is_missing(tmp_path):
-    from AssetsManager.application import AssetService, MetadataService, ProjectService, SearchService, TagService, ThumbnailService
-    from AssetsManager.core.directory_cache import DirectoryCache
+def test_runtime_injection_rejects_legacy_services_by_default(tmp_path):
     from AssetsManager.lan.server import _LanServerImpl
 
     session = SimpleNamespace(
@@ -2071,17 +2359,7 @@ def test_runtime_injection_falls_back_to_services_only_when_snapshot_is_missing(
     )
     connection = object()
     session.connection_for = Mock(return_value=connection)
-    services = SimpleNamespace(
-        session=session,
-        metadata_service=MetadataService(connection_provider=session.connection_for, session=session),
-        tag_service=TagService(connection_provider=session.connection_for, session=session),
-        thumbnail_service=ThumbnailService(connection_provider=session.connection_for, session=session),
-        lan_services=SimpleNamespace(
-            asset_service=AssetService(directory_cache=DirectoryCache(connection)),
-            project_service=ProjectService(connection_provider=session.connection_for, session=session),
-            search_service=SearchService(connection_provider=session.connection_for),
-        ),
-    )
+    services = _make_runtime_services_for_fake_session(session, connection)
     services.asset_service = services.lan_services.asset_service
     services.project_service = services.lan_services.project_service
     services.search_service = services.lan_services.search_service
@@ -2092,8 +2370,32 @@ def test_runtime_injection_falls_back_to_services_only_when_snapshot_is_missing(
         unregister_lifecycle_adapter=Mock(),
     )
 
-    server = _LanServerImpl(runtime=runtime)
+    with pytest.raises(ValueError, match="services_snapshot"):
+        _LanServerImpl(runtime=runtime)
+
+
+def test_runtime_injection_allows_legacy_services_only_through_internal_flag(tmp_path):
+    from AssetsManager.lan.server import _LanServerImpl
+
+    session = SimpleNamespace(
+        root=tmp_path / "canonical",
+        thumb_dir=tmp_path / "canonical" / "thumbs",
+        event_token="session-token",
+        is_closed=False,
+    )
+    connection = object()
+    session.connection_for = Mock(return_value=connection)
+    services = _make_runtime_services_for_fake_session(session, connection)
+    services.asset_service = services.lan_services.asset_service
+    services.project_service = services.lan_services.project_service
+    services.search_service = services.lan_services.search_service
+    del session.operation
+    runtime = SimpleNamespace(session=session, services=services)
+
+    server = _LanServerImpl(runtime=runtime, _allow_legacy_runtime=True)
     assert server.services.runtime_services is services
+    assert server.services.auth_service is services.sharing_services.auth_service
+    assert server.services.share_service is services.sharing_services.share_service
 
 
 @pytest.mark.parametrize("snapshot", [None], ids=["none"])
@@ -3730,6 +4032,7 @@ class TestShareSecurity:
         app, library, conn = _make_lan_app(tmp_path)
         (library / "file.txt").write_text("content", encoding="utf-8")
         app[LAN_APP_KEY].access_key_hash = "configured-key-hash"
+        app[LAN_APP_KEY].endpoint_protocol = "https"
 
         client = await _make_client(app)
         try:
@@ -3740,6 +4043,7 @@ class TestShareSecurity:
             )
             assert create.status == 200
             created = await create.json()
+            assert created["url"].startswith("https://")
             assert created["url"].endswith(f"/s/{created['id']}")
             assert created["requires_key"] is True
 

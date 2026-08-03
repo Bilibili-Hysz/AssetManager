@@ -564,7 +564,8 @@ async def test_credential_revocation_wins_after_validation_before_send(
     lan = SimpleNamespace(
         access_key_hash=hash_key(token) if kind == "access_key" else None,
         password_hash=password_hash,
-        token_secret=token if kind == "local_ui" else None,
+        local_ui_auth_secret=token if kind == "local_ui" else None,
+        token_secret="wrong-secret" if kind == "local_ui" else None,
     )
     presented = (
         generate_auth_token(token) if kind == "local_ui"

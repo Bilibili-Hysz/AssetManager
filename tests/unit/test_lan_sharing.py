@@ -25,6 +25,24 @@ class _Server:
         return {"url": "http://192.168.1.10:9090"}
 
 
+def test_active_share_url_prefers_server_status_endpoint():
+    class _Host(LanSharingMixin):
+        _lan_server = _Server()
+
+    assert _Host()._active_share_url(9090) == "http://192.168.1.10:9090"
+
+
+def test_active_share_url_preserves_https_endpoint():
+    class _HttpsServer(_Server):
+        def status(self):
+            return {"url": "https://192.168.1.10:9090"}
+
+    class _Host(LanSharingMixin):
+        _lan_server = _HttpsServer()
+
+    assert _Host()._active_share_url(9090) == "https://192.168.1.10:9090"
+
+
 def test_endpoint_state_and_primary_action_distinguish_local_and_public_scope():
     assert _endpoint_state({}) == "off"
     assert _endpoint_state({"state": "starting"}) == "starting"
@@ -201,6 +219,69 @@ def test_toggle_sharing_injects_bootstrap_runtime(monkeypatch, tmp_path):
     bootstrap.runtime_for.assert_called_once_with(session)
     assert lan.LanServer.call_args.kwargs["runtime"] is runtime
     assert lan.LanServer.call_args.kwargs["auth_mode"] == "none"
+
+
+def test_open_share_link_dialog_uses_runtime_service_without_starting_lan(
+    monkeypatch,
+):
+    from types import SimpleNamespace
+
+    from PySide6.QtWidgets import QMessageBox
+
+    from AssetsManager.core.settings import AppSettings
+    from AssetsManager.dialogs import share_link_dialog
+    from AssetsManager.lan import server as server_module
+
+    share_service = object()
+    runtime = SimpleNamespace(
+        sharing_services=SimpleNamespace(share_service=share_service)
+    )
+    session = SimpleNamespace(is_closed=False)
+    bootstrap = Mock()
+    bootstrap.runtime_for.return_value = runtime
+    captured = {}
+
+    class _Settings:
+        def get(self, key, default=None):
+            return {
+                "lan_port": 9095,
+                "lan_ssl_cert": "configured.crt",
+                "lan_ssl_key": "configured.key",
+                "lan_access_key": "configured-key",
+            }.get(key, default)
+
+    class _Dialog:
+        def __init__(self, *args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+
+        def exec(self):
+            captured["executed"] = True
+            return 0
+
+    class _Host(LanSharingMixin):
+        _lan_server = None
+        _library_session = session
+        _bootstrap = bootstrap
+
+        def _dialog_parent(self):
+            return None
+
+    question = Mock(return_value=QMessageBox.StandardButton.No)
+    monkeypatch.setattr(QMessageBox, "question", question)
+    monkeypatch.setattr(AppSettings, "instance", classmethod(lambda cls: _Settings()))
+    monkeypatch.setattr(server_module, "get_local_ip", lambda: "192.0.2.10")
+    monkeypatch.setattr(share_link_dialog, "ShareLinkDialog", _Dialog)
+
+    _Host()._open_share_link_dialog(paths=["asset.txt"])
+
+    question.assert_not_called()
+    bootstrap.runtime_for.assert_called_once_with(session)
+    assert captured["executed"] is True
+    assert captured["kwargs"]["paths"] == ["asset.txt"]
+    assert captured["kwargs"]["share_service"] is share_service
+    assert captured["kwargs"]["base_url"] == "http://192.0.2.10:9095"
+    assert captured["kwargs"]["requires_key"] is True
 
 
 def test_runtime_service_providers_are_isolated_across_lan_servers(tmp_path):

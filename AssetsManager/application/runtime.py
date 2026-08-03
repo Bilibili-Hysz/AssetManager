@@ -4,7 +4,7 @@ from __future__ import annotations
 import threading
 import uuid
 
-from AssetsManager.application.bootstrap import LibraryScopedServices
+from AssetsManager.application.bootstrap import LibraryScopedServices, RuntimeSharingServices
 from AssetsManager.application.context import LibrarySession
 from AssetsManager.application.runtime_events import RuntimeEventRouter
 
@@ -25,6 +25,11 @@ class LibraryRuntime:
         self._adapter_cleanup_thread_id: int | None = None
         self._lifecycle_adapters: list[object] = []
         self.event_router = RuntimeEventRouter(self)
+
+    @property
+    def sharing_services(self) -> RuntimeSharingServices:
+        """Return this Runtime session's immutable sharing service bundle."""
+        return self.services_snapshot.sharing_services
 
     @property
     def services_snapshot(self) -> LibraryScopedServices:

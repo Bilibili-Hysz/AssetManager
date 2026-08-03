@@ -135,7 +135,7 @@ async def handle_create_share(request):
         return web.json_response({"error": "Failed to create share link"}, status=500)
 
     ip = get_local_ip()
-    protocol = "https" if lan._ssl_cert and lan._ssl_key else "http"
+    protocol = getattr(lan, "endpoint_protocol", "http")
     share_url = f"{protocol}://{ip}:{lan._port}/s/{share.id}"
 
     result = share.to_public_dict()
@@ -163,7 +163,7 @@ async def handle_list_shares(request):
     shares = share_svc.list_shares(created_by=created_by)
 
     ip = get_local_ip()
-    protocol = "https" if lan._ssl_cert and lan._ssl_key else "http"
+    protocol = getattr(lan, "endpoint_protocol", "http")
     result = []
     for share in shares:
         info = share.to_public_dict()

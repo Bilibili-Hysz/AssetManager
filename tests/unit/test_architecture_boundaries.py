@@ -516,13 +516,16 @@ def test_lan_server_delegates_active_user_lookup_to_auth_service() -> None:
 
 
 def test_lan_server_initializes_auth_and_share_through_services() -> None:
-    source = (SRC / "lan" / "server.py").read_text(encoding="utf-8")
-    start = source.index("    async def _startup(self):")
-    end = source.index("    async def _shutdown", start)
+    bootstrap = (SRC / "application" / "bootstrap.py").read_text(encoding="utf-8")
+    server = (SRC / "lan" / "server.py").read_text(encoding="utf-8")
+    auth_routes = (SRC / "lan" / "routes" / "auth.py").read_text(encoding="utf-8")
 
-    assert "self._auth_service.init_tables()" in source[start:end]
-    assert "self._share_service.init_table()" in source[start:end]
-    assert "AssetsManager.repositories" not in source
+    assert "auth_service.init_tables()" in bootstrap
+    assert "share_service.init_table()" in bootstrap
+    assert "self._auth_service.init_tables()" not in server
+    assert "self._share_service.init_table()" not in server
+    assert "auth_service.init_tables()" not in auth_routes
+    assert "AssetsManager.repositories" not in server
 
 
 def test_files_route_uses_scoped_metadata_service_for_cached_stats() -> None:
@@ -614,11 +617,15 @@ def test_lan_server_projects_runtime_services_without_reassembly() -> None:
 
     assert "runtime.services_snapshot" in source
     assert "runtime_services.lan_services" in source
+    assert "runtime_services.sharing_services" in source
     assert "runtime_services=runtime_services" in source
-    for constructor in ("AssetService(", "ProjectService(", "SearchService("):
+    for constructor in (
+        "AssetService(", "ProjectService(", "SearchService(",
+        "AuthService(", "ShareService(",
+    ):
         assert constructor not in source
-    assert "AuthService(" in source
-    assert "ShareService(" in source
+    assert "os.urandom" not in source
+
 
 def test_runtime_is_constructed_only_by_bootstrap() -> None:
     source_root = SRC

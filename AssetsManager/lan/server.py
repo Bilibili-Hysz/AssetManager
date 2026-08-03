@@ -3,8 +3,10 @@ import asyncio
 from contextlib import nullcontext
 import inspect
 import concurrent.futures
+import hashlib
+import hmac
+import json
 import logging
-import os
 import ssl
 import threading
 import time
@@ -26,27 +28,48 @@ _log = logging.getLogger(__name__)
 _MISSING = object()
 
 
-def _runtime_services_snapshot(runtime):
-    """Return the canonical snapshot and whether test-double fallback was used."""
+def _runtime_services_snapshot(runtime, *, allow_legacy_runtime: bool):
+    """Return the canonical snapshot and whether test-only fallback was used."""
     if inspect.getattr_static(runtime, "services_snapshot", _MISSING) is not _MISSING:
         return runtime.services_snapshot, False
-    # Temporary compatibility for legacy runtime-shaped test doubles. Remove
-    # after those fixtures expose the canonical services_snapshot contract.
+    if not allow_legacy_runtime:
+        raise ValueError("runtime must expose the canonical services_snapshot contract")
     return getattr(runtime, "services", None), True
 
 
-def _runtime_operation(runtime, session):
+def _runtime_operation(runtime, session, *, allow_legacy_runtime: bool):
     operation = getattr(session, "operation", None)
     if callable(operation):
         return operation()
 
-    # Real LibraryRuntime instances always carry a LibrarySession operation
-    # boundary. Only lightweight legacy test doubles may omit it.
-    from AssetsManager.application.runtime import LibraryRuntime
-
-    if isinstance(runtime, LibraryRuntime):
+    if not allow_legacy_runtime:
         raise ValueError("runtime session must provide an operation boundary")
     return nullcontext()
+
+
+def _derive_local_ui_auth_secret(
+    token_secret: str,
+    *,
+    password: str | None,
+    access_key: str | None,
+    auth_mode: str | None,
+) -> str:
+    """Derive a stable, auth-config-bound secret for access-key UI tokens."""
+    auth_config = json.dumps(
+        {
+            "access_key": access_key,
+            "auth_mode": auth_mode,
+            "password": password,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hmac.new(
+        token_secret.encode("utf-8"),
+        b"lan-local-ui-auth-v1\0" + auth_config,
+        hashlib.sha256,
+    ).hexdigest()
 
 
 def _provider_matches_session(service, session) -> bool:
@@ -77,6 +100,7 @@ def _service_session_matches(service, session, *, required: bool) -> bool:
 def _validate_runtime_service_bindings(
     runtime_services,
     lan_services,
+    sharing_services,
     session,
     db_conn,
     *,
@@ -124,6 +148,24 @@ def _validate_runtime_service_bindings(
             "runtime asset_service cache is not bound to its LibrarySession"
         )
 
+    token_secret = getattr(sharing_services, "token_secret", None)
+    if not isinstance(token_secret, str) or not token_secret:
+        raise ValueError("runtime sharing token secret is unavailable")
+    for name in ("auth_service", "share_service"):
+        service = getattr(sharing_services, name, None)
+        if (
+            service is None
+            or getattr(service, "_conn", _MISSING) is not db_conn
+            or getattr(service, "_secret", _MISSING) != token_secret
+            or not _service_session_matches(
+                service, session, required=strict_session_binding
+            )
+        ):
+            raise ValueError(
+                f"runtime {name} is not bound to its LibrarySession sharing bundle"
+            )
+
+
 class _LanServerImpl:
     """Internal server implementation. Do not use directly — use LanServer facade."""
 
@@ -136,13 +178,14 @@ class _LanServerImpl:
                   blur_tags: list[str] | None = None,
                   ssl_cert: str | None = None, ssl_key: str | None = None,
                   performance_recorder=None, session_token: str | None = None,
-                  services=None):
+                  services=None, _allow_legacy_runtime: bool = False):
         self._runtime_adapter_registered = False
         self._runtime_adapter_lock = threading.Lock()
         self._runtime_adapter_condition_lock = threading.Condition(self._runtime_adapter_lock)
         self._runtime_adapter_state = "unregistered"
         self._runtime_adapter_registration_thread = None
         self.runtime = runtime
+        self._allow_legacy_runtime = _allow_legacy_runtime
         session = getattr(runtime, "session", None)
         if session is None:
             raise ValueError("runtime must be live and canonical for its LibrarySession")
@@ -162,7 +205,6 @@ class _LanServerImpl:
         self._ws_manager = WebSocketManager(on_connection_change=self._set_connection_count)
         self._tunnel = TunnelManager()
         self._blur_tags = set(blur_tags or [])
-        self._token_secret = os.urandom(32).hex()  # Random secret for token signing
 
         # Security
         self._rate_limit_value = rate_limit
@@ -177,6 +219,7 @@ class _LanServerImpl:
         # SSL
         self._ssl_cert = ssl_cert
         self._ssl_key = ssl_key
+        self._ssl_active = False
 
         # Hot-reloadable settings (initialized to defaults)
         self._theme_color = None
@@ -219,8 +262,12 @@ class _LanServerImpl:
         self._has_users_cache_time: float = 0
         self._has_users_cache_ttl: float = 30.0  # Cache for 30 seconds
 
-        with _runtime_operation(runtime, session):
-            runtime_services, legacy_fallback = _runtime_services_snapshot(runtime)
+        with _runtime_operation(
+            runtime, session, allow_legacy_runtime=_allow_legacy_runtime
+        ):
+            runtime_services, legacy_fallback = _runtime_services_snapshot(
+                runtime, allow_legacy_runtime=_allow_legacy_runtime
+            )
             if runtime_services is None:
                 raise ValueError(
                     "runtime must be live and canonical for its LibrarySession"
@@ -259,6 +306,16 @@ class _LanServerImpl:
             if lan_runtime_services is None:
                 raise ValueError("runtime snapshot has no LAN service projection")
 
+            has_sharing_projection = (
+                inspect.getattr_static(runtime_services, "sharing_services", _MISSING)
+                is not _MISSING
+            )
+            if not has_sharing_projection:
+                raise ValueError("runtime snapshot has no sharing service projection")
+            sharing_runtime_services = runtime_services.sharing_services
+            if sharing_runtime_services is None:
+                raise ValueError("runtime snapshot has no sharing service projection")
+
             library_root = session.root
             thumbnail_dir = session.thumb_dir
             db_conn = session.connection_for(session.root)
@@ -266,26 +323,20 @@ class _LanServerImpl:
                 runtime_services, "performance_recorder", performance_recorder
             )
             runtime_session_token = session.event_token
+            event_library_root = getattr(session, "root_str", str(library_root))
 
             _validate_runtime_service_bindings(
                 runtime_services,
                 lan_runtime_services,
+                sharing_runtime_services,
                 session,
                 db_conn,
                 strict_session_binding=not legacy_fallback,
             )
 
-            # Auth/Share remain LAN-owned. A3 only changes when the three
-            # LAN-only application services are materialized.
-            from AssetsManager.application.auth_service import AuthService
-            from AssetsManager.application.share_service import ShareService
-
-            auth_service = AuthService(db_conn, self._token_secret)
-            share_service = ShareService(db_conn, self._token_secret)
-            event_library_root = getattr(session, "root_str", str(library_root))
-            for service in (auth_service, share_service):
-                service._library_root = event_library_root
-                service._session_token = runtime_session_token
+            auth_service = sharing_runtime_services.auth_service
+            share_service = sharing_runtime_services.share_service
+            token_secret = sharing_runtime_services.token_secret
 
             scanner = DirectoryScanner(library_root, db_conn)
             scoped_services = LanScopedServices(
@@ -312,6 +363,13 @@ class _LanServerImpl:
                 self._library_root = Path(library_root)
                 self._thumbnail_dir = Path(thumbnail_dir)
                 self._db_conn = db_conn
+                self._token_secret = token_secret
+                self._local_ui_auth_secret = _derive_local_ui_auth_secret(
+                    token_secret,
+                    password=self._password_value,
+                    access_key=self._access_key_value,
+                    auth_mode=self._auth_mode,
+                )
                 self.performance_recorder = runtime_performance_recorder
                 self.session_token = runtime_session_token
                 self._scanner = scanner
@@ -382,6 +440,7 @@ class _LanServerImpl:
             self._cleanup_complete = False
             self._port = port
             self._bind = bind
+            self._ssl_active = False
             self._build_app()
             self._thread = threading.Thread(target=self._run, daemon=True)
         try:
@@ -651,20 +710,25 @@ class _LanServerImpl:
 
     def status(self) -> dict:
         ip = get_local_ip()
+        protocol = self.endpoint_protocol
         return {
             "running": self.is_running(),
             "lifecycle_state": self._lifecycle_state,
             "ip": ip,
             "port": self._port,
-            "url": f"http://{ip}:{self._port}",
+            "url": f"{protocol}://{ip}:{self._port}",
+            "ssl_active": self._ssl_active,
             "share_name": self._share_name,
             "library_root": str(self._library_root),
             "auth_enabled": self.auth_status()[0],
             "connections": self._connections,
             "requests": self._requests,
             "bytes_transferred": self._bytes_transferred,
-            "uptime": max(0.0, time.monotonic() - self._started_at) if self._started_at else 0.0,
+            "uptime": max(0.0, time.monotonic() - self._started_at)
+            if self._started_at
+            else 0.0,
         }
+
 
     def auth_status(self) -> tuple[bool, str]:
         """Return the effective LAN authentication state and mode."""
@@ -743,7 +807,26 @@ class _LanServerImpl:
 
     @property
     def token_secret(self) -> str:
+        """Local UI API secret retained under the legacy public name."""
+        return self._local_ui_auth_secret
+
+    @property
+    def runtime_token_secret(self) -> str:
+        """Runtime-owned secret shared by AuthService and ShareService."""
         return self._token_secret
+
+    @property
+    def local_ui_auth_secret(self) -> str:
+        """Auth-config-bound secret used only for local UI access-key tokens."""
+        return self._local_ui_auth_secret
+
+    @property
+    def ssl_active(self) -> bool:
+        return self._ssl_active
+
+    @property
+    def endpoint_protocol(self) -> str:
+        return "https" if self._ssl_active else "http"
 
     @property
     def tunnel(self) -> TunnelManager:
@@ -890,9 +973,8 @@ class _LanServerImpl:
                     _log.exception("Failed to unregister LAN runtime lifecycle adapter")
 
     async def _startup(self):
+        self._ssl_active = False
         await self._ws_manager.start_accepting()
-        self._auth_service.init_tables()
-        self._share_service.init_table()
         self._app[AUTH_SERVICE_APP_KEY] = self._auth_service
         self._runner = web.AppRunner(
             self._app,
@@ -928,6 +1010,7 @@ class _LanServerImpl:
             if cleanup_started is not None:
                 cleanup_started.set()
             return
+        self._ssl_active = ssl_context is not None
         if self._port == 0:
             sockets = getattr(getattr(self._site, "_server", None), "sockets", None)
             if sockets:
@@ -940,6 +1023,7 @@ class _LanServerImpl:
         if cancelled:
             self._running = False
             await self._runner.cleanup()
+            self._ssl_active = False
             self._cleanup_complete = True
             raise RuntimeError("startup cancelled")
 
@@ -979,7 +1063,7 @@ class _LanServerImpl:
                 await self._runner.cleanup()
                 self._cleanup_complete = True
             return
-        protocol = "https" if ssl_context else "http"
+        protocol = self.endpoint_protocol
         _log.info("LAN sharing started on %s://%s:%d", protocol, get_local_ip(), self._port)
 
         # Start background file scanner for fast search
@@ -1004,6 +1088,7 @@ class _LanServerImpl:
         except BaseException:
             self._cleanup_complete = False
             raise
+        self._ssl_active = False
         self._cleanup_complete = True
         _log.info("LAN sharing stopped")
 
@@ -1098,7 +1183,9 @@ class _LanServerImpl:
                 if self._access_key_hash is not None and verify_key(token, self._access_key_hash):
                     set_request_principal(request, principal_for_request("access_key"))
                     return await handler(request)
-                if self._token_secret and verify_auth_token(token, self._token_secret):
+                if self._local_ui_auth_secret and verify_auth_token(
+                        token, self._local_ui_auth_secret
+                    ):
                     set_request_principal(request, principal_for_request("local_ui"))
                     return await handler(request)
                 user = self._auth_service.verify_user_token(token)
@@ -1146,9 +1233,9 @@ class _LanServerImpl:
                 set_request_principal(request, principal_for_request("access_key"))
                 return await handler(request)
 
-        # Try local UI API token (signed with token_secret)
-        if self._token_secret and token:
-            if verify_auth_token(token, self._token_secret):
+        # Try local UI API token (signed with the auth-config-bound secret)
+        if self._local_ui_auth_secret and token:
+            if verify_auth_token(token, self._local_ui_auth_secret):
                 set_request_principal(request, principal_for_request("local_ui"))
                 return await handler(request)
 

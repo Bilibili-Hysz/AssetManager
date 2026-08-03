@@ -123,13 +123,36 @@ class LanServer:
 
     @property
     def _token_secret(self) -> str:
-        """Return the token secret for API authentication."""
+        """Return the Runtime-owned sharing token secret."""
         return self._impl._token_secret
 
     @property
     def token_secret(self) -> str:
-        """Return the token secret for API authentication (public accessor)."""
+        """Return the local UI API secret (legacy desktop compatibility alias).
+
+        Runtime sharing consumers should use ``runtime_token_secret`` instead.
+        """
         return self._impl.token_secret
+
+    @property
+    def runtime_token_secret(self) -> str:
+        """Return the Runtime-owned AuthService/ShareService token secret."""
+        return self._impl.runtime_token_secret
+
+    @property
+    def local_ui_auth_secret(self) -> str:
+        """Return the auth-config-bound secret for local UI access-key tokens."""
+        return self._impl.local_ui_auth_secret
+
+    @property
+    def ssl_active(self) -> bool:
+        """Return whether the active listener actually uses TLS."""
+        return self._impl.ssl_active
+
+    @property
+    def endpoint_protocol(self) -> str:
+        """Return the active endpoint protocol (http or https)."""
+        return self._impl.endpoint_protocol
 
 
 # Lazy import ShareManager to avoid circular imports

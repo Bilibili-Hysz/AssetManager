@@ -10,7 +10,9 @@ from PySide6.QtWidgets import (
     QApplication, QMessageBox,
 )
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
-from AssetsManager.dialogs._share_api import ShareApiTask
+from AssetsManager.dialogs._share_api import (
+    ShareCreationTask, _runtime_epoch, _service_runtime, _service_session,
+)
 from AssetsManager import i18n
 from AssetsManager.core.ui_scale import scaled_px
 
@@ -21,10 +23,28 @@ _log = logging.getLogger(__name__)
 class ShareLinkDialog(TabbedDialog):
     """Dialog for creating share links."""
 
-    def __init__(self, parent=None, path: str = "", paths: list[str] | None = None, server=None):
+    def __init__(
+        self,
+        parent=None,
+        path: str = "",
+        paths: list[str] | None = None,
+        server=None,
+        *,
+        share_service=None,
+        base_url: str = "",
+        requires_key: bool = False,
+        session=None,
+        runtime=None,
+    ):
         # Keep ``path`` while callers migrate, but normalize all requests to paths.
         self._paths = list(paths) if paths is not None else ([path] if path else [])
         self._server = server
+        self._share_service = share_service
+        self._base_url = base_url
+        self._requires_key = requires_key
+        self._session = session
+        self._runtime = runtime
+        self._request_generation = 0
         self._share_url = None
         self._creating = False
         super().__init__(parent, title=tr("sharelink.title"), min_size=(400, 450))
@@ -140,12 +160,12 @@ class ShareLinkDialog(TabbedDialog):
         layout.addStretch()
 
     def _create_link(self):
-        """Create the share link via API (async, non-blocking)."""
+        """Create the share link through the Runtime service without blocking."""
         if self._creating or self._share_url:
             return
         if not self._paths:
             return
-        if not self._server:
+        if self._share_service is None or not self._base_url:
             QMessageBox.warning(self, tr("sharelink.msg.error_title"), tr("sharelink.error.server_unavailable"))
             return
 
@@ -155,34 +175,59 @@ class ShareLinkDialog(TabbedDialog):
         max_downloads = self._max_downloads_spin.value() or None
         allow_preview = self._allow_preview_check.isChecked()
 
-        port = self._server._port
-        url = f"http://localhost:{port}/api/shares"
-        data = {
+        options = {
             "paths": self._paths,
             "password": password,
             "expires_hours": expires_hours,
             "max_downloads": max_downloads,
             "allow_preview": allow_preview,
+            "created_by": "local_ui",
         }
 
-        headers = {"Content-Type": "application/json"}
-        if hasattr(self._server, 'token_secret'):
-            from AssetsManager.lan.utils import get_auth_headers
-            headers.update(get_auth_headers(self._server.token_secret))
-
+        self._request_generation += 1
+        generation = self._request_generation
         self._creating = True
         self._create_btn.setEnabled(False)
         self._create_btn.setText(tr("sharelink.btn.creating"))
 
-        server = self._server
-        self._create_task = ShareApiTask("POST", url, headers, data, success_statuses=(200, 201))
+        service = self._share_service
+        session = self._session if self._session is not None else _service_session(service)
+        runtime = self._runtime if self._runtime is not None else _service_runtime(service)
+        epoch = _runtime_epoch(runtime, session, service)
+        self._create_task = ShareCreationTask(
+            service,
+            self._paths,
+            {key: value for key, value in options.items() if key != "paths"},
+            self._base_url,
+            self._requires_key,
+            session=session, runtime=runtime, generation=generation,
+        )
         self._create_task.signals.finished.connect(
-            lambda success, result, source=server: self._on_create_result(success, result, source))
+            lambda success, result, source=service, source_session=session,
+            source_runtime=runtime, source_epoch=epoch, source_generation=generation: self._on_create_result(
+                success, result, source, source_session, source_runtime, source_epoch, source_generation
+            ))
         QThreadPool.globalInstance().start(self._create_task)
 
-    def _on_create_result(self, success, data, source_server=None):
+    def _on_create_result(
+        self, success, data, source_service=None, source_session=None,
+        source_runtime=None, source_epoch=None, source_generation=None,
+    ):
         """Handle async share link creation result."""
-        if source_server is not None and source_server is not self._server:
+        active_source = self._share_service if self._share_service is not None else self._server
+        if source_service is not None and source_service is not active_source:
+            return
+        if source_generation is not None and source_generation != self._request_generation:
+            return
+        active_session = self._session if self._session is not None else _service_session(active_source)
+        if source_session is not None and source_session is not active_session:
+            return
+        if getattr(source_session, "is_closed", False) or getattr(active_session, "is_closed", False):
+            return
+        active_runtime = self._runtime if self._runtime is not None else _service_runtime(active_source)
+        if source_runtime is not None and source_runtime is not active_runtime:
+            return
+        if source_epoch is not None and _runtime_epoch(active_runtime, active_session, active_source) != source_epoch:
             return
         self._creating = False
         self._create_btn.setText(tr("sharelink.btn.create_link"))
@@ -243,6 +288,14 @@ class ShareLinkDialog(TabbedDialog):
             return
         from AssetsManager.dialogs.share_qr_dialog import ShareQrDialog
         ShareQrDialog(self, self._share_url).exec()
+
+    def closeEvent(self, event):
+        self._request_generation += 1
+        super().closeEvent(event)
+
+    def done(self, result):
+        self._request_generation += 1
+        super().done(result)
 
     def get_share_url(self) -> str | None:
         """Return the created share URL."""

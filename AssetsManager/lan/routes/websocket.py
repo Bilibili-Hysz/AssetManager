@@ -63,10 +63,11 @@ def _authorization_validator(request, lan, principal):
             and verify_token(token, lan.password_hash)
         )
     if principal.kind == "local_ui" and token:
-        return lambda: bool(
-            getattr(lan, "token_secret", None)
-            and verify_auth_token(token, lan.token_secret)
+        secret = (
+            getattr(lan, "local_ui_auth_secret", None)
+            or getattr(lan, "token_secret", None)
         )
+        return lambda: bool(secret and verify_auth_token(token, secret))
     # Tokenless local middleware contexts have no external credential to
     # expire; they remain explicitly identified and can still be manager-closed.
     return lambda: principal.capabilities.realtime
@@ -77,7 +78,7 @@ def _authorization_authority(principal):
 
     User credentials can be revoked independently and are keyed by user id.
     Access-key and password snapshots are immutable for a running server, while
-    the local-UI signing secret is generated once per server instance.  Their
+    the local-UI signing secret is bound to the current authentication config.  Their
     shared process authorities are invalidated by ``WebSocketManager.close_all``
     during the restart/teardown that rotates those credential snapshots.
     """

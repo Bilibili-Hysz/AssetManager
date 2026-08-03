@@ -59,8 +59,6 @@ async def handle_register(request):
     invite_code = body.get("invite_code")
     auth_service = get_auth_service(request)
 
-    auth_service.init_tables()
-
     user_id, err = auth_service.register_user(username, password, email=email, invite_code=invite_code)
     if user_id:
         user, auth_err = auth_service.authenticate_user(username, password)
@@ -89,7 +87,7 @@ async def handle_verify_key(request):
 
     auth_service = get_auth_service(request)
     if auth_service.verify_key(key, lan.access_key_hash):
-        token = generate_auth_token(lan.token_secret)
+        token = generate_auth_token(lan.local_ui_auth_secret)
         response = web.json_response({"ok": True})
         set_auth_cookie(response, token)
         _record_activity(request, "login", "verified access key")

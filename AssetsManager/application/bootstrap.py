@@ -3,20 +3,20 @@
 Centralizes service creation and plugin discovery so that ``app.py``
 does not scatter singleton calls throughout the startup sequence.
 
-Note: AuthService and ShareService are NOT registered here because they
-require a ``db_conn`` and ``token_secret`` that are only available after
-a library is opened and the LAN server is composed. They are created by
-``_LanServerImpl`` and passed to route handlers at runtime.
+AuthService and ShareService are registered into each per-session Runtime
+bundle after its library connection is opened. LAN-only services remain lazy.
 """
 from __future__ import annotations
 
 import logging
+import secrets
 import threading
 from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Callable
 
 from AssetsManager.application.asset_index_service import AssetIndexService
+from AssetsManager.application.auth_service import AuthService
 from AssetsManager.application.asset_service import AssetService
 from AssetsManager.application.context import ConnectionProvider, LibrarySession
 from AssetsManager.application.file_operation_service import FileOperationService
@@ -25,6 +25,7 @@ from AssetsManager.application.metadata_service import MetadataService
 from AssetsManager.application.plugin_service import PluginService
 from AssetsManager.application.project_service import ProjectService
 from AssetsManager.application.search_service import SearchService
+from AssetsManager.application.share_service import ShareService
 from AssetsManager.application.tag_service import TagService
 from AssetsManager.application.thumbnail_service import ThumbnailService
 from AssetsManager.application.undo_service import UndoService
@@ -38,6 +39,15 @@ _log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from AssetsManager.application.runtime import LibraryRuntime
+
+
+@dataclass(frozen=True)
+class RuntimeSharingServices:
+    """Authentication and sharing services bound to one Runtime session."""
+
+    token_secret: str = field(repr=False)
+    auth_service: AuthService
+    share_service: ShareService
 
 
 @dataclass(frozen=True)
@@ -166,6 +176,7 @@ class LibraryScopedServices:
     """
 
     session: LibrarySession
+    sharing_services: RuntimeSharingServices
     metadata_service: MetadataService
     tag_service: TagService
     thumbnail_service: ThumbnailService
@@ -241,8 +252,8 @@ class ApplicationBootstrap:
         c.register(AssetIndexService)
         c.register(UndoService)
         c.register(PluginService)
-        # AuthService / ShareService are NOT registered here — they require
-        # db_conn + token_secret from the LAN server at runtime.
+        # AuthService / ShareService are per-Runtime services because their
+        # connection and token secret belong to one opened library session.
 
     # ── Plugin lifecycle ─────────────────────────────────────────
 
@@ -339,31 +350,42 @@ class ApplicationBootstrap:
 
     def _build_services(self, session: LibrarySession) -> LibraryScopedServices:
         provider = session.connection_for
-        return LibraryScopedServices(
-            session=session,
-            metadata_service=MetadataService(connection_provider=provider, session=session),
-            tag_service=TagService(connection_provider=provider, session=session),
-            thumbnail_service=ThumbnailService(
-                connection_provider=provider, session=session
-            ),
-            file_operation_service=FileOperationService(
+        with session.operation():
+            connection = provider(session.root)
+            token_secret = secrets.token_hex(32)
+            sharing_services = RuntimeSharingServices(
+                token_secret=token_secret,
+                auth_service=AuthService(connection, token_secret, session=session),
+                share_service=ShareService(connection, token_secret, session=session),
+            )
+            sharing_services.auth_service.init_tables()
+            sharing_services.share_service.init_table()
+            return LibraryScopedServices(
                 session=session,
+                sharing_services=sharing_services,
+                metadata_service=MetadataService(connection_provider=provider, session=session),
+                tag_service=TagService(connection_provider=provider, session=session),
+                thumbnail_service=ThumbnailService(
+                    connection_provider=provider, session=session
+                ),
+                file_operation_service=FileOperationService(
+                    session=session,
+                    asset_index_service=self.container.resolve(AssetIndexService),
+                    performance_recorder=self._performance_recorder,
+                ),
+                undo_service=UndoService(
+                    library_root=session.root_str,
+                    session=session,
+                    performance_recorder=self._performance_recorder,
+                ),
+                plugin_service=self.container.resolve(PluginService),
                 asset_index_service=self.container.resolve(AssetIndexService),
+                _lan_holder=_LanServicesHolder(
+                    session,
+                    partial(self._build_lan_services, connection_provider=provider),
+                ),
                 performance_recorder=self._performance_recorder,
-            ),
-            undo_service=UndoService(
-                library_root=session.root_str,
-                session=session,
-                performance_recorder=self._performance_recorder,
-            ),
-            plugin_service=self.container.resolve(PluginService),
-            asset_index_service=self.container.resolve(AssetIndexService),
-            _lan_holder=_LanServicesHolder(
-                session,
-                partial(self._build_lan_services, connection_provider=provider),
-            ),
-            performance_recorder=self._performance_recorder,
-        )
+            )
 
     def _build_lan_services(
         self,

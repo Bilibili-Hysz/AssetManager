@@ -4,6 +4,9 @@ from __future__ import annotations
 import logging
 import secrets
 from sqlite3 import Connection
+from typing import TYPE_CHECKING
+
+from AssetsManager.application.context import session_operation
 
 from AssetsManager.domain import auth as auth_crypto
 from AssetsManager.domain.event_bus import get_event_bus
@@ -11,6 +14,9 @@ from AssetsManager.domain.events import InviteChanged, UserChanged
 from AssetsManager.repositories.auth_repository import AuthRepository
 
 _log = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from AssetsManager.application.context import LibrarySession
 
 
 class AuthService:
@@ -20,13 +26,26 @@ class AuthService:
     functions directly with ``db_conn``.
     """
 
-    def __init__(self, db_conn: Connection, token_secret: str):
+    def __init__(
+        self,
+        db_conn: Connection,
+        token_secret: str,
+        *,
+        session: LibrarySession | None = None,
+    ):
         self._conn = db_conn
         self._secret = token_secret
+        self._session = session
         self._repo = AuthRepository(db_conn)
         self._event_bus = get_event_bus()
-        self._library_root = ""
-        self._session_token = ""
+        self._library_root = (
+            getattr(session, "root_str", str(getattr(session, "root", "")))
+            if session is not None
+            else ""
+        )
+        self._session_token = (
+            getattr(session, "event_token", "") if session is not None else ""
+        )
 
     def _publish(self, event_type: type) -> None:
         if self._library_root and self._session_token:
@@ -44,6 +63,7 @@ class AuthService:
 
     # ── Infrastructure ──────────────────────────────────────────
 
+    @session_operation
     def init_tables(self) -> None:
         self._repo.init_tables()
 
@@ -51,6 +71,7 @@ class AuthService:
         """No-op placeholder for server-level cache invalidation."""
         pass
 
+    @session_operation
     def has_active_users(self, *, raise_on_error: bool = False) -> bool:
         """Check if there are any active users in the database."""
         return self._repo.has_active_users(raise_on_error=raise_on_error)
@@ -83,6 +104,7 @@ class AuthService:
 
     # ── User management ─────────────────────────────────────────
 
+    @session_operation
     def authenticate_user(self, username: str, password: str) -> tuple[dict | None, str]:
         user = self._repo.get_user_by_username(username)
         if not user:
@@ -93,9 +115,11 @@ class AuthService:
             return None, "Invalid password"
         return user, ""
 
+    @session_operation
     def generate_user_token(self, user_id: int, username: str, role: str) -> str:
         return auth_crypto.generate_user_token(user_id, username, role, self._secret)
 
+    @session_operation
     def verify_user_token(self, token: str) -> dict | None:
         """Verify a user token by fetching user info from the repo."""
         try:
@@ -108,6 +132,7 @@ class AuthService:
         user_info = self._repo.get_user_by_id(user_id)
         return auth_crypto.verify_user_token(token, self._secret, user_info)
 
+    @session_operation
     def register_user(self, username: str, password: str,
                       email: str | None = None,
                       invite_code: str | None = None) -> tuple[int | None, str]:
@@ -146,15 +171,18 @@ class AuthService:
         self._publish(UserChanged)
         return user_id, ""
 
+    @session_operation
     def list_users(self) -> list[dict]:
         return self._repo.list_users()
 
+    @session_operation
     def activate_user(self, user_id: int) -> bool:
         ok = self._repo.set_user_active(user_id, True)
         if ok:
             self._publish(UserChanged)
         return ok
 
+    @session_operation
     def deactivate_user(self, user_id: int) -> bool:
         ok = self._repo.set_user_active(user_id, False)
         if ok:
@@ -163,6 +191,7 @@ class AuthService:
 
     # ── Invite codes ────────────────────────────────────────────
 
+    @session_operation
     def generate_invite_code(self, created_by: str = "admin") -> str:
         code = secrets.token_urlsafe(16)
         if self._repo.insert_invite_code(code, created_by):
@@ -170,9 +199,11 @@ class AuthService:
             return code
         return ""
 
+    @session_operation
     def list_invite_codes(self) -> list[dict]:
         return self._repo.list_invite_codes()
 
+    @session_operation
     def revoke_invite_code(self, code: str) -> bool:
         ok = self._repo.deactivate_invite_code(code)
         if ok:

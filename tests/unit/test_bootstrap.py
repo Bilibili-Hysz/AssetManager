@@ -847,7 +847,7 @@ def test_lan_services_are_isolated_per_library_and_runtime_close_does_not_materi
     assert untouched_calls == []
 
 
-def test_runtime_bundle_does_not_own_auth_or_share_services(tmp_path):
+def test_runtime_bundle_owns_auth_and_share_services(tmp_path):
     from AssetsManager.application.auth_service import AuthService
     from AssetsManager.application.share_service import ShareService
 
@@ -855,10 +855,45 @@ def test_runtime_bundle_does_not_own_auth_or_share_services(tmp_path):
     session = bootstrap.library_service.open_session(tmp_path / "library")
     scoped = bootstrap.runtime_for(session).services
 
-    assert not isinstance(getattr(scoped, "auth_service", None), AuthService)
-    assert not isinstance(getattr(scoped, "share_service", None), ShareService)
-    assert not isinstance(getattr(scoped.lan_services, "auth_service", None), AuthService)
-    assert not isinstance(getattr(scoped.lan_services, "share_service", None), ShareService)
+    assert isinstance(scoped.sharing_services.auth_service, AuthService)
+    assert isinstance(scoped.sharing_services.share_service, ShareService)
+    assert scoped.sharing_services.auth_service._conn is session.context.db_conn
+    assert scoped.sharing_services.share_service._conn is session.context.db_conn
+    assert scoped.sharing_services.auth_service is not scoped.sharing_services.share_service
+    assert "token_secret" not in repr(scoped.sharing_services)
+    assert scoped.sharing_services.token_secret not in repr(scoped.sharing_services)
+
+
+def test_runtime_bundle_initializes_auth_and_share_tables(tmp_path):
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    bootstrap.runtime_for(session)
+
+    tables = {
+        row[0]
+        for row in session.context.db_conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+
+    assert "users" in tables
+    assert "share_links" in tables
+
+
+def test_runtime_bundle_services_reject_calls_after_session_close(tmp_path):
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    sharing = bootstrap.runtime_for(session).sharing_services
+    session.close()
+
+    with pytest.raises(RuntimeError, match="closed"):
+        sharing.auth_service.has_active_users()
+    with pytest.raises(RuntimeError, match="closed"):
+        sharing.auth_service.generate_user_token(1, "user", "user")
+    with pytest.raises(RuntimeError, match="closed"):
+        sharing.share_service.list_shares()
+    with pytest.raises(RuntimeError, match="closed"):
+        sharing.share_service.generate_token("share")
 
 def test_lan_services_close_race_rejects_publication_and_retry(tmp_path, monkeypatch):
     bootstrap = ApplicationBootstrap()

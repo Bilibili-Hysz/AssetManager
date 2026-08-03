@@ -26,6 +26,33 @@ def test_runtime_is_cached_for_exact_session_and_services(tmp_path):
     assert bootstrap.runtime_for(session).services is first.services
 
 
+def test_runtime_reuses_one_sharing_bundle_for_same_session(tmp_path):
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+
+    first = bootstrap.runtime_for(session)
+    second = bootstrap.runtime_for(session)
+
+    assert first.sharing_services is first.services.sharing_services
+    assert first.sharing_services is second.sharing_services
+    assert first.sharing_services.auth_service is second.sharing_services.auth_service
+    assert first.sharing_services.share_service is second.sharing_services.share_service
+
+
+def test_runtime_sharing_bundles_are_isolated_between_libraries(tmp_path):
+    bootstrap = ApplicationBootstrap()
+    first_session = bootstrap.library_service.open_session(tmp_path / "first")
+    second_session = bootstrap.library_service.open_session(tmp_path / "second")
+
+    first = bootstrap.runtime_for(first_session).sharing_services
+    second = bootstrap.runtime_for(second_session).sharing_services
+
+    assert first is not second
+    assert first.token_secret != second.token_secret
+    assert first.auth_service._conn is not second.auth_service._conn
+    assert first.share_service._conn is not second.share_service._conn
+
+
 def test_runtime_rejects_foreign_and_stale_sessions(tmp_path):
     root = tmp_path / "library"
     foreign = LibraryService().open_session(root)
