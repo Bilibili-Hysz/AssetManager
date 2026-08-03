@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, type ReactNode } from 'react';
+import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
 
 interface ResizablePanelProps {
   children: ReactNode;
@@ -19,8 +19,24 @@ export function ResizablePanel({
   const isDragging = useRef(false);
   const startX = useRef(0);
   const startWidth = useRef(0);
+  const moveHandlerRef = useRef<((e: MouseEvent) => void) | null>(null);
+  const upHandlerRef = useRef<(() => void) | null>(null);
+
+  const stopDrag = useCallback(() => {
+    isDragging.current = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    if (moveHandlerRef.current) document.removeEventListener('mousemove', moveHandlerRef.current);
+    if (upHandlerRef.current) document.removeEventListener('mouseup', upHandlerRef.current);
+    moveHandlerRef.current = null;
+    upHandlerRef.current = null;
+  }, []);
+
+  // Release listeners and restore body styles if the panel unmounts mid-drag.
+  useEffect(() => stopDrag, [stopDrag]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (isDragging.current) return;
     isDragging.current = true;
     startX.current = e.clientX;
     startWidth.current = width;
@@ -33,17 +49,11 @@ export function ResizablePanel({
       setWidth(Math.max(minWidth, Math.min(maxWidth, startWidth.current + delta)));
     };
 
-    const handleMouseUp = () => {
-      isDragging.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
+    moveHandlerRef.current = handleMouseMove;
+    upHandlerRef.current = stopDrag;
     document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, [width, side, minWidth, maxWidth]);
+    document.addEventListener('mouseup', stopDrag);
+  }, [width, side, minWidth, maxWidth, stopDrag]);
 
   return (
     <div className="relative flex-shrink-0" style={{ width }}>
