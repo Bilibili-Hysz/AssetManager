@@ -47,7 +47,7 @@
 
 新增 `ContextMenu.test.tsx`、`Modal.test.tsx`、`ResizablePanel.test.tsx`，覆盖 Escape、outside click、focus、disabled item、键盘导航、pointer capture、最小/最大尺寸和卸载清理。
 
-> ✅ 2026-08-04 完成：`ContextMenu.test.tsx`（8 用例）、`Modal.test.tsx`（9 用例）、`ResizablePanel.test.tsx`（7 用例），全量 52 文件/388 通过，typecheck/build 通过。另修复 `ResizablePanel.tsx` 缺陷：拖拽中卸载会残留 document `mousemove`/`mouseup` listener 与 body cursor/userSelect（`stopDrag` + move/up handler refs + `useEffect` 卸载清理）。
+> ✅ 2026-08-04 完成：`ContextMenu.test.tsx`（8 用例）、`Modal.test.tsx`（9 用例）、`ResizablePanel.test.tsx`（7 用例），全量 52 文件/388 通过，typecheck/build 通过。另修复 `ResizablePanel.tsx` 缺陷：拖拽中卸载会残留 document `mousemove`/`mouseup` listener 与 body cursor/userSelect（`stopDrag` + move/up handler refs + `useEffect` 卸载清理）。收口提交 `3640c82`。
 >
 > 环境注意：`~`/`#`/`%` 路径下必须用 `npm test`（`scripts/run-vitest.mjs` 经 `subst` 映射临时盘符）；直接 `npx vitest` 会报 `Cannot find module '/@vite/env'`。
 
@@ -57,7 +57,7 @@
 - 新增 i18n key parity test，保证 `en`、`zh`、`ja` 结构一致。
 - 为 `UserManagement` 补独立测试，覆盖 toggle、空态、错误 toast、旧响应丢弃和实时刷新。
 
-> ✅ 2026-08-04 完成：`App.test.tsx`（9 用例：公开/受保护/share/未知路由、openGuest 直通、capability 缺失重定向 `/`、未认证重定向 `/login`、loading 空渲染；mock 页面与四个 Provider 后验证 `BrowserRouter` 路由映射）；`src/i18n/i18n.test.ts`（5 用例：zh/ja 与 en 扁平 key 完全一致、`{n}` 占位符一致、值非空、`setLang`/`subscribeToLang` 行为）；`UserManagement.test.tsx`（7 用例：渲染/空态/toggle 后 canonical refetch/invalidation refetch/旧响应丢弃/identityGeneration 变化清空/toggle 失败保留列表）。
+> ✅ 2026-08-04 完成：`App.test.tsx`（9 用例：公开/受保护/share/未知路由、openGuest 直通、capability 缺失重定向 `/`、未认证重定向 `/login`、loading 空渲染；mock 页面与四个 Provider 后验证 `BrowserRouter` 路由映射）；`src/i18n/i18n.test.ts`（5 用例：zh/ja 与 en 扁平 key 完全一致、`{n}` 占位符一致、值非空、`setLang`/`subscribeToLang` 行为）；`UserManagement.test.tsx`（7 用例：渲染/空态/toggle 后 canonical refetch/invalidation refetch/旧响应丢弃/identityGeneration 变化清空/toggle 失败保留列表）。收口提交 `3640c82`。
 
 ## W3 — 真实 Desktop/LAN/WebUI 验收
 
