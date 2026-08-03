@@ -41,7 +41,7 @@
 > - `metadata.ts`/`files.ts`/`users.ts`/`tags.ts` 用 `encodeURIComponent` 整体编码 path（`/`→`%2F`），后端 `{path:.*}` 贪婪路由 + `unquote(match_info["path"])` 还原；`shares.ts` 用 `encodeSharePath` 分段编码（分隔符不转义）。两者对字面 `%` 文件名的解码行为不同，见 `08-known-risks.md`。
 > - `client.ts` 的 `put`/`delete` 不接收 AbortSignal；factory 中 `tags.rename/delete`、`users.revokeInvite`、`shares.delete` 均无 signal，测试按现状断言。
 > - `auth.register` 保留 `email`/`invite_code` key（undefined 由 client 过滤）。
-> 收口提交 hash 见 commit message `test: add API factory contract tests for all factories`。
+> 收口提交 `37a849a`：`test: add API factory contract tests for all factories`。
 
 ### P1：基础交互组件
 
