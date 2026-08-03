@@ -37,6 +37,12 @@
 
 按优先级：`auth.ts` → `metadata.ts` → `shares.ts` → `users.ts` → `tags.ts` → `thumbnails.ts` → `system.ts` → `files.ts` 非下载路径。每个测试至少断言 HTTP method、endpoint、query/body、encode、AbortSignal 透传和返回 DTO。
 
+> ✅ 2026-08-04 完成：新增 8 个契约测试文件（`auth/metadata/shares/users/tags/thumbnails/system/files.contract.test.ts`），37 用例，全量 46 文件/343 通过。与 `AssetsManager/lan/api.py` 路由逐条核对：method/endpoint/query/body/encode/AbortSignal 均一致。契约注记：
+> - `metadata.ts`/`files.ts`/`users.ts`/`tags.ts` 用 `encodeURIComponent` 整体编码 path（`/`→`%2F`），后端 `{path:.*}` 贪婪路由 + `unquote(match_info["path"])` 还原；`shares.ts` 用 `encodeSharePath` 分段编码（分隔符不转义）。两者对字面 `%` 文件名的解码行为不同，见 `08-known-risks.md`。
+> - `client.ts` 的 `put`/`delete` 不接收 AbortSignal；factory 中 `tags.rename/delete`、`users.revokeInvite`、`shares.delete` 均无 signal，测试按现状断言。
+> - `auth.register` 保留 `email`/`invite_code` key（undefined 由 client 过滤）。
+> 收口提交 hash 见 commit message `test: add API factory contract tests for all factories`。
+
 ### P1：基础交互组件
 
 新增 `ContextMenu.test.tsx`、`Modal.test.tsx`、`ResizablePanel.test.tsx`，覆盖 Escape、outside click、focus、disabled item、键盘导航、pointer capture、最小/最大尺寸和卸载清理。

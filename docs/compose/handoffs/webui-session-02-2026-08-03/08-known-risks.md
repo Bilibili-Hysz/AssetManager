@@ -8,7 +8,7 @@
 
 ### 旧测试计数不能直接复用
 
-不同报告来自不同时间、不同工作树和不同测试选择。当前 2026-08-03 WebUI 实测是 37 files / 292 tests；后续报告必须带命令和日期。
+不同报告来自不同时间、不同工作树和不同测试选择。当前 2026-08-03 WebUI 实测是 37 files / 292 tests；2026-08-04 为 46 files / 343 tests；后续报告必须带命令和日期。
 
 ## P1：认证与实时安全
 
@@ -28,13 +28,13 @@
 ## P1：文档与代码差异
 
 - `docs/lan-security.md` 的公开路径表述与 `AssetsManager/lan/routes/system.py` 对 `/api/tunnel/status` 的 admin 要求不完全一致；前端按实际 403 处理，后端文档应另行修订。
+- **path 双重解码风险**：aiohttp `{path:.*}` 路由的 `match_info` 已做一次 percent-decode，后端 handler 又 `unquote()` 一次。对普通中文/空格/斜杠无影响，但对文件名含字面 `%`（如 `100%2F50.txt`）时前端 `encodeURIComponent`（`%`→`%25`）经两次解码会还原成 `/`，破坏文件路径。前端按当前契约正常编码，此问题属后端解码层，需 Desktop/LAN 线复核并更新 `tests/lan` 公共契约后再修复。
 - `task-14-browser-realtime-acceptance.md` 和 `realtime-dataflow-hardening.md` 的验证数字是历史快照；不要在新报告中无日期引用。
 - `architecture.md` 的总体架构是已收口方向，但它不能替代当前运行命令或真实跨端证据。
 
 ## P2：测试覆盖风险
 
-- ShareReceivePage 没有直接测试，是分享安全/编码/错误状态最重要的证据缺口。
-- API 工厂大多没有方法级测试，类型通过不能发现 endpoint/body/query 拼写错误。
+- API 工厂方法级契约测试已补（2026-08-04，8 文件 37 用例），但真实网络层、非 2xx 分支和各 route 的权限/能力矩阵仍主要靠 `tests/lan`。
 - `ContextMenu`、`Modal`、`ResizablePanel`、`UserManagement` 和小型 hooks 的行为主要靠间接测试。
 - App 路由组合和 i18n key parity 未形成直接门禁。
 
