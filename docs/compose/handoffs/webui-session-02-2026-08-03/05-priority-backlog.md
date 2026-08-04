@@ -61,6 +61,12 @@
 
 > ✅ 2026-08-04 完成：`App.test.tsx`（9 用例：公开/受保护/share/未知路由、openGuest 直通、capability 缺失重定向 `/`、未认证重定向 `/login`、loading 空渲染；mock 页面与四个 Provider 后验证 `BrowserRouter` 路由映射）；`src/i18n/i18n.test.ts`（5 用例：zh/ja 与 en 扁平 key 完全一致、`{n}` 占位符一致、值非空、`setLang`/`subscribeToLang` 行为）；`UserManagement.test.tsx`（7 用例：渲染/空态/toggle 后 canonical refetch/invalidation refetch/旧响应丢弃/identityGeneration 变化清空/toggle 失败保留列表）。收口提交 `3640c82`。
 
+### P2：hooks 与组件边缘覆盖
+
+- 新增 `useInvalidation.test.tsx`、`useI18n.test.tsx`，补 `ShareDialog.test.tsx`（error/cancel/loading）和 `DownloadProgress.test.tsx`（null total/default label/clamp）。
+
+> ✅ 2026-08-04 完成：`useInvalidation.test.tsx`（5 用例）、`useI18n.test.tsx`（5 用例）、`ShareDialog.test.tsx` +6 用例、`DownloadProgress.test.tsx` +3 用例，全量 57 文件/423 通过，typecheck/build 通过。
+
 ## W3 — 真实 Desktop/LAN/WebUI 验收
 
 在 W1/W2 稳定后，建立真实跨端矩阵：
