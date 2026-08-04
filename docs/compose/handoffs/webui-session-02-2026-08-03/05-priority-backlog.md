@@ -49,6 +49,8 @@
 
 > ✅ 2026-08-04 完成：`ContextMenu.test.tsx`（8 用例）、`Modal.test.tsx`（9 用例）、`ResizablePanel.test.tsx`（7 用例），全量 52 文件/388 通过，typecheck/build 通过。另修复 `ResizablePanel.tsx` 缺陷：拖拽中卸载会残留 document `mousemove`/`mouseup` listener 与 body cursor/userSelect（`stopDrag` + move/up handler refs + `useEffect` 卸载清理）。收口提交 `3640c82`。
 >
+> 补充轮（同提交）：`TagChip.test.tsx`（7 用例：render name/count、count 缺省不显示、onClick 触发、onRemove stopPropagation、cursor-pointer 条件样式）；`useMediaQuery.test.tsx`（3 用例：初始 matchMedia 值、change event 更新、unmount 清理 listener）；`useDialogFocus.test.tsx`（6 用例：dialog 聚焦、Escape 关闭、Tab 循环、returnFocusTo、空 focusable 列表、isOpen=false 无效）。
+>
 > 环境注意：`~`/`#`/`%` 路径下必须用 `npm test`（`scripts/run-vitest.mjs` 经 `subst` 映射临时盘符）；直接 `npx vitest` 会报 `Cannot find module '/@vite/env'`。
 
 ### P1：页面组合与字典

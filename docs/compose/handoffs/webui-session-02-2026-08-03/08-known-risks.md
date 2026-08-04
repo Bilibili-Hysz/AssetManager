@@ -8,7 +8,7 @@
 
 ### 旧测试计数不能直接复用
 
-不同报告来自不同时间、不同工作树和不同测试选择。当前 2026-08-03 WebUI 实测是 37 files / 292 tests；2026-08-04 为 52 files / 388 tests（P0-3 收口后 46/343）；后续报告必须带命令和日期。
+不同报告来自不同时间、不同工作树和不同测试选择。当前 2026-08-03 WebUI 实测是 37 files / 292 tests；2026-08-04 P0-3 收口后 46/343；P1 补充后 55 files / 404 tests；后续报告必须带命令和日期。
 
 ## P1：认证与实时安全
 
@@ -36,6 +36,7 @@
 
 - API 工厂方法级契约测试已补（2026-08-04，8 文件 37 用例），但真实网络层、非 2xx 分支和各 route 的权限/能力矩阵仍主要靠 `tests/lan`。
 - `ContextMenu`、`Modal`、`ResizablePanel`、`UserManagement` 已补直接行为测试（2026-08-04，24+7 用例），但真实 pointer capture、拖拽与 CSS 布局仍靠 jsdom 近似；`ResizablePanel` 卸载清理缺陷已在测试中发现并修复。
+- `TagChip`（7 用例）、`useMediaQuery`（3 用例）、`useDialogFocus`（6 用例）已补基础组件/hooks 行为覆盖。`useMediaQuery` mock `matchMedia`（jsdom 无真实实现），`useDialogFocus` 焦点 trap 在 jsdom 中仅验证逻辑分支（Tab 键序、focus 回归）。
 - App 路由组合（公开/受保护/share/未知/Provider）和 i18n key parity（zh/ja vs en）已形成直接门禁（2026-08-04，App 9 用例 + i18n 5 用例）。
 
 ## P2：浏览器与性能风险
