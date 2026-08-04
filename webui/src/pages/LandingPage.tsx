@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { ArrowRight, Moon, SlidersHorizontal, Sun, X } from 'lucide-react';
+import { ArrowRight, Moon, RefreshCw, SlidersHorizontal, Sun, X } from 'lucide-react';
 import { Link, Navigate } from 'react-router-dom';
 import { createMetadataApi } from '../api/metadata';
 import { LayeredPreview } from '../components/files/LayeredPreview';
@@ -139,7 +139,7 @@ function useReducedMotion(): boolean {
 }
 
 export default function LandingPage() {
-  const { serverInfo, isLoading, isAuthenticated, role, api } = useAuth();
+  const { serverInfo, isLoading, isAuthenticated, role, api, serviceUnavailable, refreshMe } = useAuth();
   const metadataApi = useMemo(() => createMetadataApi(api), [api]);
   const { theme, toggleTheme: toggleSharedTheme } = useTheme();
   const isProtected = Boolean(serverInfo?.auth_enabled && (!isAuthenticated || role === 'guest'));
@@ -395,6 +395,28 @@ export default function LandingPage() {
 
   if (isLoading) {
     return <main className="gate gate-loading" aria-label="Loading library"><div className="gate-loading-bar" /></main>;
+  }
+
+  if (serviceUnavailable) {
+    return (
+      <main className="gate gate-loading" aria-label="Service unavailable">
+        <div className="flex flex-col items-center gap-4 text-center p-8">
+          <div className="text-slate-400 text-5xl" aria-hidden="true">⚠</div>
+          <h1 className="text-xl font-semibold text-slate-200">Service Unavailable</h1>
+          <p className="text-sm text-slate-400 max-w-md">
+            The server may be starting up or undergoing maintenance. Please try again in a moment.
+          </p>
+          <button
+            type="button"
+            onClick={() => { void refreshMe(); }}
+            className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-brand-500 hover:bg-brand-600 rounded-lg transition-colors"
+          >
+            <RefreshCw size={16} aria-hidden="true" />
+            Retry
+          </button>
+        </div>
+      </main>
+    );
   }
 
   if (isProtected) return <Navigate to="/login" replace />;

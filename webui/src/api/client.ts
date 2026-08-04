@@ -1,3 +1,5 @@
+import { UnauthorizedError, ForbiddenError, ServiceUnavailableError, ApiError, NetworkError } from './errors';
+
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 export interface ApiClientOptions {
@@ -46,20 +48,32 @@ export function createApiClient(options: ApiClientOptions = {}) {
 
     if (response.status === 401) {
       onUnauthorized?.();
-      throw new Error('Unauthorized');
+      throw new UnauthorizedError();
     }
 
     if (response.status === 403) {
-      throw new Error('Forbidden');
+      throw new ForbiddenError();
     }
 
     if (response.status === 429) {
-      throw new Error('Rate limited');
+      throw new ApiError('Rate limited', 429);
+    }
+
+    if (response.status === 503) {
+      const errBody = await response.json().catch(() => ({}));
+      throw new ServiceUnavailableError(
+        (errBody as { error?: string }).error ?? 'Service unavailable',
+        errBody,
+      );
     }
 
     if (!response.ok) {
       const errBody = await response.json().catch(() => ({}));
-      throw new Error((errBody as { error?: string }).error ?? `HTTP ${response.status}`);
+      throw new ApiError(
+        (errBody as { error?: string }).error ?? `HTTP ${response.status}`,
+        response.status,
+        errBody,
+      );
     }
 
     return response.json() as Promise<T>;
@@ -77,27 +91,46 @@ export function createApiClient(options: ApiClientOptions = {}) {
       headers['Content-Type'] = 'application/json';
     }
 
-    const response = await fetch(url.toString(), {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal,
-      credentials: 'same-origin',
-    });
+    let response: Response;
+    try {
+      response = await fetch(url.toString(), {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal,
+        credentials: 'same-origin',
+      });
+    } catch (err) {
+      if (err instanceof TypeError) {
+        throw new NetworkError('Network error. Please check your connection.');
+      }
+      throw err;
+    }
 
     if (response.status === 401) {
       onUnauthorized?.();
-      throw new Error('Unauthorized');
+      throw new UnauthorizedError();
     }
     if (response.status === 403) {
-      throw new Error('Forbidden');
+      throw new ForbiddenError();
     }
     if (response.status === 429) {
-      throw new Error('Rate limited');
+      throw new ApiError('Rate limited', 429);
+    }
+    if (response.status === 503) {
+      const errBody = await response.json().catch(() => ({}));
+      throw new ServiceUnavailableError(
+        (errBody as { error?: string }).error ?? 'Service unavailable',
+        errBody,
+      );
     }
     if (!response.ok) {
       const errBody = await response.json().catch(() => ({}));
-      throw new Error((errBody as { error?: string }).error ?? `HTTP ${response.status}`);
+      throw new ApiError(
+        (errBody as { error?: string }).error ?? `HTTP ${response.status}`,
+        response.status,
+        errBody,
+      );
     }
 
     return response.blob();
@@ -111,23 +144,42 @@ export function createApiClient(options: ApiClientOptions = {}) {
     signal?: AbortSignal,
   ): Promise<Blob> {
     const url = new URL(`${baseUrl}/api/${path}`, window.location.origin);
-    const response = await fetch(url.toString(), {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal,
-      credentials: 'same-origin',
-    });
+    let response: Response;
+    try {
+      response = await fetch(url.toString(), {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal,
+        credentials: 'same-origin',
+      });
+    } catch (err) {
+      if (err instanceof TypeError) {
+        throw new NetworkError('Network error. Please check your connection.');
+      }
+      throw err;
+    }
 
     if (response.status === 401) {
       onUnauthorized?.();
-      throw new Error('Unauthorized');
+      throw new UnauthorizedError();
     }
-    if (response.status === 403) throw new Error('Forbidden');
-    if (response.status === 429) throw new Error('Rate limited');
+    if (response.status === 403) throw new ForbiddenError();
+    if (response.status === 429) throw new ApiError('Rate limited', 429);
+    if (response.status === 503) {
+      const errBody = await response.json().catch(() => ({}));
+      throw new ServiceUnavailableError(
+        (errBody as { error?: string }).error ?? 'Service unavailable',
+        errBody,
+      );
+    }
     if (!response.ok) {
       const errBody = await response.json().catch(() => ({}));
-      throw new Error((errBody as { error?: string }).error ?? `HTTP ${response.status}`);
+      throw new ApiError(
+        (errBody as { error?: string }).error ?? `HTTP ${response.status}`,
+        response.status,
+        errBody,
+      );
     }
 
     const contentLength = Number(response.headers.get('Content-Length'));

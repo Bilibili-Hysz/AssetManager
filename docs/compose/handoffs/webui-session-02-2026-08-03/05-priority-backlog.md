@@ -88,7 +88,7 @@
 >
 > 测试环境：Python `http.server` 服务 `dist/` 静态产物（base URL `http://localhost:4173`），headless Chromium `chromium-1228`。**局限**：静态服务器不支持 SPA 路由 fallback（未知路由返回 404 而非 React Router 重定向），此为测试环境限制而非应用缺陷。无真实 API 交互（后端 PySide6 无法无头启动）。
 >
-> 收口提交 `待提交`：`test: add Playwright E2E tests for landing/routing/responsive/keyboard/css/network`。新增 `webui/playwright.config.ts`、`webui/e2e/app.spec.ts`；`package.json` 加 `test:e2e` 脚本；`vite.config.ts` 加 `server.fs.allow` 解决 `~` 路径 403。
+> 收口提交 `2da5cef`：`test: add Playwright E2E tests for landing/routing/responsive/keyboard/css/network`。新增 `webui/playwright.config.ts`、`webui/e2e/app.spec.ts`；`package.json` 加 `test:e2e` 脚本；`vite.config.ts` 加 `server.fs.allow` 解决 `~` 路径 403。
 
 当前 Chromium acceptance 是自动化基础，但不能直接写成上述完整矩阵已完成。完整的 Desktop+LAN 跨端验收需要后端（PySide6）无头模式或真实桌面环境。
 
@@ -120,3 +120,17 @@
 - V2：统一 Detail、ShareDialog、Admin 的反馈与移动端状态；补浏览器截图证据。
 - V3：真实数据证明有必要后，再推进 G5-4 虚拟滚动或后端分页。
 - S1 Storefront、G5-1 编辑、G5-2 上传、S2/S3 商品化均单独立项，不混入当前 Browse 视觉切片。
+
+## W7 — G5-7 错误反馈统一
+
+`client.ts` 原来仅有 `console.error` + `throw`，503 白屏无提示，401 无统一跳转。已实现：
+
+- ✅ `webui/src/api/errors.ts`：`ApiError`（status/body）、`UnauthorizedError`（401）、`ForbiddenError`（403）、`ServiceUnavailableError`（503）、`NetworkError` + 类型守卫。
+- ✅ `webui/src/api/client.ts`：三函数 HTTP 错误→结构化错误；三函数 fetch try-catch → `NetworkError`。
+- ✅ `webui/src/stores/AuthContext.tsx`：`serviceUnavailable` 状态；init catch 检测 `isServiceUnavailableError`/`isNetworkError`。
+- ✅ `webui/src/pages/LandingPage.tsx`：503 显示 Service Unavailable 页面 + Retry 按钮。
+- ✅ i18n 三语增加 `error.unavailable` key。
+- ✅ `webui/src/api/errors.test.ts`：6 用例覆盖所有错误类和类型守卫。
+- ✅ 58 文件 / 429 测试通过，typecheck + build 通过。
+
+提交 `待提交`：`feat: structured API errors and 503 service unavailable handling`。

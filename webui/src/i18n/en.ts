@@ -165,6 +165,7 @@ const en = {
   error: {
     network: 'Network error. Please check your connection.',
     server: 'Server error. Please try again.',
+    unavailable: 'Service unavailable. The server may be starting up or undergoing maintenance.',
     not_found: 'Not found',
     forbidden: 'Access denied',
     rate_limited: 'Too many requests. Please wait.',

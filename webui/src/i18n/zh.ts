@@ -151,6 +151,7 @@ const zh: I18nDict = {
   error: {
     network: '网络错误，请检查连接。',
     server: '服务器错误，请重试。',
+    unavailable: '服务不可用。服务器可能正在启动或维护中。',
     not_found: '未找到',
     forbidden: '访问被拒绝',
     rate_limited: '请求过于频繁，请稍候。',

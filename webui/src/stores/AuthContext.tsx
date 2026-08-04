@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useEffect, useMemo, u
 import { createApiClient, type ApiClient } from '../api/client';
 import { createAuthApi, type AuthApi } from '../api/auth';
 import { createSystemApi, type SystemApi } from '../api/system';
+import { isServiceUnavailableError, isNetworkError } from '../api/errors';
 import type { Capabilities, ServerInfo, SessionPrincipal } from '../types/api';
 
 const THUMBNAIL_CACHE_STORAGE_KEY = 'lan_thumb_cache';
@@ -29,6 +30,8 @@ export interface AuthState {
   isAuthenticated: boolean;
   identityGeneration: number;
   isLoading: boolean;
+  /** Server returned 503 or network is unreachable. */
+  serviceUnavailable: boolean;
   authMode: ServerInfo['auth_mode'];
   serverInfo: ServerInfo | null;
 }
@@ -48,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [permissions, setPermissions] = useState<string[]>([]);
   const [principal, setPrincipal] = useState<SessionPrincipal>(guestPrincipal);
   const [isLoading, setIsLoading] = useState(true);
+  const [serviceUnavailable, setServiceUnavailable] = useState(false);
   const [authMode, setAuthMode] = useState<ServerInfo['auth_mode']>('none');
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
   const generationRef = useRef(0);
@@ -135,6 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const info = await systemApi.getInfo();
         setServerInfo(info);
         setAuthMode(info.auth_mode);
+        setServiceUnavailable(false);
 
         if (!info.auth_enabled) {
           const nextPrincipal = info.principal ?? guestPrincipal;
@@ -146,7 +151,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // /auth/me is cookie-authenticated, so this also restores sessions
         // whose HttpOnly credential is intentionally unavailable to JavaScript.
         await refreshMe();
-      } catch {
+      } catch (err) {
+        if (isServiceUnavailableError(err) || isNetworkError(err)) {
+          setServiceUnavailable(true);
+        }
         // Server unreachable — will show error in UI
       } finally {
         setIsLoading(false);
@@ -164,6 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: principal.authenticated,
     identityGeneration,
     isLoading,
+    serviceUnavailable,
     authMode,
     serverInfo,
     api,
