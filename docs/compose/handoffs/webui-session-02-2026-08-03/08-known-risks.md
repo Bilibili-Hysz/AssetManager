@@ -8,7 +8,7 @@
 
 ### 旧测试计数不能直接复用
 
-不同报告来自不同时间、不同工作树和不同测试选择。当前 2026-08-03 WebUI 实测是 37 files / 292 tests；2026-08-04 P0-3 收口后 46/343；P1 后 55/404；P2 后 57 files / 423 tests；后续报告必须带命令和日期。
+不同报告来自不同时间、不同工作树和不同测试选择。当前 2026-08-03 WebUI 实测是 37 files / 292 tests；2026-08-04 P0-3 收口后 46/343；P1 后 55/404；P2 后 57 files / 423 tests；E2E 补充 16 Playwright tests（静态构建产物）；后续报告必须带命令和日期。
 
 ## P1：认证与实时安全
 
@@ -43,7 +43,7 @@
 ## P2：浏览器与性能风险
 
 - jsdom 不能证明真实 CSS 布局、滚动、pointer capture、下载保存、WebSocket 握手和图片解码。
-- headless Chromium 临时库不能证明真实 Desktop 主窗口与 LAN 第二客户端的用户旅程。
+- headless Chromium 临时库不能证明真实 Desktop 主窗口与 LAN 第二客户端的用户旅程。**E2E 补充（2026-08-04）**：Playwright 16 条测试覆盖静态构建产物的路由、响应式布局、键盘可访问性、CSS 布局和网络弹性，但受限于 Python 静态服务器（无 SPA fallback、无 API 交互）。
 - 真实图片/目录性能当前缺少固定 manifest、确定性采样、重复运行和硬件元数据；不要仅凭一次本机运行调整阈值。
 - Gate 的动画必须尊重 reduced motion，并限制 DOM 节点数量；Browse/FileList 的卡片阵列和缩放动画不能引入无界重排。
 

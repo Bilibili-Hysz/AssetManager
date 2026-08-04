@@ -82,7 +82,15 @@
 - 窄屏/移动浏览器、触控、焦点和 reduced motion；
 - 记录浏览器、OS、端口、库 root 形态、认证模式、截图/日志和失败原因。
 
-现有 Chromium acceptance 是自动化基础，但不能直接写成上述完整矩阵已完成。
+> ✅ 2026-08-04 Playwright E2E 验收（静态构建产物）完成：16/16 通过（`npx playwright test --reporter=list`，50s）。
+>
+> 覆盖范围：Landing page（标题/登录按钮/viewport meta）、Routing（未知路由 404 / share 页面 / 登录页面）、Responsive design（375px mobile / 1920px desktop 水平溢出检查 + 背景色验证）、Keyboard accessibility（Tab 焦点移动 / body 无负 tabIndex）、CSS layout（内容可见性 / overflow:hidden / favicon+title）、Network resilience（API 失败无白屏 / console 无 module 加载错误）。
+>
+> 测试环境：Python `http.server` 服务 `dist/` 静态产物（base URL `http://localhost:4173`），headless Chromium `chromium-1228`。**局限**：静态服务器不支持 SPA 路由 fallback（未知路由返回 404 而非 React Router 重定向），此为测试环境限制而非应用缺陷。无真实 API 交互（后端 PySide6 无法无头启动）。
+>
+> 收口提交 `待提交`：`test: add Playwright E2E tests for landing/routing/responsive/keyboard/css/network`。新增 `webui/playwright.config.ts`、`webui/e2e/app.spec.ts`；`package.json` 加 `test:e2e` 脚本；`vite.config.ts` 加 `server.fs.allow` 解决 `~` 路径 403。
+
+当前 Chromium acceptance 是自动化基础，但不能直接写成上述完整矩阵已完成。完整的 Desktop+LAN 跨端验收需要后端（PySide6）无头模式或真实桌面环境。
 
 ## W4 — 真实图片与布局性能协议
 
