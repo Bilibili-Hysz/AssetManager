@@ -11,23 +11,13 @@ import time
 from sqlite3 import Connection
 
 from AssetsManager.core.database import db_write_lock
+from AssetsManager.core.db_migrations import validate_schema_objects
+from AssetsManager.core.schema_defs import SHARE_LINKS_SCHEMA
 
 _log = logging.getLogger(__name__)
 
-SHARE_LINKS_SCHEMA = """
-CREATE TABLE IF NOT EXISTS share_links (
-    id              TEXT PRIMARY KEY,
-    paths           TEXT NOT NULL,
-    password_hash   TEXT,
-    expires_at      REAL,
-    max_downloads   INTEGER,
-    download_count  INTEGER DEFAULT 0,
-    allow_preview   INTEGER DEFAULT 1,
-    created_by      TEXT,
-    created_at      REAL DEFAULT (strftime('%s','now')),
-    is_active       INTEGER DEFAULT 1
-);
-"""
+# Compatibility alias: schema ownership lives in core.schema_defs / migration v6.
+
 
 
 class ShareRepository:
@@ -37,10 +27,22 @@ class ShareRepository:
         self._conn = conn
 
     def init_table(self) -> None:
-        """Create the share_links table if it doesn't exist."""
+        """Compatibility ensure for raw/legacy connections; migration v6 owns the schema."""
         with db_write_lock(self._conn):
-            self._conn.execute(SHARE_LINKS_SCHEMA)
-            self._conn.commit()
+            outer_transaction = self._conn.in_transaction
+            savepoint = "share_repository_init"
+            self._conn.execute(f"SAVEPOINT {savepoint}")
+            try:
+                self._conn.execute(SHARE_LINKS_SCHEMA)
+                validate_schema_objects(self._conn, ("share_links",))
+                if outer_transaction:
+                    self._conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+                else:
+                    self._conn.commit()
+            except BaseException:
+                self._conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                self._conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+                raise
 
     def get(self, share_id: str, *, include_unavailable: bool = False) -> dict | None:
         """Get a share link by ID.

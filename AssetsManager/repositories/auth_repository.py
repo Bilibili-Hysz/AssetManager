@@ -10,32 +10,13 @@ import logging
 from sqlite3 import Connection
 
 from AssetsManager.core.database import db_write_lock
+from AssetsManager.core.db_migrations import validate_schema_objects
+from AssetsManager.core.schema_defs import INVITE_CODES_SCHEMA, USERS_SCHEMA
 
 _log = logging.getLogger(__name__)
 
-USERS_SCHEMA = """
-CREATE TABLE IF NOT EXISTS users (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    username    TEXT UNIQUE NOT NULL,
-    password    TEXT NOT NULL,
-    email       TEXT,
-    role        TEXT DEFAULT 'viewer',
-    created_at  REAL DEFAULT (strftime('%s','now')),
-    last_login  REAL,
-    is_active   INTEGER DEFAULT 1
-);
-"""
+# Compatibility aliases: schema ownership lives in core.schema_defs / migration v6.
 
-INVITE_CODES_SCHEMA = """
-CREATE TABLE IF NOT EXISTS invite_codes (
-    code        TEXT PRIMARY KEY,
-    created_by  TEXT,
-    used_by     TEXT,
-    created_at  REAL DEFAULT (strftime('%s','now')),
-    used_at     REAL,
-    is_active   INTEGER DEFAULT 1
-);
-"""
 
 
 class AuthRepository:
@@ -47,11 +28,25 @@ class AuthRepository:
     # ── Schema ──────────────────────────────────────────────────
 
     def init_tables(self) -> None:
-        """Create users and invite_codes tables if they don't exist."""
+        """Compatibility ensure for raw/legacy connections; migration v6 owns the schema."""
         with db_write_lock(self._conn):
-            self._conn.execute(USERS_SCHEMA)
-            self._conn.execute(INVITE_CODES_SCHEMA)
-            self._conn.commit()
+            outer_transaction = self._conn.in_transaction
+            savepoint = "auth_repository_init"
+            self._conn.execute(f"SAVEPOINT {savepoint}")
+            try:
+                self._conn.execute(USERS_SCHEMA)
+                self._conn.execute(INVITE_CODES_SCHEMA)
+                validate_schema_objects(
+                    self._conn, ("users", "invite_codes")
+                )
+                if outer_transaction:
+                    self._conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+                else:
+                    self._conn.commit()
+            except BaseException:
+                self._conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                self._conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+                raise
 
     # ── Users ────────────────────────────────────────────────────
 
