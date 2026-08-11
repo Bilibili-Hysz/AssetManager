@@ -1,5 +1,8 @@
 # 模块排 Bug 清单（module-core-store.md · 2026-08-10 P0 第1轮）
 
+> **状态（2026-08-12）**：全部 27 项已修。Bug 1/2/6/8/11/14 于 P2 轮修复；**Bug 3/4/5/7/9/10/12/13/15/16/17/18/19/20/21/22/23/24/25/26/27 于 2026-08-12 修复**（Bug 16/27 确认已修仅补测试；Bug 23 的 normcase 否决——跨组件键契约，实证 Path.resolve 已归一大写）。验证：3263 passed。
+> **跨组件协调项（独立批次）**：ProjectData._key 与 MetadataRepository._path_key 的键归一未统一（normcase 会破坏契约）；color_utils/format_utils 的陈旧 .pyd 遮蔽源码（cache.pyd 已删）。
+
 > 来源: 只读探索代理审计，行号经源码核对。修复前需第二子代理复核真实性。
 
 
