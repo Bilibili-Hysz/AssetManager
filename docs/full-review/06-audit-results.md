@@ -81,20 +81,20 @@
 |---|---|---|
 | 1 | **P2 轮**：M1-M7（桌面 UI/控制器/领域约 121 项低危） | ✅ 已完成（2026-08-11） |
 | 2 | **M4 投递令牌 URL 明文**：delivery_url 含裸令牌（前端依赖 /storefront/delivery/:token）——需前后端配合改短 id/header 传递 | 记录（H2 撤销机制已兜底） |
-| 3 | **M6a-8 get_home 全表扫描**：LAN 首页每请求全量 thumbnail_metadata + 每行 2 stat | 性能轮 |
-| 4 | **DB 迁移 v24**：assets 目录 mtime 快照列（M6a-18 可靠实现前提） | 待办 |
-| 5 | **心跳续约硬上限**：reconciliation worker 挂起（网络盘卡死）时任务永久 RUNNING | 中危记录 |
+| 3 | **M6a-8 get_home 性能** | ✅ 已完成（2026-08-12）：/api/home 全表扫描提前退出（目录预览全覆盖时）+ idx_thumb_cache_mtime 索引；/api/gallery/home 30s TTL 缓存 |
+| 4 | **DB 迁移 v24** | ✅ 已完成（2026-08-12）：asset_dir_snapshot 独立表（dir mtime）+ M6a-18 快速路径比较快照（匹配→SKIPPED，失配→重扫回填） |
+| 5 | **心跳续约硬上限** | ✅ 已完成（2026-08-12）：心跳封顶 renew_until+lease_seconds + 10s 周期 sweeper 回收过期任务 |
 | 6 | 免费配额表/analytics 表无全局清理（身份无限增长） | 低 |
 | 7 | metadata TTL 缓存 dict、share 失败计数 dict 无修剪 | 低 |
 | 8 | auth_repository 2 处裸 except 残留 | 低 |
 | 9 | 6 个桌面 widget 零消费方（接线或删除决策） | 低 |
 | 10 | AdminManagement.test.tsx 孤儿测试（现为组合测试；admin 组件未挂路由） | 低 |
-| 11 | module-lan-core Bug8/9（NUL→500、NTFS ADS）——resolve 兜底但无显式拒绝 | 低 |
-| 12 | metadata add_url 跨连接读改写丢失更新（需原子 append 或新表） | 低 |
+| 11 | **module-lan-core Bug8/9（NUL/ADS）** | ✅ 已完成（2026-08-12）：PathGuard 显式拒绝 C0 控制字符 + Windows 冒号段（InvalidPathError→400） |
+| 12 | **metadata add_url 跨连接丢失更新** | ✅ 已完成（2026-08-12）：单条 json_insert 原子 append（跨连接无丢失）+ json_valid 畸形兜底 |
 | 13 | **前端 admin 面板接线** | ✅ 已完成（2026-08-11）：/admin 路由（ProtectedRoute manage_users）+ AdminPage（5 区块）+ Header/AppHeader 菜单导航 + 2 测试 |
-| 14 | **A4 单文件下载 window.open**（契约测试钉死，需同步改契约与 BrowsePage） | 后续 |
-| 15 | **A9 后端双重 unquote**（downloads.py/gallery.py，文件名含字面 %XX 时路径解错） | 后续 |
-| 16 | **BuyerOrders 分页**（ORDER_LIMIT=50 无 cursor 客户端支持） | 后续 |
+| 14 | **A4 单文件下载 window.open** | ✅ 已完成（2026-08-12）：blob 下载 + 错误 toast（契约测试重写） |
+| 15 | **A9 后端双重 unquote** | ✅ 已完成（2026-08-12）：10 处二次 unquote 全部移除（aiohttp 单次解码契约）+ 字面 % 文件名回归测试 |
+| 16 | **BuyerOrders 分页** | ✅ 已完成（2026-08-12）：后端 keyset cursor（base64url opaque）+ 前端加载更多 |
 
 ### 红线与工程约定
 - **不 commit/push**（仓库无远程；工作区 529 条未提交变更与用户预存 hunk 混合——git diff 无关 hunk 勿动勿回退）
