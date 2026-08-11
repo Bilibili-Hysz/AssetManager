@@ -15,6 +15,7 @@ from shiboken6 import Shiboken
 from AssetsManager.application.asset_filters import (
     extension_matches_category,
     is_hidden,
+    matches_exclude,
     matches_search,
     normalize_filter_category,
     normalize_sort_key,
@@ -74,10 +75,11 @@ class FileSystemModel(QAbstractListModel):
     STATE_EMPTY_FILTERED = "empty_filtered"
     STATE_SCAN_ERROR = "scan_error"
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, exclude_patterns: list[str] | None = None):
         super().__init__(parent)
         self._entries: list[os.DirEntry] = []
         self._raw_entries: list[os.DirEntry] = []
+        self._exclude_patterns: list[str] = list(exclude_patterns or [])
         self._dir_path: str = ""
         self._sort_key: str = "name"
         self._sort_asc: bool = True
@@ -686,6 +688,8 @@ class FileSystemModel(QAbstractListModel):
         self._lib_root = ""
 
     def filter_accepts(self, entry: os.DirEntry) -> bool:
+        if self._exclude_patterns and matches_exclude(entry.name, self._exclude_patterns):
+            return False
         if not matches_search(entry.name, self._filter_text):
             return False
         cat = normalize_filter_category(self._filter_cat)

@@ -14,6 +14,7 @@ from AssetsManager.application.asset_filters import (
     is_hidden,
     matches_search,
     sort_key_for_entry,
+    matches_exclude,
 )
 from AssetsManager.core.directory_cache import DirCacheEntry, DirectoryCache
 from AssetsManager.core.performance import PerformanceRecorder
@@ -431,12 +432,3 @@ def _record_summary_performance(
             # Observability must not change the result of a completed scan.
             pass
 
-
-def matches_exclude(name: str, patterns: Sequence[str]) -> bool:
-    import fnmatch
-    for pattern in patterns:
-        if fnmatch.fnmatch(name, pattern):
-            return True
-        if fnmatch.fnmatch(name.lstrip("."), pattern.lstrip(".")):
-            return True
-    return False

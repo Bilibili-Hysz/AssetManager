@@ -110,6 +110,23 @@ def matches_search(name: str, search: str) -> bool:
     return search in name.lower()
 
 
+def matches_exclude(name: str, patterns: list[str]) -> bool:
+    """True when the entry name matches any exclude pattern.
+
+    Shared by the LAN AssetService and the desktop file list so both
+    surfaces honour the same exclusion semantics (fnmatch, with a
+    leading-dot-insensitive second pass).
+    """
+    import fnmatch
+
+    for pattern in patterns:
+        if fnmatch.fnmatch(name, pattern):
+            return True
+        if fnmatch.fnmatch(name.lstrip("."), pattern.lstrip(".")):
+            return True
+    return False
+
+
 # ── Sort helpers ──────────────────────────────────────────────────
 
 def sort_key_for_entry(

@@ -96,3 +96,36 @@ def test_type_key_uses_splitext_semantics():
     for name in ("archive.tar.gz", ".gitignore", "a.b.", "plain", "image.JPG"):
         desktop_ext = os.path.splitext(name)[1].lower()
         assert desktop_ext == (Path(name).suffix.lower() if "." in name else "")
+
+
+def test_matches_exclude_semantics_shared():
+    """The exclude matcher is one shared function for both surfaces."""
+    from AssetsManager.application.asset_filters import matches_exclude
+
+    assert matches_exclude("notes.tmp", ["*.tmp"]) is True
+    assert matches_exclude(".git", [".git"]) is True
+    assert matches_exclude("hero.png", ["*.tmp"]) is False
+    # Leading-dot-insensitive second pass (LAN behavior).
+    assert matches_exclude(".cache", ["cache"]) is True
+    assert matches_exclude("cache", [".cache"]) is True
+
+
+def test_desktop_filter_accepts_respects_exclude_patterns(tmp_path):
+    """Desktop FileSystemModel honours exclude_patterns like the LAN service."""
+    from PySide6.QtWidgets import QApplication
+    from AssetsManager.panels.file_list._model import FileSystemModel
+
+    QApplication.instance() or QApplication([])
+    (tmp_path / "keep.txt").write_text("x")
+    (tmp_path / "skip.tmp").write_text("x")
+    (tmp_path / ".hidden").write_text("x")
+
+    model = FileSystemModel(exclude_patterns=["*.tmp"])
+    model._exclude_patterns = ["*.tmp"]
+    model._raw_entries = list(os.scandir(tmp_path))
+    model._show_hidden = True
+
+    accepted = {e.name for e in model._raw_entries if model.filter_accepts(e)}
+    assert "keep.txt" in accepted
+    assert "skip.tmp" not in accepted
+    assert ".hidden" in accepted  # hidden filtering is a separate pass
