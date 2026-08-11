@@ -1,7 +1,8 @@
 """Tests for FileListController."""
 import os
 
-from AssetsManager.controllers.file_list_controller import FileListController, _fmt_size
+from AssetsManager.controllers.file_list_controller import FileListController
+from AssetsManager.core.format_utils import format_size
 
 
 class TestFileListController:
@@ -90,7 +91,8 @@ class TestFileListController:
 
 
 def test_fmt_size():
-    assert _fmt_size(0) == "0.0 B"
-    assert _fmt_size(1023) == "1023.0 B"
-    assert _fmt_size(1024) == "1.0 KB"
-    assert _fmt_size(1048576) == "1.0 MB"
+    """The controller formats sizes through the shared core.format_size."""
+    assert format_size(0) == "0.0 B"
+    assert format_size(1023) == "1023.0 B"
+    assert format_size(1024) == "1.0 KB"
+    assert format_size(1048576) == "1.0 MB"
