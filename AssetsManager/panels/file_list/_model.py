@@ -16,9 +16,9 @@ from AssetsManager.application.asset_filters import (
     extension_matches_category,
     is_hidden,
     matches_search,
-    natural_key as _natural_key,
     normalize_filter_category,
     normalize_sort_key,
+    sort_key_for_entry,
 )
 from AssetsManager.application.context import LibrarySession
 from AssetsManager.core.cache import LRUCache
@@ -710,13 +710,17 @@ class FileSystemModel(QAbstractListModel):
         k = normalize_sort_key(self._sort_key)
 
         def _sort_key(e):
-            return (
-                not self._safe_is_dir(e),
-                (_natural_key(e.name) if k == "name" else
-                 -(self._cached_stat(e).st_mtime) if k == "date" else
-                 -(self._cached_stat(e).st_size) if k == "size" else
-                 Path(e.name).suffix.lower() if "." in e.name else ""),
-                _natural_key(e.name),
+            # Shared with the LAN AssetService (application/asset_filters.py)
+            # so both surfaces sort identically: directories first, then the
+            # chosen key, then natural name; desc reverses the whole list.
+            stat = self._cached_stat(e)
+            return sort_key_for_entry(
+                name=e.name,
+                is_dir=self._safe_is_dir(e),
+                modified=stat.st_mtime,
+                size=stat.st_size,
+                ext=os.path.splitext(e.name)[1].lower(),
+                sort_by=k,
             )
 
         entries.sort(key=_sort_key)

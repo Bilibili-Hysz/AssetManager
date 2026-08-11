@@ -14,6 +14,7 @@ import logging
 import os
 from pathlib import Path
 
+from AssetsManager.core.format_utils import format_size
 from AssetsManager.application.asset_filters import IMAGE_EXTS
 
 _log = logging.getLogger(__name__)
@@ -108,7 +109,7 @@ class FileListController:
         """Compute the status bar text."""
         sz_str = ""
         if total_size > 0:
-            sz_str = f"  |  {_fmt_size(total_size)}"
+            sz_str = f"  |  {format_size(total_size)}"
         if selected:
             return f"{selected} selected / {total} items{sz_str}  |  {view_mode}"
         return f"{total} items{sz_str}  |  {view_mode}"
@@ -118,7 +119,7 @@ class FileListController:
         """Return the optional, display-ready total-size status suffix."""
         if total_size <= 0:
             return ""
-        return f"  |  {_fmt_size(total_size)}"
+        return f"  |  {format_size(total_size)}"
 
     @staticmethod
     def compute_total_size(entries: list, stat_cache: dict) -> int:
@@ -145,11 +146,3 @@ class FileListController:
         return total
 
 
-def _fmt_size(sz: int) -> str:
-    """Format bytes as human-readable size."""
-    size = float(sz)
-    for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if size < 1024:
-            return f"{size:.1f} {unit}"
-        size /= 1024
-    return f"{size:.1f} PB"

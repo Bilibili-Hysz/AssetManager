@@ -4,6 +4,7 @@ Only creates data on demand via data() — no QTreeWidgetItem objects.
 Enables efficient display of large directories (10000+ files).
 """
 import logging
+import os
 import re
 import datetime
 from pathlib import Path
@@ -221,7 +222,9 @@ class DetailModel(QAbstractItemModel):
             if column == 0:
                 return _natural_key(entry.name)
             elif column == 1:
-                ext = Path(entry.name).suffix.lower() if not is_dir else ""
+                # Same ext semantics as the shared sort_key_for_entry
+                # (application/asset_filters.py): os.path.splitext.
+                ext = os.path.splitext(entry.name)[1].lower() if not is_dir else ""
                 return (ext, _natural_key(entry.name))
             elif column == 2:
                 return self._size_sort_value(entry, is_dir, fs)
