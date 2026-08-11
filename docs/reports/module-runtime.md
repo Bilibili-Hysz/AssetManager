@@ -1,5 +1,8 @@
 # 模块排 Bug 清单（module-runtime.md · 2026-08-10 P0 第1轮）
 
+> **状态（2026-08-12）**：全部 25 项已修。Bug 2/9/12/19/23 于 P2 轮修复；**Bug 1/3/4/5/6/7/8/10/11/13/14/15/16/17/18/20/21/22/24/25 于 2026-08-12 修复**（Bug 1 确认已在 P2 轮修复仅补测试；Bug 20 的 cmd/c 包装已于组H 修复）。亮点：Bug 11 真实死锁（锁序统一）、Bug 6 跨进程队列冲突只读降级、Bug 16 Windows 路径脱敏、Bug 17 threading.excepthook、Bug 8 无 token 管理强制终止。验证：3190 passed。
+> **Bug 24 消息变更**：session_contract 错误消息中性化（"requires a registered LibrarySession"）；TagService/MetadataService 保留各自消息（测试断言相应更新）。
+
 > 来源: 只读探索代理审计，行号经源码核对。修复前需第二子代理复核真实性。
 
 
