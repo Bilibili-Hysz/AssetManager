@@ -512,3 +512,68 @@ def test_uncommitted_result_past_operation_age_deadline_is_not_acknowledged(tmp_
     # is not acknowledged and the running task is left for lease recovery.
     assert outcome_holder[0].state is ReconciliationState.RUNNING
     assert outcome_holder[0].error_type == "StaleWorkerCompletion"
+
+
+def test_lease_heartbeat_stops_renewing_after_renewal_deadline(tmp_path):
+    """A stuck worker's heartbeat must stop at renew_until + lease_seconds."""
+    import threading
+    import time
+
+    from AssetsManager.application import (
+        AssetIndexPublishResult,
+        AssetIndexPublishStatus,
+    )
+
+    service, queue, index = _service(
+        tmp_path,
+        [AssetIndexPublishResult(AssetIndexPublishStatus.PUBLISHED, committed=True)],
+        worker_lease_seconds=0.1,
+        worker_max_operation_age=0.2,
+    )
+    renewals = {"count": 0}
+    real_renew = queue.renew_lease
+
+    def counting_renew(*args, **kwargs):
+        renewals["count"] += 1
+        return real_renew(*args, **kwargs)
+
+    queue.renew_lease = counting_renew
+    task = queue.enqueue_or_merge(path=tmp_path / "library", reason="busy", now=0.0)
+    claim = queue.claim_next(now=0.0, lease_seconds=0.1)
+    assert claim is not None
+    task = claim
+
+    heartbeat_stop = threading.Event()
+    errors: list = []
+    service._clock = time.monotonic
+
+    # renew_until is already in the past → the heartbeat must not renew at all.
+    heartbeat = threading.Thread(
+        target=service._lease_heartbeat,
+        args=(task, 0.1, time.monotonic() - 1.0, heartbeat_stop, None, errors),
+        daemon=True,
+    )
+    heartbeat.start()
+    heartbeat.join(1.0)
+    assert not heartbeat.is_alive()
+    assert renewals["count"] == 0
+    assert errors == []
+
+    # A deadline in the future renews until it passes, then stops on its
+    # own.  renew_lease is replaced with an unconditional counter so the
+    # (already expired) claim cannot fail the CAS and pollute `errors`.
+    renewals["count"] = 0
+    queue.renew_lease = lambda *args, **kwargs: renewals.__setitem__(
+        "count", renewals["count"] + 1
+    ) or None
+    heartbeat_stop.clear()
+    heartbeat = threading.Thread(
+        target=service._lease_heartbeat,
+        args=(task, 0.6, time.monotonic() + 0.35, heartbeat_stop, None, errors),
+        daemon=True,
+    )
+    heartbeat.start()
+    heartbeat.join(3.0)
+    assert not heartbeat.is_alive()
+    assert renewals["count"] >= 1
+    assert errors == []

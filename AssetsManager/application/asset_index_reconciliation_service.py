@@ -157,6 +157,8 @@ class AssetIndexReconciliationService:
         self._worker_faulted = False
         self._consecutive_worker_errors = 0
         self._worker_restart_count = 0
+        self._sweeper_stop: threading.Event | None = None
+        self._sweeper: threading.Thread | None = None
 
     @property
     def is_running(self) -> bool:
@@ -189,7 +191,10 @@ class AssetIndexReconciliationService:
             return self._worker_restart_count
 
     def start(self) -> bool:
-        """Start the daemon worker; return ``False`` if already running."""
+        """Start the daemon worker and its expired-lease sweeper.
+
+        Return ``False`` if already running.
+        """
         with self._lifecycle_lock:
             if self._worker is not None and self._worker.is_alive():
                 return False
@@ -200,17 +205,29 @@ class AssetIndexReconciliationService:
                 name=f"asset-reconciliation-{self.session.root_str}",
                 daemon=True,
             )
+            sweeper_stop = threading.Event()
+            sweeper = threading.Thread(
+                target=self._run_sweeper,
+                args=(sweeper_stop,),
+                name=f"asset-reconciliation-sweeper-{self.session.root_str}",
+                daemon=True,
+            )
             self._stop_event = stop_event
             self._worker = worker
             self._worker_error = None
             self._worker_faulted = False
             self._consecutive_worker_errors = 0
             self._worker_restart_count = 0
+            self._sweeper_stop = sweeper_stop
+            self._sweeper = sweeper
             try:
                 worker.start()
+                sweeper.start()
             except BaseException as exc:
                 self._worker = None
                 self._stop_event = None
+                self._sweeper = None
+                self._sweeper_stop = None
                 self._worker_error = f"{type(exc).__name__}: {exc}"
                 self._worker_faulted = True
                 raise
@@ -233,6 +250,12 @@ class AssetIndexReconciliationService:
                 return
             stop_event.set()
             self.reconciliation_queue.wake()
+        sweeper_stop = self._sweeper_stop
+        if sweeper_stop is not None:
+            sweeper_stop.set()
+            sweeper = self._sweeper
+            if sweeper is not None and sweeper is not threading.current_thread():
+                sweeper.join(min(wait_timeout, 2.0))
         if worker is threading.current_thread():
             return
         worker.join(wait_timeout)
@@ -249,6 +272,26 @@ class AssetIndexReconciliationService:
             if self._worker is worker:
                 self._worker = None
                 self._stop_event = None
+
+    def _run_sweeper(self, stop_event: threading.Event) -> None:
+        """Periodically reclaim leases whose worker has stopped renewing.
+
+        Heartbeats are capped (see :meth:`_lease_heartbeat`), so a stuck
+        worker's lease expires ~lease_seconds after its renewal budget runs
+        out.  The sweeper makes expiry actionable even when the stuck worker
+        is the only claimer in this process: expired RUNNING tasks are
+        flipped back to retryable within one sweep interval.
+        """
+        sweep_interval = 10.0
+        while not stop_event.wait(sweep_interval):
+            try:
+                self.reconciliation_queue.recover_expired_running(
+                    now=self._clock()
+                )
+            except BaseException:
+                # A failed sweep is transient (SQLite contention); the next
+                # interval retries.  Never take the worker down with it.
+                pass
 
     def _run_worker(self, stop_event: threading.Event) -> None:
         consecutive_errors = 0
@@ -509,17 +552,21 @@ class AssetIndexReconciliationService:
     ) -> None:
         """Renew a claimed lease while a potentially long scan is running.
 
-        The lease is renewed for as long as the operation runs rather than
-        being capped at ``renew_until``: a slow scan that durably commits its
-        tree publish past the worker operation age budget must still be able
-        to acknowledge the completion through the queue's lease CAS.  The age
-        budget keeps guarding *uncommitted* late completions in
-        :meth:`_process_once_attempt`.  ``renew_until`` is retained in the
-        signature for call-site stability.
+        Renewal is capped at ``renew_until + lease_seconds`` (the operation
+        age budget plus one lease window): a stuck worker (e.g. a network
+        drive hang) stops renewing, its lease expires, and the periodic
+        sweeper (or any next claimer) can reclaim the task.  Scans that
+        finish within the cap still acknowledge their durable completion
+        through the queue's lease CAS; tasks that exceed it are idempotent
+        and get re-scanned.  ``renew_until`` keeps guarding *uncommitted*
+        late completions in :meth:`_process_once_attempt`.
         """
         interval = max(min(lease_seconds / 3.0, 5.0), 0.01)
+        renewal_deadline = renew_until + lease_seconds
         while not heartbeat_stop.wait(interval):
             if worker_stop is not None and worker_stop.is_set():
+                return
+            if self._clock() >= renewal_deadline:
                 return
             try:
                 self.reconciliation_queue.renew_lease(

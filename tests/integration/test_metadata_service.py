@@ -369,3 +369,46 @@ def test_metadata_service_rejects_path_outside_library_root(tmp_path, operation)
                 service.batch_set_cached_file_counts(library, {str(outside): 1})
     finally:
         conn.close()
+
+
+def test_add_url_is_atomic_across_connections(tmp_path):
+    """Concurrent add_url calls on different connections must not lose entries."""
+    from AssetsManager.application import MetadataService
+
+    library = tmp_path / "library"
+    library.mkdir()
+    asset = library / "asset.txt"
+    asset.write_text("asset", encoding="utf-8")
+
+    conn_a = _memory_conn()
+    conn_b = _memory_conn()
+    # Both services point at the same database file so the two connections
+    # share state; each service uses its own connection.
+    db_path = tmp_path / "shared.db"
+    conn_a.close()
+    conn_b.close()
+    import sqlite3
+
+    conn_a = sqlite3.connect(str(db_path), check_same_thread=False)
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import migrate
+
+    conn_a.executescript(database._SCHEMA)
+    migrate(conn_a)
+    conn_b = sqlite3.connect(str(db_path), check_same_thread=False)
+
+    svc_a = MetadataService(connection_provider=lambda _root: conn_a)
+    svc_b = MetadataService(connection_provider=lambda _root: conn_b)
+    try:
+        svc_a.add_url(library, asset, "https://a.example")
+        svc_b.add_url(library, asset, "https://b.example")
+        # The two writes are independent connections; a read-modify-write
+        # cycle would have let one overwrite the other.  The atomic JSON
+        # append keeps both.
+        assert svc_a.get_urls(library, asset) == ["https://a.example", "https://b.example"]
+        # Deduplication still applies.
+        svc_b.add_url(library, asset, "https://a.example")
+        assert svc_a.get_urls(library, asset) == ["https://a.example", "https://b.example"]
+    finally:
+        conn_a.close()
+        conn_b.close()

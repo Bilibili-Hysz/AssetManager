@@ -335,27 +335,42 @@ class MetadataRepository:
 
     @_repository_operation
     def add_url(self, file_path: str, url: str) -> list[str] | None:
-        """Add a URL under the process write lock. Returns updated URLs if changed.
+        """Add a URL atomically via a single JSON-append statement.
 
-        Concurrency note: the JSON column is updated via a read-modify-write
-        cycle that is only atomic on this connection. Concurrent add/remove
-        calls from *other* connections can overwrite each other's changes
-        (the last writer wins). This is accepted for the current single-LAN
-        server topology; do not rely on it under multi-connection writers.
+        The append happens inside one UPDATE, so concurrent writers on
+        *different* connections cannot lose each other's entries (the old
+        read-modify-write cycle was last-writer-wins across connections).
+        Duplicates are suppressed with a NOT EXISTS guard; a missing row is
+        inserted on first use.
         """
         file_path = self._path_key(file_path)
         with self._write_scope("add_url"):
-            urls = self.get_urls(file_path)
-            if url in urls:
-                return None
-            urls.append(url)
-            data = json.dumps(urls, ensure_ascii=False)
-            self._conn.execute(
-                "INSERT INTO file_meta (file_path, urls) VALUES (?, ?) "
-                "ON CONFLICT(file_path) DO UPDATE SET urls=excluded.urls",
-                (file_path, data),
+            cur = self._conn.execute(
+                "UPDATE file_meta "
+                "SET urls = json_insert("
+                "  CASE WHEN json_valid(urls) THEN urls ELSE '[]' END,"
+                "  '$[#]', ?) "
+                "WHERE file_path = ? "
+                "AND NOT EXISTS ("
+                "  SELECT 1 FROM json_each("
+                "    CASE WHEN json_valid(file_meta.urls) "
+                "         THEN file_meta.urls ELSE '[]' END"
+                "  ) WHERE value = ?)",
+                (url, file_path, url),
             )
-            return urls
+            if cur.rowcount == 1:
+                return self.get_urls(file_path)
+            row = self._conn.execute(
+                "SELECT 1 FROM file_meta WHERE file_path = ?", (file_path,)
+            ).fetchone()
+            if row is None:
+                self._conn.execute(
+                    "INSERT INTO file_meta (file_path, urls) VALUES (?, ?)",
+                    (file_path, json.dumps([url], ensure_ascii=False)),
+                )
+                return [url]
+            # The row exists and the URL is already present.
+            return None
 
     @_repository_operation
     def remove_url(self, file_path: str, url: str) -> list[str] | None:
