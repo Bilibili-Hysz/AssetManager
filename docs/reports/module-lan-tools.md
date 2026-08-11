@@ -1,5 +1,8 @@
 # 模块排 Bug 清单（module-lan-tools.md · 2026-08-10 P0 第1轮）
 
+> **状态（2026-08-12）**：全部 24 项已修。S1/T1-T4/T8/U1/W2/D1/D2 于 P2 轮修复；**S2-S8/T5-T7/W5-W8/D3-D6 于 2026-08-12 修复**（scanner 取消不发布部分索引+锁化+invalidate、tunnel dev 路径 3 级跳转 bug+URL 锚定+stop 幂等、ws 心跳生命周期+authority 清理、dto 深度截断+type 契约对齐）。验证：3145 passed。
+> **D4 契约决策**：TreeItemResponse 的 type 只允许 "dir"（缺失默认 dir，显式 file/未知拒绝）——由服务端构造，降级会掩盖内部 bug（test_public_contracts 断言）。
+
 > 来源: 只读探索代理审计，行号经源码核对。修复前需第二子代理复核真实性。
 
 
