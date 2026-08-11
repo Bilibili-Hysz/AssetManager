@@ -1,0 +1,309 @@
+.detail-page {
+  min-height: 100dvh;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.detail-toolbar {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 16px;
+  padding: 0 32px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.detail-back-button,
+.detail-download-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 7px;
+  font-size: 13px;
+  text-decoration: none;
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.detail-back-button {
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.detail-back-button:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.detail-back-button:focus-visible,
+.detail-download-button:focus-visible,
+.detail-tag-label:focus-visible,
+.detail-tag-remove:focus-visible,
+.detail-tag-submit:focus-visible,
+.detail-file-download:focus-visible {
+  outline: 2px solid var(--color-accent-hover);
+  outline-offset: 2px;
+}
+
+.detail-download-button {
+  min-height: 34px;
+  padding: 0 12px;
+  background: var(--color-accent);
+  color: white;
+}
+
+.detail-download-button:hover {
+  background: var(--color-accent-hover);
+  transform: translateY(-1px);
+}
+
+.detail-content {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  padding: 32px;
+}
+
+.detail-hero {
+  position: relative;
+  min-height: 220px;
+  margin-bottom: 32px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+}
+
+.detail-hero-image,
+.detail-hero-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.detail-hero-image {
+  object-fit: cover;
+  opacity: .42;
+}
+
+.detail-hero-overlay {
+  background: linear-gradient(0deg, color-mix(in srgb, var(--color-surface) 98%, transparent), color-mix(in srgb, var(--color-surface) 45%, transparent) 60%, transparent);
+}
+
+.detail-hero-content {
+  position: relative;
+  display: flex;
+  min-height: 220px;
+  padding: 28px;
+  align-items: flex-start;
+  justify-content: flex-end;
+  flex-direction: column;
+}
+
+.detail-hero-content h1 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: clamp(26px, 4vw, 42px);
+  letter-spacing: -.03em;
+}
+
+.detail-eyebrow {
+  margin-bottom: 8px;
+  color: var(--color-accent-hover);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.detail-meta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 9px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.detail-error-state {
+  display: flex;
+  min-height: 300px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.detail-section {
+  position: relative;
+}
+
+.detail-section-heading,
+.detail-section-title {
+  letter-spacing: .01em;
+}
+
+.detail-section-heading {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.detail-section-title {
+  color: var(--color-text);
+}
+
+.detail-no-tags {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.detail-tag-list {
+  min-height: 26px;
+}
+
+.detail-tag {
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.detail-tag-label,
+.detail-tag-remove,
+.detail-tag-submit {
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.detail-tag-label:hover {
+  background: var(--color-accent-border);
+  color: var(--color-text);
+}
+
+.detail-tag-remove:hover {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+.detail-tag-input {
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+}
+
+.detail-tag-input:focus {
+  border-color: var(--color-border-focus);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 3px var(--color-accent-subtle);
+  outline: none;
+}
+
+.detail-tag-submit {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  place-items: center;
+}
+
+.detail-tag-submit:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-hover);
+}
+
+.detail-file-table {
+  box-shadow: var(--shadow-sm);
+}
+
+.detail-page .bg-slate-900,
+.detail-page .bg-slate-900\/50,
+.detail-page .bg-slate-800\/50 {
+  background-color: var(--color-surface);
+}
+
+.detail-page .bg-slate-950 {
+  background-color: var(--color-bg);
+}
+
+.detail-page .text-white,
+.detail-page .text-slate-200,
+.detail-page .text-slate-300 {
+  color: var(--color-text);
+}
+
+.detail-page .text-slate-400,
+.detail-page .text-slate-500 {
+  color: var(--color-text-secondary);
+}
+
+.detail-page .border-slate-700\/50,
+.detail-page .border-slate-800\/50 {
+  border-color: var(--color-border);
+}
+
+.detail-page .hover\:bg-slate-800\/30:hover {
+  background-color: var(--color-surface-hover);
+}
+
+.detail-page .text-indigo-400:hover,
+.detail-page .text-indigo-300 {
+  color: var(--color-accent-hover);
+}
+
+.detail-page table {
+  color: var(--color-text);
+}
+
+.detail-page .detail-file-name {
+  min-width: 0;
+}
+
+.detail-page .detail-file-download {
+  display: inline-flex;
+  padding: 6px;
+  border-radius: 5px;
+}
+
+.detail-page .detail-file-download:hover {
+  background: var(--color-accent-subtle);
+}
+
+@media (max-width: 680px) {
+  .detail-toolbar {
+    padding: 0 12px;
+  }
+
+  .detail-content {
+    padding: 20px 14px 32px;
+  }
+
+  .detail-hero-content {
+    min-height: 190px;
+    padding: 22px;
+  }
+
+  .detail-hero {
+    min-height: 190px;
+  }
+
+  .detail-eyebrow {
+    margin-bottom: 6px;
+  }
+
+  .detail-tag-form {
+    max-width: none;
+  }
+
+  .detail-page table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}

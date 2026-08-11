@@ -13,10 +13,15 @@ const { list, deleteShare, useInvalidationMock, authState } = vi.hoisted(() => (
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => authState }));
 vi.mock('../../api/shares', () => ({ createSharesApi: () => ({ list, delete: deleteShare }) }));
 vi.mock('../../hooks/useInvalidation', () => ({ useInvalidation: useInvalidationMock }));
+vi.mock('../ui/Toast', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 
 describe('ShareManagement', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
   beforeEach(() => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
     list.mockReset();
     list.mockResolvedValue({ shares: [] });
     deleteShare.mockReset();

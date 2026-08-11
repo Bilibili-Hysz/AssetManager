@@ -6,6 +6,7 @@ import { LayeredPreview } from '../components/files/LayeredPreview';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
 import { useInvalidation } from '../hooks/useInvalidation';
+import { useI18n } from '../hooks/useI18n';
 import type { PreviewPoolItem } from '../types/api';
 import './LandingPage.css';
 
@@ -37,11 +38,11 @@ const lightBackgroundDefaults: BackgroundSettings = {
 };
 
 const backgroundFields = [
-  ['blur', 'Blur', 0, 16, 'px'],
-  ['brightness', 'Brightness', 5, 150, '%'],
-  ['saturation', 'Saturation', 0, 150, '%'],
-  ['canvasOpacity', 'Canvas opacity', 10, 100, '%'],
-  ['itemOpacity', 'Item opacity', 10, 100, '%'],
+  ['blur', 'blur', 0, 16, 'px'],
+  ['brightness', 'brightness', 5, 150, '%'],
+  ['saturation', 'saturation', 0, 150, '%'],
+  ['canvasOpacity', 'canvas_opacity', 10, 100, '%'],
+  ['itemOpacity', 'item_opacity', 10, 100, '%'],
 ] as const;
 
 const fallbackAccent = '#6366f1';
@@ -99,10 +100,6 @@ function calculateWallCount(): number {
   return Math.min(72, Math.max(12, Math.ceil(width / 160) * Math.ceil(height / 130)));
 }
 
-function summaryText(count: number): string {
-  return `${count} ${count === 1 ? 'asset' : 'assets'}`;
-}
-
 function shuffle<T>(items: T[]): T[] {
   const result = [...items];
   for (let index = result.length - 1; index > 0; index -= 1) {
@@ -139,7 +136,8 @@ function useReducedMotion(): boolean {
 }
 
 export default function LandingPage() {
-  const { serverInfo, isLoading, isAuthenticated, role, api, serviceUnavailable, refreshMe } = useAuth();
+  const { serverInfo, isLoading, isAuthenticated, role, api, serviceUnavailable, retryConnect } = useAuth();
+  const { t } = useI18n();
   const metadataApi = useMemo(() => createMetadataApi(api), [api]);
   const { theme, toggleTheme: toggleSharedTheme } = useTheme();
   const isProtected = Boolean(serverInfo?.auth_enabled && (!isAuthenticated || role === 'guest'));
@@ -149,6 +147,7 @@ export default function LandingPage() {
   const [featuredStatus, setFeaturedStatus] = useState<FeaturedStatus>('loading');
   const [homeStats, setHomeStats] = useState<{ total_projects: number; total_size: number; total_size_fmt: string } | null>(null);
   const [tuningOpen, setTuningOpen] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const isLight = theme === 'light';
   const [settings, setSettings] = useState<BackgroundSettings>(() => readBackgroundSettings(backgroundStorageKey(serverInfo?.theme_color), isLight));
   const [isPageVisible, setIsPageVisible] = useState(() => typeof document === 'undefined' || document.visibilityState !== 'hidden');
@@ -394,25 +393,30 @@ export default function LandingPage() {
   } as CSSProperties;
 
   if (isLoading) {
-    return <main className="gate gate-loading" aria-label="Loading library"><div className="gate-loading-bar" /></main>;
+    return <main className="gate gate-loading" aria-label={t('landing.loading')}><div className="gate-loading-bar" /></main>;
   }
 
   if (serviceUnavailable) {
     return (
-      <main className="gate gate-loading" aria-label="Service unavailable">
+      <main className="gate gate-loading" aria-label={t('landing.service_unavailable')}>
         <div className="flex flex-col items-center gap-4 text-center p-8">
           <div className="text-slate-400 text-5xl" aria-hidden="true">⚠</div>
-          <h1 className="text-xl font-semibold text-slate-200">Service Unavailable</h1>
+          <h1 className="text-xl font-semibold text-slate-200">{t('landing.service_unavailable')}</h1>
           <p className="text-sm text-slate-400 max-w-md">
-            The server may be starting up or undergoing maintenance. Please try again in a moment.
+            {t('landing.service_unavailable_description')}
           </p>
           <button
             type="button"
-            onClick={() => { void refreshMe(); }}
+            onClick={() => {
+              if (retrying) return;
+              setRetrying(true);
+              void retryConnect().finally(() => setRetrying(false));
+            }}
+            disabled={retrying}
             className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-brand-500 hover:bg-brand-600 rounded-lg transition-colors"
           >
             <RefreshCw size={16} aria-hidden="true" />
-            Retry
+            {t('landing.retry')}
           </button>
         </div>
       </main>
@@ -422,16 +426,20 @@ export default function LandingPage() {
   if (isProtected) return <Navigate to="/login" replace />;
 
   const name = serverInfo?.share_name || 'My Asset Library';
-  const username = 'Designer';
+  const username = serverInfo?.principal?.authenticated ? serverInfo.principal.display_name : 'Designer';
   const avatar = username.slice(0, 1).toUpperCase();
-  const imageStatus = featuredStatus === 'online' || featuredStatus === 'empty' ? String(homeStats?.total_projects ?? stats.total_projects) : featuredStatus === 'unavailable' ? 'Unavailable' : featuredStatus === 'decode-error' ? 'Error' : 'Checking';
-  const serviceStatus = serverInfo ? 'Online' : 'Unavailable';
-  const rotationStatus = canRotate ? 'Auto' : 'Static';
+  const imageStatus = featuredStatus === 'online' || featuredStatus === 'empty'
+    ? `${homeStats?.total_projects ?? stats.total_projects} ${t('landing.artworks')}`
+    : featuredStatus === 'unavailable' ? t('landing.status_unavailable')
+      : featuredStatus === 'decode-error' ? t('landing.status_error')
+        : t('landing.status_checking');
+  const serviceStatus = serverInfo ? t('landing.status_online') : t('landing.status_unavailable');
+  const rotationStatus = canRotate ? t('landing.showcase_auto') : t('landing.showcase_static');
 
   return (
     <main className={`gate ${isLight ? 'gate-light' : ''} ${isPageVisible ? '' : 'gate-paused'}`} style={gateStyle} onPointerMove={onPointerMove} onPointerDown={onPointerDown}>
       {cursorPosition && <span className="gate-cursor-glow" aria-hidden="true" style={{ left: `${cursorPosition.x}px`, top: `${cursorPosition.y}px` }} />}
-      <button type="button" className="gate-theme-toggle" aria-label={isLight ? 'Switch to dark theme' : 'Switch to light theme'} aria-pressed={isLight} onClick={toggleTheme} title={isLight ? 'Switch to dark theme' : 'Switch to light theme'}>
+      <button type="button" className="gate-theme-toggle" aria-label={isLight ? t('gallery.theme_dark') : t('gallery.theme_light')} aria-pressed={isLight} onClick={toggleTheme} title={isLight ? t('gallery.theme_dark') : t('gallery.theme_light')}>
         {isLight ? <Moon size={17} aria-hidden="true" /> : <Sun size={17} aria-hidden="true" />}
       </button>
 
@@ -451,8 +459,9 @@ export default function LandingPage() {
         <div className="gate-avatar-ring gate-rise" aria-hidden="true"><div className="gate-avatar">{avatar}</div></div>
         <p className="gate-username gate-rise">{username}</p>
         <h1 className="gate-repository gate-rise">{name}</h1>
+        <p className="gate-purpose gate-rise">{t('landing.library_purpose')}</p>
 
-        {showcaseUrls.length > 0 && <div className="gate-showcase gate-rise" aria-label="Featured assets">
+        {showcaseUrls.length > 0 && <div className="gate-showcase gate-rise" aria-label={t('landing.featured_assets')}>
           {showcaseUrls.map(url => {
             const item = previewPool.find(candidate => candidate.thumbnail_url === url);
             if (!item) return null;
@@ -464,41 +473,50 @@ export default function LandingPage() {
           })}
         </div>}
 
-        <div className="gate-status-row gate-rise" aria-label="Library status" role="status" aria-live="polite">
-          <span className={`gate-status-pill ${featuredStatus === 'unavailable' || featuredStatus === 'decode-error' ? 'gate-status-error' : ''}`}><span className="sr-only">{featuredStatus === 'unavailable' || featuredStatus === 'decode-error' ? 'Library unavailable' : featuredStatus === 'online' ? 'Library online' : 'Library loading'}</span><span className="gate-status-value">{imageStatus}</span> assets</span>
-          <span className={`gate-status-pill ${serviceStatus === 'Unavailable' ? 'gate-status-error' : ''}`}><span className="gate-status-value">{serviceStatus}</span> local service</span>
-          <span className={`gate-status-pill ${rotationStatus === 'Static' ? 'gate-status-paused' : ''}`}><span className="gate-status-value">{rotationStatus}</span> showcase</span>
+        <div className="gate-status-row gate-rise" aria-label={t('landing.library_status')} role="status" aria-live="polite">
+          <span className={`gate-status-pill ${featuredStatus === 'unavailable' || featuredStatus === 'decode-error' ? 'gate-status-error' : ''}`}><span className="gate-status-value">{imageStatus}</span>{featuredStatus === 'unavailable' && <span className="sr-only">Library unavailable</span>}</span>
+          <span className={`gate-status-pill ${serviceStatus === t('landing.status_unavailable') ? 'gate-status-error' : ''}`}><span className="gate-status-value">{serviceStatus}</span> {t('landing.local_service')}</span>
+          <span className={`gate-status-pill ${rotationStatus === t('landing.showcase_static') ? 'gate-status-paused' : ''}`}><span className="gate-status-value">{rotationStatus}</span> {t('landing.showcase')}</span>
         </div>
 
-        {featuredStatus === 'unavailable' && <p className="gate-message gate-message-error" role="alert">Featured assets are unavailable. You can still enter the library.</p>}
-        {featuredStatus === 'empty' && <p className="gate-message">No images found in this library.</p>}
-        {featuredStatus === 'decode-error' && <p className="gate-message gate-message-error" role="alert">Image previews could not be loaded.</p>}
+        {featuredStatus === 'unavailable' && <p className="gate-message gate-message-error" role="alert">{t('landing.featured_unavailable')}</p>}
+        {featuredStatus === 'empty' && <p className="gate-message">{t('landing.no_images')}</p>}
+        {featuredStatus === 'decode-error' && <p className="gate-message gate-message-error" role="alert">{t('landing.previews_unavailable')}</p>}
 
-        <Link className="gate-enter gate-rise" to="/browse" aria-label="Enter Library">
-          <ArrowRight size={18} aria-hidden="true" />
-          <span>Enter Library</span>
-        </Link>
-        <p className="gate-stats gate-rise">{summaryText(stats.total_projects)} · {stats.total_size_fmt || '0 B'} · {serverInfo?.footer_text || 'Local service · Ready when you are.'}</p>
+        <div className="gate-entry-options gate-rise">
+          <Link className="gate-enter" to="/gallery" aria-label={t('landing.enter_aria')}>
+            <ArrowRight size={18} aria-hidden="true" />
+            <span>{t('landing.enter')}</span>
+          </Link>
+          <div className="gate-workspace-option">
+            <div className="gate-workspace-copy">
+              <strong>{t('landing.workspace')}</strong>
+              <span>{t('landing.workspace_description')}</span>
+            </div>
+            <Link to="/browse" className="gate-workspace-link">{t('landing.workspace')}</Link>
+          </div>
+        </div>
+        <p className="gate-stats gate-rise">{t('landing.asset_count', stats.total_projects)} · {stats.total_size_fmt || '0 B'} · {serverInfo?.footer_text || t('landing.footer_ready')}</p>
       </section>
 
-      <button type="button" className="gate-tuning-toggle" aria-label="Tune background" aria-expanded={tuningOpen} aria-controls="background-tuning" onClick={() => setTuningOpen(open => !open)}>
+      <button type="button" className="gate-tuning-toggle" aria-label={t('landing.background_tuning')} aria-expanded={tuningOpen} aria-controls="background-tuning" onClick={() => setTuningOpen(open => !open)}>
         <SlidersHorizontal size={16} aria-hidden="true" />
-        <span>Background</span>
+        <span>{t('landing.background')}</span>
       </button>
 
       {tuningOpen && (
-        <section id="background-tuning" role="dialog" aria-modal="false" aria-label="Background tuning" className="gate-tuning-panel max-h-[calc(100dvh-2rem)] overflow-y-auto">
-          <div className="gate-tuning-header"><h2>Background tuning</h2><button type="button" className="gate-icon-button" aria-label="Close background tuning" onClick={() => setTuningOpen(false)}><X size={18} aria-hidden="true" /></button></div>
+        <section id="background-tuning" role="dialog" aria-modal="false" aria-label={t('landing.background_tuning')} className="gate-tuning-panel max-h-[calc(100dvh-2rem)] overflow-y-auto">
+          <div className="gate-tuning-header"><h2>{t('landing.background_tuning')}</h2><button type="button" className="gate-icon-button" aria-label={t('landing.close_background_tuning')} onClick={() => setTuningOpen(false)}><X size={18} aria-hidden="true" /></button></div>
           <div className="gate-tuning-fields">
             {backgroundFields.map(([key, label, min, max, suffix]) => (
               <label className="gate-tuning-field" key={key}>
-                <span>{label}</span>
+                <span>{t(`landing.${label}`)}</span>
                 <output>{settings[key]}{suffix}</output>
-                <input type="range" aria-label={label} min={min} max={max} value={settings[key]} onChange={event => updateSetting(key, Number(event.target.value))} />
+                <input type="range" aria-label={t(`landing.${label}`)} min={min} max={max} value={settings[key]} onChange={event => updateSetting(key, Number(event.target.value))} />
               </label>
             ))}
           </div>
-          <button type="button" className="gate-reset-button" onClick={resetSettings}>Reset this theme</button>
+          <button type="button" className="gate-reset-button" onClick={resetSettings}>{t('landing.reset_theme')}</button>
         </section>
       )}
     </main>

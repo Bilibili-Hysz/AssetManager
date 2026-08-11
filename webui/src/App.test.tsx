@@ -3,13 +3,14 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 
-const { authState } = vi.hoisted(() => ({
+const { authState, commerceProviderRender } = vi.hoisted(() => ({
   authState: {
     isLoading: false,
     isAuthenticated: false,
-    capabilities: { browse: false },
-    serverInfo: { auth_enabled: true },
+    capabilities: { browse: false, manage_users: false } as Record<string, boolean>,
+    serverInfo: { auth_enabled: true, feature_flags: { commerce: true, seller: true, quota: false } },
   },
+  commerceProviderRender: vi.fn(),
 }));
 
 vi.mock('./hooks/useAuth', () => ({
@@ -21,9 +22,26 @@ vi.mock('./pages/LoginPage', () => ({ default: () => <div>LoginPage</div> }));
 vi.mock('./pages/BrowsePage', () => ({ default: () => <div>BrowsePage</div> }));
 vi.mock('./pages/DetailPage', () => ({ default: () => <div>DetailPage</div> }));
 vi.mock('./pages/ShareReceivePage', () => ({ default: () => <div>ShareReceivePage</div> }));
+vi.mock('./pages/AdminPage', () => ({ default: () => <div>AdminPage</div> }));
+vi.mock('./pages/StorefrontPage', () => ({ default: () => <div>StorefrontPage</div> }));
+vi.mock('./pages/SellerProductsPage', () => ({ default: () => <div>SellerProductsPage</div> }));
+vi.mock('./components/storefront/ShopBuyerContext', () => ({
+  ShopBuyerProvider: ({ children }: { children: React.ReactNode }) => {
+    commerceProviderRender();
+    return <>{children}</>;
+  },
+}));
 
 vi.mock('./stores/AuthContext', () => ({
   AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useAuthContext: () => ({
+    isLoading: false,
+    serverInfo: { feature_flags: { commerce: true, seller: true, quota: false } },
+  }),
+}));
+vi.mock('./stores/SellerAuthContext', () => ({
+  SellerAuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useSellerAuth: () => ({ enabled: true, authenticated: true, loading: false }),
 }));
 vi.mock('./stores/RealtimeContext', () => ({
   RealtimeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -42,6 +60,7 @@ function navigateTo(path: string) {
 describe('App routing', () => {
   afterEach(() => {
     cleanup();
+    commerceProviderRender.mockClear();
     navigateTo('/');
   });
 
@@ -57,42 +76,56 @@ describe('App routing', () => {
     expect(screen.getByText('LoginPage')).toBeDefined();
   });
 
+  it('does not mount the buyer provider for non-Commerce routes', () => {
+    authState.serverInfo = { auth_enabled: true, feature_flags: { commerce: true, seller: true, quota: false } };
+    navigateTo('/');
+    render(<App />);
+    expect(commerceProviderRender).not.toHaveBeenCalled();
+  });
+
+  it('mounts the buyer provider inside enabled Commerce routes', () => {
+    authState.serverInfo = { auth_enabled: true, feature_flags: { commerce: true, seller: true, quota: false } };
+    navigateTo('/storefront');
+    render(<App />);
+    expect(commerceProviderRender).toHaveBeenCalledTimes(1);
+  });
+
   it('redirects an unauthenticated user to /login when auth is enabled', () => {
     authState.isLoading = false;
     authState.isAuthenticated = false;
-    authState.serverInfo = { auth_enabled: true };
+    authState.serverInfo = { auth_enabled: true, feature_flags: { commerce: true, seller: true, quota: false } };
     navigateTo('/browse');
     render(<App />);
     expect(screen.getByText('LoginPage')).toBeDefined();
   });
 
-  it('lets an unauthenticated user into a protected route when auth is disabled and the capability is granted', () => {
+  it('lets an unauthenticated user into a protected route when auth is disabled and the capability is granted', async () => {
     authState.isLoading = false;
     authState.isAuthenticated = false;
-    authState.serverInfo = { auth_enabled: false };
+    authState.serverInfo = { auth_enabled: false, feature_flags: { commerce: true, seller: true, quota: false } };
     authState.capabilities = { browse: true };
     navigateTo('/browse');
     render(<App />);
-    expect(screen.getByText('BrowsePage')).toBeDefined();
+    expect(await screen.findByText('BrowsePage')).toBeDefined();
   });
 
-  it('renders a protected route for an authenticated user with the browse capability', () => {
+  it('renders a protected route for an authenticated user with the browse capability', async () => {
     authState.isLoading = false;
     authState.isAuthenticated = true;
-    authState.serverInfo = { auth_enabled: true };
+    authState.serverInfo = { auth_enabled: true, feature_flags: { commerce: true, seller: true, quota: false } };
     authState.capabilities = { browse: true };
     navigateTo('/browse');
     render(<App />);
-    expect(screen.getByText('BrowsePage')).toBeDefined();
+    expect(await screen.findByText('BrowsePage')).toBeDefined();
     navigateTo('/detail');
     render(<App />);
-    expect(screen.getByText('DetailPage')).toBeDefined();
+    expect(await screen.findByText('DetailPage')).toBeDefined();
   });
 
   it('redirects to / when the user lacks the browse capability', () => {
     authState.isLoading = false;
     authState.isAuthenticated = true;
-    authState.serverInfo = { auth_enabled: true };
+    authState.serverInfo = { auth_enabled: true, feature_flags: { commerce: true, seller: true, quota: false } };
     authState.capabilities = { browse: false };
     navigateTo('/browse');
     render(<App />);
@@ -108,15 +141,51 @@ describe('App routing', () => {
     expect(screen.queryByText('BrowsePage')).toBeNull();
   });
 
-  it('renders ShareReceivePage under /s/:shareId', () => {
-    navigateTo('/s/abc123');
+  it('renders the seller product create route behind the seller gates', async () => {
+    navigateTo('/seller/products/new');
     render(<App />);
-    expect(screen.getByText('ShareReceivePage')).toBeDefined();
+    expect(await screen.findByText('SellerProductsPage')).toBeDefined();
   });
 
-  it('redirects unknown paths to /', () => {
+  it('renders the seller product edit route without falling through to the list route', async () => {
+    navigateTo('/seller/products/item-123');
+    render(<App />);
+    expect(await screen.findByText('SellerProductsPage')).toBeDefined();
+  });
+  it('renders ShareReceivePage under /s/:shareId', async () => {
+    navigateTo('/s/abc123');
+    render(<App />);
+    expect(await screen.findByText('ShareReceivePage')).toBeDefined();
+  });
+
+  it('redirects the reference storefront path to the migrated storefront', async () => {
+    navigateTo('/store');
+    render(<App />);
+    expect(await screen.findByText('StorefrontPage')).toBeDefined();
+  });
+
+  it('renders AdminPage at /admin for an admin with manage_users capability', async () => {
+    authState.isLoading = false;
+    authState.isAuthenticated = true;
+    authState.capabilities = { browse: true, manage_users: true };
+    navigateTo('/admin');
+    render(<App />);
+    expect(await screen.findByText('AdminPage')).toBeDefined();
+  });
+
+  it('redirects away from /admin without manage_users capability', async () => {
+    authState.isLoading = false;
+    authState.isAuthenticated = true;
+    authState.capabilities = { browse: true, manage_users: false };
+    navigateTo('/admin');
+    render(<App />);
+    // ProtectedRoute redirects to '/' (LandingPage)
+    expect(await screen.findByText('LandingPage')).toBeDefined();
+  });
+
+  it('renders NotFoundPage for unknown paths', () => {
     navigateTo('/does-not-exist');
     render(<App />);
-    expect(screen.getByText('LandingPage')).toBeDefined();
+    expect(screen.getByText('Not found')).toBeDefined();
   });
 });

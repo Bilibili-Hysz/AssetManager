@@ -6,8 +6,9 @@ function setup() {
   const get = vi.fn();
   const post = vi.fn();
   const delete_ = vi.fn();
-  const client = { get, post, delete: delete_ } as unknown as ApiClient;
-  return { api: createSharesApi(client), get, post, delete: delete_ };
+  const buildUrl = vi.fn((path: string) => `/library/api/${path}`);
+  const client = { get, post, delete: delete_, buildUrl } as unknown as ApiClient;
+  return { api: createSharesApi(client), get, post, delete: delete_, buildUrl };
 }
 
 describe('shares API contract', () => {
@@ -44,11 +45,19 @@ describe('shares API contract', () => {
     expect(post).toHaveBeenCalledWith('shares/share-123/verify', { password: 'pw' });
   });
 
-  it('encodes each path segment but never the separators in download/preview URLs', () => {
-    const api = createSharesApi({} as unknown as ApiClient);
+  it('builds download and preview URLs with the configured baseUrl while preserving path separators', () => {
+    const { api, buildUrl } = setup();
     expect(api.getDownloadUrl('share-123', '目录/子 文件.svg'))
-      .toBe('/api/shares/share-123/download/%E7%9B%AE%E5%BD%95/%E5%AD%90%20%E6%96%87%E4%BB%B6.svg');
+      .toBe('/library/api/shares/share-123/download/%E7%9B%AE%E5%BD%95/%E5%AD%90%20%E6%96%87%E4%BB%B6.svg');
     expect(api.getPreviewUrl('share-123', '目录/子 文件.svg'))
-      .toBe('/api/shares/share-123/preview/%E7%9B%AE%E5%BD%95/%E5%AD%90%20%E6%96%87%E4%BB%B6.svg');
+      .toBe('/library/api/shares/share-123/preview/%E7%9B%AE%E5%BD%95/%E5%AD%90%20%E6%96%87%E4%BB%B6.svg');
+    expect(buildUrl).toHaveBeenNthCalledWith(
+      1,
+      'shares/share-123/download/%E7%9B%AE%E5%BD%95/%E5%AD%90%20%E6%96%87%E4%BB%B6.svg',
+    );
+    expect(buildUrl).toHaveBeenNthCalledWith(
+      2,
+      'shares/share-123/preview/%E7%9B%AE%E5%BD%95/%E5%AD%90%20%E6%96%87%E4%BB%B6.svg',
+    );
   });
 });

@@ -17,7 +17,8 @@ const getThumbnail = vi.fn();
 const loadThumbnails = vi.fn();
 const { useInvalidationMock } = vi.hoisted(() => ({ useInvalidationMock: vi.fn() }));
 let listingItems: BrowsableItem[] = [{ path: 'asset.png', name: 'asset.png', type: 'file', extension: '.png', category: 'image', size_fmt: '1 KB', modified: 0 }];
-const authState = { api: {}, identityGeneration: 0 };
+const buildUrl = vi.fn((path: string) => `/library/api/${path}`);
+const authState = { api: { buildUrl }, identityGeneration: 0 };
 
 vi.mock('../hooks/useAuth', () => ({
   useAuth: () => authState,
@@ -50,6 +51,9 @@ vi.mock('../hooks/useThumbnailCache', () => ({
 }));
 vi.mock('../hooks/useMediaQuery', () => ({ useMediaQuery: vi.fn(() => false) }));
 vi.mock('../hooks/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
+vi.mock('../hooks/useQuota', () => ({
+  useQuota: () => ({ guardDownload: async () => true, refresh: vi.fn(), quota: null }),
+}));
 vi.mock('../components/ui/Toast', () => ({ useToast: () => ({ showToast }) }));
 vi.mock('../api/files', () => ({ createFilesApi: () => ({ download: vi.fn(), batchDownload }) }));
 vi.mock('../api/metadata', () => ({
@@ -108,6 +112,7 @@ function deferred<T>() {
 describe('BrowsePage', () => {
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
     localStorage.removeItem('am_view');
   });
 
@@ -116,6 +121,7 @@ describe('BrowsePage', () => {
     listingItems = [{ path: 'asset.png', name: 'asset.png', type: 'file', extension: '.png', category: 'image', size_fmt: '1 KB', modified: 0 }];
     vi.mocked(useMediaQuery).mockReturnValue(false);
     localStorage.clear();
+    buildUrl.mockClear();
     search.mockReset();
     search.mockResolvedValue({ results: [{ path: 'tagged/item', name: 'item', type: 'file', extension: '', category: 'other' }] });
     getMeta.mockReset();
@@ -165,15 +171,28 @@ describe('BrowsePage', () => {
     const { unmount } = render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
 
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Open item context menu' }));
-    expect(screen.queryByRole('button', { name: 'action.detail' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'action.detail' })).toBeNull();
 
     unmount();
     listingItems = [{ path: 'asset.png', name: 'asset.png', type: 'file', extension: '.png', category: 'image', size_fmt: '1 KB', modified: 0 }];
     render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Open item context menu' }));
-    expect(screen.getByRole('button', { name: 'action.detail' })).toBeDefined();
+    expect(screen.getByRole('menuitem', { name: 'action.detail' })).toBeDefined();
   });
 
+  it('copies an absolute download URL while honoring the configured API base path', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Open item context menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'action.copy_download_link' }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(
+      'http://localhost:3000/library/api/download/asset.png',
+    ));
+    expect(buildUrl).toHaveBeenCalledWith('download/asset.png');
+  });
   it('shows the selected tag and clears back to the current directory listing', async () => {
     render(
       <MemoryRouter initialEntries={['/browse?path=original']}>
@@ -274,7 +293,7 @@ describe('BrowsePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Select asset' }));
     fireEvent.click(screen.getByRole('button', { name: 'Download selected' }));
 
-    expect(screen.getByRole('progressbar', { name: 'Download in progress' })).toBeDefined();
+    await waitFor(() => expect(screen.getByRole('progressbar', { name: 'Download in progress' })).toBeDefined());
     pending.reject(new Error('ZIP failed'));
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('ZIP failed', 'error'));
     expect(screen.queryByRole('progressbar', { name: 'Download in progress' })).toBeNull();
@@ -287,7 +306,7 @@ describe('BrowsePage', () => {
     expect(screen.getByTestId('file-list').textContent).toBe('asset.png');
     fireEvent.click(screen.getByRole('button', { name: 'Filter tag' }));
 
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Failed to filter by tag', 'error'));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('info.tag_filter_failed', 'error'));
     expect(screen.queryByTestId('active-tag')).toBeNull();
     expect(screen.getByTestId('file-list').textContent).toBe('asset.png');
   });
@@ -365,6 +384,7 @@ describe('BrowsePage', () => {
   it('authoritatively refetches the active tag results when tags projection invalidates', async () => {
     const initial = deferred<{ results: Array<{ path: string; name: string; type: string; extension: string; category: string }> }>();
     const refreshed = deferred<{ results: Array<{ path: string; name: string; type: string; extension: string; category: string }> }>();
+    buildUrl.mockClear();
     search.mockReset();
     search.mockReturnValueOnce(initial.promise).mockReturnValueOnce(refreshed.promise);
 
@@ -390,6 +410,7 @@ describe('BrowsePage', () => {
   it('authoritatively refetches the active tag results after null recovery invalidation', async () => {
     const initial = deferred<{ results: Array<{ path: string; name: string; type: string; extension: string; category: string }> }>();
     const refreshed = deferred<{ results: Array<{ path: string; name: string; type: string; extension: string; category: string }> }>();
+    buildUrl.mockClear();
     search.mockReset();
     search.mockReturnValueOnce(initial.promise).mockReturnValueOnce(refreshed.promise);
 
@@ -428,6 +449,7 @@ describe('BrowsePage', () => {
   it('ignores an older tag search that resolves after a newer one', async () => {
     const first = deferred<{ results: Array<{ path: string; name: string; type: string; extension: string; category: string }> }>();
     const second = deferred<{ results: Array<{ path: string; name: string; type: string; extension: string; category: string }> }>();
+    buildUrl.mockClear();
     search.mockReset();
     search.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
 
@@ -452,6 +474,7 @@ describe('BrowsePage', () => {
 
   it('ignores a pending tag search after router search params change', async () => {
     const pending = deferred<{ results: Array<{ path: string; name: string; type: string; extension: string; category: string }> }>();
+    buildUrl.mockClear();
     search.mockReset();
     search.mockReturnValueOnce(pending.promise);
 
@@ -575,7 +598,7 @@ describe('BrowsePage', () => {
     const downloadButton = screen.getByRole('button', { name: 'Download selected' });
     fireEvent.click(downloadButton);
 
-    expect(batchDownload).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(batchDownload).toHaveBeenCalledTimes(1));
     expect((screen.getByRole('button', { name: 'Downloading selected' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Downloading selected' }));
     expect(batchDownload).toHaveBeenCalledTimes(1);

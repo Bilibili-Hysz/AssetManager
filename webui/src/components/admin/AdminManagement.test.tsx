@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InviteManagement } from './InviteManagement';
 import { UserManagement } from './UserManagement';
 import { ShareManagement } from './ShareManagement';
@@ -46,6 +46,8 @@ vi.mock('../../api/shares', () => ({
 }));
 
 describe('admin management translations', () => {
+  beforeEach(() => vi.stubGlobal('confirm', vi.fn(() => true)));
+  afterEach(() => vi.unstubAllGlobals());
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();

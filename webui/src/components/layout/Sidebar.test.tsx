@@ -8,6 +8,9 @@ import { setLang } from '../../i18n';
 
 let api: object = {};
 const getTree = vi.fn();
+const listTags = vi.fn();
+const navigateMock = vi.fn();
+let favoriteItems: Array<{ name: string; path: string; kind: 'collection' | 'project' | 'artwork'; parent_path: string | null; modified: number }> = [];
 const { useInvalidationMock } = vi.hoisted(() => ({ useInvalidationMock: vi.fn() }));
 
 const tree = [
@@ -33,6 +36,19 @@ async function renderTree(currentPath = '') {
   return { onNavigate };
 }
 
+vi.mock('react-router-dom', async importOriginal => ({
+  ...(await importOriginal<typeof import('react-router-dom')>()),
+  useNavigate: () => navigateMock,
+}));
+
+vi.mock('../../hooks/useFavorites', () => ({
+  useFavorites: () => ({ items: favoriteItems, loading: false }),
+}));
+
+vi.mock('../../api/tags', () => ({
+  createTagsApi: () => ({ list: listTags }),
+}));
+
 vi.mock('../../hooks/useAuth', () => ({
   useAuth: () => ({ api }),
 }));
@@ -49,14 +65,17 @@ describe('Sidebar', () => {
 
   beforeEach(() => {
     setLang('en');
-    getTree.mockReset();
+    getTree.mockReset().mockResolvedValue({ tree });
+    listTags.mockReset().mockResolvedValue({ tags: [] });
+    navigateMock.mockReset();
+    favoriteItems = [];
     api = {};
     useInvalidationMock.mockReset();
   });
 
   it('registers only the tree projection domain', async () => {
     await renderTree();
-    expect(useInvalidationMock.mock.calls[0]?.[0]).toEqual(['tree']);
+    expect(useInvalidationMock.mock.calls.map(call => call[0])).toEqual(expect.arrayContaining([['tree'], ['tags']]));
   });
 
   it('uses translated folder controls after switching to Chinese', async () => {
@@ -191,4 +210,49 @@ describe('Sidebar', () => {
     expect(screen.queryByText('Stale')).toBeNull();
     expect(screen.getByText('Current')).toBeDefined();
   });
+
+  it('loads, filters, highlights, and clears real tags', async () => {
+    const user = userEvent.setup();
+    listTags.mockResolvedValue({ tags: [
+      { id: 1, name: 'branding', count: 4 },
+      { id: 2, name: 'icons', count: 2 },
+    ] });
+    const onTagFilter = vi.fn();
+    const onClearTagFilter = vi.fn();
+    render(<Sidebar onNavigate={() => {}} currentPath="" activeTag="branding" onTagFilter={onTagFilter} onClearTagFilter={onClearTagFilter} />, { wrapper: MemoryRouter });
+
+    expect((await screen.findByRole('button', { name: /branding/ })).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('4')).toBeDefined();
+    await user.click(screen.getByRole('button', { name: /branding/ }));
+    expect(onClearTagFilter).toHaveBeenCalledTimes(1);
+
+    const search = screen.getByRole('textbox', { name: 'Tags' });
+    await user.type(search, 'icon');
+    expect(screen.getByRole('button', { name: /icons/ })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'branding' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /icons/ }));
+    expect(onTagFilter).toHaveBeenCalledWith('icons');
+  });
+
+  it('renders favorites and navigates them with workspace context', async () => {
+    favoriteItems = [{ name: 'Logo', path: 'workspace/assets/logo.svg', kind: 'artwork', parent_path: 'workspace/assets', modified: 1 }];
+    render(<Sidebar onNavigate={() => {}} currentPath="" />, { wrapper: MemoryRouter });
+
+    const favorite = await screen.findByRole('button', { name: 'Open Logo' });
+    await userEvent.click(favorite);
+    expect(navigateMock).toHaveBeenCalledWith('/detail?path=workspace%2Fassets%2Flogo.svg&from=workspace&context=workspace%2Fassets');
+  });
+
+  it('navigates tree leaves to detail with encoded parent context while directories use onNavigate', async () => {
+    const user = userEvent.setup();
+    const onNavigate = vi.fn();
+    getTree.mockResolvedValue({ tree: [{ name: 'Folder', path: 'workspace/my folder', is_leaf: false, children: [{ name: 'A file', path: 'workspace/my folder/A file.svg', is_leaf: true }] }] });
+    render(<Sidebar onNavigate={onNavigate} currentPath="" />, { wrapper: MemoryRouter });
+    await user.click(await screen.findByRole('button', { name: 'Folder' }));
+    expect(onNavigate).toHaveBeenCalledWith('workspace/my folder');
+    await user.click(screen.getByRole('button', { name: 'Expand Folder' }));
+    await user.click(screen.getByRole('button', { name: 'A file' }));
+    expect(navigateMock).toHaveBeenCalledWith('/detail?path=workspace%2Fmy%20folder%2FA%20file.svg&from=workspace&context=workspace%2Fmy%20folder');
+  });
+
 });

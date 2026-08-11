@@ -4,24 +4,35 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DetailPage from './DetailPage';
 
-const { getProjectDetail, useInvalidationMock, authApi } = vi.hoisted(() => ({
+const { getProjectDetail, saveNotes, useInvalidationMock, authApi, showToast } = vi.hoisted(() => ({
   getProjectDetail: vi.fn(),
+  saveNotes: vi.fn(),
   useInvalidationMock: vi.fn(),
-  authApi: {},
+  authApi: { buildUrl: (path: string) => `/api/${path}` },
+  showToast: vi.fn(),
 }));
-const authState = { identityGeneration: 0 };
+const authState = { identityGeneration: 0, capabilities: { settings: true, manage_links: true } };
 
 vi.mock('../hooks/useAuth', () => ({
-  useAuth: () => ({ api: authApi, identityGeneration: authState.identityGeneration }),
+  useAuth: () => ({ api: authApi, identityGeneration: authState.identityGeneration, capabilities: authState.capabilities }),
 }));
 vi.mock('../api/metadata', () => ({
   createMetadataApi: () => ({ getProjectDetail }),
 }));
+vi.mock('../api/notes', () => ({
+  createNotesApi: () => ({ save: saveNotes }),
+}));
 vi.mock('../hooks/useInvalidation', () => ({
   useInvalidation: useInvalidationMock,
 }));
+vi.mock('../components/ui/Toast', () => ({
+  useToast: () => ({ showToast }),
+}));
 vi.mock('../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
+}));
+vi.mock('../hooks/useQuota', () => ({
+  useQuota: () => ({ guardDownload: async () => true, refresh: vi.fn(), quota: null }),
 }));
 vi.mock('../components/ui/Skeleton', () => ({ Skeleton: () => <div data-testid="skeleton" /> }));
 vi.mock('../components/viewer/ImageViewer', () => ({ ImageViewer: () => null }));
@@ -50,8 +61,12 @@ describe('DetailPage', () => {
   beforeEach(() => {
     getProjectDetail.mockReset();
     getProjectDetail.mockResolvedValue(detail);
+    saveNotes.mockReset();
+    saveNotes.mockResolvedValue({ ok: true, path: detail.path, notes: 'Updated notes' });
+    showToast.mockReset();
     useInvalidationMock.mockReset();
     authState.identityGeneration = 0;
+    authState.capabilities = { settings: true, manage_links: true };
   });
 
   afterEach(() => cleanup());
@@ -113,4 +128,18 @@ describe('DetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'detail.back' }));
     expect(screen.getByTestId('location').textContent).toBe('/browse?path=folder%2FProject');
   });
+  it('saves edited notes through the API and updates the rendered detail', async () => {
+    render(<MemoryRouter initialEntries={['/detail?path=folder%2FProject']}><DetailPage /></MemoryRouter>);
+    await screen.findByRole('heading', { name: 'Project' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'info.edit_notes' }));
+    const editor = screen.getByRole('textbox', { name: 'info.notes' });
+    fireEvent.change(editor, { target: { value: 'Updated notes' } });
+    fireEvent.click(screen.getByRole('button', { name: 'info.save_notes' }));
+
+    await waitFor(() => expect(saveNotes).toHaveBeenCalledWith('folder/Project', 'Updated notes'));
+    expect(await screen.findByText('Updated notes')).toBeDefined();
+    expect(showToast).toHaveBeenCalledWith('info.notes_saved', 'success');
+  });
+
 });

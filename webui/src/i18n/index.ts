@@ -32,18 +32,34 @@ export function t(key: string, ...args: (string | number)[]): string {
   }
   if (typeof value === 'string') {
     let result: string = value;
-    args.forEach((arg, i) => { result = result.replace(`{${i}}`, String(arg)); });
+    // split/join replaces every occurrence (String.prototype.replaceAll needs
+    // ES2021; the project targets ES2020).
+    args.forEach((arg, i) => { result = result.split(`{${i}}`).join(String(arg)); });
     return result;
   }
   return key;
+}
+
+/** Keep the <html lang> attribute and document title in sync with the active locale. */
+function applyLangToDocument(): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = currentLang;
+  // app.title exists in every dictionary (en/zh/ja); t() falls back to the key
+  // itself if it is ever missing.
+  document.title = t('app.title');
 }
 
 export function setLang(lang: Lang): void {
   currentLang = lang;
   currentDict = dictionaries[lang] ?? en;
   try { localStorage.setItem('am_lang', lang); } catch { /* ignore */ }
+  applyLangToDocument();
   listeners.forEach(listener => listener());
 }
+
+// Apply the initially detected language immediately (stored preference or
+// browser language) so <html lang> and the title match before first paint.
+applyLangToDocument();
 
 export function getLang(): Lang {
   return currentLang;

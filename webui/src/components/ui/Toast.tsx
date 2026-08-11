@@ -42,19 +42,26 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={toast.id}
             role={toast.type === 'error' ? 'alert' : 'status'}
             aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
-            className={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border backdrop-blur-sm ${
-              toast.type === 'success'
-                ? 'bg-emerald-900/90 border-emerald-700/50 text-emerald-200'
-                : toast.type === 'error'
-                  ? 'bg-red-900/90 border-red-700/50 text-red-200'
-                  : 'bg-slate-800/90 border-slate-600/50 text-slate-200'
-            }`}
+            className="flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg backdrop-blur-sm transition-theme"
+            style={{
+              backgroundColor: toast.type === 'success' ? 'var(--color-success-subtle)' :
+                toast.type === 'error' ? 'var(--color-danger-subtle)' : 'var(--color-surface)',
+              border: `1px solid ${toast.type === 'success' ? 'var(--color-success)' :
+                toast.type === 'error' ? 'var(--color-danger)' : 'var(--color-border)'}`,
+              color: 'var(--color-text)',
+            }}
           >
-            {toast.type === 'success' ? <CheckCircle size={18} aria-hidden="true" /> :
-             toast.type === 'error' ? <AlertCircle size={18} aria-hidden="true" /> :
-             <Info size={18} aria-hidden="true" />}
+            {toast.type === 'success' ? <CheckCircle size={18} aria-hidden="true" style={{ color: 'var(--color-success)' }} /> :
+             toast.type === 'error' ? <AlertCircle size={18} aria-hidden="true" style={{ color: 'var(--color-danger)' }} /> :
+             <Info size={18} aria-hidden="true" style={{ color: 'var(--color-info)' }} />}
             <span className="text-sm flex-1">{toast.message}</span>
-            <button aria-label={t('action.close')} onClick={() => dismiss(toast.id)} className="opacity-60 hover:opacity-100">
+            <button
+              type="button"
+              aria-label={t('action.close')}
+              onClick={() => dismiss(toast.id)}
+              className="opacity-60 hover:opacity-100 transition-opacity"
+              style={{ color: 'var(--color-text-secondary)' }}
+            >
               <X size={16} aria-hidden="true" />
             </button>
           </div>

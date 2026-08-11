@@ -18,7 +18,9 @@ export function DownloadProgressProvider({ children }: { children: ReactNode }) 
   const [state, setState] = useState<DownloadProgressState>({ status: 'hidden', progress: null, label: 'Download in progress' });
   const start = useCallback((label = 'Download in progress') => setState({ status: 'indeterminate', progress: null, label }), []);
   const update = useCallback((next: DownloadProgressValue) => setState(previous => {
-    if (next.total === null) return { status: 'indeterminate', progress: null, label: previous.label };
+    // E10: guard against a zero/unknown total — a determinate bar from loaded/total
+    // would otherwise jump straight to 100% (loaded/0 = Infinity).
+    if (next.total === null || next.total <= 0) return { status: 'indeterminate', progress: null, label: previous.label };
     return {
       status: 'determinate',
       progress: Math.min(100, (next.loaded / next.total) * 100),
@@ -32,11 +34,12 @@ export function DownloadProgressProvider({ children }: { children: ReactNode }) 
       {children}
        {state.status !== 'hidden' && (
         <div
-          className="fixed inset-x-0 top-0 z-[60] h-1 bg-slate-800"
+          className="fixed inset-x-0 top-0 z-[60] h-1"
           role="progressbar"
           aria-label={state.label}
           aria-busy="true"
           data-download-state={state.status}
+          style={{ backgroundColor: 'var(--color-surface)' }}
           {...(state.status === 'determinate' ? {
             'aria-valuemin': 0,
             'aria-valuemax': 100,
@@ -45,8 +48,11 @@ export function DownloadProgressProvider({ children }: { children: ReactNode }) 
           } : {})}
         >
           <div
-            className={`h-full bg-indigo-500 transition-[width] duration-150 ${state.status === 'determinate' ? '' : 'animate-pulse w-1/3'}`}
-            style={state.status === 'determinate' ? { width: `${state.progress}%` } : undefined}
+            className={`h-full transition-[width] duration-150 ${state.status === 'determinate' ? '' : 'animate-pulse w-1/3'}`}
+            style={{
+              backgroundColor: 'var(--color-accent)',
+              width: state.status === 'determinate' ? `${state.progress}%` : undefined,
+            }}
           />
         </div>
       )}

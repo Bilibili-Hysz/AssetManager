@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Download, Lock, Folder, Eye } from 'lucide-react';
 import { createApiClient } from '../api/client';
 import { createSharesApi } from '../api/shares';
+import { ApiError } from '../api/errors';
 import { useI18n } from '../hooks/useI18n';
 import { useTheme } from '../hooks/useTheme';
 import { useToast } from '../components/ui/Toast';
@@ -51,8 +52,14 @@ export default function ShareReceivePage() {
       const res = await sharesApi.verifyPassword(shareId, password);
       setShareInfo(res.share);
       setVerified(true);
-    } catch {
-      showToast(t('share.invalid_password'), 'error');
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 429) {
+        showToast(t('error.rate_limited'), 'error');
+      } else if (err instanceof ApiError && err.status !== 401) {
+        showToast(t('error.server'), 'error');
+      } else {
+        showToast(t('share.invalid_password'), 'error');
+      }
     } finally {
       setVerifying(false);
     }
@@ -87,7 +94,13 @@ export default function ShareReceivePage() {
       <div className="flex flex-col items-center justify-center h-screen bg-slate-950 gap-6 p-8">
         <Lock size={48} className="text-slate-600" />
         <h1 className="text-xl font-semibold text-white">{t('share.password_required')}</h1>
-        <div className="w-full max-w-xs space-y-3">
+        <form
+          className="w-full max-w-xs space-y-3"
+          onSubmit={e => {
+            e.preventDefault();
+            void handleVerify();
+          }}
+        >
           <input
             type="password"
             value={password}
@@ -97,14 +110,13 @@ export default function ShareReceivePage() {
               focus:outline-none focus:border-brand-500/50"
           />
           <button
-            type="button"
-            onClick={handleVerify}
+            type="submit"
             disabled={verifying}
             className="w-full py-2.5 text-sm text-white bg-brand-500 hover:bg-brand-600 disabled:opacity-60 rounded-lg transition-colors"
           >
             {t('share.verify_btn')}
           </button>
-        </div>
+        </form>
       </div>
     );
   }

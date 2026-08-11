@@ -5,6 +5,7 @@ export type WebSocketStatus = 'connecting' | 'connected' | 'disconnected';
 interface UseWebSocketOptions {
   onEvent?: (type: string, data: Record<string, unknown>) => void;
   enabled?: boolean;
+  url?: string;
 }
 
 interface UseWebSocketReturn {
@@ -18,7 +19,7 @@ type TransportBridge = {
 
 const WebSocketTransportContext = createContext<TransportBridge | null>(null);
 
-export function useWebSocket({ onEvent, enabled = true }: UseWebSocketOptions): UseWebSocketReturn {
+export function useWebSocket({ onEvent, enabled = true, url }: UseWebSocketOptions): UseWebSocketReturn {
   const bridge = useContext(WebSocketTransportContext);
   const [status, setStatus] = useState<WebSocketStatus>('disconnected');
   const wsRef = useRef<WebSocket | null>(null);
@@ -51,7 +52,7 @@ export function useWebSocket({ onEvent, enabled = true }: UseWebSocketOptions): 
       }
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       setStatus('connecting');
-      const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+      const ws = new WebSocket(url ?? `${protocol}//${window.location.host}/ws`);
       wsRef.current = ws;
       ws.onopen = () => {
         if (!disposed && wsRef.current === ws) {
@@ -83,7 +84,7 @@ export function useWebSocket({ onEvent, enabled = true }: UseWebSocketOptions): 
       wsRef.current = null;
       ws?.close();
     };
-  }, [bridge, enabled]);
+  }, [bridge, enabled, url]);
 
   return { status: bridge?.status ?? status };
 }
@@ -93,8 +94,10 @@ export function WebSocketTransportHost({
   onEvent,
   children,
   onStatus,
+  url,
 }: {
   enabled: boolean;
+  url?: string;
   onEvent?: (type: string, data: Record<string, unknown>) => void;
   children: ReactNode;
   onStatus?: (status: WebSocketStatus) => void;
@@ -117,7 +120,7 @@ export function WebSocketTransportHost({
       }
     }
   }, []);
-  const transport = useWebSocket({ enabled, onEvent: fanout });
+  const transport = useWebSocket({ enabled, onEvent: fanout, url });
   const bridge = useMemo(() => ({ status: transport.status, subscribe }), [transport.status]);
   useEffect(() => onStatus?.(transport.status), [onStatus, transport.status]);
   return createElement(WebSocketTransportContext.Provider, { value: bridge }, children);

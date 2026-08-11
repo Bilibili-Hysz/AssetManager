@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { MoreHorizontal, Link2 } from 'lucide-react';
+import { Download, Eye, FolderOpen, MoreHorizontal, Link2 } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 import type { BrowsableItem } from '../../types/api';
 import { LayeredPreview } from './LayeredPreview';
@@ -14,14 +14,16 @@ interface ProjectListProps {
   onNavigate?: (path: string) => void;
   selectionMode?: boolean;
   onDoubleClick?: (item: BrowsableItem) => void;
+  onDownload?: (item: BrowsableItem) => void;
   onContextMenu?: (e: React.MouseEvent, item: BrowsableItem) => void;
   onDirectoryVisible?: (path: string) => void;
+  onTagClick?: (tag: string) => void;
   onCopyLink?: (path: string) => void;
   thumbnailMap?: Record<string, string>;
   isMobile?: boolean;
 }
 
-export function ProjectList({ items, selected, onSelect, onZipSelect = onSelect, onInspect, onNavigate, selectionMode = false, onDoubleClick, onContextMenu, onDirectoryVisible, onCopyLink, thumbnailMap = {}, isMobile = false }: ProjectListProps) {
+export function ProjectList({ items, selected, onSelect, onZipSelect = onSelect, onInspect, onNavigate, selectionMode = false, onDoubleClick, onDownload, onContextMenu, onDirectoryVisible, onTagClick, onCopyLink, thumbnailMap = {}, isMobile = false }: ProjectListProps) {
   const { t } = useI18n();
   const nodes = useRef(new Map<string, HTMLTableRowElement>());
   const inspectTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -142,8 +144,12 @@ export function ProjectList({ items, selected, onSelect, onZipSelect = onSelect,
                         }
                       }}
                     >
-                      {item.name}
+                      <span className="block truncate">{item.name}</span>
                     </button>
+                    {item.tags && item.tags.length > 0 && <span className="mt-1 flex flex-wrap gap-1">
+                      {item.tags.slice(0, 3).map(tag => <button key={tag} type="button" onClick={event => { event.stopPropagation(); onTagClick?.(tag); }} className="rounded-full border border-indigo-500/20 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] text-indigo-300 hover:bg-indigo-500/20">{tag}</button>)}
+                      {item.tags.length > 3 && <span className="px-1.5 py-0.5 text-[10px] text-slate-500">+{item.tags.length - 3}</span>}
+                    </span>}
                   </td>
                   <td className="px-3 py-2.5 text-sm text-slate-400">{item.size_fmt}</td>
                   <td className="px-3 py-2.5 text-sm text-slate-500 hidden md:table-cell">
@@ -151,6 +157,42 @@ export function ProjectList({ items, selected, onSelect, onZipSelect = onSelect,
                   </td>
                    <td className="px-2 py-2.5">
                      <div className="flex items-center justify-end gap-1">
+                     {onInspect && (
+                       <button
+                         type="button"
+                         className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] text-slate-400 transition-colors hover:bg-slate-700/50 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                         aria-label={t('action.inspect', item.name)}
+                         title={t('action.inspect', item.name)}
+                         onClick={e => { e.stopPropagation(); clearInspectTimer(item.path); onInspect(item); }}
+                       >
+                         <Eye size={14} aria-hidden="true" />
+                         <span className="hidden lg:inline">{t('action.inspect_short')}</span>
+                       </button>
+                     )}
+                     {onDoubleClick && (
+                       <button
+                         type="button"
+                         className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] text-indigo-300 transition-colors hover:bg-indigo-500/10 hover:text-indigo-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                         aria-label={isDir ? t('action.open_folder', item.name) : t('action.open_item', item.name)}
+                         title={isDir ? t('action.open_folder', item.name) : t('action.open_item', item.name)}
+                         onClick={e => { e.stopPropagation(); clearInspectTimer(item.path); onDoubleClick(item); }}
+                       >
+                         <FolderOpen size={14} aria-hidden="true" />
+                         <span className="hidden lg:inline">{t('action.open')}</span>
+                       </button>
+                     )}
+                     {onDownload && (
+                       <button
+                         type="button"
+                         className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] text-emerald-300 transition-colors hover:bg-emerald-500/10 hover:text-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                         aria-label={isDir ? t('action.download_folder', item.name) : t('action.download_file', item.name)}
+                         title={isDir ? t('action.download_folder', item.name) : t('action.download_file', item.name)}
+                         onClick={e => { e.stopPropagation(); clearInspectTimer(item.path); onDownload(item); }}
+                       >
+                         <Download size={14} aria-hidden="true" />
+                         <span className="hidden lg:inline">{t('action.download')}</span>
+                       </button>
+                     )}
                      {onCopyLink && (
                        <button
                          type="button"

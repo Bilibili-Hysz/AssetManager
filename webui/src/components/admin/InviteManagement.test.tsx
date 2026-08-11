@@ -18,8 +18,12 @@ vi.mock('../ui/Toast', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 vi.mock('../../hooks/useInvalidation', () => ({ useInvalidation: useInvalidationMock }));
 
 describe('InviteManagement canonical refresh', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
   beforeEach(() => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
     setLang('en');
     listInvites.mockReset();
     createInvite.mockReset();

@@ -16,7 +16,7 @@ const { getInfo, verifyPassword, showToast, tMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('../api/client', () => ({
-  createApiClient: () => ({}),
+  createApiClient: () => ({ buildUrl: (path: string) => `/api/${path}` }),
 }));
 // Use the real createSharesApi so download/preview URL encoding is exercised,
 // but override the network-backed methods with spies.

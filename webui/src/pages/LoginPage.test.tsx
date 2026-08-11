@@ -34,10 +34,10 @@ describe('LoginPage registration policy', () => {
     vi.clearAllMocks();
   });
 
-  it.each(['key', 'password'] as const)('offers registration in %s mode because the endpoint permits it', mode => {
+  it.each(['key', 'password'] as const)('hides registration in %s mode because the endpoint does not support it', mode => {
     authMode = mode;
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
-    expect(screen.getByRole('button', { name: 'auth.no_account' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'auth.no_account' })).toBeNull();
   });
 
   it('does not navigate after password login when the session refresh fails', async () => {

@@ -6,16 +6,19 @@ function encodeSharePath(path: string): string {
 }
 
 export function createSharesApi(api: ApiClient) {
+  const encodeId = (id: string) => encodeURIComponent(String(id));
   return {
     create: (data: ShareCreateRequest) =>
       api.post<ShareLink>('shares', data),
     list: () => api.get<{ shares: ShareLink[] }>('shares'),
-    delete: (id: string) => api.delete<OkResponse>(`shares/${id}`),
-    getInfo: (id: string) => api.get<ShareInfoResponse>(`shares/${id}/info`),
+    delete: (id: string) => api.delete<OkResponse>(`shares/${encodeId(id)}`),
+    getInfo: (id: string) => api.get<ShareInfoResponse>(`shares/${encodeId(id)}/info`),
     verifyPassword: (id: string, password: string) =>
-      api.post<ShareVerifyResponse>(`shares/${id}/verify`, { password }),
-    getDownloadUrl: (id: string, path: string) => `/api/shares/${id}/download/${encodeSharePath(path)}`,
-    getPreviewUrl: (id: string, path: string) => `/api/shares/${id}/preview/${encodeSharePath(path)}`,
+      api.post<ShareVerifyResponse>(`shares/${encodeId(id)}/verify`, { password }),
+    getDownloadUrl: (id: string, path: string) =>
+      api.buildUrl(`shares/${encodeId(id)}/download/${encodeSharePath(path)}`),
+    getPreviewUrl: (id: string, path: string) =>
+      api.buildUrl(`shares/${encodeId(id)}/preview/${encodeSharePath(path)}`),
   };
 }
 

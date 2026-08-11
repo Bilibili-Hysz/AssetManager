@@ -23,6 +23,12 @@ describe('system API contract', () => {
     expect(get).toHaveBeenCalledWith('stats');
   });
 
+  it('getQuota gets the optional quota endpoint', () => {
+    const { api, get } = setup();
+    api.getQuota();
+    expect(get).toHaveBeenCalledWith('quota');
+  });
+
   it('getTunnelStatus gets tunnel/status (admin-required route)', () => {
     const { api, get } = setup();
     api.getTunnelStatus();

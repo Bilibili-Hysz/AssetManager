@@ -41,8 +41,10 @@ export function OnlineUsers() {
         <p className="text-sm text-slate-500">{t('admin.no_online')}</p>
       ) : (
         <div className="space-y-2">
-          {users.map((u, i) => (
-            <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-slate-800/30 border border-slate-700/50">
+          {users.map(u => (
+            // E12: key by username instead of the array index so rows keep their state
+            // when the online list changes (e.g. another user going offline).
+            <div key={u.username} className="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-slate-800/30 border border-slate-700/50">
               <div className="w-2 h-2 rounded-full bg-emerald-500" />
               <span className="text-sm text-slate-200 flex-1">{u.username}</span>
               <span className="text-xs text-slate-500">{u.ip}</span>

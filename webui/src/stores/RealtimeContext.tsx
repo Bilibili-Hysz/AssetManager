@@ -1,10 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAuthContext } from './AuthContext';
 import { WebSocketTransportHost, type WebSocketStatus } from '../hooks/useWebSocket';
 
 export type ProjectionDomain =
-  | 'files' | 'tree' | 'home' | 'project_detail' | 'metadata'
-  | 'tags' | 'shares' | 'users' | 'activity' | 'online_users' | 'stats';
+  | 'files' | 'tree' | 'home' | 'project_detail' | 'metadata' | 'favorites'
+  | 'tags' | 'shares' | 'users' | 'activity' | 'online_users' | 'stats'
+  | 'shop' | 'orders' | 'quota';
 
 export interface RuntimeCursor { epoch: string; revision: number }
 export interface InvalidationEvent extends RuntimeCursor {
@@ -20,6 +21,8 @@ export interface RealtimeContextValue extends RuntimeCursor {
     callback: (event: InvalidationEvent | null) => void,
   ) => () => void;
   recover: () => Promise<void>;
+  /** True when the last recovery fetch failed or timed out; cleared on the next valid recovery response. */
+  recoveryFailed: boolean;
 }
 
 const RealtimeContext = createContext<RealtimeContextValue | null>(null);
@@ -32,8 +35,10 @@ type RecoveryIntent = {
   needsRecovery: boolean;
   retried: boolean;
 };
+/** Upper bound for a single recovery fetch; a hung request must not pin recoveryRef forever. */
+const RECOVERY_TIMEOUT_MS = 10_000;
 const projectionDomains = new Set<ProjectionDomain>([
-  'files', 'tree', 'home', 'project_detail', 'metadata', 'tags', 'shares', 'users', 'activity', 'online_users', 'stats',
+  'files', 'tree', 'home', 'project_detail', 'metadata', 'favorites', 'tags', 'shares', 'users', 'activity', 'online_users', 'stats', 'shop', 'orders', 'quota',
 ]);
 
 function isCursor(value: unknown): value is RuntimeCursor {
@@ -54,11 +59,12 @@ function asEvent(data: Record<string, unknown>): InvalidationEvent | null {
 }
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {
-  const { capabilities, principal, identityGeneration } = useAuthContext();
+  const { api, capabilities, principal, identityGeneration } = useAuthContext();
   const enabled = capabilities.realtime;
   const identity = `${identityGeneration}:${principal.kind}:${principal.authenticated}:${principal.user_profile?.id ?? ''}:${principal.user_profile?.username ?? principal.display_name}`;
   const [cursor, setCursor] = useState<RuntimeCursor>({ epoch: '', revision: 0 });
   const [status, setStatus] = useState<WebSocketStatus>('disconnected');
+  const [recoveryFailed, setRecoveryFailed] = useState(false);
   const cursorRef = useRef(cursor);
   const registrationsRef = useRef(new Map<number, Registration>());
   const nextRegistrationRef = useRef(0);
@@ -90,13 +96,18 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     const expectedCursor = cursorRef.current;
     const pending = recoveryRef.current;
     if (pending?.generation === generation) return pending.promise;
-    const recovery = fetch('/api/revision', { credentials: 'same-origin' })
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), RECOVERY_TIMEOUT_MS);
+    const recovery = fetch(api.buildUrl('revision'), { credentials: 'same-origin', signal: controller.signal })
       .then(response => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json() as Promise<unknown>;
       })
       .then(value => {
         if (!isCursor(value)) throw new Error('Invalid runtime cursor');
+        // A valid cursor response means recovery reached the server; clear any
+        // previous failure so consumers can observe that the channel recovered.
+        if (mountedRef.current) setRecoveryFailed(false);
         const current = cursorRef.current;
         const intent = recoveryIntentRef.current;
         const intentMatches = intent?.generation === generation && intent.epoch === current.epoch;
@@ -134,13 +145,23 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         if (mountedRef.current) setCursor(value);
         notify(null);
       })
-      .catch(() => undefined)
+      .catch(error => {
+        // Do not swallow recovery failures silently: a hung or failed fetch used
+        // to leave recoveryRef pinned to a pending promise, so every later
+        // invalidation deduplicated onto the same dead recovery and the page
+        // stayed stale. The timeout above bounds the hang, the flag below makes
+        // the failure observable, and `.finally` clears recoveryRef so the next
+        // gap recovery can re-issue.
+        console.error('Realtime recovery failed:', error);
+        if (mountedRef.current) setRecoveryFailed(true);
+      })
       .finally(() => {
+        clearTimeout(timer);
         if (recoveryRef.current?.promise === recovery) recoveryRef.current = null;
       });
     recoveryRef.current = { generation, promise: recovery };
     return recovery;
-  }, [notify]);
+  }, [api, notify]);
 
   const onEvent = useCallback((type: string, data: Record<string, unknown>) => {
     if (type === 'runtime_ready') {
@@ -187,7 +208,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     notify(event);
   }, [notify, recover]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (identityRef.current === identity) return;
     identityRef.current = identity;
     recoveryGenerationRef.current += 1;
@@ -212,9 +233,9 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     return () => registrationsRef.current.delete(id);
   }, []);
 
-  const value = useMemo(() => ({ ...cursor, status, registerInvalidation, recover }), [cursor, status, registerInvalidation, recover]);
+  const value = useMemo(() => ({ ...cursor, status, registerInvalidation, recover, recoveryFailed }), [cursor, status, registerInvalidation, recover, recoveryFailed]);
   return (
-    <WebSocketTransportHost key={identity} enabled={enabled} onEvent={onEvent} onStatus={setStatus}>
+    <WebSocketTransportHost key={identity} enabled={enabled} url={api.buildWebSocketUrl('ws')} onEvent={onEvent} onStatus={setStatus}>
       <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>
     </WebSocketTransportHost>
   );

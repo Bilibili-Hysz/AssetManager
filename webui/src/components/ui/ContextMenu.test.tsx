@@ -38,8 +38,8 @@ describe('ContextMenu', () => {
         { label: 'Banned', onClick: vi.fn(), disabled: true },
       ],
     });
-    const open = screen.getByRole('button', { name: 'Open' }) as HTMLButtonElement;
-    const banned = screen.getByRole('button', { name: 'Banned' }) as HTMLButtonElement;
+    const open = screen.getByRole('menuitem', { name: 'Open' }) as HTMLButtonElement;
+    const banned = screen.getByRole('menuitem', { name: 'Banned' }) as HTMLButtonElement;
     expect(open).toBeDefined();
     expect(banned.disabled).toBe(true);
   });
@@ -51,13 +51,13 @@ describe('ContextMenu', () => {
         { label: 'Open', onClick: vi.fn() },
       ],
     });
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Open' }));
+    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Open' }));
   });
 
   it('closes and runs the action when an enabled item is clicked', () => {
     const onClick = vi.fn();
     const { onClose } = setup({ items: [{ label: 'Open', onClick }] });
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open' }));
     expect(onClose).toHaveBeenCalledOnce();
     expect(onClick).toHaveBeenCalledOnce();
   });
@@ -65,7 +65,7 @@ describe('ContextMenu', () => {
   it('ignores clicks on disabled items', () => {
     const onClick = vi.fn();
     const { onClose } = setup({ items: [{ label: 'Banned', onClick, disabled: true }] });
-    fireEvent.click(screen.getByRole('button', { name: 'Banned' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Banned' }));
     expect(onClick).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -80,7 +80,7 @@ describe('ContextMenu', () => {
   it('closes on an outside mousedown but not on an inside one', async () => {
     const { onClose } = setup({ items: [{ label: 'Open', onClick: vi.fn() }] });
     await flushListeners();
-    fireEvent.mouseDown(screen.getByRole('button', { name: 'Open' }));
+    fireEvent.mouseDown(screen.getByRole('menuitem', { name: 'Open' }));
     expect(onClose).not.toHaveBeenCalled();
     fireEvent.mouseDown(document.body);
     expect(onClose).toHaveBeenCalledOnce();
@@ -89,8 +89,10 @@ describe('ContextMenu', () => {
   it('stays within the viewport by clamping coordinates', () => {
     setup({ x: 10_000, y: 10_000, items: [{ label: 'Open', onClick: vi.fn() }] });
     const menu = screen.getByLabelText('action.actions') as HTMLElement;
-    expect(menu.style.left).toBe(`${window.innerWidth - 200}px`);
-    expect(menu.style.top).toBe(`${window.innerHeight - 40}px`);
+    // Clamping uses the measured menu rect; jsdom reports a zero rect,
+    // so the clamp bound is viewport minus margin.
+    expect(menu.style.left).toBe(`${window.innerWidth - 8}px`);
+    expect(menu.style.top).toBe(`${window.innerHeight - 8}px`);
   });
 
   it('restores focus to the trigger on unmount unless an action was chosen', () => {

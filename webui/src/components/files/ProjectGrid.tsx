@@ -11,6 +11,7 @@ interface ProjectGridProps {
   onNavigate?: (path: string) => void;
   selectionMode?: boolean;
   onDoubleClick?: (item: BrowsableItem) => void;
+  onDownload?: (item: BrowsableItem) => void;
   onContextMenu?: (e: React.MouseEvent, item: BrowsableItem) => void;
   thumbnailMap: Record<string, string>;
   onDirectoryVisible?: (path: string) => void;
@@ -19,7 +20,7 @@ interface ProjectGridProps {
   isMobile?: boolean;
 }
 
-export function ProjectGrid({ items, selected, onSelect, onZipSelect = onSelect, onInspect, onNavigate, selectionMode = false, onDoubleClick, onContextMenu, thumbnailMap, onDirectoryVisible, onTagClick, onCopyLink, isMobile = false }: ProjectGridProps) {
+export function ProjectGrid({ items, selected, onSelect, onZipSelect = onSelect, onInspect, onNavigate, selectionMode = false, onDoubleClick, onDownload, onContextMenu, thumbnailMap, onDirectoryVisible, onTagClick, onCopyLink, isMobile = false }: ProjectGridProps) {
   const nodes = useRef(new Map<string, HTMLDivElement>());
 
   useEffect(() => {
@@ -34,7 +35,11 @@ export function ProjectGrid({ items, selected, onSelect, onZipSelect = onSelect,
   }, [items, onDirectoryVisible]);
 
   return (
-    <div data-testid="project-grid" className="grid w-full min-w-0 grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3 p-4">
+    <div
+      data-testid="project-grid"
+      className="grid w-full min-w-0 gap-3 p-4 grid-cols-[repeat(auto-fill,minmax(168px,1fr))]"
+      style={{ justifyContent: 'start' }}
+    >
       {items.map(item => (
         <div key={item.path} data-directory-path={item.type === 'dir' ? item.path : undefined}
           ref={node => {
@@ -56,11 +61,12 @@ export function ProjectGrid({ items, selected, onSelect, onZipSelect = onSelect,
             }}
             onZipSelect={() => onZipSelect(item.path)}
            onOpen={() => onDoubleClick?.(item)}
+           onDownload={onDownload ? () => onDownload(item) : undefined}
           onContextMenu={e => onContextMenu?.(e, item)}
           thumbnail={thumbnailMap[item.path]}
            onTagClick={onTagClick}
            onCopyLink={onCopyLink}
-           />
+            />
         </div>
       ))}
     </div>

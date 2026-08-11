@@ -9,6 +9,15 @@ export function useInvalidation(
   const callbackRef = useRef(callback);
   callbackRef.current = callback;
   const domainsKey = domains.join('|');
-  useEffect(() => realtime.registerInvalidation(domains, event => callbackRef.current(event)), [realtime, domainsKey]);
+  // registerInvalidation is a stable reference (useCallback([]) in
+  // RealtimeProvider), so depending on the whole context value would re-register
+  // on every cursor revision advance. We only re-register when the domains
+  // change or the runtime environment changes: identity switches and reconnects
+  // always surface as a status/epoch change in RealtimeProvider, while plain
+  // invalidation events only bump the revision.
+  useEffect(
+    () => realtime.registerInvalidation(domains, event => callbackRef.current(event)),
+    [realtime.registerInvalidation, realtime.epoch, realtime.status, domainsKey],
+  );
   return realtime;
 }

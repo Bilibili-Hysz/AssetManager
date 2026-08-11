@@ -5,11 +5,28 @@ import { createFilesApi } from './files';
 function setup() {
   const get = vi.fn();
   const post = vi.fn();
-  const client = { get, post } as unknown as ApiClient;
-  return { api: createFilesApi(client), get, post };
+  const buildUrl = vi.fn();
+  const client = { get, post, buildUrl } as unknown as ApiClient;
+  return { api: createFilesApi(client), get, post, buildUrl };
 }
 
 describe('files API contract (non-download paths)', () => {
+  it('builds single-file download URLs through the configured baseUrl', () => {
+    const { api, buildUrl } = setup();
+    buildUrl.mockReturnValue('/library/api/download/assets%2Fhero.png');
+    const open = vi.fn();
+    vi.stubGlobal('window', { open });
+
+    try {
+      api.download('assets/hero.png');
+
+      expect(buildUrl).toHaveBeenCalledWith('download/assets%2Fhero.png');
+      expect(open).toHaveBeenCalledWith('/library/api/download/assets%2Fhero.png', '_blank');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('list forwards browse query params and AbortSignal', () => {
     const { api, get } = setup();
     const signal = new AbortController().signal;

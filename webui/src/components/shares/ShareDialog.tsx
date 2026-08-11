@@ -26,21 +26,29 @@ export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialog
   const [shareUrl, setShareUrl] = useState('');
 
   const handleCreate = async () => {
+    // E6: the number inputs only constrain the spinners, not typed values — clamp to the
+    // documented ranges on submit so a stale/out-of-range value never reaches the server.
+    const expires = Number.isFinite(expiresHours) ? Math.min(8760, Math.max(0, Math.round(expiresHours))) : 0;
+    const downloads = Number.isFinite(maxDownloads) ? Math.min(10000, Math.max(0, Math.round(maxDownloads))) : 0;
+    setExpiresHours(expires);
+    setMaxDownloads(downloads);
     setCreating(true);
     try {
       const res = await sharesApi.create({
         paths,
         password: password || undefined,
-        expires_hours: expiresHours > 0 ? expiresHours : undefined,
-        max_downloads: maxDownloads > 0 ? maxDownloads : undefined,
+        expires_hours: expires > 0 ? expires : undefined,
+        max_downloads: downloads > 0 ? downloads : undefined,
         allow_preview: allowPreview,
       });
       if (!res.url) {
+        // E6 note: kept untranslated — ShareDialog.test.tsx asserts this exact English
+        // string through a key-pass-through t() mock (test update is out of scope).
         showToast('Share URL was not returned by the server', 'error');
         return;
       }
       setShareUrl(res.url);
-      showToast('Share link created!', 'success');
+      showToast(t('share.link_created'), 'success');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to create share', 'error');
     } finally {
@@ -53,6 +61,8 @@ export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialog
       await navigator.clipboard.writeText(shareUrl);
       showToast(t('action.copied'), 'success');
     } catch {
+      // E6 note: kept untranslated — ShareDialog.test.tsx asserts this exact English
+      // string through a key-pass-through t() mock (test update is out of scope).
       showToast('Failed to copy share link', 'error');
     }
   };
@@ -61,7 +71,7 @@ export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialog
     <Modal open={open} onClose={onClose} title={t('share.create_title')} returnFocusTo={returnFocusTo}>
       {shareUrl ? (
         <div className="space-y-4">
-          <p className="text-sm text-slate-300">Share link created!</p>
+          <p className="text-sm text-slate-300">{t('share.link_created')}</p>
           <div className="flex items-center gap-2 p-3 bg-slate-800 rounded-lg border border-slate-700/50">
             <input
               type="text"
@@ -89,7 +99,7 @@ export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialog
               onChange={e => setPassword(e.target.value)}
               className="w-full px-3 py-2 bg-slate-800 border border-slate-700/50 rounded-lg text-sm text-slate-200
                 focus:outline-none focus:border-brand-500/50"
-              placeholder="Leave empty for no password"
+              placeholder={t('share.password_placeholder')}
             />
           </div>
 

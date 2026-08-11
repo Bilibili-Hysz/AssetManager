@@ -16,68 +16,205 @@ img {
   filter: none;
 }
 
+/* ═══════════════════════════════════════════════════════
+   Design Token System
+   All components should consume these semantic tokens.
+   ═══════════════════════════════════════════════════════ */
 @layer base {
-  * {
-    @apply border-slate-700/50;
-  }
-
-  body {
-    @apply bg-slate-950 text-slate-100 antialiased;
-    background-color: var(--color-bg);
-    color: var(--color-text);
-  }
-
+  /* ── Dark theme (default) ── */
   :root {
-    --color-bg: #020617;
-    --color-surface: #0f172a;
-    --color-elevated: #1e293b;
-    --color-border: #334155;
+    /* Surfaces */
+    --color-bg: #020617;          /* page body background */
+    --color-surface: #0f172a;     /* card, sidebar, header */
+    --color-surface-hover: #1e293b;
+    --color-elevated: #1e293b;    /* dropdown, popover, elevated panels */
+    --color-overlay: rgba(0, 0, 0, 0.6);
+
+    /* Borders */
+    --color-border: #1e293b;
+    --color-border-strong: #334155;
+    --color-border-focus: #6366f1;
+
+    /* Text */
     --color-text: #f1f5f9;
-    --color-muted: #94a3b8;
+    --color-text-secondary: #94a3b8;
+    --color-text-muted: #64748b;
+    --color-text-inverse: #0f172a;
+
+    /* Accent */
+    --color-accent: #6366f1;
+    --color-accent-hover: #818cf8;
+    --color-accent-subtle: rgba(99, 102, 241, 0.1);
+    --color-accent-border: rgba(99, 102, 241, 0.3);
+
+    /* Semantic */
+    --color-success: #22c55e;
+    --color-success-subtle: rgba(34, 197, 94, 0.1);
+    --color-success-text: #4ade80;
+    --color-warning: #f59e0b;
+    --color-warning-subtle: rgba(245, 158, 11, 0.1);
+    --color-warning-text: #fbbf24;
+    --color-danger: #ef4444;
+    --color-danger-subtle: rgba(239, 68, 68, 0.1);
+    --color-danger-text: #f87171;
+    --color-danger-border: rgba(239, 68, 68, 0.3);
+    --color-info: #3b82f6;
+
+    /* Spacing scale */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+
+    /* Radii */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+    --radius-2xl: 16px;
+    --radius-full: 9999px;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6);
+
+    /* Transitions */
+    --transition-fast: 120ms ease;
+    --transition-base: 180ms ease;
+    --transition-slow: 280ms ease;
+
+    /* Scrollbar */
+    --scrollbar-track: transparent;
+    --scrollbar-thumb: rgba(100, 116, 139, 0.5);
+    --scrollbar-thumb-hover: rgba(100, 116, 139, 0.7);
+
+    /* Skeleton */
+    --skeleton-bg: rgba(30, 41, 59, 0.5);
+
+    /* Input */
+    --input-bg: rgba(30, 41, 59, 0.5);
+    --input-border: rgba(51, 65, 85, 0.5);
+    --input-focus-border: rgba(99, 102, 241, 0.5);
+    /* Z-index scale (semantic layering).
+       Drawers sit above their scrim but below modals; the progress bar is the
+       top-most element. Note: Modal/Toast/ContextMenu hardcode z-50 and
+       DownloadProgress hardcodes z-[60] — treat those as the reference values
+       and keep this scale consistent with them. */
+    --z-overlay: 40;   /* full-screen scrims */
+    --z-drawer: 40;    /* side/bottom drawers (below modal) */
+    --z-modal: 50;     /* modals and popovers */
+    --z-context: 60;   /* context menus */
+    --z-toast: 70;     /* toasts */
+    --z-progress: 80;  /* global progress bar (intended top layer) */
+    color-scheme: dark;
   }
 
-  .light {
+  /* ── Light theme ── */
+  html.light {
     --color-bg: #f8fafc;
     --color-surface: #ffffff;
+    --color-surface-hover: #f1f5f9;
     --color-elevated: #f1f5f9;
+    --color-overlay: rgba(0, 0, 0, 0.4);
+
     --color-border: #e2e8f0;
-    --color-text: #1e293b;
-    --color-muted: #64748b;
-  }
+    --color-border-strong: #cbd5e1;
+    --color-border-focus: #6366f1;
 
-  :root.light body {
-    background-color: var(--color-bg);
-    color: var(--color-text);
-  }
+    --color-text: #0f172a;
+    --color-text-secondary: #475569;
+    --color-text-muted: #94a3b8;
+    --color-text-inverse: #f8fafc;
 
-  :root.light input,
-  :root.light select,
-  :root.light textarea {
+    --color-accent: #4f46e5;
+    --color-accent-hover: #6366f1;
+    --color-accent-subtle: rgba(79, 70, 229, 0.08);
+    --color-accent-border: rgba(79, 70, 229, 0.25);
+
+    --color-success: #16a34a;
+    --color-success-subtle: rgba(22, 163, 74, 0.08);
+    --color-success-text: #16a34a;
+    --color-warning: #d97706;
+    --color-warning-subtle: rgba(217, 119, 6, 0.08);
+    --color-warning-text: #d97706;
+    --color-danger: #dc2626;
+    --color-danger-subtle: rgba(220, 38, 38, 0.08);
+    --color-danger-text: #dc2626;
+    --color-danger-border: rgba(220, 38, 38, 0.35);
+    --color-info: #2563eb;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+    --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
+
+    --scrollbar-thumb: rgba(148, 163, 184, 0.4);
+    --scrollbar-thumb-hover: rgba(148, 163, 184, 0.6);
+
+    --skeleton-bg: rgba(226, 232, 240, 0.6);
+
+    --input-bg: #ffffff;
+    --input-border: #e2e8f0;
+    --input-focus-border: rgba(99, 102, 241, 0.5);
+
     color-scheme: light;
   }
 
-  /* The app still uses Tailwind slate utilities throughout its shared surfaces.
-     Keep those existing class names, but make light mode use the theme tokens. */
-  html.light .bg-slate-950,
+  * {
+    @apply border-[var(--color-border)];
+  }
+
+  body {
+    @apply antialiased;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar {
+    @apply w-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    @apply rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Tailwind Dark Utilities Override
+   Override specific Tailwind utilities so existing class
+   names continue to work while consuming design tokens.
+   ═══════════════════════════════════════════════════════ */
+@layer base {
+  /* ── Backgrounds ── */
+  html.light .bg-slate-950 { background-color: var(--color-bg); }
   html.light .bg-slate-900,
   html.light .bg-slate-900\/20,
   html.light .bg-slate-900\/30,
   html.light .bg-slate-900\/50,
   html.light .bg-slate-900\/80,
-  html.light .bg-slate-900\/90 {
-    background-color: var(--color-bg);
-  }
-
+  html.light .bg-slate-900\/90 { background-color: var(--color-surface); }
   html.light .bg-slate-800,
   html.light .bg-slate-800\/20,
-  html.light .bg-slate-800\/30,
   html.light .bg-slate-800\/40,
   html.light .bg-slate-800\/50,
   html.light .bg-slate-800\/80,
-  html.light .bg-slate-800\/90 {
-    background-color: var(--color-surface);
-  }
-
+  html.light .bg-slate-800\/90 { background-color: var(--color-surface); }
+  html.light .bg-slate-800\/30 { background-color: var(--color-surface-hover); }
   html.light .bg-slate-600,
   html.light .bg-slate-600\/50,
   html.light .bg-slate-600\/70,
@@ -86,76 +223,137 @@ img {
   html.light .bg-slate-700\/30,
   html.light .bg-slate-700\/50,
   html.light .bg-slate-700\/70,
-  html.light .bg-slate-700\/80 {
-    background-color: var(--color-elevated);
-  }
+  html.light .bg-slate-700\/80 { background-color: var(--color-elevated); }
 
+  /* ── Text ── */
   html.light .text-slate-100,
   html.light .text-slate-200,
-  html.light .text-slate-300 {
-    color: var(--color-text);
-  }
-
+  html.light .text-slate-300 { color: var(--color-text); }
   html.light .text-slate-400,
-  html.light .text-slate-500,
-  html.light .text-slate-600 {
-    color: var(--color-muted);
-  }
-
-  html.light .text-white {
-    color: var(--color-text);
-  }
-
+  html.light .text-slate-500 { color: var(--color-text-secondary); }
+  html.light .text-slate-600 { color: var(--color-text-muted); }
+  html.light .text-white { color: var(--color-text); }
   html.light .text-white\/60,
-  html.light .text-white\/70 {
-    color: var(--color-muted);
-  }
+  html.light .text-white\/70 { color: var(--color-text-secondary); }
+  html.light .text-slate-500 { color: var(--color-text-secondary); }
 
+  /* ── Indigo and semantic accents ── */
+  html.light .text-indigo-200,
+  html.light .text-indigo-300,
+  html.light .text-indigo-400 { color: var(--color-accent-hover); }
+  html.light .text-emerald-200,
+  html.light .text-emerald-300,
+  html.light .text-emerald-400 { color: var(--color-success-text); }
+  html.light .text-red-400 { color: var(--color-danger-text); }
+  html.light .text-amber-400,
+  html.light .text-amber-500 { color: var(--color-warning-text); }
+  html.light .bg-indigo-500\/5,
+  html.light .bg-indigo-500\/10,
+  html.light .bg-indigo-500\/15,
+  html.light .bg-indigo-500\/20 { background-color: var(--color-accent-subtle); }
+  html.light .bg-emerald-500\/10 { background-color: var(--color-success-subtle); }
+  html.light .bg-red-500\/10,
+  html.light .bg-red-900\/20 { background-color: var(--color-danger-subtle); }
+  html.light .border-indigo-400,
+  html.light .border-indigo-500,
+  html.light .border-indigo-500\/20,
+  html.light .border-indigo-500\/30,
+  html.light .border-indigo-500\/50 { border-color: var(--color-accent-border); }
+  html.light .border-red-500\/30,
+  html.light .border-red-900\/30 { border-color: var(--color-danger-border); }
+  html.light .hover\:bg-indigo-500\/10:hover,
+  html.light .hover\:bg-indigo-500\/15:hover,
+  html.light .hover\:bg-indigo-500\/20:hover { background-color: var(--color-accent-subtle); }
+  html.light .hover\:bg-emerald-500\/10:hover { background-color: var(--color-success-subtle); }
+  html.light .hover\:text-indigo-200:hover,
+  html.light .hover\:text-indigo-300:hover { color: var(--color-accent-hover); }
+  html.light .hover\:text-emerald-200:hover { color: var(--color-success-text); }
+  html.light .hover\:text-red-400:hover { color: var(--color-danger-text); }
+
+  /* ── Borders ── */
+  html.light .border-slate-700\/50,
+  html.light .border-slate-700,
+  html.light .border-slate-700\/30,
   html.light .border-slate-800,
   html.light .border-slate-800\/50,
-  html.light .border-slate-700,
-  html.light .border-slate-700\/50,
   html.light .border-slate-600,
   html.light .border-slate-600\/50,
-  html.light .border-slate-500 {
-    border-color: var(--color-border);
-  }
+  html.light .border-slate-500 { border-color: var(--color-border); }
 
+  /* ── Hover backgrounds ── */
   html.light .hover\:bg-slate-800\/50:hover,
   html.light .hover\:bg-slate-800:hover,
+  html.light .hover\:bg-slate-800\/30:hover,
+  html.light .hover\:bg-slate-900\/30:hover { background-color: var(--color-surface-hover); }
   html.light .hover\:bg-slate-700\/50:hover,
   html.light .hover\:bg-slate-700\/80:hover,
-  html.light .hover\:bg-slate-800\/30:hover,
-  html.light .hover\:bg-slate-900\/30:hover,
-  html.light .hover\:bg-slate-700:hover {
-    background-color: var(--color-elevated);
-  }
+  html.light .hover\:bg-slate-700:hover { background-color: var(--color-elevated); }
 
+  /* ── Hover text ── */
   html.light .hover\:text-slate-300:hover,
-  html.light .hover\:text-slate-200:hover,
-  html.light .hover\:text-white:hover {
-    color: var(--color-text);
+  html.light .hover\:text-slate-200:hover { color: var(--color-text); }
+  html.light .hover\:text-white:hover { color: var(--color-text); }
+  html.light .hover\:text-slate-500:hover { color: var(--color-text-muted); }
+
+  /* ── Focus rings ── */
+  html.light .focus\:border-indigo-500\/50:focus,
+  html.light .focus\:border-indigo-500\/30:focus { border-color: var(--color-border-focus); }
+  html.light .focus-visible\:ring-indigo-400:focus-visible,
+  html.light .focus-visible\:ring-indigo-500:focus-visible { --tw-ring-color: var(--color-accent); }
+
+  /* ── Shadows for light mode ── */
+  html.light .shadow-lg { box-shadow: var(--shadow-lg); }
+  html.light .shadow-xl { box-shadow: var(--shadow-xl); }
+  html.light .shadow-2xl { box-shadow: var(--shadow-xl); }
+  html.light .shadow-md { box-shadow: var(--shadow-md); }
+
+  /* ── Active backgrounds ── */
+  html.light .active\:bg-slate-800:active { background-color: var(--color-surface-hover); }
+  html.light .active\:bg-slate-700:active { background-color: var(--color-elevated); }
+
+  /* ── Placeholder text ── */
+  html.light .placeholder-slate-500::placeholder { color: var(--color-text-muted); }
+  html.light .placeholder-slate-400::placeholder { color: var(--color-text-secondary); }
+
+  /* ── Select styling ── */
+  html.light select,
+  html.light input,
+  html.light textarea {
+    color-scheme: light;
   }
 
-  ::-webkit-scrollbar {
-    @apply w-2;
-  }
-
-  ::-webkit-scrollbar-track {
-    @apply bg-transparent;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    @apply bg-slate-700/50 rounded-full;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-slate-600/50;
-  }
+  /* ── Backdrop ── */
+  html.light .bg-black\/50,
+  html.light .bg-black\/60,
+  html.light .bg-black\/95 { background-color: var(--color-overlay); }
 }
 
 @layer components {
   .skeleton {
-    @apply bg-slate-800/50 rounded animate-pulse;
+    background: var(--skeleton-bg);
+    @apply rounded animate-pulse;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Shared animation utilities
+   ═══════════════════════════════════════════════════════ */
+@layer utilities {
+  .transition-theme {
+    transition: background-color var(--transition-base),
+                color var(--transition-base),
+                border-color var(--transition-base),
+                box-shadow var(--transition-base);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Responsive utilities
+   ═══════════════════════════════════════════════════════ */
+@layer utilities {
+  /* Minimum touch target size */
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
   }
 }

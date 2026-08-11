@@ -6,6 +6,7 @@ import { RealtimeProvider } from '../stores/RealtimeContext';
 
 const authState = {
   capabilities: { realtime: true },
+  api: { buildUrl: (path: string) => `/api/${path}`, buildWebSocketUrl: (path: string) => `ws://localhost:3000/${path}` },
   principal: { kind: 'user', authenticated: true, role: 'user', display_name: 'alice', user_profile: { id: 1, username: 'alice' } },
 };
 
@@ -18,8 +19,10 @@ class MockWebSocket {
   onerror: (() => void) | null = null;
   onmessage: ((event: MessageEvent) => void) | null = null;
   close = vi.fn(() => this.onclose?.());
+  url: string;
 
-  constructor(_url: string) {
+  constructor(url: string) {
+    this.url = url;
     MockWebSocket.instances.push(this);
   }
 }
@@ -42,6 +45,11 @@ describe('useWebSocket', () => {
     expect(MockWebSocket.instances).toHaveLength(0);
   });
 
+  it('connects to an explicitly configured WebSocket URL', () => {
+    renderHook(() => useWebSocket({ enabled: true, url: 'wss://example.test/library/ws' }));
+
+    expect(MockWebSocket.instances[0]?.url).toBe('wss://example.test/library/ws');
+  });
   it('does not reconnect after intentional cleanup', () => {
     const { result, unmount } = renderHook(() => useWebSocket({ enabled: true }));
     const socket = MockWebSocket.instances[0];

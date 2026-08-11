@@ -4,6 +4,7 @@ import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useI18n } from '../../hooks/useI18n';
 import { StatusBar } from './StatusBar';
+import './Workspace.css';
 
 interface AppLayoutProps {
   header?: ReactNode;
@@ -19,16 +20,16 @@ interface AppLayoutProps {
   onSidebarToggle: () => void;
   onInfoToggle: () => void;
   onViewModeToggle?: () => void;
-  viewMode?: 'grid' | 'list';
+  viewMode?: 'grid' | 'list' | 'masonry';
   onSelectModeToggle?: () => void;
   selectMode?: boolean;
 }
 
 /**
- * AppLayout — 三栏布局容器。
+ * AppLayout — Three-column layout container.
  *
- * 所有状态（宽度、显隐）由父组件管理，本组件只负责渲染。
- * 拖拽 handle 通过 onDragStart 回调暴露给父组件，由父组件统一管理拖拽逻辑。
+ * All state (width, open/close) is managed by the parent component.
+ * Drag handles are exposed via onDragStart callbacks.
  */
 export function AppLayout({
   header, sidebar, infoPanel, children,
@@ -44,19 +45,29 @@ export function AppLayout({
   const mobileDialogRef = useDialogFocus(mobileDialog !== null, mobileDialog === 'info' ? onInfoToggle : onSidebarToggle);
 
   return (
-    <div className="h-screen flex flex-col bg-slate-950 overflow-hidden">
+    <div className="h-screen flex flex-col overflow-hidden transition-theme"
+      style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
       {/* ── Header ── */}
       {header && <div className="relative z-20 flex-shrink-0">{header}</div>}
 
-      {/* ── Body: 三栏 ── */}
+      {/* ── Body: Three columns ── */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* ── Sidebar ── */}
         {sidebar && !isMobile && sidebarOpen && (
-          <div className="relative flex-shrink-0 overflow-hidden border-r border-slate-700 bg-slate-900" style={{ width: sidebarWidth }}>
+          <div
+            className="relative flex-shrink-0 overflow-hidden transition-theme"
+            style={{
+              width: sidebarWidth,
+              borderRight: '1px solid var(--color-border)',
+              backgroundColor: 'var(--color-surface)',
+            }}
+          >
             {sidebar}
             {/* Drag handle */}
-            <div
-              className="absolute right-0 top-0 w-1.5 h-full cursor-col-resize hover:bg-brand-500/50 active:bg-brand-500 transition-colors z-10"
+            <button
+              type="button"
+              className="absolute right-0 top-0 w-1.5 h-full cursor-col-resize z-10 transition-colors hover:opacity-100 opacity-0"
+              aria-label="Resize sidebar"
               onMouseDown={onSidebarDragStart}
             />
           </div>
@@ -65,8 +76,24 @@ export function AppLayout({
         {/* Mobile sidebar overlay */}
         {sidebar && mobileDialog === 'sidebar' && (
           <>
-            <div className="fixed inset-0 bg-black/50 z-40" onClick={onSidebarToggle} aria-hidden="true" />
-            <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label={t('mobile.menu')} tabIndex={-1} className="fixed inset-y-0 left-0 z-50 w-72 overflow-hidden border-r border-slate-700 bg-slate-900">
+            <div
+              className="fixed inset-0 z-[var(--z-overlay)]"
+              style={{ backgroundColor: 'var(--color-overlay)' }}
+              onClick={onSidebarToggle}
+              aria-hidden="true"
+            />
+            <div
+              ref={mobileDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label={t('mobile.menu')}
+              tabIndex={-1}
+              className="fixed inset-y-0 left-0 z-[var(--z-drawer)] w-72 overflow-hidden transition-theme"
+              style={{
+                borderRight: '1px solid var(--color-border)',
+                backgroundColor: 'var(--color-surface)',
+              }}
+            >
               {sidebar}
             </div>
           </>
@@ -79,10 +106,19 @@ export function AppLayout({
 
         {/* ── Info Panel ── */}
         {infoPanel && !isMobile && infoOpen && (
-          <div className="relative flex-shrink-0 overflow-hidden border-l border-slate-700 bg-slate-900" style={{ width: infoWidth }}>
+          <div
+            className="relative flex-shrink-0 overflow-hidden transition-theme"
+            style={{
+              width: infoWidth,
+              borderLeft: '1px solid var(--color-border)',
+              backgroundColor: 'var(--color-surface)',
+            }}
+          >
             {/* Drag handle */}
-            <div
-              className="absolute left-0 top-0 w-1.5 h-full cursor-col-resize hover:bg-brand-500/50 active:bg-brand-500 transition-colors z-10"
+            <button
+              type="button"
+              className="absolute left-0 top-0 w-1.5 h-full cursor-col-resize z-10 transition-colors hover:opacity-100 opacity-0"
+              aria-label="Resize info panel"
               onMouseDown={onInfoDragStart}
             />
             {infoPanel}
@@ -91,8 +127,24 @@ export function AppLayout({
 
         {infoPanel && mobileDialog === 'info' && (
           <>
-            <div className="fixed inset-0 bg-black/50 z-40" onClick={onInfoToggle} aria-hidden="true" />
-            <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label={t('info.title')} tabIndex={-1} className="fixed inset-x-0 bottom-0 z-50 max-h-[55vh] border-t border-slate-700 bg-slate-900">
+            <div
+              className="fixed inset-0 z-[var(--z-overlay)]"
+              style={{ backgroundColor: 'var(--color-overlay)' }}
+              onClick={onInfoToggle}
+              aria-hidden="true"
+            />
+            <div
+              ref={mobileDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label={t('info.title')}
+              tabIndex={-1}
+              className="fixed inset-x-0 bottom-0 z-[var(--z-drawer)] max-h-[55vh] overflow-hidden transition-theme"
+              style={{
+                borderTop: '1px solid var(--color-border)',
+                backgroundColor: 'var(--color-surface)',
+              }}
+            >
               {infoPanel}
             </div>
           </>
@@ -104,25 +156,58 @@ export function AppLayout({
 
       {/* ── Mobile Bottom Bar ── */}
       {isMobile && (
-        <div className="flex-shrink-0 flex items-center justify-around h-12 border-t border-slate-700/50 bg-slate-900/90 backdrop-blur-sm">
-            <button onClick={onSidebarToggle} aria-label={t('mobile.menu')} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
+        <div
+          className="flex-shrink-0 flex items-center justify-around h-12 transition-theme"
+          style={{
+            borderTop: '1px solid var(--color-border)',
+            backgroundColor: 'var(--color-surface)',
+          }}
+        >
+          <button
+            type="button"
+            onClick={onSidebarToggle}
+            aria-label={t('mobile.menu')}
+            className="touch-target flex flex-col items-center gap-0.5 p-2 transition-colors"
+            style={{ color: 'var(--color-text-secondary)' }}
+          >
             <Menu size={18} aria-hidden="true" />
             <span className="text-[10px]">{t('mobile.menu')}</span>
           </button>
           {onViewModeToggle && (
-            <button onClick={onViewModeToggle} aria-label={t('mobile.view')} aria-pressed={viewMode === 'list'} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
+            <button
+              type="button"
+              onClick={onViewModeToggle}
+              aria-label={t('mobile.view')}
+              aria-pressed={viewMode === 'list'}
+              className="touch-target flex flex-col items-center gap-0.5 p-2 transition-colors"
+              style={{ color: 'var(--color-text-secondary)' }}
+            >
               <Grid3x3 size={18} aria-hidden="true" />
               <span className="text-[10px]">{t('mobile.view')}</span>
             </button>
           )}
           {infoPanel && (
-            <button onClick={onInfoToggle} aria-label={t(infoOpen ? 'action.close_info' : 'mobile.info')} aria-expanded={infoOpen} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
+            <button
+              type="button"
+              onClick={onInfoToggle}
+              aria-label={t(infoOpen ? 'action.close_info' : 'mobile.info')}
+              aria-expanded={infoOpen}
+              className="touch-target flex flex-col items-center gap-0.5 p-2 transition-colors"
+              style={{ color: 'var(--color-text-secondary)' }}
+            >
               <PanelRightClose size={18} aria-hidden="true" />
               <span className="text-[10px]">{t(infoOpen ? 'action.close_info' : 'mobile.info')}</span>
             </button>
           )}
           {onSelectModeToggle && (
-            <button onClick={onSelectModeToggle} aria-label={t(selectMode ? 'mobile.done' : 'mobile.select')} aria-pressed={selectMode} className="flex flex-col items-center gap-0.5 p-2 text-slate-400">
+            <button
+              type="button"
+              onClick={onSelectModeToggle}
+              aria-label={t(selectMode ? 'mobile.done' : 'mobile.select')}
+              aria-pressed={selectMode}
+              className="touch-target flex flex-col items-center gap-0.5 p-2 transition-colors"
+              style={{ color: 'var(--color-text-secondary)' }}
+            >
               <CheckSquare size={18} aria-hidden="true" />
               <span className="text-[10px]">{t(selectMode ? 'mobile.done' : 'mobile.select')}</span>
             </button>

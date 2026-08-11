@@ -5,6 +5,7 @@ import { useEffect, type ReactNode } from 'react';
 import { RealtimeProvider, useRealtimeContext } from './RealtimeContext';
 
 const authState = {
+  api: { buildUrl: (path: string) => `/api/${path}`, buildWebSocketUrl: (path: string) => `ws://localhost:3000/library/${path}` },
   capabilities: { realtime: true },
   identityGeneration: 0,
   principal: { kind: 'user', authenticated: true, role: 'user', display_name: 'alice', user_profile: { id: 1, username: 'alice' } },
@@ -12,6 +13,7 @@ const authState = {
 const transport = {
   onEvent: undefined as ((type: string, data: Record<string, unknown>) => void) | undefined,
   enabled: false,
+  url: undefined as string | undefined,
   close: vi.fn(),
 };
 
@@ -26,8 +28,9 @@ vi.mock('../hooks/useWebSocket', () => ({
     transport.enabled = Boolean(enabled);
     return { status: enabled ? 'connected' : 'disconnected' };
   },
-  WebSocketTransportHost: ({ children, enabled, onEvent, onStatus }: { children: ReactNode; enabled: boolean; onEvent?: typeof transport.onEvent; onStatus?: (status: 'connected' | 'disconnected') => void }) => {
+  WebSocketTransportHost: ({ children, enabled, onEvent, onStatus, url }: { children: ReactNode; enabled: boolean; onEvent?: typeof transport.onEvent; onStatus?: (status: 'connected' | 'disconnected') => void; url?: string }) => {
     useEffect(() => {
+      transport.url = url;
       transport.onEvent = onEvent;
       transport.enabled = Boolean(enabled);
       onStatus?.(enabled ? 'connected' : 'disconnected');
@@ -35,7 +38,7 @@ vi.mock('../hooks/useWebSocket', () => ({
         transport.close();
         transport.enabled = false;
       };
-    }, [enabled, onEvent, onStatus]);
+    }, [enabled, onEvent, onStatus, url]);
     return <>{children}</>;
   },
 }));
@@ -55,6 +58,7 @@ describe('RealtimeProvider', () => {
     authState.principal = { kind: 'user', authenticated: true, role: 'user', display_name: 'alice', user_profile: { id: 1, username: 'alice' } };
     transport.onEvent = undefined;
     transport.enabled = false;
+    transport.url = undefined;
     transport.close.mockClear();
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ epoch: 'a', revision: 3 }) })));
   });
@@ -72,12 +76,23 @@ describe('RealtimeProvider', () => {
     }
     render(<RealtimeProvider><Consumers /></RealtimeProvider>);
     expect(transport.enabled).toBe(true);
+    expect(transport.url).toBe('ws://localhost:3000/library/ws');
     emit({ type: 'runtime_ready', epoch: 'a', revision: 0 });
     emit({ type: 'projection_invalidated', epoch: 'a', revision: 1, domains: ['files'], paths: [] });
     expect(first).toHaveBeenCalledOnce();
     expect(second).not.toHaveBeenCalled();
   });
 
+  it('accepts the favorites projection domain', () => {
+    const callback = vi.fn();
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => result.current.registerInvalidation(['favorites'], callback));
+
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 0 });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 1, domains: ['favorites'], paths: ['collection'] });
+
+    expect(callback).toHaveBeenCalledOnce();
+  });
   it('enables and disables the socket with realtime capability', () => {
     const { rerender } = render(<RealtimeProvider><div /></RealtimeProvider>);
     expect(transport.enabled).toBe(true);

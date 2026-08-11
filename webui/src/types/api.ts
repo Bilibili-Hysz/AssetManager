@@ -1,8 +1,15 @@
 // ============ Server Info ============
+export interface FeatureFlags {
+  commerce: boolean;
+  seller: boolean;
+  quota: boolean;
+}
+
 export interface ServerInfo {
   version: string;
   share_name: string;
   library_root: string;
+  asset_root_id?: string;
   auth_enabled: boolean;
   auth_mode: 'none' | 'password' | 'key' | 'user';
   theme_color: string;
@@ -12,9 +19,12 @@ export interface ServerInfo {
     total_projects: number;
     total_size: number;
     total_size_fmt: string;
+    total_collections?: number;
+    total_artworks?: number;
   };
   principal?: SessionPrincipal;
   capabilities?: Capabilities;
+  feature_flags?: FeatureFlags;
 }
 
 // ============ Auth ============
@@ -89,6 +99,70 @@ export interface PreviewPoolItem {
   name: string;
   path: string;
   thumbnail_url?: string;
+}
+
+// ============ Gallery ============
+export type GalleryEntryKind = 'collection' | 'project' | 'artwork';
+
+export interface GalleryEntry {
+  name: string;
+  path: string;
+  kind: GalleryEntryKind;
+  /** Parent collection path; "" (empty string) means the entry lives at the library root. */
+  parent_path: string;
+  cover_path?: string | null;
+  cover_url?: string | null;
+  thumbnail_url?: string | null;
+  image_url?: string;
+  width?: number | null;
+  height?: number | null;
+  aspect_ratio?: number | null;
+  modified: number;
+  size?: number;
+  size_fmt?: string;
+  file_count?: number;
+  artwork_count?: number;
+  child_count?: number;
+  extension?: string;
+  tags?: string[];
+}
+
+export interface GalleryHomeResponse {
+  featured: GalleryEntry | null;
+  collections: GalleryEntry[];
+  projects: GalleryEntry[];
+  recent: GalleryEntry[];
+  stats: {
+    collections: number;
+    projects: number;
+    artworks: number;
+    total_size_fmt: string;
+  };
+}
+
+export interface GalleryCollectionResponse {
+  collection: GalleryEntry;
+  children: GalleryEntry[];
+  entries: GalleryEntry[];
+  next_cursor: string | null;
+}
+
+export interface GalleryResolveResponse {
+  kind: GalleryEntryKind;
+  path: string;
+  gallery_context: string;
+  workspace_context: string;
+}
+
+export interface FavoritesResponse {
+  favorites: GalleryEntry[];
+}
+
+export interface FavoriteMutationResponse {
+  ok: boolean;
+  path: string;
+  favorite: boolean;
+  changed: boolean;
 }
 
 export interface FilesResponse {
@@ -208,6 +282,7 @@ export interface TagsResponse {
 // ============ Metadata ============
 export interface Metadata {
   path: string;
+  thumbnail_url?: string;
   tags: string[];
   notes: string;
   urls: string[];
@@ -320,4 +395,273 @@ export interface ErrorResponse {
 
 export interface OkResponse {
   ok: boolean;
+}
+
+// ============ Quota ============
+export interface QuotaInfo {
+  enabled: boolean;
+  period: 'daily' | 'weekly';
+  limit: number;
+  used: number;
+  remaining: number | null;
+  reset_at: number | null;
+  min_interval_seconds: number;
+}
+
+// ============ Shop ============
+// These DTOs mirror the JSON emitted by the LAN commerce routes. Keep the
+// persistence field names here; presentation adapters live in useCommerce.ts.
+export type ShopItemStatus = 'active' | 'archived' | 'draft';
+
+export interface ShopItem {
+  id: number;
+  path: string;
+  title: string;
+  description: string;
+  price_cents: number;
+  currency: string;
+  cover_path: string | null;
+  gallery_paths: string[];
+  enabled: boolean;
+  metadata: Record<string, unknown>;
+  status: ShopItemStatus;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ShopItemsResponse {
+  items: ShopItem[];
+}
+
+export type ShopCatalogSort = 'newest';
+
+export interface ShopCatalogQuery {
+  q?: string;
+  page?: number;
+  page_size?: number;
+  sort?: ShopCatalogSort;
+}
+
+export interface ShopCatalogResponse {
+  items: ShopItem[];
+  page: number;
+  page_size: number;
+  total: number;
+}
+
+export type ShopCartStatus = 'active' | 'converted' | 'expired' | 'merged';
+
+export interface ShopCartItem {
+  id: number;
+  item_id: number;
+  quantity: number;
+  unit_price_cents: number;
+  currency: string;
+  path: string;
+  title: string;
+  line_status: 'active' | 'unavailable' | 'removed';
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ShopCart {
+  id: number;
+  owner_type: 'user' | 'anonymous';
+  status: ShopCartStatus;
+  version: number;
+  expires_at: number | null;
+  created_at: number;
+  updated_at: number;
+  items: ShopCartItem[];
+}
+
+export interface ShopCartResponse {
+  cart: ShopCart;
+}
+
+export interface ShopCartCheckoutResponse {
+  orders: ShopBuyerOrder[];
+  idempotent: boolean;
+  checkout_group_id?: string;
+  cart: ShopCart;
+}
+
+export interface ShopCheckoutGroupOrder extends ShopBuyerOrder {
+  quantity: number;
+  unit_price_cents?: number;
+}
+
+export type ShopCheckoutGroupStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'in_progress'
+  | 'fulfilled'
+  | 'revoked'
+  | 'mixed';
+
+export interface ShopCheckoutGroupResponse {
+  checkout_group_id: string;
+  orders: ShopCheckoutGroupOrder[];
+  idempotent: boolean;
+  status: ShopCheckoutGroupStatus;
+  created_at: number;
+  cart: ShopCart;
+}
+
+export type ShopWishlistAvailability = 'available' | 'unavailable';
+
+export interface ShopWishlistItem {
+  item_id: number;
+  added_at: number;
+  path: string | null;
+  title: string | null;
+  price_cents: number | null;
+  currency: string | null;
+  availability: ShopWishlistAvailability;
+}
+
+export interface ShopWishlistResponse {
+  items: ShopWishlistItem[];
+}
+
+/**
+ * Result of explicitly merging the anonymous buyer state into the signed-in
+ * user's cart and wishlist. The endpoint is intentionally additive: callers
+ * can update local state from this response without a second pair of reads.
+ */
+export interface ShopBuyerMergeResponse {
+  merged: boolean;
+  cart: ShopCart;
+  wishlist: ShopWishlistItem[];
+  /** Legacy-compatible alias returned by the first merge implementation. */
+  items?: ShopWishlistItem[];
+  source?: {
+    cart?: boolean;
+    wishlist?: boolean;
+  };
+  limits?: {
+    cart_item_quantity?: number;
+    wishlist_items?: number;
+  };
+}
+
+export interface ShopItemPayload {
+  path?: string;
+  title?: string;
+  description?: string;
+  price_cents?: number;
+  currency?: string;
+  status?: ShopItemStatus;
+  cover_path?: string;
+  gallery_paths?: string[];
+}
+
+export interface ShopSellerProfile {
+  store_name: string;
+  contact_email: string;
+  description: string;
+  accept_orders: boolean;
+  updated_at: number;
+}
+
+export interface ShopSellerProfilePayload {
+  store_name?: string;
+  contact_email?: string;
+  description?: string;
+  accept_orders?: boolean;
+}
+
+export interface ShopPublicSellerProfile {
+  store_name: string;
+  description: string;
+  accept_orders: boolean;
+}
+
+
+export type ShopOrderStatus = 'pending' | 'confirmed' | 'fulfilled' | 'revoked';
+
+export interface ShopOrder {
+  id: number;
+  item_id: number;
+  item_path: string;
+  item_title: string;
+  buyer_name: string | null;
+  buyer_email: string | null;
+  amount_cents: number;
+  currency: string;
+  status: ShopOrderStatus;
+  metadata: Record<string, unknown>;
+  created_at: number;
+  updated_at: number;
+}
+
+/**
+ * Buyer-safe order data returned by the public order routes.
+ *
+ * Keep this separate from the seller order DTO: the buyer receipt is carried
+ * by an HttpOnly cookie, so it must not be represented as a token or delivery
+ * path in frontend state.
+ */
+export interface ShopBuyerOrder {
+  id: number;
+  item_id: number;
+  item_title: string;
+  amount_cents: number;
+  currency: string;
+  status: ShopOrderStatus;
+  delivery_available: boolean;
+  quantity?: number;
+  unit_price_cents?: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ShopOrdersResponse {
+  orders: ShopOrder[];
+}
+
+export interface ShopBuyerOrdersResponse {
+  orders: ShopBuyerOrder[];
+  total?: number;
+  next_cursor?: string | null;
+}
+
+export interface ShopStats {
+  total_orders: number;
+  gross_cents: number;
+  store_views?: number;
+  pending_orders?: number;
+  confirmed_orders?: number;
+  fulfilled_orders?: number;
+  revoked_orders?: number;
+}
+
+/** Safe delivery-only state returned after resolving a bearer delivery token. */
+export interface DeliveryOrder {
+  order_id: number;
+  item_id: number;
+  item_title: string;
+  status: ShopOrderStatus;
+  max_downloads: number;
+  download_count: number;
+  expires_at: number | null;
+  last_download_at: number | null;
+}
+
+export interface DeliveryInfo {
+  order: DeliveryOrder;
+  filename: string;
+  is_directory: boolean;
+  download_url: string;
+}
+
+export interface ReceiptRecoveryResponse {
+  ok: boolean;
+  order_id: number;
+}
+
+export interface FulfillOrderResponse {
+  order: ShopOrder;
+  delivery_url: string;
+  rotated?: boolean;
 }

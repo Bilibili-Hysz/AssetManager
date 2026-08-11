@@ -9,16 +9,29 @@ interface ThumbnailCache {
   [path: string]: string; // base64 data
 }
 
+/**
+ * Cap the memory cache at MAX_CACHE entries, evicting the least recently
+ * accessed paths. The Map preserves insertion order; a cache read (or write)
+ * moves a key to the end via delete+set, so iteration order tracks recency.
+ */
+function trimCache(cache: Map<string, string>): Map<string, string> {
+  if (cache.size <= MAX_CACHE) return cache;
+  const entries = Array.from(cache.entries());
+  return new Map(entries.slice(entries.length - MAX_CACHE));
+}
+
 export function useThumbnailCache() {
   const { api, identityGeneration } = useAuth();
   const thumbApi = useMemo(() => createThumbnailsApi(api), [api]);
   const [cache, setCache] = useState<ThumbnailCache>({});
-  const cacheRef = useRef<ThumbnailCache>({});
+  const cacheRef = useRef<Map<string, string>>(new Map());
+  const pendingRef = useRef(new Set<string>());
   const identityGenerationRef = useRef(identityGeneration);
   identityGenerationRef.current = identityGeneration;
 
   useEffect(() => {
-    cacheRef.current = {};
+    cacheRef.current = new Map();
+    pendingRef.current.clear();
     setCache({});
     try {
       sessionStorage.removeItem(THUMBNAIL_CACHE_STORAGE_KEY);
@@ -30,41 +43,55 @@ export function useThumbnailCache() {
       const stored = window.sessionStorage.getItem(THUMBNAIL_CACHE_STORAGE_KEY);
       if (stored) {
         const restoredCache = JSON.parse(stored) as ThumbnailCache;
-        cacheRef.current = restoredCache;
-        setCache(restoredCache);
+        const restoredMap = trimCache(new Map(Object.entries(restoredCache)));
+        cacheRef.current = restoredMap;
+        setCache(Object.fromEntries(restoredMap));
       }
     } catch { /* ignore */ }
   }, []);
 
-  const persist = useCallback((nextCache: ThumbnailCache) => {
+  const persist = useCallback((nextCache: Map<string, string>) => {
+    // Trim regardless of whether storage succeeds so a full quota failure
+    // cannot leave an unbounded memory cache behind.
+    const retained = trimCache(nextCache);
     try {
-      const entries = Object.entries(nextCache);
-      const retained = entries.length > MAX_CACHE ? Object.fromEntries(entries.slice(-MAX_CACHE)) : nextCache;
-      sessionStorage.setItem(THUMBNAIL_CACHE_STORAGE_KEY, JSON.stringify(retained));
-      return retained;
+      sessionStorage.setItem(THUMBNAIL_CACHE_STORAGE_KEY, JSON.stringify(Object.fromEntries(retained)));
     } catch { /* quota exceeded */ }
+    return retained;
   }, []);
 
   const loadThumbnails = useCallback(async (paths: string[]) => {
     const generation = identityGeneration;
-    const uncached = paths.filter(path => path && !cacheRef.current[path]);
+    const pending = pendingRef.current;
+    const uncached = paths.filter(path => path && !cacheRef.current.has(path) && !pending.has(path));
     if (uncached.length === 0) return;
+    for (const path of uncached) pending.add(path);
 
     try {
       const res = await thumbApi.batch(uncached, 256);
       if (generation !== identityGenerationRef.current) return;
-      setCache(current => {
-        const nextCache = { ...current, ...res.thumbnails };
-        const retainedCache = persist(nextCache) ?? nextCache;
-        cacheRef.current = retainedCache;
-        return retainedCache;
-      });
-    } catch { /* ignore */ }
+      const nextCache = new Map(cacheRef.current);
+      for (const [path, encoded] of Object.entries(res.thumbnails)) {
+        nextCache.delete(path); // refresh access order
+        nextCache.set(path, encoded);
+      }
+      const retainedCache = persist(nextCache);
+      cacheRef.current = retainedCache;
+      setCache(Object.fromEntries(retainedCache));
+    } catch { /* ignore */ } finally {
+      for (const path of uncached) pending.delete(path);
+    }
   }, [identityGeneration, persist, thumbApi]);
 
   const getThumbnail = useCallback((path: string): string | undefined => {
-    return cache[path];
-  }, [cache]);
+    const current = cacheRef.current;
+    if (!current.has(path)) return undefined;
+    const encoded = current.get(path) as string;
+    // Move the key to the end so insertion order doubles as LRU access order.
+    current.delete(path);
+    current.set(path, encoded);
+    return encoded;
+  }, []);
 
   return { loadThumbnails, getThumbnail, revision: cache };
 }

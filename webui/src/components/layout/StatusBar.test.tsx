@@ -24,6 +24,10 @@ vi.mock('../../hooks/useAuth', () => ({
   useAuth: () => ({ systemApi, user: null }),
 }));
 
+vi.mock('../../hooks/useQuota', () => ({
+  useQuota: () => ({ quota: null }),
+}));
+
 vi.mock('../../stores/RealtimeContext', () => ({
   useRealtimeContext: () => ({ status: 'disconnected' }),
 }));

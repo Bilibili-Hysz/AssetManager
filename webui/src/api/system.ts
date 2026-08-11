@@ -1,10 +1,11 @@
 import type { ApiClient } from './client';
-import type { ServerInfo, StatsResponse } from '../types/api';
+import type { QuotaInfo, ServerInfo, StatsResponse } from '../types/api';
 
 export function createSystemApi(api: ApiClient) {
   return {
     getInfo: () => api.get<ServerInfo>('info'),
     getStats: () => api.get<StatsResponse>('stats'),
+    getQuota: () => api.get<QuotaInfo>('quota'),
     getTunnelStatus: () => api.get<{ active: boolean; public_url: string | null }>('tunnel/status'),
   };
 }

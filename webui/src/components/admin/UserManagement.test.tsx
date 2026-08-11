@@ -14,10 +14,15 @@ const { list, toggleUser, useInvalidationMock, authState } = vi.hoisted(() => ({
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => authState }));
 vi.mock('../../api/users', () => ({ createUsersApi: () => ({ list, toggleUser }) }));
 vi.mock('../../hooks/useInvalidation', () => ({ useInvalidation: useInvalidationMock }));
+vi.mock('../ui/Toast', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 
 describe('UserManagement canonical refresh', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
   beforeEach(() => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
     setLang('en');
     list.mockReset();
     toggleUser.mockReset();

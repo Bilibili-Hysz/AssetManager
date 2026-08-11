@@ -17,7 +17,7 @@ export function createFilesApi(api: ApiClient) {
 
     download: (path: string) => {
       const encoded = encodeURIComponent(path);
-      window.open(`/api/download/${encoded}`, '_blank');
+      window.open(api.buildUrl(`download/${encoded}`), '_blank');
     },
 
     batchDownload: async (paths: string[], onProgress?: (progress: DownloadProgress) => void, signal?: AbortSignal) => {
@@ -32,7 +32,9 @@ export function createFilesApi(api: ApiClient) {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      // Delay the revoke: Firefox grabs the blob URL from the download engine
+      // asynchronously, and revoking too early can abort the save dialog.
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     },
   };
 }

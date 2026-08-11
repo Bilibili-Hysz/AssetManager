@@ -32,7 +32,8 @@ describe('TagChip', () => {
     const onClick = vi.fn();
     const onRemove = vi.fn();
     render(<TagChip name="tag" onClick={onClick} onRemove={onRemove} />);
-    fireEvent.click(screen.getByRole('button'));
+    const buttons = screen.getAllByRole('button');
+    fireEvent.click(buttons[buttons.length - 1]!);  // remove button
     expect(onRemove).toHaveBeenCalledOnce();
     expect(onClick).not.toHaveBeenCalled();
   });

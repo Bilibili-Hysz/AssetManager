@@ -1,8 +1,29 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Apply the persisted theme before first paint to avoid a dark/light FOUC.
+      // Mirrors webui/src/hooks/useTheme.ts (storage keys, values, and the
+      // system preference fallback). The `lang` attribute is managed by JS via
+      // webui/src/i18n/index.ts (setLang), so the HTML default stays "en".
+      (function () {
+        var theme = null;
+        try {
+          theme = localStorage.getItem('am_theme');
+          if (theme !== 'dark' && theme !== 'light') {
+            theme = localStorage.getItem('assets-manager.gate-theme');
+          }
+        } catch (e) {
+          theme = null;
+        }
+        if (theme !== 'dark' && theme !== 'light') {
+          theme = (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+        }
+        document.documentElement.classList.add(theme === 'light' ? 'light' : 'dark');
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />

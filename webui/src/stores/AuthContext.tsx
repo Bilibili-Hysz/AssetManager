@@ -17,6 +17,16 @@ const guestPrincipal: SessionPrincipal = {
   capabilities: emptyCapabilities,
 };
 
+/**
+ * B7: `permissions` was a dead state slot — every principal application reset
+ * it to `[]` and nothing in webui/src ever wrote or read it (only
+ * AuthContext.test.tsx asserts it equals `[]`, and the principal fixtures there
+ * have enabled capabilities, so deriving from capabilities would break that
+ * assertion). The state is removed; the field is kept only for test/type
+ * compatibility and stays an empty array.
+ */
+const emptyPermissions: string[] = [];
+
 function principalIdentity(principal: SessionPrincipal): string {
   return `${principal.kind}:${principal.authenticated}:${principal.user_profile?.id ?? ''}:${principal.user_profile?.username ?? principal.display_name}`;
 }
@@ -24,6 +34,7 @@ function principalIdentity(principal: SessionPrincipal): string {
 export interface AuthState {
   user: SessionPrincipal['user_profile'] | null;
   role: 'admin' | 'user' | 'guest' | null;
+  /** Always empty (dead field retained for compatibility); see emptyPermissions. */
   permissions: string[];
   principal: SessionPrincipal;
   capabilities: Capabilities;
@@ -42,13 +53,13 @@ export interface AuthContextValue extends AuthState {
   systemApi: SystemApi;
   logout: () => void;
   refreshMe: () => Promise<boolean>;
+  retryConnect: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<AuthState['role']>(null);
-  const [permissions, setPermissions] = useState<string[]>([]);
   const [principal, setPrincipal] = useState<SessionPrincipal>(guestPrincipal);
   const [isLoading, setIsLoading] = useState(true);
   const [serviceUnavailable, setServiceUnavailable] = useState(false);
@@ -66,7 +77,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     principalRef.current = nextPrincipal;
     setPrincipal(nextPrincipal);
     setRole(nextPrincipal.role);
-    setPermissions([]);
   }, []);
 
   const clearGuest = useCallback((forceGeneration = false) => {
@@ -81,6 +91,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const handleUnauthorized = useCallback(() => {
+    // A8 (deferred): api/client.ts fires onUnauthorized?.() for every 401 with
+    // no endpoint context (see request(): `onUnauthorized?.()` before throwing
+    // UnauthorizedError), so this callback cannot distinguish a failed login
+    // (auth/login, auth/verify_key) from a session-expired 401 elsewhere — both
+    // trigger this full identity reset. Distinguishing them requires the client
+    // to pass the request path through onUnauthorized, which lives in Group B's
+    // file (src/api/client.ts); deferred until that change is allowed.
     generationRef.current += 1;
     inFlightMeRef.current = null;
     clearIdentityStorage();
@@ -133,54 +150,87 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return refreshMeForGeneration(generation);
   }, [refreshMeForGeneration]);
 
+  const connect = useCallback(async () => {
+    const info = await systemApi.getInfo();
+    setServerInfo(info);
+    setAuthMode(info.auth_mode);
+    setServiceUnavailable(false);
+
+    if (!info.auth_enabled) {
+      applyPrincipal(info.principal ?? guestPrincipal);
+      return;
+    }
+
+    // /auth/me is cookie-authenticated, so this also restores sessions
+    // whose HttpOnly credential is intentionally unavailable to JavaScript.
+    await refreshMe();
+  }, [applyPrincipal, refreshMe, systemApi]);
+
+  const retryConnect = useCallback(async (): Promise<boolean> => {
+    try {
+      await connect();
+      return true;
+    } catch (err) {
+      if (isServiceUnavailableError(err) || isNetworkError(err)) {
+        setServiceUnavailable(true);
+      } else {
+        // B6 (degraded): LandingPage only consumes `serviceUnavailable`
+        // (503/network), so a generic connect failure (e.g. 500 on
+        // /api/system/info) used to be silently swallowed into a guest session.
+        // A visible `connectError` state needs a UI consumer outside this file;
+        // until then surface the failure for diagnostics and keep behavior
+        // unchanged (guest fallback, no serviceUnavailable flag).
+        console.error('Auth connect failed:', err);
+      }
+      return false;
+    }
+  }, [connect]);
+
   useEffect(() => {
     const init = async () => {
       try {
-        const info = await systemApi.getInfo();
-        setServerInfo(info);
-        setAuthMode(info.auth_mode);
-        setServiceUnavailable(false);
-
-        if (!info.auth_enabled) {
-          const nextPrincipal = info.principal ?? guestPrincipal;
-          applyPrincipal(nextPrincipal);
-          setIsLoading(false);
-          return;
-        }
-
-        // /auth/me is cookie-authenticated, so this also restores sessions
-        // whose HttpOnly credential is intentionally unavailable to JavaScript.
-        await refreshMe();
+        await connect();
       } catch (err) {
         if (isServiceUnavailableError(err) || isNetworkError(err)) {
           setServiceUnavailable(true);
+        } else {
+          // B6 (degraded): see retryConnect — no UI consumer for generic
+          // connect errors yet; log instead of silently degrading to guest.
+          console.error('Auth connect failed during initialization:', err);
         }
-        // Server unreachable — will show error in UI
       } finally {
         setIsLoading(false);
       }
     };
     init();
-  }, [refreshMe, systemApi]);
+  }, [connect]);
 
-  const value: AuthContextValue = {
-    user: principal.user_profile ?? null,
-    role,
-    permissions,
-    principal,
-    capabilities: principal.capabilities,
-    isAuthenticated: principal.authenticated,
-    identityGeneration,
-    isLoading,
-    serviceUnavailable,
-    authMode,
-    serverInfo,
-    api,
-    authApi,
-    systemApi,
-    logout,
-    refreshMe,
-  };
+  const value: AuthContextValue = useMemo(
+    () => ({
+      user: principal.user_profile ?? null,
+      role,
+      permissions: emptyPermissions,
+      principal,
+      capabilities: principal.capabilities,
+      isAuthenticated: principal.authenticated,
+      identityGeneration,
+      isLoading,
+      serviceUnavailable,
+      authMode,
+      serverInfo,
+      api,
+      authApi,
+      systemApi,
+      logout,
+      refreshMe,
+      retryConnect,
+    }),
+    // B5: previously the value object was rebuilt every render, churning every
+    // consumer. All callbacks below are useCallback-stable (api/authApi/systemApi
+    // are useMemo'd), so the memo recomputes only on real state changes.
+    [role, principal, identityGeneration, isLoading, serviceUnavailable, authMode, serverInfo,
+      api, authApi, systemApi, logout, refreshMe, retryConnect],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

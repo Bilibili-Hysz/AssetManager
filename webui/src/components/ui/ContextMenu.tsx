@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useI18n } from '../../hooks/useI18n';
 
 interface MenuItem {
@@ -21,6 +21,7 @@ export function ContextMenu({ x, y, items, trigger, onClose }: ContextMenuProps)
   const { t } = useI18n();
   const menuRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef(true);
+  const [clamped, setClamped] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -51,25 +52,46 @@ export function ContextMenu({ x, y, items, trigger, onClose }: ContextMenuProps)
     };
   }, [trigger]);
 
-  // Adjust position to stay within viewport
-  const adjustedX = Math.min(x, window.innerWidth - 200);
-  const adjustedY = Math.min(y, window.innerHeight - items.length * 40);
+  // E9: clamp to the viewport using the menu's measured size instead of a fixed-width
+  // estimate, so short menus near the bottom edge stay fully visible.
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const rect = menu.getBoundingClientRect();
+    const margin = 8;
+    const nextX = Math.max(margin, Math.min(x, window.innerWidth - rect.width - margin));
+    const nextY = Math.max(margin, Math.min(y, window.innerHeight - rect.height - margin));
+    setClamped({ x: nextX, y: nextY });
+  }, [x, y]);
 
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 min-w-[180px] rounded-lg bg-slate-800 border border-slate-600/50 shadow-xl py-1"
-      style={{ left: adjustedX, top: adjustedY }}
+      role="menu"
+      className="fixed z-50 min-w-[180px] rounded-lg py-1"
+      style={{
+        left: clamped?.x ?? x,
+        top: clamped?.y ?? y,
+        backgroundColor: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        boxShadow: 'var(--shadow-lg)',
+      }}
       aria-label={t('action.actions')}
     >
       {items.map((item, i) => (
         item.divider ? (
-          <div key={i} className="my-1 border-t border-slate-700/50" />
+          <div key={i} className="my-1" style={{ borderTop: '1px solid var(--color-border)' }} />
         ) : (
           <button
+            type="button"
+            role="menuitem"
             key={i}
-            className={`w-full flex items-center gap-3 px-3 py-2 text-sm text-left transition-colors
-              ${item.disabled ? 'text-slate-600 cursor-not-allowed' : 'text-slate-200 hover:bg-slate-700/50'}`}
+            className={`w-full flex items-center gap-3 px-3 py-2 text-sm text-left transition-colors`}
+            style={{
+              color: item.disabled ? 'var(--color-text-muted)' : 'var(--color-text)',
+              opacity: item.disabled ? 0.5 : 1,
+              cursor: item.disabled ? 'not-allowed' : 'pointer',
+            }}
             onClick={() => {
               if (item.disabled) return;
               // A follow-up modal owns focus instead of restoring the menu trigger.
@@ -79,7 +101,7 @@ export function ContextMenu({ x, y, items, trigger, onClose }: ContextMenuProps)
             }}
             disabled={item.disabled}
           >
-            {item.icon && <span className="w-4 h-4 text-slate-400">{item.icon}</span>}
+            {item.icon && <span className="w-4 h-4" style={{ color: 'var(--color-text-secondary)' }}>{item.icon}</span>}
             {item.label}
           </button>
         )

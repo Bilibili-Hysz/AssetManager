@@ -111,7 +111,7 @@ describe('LandingPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Northstar Archive' })).toBeDefined();
     expect(screen.getByText('No images found in this library.')).toBeDefined();
-    expect(screen.getByRole('link', { name: 'Enter Library' }).getAttribute('href')).toBe('/browse');
+    expect(screen.getByRole('link', { name: 'Enter Gallery to discover visual assets' }).getAttribute('href')).toBe('/gallery');
   });
 
   it('shows server identity, featured assets, and the Browse entry action', async () => {
@@ -139,7 +139,7 @@ describe('LandingPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Northstar Archive' })).toBeDefined();
     expect(screen.getByText(/7 assets/)).toBeDefined();
-    expect(screen.getByRole('link', { name: 'Enter Library' }).getAttribute('href')).toBe('/browse');
+    expect(screen.getByRole('link', { name: 'Enter Gallery to discover visual assets' }).getAttribute('href')).toBe('/gallery');
     await waitFor(() => expect(screen.getAllByTestId('gate-showcase-image')).toHaveLength(6));
     expect(getHome).toHaveBeenCalledWith(expect.any(AbortSignal));
   });
@@ -236,7 +236,7 @@ describe('LandingPage', () => {
 
     render(<MemoryRouter><LandingPage /></MemoryRouter>);
 
-    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('1518 assets'));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('1518 artworks'));
     await waitFor(() => expect(screen.getAllByTestId('gate-showcase-image')).toHaveLength(2));
     expect(screen.getAllByTestId('gate-showcase-image').map(image => image.getAttribute('data-src'))).toEqual(expect.arrayContaining([
       '/api/thumbnails/archive%2Ffull-library.jpg',
@@ -260,7 +260,7 @@ describe('LandingPage', () => {
 
     render(<MemoryRouter><LandingPage /></MemoryRouter>);
 
-    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('1518 assets'));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('1518 artworks'));
     expect(screen.getByText(/1518 assets · 1518 KB/)).toBeDefined();
     expect(screen.queryByText(/999 assets/)).toBeNull();
   });
@@ -436,8 +436,8 @@ describe('LandingPage', () => {
     expect(await screen.findByRole('heading', { name: 'Northstar Archive' })).toBeDefined();
     expect(screen.getByText('Designer')).toBeDefined();
     expect(screen.getByRole('button', { name: /switch to light theme/i })).toBeDefined();
-    expect(screen.getByRole('button', { name: 'Tune background' }).getAttribute('aria-controls')).toBe('background-tuning');
-    expect(screen.getByRole('link', { name: 'Enter Library' }).getAttribute('href')).toBe('/browse');
+    expect(screen.getByRole('button', { name: 'Background tuning' }).getAttribute('aria-controls')).toBe('background-tuning');
+    expect(screen.getByRole('link', { name: 'Enter Gallery to discover visual assets' }).getAttribute('href')).toBe('/gallery');
     expect(screen.getByText(/Local service · Ready when you are\./)).toBeDefined();
     expect((await screen.findByTestId('gate-showcase-image')).getAttribute('data-src')).toBe('/api/thumbnails/portraits%2Fone.png');
   });
@@ -494,14 +494,14 @@ describe('LandingPage', () => {
     expect(await screen.findByText('Library unavailable')).toBeDefined();
     expect(screen.queryByText('Library online', { selector: '.sr-only' })).toBeNull();
     expect(screen.getByRole('alert').textContent).toBe('Featured assets are unavailable. You can still enter the library.');
-    expect(screen.getByRole('link', { name: 'Enter Library' }).getAttribute('href')).toBe('/browse');
+    expect(screen.getByRole('link', { name: 'Enter Gallery to discover visual assets' }).getAttribute('href')).toBe('/gallery');
   });
 
   it('opens and closes background tuning with accessible controls', () => {
     getHome.mockResolvedValue({ recent_projects: [], popular_tags: [], stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' } });
     render(<MemoryRouter><LandingPage /></MemoryRouter>);
 
-    const toggle = screen.getByRole('button', { name: 'Tune background' });
+    const toggle = screen.getByRole('button', { name: 'Background tuning' });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(toggle);
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
@@ -522,7 +522,7 @@ describe('LandingPage', () => {
     getHome.mockResolvedValue({ recent_projects: [], popular_tags: [], stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' } });
     render(<MemoryRouter><LandingPage /></MemoryRouter>);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Tune background' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Background tuning' }));
     const blur = screen.getByRole('slider', { name: /Blur/ });
     const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
     setValue.call(blur, '9');

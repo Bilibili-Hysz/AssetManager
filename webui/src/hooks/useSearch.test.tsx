@@ -13,8 +13,8 @@ vi.mock('./useAuth', () => ({
   useAuth: () => authState,
 }));
 
-vi.mock('../api/metadata', () => ({
-  createMetadataApi: () => ({ search }),
+vi.mock('../api/quicksearch', () => ({
+  createQuickSearchApi: () => ({ search }),
 }));
 
 vi.mock('./useInvalidation', () => ({

@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from './useAuth';
 import { useInvalidation } from './useInvalidation';
-import { createMetadataApi } from '../api/metadata';
+import { createQuickSearchApi } from '../api/quicksearch';
 import type { SearchResult } from '../types/api';
 
 interface UseSearchReturn {
@@ -14,7 +14,7 @@ interface UseSearchReturn {
 
 export function useSearch(): UseSearchReturn {
   const { api, identityGeneration } = useAuth();
-  const metaApi = useMemo(() => createMetadataApi(api), [api]);
+  const quickSearchApi = useMemo(() => createQuickSearchApi(api), [api]);
   const [query, setQueryState] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -24,7 +24,7 @@ export function useSearch(): UseSearchReturn {
   const identityGenerationRef = useRef(identityGeneration);
 
   const searchNow = useCallback((value: string, generation: number) => {
-    metaApi.search(value.trim())
+    quickSearchApi.search(value.trim())
       .then(res => {
         if (generation === generationRef.current) setResults(res.results ?? []);
       })
@@ -34,7 +34,7 @@ export function useSearch(): UseSearchReturn {
       .finally(() => {
         if (generation === generationRef.current) setIsSearching(false);
       });
-  }, [metaApi]);
+  }, [quickSearchApi]);
 
   const setQuery = useCallback((q: string) => {
     setQueryState(q);

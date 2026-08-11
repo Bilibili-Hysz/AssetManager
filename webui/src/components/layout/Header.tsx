@@ -71,15 +71,26 @@ export function Header() {
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, []);
+
   return (
-    <header className="flex items-center gap-3 px-4 h-14 border-b border-slate-700/50 bg-slate-900/80 backdrop-blur-md">
+    <header
+      className="flex items-center gap-3 px-4 h-14 transition-theme"
+      style={{
+        borderBottom: '1px solid var(--color-border)',
+        backgroundColor: 'var(--color-surface)',
+        backdropFilter: 'blur(12px)',
+      }}
+    >
       {/* Left: brand */}
       <div className="flex items-center gap-2 flex-shrink-0">
         <Link to="/" className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-md bg-indigo-500 flex items-center justify-center text-sm font-bold text-white">
+          <div
+            className="w-7 h-7 rounded-md flex items-center justify-center text-sm font-bold text-white"
+            style={{ backgroundColor: 'var(--color-accent)' }}
+          >
             A
           </div>
-          <span className="text-sm font-semibold text-slate-100 hidden sm:inline">
+          <span className="text-sm font-semibold hidden sm:inline" style={{ color: 'var(--color-text)' }}>
             {serverInfo?.share_name ?? 'AssetManager'}
           </span>
         </Link>
@@ -87,7 +98,7 @@ export function Header() {
 
       {/* Center: search */}
       <div ref={searchRef} className="flex-1 max-w-md relative">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" aria-hidden="true" />
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-text-muted)' }} aria-hidden="true" />
         <input
           id="header-search-input"
           type="text"
@@ -97,32 +108,45 @@ export function Header() {
           onChange={e => { setQuery(e.target.value); setShowResults(true); }}
           onFocus={() => { if (results.length > 0) setShowResults(true); }}
           placeholder={`${t('header.search')}...`}
-          className="w-full pl-9 pr-4 py-1.5 bg-slate-800/50 border border-slate-700/50 rounded-lg text-sm
-            text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 focus:bg-slate-800/80 transition-colors"
+          className="w-full pl-9 pr-4 py-1.5 rounded-lg text-sm transition-colors"
+          style={{
+            backgroundColor: 'var(--input-bg)',
+            border: '1px solid var(--input-border)',
+            color: 'var(--color-text)',
+          }}
         />
         {/* Search results dropdown */}
         {showResults && (query.trim() || isSearching) && (
-          <div className="absolute top-full left-0 right-0 mt-1.5 bg-slate-800 border border-slate-600/50 rounded-lg shadow-xl max-h-80 overflow-auto z-50">
+          <div
+            className="absolute top-full left-0 right-0 mt-1.5 rounded-lg max-h-80 overflow-auto z-50"
+            style={{
+              backgroundColor: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              boxShadow: 'var(--shadow-lg)',
+            }}
+          >
             {isSearching ? (
-              <div className="p-3 text-center text-sm text-slate-500">{t('browse.loading')}</div>
+              <div className="p-3 text-center text-sm" style={{ color: 'var(--color-text-secondary)' }}>{t('browse.loading')}</div>
             ) : results.length === 0 ? (
-              <div className="p-3 text-center text-sm text-slate-500">{t('header.no_results')}</div>
+              <div className="p-3 text-center text-sm" style={{ color: 'var(--color-text-secondary)' }}>{t('header.no_results')}</div>
             ) : (
               results.map(result => (
                 <button
+                  type="button"
                   key={result.path}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left text-slate-200 hover:bg-slate-700/50 transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left transition-colors"
+                  style={{ color: 'var(--color-text)' }}
                   onClick={() => handleResultClick(result)}
                 >
                   {result.type === 'dir'
-                    ? <Folder size={16} className="text-amber-400 flex-shrink-0" />
-                    : <File size={16} className="text-slate-500 flex-shrink-0" />
+                    ? <Folder size={16} style={{ color: 'var(--color-warning)' }} className="flex-shrink-0" />
+                    : <File size={16} style={{ color: 'var(--color-text-muted)' }} className="flex-shrink-0" />
                   }
                   <div className="flex-1 min-w-0">
                     <p className="truncate">{result.name}</p>
-                    <p className="text-xs text-slate-500 truncate">{result.path}</p>
+                    <p className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{result.path}</p>
                   </div>
-                  <span className="text-xs text-slate-600">{result.extension}</span>
+                  <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{result.extension}</span>
                 </button>
               ))
             )}
@@ -134,17 +158,32 @@ export function Header() {
       <div ref={menuRef} className="flex items-center gap-1 flex-shrink-0">
         {/* Language */}
         <div className="relative" onKeyDown={e => handleDisclosureKeyDown(e, 'language')}>
-          <button ref={languageTriggerRef} aria-label={t('header.language')} aria-expanded={openMenu === 'language'} onClick={() => toggleMenu('language')} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
+          <button
+            type="button"
+            ref={languageTriggerRef}
+            aria-label={t('header.language')}
+            aria-expanded={openMenu === 'language'}
+            onClick={() => toggleMenu('language')}
+            className="p-1.5 rounded-md transition-colors hover:opacity-80"
+            style={{ color: 'var(--color-text-secondary)' }}
+          >
             <Globe size={17} aria-hidden="true" />
           </button>
           <div data-header-menu hidden={openMenu !== 'language'} className="absolute right-0 top-full mt-1 z-50">
-            <div className="bg-slate-800 border border-slate-600/50 rounded-lg py-1 min-w-[120px] shadow-xl">
+            <div
+              className="rounded-lg py-1 min-w-[120px]"
+              style={{
+                backgroundColor: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                boxShadow: 'var(--shadow-lg)',
+              }}
+            >
               {supportedLangs.map(l => (
                 <button
+                  type="button"
                   key={l}
-                  className={`w-full px-3 py-1.5 text-sm text-left hover:bg-slate-700/50 transition-colors ${
-                    lang === l ? 'text-indigo-400' : 'text-slate-300'
-                  }`}
+                  className="w-full px-3 py-1.5 text-sm text-left transition-colors"
+                  style={{ color: lang === l ? 'var(--color-accent)' : 'var(--color-text)' }}
                   onClick={() => { setLang(l); setOpenMenu(null); }}
                 >
                   {l === 'en' ? 'English' : l === 'zh' ? '中文' : '日本語'}
@@ -156,9 +195,11 @@ export function Header() {
 
         {/* Theme toggle */}
         <button
+          type="button"
           onClick={toggleTheme}
           aria-label={t('theme.toggle')}
-          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors"
+          className="p-1.5 rounded-md transition-colors hover:opacity-80"
+          style={{ color: 'var(--color-text-secondary)' }}
           title={t('theme.toggle')}
         >
           {theme === 'dark' ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
@@ -166,28 +207,52 @@ export function Header() {
 
         {/* User / Login */}
         {role === 'guest' ? (
-          <Link to="/login" className="px-2.5 py-1.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
+          <Link
+            to="/login"
+            className="px-2.5 py-1.5 text-sm rounded-md transition-colors"
+            style={{ color: 'var(--color-text)' }}
+          >
             {t('header.login')}
           </Link>
         ) : (
           <div className="relative" onKeyDown={e => handleDisclosureKeyDown(e, 'user')}>
-            <button ref={userTriggerRef} aria-label={user?.username ?? t('perm.admin')} aria-expanded={openMenu === 'user'} onClick={() => toggleMenu('user')} className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-md transition-colors">
+            <button
+              type="button"
+              ref={userTriggerRef}
+              aria-label={user?.username ?? t('perm.admin')}
+              aria-expanded={openMenu === 'user'}
+              onClick={() => toggleMenu('user')}
+              className="flex items-center gap-1.5 px-2 py-1.5 text-sm rounded-md transition-colors"
+              style={{ color: 'var(--color-text)' }}
+            >
               <User size={16} aria-hidden="true" />
               <span className="max-w-[80px] truncate hidden sm:inline">{user?.username ?? t('perm.admin')}</span>
             </button>
             <div data-header-menu hidden={openMenu !== 'user'} className="absolute right-0 top-full mt-1 z-50">
-              <div className="bg-slate-800 border border-slate-600/50 rounded-lg py-1 min-w-[140px] shadow-xl">
-                <div className="px-3 py-1.5 text-xs text-slate-500 border-b border-slate-700/50">
+              <div
+                className="rounded-lg py-1 min-w-[140px]"
+                style={{
+                  backgroundColor: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  boxShadow: 'var(--shadow-lg)',
+                }}
+              >
+                <div
+                  className="px-3 py-1.5 text-xs"
+                  style={{ color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border)' }}
+                >
                   {user?.username} · {role === 'admin' ? t('perm.admin') : t('perm.user')}
                 </div>
                 {role === 'admin' && (
-                  <button className="w-full px-3 py-1.5 text-sm text-left text-slate-300 hover:bg-slate-700/50 transition-colors">
+                  <button type="button" onClick={() => navigate('/admin')} className="w-full px-3 py-1.5 text-sm text-left transition-colors" style={{ color: 'var(--color-text)' }}>
                     {t('header.admin')}
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={logout}
-                  className="w-full px-3 py-1.5 text-sm text-left text-slate-300 hover:bg-slate-700/50 transition-colors flex items-center gap-2"
+                  className="w-full px-3 py-1.5 text-sm text-left transition-colors flex items-center gap-2"
+                  style={{ color: 'var(--color-text)' }}
                 >
                   <LogOut size={14} /> {t('header.logout')}
                 </button>

@@ -3,12 +3,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Download, Share2, Copy, Eye, Link2, X } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { Header } from '../components/layout/Header';
+import { AppHeader } from '../components/layout/AppHeader';
 import { Sidebar } from '../components/layout/Sidebar';
 import { InfoPanel } from '../components/layout/InfoPanel';
 import { Breadcrumb } from '../components/files/Breadcrumb';
 import { FileToolbar } from '../components/files/FileToolbar';
 import { ProjectGrid } from '../components/files/ProjectGrid';
 import { ProjectList } from '../components/files/ProjectList';
+import { MasonryView } from '../components/files/MasonryView';
 import { ContextMenu } from '../components/ui/ContextMenu';
 import { Skeleton } from '../components/ui/Skeleton';
 import { ShareDialog } from '../components/shares/ShareDialog';
@@ -19,27 +21,41 @@ import { useThumbnailCache } from '../hooks/useThumbnailCache';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { createFilesApi } from '../api/files';
 import { createMetadataApi } from '../api/metadata';
+import { createTagsApi } from '../api/tags';
+import { createNotesApi } from '../api/notes';
 import { useI18n } from '../hooks/useI18n';
 import { useToast } from '../components/ui/Toast';
 import { useDownloadProgress } from '../components/ui/DownloadProgress';
+import { useQuota } from '../hooks/useQuota';
 import type { BrowsableItem, Metadata, ProjectDetail } from '../types/api';
 
-export default function BrowsePage() {
+interface BrowsePageProps {
+  onOpenPalette?: () => void;
+}
+
+export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const initialPath = searchParams.get('path') || '';
   const { data, isLoading, error, currentPath, sort, navigateTo, setSort, refresh, listingGeneration, hydrateDirectories } = useProjects(initialPath);
   const { loadThumbnails, getThumbnail, revision: thumbnailRevision } = useThumbnailCache();
-  const { api, identityGeneration } = useAuth();
+  const { api, identityGeneration, capabilities } = useAuth();
   const filesApi = useMemo(() => createFilesApi(api), [api]);
   const metaApi = useMemo(() => createMetadataApi(api), [api]);
+  const tagsApi = useMemo(() => createTagsApi(api), [api]);
+  const notesApi = useMemo(() => createNotesApi(api), [api]);
   const { t } = useI18n();
   const { showToast } = useToast();
+  const canEditMetadata = capabilities?.settings ?? false;
   const downloadProgress = useDownloadProgress();
+  const { guardDownload, refresh: refreshQuota } = useQuota();
   const isMobile = useMediaQuery('(max-width: 768px)');
 
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
-    try { return (localStorage.getItem('am_view') as 'grid' | 'list') || 'grid'; } catch { return 'grid'; }
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'masonry'>(() => {
+    try {
+      const stored = localStorage.getItem('am_view');
+      return stored === 'grid' || stored === 'list' || stored === 'masonry' ? stored : 'grid';
+    } catch { return 'grid'; }
   });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
@@ -54,6 +70,8 @@ export default function BrowsePage() {
   const [tagResults, setTagResults] = useState<BrowsableItem[] | null>(null);
   const [isDownloadInFlight, setIsDownloadInFlight] = useState(false);
   const [tagLoading, setTagLoading] = useState(false);
+  const [tagMutationPending, setTagMutationPending] = useState(false);
+  const [tagsRefreshKey, setTagsRefreshKey] = useState(0);
 
   // ── Sidebar / Info panel state ──
   const [sidebarOpen, setSidebarOpen] = useState(() => {
@@ -255,7 +273,7 @@ export default function BrowsePage() {
     navigate(`/detail?path=${encodeURIComponent(path)}`);
   }, [navigate]);
 
-  const handleViewModeChange = useCallback((mode: 'grid' | 'list') => {
+  const handleViewModeChange = useCallback((mode: 'grid' | 'list' | 'masonry') => {
     setViewMode(mode);
     try { localStorage.setItem('am_view', mode); } catch {}
   }, []);
@@ -299,6 +317,19 @@ export default function BrowsePage() {
     if (selectedItem) handleCardClick(selectedItem);
   }, [handleCardClick, selectedItem]);
 
+  const handleNotesSave = useCallback(async (notesPath: string, notes: string): Promise<boolean> => {
+    try {
+      const saved = await notesApi.save(notesPath, notes);
+      setSelectedMetadata(prev => prev && prev.path === notesPath ? { ...prev, notes: saved.notes } : prev);
+      setSelectedProjectDetail(prev => prev && prev.path === notesPath ? { ...prev, notes: saved.notes } : prev);
+      showToast(t('info.notes_saved'), 'success');
+      return true;
+    } catch {
+      showToast(t('info.notes_save_failed'), 'error');
+      return false;
+    }
+  }, [notesApi, showToast, t]);
+
   const runTagSearch = useCallback(
     (tag: string, options: { clearResults: boolean; resetFilterOnFailure: boolean; notifyOnFailure: boolean }) => {
       const generation = ++tagSearchGeneration.current;
@@ -319,14 +350,34 @@ export default function BrowsePage() {
             setTagResults(null);
             setSearchParams(currentPath ? { path: currentPath } : {}, { replace: true });
           }
-          if (options.notifyOnFailure) showToast('Failed to filter by tag', 'error');
+          if (options.notifyOnFailure) showToast(t('info.tag_filter_failed'), 'error');
         })
         .finally(() => {
           if (generation === tagSearchGeneration.current) setTagLoading(false);
         });
     },
-    [currentPath, metaApi, setSearchParams, showToast],
+    [currentPath, metaApi, setSearchParams, showToast, t],
   );
+
+  const mutateSelectedTag = useCallback(async (tag: string, action: 'add' | 'remove') => {
+    if (!selectedItem || tagMutationPending) return false;
+    setTagMutationPending(true);
+    try {
+      if (action === 'add') await tagsApi.add(tag, selectedItem.path);
+      else await tagsApi.remove(tag, selectedItem.path);
+      setTagsRefreshKey(value => value + 1);
+      refresh();
+      refreshSelected();
+      if (activeTag) runTagSearch(activeTag, { clearResults: false, resetFilterOnFailure: false, notifyOnFailure: false });
+      showToast(action === 'add' ? t('info.tag_added') : t('info.tag_removed'), 'success');
+      return true;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : t('info.tag_update_failed'), 'error');
+      return false;
+    } finally {
+      setTagMutationPending(false);
+    }
+  }, [activeTag, refresh, refreshSelected, runTagSearch, selectedItem, showToast, t, tagMutationPending, tagsApi]);
 
   useInvalidation(['files', 'metadata', 'tags', 'project_detail'], event => {
     refresh();
@@ -370,8 +421,12 @@ export default function BrowsePage() {
   }, []);
 
   const handleDownload = useCallback((path: string) => {
-    filesApi.download(path);
-  }, [filesApi]);
+    void (async () => {
+      if (!await guardDownload()) return;
+      filesApi.download(path);
+      void refreshQuota();
+    })();
+  }, [filesApi, guardDownload, refreshQuota]);
 
   const handleInfoDownload = useCallback((item: BrowsableItem) => {
     handleDownload(item.path);
@@ -389,11 +444,11 @@ export default function BrowsePage() {
   }, []);
 
   const handleCopyLink = useCallback((path: string) => {
-    const href = `${window.location.origin}/api/download/${encodeURIComponent(path)}`;
+    const href = new URL(api.buildUrl(`download/${encodeURIComponent(path)}`), window.location.origin).toString();
     navigator.clipboard.writeText(href)
-      .then(() => showToast('Download link copied', 'success'))
-      .catch(() => showToast('Could not copy the download link', 'error'));
-  }, [showToast]);
+      .then(() => showToast(t('browse.link_copied'), 'success'))
+      .catch(() => showToast(t('browse.link_copy_failed'), 'error'));
+  }, [api, showToast, t]);
 
   const handleTagFilter = useCallback((tag: string) => {
     setActiveTag(tag);
@@ -416,13 +471,19 @@ export default function BrowsePage() {
   const handleDownloadSelected = useCallback(async () => {
     const paths = Array.from(selected);
     if (paths.length === 0 || downloadInFlight.current) return;
+    if (!await guardDownload()) return;
     downloadInFlight.current = true;
     setIsDownloadInFlight(true);
     downloadProgress.start();
     try { await filesApi.batchDownload(paths, downloadProgress.update); }
     catch (err) { showToast(err instanceof Error ? err.message : 'Failed to download ZIP archive', 'error'); }
-    finally { downloadProgress.finish(); downloadInFlight.current = false; setIsDownloadInFlight(false); }
-  }, [downloadProgress, filesApi, selected, showToast]);
+    finally {
+      downloadProgress.finish();
+      downloadInFlight.current = false;
+      setIsDownloadInFlight(false);
+      void refreshQuota();
+    }
+  }, [downloadProgress, filesApi, guardDownload, refreshQuota, selected, showToast]);
 
   const handleSidebarToggle = useCallback(() => {
     if (isMobile) {
@@ -516,10 +577,24 @@ export default function BrowsePage() {
   return (
     <AppLayout
       header={
-        <Header />
+        onOpenPalette ? (
+          <AppHeader
+            activeArea="workspace"
+            workspaceHref={currentPath ? '/browse?path=' + encodeURIComponent(currentPath) : '/browse'}
+            galleryHref={currentPath ? '/gallery/collection?path=' + encodeURIComponent(currentPath) : '/gallery'}
+            onOpenPalette={onOpenPalette}
+          />
+         ) : <Header />
       }
-      sidebar={<Sidebar onNavigate={handleNavigate} currentPath={currentPath} />}
-        infoPanel={<InfoPanel metadata={selectedMetadata} projectDetail={selectedProjectDetail} selected={selectedItem} loading={metadataLoading} onTagFilter={handleTagFilter} onDownload={handleInfoDownload} onShare={handleInfoShare} onClose={handleInfoToggle} />}
+      sidebar={<Sidebar
+        onNavigate={handleNavigate}
+        currentPath={currentPath}
+        activeTag={activeTag}
+        onTagFilter={handleTagFilter}
+        onClearTagFilter={handleClearTagFilter}
+        tagsRefreshKey={tagsRefreshKey}
+      />}
+        infoPanel={<InfoPanel metadata={selectedMetadata} projectDetail={selectedProjectDetail} selected={selectedItem} loading={metadataLoading} onTagFilter={handleTagFilter} onTagAdd={canEditMetadata ? tag => mutateSelectedTag(tag, 'add') : undefined} onTagRemove={canEditMetadata ? tag => mutateSelectedTag(tag, 'remove') : undefined} tagMutationPending={tagMutationPending} onDownload={handleInfoDownload} onShare={handleInfoShare} onNotesSave={canEditMetadata ? handleNotesSave : undefined} canShare={capabilities?.manage_links ?? false} onClose={handleInfoToggle} />}
       sidebarOpen={sidebarOpen}
       infoOpen={infoOpen}
       sidebarWidth={sidebarWidth}
@@ -529,7 +604,7 @@ export default function BrowsePage() {
       onSidebarToggle={handleSidebarToggle}
       onInfoToggle={handleInfoToggle}
       onViewModeToggle={() => handleViewModeChange(viewMode === 'grid' ? 'list' : 'grid')}
-      viewMode={viewMode}
+      viewMode={viewMode === 'masonry' ? 'grid' : viewMode}
       selectMode={selectMode}
       onSelectModeToggle={() => {
         setSelectMode(prev => !prev);
@@ -549,7 +624,7 @@ export default function BrowsePage() {
 
        {activeTag && (
          <div className="mx-4 mt-3 flex items-center justify-between border-b border-indigo-500/20 bg-indigo-500/5 px-3 py-2 text-xs text-indigo-200">
-           <span>Tag: {activeTag}</span>
+           <span>{t('browse.tag_banner', activeTag)}</span>
            <button type="button" onClick={handleClearTagFilter} className="rounded p-1 text-indigo-200 hover:bg-indigo-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" aria-label="Clear tag filter" title="Clear tag filter">
              <X size={14} />
            </button>
@@ -566,6 +641,11 @@ export default function BrowsePage() {
         isDownloadInFlight={isDownloadInFlight}
         activeTag={activeTag}
         onClearTag={handleClearTagFilter}
+        selectMode={selectMode}
+        onSelectModeToggle={() => {
+          setSelectMode(prev => !prev);
+          setSelected(new Set());
+        }}
       />
        </div>
 
@@ -586,11 +666,33 @@ export default function BrowsePage() {
         <div className="flex flex-col items-center justify-center h-64 text-slate-500">
           <p className="text-base">{t('browse.error')}</p>
           <p className="text-sm mt-1">{error}</p>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="mt-4 px-4 py-2 text-sm text-white bg-brand-500 hover:bg-brand-600 rounded-lg transition-colors"
+          >
+            {t('gallery.retry')}
+          </button>
         </div>
       ) : visibleItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 text-slate-500">
           <p className="text-base">{t('browse.empty')}</p>
         </div>
+      ) : viewMode === 'masonry' ? (
+        <MasonryView
+          items={visibleItems}
+          selected={selected}
+          selectionMode={selectMode}
+          onSelect={handleSelect}
+          onInspect={handleInspect}
+          onNavigate={handleNavigateItem}
+          getThumbnail={path => thumbnailMap[path]}
+          onContextMenu={handleContextMenu}
+          onTagClick={handleTagFilter}
+          onDoubleClick={handleItemOpen}
+          onDownload={item => handleDownload(item.path)}
+          isMobile={isMobile}
+        />
       ) : viewMode === 'grid' ? (
         <ProjectGrid
           items={visibleItems}
@@ -607,6 +709,7 @@ export default function BrowsePage() {
            onDirectoryVisible={handleDirectoryVisible}
            onTagClick={handleTagFilter}
            onCopyLink={handleCopyLink}
+           onDownload={item => handleDownload(item.path)}
         />
       ) : (
         <ProjectList
@@ -622,6 +725,8 @@ export default function BrowsePage() {
            onContextMenu={handleContextMenu}
            onDirectoryVisible={handleDirectoryVisible}
            onCopyLink={handleCopyLink}
+           onTagClick={handleTagFilter}
+           onDownload={item => handleDownload(item.path)}
            thumbnailMap={thumbnailMap}
         />
       )}
@@ -641,7 +746,7 @@ export default function BrowsePage() {
               setShareDialogTrigger(contextMenu?.trigger);
               setSharePaths([contextMenu.item.path]);
              }},
-             { label: 'Copy download link', icon: <Link2 size={13} />, onClick: () => handleCopyLink(contextMenu.item.path) },
+             { label: t('action.copy_download_link'), icon: <Link2 size={13} />, onClick: () => handleCopyLink(contextMenu.item.path) },
             { label: t('action.copy_path'), icon: <Copy size={13} />, onClick: () => handleCopyPath(contextMenu.item.path) },
           ]}
         />

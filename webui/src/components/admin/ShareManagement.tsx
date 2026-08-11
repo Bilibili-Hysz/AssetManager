@@ -4,13 +4,19 @@ import { useAuth } from '../../hooks/useAuth';
 import { createSharesApi } from '../../api/shares';
 import type { ShareLink } from '../../types/api';
 import { useI18n } from '../../hooks/useI18n';
+import { useToast } from '../ui/Toast';
 import { useInvalidation } from '../../hooks/useInvalidation';
+
+// NOTE: this admin panel is not yet mounted on any route — wiring the Admin section
+// into the router is a later task (see D2 in the component backlog).
 
 export function ShareManagement() {
   const { api, identityGeneration } = useAuth();
   const sharesApi = useMemo(() => createSharesApi(api), [api]);
   const { t } = useI18n();
+  const { showToast } = useToast();
   const [shares, setShares] = useState<ShareLink[]>([]);
+  const [pendingId, setPendingId] = useState<string | null>(null);
   const requestGeneration = useRef(0);
   const identityGenerationRef = useRef(identityGeneration);
 
@@ -35,10 +41,17 @@ export function ShareManagement() {
   useInvalidation(['shares'], refreshShares);
 
   const handleDelete = async (id: string) => {
+    // E3: require explicit confirmation before deleting a share link.
+    if (!window.confirm(t('admin.confirm_delete_share', id))) return;
+    setPendingId(id);
     try {
       await sharesApi.delete(id);
       await refreshShares();
-    } catch {}
+    } catch {
+      showToast(t('admin.delete_share_failed'), 'error');
+    } finally {
+      setPendingId(null);
+    }
   };
 
   return (
@@ -55,7 +68,7 @@ export function ShareManagement() {
                 <p className="text-sm text-slate-200 truncate">{share.url}</p>
                 <p className="text-xs text-slate-500">{t('share.downloads', share.download_count, share.max_downloads ?? '∞')}</p>
               </div>
-              <button aria-label={`${t('action.delete')} ${share.url}`} onClick={() => handleDelete(share.id)} className="p-1 text-slate-400 hover:text-red-400 transition-colors">
+              <button aria-label={`${t('action.delete')} ${share.url}`} onClick={() => handleDelete(share.id)} disabled={pendingId !== null} className="p-1 text-slate-400 hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 <Trash2 size={14} aria-hidden="true" />
               </button>
             </div>

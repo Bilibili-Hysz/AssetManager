@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { KeyRound, User, Lock, Eye, EyeOff, UserPlus, LogIn, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [view, setView] = useState<LoginView>('login');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const autoLoginAttempted = useRef(false);
 
   // Login form
   const [loginUsername, setLoginUsername] = useState('');
@@ -37,7 +38,7 @@ export default function LoginPage() {
   const showKeyMode = authMode === 'key' || authMode === 'none';
   const showUserMode = authMode === 'user' || authMode === 'none';
   const showPasswordMode = authMode === 'password' || authMode === 'none';
-  const guestEnabled = authMode === 'none' || authMode === 'password';
+  const guestEnabled = serverInfo?.auth_enabled === false;
 
   // Auto-determine initial view
   useEffect(() => {
@@ -52,17 +53,6 @@ export default function LoginPage() {
       navigate('/');
     }
   }, [isLoading, serverInfo, navigate]);
-
-  // URL key parameter auto-login
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const urlKey = params.get('key');
-    if (urlKey && authMode === 'key') {
-      setAccessKey(urlKey);
-      handleKeyLogin();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -79,26 +69,41 @@ export default function LoginPage() {
       }
       navigate('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : t('auth.login_failed'));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleKeyLogin = async () => {
-    if (!accessKey.trim()) return;
+  const handleKeyLogin = async (key?: string) => {
+    const value = (key ?? accessKey).trim();
+    if (loading || !value) return;
     setError('');
     setLoading(true);
     try {
-      await authApi.verifyKey(accessKey.trim());
+      await authApi.verifyKey(value);
       if (!await refreshMe()) throw new Error(t('auth.invalid_key'));
       navigate('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid key');
+      setError(err instanceof Error ? err.message : t('auth.invalid_key'));
     } finally {
       setLoading(false);
     }
   };
+
+  // URL key parameter auto-login: at most one attempt, only while the key view
+  // is active and no manual login is in flight; failures are never retried.
+  useEffect(() => {
+    if (autoLoginAttempted.current) return;
+    if (authMode !== 'key' || loading) return;
+    const params = new URLSearchParams(window.location.search);
+    const urlKey = params.get('key');
+    if (!urlKey) return;
+    autoLoginAttempted.current = true;
+    setAccessKey(urlKey);
+    void handleKeyLogin(urlKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authMode, isLoading]);
 
   const handleRegister = async (e: FormEvent) => {
     e.preventDefault();
@@ -139,7 +144,7 @@ export default function LoginPage() {
       if (!await refreshMe()) throw new Error(t('auth.login_failed'));
       navigate('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
+      setError(err instanceof Error ? err.message : t('auth.registration_failed'));
     } finally {
       setLoading(false);
     }
@@ -248,7 +253,7 @@ export default function LoginPage() {
             )}
 
             <button
-              onClick={handleKeyLogin}
+              onClick={() => handleKeyLogin()}
               disabled={loading || !accessKey.trim()}
               className="w-full py-2.5 text-sm text-white bg-brand-500 hover:bg-brand-600 disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
@@ -317,18 +322,20 @@ export default function LoginPage() {
               )}
             </button>
 
-            {/* Register link */}
-            <button
-              type="button"
-              onClick={() => { setView('register'); setError(''); setRegErrors([]); }}
-              className="w-full text-xs text-slate-500 hover:text-slate-300 transition-colors"
-            >
-              {t('auth.no_account')}
-            </button>
+            {/* Register link (only when this server supports user accounts) */}
+            {showUserMode && (
+              <button
+                type="button"
+                onClick={() => { setView('register'); setError(''); setRegErrors([]); }}
+                className="w-full text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                {t('auth.no_account')}
+              </button>
+            )}
           </form>
         )}
 
-        {view !== 'login' && view !== 'register' && (
+        {showUserMode && view !== 'login' && view !== 'register' && (
           <button
             type="button"
             onClick={() => { setView('register'); setError(''); setRegErrors([]); }}

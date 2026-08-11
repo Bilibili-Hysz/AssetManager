@@ -24,6 +24,12 @@ describe('tags API contract', () => {
     expect(post).toHaveBeenCalledWith('tags', { tag: 'hero', file_path: 'projects/project/assets/a.png' });
   });
 
+  it('remove posts tag and file_path to tags/remove', () => {
+    const { api, post } = setup();
+    api.remove('hero', 'projects/project/assets/a.png');
+    expect(post).toHaveBeenCalledWith('tags/remove', { tag: 'hero', file_path: 'projects/project/assets/a.png' });
+  });
+
   it('rename PUTs the new name to tags/{encoded old name}', () => {
     const { api, put } = setup();
     api.rename('旧 tag', '新 tag');

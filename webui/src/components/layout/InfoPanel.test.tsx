@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InfoPanel } from './InfoPanel';
+
+vi.mock('../../hooks/useAuth', () => ({
+  useAuth: () => ({ api: { buildUrl: (path: string) => '/api/' + path } }),
+}));
 
 describe('InfoPanel', () => {
   afterEach(cleanup);
@@ -219,4 +223,50 @@ describe('InfoPanel', () => {
 
     expect(screen.queryByRole('button', { name: 'Open notes.txt preview' })).toBeNull();
   });
+  it('delegates notes editing to the save callback', async () => {
+    const onNotesSave = vi.fn().mockResolvedValue(true);
+    render(<InfoPanel
+      metadata={{ path: 'asset.txt', tags: [], notes: '', urls: [] }}
+      selected={{ name: 'asset.txt', path: 'asset.txt', type: 'file', extension: '.txt', category: 'document' }}
+      onNotesSave={onNotesSave}
+    />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Edit|编辑|編集/ }));
+    const editor = screen.getByRole('textbox', { name: /Notes|备注|メモ/ });
+    fireEvent.change(editor, { target: { value: 'new note' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Save|保存/ }));
+    });
+
+    expect(onNotesSave).toHaveBeenCalledWith('asset.txt', 'new note');
+  });
+
+  it('delegates tag add and remove mutations while retaining the filter action', async () => {
+    const onTagFilter = vi.fn();
+    const onTagAdd = vi.fn().mockResolvedValue(true);
+    const onTagRemove = vi.fn().mockResolvedValue(true);
+    render(<InfoPanel
+      metadata={{ path: 'asset.txt', tags: ['featured'], notes: '', urls: [] }}
+      selected={{ name: 'asset.txt', path: 'asset.txt', type: 'file', extension: '.txt', category: 'document' }}
+      onTagFilter={onTagFilter}
+      onTagAdd={onTagAdd}
+      onTagRemove={onTagRemove}
+    />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'featured' }));
+    expect(onTagFilter).toHaveBeenCalledWith('featured');
+
+    const input = screen.getByRole('textbox', { name: /Add tag|添加标签|タグを追加/ });
+    fireEvent.change(input, { target: { value: 'new-tag' } });
+    await act(async () => {
+      fireEvent.submit(input.closest('form')!);
+    });
+    expect(onTagAdd).toHaveBeenCalledWith('new-tag');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Remove tag|移除标签|タグ .*削除/ }));
+    });
+    expect(onTagRemove).toHaveBeenCalledWith('featured');
+  });
+
 });

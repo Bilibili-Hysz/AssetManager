@@ -7,12 +7,16 @@ import { useI18n } from '../../hooks/useI18n';
 import { useToast } from '../ui/Toast';
 import { useInvalidation } from '../../hooks/useInvalidation';
 
+// NOTE: this admin panel is not yet mounted on any route — wiring the Admin section
+// into the router is a later task (see D2 in the component backlog).
+
 export function InviteManagement() {
   const { api, identityGeneration } = useAuth();
   const usersApi = useMemo(() => createUsersApi(api), [api]);
   const { t } = useI18n();
   const { showToast } = useToast();
   const [invites, setInvites] = useState<InviteCode[]>([]);
+  const [pendingCode, setPendingCode] = useState<string | null>(null);
   const requestGeneration = useRef(0);
   const identityGenerationRef = useRef(identityGeneration);
 
@@ -41,14 +45,23 @@ export function InviteManagement() {
       await usersApi.createInvite();
       await refreshInvites();
       showToast(t('admin.invite_created'), 'success');
-    } catch {}
+    } catch {
+      showToast(t('admin.create_invite_failed'), 'error');
+    }
   };
 
   const handleRevoke = async (code: string) => {
+    // E4: require explicit confirmation before revoking an invite code.
+    if (!window.confirm(t('admin.confirm_revoke_invite', code))) return;
+    setPendingCode(code);
     try {
       await usersApi.revokeInvite(code);
       await refreshInvites();
-    } catch {}
+    } catch {
+      showToast(t('admin.revoke_invite_failed'), 'error');
+    } finally {
+      setPendingCode(null);
+    }
   };
 
   return (
@@ -73,7 +86,7 @@ export function InviteManagement() {
                 {invite.revoked ? t('admin.revoke') : invite.used_by ? t('admin.invite_used') : t('admin.invite_active')}
               </span>
               {!invite.revoked && !invite.used_by && (
-                <button aria-label={`${t('admin.revoke')} ${invite.code}`} onClick={() => handleRevoke(invite.code)} className="p-1 text-slate-400 hover:text-white transition-colors">
+                <button aria-label={`${t('admin.revoke')} ${invite.code}`} onClick={() => handleRevoke(invite.code)} disabled={pendingCode !== null} className="p-1 text-slate-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                   <X size={14} aria-hidden="true" />
                 </button>
               )}
