@@ -56,7 +56,12 @@ describe('SellerOrdersPage delivery handoff', () => {
   beforeEach(() => {
     orderState.orders[0]!.status = 'paid';
     orderState.orders[0]!.sourceStatus = 'confirmed';
-    fulfillOrder.mockReset().mockResolvedValue({ order: {}, delivery_token: 'secret', delivery_url: '/api/shop/delivery/secret' });
+    fulfillOrder.mockReset().mockResolvedValue({
+      order: {},
+      delivery_token: 'secret',
+      delivery_url: '/api/shop/delivery/secret',
+      share_claim: 'share-claim-1',
+    });
     revokeOrder.mockReset();
     refresh.mockReset().mockResolvedValue(undefined);
     showToast.mockReset();
@@ -64,7 +69,7 @@ describe('SellerOrdersPage delivery handoff', () => {
     Object.assign(navigator, { clipboard: { writeText } });
   });
 
-  it('copies and exposes the seller-only delivery URL after fulfillment', async () => {
+  it('copies and exposes the share-claim storefront link after fulfillment', async () => {
     render(<SellerOrdersPage />);
     const fulfillButton = document.querySelector<HTMLButtonElement>('.seller-row-action-success');
     expect(fulfillButton).not.toBeNull();
@@ -72,10 +77,26 @@ describe('SellerOrdersPage delivery handoff', () => {
 
     await waitFor(() => expect(fulfillOrder).toHaveBeenCalledWith('order-7'));
     const link = await screen.findByRole('link', { name: 'Delivery link' });
-    const expectedUrl = new URL('/api/shop/delivery/secret', window.location.origin).toString();
+    const expectedUrl = new URL('/storefront/delivery/order-7?claim=share-claim-1', window.location.origin).toString();
     expect(link.getAttribute('href')).toBe(expectedUrl);
     expect(writeText).toHaveBeenCalledWith(expectedUrl);
     expect(showToast).toHaveBeenCalledWith('Delivery link ready', 'success');
+  });
+
+  it('falls back to the bearer delivery URL when the backend has no share claim', async () => {
+    fulfillOrder.mockReset().mockResolvedValue({
+      order: {},
+      delivery_token: 'secret',
+      delivery_url: '/api/shop/delivery/secret',
+    });
+    render(<SellerOrdersPage />);
+    const fulfillButton = document.querySelector<HTMLButtonElement>('.seller-row-action-success');
+    fireEvent.click(fulfillButton!);
+
+    const link = await screen.findByRole('link', { name: 'Delivery link' });
+    const expectedUrl = new URL('/api/shop/delivery/secret', window.location.origin).toString();
+    expect(link.getAttribute('href')).toBe(expectedUrl);
+    expect(writeText).toHaveBeenCalledWith(expectedUrl);
   });
 
   it('does not render a non-functional more-actions control', () => {

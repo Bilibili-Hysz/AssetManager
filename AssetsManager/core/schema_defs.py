@@ -279,6 +279,23 @@ CREATE INDEX IF NOT EXISTS idx_shop_order_receipts_availability
 """
 
 
+SHOP_SHARE_CLAIMS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS shop_share_claims (
+    claim_hash TEXT PRIMARY KEY NOT NULL
+               CHECK (length(trim(claim_hash)) = 64),
+    order_id   INTEGER NOT NULL,
+    expires_at REAL NOT NULL CHECK (expires_at > created_at),
+    claimed_at REAL,
+    revoked_at REAL,
+    created_at REAL NOT NULL DEFAULT (strftime('%s','now')),
+    FOREIGN KEY (order_id) REFERENCES shop_orders(id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_shop_share_claims_order_created
+    ON shop_share_claims(order_id, created_at DESC);
+"""
+
+
 SHOP_ORDER_RECEIPT_RECOVERIES_SCHEMA = """
 CREATE TABLE IF NOT EXISTS shop_order_receipt_recoveries (
     token_hash TEXT PRIMARY KEY NOT NULL CHECK (length(trim(token_hash)) > 0),
@@ -850,6 +867,36 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
             "length(trim(request_key_hash)) = 64",
             "length(trim(delivery_token_hash)) = 64",
             "state IN ('reserved', 'consumed', 'failed')",
+        ),
+    },
+    "shop_share_claims": {
+        "columns": (
+            "claim_hash", "order_id", "expires_at", "claimed_at",
+            "revoked_at", "created_at",
+        ),
+        "primary_key": ("claim_hash",),
+        "unique_constraints": (),
+        "indexes": {
+            "idx_shop_share_claims_order_created": ("order_id", "created_at"),
+        },
+        "foreign_keys": ({
+            "columns": ("order_id",),
+            "referenced_table": "shop_orders",
+            "referenced_columns": ("id",),
+            "on_update": "CASCADE",
+            "on_delete": "CASCADE",
+        },),
+        "column_contracts": {
+            "claim_hash": {"type": "TEXT", "not_null": True},
+            "order_id": {"type": "INTEGER", "not_null": True},
+            "expires_at": {"type": "REAL", "not_null": True},
+            "claimed_at": {"type": "REAL", "not_null": False},
+            "revoked_at": {"type": "REAL", "not_null": False},
+            "created_at": {"type": "REAL", "not_null": True},
+        },
+        "checks": (
+            "length(trim(claim_hash)) = 64",
+            "expires_at > created_at",
         ),
     },
     "shop_order_receipts": {

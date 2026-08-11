@@ -384,6 +384,8 @@ class OrderRepository(_CommerceRepository):
         max_downloads: int,
         expires_at: float | None,
         share_id: str | None = None,
+        share_claim_hash: str | None = None,
+        share_claim_expires_at: float | None = None,
         fulfilled_at: float | None = None,
     ) -> dict[str, Any] | None:
         token_hash = str(delivery_token_hash).strip()
@@ -398,7 +400,13 @@ class OrderRepository(_CommerceRepository):
             or max_downloads <= 0
         ):
             raise ValueError("max_downloads must be a positive integer")
+        claim_hash = None if share_claim_hash is None else self._validate_share_claim_hash(
+            share_claim_hash
+        )
         timestamp = time.time() if fulfilled_at is None else float(fulfilled_at)
+        if claim_hash is not None:
+            if share_claim_expires_at is None or float(share_claim_expires_at) <= timestamp:
+                raise ValueError("share_claim_expires_at must be later than fulfilled_at")
         with _transaction(self._conn, "shop_order_fulfill"):
             cursor = self._conn.execute(
                 "UPDATE shop_orders SET status='fulfilled', updated_at=? "
@@ -422,6 +430,13 @@ class OrderRepository(_CommerceRepository):
                     timestamp,
                 ),
             )
+            if claim_hash is not None:
+                self._conn.execute(
+                    "INSERT INTO shop_share_claims "
+                    "(claim_hash, order_id, expires_at, claimed_at, revoked_at, created_at) "
+                    "VALUES (?, ?, ?, NULL, NULL, ?)",
+                    (claim_hash, resolved_id, float(share_claim_expires_at), timestamp),
+                )
             self._insert_event(
                 resolved_id,
                 "fulfilled",
@@ -442,6 +457,8 @@ class OrderRepository(_CommerceRepository):
         delivery_path: str,
         max_downloads: int | None = None,
         expires_at: float | None = None,
+        share_claim_hash: str | None = None,
+        share_claim_expires_at: float | None = None,
         rotated_at: float | None = None,
     ) -> dict[str, Any] | None:
         """Issue a replacement bearer token, revoking the previous live one.
@@ -453,7 +470,9 @@ class OrderRepository(_CommerceRepository):
         conserved and a leaked delivery link stops working on rotation.
         ``max_downloads`` is an optional seller-supplied cap; the effective
         quota is ``min(remaining, cap)``. Rotation is rejected once no quota
-        remains.
+        remains.  When a replacement share claim is supplied, every prior
+        outstanding claim of the order is revoked in the same transaction so
+        a rotated-away share link stops working immediately.
         """
         token_hash = str(delivery_token_hash).strip()
         path = str(delivery_path).strip()
@@ -467,7 +486,13 @@ class OrderRepository(_CommerceRepository):
             or max_downloads <= 0
         ):
             raise ValueError("max_downloads must be a positive integer")
+        claim_hash = None if share_claim_hash is None else self._validate_share_claim_hash(
+            share_claim_hash
+        )
         timestamp = time.time() if rotated_at is None else float(rotated_at)
+        if claim_hash is not None:
+            if share_claim_expires_at is None or float(share_claim_expires_at) <= timestamp:
+                raise ValueError("share_claim_expires_at must be later than rotated_at")
         with _transaction(self._conn, "shop_order_delivery_rotate"):
             current = self._select_order(order_id)
             if current is None:
@@ -502,6 +527,18 @@ class OrderRepository(_CommerceRepository):
                 "UPDATE shop_delivery_tokens SET revoked_at=? WHERE token_hash=?",
                 (timestamp, str(previous[0])),
             )
+            if claim_hash is not None:
+                self._conn.execute(
+                    "UPDATE shop_share_claims SET revoked_at=? "
+                    "WHERE order_id=? AND revoked_at IS NULL",
+                    (timestamp, resolved_id),
+                )
+                self._conn.execute(
+                    "INSERT INTO shop_share_claims "
+                    "(claim_hash, order_id, expires_at, claimed_at, revoked_at, created_at) "
+                    "VALUES (?, ?, ?, NULL, NULL, ?)",
+                    (claim_hash, resolved_id, float(share_claim_expires_at), timestamp),
+                )
             self._insert_event(
                 resolved_id,
                 "delivery_rotated",
@@ -553,6 +590,94 @@ class OrderRepository(_CommerceRepository):
                 "VALUES(?,?,?,?,NULL)",
                 (token_hash, order_id, created_at, expires_at),
             )
+
+    @staticmethod
+    def _share_claim_row_to_dict(row: tuple[Any, ...]) -> dict[str, Any]:
+        return {
+            "claim_hash": str(row[0]),
+            "order_id": int(row[1]),
+            "expires_at": float(row[2]),
+            "claimed_at": None if row[3] is None else float(row[3]),
+            "revoked_at": None if row[4] is None else float(row[4]),
+            "created_at": float(row[5]),
+        }
+
+    @staticmethod
+    def _validate_share_claim_hash(claim_hash: str) -> str:
+        claim_hash = str(claim_hash).strip()
+        if len(claim_hash) != 64:
+            raise ValueError("claim_hash must be a 64-character hash")
+        return claim_hash
+
+    @_repository_operation
+    def insert_share_claim(
+        self,
+        order_id: int | str,
+        *,
+        claim_hash: str,
+        expires_at: float,
+        created_at: float | None = None,
+    ) -> None:
+        """Persist one claim hash; the plaintext claim is never stored."""
+        claim_hash = self._validate_share_claim_hash(claim_hash)
+        timestamp = time.time() if created_at is None else float(created_at)
+        if float(expires_at) <= timestamp:
+            raise ValueError("expires_at must be later than created_at")
+        with _transaction(self._conn, "shop_share_claim_insert"):
+            self._conn.execute(
+                "INSERT INTO shop_share_claims "
+                "(claim_hash, order_id, expires_at, claimed_at, revoked_at, created_at) "
+                "VALUES (?, ?, ?, NULL, NULL, ?)",
+                (claim_hash, int(order_id), float(expires_at), timestamp),
+            )
+
+    @_repository_operation
+    def get_share_claim(self, claim_hash: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT claim_hash, order_id, expires_at, claimed_at, revoked_at, "
+            "created_at FROM shop_share_claims WHERE claim_hash=?",
+            (str(claim_hash).strip(),),
+        ).fetchone()
+        return None if row is None else self._share_claim_row_to_dict(row)
+
+    @_repository_operation
+    def consume_share_claim(
+        self,
+        order_id: int | str,
+        *,
+        claim_hash: str,
+        consumed_at: float | None = None,
+    ) -> bool:
+        """Atomically mark one unused, unrevoked, unexpired claim as claimed.
+
+        The single UPDATE doubles as a compare-and-swap: only a row that is
+        still unclaimed, unrevoked, and within its expiry window flips
+        ``claimed_at``, so exactly one concurrent redemption wins.
+        """
+        claim_hash = self._validate_share_claim_hash(claim_hash)
+        timestamp = time.time() if consumed_at is None else float(consumed_at)
+        with _transaction(self._conn, "shop_share_claim_consume"):
+            cursor = self._conn.execute(
+                "UPDATE shop_share_claims SET claimed_at=? "
+                "WHERE claim_hash=? AND order_id=? AND claimed_at IS NULL "
+                "AND revoked_at IS NULL AND expires_at>?",
+                (timestamp, claim_hash, int(order_id), timestamp),
+            )
+            return cursor.rowcount == 1
+
+    @_repository_operation
+    def revoke_share_claims_for_order(
+        self, order_id: int | str, *, revoked_at: float | None = None
+    ) -> int:
+        """Revoke every outstanding share claim of an order; returns the count."""
+        timestamp = time.time() if revoked_at is None else float(revoked_at)
+        with _transaction(self._conn, "shop_share_claim_revoke"):
+            cursor = self._conn.execute(
+                "UPDATE shop_share_claims SET revoked_at=? "
+                "WHERE order_id=? AND revoked_at IS NULL",
+                (timestamp, int(order_id)),
+            )
+            return cursor.rowcount
 
     @_repository_operation
     def get_order_with_receipt(
@@ -616,11 +741,21 @@ class OrderRepository(_CommerceRepository):
     def revoke_delivery_tokens(
         self, order_id: int | str, *, revoked_at: float | None = None
     ) -> int:
-        """Revoke every outstanding delivery token of an order; returns the count."""
+        """Revoke every outstanding delivery token and share claim of an order.
+
+        Returns the number of revoked delivery tokens; outstanding share
+        claims are revoked in the same transaction so seller-level delivery
+        revocation also kills every shared claim link.
+        """
         timestamp = time.time() if revoked_at is None else float(revoked_at)
         with _transaction(self._conn, "shop_delivery_revoke"):
             cursor = self._conn.execute(
                 "UPDATE shop_delivery_tokens SET revoked_at=? "
+                "WHERE order_id=? AND revoked_at IS NULL",
+                (timestamp, order_id),
+            )
+            self._conn.execute(
+                "UPDATE shop_share_claims SET revoked_at=? "
                 "WHERE order_id=? AND revoked_at IS NULL",
                 (timestamp, order_id),
             )

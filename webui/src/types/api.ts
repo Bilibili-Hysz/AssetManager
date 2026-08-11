@@ -664,4 +664,9 @@ export interface FulfillOrderResponse {
   order: ShopOrder;
   delivery_url: string;
   rotated?: boolean;
+  /**
+   * One-time share claim code for the new storefront delivery link flow.
+   * Present on new backends; legacy backends omit it (bearer delivery_url).
+   */
+  share_claim?: string;
 }

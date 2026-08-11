@@ -186,7 +186,7 @@ def test_receipt_delivery_shares_atomic_download_limit_with_bearer_api(
     assert confirmed["delivery_available"] is False
     replayed = service.confirm_by_receipt(root, order["id"], receipt)
     assert replayed == confirmed
-    fulfilled, bearer = service.fulfill(root, order["id"], max_downloads=2, expires_in=60)
+    fulfilled, bearer, _claim = service.fulfill(root, order["id"], max_downloads=2, expires_in=60)
 
     assert "buyer_email" in fulfilled
     assert "metadata" in fulfilled
@@ -225,9 +225,9 @@ def test_delivery_rotation_revokes_old_token_and_issues_replacement(
     root, item, orders, service = _service(schema_db, tmp_path)
     order, receipt = service.create_order_with_receipt(root, {"item_id": item["id"]})
     service.confirm_by_receipt(root, order["id"], receipt)
-    _fulfilled, old_token = service.fulfill(root, order["id"], max_downloads=2, expires_in=60)
+    _fulfilled, old_token, _claim = service.fulfill(root, order["id"], max_downloads=2, expires_in=60)
 
-    rotated, new_token = service.rotate_delivery(root, order["id"])
+    rotated, new_token, _claim = service.rotate_delivery(root, order["id"])
     assert rotated["status"] == "fulfilled"
     assert new_token != old_token
     # The rotated-away token is revoked: it can no longer be consumed.
@@ -245,11 +245,11 @@ def test_delivery_rotation_inherits_remaining_quota_and_never_inflates(
     root, item, orders, service = _service(schema_db, tmp_path)
     order, receipt = service.create_order_with_receipt(root, {"item_id": item["id"]})
     service.confirm_by_receipt(root, order["id"], receipt)
-    _fulfilled, bearer = service.fulfill(root, order["id"], max_downloads=5, expires_in=60)
+    _fulfilled, bearer, _claim = service.fulfill(root, order["id"], max_downloads=5, expires_in=60)
     for _ in range(3):
         service.resolve_delivery(root, bearer, consume=True)
 
-    rotated, new_token = service.rotate_delivery(root, order["id"])
+    rotated, new_token, _claim = service.rotate_delivery(root, order["id"])
     assert rotated["status"] == "fulfilled"
     new_delivery = orders.get_delivery(hash_delivery_token(new_token))
     assert new_delivery is not None
@@ -258,11 +258,11 @@ def test_delivery_rotation_inherits_remaining_quota_and_never_inflates(
     assert new_delivery["download_count"] == 0
 
     # A second rotation must not restore the full quota.
-    _rotated2, new_token2 = service.rotate_delivery(root, order["id"])
+    _rotated2, new_token2, _claim = service.rotate_delivery(root, order["id"])
     assert orders.get_delivery(hash_delivery_token(new_token2))["max_downloads"] == 2
 
     # An explicit cap cannot exceed the inherited remaining quota either.
-    _rotated3, new_token3 = service.rotate_delivery(
+    _rotated3, new_token3, _claim = service.rotate_delivery(
         root, order["id"], max_downloads=100
     )
     assert orders.get_delivery(hash_delivery_token(new_token3))["max_downloads"] == 2
@@ -283,7 +283,7 @@ def test_delivery_rotation_is_rejected_when_remaining_quota_is_exhausted(
     root, item, orders, service = _service(schema_db, tmp_path)
     order, receipt = service.create_order_with_receipt(root, {"item_id": item["id"]})
     service.confirm_by_receipt(root, order["id"], receipt)
-    _fulfilled, bearer = service.fulfill(root, order["id"], max_downloads=2, expires_in=60)
+    _fulfilled, bearer, _claim = service.fulfill(root, order["id"], max_downloads=2, expires_in=60)
     service.resolve_delivery(root, bearer, consume=True)
     service.resolve_delivery(root, bearer, consume=True)
 
@@ -295,8 +295,8 @@ def test_revoke_delivery_requires_seller_and_blocks_every_token(schema_db, tmp_p
     root, item, orders, service = _service(schema_db, tmp_path)
     order, receipt = service.create_order_with_receipt(root, {"item_id": item["id"]})
     service.confirm_by_receipt(root, order["id"], receipt)
-    _fulfilled, bearer = service.fulfill(root, order["id"], max_downloads=2, expires_in=60)
-    _rotated, rotated_token = service.rotate_delivery(root, order["id"])
+    _fulfilled, bearer, _claim = service.fulfill(root, order["id"], max_downloads=2, expires_in=60)
+    _rotated, rotated_token, _claim = service.rotate_delivery(root, order["id"])
 
     with pytest.raises(OperationNotPermitted, match="Seller authentication required"):
         service.revoke_delivery(root, order["id"])
@@ -328,7 +328,7 @@ def test_fulfill_and_rotate_reject_expiry_beyond_one_year(schema_db, tmp_path):
     with pytest.raises(ValidationError, match="expires_in"):
         service.fulfill(root, order["id"], expires_in=too_long)
 
-    _fulfilled, _bearer = service.fulfill(root, order["id"], expires_in=60)
+    _fulfilled, _bearer, _claim = service.fulfill(root, order["id"], expires_in=60)
     with pytest.raises(ValidationError, match="expires_in"):
         service.rotate_delivery(root, order["id"], expires_in=too_long)
 
@@ -337,7 +337,7 @@ def test_receipt_delivery_consumption_is_atomic_under_concurrency(schema_db, tmp
     root, item, orders, service = _service(schema_db, tmp_path)
     order, receipt = service.create_order_with_receipt(root, {"item_id": item["id"]})
     service.confirm_by_receipt(root, order["id"], receipt)
-    _fulfilled, bearer = service.fulfill(root, order["id"], max_downloads=1, expires_in=60)
+    _fulfilled, bearer, _claim = service.fulfill(root, order["id"], max_downloads=1, expires_in=60)
 
     def consume_once():
         try:

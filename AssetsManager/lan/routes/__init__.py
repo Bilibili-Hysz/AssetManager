@@ -85,6 +85,7 @@ from AssetsManager.lan.routes.shop import (
     handle_delivery,
     handle_order_delivery,
     handle_delivery_download,
+    handle_shop_claim_delivery,
 )
 from AssetsManager.lan.routes.quota import (
     handle_delivery_quota,
@@ -212,6 +213,7 @@ __all__ = [
     "handle_delivery",
     "handle_order_delivery",
     "handle_delivery_download",
+    "handle_shop_claim_delivery",
     "handle_delivery_quota",
     "handle_free_quota",
     "handle_quota",

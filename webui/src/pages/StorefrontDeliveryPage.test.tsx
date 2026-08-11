@@ -8,6 +8,9 @@ const { shopApi } = vi.hoisted(() => ({
   shopApi: {
     getDelivery: vi.fn(),
     deliveryDownloadUrl: vi.fn(),
+    claimDelivery: vi.fn(),
+    getOrder: vi.fn(),
+    downloadOrderDelivery: vi.fn(),
   },
 }));
 
@@ -18,6 +21,7 @@ vi.mock('../api/shop', () => ({ createShopApi: () => shopApi }));
 vi.mock('../components/storefront/StorefrontShell', () => ({
   StorefrontShell: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
+vi.mock('../components/ui/Toast', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 vi.mock('../hooks/useI18n', () => ({
   useI18n: () => ({
     t: (key: string) => ({
@@ -28,6 +32,7 @@ vi.mock('../hooks/useI18n', () => ({
       'commerce.download_started': 'Download started',
       'commerce.product_not_found': 'Product not found',
       'commerce.product_not_found_description': 'This product is unavailable.',
+      'commerce.delivery_claim_invalid': 'This delivery link is invalid or has already been used.',
       'browse.loading': 'Loading...',
       'action.download': 'Download',
     }[key] ?? key),
@@ -48,6 +53,9 @@ describe('StorefrontDeliveryPage', () => {
   beforeEach(() => {
     shopApi.getDelivery.mockReset();
     shopApi.deliveryDownloadUrl.mockReset().mockReturnValue('/api/shop/delivery/token-a/download');
+    shopApi.claimDelivery.mockReset();
+    shopApi.getOrder.mockReset();
+    shopApi.downloadOrderDelivery.mockReset();
   });
 
   afterEach(() => cleanup());
@@ -60,6 +68,7 @@ describe('StorefrontDeliveryPage', () => {
 
     expect(screen.getByRole('heading', { name: 'Loading...' })).toBeDefined();
     expect(shopApi.deliveryDownloadUrl).toHaveBeenCalledWith('token-a');
+    expect(shopApi.claimDelivery).not.toHaveBeenCalled();
 
     await act(async () => {
       resolve({
@@ -81,5 +90,51 @@ describe('StorefrontDeliveryPage', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeDefined());
     expect(screen.getByRole('heading', { name: 'Product not found' })).toBeDefined();
+  });
+
+  it('exchanges a one-time share claim and shows the receipt-channel download', async () => {
+    shopApi.claimDelivery.mockResolvedValue({ ok: true });
+    shopApi.getOrder.mockResolvedValue({
+      order: {
+        id: 7,
+        item_id: 1,
+        item_title: 'bundle.zip',
+        amount_cents: 1200,
+        currency: 'USD',
+        status: 'fulfilled',
+        delivery_available: true,
+        created_at: 0,
+        updated_at: 0,
+      },
+    });
+    renderPage('order-7?claim=abc123def456ghi789jkl012mno345');
+
+    expect(shopApi.claimDelivery).toHaveBeenCalledWith('order-7', 'abc123def456ghi789jkl012mno345');
+    expect(await screen.findByRole('heading', { name: 'bundle.zip' })).toBeDefined();
+    expect(shopApi.getOrder).toHaveBeenCalledWith('order-7');
+    expect(screen.getByRole('button', { name: 'Download' })).toBeDefined();
+  });
+
+  it('shows an invalid-claim notice when the share claim cannot be redeemed', async () => {
+    shopApi.claimDelivery.mockRejectedValue(new Error('not found'));
+    renderPage('order-7?claim=used-claim');
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeDefined());
+    expect(screen.getByRole('heading', { name: 'Product not found' })).toBeDefined();
+    expect(screen.getByText('This delivery link is invalid or has already been used.')).toBeDefined();
+  });
+
+  it('leaves the legacy flow untouched when a claim parameter is absent', async () => {
+    shopApi.getDelivery.mockResolvedValue({
+      filename: 'legacy.zip',
+      is_directory: true,
+      download_url: '/legacy/download',
+      order: { download_count: 0, max_downloads: 3 },
+    });
+    renderPage('token-a');
+
+    expect(await screen.findByRole('heading', { name: 'legacy.zip' })).toBeDefined();
+    expect(shopApi.claimDelivery).not.toHaveBeenCalled();
+    expect(shopApi.getOrder).not.toHaveBeenCalled();
   });
 });

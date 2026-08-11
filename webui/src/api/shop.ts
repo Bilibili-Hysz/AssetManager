@@ -153,11 +153,30 @@ export function createShopApi(api: ApiClient) {
         {},
       ),
 
+    /**
+     * Exchange a one-time share claim code for the order receipt cookie. After
+     * a successful claim the buyer can use getOrder / downloadOrderDelivery
+     * through the existing receipt channel.
+     */
+    claimDelivery: (orderId: string | number, claim: string) =>
+      api.post<{ ok: boolean }>(
+        `shop/delivery/${encodeURIComponent(String(orderId))}/claim`,
+        { claim },
+      ),
+
     // Legacy token-based delivery routes remain available for existing seller
     // links and older storefront URLs. New buyer checkout code must not use
     // these methods because delivery tokens are never exposed to the buyer.
+    /**
+     * @deprecated Legacy bearer-token delivery lookup. New share links use the
+     * order id + one-time claim flow (claimDelivery + getOrder/downloadOrderDelivery).
+     */
     getDelivery: (token: string) =>
       api.get<DeliveryInfo>(`shop/delivery/${encodeURIComponent(token)}`),
+    /**
+     * @deprecated Legacy bearer-token download URL. New share links download
+     * through the receipt channel (downloadOrderDelivery).
+     */
     deliveryDownloadUrl: (token: string) =>
       api.buildUrl(`shop/delivery/${encodeURIComponent(token)}/download`),
   };

@@ -116,6 +116,18 @@ describe('shop API contract', () => {
     );
   });
 
+  it('maps one-time share claims to the delivery claim route with the claim in the body', () => {
+    const { shop, api } = setup();
+    shop.claimDelivery('order/a', 'claim-code-123');
+    expect(api.post).toHaveBeenCalledWith('shop/delivery/order%2Fa/claim', { claim: 'claim-code-123' });
+  });
+
+  it('encodes numeric order ids in the share claim route', () => {
+    const { shop, api } = setup();
+    shop.claimDelivery(42, 'claim-code-123');
+    expect(api.post).toHaveBeenCalledWith('shop/delivery/42/claim', { claim: 'claim-code-123' });
+  });
+
   it('maps seller order mutations and buyer order creation to the documented routes', () => {
     const { shop, api } = setup();
     shop.createOrder('item-1');

@@ -96,6 +96,7 @@ from AssetsManager.lan.routes import (
     handle_delivery,
     handle_order_delivery,
     handle_delivery_download,
+    handle_shop_claim_delivery,
     handle_delivery_quota,
     handle_free_quota,
     handle_seller_status,
@@ -284,6 +285,7 @@ def setup_routes(app: web.Application):
     app.router.add_get("/api/shop/orders/export", handle_order_export)
     app.router.add_get("/api/shop/delivery/{token}", handle_delivery)
     app.router.add_get("/api/shop/delivery/{token}/download", handle_delivery_download, allow_head=False)
+    app.router.add_post("/api/shop/delivery/{order_id}/claim", handle_shop_claim_delivery)
     app.router.add_get("/api/auth/seller-status", handle_seller_status)
     app.router.add_post("/api/auth/seller-login", handle_seller_login)
     app.router.add_post("/api/auth/seller-logout", handle_seller_logout)

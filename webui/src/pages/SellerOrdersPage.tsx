@@ -7,6 +7,24 @@ import { useMemo, useState } from 'react';
 import { createShopApi } from '../api/shop';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
+import type { FulfillOrderResponse } from '../types/api';
+
+/**
+ * Build the buyer-facing share link for a fulfilled order. New backends return
+ * a one-time share claim; the link then points at the storefront delivery page
+ * (order id in the route, claim in the query string). Legacy backends without
+ * share_claim keep the old bearer delivery URL.
+ */
+function buildShareDeliveryUrl(result: FulfillOrderResponse, fallbackOrderId: string): string {
+  const orderId = String(result.order?.id ?? fallbackOrderId);
+  if (result.share_claim) {
+    return new URL(
+      `/storefront/delivery/${orderId}?claim=${encodeURIComponent(result.share_claim)}`,
+      window.location.origin,
+    ).toString();
+  }
+  return new URL(result.delivery_url, window.location.origin).toString();
+}
 
 export default function SellerOrdersPage({ seller, orders = [] }: SellerPageProps) {
   const { t } = useI18n();
@@ -26,7 +44,7 @@ export default function SellerOrdersPage({ seller, orders = [] }: SellerPageProp
     setPendingId(id);
     try {
       const result = await shopApi.fulfillOrder(id);
-      const deliveryUrl = new URL(result.delivery_url, window.location.origin).toString();
+      const deliveryUrl = buildShareDeliveryUrl(result, id);
       setDeliveryLinks(current => ({ ...current, [id]: deliveryUrl }));
       try { await navigator.clipboard?.writeText(deliveryUrl); } catch { /* keep the visible link as a fallback */ }
       await commerceOrders.refresh();
@@ -43,7 +61,7 @@ export default function SellerOrdersPage({ seller, orders = [] }: SellerPageProp
     setPendingId(id);
     try {
       const result = await shopApi.rotateDelivery(id);
-      const deliveryUrl = new URL(result.delivery_url, window.location.origin).toString();
+      const deliveryUrl = buildShareDeliveryUrl(result, id);
       setDeliveryLinks(current => ({ ...current, [id]: deliveryUrl }));
       try { await navigator.clipboard?.writeText(deliveryUrl); } catch { /* keep the visible link as a fallback */ }
       await commerceOrders.refresh();

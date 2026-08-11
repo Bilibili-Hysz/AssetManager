@@ -22,7 +22,7 @@ def _setup(schema_db, tmp_path, *, max_downloads=3):
     service = OrderService(repository=orders, shop_repository=shops)
     order, receipt = service.create_order_with_receipt(root, {"item_id": item["id"]})
     service.confirm_by_receipt(root, order["id"], receipt)
-    _fulfilled, bearer = service.fulfill(
+    _fulfilled, bearer, _claim = service.fulfill(
         root, order["id"], max_downloads=max_downloads, expires_in=60
     )
     return root, order, receipt, bearer, orders, service

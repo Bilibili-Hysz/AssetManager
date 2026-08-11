@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
+import math
 from pathlib import Path
+import time
 from typing import Any, Callable
 
 from aiohttp import web
@@ -550,7 +552,7 @@ async def _order_action(request: web.Request, action: str) -> web.Response:
             order = service.revoke(lan.library_root, order_id)
             return web.json_response({"order": order})
         body = await _json_body(request) if (request.can_read_body and (request.content_length or 0) > 0) else {}
-        order, token = service.fulfill(
+        order, token, share_claim = service.fulfill(
             lan.library_root,
             order_id,
             max_downloads=body.get("max_downloads", 3),
@@ -559,7 +561,8 @@ async def _order_action(request: web.Request, action: str) -> web.Response:
         return web.json_response({
             "order": order,
             "delivery_token": token,
-            "delivery_url": f"/api/shop/delivery/{token}",
+            "share_claim": share_claim,
+            "delivery_url": f"/api/shop/delivery/{order_id}",
         })
     except Exception as exc:
         return _error_response(exc)
@@ -586,7 +589,7 @@ async def handle_order_delivery_rotate(request: web.Request) -> web.Response:
             if request.can_read_body and (request.content_length or 0) > 0
             else {}
         )
-        order, token = get_commerce_services(request).orders.rotate_delivery(
+        order, token, share_claim = get_commerce_services(request).orders.rotate_delivery(
             get_lan(request).library_root,
             request.match_info["order_id"],
             max_downloads=body.get("max_downloads"),
@@ -596,11 +599,100 @@ async def handle_order_delivery_rotate(request: web.Request) -> web.Response:
             {
                 "order": order,
                 "delivery_token": token,
-                "delivery_url": f"/api/shop/delivery/{token}",
+                "share_claim": share_claim,
+                "delivery_url": f"/api/shop/delivery/{request.match_info['order_id']}",
                 "rotated": True,
             },
             headers={"Cache-Control": "no-store"},
         )
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ── Share-claim delivery redemption ────────────────────────────
+# The claim POST is bearer-free (the code itself is the credential), so it
+# gets the same stricter per-IP failure throttling the security middleware
+# applies to auth endpoints (10 failures / 5 minutes -> 429).  State is
+# in-process only, matching the LAN middleware's memory-scoped limiters.
+_CLAIM_MAX_FAILURES = 10
+_CLAIM_WINDOW_SECONDS = 300
+
+_claim_failures: dict[str, list[float]] = {}
+
+
+def _claim_request_remote(request: web.Request) -> str:
+    """Resolve the per-IP key used for share-claim brute-force limiting."""
+    return str(getattr(request, "remote", "") or "")
+
+
+def _claim_failures_for(remote: str, now: float) -> list[float]:
+    """Return the recent failed-claim timestamps for one IP (pruning stale)."""
+    recent = [
+        ts for ts in _claim_failures.get(remote, []) if now - ts < _CLAIM_WINDOW_SECONDS
+    ]
+    if recent:
+        _claim_failures[remote] = recent
+    else:
+        _claim_failures.pop(remote, None)
+    return recent
+
+
+def _claim_brute_force_allowed(remote: str, now: float) -> bool:
+    return len(_claim_failures_for(remote, now)) < _CLAIM_MAX_FAILURES
+
+
+def _claim_retry_after(remote: str, now: float) -> int:
+    """Seconds until the oldest failure leaves the window (min 1)."""
+    failures = _claim_failures_for(remote, now)
+    if not failures:
+        return _CLAIM_WINDOW_SECONDS
+    return max(1, int(math.ceil(_CLAIM_WINDOW_SECONDS - (now - min(failures)))))
+
+
+def _record_claim_failure(remote: str, now: float) -> None:
+    _claim_failures_for(remote, now)  # prune stale entries first
+    _claim_failures.setdefault(remote, []).append(now)
+
+
+@commerce_required
+async def handle_shop_claim_delivery(request: web.Request) -> web.Response:
+    """Redeem a one-time share claim and bind the buyer receipt cookie.
+
+    The claim is delivered over the credential-less delivery link
+    (``delivery_url`` in the fulfill/rotate responses).  Every failure —
+    unknown, already-used, revoked, or expired claim — answers a uniform 404
+    so attackers cannot tell them apart; the redeemable credential itself
+    only ever reaches the HttpOnly receipt cookie.
+    """
+    order_id = request.match_info["order_id"]
+    remote = _claim_request_remote(request)
+    now = time.time()
+    if not _claim_brute_force_allowed(remote, now):
+        retry_after = _claim_retry_after(remote, now)
+        return web.json_response(
+            {
+                "error": "Too many claim attempts. Please try again later.",
+                "retry_after": retry_after,
+            },
+            status=429,
+            headers={"Retry-After": str(retry_after)},
+        )
+    try:
+        body = await _json_body(request)
+        claim = str(body.get("claim") or "").strip()
+        if not claim:
+            raise ValidationError("claim", "must not be empty")
+        result = get_commerce_services(request).orders.claim_share_delivery(
+            get_lan(request).library_root, order_id, claim
+        )
+        if result is None:
+            _record_claim_failure(remote, time.time())
+            raise NotFoundError("delivery", "claim")
+        _claim_failures.pop(remote, None)
+        _order, receipt = result
+        response = _buyer_response({"ok": True}, request=request)
+        _set_order_receipt_cookie(response, request, order_id, receipt)
+        return response
     except Exception as exc:
         return _error_response(exc)
 

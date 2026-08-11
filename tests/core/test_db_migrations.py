@@ -1149,3 +1149,74 @@ def test_v23_adds_catalog_ordering_index_to_existing_commerce_schema(memory_db, 
         "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
         ("idx_shop_items_enabled_created",),
     ).fetchone() is not None
+
+
+def test_v24_to_v25_creates_shop_share_claims(memory_db, monkeypatch):
+    from AssetsManager.core import database, db_migrations
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    all_migrations = db_migrations.MIGRATIONS
+
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 24)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:24])
+    assert db_migrations.migrate(conn) == 24
+    assert conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='shop_share_claims'"
+    ).fetchone() is None
+
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 25)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations)
+    assert db_migrations.migrate(conn) == 25
+    assert conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=25"
+    ).fetchone() == ("shop_share_claims",)
+    columns = {
+        row[1] for row in conn.execute("PRAGMA table_info('shop_share_claims')")
+    }
+    assert columns == {
+        "claim_hash",
+        "order_id",
+        "expires_at",
+        "claimed_at",
+        "revoked_at",
+        "created_at",
+    }
+    claim_fks = {
+        (row[3], row[2], row[4], row[5], row[6])
+        for row in conn.execute("PRAGMA foreign_key_list('shop_share_claims')")
+    }
+    assert ("order_id", "shop_orders", "id", "CASCADE", "CASCADE") in claim_fks
+    indexes = {
+        row[1]: tuple(
+            index_row[2]
+            for index_row in conn.execute(f"PRAGMA index_info('{row[1]}')")
+        )
+        for row in conn.execute("PRAGMA index_list('shop_share_claims')")
+    }
+    assert indexes["idx_shop_share_claims_order_created"] == (
+        "order_id",
+        "created_at",
+    )
+    # The migrated table satisfies the current schema contract.
+    from AssetsManager.core.schema_defs import validate_schema_objects
+
+    validate_schema_objects(conn, ("shop_share_claims",))
+
+
+def test_latest_schema_revalidates_shop_share_claims(memory_db):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import (
+        CURRENT_SCHEMA_VERSION,
+        InvalidSchemaError,
+        migrate,
+    )
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
+    conn.execute("DROP TABLE shop_share_claims")
+    conn.commit()
+
+    with pytest.raises(InvalidSchemaError, match="shop_share_claims"):
+        migrate(conn)

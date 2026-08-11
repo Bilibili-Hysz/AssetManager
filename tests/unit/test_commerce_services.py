@@ -38,7 +38,7 @@ def test_shop_and_order_services_enforce_path_and_state_contract(schema_db, tmp_
     with pytest.raises(OperationNotPermitted):
         order_service.fulfill(root, order["id"])
     assert order_service.confirm(root, order["id"])["status"] == "confirmed"
-    fulfilled, token = order_service.fulfill(root, order["id"], max_downloads=1)
+    fulfilled, token, _claim = order_service.fulfill(root, order["id"], max_downloads=1)
     assert fulfilled["status"] == "fulfilled"
     assert token not in {row[0] for row in schema_db.execute("SELECT token_hash FROM shop_delivery_tokens")}
     assert hash_seller_token(token) not in {token}

@@ -46,6 +46,7 @@ _EXPECTED_HISTORY = (
     (22, "shop_delivery_attempts"),
     (23, "shop_catalog_ordering_index"),
     (24, "asset_dir_mtime_snapshot"),
+    (25, "shop_share_claims"),
 )
 
 

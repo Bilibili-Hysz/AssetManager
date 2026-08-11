@@ -31,6 +31,7 @@ DEFAULT_MAX_DOWNLOADS = 3
 MAX_DOWNLOADS_LIMIT = 100
 DEFAULT_DELIVERY_TTL = 7 * 24 * 60 * 60
 DEFAULT_RECEIPT_TTL = 30 * 24 * 60 * 60
+DEFAULT_SHARE_CLAIM_TTL = 24 * 60 * 60
 MAX_DELIVERY_TTL = 365 * 24 * 60 * 60
 _MIN_TOKEN_LENGTH = 20
 _MAX_DELIVERY_REQUEST_KEY_LENGTH = 200
@@ -76,6 +77,11 @@ def _hash_token(token: str) -> str:
 
 def hash_delivery_token(token: str) -> str:
     return _hash_token(token)
+
+
+def hash_share_claim(claim: str) -> str:
+    """Hash a one-time share claim without persisting its plaintext."""
+    return _hash_token(claim)
 
 
 def hash_receipt_token(token: str) -> str:
@@ -558,7 +564,12 @@ class OrderService:
     def fulfill(self, library_root: str | Path, order_id: str | int, *,
                 max_downloads: int = DEFAULT_MAX_DOWNLOADS,
                 expires_in: int = DEFAULT_DELIVERY_TTL,
-                db_conn: sqlite3.Connection | None = None) -> tuple[dict[str, Any], str]:
+                db_conn: sqlite3.Connection | None = None) -> tuple[dict[str, Any], str, str]:
+        """Fulfill a confirmed order and return ``(seller_order, delivery_token, share_claim)``.
+
+        The share claim is the plaintext one-time code for the credential-less
+        delivery link; only its SHA-256 hash is persisted.
+        """
         root = Path(library_root).resolve()
         order_repo, shop_repo = self._repos(root, db_conn)
         current = _record(order_repo.get_order(order_id))
@@ -575,15 +586,20 @@ class OrderService:
             raise NotFoundError("delivery path", raw_path)
         maximum = self._positive_int(max_downloads, "max_downloads", maximum=MAX_DOWNLOADS_LIMIT)
         ttl = self._positive_int(expires_in, "expires_in", maximum=MAX_DELIVERY_TTL)
+        now = float(self._clock())
         token = secrets.token_urlsafe(32)
         token_hash = hash_delivery_token(token)
+        claim = secrets.token_urlsafe(24)
         updated = order_repo.fulfill_order(
             order_id,
             expected_status=CONFIRMED,
             delivery_token_hash=token_hash,
             delivery_path=target.relative_to(root).as_posix(),
             max_downloads=maximum,
-            expires_at=float(self._clock()) + ttl,
+            expires_at=now + ttl,
+            share_claim_hash=hash_share_claim(claim),
+            share_claim_expires_at=now + DEFAULT_SHARE_CLAIM_TTL,
+            fulfilled_at=now,
         )
         order = _record(updated)
         if order is None and updated:
@@ -591,7 +607,7 @@ class OrderService:
         if order is None:
             raise OperationNotPermitted("Order status changed concurrently")
         self._publish(order.get("id") if isinstance(order, Mapping) else None)
-        return self._seller_order(order), token
+        return self._seller_order(order), token, claim
 
     @session_operation
     def rotate_delivery(
@@ -602,12 +618,15 @@ class OrderService:
         max_downloads: int | None = None,
         expires_in: int | None = None,
         db_conn: sqlite3.Connection | None = None,
-    ) -> tuple[dict[str, Any], str]:
+    ) -> tuple[dict[str, Any], str, str]:
         """Issue a replacement seller delivery link, revoking the previous one.
 
         The replacement token inherits only the order's remaining quota, so
         repeated rotation can never inflate the total downloadable count and
-        a leaked delivery link stops working as soon as it is rotated.
+        a leaked delivery link stops working as soon as it is rotated.  A new
+        one-time share claim is issued for the credential-less link and every
+        prior outstanding claim of the order is revoked in the same
+        transaction.  Returns ``(seller_order, delivery_token, share_claim)``.
         """
         root = Path(library_root).resolve()
         order_repo, shop_repo = self._repos(root, db_conn)
@@ -651,18 +670,21 @@ class OrderService:
             expires_at = now + ttl
 
         token = secrets.token_urlsafe(32)
+        claim = secrets.token_urlsafe(24)
         updated = order_repo.rotate_fulfilled_delivery(
             order_id,
             delivery_token_hash=hash_delivery_token(token),
             delivery_path=Path(delivery_path).as_posix(),
             max_downloads=maximum,
             expires_at=expires_at,
+            share_claim_hash=hash_share_claim(claim),
+            share_claim_expires_at=now + DEFAULT_SHARE_CLAIM_TTL,
             rotated_at=now,
         )
         if updated is None:
             raise OperationNotPermitted("Order status changed concurrently")
         self._publish(updated.get("id") if isinstance(updated, Mapping) else None)
-        return self._seller_order(updated), token
+        return self._seller_order(updated), token, claim
 
     @session_operation
     def revoke_delivery(
@@ -951,6 +973,60 @@ class OrderService:
             )
 
     @session_operation
+    def claim_share_delivery(
+        self,
+        library_root: str | Path,
+        order_id: str | int,
+        claim: str,
+        *,
+        db_conn: sqlite3.Connection | None = None,
+    ) -> tuple[dict[str, Any], str] | None:
+        """Redeem a one-time share claim into an order receipt credential.
+
+        The plaintext claim is never persisted (only its SHA-256 hash), and
+        the redemption is a single atomic compare-and-swap: only an unused,
+        unrevoked, unexpired claim flips to ``claimed_at``, so exactly one
+        concurrent redemption wins.  On success the claimant receives a fresh
+        receipt credential (the same shape ``create_order_with_receipt``
+        hands out) scoped to the order, ready for the existing receipt cookie
+        flow.  Every failure — unknown claim, wrong order, already claimed,
+        revoked, or expired — resolves to ``None`` so callers can answer a
+        uniform 404 without revealing which condition failed.
+        """
+        normalized = str(claim or "").strip()
+        if len(normalized) < _MIN_TOKEN_LENGTH:
+            return None
+        root = Path(library_root).resolve()
+        order_repo, _ = self._repos(root, db_conn)
+        conn = db_conn or getattr(order_repo, "_conn", None)
+        if conn is None:
+            conn = self._connection(root, db_conn)
+        now = float(self._clock())
+        claim_hash = hash_share_claim(normalized)
+        with _transaction(conn, "shop_share_claim_redeem"):
+            if not order_repo.consume_share_claim(
+                order_id, claim_hash=claim_hash, consumed_at=now
+            ):
+                return None
+            state = _record(order_repo.get_receipt_state(order_id))
+            expires_at = now + DEFAULT_RECEIPT_TTL
+            if state is not None:
+                receipt_expiry = float(state.get("expires_at", 0))
+                if receipt_expiry > now:
+                    expires_at = receipt_expiry
+            receipt = secrets.token_urlsafe(32)
+            order_repo.create_receipt_recovery(
+                int(order_id),
+                token_hash=hash_receipt_token(receipt),
+                created_at=now,
+                expires_at=expires_at,
+            )
+            order = _record(order_repo.get_order(order_id))
+        if order is None:
+            return None
+        return self._buyer_order(order), receipt
+
+    @session_operation
     def stats(self, library_root: str | Path, *,
               db_conn: sqlite3.Connection | None = None) -> dict[str, Any]:
         root = Path(library_root).resolve()
@@ -979,12 +1055,14 @@ __all__ = [
     "DEFAULT_DELIVERY_TTL",
     "DEFAULT_MAX_DOWNLOADS",
     "DEFAULT_RECEIPT_TTL",
+    "DEFAULT_SHARE_CLAIM_TTL",
     "MAX_DOWNLOADS_LIMIT",
     "ORDER_STATUSES",
     "OrderService",
     "hash_delivery_request_key",
     "hash_delivery_token",
     "hash_receipt_token",
+    "hash_share_claim",
 ]
 
 
