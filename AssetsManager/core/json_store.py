@@ -18,6 +18,7 @@ import logging
 import os
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -61,7 +62,14 @@ class JsonStore:
                 return
             try:
                 if self._path.exists():
-                    data = json.loads(self._path.read_text(encoding="utf-8"))
+                    try:
+                        data = json.loads(self._path.read_text(encoding="utf-8"))
+                    except Exception:
+                        # A file that exists but cannot be read or decoded is
+                        # corrupt: move it aside so every restart doesn't fail
+                        # on it again, then fall back to defaults below.
+                        self._quarantine_corrupt_file()
+                        raise
                     self._on_loaded(data)
                 else:
                     self._on_loaded(self._default_data())
@@ -74,6 +82,26 @@ class JsonStore:
                     # rather than letting a subclass bug escape the loader.
                     _log.exception("Failed to load defaults for %s", self._path)
             self._loaded = True
+
+    def _quarantine_corrupt_file(self):
+        """Move a corrupt JSON file aside and fall back to defaults.
+
+        The original bytes are preserved in a sibling backup (the store never
+        overwrites the corrupt file itself); the file is left untouched if the
+        move fails so the caller still falls back to defaults.
+        """
+        try:
+            if not self._path.exists():
+                return
+            corrupt = self._path.with_suffix(self._path.suffix + ".corrupt")
+            if corrupt.exists():
+                corrupt = self._path.with_suffix(
+                    self._path.suffix + f".corrupt-{int(time.time())}"
+                )
+            os.replace(str(self._path), str(corrupt))
+            _log.warning("Quarantined corrupt JSON %s to %s", self._path, corrupt)
+        except OSError:
+            _log.exception("Failed to quarantine corrupt JSON at %s", self._path)
 
     def _save(self, data=None):
         """Atomically write data to disk.

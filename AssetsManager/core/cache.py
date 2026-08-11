@@ -23,37 +23,47 @@ _MISSING = object()
 
 
 class DictCache:
-    """Simple dict-based cache. No eviction."""
+    """Simple dict-based cache. No eviction. Thread-safe."""
 
     def __init__(self):
         self._store: dict = {}
+        self._lock = threading.RLock()
 
     def get(self, key):
-        return self._store.get(key)
+        with self._lock:
+            return self._store.get(key)
 
     def set(self, key, value):
-        self._store[key] = value
+        with self._lock:
+            self._store[key] = value
 
     def invalidate(self, key):
-        self._store.pop(key, None)
+        with self._lock:
+            self._store.pop(key, None)
 
     def clear(self):
-        self._store.clear()
+        with self._lock:
+            self._store.clear()
 
     def __contains__(self, key):
-        return key in self._store
+        with self._lock:
+            return key in self._store
 
     def __len__(self):
-        return len(self._store)
+        with self._lock:
+            return len(self._store)
 
     def __iter__(self):
-        return iter(self._store)
+        with self._lock:
+            return iter(list(self._store))
 
 
 class LRUCache:
     """Bounded cache with least-recently-used eviction. Thread-safe."""
 
     def __init__(self, max_size: int = 1000):
+        if max_size < 1:
+            raise ValueError(f"max_size must be >= 1, got {max_size}")
         self._store: OrderedDict = OrderedDict()
         self._max = max_size
         self._lock = threading.RLock()
@@ -117,6 +127,8 @@ class TTLCache:
     """Cache with time-to-live eviction. Thread-safe."""
 
     def __init__(self, ttl_seconds: float = 300, max_size: int = 1000):
+        if max_size < 1:
+            raise ValueError(f"max_size must be >= 1, got {max_size}")
         self._store: OrderedDict = OrderedDict()
         self._timestamps: dict = {}
         self._ttl = ttl_seconds

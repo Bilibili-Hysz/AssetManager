@@ -1027,6 +1027,8 @@ class InvalidSchemaError(RuntimeError):
         self.missing_unique_constraints = missing_unique_constraints
         self.missing_indexes = missing_indexes
         self.invalid_foreign_keys = invalid_foreign_keys
+        self.invalid_columns = invalid_columns
+        self.missing_checks = missing_checks
         self.missing_table = missing_table
         details: list[str] = []
         if missing_table:
@@ -1078,6 +1080,39 @@ def _index_columns(conn: sqlite3.Connection, index_name: str) -> tuple[str, ...]
     return tuple(row[2] for row in rows)
 
 
+# Tokenizer for CHECK-constraint comparison: string literals stay whole,
+# identifiers/numbers are single tokens, multi-char operators (>=, <=,
+# <>, !=, ...) stay attached, remaining punctuation splits per character.
+_SQL_TOKEN_RE = re.compile(
+    r"'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\""
+    r"|[A-Za-z_][A-Za-z0-9_]*"
+    r"|\d+(?:\.\d+)?"
+    r"|<=>|<>|<=|>=|!=|<<|>>"
+    r"|[()\[\],;.+\-*/%&|^~]"
+)
+
+
+def _sql_contains_tokens(table_sql: str, fragment: str) -> bool:
+    """True when *fragment* occurs in *table_sql* as a token sequence.
+
+    Tokens are compared case-insensitively and whitespace is ignored, so an
+    equivalent table rebuilt with different spacing still matches — a raw
+    substring comparison would falsely flag such a rebuild as missing a
+    CHECK constraint.
+    """
+    haystack = _SQL_TOKEN_RE.findall(table_sql.upper())
+    needle = _SQL_TOKEN_RE.findall(fragment.upper())
+    if not needle:
+        return True
+    if len(needle) > len(haystack):
+        return False
+    window = len(needle)
+    return any(
+        haystack[i : i + window] == needle
+        for i in range(len(haystack) - window + 1)
+    )
+
+
 def validate_schema_object(
     conn: sqlite3.Connection,
     table: str,
@@ -1111,12 +1146,11 @@ def validate_schema_object(
             )
         if column_contract["not_null"] and not bool(row[3]):
             invalid_columns.append(f"{column_name}.not_null expected true")
-    normalized_sql = re.sub(
-        r"\s+", " ", str(table_sql_row[0] if table_sql_row else "")
-    ).upper()
+    table_sql = str(table_sql_row[0] if table_sql_row else "")
     missing_checks = tuple(
-        check for check in contract.get("checks", ())
-        if re.sub(r"\s+", " ", check).strip().upper() not in normalized_sql
+        check
+        for check in contract.get("checks", ())
+        if not _sql_contains_tokens(table_sql, check)
     )
     primary_key = tuple(
         row[1] for row in sorted(table_info, key=lambda row: row[5]) if row[5]

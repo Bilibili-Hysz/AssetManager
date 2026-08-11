@@ -58,7 +58,9 @@ def _seller_feature_enabled(data: dict) -> bool:
 
 
 class AppSettings:
-    _instance = None
+    # Set once the exit-time flush has been registered; guards against
+    # duplicate atexit handlers from directly constructed instances.
+    _atexit_registered = False
 
     def __init__(self):
         self._data: dict = {}
@@ -66,7 +68,16 @@ class AppSettings:
         self._loaded = False
         self._path = SHARED_DIR / "settings.json"
         self._lock = threading.RLock()
-        atexit.register(self._atexit_save)
+        # Register the exit-time flush at most once per process, and never
+        # for a directly constructed duplicate of an existing singleton.
+        # Both would otherwise save at interpreter exit, and the later flush
+        # could overwrite the other's snapshot with stale in-memory data.
+        if (
+            getattr(type(self), "_singleton_instance", None) is not self
+            and not type(self)._atexit_registered
+        ):
+            type(self)._atexit_registered = True
+            atexit.register(self._atexit_save)
 
     @classmethod
     def instance(cls):
@@ -114,7 +125,13 @@ class AppSettings:
                         self._quarantine_corrupt_settings()
                         return
                     from AssetsManager.core.config_migrator import migrate
+                    old_version = data.get("_cfg_version")
                     data = migrate(data)
+                    # A migration that upgraded the config must be persisted,
+                    # otherwise the rewrite is re-derived (and re-logged) on
+                    # every startup without ever being written back.
+                    if data.get("_cfg_version") != old_version:
+                        self._dirty = True
                     self._data.update(data)
                 # Always try legacy migration if not yet done
                 if not self._data.get("_legacy_migrated"):
@@ -340,17 +357,32 @@ class AppSettings:
             self._dirty = True
 
     def prepend_list(self, key, value, max_items=50):
-        items = self.get_list(key)
-        if value in items:
-            items.remove(value)
-        items.insert(0, value)
-        self.set_list(key, items, max_items)
+        """Atomically move ``value`` to the front of the list at ``key``.
+
+        The read-modify-write happens under a single lock acquisition so a
+        concurrent ``prepend_list``/``remove_from_list`` cannot interleave
+        and lose an update.
+        """
+        with self._get_lock():
+            items = self._data.get(key)
+            items = list(items) if isinstance(items, list) else []
+            if value in items:
+                items.remove(value)
+            items.insert(0, value)
+            if max_items is not None and len(items) > max_items:
+                items = items[:max_items]
+            self._data[key] = items
+            self._dirty = True
 
     def remove_from_list(self, key, value):
-        items = self.get_list(key)
-        if value in items:
-            items.remove(value)
-            self.set_list(key, items)
+        """Atomically remove ``value`` from the list at ``key`` if present."""
+        with self._get_lock():
+            items = self._data.get(key)
+            if isinstance(items, list) and value in items:
+                items = list(items)
+                items.remove(value)
+                self._data[key] = items
+                self._dirty = True
 
     @property
     def path(self):

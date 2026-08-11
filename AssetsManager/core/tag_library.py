@@ -108,7 +108,22 @@ class TagLibrary:
             try:
                 if self._path.exists():
                     data = json.loads(self._path.read_text(encoding="utf-8"))
-                    self._synonyms = data.get("synonyms", {})
+                    synonyms = data.get("synonyms") if isinstance(data, dict) else None
+                    if not isinstance(synonyms, dict):
+                        # Structurally damaged library (missing or odd
+                        # 'synonyms' key): fall back to the default tag set
+                        # instead of silently operating on an empty library.
+                        # No explicit rewrite here; the file is repaired on
+                        # the next save (e.g. by _deduplicate_conflicts or a
+                        # later mutation).
+                        _log.warning(
+                            "Tag library %s has no object-valued 'synonyms' "
+                            "key; falling back to default tag set",
+                            self._path,
+                        )
+                        self._synonyms = dict(DEFAULT_SYNONYMS)
+                    else:
+                        self._synonyms = synonyms
                 else:
                     self._synonyms = dict(DEFAULT_SYNONYMS)
                     self._save()
@@ -168,6 +183,8 @@ class TagLibrary:
                                             suffix=".tmp", prefix="taglib_")
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
                     f.write(data)
+                    f.flush()
+                    os.fsync(f.fileno())
                 os.replace(tmp, str(self._path))
             except Exception:
                 _log.exception("Failed to save tag library")
@@ -202,19 +219,34 @@ class TagLibrary:
             self._ensure_loaded()
             return sorted(self._synonyms.keys(), key=str.lower)
 
-    def add_synonym(self, canonical: str, alias: str):
-        """Register a new synonym for a canonical tag."""
+    def add_synonym(self, canonical: str, alias: str) -> bool:
+        """Register a new synonym for a canonical tag.
+
+        Returns True when the synonym was newly registered.  Returns False
+        (instead of silently overwriting ``_reverse``) when the input is
+        empty, the alias is already registered, the alias equals the
+        canonical name, or the alias already maps to a different canonical
+        tag — mirroring ``_deduplicate_conflicts``/``_build_reverse`` which
+        treat "one alias → one canonical" as the library invariant.
+        """
         with self._lock:
             self._ensure_loaded()
             canonical = canonical.strip()
             alias = alias.strip()
             if not canonical or not alias:
-                return
+                return False
             entry = self._synonyms.setdefault(canonical, [])
-            if alias not in entry:
-                entry.append(alias)
-                self._reverse[alias.lower()] = canonical
-                self._save()
+            if alias in entry:
+                return False
+            existing = self._reverse.get(alias.lower())
+            if existing is not None and existing != canonical:
+                return False
+            if alias.lower() == canonical.lower():
+                return False
+            entry.append(alias)
+            self._reverse[alias.lower()] = canonical
+            self._save()
+            return True
 
     def register_tag(self, canonical: str, synonyms: list[str] | None = None):
         """Register a new canonical tag with optional synonyms."""

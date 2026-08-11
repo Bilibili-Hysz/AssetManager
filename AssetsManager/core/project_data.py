@@ -1,5 +1,6 @@
 """ProjectData — per-library metadata via SQLite (one DB per library)."""
 import json
+import logging
 import os
 import re
 import time
@@ -11,9 +12,16 @@ from AssetsManager.core.database import DatabaseManager, db_write_lock
 from AssetsManager.core.path_resolver import sql_like_descendant_pattern
 from AssetsManager.core.singleton import ThreadSafeSingleton
 
+logger = logging.getLogger(__name__)
+
 # Directory mtime does not change when a file's content is modified in place,
 # so the persisted cache is only trusted for this window after (re)computation.
 _SIZE_CACHE_TTL_SECONDS = 30.0
+
+# Traversal budget for compute_dir_size, matching the gallery walk limit
+# (gallery_service.max_depth = 64). Subtrees below the limit are omitted so a
+# pathologically deep tree cannot exhaust the recursion stack.
+_MAX_SIZE_DEPTH = 64
 
 
 class ProjectData:
@@ -59,6 +67,15 @@ class ProjectData:
             self._liveness.ensure_live()
 
     def _key(self, path: str) -> str:
+        # Deliberately NOT os.path.normcase'd: MetadataRepository — the
+        # primary file_meta access path — keys rows with
+        # str(Path(...).resolve()) (no case folding). normcase would
+        # lowercase the drive letter (C:\ vs c:\), stranding rows written by
+        # MetadataService and breaking cross-component reads on Windows.
+        # Case dedup for existing files is already provided by
+        # Path.resolve(), which canonicalizes to the on-disk case on
+        # Windows; only non-existent paths keep their typed case (transient
+        # rows, swept by prune_missing()).
         return str(Path(path).resolve())
 
     # ── Notes ────────────────────────────────────────────────────
@@ -106,9 +123,19 @@ class ProjectData:
         if not row:
             return []
         try:
-            return json.loads(row[0] or "[]")
+            parsed = json.loads(row[0] or "[]")
         except json.JSONDecodeError:
             return []
+        # Defend against rows carrying a valid JSON non-list payload (e.g. a
+        # dict written by an older version): add_url/remove_url would call
+        # append/remove on it and raise AttributeError.
+        if not isinstance(parsed, list):
+            logger.debug(
+                "file_meta.urls for %r is not a JSON list (%r); treating as empty",
+                self._key(path), row[0],
+            )
+            return []
+        return parsed
 
     def add_url(self, path: str, url: str):
         self._ensure_live()
@@ -142,7 +169,7 @@ class ProjectData:
     # ── Directory size cache ─────────────────────────────────────
 
     @staticmethod
-    def compute_dir_size(dir_path: str) -> int:
+    def compute_dir_size(dir_path: str, _depth: int = 0) -> int:
         total = 0
         try:
             for entry in os.scandir(dir_path):
@@ -150,7 +177,12 @@ class ProjectData:
                     if entry.is_file(follow_symlinks=False):
                         total += entry.stat(follow_symlinks=False).st_size
                     elif entry.is_dir(follow_symlinks=False):
-                        total += ProjectData.compute_dir_size(entry.path)
+                        # Depth budget: count files at this level but do not
+                        # descend below _MAX_SIZE_DEPTH (avoids RecursionError
+                        # on pathologically deep trees). Sizes beyond the
+                        # budget are omitted, not double-counted.
+                        if _depth < _MAX_SIZE_DEPTH:
+                            total += ProjectData.compute_dir_size(entry.path, _depth + 1)
                 except OSError:
                     pass
         except OSError:
@@ -177,7 +209,12 @@ class ProjectData:
                     computed_at is not None
                     and time.time() - computed_at < _SIZE_CACHE_TTL_SECONDS
                 )
-                if row[1] >= current_mtime and ttl_fresh:
+                # Exact mtime match (not >=): any drift — even a backwards
+                # clock skew — invalidates the cache. Directory mtime only
+                # tracks child add/remove; in-place content edits leave it
+                # untouched and may return a stale size inside the TTL window
+                # (accepted, bounded by _SIZE_CACHE_TTL_SECONDS).
+                if row[1] == current_mtime and ttl_fresh:
                     return (row[0], True)
         size = self.compute_dir_size(dir_path)
         self._set_cached_size(dir_path, size)

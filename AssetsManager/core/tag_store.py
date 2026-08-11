@@ -3,6 +3,12 @@
 Tags are stored using canonical names resolved by TagLibrary.
 Tags are shared across the library - same DB as file_meta.
 
+TagLibrary (core/tag_library.py) is a process-global canonical-definition
+table shared by every library by design: canonicalization is a global
+contract, while the file_tags rows themselves live in each library's own
+DB.  add_tag and get_files_by_tag both resolve through the shared library,
+so aliases behave identically in every library.
+
 This store delegates to TagRepository for all SQL operations.
 """
 import warnings
@@ -117,6 +123,10 @@ class TagStore:
 
     @_tag_store_operation
     def add_tag(self, filepath: str, tag: str):
+        # TagLibrary is a process-global canonical-definition table shared
+        # across libraries by design (only the file_tags rows are per
+        # library).  get_files_by_tag canonicalizes the same way, keeping
+        # writes and reads symmetric.
         tag = get_library().canonical(tag)
         if not tag:
             return
@@ -136,7 +146,16 @@ class TagStore:
 
     @_tag_store_operation
     def get_files_by_tag(self, tag: str) -> set[str]:
-        return set(self._repo.get_files_by_tag(tag))
+        """Return all files tagged with the given tag.
+
+        The tag is canonicalized exactly like :meth:`add_tag` — the
+        file_tags table stores canonical names, so alias queries resolve to
+        the stored canonical form (unknown tags pass through unchanged).
+        """
+        canonical = get_library().canonical(tag)
+        if not canonical:
+            return set()
+        return set(self._repo.get_files_by_tag(canonical))
 
     @_tag_store_operation
     def get_all_tags(self) -> list[str]:
