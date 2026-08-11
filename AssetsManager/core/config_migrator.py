@@ -33,6 +33,13 @@ MIGRATIONS = {
 
 def migrate(settings_data: dict) -> dict:
     ver = settings_data.get("_cfg_version", 0)
+    if not isinstance(ver, int) or isinstance(ver, bool):
+        raise ValueError(f"Invalid settings version: {ver!r}")
+    if ver > CURRENT_VERSION:
+        raise ValueError(
+            f"Settings version {ver} is newer than supported version {CURRENT_VERSION}; "
+            "refusing to downgrade configuration"
+        )
     while ver < CURRENT_VERSION:
         ver += 1
         if ver in MIGRATIONS:

@@ -11,6 +11,9 @@ import uuid
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, Iterator, TypeVar
 
+from AssetsManager.core.path_resolver import RootIdentity
+from AssetsManager.core.session_contract import register_library_session
+
 if TYPE_CHECKING:
     from AssetsManager.core.tag_store import TagStore
     from AssetsManager.core.project_data import ProjectData
@@ -18,6 +21,23 @@ if TYPE_CHECKING:
 
 ConnectionProvider = Callable[[str | Path], Connection]
 R = TypeVar("R")
+
+
+class _SessionLiveness:
+    """Small mutable liveness token shared by a context and its core stores."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._live = True
+
+    def ensure_live(self) -> None:
+        with self._lock:
+            if not self._live:
+                raise RuntimeError("Cannot use resources from a closed LibrarySession")
+
+    def invalidate(self) -> None:
+        with self._lock:
+            self._live = False
 
 
 def session_operation(method: Callable[..., R]) -> Callable[..., R]:
@@ -47,6 +67,31 @@ class LibraryContext:
     db_conn: Connection
     tag_store: TagStore
     project_data: ProjectData
+    root_key: str = ""
+    _liveness: _SessionLiveness = field(
+        default_factory=_SessionLiveness, init=False, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        # Core stores are constructed before the session wrapper in the
+        # canonical bootstrap path, so bind the shared token at context
+        # assembly time rather than changing that lifecycle.
+        for store in (self.tag_store, self.project_data):
+            bind = getattr(store, "_bind_liveness", None)
+            if bind is not None:
+                bind(self._liveness)
+
+    def _invalidate(self) -> None:
+        self._liveness.invalidate()
+
+    @property
+    def root_identity(self):
+        """Return the identity captured when this context was opened."""
+        from AssetsManager.core.path_resolver import RootIdentity, root_identity
+
+        if self.root_key:
+            return RootIdentity(self.root, self.root_key)
+        return root_identity(self.root, strict=False)
 
     @property
     def root_str(self) -> str:
@@ -60,10 +105,21 @@ class LibraryContext:
     def thumb_dir_str(self) -> str:
         return str(self.thumb_dir)
 
-    def connection_for(self, library_root: str | Path | None = None) -> Connection:
+    def connection_for(
+        self, library_root: str | Path | RootIdentity | None = None
+    ) -> Connection:
         """Return this library's DB connection, rejecting mismatched roots."""
-        if library_root is not None and Path(library_root).resolve() != self.root:
-            raise ValueError(f"Connection requested for different library: {library_root}")
+        self._liveness.ensure_live()
+        if library_root is not None:
+            from AssetsManager.core.path_resolver import root_identity
+            expected_key = self.root_key or root_identity(self.root).map_key
+            requested_key = (
+                library_root.map_key
+                if isinstance(library_root, RootIdentity)
+                else root_identity(library_root, strict=False).map_key
+            )
+            if requested_key != expected_key:
+                raise ValueError(f"Connection requested for different library: {library_root}")
         return self.db_conn
 
 
@@ -94,6 +150,9 @@ class LibrarySession:
     )
     _active_operations: int = field(default=0, init=False, repr=False, compare=False)
     _cache_cleared: bool = field(default=False, init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        register_library_session(self)
 
     @classmethod
     def from_context(
@@ -157,7 +216,9 @@ class LibrarySession:
     def thumb_dir_str(self) -> str:
         return self.context.thumb_dir_str
 
-    def connection_for(self, library_root: str | Path | None = None) -> Connection:
+    def connection_for(
+        self, library_root: str | Path | RootIdentity | None = None
+    ) -> Connection:
         self._ensure_access()
         return self.context.connection_for(library_root)
 
@@ -224,12 +285,15 @@ class LibrarySession:
             raise RuntimeError("Cannot close a LibrarySession from an active operation")
         if self._closed and self._close_callback is not None:
             self._close_callback(self)
+            self._invalidate_resources()
             return
         if self._closed:
             self._close_direct()
             return
         if self._close_callback is not None:
             self._close_callback(self)
+            self._begin_close()
+            self._invalidate_resources()
             return
         self._close_direct()
 
@@ -240,6 +304,9 @@ class LibrarySession:
         with self._operation_condition:
             object.__setattr__(self, "_closed", True)
 
+    def _invalidate_resources(self) -> None:
+        self.context._invalidate()
+
     def _finish_close(self) -> None:
         """Drain existing leases and clear owned caches once."""
         if self.has_current_thread_operation:
@@ -249,8 +316,9 @@ class LibrarySession:
             if self._cache_cleared:
                 return
             object.__setattr__(self, "_cache_cleared", True)
-        if hasattr(self.context.tag_store, "clear_cache"):
-            self.context.tag_store.clear_cache()
+        tag_store = object.__getattribute__(self.context, "tag_store")
+        if hasattr(tag_store, "clear_cache"):
+            tag_store.clear_cache()
 
     def _close_direct(self) -> None:
         """Reject new operations and drain existing ones without service locks."""
@@ -258,3 +326,4 @@ class LibrarySession:
             raise RuntimeError("Cannot close a LibrarySession from an active operation")
         self._begin_close()
         self._finish_close()
+        self._invalidate_resources()

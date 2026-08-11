@@ -44,13 +44,31 @@ class EventSubscription:
 
 
 class WeakEventSubscription(EventSubscription):
-    """Subscription that does not keep a bound-method owner alive."""
+    """Subscription that does not keep a bound-method owner alive.
+
+    Bound methods are held weakly via ``weakref.WeakMethod``. Plain
+    functions, lambdas, and callable objects cannot be weakly referenced,
+    so they fall back to a strong reference — that is safe, since such
+    callables do not pin an owning object alive (only ``close()`` releases
+    them).
+    """
 
     def __init__(self, bus: EventBus, event_type: type[DomainEvent], handler: Callable):
-        self._weak_method = weakref.WeakMethod(handler)
+        try:
+            self._weak_method = weakref.WeakMethod(handler)
+        except TypeError:
+            # Not a bound method (plain function / lambda / callable object):
+            # hold the handler strongly instead of failing subscription.
+            # Note: the base class stores the dispatch wrapper in
+            # ``self._handler``, so the fallback needs its own attribute.
+            self._weak_method = None
+            self._strong_handler = handler
         super().__init__(bus, event_type, self._dispatch)
 
     def _dispatch(self, event: DomainEvent) -> None:
+        if self._weak_method is None:
+            self._strong_handler(event)
+            return
         method = self._weak_method()
         if method is None:
             self.close()

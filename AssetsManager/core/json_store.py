@@ -31,7 +31,9 @@ class JsonStore:
         self._path = Path(path)
         self._dirty = False
         self._loaded = False
-        self._load_lock = threading.Lock()
+        # One reentrant lock covers load, mutation, and save so a snapshot
+        # taken under it cannot be overwritten by a concurrent writer.
+        self._lock = threading.RLock()
 
     # ── Subclass hooks ──────────────────────────────────────────
 
@@ -54,7 +56,7 @@ class JsonStore:
         """Lazy-load data from disk. Idempotent. Thread-safe via double-checked locking."""
         if self._loaded:
             return
-        with self._load_lock:
+        with self._lock:
             if self._loaded:
                 return
             try:
@@ -65,7 +67,12 @@ class JsonStore:
                     self._on_loaded(self._default_data())
             except Exception:
                 _log.exception("Failed to load %s", self._path)
-                self._on_loaded(self._default_data())
+                try:
+                    self._on_loaded(self._default_data())
+                except Exception:
+                    # The fallback hook itself failed; keep the store empty
+                    # rather than letting a subclass bug escape the loader.
+                    _log.exception("Failed to load defaults for %s", self._path)
             self._loaded = True
 
     def _save(self, data=None):
@@ -73,35 +80,45 @@ class JsonStore:
 
         Args:
             data: The data to serialize. If None, calls _on_before_save().
+
+        Failures (unserializable data, uncreatable parent directory, I/O
+        errors) are logged and swallowed so callers never crash mid-write.
         """
-        if data is None:
-            data = self._on_before_save()
-        if data is None:
-            return
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            content = json.dumps(data, indent=2, ensure_ascii=False)
-            fd, tmp = tempfile.mkstemp(
-                dir=str(self._path.parent),
-                suffix=".tmp",
-                prefix=f".{self._path.stem}_",
-            )
+        with self._lock:
+            if data is None:
+                data = self._on_before_save()
+            if data is None:
+                return
+            tmp = None
             try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    f.write(content)
-                    f.flush()
-                    os.fsync(f.fileno())
-                os.replace(tmp, str(self._path))
-                self._dirty = False
-            except OSError:
-                # Clean up temp file on failure
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                content = json.dumps(data, indent=2, ensure_ascii=False)
+                fd, tmp = tempfile.mkstemp(
+                    dir=str(self._path.parent),
+                    suffix=".tmp",
+                    prefix=f".{self._path.stem}_",
+                )
                 try:
-                    os.remove(tmp)
+                    with os.fdopen(fd, "w", encoding="utf-8") as f:
+                        f.write(content)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    os.replace(tmp, str(self._path))
+                    self._dirty = False
                 except OSError:
-                    pass
-                raise
-        except OSError:
-            _log.exception("Failed to save %s", self._path)
+                    # Clean up temp file on failure
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
+                    raise
+            except (OSError, TypeError, ValueError):
+                if tmp is not None:
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
+                _log.exception("Failed to save %s", self._path)
 
     def _mark_dirty(self):
         """Mark data as modified (needs save)."""

@@ -3,12 +3,17 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
+import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from sqlite3 import Connection
 
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
-from AssetsManager.core.project_data import ProjectData
+from AssetsManager.core.database import DatabaseManager
+from AssetsManager.core.path_resolver import RootIdentity, root_identity
+from AssetsManager.core.project_data import ProjectData, _SIZE_CACHE_TTL_SECONDS
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import (
     AssetNotesChanged, AssetUrlsChanged, NotesChanged, UrlsChanged,
@@ -34,20 +39,132 @@ class MetadataService:
     TagRepository for tag reads.
     """
 
-    def __init__(self, connection_provider: ConnectionProvider | None = None,
-                 session: LibrarySession | None = None):
+    def __init__(
+        self,
+        connection_provider: ConnectionProvider | None = None,
+        session: LibrarySession | None = None,
+    ):
+        self._binding_lock = threading.RLock()
         self._connection_provider = connection_provider
-        self._session = session
+        self._session: LibrarySession | None = None
+        self._root_identity: RootIdentity | None = None
+        self._repository: MetadataRepository | None = None
+        self._tag_repository: TagRepository | None = None
+        # Timestamps of the last size (re)computation per canonical path key.
+        # Mirrors ProjectData._size_cache_ts so the persisted size cache is
+        # only trusted inside the TTL window (see _size_cache_fresh).
+        self._size_cache_ts: dict[str, float] = {}
+        self._size_cache_lock = threading.Lock()
+        if session is not None:
+            self._bind_session(session, connection_provider=connection_provider)
+
+    @classmethod
+    def for_session(cls, session: LibrarySession) -> "MetadataService":
+        """Build the canonical metadata service for one real session."""
+        return cls(connection_provider=session.connection_for, session=session)
+
+    def _bind_session(
+        self,
+        session: LibrarySession,
+        *,
+        connection_provider: ConnectionProvider | None = None,
+    ) -> None:
+        if not isinstance(session, LibrarySession):
+            raise TypeError("MetadataService requires a real LibrarySession")
+        provider = connection_provider or session.connection_for
+        if not callable(provider):
+            raise TypeError("MetadataService requires a callable ConnectionProvider")
+        identity = session.context.root_identity
+
+        with self._binding_lock:
+            if self._session is not None:
+                if self._session is session:
+                    return
+                raise RuntimeError(
+                    "MetadataService is already bound to another LibrarySession"
+                )
+            with session.operation():
+                conn = session.connection_for(identity)
+                conn = DatabaseManager.require_managed_connection_owner(
+                    identity, conn
+                )
+                if provider(identity.display_path) is not conn:
+                    raise ValueError(
+                        "MetadataService connection provider does not belong "
+                        "to the LibrarySession"
+                    )
+                repository = MetadataRepository.for_session(session)
+                if repository._conn is not conn:
+                    raise ValueError(
+                        "MetadataRepository connection does not match MetadataService"
+                    )
+                tag_repository = TagRepository.for_session(session)
+                if tag_repository._conn is not conn:
+                    raise ValueError(
+                        "TagRepository connection does not match MetadataService"
+                    )
+
+                def publish_binding() -> None:
+                    self._connection_provider = session.connection_for
+                    self._root_identity = identity
+                    self._repository = repository
+                    self._tag_repository = tag_repository
+                    self._session = session
+
+                session._publish_while_live(publish_binding)
 
     def _connection(self, library_root: str | Path) -> Connection:
-        root = str(Path(library_root).resolve())
+        identity = root_identity(library_root, strict=False)
+        if self._session is not None:
+            if (
+                self._root_identity is None
+                or identity.map_key != self._root_identity.map_key
+            ):
+                raise ValueError(
+                    "MetadataService library_root does not match "
+                    "the bound LibrarySession"
+                )
+            if self._repository is None:
+                raise RuntimeError("MetadataService repository binding is unavailable")
+            return self._repository._conn
+
+        root = str(identity.display_path)
         if self._connection_provider is not None:
-            return self._connection_provider(root)
+            conn = self._connection_provider(root)
+            return DatabaseManager.validate_connection_owner(
+                identity, conn, allow_unmanaged=True
+            )
         raise RuntimeError("MetadataService requires an explicit ConnectionProvider.")
 
     def _repo(self, library_root: str | Path) -> MetadataRepository:
-        """Return a MetadataRepository for the given library root."""
-        return MetadataRepository(self._connection(library_root))
+        """Return the retained bound repository or a raw legacy adapter."""
+        conn = self._connection(library_root)
+        if self._session is not None:
+            if self._repository is None or self._repository._conn is not conn:
+                raise RuntimeError("MetadataService repository binding is unavailable")
+            return self._repository
+        return MetadataRepository(conn)
+
+    @staticmethod
+    def _resolve_under_root(
+        library_root: str | Path, path: str | Path
+    ) -> tuple[Path, Path]:
+        """Resolve a library root and reject paths outside that root."""
+        root = Path(library_root).resolve()
+        target = Path(path).resolve()
+        if not target.is_relative_to(root):
+            raise ValueError(
+                f"path must be under library_root: {target} (root {root})"
+            )
+        return root, target
+
+    @classmethod
+    def _resolve_many_under_root(
+        cls, library_root: str | Path, paths: Sequence[str | Path]
+    ) -> tuple[Path, list[Path]]:
+        root = Path(library_root).resolve()
+        targets = [cls._resolve_under_root(root, path)[1] for path in paths]
+        return root, targets
 
     def _publish_notes_changed(self, file_path: str) -> None:
         if self._session is None:
@@ -68,13 +185,31 @@ class MetadataService:
             new_urls=urls,
         ))
 
+    def _require_event_safe_transaction(self, repo: MetadataRepository) -> None:
+        """Reject caller-owned transactions before publishing metadata events.
+
+        The bound repository deliberately preserves an outer transaction.  A
+        service-level metadata event, however, cannot be deferred until an
+        arbitrary caller later commits that transaction.  Fail closed rather
+        than publish a notification for a write that may roll back.
+        Raw compatibility services retain their historical behavior.
+        """
+        if self._session is not None and repo._conn.in_transaction:
+            raise RuntimeError(
+                "MetadataService metadata mutations require a clean transaction "
+                "boundary"
+            )
+
     @session_operation
     def get_metadata(self, library_root: str | Path, path: str | Path) -> AssetMetadata:
-        root = str(Path(library_root).resolve())
-        target = Path(path).resolve()
-        conn = self._connection(root)
-        meta_repo = MetadataRepository(conn)
-        tag_repo = TagRepository(conn)
+        root_path, target = self._resolve_under_root(library_root, path)
+        root = str(root_path)
+        meta_repo = self._repo(root)
+        tag_repo = (
+            self._tag_repository
+            if self._session is not None and self._tag_repository is not None
+            else TagRepository(meta_repo._conn)
+        )
         notes, urls = meta_repo.get_notes_and_urls(str(target))
         return AssetMetadata(
             path=target,
@@ -85,24 +220,31 @@ class MetadataService:
 
     @session_operation
     def get_notes(self, library_root: str | Path, path: str | Path) -> str:
-        return self._repo(str(Path(library_root).resolve())).get_notes(str(Path(path).resolve()))
+        root, target = self._resolve_under_root(library_root, path)
+        return self._repo(root).get_notes(str(target))
 
     @session_operation
     def set_notes(self, library_root: str | Path, path: str | Path, text: str) -> None:
-        key = str(Path(path).resolve())
-        self._repo(str(Path(library_root).resolve())).set_notes(key, text)
+        root, target = self._resolve_under_root(library_root, path)
+        key = str(target)
+        repo = self._repo(root)
+        self._require_event_safe_transaction(repo)
+        repo.set_notes(key, text)
         get_event_bus().publish(NotesChanged(file_path=key))
         self._publish_notes_changed(key)
 
     @session_operation
     def get_urls(self, library_root: str | Path, path: str | Path) -> list[str]:
-        return self._repo(str(Path(library_root).resolve())).get_urls(str(Path(path).resolve()))
+        root, target = self._resolve_under_root(library_root, path)
+        return self._repo(root).get_urls(str(target))
 
     @session_operation
     def add_url(self, library_root: str | Path, path: str | Path, url: str) -> None:
-        root = str(Path(library_root).resolve())
-        key = str(Path(path).resolve())
+        root_path, target = self._resolve_under_root(library_root, path)
+        root = str(root_path)
+        key = str(target)
         repo = self._repo(root)
+        self._require_event_safe_transaction(repo)
         urls = repo.add_url(key, url)
         if urls is not None:
             result = tuple(urls)
@@ -111,8 +253,9 @@ class MetadataService:
 
     @session_operation
     def remove_url(self, library_root: str | Path, path: str | Path, url: str) -> None:
-        root = str(Path(library_root).resolve())
-        key = str(Path(path).resolve())
+        root_path, target = self._resolve_under_root(library_root, path)
+        root = str(root_path)
+        key = str(target)
         repo = self._repo(root)
         urls = repo.remove_url(key, url)
         if urls is not None:
@@ -123,13 +266,15 @@ class MetadataService:
     @session_operation
     def get_dir_size(self, library_root: str | Path, dir_path: str | Path,
                      force: bool = False) -> tuple[int, bool]:
-        root = str(Path(library_root).resolve())
-        target = str(Path(dir_path).resolve())
-        conn = self._connection(root)
-        repo = MetadataRepository(conn)
+        root_path, target_path = self._resolve_under_root(library_root, dir_path)
+        root = str(root_path)
+        target = str(target_path)
+        repo = self._repo(root)
         if not force and target == root:
             total = repo.get_library_total_size(root)
-            if total > 0:
+            # The library root has no directory mtime probe; the TTL window
+            # alone guarantees that in-place edits refresh the total.
+            if total > 0 and self._size_cache_fresh(root):
                 return (total, True)
         if not os.path.isdir(target):
             return (0, False)
@@ -140,7 +285,10 @@ class MetadataService:
                     current_mtime = os.path.getmtime(target)
                 except OSError:
                     return (0, False)
-                if cached[1] >= current_mtime:
+                # The mtime check alone cannot detect in-place file edits
+                # (they leave the directory mtime untouched), so the cached
+                # value is additionally trusted only inside the TTL window.
+                if cached[1] >= current_mtime and self._size_cache_fresh(target):
                     return (cached[0], True)
         size = ProjectData.compute_dir_size(target)
         try:
@@ -148,44 +296,115 @@ class MetadataService:
         except OSError:
             mtime = 0.0
         repo.set_cached_size(target, size, mtime)
+        self._mark_size_cached(target)
         return (size, False)
 
     @session_operation
     def set_dir_size(self, library_root: str | Path, dir_path: str | Path, size: int) -> None:
-        root = str(Path(library_root).resolve())
-        target = str(Path(dir_path).resolve())
+        root_path, target_path = self._resolve_under_root(library_root, dir_path)
+        root = str(root_path)
+        target = str(target_path)
         mtime = os.path.getmtime(target) if os.path.exists(target) else 0.0
         self._repo(root).set_cached_size(target, size, mtime)
+        self._mark_size_cached(target)
+
+    def _size_cache_fresh(self, key: str) -> bool:
+        """Return True while the size for ``key`` is inside the TTL window.
+
+        Mirrors the ProjectData.get_dir_size TTL semantics: the persisted
+        size cache is only trusted for ``_SIZE_CACHE_TTL_SECONDS`` after the
+        last (re)computation, so in-place edits that do not change the
+        directory mtime still force a refresh.
+        """
+        with self._size_cache_lock:
+            computed_at = self._size_cache_ts.get(key)
+        return (
+            computed_at is not None
+            and time.time() - computed_at < _SIZE_CACHE_TTL_SECONDS
+        )
+
+    def _mark_size_cached(self, key: str) -> None:
+        """Record that the persisted size for ``key`` was just (re)computed."""
+        with self._size_cache_lock:
+            self._size_cache_ts[key] = time.time()
+
+    @staticmethod
+    def _canonical_path_key(path: str | Path) -> str:
+        """Return the canonical key used by the metadata repository."""
+        return str(Path(path).resolve())
+
+    @classmethod
+    def _canonicalize_path_keys(
+        cls, paths: Sequence[str | Path], caller_paths: Sequence[str | Path]
+    ) -> tuple[list[str], dict[str, list[str]]]:
+        """Canonicalize query keys and retain their caller-facing spellings."""
+        canonical_paths = [cls._canonical_path_key(path) for path in paths]
+        caller_keys: dict[str, list[str]] = {}
+        for canonical, caller in zip(canonical_paths, (str(path) for path in caller_paths)):
+            caller_keys.setdefault(canonical, []).append(caller)
+        return canonical_paths, caller_keys
 
     @session_operation
     def get_cached_stats(
         self, library_root: str | Path, file_paths: list[str]
     ) -> dict[str, tuple[int, float]]:
-        """Return {path: (cached_size, cached_mtime)} for given paths from file_meta."""
+        """Return cached stats under the keys supplied by the caller."""
         if not file_paths:
             return {}
-        return self._repo(str(Path(library_root).resolve())).get_cached_stats(file_paths)
+        root, targets = self._resolve_many_under_root(library_root, file_paths)
+        canonical_paths, caller_keys = self._canonicalize_path_keys(targets, file_paths)
+        cached = self._repo(root).get_cached_stats(canonical_paths)
+        return {
+            caller_key: value
+            for path, value in cached.items()
+            for caller_key in caller_keys[path]
+        }
 
     @session_operation
     def get_cached_file_count(self, library_root: str | Path, dir_path: str | Path) -> int | None:
         """Return cached file count for a directory, or None if not cached."""
-        return self._repo(str(Path(library_root).resolve())).get_cached_file_count(str(Path(dir_path).resolve()))
+        root, target = self._resolve_under_root(library_root, dir_path)
+        return self._repo(root).get_cached_file_count(str(target))
 
     @session_operation
     def get_library_total_size(self, library_root: str | Path) -> int:
         """Return total size from library_stats, or 0 if not available."""
-        return self._repo(str(Path(library_root).resolve())).get_library_total_size(str(Path(library_root).resolve()))
+        root = str(Path(library_root).resolve())
+        return self._repo(root).get_library_total_size(root)
+
+    @session_operation
+    def set_library_total_size(self, library_root: str | Path, size: int) -> None:
+        """Persist the current aggregate size for one library root."""
+        if size < 0:
+            raise ValueError("Library total size cannot be negative")
+        root = str(Path(library_root).resolve())
+        self._repo(root).set_library_total_size(root, int(size))
+        # Refresh the root TTL so a fresh total is served by get_dir_size
+        # instead of triggering an immediate full-library recompute.
+        self._mark_size_cached(root)
 
     @session_operation
     def batch_get_cached_file_counts(self, library_root: str, dir_paths: list[str]) -> dict[str, int]:
-        """Return {path: count} for directories that have cached file counts."""
+        """Return cached file counts under the keys supplied by the caller."""
         if not dir_paths:
             return {}
-        return self._repo(str(Path(library_root).resolve())).batch_get_cached_file_counts(dir_paths)
+        root, targets = self._resolve_many_under_root(library_root, dir_paths)
+        canonical_paths, caller_keys = self._canonicalize_path_keys(targets, dir_paths)
+        cached = self._repo(root).batch_get_cached_file_counts(canonical_paths)
+        return {
+            caller_key: value
+            for path, value in cached.items()
+            for caller_key in caller_keys[path]
+        }
 
     @session_operation
     def batch_set_cached_file_counts(self, library_root: str, entries: dict[str, int]) -> None:
         """Cache file counts for multiple directories in a single transaction."""
         if not entries:
             return
-        self._repo(str(Path(library_root).resolve())).batch_set_cached_file_counts(entries)
+        root, targets = self._resolve_many_under_root(library_root, list(entries))
+        canonical_entries = {
+            str(target): count
+            for target, count in zip(targets, entries.values())
+        }
+        self._repo(root).batch_set_cached_file_counts(canonical_entries)

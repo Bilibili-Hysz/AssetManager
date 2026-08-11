@@ -64,8 +64,10 @@ class LibraryLock:
         with _registry_guard:
             shared = _held_locks.get(self._key)
             if shared is None or shared[0] is not self._lock:
-                self._released = True
-                return True
+                # Registry loss/mismatch means the process cannot prove that
+                # this handle was released. Keep the object retryable and fail
+                # closed instead of reporting a false successful unlock.
+                return False
             if shared[1] > 1:
                 _held_locks[self._key] = (self._lock, shared[1] - 1)
                 self._released = True

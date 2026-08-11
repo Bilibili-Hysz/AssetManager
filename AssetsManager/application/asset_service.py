@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 
+from AssetsManager.application.context import LibrarySession, session_operation
 from AssetsManager.application.asset_filters import (
     IMAGE_EXTS,
     extension_matches_category,
@@ -76,13 +77,16 @@ class AssetService:
         directory_cache: DirectoryCache | None = None,
         performance_recorder: PerformanceRecorder | None = None,
         session_token: str | None = None,
+        session: LibrarySession | None = None,
     ):
         self._directory_cache = directory_cache
         self._performance_recorder = (
             performance_recorder if performance_recorder is not None and performance_recorder.enabled else None
         )
         self._session_token = session_token
+        self._session = session
 
+    @session_operation
     def list_directory(self, library_root: Path, target: Path,
                        options: DirectoryListOptions | None = None) -> DirectoryListing:
         options = options or DirectoryListOptions()
@@ -92,6 +96,9 @@ class AssetService:
             target = Path(target).resolve()
             if not target.is_relative_to(root):
                 raise ValueError('target must be under library_root')
+            validate_cache = getattr(self._directory_cache, "validate_for", None)
+            if callable(validate_cache):
+                validate_cache(root)
             rel_path = "" if target == root else os.path.relpath(target, root).replace("\\", "/")
             target_depth = len([part for part in rel_path.split("/") if part])
             branch_name = options.branch_name or (rel_path.split("/", 1)[0] if rel_path else None)
@@ -142,6 +149,8 @@ class AssetService:
 
         path_values: list[str] = []
         for path in paths:
+            if not isinstance(path, (str, os.PathLike)):
+                raise ValidationError("paths", "paths must be unique strings")
             try:
                 value = os.fspath(path)
             except TypeError:
@@ -161,6 +170,7 @@ class AssetService:
             raise ValidationError("parent_path", "Parent is not a directory")
         return parent
 
+    @session_operation
     def summarize_directories(
         self,
         directories: Sequence[Path],
@@ -176,7 +186,7 @@ class AssetService:
         if any(not directory.is_dir() or directory.parent != parent_path for directory in directory_paths):
             raise ValidationError("paths", "paths must be direct child directories")
 
-        cached_entries = self._directory_cache.get_batch(path_values) if self._directory_cache else {}
+        cached_entries = self._directory_cache.get_batch(list(path_values)) if self._directory_cache else {}
         cache_writes: list[tuple[str, int, str | None, float]] = []
         summaries = {
             str(directory): _scan_dir_summary(
@@ -208,7 +218,11 @@ class AssetService:
             return None
 
         ext = os.path.splitext(name)[1].lower()
-        is_dir = entry.is_dir()
+        try:
+            is_dir = entry.is_dir()
+        except OSError:
+            # The entry disappeared between scandir and stat — treat as absent.
+            return None
         category = "folder" if is_dir else category_for_extension(ext)
         if options.include_types and category != "folder" and category not in options.include_types:
             return None
@@ -264,7 +278,15 @@ class AssetService:
     ) -> dict[str, DirCacheEntry]:
         if self._directory_cache is None or not options.scan_summaries:
             return {}
-        return self._directory_cache.get_batch([entry.path for entry in entries if entry.is_dir()])
+        dir_paths = []
+        for entry in entries:
+            try:
+                if entry.is_dir():
+                    dir_paths.append(entry.path)
+            except OSError:
+                # The entry vanished mid-listing — skip its cache lookup.
+                continue
+        return self._directory_cache.get_batch(dir_paths)
 
     @staticmethod
     def _sort(items: list[AssetListItem], sort_by: str, order: str) -> list[AssetListItem]:
@@ -342,19 +364,43 @@ def _scan_dir_summary(
 
     preview: Path | None = None
     count = 0
+    scan_complete = True
     try:
-        for entry in os.scandir(dir_path):
-            if entry.name.startswith("."):
-                continue
-            count += 1
-            if preview is None and entry.is_file():
-                ext = Path(entry.name).suffix.lower()
-                if ext in IMAGE_EXTS:
-                    preview = Path(entry.path)
+        scan_iterator = os.scandir(dir_path)
     except OSError:
-        pass
+        scan_iterator = None
+        scan_complete = False
+    if scan_iterator is not None:
+        try:
+            for entry in scan_iterator:
+                if entry.name.startswith("."):
+                    continue
+                count += 1
+                if preview is None:
+                    try:
+                        is_file = entry.is_file()
+                    except OSError:
+                        # The entry vanished mid-scan: skip it, but the count
+                        # is no longer trustworthy — do not persist it.
+                        scan_complete = False
+                        continue
+                    if is_file:
+                        ext = Path(entry.name).suffix.lower()
+                        if ext in IMAGE_EXTS:
+                            preview = Path(entry.path)
+        except OSError:
+            scan_complete = False
+        finally:
+            close = getattr(scan_iterator, "close", None)
+            if close is not None:
+                try:
+                    close()
+                except OSError:
+                    pass
 
-    if cache is not None and mtime is not None:
+    # Only persist results of a complete scan: partial counts from an
+    # interrupted scan must not replace a good cached entry.
+    if cache is not None and mtime is not None and scan_complete:
         cache_entry = (str(dir_path), count, str(preview) if preview else None, mtime)
         if cache_writes is None:
             cache.set(*cache_entry)

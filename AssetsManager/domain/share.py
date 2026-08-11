@@ -40,11 +40,14 @@ class ShareLink:
         Normalizes the path with ``os.path.normpath`` to collapse ``..``
         segments before comparing, so ``project/../public.txt`` correctly
         resolves to ``public.txt`` and is NOT allowed when the share only
-        covers ``project/``.
+        covers ``project/``.  A root share (path "." or "") covers the
+        whole library, so every relative path is in scope.
         """
         norm = os.path.normpath(rel_path).replace("\\", "/")
         for sp in self.paths:
             sp_norm = os.path.normpath(sp).replace("\\", "/")
+            if sp_norm in (".", ""):
+                return True  # Root share covers the whole library
             if norm == sp_norm or norm.startswith(sp_norm + "/"):
                 return True
         return False

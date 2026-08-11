@@ -13,16 +13,31 @@ import secrets
 import threading
 from dataclasses import dataclass, field
 from functools import partial
+from pathlib import Path
+import sqlite3
 from typing import TYPE_CHECKING, Callable
 
 from AssetsManager.application.asset_index_service import AssetIndexService
+from AssetsManager.application.asset_index_reconciliation_service import AssetIndexReconciliationService
 from AssetsManager.application.auth_service import AuthService
 from AssetsManager.application.asset_service import AssetService
 from AssetsManager.application.context import ConnectionProvider, LibrarySession
+from AssetsManager.application.database_integrity_service import DatabaseIntegrityService
+from AssetsManager.application.database_maintenance_service import DatabaseMaintenanceService
 from AssetsManager.application.file_operation_service import FileOperationService
+from AssetsManager.application.favorite_service import FavoriteService
+from AssetsManager.application.gallery_service import GalleryService
+from AssetsManager.application.library_export_service import LibraryExportService
 from AssetsManager.application.library_service import LibraryService
 from AssetsManager.application.metadata_service import MetadataService
 from AssetsManager.application.plugin_service import PluginService
+from AssetsManager.application.reconciliation_queue import ReconciliationQueue
+from AssetsManager.application.reconciliation_queue_migration import (
+    migrate_reconciliation_marker,
+)
+from AssetsManager.application.reconciliation_queue_store import (
+    SQLiteReconciliationQueueStore,
+)
 from AssetsManager.application.project_service import ProjectService
 from AssetsManager.application.search_service import SearchService
 from AssetsManager.application.share_service import ShareService
@@ -32,6 +47,7 @@ from AssetsManager.application.undo_service import UndoService
 from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.directory_cache import DirectoryCache
 from AssetsManager.core.performance import PerformanceRecorder
+from AssetsManager.core.path_resolver import RootIdentity, library_data_dir
 from AssetsManager.core.plugins import PluginHostContext
 from AssetsManager.di import ServiceContainer
 
@@ -57,6 +73,8 @@ class LanRuntimeServices:
     asset_service: AssetService
     project_service: ProjectService
     search_service: SearchService
+    gallery_service: GalleryService | None = None
+    favorite_service: FavoriteService | None = None
 
 
 _MISSING = object()
@@ -90,6 +108,10 @@ class _LanServicesHolder:
         while True:
             with self._condition:
                 if self._state == "ready":
+                    if self._session.is_closed:
+                        raise RuntimeError(
+                            "Cannot use retained LAN services from a closed LibrarySession"
+                        )
                     assert self._value is not None
                     return self._value
                 if self._state == "building":
@@ -177,6 +199,9 @@ class LibraryScopedServices:
 
     session: LibrarySession
     sharing_services: RuntimeSharingServices
+    integrity_service: DatabaseIntegrityService
+    maintenance_service: DatabaseMaintenanceService
+    export_service: LibraryExportService
     metadata_service: MetadataService
     tag_service: TagService
     thumbnail_service: ThumbnailService
@@ -186,6 +211,8 @@ class LibraryScopedServices:
     asset_index_service: AssetIndexService
     _lan_holder: _LanServicesHolder = field(repr=False, compare=False, hash=False)
     performance_recorder: PerformanceRecorder | None = None
+    reconciliation_queue: ReconciliationQueue | None = None
+    reconciliation_service: AssetIndexReconciliationService | None = None
 
     @property
     def lan_services(self) -> LanRuntimeServices:
@@ -306,6 +333,10 @@ class ApplicationBootstrap:
             with self._runtime_lock:
                 cached = self._runtimes.get(key)
                 if cached is not None and cached.session is session:
+                    if not cached.is_open:
+                        raise RuntimeError(
+                            "Cannot return a closing or closed LibraryRuntime"
+                        )
                     return cached
                 gate = self._runtime_creation.get(key)
                 if gate is None:
@@ -318,8 +349,20 @@ class ApplicationBootstrap:
                 break
             gate.wait()
 
+        runtime = None
+        published = False
         try:
-            runtime = LibraryRuntime(session=session, services=self._build_services(session))
+            services = self._build_services(session)
+            runtime = LibraryRuntime(session=session, services=services)
+            for adapter_name in (
+                "integrity_service",
+                "maintenance_service",
+                "reconciliation_service",
+            ):
+                adapter = getattr(services, adapter_name, None)
+                if adapter is not None:
+                    runtime.register_lifecycle_adapter(adapter)
+            reconciliation_service = getattr(services, "reconciliation_service", None)
             with self._runtime_lock:
                 if (
                     not self.library_service.owns_live_session(session)
@@ -331,10 +374,18 @@ class ApplicationBootstrap:
                     reject = False
                     cached = self._runtimes.get(key)
                 if not reject and (cached is None or cached.session is not session):
-                    self._runtimes[key] = runtime
-                    return runtime
+                    if reconciliation_service is not None:
+                        reconciliation_service.start()
+                    if (
+                        not self.library_service.owns_live_session(session)
+                        or session.is_closed
+                    ):
+                        reject = True
+                    else:
+                        self._runtimes[key] = runtime
+                        published = True
+                        return runtime
             if reject:
-                runtime.close()
                 raise ValueError(
                     "LibrarySession was closed while its Runtime was being created"
                 )
@@ -342,16 +393,97 @@ class ApplicationBootstrap:
             if cached is None:
                 raise RuntimeError("Runtime cache disappeared during creation")
             return cached
+        except BaseException as error:
+            if runtime is not None and not published:
+                try:
+                    runtime.close()
+                except BaseException as cleanup_error:
+                    try:
+                        error.add_note(
+                            f"Runtime construction cleanup is pending: {cleanup_error}"
+                        )
+                    except (AttributeError, TypeError):
+                        pass
+            raise
         finally:
             with self._runtime_lock:
                 gate = self._runtime_creation.pop(key, None)
                 if gate is not None:
                     gate.set()
 
+    @staticmethod
+    def _strict_connection_provider(
+        provider: Callable[..., sqlite3.Connection],
+    ) -> Callable[[str | Path | RootIdentity], sqlite3.Connection]:
+        """Wrap a canonical provider with fail-closed ownership validation."""
+
+        def strict_provider(
+            root: str | Path | RootIdentity,
+        ) -> sqlite3.Connection:
+            return DatabaseManager.require_managed_connection_owner(root, provider(root))
+
+        return strict_provider
+
     def _build_services(self, session: LibrarySession) -> LibraryScopedServices:
+        identity = session.context.root_identity
+        captured_generation = self.library_service._session_generations.get(identity.map_key)
+
+        # Preserve the bound provider identity for runtime/LAN binding checks.
+        # Validate its first canonical connection separately so a monkeypatched
+        # provider returning an unmanaged raw connection still fails closed.
         provider = session.connection_for
+
+        def restore_state_provider(_root=None):
+            return self.library_service.restore_state_provider(identity)
+
+        def restore_acknowledger(_root=None, token=None):
+            state = restore_state_provider(identity)
+            if state is not None and captured_generation is not None:
+                current_generation = self.library_service._root_generation(identity.map_key)
+                if state.generation != captured_generation or current_generation != captured_generation:
+                    raise RuntimeError(
+                        "Restore recovery acknowledgement rejected: stale or unknown token"
+                    )
+                if token != state.token:
+                    raise RuntimeError(
+                        "Restore recovery acknowledgement rejected: stale or unknown token"
+                    )
+            self.library_service.restore_acknowledger(identity, token)
+            return None
         with session.operation():
-            connection = provider(session.root)
+            connection = DatabaseManager.require_managed_connection_owner(
+                identity, provider(identity)
+            )
+            asset_index_service = AssetIndexService.for_session(session)
+            reconciliation_marker = library_data_dir(identity) / "reconciliation-queue.json"
+            reconciliation_store = SQLiteReconciliationQueueStore(
+                connection=connection,
+                library_root=session.root,
+            )
+            migrate_reconciliation_marker(
+                marker_path=reconciliation_marker,
+                library_root=session.root,
+                store=reconciliation_store,
+            )
+            reconciliation_queue = ReconciliationQueue(
+                library_root=session.root_str,
+                persistence_store=reconciliation_store,
+                # SQLite generation polling is the cross-process wakeup
+                # fallback; Condition remains the same-process fast path.
+                cross_process_poll_interval=0.5,
+            )
+            reconciliation_service = AssetIndexReconciliationService(
+                session=session,
+                asset_index_service=asset_index_service,
+                reconciliation_queue=reconciliation_queue,
+                # A runtime worker may recover from a bounded burst of
+                # unexpected infrastructure failures, but it must still
+                # become visibly faulted instead of retrying forever.
+                max_worker_restarts=2,
+                worker_restart_backoff=1.0,
+                max_persistence_conflict_retries=2,
+                persistence_conflict_backoff=0.05,
+            )
             token_secret = secrets.token_hex(32)
             sharing_services = RuntimeSharingServices(
                 token_secret=token_secret,
@@ -360,18 +492,36 @@ class ApplicationBootstrap:
             )
             sharing_services.auth_service.init_tables()
             sharing_services.share_service.init_table()
+            export_service = LibraryExportService(
+                connection_provider=provider,
+                session=session,
+                restore_coordinator=self.library_service.restore_reservation,
+                restore_state_provider=restore_state_provider,
+                restore_acknowledger=restore_acknowledger,
+            )
+
             return LibraryScopedServices(
                 session=session,
                 sharing_services=sharing_services,
-                metadata_service=MetadataService(connection_provider=provider, session=session),
-                tag_service=TagService(connection_provider=provider, session=session),
+                integrity_service=DatabaseIntegrityService(
+                    connection_provider=provider,
+                    session=session,
+                ),
+                maintenance_service=DatabaseMaintenanceService(
+                    connection_provider=provider,
+                    session=session,
+                ),
+                export_service=export_service,
+                metadata_service=MetadataService.for_session(session),
+                tag_service=TagService.for_session(session),
                 thumbnail_service=ThumbnailService(
                     connection_provider=provider, session=session
                 ),
                 file_operation_service=FileOperationService(
                     session=session,
-                    asset_index_service=self.container.resolve(AssetIndexService),
+                    asset_index_service=asset_index_service,
                     performance_recorder=self._performance_recorder,
+                    reconciliation_queue=reconciliation_queue,
                 ),
                 undo_service=UndoService(
                     library_root=session.root_str,
@@ -379,12 +529,14 @@ class ApplicationBootstrap:
                     performance_recorder=self._performance_recorder,
                 ),
                 plugin_service=self.container.resolve(PluginService),
-                asset_index_service=self.container.resolve(AssetIndexService),
+                asset_index_service=asset_index_service,
                 _lan_holder=_LanServicesHolder(
                     session,
                     partial(self._build_lan_services, connection_provider=provider),
                 ),
                 performance_recorder=self._performance_recorder,
+                reconciliation_queue=reconciliation_queue,
+                reconciliation_service=reconciliation_service,
             )
 
     def _build_lan_services(
@@ -392,24 +544,41 @@ class ApplicationBootstrap:
         session: LibrarySession,
         *,
         connection_provider: ConnectionProvider | None = None,
+        asset_index_service: AssetIndexService | None = None,
     ) -> LanRuntimeServices:
-        provider = (
-            connection_provider
-            if connection_provider is not None
-            else session.connection_for
+        provider = connection_provider if connection_provider is not None else session.connection_for
+        index_service = asset_index_service
+        if index_service is None:
+            index_service = (
+                AssetIndexService.for_session(session)
+                if isinstance(session, LibrarySession)
+                else self.container.resolve(AssetIndexService)
+            )
+        is_canonical_provider = (
+            getattr(provider, "__self__", None) is session
+            and getattr(provider, "__func__", None) is LibrarySession.connection_for
         )
+        if not is_canonical_provider:
+            provider = self._strict_connection_provider(provider)
         return LanRuntimeServices(
             asset_service=AssetService(
-                directory_cache=DirectoryCache(provider(session.root)),
+                directory_cache=DirectoryCache(
+                    provider(session.root), library_root=session.root, session=session
+                ),
                 performance_recorder=self._performance_recorder,
                 session_token=session.event_token,
+                session=session,
             ),
             project_service=ProjectService(connection_provider=provider, session=session),
             search_service=SearchService(
                 performance_recorder=self._performance_recorder,
                 session_token=session.event_token,
                 connection_provider=provider,
+                session=session,
+                asset_index_service=index_service,
             ),
+            gallery_service=GalleryService(connection_provider=provider, session=session),
+            favorite_service=FavoriteService(connection_provider=provider, session=session),
         )
 
     def _close_runtime(self, session: LibrarySession) -> None:
@@ -424,6 +593,16 @@ class ApplicationBootstrap:
             runtime = self._runtimes.get(id(session))
         if runtime is not None and runtime.session is session:
             runtime.close()
+            with runtime._condition:
+                cleanup_complete = (
+                    runtime._state == "closed"
+                    and not runtime._cleanup_in_progress
+                    and not runtime._adapter_cleanup_in_progress
+                )
+            if not cleanup_complete:
+                raise RuntimeError(
+                    "Runtime cleanup is pending; retry close_session after cleanup drains"
+                )
             with self._runtime_lock:
                 if self._runtimes.get(id(session)) is runtime:
                     self._runtimes.pop(id(session), None)

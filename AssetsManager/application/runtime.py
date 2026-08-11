@@ -3,10 +3,15 @@ from __future__ import annotations
 
 import threading
 import uuid
+from typing import Protocol, cast
 
 from AssetsManager.application.bootstrap import LibraryScopedServices, RuntimeSharingServices
 from AssetsManager.application.context import LibrarySession
 from AssetsManager.application.runtime_events import RuntimeEventRouter
+
+
+class _LifecycleAdapter(Protocol):
+    def stop(self) -> None: ...
 
 
 class LibraryRuntime:
@@ -23,7 +28,7 @@ class LibraryRuntime:
         self._adapters_stopped = False
         self._adapter_cleanup_in_progress = False
         self._adapter_cleanup_thread_id: int | None = None
-        self._lifecycle_adapters: list[object] = []
+        self._lifecycle_adapters: list[_LifecycleAdapter] = []
         self.event_router = RuntimeEventRouter(self)
 
     @property
@@ -43,12 +48,18 @@ class LibraryRuntime:
         """
         return self.services
 
+    @property
+    def is_open(self) -> bool:
+        """Return whether this runtime still accepts new work."""
+        with self._condition:
+            return self._state == "open"
+
     def register_lifecycle_adapter(self, adapter: object) -> bool:
         """Register an adapter that must stop before runtime-owned cleanup."""
         with self._condition:
             if self._state == "open":
                 if not any(current is adapter for current in self._lifecycle_adapters):
-                    self._lifecycle_adapters.append(adapter)
+                    self._lifecycle_adapters.append(cast(_LifecycleAdapter, adapter))
                 return True
             stop = getattr(adapter, "stop")
         stop()
@@ -60,7 +71,7 @@ class LibraryRuntime:
             if self._state != "open":
                 return False
             if not any(current is adapter for current in self._lifecycle_adapters):
-                self._lifecycle_adapters.append(adapter)
+                self._lifecycle_adapters.append(cast(_LifecycleAdapter, adapter))
             return True
 
     def unregister_lifecycle_adapter(self, adapter: object) -> None:
@@ -71,8 +82,8 @@ class LibraryRuntime:
 
     def next_revision(self) -> int:
         with self._condition:
-            if self._state == "closed":
-                raise RuntimeError("Cannot advance a closed LibraryRuntime")
+            if self._state != "open":
+                raise RuntimeError("Cannot advance a closing or closed LibraryRuntime")
             self.revision += 1
             return self.revision
 
@@ -103,10 +114,10 @@ class LibraryRuntime:
             lifecycle_adapters = tuple(self._lifecycle_adapters)
         try:
             for adapter in lifecycle_adapters:
-                adapter.stop()
+                cast(_LifecycleAdapter, adapter).stop()
         except BaseException:
             with self._condition:
-                self._state = "open"
+                self._state = "failed"
                 self._adapters_stopped = False
                 self._adapter_cleanup_in_progress = False
                 self._adapter_cleanup_thread_id = None
@@ -129,7 +140,16 @@ class LibraryRuntime:
             if self._state == "closed":
                 return
             self._cleanup_in_progress = True
-        self.event_router.close()
+        try:
+            self.event_router.close()
+        except BaseException:
+            # The router close is not part of adapter cleanup; keep the
+            # guard releasable so later close() calls are not permanently
+            # blocked waiting on a flag that never resets.
+            with self._condition:
+                self._cleanup_in_progress = False
+                self._condition.notify_all()
+            raise
         if self.event_router.callback_active_on_current_thread():
             self.event_router.defer_after_drain(self._cleanup_adapters)
             return
@@ -141,7 +161,7 @@ class LibraryRuntime:
             self.services.undo_service.cleanup()
         except BaseException:
             with self._condition:
-                self._state = "open"
+                self._state = "failed"
                 self._cleanup_in_progress = False
                 self._adapters_stopped = False
                 self._condition.notify_all()

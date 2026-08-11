@@ -33,6 +33,15 @@ class ShareChanged(DomainEvent):
 
 
 @dataclass(frozen=True)
+class FavoritesChanged(DomainEvent):
+    """Favorites changed for one principal within a library session."""
+    library_root: str = ""
+    session_token: str = ""
+    owner_key: str = ""
+    paths: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class UserChanged(DomainEvent):
     """Users changed within a specific library session."""
     library_root: str = ""
@@ -153,3 +162,29 @@ class AssetUrlsChanged(DomainEvent):
     session_token: str = ""
     file_path: str = ""
     new_urls: tuple[str, ...] = ()
+
+
+# ── Commerce events ─────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class ShopItemChanged(DomainEvent):
+    """The library-backed shop catalog changed."""
+    library_root: str = ""
+    session_token: str = ""
+    paths: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ShopOrderChanged(DomainEvent):
+    """A shop order or its delivery lifecycle changed."""
+    library_root: str = ""
+    session_token: str = ""
+    order_id: str = ""
+
+
+@dataclass(frozen=True)
+class QuotaChanged(DomainEvent):
+    """A commerce download/order quota changed."""
+    library_root: str = ""
+    session_token: str = ""
+    name: str = ""

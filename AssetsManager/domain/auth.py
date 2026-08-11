@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import os
+import secrets
 import time
 
 
@@ -79,20 +80,37 @@ def verify_password(password: str, stored_hash: str) -> bool:
 # ── Simple token (for single-password mode) ───────────────────
 
 def generate_token(password_hash: str) -> str:
-    """Generate a simple time-based token. Valid for 24 hours."""
+    """Generate a simple time-based token. Valid for 24 hours.
+
+    The token includes a random nonce ("ts.nonce.sig") so two tokens
+    minted within the same second are never identical.
+    """
     ts = str(int(time.time()))
-    sig = hmac.new(password_hash.encode(), ts.encode(), hashlib.sha256).hexdigest()[:32]
-    return f"{ts}.{sig}"
+    nonce = secrets.token_hex(4)
+    message = f"{ts}.{nonce}"
+    sig = hmac.new(password_hash.encode(), message.encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{ts}.{nonce}.{sig}"
 
 
 def verify_token(token: str, password_hash: str) -> bool:
-    """Verify a token is valid and not expired."""
+    """Verify a token is valid and not expired.
+
+    Accepts the current "ts.nonce.sig" format as well as the legacy
+    "ts.sig" format so tokens issued before the nonce migration remain
+    valid for their remaining lifetime.
+    """
     try:
-        ts_str, sig = token.split(".", 1)
+        parts = token.split(".")
+        if len(parts) == 3:
+            ts_str, nonce, sig = parts
+            message = f"{ts_str}.{nonce}"
+        else:
+            ts_str, sig = token.split(".", 1)
+            message = ts_str
         ts = int(ts_str)
         if time.time() - ts > 86400:
             return False
-        expected = hmac.new(password_hash.encode(), ts_str.encode(), hashlib.sha256).hexdigest()[:32]
+        expected = hmac.new(password_hash.encode(), message.encode(), hashlib.sha256).hexdigest()[:32]
         return hmac.compare_digest(sig, expected)
     except Exception:
         return False
@@ -101,15 +119,22 @@ def verify_token(token: str, password_hash: str) -> bool:
 def verify_auth_token(token: str, secret: str) -> bool:
     """Verify a local UI API token signed with token_secret.
 
-    Token format: "timestamp.hmac-sha256(timestamp,secret)[:32]"
-    Valid for 24 hours.
+    Token format: "timestamp.nonce.hmac-sha256(timestamp.nonce,secret)[:32]"
+    Legacy "timestamp.hmac-sha256(timestamp,secret)[:32]" tokens are still
+    accepted for their remaining lifetime. Valid for 24 hours.
     """
     try:
-        ts_str, sig = token.split(".", 1)
+        parts = token.split(".")
+        if len(parts) == 3:
+            ts_str, nonce, sig = parts
+            message = f"{ts_str}.{nonce}"
+        else:
+            ts_str, sig = token.split(".", 1)
+            message = ts_str
         ts = int(ts_str)
         if time.time() - ts > 86400:
             return False
-        expected = hmac.new(secret.encode(), ts_str.encode(), hashlib.sha256).hexdigest()[:32]
+        expected = hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()[:32]
         return hmac.compare_digest(sig, expected)
     except Exception:
         return False
@@ -118,11 +143,18 @@ def verify_auth_token(token: str, secret: str) -> bool:
 # ── User token ────────────────────────────────────────────────
 
 def generate_user_token(user_id: int, username: str, role: str, secret: str) -> str:
-    """Generate a signed user token. Valid for 24 hours."""
+    """Generate a signed user token. Valid for 24 hours.
+
+    The token includes a random nonce ("ts.uid.nonce.sig") so two tokens
+    minted within the same second are never identical; the signature also
+    binds username and role, which are recovered from ``user_info`` at
+    verification time.
+    """
     ts = str(int(time.time()))
-    payload = f"{ts}.{user_id}.{username}.{role}"
-    sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
-    return f"{ts}.{user_id}.{sig}"
+    nonce = secrets.token_hex(4)
+    message = f"{ts}.{user_id}.{nonce}.{username}.{role}"
+    sig = hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{ts}.{user_id}.{nonce}.{sig}"
 
 
 def verify_user_token(token: str, secret: str, user_info: dict | None = None) -> dict | None:
@@ -132,12 +164,20 @@ def verify_user_token(token: str, secret: str, user_info: dict | None = None) ->
     and ``is_active`` keys — typically fetched from ``AuthRepository``.
     The DB query is the caller's responsibility so the domain layer stays
     infrastructure-free.
+
+    Accepts the current "ts.uid.nonce.sig" format as well as the legacy
+    "ts.uid.sig" format so tokens issued before the nonce migration remain
+    valid for their remaining lifetime.
     """
     try:
-        parts = token.split(".", 2)
-        if len(parts) != 3:
+        parts = token.split(".")
+        if len(parts) == 4:
+            ts_str, user_id_str, nonce, sig = parts
+        elif len(parts) == 3:
+            ts_str, user_id_str, sig = parts
+            nonce = None
+        else:
             return None
-        ts_str, user_id_str, sig = parts
         ts = int(ts_str)
         if time.time() - ts > 86400:
             return None
@@ -150,7 +190,10 @@ def verify_user_token(token: str, secret: str, user_info: dict | None = None) ->
             return None
         username = user_info["username"]
         role = user_info["role"]
-        payload = f"{ts}.{user_id}.{username}.{role}"
+        if nonce is None:
+            payload = f"{ts}.{user_id}.{username}.{role}"
+        else:
+            payload = f"{ts}.{user_id}.{nonce}.{username}.{role}"
         expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
         if not hmac.compare_digest(sig, expected):
             return None
@@ -162,21 +205,36 @@ def verify_user_token(token: str, secret: str, user_info: dict | None = None) ->
 # ── Share token ───────────────────────────────────────────────
 
 def generate_share_token(share_id: str, secret: str) -> str:
-    """Generate a signed share access token. Valid for 1 hour."""
+    """Generate a signed share access token. Valid for 1 hour.
+
+    The token includes a random nonce ("ts.nonce.sig") so two tokens
+    minted within the same second are never identical.
+    """
     ts = str(int(time.time()))
-    message = f"{ts}.{share_id}"
+    nonce = secrets.token_hex(4)
+    message = f"{ts}.{nonce}.{share_id}"
     sig = hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()[:32]
-    return f"{ts}.{sig}"
+    return f"{ts}.{nonce}.{sig}"
 
 
 def verify_share_token(token: str, share_id: str, secret: str) -> bool:
-    """Verify a share access token."""
+    """Verify a share access token.
+
+    Accepts the current "ts.nonce.sig" format as well as the legacy
+    "ts.sig" format so tokens issued before the nonce migration remain
+    valid for their remaining lifetime.
+    """
     try:
-        ts_str, sig = token.split(".", 1)
+        parts = token.split(".")
+        if len(parts) == 3:
+            ts_str, nonce, sig = parts
+            message = f"{ts_str}.{nonce}.{share_id}"
+        else:
+            ts_str, sig = token.split(".", 1)
+            message = f"{ts_str}.{share_id}"
         ts = int(ts_str)
         if time.time() - ts > 3600:
             return False
-        message = f"{ts_str}.{share_id}"
         expected = hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()[:32]
         return hmac.compare_digest(sig, expected)
     except Exception:
@@ -205,10 +263,17 @@ def validate_password_strength(password: str) -> str | None:
         return "Password must be less than 128 characters"
 
     weak_passwords = {
-        "password", "12345678", "qwerty123", "admin123", "letmein",
-        "welcome1", "monkey123", "dragon12", "master12", "abc12345",
+        "password", "password1", "password123", "passw0rd", "passw0rd1",
+        "qwerty", "qwerty123", "admin", "admin1", "admin123", "root",
+        "toor", "default", "welcome", "welcome1", "letmein", "letmein1",
+        "monkey", "monkey123", "dragon", "dragon12", "master", "master12",
+        "abc123", "abc12345", "iloveyou", "trustno1", "sunshine",
+        "princess", "football", "baseball", "superman", "batman",
+        "shadow", "hello", "123456", "12345678", "123456789", "1234567890",
     }
-    if password.lower() in weak_passwords:
+    lower = password.lower()
+    # Also match digit-suffixed variants (e.g. "Password123" -> "password").
+    if lower in weak_passwords or lower.rstrip("0123456789") in weak_passwords:
         return "Password is too common. Please choose a stronger password"
 
     has_upper = any(c.isupper() for c in password)

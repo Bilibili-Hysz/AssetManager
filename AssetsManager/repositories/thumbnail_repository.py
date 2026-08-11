@@ -1,10 +1,10 @@
 """Thumbnail cache repository — thin wrapper around thumbnail_cache table."""
 from __future__ import annotations
 
-import os
 from sqlite3 import Connection
 
 from AssetsManager.core.database import db_write_lock
+from AssetsManager.core.path_resolver import sql_like_descendant_pattern
 
 
 class ThumbnailRepository:
@@ -76,19 +76,23 @@ class ThumbnailRepository:
             self._conn.execute("DELETE FROM thumbnail_cache WHERE cache_key=?", (cache_key,))
             self._conn.commit()
 
-    def delete_path(self, source_path: str) -> list[str]:
+    def delete_path(self, source_path: str, *, commit: bool = True) -> list[str]:
         """Delete cache rows for a path and its descendants, returning keys."""
-        escaped = source_path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        # Descendants-only pattern with LIKE wildcards escaped; the separator
+        # is derived from the stored key representation instead of os.sep, so
+        # keys using either separator style are cleaned up correctly.
+        descendant_pattern = sql_like_descendant_pattern(source_path)
         with db_write_lock(self._conn):
             rows = self._conn.execute(
                 "SELECT cache_key FROM thumbnail_cache WHERE source_path=? OR source_path LIKE ? ESCAPE '\\'",
-                (source_path, escaped + os.sep.replace("\\", "\\\\") + "%"),
+                (source_path, descendant_pattern),
             ).fetchall()
             self._conn.execute(
                 "DELETE FROM thumbnail_cache WHERE source_path=? OR source_path LIKE ? ESCAPE '\\'",
-                (source_path, escaped + os.sep.replace("\\", "\\\\") + "%"),
+                (source_path, descendant_pattern),
             )
-            self._conn.commit()
+            if commit:
+                self._conn.commit()
             return [row[0] for row in rows]
 
     def clear_all(self) -> None:

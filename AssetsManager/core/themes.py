@@ -12,6 +12,7 @@ Performance:
   - Theme changes trigger save to AppSettings and broadcast via signal_bus.
   - stylesheet() result cached (invalidated on theme change).
 """
+import re
 import sys
 import threading
 from AssetsManager.core.settings import AppSettings
@@ -27,6 +28,7 @@ _DEFAULT_NAME = "Default"
 _current = "Navy"
 _cached_stylesheet: str | None = None
 _cached_stylesheet_theme: str | None = None
+_cached_stylesheet_scale: float | None = None
 _themes_lock = threading.Lock()
 
 # ThemeLoader singleton
@@ -86,6 +88,14 @@ _EXTENDED_FALLBACKS = {
     "disabled_bg":         lambda t: t.get("base", "#1a1a1a"),
     "tooltip_bg":          lambda t: t.get("header", "#2d2d2d"),
     "tooltip_text":        lambda t: t.get("heading", "#e0e0e0"),
+    # Semantic icon colors — themes may override these to tune icon tint
+    # without affecting text colors. Defaults inherit from text tokens.
+    "icon_primary":        lambda t: t.get("heading", "#e0e0e0"),
+    "icon_secondary":      lambda t: t.get("body", "#b0b0b0"),
+    "icon_muted":          lambda t: t.get("muted", "#666666"),
+    "icon_on_accent":      lambda t: t.get("on_accent", "#ffffff"),
+    "icon_accent":         lambda t: t.get("accent", "#4a60b0"),
+    "icon_disabled":       lambda t: t.get("disabled_text", "#666666"),
 }
 
 
@@ -115,26 +125,42 @@ def _load_all_themes():
 
 
 def _merge_theme(data: dict) -> dict | None:
-    """Convert raw theme JSON data into merged flat dict with extended tokens."""
-    if "name" not in data or "colors" not in data:
+    """Convert raw theme JSON data into merged flat dict with extended tokens.
+
+    Returns None (theme discarded) when the data is malformed: missing
+    required keys, a non-dict ``colors`` block, any non-hex color token, or
+    invalid token types that would crash QSS generation later.
+    """
+    if not isinstance(data, dict) or "name" not in data or "colors" not in data:
         return None
 
-    colors = data.get("colors", {})
+    colors = data.get("colors")
+    if not isinstance(colors, dict):
+        return None
     for token in _REQUIRED_TOKENS:
-        if token not in colors:
+        if token not in colors or not _is_hex_color(colors[token]):
             return None
 
     merged = dict(colors)
     merged["dark"] = data.get("dark", True)
     merged["name"] = data["name"]
     merged["description"] = data.get("description", "")
-    merged["properties"] = data.get("properties", {})
+    properties = data.get("properties")
+    merged["properties"] = properties if isinstance(properties, dict) else {}
 
     for token, fallback_fn in _EXTENDED_FALLBACKS.items():
         if token not in merged:
             merged[token] = fallback_fn(merged)
 
     return merged
+
+
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$")
+
+
+def _is_hex_color(value: object) -> bool:
+    """Return True for '#RGB' / '#RRGGBB' hex color strings."""
+    return isinstance(value, str) and bool(_HEX_COLOR_RE.match(value))
 
 
 # ── Startup ───────────────────────────────────────────────
@@ -219,10 +245,11 @@ def set_theme(name: str):
 
 def invalidate_cache():
     """Force stylesheet regeneration on next access."""
-    global _cached_stylesheet, _cached_stylesheet_theme
+    global _cached_stylesheet, _cached_stylesheet_theme, _cached_stylesheet_scale
     with _themes_lock:
         _cached_stylesheet = None
         _cached_stylesheet_theme = None
+        _cached_stylesheet_scale = None
 
 
 def names() -> list[str]:
@@ -233,8 +260,14 @@ def names() -> list[str]:
 def reload_themes():
     """Reload all themes from disk. Called by file watcher or manual refresh."""
     global _current
+    previous = _current
     _load_all_themes()
-    if _current not in _THEMES and _THEMES:
+    # Restore the previously active theme when it survived the rescan; a
+    # transient failure to parse one file (e.g. a mid-write JSON) must not
+    # permanently reset the user's selection to the first theme.
+    if previous in _THEMES:
+        _current = previous
+    elif _THEMES:
         _current = _THEME_NAMES[0] if _THEME_NAMES else "Default"
     invalidate_cache()
     _invalidate_icon_cache()
@@ -420,11 +453,16 @@ def stylesheet() -> str:
 
     Cached result is invalidated on theme change.
     """
-    global _cached_stylesheet, _cached_stylesheet_theme
+    global _cached_stylesheet, _cached_stylesheet_theme, _cached_stylesheet_scale
+    from AssetsManager.core.ui_scale import get_ui_scale, scaled_px
+    scale = get_ui_scale()
     with _themes_lock:
-        if _cached_stylesheet is not None and _cached_stylesheet_theme == _current:
+        if (
+            _cached_stylesheet is not None
+            and _cached_stylesheet_theme == _current
+            and _cached_stylesheet_scale == scale
+        ):
             return _cached_stylesheet
-    from AssetsManager.core.ui_scale import scaled_px
     t = get()
     hov = alpha(t["hover_overlay"], t["properties"].get("opacity", {}).get("hover", 0.15))
     pane_opacity = bg_panel_opacity()
@@ -435,9 +473,6 @@ def stylesheet() -> str:
     menubar_bg = alpha(t["header"], hdr_opacity) if bg_enabled() else t["header"]
     result = f"""
     QMainWindow {{ background: {main_bg}; }}
-    QMainWindow::separator {{
-        width: 2px; height: 2px; background: {t['base']};
-    }}
     QDialog {{ background: {t['panel']}; }}
     QDockWidget {{ background: transparent; }}
     QDockWidget::title {{
@@ -562,6 +597,7 @@ def stylesheet() -> str:
     with _themes_lock:
         _cached_stylesheet = result
         _cached_stylesheet_theme = _current
+        _cached_stylesheet_scale = scale
     return result
 
 

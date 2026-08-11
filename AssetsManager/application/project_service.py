@@ -11,27 +11,65 @@ from AssetsManager.application.asset_filters import IMAGE_EXTS, find_first_image
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.application.metadata_service import MetadataService
 from AssetsManager.application.tag_service import TagService
+from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.format_utils import CATEGORY_MAP, format_size
 from AssetsManager.core.directory_cache import DirectoryCache
-from AssetsManager.core.path_resolver import thumb_dir
+from AssetsManager.core.path_resolver import root_identity, thumb_dir
 from AssetsManager.repositories.metadata_repository import MetadataRepository
 from AssetsManager.repositories.asset_index_repository import AssetIndexRepository
 from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
 
 _log = logging.getLogger(__name__)
 
+_DEPTH_MIN = 1
+_DEPTH_MAX = 32
+_DEPTH_DEFAULT = 2
+
+
+def _clamp_depth(value: object, default: int = _DEPTH_DEFAULT) -> int:
+    """Return an int clamped to ``[_DEPTH_MIN, _DEPTH_MAX]``.
+
+    Non-integer values (bools included) fall back to ``default`` so a
+    corrupted config can never drive unbounded directory recursion.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        return default
+    if value < _DEPTH_MIN:
+        return _DEPTH_MIN
+    if value > _DEPTH_MAX:
+        return _DEPTH_MAX
+    return value
+
 
 @dataclass(frozen=True)
 class ProjectDepthConfig:
-    global_depth: int = 2
+    global_depth: int = _DEPTH_DEFAULT
     branch_depths: dict[str, int] | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "global_depth", _clamp_depth(self.global_depth))
+        if self.branch_depths is not None:
+            object.__setattr__(
+                self,
+                "branch_depths",
+                {
+                    str(name): _clamp_depth(value, self.global_depth)
+                    for name, value in self.branch_depths.items()
+                },
+            )
 
     @classmethod
     def from_dict(cls, data: dict | None) -> "ProjectDepthConfig":
         data = data or {}
+        raw_branches = data.get("branch_depths", {}) or {}
+        branch_depths = (
+            {str(name): value for name, value in raw_branches.items()}
+            if isinstance(raw_branches, dict) and raw_branches
+            else None
+        )
         return cls(
-            global_depth=int(data.get("depth", 2)),
-            branch_depths=dict(data.get("branch_depths", {}) or {}),
+            global_depth=_clamp_depth(data.get("depth", _DEPTH_DEFAULT)),
+            branch_depths=branch_depths,
         )
 
     @property
@@ -172,12 +210,58 @@ class ProjectService:
 
     def __init__(self, connection_provider: ConnectionProvider,
                  session: LibrarySession | None = None):
-        self._connection_provider = connection_provider
         self._session = session
-        self._metadata_svc = MetadataService(
-            connection_provider=connection_provider, session=session
+        self._session_root_identity = None
+        if isinstance(session, LibrarySession):
+            expected_provider = session.connection_for
+            provider_self = getattr(connection_provider, "__self__", None)
+            provider_func = getattr(connection_provider, "__func__", None)
+            expected_func = getattr(expected_provider, "__func__", None)
+            if not (
+                connection_provider == expected_provider
+                or (provider_self is session and provider_func is expected_func)
+            ):
+                raise ValueError(
+                    "ProjectService connection provider does not belong to "
+                    "the LibrarySession"
+                )
+            self._connection_provider = expected_provider
+            self._session_root_identity = session.context.root_identity
+            self._metadata_svc = MetadataService.for_session(session)
+        else:
+            self._connection_provider = connection_provider
+            # Keep provider-only legacy probes/fakes on the raw compatibility
+            # path.  The canonical path above intentionally accepts only a
+            # real LibrarySession and cannot be widened for test doubles.
+            self._metadata_svc = MetadataService(
+                connection_provider=connection_provider
+            )
+        self._tag_svc = TagService(
+            connection_provider=self._connection_provider, session=session
         )
-        self._tag_svc = TagService(connection_provider=connection_provider, session=session)
+
+    def _connection(
+        self, library_root: str | Path, db_conn: sqlite3.Connection | None
+    ) -> sqlite3.Connection:
+        if isinstance(self._session, LibrarySession):
+            requested = root_identity(library_root, strict=False)
+            captured = self._session_root_identity
+            if captured is None or requested.map_key != captured.map_key:
+                raise ValueError(
+                    "ProjectService library_root does not match the bound "
+                    "LibrarySession"
+                )
+            expected = self._session.connection_for(captured)
+            if db_conn is not None and db_conn is not expected:
+                raise ValueError(
+                    "ProjectService connection does not belong to the bound "
+                    "LibrarySession"
+                )
+            return DatabaseManager.require_managed_connection_owner(captured, expected)
+
+        root = Path(library_root).resolve()
+        conn = db_conn if db_conn is not None else self._connection_provider(root)
+        return DatabaseManager.validate_connection_owner(root, conn, allow_unmanaged=True)
 
     @session_operation
     def list_projects(
@@ -195,7 +279,9 @@ class ProjectService:
     ) -> ProjectListing:
         root = Path(library_root).resolve()
         target_path = Path(target).resolve()
-        db_conn = db_conn or self._connection_provider(root)
+        if not target_path.is_relative_to(root):
+            raise ValueError("target must be under library_root")
+        db_conn = self._connection(root, db_conn)
         depth_config = depth_config or ProjectDepthConfig()
         rel_path = rel_path.replace("\\", "/").strip("/")
         search = search.lower()
@@ -254,8 +340,10 @@ class ProjectService:
         # Batch query existing counts
         try:
             cached = MetadataRepository(db_conn).batch_get_cached_file_counts(paths)
-        except Exception:
-            _log.debug("batch file count cache query failed")
+        except sqlite3.ProgrammingError:
+            raise
+        except sqlite3.Error:
+            _log.warning("batch file count cache query failed", exc_info=True)
             cached = {}
 
         # Compute counts for uncached directories
@@ -273,8 +361,10 @@ class ProjectService:
         if to_write:
             try:
                 MetadataRepository(db_conn).batch_set_cached_file_counts(to_write)
-            except Exception:
-                _log.debug("batch file count cache write failed")
+            except sqlite3.ProgrammingError:
+                raise
+            except sqlite3.Error:
+                _log.warning("batch file count cache write failed", exc_info=True)
 
     @session_operation
     def get_home(
@@ -284,7 +374,7 @@ class ProjectService:
         db_conn: sqlite3.Connection | None = None,
     ) -> ProjectHome:
         root = Path(library_root).resolve()
-        db_conn = db_conn or self._connection_provider(root)
+        db_conn = self._connection(root, db_conn)
         depth_config = depth_config or ProjectDepthConfig()
         projects = self._collect_projects(root, root, 0, "", depth_config)
         self._attach_cached_thumbnails(root, projects, db_conn)
@@ -323,6 +413,7 @@ class ProjectService:
                 key=lambda e: e.name.lower(),
             )
         except OSError:
+            _log.warning("project scan failed: %s", current, exc_info=True)
             return projects
         for entry in entries:
             rel = os.path.relpath(entry.path, library_root).replace("\\", "/")
@@ -332,6 +423,7 @@ class ProjectService:
                 try:
                     mtime = entry.stat().st_mtime
                 except OSError:
+                    _log.warning("project mtime lookup failed: %s", entry.path, exc_info=True)
                     mtime = 0
                 projects.append({"name": entry.name, "path": rel, "mtime": mtime})
             else:
@@ -340,8 +432,8 @@ class ProjectService:
                 ))
         return projects
 
-    @staticmethod
     def _attach_cached_thumbnails(
+        self,
         library_root: Path,
         projects: list[dict],
         db_conn: sqlite3.Connection | None,
@@ -351,7 +443,17 @@ class ProjectService:
         try:
             root = library_root.resolve()
             paths = [str((root / project["path"]).resolve()) for project in projects]
-            cached_entries = DirectoryCache(db_conn).get_batch(paths)
+            if self._session is None:
+                # Preserve legacy/test doubles that still expose DirectoryCache(conn).
+                cache = DirectoryCache(db_conn)
+            else:
+                cache = DirectoryCache(
+                    db_conn, library_root=root, session=self._session
+                )
+            validate_cache = getattr(cache, "validate_for", None)
+            if callable(validate_cache):
+                validate_cache(root)
+            cached_entries = cache.get_batch(paths)
             attached_paths: set[str] = set()
             for project, path in zip(projects, paths):
                 try:
@@ -372,7 +474,7 @@ class ProjectService:
             ProjectService._attach_baked_thumbnails(
                 root, projects, paths, attached_paths, db_conn,
             )
-        except (OSError, ValueError):
+        except OSError:
             return
 
     @staticmethod
@@ -386,8 +488,10 @@ class ProjectService:
         """Project baked thumbnail rows onto projects without directory previews."""
         try:
             rows = ThumbnailRepository(db_conn).list_all_with_metadata()
+        except sqlite3.ProgrammingError:
+            raise
         except sqlite3.Error:
-            _log.debug("baked thumbnail cache query failed")
+            _log.warning("baked thumbnail cache query failed", exc_info=True)
             return
 
         baked_root = thumb_dir(str(library_root)).resolve()
@@ -460,6 +564,7 @@ class ProjectService:
                 key=lambda e: e.name.lower(),
             )
         except OSError:
+            _log.warning("project count scan failed: %s", current, exc_info=True)
             return count
         for entry in entries:
             child_branch = branch_name or entry.name
@@ -473,8 +578,10 @@ class ProjectService:
     def _popular_tags(self, root: Path, db_conn: sqlite3.Connection | None) -> list[dict]:
         try:
             return self._tag_svc.list_tags(root, db_conn=db_conn)[:20]
-        except Exception:
-            _log.debug("popular tags query failed")
+        except sqlite3.ProgrammingError:
+            raise
+        except sqlite3.Error:
+            _log.warning("popular tags query failed", exc_info=True)
             return []
 
     @staticmethod
@@ -483,8 +590,10 @@ class ProjectService:
             return 0
         try:
             return MetadataRepository(db_conn).get_library_total_size(str(root))
-        except Exception:
-            _log.debug("library total size query failed")
+        except sqlite3.ProgrammingError:
+            raise
+        except sqlite3.Error:
+            _log.warning("library total size query failed", exc_info=True)
             return 0
 
     @session_operation
@@ -497,7 +606,9 @@ class ProjectService:
     ) -> ProjectDetail:
         root = Path(library_root).resolve()
         target_path = Path(target).resolve()
-        db_conn = db_conn or self._connection_provider(root)
+        if not target_path.is_relative_to(root):
+            raise ValueError("target must be under library_root")
+        db_conn = self._connection(root, db_conn)
         rel_path = rel_path.replace("\\", "/").strip("/")
         notes, urls = self._notes_and_urls(root, target_path)
         files, images = self._project_files(root, target_path)
@@ -509,6 +620,7 @@ class ProjectService:
         try:
             modified = target_path.stat().st_mtime
         except OSError:
+            _log.warning("project mtime lookup failed: %s", target_path, exc_info=True)
             modified = 0
 
         return ProjectDetail(
@@ -551,6 +663,7 @@ class ProjectService:
                 key=lambda e: e.name.lower(),
             )
         except OSError:
+            _log.warning("project tree scan failed: %s", current, exc_info=True)
             return nodes
         for entry in entries:
             rel = os.path.relpath(entry.path, library_root).replace("\\", "/")
@@ -594,6 +707,7 @@ class ProjectService:
         try:
             modified = entry.stat().st_mtime
         except OSError:
+            _log.warning("project mtime lookup failed: %s", entry.path, exc_info=True)
             modified = 0
 
         return ProjectListItem(
@@ -615,6 +729,7 @@ class ProjectService:
         try:
             entries = sorted(os.scandir(target), key=lambda e: e.name.lower())
         except OSError:
+            _log.warning("project file scan failed: %s", target, exc_info=True)
             return files, images
         for entry in entries:
             if not entry.is_file() or entry.name.startswith("."):
@@ -624,6 +739,7 @@ class ProjectService:
             try:
                 size = entry.stat().st_size
             except OSError:
+                _log.warning("project file size lookup failed: %s", entry.path, exc_info=True)
                 size = 0
             files.append({
                 "name": entry.name,
@@ -660,8 +776,10 @@ class ProjectService:
         try:
             total_size, _ = self._metadata_svc.get_dir_size(root, path, force=False)
             return total_size
-        except Exception:
-            _log.debug("directory size query failed")
+        except sqlite3.ProgrammingError:
+            raise
+        except (OSError, sqlite3.Error):
+            _log.warning("directory size query failed", exc_info=True)
             return 0
 
     @staticmethod
@@ -678,12 +796,15 @@ class ProjectService:
                 )
                 if cached_count is not None:
                     return cached_count
-            except Exception:
-                _log.debug("file count cache query failed")
+            except sqlite3.ProgrammingError:
+                raise
+            except sqlite3.Error:
+                _log.warning("file count cache query failed", exc_info=True)
 
         try:
             file_count = sum(1 for f in os.scandir(path) if f.is_file() and not f.name.startswith("."))
         except OSError:
+            _log.warning("file count scan failed: %s", path, exc_info=True)
             return 0
 
         if db_conn is not None:
@@ -691,28 +812,36 @@ class ProjectService:
                 MetadataRepository(db_conn).set_cached_file_count(
                     str(path.resolve()), file_count
                 )
-            except Exception:
-                _log.debug("file count cache write failed")
+            except sqlite3.ProgrammingError:
+                raise
+            except sqlite3.Error:
+                _log.warning("file count cache write failed", exc_info=True)
         return file_count
 
     def _tags(self, root: Path, path: Path, db_conn: sqlite3.Connection | None) -> list[str]:
         try:
             return self._tag_svc.get_tags_for_tree(root, path, db_conn=db_conn)
-        except Exception:
-            _log.debug("tag query failed")
+        except sqlite3.ProgrammingError:
+            raise
+        except (OSError, sqlite3.Error):
+            _log.warning("tag query failed", exc_info=True)
             return []
 
     def _notes(self, root: Path, path: Path) -> str:
         try:
             return self._metadata_svc.get_notes(root, path)
-        except Exception:
-            _log.debug("notes query failed")
+        except sqlite3.ProgrammingError:
+            raise
+        except (OSError, sqlite3.Error):
+            _log.warning("notes query failed", exc_info=True)
             return ""
 
     def _notes_and_urls(self, root: Path, path: Path) -> tuple[str, list[str]]:
         try:
             metadata = self._metadata_svc.get_metadata(root, path)
             return metadata.notes, list(metadata.urls)
-        except Exception:
-            _log.debug("metadata query failed")
+        except sqlite3.ProgrammingError:
+            raise
+        except (OSError, sqlite3.Error):
+            _log.warning("metadata query failed", exc_info=True)
             return "", []

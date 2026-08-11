@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import tempfile
+import threading
 
 from AssetsManager.core.database import SHARED_DIR
 from AssetsManager.core.singleton import ThreadSafeSingleton
@@ -24,7 +25,7 @@ DEFAULT_SYNONYMS = {
     "Animation":     ["动画", "アニメーション", "動画"],
     "Weapon":        ["武器", "ぶき"],
     "Armor":         ["盔甲", "鎧", "よろい", "装甲"],
-    "Environment":   ["环境", "環境", "かんきょう", "场景"],
+    "Environment":   ["环境", "環境", "かんきょう"],
     "UI":            ["界面", "UI素材", "インターフェース"],
     "Icon":          ["图标", "アイコン"],
     "Concept":       ["概念", "コンセプト", "设定", "原画"],
@@ -51,7 +52,7 @@ DEFAULT_SYNONYMS = {
     "Sky":           ["天空", "空", "そら"],
     "Lighting":      ["灯光", "照明", "しょうめい", "光照"],
     "VFX":           ["特效", "エフェクト", "视觉特效"],
-    "Fur":           ["毛发", "ファー", "毛皮"],
+    "Fur":           ["ファー", "毛皮"],
     "Sculpt":        ["雕刻", "スカルプト", "雕塑"],
     "LowPoly":       ["低模", "ローポリ", "低面"],
     "HighPoly":      ["高模", "ハイポリ", "高面"],
@@ -95,21 +96,60 @@ class TagLibrary:
         self._synonyms: dict[str, list[str]] = {}
         self._reverse: dict[str, str] = {}
         self._loaded = False
+        # TagLibrary is shared across threads (e.g. the tag-editor worker
+        # removes tags while the UI thread resolves suggestions); guard all
+        # state access with a reentrant lock.
+        self._lock = threading.RLock()
 
     def _ensure_loaded(self):
-        if self._loaded:
-            return
-        try:
-            if self._path.exists():
-                data = json.loads(self._path.read_text(encoding="utf-8"))
-                self._synonyms = data.get("synonyms", {})
-            else:
+        with self._lock:
+            if self._loaded:
+                return
+            try:
+                if self._path.exists():
+                    data = json.loads(self._path.read_text(encoding="utf-8"))
+                    self._synonyms = data.get("synonyms", {})
+                else:
+                    self._synonyms = dict(DEFAULT_SYNONYMS)
+                    self._save()
+            except Exception:
                 self._synonyms = dict(DEFAULT_SYNONYMS)
-                self._save()
-        except Exception:
-            self._synonyms = dict(DEFAULT_SYNONYMS)
-        self._build_reverse()
-        self._loaded = True
+            self._deduplicate_conflicts()
+            self._build_reverse()
+            self._loaded = True
+
+    def _deduplicate_conflicts(self):
+        """Drop alias collisions left in an on-disk library.
+
+        Older tag_library.json files can map one alias to several canonical
+        tags (e.g. 场景/毛发); the first canonical wins and the conflicting
+        alias is removed so later writes do not silently re-introduce it.
+        """
+        seen: dict[str, str] = {}
+        changed = False
+        for canonical in list(self._synonyms):
+            aliases = [
+                a for a in self._synonyms.get(canonical, [])
+                if not self._alias_conflicts(a, canonical, seen)
+            ]
+            if len(aliases) != len(self._synonyms.get(canonical, [])):
+                changed = True
+            for alias in aliases:
+                seen.setdefault(alias.lower(), canonical)
+            self._synonyms[canonical] = aliases
+        if changed:
+            self._save()
+
+    @staticmethod
+    def _alias_conflicts(alias: str, canonical: str, seen: dict[str, str]) -> bool:
+        if not alias.strip():
+            return True
+        key = alias.lower()
+        if key in seen and seen[key] != canonical:
+            return True
+        if key == canonical.lower():
+            return True
+        return False
 
     def _build_reverse(self):
         self._reverse.clear()
@@ -120,28 +160,31 @@ class TagLibrary:
                 self._reverse[alias.lower()] = canonical
 
     def _save(self):
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            data = json.dumps({"synonyms": self._synonyms}, indent=2, ensure_ascii=False)
-            fd, tmp = tempfile.mkstemp(dir=str(self._path.parent),
-                                        suffix=".tmp", prefix="taglib_")
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(data)
-            os.replace(tmp, str(self._path))
-        except Exception:
-            _log.exception("Failed to save tag library")
+        with self._lock:
+            try:
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                data = json.dumps({"synonyms": self._synonyms}, indent=2, ensure_ascii=False)
+                fd, tmp = tempfile.mkstemp(dir=str(self._path.parent),
+                                            suffix=".tmp", prefix="taglib_")
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(data)
+                os.replace(tmp, str(self._path))
+            except Exception:
+                _log.exception("Failed to save tag library")
 
     def canonical(self, name: str) -> str:
         """Resolve any tag name (alias or canonical) to its canonical form."""
-        self._ensure_loaded()
-        clean = name.strip().lower()
-        return self._reverse.get(clean, name.strip())
+        with self._lock:
+            self._ensure_loaded()
+            clean = name.strip().lower()
+            return self._reverse.get(clean, name.strip())
 
     def synonyms_of(self, name: str) -> list[str]:
         """Return all known synonyms for the canonical tag name."""
-        self._ensure_loaded()
-        canonical = self.canonical(name)
-        return self._synonyms.get(canonical, [])
+        with self._lock:
+            self._ensure_loaded()
+            canonical = self.canonical(name)
+            return self._synonyms.get(canonical, [])
 
     def all_synonyms_text(self, name: str) -> str:
         """Return human-readable synonym list for tooltip display."""
@@ -155,47 +198,51 @@ class TagLibrary:
 
     def all_canonicals(self) -> list[str]:
         """Return all canonical tag names."""
-        self._ensure_loaded()
-        return sorted(self._synonyms.keys(), key=str.lower)
+        with self._lock:
+            self._ensure_loaded()
+            return sorted(self._synonyms.keys(), key=str.lower)
 
     def add_synonym(self, canonical: str, alias: str):
         """Register a new synonym for a canonical tag."""
-        self._ensure_loaded()
-        canonical = canonical.strip()
-        alias = alias.strip()
-        if not canonical or not alias:
-            return
-        entry = self._synonyms.setdefault(canonical, [])
-        if alias not in entry:
-            entry.append(alias)
-            self._reverse[alias.lower()] = canonical
-            self._save()
+        with self._lock:
+            self._ensure_loaded()
+            canonical = canonical.strip()
+            alias = alias.strip()
+            if not canonical or not alias:
+                return
+            entry = self._synonyms.setdefault(canonical, [])
+            if alias not in entry:
+                entry.append(alias)
+                self._reverse[alias.lower()] = canonical
+                self._save()
 
     def register_tag(self, canonical: str, synonyms: list[str] | None = None):
         """Register a new canonical tag with optional synonyms."""
-        self._ensure_loaded()
-        canonical = canonical.strip()
-        if not canonical:
-            return
-        if canonical not in self._synonyms:
-            self._synonyms[canonical] = list(synonyms or [])
-        elif synonyms:
-            for s in synonyms:
-                if s.strip() and s.strip() not in self._synonyms[canonical]:
-                    self._synonyms[canonical].append(s.strip())
-        self._build_reverse()
-        self._save()
+        with self._lock:
+            self._ensure_loaded()
+            canonical = canonical.strip()
+            if not canonical:
+                return
+            if canonical not in self._synonyms:
+                self._synonyms[canonical] = list(synonyms or [])
+            elif synonyms:
+                for s in synonyms:
+                    if s.strip() and s.strip() not in self._synonyms[canonical]:
+                        self._synonyms[canonical].append(s.strip())
+            self._build_reverse()
+            self._save()
 
     def remove_canonical(self, canonical: str):
         """Remove a canonical tag and all its synonyms from the library."""
-        self._ensure_loaded()
-        # Remove from synonyms dict first
-        for c in list(self._synonyms):
-            if c.lower() == canonical.lower():
-                del self._synonyms[c]
-                break
-        self._build_reverse()
-        self._save()
+        with self._lock:
+            self._ensure_loaded()
+            # Remove from synonyms dict first
+            for c in list(self._synonyms):
+                if c.lower() == canonical.lower():
+                    del self._synonyms[c]
+                    break
+            self._build_reverse()
+            self._save()
 
 
 def get_library() -> TagLibrary:

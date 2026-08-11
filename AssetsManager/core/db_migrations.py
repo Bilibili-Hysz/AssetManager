@@ -9,19 +9,36 @@ from __future__ import annotations
 import sqlite3
 import time
 from dataclasses import dataclass
-from typing import Callable
+from typing import Any, Callable, cast
 
 from AssetsManager.core.schema_defs import (
+    ASSET_INDEX_STATE_SCHEMA,
+    RECONCILIATION_QUEUE_STATE_SCHEMA,
+    RECONCILIATION_TASKS_SCHEMA,
+    COMMERCE_SCHEMAS,
+    COMMERCE_SCHEMAS_V8,
+    FREE_DOWNLOAD_QUOTA_SCHEMA,
     INVITE_CODES_SCHEMA,
+    LIBRARY_FAVORITES_SCHEMA,
     SCHEMA_MIGRATIONS_SCHEMA,
     SCHEMA_OBJECT_CONTRACT,
-    SHARE_LINKS_SCHEMA,
-    USERS_SCHEMA,
     SchemaObjectContract,
+    SHARE_LINKS_SCHEMA,
+    SHOP_ORDER_RECEIPTS_SCHEMA,
+    SHOP_ORDER_RECEIPT_RECOVERIES_SCHEMA,
+    SHOP_DELIVERY_ATTEMPTS_SCHEMA,
+    SHOP_CARTS_SCHEMA_V16,
+    SHOP_WISHLIST_SCHEMAS,
+    SELLER_PROFILE_SCHEMA,
+    STOREFRONT_ANALYTICS_SCHEMAS,
+    USERS_SCHEMA,
+    InvalidSchemaError,  # noqa: F401 - compatibility export
+    validate_schema_object,
+    validate_schema_objects,
 )
 
 
-CURRENT_SCHEMA_VERSION = 6
+CURRENT_SCHEMA_VERSION = 23
 _BASELINE_SCHEMA_CONTRACT = {
     "file_tags": {
         "columns": ("file_path", "tag"),
@@ -87,45 +104,6 @@ class MigrationHistoryError(RuntimeError):
     """Raised when the recorded migration history is not a valid prefix."""
 
 
-class InvalidSchemaError(RuntimeError):
-    """Raised when an existing table cannot satisfy a migration contract."""
-
-    def __init__(
-        self,
-        table: str,
-        missing_columns: tuple[str, ...] = (),
-        expected_primary_key: tuple[str, ...] = (),
-        actual_primary_key: tuple[str, ...] = (),
-        missing_unique_constraints: tuple[tuple[str, ...], ...] = (),
-        *,
-        missing_table: bool = False,
-    ) -> None:
-        self.table = table
-        self.missing_columns = missing_columns
-        self.expected_primary_key = expected_primary_key
-        self.actual_primary_key = actual_primary_key
-        self.missing_unique_constraints = missing_unique_constraints
-        self.missing_table = missing_table
-        details = []
-        if missing_table:
-            details.append("table is missing")
-        if missing_columns:
-            details.append("missing columns " + ", ".join(missing_columns))
-        if actual_primary_key != expected_primary_key:
-            details.append(
-                f"primary key expected {expected_primary_key}, found {actual_primary_key}"
-            )
-        if missing_unique_constraints:
-            details.append(
-                "missing unique constraints "
-                + ", ".join(map(str, missing_unique_constraints))
-            )
-        super().__init__(
-            f"Database table {table} has incompatible schema; "
-            + "; ".join(details)
-        )
-
-
 class IncompleteSchemaError(RuntimeError):
     """Raised when migration runs without the required core baseline schema."""
 
@@ -178,6 +156,164 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
         ).fetchone()
         is not None
     )
+
+
+def _reconciliation_tasks_contract(*, include_lease_token: bool) -> SchemaObjectContract:
+    """Return the schema contract appropriate for a migration boundary."""
+    contract = cast(SchemaObjectContract, dict(SCHEMA_OBJECT_CONTRACT["reconciliation_tasks"]))
+    if include_lease_token:
+        return contract
+    contract["columns"] = tuple(
+        column for column in contract["columns"] if column != "lease_token"
+    )
+    contract["column_contracts"] = {
+        column: definition
+        for column, definition in contract.get("column_contracts", {}).items()
+        if column != "lease_token"
+    }
+    return contract
+
+
+def _versioned_schema_contract(table: str, version: int) -> SchemaObjectContract:
+    """Return the contract that was valid at a recorded migration boundary."""
+    contract = cast(SchemaObjectContract, dict(SCHEMA_OBJECT_CONTRACT[table]))
+
+    if table == "reconciliation_tasks" and version < 17:
+        return _reconciliation_tasks_contract(include_lease_token=False)
+
+    if table == "shop_orders" and version < 18:
+        contract["columns"] = tuple(
+            column
+            for column in contract["columns"]
+            if column not in {"buyer_owner_type", "buyer_owner_key"}
+        )
+        column_contracts = dict(
+            cast(dict[str, Any], contract.get("column_contracts", {}))
+        )
+        column_contracts.pop("buyer_owner_type", None)
+        column_contracts.pop("buyer_owner_key", None)
+        contract["column_contracts"] = column_contracts
+        contract["indexes"] = {
+            name: columns
+            for name, columns in contract.get("indexes", {}).items()
+            if name != "idx_shop_orders_buyer_owner_created"
+        }
+        contract["checks"] = tuple(
+            check
+            for check in contract.get("checks", ())
+            if check != (
+                "buyer_owner_type IS NULL OR buyer_owner_type IN "
+                "('user', 'anonymous')"
+            )
+        )
+
+    if table == "shop_carts" and version < 19:
+        contract["columns"] = tuple(
+            column for column in contract["columns"] if column != "checkout_generation"
+        )
+        column_contracts = dict(
+            cast(dict[str, Any], contract.get("column_contracts", {}))
+        )
+        column_contracts.pop("checkout_generation", None)
+        contract["column_contracts"] = column_contracts
+        contract["checks"] = tuple(
+            check
+            for check in contract.get("checks", ())
+            if check != "checkout_generation >= 1"
+        )
+
+    if table == "shop_cart_checkouts":
+        if version < 19:
+            contract["columns"] = tuple(
+                column
+                for column in contract["columns"]
+                if column not in {"checkout_generation", "request_fingerprint"}
+            )
+            column_contracts = dict(
+                cast(dict[str, Any], contract.get("column_contracts", {}))
+            )
+            column_contracts.pop("checkout_generation", None)
+            column_contracts.pop("request_fingerprint", None)
+            contract["column_contracts"] = column_contracts
+            contract["unique_constraints"] = (
+                ("cart_id", "request_key"),
+                ("checkout_group_id",),
+            )
+            contract["indexes"] = {
+                "idx_shop_cart_checkouts_cart": ("cart_id", "created_at")
+            }
+            contract["checks"] = ()
+        elif version < 21:
+            contract["columns"] = tuple(
+                column
+                for column in contract["columns"]
+                if column != "request_fingerprint"
+            )
+            column_contracts = dict(
+                cast(dict[str, Any], contract.get("column_contracts", {}))
+            )
+            column_contracts.pop("request_fingerprint", None)
+            contract["column_contracts"] = column_contracts
+
+    return contract
+
+
+def _should_defer_index_statement(
+    conn: sqlite3.Connection, sql: str
+) -> bool:
+    """Skip an index that targets columns introduced by a later migration."""
+    deferred_indexes = {
+        "idx_shop_orders_buyer_owner_created": (
+            "shop_orders",
+            {"buyer_owner_type", "buyer_owner_key"},
+        ),
+        "idx_shop_cart_checkouts_cart": (
+            "shop_cart_checkouts",
+            {"checkout_generation"},
+        ),
+    }
+    for index_name, (table, required_columns) in deferred_indexes.items():
+        if index_name not in sql:
+            continue
+        if (
+            index_name == "idx_shop_orders_buyer_owner_created"
+            and "buyer_owner_type" not in sql
+        ) or (
+            index_name == "idx_shop_cart_checkouts_cart"
+            and "checkout_generation" not in sql
+        ):
+            # An older same-named index may still be valid at this boundary.
+            continue
+        columns = {
+            str(row[1]) for row in conn.execute(f"PRAGMA table_info('{table}')")
+        }
+        return not required_columns <= columns
+    return False
+
+
+def _validate_schema_object_at_version(
+    conn: sqlite3.Connection,
+    table: str,
+    version: int,
+    *,
+    ignore_indexes: bool = False,
+) -> None:
+    """Validate current or legacy shape accepted at a migration boundary."""
+    current_contract = cast(SchemaObjectContract, dict(SCHEMA_OBJECT_CONTRACT[table]))
+    boundary_contract = _versioned_schema_contract(table, version)
+    if ignore_indexes:
+        current_contract.pop("indexes", None)
+        boundary_contract = cast(SchemaObjectContract, dict(boundary_contract))
+        boundary_contract.pop("indexes", None)
+    try:
+        validate_schema_object(conn, table, current_contract)
+    except InvalidSchemaError as current_error:
+        if boundary_contract == current_contract:
+            raise
+        try:
+            validate_schema_object(conn, table, boundary_contract)
+        except InvalidSchemaError:
+            raise current_error from None
 
 
 def _validate_history(rows: list[tuple[object, object]]) -> int:
@@ -247,55 +383,6 @@ def _index_columns(conn: sqlite3.Connection, index_name: str) -> tuple[str, ...]
     escaped_name = index_name.replace("'", "''")
     rows = conn.execute(f"PRAGMA index_info('{escaped_name}')").fetchall()
     return tuple(row[2] for row in rows)
-
-
-def validate_schema_object(
-    conn: sqlite3.Connection,
-    table: str,
-    contract: SchemaObjectContract,
-) -> None:
-    """Validate one required table object without changing the database."""
-    if not _table_exists(conn, table):
-        raise InvalidSchemaError(table, missing_table=True)
-
-    table_info = conn.execute(f"PRAGMA table_info('{table}')").fetchall()
-    columns = {row[1] for row in table_info}
-    expected_columns = contract["columns"]
-    missing_columns = tuple(
-        column for column in expected_columns if column not in columns
-    )
-    primary_key = tuple(
-        row[1] for row in sorted(table_info, key=lambda row: row[5]) if row[5]
-    )
-    expected_primary_key = contract["primary_key"]
-
-    unique_indexes = []
-    for row in conn.execute(f"PRAGMA index_list('{table}')").fetchall():
-        if row[2]:
-            unique_indexes.append(_index_columns(conn, row[1]))
-    missing_unique_constraints = tuple(
-        constraint
-        for constraint in contract["unique_constraints"]
-        if constraint not in unique_indexes
-    )
-
-    if missing_columns or primary_key != expected_primary_key or missing_unique_constraints:
-        raise InvalidSchemaError(
-            table,
-            missing_columns,
-            expected_primary_key,
-            primary_key,
-            missing_unique_constraints,
-        )
-
-
-def validate_schema_objects(
-    conn: sqlite3.Connection,
-    tables: tuple[str, ...],
-) -> None:
-    """Validate a manifest subset, preserving the caller transaction."""
-    for table in tables:
-        validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
 
 
 def _validate_baseline_schema(conn: sqlite3.Connection) -> None:
@@ -465,6 +552,298 @@ def _add_auth_share_schema_v6(conn: sqlite3.Connection) -> None:
             conn.execute(schema)
 
 
+def _add_library_favorites_v7(conn: sqlite3.Connection) -> None:
+    """Create principal-scoped favorites inside the library database."""
+    if _table_exists(conn, "library_favorites"):
+        validate_schema_object(
+            conn, "library_favorites", SCHEMA_OBJECT_CONTRACT["library_favorites"]
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_library_favorites_path "
+            "ON library_favorites(file_path)"
+        )
+        return
+    # ``executescript`` issues an implicit COMMIT and would destroy the
+    # migration runner savepoint.  Execute the central DDL statements one by
+    # one so v7 remains atomic inside caller-owned transactions.
+    for statement in LIBRARY_FAVORITES_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+
+
+def _add_commerce_schema_v8(conn: sqlite3.Connection) -> None:
+    """Create the per-library Commerce aggregate without replacing existing data."""
+    tables = tuple(table for table, _schema in COMMERCE_SCHEMAS)
+
+    # Reject colliding/incompatible tables before creating any sibling object.
+    # Missing secondary indexes are repairable and are created below.
+    for table in tables:
+        if not _table_exists(conn, table):
+            continue
+        _validate_schema_object_at_version(
+            conn, table, 8, ignore_indexes=True
+        )
+
+    # ``executescript`` implicitly commits. Keep every DDL statement inside the
+    # migration runner savepoint so an incompatible object or failed index rolls
+    # back both the schema and the v8 history row.
+    for _table, schema in COMMERCE_SCHEMAS_V8:
+        for statement in schema.split(";"):
+            if sql := statement.strip():
+                if _should_defer_index_statement(conn, sql):
+                    continue
+                conn.execute(sql)
+
+    for table in tables:
+        _validate_schema_object_at_version(conn, table, 8)
+
+
+def _add_asset_index_state_v9(conn: sqlite3.Connection) -> None:
+    """Add the persistent root revision used by asset-index CAS publishing."""
+    for statement in ASSET_INDEX_STATE_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    validate_schema_objects(conn, ("asset_index_state",))
+
+
+def _add_reconciliation_tasks_schema_v14(conn: sqlite3.Connection) -> None:
+    """Create the durable, library-scoped reconciliation task queue."""
+    table = "reconciliation_tasks"
+    legacy_contract = _reconciliation_tasks_contract(include_lease_token=False)
+    if _table_exists(conn, table):
+        existing_contract = dict(legacy_contract)
+        existing_contract.pop("indexes", None)
+        validate_schema_object(conn, table, existing_contract)  # type: ignore[arg-type]
+    for statement in RECONCILIATION_TASKS_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    validate_schema_object(conn, table, legacy_contract)  # type: ignore[arg-type]
+
+def _add_reconciliation_queue_state_schema_v15(conn: sqlite3.Connection) -> None:
+    """Add the cross-process snapshot generation used by queue CAS writes."""
+    table = "reconciliation_queue_state"
+    if _table_exists(conn, table):
+        contract = dict(SCHEMA_OBJECT_CONTRACT[table])
+        validate_schema_object(conn, table, contract)  # type: ignore[arg-type]
+    for statement in RECONCILIATION_QUEUE_STATE_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    validate_schema_objects(conn, (table,))
+
+
+def _add_free_download_quota_schema_v10(conn: sqlite3.Connection) -> None:
+    """Create the SQLite-backed ordinary download quota windows."""
+    table = "free_download_quota_windows"
+    if _table_exists(conn, table):
+        contract = dict(SCHEMA_OBJECT_CONTRACT[table])
+        contract.pop("indexes", None)
+        validate_schema_object(conn, table, contract)  # type: ignore[arg-type]
+    for statement in FREE_DOWNLOAD_QUOTA_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    validate_schema_objects(conn, (table,))
+
+
+def _add_shop_order_receipts_v11(conn: sqlite3.Connection) -> None:
+    """Add one revocable, expiring buyer receipt per newly-created order."""
+    table = "shop_order_receipts"
+    if _table_exists(conn, table):
+        contract = dict(SCHEMA_OBJECT_CONTRACT[table])
+        contract.pop("indexes", None)
+        validate_schema_object(conn, table, contract)  # type: ignore[arg-type]
+    for statement in SHOP_ORDER_RECEIPTS_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    validate_schema_objects(conn, (table,))
+
+
+def _add_seller_profile_v12(conn: sqlite3.Connection) -> None:
+    """Create the one-row per-library seller profile and safe defaults."""
+    table = "seller_profile"
+    if _table_exists(conn, table):
+        contract = dict(SCHEMA_OBJECT_CONTRACT[table])
+        contract.pop("indexes", None)
+        validate_schema_object(conn, table, contract)  # type: ignore[arg-type]
+    for statement in SELLER_PROFILE_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    conn.execute(
+        "INSERT OR IGNORE INTO seller_profile "
+        "(id, store_name, contact_email, description, accept_orders) "
+        "VALUES (1, '', '', '', 1)"
+    )
+    validate_schema_objects(conn, (table,))
+
+
+def _add_storefront_analytics_v13(conn: sqlite3.Connection) -> None:
+    """Create privacy-preserving aggregate storefront analytics tables."""
+    tables = tuple(table for table, _schema in STOREFRONT_ANALYTICS_SCHEMAS)
+    for table in tables:
+        if _table_exists(conn, table):
+            contract = dict(SCHEMA_OBJECT_CONTRACT[table])
+            contract.pop("indexes", None)
+            validate_schema_object(conn, table, contract)  # type: ignore[arg-type]
+    for _table, schema in STOREFRONT_ANALYTICS_SCHEMAS:
+        for statement in schema.split(";"):
+            if sql := statement.strip():
+                conn.execute(sql)
+    validate_schema_objects(conn, tables)
+
+
+def _add_shop_cart_wishlist_schema_v16(conn: sqlite3.Connection) -> None:
+    """Create additive buyer cart and wishlist ownership tables.
+
+    v19 adds checkout-generation columns to the two cart tables. Keep this
+    migration able to open a database whose v16 objects were created by the
+    previous contract; the v19 migration performs the actual table upgrade.
+    """
+    schemas = (("shop_carts", SHOP_CARTS_SCHEMA_V16), *SHOP_WISHLIST_SCHEMAS)
+    tables = tuple(name for name, _schema in schemas)
+
+    for table in tables:
+        if _table_exists(conn, table):
+            _validate_schema_object_at_version(
+                conn, table, 16, ignore_indexes=True
+            )
+    for _table, schema in schemas:
+        for statement in schema.split(";"):
+            if sql := statement.strip():
+                if _should_defer_index_statement(conn, sql):
+                    continue
+                conn.execute(sql)
+    for table in tables:
+        _validate_schema_object_at_version(conn, table, 16)
+
+
+
+def _add_shop_checkout_generation_schema_v19(conn: sqlite3.Connection) -> None:
+    """Scope checkout idempotency keys to a cart lifecycle generation."""
+    carts = "shop_carts"
+    cart_columns = {
+        str(row[1]) for row in conn.execute(f"PRAGMA table_info('{carts}')")
+    }
+    if "checkout_generation" not in cart_columns:
+        conn.execute(
+            "ALTER TABLE shop_carts ADD COLUMN checkout_generation INTEGER "
+            "NOT NULL DEFAULT 1 CHECK (checkout_generation >= 1)"
+        )
+
+    checkouts = "shop_cart_checkouts"
+    checkout_columns = {
+        str(row[1]) for row in conn.execute(f"PRAGMA table_info('{checkouts}')")
+    }
+    if "checkout_generation" not in checkout_columns:
+        legacy = "shop_cart_checkouts_v18"
+        conn.execute(f"ALTER TABLE {checkouts} RENAME TO {legacy}")
+        conn.execute(
+            """
+            CREATE TABLE shop_cart_checkouts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cart_id INTEGER NOT NULL,
+                checkout_generation INTEGER NOT NULL DEFAULT 1
+                    CHECK (checkout_generation >= 1),
+                request_key TEXT NOT NULL,
+                checkout_group_id TEXT NOT NULL UNIQUE,
+                order_ids TEXT NOT NULL DEFAULT '[]',
+                created_at REAL NOT NULL DEFAULT (strftime('%s','now')),
+                UNIQUE (cart_id, checkout_generation, request_key),
+                FOREIGN KEY (cart_id) REFERENCES shop_carts(id)
+                    ON UPDATE CASCADE ON DELETE CASCADE
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO shop_cart_checkouts
+                (id, cart_id, checkout_generation, request_key,
+                 checkout_group_id, order_ids, created_at)
+            SELECT id, cart_id, 1, request_key,
+                   checkout_group_id, order_ids, created_at
+            FROM shop_cart_checkouts_v18
+            """
+        )
+        conn.execute(f"DROP TABLE {legacy}")
+
+    conn.execute("DROP INDEX IF EXISTS idx_shop_cart_checkouts_cart")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_shop_cart_checkouts_cart "
+        "ON shop_cart_checkouts(cart_id, checkout_generation, created_at DESC)"
+    )
+    for table in (carts, checkouts):
+        _validate_schema_object_at_version(conn, table, 19)
+
+
+def _add_shop_checkout_fingerprint_schema_v21(conn: sqlite3.Connection) -> None:
+    """Add optional request fingerprints for safe same-generation replays."""
+    table = "shop_cart_checkouts"
+    columns = {str(row[1]) for row in conn.execute(f"PRAGMA table_info('{table}')")}
+    if "request_fingerprint" not in columns:
+        conn.execute(
+            "ALTER TABLE shop_cart_checkouts ADD COLUMN request_fingerprint TEXT"
+        )
+    validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
+
+
+def _add_shop_delivery_attempts_schema_v22(conn: sqlite3.Connection) -> None:
+    """Create durable request-level state for guarded delivery downloads."""
+    table = "shop_delivery_attempts"
+    if _table_exists(conn, table):
+        contract = dict(SCHEMA_OBJECT_CONTRACT[table])
+        contract.pop("indexes", None)
+        validate_schema_object(conn, table, contract)  # type: ignore[arg-type]
+    for statement in SHOP_DELIVERY_ATTEMPTS_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    validate_schema_objects(conn, (table,))
+
+
+def _add_shop_catalog_index_schema_v23(conn: sqlite3.Connection) -> None:
+    """Add the stable public Catalog ordering index to existing Commerce stores."""
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_shop_items_enabled_created "
+        "ON shop_items(enabled, created_at DESC, id DESC)"
+    )
+    validate_schema_object(conn, "shop_items", SCHEMA_OBJECT_CONTRACT["shop_items"])
+
+
+def _add_shop_order_receipt_recovery_schema_v20(conn: sqlite3.Connection) -> None:
+    """Add non-destructive owner-scoped receipt credentials for recovery."""
+    table = "shop_order_receipt_recoveries"
+    for statement in SHOP_ORDER_RECEIPT_RECOVERIES_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
+
+
+def _add_shop_order_buyer_owner_schema_v18(conn: sqlite3.Connection) -> None:
+    """Bind newly-created orders to the buyer principal without backfilling legacy rows."""
+    table = "shop_orders"
+    columns = {str(row[1]) for row in conn.execute(f"PRAGMA table_info('{table}')")}
+    if "buyer_owner_type" not in columns:
+        conn.execute(
+            "ALTER TABLE shop_orders ADD COLUMN buyer_owner_type TEXT "
+            "CHECK (buyer_owner_type IS NULL OR buyer_owner_type IN ('user', 'anonymous'))"
+        )
+    if "buyer_owner_key" not in columns:
+        conn.execute("ALTER TABLE shop_orders ADD COLUMN buyer_owner_key TEXT")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_shop_orders_buyer_owner_created "
+        "ON shop_orders(buyer_owner_type, buyer_owner_key, created_at DESC)"
+    )
+    validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
+
+def _add_reconciliation_lease_token_schema_v17(conn: sqlite3.Connection) -> None:
+    """Add the nullable durable lease identity used by the next queue phase."""
+    table = "reconciliation_tasks"
+    columns = {
+        str(row[1]) for row in conn.execute(f"PRAGMA table_info('{table}')")
+    }
+    if "lease_token" not in columns:
+        conn.execute(
+            "ALTER TABLE reconciliation_tasks ADD COLUMN lease_token TEXT"
+        )
+    validate_schema_objects(conn, (table,))
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "baseline_current_schema", _baseline_v1),
     Migration(2, "add_assets_index", _add_assets_index_v2),
@@ -472,6 +851,23 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(4, "add_plugin_metadata", _add_plugin_metadata_v4),
     Migration(5, "directory_cache", _add_directory_cache_v5),
     Migration(6, "auth_share_schema", _add_auth_share_schema_v6),
+    Migration(7, "library_favorites", _add_library_favorites_v7),
+    Migration(8, "commerce_schema", _add_commerce_schema_v8),
+    Migration(9, "asset_index_state", _add_asset_index_state_v9),
+    Migration(10, "free_download_quota", _add_free_download_quota_schema_v10),
+    Migration(11, "shop_order_receipts", _add_shop_order_receipts_v11),
+    Migration(12, "seller_profile", _add_seller_profile_v12),
+    Migration(13, "storefront_analytics", _add_storefront_analytics_v13),
+    Migration(14, "reconciliation_tasks", _add_reconciliation_tasks_schema_v14),
+    Migration(15, "reconciliation_queue_state", _add_reconciliation_queue_state_schema_v15),
+    Migration(16, "shop_cart_wishlist", _add_shop_cart_wishlist_schema_v16),
+    Migration(17, "reconciliation_lease_token", _add_reconciliation_lease_token_schema_v17),
+    Migration(18, "shop_order_buyer_owner", _add_shop_order_buyer_owner_schema_v18),
+    Migration(19, "shop_checkout_generation", _add_shop_checkout_generation_schema_v19),
+    Migration(20, "shop_order_receipt_recovery", _add_shop_order_receipt_recovery_schema_v20),
+    Migration(21, "shop_checkout_fingerprint", _add_shop_checkout_fingerprint_schema_v21),
+    Migration(22, "shop_delivery_attempts", _add_shop_delivery_attempts_schema_v22),
+    Migration(23, "shop_catalog_ordering_index", _add_shop_catalog_index_schema_v23),
 )
 
 
@@ -489,7 +885,7 @@ def migrate(conn: sqlite3.Connection) -> int:
         version = _supported_version(conn)
         _validate_baseline_schema(conn)
         for migration in MIGRATIONS:
-            if migration.version <= version:
+            if migration.version <= version or migration.version > CURRENT_SCHEMA_VERSION:
                 continue
             migration.apply(conn)
             _record(conn, migration)
@@ -497,7 +893,42 @@ def migrate(conn: sqlite3.Connection) -> int:
         required_objects = ("schema_migrations",)
         if version >= 6:
             required_objects += ("users", "invite_codes", "share_links")
-        validate_schema_objects(conn, required_objects)
+        if version >= 7:
+            required_objects += ("library_favorites",)
+        if version >= 8:
+            required_objects += tuple(table for table, _schema in COMMERCE_SCHEMAS)
+        if version >= 9:
+            required_objects += ("asset_index_state",)
+        if version >= 10:
+            required_objects += ("free_download_quota_windows",)
+        if version >= 11:
+            required_objects += ("shop_order_receipts",)
+        if version >= 20:
+            required_objects += ("shop_order_receipt_recoveries",)
+        if version >= 22:
+            required_objects += ("shop_delivery_attempts",)
+        if version >= 12:
+            required_objects += ("seller_profile",)
+        if version >= 13:
+            required_objects += tuple(table for table, _schema in STOREFRONT_ANALYTICS_SCHEMAS)
+        if version >= 14:
+            required_objects += ("reconciliation_tasks",)
+        if version >= 15:
+            required_objects += ("reconciliation_queue_state",)
+        if version >= 16:
+            required_objects += ("shop_carts", "shop_cart_items", "shop_cart_checkouts", "shop_wishlist_owners", "shop_wishlist_items")
+        if version < 17 and "reconciliation_tasks" in required_objects:
+            required_objects = tuple(
+                table for table in required_objects if table != "reconciliation_tasks"
+            )
+        for table in required_objects:
+            _validate_schema_object_at_version(conn, table, version)
+        if 14 <= version < 17:
+            validate_schema_object(
+                conn,
+                "reconciliation_tasks",
+                _reconciliation_tasks_contract(include_lease_token=False),
+            )  # type: ignore[arg-type]
         conn.execute(f"RELEASE SAVEPOINT {savepoint}")
         if not outer_transaction:
             conn.commit()

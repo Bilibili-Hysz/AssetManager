@@ -13,8 +13,10 @@ Placeholders: {file} → selected file path, {folder} → current directory
 """
 import json
 import logging
+import os
 import subprocess
 import sys
+import tempfile
 
 from AssetsManager.core.database import SHARED_DIR
 
@@ -43,11 +45,24 @@ def _load() -> list[dict]:
 
 
 def _save(tools: list[dict]) -> None:
-    TOOLS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    """Atomically write tools.json via tempfile + os.replace."""
+    tmp = None
     try:
-        TOOLS_PATH.write_text(
-            json.dumps(tools, indent=2, ensure_ascii=False), encoding="utf-8")
-    except OSError:
+        TOOLS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        content = json.dumps(tools, indent=2, ensure_ascii=False)
+        fd, tmp = tempfile.mkstemp(dir=str(TOOLS_PATH.parent),
+                                   suffix=".tmp", prefix="tools_")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, str(TOOLS_PATH))
+    except (OSError, TypeError, ValueError):
+        if tmp is not None:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
         _log.exception("Failed to save tools.json")
 
 
@@ -62,6 +77,11 @@ def run_tool(tool: dict, file_path: str = "", folder_path: str = "") -> None:
     args = tool.get("args", [])
     if not cmd or not isinstance(cmd, str):
         raise ValueError('Invalid tool command')
+    name = tool.get("name") or cmd
+    if not isinstance(args, list) or not all(
+            isinstance(a, (str, int, float)) and not isinstance(a, bool)
+            for a in args):
+        raise ValueError(f'Invalid tool args for "{name}"')
 
     if file_path and '\x00' in str(file_path):
         raise ValueError('Invalid file path')
@@ -70,6 +90,7 @@ def run_tool(tool: dict, file_path: str = "", folder_path: str = "") -> None:
 
     resolved = []
     for a in args:
+        a = str(a)
         a = a.replace("{file}", file_path or "")
         a = a.replace("{folder}", folder_path or "")
         resolved.append(a)
@@ -77,8 +98,25 @@ def run_tool(tool: dict, file_path: str = "", folder_path: str = "") -> None:
     full = [cmd] + resolved
     try:
         if sys.platform == "win32":
-            subprocess.Popen(full, shell=False)
+            # Windows' CreateProcess cannot execute .cmd/.bat directly
+            # (WinError 193); wrap them in cmd.exe.
+            subprocess.Popen(_windows_launch_command(full), shell=False)
         else:
             subprocess.Popen(full, shell=False, start_new_session=True)
     except OSError:
         _log.exception("Failed to launch tool: %s", cmd)
+
+
+def _windows_launch_command(full: list[str]) -> list[str]:
+    """Return a launchable command for Windows batch files.
+
+    ``.cmd`` / ``.bat`` targets are wrapped as ``["cmd", "/c", ...]`` because
+    CreateProcess refuses to start them directly. Other executables are
+    returned unchanged.
+    """
+    if not full:
+        return full
+    exe = str(full[0]).lower()
+    if exe.endswith((".cmd", ".bat")):
+        return ["cmd", "/c"] + full
+    return full

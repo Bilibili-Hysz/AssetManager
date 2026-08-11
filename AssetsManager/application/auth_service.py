@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import threading
 from sqlite3 import Connection
 from typing import TYPE_CHECKING
 
@@ -14,6 +15,7 @@ from AssetsManager.domain.events import InviteChanged, UserChanged
 from AssetsManager.repositories.auth_repository import AuthRepository
 
 _log = logging.getLogger(__name__)
+_MISSING_PROVIDER = object()
 
 if TYPE_CHECKING:
     from AssetsManager.application.context import LibrarySession
@@ -35,17 +37,91 @@ class AuthService:
     ):
         self._conn = db_conn
         self._secret = token_secret
-        self._session = session
+        self._session = None
         self._repo = AuthRepository(db_conn)
+        self._binding_lock = threading.RLock()
         self._event_bus = get_event_bus()
-        self._library_root = (
-            getattr(session, "root_str", str(getattr(session, "root", "")))
-            if session is not None
-            else ""
-        )
-        self._session_token = (
-            getattr(session, "event_token", "") if session is not None else ""
-        )
+        self._library_root = ""
+        self._session_token = ""
+        if session is not None:
+            self._bind_session(session)
+
+    def _bind_session(self, session: LibrarySession) -> None:
+        with self._binding_lock:
+            if self._session is not None:
+                if self._session is session:
+                    return
+                raise RuntimeError(
+                    "AuthService is already bound to another LibrarySession"
+                )
+
+            connection_for = getattr(session, "connection_for", _MISSING_PROVIDER)
+            if connection_for is _MISSING_PROVIDER:
+                # Explicit legacy compatibility: historical fake sessions omit
+                # the canonical provider entirely.  Malformed provider values
+                # must not silently downgrade into this raw compatibility path.
+                if not callable(getattr(session, "operation", None)):
+                    raise TypeError("Legacy session must provide callable operation()")
+                root_value = getattr(session, "root_str", None)
+                if root_value is None:
+                    root_value = getattr(session, "root", None)
+                if root_value is None:
+                    raise TypeError("Legacy session must provide root or root_str")
+
+                with session.operation():
+                    bound_repository = AuthRepository(self._conn)
+                    library_root = str(root_value)
+                    session_token = getattr(session, "event_token", "")
+                    self._publish_session_binding(
+                        session, bound_repository, library_root, session_token
+                    )
+                return
+
+            if not callable(connection_for):
+                raise TypeError(
+                    "Canonical LibrarySession must provide callable connection_for()"
+                )
+            if not callable(getattr(session, "operation", None)):
+                raise TypeError("Canonical LibrarySession must provide operation()")
+            requested_root = getattr(session, "root", None)
+            if requested_root is None:
+                requested_root = getattr(session, "root_str", None)
+            if requested_root is None:
+                raise TypeError("Canonical LibrarySession must provide root or root_str")
+
+            with session.operation():
+                session_connection = session.connection_for(requested_root)
+                if session_connection is not self._conn:
+                    raise ValueError(
+                        "AuthService connection does not belong to the LibrarySession"
+                    )
+                bound_repository = AuthRepository.for_session(session)
+                library_root = getattr(session, "root_str", str(requested_root))
+                session_token = getattr(session, "event_token", "")
+                self._publish_session_binding(
+                    session, bound_repository, library_root, session_token
+                )
+
+    def _publish_session_binding(
+        self,
+        session: LibrarySession,
+        repository: AuthRepository,
+        library_root: str,
+        session_token: str,
+    ) -> None:
+        def publish_binding() -> None:
+            # `_session` is the readiness flag read by `session_operation`, so
+            # publish every accompanying field before it.
+            self._repo = repository
+            self._library_root = library_root
+            self._session_token = session_token
+            self._session = session
+
+        publish_while_live = getattr(session, "_publish_while_live", None)
+        if callable(publish_while_live):
+            publish_while_live(publish_binding)
+        else:
+            publish_binding()
 
     def _publish(self, event_type: type) -> None:
         if self._library_root and self._session_token:
@@ -72,7 +148,7 @@ class AuthService:
         pass
 
     @session_operation
-    def has_active_users(self, *, raise_on_error: bool = False) -> bool:
+    def has_active_users(self, *, raise_on_error: bool = True) -> bool:
         """Check if there are any active users in the database."""
         return self._repo.has_active_users(raise_on_error=raise_on_error)
 
@@ -108,12 +184,17 @@ class AuthService:
     def authenticate_user(self, username: str, password: str) -> tuple[dict | None, str]:
         user = self._repo.get_user_by_username(username)
         if not user:
-            return None, "User not found"
+            return None, "Invalid username or password"
         if not user.get("is_active"):
-            return None, "User is deactivated"
+            return None, "Invalid username or password"
         if not auth_crypto.verify_password(password, user.get("password_hash", "")):
-            return None, "Invalid password"
+            return None, "Invalid username or password"
         return user, ""
+
+    @session_operation
+    def get_user_by_id(self, user_id: int) -> dict | None:
+        """Return the current persisted user record for authorization rechecks."""
+        return self._repo.get_user_by_id(int(user_id))
 
     @session_operation
     def generate_user_token(self, user_id: int, username: str, role: str) -> str:
@@ -129,7 +210,14 @@ class AuthService:
             user_id = int(parts[1])
         except (ValueError, IndexError):
             return None
-        user_info = self._repo.get_user_by_id(user_id)
+        try:
+            user_info = self._repo.get_user_by_id(user_id)
+        except Exception:
+            # A simple-password token ("ts.nonce.sig") shares the three-part
+            # shape with a legacy user token when its nonce happens to be
+            # all digits; treat any DB failure as "not a user token" so the
+            # caller can fall through to password verification.
+            return None
         return auth_crypto.verify_user_token(token, self._secret, user_info)
 
     @session_operation
@@ -147,13 +235,15 @@ class AuthService:
             return None, pw_error
 
         # Invite code logic: validate if provided, require if codes exist
-        has_active_codes = self._repo.has_active_invite_codes()
+        # This lookup is security-sensitive: a database failure must not be
+        # treated as an empty invite-code table and allow registration through.
+        has_active_codes = self._repo.has_active_invite_codes(raise_on_error=True)
         if not invite_code and has_active_codes:
             return None, "Invite code is required"
 
         existing = self._repo.get_user_by_username(username)
         if existing:
-            return None, "Username already exists"
+            return None, "Registration failed"
 
         pw_hash = auth_crypto.hash_password(password)
         if invite_code:

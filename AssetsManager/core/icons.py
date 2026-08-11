@@ -7,15 +7,21 @@ keeps the visual result stable across Windows themes and fonts.
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 
-from PySide6.QtCore import QByteArray, QRectF
-from PySide6.QtGui import QIcon, QPainter, QPixmap
+from PySide6.QtCore import QByteArray, QRectF, Qt
+from PySide6.QtGui import QGuiApplication, QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
 from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px
 
 _log = logging.getLogger(__name__)
+
+# Bounded LRU: keys are (icon, tint, pixel_size, dpr) so a long-lived session
+# mixing many sizes/colors/dprs cannot grow the cache without limit. Entries
+# past the cap evict the least-recently-used pixmap.
+_CACHE_MAX = 4096
 
 _ICON_PATHS: dict[str, str] = {
     "settings": (
@@ -66,6 +72,16 @@ _ICON_PATHS: dict[str, str] = {
     "eye": '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/>',
     "eye_off": '<path d="m3 3 18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.2A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.1 3.9M6.2 6.2C3.8 7.8 2 12 2 12s3.5 7 10 7c1 0 1.9-.2 2.7-.5"/>',
     "refresh": '<path d="M20 11a8 8 0 1 0 1 4"/><path d="M20 4v7h-7"/>',
+    "download": '<path d="M12 5v11M5 9l7 7 7-7M4 20h16"/>',
+    "external_link": '<path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+    "folder_open": '<path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5c0-1.1.9-2 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2"/>',
+    "heart": '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
+    "info": '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>',
+    "monitor": '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>',
+    "pause": '<path d="M9 4v16M15 4v16"/>',
+    "play": '<path d="m6 3 14 9-14 9Z"/>',
+    "save": '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v4h8"/>',
+    "upload": '<path d="M12 16V5M5 12l7-7 7 7M4 20h16"/>',
 }
 
 _ALIASES = {
@@ -74,8 +90,32 @@ _ALIASES = {
     "plugin": "puzzle",
     "chevron-right": "chevron_right",
     "more-horizontal": "more_horizontal",
+    "monitor_screen": "monitor",
+    "screen": "monitor",
+    "floppy": "save",
+    "external": "external_link",
+    "open_folder": "folder_open",
 }
-_CACHE: dict[tuple[str, str, int], QIcon] = {}
+_CACHE: "OrderedDict[tuple[str, str, int, float], QIcon]" = OrderedDict()
+
+# Theme tokens accepted as semantic color roles by icon(). Anything not in
+# this set is treated as an explicit color string (hex / rgb / rgba).
+_SEMANTIC_COLORS = frozenset({
+    "heading", "body", "muted", "accent", "on_accent",
+    "favorite", "recent", "success", "warning", "danger",
+    "disabled_text",
+    "icon_primary", "icon_secondary", "icon_muted",
+    "icon_on_accent", "icon_accent", "icon_disabled",
+})
+
+
+def _resolve_tint(color: str | None) -> str:
+    """Resolve a semantic token name or explicit color to a hex string."""
+    if color is None:
+        return themes.color("icon_primary") or themes.color("heading") or "#ffffff"
+    if color in _SEMANTIC_COLORS:
+        return themes.color(color) or "#ffffff"
+    return color
 
 
 def normalize(name: str | None, fallback: str = "file") -> str:
@@ -95,13 +135,21 @@ def has(name: str | None) -> bool:
 
 
 def icon(name: str | None, *, color: str | None = None, size: int | None = None, fallback: str = "file") -> QIcon:
-    """Render a semantic line icon using the current theme color."""
+    """Render a semantic line icon using the current theme color.
+
+    ``color`` accepts a semantic theme token name (e.g. "icon_primary",
+    "heading", "favorite") or an explicit color string (e.g. "#c480d4").
+    None resolves to the theme's primary icon color.
+    """
     resolved = normalize(name, fallback=fallback)
-    tint = color or themes.color("heading") or "#ffffff"
+    tint = _resolve_tint(color)
     pixel_size = max(1, int(size or scaled_px(16)))
-    cache_key = (resolved, tint, pixel_size)
+    screen = QGuiApplication.primaryScreen()
+    dpr = max(1.0, screen.devicePixelRatio() if screen else 1.0)
+    cache_key = (resolved, tint, pixel_size, dpr)
     cached = _CACHE.get(cache_key)
     if cached is not None:
+        _CACHE.move_to_end(cache_key)
         return cached
 
     svg = (
@@ -110,8 +158,9 @@ def icon(name: str | None, *, color: str | None = None, size: int | None = None,
         f'stroke-linecap="round" stroke-linejoin="round">{_ICON_PATHS[resolved]}</svg>'
     )
     renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
-    pixmap = QPixmap(pixel_size, pixel_size)
-    pixmap.fill(0)
+    pixmap = QPixmap(int(pixel_size * dpr), int(pixel_size * dpr))
+    pixmap.setDevicePixelRatio(dpr)
+    pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     try:
         renderer.render(painter, QRectF(0, 0, pixel_size, pixel_size))
@@ -119,6 +168,9 @@ def icon(name: str | None, *, color: str | None = None, size: int | None = None,
         painter.end()
     result = QIcon(pixmap)
     _CACHE[cache_key] = result
+    _CACHE.move_to_end(cache_key)
+    if len(_CACHE) > _CACHE_MAX:
+        _CACHE.popitem(last=False)
     return result
 
 

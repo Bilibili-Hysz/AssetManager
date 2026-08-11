@@ -19,6 +19,9 @@ import threading
 import time
 
 
+_MISSING = object()
+
+
 class DictCache:
     """Simple dict-based cache. No eviction."""
 
@@ -80,7 +83,8 @@ class LRUCache:
             self._store.clear()
 
     def __contains__(self, key):
-        return self.get(key) is not None
+        with self._lock:
+            return self._store.get(key, _MISSING) is not _MISSING
 
     def __getitem__(self, key):
         with self._lock:
@@ -153,7 +157,11 @@ class TTLCache:
             self._timestamps.clear()
 
     def __contains__(self, key):
-        return self.get(key) is not None
+        with self._lock:
+            if key not in self._store:
+                return False
+            ts = self._timestamps.get(key, 0)
+            return time.time() - ts < self._ttl
 
     def __len__(self):
         with self._lock:

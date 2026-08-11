@@ -1,6 +1,8 @@
 """Undo/redo application service."""
 from __future__ import annotations
 
+import json
+import logging
 import os
 import shutil
 import tempfile
@@ -13,10 +15,13 @@ from time import perf_counter, time
 from typing import TYPE_CHECKING
 
 from AssetsManager.application.context import session_operation
+from AssetsManager.application.file_operation_service import acquire_path_locks
 from AssetsManager.core.performance import PerformanceRecorder
 
 if TYPE_CHECKING:
     from AssetsManager.application.context import LibrarySession
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -199,6 +204,7 @@ class UndoService:
         self._stacks[self._library_root] = (
             deque[UndoEntry](maxlen=max_depth), [],
         )
+        self._failed_entries: set[int] = set()
         self._performance_recorder = (
             performance_recorder if performance_recorder is not None and performance_recorder.enabled else None
         )
@@ -260,13 +266,60 @@ class UndoService:
     def prepare_delete(self, path: str) -> UndoEntry | None:
         """Create a delete backup without adding it to undo history."""
         self._ensure_open()
-        backup = self._make_backup(path)
-        if not backup:
-            return None
+        with acquire_path_locks(Path(path)):
+            backup = self._make_backup(path)
+            if not backup:
+                return None
+            self._snapshot_projection(path, backup)
         return UndoEntry(
             type="delete", path=path, backup=backup,
             is_dir=os.path.isdir(path),
         )
+
+    def _snapshot_projection(self, path: str, backup: str) -> None:
+        """Persist file_tags/file_meta/library_favorites rows next to the backup."""
+        if self._session is None:
+            return
+        try:
+            from AssetsManager.core.path_resolver import sql_like_descendant_pattern
+
+            conn = self._session.connection_for(self._session.root)
+            old = str(Path(path).resolve())
+            descendant_pattern = sql_like_descendant_pattern(old)
+            tag_rows = conn.execute(
+                "SELECT file_path, tag FROM file_tags "
+                "WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
+                (old, descendant_pattern),
+            ).fetchall()
+            meta_rows = conn.execute(
+                "SELECT file_path, notes, cached_size, cached_mtime, cached_file_count, urls "
+                "FROM file_meta WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
+                (old, descendant_pattern),
+            ).fetchall()
+            favorites_table = conn.execute(
+                "SELECT 1 FROM sqlite_master "
+                "WHERE type='table' AND name='library_favorites'"
+            ).fetchone()
+            favorite_rows = []
+            if favorites_table is not None:
+                favorite_rows = conn.execute(
+                    "SELECT owner_key, file_path, created_at FROM library_favorites "
+                    "WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
+                    (old, descendant_pattern),
+                ).fetchall()
+            payload = {
+                "format": "assetsmanager.undo-projection",
+                "version": 1,
+                "base": old,
+                "file_tags": tag_rows,
+                "file_meta": meta_rows,
+                "library_favorites": favorite_rows,
+            }
+            snapshot_path = f"{backup}.projection.json"
+            with open(snapshot_path, "w", encoding="utf-8") as stream:
+                json.dump(payload, stream, ensure_ascii=False)
+        except Exception as exc:
+            _log.warning("Failed to snapshot projection for %s: %s", path, exc)
 
     @session_operation
     def commit_delete(self, entry: UndoEntry) -> None:
@@ -344,7 +397,12 @@ class UndoService:
 
     @session_operation
     def perform_undo(self, file_operations, library_root: str | Path | None = None) -> bool:
-        """Undo through file operations, moving history only after success."""
+        """Undo through file operations, moving history only after success.
+
+        The executed entry is removed from the undo stack unconditionally
+        after the filesystem operation succeeds, so a concurrent push cannot
+        leave the stack out of sync with the filesystem.
+        """
         started = perf_counter() if self._performance_recorder is not None else None
         with self._lock:
             if not self._undo_stack:
@@ -358,17 +416,24 @@ class UndoService:
             self._record_execution("undo", started, "error")
             return False
         with self._lock:
-            if not self._undo_stack or self._undo_stack[-1] != entry:
-                self._record_execution("undo", started, "error")
-                return False
-            self._undo_stack.pop()
-            self._redo_stack.append(entry)
+            try:
+                self._undo_stack.remove(entry)
+            except ValueError:
+                pass
+            if entry not in self._redo_stack:
+                self._redo_stack.append(entry)
+            self._failed_entries.discard(id(entry))
         self._record_execution("undo", started, "success")
         return True
 
     @session_operation
     def perform_redo(self, file_operations, library_root: str | Path | None = None) -> bool:
-        """Redo through file operations, moving history only after success."""
+        """Redo through file operations, moving history only after success.
+
+        The executed entry is removed from the redo stack unconditionally
+        after the filesystem operation succeeds, so a concurrent push cannot
+        leave the stack out of sync with the filesystem.
+        """
         started = perf_counter() if self._performance_recorder is not None else None
         with self._lock:
             if not self._redo_stack:
@@ -382,11 +447,13 @@ class UndoService:
             self._record_execution("redo", started, "error")
             return False
         with self._lock:
-            if not self._redo_stack or self._redo_stack[-1] != entry:
-                self._record_execution("redo", started, "error")
-                return False
-            self._redo_stack.pop()
-            self._undo_stack.append(entry)
+            try:
+                self._redo_stack.remove(entry)
+            except ValueError:
+                pass
+            if entry not in self._undo_stack:
+                self._undo_stack.append(entry)
+            self._failed_entries.discard(id(entry))
         self._record_execution("redo", started, "success")
         return True
 
@@ -398,31 +465,102 @@ class UndoService:
                          library_root: str | Path | None) -> bool:
         try:
             if entry.type == "rename":
-                return self._operation_succeeded(
+                if os.path.lexists(entry.old):
+                    self._mark_failed(entry)
+                    _log.warning(
+                        "Undo rename blocked: target already exists: %s", entry.old
+                    )
+                    return False
+                succeeded = self._operation_succeeded(
                     file_operations.move(entry.new, entry.old, library_root=library_root)
                 )
-            if entry.type == "delete" and entry.backup and os.path.exists(entry.backup):
-                return self._operation_succeeded(
-                    file_operations.restore_backup(entry.backup, entry.path, library_root=library_root)
+                if not succeeded:
+                    self._mark_failed(entry)
+                return succeeded
+            if entry.type == "delete":
+                if not (entry.backup and os.path.exists(entry.backup)):
+                    self._mark_failed(entry)
+                    return False
+                if os.path.lexists(entry.path):
+                    self._mark_failed(entry)
+                    _log.warning(
+                        "Undo delete restore blocked: path recreated by user: %s", entry.path
+                    )
+                    return False
+                succeeded = self._operation_succeeded(
+                    file_operations.restore_backup(
+                        entry.backup, entry.path, library_root=library_root
+                    )
                 )
+                if not succeeded:
+                    self._mark_failed(entry)
+                return succeeded
         except (OSError, ValueError):
-            pass
+            self._mark_failed(entry)
         return False
 
     def _execute_forward(self, file_operations, entry: UndoEntry,
                          library_root: str | Path | None) -> bool:
         try:
             if entry.type == "rename":
-                return self._operation_succeeded(
+                if os.path.lexists(entry.new):
+                    self._mark_failed(entry)
+                    _log.warning(
+                        "Redo rename blocked: target already exists: %s", entry.new
+                    )
+                    return False
+                succeeded = self._operation_succeeded(
                     file_operations.move(entry.old, entry.new, library_root=library_root)
                 )
+                if not succeeded:
+                    self._mark_failed(entry)
+                return succeeded
             if entry.type == "delete":
-                return self._operation_succeeded(
-                    file_operations.delete_permanent([entry.path], library_root=library_root)
+                succeeded = self._operation_succeeded(
+                    file_operations.delete_permanent(
+                        [entry.path], library_root=library_root
+                    )
                 )
+                if not succeeded:
+                    self._mark_failed(entry)
+                return succeeded
         except (OSError, ValueError):
-            pass
+            self._mark_failed(entry)
         return False
+
+    def _mark_failed(self, entry: UndoEntry) -> None:
+        with self._lock:
+            self._failed_entries.add(id(entry))
+
+    def skip_poisoned_undo(self) -> UndoEntry | None:
+        """Drop the top undo entry when a previous execution attempt failed.
+
+        A failed entry would otherwise remain at the top of the LIFO stack and
+        block every later undo.  Skipping discards the entry (and its backup).
+        """
+        with self._lock:
+            if not self._undo_stack:
+                return None
+            entry = self._undo_stack[-1]
+            if id(entry) not in self._failed_entries:
+                return None
+            self._undo_stack.pop()
+            self._failed_entries.discard(id(entry))
+        self._clean_backup(entry.backup)
+        return entry
+
+    def skip_poisoned_redo(self) -> UndoEntry | None:
+        """Drop the top redo entry when a previous execution attempt failed."""
+        with self._lock:
+            if not self._redo_stack:
+                return None
+            entry = self._redo_stack[-1]
+            if id(entry) not in self._failed_entries:
+                return None
+            self._redo_stack.pop()
+            self._failed_entries.discard(id(entry))
+        self._clean_backup(entry.backup)
+        return entry
 
     def cleanup(self) -> None:
         """Remove the undo backup directory."""
@@ -466,6 +604,9 @@ class UndoService:
 
     def _clean_backup(self, backup: str) -> None:
         try:
+            snapshot_path = f"{backup}.projection.json"
+            if os.path.isfile(snapshot_path):
+                os.remove(snapshot_path)
             if os.path.isdir(backup):
                 shutil.rmtree(backup)
             elif os.path.isfile(backup):

@@ -6,25 +6,91 @@ Tags are shared across the library - same DB as file_meta.
 This store delegates to TagRepository for all SQL operations.
 """
 import warnings
+from contextlib import contextmanager
+from functools import wraps
+from typing import Any, Callable, TypeVar
 from pathlib import Path
 from sqlite3 import Connection
 
-from AssetsManager.core.database import DatabaseManager, db_write_lock
+from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.singleton import ThreadSafeSingleton
 from AssetsManager.core.tag_library import get_library
 from AssetsManager.repositories.tag_repository import TagRepository
 
 
+_T = TypeVar("_T")
+
+
+def _tag_store_operation(method: Callable[..., _T]) -> Callable[..., _T]:
+    """Hold a real session operation lease across one public store call."""
+    @wraps(method)
+    def wrapped(self: Any, *args: Any, **kwargs: Any) -> _T:
+        with self._operation_scope():
+            self._ensure_live()
+            return method(self, *args, **kwargs)
+
+    return wrapped
+
+
 class TagStore:
     _RESOLVE_CACHE_MAX = 10000
 
-    def __init__(self, library_root: str, db_conn: Connection | None = None):
+    def __init__(
+        self,
+        library_root: str,
+        db_conn: Connection | None = None,
+        *,
+        session=None,
+    ):
         self._root = str(Path(library_root).resolve())
-        self._db = db_conn or ThreadSafeSingleton.get(DatabaseManager).connection_for(self._root)
-        self._repo = TagRepository(self._db)
+        self._liveness = None
+        self._session = None
+        if session is not None and db_conn is None:
+            self._db = session.connection_for(self._root)
+        elif db_conn is None:
+            self._db = ThreadSafeSingleton.get(DatabaseManager).connection_for(self._root)
+        else:
+            # Legacy constructor: preserve compatibility with caller-owned raw connections.
+            self._db = DatabaseManager.validate_connection_owner(
+                self._root, db_conn, allow_unmanaged=True
+            )
+        self._repo = TagRepository(
+            self._db,
+            library_root=self._root,
+            session=session,
+        )
         self._resolve_cache: dict[str, str] = {}
         from threading import Lock
         self._resolve_cache_lock = Lock()
+        if session is not None:
+            self._bind_session(session)
+
+    def _bind_liveness(self, liveness) -> None:
+        self._liveness = liveness
+
+    def _bind_session(self, session) -> None:
+        if self._session is not None and self._session is not session:
+            raise RuntimeError("TagStore is already bound to another LibrarySession")
+        session_connection = session.connection_for(self._root)
+        if session_connection is not self._db:
+            raise ValueError("TagStore connection does not belong to the LibrarySession")
+        self._repo._bind_session(session, library_root=self._root)
+        self._session = session
+        session_liveness = getattr(getattr(session, "context", None), "_liveness", None)
+        if session_liveness is not None:
+            self._liveness = session_liveness
+
+    @contextmanager
+    def _operation_scope(self):
+        if self._session is None:
+            yield
+            return
+        with self._session.operation():
+            yield
+
+    def _ensure_live(self) -> None:
+        if self._liveness is not None:
+            self._liveness.ensure_live()
 
     def _resolve(self, filepath: str) -> str:
         """Cached Path.resolve() to avoid repeated filesystem I/O."""
@@ -38,15 +104,18 @@ class TagStore:
             self._resolve_cache[filepath] = resolved
             return resolved
 
+    @_tag_store_operation
     def get_tags(self, filepath: str) -> list[str]:
         key = self._resolve(filepath)
         return self._repo.get_tags(key)
 
+    @_tag_store_operation
     def get_tags_for_files(self, filepaths: list[str]) -> dict[str, list[str]]:
         """Return tags keyed by resolved file path for many files at once."""
         keys = [self._resolve(p) for p in filepaths]
         return self._repo.get_tags_for_files(keys)
 
+    @_tag_store_operation
     def add_tag(self, filepath: str, tag: str):
         tag = get_library().canonical(tag)
         if not tag:
@@ -57,6 +126,7 @@ class TagStore:
             return
         self._repo.add_tag(key, tag)
 
+    @_tag_store_operation
     def remove_tag(self, filepath: str, tag: str):
         key = self._resolve(filepath)
         existing = self.get_tags(filepath)
@@ -64,18 +134,19 @@ class TagStore:
         if match:
             self._repo.remove_tag(key, match)
 
+    @_tag_store_operation
     def get_files_by_tag(self, tag: str) -> set[str]:
         return set(self._repo.get_files_by_tag(tag))
 
+    @_tag_store_operation
     def get_all_tags(self) -> list[str]:
         return self._repo.get_all_tags()
 
+    @_tag_store_operation
     def get_all_tagged_files(self) -> set[str]:
-        rows = self._db.execute(
-            "SELECT DISTINCT file_path FROM file_tags"
-        ).fetchall()
-        return {r[0] for r in rows}
+        return {file_path for file_path, _tag in self._repo.list_file_tags()}
 
+    @_tag_store_operation
     def remove_file(self, filepath: str):
         key = self._resolve(filepath)
         self._repo.remove_file(key)
@@ -85,10 +156,10 @@ class TagStore:
         with self._resolve_cache_lock:
             self._resolve_cache.clear()
 
+    @_tag_store_operation
     def save(self):
         """Persist pending changes. No-op for SQLite (auto-commit per operation)."""
-        with db_write_lock(self._db):
-            self._repo._conn.commit()
+        return None
 
 
 def get_store(library_root: str, db_conn: Connection | None = None) -> TagStore:

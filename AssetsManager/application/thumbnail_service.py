@@ -14,6 +14,8 @@ from AssetsManager.application.context import (
     LibrarySession,
     session_operation,
 )
+from AssetsManager.core.database import DatabaseManager
+from AssetsManager.core.path_resolver import root_identity
 from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.repositories.tag_repository import TagRepository
 from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
@@ -87,9 +89,32 @@ class ThumbnailService:
         session: LibrarySession | None = None,
     ):
         self._session = session
-        self._connection_provider = connection_provider or (
-            session.connection_for if session is not None else None
-        )
+        self._tag_repository: TagRepository | None = None
+        self._root_identity = None
+        if isinstance(session, LibrarySession):
+            expected_provider = session.connection_for
+            provider = connection_provider or expected_provider
+            provider_self = getattr(provider, "__self__", None)
+            provider_func = getattr(provider, "__func__", None)
+            expected_func = getattr(expected_provider, "__func__", None)
+            if not (
+                provider == expected_provider
+                or (provider_self is session and provider_func is expected_func)
+            ):
+                raise ValueError(
+                    "ThumbnailService connection provider does not belong to "
+                    "the LibrarySession"
+                )
+            # Retain the exact provider object supplied by the runtime.
+            # Besides preserving the session binding, this keeps the provider
+            # identity shared by sibling runtime services.
+            self._connection_provider = provider
+            self._root_identity = session.context.root_identity
+            self._tag_repository = TagRepository.for_session(session)
+        else:
+            self._connection_provider = connection_provider or (
+                session.connection_for if session is not None else None
+            )
 
     def _connection(self, library_root: str | Path) -> sqlite3.Connection:
         if self._connection_provider is None:
@@ -97,7 +122,27 @@ class ThumbnailService:
                 "ThumbnailService cache metadata requires an explicit "
                 "ConnectionProvider."
             )
-        return self._connection_provider(Path(library_root).resolve())
+        requested = root_identity(library_root, strict=False)
+        if isinstance(self._session, LibrarySession):
+            captured = self._root_identity
+            if captured is None or requested.map_key != captured.map_key:
+                raise ValueError(
+                    "ThumbnailService library_root does not match the bound "
+                    "LibrarySession"
+                )
+            conn = self._connection_provider(requested.display_path)
+            expected = self._session.connection_for(captured)
+            if conn is not expected:
+                raise ValueError(
+                    "ThumbnailService connection provider returned a connection "
+                    "that does not belong to the bound LibrarySession"
+                )
+            return DatabaseManager.require_managed_connection_owner(captured, conn)
+
+        conn = self._connection_provider(requested.display_path)
+        return DatabaseManager.validate_connection_owner(
+            requested, conn, allow_unmanaged=True
+        )
 
     def _repo(self, library_root: str | Path) -> ThumbnailRepository:
         return ThumbnailRepository(self._connection(library_root))
@@ -199,19 +244,26 @@ class ThumbnailService:
     ) -> tuple[bytes, str] | None:
         """Process an image: resize and/or blur. Returns (bytes, mime_type) or None."""
         try:
-            from PIL import Image, ImageFilter
+            from PIL import Image, ImageFilter, ImageOps
         except ImportError:
             _log.warning("Pillow not installed — cannot process thumbnails")
             return None
         try:
             img = Image.open(source_path)
-            if should_blur:
-                img = img.filter(ImageFilter.GaussianBlur(radius=15))
+            # Apply EXIF orientation so the thumbnail matches the displayed image.
+            img = ImageOps.exif_transpose(img)
             w, h = img.size
             if max(w, h) > max_size:
                 ratio = max_size / max(w, h)
                 resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
                 img = img.resize((int(w * ratio), int(h * ratio)), resample)
+            if should_blur:
+                img = img.filter(ImageFilter.GaussianBlur(radius=15))
+            # WEBP only accepts RGB/RGBA: convert other modes (CMYK, P, L,
+            # LA, ...) before saving so paletted or CMYK sources do not fail.
+            has_alpha = "A" in img.getbands() or img.mode in ("LA", "PA", "RGBA")
+            if img.mode not in ("RGB", "RGBA"):
+                img = img.convert("RGBA" if has_alpha else "RGB")
             buf = io.BytesIO()
             img.save(buf, format="WEBP", quality=80)
             buf.seek(0)
@@ -229,23 +281,47 @@ class ThumbnailService:
     ) -> bool:
         if not blur_tags:
             return False
-        if db_conn is None and library_root is not None and self._connection_provider is not None:
-            try:
-                db_conn = self._connection_provider(Path(library_root).resolve())
-            except Exception:
-                _log.debug("_check_blur connection resolution failed for %s", target)
-                return False
+        root = Path(library_root).resolve() if library_root is not None else None
+        if db_conn is None and root is not None and self._connection_provider is not None:
+            # Blur policy is security-sensitive: an unavailable provider must
+            # not be interpreted as "the file does not need blurring".
+            db_conn = self._connection_provider(root)
         if db_conn is None:
-            return False
-        try:
-            file_tags = {
-                tag.lower()
-                for tag in TagRepository(db_conn).get_tags(str(target.resolve()))
-            }
-            return bool(file_tags & {t.lower() for t in blur_tags})
-        except sqlite3.Error:
-            _log.debug("_check_blur query failed for %s", target)
-            return False
+            # Fail closed: with blur tags configured, an undecidable policy
+            # must not silently un-blur the asset.
+            raise ValueError(
+                "ThumbnailService blur policy requires a database connection "
+                "when blur_tags are configured"
+            )
+        if isinstance(self._session, LibrarySession):
+            requested = root_identity(
+                root if root is not None else self._session.context.root_identity,
+                strict=False,
+            )
+            captured = self._root_identity
+            if captured is None or requested.map_key != captured.map_key:
+                raise ValueError(
+                    "ThumbnailService library_root does not match the bound "
+                    "LibrarySession"
+                )
+            expected = self._session.connection_for(captured)
+            if db_conn is not None and db_conn is not expected:
+                raise ValueError(
+                    "ThumbnailService connection does not belong to the bound "
+                    "LibrarySession"
+                )
+            tag_repository = self._tag_repository
+            if tag_repository is None:
+                raise RuntimeError("ThumbnailService tag repository binding is unavailable")
+        else:
+            if root is not None:
+                db_conn = DatabaseManager.validate_connection_owner(root, db_conn, allow_unmanaged=True)
+            tag_repository = TagRepository(db_conn)
+        file_tags = {
+            tag.lower()
+            for tag in tag_repository.get_tags(str(target.resolve()))
+        }
+        return bool(file_tags & {t.lower() for t in blur_tags})
 
     @staticmethod
     def _cache_key(target: Path) -> str:

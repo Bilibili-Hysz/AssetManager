@@ -14,10 +14,14 @@ from AssetsManager.domain.events import (
     AssetTagsChanged,
     AssetUrlsChanged,
     ActivityChanged,
+    FavoritesChanged,
     FileSystemChanged,
     InviteChanged,
     PresenceChanged,
+    QuotaChanged,
     ShareChanged,
+    ShopItemChanged,
+    ShopOrderChanged,
     TagCatalogChanged,
     UserChanged,
 )
@@ -34,11 +38,15 @@ class ProjectionDomain(StrEnum):
     HOME = "home"
     PROJECT_DETAIL = "project_detail"
     METADATA = "metadata"
+    FAVORITES = "favorites"
     TAGS = "tags"
     SHARES = "shares"
     USERS = "users"
     ACTIVITY = "activity"
     ONLINE_USERS = "online_users"
+    SHOP = "shop"
+    ORDERS = "orders"
+    QUOTA = "quota"
 
 
 @dataclass(frozen=True)
@@ -73,7 +81,9 @@ EVENT_DOMAINS: dict[type, tuple[ProjectionDomain, ...]] = {
     FileSystemChanged: (
         ProjectionDomain.FILES, ProjectionDomain.TREE,
         ProjectionDomain.HOME, ProjectionDomain.PROJECT_DETAIL,
+        ProjectionDomain.FAVORITES,
     ),
+    FavoritesChanged: (ProjectionDomain.FAVORITES,),
     AssetTagsChanged: (
         ProjectionDomain.METADATA, ProjectionDomain.TAGS,
         ProjectionDomain.PROJECT_DETAIL, ProjectionDomain.HOME,
@@ -86,6 +96,9 @@ EVENT_DOMAINS: dict[type, tuple[ProjectionDomain, ...]] = {
     InviteChanged: (ProjectionDomain.USERS,),
     ActivityChanged: (ProjectionDomain.ACTIVITY,),
     PresenceChanged: (ProjectionDomain.ONLINE_USERS,),
+    ShopItemChanged: (ProjectionDomain.SHOP,),
+    ShopOrderChanged: (ProjectionDomain.ORDERS,),
+    QuotaChanged: (ProjectionDomain.QUOTA,),
 }
 
 
@@ -142,6 +155,10 @@ class RuntimeEventRouter:
             raw_paths = (*event.paths, *event.old_paths)
         elif isinstance(event, (AssetTagsChanged, AssetNotesChanged, AssetUrlsChanged)):
             raw_paths = (event.file_path,)
+        elif isinstance(event, FavoritesChanged):
+            raw_paths = event.paths
+        elif isinstance(event, ShopItemChanged):
+            raw_paths = event.paths
         else:
             return ()
         paths: list[str] = []
