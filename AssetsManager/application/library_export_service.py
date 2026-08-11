@@ -1690,12 +1690,18 @@ class LibraryExportService:
             raise FileNotFoundError(database_file)
         if database_file.stat().st_size > cls._MAX_DATABASE_QUICK_CHECK_SIZE:
             return
-        connection = sqlite3.connect(str(database_file))
         try:
-            cls._configure_quick_check_connection(connection)
-            row = connection.execute("PRAGMA quick_check").fetchone()
-        finally:
-            connection.close()
+            connection = sqlite3.connect(str(database_file))
+            try:
+                cls._configure_quick_check_connection(connection)
+                row = connection.execute("PRAGMA quick_check").fetchone()
+            finally:
+                connection.close()
+        except sqlite3.DatabaseError as exc:
+            # Deeply corrupted files make PRAGMA quick_check raise directly
+            # ("database disk image is malformed") instead of returning a row;
+            # surface it under the same ValueError contract as the verify path.
+            raise ValueError(f"Restored database is not readable: {exc}") from exc
         result = str(row[0]) if row else "error"
         if result != "ok":
             raise ValueError(f"Restored database quick_check returned: {result}")

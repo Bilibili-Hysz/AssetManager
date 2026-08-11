@@ -180,7 +180,12 @@ class MetadataRepository:
                 session._publish_while_live(publish_binding)
 
     def _path_key(self, file_path: str | Path) -> str:
-        """Return a canonical key and enforce bound-root containment."""
+        """Return a canonical key and enforce bound-root containment.
+
+        Keys are resolve-only (no normcase), matching ProjectData._key: a
+        normcase would lowercase drive letters on Windows and strand rows
+        written by the other component (see project_data.py::_key notes).
+        """
         if self._library_root is None:
             return str(file_path)
         target = Path(file_path).resolve()

@@ -53,10 +53,14 @@ class SettingsDialog(TabbedDialog):
         self._logical_min_size = (460, 520)
         super().__init__(parent, title=tr("settings.title"),
                          min_size=(scaled_px(460), scaled_px(520)))
+        self._maintenance_subscription = None
+        self._ensure_maintenance_subscription()
 
     def set_library_settings_adapter(self, adapter) -> None:
         """Attach a UI-neutral library settings adapter for future settings sections."""
         self._library_settings_adapter = adapter
+        if hasattr(self, "_maintenance_status"):
+            self._refresh_maintenance_status()
 
     @property
     def library_settings_adapter(self):
@@ -111,6 +115,7 @@ class SettingsDialog(TabbedDialog):
         self._build_appearance_tab()
         self._build_general_tab()
         self._build_thumbnails_tab()
+        self._build_maintenance_tab()
 
     # ── Tab 1: Appearance (Theme + Background) ────────────
 
@@ -566,6 +571,143 @@ class SettingsDialog(TabbedDialog):
         layout.addStretch()
         self._add_tab(tab, tr("settings.thumbnails"), scrollable=True, label_key="settings.thumbnails")
 
+    # ── Tab 4: Database maintenance ─────────────────────────
+
+    def _build_maintenance_tab(self):
+        from AssetsManager.core.ui_scale import scaled_px
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        self._maintenance_layout = layout
+        layout.setSpacing(scaled_px(12))
+        layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
+
+        self._maintenance_group = self.make_groupbox(tr("settings.maintenance_title"))
+        gl = QVBoxLayout(self._maintenance_group)
+        self._maintenance_group_layout = gl
+        gl.setSpacing(scaled_px(6))
+        gl.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(8))
+
+        self._run_checkpoint_btn = self.make_secondary_btn(
+            tr("settings.maintenance_run_checkpoint"), self._on_run_checkpoint)
+        gl.addWidget(self._run_checkpoint_btn)
+
+        self._read_size_btn = self.make_secondary_btn(
+            tr("settings.maintenance_read_size"), self._on_read_size)
+        gl.addWidget(self._read_size_btn)
+
+        self._maintenance_status = self.make_muted(tr("settings.maintenance_idle"))
+        self._maintenance_status.setWordWrap(True)
+        gl.addWidget(self._maintenance_status)
+
+        layout.addWidget(self._maintenance_group)
+        layout.addStretch()
+        self._add_tab(tab, tr("settings.maintenance_title"), scrollable=True,
+                      label_key="settings.maintenance_title")
+        self._refresh_maintenance_status()
+
+    def _on_run_checkpoint(self):
+        adapter = self.library_settings_adapter
+        if adapter is None:
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.error_no_library"))
+            return
+        try:
+            adapter.start_wal_checkpoint()
+        except Exception as exc:
+            QMessageBox.warning(self, tr("dialog.error"), str(exc))
+        self._refresh_maintenance_status()
+
+    def _on_read_size(self):
+        adapter = self.library_settings_adapter
+        if adapter is None:
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.error_no_library"))
+            return
+        try:
+            result = adapter.read_database_size()
+        except Exception as exc:
+            QMessageBox.warning(self, tr("dialog.error"), str(exc))
+            return
+        self._maintenance_status.setText(self._format_result_text(result))
+
+    def _refresh_maintenance_status(self):
+        """Pull the adapter view model and render the maintenance state."""
+        status = self._maintenance_status
+        adapter = self.library_settings_adapter
+        if adapter is None:
+            status.setText(tr("settings.error_no_library"))
+            self._run_checkpoint_btn.setEnabled(False)
+            self._read_size_btn.setEnabled(False)
+            return
+        vm = adapter.view_model()
+        self._run_checkpoint_btn.setEnabled(not vm.maintenance_running)
+        self._read_size_btn.setEnabled(not vm.maintenance_running)
+        if vm.maintenance_running:
+            status.setText(tr("settings.maintenance_running"))
+        elif vm.maintenance_schedule_error:
+            status.setText(tr(
+                "settings.maintenance_schedule_error", error=vm.maintenance_schedule_error))
+        elif vm.maintenance_error:
+            status.setText(tr("settings.maintenance_error", error=vm.maintenance_error))
+        elif vm.maintenance_result is not None:
+            status.setText(self._format_result_text(vm.maintenance_result))
+        else:
+            status.setText(tr("settings.maintenance_idle"))
+
+    @staticmethod
+    def _format_result_text(result) -> str:
+        error = getattr(result, "error", None)
+        if error:
+            return tr("settings.maintenance_error", error=error)
+        size_bytes = getattr(result, "size_bytes", None)
+        if size_bytes is not None:
+            return tr("settings.maintenance_db_size",
+                      size=SettingsDialog._format_bytes(size_bytes))
+        checkpointed = getattr(result, "checkpointed_frames", None)
+        if checkpointed is not None:
+            return tr("settings.maintenance_checkpoint_done",
+                      checkpointed=checkpointed,
+                      log=getattr(result, "log_frames", 0),
+                      busy=getattr(result, "busy", 0))
+        if getattr(result, "success", True):
+            return tr("settings.maintenance_done")
+        return tr("settings.maintenance_error", error=str(result))
+
+    @staticmethod
+    def _format_bytes(size: int) -> str:
+        value = float(size)
+        for unit in ("B", "KB", "MB", "GB"):
+            if value < 1024:
+                if unit == "B":
+                    return f"{int(value)} B"
+                return f"{value:.1f} {unit}"
+            value /= 1024
+        return f"{value:.1f} TB"
+
+    def _ensure_maintenance_subscription(self):
+        if self._maintenance_subscription is not None:
+            return
+        from AssetsManager.domain.event_bus import get_event_bus
+        from AssetsManager.domain.events import ActivityChanged
+        self._maintenance_subscription = get_event_bus().subscribe_weak(
+            ActivityChanged, self._on_maintenance_event)
+
+    def _on_dialog_closed(self):
+        """Unsubscribe from the global event bus on every close path."""
+        if self._maintenance_subscription is not None:
+            self._maintenance_subscription.close()
+            self._maintenance_subscription = None
+
+    def _on_maintenance_event(self, event):
+        adapter = self.library_settings_adapter
+        if adapter is None:
+            return
+        if getattr(event, "session_token", "") != adapter.session_token:
+            return
+        self._refresh_maintenance_status()
+
+    def showEvent(self, event):
+        self._ensure_maintenance_subscription()
+        super().showEvent(event)
+
     def _on_lang_clicked(self, key):
         i18n.set_language(key)
 
@@ -597,6 +739,9 @@ class SettingsDialog(TabbedDialog):
         self._cache_group.setTitle(tr("settings.thumb_cache"))
         self._clear_btn.setText(tr("settings.thumb_clear"))
         self._regen_btn.setText(tr("settings.thumb_regenerate"))
+        self._maintenance_group.setTitle(tr("settings.maintenance_title"))
+        self._run_checkpoint_btn.setText(tr("settings.maintenance_run_checkpoint"))
+        self._read_size_btn.setText(tr("settings.maintenance_read_size"))
         mode_label = {
             "dark": tr("settings.dark_mode"), "light": tr("settings.light_mode"),
             "custom": tr("settings.custom_themes"),
@@ -625,13 +770,17 @@ class SettingsDialog(TabbedDialog):
         self._ui_scale_label.setText(f"{percentage}%")
         self.setMinimumSize(
             scaled_px(self._logical_min_size[0]), scaled_px(self._logical_min_size[1]))
-        for layout in (self._appearance_layout, self._general_layout, self._thumbnails_layout):
+        for layout in (self._appearance_layout, self._general_layout,
+                       self._thumbnails_layout, self._maintenance_layout):
             layout.setSpacing(scaled_px(12))
             layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
         self._effects_layout.setSpacing(scaled_px(8))
         self._theme_layout.setSpacing(scaled_px(8))
         self._cache_layout.setSpacing(scaled_px(6))
         self._cache_layout.setContentsMargins(
+            scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(8))
+        self._maintenance_group_layout.setSpacing(scaled_px(6))
+        self._maintenance_group_layout.setContentsMargins(
             scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(8))
         self._mode_btn.setMinimumWidth(scaled_px(100))
         self._theme_btn.setMinimumWidth(scaled_px(160))
