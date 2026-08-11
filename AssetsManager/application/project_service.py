@@ -486,6 +486,10 @@ class ProjectService:
         db_conn: sqlite3.Connection,
     ) -> None:
         """Project baked thumbnail rows onto projects without directory previews."""
+        # Fast path: every project already has a directory-cache preview, so
+        # the full thumbnail_cache scan (plus two stats per row) is pure waste.
+        if len(attached_paths) == len(project_paths):
+            return
         try:
             rows = ThumbnailRepository(db_conn).list_all_with_metadata()
         except sqlite3.ProgrammingError:

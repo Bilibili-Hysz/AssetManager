@@ -880,3 +880,38 @@ def test_refresh_lock_registry_is_bounded():
             for key, lock in original.items():
                 if lock is not None:
                     _REFRESH_LOCKS[key] = lock
+
+
+def test_index_directory_rescans_when_directory_mtime_changes(tmp_path, schema_db):
+    """M6a-18: the fast path must detect on-disk changes via dir_mtime."""
+    import os
+    import time as _time
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    (lib / "file.txt").write_text("x")
+
+    conn = schema_db
+    svc = AssetIndexService()
+    assert svc.index_directory(conn, lib, lib) == 1
+    assert svc.index_directory(conn, lib, lib, force=False) == 1  # SKIPPED
+
+    # Touch the directory so its mtime advances past the snapshot.
+    (lib / "new.txt").write_text("new")
+    os.utime(lib)
+
+    assert svc.index_directory(conn, lib, lib, force=False) == 2
+    assert svc.count(conn, lib) == 2
+
+
+def test_index_directory_empty_directory_skips_after_snapshot(tmp_path, schema_db):
+    """An empty indexed directory is SKIPPED instead of rescanned every time."""
+    lib = tmp_path / "lib"
+    lib.mkdir()
+
+    conn = schema_db
+    svc = AssetIndexService()
+    assert svc.index_directory(conn, lib, lib) == 0
+    # Second call: dir_mtime matches → SKIPPED (returns 0 without rescan).
+    assert svc.index_directory(conn, lib, lib, force=False) == 0
+    assert svc.count(conn, lib) == 0

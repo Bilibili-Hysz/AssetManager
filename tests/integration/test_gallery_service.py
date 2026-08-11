@@ -209,3 +209,24 @@ def test_gallery_skips_svg_from_image_projection(tmp_path, schema_db):
     assert [entry["name"] for entry in response.entries] == ["raster.png"]
     assert all("svg" not in entry["path"].lower() for entry in response.entries)
     assert service.resolve(tmp_path, "set/vector.svg").kind != "artwork"
+
+
+def test_gallery_home_cache_hits_within_ttl_and_refreshes_after(tmp_path, schema_db, monkeypatch):
+    """Repeated loads within the TTL skip the traversal; a later load rebuilds."""
+    _image(tmp_path / "project" / "cover.jpg", (40, 40))
+
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    first = service.get_home(tmp_path)
+
+    # Second call within the TTL must return the cached object (no rebuild).
+    original_build = service._build_node
+    monkeypatch.setattr(service, "_build_node", lambda *a, **k: (_ for _ in ()).throw(AssertionError("traversal must not rerun")))
+    second = service.get_home(tmp_path)
+    assert second is first
+
+    # Expire the cache: the next call rebuilds and reflects new content.
+    monkeypatch.setattr(service, "_build_node", original_build)
+    monkeypatch.setattr(service, "_home_cache_ttl", 0.0)
+    _image(tmp_path / "project" / "new.png", (20, 20))
+    refreshed = service.get_home(tmp_path)
+    assert refreshed is not first

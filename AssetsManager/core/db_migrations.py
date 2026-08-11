@@ -38,7 +38,7 @@ from AssetsManager.core.schema_defs import (
 )
 
 
-CURRENT_SCHEMA_VERSION = 23
+CURRENT_SCHEMA_VERSION = 24
 _BASELINE_SCHEMA_CONTRACT = {
     "file_tags": {
         "columns": ("file_path", "tag"),
@@ -806,6 +806,31 @@ def _add_shop_catalog_index_schema_v23(conn: sqlite3.Connection) -> None:
     validate_schema_object(conn, "shop_items", SCHEMA_OBJECT_CONTRACT["shop_items"])
 
 
+def _add_asset_dir_mtime_schema_v24(conn: sqlite3.Connection) -> None:
+    """Snapshot directory mtimes for reliable asset-index fast-path checks.
+
+    ``asset_dir_snapshot`` records each scanned directory's own mtime
+    (a directory mtime is always >= its newest child mtime, so an equality
+    check is a reliable "unchanged" signal).  It is a separate table so the
+    ``assets`` entry count / remove / query semantics stay file-only.  The
+    thumbnail ordering index serves the /api/home baked-thumbnail scan
+    (ORDER BY source_mtime DESC), which previously required a full-table
+    temporary sort on every request.
+    """
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS asset_dir_snapshot ("
+        "dir_path TEXT PRIMARY KEY, "
+        "library_root TEXT NOT NULL, "
+        "mtime REAL NOT NULL, "
+        "updated_at REAL DEFAULT (strftime('%s','now'))"
+        ")"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_thumb_cache_mtime "
+        "ON thumbnail_cache(source_mtime DESC, cache_key)"
+    )
+
+
 def _add_shop_order_receipt_recovery_schema_v20(conn: sqlite3.Connection) -> None:
     """Add non-destructive owner-scoped receipt credentials for recovery."""
     table = "shop_order_receipt_recoveries"
@@ -868,6 +893,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(21, "shop_checkout_fingerprint", _add_shop_checkout_fingerprint_schema_v21),
     Migration(22, "shop_delivery_attempts", _add_shop_delivery_attempts_schema_v22),
     Migration(23, "shop_catalog_ordering_index", _add_shop_catalog_index_schema_v23),
+    Migration(24, "asset_dir_mtime_snapshot", _add_asset_dir_mtime_schema_v24),
 )
 
 

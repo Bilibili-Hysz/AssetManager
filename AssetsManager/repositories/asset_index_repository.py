@@ -430,6 +430,32 @@ class AssetIndexRepository:
         return int(row[0]) if row else 0
 
     @_repository_operation
+    def get_dir_mtime(self, library_root: str, dir_path: str) -> float | None:
+        """Return the recorded directory-mtime snapshot (None when unknown)."""
+        row = self._conn.execute(
+            "SELECT mtime FROM asset_dir_snapshot "
+            "WHERE dir_path=? AND library_root=?",
+            (self._path_key(dir_path), self._root_key(library_root)),
+        ).fetchone()
+        if row is None or row[0] is None:
+            return None
+        return float(row[0])
+
+    @_repository_operation
+    def upsert_dir_snapshot(
+        self, library_root: str, dir_path: str, mtime: float
+    ) -> None:
+        """Record (or refresh) the directory-mtime snapshot for one directory."""
+        with self.transaction_scope(commit=True):
+            self._conn.execute(
+                "INSERT INTO asset_dir_snapshot (dir_path, library_root, mtime) "
+                "VALUES (?, ?, ?) "
+                "ON CONFLICT(dir_path) DO UPDATE SET "
+                "mtime=excluded.mtime, updated_at=strftime('%s','now')",
+                (self._path_key(dir_path), self._root_key(library_root), mtime),
+            )
+
+    @_repository_operation
     def clear_subtree(
         self, path: str, library_root: str, *, commit: bool = False
     ) -> int:

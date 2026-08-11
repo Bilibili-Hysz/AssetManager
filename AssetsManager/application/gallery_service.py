@@ -11,6 +11,8 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
@@ -190,6 +192,12 @@ class GalleryService:
         self._session = session
         self._limits = limits or GalleryTraversalLimits()
         self._tag_service = TagService(connection_provider=connection_provider, session=session)
+        # Home projection cache: the full-library traversal plus per-image
+        # PIL header decodes is expensive; a short TTL keeps repeated loads
+        # cheap without going stale (a library edit shows up within 30s).
+        self._home_cache: dict[str, tuple[float, "GalleryHome"]] = {}
+        self._home_cache_lock = threading.Lock()
+        self._home_cache_ttl = 30.0
 
     @staticmethod
     def _normalize_relative_path(value: str | Path | None) -> str:
@@ -584,6 +592,11 @@ class GalleryService:
         db_conn: sqlite3.Connection | None = None,
     ) -> GalleryHome:
         root = Path(library_root).resolve()
+        now = time.monotonic()
+        with self._home_cache_lock:
+            cached = self._home_cache.get(str(root))
+            if cached is not None and now - cached[0] < self._home_cache_ttl:
+                return cached[1]
         conn = self._connection(root, db_conn, self._connection_provider)
         refs: list[_ImageRef] = []
         node_counts: dict[str, int] = {"collection": 0, "project": 0}
@@ -626,7 +639,10 @@ class GalleryService:
             "total_size_fmt": str(node["size_fmt"]),
         }
         featured = collections[0] if collections else projects[0] if projects else self._summary(node)
-        return GalleryHome(featured, collections, projects, recent, stats)
+        home = GalleryHome(featured, collections, projects, recent, stats)
+        with self._home_cache_lock:
+            self._home_cache[str(root)] = (time.monotonic(), home)
+        return home
 
     @session_operation
     def get_collection(

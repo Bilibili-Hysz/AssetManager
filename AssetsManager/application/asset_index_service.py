@@ -315,13 +315,17 @@ class AssetIndexService:
                 existing = snapshot
                 assert isinstance(existing, int)
                 if existing > 0:
-                    # M6a-18: the fast path does not verify on-disk changes
-                    # (a directory mtime is always >= its newest child mtime,
-                    # so an equality check cannot distinguish "unchanged").
-                    # A reliable check needs a recorded directory-mtime
-                    # snapshot (DB migration); deferred to a later round.
-                    revision, read_retries, read_failure = self._retry_busy_read(
-                        lambda: repository.current_revision(root)
+                    # M6a-18: the fast path compares the recorded
+                    # directory-mtime snapshot against the live directory.
+                    # Equal mtimes mean the directory is unchanged (SKIPPED);
+                    # a mismatch or a missing snapshot falls through to a
+                    # full rescan below, which also backfills dir_mtime.
+                    try:
+                        live_mtime = os.stat(target).st_mtime
+                    except OSError:
+                        live_mtime = None
+                    snapshot_mtime, read_retries, read_failure = self._retry_busy_read(
+                        lambda: repository.get_dir_mtime(root, target)
                     )
                     retry_count += read_retries
                     if read_failure is not None:
@@ -333,13 +337,37 @@ class AssetIndexService:
                             retry_count=retry_count,
                             failure=read_failure,
                         )
-                    assert isinstance(revision, int)
-                    return AssetIndexPublishResult(
-                        AssetIndexPublishStatus.SKIPPED,
-                        count=existing,
-                        revision=revision,
-                        retry_count=retry_count,
-                    )
+                    if (
+                        snapshot_mtime is not None
+                        and live_mtime is not None
+                        and snapshot_mtime == live_mtime
+                    ):
+                        revision, read_retries, read_failure = self._retry_busy_read(
+                            lambda: repository.current_revision(root)
+                        )
+                        retry_count += read_retries
+                        if read_failure is not None:
+                            return AssetIndexPublishResult(
+                                AssetIndexPublishStatus.BUSY,
+                                count=existing,
+                                expected_revision=None,
+                                revision=None,
+                                retry_count=retry_count,
+                                failure=read_failure,
+                            )
+                        assert isinstance(revision, int)
+                        return AssetIndexPublishResult(
+                            AssetIndexPublishStatus.SKIPPED,
+                            count=existing,
+                            revision=revision,
+                            retry_count=retry_count,
+                        )
+                    # Snapshot missing or stale: rescan below (backfills).
+
+            try:
+                dir_mtime = os.stat(target).st_mtime
+            except OSError:
+                dir_mtime = None
 
             expected_revision, read_retries, read_failure = self._retry_busy_read(
                 lambda: repository.current_revision(root)
@@ -373,6 +401,8 @@ class AssetIndexService:
                             commit=commit,
                             expected_revision=expected_revision,
                         )
+                        if dir_mtime is not None:
+                            repository.upsert_dir_snapshot(root, target, dir_mtime)
                         break
                     except OperationalError as exc:
                         if not _is_busy_error(exc) or retry_count >= _BUSY_RETRY_LIMIT:
@@ -509,6 +539,10 @@ class AssetIndexService:
                             repository.clear_subtree(target, root, commit=False)
                             first = True
                             for current, entries in snapshots:
+                                try:
+                                    dir_mtime = os.stat(current).st_mtime
+                                except OSError:
+                                    dir_mtime = None
                                 repository.replace_parent_entries(
                                     current,
                                     root,
@@ -518,6 +552,8 @@ class AssetIndexService:
                                     expected_revision=expected_revision if first else None,
                                     advance_revision=first,
                                 )
+                                if dir_mtime is not None:
+                                    repository.upsert_dir_snapshot(root, current, dir_mtime)
                                 first = False
                         break
                     except OperationalError as exc:
