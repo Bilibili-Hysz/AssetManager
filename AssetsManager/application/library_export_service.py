@@ -175,7 +175,12 @@ class LibraryExportService:
     _MAX_MANIFEST_SIZE = 64 * 1024 * 1024
     _MAX_MEMBER_SIZE = 64 * 1024 * 1024 * 1024
     _MAX_DATABASE_QUICK_CHECK_SIZE = 512 * 1024 * 1024
-    _QUICK_CHECK_CACHE_KIB = 8 * 1024
+    # Validation quick_check scans the whole database (a full scan, not page
+    # sampling), so the throwaway check connection gets a 32 MiB page cache
+    # instead of the tiny default. The memory is transient - one connection
+    # for one validation pass - and keeps the scan fast up to the 512 MiB
+    # gate above.
+    _QUICK_CHECK_CACHE_KIB = 32 * 1024
     _MAX_EXPANDED_SIZE = 512 * 1024 * 1024 * 1024
     _MAX_COMPRESSION_RATIO = 1_000
     _WINDOWS_DEVICE_NAMES = {
@@ -832,6 +837,9 @@ class LibraryExportService:
                 database_quick_check = "skipped"
             elif database_path is not None:
                 try:
+                    # Full-scan quick_check: a single synchronous PRAGMA with
+                    # no progress/cancel hook, bounded by the size gate above
+                    # and sped up by the enlarged validation page cache.
                     connection = sqlite3.connect(str(database_path))
                     try:
                         self._configure_quick_check_connection(connection)
@@ -1666,6 +1674,11 @@ class LibraryExportService:
 
     @classmethod
     def _configure_quick_check_connection(cls, connection: Connection) -> None:
+        # Full PRAGMA quick_check is kept on purpose: it is the integrity gate
+        # for accepting and restoring a backup. quick_check(N) does not sample
+        # N pages - N only caps how many problems are reported, so the whole
+        # database is scanned either way. The enlarged page cache
+        # (_QUICK_CHECK_CACHE_KIB) is the performance lever for that scan.
         connection.execute("PRAGMA query_only=ON")
         connection.execute("PRAGMA temp_store=FILE")
         connection.execute("PRAGMA mmap_size=0")
@@ -1760,13 +1773,17 @@ class LibraryExportService:
         def snapshot() -> None:
             source = self._connection(library_root)
             with db_write_lock(source):
-                # Hold the write lock only for connection initialization and
-                # parameter validation. The page-level copy itself must not
-                # block every in-process DB writer for the whole snapshot
-                # duration; the SQLite backup API produces a consistent,
-                # WAL-aware snapshot on its own even while the live database
-                # is being written. The independent read-only connection is
-                # unmanaged, so it cannot trip connection-ownership checks.
+                # The lock is not for snapshot consistency: the SQLite backup
+                # API is WAL-aware and produces a consistent copy even while
+                # the live database is written. It only guards this read-only
+                # open against a concurrent DatabaseManager teardown
+                # (db_write_lock holds the global close gate's read side,
+                # which close()/close_library() need exclusively) and raises a
+                # clean error if the database was already closed. The
+                # page-level copy below must stay outside the lock so a large
+                # snapshot never blocks every in-process DB writer. The
+                # independent read-only connection is unmanaged, so it cannot
+                # trip connection-ownership checks.
                 source_file = db_path(library_root)
                 uri = f"file:{quote(source_file.as_posix(), safe='/:')}?mode=ro"
                 read_only = sqlite3.connect(uri, uri=True, timeout=30)

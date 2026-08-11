@@ -21,6 +21,31 @@ class _IntegrityCheckCancelled(RuntimeError):
     """Internal signal used when a Runtime closes an in-flight check."""
 
 
+class _QuickCheckBusy(RuntimeError):
+    """Raised when quick_check could not run because the database stayed busy.
+
+    A busy/locked database is a transient, retryable condition rather than
+    evidence of corruption, so callers record it as a warning instead of
+    marking the library unhealthy.
+    """
+
+
+_BUSY_PHRASES = ("database is locked", "database table is locked")
+# quick_check runs immediately and then gets up to _BUSY_MAX_ATTEMPTS - 1
+# retries with exponentially increasing delays when the database is busy.
+_BUSY_MAX_ATTEMPTS = 3
+_BUSY_RETRY_BASE_DELAY = 0.25
+# Pure-SQL delete batch size. Filesystem revalidation runs before the write
+# lock is taken, so the lock is never held during slow stat calls.
+_DELETE_BATCH_SIZE = 500
+
+
+def _is_busy_error(exc: BaseException) -> bool:
+    """Return whether a SQLite error is a transient busy/locked condition."""
+    message = str(exc).lower()
+    return any(phrase in message for phrase in _BUSY_PHRASES)
+
+
 class PathExistence(Enum):
     """Conservative result of checking a library-managed filesystem path."""
 
@@ -40,6 +65,7 @@ class IntegrityCheckReport:
     thumbnail_metadata_removed: int = 0
     thumbnail_files_removed: int = 0
     issues: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
 
     @property
     def healthy(self) -> bool:
@@ -51,9 +77,10 @@ class DatabaseIntegrityService:
 
     The slow read-only and filesystem portions do not hold a session operation
     lease. Database reads and writes use short leases, and every destructive
-    delete is revalidated while holding the connection write lock. The service
-    never deletes user files; malformed or out-of-root thumbnail keys are
-    metadata-only cleanup candidates and their baked files are skipped.
+    delete is revalidated before the connection write lock is taken; the lock
+    itself only guards fast batched SQL deletes. The service never deletes
+    user files; malformed or out-of-root thumbnail keys are metadata-only
+    cleanup candidates and their baked files are skipped.
     """
 
     def __init__(
@@ -100,6 +127,15 @@ class DatabaseIntegrityService:
 
     def run(self) -> IntegrityCheckReport:
         """Run one integrity pass and return its report."""
+        with self._state_lock:
+            if self._closed:
+                self._last_schedule_error = "service_closed"
+                return IntegrityCheckReport(
+                    checked_at=time.time(),
+                    duration_ms=0.0,
+                    quick_check="error",
+                    issues=("service_closed",),
+                )
         self._begin_run()
         try:
             return self._run_pass()
@@ -124,6 +160,7 @@ class DatabaseIntegrityService:
         thumbnail_metadata_removed = 0
         thumbnail_files_removed = 0
         issues: list[str] = []
+        warnings: list[str] = []
         self._run_issues = issues
 
         try:
@@ -141,6 +178,14 @@ class DatabaseIntegrityService:
         except _IntegrityCheckCancelled:
             quick_check = "cancelled" if quick_check == "error" else quick_check
             issues.append("Integrity check cancelled during session shutdown")
+        except _QuickCheckBusy as exc:
+            # The database stayed locked for the whole retry window. That is a
+            # transient, retryable condition rather than evidence of corruption:
+            # record a warning and stay healthy so the next pass retries.
+            quick_check = "ok"
+            message = f"SQLite quick_check busy; retryable, will retry next pass: {exc}"
+            warnings.append(message)
+            _log.warning("Library integrity quick_check busy for %s: %s", self._session.root, exc)
         except Exception as exc:
             _log.exception("Library integrity check failed for %s", self._session.root)
             issues.append(f"{type(exc).__name__}: {exc}")
@@ -153,6 +198,7 @@ class DatabaseIntegrityService:
             thumbnail_metadata_removed=thumbnail_metadata_removed,
             thumbnail_files_removed=thumbnail_files_removed,
             issues=tuple(issues),
+            warnings=tuple(warnings),
         )
         with self._state_lock:
             self._last_report = report
@@ -247,6 +293,10 @@ class DatabaseIntegrityService:
             self._publish_completed()
         finally:
             with self._state_lock:
+                # A completed run supersedes any stale scheduling error (for
+                # example "already_running" recorded by a concurrent call);
+                # runtime failures surface through the report/issues instead.
+                self._last_schedule_error = None
                 self._running = False
                 self._active_runs -= 1
                 if self._active_runs == 0:
@@ -285,7 +335,33 @@ class DatabaseIntegrityService:
             self._active_connection = conn
         try:
             conn.execute("PRAGMA busy_timeout=500")
-            values = tuple(str(row[0]) for row in conn.execute("PRAGMA quick_check").fetchall())
+            values: tuple[str, ...] | None = None
+            delay = _BUSY_RETRY_BASE_DELAY
+            for attempt in range(_BUSY_MAX_ATTEMPTS):
+                self._check_cancelled()
+                try:
+                    values = tuple(
+                        str(row[0])
+                        for row in conn.execute("PRAGMA quick_check").fetchall()
+                    )
+                    break
+                except sqlite3.OperationalError as exc:
+                    if self._cancel_event.is_set():
+                        raise _IntegrityCheckCancelled from exc
+                    if not _is_busy_error(exc):
+                        raise
+                    if attempt == _BUSY_MAX_ATTEMPTS - 1:
+                        raise _QuickCheckBusy(str(exc)) from exc
+                    _log.warning(
+                        "SQLite quick_check busy for %s (attempt %d/%d); retrying",
+                        self._session.root,
+                        attempt + 1,
+                        _BUSY_MAX_ATTEMPTS,
+                    )
+                    time.sleep(delay)
+                    delay *= 2
+            if values is None:  # pragma: no cover - all attempts raised above
+                raise _QuickCheckBusy("database is locked")
             self._check_cancelled()
             return "; ".join(values) or "error"
         except sqlite3.OperationalError:
@@ -311,20 +387,30 @@ class DatabaseIntegrityService:
         if not missing:
             return 0
 
+        # Revalidate every candidate before taking the write lock: the
+        # filesystem stat loop must never run while the lock is held.
+        confirmed = []
+        for path in missing:
+            self._check_cancelled()
+            if self._path_existence(path) is PathExistence.MISSING:
+                confirmed.append(path)
+        if not confirmed:
+            return 0
+
         self._check_cancelled()
+        removed = 0
         with self._session.operation():
             conn = self._connection()
-            removed = 0
             with db_write_lock(conn):
                 try:
-                    for path in missing:
+                    for start in range(0, len(confirmed), _DELETE_BATCH_SIZE):
+                        batch = confirmed[start : start + _DELETE_BATCH_SIZE]
                         self._check_cancelled()
-                        if self._path_existence(path) is not PathExistence.MISSING:
-                            continue
-                        self._check_cancelled()
+                        placeholders = ", ".join("?" for _ in batch)
                         cursor = conn.execute(
-                            "DELETE FROM file_meta WHERE file_path=?",
-                            (path,),
+                            "DELETE FROM file_meta WHERE file_path IN "
+                            f"({placeholders})",
+                            batch,
                         )
                         removed += max(cursor.rowcount, 0)
                     self._commit_while_live(conn)
@@ -346,23 +432,31 @@ class DatabaseIntegrityService:
             if self._path_existence(source_path) is PathExistence.MISSING:
                 orphaned.append((str(cache_key), str(source_path)))
 
+        # Revalidate every candidate before taking the write lock: the
+        # filesystem stat loop must never run while the lock is held.
+        confirmed = []
+        for cache_key, source_path in orphaned:
+            self._check_cancelled()
+            if self._path_existence(source_path) is PathExistence.MISSING:
+                confirmed.append((cache_key, source_path))
+
         thumb_dir = self._session.thumb_dir.resolve()
         self._check_cancelled()
         metadata_removed = 0
         files_removed = 0
         with self._session.operation():
             conn = self._connection()
-            if orphaned:
+            if confirmed:
                 with db_write_lock(conn):
                     try:
-                        for cache_key, source_path in orphaned:
+                        for start in range(0, len(confirmed), _DELETE_BATCH_SIZE):
+                            batch = confirmed[start : start + _DELETE_BATCH_SIZE]
                             self._check_cancelled()
-                            if self._path_existence(source_path) is not PathExistence.MISSING:
-                                continue
-                            self._check_cancelled()
+                            placeholders = ", ".join("(?, ?)" for _ in batch)
                             cursor = conn.execute(
-                                "DELETE FROM thumbnail_cache WHERE cache_key=? AND source_path=?",
-                                (cache_key, source_path),
+                                "DELETE FROM thumbnail_cache WHERE "
+                                f"(cache_key, source_path) IN ({placeholders})",
+                                tuple(item for pair in batch for item in pair),
                             )
                             metadata_removed += max(cursor.rowcount, 0)
                         self._commit_while_live(conn)

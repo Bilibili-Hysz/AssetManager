@@ -185,8 +185,20 @@ class DatabaseMaintenanceService:
         *,
         mode: str = "PASSIVE",
     ) -> bool:
-        """Run one maintenance operation in a daemon thread without blocking UI."""
-        if operation not in {"size", "checkpoint", "vacuum"}:
+        """Run one maintenance operation in a daemon thread without blocking UI.
+
+        VACUUM is rejected at this boundary without starting a worker: the
+        return value is ``False`` and ``last_schedule_error`` is
+        ``"vacuum_not_supported"``.
+        """
+        if operation == "vacuum":
+            # VACUUM has no owned maintenance window in the current
+            # architecture; a worker could only ever produce an unsupported
+            # result, so refuse the schedule instead of starting one.
+            with self._state_lock:
+                self._last_schedule_error = "vacuum_not_supported"
+            return False
+        if operation not in {"size", "checkpoint"}:
             raise ValueError(f"Unsupported database maintenance operation: {operation}")
         if operation == "checkpoint":
             # Reject bad input synchronously; a successful schedule call must
@@ -196,8 +208,11 @@ class DatabaseMaintenanceService:
             self._ensure_live_session()
         except RuntimeError:
             with self._state_lock:
-                if self._closed:
-                    self._last_schedule_error = "service_closed"
+                # Record the refusal in every case: a dead session and a
+                # stopped service have distinct causes and feedback strings.
+                self._last_schedule_error = (
+                    "service_closed" if self._closed else "session_closed"
+                )
             raise
         with self._state_lock:
             if self._running:
@@ -269,7 +284,6 @@ class DatabaseMaintenanceService:
                 result = self.vacuum()
             with self._state_lock:
                 self._last_result = result
-            self._publish_completed()
         except Exception as exc:
             cancelled = self._cancel_event.is_set()
             failure = MaintenanceFailureResult(
@@ -281,12 +295,21 @@ class DatabaseMaintenanceService:
                 self._last_result = failure
             _log.warning("Database maintenance %s failed: %s", operation, exc)
         finally:
+            # Publish the completion notification for every finished run —
+            # success or failure — so session-level subscribers can observe
+            # maintenance settling. UI subscription is tracked as follow-up
+            # wiring on top of this server-side event.
+            self._publish_completed()
             with self._state_lock:
                 self._running = False
                 self._active_connection = None
                 self._done.set()
 
     def _publish_completed(self) -> None:
+        """Notify event-bus subscribers that a scheduled run has finished.
+
+        Fires once per completed run, on both the success and failure paths.
+        """
         token = self._session.event_token
         if not token:
             return

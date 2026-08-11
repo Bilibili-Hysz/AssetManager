@@ -243,13 +243,11 @@ def test_vacuum_never_acquires_connection_and_remains_unsupported(tmp_path):
         assert not result.supported
         assert calls == []
 
-        assert service.schedule("vacuum")
-        deadline = time.monotonic() + 2
-        while service.running and time.monotonic() < deadline:
-            time.sleep(0.01)
+        # schedule() refuses VACUUM at the boundary: no worker, no result.
+        assert service.schedule("vacuum") is False
+        assert service.last_schedule_error == "vacuum_not_supported"
         assert not service.running
-        assert isinstance(service.last_result, VacuumResult)
-        assert not service.last_result.supported
+        assert service.last_result is None
         assert calls == []
     finally:
         bootstrap.library_service.close()
@@ -359,4 +357,78 @@ def test_checkpoint_rejects_managed_foreign_root_provider(tmp_path):
             service.checkpoint()
     finally:
         manager.close()
+        bootstrap.library_service.close()
+
+
+def test_schedule_after_session_close_records_session_closed(tmp_path):
+    bootstrap, session = _open_session(tmp_path)
+    try:
+        service = _service(session)
+        bootstrap.library_service.close_session(session)
+        with pytest.raises(RuntimeError, match="closed LibrarySession"):
+            service.schedule("checkpoint")
+        assert service.last_schedule_error == "session_closed"
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_schedule_vacuum_rejected_without_starting_worker(tmp_path):
+    bootstrap, session = _open_session(tmp_path)
+    try:
+        service = _service(session)
+        assert service.schedule("vacuum") is False
+        assert service.last_schedule_error == "vacuum_not_supported"
+        assert not service.running
+        assert service.last_result is None
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_completed_event_published_after_successful_background_run(tmp_path):
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import ActivityChanged
+
+    bootstrap, session = _open_session(tmp_path)
+    observed = []
+    subscription = get_event_bus().subscribe(ActivityChanged, observed.append)
+    try:
+        service = _service(session)
+        assert service.schedule("checkpoint")
+        deadline = time.monotonic() + 2
+        while service.running and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+        assert not service.running
+        assert [event.session_token for event in observed] == [session.event_token]
+        assert observed[0].library_root == session.root_str
+    finally:
+        subscription.close()
+        bootstrap.library_service.close()
+
+
+def test_completed_event_published_after_failed_background_run(tmp_path, monkeypatch):
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import ActivityChanged
+
+    bootstrap, session = _open_session(tmp_path)
+    observed = []
+    subscription = get_event_bus().subscribe(ActivityChanged, observed.append)
+    try:
+        service = _service(session)
+
+        def fail_checkpoint(mode="PASSIVE"):
+            raise RuntimeError("checkpoint exploded")
+
+        monkeypatch.setattr(service, "checkpoint", fail_checkpoint)
+        assert service.schedule("checkpoint")
+        deadline = time.monotonic() + 2
+        while service.running and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+        assert not service.running
+        assert isinstance(service.last_result, MaintenanceFailureResult)
+        assert len(observed) == 1
+        assert observed[0].session_token == session.event_token
+    finally:
+        subscription.close()
         bootstrap.library_service.close()
