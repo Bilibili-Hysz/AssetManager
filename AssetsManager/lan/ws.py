@@ -128,7 +128,13 @@ class WebSocketManager:
                 return False
             retry = False
             async with authority_lock:
-                transition = self._authority_transitions[authority]
+                transition = self._authority_transitions.get(authority)
+                if transition is None:
+                    # W6: entry was dropped when the authority's last
+                    # connection was removed; recreate on demand.
+                    transition = self._authority_transitions.setdefault(
+                        authority, _AuthorityTransition(),
+                    )
                 if (transition.state != "ready"
                         or transition.generation != generation):
                     retry = True
@@ -188,6 +194,16 @@ class WebSocketManager:
                 await self._close(ws, code=1013, message=b"Too many connections")
             else:
                 await self._close(ws, code=1008, message=b"Authorization revoked")
+            async with self._lock:
+                if not any(
+                        other_lease.authority == authority
+                        for other_lease in self._leases.values()):
+                    # W6: this admission never produced a lease; drop the
+                    # per-authority entries created above so failed attempts
+                    # (one entry pair per ws when authority is None) cannot
+                    # accumulate.  Concurrent adds re-create via setdefault.
+                    self._authority_locks.pop(authority, None)
+                    self._authority_transitions.pop(authority, None)
             return False
         if admission_error is not None:
             cleanup = asyncio.create_task(self.evict(ws))
@@ -302,6 +318,25 @@ class WebSocketManager:
                 on_remove = self._on_remove.pop(ws, None)
                 _log.debug("WebSocket client disconnected (%d total)", len(self._clients))
                 count = len(self._clients)
+                if lease is not None and not any(
+                        other_lease.authority == lease.authority
+                        for other_lease in self._leases.values()):
+                    # W6: the last connection for this authority is gone; drop
+                    # its per-authority state so _authority_locks and
+                    # _authority_transitions cannot grow without bound.
+                    # Concurrent add()/revoke_authority() re-create entries
+                    # via setdefault when the authority returns.
+                    self._authority_locks.pop(lease.authority, None)
+                    self._authority_transitions.pop(lease.authority, None)
+                if not self._clients and self._heartbeat_task is not None:
+                    # W5: the heartbeat must not outlive the last connection,
+                    # nor run concurrently with a newer one started by a later
+                    # add().  Cancel it here under _lock without awaiting, so
+                    # the cancelled task cannot deadlock against this lock.
+                    heartbeat = self._heartbeat_task
+                    self._heartbeat_task = None
+                    if heartbeat is not asyncio.current_task():
+                        heartbeat.cancel()
             callback_reservation = (
                 self._reserve_callback(self._removal_callbacks, on_remove, count)
                 if removed else None
@@ -384,14 +419,22 @@ class WebSocketManager:
             # while holding it.  A revoke that starts after this point marks
             # the transition event, forcing the authorization result to retry.
             async with authority_lock:
-                transition = self._authority_transitions[authority]
-                transition_in_progress = transition.state != "ready"
+                transition = self._authority_transitions.get(authority)
+                transition_in_progress = (
+                    transition is not None and transition.state != "ready"
+                )
             if transition_in_progress:
                 await asyncio.wait_for(transition.ready.wait(), WS_OPERATION_TIMEOUT)
                 continue
             authorized = True if authorize is None else await self._run_authorizer(authorize)
             async with authority_lock:
-                transition = self._authority_transitions[authority]
+                transition = self._authority_transitions.get(authority)
+                if transition is None:
+                    # W6: entry was dropped when the authority's last
+                    # connection was removed; recreate on demand.
+                    transition = self._authority_transitions.setdefault(
+                        authority, _AuthorityTransition(),
+                    )
                 if transition.state == "ready":
                     return authorized, transition.generation
             await asyncio.wait_for(transition.ready.wait(), WS_OPERATION_TIMEOUT)
@@ -440,6 +483,13 @@ class WebSocketManager:
             raise
 
     def acknowledge_pong(self, ws: web.WebSocketResponse, message: bytes):
+        # W7: PONG delivery depends on the per-connection receive loop
+        # (handle_websocket's ``async for msg in ws``), the only caller of
+        # this method.  If that loop is occupied (slow echo or handler work),
+        # a PONG arrives late and the heartbeat may time out a healthy
+        # connection.  That is an accepted fail-closed tradeoff: the timeout
+        # only closes the socket, and the client reconnects; it never sends
+        # data under a wrong assumption.
         waiter = self._pong_waiters.get(ws)
         if waiter is not None and waiter[0] == message:
             waiter[1].set()
@@ -447,6 +497,11 @@ class WebSocketManager:
     async def _heartbeat(self):
         while True:
             await asyncio.sleep(WS_HEARTBEAT_INTERVAL)
+            if self._heartbeat_task is not asyncio.current_task():
+                # W5: this task was superseded (remove()/close_all() cancelled
+                # it and a newer add() started a replacement); never run a
+                # stale cycle that could ping clients owned by a newer task.
+                return
             async with self._lock:
                 if not self._clients:
                     self._heartbeat_task = None
@@ -469,6 +524,9 @@ class WebSocketManager:
                     waiter = (payload, asyncio.Event())
                     self._pong_waiters[ws] = waiter
                 await asyncio.wait_for(ws.ping(payload), HEARTBEAT_PING_TIMEOUT)
+                # W7: the PONG is processed by the connection's own receive
+                # loop (see acknowledge_pong); if that loop is busy the wait
+                # can time out a healthy peer.  Closing it is fail-closed.
                 await asyncio.wait_for(waiter[1].wait(), HEARTBEAT_PING_TIMEOUT)
             except Exception:
                 return ws
@@ -592,6 +650,15 @@ class WebSocketManager:
                         transition = self._authority_transitions.get(lease.authority)
                         if transition is not None and transition.state != "ready":
                             continue
+                        # W8: the authority lock is deliberately held across
+                        # the send — revoke_authority invalidates leases under
+                        # the same lock, so holding it guarantees this frame
+                        # goes out against a consistent credential snapshot.
+                        # A slow peer therefore head-of-line-blocks other
+                        # broadcasts for this authority, but the send is a
+                        # single send_str bounded by WS_OPERATION_TIMEOUT
+                        # (the peer is evicted after 5s), so the damage is
+                        # contained and ordering stays deterministic.
                         await ws.send_str(message)
                         return None
             except Exception:
@@ -680,6 +747,9 @@ class WebSocketManager:
                     self._authorizers.clear()
                     self._leases.clear()
                     self._authority_locks.clear()
+                    # W6: keep teardown symmetric — the transition registry
+                    # otherwise retains every authority seen so far.
+                    self._authority_transitions.clear()
                     callbacks = [self._on_remove.pop(ws, None) for ws in clients]
             for authority_lock in reversed(acquired_locks):
                 authority_lock.release()

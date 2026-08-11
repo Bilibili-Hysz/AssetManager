@@ -1,4 +1,11 @@
-"""Stable, public response DTOs for the LAN API."""
+"""Stable, public response DTOs for the LAN API.
+
+Timestamp contract: every ``created_at`` field is a Unix epoch timestamp
+in **seconds** with **UTC** semantics (timezone-naive, no DST offset).
+Consumers should render it in their local zone; producers must convert
+to UTC before serializing. ``uptime`` is a duration in seconds, not a
+timestamp.
+"""
 from dataclasses import dataclass
 from typing import Iterable, Mapping, TypedDict, cast
 
@@ -72,7 +79,15 @@ def _as_float(value: object) -> float:
 
 
 def _as_children(value: object) -> Iterable[Mapping[str, object]]:
-    return cast(Iterable[Mapping[str, object]], value or [])
+    """Return a safe iterable of child records.
+
+    Only genuine ``list``/``tuple`` payloads are honored; anything else
+    (``None``, a string, a number, ...) degrades to an empty sequence so
+    the recursive parse can never iterate over an unexpected type.
+    """
+    if isinstance(value, (list, tuple)):
+        return cast(Iterable[Mapping[str, object]], value)
+    return []
 
 
 def _as_optional_str(value: object) -> str | None:
@@ -115,6 +130,11 @@ class SessionPrincipalResponse:
 
 @dataclass(frozen=True)
 class UserResponse:
+    """Public user payload.
+
+    ``created_at``: Unix epoch seconds, UTC (see module docstring).
+    """
+
     id: int
     username: str
     role: str
@@ -139,6 +159,11 @@ class UserResponse:
 
 @dataclass(frozen=True)
 class InviteResponse:
+    """Public invite payload.
+
+    ``created_at``: Unix epoch seconds, UTC (see module docstring).
+    """
+
     code: str
     created_at: float
     used_by: str | None
@@ -173,6 +198,13 @@ class TagResponse:
         return {"id": self.id, "name": self.name, "count": self.count}
 
 
+# Maximum nesting depth accepted when (de)serializing tree payloads.
+# ``ProjectDepthConfig`` clamps real trees to 32 levels and emits empty
+# ``children`` on the deepest nodes, so truncating at this cap never alters
+# legitimate output; it only bounds recursion for malicious/corrupted input.
+_MAX_TREE_DEPTH = 32
+
+
 @dataclass(frozen=True)
 class TreeItemResponse:
     name: str
@@ -182,28 +214,46 @@ class TreeItemResponse:
     children: tuple["TreeItemResponse", ...]
 
     @classmethod
-    def from_record(cls, record: Mapping[str, object]) -> "TreeItemResponse":
-        children = _as_children(record.get("children"))
+    def from_record(cls, record: Mapping[str, object], _depth: int = 0) -> "TreeItemResponse":
+        # Non-list ``children`` (e.g. a string or an int) degrade to an
+        # empty list instead of blowing up while iterating; see
+        # ``_as_children``. Beyond ``_MAX_TREE_DEPTH`` the subtree is
+        # truncated to ``[]`` so deeply nested input cannot overflow the
+        # call stack.
+        children = [] if _depth >= _MAX_TREE_DEPTH else _as_children(record.get("children"))
         is_leaf = record.get("is_leaf")
         if not isinstance(is_leaf, bool):
             raise TypeError("is_leaf must be bool")
+        # The upstream builder only ever emits "dir" nodes (its leaf flag is
+        # a scan-depth artifact, not a file marker). A missing type defaults
+        # to "dir"; any explicit non-"dir" value is rejected — the type is
+        # produced by the server itself, so a silent downgrade would mask an
+        # internal bug (the public contract asserts this rejection).
         raw_type = record.get("type")
-        if raw_type is None or raw_type == "":
-            item_type = "dir"
-        elif isinstance(raw_type, str):
-            item_type = raw_type
-        else:
-            raise ValueError("tree type must be 'dir'")
-        if item_type != "dir":
+        if raw_type is None:
+            raw_type = "dir"
+        elif not isinstance(raw_type, str) or raw_type != "dir":
             raise ValueError("tree type must be 'dir'")
         return cls(str(record["name"]), str(record["path"]),
-                   item_type,
+                   raw_type,
                    is_leaf,
-                   tuple(cls.from_record(child) for child in children))
+                   tuple(cls.from_record(child, _depth + 1) for child in children))
 
     def to_dict(self) -> dict[str, object]:
+        """Serialize to a plain dict, truncating subtrees beyond ``_MAX_TREE_DEPTH``."""
+        return self._to_dict(0)
+
+    def _to_dict(self, depth: int) -> dict[str, object]:
+        # Depth cap reached: emit this node with no children instead of
+        # recursing further, so nested data can never overflow the stack.
+        # ``children`` is also type-checked because a caller may construct
+        # this dataclass directly with a non-list value.
+        if depth >= _MAX_TREE_DEPTH or not isinstance(self.children, (list, tuple)):
+            return {"name": self.name, "path": self.path, "type": self.type,
+                    "is_leaf": self.is_leaf, "children": []}
         return {"name": self.name, "path": self.path, "type": self.type,
-                "is_leaf": self.is_leaf, "children": [child.to_dict() for child in self.children]}
+                "is_leaf": self.is_leaf,
+                "children": [child._to_dict(depth + 1) for child in self.children]}
 
 
 @dataclass(frozen=True)
@@ -216,10 +266,16 @@ class StatsResponse:
 
     @classmethod
     def from_record(cls, record: Mapping[str, object]) -> "StatsResponse":
+        # ``bytes_transferred`` is None until the first transfer happens
+        # (LanServer initialises it to None). Keep the None convention
+        # here -- never feed it through ``_as_int`` -- so the response
+        # stays in sync with ``bytes_transferred_fmt``, which the stats
+        # route only formats when the raw count is not None.
         bytes_transferred = record.get("bytes_transferred")
+        bytes_transferred_fmt = record.get("bytes_transferred_fmt")
         return cls(_as_int(record.get("connections", 0)), _as_int(record.get("requests", 0)),
                    _as_int(bytes_transferred) if bytes_transferred is not None else None,
-                   str(record["bytes_transferred_fmt"]) if record.get("bytes_transferred_fmt") is not None else None,
+                   str(bytes_transferred_fmt) if bytes_transferred_fmt is not None else None,
                    _as_float(record.get("uptime", 0)))
 
     def to_dict(self) -> dict[str, object]:

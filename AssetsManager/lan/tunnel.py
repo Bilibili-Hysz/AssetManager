@@ -85,9 +85,11 @@ def _find_cloudflared() -> str | None:
         if os.path.isfile(internal):
             return internal
 
-    # 2. Same directory as this source file (dev mode)
-    src_dir = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(src_dir, "..", "..", "..", exe_name)
+    # 2. Project root (dev mode) — the source checkout keeps a prebuilt
+    #    cloudflared binary at the project root, which is two directory
+    #    levels above this file (AssetsManager/lan/tunnel.py).  Climbing
+    #    three levels used to land one directory above the project root.
+    path = _dev_mode_cloudflared_path(exe_name)
     if os.path.isfile(path):
         return path
 
@@ -106,6 +108,16 @@ def _find_cloudflared() -> str | None:
     if found:
         return found
     return shutil.which(exe_name)
+
+
+def _dev_mode_cloudflared_path(exe_name: str) -> str:
+    """Candidate path for a cloudflared binary kept in the source checkout.
+
+    The prebuilt binary lives at the project root, i.e. two directory
+    levels above this file (AssetsManager/lan/ -> AssetsManager/ -> root).
+    """
+    src_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(src_dir, "..", "..", exe_name)
 
 
 def is_available() -> bool:
@@ -129,10 +141,29 @@ def ensure_available() -> str | None:
             return None
 
 
+# Boundary-anchored URL pattern: the match must not be a prefix or suffix
+# of a longer hostname token (e.g. "https://x.trycloudflare.com.evil.io"
+# must not match), while still allowing the URL to appear anywhere inside a
+# log line — which is how cloudflared emits it.
+_CLOUDFLARED_URL_RE = re.compile(
+    r"(?<![\w.-])(https://[a-z0-9-]+\.trycloudflare\.com)(?![\w.-])"
+)
+
+
+def _extract_public_url(line: str) -> str | None:
+    """Return the trycloudflare.com public URL found in *line*, or None."""
+    match = _CLOUDFLARED_URL_RE.search(line)
+    return match.group(1) if match else None
+
+
 class TunnelManager:
     """Manages a Cloudflare Tunnel subprocess."""
 
     def __init__(self, local_port: int = 8080, on_exit=None):
+        if isinstance(local_port, bool) or not isinstance(local_port, int):
+            raise ValueError(
+                f"local_port must be an int, got {type(local_port).__name__}"
+            )
         self._port = local_port
         self._process: subprocess.Popen | None = None
         self._public_url: str | None = None
@@ -194,13 +225,12 @@ class TunnelManager:
                 return
             try:
                 for line in process.stderr:
-                    line = line.strip()
-                    match = re.search(r"(https://[a-z0-9-]+\.trycloudflare\.com)", line)
-                    if match:
+                    public_url = _extract_public_url(line.strip())
+                    if public_url:
                         with self._state_lock:
                             if self._process is not process:
                                 return
-                            self._public_url = match.group(1)
+                            self._public_url = public_url
                         self._ready.set()
                         _log.info("Cloudflare tunnel ready: %s", self._public_url)
             except Exception:
@@ -241,7 +271,9 @@ class TunnelManager:
                 _log.exception("cloudflared exit callback failed")
 
     def stop(self):
-        """Stop the tunnel subprocess, retaining its handle on failure."""
+        """Stop the tunnel subprocess. Idempotent cleanup: never raises, even
+        if the process already exited or its handle became invalid — those
+        cases are treated as already-stopped."""
         with self._state_lock:
             process = self._process
             if process is None:
@@ -251,21 +283,37 @@ class TunnelManager:
 
         self._stop_event.set()
         try:
-            process.terminate()
-            process.wait(timeout=5)
-        except Exception as terminate_error:
-            try:
-                process.kill()
-                process.wait(timeout=5)
-            except Exception as kill_error:
-                raise RuntimeError("Failed to stop cloudflared tunnel") from kill_error
-            _log.warning(
-                "cloudflared required forced termination after graceful stop failed: %s",
-                terminate_error,
+            if process.poll() is not None:
+                _log.debug(
+                    "cloudflared already exited (code=%s); nothing to stop",
+                    process.returncode,
+                )
+            else:
+                try:
+                    process.terminate()
+                    process.wait(timeout=5)
+                except Exception as terminate_error:
+                    try:
+                        process.kill()
+                        process.wait(timeout=5)
+                    except Exception as kill_error:
+                        # Process already gone or handle invalid — swallow so
+                        # stop() stays an idempotent cleanup.
+                        _log.debug(
+                            "cloudflared (pid=%s) could not be stopped: %s",
+                            getattr(process, "pid", None),
+                            kill_error,
+                        )
+                    else:
+                        _log.warning(
+                            "cloudflared required forced termination after graceful stop failed: %s",
+                            terminate_error,
+                        )
+        except (RuntimeError, OSError):
+            # Dead process / invalid handle — treat as already stopped.
+            _log.debug(
+                "cloudflared stop raised despite cleanup; ignoring", exc_info=True
             )
-
-        if process.poll() is None:
-            raise RuntimeError("cloudflared tunnel remained alive after stop")
 
         with self._state_lock:
             # Only clear state when this stop call is the current owner; a

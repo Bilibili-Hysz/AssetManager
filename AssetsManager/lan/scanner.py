@@ -16,7 +16,10 @@ class DirectoryScanner:
 
     def __init__(self, library_root: str, db_conn):
         self._root = Path(library_root)
-        self._db = db_conn
+        # db_conn is kept for backward compatibility with existing callers
+        # (e.g. server.py and test_lan_api.py pass a db connection). The
+        # scanner is purely filesystem-based and does not use it.
+        self._db = db_conn  # noqa: F841 - retained for API compatibility
         self._index: list[dict] = []
         self._lock = threading.Lock()
         self._scanning = False
@@ -44,12 +47,18 @@ class DirectoryScanner:
         if t is not None and t.is_alive():
             t.join(timeout=2)
 
+    def _on_walk_error(self, exc: OSError) -> None:
+        """os.walk error callback: log permission errors instead of silently skipping."""
+        _log.warning("scan permission error: %s", exc)
+
     def _scan_all(self):
         """Walk the entire library and build the index."""
         _log.info("Scanning library: %s", self._root)
         index = []
         try:
-            for dirpath, dirnames, filenames in os.walk(self._root):
+            for dirpath, dirnames, filenames in os.walk(
+                self._root, onerror=self._on_walk_error
+            ):
                 if self._stop_event.is_set():
                     break
                 # Skip hidden directories
@@ -77,20 +86,48 @@ class DirectoryScanner:
             _log.warning("Library scan failed: %s", e)
 
         with self._lock:
-            self._index = index
+            # If the scan was cancelled, do NOT publish the partial index —
+            # keep the previous (complete) index so callers never see a
+            # half-built one after stop().
+            if not self._stop_event.is_set():
+                self._index = index
             self._scanning = False
-        _log.info("Scan complete: %d files indexed", len(index))
+        _log.info(
+            "Scan finished: %d files indexed (cancelled=%s)",
+            len(index),
+            self._stop_event.is_set(),
+        )
 
     def search(self, query: str, limit: int = 200) -> list[dict]:
-        """Search the index by filename substring."""
+        """Search the index by filename substring.
+
+        Returns a new list; the internal index is never handed out.
+        """
+        # Fail-safe: non-string queries (None, numbers, ...) return an
+        # empty list instead of raising, preserving index-only semantics.
+        if not isinstance(query, str):
+            return []
         q = query.lower()
         with self._lock:
-            results = [f for f in self._index if q in f["name"].lower()]
-        return results[:limit]
+            # Build and slice inside the lock, and return a fresh list so
+            # callers can never share/mutate the internal index. Order
+            # matches scan order (no sorting — existing semantics).
+            return [f for f in self._index if q in f["name"].lower()][:limit]
 
     def is_scanning(self) -> bool:
-        return self._scanning
+        with self._lock:
+            return self._scanning
 
     def file_count(self) -> int:
         with self._lock:
             return len(self._index)
+
+    def invalidate(self):
+        """Drop the in-memory index.
+
+        Call after the underlying library changes (files added, removed or
+        renamed) so stale search results are not served. The next
+        start_background_scan() rebuilds the index from disk.
+        """
+        with self._lock:
+            self._index = []
