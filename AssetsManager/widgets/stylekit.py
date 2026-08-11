@@ -1,0 +1,491 @@
+"""StyleKit — lightweight, reusable Qt styling toolkit.
+
+A self-contained module for PySide6/Qt applications that provides:
+
+  1. **Token resolution** — safe theme token lookup with fallbacks
+  2. **QSS generation** — centralized stylesheet builder from theme dict
+  3. **State-driven styling** — loading/error/retry/success/idle visual states
+  4. **Animation helpers** — pulse/fade with reduce_motion degradation
+  5. **Widget factories** — themed heading, muted label, status badge, pill button
+
+Design principles:
+  - Zero coupling to any specific project (no AssetsManager imports)
+  - Works with any theme dict that follows the token schema below
+  - Scale functions (scaled_px/scaled_pt) are injectable
+  - All QSS is generated at call time, no caching (callers cache if needed)
+
+Token schema (expected keys in theme dict):
+  Colors: base, panel, header, border, heading, body, muted, accent,
+          success, warning, danger, on_accent, hover_overlay, selected_overlay,
+          border_focus, input_bg, input_text, scrollbar_track, scrollbar_thumb,
+          scrollbar_thumb_hover, disabled_text, disabled_bg,
+          tooltip_bg, tooltip_text
+  Nested: properties.opacity.hover, properties.border_radius.md, etc.
+
+Usage (standalone):
+    from stylekit import StyleKit
+    sk = StyleKit(theme_dict, px= scaled_px_fn, pt=scaled_pt_fn)
+    label.setStyleSheet(sk.label_css("heading", size=14, bold=True))
+    widget.setStyleSheet(sk.state_css("error"))
+    if not sk.reduce_motion():
+        anim.start()
+
+Usage (integrated with project themes module):
+    from AssetsManager.core import themes
+    from AssetsManager.widgets.stylekit import StyleKit
+    sk = StyleKit.from_theme(themes)  # reads current theme dynamically
+"""
+from __future__ import annotations
+
+from typing import Callable
+
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (
+    QWidget, QLabel, QHBoxLayout, QGraphicsOpacityEffect, QPushButton,
+)
+
+
+# ── Default scale functions (identity) ────────────────────────
+
+def _identity_px(px: int) -> int:
+    """Default: return the value unchanged (no scaling)."""
+    return px
+
+
+def _identity_pt(pt: int) -> int:
+    """Default: return the value unchanged (no scaling)."""
+    return pt
+
+
+# ── State definitions ─────────────────────────────────────────
+
+_STATES = {
+    "idle": ("", "body"),
+    "loading": ("clock", "accent"),
+    "success": ("check", "success"),
+    "error": ("close", "danger"),
+    "retry": ("refresh", "warning"),
+}
+
+
+class StyleKit:
+    """Centralized styling toolkit for PySide6 applications.
+
+    Parameters:
+        theme: Theme dict with color tokens. If callable, called on each access.
+        px: Scaling function for pixel values (default: identity).
+        pt: Scaling function for point values (default: identity).
+    """
+
+    def __init__(self, theme: dict | Callable[[], dict] | None = None,
+                 px: Callable[[int], int] = _identity_px,
+                 pt: Callable[[int], int] = _identity_pt):
+        self._theme = theme
+        self._px = px
+        self._pt = pt
+
+    @classmethod
+    def from_theme(cls, themes_module, **kwargs) -> "StyleKit":
+        """Create from a project's themes module (must have .get() -> dict).
+
+        The theme is resolved dynamically on each token access.
+        """
+        def _resolve():
+            return themes_module.get()
+        return cls(theme=_resolve, **kwargs)
+
+    # ── Token resolution ──────────────────────────────────────
+
+    @property
+    def t(self) -> dict:
+        """Current theme dict (resolved if callable)."""
+        if callable(self._theme):
+            return self._theme()
+        return self._theme or {}
+
+    def token(self, name: str, default: str = "") -> str:
+        """Resolve a single color token."""
+        return self.t.get(name, default)
+
+    def prop(self, category: str, key: str, default: int | float = 0) -> int | float:
+        """Resolve a property value (e.g. prop('border_radius', 'md'))."""
+        return self.t.get("properties", {}).get(category, {}).get(key, default)
+
+    # ── Scaling shortcuts ─────────────────────────────────────
+
+    def px(self, value: int) -> int:
+        return self._px(value)
+
+    def pt(self, value: int) -> int:
+        return self._pt(value)
+
+    def _signed_px(self, value: int) -> int:
+        """Scale signed geometry without passing a negative value to clamping scalers."""
+        if value == 0:
+            return 0
+        scaled = abs(self._px(abs(value)))
+        return -scaled if value < 0 else scaled
+
+    # ── Animation ─────────────────────────────────────────────
+
+    @staticmethod
+    def reduce_motion() -> bool:
+        """Check the global reduce_motion setting."""
+        try:
+            from AssetsManager.core.settings import AppSettings
+            return bool(AppSettings.instance().get("reduce_motion", False))
+        except Exception:
+            return False
+
+    def make_fade_in(self, widget: QWidget, duration: int = 150,
+                     on_done: Callable | None = None) -> QPropertyAnimation:
+        """Create a fade-in animation on widget opacity."""
+        effect = widget.graphicsEffect()
+        if not isinstance(effect, QGraphicsOpacityEffect):
+            effect = QGraphicsOpacityEffect(widget)
+            widget.setGraphicsEffect(effect)
+        effect.setOpacity(0.0)
+        anim = QPropertyAnimation(effect, b"opacity")
+        anim.setDuration(duration)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        if on_done:
+            anim.finished.connect(on_done)
+        return anim
+
+    def make_fade_out(self, widget: QWidget, duration: int = 300,
+                      on_done: Callable | None = None) -> QPropertyAnimation:
+        """Create a fade-out animation on widget opacity."""
+        effect = widget.graphicsEffect()
+        if not isinstance(effect, QGraphicsOpacityEffect):
+            effect = QGraphicsOpacityEffect(widget)
+            widget.setGraphicsEffect(effect)
+        effect.setOpacity(1.0)
+        anim = QPropertyAnimation(effect, b"opacity")
+        anim.setDuration(duration)
+        anim.setStartValue(1.0)
+        anim.setEndValue(0.0)
+        anim.setEasingCurve(QEasingCurve.Type.InQuad)
+        if on_done:
+            anim.finished.connect(on_done)
+        return anim
+
+    def make_pulse(self, widget: QWidget, duration: int = 1200,
+                   low: float = 0.3, high: float = 1.0) -> QPropertyAnimation:
+        """Create a looping pulse animation (for loading indicators)."""
+        effect = widget.graphicsEffect()
+        if not isinstance(effect, QGraphicsOpacityEffect):
+            effect = QGraphicsOpacityEffect(widget)
+            widget.setGraphicsEffect(effect)
+        effect.setOpacity(high)
+        anim = QPropertyAnimation(effect, b"opacity")
+        anim.setDuration(duration)
+        anim.setStartValue(high)
+        anim.setEndValue(low)
+        anim.setEasingCurve(QEasingCurve.Type.InOutSine)
+        anim.setLoopCount(-1)
+        return anim
+
+    # ── QSS: label ────────────────────────────────────────────
+
+    def label_css(self, color: str = "body", size: int = 12,
+                  bold: bool = False, bg: str = "transparent") -> str:
+        """Generate QSS for a QLabel."""
+        parts = [
+            f"color: {self.token(color)}",
+            f"font-size: {self.pt(size)}px",
+            f"background: {self.token(bg) if bg in self.t else bg}",
+        ]
+        if bold:
+            parts.append("font-weight: bold")
+        return f"QLabel {{ {'; '.join(parts)}; }}"
+
+    def heading_css(self, size: int = 14) -> str:
+        """Section heading with accent underline."""
+        return (
+            f"QLabel {{ color: {self.token('heading')}; font-weight: bold; "
+            f"font-size: {self.pt(size)}px; background: transparent; "
+            f"border-bottom: 2px solid {self._alpha('accent', 0.50)}; "
+            f"padding-bottom: {self.px(4)}px; "
+            f"margin-bottom: {self.px(2)}px; }}"
+        )
+
+    def muted_css(self, size: int = 11) -> str:
+        """Muted/secondary text label."""
+        return self.label_css("muted", size=size)
+
+    # ── QSS: state styling ────────────────────────────────────
+
+    def state_css(self, state: str = "idle") -> str:
+        """Generate QSS for a stateful widget (icon color, bg, border)."""
+        _, color_key = _STATES.get(state, _STATES["idle"])
+        color = self.token(color_key, self.token("body"))
+        return (
+            f"color: {color}; "
+            f"background: {self._alpha(color, 0.13)}; "
+            f"border: 1px solid {self._alpha(color, 0.38)}; "
+            f"border-radius: {self.px(6)}px; "
+            f"padding: {self.px(8)}px;"
+        )
+
+    def state_color(self, state: str = "idle") -> str:
+        """Return the theme color for a given state."""
+        _, color_key = _STATES.get(state, _STATES["idle"])
+        return self.token(color_key, self.token("body"))
+
+    def state_icon(self, state: str = "idle") -> str:
+        """Return the semantic SVG icon name for a given state."""
+        icon_name, _ = _STATES.get(state, _STATES["idle"])
+        return icon_name
+
+    # ── QSS: dialog chrome ────────────────────────────────────
+
+    def dialog_css(self) -> str:
+        """Full QSS for a themed dialog. Covers all common Qt widgets."""
+        t = self.t
+        hover = self._alpha("hover_overlay", t.get("properties", {}).get("opacity", {}).get("hover", 0.15))
+        accent_hover = self._lighter("accent", 110)
+        accent_pressed = self._darker("accent", 115)
+        danger_hover = self._lighter("danger", 110)
+        danger_pressed = self._darker("danger", 115)
+        px, pt = self.px, self.pt
+        return (
+            # ── Container ───────────────────────────────────────
+            f"QDialog {{ background: {t.get('panel', t.get('base', ''))}; color: {t.get('body', t.get('base', ''))}; }}"
+            f"QScrollArea {{ border: none; background: {t.get('panel', t.get('base', ''))}; }}"
+            f"QLabel {{ color: {t.get('body', t.get('base', ''))}; background: transparent; }}"
+            # ── Inputs ──────────────────────────────────────────
+            f"QLineEdit, QTextEdit, QSpinBox, QDoubleSpinBox {{ "
+            f"background: {t.get('input_bg', t.get('base', ''))}; color: {t.get('input_text', t.get('base', ''))}; "
+            f"border: 1px solid {t.get('border', t.get('base', ''))}; border-radius: {px(4)}px; "
+            f"padding: {px(3)}px {px(6)}px; }}"
+            f"QLineEdit:focus, QTextEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {{ "
+            f"border: 2px solid {t.get('border_focus', t.get('base', ''))}; }}"
+            f"QLineEdit:read-only, QTextEdit:read-only, "
+            f"QSpinBox:read-only, QDoubleSpinBox:read-only {{ "
+            f"background: {t.get('header', t.get('disabled_bg', t.get('base', '')))}; color: {t.get('muted', t.get('base', ''))}; "
+            f"border-color: {t.get('muted', t.get('base', ''))}; }}"
+            f"QLineEdit:disabled, QTextEdit:disabled, "
+            f"QSpinBox:disabled, QDoubleSpinBox:disabled {{ "
+            f"background: {t.get('disabled_bg', t.get('base', ''))}; color: {t.get('disabled_text', t.get('base', ''))}; "
+            f"border-color: {t.get('disabled_bg', t.get('base', ''))}; }}"
+            f"QComboBox {{ "
+            f"background: {t.get('input_bg', t.get('base', ''))}; color: {t.get('input_text', t.get('base', ''))}; "
+            f"border: 1px solid {t.get('border', t.get('base', ''))}; border-radius: {px(4)}px; "
+            f"padding: {px(3)}px {px(6)}px; }}"
+            f"QComboBox:focus {{ border: 2px solid {t.get('border_focus', t.get('base', ''))}; }}"
+            f"QComboBox:disabled {{ background: {t.get('disabled_bg', t.get('base', ''))}; "
+            f"color: {t.get('disabled_text', t.get('base', ''))}; border-color: {t.get('disabled_bg', t.get('base', ''))}; }}"
+            f"QComboBox::drop-down {{ border: none; }}"
+            # ── List ────────────────────────────────────────────
+            f"QListWidget {{ background: {t.get('input_bg', t.get('base', ''))}; color: {t.get('input_text', t.get('base', ''))}; "
+            f"border: 1px solid {t.get('border', t.get('base', ''))}; border-radius: {px(4)}px; "
+            f"padding: {px(2)}px; }}"
+            f"QListWidget::item {{ padding: {px(5)}px {px(6)}px; "
+            f"border-radius: {px(3)}px; }}"
+            f"QListWidget::item:hover {{ background: {hover}; }}"
+            f"QListWidget::item:selected {{ background: {self._alpha('accent', 0.25)}; "
+            f"color: {t.get('heading', t.get('base', ''))}; }}"
+            # ── Progress ────────────────────────────────────────
+            f"QProgressBar {{ background: {t.get('input_bg', t.get('base', ''))}; color: {t.get('body', t.get('base', ''))}; "
+            f"border: 1px solid {t.get('border', t.get('base', ''))}; border-radius: {px(3)}px; "
+            f"text-align: center; }}"
+            f"QProgressBar::chunk {{ background: {t.get('accent', t.get('base', ''))}; "
+            f"border-radius: {px(2)}px; }}"
+            # ── Radio + Checkbox ────────────────────────────────
+            f"QRadioButton, QCheckBox {{ color: {t.get('body', t.get('base', ''))}; background: transparent; "
+            f"spacing: {px(6)}px; }}"
+            f"QRadioButton:focus, QCheckBox:focus {{ color: {t.get('border_focus', t.get('base', ''))}; }}"
+            f"QRadioButton:disabled, QCheckBox:disabled {{ color: {t.get('disabled_text', t.get('base', ''))}; }}"
+            f"QRadioButton:checked {{ color: {t.get('accent', t.get('base', ''))}; font-weight: bold; }}"
+            f"QRadioButton::indicator {{ width: {px(14)}px; height: {px(14)}px; }}"
+            f"QRadioButton::indicator:checked {{ background: {t.get('accent', t.get('base', ''))}; "
+            f"border: 2px solid {t.get('accent', t.get('base', ''))}; border-radius: {px(7)}px; }}"
+            f"QRadioButton::indicator:unchecked {{ background: {t.get('input_bg', t.get('base', ''))}; "
+            f"border: 2px solid {t.get('border', t.get('base', ''))}; border-radius: {px(7)}px; }}"
+            f"QRadioButton::indicator:hover {{ border-color: {t.get('accent', t.get('base', ''))}; }}"
+            f"QRadioButton::indicator:focus {{ border-color: {t.get('border_focus', t.get('base', ''))}; }}"
+            f"QRadioButton::indicator:disabled {{ background: {t.get('disabled_bg', t.get('base', ''))}; "
+            f"border-color: {t.get('disabled_text', t.get('base', ''))}; }}"
+            f"QCheckBox::indicator {{ width: {px(14)}px; height: {px(14)}px; }}"
+            f"QCheckBox::indicator:checked {{ background: {t.get('accent', t.get('base', ''))}; "
+            f"border: 2px solid {t.get('accent', t.get('base', ''))}; border-radius: {px(3)}px; }}"
+            f"QCheckBox::indicator:unchecked {{ background: {t.get('input_bg', t.get('base', ''))}; "
+            f"border: 2px solid {t.get('border', t.get('base', ''))}; border-radius: {px(3)}px; }}"
+            f"QCheckBox::indicator:hover {{ border-color: {t.get('accent', t.get('base', ''))}; }}"
+            f"QCheckBox::indicator:focus {{ border-color: {t.get('border_focus', t.get('base', ''))}; }}"
+            f"QCheckBox::indicator:disabled {{ background: {t.get('disabled_bg', t.get('base', ''))}; "
+            f"border-color: {t.get('disabled_text', t.get('base', ''))}; }}"
+            # ── Group box ───────────────────────────────────────
+            f"QGroupBox {{ color: {t.get('heading', t.get('base', ''))}; border: 1px solid {t.get('border', t.get('base', ''))}; "
+            f"border-radius: {px(6)}px; margin-top: {px(8)}px; "
+            f"padding-top: {px(12)}px; background: transparent; }}"
+            f"QGroupBox::title {{ subcontrol-origin: margin; left: {px(10)}px; "
+            f"padding: 0 {px(5)}px; }}"
+            # ── Slider ──────────────────────────────────────────
+            f"QSlider::groove:horizontal {{ background: {t.get('border', t.get('base', ''))}; "
+            f"height: {px(4)}px; border-radius: {px(2)}px; }}"
+            f"QSlider::handle:horizontal {{ background: {t.get('accent', t.get('base', ''))}; "
+            f"width: {px(14)}px; height: {px(14)}px; "
+            f"margin: {self._signed_px(-5)}px 0; border-radius: {px(7)}px; "
+            f"border: 2px solid {t.get('accent', t.get('base', ''))}; }}"
+            f"QSlider::handle:horizontal:hover {{ "
+            f"background: {self._alpha('accent', 0.85)}; "
+            f"border-color: {self._alpha('accent', 0.85)}; }}"
+            f"QSlider::sub-page:horizontal {{ background: {t.get('accent', t.get('base', ''))}; "
+            f"border-radius: {px(2)}px; }}"
+            # ── Push buttons ────────────────────────────────────
+            f"QPushButton {{ background: {t.get('accent', t.get('base', ''))}; color: {t.get('on_accent', t.get('base', ''))}; "
+            f"border: none; border-radius: {px(4)}px; "
+            f"padding: {px(6)}px {px(16)}px; }}"
+            f"QPushButton:hover {{ background: {hover}; }}"
+            f"QPushButton[buttonVariant=\"primary\"] {{ "
+            f"background: {t.get('accent', t.get('base', ''))}; color: {t.get('on_accent', t.get('base', ''))}; }}"
+            f"QPushButton[buttonVariant=\"primary\"]:hover {{ "
+            f"background: {accent_hover}; }}"
+            f"QPushButton[buttonVariant=\"primary\"]:pressed {{ "
+            f"background: {accent_pressed}; }}"
+            f"QPushButton[buttonVariant=\"secondary\"] {{ "
+            f"background: {t.get('panel', t.get('base', ''))}; color: {t.get('heading', t.get('base', ''))}; "
+            f"border: 1px solid {t.get('border', t.get('base', ''))}; }}"
+            f"QPushButton[buttonVariant=\"secondary\"]:hover {{ "
+            f"background: {hover}; }}"
+            f"QPushButton[buttonVariant=\"secondary\"]:pressed {{ "
+            f"background: {self._alpha('accent', 0.20)}; }}"
+            f"QPushButton[buttonVariant=\"ghost\"] {{ "
+            f"background: transparent; color: {t.get('body', t.get('base', ''))}; "
+            f"border: 1px solid transparent; }}"
+            f"QPushButton[buttonVariant=\"ghost\"]:hover {{ "
+            f"background: {hover}; color: {t.get('heading', t.get('base', ''))}; }}"
+            f"QPushButton[buttonVariant=\"ghost\"]:pressed {{ "
+            f"background: {self._alpha('accent', 0.20)}; }}"
+            f"QPushButton[buttonVariant=\"danger\"] {{ "
+            f"background: {t.get('danger', t.get('base', ''))}; color: {t.get('on_accent', t.get('base', ''))}; }}"
+            f"QPushButton[buttonVariant=\"danger\"]:hover {{ "
+            f"background: {danger_hover}; }}"
+            f"QPushButton[buttonVariant=\"danger\"]:pressed {{ "
+            f"background: {danger_pressed}; }}"
+            f"QPushButton:focus {{ border: 2px solid {t.get('border_focus', t.get('base', ''))}; }}"
+            f"QPushButton:pressed {{ background: {accent_pressed}; }}"
+            f"QPushButton:disabled {{ background: {t.get('disabled_bg', t.get('base', ''))}; "
+            f"color: {t.get('disabled_text', t.get('base', ''))}; border: 1px solid {t.get('disabled_bg', t.get('base', ''))}; }}"
+            # ── Scrollbar ───────────────────────────────────────
+            f"QScrollBar:vertical {{ background: {t.get('scrollbar_track', t.get('base', ''))}; "
+            f"width: {px(8)}px; }}"
+            f"QScrollBar::handle:vertical {{ background: {t.get('scrollbar_thumb', t.get('base', ''))}; "
+            f"border-radius: {px(4)}px; min-height: {px(20)}px; }}"
+            # ── ToolTip ─────────────────────────────────────────
+            f"QToolTip {{ background: {t.get('tooltip_bg', t.get('header', t.get('base', '')))}; "
+            f"color: {t.get('tooltip_text', t.get('heading', t.get('base', '')))}; "
+            f"border: 1px solid {t.get('border', t.get('base', ''))}; "
+            f"border-radius: {px(4)}px; "
+            f"padding: {px(4)}px {px(8)}px; "
+            f"font-size: {pt(11)}px; }}"
+            # ── QMessageBox ─────────────────────────────────────
+            f"QMessageBox {{ background: {t.get('panel', t.get('base', ''))}; color: {t.get('body', t.get('base', ''))}; }}"
+            f"QMessageBox QLabel {{ color: {t.get('body', t.get('base', ''))}; font-size: {pt(12)}px; }}"
+        )
+
+    def tab_css(self) -> str:
+        """QSS for QTabWidget used inside dialogs."""
+        t = self.t
+        px = self.px
+        return (
+            f"QTabWidget::pane {{ border: 1px solid {t.get('border', t.get('base', ''))}; "
+            f"border-radius: {px(6)}px; background: {t.get('panel', t.get('base', ''))}; }}"
+            f"QTabBar::tab {{ background: {t.get('base', '')}; color: {t.get('muted', t.get('base', ''))}; "
+            f"border: 1px solid {t.get('border', t.get('base', ''))}; padding: {px(8)}px {px(16)}px; "
+            f"margin-right: {px(2)}px; "
+            f"border-top-left-radius: {px(6)}px; border-top-right-radius: {px(6)}px; }}"
+            f"QTabBar::tab:selected {{ background: {t.get('panel', t.get('base', ''))}; color: {t.get('heading', t.get('base', ''))}; "
+            f"border-bottom-color: {t.get('panel', t.get('base', ''))}; }}"
+            f"QTabBar::tab:hover:!selected {{ "
+            f"background: {self._alpha('hover_overlay', 0.13)}; color: {t.get('body', t.get('base', ''))}; }}"
+        )
+
+    # ── Widget factories ──────────────────────────────────────
+
+    def make_heading(self, text: str, parent: QWidget | None = None) -> QLabel:
+        """Create a themed section heading with accent underline."""
+        label = QLabel(text, parent)
+        label.setStyleSheet(self.heading_css())
+        return label
+
+    def make_muted(self, text: str, parent: QWidget | None = None) -> QLabel:
+        """Create a muted/secondary text label."""
+        label = QLabel(text, parent)
+        label.setStyleSheet(self.muted_css())
+        return label
+
+    def make_status_badge(self, state: str = "idle",
+                          parent: QWidget | None = None) -> QWidget:
+        """Create a status badge carrying semantic icon metadata and visible text."""
+        icon_name, color_key = _STATES.get(state, _STATES["idle"])
+        color = self.token(color_key, self.token("body"))
+        badge = QWidget(parent)
+        badge.setProperty("semanticIcon", icon_name)
+        badge.setProperty("stateColor", color)
+        badge.setStyleSheet(
+            f"background: {self._alpha(color_key, 0.13)}; "
+            f"border: 1px solid {self._alpha(color_key, 0.38)}; "
+            f"border-radius: {self.px(10)}px; "
+            f"padding: {self.px(2)}px {self.px(8)}px;")
+        row = QHBoxLayout(badge)
+        row.setContentsMargins(self.px(6), self.px(2), self.px(6), self.px(2))
+        row.setSpacing(self.px(4))
+        text = QLabel(state.capitalize())
+        text.setStyleSheet(
+            f"color: {color}; font-size: {self.pt(11)}px; font-weight: bold; "
+            f"background: transparent;")
+        row.addWidget(text)
+        return badge
+
+    def make_pill_button(self, text: str, variant: str = "primary",
+                         parent: QWidget | None = None) -> QPushButton:
+        """Create a pill-shaped button (purely visual, not clickable)."""
+        btn = QPushButton(text, parent)
+        btn.setProperty("buttonVariant", variant)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        return btn
+
+    # ── Internal helpers ──────────────────────────────────────
+
+    def _alpha(self, color_or_token: str, opacity: float) -> str:
+        """Return rgba() for either a theme token name or an already resolved color."""
+        resolved = self.token(color_or_token) if color_or_token in self.t else color_or_token
+        color = QColor(resolved)
+        if not color.isValid():
+            raise ValueError(
+                f"Unknown theme token or invalid color: {color_or_token!r}"
+            )
+        clamped_opacity = max(0.0, min(1.0, opacity))
+        return (
+            f"rgba({color.red()}, {color.green()}, {color.blue()}, "
+            f"{clamped_opacity:.2f})"
+        )
+
+    def _lighter(self, color_or_token: str, factor: int = 110) -> str:
+        """Return an opaque lighter variant suitable for a QSS state fill."""
+        return self._adjust_lightness(color_or_token, factor, lighter=True)
+
+    def _darker(self, color_or_token: str, factor: int = 115) -> str:
+        """Return an opaque darker variant suitable for a QSS state fill."""
+        return self._adjust_lightness(color_or_token, factor, lighter=False)
+
+    def _adjust_lightness(
+        self,
+        color_or_token: str,
+        factor: int,
+        *,
+        lighter: bool,
+    ) -> str:
+        resolved = self.token(color_or_token) if color_or_token in self.t else color_or_token
+        color = QColor(resolved)
+        if not color.isValid():
+            raise ValueError(
+                f"Unknown theme token or invalid color: {color_or_token!r}"
+            )
+        adjusted = color.lighter(max(100, factor)) if lighter else color.darker(max(100, factor))
+        return adjusted.name(QColor.NameFormat.HexRgb)

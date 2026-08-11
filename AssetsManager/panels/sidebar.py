@@ -8,6 +8,7 @@ Features:
 - Right-click context menu on all item types
 - Keyboard: Ctrl+F, Ctrl+Shift+F, Escape
 """
+import logging
 import os
 from pathlib import Path
 
@@ -29,7 +30,11 @@ from AssetsManager.dialogs.sidebar_recent import SidebarRecentFolders
 
 tr = i18n.tr
 
-ICONS = ["star", "folder", "tag", "home", "file", "clock"]
+_log = logging.getLogger(__name__)
+
+ICONS = ["star", "folder", "folder_open", "tag", "home", "file", "image",
+         "video", "archive", "cube", "clock", "heart", "monitor", "save",
+         "grid", "search"]
 
 VTYPE_FAV_HEADER = "fav_header"
 VTYPE_REC_HEADER = "rec_header"
@@ -43,12 +48,30 @@ _FAVORITE_ICON_MAP = {
     "\U0001f4c1": "folder",
     "\U0001f4c2": "folder",
     "\U0001f516": "tag",
-    "\U0001f4be": "folder",
-    "\U0001f5a5": "home",
-    "\U0001f3a8": "file",
+    "\U0001f4be": "save",
+    "\U0001f5a5": "monitor",
+    "\U0001f3a8": "image",
     "\U0001f4cc": "tag",
     "\U0001f3e0": "home",
-    "\U0001f525": "clock",
+    "\U0001f525": "star",
+    "\U0001f4f7": "image",
+    "\u2699": "settings",
+    "\u2699\ufe0f": "settings",
+    "\U0001f5d1": "trash",
+    "\U0001f5d1\ufe0f": "trash",
+    "\U0001f50d": "search",
+    "\U0001f4c4": "file",
+    "\U0001f4dd": "file",
+    "\U0001f4a1": "star",
+    "\U0001f3b5": "play",
+    "\U0001f4f9": "video",
+    "\U0001f5c2": "folder_open",
+    "\U0001f5c2\ufe0f": "folder_open",
+    "\U0001f4e5": "download",
+    "\U0001f4e4": "upload",
+    "\u2764": "heart",
+    "\u2139": "info",
+    "\u2139\ufe0f": "info",
 }
 
 
@@ -65,14 +88,23 @@ def _fs_level(item: QTreeWidgetItem) -> int:
 
 
 class _PreloadSignals(QObject):
-    done = Signal(object)
+    # text, results, search generation, library root at schedule time
+    done = Signal(str, object, int, object)
 
 
 class _PreloadTask(QRunnable):
-    def __init__(self, root_paths, max_depth=2):
+    def __init__(self, root_paths, text, gen, root, max_depth=2):
         super().__init__()
-        self.setAutoDelete(False)  # prevent GC before signal delivery
+        # Auto-delete: the pool reclaims the C++ runnable once run() returns,
+        # so a task replaced by a newer search (self._preload_task = None)
+        # cannot leak. done is emitted inside run() and the panel keeps the
+        # Python reference (self._preload_task) until the next search, so the
+        # queued delivery still reaches _on_preload_done.
+        self.setAutoDelete(True)
         self._root_paths = root_paths
+        self._text = text
+        self._gen = gen
+        self._root = root
         self._max_depth = max_depth
         self.signals = _PreloadSignals()
 
@@ -80,7 +112,7 @@ class _PreloadTask(QRunnable):
         results = []
         for root_path in self._root_paths:
             self._scan_recursive(root_path, 0, results)
-        self.signals.done.emit(results)
+        self.signals.done.emit(self._text, results, self._gen, self._root)
 
     def _scan_recursive(self, path, depth, results):
         if depth >= self._max_depth:
@@ -112,6 +144,7 @@ class SidebarPanel(PanelContent):
         self._search_pending = ""
         self._search_timer = None
         self._match_count = 0
+        self._preload_task: _PreloadTask | None = None
         from AssetsManager.controllers.sidebar_controller import SidebarController
         self._controller = SidebarController()
 
@@ -157,13 +190,13 @@ class SidebarPanel(PanelContent):
         bar.setContentsMargins(scaled_px(4), scaled_px(4), scaled_px(4), scaled_px(2))
         bar.addWidget(self._search)
         self._expand_btn = QPushButton()
-        self._expand_btn.setIcon(icons.icon("arrow_down", color=t["body"], size=scaled_px(16)))
+        self._expand_btn.setIcon(icons.icon("arrow_down", color="icon_secondary", size=scaled_px(16)))
         self._expand_btn.setToolTip(tr("sidebar.expand_all"))
         self._expand_btn.setAccessibleName(tr("sidebar.expand_all"))
         self._expand_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         self._expand_btn.clicked.connect(self._tree.expandAll)
         self._collapse_btn = QPushButton()
-        self._collapse_btn.setIcon(icons.icon("arrow_up", color=t["body"], size=scaled_px(16)))
+        self._collapse_btn.setIcon(icons.icon("arrow_up", color="icon_secondary", size=scaled_px(16)))
         self._collapse_btn.setToolTip(tr("sidebar.collapse_all"))
         self._collapse_btn.setAccessibleName(tr("sidebar.collapse_all"))
         self._collapse_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
@@ -222,8 +255,8 @@ class SidebarPanel(PanelContent):
                 self._show_recs = cfg.get("show_recs", True)
                 self._show_filter = cfg.get("show_filter", True)
                 bus().sidebar_depth_changed.emit(self._depth, dict(self._branch_depths))
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning("Failed to restore sidebar depth config: %s", exc)
 
     def set_scoped_services(self, services):
         """Bind the library bundle resolved by MainWindow."""
@@ -241,6 +274,7 @@ class SidebarPanel(PanelContent):
         """Invalidate pending searches before replacing the library bundle."""
         self._tree_generation += 1
         self._controller.next_search_gen()
+        self._preload_task = None
         if self._search_timer is not None:
             self._search_timer.stop()
 
@@ -264,13 +298,12 @@ class SidebarPanel(PanelContent):
         """Store an icon semantic name so theme refreshes stay in-place."""
         normalized = icons.normalize(icon_name, fallback="file")
         item.setData(0, _ICON_ROLE, normalized)
-        tint = color or themes.get()["body"]
+        tint = color or "icon_secondary"
         item.setIcon(0, icons.icon(normalized, color=tint, size=scaled_px(18)))
 
     def _refresh_item_icons(self, item: QTreeWidgetItem | None = None):
         """Retint existing tree icons without rebuilding or losing expansion."""
         root = item or self._tree.invisibleRootItem()
-        t = themes.get()
         for i in range(root.childCount()):
             child = root.child(i)
             if child is None:
@@ -279,11 +312,11 @@ class SidebarPanel(PanelContent):
             if icon_name:
                 vtype = self._get_vtype(child)
                 if vtype == VTYPE_FAV_HEADER:
-                    tint = t["favorite"]
+                    tint = "favorite"
                 elif vtype == VTYPE_REC_HEADER:
-                    tint = t["recent"]
+                    tint = "recent"
                 else:
-                    tint = t["body"]
+                    tint = "icon_secondary"
                 child.setIcon(0, icons.icon(str(icon_name), color=tint, size=scaled_px(18)))
             self._refresh_item_icons(child)
 
@@ -328,7 +361,7 @@ class SidebarPanel(PanelContent):
             fav_count = len(favs)
             fav_header = QTreeWidgetItem([tr("sidebar.favorites", count=fav_count)])
             self._set_vtype(fav_header, VTYPE_FAV_HEADER)
-            self._set_item_icon(fav_header, "star", themes.get()["favorite"])
+            self._set_item_icon(fav_header, "star", "favorite")
             self._bold_item(fav_header, themes.get()["favorite"])
             self._tree.addTopLevelItem(fav_header)
 
@@ -346,7 +379,7 @@ class SidebarPanel(PanelContent):
             rec_count = len(recs)
             rec_header = QTreeWidgetItem([tr("sidebar.recent_folders", count=rec_count)])
             self._set_vtype(rec_header, VTYPE_REC_HEADER)
-            self._set_item_icon(rec_header, "clock", themes.get()["recent"])
+            self._set_item_icon(rec_header, "clock", "recent")
             self._bold_item(rec_header, themes.get()["recent"])
             self._tree.addTopLevelItem(rec_header)
 
@@ -472,16 +505,27 @@ class SidebarPanel(PanelContent):
         return vtype in (VTYPE_FAV_HEADER, VTYPE_FAV_CHILD)
 
     def _fav_highlight(self, on: bool):
-        item = self._fav_header_item()
-        if not item:
-            return
-        if on and self._drag_highlight_item is not item:
+        if on:
+            item = self._fav_header_item()
+            if not item or self._drag_highlight_item is item:
+                return
             self._drag_highlight_item = item
             t = themes.get()
-            item.setBackground(0, QBrush(QColor(t["accent"])))
-        elif not on and self._drag_highlight_item is item:
+            try:
+                item.setBackground(0, QBrush(QColor(t["accent"])))
+            except RuntimeError:
+                # Tree was rebuilt between drag events; item is gone.
+                self._drag_highlight_item = None
+            return
+        item = self._drag_highlight_item
+        if item is None:
+            return
+        self._drag_highlight_item = None
+        try:
             item.setBackground(0, QBrush(Qt.BrushStyle.NoBrush))
-            self._drag_highlight_item = None
+        except RuntimeError:
+            # Item was removed by a tree rebuild while the drag was active.
+            pass
 
     def _on_tree_drag_enter(self, event) -> bool:
         if event.mimeData().hasUrls():
@@ -542,8 +586,11 @@ class SidebarPanel(PanelContent):
         path = item.data(0, Qt.ItemDataRole.UserRole)
 
         if vtype in (VTYPE_FAV_CHILD, VTYPE_REC_CHILD, VTYPE_FS) and path:
+            # Keep the recent-folders list fresh; file_list.navigate_to emits
+            # bus().directory_changed afterwards (window wires
+            # directory_selected -> navigate_to).
+            self._recents.record_visit(path)
             self.directory_selected.emit(path)
-            bus().directory_changed.emit(path)
         elif vtype == VTYPE_FAV_HEADER:
             item.setExpanded(not item.isExpanded())
             self._fav_expanded = item.isExpanded()
@@ -577,7 +624,7 @@ class SidebarPanel(PanelContent):
                         self._favs.set_icon(p, i), self._populate()))
                 action.setIcon(icons.icon(
                     self._favorite_icon_name(ic),
-                    color=themes.get()["body"],
+                    color="icon_secondary",
                     size=scaled_px(16),
                 ))
             menu.addSeparator()
@@ -652,15 +699,17 @@ class SidebarPanel(PanelContent):
         self._begin_tree_update_batch()
         text = self._search_pending
         self._clear_search_highlights()
+        # Bump the search generation even when clearing so in-flight preload
+        # results from a previous query are invalidated.
+        gen = self._controller.next_search_gen()
+        self._preload_task = None
         if text:
-            gen = self._controller.next_search_gen()
             roots = [self._library_root] if self._library_root else self.ROOTS
             self._search.setPlaceholderText(tr("sidebar.searching"))
-            task = _PreloadTask(roots, max_depth=2)
-            root = self._library_root
-            task.signals.done.connect(
-                lambda results: self._on_preload_done(text, results, gen, root)
-            )
+            task = _PreloadTask(roots, text, gen, self._library_root, max_depth=2)
+            # Bound QObject slot: queued to the UI thread when the worker emits.
+            task.signals.done.connect(self._on_preload_done)
+            self._preload_task = task
             QThreadPool.globalInstance().start(task)
         else:
             self._match_count = 0
@@ -819,12 +868,18 @@ class SidebarPanel(PanelContent):
         item.setFont(0, font)
 
     def _clear_highlight_background(self, item, generation: int):
-        if generation == self._tree_generation:
+        if generation != self._tree_generation:
+            return
+        try:
             item.setBackground(0, QBrush())
-        for i in range(item.childCount()):
-            child = item.child(i)
-            if child is not None:
-                self._reset_item_style(child)
+            for i in range(item.childCount()):
+                child = item.child(i)
+                if child is not None:
+                    self._reset_item_style(child)
+        except RuntimeError:
+            # The tree was rebuilt before the fade-out timer fired; the C++
+            # item is gone. Nothing left to reset.
+            pass
 
     # ── Keyboard shortcuts ─────────────────────────────────────────
 
@@ -940,7 +995,7 @@ class SidebarPanel(PanelContent):
             (self._expand_btn, "arrow_down"),
             (self._collapse_btn, "arrow_up"),
         ):
-            btn.setIcon(icons.icon(icon_name, color=t["body"], size=scaled_px(16)))
+            btn.setIcon(icons.icon(icon_name, color="icon_secondary", size=scaled_px(16)))
             btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
             btn.setStyleSheet(
                 f"color: {t['body']}; padding: 0; font-size: {scaled_pt(14)}px; font-weight: bold; "
@@ -982,7 +1037,7 @@ class SidebarPanel(PanelContent):
         from AssetsManager.core import themes
         t = themes.get()
         gear = QPushButton()
-        gear.setIcon(icons.icon("settings", color=t["heading"], size=scaled_px(16)))
+        gear.setIcon(icons.icon("settings", color="icon_primary", size=scaled_px(16)))
         gear.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         gear.setToolTip(tr("sidebar_settings.title"))
         gear.setAccessibleName(tr("sidebar_settings.title"))

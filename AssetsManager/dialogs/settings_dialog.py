@@ -54,10 +54,17 @@ class SettingsDialog(TabbedDialog):
         super().__init__(parent, title=tr("settings.title"),
                          min_size=(scaled_px(460), scaled_px(520)))
 
+    def set_library_settings_adapter(self, adapter) -> None:
+        """Attach a UI-neutral library settings adapter for future settings sections."""
+        self._library_settings_adapter = adapter
+
+    @property
+    def library_settings_adapter(self):
+        return getattr(self, "_library_settings_adapter", None)
+
     def _set_menu_button_presentation(self, button: QPushButton, text: str):
-        t = themes.get()
         button.setText(text)
-        button.setIcon(icons.icon("chevron_down", color=t["heading"], size=scaled_px(14)))
+        button.setIcon(icons.icon("chevron_down", color="icon_primary", size=scaled_px(14)))
         button.setIconSize(QSize(scaled_px(14), scaled_px(14)))
         button.setAccessibleName(text)
         button.setToolTip(text)
@@ -65,7 +72,6 @@ class SettingsDialog(TabbedDialog):
         themes.set_button_variant(button, "secondary")
 
     def _refresh_menu_button_icons(self):
-        t = themes.get()
         for button in (
             getattr(self, "_mode_btn", None),
             getattr(self, "_theme_btn", None),
@@ -73,7 +79,7 @@ class SettingsDialog(TabbedDialog):
         ):
             if button is not None:
                 button.setIcon(
-                    icons.icon("chevron_down", color=t["heading"], size=scaled_px(14)))
+                    icons.icon("chevron_down", color="icon_primary", size=scaled_px(14)))
                 button.setIconSize(QSize(scaled_px(14), scaled_px(14)))
 
     def _on_theme_changed(self, name):

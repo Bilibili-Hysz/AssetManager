@@ -33,28 +33,83 @@ class TagTreeController:
         return sorted(self._tag_svc.get_files_by_tag(self._library_root, tag))
 
     def get_tag_with_files(self) -> list[dict]:
-        """Return all tags with their file lists for tree rendering."""
+        """Return all tags with their file lists for tree rendering.
+
+        Uses a single batch query (repository ``list_file_tags``) instead of
+        one SQL statement per tag, avoiding N+1 queries on large libraries.
+        """
         tags = self.get_all_tags()
-        result = []
-        for tag in tags:
-            files = self.get_files_by_tag(tag)
-            result.append({"tag": tag, "count": len(files), "files": files})
-        return result
+        icons_by_tag = {
+            meta.get("name"): str(meta.get("icon") or "")
+            for meta in self._tag_svc.get_tags_with_metadata(self._library_root)
+        }
+        files_by_tag = self._files_by_tag_batch(tags)
+        return [
+            {
+                "tag": tag,
+                "count": len(files_by_tag.get(tag, [])),
+                "files": sorted(files_by_tag.get(tag, [])),
+                "icon": icons_by_tag.get(tag, ""),
+            }
+            for tag in tags
+        ]
+
+    def _files_by_tag_batch(self, tags: list[str]) -> dict[str, list[str]]:
+        """Return {tag: [file paths]} from one batch query when possible.
+
+        Prefers the service's repository ``list_file_tags()`` (a single SQL
+        statement covering every file/tag pair, grouped in memory). Falls
+        back to one query per tag for services that cannot resolve a
+        repository (e.g. fakes in tests or legacy adapters).
+        """
+        resolver = getattr(self._tag_svc, "_repo", None)
+        if callable(resolver):
+            try:
+                repo = resolver(None, self._library_root)
+            except Exception:
+                repo = None
+            list_file_tags = getattr(repo, "list_file_tags", None)
+            if callable(list_file_tags):
+                grouped: dict[str, list[str]] = {}
+                for path, tag in list_file_tags():
+                    grouped.setdefault(tag, []).append(path)
+                return grouped
+        # Legacy fallback: one query per tag.
+        return {tag: list(self.get_files_by_tag(tag)) for tag in tags}
 
     def add_tag(self, tag: str) -> None:
         """Register a tag in the canonical library.
 
-        Calls TagLibrary.canonical() to ensure the tag is registered in the
-        synonym map. The tag will appear in get_all_tags() once any file
-        is associated with it.
+        Delegates to ``TagLibrary.register_tag()`` so the tag becomes a real
+        canonical entry (canonical() alone only performs a lookup and never
+        registers). Re-adding an already-registered tag is a no-op, so the
+        library is only written to disk when a genuinely new tag is added.
         """
-        canonical = get_library().canonical(tag.strip())
-        if canonical:
-            get_library()._save()
+        library = get_library()
+        tag = tag.strip()
+        if not tag:
+            return
+        if tag not in library.all_canonicals():
+            library.register_tag(tag)
 
     def rename_tag(self, old_tag: str, new_tag: str) -> None:
-        """Rename a tag across all files."""
+        """Rename a tag across all files and keep TagLibrary in sync.
+
+        The DB rename alone would leave the old canonical name in the tag
+        library (with its synonyms), so the renamed canonical is registered
+        and the old one removed after a successful rename.
+        """
         self._tag_svc.rename_tag(self._library_root, old_tag, new_tag)
+        library = get_library()
+        old_canonical = library.canonical(old_tag)
+        new_canonical = library.canonical(new_tag)
+        if old_canonical == new_canonical:
+            return
+        library.register_tag(new_canonical)
+        # Only drop the library entry when the old name is itself a
+        # canonical; an alias rename must not delete an unrelated canonical.
+        if old_tag.strip().lower() in {c.lower() for c in library.all_canonicals()}:
+            library.remove_canonical(old_tag)
 
     def delete_tag(self, tag: str) -> int:
         """Delete a tag from all files. Returns number of affected files."""

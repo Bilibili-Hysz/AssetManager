@@ -87,9 +87,10 @@ class ThemePreviewDialog(QDialog):
                 name = theme_data.get("name", "")
                 accent = theme_data.get("colors", {}).get("accent", "#888888")
                 pixmap = QPixmap(scaled_px(12), scaled_px(12))
-                pixmap.fill(QColor(accent))
+                pixmap.fill(Qt.GlobalColor.transparent)
                 painter = QPainter(pixmap)
-                painter.setPen(QColor(accent).darker(120))
+                painter.setBrush(QColor(accent))
+                painter.setPen(Qt.PenStyle.NoPen)
                 painter.drawRoundedRect(0, 0, scaled_px(12) - 1, scaled_px(12) - 1, 3, 3)
                 painter.end()
                 item = QListWidgetItem(QIcon(pixmap), f"  {name}")
@@ -135,15 +136,28 @@ class ThemePreviewDialog(QDialog):
             theme_data = self._preview._theme_data
             if theme_data:
                 import json
+                from AssetsManager.core.path_resolver import themes_dir
                 loader = themes._get_loader()
                 file_path = loader._paths.get(name)
-                if file_path:
+                if file_path is None:
+                    file_path = themes_dir() / f"U_{name.replace(' ', '_')}.json"
+                try:
                     colors = {k: v for k, v in theme_data.items() if k != "properties"}
                     props = theme_data.get("properties", {})
                     nested = {"name": name, "colors": colors, "properties": props}
+                    # Preserve dark/description of the existing custom theme.
+                    original = loader._themes.get(name, {})
+                    if "dark" in original:
+                        nested["dark"] = original["dark"]
+                    if "description" in original:
+                        nested["description"] = original["description"]
                     with open(file_path, "w", encoding="utf-8") as f:
                         json.dump(nested, f, indent=2, ensure_ascii=False)
-                    themes.reload_themes()
+                except OSError:
+                    QMessageBox.warning(
+                        self, tr("dialog.error"), tr("settings.theme_save_failed"))
+                    return
+                themes.reload_themes()
             themes.set_theme(name)
             self.accept()
 
@@ -196,7 +210,20 @@ class ThemePreviewDialog(QDialog):
                 "colors": colors,
                 "properties": theme_data.get("properties", {}),
             }
-            path.write_text(json.dumps(nested, indent=2, ensure_ascii=False), encoding="utf-8")
+            # Keep the base theme's dark/description fields (create_custom_theme
+            # copied the raw base data; the write-back must not drop them).
+            original = loader._themes.get(name, {})
+            if "dark" in original:
+                nested["dark"] = original["dark"]
+            if "description" in original:
+                nested["description"] = original["description"]
+            try:
+                path.write_text(
+                    json.dumps(nested, indent=2, ensure_ascii=False), encoding="utf-8")
+            except OSError:
+                QMessageBox.warning(
+                    self, tr("dialog.error"), tr("settings.theme_save_failed"))
+                return
             themes.reload_themes()
             self._load_themes()
             for i in range(self._theme_list.count()):

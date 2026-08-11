@@ -31,7 +31,6 @@ class TagTreePanel(PanelContent):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._library_root = ""
-        self._current_path = ""
         self._controller: TagTreeController | None = None
         self._active_tag_filter: str | None = None
         self._scoped_services = None
@@ -59,7 +58,7 @@ class TagTreePanel(PanelContent):
         bar = QHBoxLayout()
         bar.addWidget(self._search)
         add_btn = QPushButton(tr("tagtree.new_tag"))
-        add_btn.setIcon(icons.icon("tag", color=themes.get()["body"], size=scaled_px(16)))
+        add_btn.setIcon(icons.icon("tag", color="icon_secondary", size=scaled_px(16)))
         add_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         add_btn.setAccessibleName(tr("tagtree.new_tag"))
         add_btn.clicked.connect(self._add_tag)
@@ -69,7 +68,6 @@ class TagTreePanel(PanelContent):
         self._apply_tree_style()
         self.content_layout.addLayout(bar)
 
-        self._connect_bus(bus().directory_changed, self._on_directory_changed)
         self._connect_bus(bus().theme_changed, self._on_visual_theme_changed)
         self._connect_bus(bus().language_changed, self._on_language_changed)
         self._connect_bus(bus().ui_scale_changed, self._on_visual_theme_changed)
@@ -95,7 +93,7 @@ class TagTreePanel(PanelContent):
             f"  background: {alpha(t['accent'], 0.28)}; color: {t['heading']}; "
             f"}}"
             f"QTreeWidget::item:disabled {{ color: {t['muted']}; }}")
-        self._add_btn.setIcon(icons.icon("tag", color=t["body"], size=scaled_px(16)))
+        self._add_btn.setIcon(icons.icon("tag", color="icon_secondary", size=scaled_px(16)))
         self._add_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
 
     @staticmethod
@@ -104,13 +102,12 @@ class TagTreePanel(PanelContent):
         item.setData(0, _ICON_ROLE, normalized)
         item.setIcon(0, icons.icon(
             normalized,
-            color=color or themes.get()["body"],
+            color=color or "icon_secondary",
             size=scaled_px(18),
         ))
 
     def _refresh_item_icons(self):
         root = self._tree.invisibleRootItem()
-        t = themes.get()
         stack = [root]
         while stack:
             parent = stack.pop()
@@ -121,7 +118,7 @@ class TagTreePanel(PanelContent):
                 icon_name = item.data(0, _ICON_ROLE)
                 if icon_name:
                     item.setIcon(0, icons.icon(
-                        str(icon_name), color=t["body"], size=scaled_px(18)
+                        str(icon_name), color="icon_secondary", size=scaled_px(18)
                     ))
                 stack.append(item)
 
@@ -158,7 +155,7 @@ class TagTreePanel(PanelContent):
         if not tags_with_files:
             item = QTreeWidgetItem([tr("tagtree.no_tags")])
             item.setFlags(Qt.ItemFlag.NoItemFlags)
-            self._set_item_icon(item, "tag", themes.get()["muted"])
+            self._set_item_icon(item, "tag", "icon_muted")
             self._tree.addTopLevelItem(item)
             return
 
@@ -175,7 +172,8 @@ class TagTreePanel(PanelContent):
             files = entry["files"]
             item = QTreeWidgetItem([f"{tag}  ({count})"])
             item.setData(0, Qt.ItemDataRole.UserRole, tag)
-            self._set_item_icon(item, "tag")
+            icon_name = icons.normalize(str(entry.get("icon") or ""), fallback="tag")
+            self._set_item_icon(item, icon_name)
             self._tree.addTopLevelItem(item)
             for f in files:
                 name = Path(f).name
@@ -235,6 +233,7 @@ class TagTreePanel(PanelContent):
         new_tag, ok = QInputDialog.getText(self, tr("tagtree.dialog.rename"), tr("tagtree.dialog.rename_label"), text=old_tag)
         if ok and new_tag.strip() and new_tag.strip().lower() != old_tag.lower() and self._controller:
             self._controller.rename_tag(old_tag, new_tag.strip())
+            self._populate()
 
     def _delete_tag(self, tag):
         files = self._controller.get_files_for_tag(tag) if self._controller else []
@@ -246,10 +245,12 @@ class TagTreePanel(PanelContent):
             return
         if self._controller:
             self._controller.delete_tag(tag)
+            self._populate()
 
     def _remove_tag(self, filepath, tag):
         if self._controller:
             self._controller.remove_tag_from_file(filepath, tag)
+            self._populate()
 
     def _on_search(self, text):
         self._begin_tree_update_batch()
@@ -299,7 +300,6 @@ class TagTreePanel(PanelContent):
         self._runtime = runtime
         self._scoped_services = services
         self._library_root = services.session.root_str
-        self._current_path = services.session.root_str
         self._controller = TagTreeController(self._library_root, tag_svc=services.tag_service)
         if self._active_tag_filter and old_root != self._library_root:
             self._active_tag_filter = None
@@ -327,16 +327,12 @@ class TagTreePanel(PanelContent):
         self.prepare_library_switch()
         super().shutdown()
 
-    def _on_directory_changed(self, path):
-        self._current_path = str(Path(path).resolve())
-
     def set_library_root(self, path: str):
         """Set a legacy standalone root, reusing a matching scoped service."""
         root = str(Path(path).resolve())
         if root == self._library_root:
             return
         self._library_root = root
-        self._current_path = root
         scoped = self._scoped_services
         if (
             scoped is not None

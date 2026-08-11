@@ -11,14 +11,12 @@ from PySide6.QtWidgets import (
     QCheckBox, QGroupBox, QLabel, QSpinBox, QScrollArea,
     QWidget, QDialogButtonBox,
 )
-from AssetsManager.core.ui_scale import scaled_px
+from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core import icons, themes
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
+from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager import i18n
 tr = i18n.tr
-
-DEPTH_OPTIONS = [0, 1, 2, 3, 5, 99]
-DEPTH_LABELS = {0: tr("sidebar_settings.depth_hidden"), 1: "1", 2: "2", 3: "3", 5: "5", 99: tr("sidebar_settings.depth_all")}
 
 
 class SidebarSettingsDialog(TabbedDialog):
@@ -35,6 +33,7 @@ class SidebarSettingsDialog(TabbedDialog):
 
     def _build_ui(self):
         self.setStyleSheet(self._dialog_qss())
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
@@ -61,7 +60,10 @@ class SidebarSettingsDialog(TabbedDialog):
         global_layout = QHBoxLayout(global_grp)
         global_layout.addWidget(QLabel(tr("sidebar_settings.max_levels")))
         self._global_depth = QSpinBox()
-        self._global_depth.setRange(0, 5)
+        # Config values may exceed the conventional 0-5 range; extend the
+        # spin range so the value is displayed and written back unchanged
+        # instead of being silently clamped.
+        self._global_depth.setRange(0, max(5, self._global_depth_init))
         self._global_depth.setValue(self._global_depth_init)
         self._global_depth.setToolTip(tr("sidebar_settings.global_hint"))
         global_layout.addWidget(self._global_depth)
@@ -75,7 +77,7 @@ class SidebarSettingsDialog(TabbedDialog):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setMaximumHeight(scaled_px(200))
-        scroll.setStyleSheet(f"QScrollArea {{ background: {self._t['base']}; border: none; }}"
+        scroll.setStyleSheet(f"QScrollArea {{ background: {sk.token('base')}; border: none; }}"
                              f"QScrollArea > QWidget {{ background: transparent; }}")
         branch_widget = QWidget()
         branch_widget.setStyleSheet("background: transparent;")
@@ -89,9 +91,10 @@ class SidebarSettingsDialog(TabbedDialog):
             if not p.is_dir():
                 continue
             try:
-                entries = sorted(
-                    [e for e in os.scandir(p) if e.is_dir() and not e.name.startswith(".")],
-                    key=lambda e: e.name.lower())
+                with os.scandir(p) as it:
+                    entries = sorted(
+                        [e for e in it if e.is_dir() and not e.name.startswith(".")],
+                        key=lambda e: e.name.lower())
             except OSError:
                 continue
             for entry in entries:
@@ -102,7 +105,7 @@ class SidebarSettingsDialog(TabbedDialog):
                 row = QHBoxLayout()
                 lbl = QLabel(name)
                 lbl.setPixmap(
-                    icons.icon("folder", color=themes.get()["body"], size=scaled_px(15))
+                    icons.icon("folder", color="icon_secondary", size=scaled_px(15))
                     .pixmap(scaled_px(15), scaled_px(15))
                 )
                 lbl.setToolTip(name)
@@ -110,8 +113,12 @@ class SidebarSettingsDialog(TabbedDialog):
                 lbl.setMinimumWidth(scaled_px(180))
                 row.addWidget(lbl)
                 sb = QSpinBox()
-                sb.setRange(0, 5)
-                sb.setValue(self._branch_depths_cfg.get(name, self._global_depth_init))
+                # Same out-of-range handling as the global depth spin: extend
+                # the range so configured branch depths are not silently
+                # clamped when the dialog is saved.
+                branch_value = self._branch_depths_cfg.get(name, self._global_depth_init)
+                sb.setRange(0, max(5, branch_value))
+                sb.setValue(branch_value)
                 sb.setToolTip(tr("sidebar_settings.depth_hint"))
                 row.addWidget(sb)
                 row.addStretch()

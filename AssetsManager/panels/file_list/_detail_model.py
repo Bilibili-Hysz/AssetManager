@@ -3,6 +3,7 @@
 Only creates data on demand via data() — no QTreeWidgetItem objects.
 Enables efficient display of large directories (10000+ files).
 """
+import logging
 import re
 import datetime
 from pathlib import Path
@@ -14,6 +15,8 @@ from PySide6.QtWidgets import QFileIconProvider
 from AssetsManager.panels.file_list._model import FileSystemModel
 from AssetsManager import i18n
 tr = i18n.tr
+
+_log = logging.getLogger(__name__)
 
 _natural_split = re.compile(r'(\d+)')
 
@@ -64,27 +67,43 @@ class DetailModel(QAbstractItemModel):
 
     def _rebuild_tags_cache(self):
         """Batch-fetch tags for all entries to avoid per-item SQLite queries."""
-        self._tags_cache.clear()
-        if not self._store or not self._entries:
-            return
-        file_entries = [entry for entry in self._entries if not entry.is_dir()]
+        # A1: the whole body is guarded so no exception can escape between
+        # beginResetModel()/endResetModel() — an uncaught raise there would
+        # leave the view permanently mid-reset.
         try:
-            tags_by_path = self._store.get_tags_for_files([entry.path for entry in file_entries])
-            for entry in file_entries:
-                tags = tags_by_path.get(str(Path(entry.path).resolve()), [])[:3]
-                if tags:
-                    self._tags_cache[entry.path] = ", ".join(tags)
-            return
-        except AttributeError:
-            pass
-        for entry in self._entries:
-            if not entry.is_dir():
-                try:
-                    tags = self._store.get_tags(entry.path)[:3]
+            self._tags_cache.clear()
+            if not self._store or not self._entries:
+                return
+            file_entries = [entry for entry in self._entries if not entry.is_dir()]
+            try:
+                tags_by_path = self._store.get_tags_for_files([entry.path for entry in file_entries])
+                for entry in file_entries:
+                    # A3: the store (TagStore._resolve) normalizes keys with
+                    # Path.resolve(), so the lookup key must match exactly —
+                    # os.path.abspath() would silently miss symlinked paths.
+                    # Per-file resolve() is a syscall on the main thread and
+                    # is the dominant cost for 10k+ file refreshes; kept for
+                    # key consistency with the store.
+                    tags = tags_by_path.get(str(Path(entry.path).resolve()), [])[:3]
                     if tags:
                         self._tags_cache[entry.path] = ", ".join(tags)
-                except Exception:
-                    pass
+                return
+            except AttributeError:
+                # Store without the batch API — fall back to per-entry calls.
+                pass
+            for entry in self._entries:
+                if not entry.is_dir():
+                    try:
+                        tags = self._store.get_tags(entry.path)[:3]
+                        if tags:
+                            self._tags_cache[entry.path] = ", ".join(tags)
+                    except Exception as exc:
+                        # A4: don't swallow silently — record the failed tag
+                        # lookup (with the entry path) so a broken store is
+                        # diagnosable without spamming logs.
+                        _log.debug("tag fetch failed for %s: %s", entry.path, exc)
+        except Exception:
+            _log.exception("Failed to rebuild tags cache")
 
     # ── QAbstractItemModel interface ────────────────────────────
 
@@ -149,6 +168,13 @@ class DetailModel(QAbstractItemModel):
         new_name = str(value).strip()
         if not new_name or new_name == entry.name:
             return False
+        # A5: the rename is async — rename_requested only hands off to the
+        # controller (FileListPanel._rename_detail_row → _rename_path), which
+        # reports OSError via feedback/MessageBox and re-reads the model
+        # (_post_refresh → refresh()), reverting the display to the old name
+        # on failure. Returning True here is required by Qt's editor protocol
+        # (the view closes the editor); there is no rollback dataChanged from
+        # the model itself.
         self.rename_requested.emit(row, new_name)
         return True
 
@@ -164,32 +190,52 @@ class DetailModel(QAbstractItemModel):
             return
         self._sort_column = column
         self._sort_order = order
+        # A2: remap persistent indexes across the layout change, otherwise
+        # selection/highlight jumps to a different file after sorting.
+        # _do_sort reorders self._entries in place (list.sort), so each entry
+        # object is the same object before and after — id() stays stable.
+        ordered_before = list(enumerate(self._entries))
         self.layoutAboutToBeChanged.emit()
         self._do_sort(column, order)
+        old_to_new = {id(entry): i for i, entry in enumerate(self._entries)}
+        old_indexes = [self.index(row, 0) for row, _entry in ordered_before]
+        new_indexes = [self.index(old_to_new[id(entry)], 0) for _row, entry in ordered_before]
+        self.changePersistentIndexList(old_indexes, new_indexes)
         self.layoutChanged.emit()
 
     def _do_sort(self, column: int, order: Qt.SortOrder):
-        """Internal sort — callable inside beginResetModel/endResetModel block."""
+        """Internal sort — callable inside beginResetModel/endResetModel block.
+
+        Two-pass stable sort: the business key decides order within each
+        group, then a second non-reversed pass pins directories to the top.
+        ``reverse=not ascending`` on the business-key pass would otherwise
+        sink directories to the bottom when sorting descending (the old
+        ``(not is_dir, ...)`` prefix got inverted too); keeping the second
+        pass unreversed guarantees dirs stay first in both orders.
+        """
         ascending = order == Qt.SortOrder.AscendingOrder
         fs = self._fs_model
 
         def _sort_key(entry):
             is_dir = entry.is_dir()
             if column == 0:
-                return (not is_dir, _natural_key(entry.name))
+                return _natural_key(entry.name)
             elif column == 1:
                 ext = Path(entry.name).suffix.lower() if not is_dir else ""
-                return (not is_dir, ext, _natural_key(entry.name))
+                return (ext, _natural_key(entry.name))
             elif column == 2:
-                return (not is_dir, self._size_sort_value(entry, is_dir, fs))
+                return self._size_sort_value(entry, is_dir, fs)
             elif column == 3:
-                return (not is_dir, self._date_sort_value(entry, fs))
+                return self._date_sort_value(entry, fs)
             elif column == 4:
                 tags = self._tags_cache.get(entry.path, "")
-                return (not is_dir, tags.lower(), _natural_key(entry.name))
-            return (not is_dir, _natural_key(entry.name))
+                return (tags.lower(), _natural_key(entry.name))
+            return _natural_key(entry.name)
 
         self._entries.sort(key=_sort_key, reverse=not ascending)
+        # Stable — only reorders the dir/file boundary; order inside each
+        # group set by the first pass is preserved.
+        self._entries.sort(key=lambda entry: 0 if entry.is_dir() else 1)
 
     @staticmethod
     def _size_sort_value(entry, is_dir: bool, fs) -> int:

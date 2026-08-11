@@ -130,8 +130,8 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
 
     for btn in extra_buttons:
         semantic_icon = btn.property("semanticIcon")
-        if semantic_icon:
-            btn.setIcon(icons.icon(semantic_icon, color=t["heading"], size=scaled_px(15)))
+        if semantic_icon and isinstance(btn, QPushButton):
+            btn.setIcon(icons.icon(semantic_icon, color="icon_primary", size=scaled_px(15)))
 
     layout.addStretch()
 
@@ -144,7 +144,7 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
 
     _dock = dock
     float_btn = QPushButton()
-    float_btn.setIcon(icons.icon("maximize", color=t["heading"], size=scaled_px(15)))
+    float_btn.setIcon(icons.icon("maximize", color="icon_primary", size=scaled_px(15)))
     float_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
     float_btn.setToolTip(tr("dock.float"))
     float_btn.setAccessibleName(tr("dock.float"))
@@ -157,7 +157,7 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
     layout.addWidget(float_btn)
 
     close_btn = QPushButton()
-    close_btn.setIcon(icons.icon("close", color=t["heading"], size=scaled_px(15)))
+    close_btn.setIcon(icons.icon("close", color="icon_primary", size=scaled_px(15)))
     close_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
     close_btn.setToolTip(tr("dock.close"))
     close_btn.setAccessibleName(tr("dock.close"))
@@ -188,13 +188,19 @@ def _close_dock(dock, window=None):
     shutdown = getattr(panel, "shutdown", None)
     if callable(shutdown):
         shutdown()
-    if window:
+    # The title-bar close button calls without a window; resolve the parent
+    # so the dock is actually removed from the QMainWindow layout.
+    if window is None:
+        window = dock.parentWidget()
+    if window is not None:
         window.removeDockWidget(dock)
     _DOCK_TITLES.pop(dock, None)
     dock.deleteLater()
 
 
 def _split(dock, window, orientation):
+    if window is None:
+        return
     new_dock = create(tr("dock.new"), window, window.dockWidgetArea(dock))
     window.splitDockWidget(dock, new_dock, orientation)
 

@@ -50,7 +50,97 @@ RESTART_SHARING_SETTINGS = frozenset({
     "lan_port", "lan_bind", "lan_auth_mode", "lan_password", "lan_access_key",
     "lan_rate_limit", "lan_blocked_ips", "lan_ip_whitelist", "lan_ssl_cert", "lan_ssl_key",
 })
+_CONFIRMABLE_SECURITY_REASONS = frozenset({
+    "share_safety_ack_required",
+    "bind_scope_expanded",
+    "authentication_removed",
+    "trusted_network_confirmation_required",
+})
+_SECURITY_REASON_KEYS = {
+    "share_safety_ack_required": "sharing.security.reason_ack_required",
+    "bind_scope_expanded": "sharing.security.reason_bind_scope_expanded",
+    "authentication_removed": "sharing.security.reason_authentication_removed",
+    "trusted_network_confirmation_required": "sharing.security.reason_trusted_required",
+}
 
+
+def _security_blocked_message(reason: str) -> str:
+    reason_key = _SECURITY_REASON_KEYS.get(reason)
+    reason_text = tr(reason_key) if reason_key else tr("sharing.security.reason_generic")
+    return tr("sharing.security.blocked_message", reason=reason_text)
+
+
+def confirm_security_preflight(
+    parent: QWidget | None,
+    *,
+    settings,
+    preflight,
+    snapshot,
+    bind: str | None,
+    auth_status,
+) -> bool:
+    """Ask for an explicit user decision and atomically persist it.
+
+    This is deliberately the only UI-facing confirmation helper.  It never
+    starts a server; callers must re-run the pure preflight snapshot after a
+    successful commit and only then enter the lifecycle path.
+    """
+    from AssetsManager.application.security_preflight import effective_auth, is_lan_bind
+
+    reason = getattr(snapshot, "failure_reason", None)
+    if reason not in _CONFIRMABLE_SECURITY_REASONS:
+        return False
+
+    auth = effective_auth(auth_status)
+    if is_lan_bind(bind) and not auth["enabled"]:
+        title_key = "sharing.security.confirm_trusted_title"
+        message_key = "sharing.security.confirm_trusted_message"
+        confirm_decision = preflight.confirm_trusted_lan
+    elif is_lan_bind(bind):
+        title_key = "sharing.security.confirm_authenticated_title"
+        message_key = "sharing.security.confirm_authenticated_message"
+        confirm_decision = preflight.confirm_authenticated_lan
+    else:
+        title_key = "sharing.security.confirm_local_title"
+        message_key = "sharing.security.confirm_local_message"
+        confirm_decision = preflight.confirm_authenticated_lan
+
+    # Do not mutate confirmation state until the user explicitly accepts.
+    decision = QMessageBox.question(
+        parent,
+        tr(title_key),
+        tr(message_key),
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        QMessageBox.StandardButton.No,
+    )
+    if decision != QMessageBox.StandardButton.Yes:
+        preflight.cancel()
+        return False
+
+    confirm_decision()
+    committer = getattr(settings, "commit_share_safety_confirmation", None)
+    persisted = False
+    if callable(committer):
+        try:
+            persisted = bool(
+                committer(
+                    preflight.ack_version,
+                    preflight.trusted_network_confirmed,
+                )
+            )
+        except Exception:
+            _log.exception("Unable to persist LAN security confirmation")
+            persisted = False
+
+    if not persisted:
+        preflight.cancel()
+        QMessageBox.warning(
+            parent,
+            tr("sharing.security.persist_failed_title"),
+            tr("sharing.security.persist_failed_message"),
+        )
+        return False
+    return True
 
 
 class LanSharingMixin:
@@ -81,6 +171,25 @@ class LanSharingMixin:
 
         return f"http://{get_local_ip()}:{port}"
 
+    @staticmethod
+    def _runtime_auth_status(runtime, *, password, access_key, auth_mode):
+        if access_key:
+            return True, "key"
+        if password:
+            return True, "password"
+        if auth_mode not in {"user", "users"}:
+            return False, "none"
+        services = getattr(runtime, "sharing_services", None)
+        auth_service = getattr(services, "auth_service", None)
+        has_active_users = getattr(auth_service, "has_active_users", None)
+        if not callable(has_active_users):
+            return False, "none"
+        try:
+            return (True, "user") if has_active_users(raise_on_error=True) else (False, "none")
+        except Exception:
+            _log.exception("Unable to inspect active LAN users before startup")
+            return False, "none"
+
     # ── Toggle sharing ──────────────────────────────────────────
 
     def _toggle_sharing(self):
@@ -88,6 +197,10 @@ class LanSharingMixin:
         from AssetsManager import lan
         if self._lan_server and self._lan_server.is_running():
             self._lan_server.stop()
+            # Drop the stopped server handle and the now-stale security
+            # snapshot so a later start builds fresh state.
+            self._lan_server = None
+            self._share_security_snapshot = None
             self._update_share_status(False)
             if hasattr(self, '_tray_manager') and self._tray_manager:
                 self._tray_manager.update_sharing_state(False)
@@ -95,6 +208,9 @@ class LanSharingMixin:
 
         # Start sharing
         from AssetsManager.core.settings import AppSettings
+        from AssetsManager.application.security_preflight import (
+            security_preflight_from_settings,
+        )
         settings = AppSettings.instance()
         port = settings.get("lan_port", 8080)
         bind = settings.get("lan_bind", "0.0.0.0")
@@ -102,14 +218,68 @@ class LanSharingMixin:
         access_key = settings.get("lan_access_key")
         auth_mode = settings.get("lan_auth_mode", "none")
         share_name = settings.get("lan_share_name", "AssetManager")
-
         session = getattr(self, "_library_session", None)
         if session is None or session.is_closed:
             QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), tr("sharing.no_library"))
             return
 
+        bootstrap = getattr(self, "_bootstrap", None)
+        runtime_for = getattr(bootstrap, "runtime_for", None)
+        if not callable(runtime_for):
+            _log.error("Cannot start LAN sharing without the canonical application bootstrap")
+            QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), tr("sharing.no_library"))
+            return
+        runtime = runtime_for(session)
+
+        preflight = security_preflight_from_settings(settings)
+        configured_auth = self._runtime_auth_status(
+            runtime,
+            password=password,
+            access_key=access_key,
+            auth_mode=auth_mode,
+        )
+        security_snapshot = preflight.snapshot(
+            sharing=True,
+            bind=bind,
+            auth_status=configured_auth,
+        )
+        self._share_security_snapshot = security_snapshot
+        if security_snapshot.share_state != "local_active":
+            reason = security_snapshot.failure_reason or "share_safety_ack_required"
+            parent = self._dialog_parent()
+            if not isinstance(parent, QWidget):
+                parent = None
+            if reason in _CONFIRMABLE_SECURITY_REASONS:
+                confirmed = confirm_security_preflight(
+                    parent,
+                    settings=settings,
+                    preflight=preflight,
+                    snapshot=security_snapshot,
+                    bind=bind,
+                    auth_status=configured_auth,
+                )
+                if not confirmed:
+                    self._share_security_snapshot = preflight.snapshot(
+                        sharing=True,
+                        bind=bind,
+                        auth_status=configured_auth,
+                    )
+                    return
+                security_snapshot = preflight.snapshot(
+                    sharing=True,
+                    bind=bind,
+                    auth_status=configured_auth,
+                )
+                self._share_security_snapshot = security_snapshot
+            if security_snapshot.share_state != "local_active":
+                QMessageBox.warning(
+                    parent,
+                    tr("dialog.error"),
+                    _security_blocked_message(reason),
+                )
+                return
+
         try:
-            bootstrap = getattr(self, "_bootstrap", None)
             options = dict(
                 share_name=share_name,
                 password=password,
@@ -122,21 +292,60 @@ class LanSharingMixin:
                 ssl_cert=settings.get("lan_ssl_cert"),
                 ssl_key=settings.get("lan_ssl_key"),
             )
-            if bootstrap is not None and hasattr(bootstrap, "runtime_for"):
-                runtime = bootstrap.runtime_for(session)
-                server = lan.LanServer(runtime=runtime, **options)
-            else:
-                _log.error("Cannot start LAN sharing without the canonical application bootstrap")
-                QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), tr("sharing.no_library"))
+            server = lan.LanServer(
+                runtime=runtime,
+                preflight=preflight,
+                **options,
+            )
+            start_result = server.start(port=port, bind=bind)
+            if isinstance(start_result, dict) and start_result.get("share_state") != "local_active":
+                self._share_security_snapshot = start_result
+                server_running = bool(
+                    start_result.get("running") or start_result.get("rollback_failed")
+                )
+                if not server_running:
+                    is_running = getattr(server, "is_running", None)
+                    if callable(is_running):
+                        try:
+                            server_running = bool(is_running())
+                        except Exception:
+                            _log.exception("Unable to inspect LAN server after failed startup")
+                reason = start_result.get("failure_reason") or "share_safety_ack_required"
+                parent = self._dialog_parent()
+                if not isinstance(parent, QWidget):
+                    parent = None
+                if server_running:
+                    # The server is actually up despite the reported failure
+                    # (e.g. a rollback that failed after a post-start security
+                    # problem). Surface the reason as an additional hint, but
+                    # keep the status bar and tray consistent with the
+                    # running server instead of showing "off".
+                    self._lan_server = server
+                    QMessageBox.warning(
+                        parent,
+                        tr("dialog.error"),
+                        _security_blocked_message(reason),
+                    )
+                    self._update_share_status(True, port)
+                    if hasattr(self, '_tray_manager') and self._tray_manager:
+                        self._tray_manager.update_sharing_state(
+                            True, self._active_share_url(port)
+                        )
+                    return
+                QMessageBox.warning(
+                    parent,
+                    tr("dialog.error"),
+                    _security_blocked_message(reason),
+                )
                 return
             self._lan_server = server
-            server.start(port=port, bind=bind)
             self._update_share_status(True, port)
             if hasattr(self, '_tray_manager') and self._tray_manager:
                 self._tray_manager.update_sharing_state(
                     True, self._active_share_url(port)
                 )
-        except OSError:
+        except (OSError, ValueError, TypeError):
+            _log.exception("LAN server failed to start on port %s", port)
             QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), tr("sharing.port_in_use", port=port))
 
     # ── Status display ──────────────────────────────────────────
@@ -168,11 +377,11 @@ class LanSharingMixin:
         if hasattr(self, '_share_toggle_btn'):
             if running:
                 self._share_toggle_btn.setIcon(
-                    icons.icon("close", color=t["heading"], size=scaled_px(16)))
+                    icons.icon("close", color="icon_primary", size=scaled_px(16)))
                 self._share_toggle_btn.setToolTip(tr("sharing.stop_tooltip"))
             else:
                 self._share_toggle_btn.setIcon(
-                    icons.icon("share", color=t["heading"], size=scaled_px(16)))
+                    icons.icon("share", color="icon_primary", size=scaled_px(16)))
                 self._share_toggle_btn.setToolTip(tr("sharing.start_tooltip"))
             self._share_toggle_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
             self._share_toggle_btn.setText("")
@@ -237,6 +446,13 @@ class LanSharingMixin:
                     break
 
             if restart_required:
+                # The restart deliberately re-enters the full startup
+                # lifecycle (_toggle_sharing), which re-runs the security
+                # preflight and may ask the user to confirm again. This is
+                # intentional: restart-required settings (bind scope, auth
+                # mode, password, ...) change the security posture, so the
+                # previous confirmation snapshot must NOT be reused —
+                # re-verification against the new settings is required.
                 self._lan_server.stop()
                 self._update_share_status(False)
                 self._toggle_sharing()

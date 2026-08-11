@@ -15,7 +15,11 @@ class DomainEventSubscription(QObject):
     def __init__(self, event_type: type[DomainEvent], slot, parent: QObject | None = None):
         super().__init__(parent)
         self._closed = False
-        self.event_received.connect(slot)
+        # Queued delivery: domain events may be published from worker threads
+        # (e.g. metadata writes inside FileInfoTask), so the slot must always
+        # run on the subscription's thread (the GUI thread) — a direct
+        # connection would execute UI code on the publishing thread.
+        self.event_received.connect(slot, Qt.ConnectionType.QueuedConnection)
         self._subscription = get_event_bus().subscribe_weak(event_type, self._on_domain_event)
 
     def _on_domain_event(self, event: DomainEvent) -> None:

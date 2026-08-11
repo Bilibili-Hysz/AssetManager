@@ -80,14 +80,17 @@ def main():
         nonlocal window
         from AssetsManager.window import MainWindow
 
-        # Close previous window if re-opening a library
+        # Close previous window if re-opening a library.  A failed close
+        # leaves a half-torn-down window behind; abort the reopen instead of
+        # stacking a new window on top of it.
         if window is not None:
             try:
                 window._force_quit = True
                 window.close()
                 window.deleteLater()
             except Exception:
-                pass
+                _log.exception("Failed to close previous window; aborting reopen")
+                return
             window = None
 
         window = MainWindow(bootstrap)
@@ -97,15 +100,34 @@ def main():
         window.show()
         # Expose tray to window for state updates
         window._tray_manager = tray
+        # The startup picker is no longer needed once a library is open.
+        startup.close()
 
         # Auto-start sharing if enabled
         auto_start = AppSettings.instance().get("lan_auto_start", False)
         if auto_start:
             from AssetsManager import lan
             if lan.is_available():
-                # Delay auto-start to allow window to fully initialize
+                # Delay auto-start to allow window to fully initialize.
+                # The window can be destroyed before the timer fires (user
+                # re-opens another library); guard against a deleted object.
                 from PySide6.QtCore import QTimer
-                QTimer.singleShot(1000, window._toggle_sharing)
+
+                def _start_sharing_later(target=window):
+                    if target is None:
+                        return
+                    try:
+                        import shiboken6
+                        if not shiboken6.isValid(target):
+                            return
+                    except ImportError:
+                        pass
+                    try:
+                        target._toggle_sharing()
+                    except Exception:
+                        _log.exception("Failed to auto-start LAN sharing")
+
+                QTimer.singleShot(1000, _start_sharing_later)
 
     # Connect tray signals once (outside _on_open to avoid accumulation)
     def _tray_show():

@@ -47,50 +47,58 @@ class SidebarRecentFolders(JsonStore):
         self._prune_missing()
 
     def _on_before_save(self):
-        kept = sorted(self._items, key=lambda i: i.get("opened_at", 0), reverse=True)
+        dicts = [i for i in self._items if isinstance(i, dict)]
+        kept = sorted(dicts, key=lambda i: i.get("opened_at", 0), reverse=True)
         return kept[:MAX_RECENT * 2]
 
     # ── Internal helpers ────────────────────────────────────────
 
     def _prune_missing(self):
         before = len(self._items)
-        self._items = [i for i in self._items if Path(i.get("path", "")).exists()]
+        self._items = [
+            i for i in self._items
+            if isinstance(i, dict) and Path(i.get("path", "")).exists()
+        ]
         if len(self._items) != before:
             self._save()
 
     # ── Public API ──────────────────────────────────────────────
 
     def record_visit(self, path: str):
-        self._ensure_loaded()
-        path = str(Path(path).resolve())
-        now = time.time()
-        for item in self._items:
-            if item.get("path") == path:
-                item["opened_at"] = now
-                self._save()
-                return
-        self._items.append({"path": path, "opened_at": now})
-        self._save()
+        with self._lock:
+            self._ensure_loaded()
+            path = str(Path(path).resolve())
+            now = time.time()
+            for item in self._items:
+                if item.get("path") == path:
+                    item["opened_at"] = now
+                    self._save()
+                    return
+            self._items.append({"path": path, "opened_at": now})
+            self._save()
 
     def list_all(self) -> list[dict]:
-        self._ensure_loaded()
-        now = time.time()
-        items = sorted(self._items, key=lambda i: i.get("opened_at", 0), reverse=True)
-        result = []
-        for item in items[:MAX_RECENT]:
-            age_hours = (now - item.get("opened_at", 0)) / 3600
-            result.append({**item, "_time_label": _time_label(age_hours)})
-        return result
+        with self._lock:
+            self._ensure_loaded()
+            now = time.time()
+            items = sorted(self._items, key=lambda i: i.get("opened_at", 0), reverse=True)
+            result = []
+            for item in items[:MAX_RECENT]:
+                age_hours = (now - item.get("opened_at", 0)) / 3600
+                result.append({**item, "_time_label": _time_label(age_hours)})
+            return result
 
     def remove(self, path: str):
-        self._ensure_loaded()
-        path = str(Path(path).resolve())
-        self._items = [i for i in self._items if i.get("path") != path]
-        self._save()
+        with self._lock:
+            self._ensure_loaded()
+            path = str(Path(path).resolve())
+            self._items = [i for i in self._items if i.get("path") != path]
+            self._save()
 
     def clear(self):
-        self._items = []
-        self._save()
+        with self._lock:
+            self._items = []
+            self._save()
 
 
 def _time_label(age_hours: float) -> str:

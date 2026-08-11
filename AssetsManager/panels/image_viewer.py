@@ -9,6 +9,7 @@ Features:
   - Theme-aware styling
   - Cursor feedback (grab/grabbing via QGraphicsView default)
 """
+import logging
 import os
 from pathlib import Path
 
@@ -28,7 +29,13 @@ from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager import i18n
 tr = i18n.tr
 
-MAX_DIM = 4000
+_log = logging.getLogger(__name__)
+
+# Downsampling cap for full-size decoding. Images larger than this are
+# pre-scaled by QImageReader before the pixel decode runs on the UI thread,
+# bounding the worst-case decode time. 2048px comfortably exceeds typical
+# viewer window sizes while keeping memory and CPU cost small.
+MAX_DIM = 2048
 
 
 class _GraphicsView(QGraphicsView):
@@ -49,11 +56,19 @@ class _GraphicsView(QGraphicsView):
             from PySide6.QtOpenGLWidgets import QOpenGLWidget
             self.setViewport(QOpenGLWidget(self))
         except ImportError:
-            pass
+            # GL widget unavailable (headless / restricted environments):
+            # fall back to the default raster viewport. Rendering stays
+            # correct, only GPU acceleration is lost.
+            _log.warning(
+                "QOpenGLWidget unavailable; image viewer falls back to a raster viewport")
 
     def wheelEvent(self, event):
         d = event.angleDelta().y()
         factor = 1.12 if d > 0 else 1.0 / 1.12
+        # Clamp the resulting scale factor to [0.05, 64.0] so repeated wheel
+        # zooms cannot overflow/underflow the transform.
+        cur = self.transform().m11()
+        factor = min(max(factor, 0.05 / cur), 64.0 / cur)
         self.scale(factor, factor)
         self.zoom_changed.emit(self.transform().m11())
 
@@ -88,6 +103,11 @@ class ImageViewerOverlay(QFrame):
         self._current_path: str = ""
         self._image_list: list[str] = []
         self._image_idx = -1
+        # Directory scan cache: parent dir -> (dir mtime, sorted image list).
+        # Keyed by directory so paging through a folder rescans at most once
+        # per change instead of once per image. Capacity is capped (simple
+        # drop-oldest) to keep memory bounded.
+        self._dir_list_cache: dict[str, tuple[float | None, list[str]]] = {}
 
         self._m = scaled_px(8)
         self._header_h = scaled_px(36)
@@ -123,12 +143,14 @@ class ImageViewerOverlay(QFrame):
                                                  Qt.AspectRatioMode.KeepAspectRatio))
             qimg = reader.read()
             if qimg.isNull():
+                _log.warning("Image decode failed (empty result): %s", path)
                 self._pixmap = None
                 return
             self._pixmap = QPixmap.fromImage(qimg)
             self._update_scene()
             self.update()
         except Exception:
+            _log.warning("Failed to load image %s", path, exc_info=True)
             self._pixmap = None
 
     def show_overlay(self):
@@ -195,17 +217,29 @@ class ImageViewerOverlay(QFrame):
             return
         parent = str(Path(self._current_path).parent)
         try:
-            entries = sorted(
-                [e for e in os.scandir(parent)
-                 if e.is_file() and Path(e.name).suffix.lower() in IMAGE_EXTS],
-                key=lambda e: e.name.lower())
-            self._image_list = [e.path for e in entries]
-            try:
-                self._image_idx = self._image_list.index(self._current_path)
-            except ValueError:
-                self._image_idx = 0
+            mtime = os.path.getmtime(parent)
         except OSError:
-            self._image_list = [self._current_path]
+            mtime = None
+        cached = None if mtime is None else self._dir_list_cache.get(parent)
+        if cached is not None and cached[0] == mtime:
+            self._image_list = cached[1]
+        else:
+            try:
+                entries = sorted(
+                    [e for e in os.scandir(parent)
+                     if e.is_file() and Path(e.name).suffix.lower() in IMAGE_EXTS],
+                    key=lambda e: e.name.lower())
+                self._image_list = [e.path for e in entries]
+                if len(self._dir_list_cache) >= 5:
+                    # Drop the oldest cached directory (insertion order) to
+                    # bound memory; paging typically reuses one directory.
+                    self._dir_list_cache.pop(next(iter(self._dir_list_cache)))
+                self._dir_list_cache[parent] = (mtime, list(self._image_list))
+            except OSError:
+                self._image_list = [self._current_path]
+        try:
+            self._image_idx = self._image_list.index(self._current_path)
+        except ValueError:
             self._image_idx = 0
 
     def _nav(self, direction):

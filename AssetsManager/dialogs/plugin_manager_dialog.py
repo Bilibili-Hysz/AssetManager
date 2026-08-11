@@ -22,11 +22,13 @@ from AssetsManager.core.plugins.descriptor import (
     PLUGIN_STATE_ACTIVE,
     PLUGIN_STATE_DISABLED,
     PLUGIN_STATE_ERROR,
+    PLUGIN_STATE_LOADABLE,
     PLUGIN_STATE_LOADED,
 )
 from AssetsManager.core.plugins.manager import PluginManagerService
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.widgets.elevation import apply_elevation, refresh_elevation
+from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager import i18n
 
@@ -112,6 +114,10 @@ class PluginCard(QFrame):
             color = t.get("danger", "#e74c3c")
         elif self._state in (PLUGIN_STATE_ACTIVE, PLUGIN_STATE_LOADED):
             color = t.get("success", "#2ecc71")
+        elif self._state == PLUGIN_STATE_LOADABLE:
+            # Loadable but enabled: treated as running, so use the green
+            # indicator; otherwise fall back to the neutral muted dot.
+            color = t.get("success", "#2ecc71") if self._enabled else t.get("muted", "#666666")
         elif self._state == PLUGIN_STATE_DISABLED:
             color = t.get("muted", "#666666")
         else:
@@ -154,6 +160,14 @@ class PluginCard(QFrame):
     def _on_toggle(self, checked: bool):
         self._enabled = checked
         self.clicked.emit(self._plugin_id)
+
+    def mouseReleaseEvent(self, event):
+        # Make the whole card body clickable. Child widgets (e.g. the toggle
+        # button) accept their own mouse events, so they never propagate here
+        # and cannot cause a duplicate emission.
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self._plugin_id)
+        super().mouseReleaseEvent(event)
 
     @property
     def plugin_id(self) -> str:
@@ -227,13 +241,14 @@ class PluginDetailPanel(QWidget):
 
     def refresh_presentation(self):
         t = themes.get()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         self._layout.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16))
         self._layout.setSpacing(scaled_px(12))
         self._fields_layout.setSpacing(scaled_px(6))
         self._button_layout.setSpacing(scaled_px(8))
-        self._name_label.setStyleSheet(f"font-size: {scaled_pt(18)}px; font-weight: bold; color: {t['heading']};")
-        self._separator.setStyleSheet(f"color: {t['border']};")
-        self._desc_label.setStyleSheet(f"font-size: {scaled_pt(12)}px; color: {t['body']}; padding: {scaled_px(4)}px 0;")
+        self._name_label.setStyleSheet(sk.label_css("heading", size=18, bold=True))
+        self._separator.setStyleSheet(f"color: {sk.token('border')};")
+        self._desc_label.setStyleSheet(sk.label_css("body", size=12))
         danger = t.get("danger", "#e74c3c")
         self._diag_label.setStyleSheet(
             f"font-size: {scaled_pt(11)}px; color: {danger}; background: {danger}15; "
@@ -290,7 +305,7 @@ class PluginDetailPanel(QWidget):
             if desc.display_fields:
                 fields = [f"{df.key} ({df.type})" for df in desc.display_fields]
                 self._add_field(tr("plugins.detail.display_fields"), ", ".join(fields))
-        self._add_field(tr("plugins.detail.root"), record.root_dir)
+        self._add_field(tr("plugins.detail.root"), record.root_dir or "-")
 
         # Description
         if desc and desc.description:
@@ -343,7 +358,6 @@ class PluginDetailPanel(QWidget):
                 w.deleteLater()
 
     def _update_toggle_text(self):
-        t = themes.get()
         if self._current_enabled:
             label = tr("plugins.disable", default="Disable")
             icon_name = "close"
@@ -352,7 +366,7 @@ class PluginDetailPanel(QWidget):
             icon_name = "check"
         self._toggle_btn.setText(label)
         self._toggle_btn.setIcon(
-            icons.icon(icon_name, color=t.get("on_accent", "#ffffff"), size=scaled_px(15)))
+            icons.icon(icon_name, color="icon_on_accent", size=scaled_px(15)))
         self._toggle_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         self._toggle_btn.setAccessibleName(label)
         self._toggle_btn.setToolTip(label)
@@ -442,8 +456,9 @@ class PluginManagerDialog(TabbedDialog):
 
     def _refresh_presentation(self):
         t = themes.get()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         self._left_panel.setFixedWidth(scaled_px(360))
-        self._left_panel.setStyleSheet(f"background: {t['header']};")
+        self._left_panel.setStyleSheet(f"background: {sk.token('header')};")
         self._left_layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(12))
         self._left_layout.setSpacing(scaled_px(10))
         self._list_layout.setSpacing(scaled_px(6))
@@ -506,6 +521,17 @@ class PluginManagerDialog(TabbedDialog):
             description = (desc.description or "" if desc else "").lower()
             visible = not text or text_lower in name or text_lower in pid.lower() or text_lower in description
             card.setVisible(visible)
+
+        # If the filter hid the selected card, switch to the first visible one
+        # so the detail panel never shows a plugin that is no longer listed.
+        selected = self._cards.get(self._selected_plugin_id)
+        if selected is not None and selected.isHidden():
+            first_visible = next(
+                (card for card in self._cards.values() if not card.isHidden()),
+                None,
+            )
+            if first_visible is not None:
+                self._select_plugin(first_visible.plugin_id)
 
     def _on_card_clicked(self, plugin_id: str):
         card = self._cards.get(plugin_id)

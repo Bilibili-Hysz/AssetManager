@@ -22,7 +22,6 @@ from AssetsManager.panels.file_list._common import IMAGE_EXTS
 
 _log = logging.getLogger(__name__)
 
-BAKE_SIZE = 512  # nominal default; use get_bake_size() for runtime value
 _stderr_redirect_lock = threading.Lock()
 
 
@@ -53,6 +52,7 @@ QUALITY_PRESETS = {
 
 DEFAULT_MAX_ADMITTED_TASKS = 96
 DEFAULT_MEMORY_CACHE_BYTES = 64 * 1024 * 1024
+_TOUCH_THROTTLE_SECONDS = 60.0
 
 
 def get_bake_size() -> int:
@@ -75,6 +75,12 @@ def _bake_max_depth(lib_root: str) -> int:
 
 @contextlib.contextmanager
 def _suppress_libpng_warnings():
+    # Process-wide stderr (fd 2) redirection: QImageReader's libpng warnings
+    # are written by the C library directly to fd 2, so Python-level
+    # contextlib.redirect_stderr (which only swaps sys.stderr) cannot capture
+    # them.  While this is active, other threads' stderr output is lost, so it
+    # must only be called from worker threads and kept as short as possible.
+    _log.debug("Redirecting process stderr (fd 2) to suppress libpng warnings")
     with _stderr_redirect_lock:
         devnull = os.open(os.devnull, os.O_WRONLY)
         old_stderr = os.dup(2)
@@ -85,6 +91,7 @@ def _suppress_libpng_warnings():
         finally:
             os.dup2(old_stderr, 2)
             os.close(old_stderr)
+    _log.debug("Restored process stderr (fd 2)")
 
 
 class _LoadTask(QRunnable):
@@ -185,6 +192,7 @@ class ThumbnailLoader(QObject):
         self._lib_root: str = ""
         self._cache_epoch = 0
         self._cache_io_lock = threading.Lock()
+        self._last_touch: dict[str, float] = {}  # key -> monotonic timestamp (touch throttle)
         self._pool = QThreadPool()
         self._pool.setMaxThreadCount(3)
         self._regen_cancel = False
@@ -234,6 +242,7 @@ class ThumbnailLoader(QObject):
         self._queued_generations.clear()
         self._deferred_loads.clear()
         self._pending_items.clear()
+        self._last_touch.clear()
         self._regen_cancel = True
         return old_generation
 
@@ -289,17 +298,33 @@ class ThumbnailLoader(QObject):
         """Backward-compatible name for invalidating the current runtime."""
         return self.invalidate_runtime()
 
-    def wait_for_runtime(self, generation: int) -> None:
-        """Wait without timeout for exactly one invalidated runtime's tasks."""
+    def wait_for_runtime(self, generation: int, timeout: float | None = 5.0) -> None:
+        """Wait (bounded by default) for exactly one invalidated runtime's tasks.
+
+        A stuck task thread must not block the calling (main) thread forever;
+        on timeout the pool is cleared (cancelling not-yet-started tasks) and
+        a warning is logged.  Pass ``timeout=None`` for an explicit unbounded
+        wait.
+        """
         self._mutex.lock()
         try:
             telemetry = self._invalidated_runtimes.get(generation)
         finally:
             self._mutex.unlock()
         started = perf_counter() if telemetry is not None and telemetry.recorder is not None else None
+        timed_out = False
         with self._task_condition:
-            self._task_condition.wait_for(
-                lambda: self._active_tasks.get(generation, 0) == 0
+            if not self._task_condition.wait_for(
+                lambda: self._active_tasks.get(generation, 0) == 0,
+                timeout=timeout,
+            ):
+                timed_out = True
+        if timed_out:
+            self._pool.clear()
+            _log.warning(
+                "Timed out after %ss waiting for thumbnail runtime %s drain; "
+                "cleared not-yet-started pool tasks",
+                timeout, generation,
             )
         self._mutex.lock()
         try:
@@ -372,7 +397,19 @@ class ThumbnailLoader(QObject):
             finally:
                 self._mutex.unlock()
 
-            if self._start_task(task, runtime.generation, priority=priority, runtime=runtime):
+            try:
+                started = self._start_task(task, runtime.generation, priority=priority, runtime=runtime)
+            except Exception:
+                _log.exception("Failed to start deferred thumbnail load: %s", path)
+                self._mutex.lock()
+                try:
+                    self._queued_keys.discard(path)
+                    self._queued_generations.pop(path, None)
+                    self._pending_items.pop(path, None)
+                finally:
+                    self._mutex.unlock()
+                return
+            if started:
                 continue
 
             self._mutex.lock()
@@ -448,18 +485,20 @@ class ThumbnailLoader(QObject):
             self._mutex.unlock()
 
     def set_size(self, size: int):
-        if size == self._size:
-            return
-        self._size = size
         self._mutex.lock()
-        self._cache.clear()
-        self._cache_bytes = 0
-        self._failed_paths.clear()
-        self._queued_keys.clear()
-        self._queued_generations.clear()
-        self._deferred_loads.clear()
-        self._pending_items.clear()
-        self._mutex.unlock()
+        try:
+            if size == self._size:
+                return
+            self._size = size
+            self._cache.clear()
+            self._cache_bytes = 0
+            self._failed_paths.clear()
+            self._queued_keys.clear()
+            self._queued_generations.clear()
+            self._deferred_loads.clear()
+            self._pending_items.clear()
+        finally:
+            self._mutex.unlock()
 
     @staticmethod
     def _cache_entry(value: _MemoryCacheEntry | tuple[QImage, float]) -> _MemoryCacheEntry:
@@ -494,9 +533,14 @@ class ThumbnailLoader(QObject):
         return True, evicted_entries, evicted_bytes
 
     def request(self, row: int, file_path: str, priority: int = 0, item_path: str | None = None):
-        self._stopped = False
         item_path = item_path or file_path
         self._mutex.lock()
+        if self._stopped:
+            # The loader is stopped (e.g. after stop()): do not re-admit
+            # requests or restart the pool.  _stopped is only cleared on an
+            # explicit future start path.
+            self._mutex.unlock()
+            return
         runtime = self._runtime_locked()
         if file_path in self._cache:
             entry = self._cache_entry(self._cache[file_path])
@@ -817,7 +861,7 @@ class ThumbnailLoader(QObject):
                             service.delete_cache_metadata(runtime.lib_root, key)
                         return None
                     if self._is_current_generation(runtime.generation):
-                        service.touch_cache_metadata(runtime.lib_root, key)
+                        self._touch_cache_metadata(service, runtime.lib_root, key)
             except Exception:
                 _log.exception("Cache metadata query failed")
         if not os.path.isfile(cached_file):
@@ -832,6 +876,26 @@ class ThumbnailLoader(QObject):
         if img is None or img.isNull():
             return None
         return img
+
+    def _touch_cache_metadata(self, service, lib_root: str, key: str) -> None:
+        """Throttled disk-cache metadata touch: at most one DB write per key
+        per minute, so steady disk-cache hits do not write-amplify SQLite.
+
+        ``_last_touch`` is protected by ``_mutex`` (not ``_cache_io_lock``):
+        ``_cache_io_lock`` is acquired while holding ``_mutex`` in
+        ``clear_thumb_cache``/``_store_baked_image``, so taking it here while
+        ``_invalidate_runtime_locked`` holds ``_mutex`` could deadlock.
+        """
+        self._mutex.lock()
+        try:
+            now = perf_counter()
+            last = self._last_touch.get(key)
+            if last is not None and now - last < _TOUCH_THROTTLE_SECONDS:
+                return
+            self._last_touch[key] = now
+        finally:
+            self._mutex.unlock()
+        service.touch_cache_metadata(lib_root, key)
 
     def _queue_bake_native(self, key, source_path, runtime: _Runtime | None = None):
         bs = get_bake_size()
@@ -854,6 +918,10 @@ class ThumbnailLoader(QObject):
                 img.save(tmp, "WEBP", quality=85)
                 if not self._is_current_cache_epoch(runtime):
                     return
+                # Both the epoch re-check above and the replace below run
+                # inside _cache_io_lock, so a concurrent clear_thumb_cache /
+                # runtime switch (which bumps cache_epoch under the same lock)
+                # cannot let an old generation overwrite a newer bake.
                 os.replace(tmp, final)
                 service = runtime.thumbnail_service
                 if service is not None and self._is_current_cache_epoch(runtime):
@@ -898,19 +966,21 @@ class ThumbnailLoader(QObject):
 
     def clear_thumb_cache(self) -> int:
         count = 0
+        files: list[str] = []
+        runtime: _Runtime | None = None
         with self._cache_io_lock:
             self._mutex.lock()
             try:
                 self._cache_epoch += 1
                 runtime = self._runtime_locked()
                 if runtime.cache_dir and os.path.isdir(runtime.cache_dir):
-                    for f in os.listdir(runtime.cache_dir):
-                        if f.endswith('.webp') or f.endswith('.webp.tmp'):
-                            try:
-                                os.remove(os.path.join(runtime.cache_dir, f))
-                                count += 1
-                            except OSError:
-                                pass
+                    try:
+                        files = [
+                            f for f in os.listdir(runtime.cache_dir)
+                            if f.endswith('.webp') or f.endswith('.webp.tmp')
+                        ]
+                    except OSError:
+                        pass
                 if (
                     runtime.thumbnail_service is not None
                     and self._is_current_generation_locked(runtime.generation)
@@ -921,6 +991,15 @@ class ThumbnailLoader(QObject):
                         _log.exception("Thumbnail metadata clear failed")
             finally:
                 self._mutex.unlock()
+            # Delete outside the _mutex lock (still under _cache_io_lock so a
+            # concurrent bake cannot replace a file mid-deletion): os.remove
+            # can block on slow volumes and must not stall the main thread.
+            for f in files:
+                try:
+                    os.remove(os.path.join(runtime.cache_dir, f))
+                    count += 1
+                except OSError:
+                    _log.warning("Failed to remove stale thumbnail cache file: %s", f)
         return count
 
     def regenerate_all(self, lib_root: str, on_progress=None, on_complete=None) -> bool:
@@ -969,8 +1048,15 @@ class ThumbnailLoader(QObject):
                         if on_progress and total > 0:
                             on_progress(i + 1, total)
                 finally:
-                    if on_complete and loader._is_active_runtime(runtime):
-                        on_complete(len(images))
+                    # Always report completion — even when the run was
+                    # cancelled by a library switch (_regen_cancel) — so the
+                    # caller (e.g. settings dialog progress UI) can reset
+                    # itself instead of waiting forever.
+                    if on_complete:
+                        if loader._is_active_runtime(runtime):
+                            on_complete(len(images))
+                        else:
+                            on_complete(0)  # cancelled — caller resets its UI
         admitted = self._start_task(_RegenTask(), runtime.generation, runtime=runtime)
         if not admitted and on_complete:
             on_complete(0)

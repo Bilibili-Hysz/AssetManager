@@ -47,11 +47,24 @@ class ShareApiTask(QRunnable):
                 json=self._json_data,
                 timeout=10,
             )
-            payload = response.json() if response.content else None
+            payload = None
+            if response.content:
+                try:
+                    payload = response.json()
+                except ValueError:
+                    # Non-JSON body: keep the status so callers can surface
+                    # it instead of silently losing the response.
+                    _log.warning(
+                        "Share API %s %s returned non-JSON body (status %s)",
+                        self._method, self._url, response.status_code,
+                    )
+                    self.signals.finished.emit(False, {"status": response.status_code, "error": "Invalid response"})
+                    return
             self.signals.finished.emit(response.status_code in self._success_statuses, payload)
         except Exception:
             # Callers choose their localized user-facing error message. Do not
             # surface raw network or HTTP error strings in the UI.
+            _log.warning("Share API request failed: %s %s", self._method, self._url, exc_info=True)
             self.signals.finished.emit(False, None)
 
 
@@ -105,9 +118,9 @@ def _service_session(service: Any) -> Any:
     values = vars(service) if hasattr(service, "__dict__") else {}
     if "_session" in values:
         return values["_session"]
-    if hasattr(type(service), "session"):
-        return getattr(service, "session", None)
-    return None
+    # Instance-level lookup: checking the class first can return a descriptor
+    # (property/method) instead of the actual instance session.
+    return getattr(service, "session", None)
 
 
 def _service_runtime(service: Any) -> Any:
@@ -115,9 +128,7 @@ def _service_runtime(service: Any) -> Any:
     values = vars(service) if hasattr(service, "__dict__") else {}
     if "_runtime" in values:
         return values["_runtime"]
-    if hasattr(type(service), "runtime"):
-        return getattr(service, "runtime", None)
-    return None
+    return getattr(service, "runtime", None)
 
 
 def _runtime_epoch(runtime: Any, session: Any, service: Any) -> Any:

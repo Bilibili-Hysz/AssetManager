@@ -47,8 +47,7 @@ class CollapsiblePanel(QWidget):
 
     def _update_header_text(self):
         arrow = "chevron_down" if self._expanded else "chevron_right"
-        t = themes.get()
-        self._header_btn.setIcon(icons.icon(arrow, color=t["heading"], size=scaled_px(14)))
+        self._header_btn.setIcon(icons.icon(arrow, color="icon_primary", size=scaled_px(14)))
         self._header_btn.setIconSize(QSize(scaled_px(14), scaled_px(14)))
         text = self._title
         if self._description:

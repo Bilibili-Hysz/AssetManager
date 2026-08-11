@@ -14,6 +14,17 @@ def handle_key(panel, event) -> bool:
     mods = event.modifiers()
     is_details = panel._view_mode == "Details"
 
+    search = getattr(panel, "_search", None)
+    if (
+        search is not None
+        and search.hasFocus()
+        and key != Qt.Key.Key_Escape
+        and not (key == Qt.Key.Key_F and mods & Qt.KeyboardModifier.ControlModifier)
+    ):
+        # Keys typed into the search box must reach the QLineEdit; only
+        # Escape (clear) and Ctrl+F (re-focus) are panel commands.
+        return False
+
     if key == Qt.Key.Key_Backspace:
         panel._go_up()
         return True

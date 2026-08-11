@@ -38,6 +38,42 @@ except ImportError:
             return False
 
 
+def _save_window_geometry(window: QWidget) -> None:
+    """Persist window geometry and maximized state to AppSettings.
+
+    A maximized window is temporarily restored to its normal size before
+    saveGeometry() so the persisted rect is the windowed geometry; the
+    maximized state is saved separately and re-applied on restore.
+    """
+    settings = AppSettings.instance()
+    try:
+        was_maximized = window.isMaximized()
+        if was_maximized:
+            window.showNormal()
+        settings.set("window_geometry", bytes(window.saveGeometry()).hex())
+        settings.set("window_maximized", was_maximized)
+        settings.save()
+    except Exception:
+        _log.exception("Failed to save window geometry")
+
+
+def _restore_window_geometry(window: QWidget) -> None:
+    """Restore window geometry and maximized state saved last session.
+
+    Malformed persisted data is ignored so a hand-edited settings file
+    cannot prevent the window from starting.
+    """
+    try:
+        settings = AppSettings.instance()
+        geom = settings.get("window_geometry")
+        if isinstance(geom, str) and geom:
+            window.restoreGeometry(bytes.fromhex(geom))
+        if settings.get("window_maximized"):
+            window.showMaximized()
+    except (TypeError, ValueError):
+        _log.warning("Ignoring malformed saved window geometry", exc_info=True)
+
+
 class MainWindow(LanSharingMixin, QMainWindow):
     def __init__(self, bootstrap, library_session=None):
         super().__init__()
@@ -46,6 +82,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._coordinator = WindowCoordinator(self)
         self.setWindowTitle(tr("app.name"))
         self.resize(1200, 800)
+        _restore_window_geometry(self)
         self.setDockNestingEnabled(True)
         self._bg_cache: tuple = ("", None, None)  # (path, processed_raw, scaled)
         self._bg_effects_cache_key: str = ""  # effect:intensity string
@@ -63,6 +100,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._connect_bus()
         self._startup_anim_done = False
         self._force_quit = False
+        self._lan_server = None
 
     def _library_service(self):
         return self._bootstrap.library_service
@@ -80,6 +118,14 @@ class MainWindow(LanSharingMixin, QMainWindow):
         scoped = runtime.services
         if scoped is None:
             return
+        integrity_service = getattr(scoped, "integrity_service", None)
+        if integrity_service is not None:
+            if integrity_service.schedule() is False:
+                _log.warning(
+                    "Automatic library integrity check was not scheduled for %s: %s",
+                    getattr(session, "root", session),
+                    getattr(integrity_service, "last_schedule_error", "unknown"),
+                )
         for panel in (
             getattr(self, "file_list", None),
             getattr(self, "info", None),
@@ -139,6 +185,9 @@ class MainWindow(LanSharingMixin, QMainWindow):
                 processed = self._bg_cache[1]
                 scaled = self._bg_cache[2]
                 w, h = self.width(), self.height()
+                # M6: while a resize drag is in flight (_bg_dirty), skip the
+                # expensive smooth scale and draw the raw pixmap each frame;
+                # the final scale is computed once when the resize timer fires.
                 if processed and scaled is None and not self._bg_dirty:
                     scaled = processed.scaled(w, h, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
                     self._bg_cache = (self._bg_cache[0], processed, scaled)
@@ -187,12 +236,16 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._apply_menu_theme()
         from AssetsManager import dock_factory as dk
         for dock_widget, (i18n_key, title, extra_buttons) in dk._DOCK_TITLES.items():
-            bar = dock_widget.titleBarWidget()
-            if bar and bar.property("is_custom_title"):
-                bar.setStyleSheet(
-                    f"background: {themes.header_for_dock()}; "
-                    f"border: 1px solid {themes.get()['border']}; "
-                    f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
+            try:
+                bar = dock_widget.titleBarWidget()
+                if bar and bar.property("is_custom_title"):
+                    bar.setStyleSheet(
+                        f"background: {themes.header_for_dock()}; "
+                        f"border: 1px solid {themes.get()['border']}; "
+                        f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
+            except RuntimeError:
+                # L10: the dock was deleted while the theme change propagated.
+                continue
         self._workspace._apply_style()
         refresh_header = getattr(self.file_list, "refresh_header", None)
         if callable(refresh_header):
@@ -208,7 +261,8 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._recent_menu.aboutToShow.connect(self._rebuild_recent_menu)
         self._menu_lib.addSeparator()
         self._menu_act_refresh = self._menu_lib.addAction(tr("menu.refresh"), self._refresh_all)
-        self._menu_lib.addAction(tr("menu.exit"), self.close)
+        # A real exit even when the system tray makes close() hide instead.
+        self._menu_act_exit = self._menu_lib.addAction(tr("menu.exit"), self.request_exit)
         self._menu_act_settings = bar.addAction(tr("menu.settings"), self._open_settings)
 
         # Tools menu
@@ -221,6 +275,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         from AssetsManager.core.tool_scheduler import list_tools, run_tool
         self._menu_tools = bar.addMenu(tr("menu.tools"))
         tools_menu = self._menu_tools
+        self._tools_menu_icon_specs: list[tuple] = []
 
         # External tools
         tools = list_tools()
@@ -229,14 +284,17 @@ class MainWindow(LanSharingMixin, QMainWindow):
             action = tools_menu.addAction(name,
                 lambda checked, tool=t: run_tool(tool,
                     file_path=getattr(self.file_list, '_current', str(Path.home()))))
-            action.setIcon(icons.icon(t.get("icon_name") or t.get("icon"), color=themes.get()["heading"], size=scaled_px(16), fallback="wrench"))
+            icon_name = t.get("icon_name") or t.get("icon")
+            action.setIcon(icons.icon(icon_name, color="icon_primary", size=scaled_px(16), fallback="wrench"))
+            self._tools_menu_icon_specs.append((action, icon_name, "wrench"))
 
         # Plugin Manager
         tools_menu.addSeparator()
         self._menu_act_plugin_manager = tools_menu.addAction(
             tr("menu.plugin_manager"), self._open_plugin_manager)
         self._menu_act_plugin_manager.setIcon(
-            icons.icon("puzzle", color=themes.get()["heading"], size=scaled_px(16)))
+            icons.icon("puzzle", color="icon_primary", size=scaled_px(16)))
+        self._tools_menu_icon_specs.append((self._menu_act_plugin_manager, "puzzle", "puzzle"))
 
         # Plugin contributions
         app = QApplication.instance()
@@ -252,7 +310,8 @@ class MainWindow(LanSharingMixin, QMainWindow):
                         if isinstance(cmd_id, str):
                             action = tools_menu.addAction(title,
                                 lambda checked, cid=cmd_id: self._run_plugin_command(cid))
-                            action.setIcon(icons.icon("puzzle", color=themes.get()["heading"], size=scaled_px(16)))
+                            action.setIcon(icons.icon("puzzle", color="icon_primary", size=scaled_px(16)))
+                            self._tools_menu_icon_specs.append((action, "puzzle", "puzzle"))
 
         # LAN Sharing
         tools_menu.addSeparator()
@@ -260,15 +319,13 @@ class MainWindow(LanSharingMixin, QMainWindow):
         if lan.is_available():
             self._menu_act_share = tools_menu.addAction(tr('menu.share_system'), self._open_sharing_settings)
         else:
-            a = tools_menu.addAction(tr("menu.sharing_unavailable"))
-            a.setEnabled(False)
-            a.setToolTip(tr("menu.sharing_install_hint"))
+            self._menu_act_share_unavailable = tools_menu.addAction(tr("menu.sharing_unavailable"))
+            self._menu_act_share_unavailable.setEnabled(False)
+            self._menu_act_share_unavailable.setToolTip(tr("menu.sharing_install_hint"))
 
         # Keyboard Shortcuts
         tools_menu.addSeparator()
-        tools_menu.addAction(tr("menu.keyboard_shortcuts"), self._show_shortcuts)
-
-        self._lan_server = None
+        self._menu_act_shortcuts = tools_menu.addAction(tr("menu.keyboard_shortcuts"), self._show_shortcuts)
 
     def _setup_ui(self):
         from PySide6.QtWidgets import QMenuBar, QHBoxLayout, QSpacerItem, QSizePolicy
@@ -297,7 +354,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
         # Share toggle button in menu bar
         self._share_toggle_btn = QPushButton()
-        self._share_toggle_btn.setIcon(icons.icon("share", color=themes.get()["heading"], size=scaled_px(16)))
+        self._share_toggle_btn.setIcon(icons.icon("share", color="icon_primary", size=scaled_px(16)))
         self._share_toggle_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         self._share_toggle_btn.setToolTip(tr("sharing.toggle_tooltip"))
         self._share_toggle_btn.setAccessibleName(tr("sharing.toggle_tooltip"))
@@ -306,11 +363,10 @@ class MainWindow(LanSharingMixin, QMainWindow):
         themes.set_button_variant(self._share_toggle_btn, "ghost")
         self._share_toggle_btn.setStyleSheet(
             f"QPushButton {{ background: transparent; border: none; }}"
-            f"QPushButton:hover {{ background: {alpha('#ffffff', 0.1)}; border-radius: {scaled_px(4)}px; }}"
+            f"QPushButton:hover {{ background: {alpha(themes.get()['hover_overlay'], 0.1)}; border-radius: {scaled_px(4)}px; }}"
         )
         self._share_toggle_btn.clicked.connect(self._toggle_sharing)
         layout.addWidget(self._share_toggle_btn)
-
         self._setup_menu()
         self.setMenuWidget(self._menu_widget)
         self._menu_widget.resizeEvent = self._on_menu_row_resize
@@ -364,6 +420,15 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._share_status_label.mousePressEvent = self._on_share_status_clicked
         status_bar.addPermanentWidget(self._share_status_label)
 
+        # Tooltip-reset timer: restores the click-to-copy tooltip after the
+        # URL-copied hint expires.  A member QTimer (instead of a bare
+        # QTimer.singleShot lambda) so the timeout can never fire against a
+        # destroyed window, and the shutdown path can stop it explicitly.
+        self._share_status_timer = QTimer(self)
+        self._share_status_timer.setSingleShot(True)
+        self._share_status_timer.setInterval(2000)
+        self._share_status_timer.timeout.connect(self._reset_share_status_tooltip)
+
         # Apply theme
         status_bar.setStyleSheet(
             f"QStatusBar {{ background: {t['header']}; color: {t['body']}; "
@@ -391,10 +456,16 @@ class MainWindow(LanSharingMixin, QMainWindow):
             url = f"http://{ip}:{port}"
             QApplication.clipboard().setText(url)
             self._share_status_label.setToolTip(tr("sharing.url_copied_tooltip"))
-            QTimer.singleShot(2000, lambda: self._share_status_label.setToolTip(tr("sharing.click_to_copy")))
+            self._share_status_timer.start()
         else:
             # Open sharing settings
             self._open_sharing_settings()
+
+    def _reset_share_status_tooltip(self):
+        """Restore the default share-status tooltip after the hint expires."""
+        if not _alive(self._share_status_label):
+            return
+        self._share_status_label.setToolTip(tr("sharing.click_to_copy"))
 
     def _connect_bus(self):
         b = bus()
@@ -408,7 +479,29 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
     def _on_switch_library(self, path):
         """Switch all panels to a different library root."""
-        self._lifecycle_coordinator.switch_library(path)
+        workspace = getattr(self, "_workspace", None)
+        previous = workspace.current_library() if workspace is not None else None
+        try:
+            self._lifecycle_coordinator.switch_library(path)
+        except Exception as exc:
+            # The coordinator rolls back library sessions itself; also
+            # re-point the workspace tab bar at the previous library so the
+            # UI does not stay on a tab whose session failed to open.
+            _log.exception("Library switch to %s failed", path)
+            self._reselect_workspace_tab(previous)
+            from AssetsManager.window_lifecycle_coordinator import _notify_switch_failed
+            _notify_switch_failed(self, f"The library switch failed: {exc}")
+
+    def _reselect_workspace_tab(self, path):
+        """Re-select the workspace tab for ``path`` if it is still present."""
+        if not path:
+            return
+        tabs = getattr(getattr(self, "_workspace", None), "_tabs", None)
+        if tabs is None:
+            return
+        idx = tabs.find_tab(path)
+        if idx >= 0 and idx != tabs.currentIndex():
+            tabs.setCurrentIndex(idx)
 
     def _open_library(self):
         startup = StartupWindow(self)
@@ -474,18 +567,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
             menu_layout.activate()
 
     def _apply_menu_theme(self):
-        t = themes.get()
-        self._menu_widget.setStyleSheet(f"background: {t['header']};")
-        self._menu_bar.setStyleSheet(
-            f"QMenuBar {{ background: transparent; color: {t['heading']}; "
-            f"border: none; padding: 2px 8px; font-size: {scaled_pt(12)}px; }}"
-            f"QMenuBar::item {{ padding: 3px 10px; border-radius: {scaled_px(4)}px; }}"
-            f"QMenuBar::item:selected {{ background: {alpha(t['accent'], 0.313)}; }}"
-            f"QMenu {{ background: {t['panel']}; color: {t['heading']}; "
-            f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px; padding: 4px; }}"
-            f"QMenu::item {{ padding: 5px 28px 5px 12px; border-radius: {scaled_px(4)}px; }}"
-            f"QMenu::item:selected {{ background: {t['accent']}; }}"
-        )
+        self._coordinator.apply_menu_theme()
 
     def _on_theme_refresh(self):
         self._coordinator.on_theme_refresh()
@@ -496,8 +578,18 @@ class MainWindow(LanSharingMixin, QMainWindow):
             running = bool(server is not None and server.is_running())
             icon_name = "close" if running else "share"
             self._share_toggle_btn.setIcon(
-                icons.icon(icon_name, color=themes.get()["heading"], size=scaled_px(16)))
+                icons.icon(icon_name, color="icon_primary", size=scaled_px(16)))
             self._share_toggle_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
+        self._refresh_tools_menu_icons()
+
+    def _refresh_tools_menu_icons(self):
+        """Retint tools-menu action icons after a theme change."""
+        tint = "icon_primary"
+        for action, icon_name, fallback in getattr(self, "_tools_menu_icon_specs", ()):
+            if action is None or not _alive(action):
+                continue
+            action.setIcon(
+                icons.icon(icon_name, color=tint, size=scaled_px(16), fallback=fallback))
 
 
     def _refresh_language(self, _code: str = ""):
@@ -506,6 +598,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._menu_act_open.setText(tr("menu.open_library"))
         self._recent_menu.setTitle(tr("menu.recent_libraries"))
         self._menu_act_refresh.setText(tr("menu.refresh"))
+        self._menu_act_exit.setText(tr("menu.exit"))
         self._menu_act_settings.setText(tr("menu.settings"))
         if hasattr(self, '_menu_tools'):
             self._menu_tools.setTitle(tr("menu.tools"))
@@ -513,6 +606,14 @@ class MainWindow(LanSharingMixin, QMainWindow):
             self._menu_act_plugin_manager.setText(tr("menu.plugin_manager"))
         if hasattr(self, '_menu_act_share'):
             self._menu_act_share.setText(tr('menu.share_system'))
+        if hasattr(self, '_menu_act_share_unavailable'):
+            self._menu_act_share_unavailable.setText(tr("menu.sharing_unavailable"))
+            self._menu_act_share_unavailable.setToolTip(tr("menu.sharing_install_hint"))
+        if hasattr(self, '_menu_act_shortcuts'):
+            self._menu_act_shortcuts.setText(tr("menu.keyboard_shortcuts"))
+        if hasattr(self, '_share_toggle_btn'):
+            self._share_toggle_btn.setToolTip(tr("sharing.toggle_tooltip"))
+            self._share_toggle_btn.setAccessibleName(tr("sharing.toggle_tooltip"))
 
     def _save_dock_layout(self):
         """Save dock sizes to AppSettings for session restore."""
@@ -544,7 +645,10 @@ class MainWindow(LanSharingMixin, QMainWindow):
                 panel = d.widget() if _alive(d) else None
                 if not isinstance(panel, QWidget) or not _alive(panel):
                     continue
-                panel.setMinimumWidth(max(100, w // 2))
+                # L9: a fixed minimum keeps narrow restores usable without
+                # pinning the panel to half the saved width; the saved width
+                # is applied directly via resize().
+                panel.setMinimumWidth(scaled_px(120))
                 panel.resize(w, panel.height())
 
     def _on_dir_selected(self, path):
@@ -560,10 +664,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         if os.path.exists(path):
             from PySide6.QtGui import QDesktopServices
             from PySide6.QtCore import QUrl
-            if os.path.isdir(path):
-                QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-            else:
-                QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
     def _switch_to_viewer(self, path):
         """Open image in floating overlay viewer."""
@@ -621,8 +722,14 @@ class MainWindow(LanSharingMixin, QMainWindow):
         QMessageBox.information(self, tr("shortcuts.title"), "<br>".join(lines))
 
     def _open_settings(self):
+        from AssetsManager.application.library_settings_adapter import LibrarySettingsAdapter
         from AssetsManager.dialogs.settings_dialog import SettingsDialog
+
         dlg = SettingsDialog(self)
+        session = getattr(self, "_library_session", None)
+        if session is not None:
+            scoped = self._scoped_services_for_session(session)
+            dlg.set_library_settings_adapter(LibrarySettingsAdapter(scoped))
         if dlg.exec() == SettingsDialog.DialogCode.Accepted:
             themes.apply_to(self)
 
@@ -673,7 +780,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
     def _shutdown_resources(self):
         """Persist UI state and stop background resources before process exit."""
+        timer = getattr(self, "_share_status_timer", None)
+        if timer is not None:
+            timer.stop()
         self._lifecycle_coordinator.shutdown_resources()
+        _save_window_geometry(self)
 
     def closeEvent(self, event):
         # If system tray is available, hide to tray instead of quitting
@@ -682,11 +793,30 @@ class MainWindow(LanSharingMixin, QMainWindow):
             self.hide()
             event.ignore()
             return
-        # True exit: clean up everything
+        # True exit: clean up everything.  A teardown failure must not hang
+        # the process: log it, still let the window close, and then make
+        # sure the event loop exits.
+        teardown_failed = False
         try:
             self._shutdown_resources()
-        finally:
-            try:
-                super().closeEvent(event)
-            finally:
-                self._library_service().close()
+        except Exception:
+            _log.exception("Resource shutdown failed during window close")
+            teardown_failed = True
+        try:
+            super().closeEvent(event)
+        except Exception:
+            _log.exception("Base closeEvent failed during window close")
+            teardown_failed = True
+        try:
+            self._library_service().close()
+        except Exception:
+            _log.exception("Library service close failed during window close")
+            teardown_failed = True
+        if teardown_failed:
+            # The normal last-window-closed quit may have been bypassed by
+            # the raised teardown error; quit explicitly.  On the clean path
+            # the app exits through the standard mechanism, which keeps
+            # programmatic re-open (close old window, open new one) working.
+            app = QApplication.instance()
+            if app is not None:
+                app.quit()

@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QSystemTrayIcon, QMenu
 
 from AssetsManager import i18n
 from AssetsManager.core import themes
+from AssetsManager.core.signal_bus import get as bus
 
 _log = logging.getLogger(__name__)
 tr = i18n.tr
@@ -28,9 +29,14 @@ class SystemTrayManager(QObject):
 
     def __init__(self, icon_path: str | None = None, parent=None):
         super().__init__(parent)
+        self._generated_icon = False
         self._icon = self._load_icon(icon_path)
         self._tray = QSystemTrayIcon(self._icon, self)
+        # The tray does not take ownership of its context menu and the
+        # manager is a QObject (QMenu requires a QWidget parent), so the
+        # menu is released explicitly when the manager is destroyed.
         self._menu = QMenu()
+        self.destroyed.connect(self._menu.deleteLater)
         self._sharing_running = False
 
         self._setup_menu()
@@ -40,6 +46,7 @@ class SystemTrayManager(QObject):
         self._available = QSystemTrayIcon.isSystemTrayAvailable()
         if self._available:
             self._tray.show()
+        self._bus_theme_conn = bus().theme_changed.connect(self._on_theme_changed)
 
     @property
     def is_available(self) -> bool:
@@ -50,13 +57,15 @@ class SystemTrayManager(QObject):
         if icon_path and Path(icon_path).exists():
             icon = QIcon(icon_path)
             if not icon.isNull():
+                self._generated_icon = False
                 return icon
+        self._generated_icon = True
         # Fallback: generate a simple 'A' icon
         pixmap = QPixmap(32, 32)
         pixmap.fill(QColor(0, 0, 0, 0))
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QColor(themes.get()['accent']))
+        painter.setBrush(QColor(themes.get().get("accent", "#4a60b0")))
         painter.setPen(QColor(0, 0, 0, 0))
         painter.drawRoundedRect(2, 2, 28, 28, 6, 6)
         painter.setPen(QColor("white"))
@@ -67,6 +76,11 @@ class SystemTrayManager(QObject):
         painter.drawText(pixmap.rect(), 0x0084, "A")
         painter.end()
         return QIcon(pixmap)
+
+    def _on_theme_changed(self, _name: str = ""):
+        if not self._generated_icon:
+            return
+        self._tray.setIcon(self._load_icon(None))
 
     def _setup_menu(self):
         """Build the context menu."""

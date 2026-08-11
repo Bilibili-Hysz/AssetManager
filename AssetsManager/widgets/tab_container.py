@@ -42,10 +42,18 @@ class TabContainer(PanelContent):
         self._tabs.setCornerWidget(self._new_tab_button(), Qt.Corner.TopRightCorner)
 
         self._tabs_to_filelists: dict[int, QWidgetFileListPanel] = {}
+        self._extension_bar = None
         self._add_tab()
 
     def title_bar_extension(self):
-        """Return a QTabBar for the dock title bar. Used by dock_factory."""
+        """Return a QTabBar for the dock title bar. Used by dock_factory.
+
+        The bar is created once and reused: dock_factory rebuilds title bars
+        on theme/language changes, and swapping a fresh QTabBar every time
+        would discard bar state and cause flicker.
+        """
+        if self._extension_bar is not None:
+            return self._extension_bar
         from PySide6.QtWidgets import QTabBar
         bar = QTabBar()
         bar.setDocumentMode(True)
@@ -55,6 +63,7 @@ class TabContainer(PanelContent):
         bar.tabCloseRequested.connect(self._close_tab)
         self._tabs.tabBar().hide()
         self._tabs.setTabBar(bar)
+        self._extension_bar = bar
         return bar
 
     def _new_tab_button(self):
@@ -193,8 +202,17 @@ class TabContainer(PanelContent):
         if active < self._tabs.count():
             self._tabs.setCurrentIndex(active)
 
-    def closeEvent(self, event):
+    def shutdown(self) -> None:
+        """Stop all child file-list panels (dock_factory close contract).
+
+        dock_factory._close_dock calls ``shutdown()`` on every dock panel;
+        the per-tab file-list panels must be stopped so their worker
+        threads and timers do not outlive the dock.
+        """
         for fl in list(self._tabs_to_filelists.values()):
             fl.shutdown()
+
+    def closeEvent(self, event):
+        self.shutdown()
         if event:
             super().closeEvent(event)

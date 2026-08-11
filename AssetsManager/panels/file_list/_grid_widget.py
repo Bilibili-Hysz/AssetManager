@@ -6,7 +6,7 @@ _TEXT_TOP_GAP=5, _TEXT_LINE_GAP=1, font 9pt bold + 8pt sub.
 from collections import OrderedDict
 from time import perf_counter
 import weakref
-from PySide6.QtCore import Qt, QSize, QRect, QPoint, QTimer, Signal
+from PySide6.QtCore import Qt, QSize, QRect, QPoint, QTimer, Signal, QEvent
 from PySide6.QtGui import QPainter, QPixmap, QColor, QPen, QFont, QFontMetrics
 from PySide6.QtWidgets import QWidget, QScrollBar, QSizePolicy
 from AssetsManager.core import icons
@@ -18,10 +18,14 @@ from AssetsManager import i18n
 from AssetsManager.panels.file_list._common import (
     EXT_TO_CATEGORY, badge_color_for_extension, badge_label_for_extension,
 )
+from AssetsManager.application.asset_filters import FILTER_CATEGORY_LABELS
 from AssetsManager.panels.file_list._model import FileSystemModel
 from AssetsManager.panels.file_list._grid_layout import GridLayout
 
 tr = i18n.tr
+
+# Category key → display label (e.g. "models" → "3D Models")
+_CATEGORY_LABELS: dict[str, str] = dict(FILTER_CATEGORY_LABELS)
 
 # Layout constants — matching GridDelegate exactly (scaled for DPI)
 _CARD_PAD = scaled_px(6)
@@ -94,6 +98,9 @@ class FileListGridWidget(QWidget):
         self._rubber_band_origin: QPoint | None = None
         self._rubber_band_rect: QRect = QRect()
         self._click_pending_row: int = -1
+        self._rename_editor = None
+        self._rename_name: str | None = None
+        self._rename_finish = None
 
         self._clr_accent = QColor(t["accent"])
         self._clr_heading = QColor(t["heading"])
@@ -532,7 +539,7 @@ class FileListGridWidget(QWidget):
         )
         state_icon = icons.icon(
             icon_name,
-            color=self._clr_muted.name(),
+            color="icon_muted",
             size=icon_size,
             fallback="file",
         )
@@ -1359,7 +1366,9 @@ class FileListGridWidget(QWidget):
             p.setFont(self._font_sub)
             p.setPen(self._clr_muted)
             cat = EXT_TO_CATEGORY.get(ext, "Other")
-            p.drawText(rect, Qt.AlignmentFlag.AlignCenter, cat[:4])
+            label = _CATEGORY_LABELS.get(cat, cat)
+            p.drawText(rect, Qt.AlignmentFlag.AlignCenter,
+                       self._fm_sub.elidedText(label, Qt.TextElideMode.ElideRight, rect.width()))
 
     # ── Badge ────────────────────────────────────────────────
 
@@ -1437,9 +1446,16 @@ class FileListGridWidget(QWidget):
         self._dirty = set(range(self._model_rows))
         self._full_rebuild_pending = True
         self._record_invalidation("scale", self._model_rows, previous_count)
+        self._relayout_scrollbar()
         self._request_frame(full=True)
 
     # ── Scroll ───────────────────────────────────────────────
+
+    def _relayout_scrollbar(self):
+        if self.width() <= 0 or self.height() <= 0:
+            return
+        scrollbar_w = scaled_px(8)
+        self._scrollbar.setGeometry(self.width() - scrollbar_w, 0, scrollbar_w, self.height())
 
     def scroll_to(self, row: int):
         if self._layout:
@@ -1456,7 +1472,7 @@ class FileListGridWidget(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._scrollbar.setGeometry(self.width() - 8, 0, 8, self.height())
+        self._relayout_scrollbar()
         if self._model_rows > 0:
             self.update_layout(self._model_rows, self.width())
         self._request_frame(full=True)
@@ -1591,11 +1607,12 @@ class FileListGridWidget(QWidget):
         elif self._click_pending_row >= 0:
             row = self._click_pending_row
             self._click_pending_row = -1
-            # If a drag was started (QDrag.exec was called), skip deselect
-            # _drag_started is set by parent eventFilter before QDrag begins
-            if getattr(self, '_drag_started', False):
-                pass
-            elif row in self._selection and len(self._selection) > 1:
+            # This widget never initiates a QDrag itself (external drags are
+            # owned by the parent panel for the QListView path), so no started
+            # drag can race the click-to-deselect logic below. The previous
+            # getattr(self, "_drag_started", False) guard was never set by
+            # anyone and has been removed as dead code.
+            if row in self._selection and len(self._selection) > 1:
                 old_sel = self._selection.copy()
                 self._selection = {row}
                 self._apply_selection_progress(old_sel)
@@ -1681,10 +1698,12 @@ class FileListGridWidget(QWidget):
     def _step_mod_arrow(self, delta: int, mods):
         if not self._selection:
             return
-        new_row = max(0, min(self._model_rows - 1, (self._last_click_row or 0) + delta))
+        # Anchor on the last clicked row, clamping the never-clicked (-1) case.
+        base_row = max(0, self._last_click_row)
+        new_row = max(0, min(self._model_rows - 1, base_row + delta))
         if mods & Qt.KeyboardModifier.ShiftModifier:
-            lo = min(new_row, self._last_click_row or 0)
-            hi = max(new_row, self._last_click_row or 0)
+            lo = min(new_row, base_row)
+            hi = max(new_row, base_row)
             self._selection = set(range(lo, hi + 1))
         elif mods & Qt.KeyboardModifier.ControlModifier:
             # Ctrl+Arrow: move focus only, don't change selection
@@ -1717,6 +1736,8 @@ class FileListGridWidget(QWidget):
         editor.setFocus()
         editor.show()
         finished = False
+        self._rename_editor = editor
+        self._rename_name = name
 
         def _finish():
             nonlocal finished
@@ -1724,11 +1745,34 @@ class FileListGridWidget(QWidget):
                 return
             finished = True
             new_name = editor.text().strip()
+            self._rename_editor = None
+            self._rename_name = None
+            self._rename_finish = None
             editor.deleteLater()
             if new_name and new_name != name:
                 self.rename_requested.emit(row, new_name)
 
+        self._rename_finish = _finish
         editor.editingFinished.connect(_finish)
+        # Close the editor on Escape without committing: the filter reverts
+        # any edits first so _finish() sees the original name.
+        editor.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        editor = self._rename_editor
+        finish = self._rename_finish
+        if (
+            editor is not None
+            and finish is not None
+            and obj is editor
+            and event.type() == QEvent.Type.KeyPress
+            and event.key() == Qt.Key.Key_Escape
+        ):
+            editor.setText(self._rename_name or "")
+            finish()
+            editor.clearFocus()
+            return True
+        return False
 
     # ── Wheel / zoom ─────────────────────────────────────────
 

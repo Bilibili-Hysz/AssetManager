@@ -143,7 +143,13 @@ class ColorPickerDialog(QDialog):
             h = self._h_spin[1].value()
             s = self._s_spin[1].value() / 100.0
             v = self._v_spin[1].value() / 100.0
-            self._color = QColor.fromHsvF(h / 360.0, s, v)
+            hue = h / 360.0
+            if s <= 0.0 or v <= 0.0:
+                # Desaturated colors have no hue (QColor.hueF() == -1.0).
+                # Keep the hue the current color still holds so it survives
+                # a trip through gray and back instead of snapping to red.
+                hue = self._color.hueF() if self._color.hueF() >= 0 else hue
+            self._color = QColor.fromHsvF(hue, s, v)
         else:
             r = self._r_spin[1].value()
             g = self._g_spin[1].value()
@@ -159,32 +165,46 @@ class ColorPickerDialog(QDialog):
         if color.isValid():
             self._color = color
             self._update_from_color(color)
+        else:
+            # Invalid HEX: revert the input to the current color instead of
+            # silently leaving invalid text in the field. blockSignals keeps
+            # the restore from re-entering this handler.
+            self._hex_input.blockSignals(True)
+            self._hex_input.setText(self._color.name())
+            self._hex_input.blockSignals(False)
 
     def _update_from_color(self, color: QColor):
         self._updating = True
-        self._wheel.set_color(color)
-        self._brightness.set_hsv(color.hueF(), color.saturationF())
-        self._brightness.set_value(color.valueF())
-        self._update_displays()
-        self._updating = False
+        try:
+            self._wheel.set_color(color)
+            self._brightness.set_hsv(color.hueF(), color.saturationF())
+            self._brightness.set_value(color.valueF())
+            self._update_displays()
+        finally:
+            self._updating = False
 
     def _update_displays(self):
         self._updating = True
-        # HSV
-        self._h_spin[1].setValue(int(self._color.hueF() * 360))
-        self._s_spin[1].setValue(int(self._color.saturationF() * 100))
-        self._v_spin[1].setValue(int(self._color.valueF() * 100))
-        # RGB
-        self._r_spin[1].setValue(self._color.red())
-        self._g_spin[1].setValue(self._color.green())
-        self._b_spin[1].setValue(self._color.blue())
-        # HEX
-        self._hex_input.setText(self._color.name())
-        # Preview
-        self._preview.setStyleSheet(
-            f"background: {self._color.name()}; border: 1px solid #555; border-radius: 4px;"
-        )
-        self._updating = False
+        try:
+            # HSV. Grayscale colors report hueF() == -1.0; int(-360) clamps
+            # to 0 and would show red, so keep the last meaningful hue in
+            # the spin instead.
+            if self._color.hueF() >= 0:
+                self._h_spin[1].setValue(int(self._color.hueF() * 360))
+            self._s_spin[1].setValue(int(self._color.saturationF() * 100))
+            self._v_spin[1].setValue(int(self._color.valueF() * 100))
+            # RGB
+            self._r_spin[1].setValue(self._color.red())
+            self._g_spin[1].setValue(self._color.green())
+            self._b_spin[1].setValue(self._color.blue())
+            # HEX
+            self._hex_input.setText(self._color.name())
+            # Preview
+            self._preview.setStyleSheet(
+                f"background: {self._color.name()}; border: 1px solid #555; border-radius: 4px;"
+            )
+        finally:
+            self._updating = False
 
     def _on_ok(self):
         self.color_selected.emit(self._color)

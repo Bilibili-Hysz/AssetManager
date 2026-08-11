@@ -11,18 +11,21 @@ Each tab represents a different asset library root. Provides:
   - Sliding indicator animation
 """
 from pathlib import Path
+import logging
 
-from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect, Property, QSignalBlocker
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect, QSize, Property, QSignalBlocker
 from PySide6.QtWidgets import (
     QTabBar, QMenu, QLineEdit, QPushButton, QWidget, QHBoxLayout,
     QFrame,
 )
 from PySide6.QtGui import QPainter, QColor
 from AssetsManager import i18n
-from AssetsManager.core import themes
+from AssetsManager.core import icons, themes
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+
+_log = logging.getLogger(__name__)
 
 tr = i18n.tr
 
@@ -61,15 +64,10 @@ class WorkspaceBar(QTabBar):
         self._bus_lang_conn = bus().language_changed.connect(self.refresh_theme)
 
     def closeEvent(self, event):
-        """Disconnect bus signals on close."""
-        try:
-            bus().theme_changed.disconnect(self._bus_theme_conn)
-        except (RuntimeError, TypeError):
-            pass
-        try:
-            bus().language_changed.disconnect(self._bus_lang_conn)
-        except (RuntimeError, TypeError):
-            pass
+        # closeEvent is only delivered to top-level widgets; a tab bar
+        # embedded in a window never receives it.  Bus connections are torn
+        # down by the QObject destructor instead, so there is nothing to do
+        # here (kept for parity with the window-level contract).
         super().closeEvent(event)
 
     def _get_indicator_pos(self):
@@ -134,6 +132,16 @@ class WorkspaceBar(QTabBar):
 
     def refresh_theme(self, _name: str = ""):
         self._apply_style()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._indicator_anim.stop()
+        self._indicator_width_anim.stop()
+        if self.count() > 0:
+            r = self.tabRect(self.currentIndex())
+            self._indicator_pos = r.x()
+            self._indicator_width = r.width()
+            self.update()
 
     # ── Public API ──────────────────────────────────────────────
 
@@ -266,7 +274,10 @@ class WorkspaceBar(QTabBar):
 
     def _start_rename(self, idx):
         self._rename_idx = idx
-        self.setCurrentIndex(idx)
+        # Selecting the tab under rename would trigger a library switch;
+        # block the signal for the duration of the inline editor.
+        with QSignalBlocker(self):
+            self.setCurrentIndex(idx)
         rect = self.tabRect(idx)
         editor = QLineEdit(self)
         editor.setText(self.tabText(idx))
@@ -332,9 +343,11 @@ class WorkspaceSection(QWidget):
         layout.addSpacing(2)
 
         # Add button
-        self._add_btn = QPushButton("+")
+        self._add_btn = QPushButton()
         self._add_btn.setFixedSize(scaled_px(22), scaled_px(22))
         self._add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._add_btn.setToolTip(tr("workspace.add_library"))
+        self._add_btn.setAccessibleName(tr("workspace.add_library"))
         self._add_btn.clicked.connect(self.add_requested.emit)
         layout.addWidget(self._add_btn)
 
@@ -344,10 +357,11 @@ class WorkspaceSection(QWidget):
         t = themes.get()
         self._sep.setStyleSheet(
             f"QFrame {{ color: {t['border']}; background: {t['border']}; }}")
+        self._add_btn.setIcon(icons.icon("plus", color="icon_primary", size=scaled_px(12)))
+        self._add_btn.setIconSize(QSize(scaled_px(12), scaled_px(12)))
         self._add_btn.setStyleSheet(
             f"QPushButton {{ background: {alpha(t['accent'], 0.753)}; color: {t['heading']}; "
-            f"border: 1px solid {t['accent']}; border-radius: {scaled_px(10)}px; "
-            f"font-size: {scaled_pt(14)}px; font-weight: bold; }} "
+            f"border: 1px solid {t['accent']}; border-radius: {scaled_px(10)}px; }} "
             f"QPushButton:hover {{ background: {t['accent']}; color: {t['on_accent']}; "
             f"border: 1px solid {t['accent']}; }} ")
         self._tabs._apply_style()
@@ -363,8 +377,24 @@ class WorkspaceSection(QWidget):
 
     def restore_tabs(self, paths: list[str]):
         for path in paths:
-            if path and Path(path).exists():
-                self._tabs.add_library(path)
+            # Hand-edited settings may contain non-string entries; skip them
+            # instead of letting a TypeError abort the whole restore.
+            if not isinstance(path, str) or not path:
+                continue
+            try:
+                if Path(path).exists():
+                    self._tabs.add_library(path)
+            except Exception:
+                # A single broken workspace entry must not prevent the
+                # application from starting (restore runs during the
+                # main-window constructor).  Drop a tab that was already
+                # added by the failed restore so it cannot keep pointing at
+                # a library the window never opened a session for.
+                try:
+                    self._tabs.remove_library(path)
+                except Exception:
+                    pass
+                _log.exception("Failed to restore workspace tab: %s", path)
 
     def current_library(self) -> str | None:
         return self._tabs.current_library()

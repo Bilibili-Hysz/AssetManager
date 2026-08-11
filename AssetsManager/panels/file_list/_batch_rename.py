@@ -50,15 +50,31 @@ def plan_batch_rename(
 ) -> BatchRenamePlan:
     """Create a deterministic, collision-checked batch rename plan."""
     ordered = tuple(sorted((Path(path) for path in sources), key=lambda path: str(path).casefold()))
-    occupied = {str(Path(path).resolve()).casefold() for path in occupied_paths}
+    occupied: set[str] = set()
+    for path in occupied_paths:
+        try:
+            occupied.add(str(Path(path).resolve()).casefold())
+        except (OSError, ValueError):
+            # C2: unresolvable occupied path — skip it; worst case one
+            # collision check is missed, never a crash.
+            continue
     source_keys = {str(path.resolve()).casefold() for path in ordered}
     entries: list[BatchRenameEntry] = []
     targets: dict[str, list[int]] = {}
 
     for number, source in enumerate(ordered, start=1):
         name = pattern.replace("{name}", source.stem).replace("{n}", str(number))
-        target = source.with_name(f"{name}{source.suffix}")
         errors = list(_name_errors(name, windows_rules))
+        try:
+            target = source.with_name(f"{name}{source.suffix}")
+        except ValueError:
+            # C1: with_name refuses names containing path separators (and
+            # nameless sources). _name_errors already flags separators on
+            # every platform, so this is a safety net — keep the source as
+            # a placeholder so the entry stays flagged and skippable.
+            if "invalid_name" not in errors:
+                errors.append("invalid_name")
+            target = source
         target_key = str(target.resolve()).casefold()
         if target_key in occupied and target_key not in source_keys:
             errors.append("existing_target")
@@ -83,10 +99,15 @@ def _name_errors(name: str, windows_rules: bool) -> tuple[str, ...]:
         return ("invalid_name",)
     if any(ord(character) < 32 for character in name):
         return ("invalid_name",)
-    if not windows_rules:
-        return ()
+    # C1: path separators (and the rest of the forbidden set) are rejected
+    # on every platform, not just Windows — a separator inside the name
+    # would make source.with_name() raise ValueError when building the
+    # target, and a filename is never allowed to contain one regardless of
+    # OS. The remaining checks below stay Windows-only.
     if any(character in '<>:"/\\|?*' for character in name):
         return ("invalid_name",)
+    if not windows_rules:
+        return ()
     if name.endswith((".", " ")):
         return ("invalid_name",)
     if name.split(".", 1)[0].upper() in _WINDOWS_RESERVED:

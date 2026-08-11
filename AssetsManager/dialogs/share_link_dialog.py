@@ -4,7 +4,7 @@ Independent dialog for creating share links with password, expiry, and download 
 """
 import logging
 
-from PySide6.QtCore import Qt, QThreadPool
+from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLineEdit,
     QApplication, QMessageBox,
@@ -48,6 +48,12 @@ class ShareLinkDialog(TabbedDialog):
         self._share_url = None
         self._creating = False
         super().__init__(parent, title=tr("sharelink.title"), min_size=(400, 450))
+        # Member timer (parented to this dialog) instead of a QTimer.singleShot
+        # lambda, so a pending reset is cancelled automatically when the dialog
+        # is destroyed and can never fire against a deleted button.
+        self._copy_reset_timer = QTimer(self)
+        self._copy_reset_timer.setSingleShot(True)
+        self._copy_reset_timer.timeout.connect(self._reset_copy_label)
 
     def _build_ui(self):
         """Build the share link creation dialog."""
@@ -254,8 +260,12 @@ class ShareLinkDialog(TabbedDialog):
             self._qr_btn.setEnabled(True)
         else:
             self._create_btn.setEnabled(True)
-            error = data.get("error") if isinstance(data, dict) else tr("sharelink.error.unknown")
-            QMessageBox.warning(self, tr("sharelink.msg.error_title"), tr("sharelink.error.create_failed").format(data=error))
+            error = data.get("error") if isinstance(data, dict) else None
+            QMessageBox.warning(
+                self,
+                tr("sharelink.msg.error_title"),
+                tr("sharelink.error.create_failed").format(data=error or tr("sharelink.error.unknown")),
+            )
 
     def _create_another(self):
         """Return to explicit creation mode after a completed request."""
@@ -273,8 +283,12 @@ class ShareLinkDialog(TabbedDialog):
         if self._share_url:
             QApplication.clipboard().setText(self._share_url)
             self._copy_btn.setText(tr("sharelink.btn.copied"))
-            from PySide6.QtCore import QTimer
-            QTimer.singleShot(1500, lambda: self._copy_btn.setText(tr("sharelink.btn.copy_link")))
+            self._copy_reset_timer.start(1500)
+
+    def _reset_copy_label(self):
+        """Restore the copy button label after the copied feedback timeout."""
+        if self._copy_btn is not None:
+            self._copy_btn.setText(tr("sharelink.btn.copy_link"))
 
     def _open_link(self):
         """Open share link in browser."""
@@ -296,6 +310,16 @@ class ShareLinkDialog(TabbedDialog):
     def done(self, result):
         self._request_generation += 1
         super().done(result)
+
+    def _on_dialog_closed(self):
+        """Stop background creation when the dialog is dismissed."""
+        task = getattr(self, "_create_task", None)
+        if task is not None:
+            try:
+                task.signals.finished.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+        self._creating = False
 
     def get_share_url(self) -> str | None:
         """Return the created share URL."""

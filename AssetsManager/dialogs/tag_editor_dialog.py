@@ -23,9 +23,18 @@ class TagEditorDialog(TabbedDialog):
         self._store = store
         self._file_path = file_path
         self._modified = False
+        self._del_worker = None  # set when the unused-tag worker starts
         file_name = Path(file_path).name if file_path else "Unknown"
         super().__init__(parent, title=tr("tageditor.title", name=file_name),
                          min_size=(scaled_px(420), scaled_px(400)))
+
+    def closeEvent(self, event):
+        # Never destroy a running worker thread ("QThread: Destroyed while
+        # thread is still running" is fatal); give it a bounded grace period.
+        worker = getattr(self, "_del_worker", None)
+        if worker is not None and worker.isRunning():
+            worker.wait(2000)
+        super().closeEvent(event)
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -232,8 +241,11 @@ class TagEditorDialog(TabbedDialog):
     # ── Maintenance ──────────────────────────────────────
 
     def _delete_unused(self):
-        all_tags = self._store.get_all_tags()
-        unused = [t for t in all_tags if len(self._store.get_files_by_tag(t)) == 0]
+        used_tags = set(self._store.get_all_tags())
+        # Tags registered in the library that no file references are unused.
+        # (file_tags only ever contains used tags, so querying the library
+        # is what makes this feature reachable.)
+        unused = [t for t in get_library().all_canonicals() if t not in used_tags]
         if not unused:
             QMessageBox.information(self, tr("tageditor.no_unused"), tr("tageditor.no_unused"))
             return

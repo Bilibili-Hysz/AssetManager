@@ -293,6 +293,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         *,
         changed_count: int = 0,
         errors: tuple[str, ...] = (),
+        warnings: tuple[object, ...] = (),
         running: bool = False,
     ) -> None:
         """Display session-bound operation feedback without affecting command state."""
@@ -304,9 +305,38 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         if running:
             text = tr("filelist.feedback.running", operation=label)
         elif errors and changed_count:
-            text = tr("filelist.feedback.partial", operation=label, count=changed_count, failed=len(errors))
+            if warnings:
+                text = tr(
+                    "filelist.feedback.partial_degraded",
+                    operation=label,
+                    count=changed_count,
+                    failed=len(errors),
+                    warnings=len(warnings),
+                )
+            else:
+                text = tr(
+                    "filelist.feedback.partial",
+                    operation=label,
+                    count=changed_count,
+                    failed=len(errors),
+                )
         elif errors:
-            text = tr("filelist.feedback.failed", operation=label, failed=len(errors))
+            if warnings:
+                text = tr(
+                    "filelist.feedback.failed_degraded",
+                    operation=label,
+                    failed=len(errors),
+                    warnings=len(warnings),
+                )
+            else:
+                text = tr("filelist.feedback.failed", operation=label, failed=len(errors))
+        elif warnings:
+            text = tr(
+                "filelist.feedback.degraded",
+                operation=label,
+                count=changed_count,
+                warnings=len(warnings),
+            )
         else:
             text = tr("filelist.feedback.succeeded", operation=label, count=changed_count)
         self._operation_feedback.setText(text)
@@ -389,7 +419,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         for btn in self._nav_buttons:
             semantic_icon = btn.property("semanticIcon")
             if semantic_icon:
-                btn.setIcon(icons.icon(semantic_icon, color=t["body"], size=scaled_px(16)))
+                btn.setIcon(icons.icon(semantic_icon, color="icon_secondary", size=scaled_px(16)))
             btn.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {t['body']}; "
                 f"border: none; padding: 0; font-size: {scaled_pt(10)}px; }} "
@@ -488,8 +518,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         if not hasattr(self, '_zoom_anim'):
             self._zoom_anim = None
 
-        if self._zoom_anim and self._zoom_anim.state() == QVariantAnimation.State.Running:
-            self._zoom_anim.stop()
+        anim = self._zoom_anim
+        if anim is not None and anim.state() == QVariantAnimation.State.Running:
+            anim.stop()
 
         start = self._thumb_size
         if start == target:
@@ -497,14 +528,18 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
         if self._list_view and hasattr(self._list_view, 'set_zoom_in_progress'):
             self._list_view.set_zoom_in_progress(True)
-        self._zoom_anim = QVariantAnimation(self)
-        self._zoom_anim.setDuration(180)
-        self._zoom_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._zoom_anim.setStartValue(start)
-        self._zoom_anim.setEndValue(target)
-        self._zoom_anim.valueChanged.connect(self._on_zoom_frame)
-        self._zoom_anim.finished.connect(self._on_zoom_done)
-        self._zoom_anim.start()
+        if anim is None:
+            # Reuse a single animation object so rapid zoom changes do not
+            # accumulate child QObject instances.
+            anim = QVariantAnimation(self)
+            anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+            anim.valueChanged.connect(self._on_zoom_frame)
+            anim.finished.connect(self._on_zoom_done)
+            self._zoom_anim = anim
+        anim.setDuration(180)
+        anim.setStartValue(start)
+        anim.setEndValue(target)
+        anim.start()
 
     def _on_zoom_frame(self, size: int):
         self._thumb_size = size
@@ -744,7 +779,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
                 0,
                 icons.icon(
                     "folder" if is_dir else "file",
-                    color=themes.get()["heading"],
+                    color="icon_primary",
                     size=scaled_px(16),
                 ),
             )
@@ -924,23 +959,35 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             return
         target = sb.value() - event.angleDelta().y()
 
-        if not hasattr(self, '_scroll_anim'):
-            self._scroll_anim = None
-        if self._scroll_anim and self._scroll_anim.state() == QVariantAnimation.State.Running:
-            target = self._scroll_anim.endValue() - event.angleDelta().y()
-            self._scroll_anim.stop()
+        anim = getattr(self, '_scroll_anim', None)
+        if anim is not None and anim.state() == QVariantAnimation.State.Running:
+            target = anim.endValue() - event.angleDelta().y()
+            anim.stop()
 
-        self._scroll_anim = QVariantAnimation(self)
-        self._scroll_anim.setDuration(120)
-        self._scroll_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._scroll_anim.setStartValue(sb.value())
-        self._scroll_anim.setEndValue(target)
-        self._scroll_anim.valueChanged.connect(lambda v: sb.setValue(int(v)))
-        self._scroll_anim.start()
+        if anim is None:
+            # Reuse a single animation object instead of leaking one per wheel event.
+            anim = QVariantAnimation(self)
+            anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+            anim.valueChanged.connect(lambda v: sb.setValue(int(v)))
+            self._scroll_anim = anim
+        anim.setDuration(120)
+        anim.setStartValue(sb.value())
+        anim.setEndValue(target)
+        anim.start()
 
     def _handle_key(self, event):
         key = event.key()
         mod = event.modifiers()
+        search = getattr(self, "_search", None)
+        if (
+            search is not None
+            and search.hasFocus()
+            and key != Qt.Key.Key_Escape
+            and not (key == Qt.Key.Key_F and mod == Qt.KeyboardModifier.ControlModifier)
+        ):
+            # Keys typed into the search box must reach the QLineEdit; only
+            # Escape (clear) and Ctrl+F (re-focus) are panel commands.
+            return False
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self._open_selected()
             return True
@@ -997,33 +1044,62 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         root_path = self._lib_root
         if scoped is None or root_path is None:
             return False
-        destination = str(self._current)
+        # Compare resolved paths throughout: QUrl.toLocalFile() yields forward
+        # slashes while str(Path) uses the platform separator, so raw string
+        # comparison would misclassify every drop on Windows.
+        destination = Path(self._current).resolve()
         root = Path(root_path).resolve()
-        sources = [path for path in paths if os.path.dirname(path) != destination]
-        in_library = [path for path in sources if Path(path).resolve().is_relative_to(root)]
-        external = [path for path in sources if path not in in_library]
+        resolved_sources = [Path(path).resolve() for path in paths]
+        sources = [p for p in resolved_sources if p.parent != destination]
         if not sources:
             return False
+        in_library = [p for p in sources if p.is_relative_to(root)]
+        external = [p for p in sources if p not in in_library]
 
         service = scoped.file_operation_service
         changed_paths = []
-        for source in in_library:
-            result = service.move_to_directory(
-                [source], destination, library_root=root_path,
+        errors = []
+        warnings = []
+        try:
+            for source in in_library:
+                result = service.move_to_directory(
+                    [str(source)], str(destination), library_root=root_path,
+                )
+                for changed_path in result.changed_paths:
+                    changed_paths.append(changed_path)
+                    if self._undo_svc is not None:
+                        self._undo_svc.record_rename(str(source), str(changed_path))
+                for error in result.errors:
+                    _log.error("Drag-drop move failed: %s", error)
+                    errors.append(error)
+                warnings.extend(getattr(result, "warnings", ()))
+            if external:
+                result = service.copy_to_directory(
+                    [str(p) for p in external], str(destination), library_root=root_path,
+                )
+                changed_paths.extend(getattr(result, "changed_paths", ()))
+                for error in result.errors:
+                    _log.error("Drag-drop copy failed: %s", error)
+                    errors.append(error)
+                warnings.extend(getattr(result, "warnings", ()))
+        except (ValueError, OSError) as exc:
+            # The service only collects OSError per item; root-scope violations
+            # surface as ValueError and must not escape the drop handler.
+            _log.error("Drag-drop failed: %s", exc)
+            errors.append(str(exc))
+        for warning in warnings:
+            _log.warning(
+                "Drag-drop projection refresh degraded (%s): %s",
+                getattr(warning, "code", "unknown"),
+                getattr(warning, "path", destination),
             )
-            for changed_path in result.changed_paths:
-                changed_paths.append(changed_path)
-                if self._undo_svc is not None:
-                    self._undo_svc.record_rename(source, str(changed_path))
-            for error in result.errors:
-                _log.error("Drag-drop move failed: %s", error)
-        if external:
-            result = service.copy_to_directory(
-                external, destination, library_root=root_path,
-            )
-            changed_paths.extend(getattr(result, "changed_paths", ()))
-            for error in result.errors:
-                _log.error("Drag-drop copy failed: %s", error)
+        self._show_operation_feedback(
+            scoped.session,
+            "drop",
+            changed_count=len(changed_paths),
+            errors=tuple(errors),
+            warnings=tuple(warnings),
+        )
         self._request_operation_selection(scoped.session, changed_paths)
         self._post_refresh()
         if self._view_mode == "Details":
@@ -1090,7 +1166,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         else:
             p.setPen(QColor(t["muted"]))
             p.setFont(QFont(p.font()))
-            p.drawText(icon_rect, Qt.AlignmentFlag.AlignCenter, Path(paths[0]).suffix.upper() or "?")
+            suffix_text = Path(paths[0]).suffix.upper() or "?"
+            p.drawText(icon_rect, Qt.AlignmentFlag.AlignCenter,
+                       p.fontMetrics().elidedText(suffix_text, Qt.TextElideMode.ElideRight, icon_rect.width()))
         # Text
         text_x = icon_rect.right() + 10
         title_font = QFont(p.font())
@@ -1155,14 +1233,13 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def _refresh_state_icons(self) -> None:
         """Keep stateful toolbar controls icon-only across every refresh path."""
-        t = themes.get()
         sort_icon = "arrow_up" if self._model._sort_asc else "arrow_down"
         hidden_icon = "eye" if self._model._show_hidden else "eye_off"
         for button, icon_name in (
             (self._sort_btn, sort_icon),
             (self._hidden_btn, hidden_icon),
         ):
-            button.setIcon(icons.icon(icon_name, color=t["body"], size=scaled_px(16)))
+            button.setIcon(icons.icon(icon_name, color="icon_secondary", size=scaled_px(16)))
             button.setIconSize(QSize(scaled_px(16), scaled_px(16)))
             button.setProperty("semanticIcon", icon_name)
             button.setText("")
@@ -1172,7 +1249,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         from AssetsManager.core import themes
         t = themes.get()
         btn = QPushButton()
-        btn.setIcon(icons.icon(icon_name, color=t["body"], size=scaled_px(16)))
+        btn.setIcon(icons.icon(icon_name, color="icon_secondary", size=scaled_px(16)))
         btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         btn.setProperty("semanticIcon", icon_name)
         btn.setFixedSize(scaled_px(26), scaled_px(26))

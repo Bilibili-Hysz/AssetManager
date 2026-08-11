@@ -3,9 +3,26 @@ from __future__ import annotations
 
 import math
 from PySide6.QtCore import Qt, Signal, QPoint
-from PySide6.QtGui import QColor, QPainter, QLinearGradient
+from PySide6.QtGui import QColor, QPainter, QLinearGradient, QPixmap
 from PySide6.QtWidgets import QWidget, QSizePolicy
 from AssetsManager.core.ui_scale import scaled_px
+
+
+def _pos_to_hue(dx: float, dy: float) -> float:
+    """Map a wheel offset (from the wheel center) to a hue in [0, 1).
+
+    Standard math convention: 0 at 3 o'clock, increasing counterclockwise
+    on screen, so 12 o'clock (dy negative) is 0.25.  This is the inverse of
+    ``_hue_to_angle`` and matches how the ring is painted, so a click
+    selects exactly the color shown under the cursor.
+    """
+    angle = math.degrees(math.atan2(-dy, dx)) % 360
+    return angle / 360.0
+
+
+def _hue_to_angle(hue: float) -> float:
+    """Map a hue in [0, 1) back to the wheel angle in degrees (0 at 3 o'clock)."""
+    return hue * 360.0
 
 
 class HSVWheel(QWidget):
@@ -19,6 +36,12 @@ class HSVWheel(QWidget):
         self._saturation = 1.0
         self._value = 1.0
         self._dragging = False
+        # Offscreen cache for the hue ring; rebuilt only when the widget
+        # size or the brightness value changes (dragging only changes hue
+        # and saturation, so it never invalidates the ring).
+        self._wheel_cache: QPixmap | None = None
+        self._wheel_cache_size: int = -1
+        self._wheel_cache_value: float = -1.0
         self.setMinimumSize(scaled_px(200), scaled_px(200))
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMouseTracking(True)
@@ -44,23 +67,23 @@ class HSVWheel(QWidget):
         cx, cy = self.width() / 2, self.height() / 2
         radius = size / 2 - 4
 
-        # Draw hue ring
-        for angle in range(360):
-            color = QColor.fromHsvF(angle / 360.0, 1.0, self._value)
-            painter.setPen(color)
-            painter.drawArc(int(cx - radius), int(cy - radius),
-                          int(radius * 2), int(radius * 2),
-                          (360 - angle) * 16, 16)
+        # Draw hue ring (cached offscreen; rebuilt on size/value change).
+        # startAngle uses the same convention as _pos_to_hue: 0 at 3 o'clock,
+        # increasing counterclockwise on screen — hue angle/360 lands exactly
+        # where a click with that hue reads it back.
+        self._ensure_wheel_cache(size, radius)
+        if self._wheel_cache is not None:
+            painter.drawPixmap(int(cx - radius), int(cy - radius), self._wheel_cache)
 
         # Draw saturation gradient (center = white, edge = full saturation)
-        for r in range(int(radius), 0, -1):
-            sat = 1.0 - (r / radius)
+        for r in range(int(radius) - 1, 0, -1):
+            sat = r / radius
             color = QColor.fromHsvF(self._hue, sat, self._value)
             painter.setPen(color)
             painter.drawEllipse(int(cx - r), int(cy - r), r * 2, r * 2)
 
         # Draw selection indicator
-        angle_rad = math.radians(self._hue * 360)
+        angle_rad = math.radians(_hue_to_angle(self._hue))
         dist = self._saturation * radius
         sx = cx + dist * math.cos(angle_rad)
         sy = cy - dist * math.sin(angle_rad)
@@ -69,6 +92,40 @@ class HSVWheel(QWidget):
         painter.drawEllipse(int(sx - 6), int(sy - 6), 12, 12)
         painter.setPen(Qt.GlobalColor.black)
         painter.drawEllipse(int(sx - 5), int(sy - 5), 10, 10)
+
+    def _ensure_wheel_cache(self, size: int, radius: float):
+        """Render the hue ring into an offscreen pixmap, cached per size/value.
+
+        The ring depends only on the widget size and the brightness value,
+        so dragging (hue/saturation) reuses the cache instead of redrawing
+        360 antialiased arcs on every frame.
+        """
+        if (
+            self._wheel_cache is not None
+            and self._wheel_cache_size == size
+            and self._wheel_cache_value == self._value
+        ):
+            return
+        self._wheel_cache = None
+        if size < 4 or radius <= 0:
+            return
+        dpr = self.devicePixelRatioF()
+        pm = QPixmap(round(size * dpr), round(size * dpr))
+        pm.setDevicePixelRatio(dpr)
+        pm.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pm)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        half = size / 2
+        ring = int(radius * 2)
+        for angle in range(360):
+            color = QColor.fromHsvF(angle / 360.0, 1.0, self._value)
+            painter.setPen(color)
+            painter.drawArc(int(half - radius), int(half - radius), ring, ring,
+                            angle * 16, 16)
+        painter.end()
+        self._wheel_cache = pm
+        self._wheel_cache_size = size
+        self._wheel_cache_value = self._value
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -92,8 +149,7 @@ class HSVWheel(QWidget):
         if dist > radius:
             dist = radius
 
-        angle = math.degrees(math.atan2(-dy, dx)) % 360
-        self._hue = angle / 360.0
+        self._hue = _pos_to_hue(dx, dy)
         self._saturation = dist / radius
         self.update()
         self.color_changed.emit(self.get_color())

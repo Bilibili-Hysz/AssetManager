@@ -13,10 +13,20 @@ tr = i18n.tr
 
 
 class BatchRenameDialog(QDialog):
+    # D1: cap on sibling entries collected per parent directory. A full
+    # iterdir()+resolve() pass over every sibling is what makes duplicate
+    # detection reliable, but scanning huge directories synchronously on the
+    # GUI thread freezes the dialog; 5000 entries per parent is far beyond
+    # any realistic rename-collision surface.
+    _OCCUPIED_CAP = 5000
+
     def __init__(self, paths: list[str], parent=None):
         super().__init__(parent)
         self._paths = [Path(path) for path in paths]
-        self._occupied_paths = self._collect_occupied_paths()
+        # D1: lazy — collecting thousands of paths (iterdir + resolve in
+        # plan_batch_rename) is deferred to the first _update_plan() call
+        # instead of blocking dialog construction.
+        self._occupied_paths: list[Path] | None = None
         self.plan: BatchRenamePlan | None = None
         self.setWindowTitle(tr("filelist.dialog.batch_rename"))
         self.resize(620, 400)
@@ -46,13 +56,20 @@ class BatchRenameDialog(QDialog):
     def _collect_occupied_paths(self) -> list[Path]:
         occupied: list[Path] = []
         for parent in {path.parent for path in self._paths}:
+            count = 0
             try:
-                occupied.extend(parent.iterdir())
+                for child in parent.iterdir():
+                    occupied.append(child)
+                    count += 1
+                    if count >= self._OCCUPIED_CAP:
+                        break
             except OSError:
                 continue
         return occupied
 
     def _update_plan(self) -> None:
+        if self._occupied_paths is None:
+            self._occupied_paths = self._collect_occupied_paths()
         self.plan = plan_batch_rename(
             self._paths,
             self._pattern.text(),

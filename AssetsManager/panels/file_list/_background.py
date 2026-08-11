@@ -8,6 +8,14 @@ from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Qt
 
 _log = logging.getLogger(__name__)
 
+# QRunnables run with the pool default ``autoDelete=True``: QThreadPool deletes
+# the C++ object as soon as ``run()`` returns, and PySide6 does not keep the
+# Python wrapper (nor the closures it captures, e.g. sessions/services) alive.
+# The wrapper must therefore be held from Python until the ``done`` signal has
+# been delivered on the main thread — otherwise a queued delivery is dropped
+# and the task is garbage collected before its completion callback runs.
+_orphan_ops: set[QRunnable] = set()
+
 
 def run_in_background(
     func: Callable,
@@ -19,8 +27,8 @@ def run_in_background(
 
     If *on_done* is provided, it is called on the main thread after
     completion.  If *background_ops* is provided (a list owned by the
-    calling panel), the signal is added to it so the panel can track
-    in-flight operations.
+    calling panel), the runnable is added to it so the panel can track
+    in-flight operations and keep it alive until the done signal fires.
     """
     class _Sig(QObject):
         done = Signal()
@@ -28,25 +36,33 @@ def run_in_background(
     class _Op(QRunnable):
         def __init__(s, fn, args, sig):
             super().__init__()
-            s.setAutoDelete(False)
             s._fn = fn
             s._a = args
             s._sig = sig
 
         def run(s):
+            sig = s._sig
             try:
                 s._fn(*s._a)
             except Exception:
                 _log.exception("Background task failed")
-            if s._sig is not None:
-                s._sig.done.emit()
+            if sig is not None:
+                sig.done.emit()
 
-    sig = _Sig() if on_done is not None else None
-    if on_done is not None and background_ops is not None:
+    sig = _Sig()
+    op = _Op(func, args, sig)
+    if on_done is not None:
         sig.done.connect(on_done)
-        background_ops.append(sig)
+    if background_ops is not None:
+        background_ops.append(op)
 
         def _cleanup():
-            background_ops.remove(sig)
+            background_ops.remove(op)
         sig.done.connect(_cleanup, Qt.ConnectionType.SingleShotConnection)
-    QThreadPool.globalInstance().start(_Op(func, args, sig))
+    else:
+        _orphan_ops.add(op)
+
+        def _cleanup():
+            _orphan_ops.discard(op)
+        sig.done.connect(_cleanup, Qt.ConnectionType.SingleShotConnection)
+    QThreadPool.globalInstance().start(op)

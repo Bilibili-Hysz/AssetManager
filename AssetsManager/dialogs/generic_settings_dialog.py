@@ -3,6 +3,7 @@ from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton
 from PySide6.QtCore import Qt
 from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager import i18n
 tr = i18n.tr
 
@@ -13,11 +14,13 @@ def generic_settings_dialog(parent=None) -> QDialog:
     dlg.setMinimumSize(scaled_px(300), scaled_px(180))
     themes.apply_to(dlg)
 
+    sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+
     layout = QVBoxLayout(dlg)
 
     msg = QLabel(tr("panel.no_settings"))
     msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    msg.setStyleSheet(f"font-size: {scaled_pt(14)}px; padding: 20px;")
+    msg.setStyleSheet(sk.label_css("body", size=14))
     layout.addWidget(msg)
 
     close_btn = QPushButton(tr("dialog.close"))

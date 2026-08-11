@@ -33,6 +33,13 @@ class ThumbnailDeliveryCoordinator:
         if image is None or image.isNull():
             return
         started = self._grid_widget.start_thumbnail_delivery_measurement()
+        # Defensive downscale: workers usually deliver at self._size, but
+        # original/high quality modes can hand back full-size images whose
+        # main-thread QPixmap.fromImage would stall the UI.
+        if image.width() > 512 or image.height() > 512:
+            image = image.scaled(
+                512, 512, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation)
         pixmap = QPixmap.fromImage(image)
         self._grid_widget.record_thumbnail_pixmap(started)
         index = self._model.index(row, 0)

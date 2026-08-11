@@ -39,7 +39,13 @@ class PanelContent(QWidget):
             self._animate_in()
 
     def _animate_in(self):
-        """Animate panel entrance."""
+        """Animate panel entrance.
+
+        Note: windowOpacity only affects top-level windows, so this animation
+        has no visible effect when the panel is embedded as a child widget.
+        Kept as-is: tests/desktop/test_tab_container.py asserts the animation
+        lifecycle, and it would apply if a panel is ever shown as a window.
+        """
         self._show_anim = QPropertyAnimation(self, b"windowOpacity", self)
         self._show_anim.setDuration(200)
         self._show_anim.setStartValue(0.0)
@@ -91,7 +97,7 @@ class PanelContent(QWidget):
         from AssetsManager.dialogs.generic_settings_dialog import generic_settings_dialog
         t = themes.get()
         gear = QPushButton()
-        gear.setIcon(icons.icon("settings", color=t["heading"], size=scaled_px(16)))
+        gear.setIcon(icons.icon("settings", color="icon_primary", size=scaled_px(16)))
         gear.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         gear.setToolTip(tr("panel.settings"))
         gear.setAccessibleName(tr("panel.settings"))

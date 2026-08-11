@@ -7,6 +7,7 @@ import logging
 from time import perf_counter
 import os
 from pathlib import Path
+from typing import cast
 import weakref
 from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QFileInfo, QObject, QRunnable, QThreadPool, Signal
 from PySide6.QtGui import QIcon
@@ -35,6 +36,10 @@ class _ScanTask(QRunnable):
         self.signals = _ScanSignals()
 
     def run(self):
+        # Capture before any work: the Python wrapper may be released (and the
+        # signal object with it) while the pool runs this task, but the
+        # emission itself must always reach a live sender.
+        signals = self.signals
         entries = []
         stat_cache: dict[str, os.stat_result] = {}
         error: OSError | None = None
@@ -47,7 +52,7 @@ class _ScanTask(QRunnable):
                     pass
         except OSError as exc:
             error = exc
-        self.signals.scan_done.emit(entries, stat_cache, error)
+        signals.scan_done.emit(entries, stat_cache, error)
 
 class FileSystemModel(QAbstractListModel):
     """Model backed by os.scandir. Supports sort, filter, and per-item roles."""
@@ -100,6 +105,7 @@ class FileSystemModel(QAbstractListModel):
         self._last_scan_reused = False
         self._committing_scan_gen: int | None = None
         self._active_scan_task: _ScanTask | None = None  # prevent GC of running task + signals
+        self._active_size_task: QRunnable | None = None  # held until its done signal delivers
         self._scan_error: OSError | None = None
         self._scan_loading = False
         self._path_index: dict[str, int] = {}
@@ -224,8 +230,7 @@ class FileSystemModel(QAbstractListModel):
         self._emit_state()
 
         task = _ScanTask(path, gen)
-        task.setAutoDelete(False)  # prevent QThreadPool from deleting before signal fires
-        self._active_scan_task = task  # keep strong reference
+        self._active_scan_task = task  # keep strong reference until scan_done delivery
         model_ref = weakref.ref(self)
 
         def complete(entries: list, stats: dict, error: OSError | None) -> None:
@@ -378,9 +383,9 @@ class FileSystemModel(QAbstractListModel):
         if role == FileSystemModel.RAW_PIXMAP_ROLE:
             return self._raw_pixmaps.get(entry.path)
         if role == FileSystemModel.IS_DIR_ROLE:
-            return entry.is_dir()
+            return self._safe_is_dir(entry)
         if role == FileSystemModel.DIR_SIZE_ROLE:
-            if entry.is_dir():
+            if self._safe_is_dir(entry):
                 return self._dir_size_cache.get(entry.path) or None
             return None
 
@@ -509,38 +514,61 @@ class FileSystemModel(QAbstractListModel):
                 model._dir_size_active_generation = None
                 model._pending_dir_sizes.discard(dir_path)
 
+        class _SizeTaskDone(QObject):
+            # Carries the wrapper itself so the delivery keeps the runnable
+            # (and its captured session closure) alive until it is released.
+            done = Signal(object)
+
         class _SizeTask(QRunnable):
-            def run(self):
-                self.setAutoDelete(False)  # prevent destruction before signal delivery
-                if session is None:
+            def __init__(s, done):
+                super().__init__()
+                s._done = done
+
+            def run(s):
+                try:
+                    if session is None:
+                        if model._is_shutdown:
+                            abort_task()
+                            return
+                        total = FileSystemModel._cached_dir_size(dir_path, lib_root, metadata_service)
+                    else:
+                        # A queued task refuses after close; a running task keeps its
+                        # original session alive through cache read, scan, and write.
+                        try:
+                            with session.operation():
+                                total = FileSystemModel._cached_dir_size(dir_path, lib_root, metadata_service)
+                        except RuntimeError:
+                            # A caller that closes before a queued task starts must not
+                            # leak an exception from the Qt worker thread.
+                            abort_task()
+                            return
                     if model._is_shutdown:
                         abort_task()
                         return
-                    total = FileSystemModel._cached_dir_size(dir_path, lib_root, metadata_service)
-                else:
-                    # A queued task refuses after close; a running task keeps its
-                    # original session alive through cache read, scan, and write.
-                    try:
-                        with session.operation():
-                            total = FileSystemModel._cached_dir_size(dir_path, lib_root, metadata_service)
-                    except RuntimeError:
-                        # A caller that closes before a queued task starts must not
-                        # leak an exception from the Qt worker thread.
-                        abort_task()
-                        return
-                if model._is_shutdown:
-                    abort_task()
-                    return
-                result = FileSystemModel._fmt_size(total) if total > 0 else "Empty"
-                model.dir_size_ready.emit(dir_path, result, gen)
+                    result = FileSystemModel._fmt_size(total) if total > 0 else "Empty"
+                    model.dir_size_ready.emit(dir_path, result, gen)
+                finally:
+                    # Emitted on every exit path so the model can drop its
+                    # reference once the pool has finished (auto-delete).
+                    s._done.done.emit(s)
 
+        done = _SizeTaskDone()
+        task = _SizeTask(done)
+        done.done.connect(self._on_size_task_done)
+        self._active_size_task = task  # keep the wrapper alive while the pool runs it
         try:
-            self._size_pool.start(_SizeTask())
+            cast(QThreadPool, self._size_pool).start(task)
         except Exception:
+            self._active_size_task = None
             self._dir_size_active = None
             self._dir_size_active_generation = None
             self._pending_dir_sizes.discard(dir_path)
             self._dispatch_next_dir_size()
+
+    def _on_size_task_done(self, task) -> None:
+        """Release the finished size task's Python wrapper after delivery."""
+        if self._active_size_task is task:
+            self._active_size_task = None
 
     @staticmethod
     def _cached_dir_size(dir_path: str, lib_root: str, metadata_svc=None) -> int:
@@ -582,6 +610,14 @@ class FileSystemModel(QAbstractListModel):
         except OSError:
             return os.stat_result((0,) * 10)
 
+    @staticmethod
+    def _safe_is_dir(entry) -> bool:
+        """is_dir() raises OSError for broken symlinks / permission-denied entries."""
+        try:
+            return entry.is_dir()
+        except OSError:
+            return False
+
     def _cached_stat(self, entry):
         """Return stat result from cache, or call stat() and cache it."""
         path = entry.path
@@ -619,11 +655,14 @@ class FileSystemModel(QAbstractListModel):
         self._is_shutdown = True
         self._scan_gen += 1
         if self._active_scan_task is not None:
-            self._active_scan_task.signals.scan_done.disconnect()
+            task = self._active_scan_task
+            if Shiboken.isValid(task):
+                task.signals.scan_done.disconnect()
             self._active_scan_task = None
         if self._size_pool is not None:
             self._size_pool.waitForDone()
             self._size_pool = None
+        self._active_size_task = None
         self._dir_size_active = None
         self._dir_size_active_generation = None
         self._dir_size_queue.clear()
@@ -634,6 +673,7 @@ class FileSystemModel(QAbstractListModel):
         self._dir_size_gen += 1
         if self._size_pool is not None:
             self._size_pool.waitForDone()
+        self._active_size_task = None
         self._dir_size_active = None
         self._dir_size_active_generation = None
         self._dir_size_queue.clear()
@@ -649,7 +689,7 @@ class FileSystemModel(QAbstractListModel):
         if not matches_search(entry.name, self._filter_text):
             return False
         cat = normalize_filter_category(self._filter_cat)
-        if cat != "all" and not entry.is_dir():
+        if cat != "all" and not self._safe_is_dir(entry):
             ext = Path(entry.name).suffix.lower()
             if not extension_matches_category(ext, self._filter_cat):
                 return False
@@ -671,7 +711,7 @@ class FileSystemModel(QAbstractListModel):
 
         def _sort_key(e):
             return (
-                not e.is_dir(),
+                not self._safe_is_dir(e),
                 (_natural_key(e.name) if k == "name" else
                  -(self._cached_stat(e).st_mtime) if k == "date" else
                  -(self._cached_stat(e).st_size) if k == "size" else

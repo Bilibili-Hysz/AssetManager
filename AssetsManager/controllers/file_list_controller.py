@@ -10,10 +10,13 @@ without Qt. The panel delegates to this controller for:
 """
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 from AssetsManager.application.asset_filters import IMAGE_EXTS
+
+_log = logging.getLogger(__name__)
 
 
 class FileListController:
@@ -41,13 +44,23 @@ class FileListController:
 
     @staticmethod
     def save_search_term(term: str) -> None:
-        """Save a search term to settings."""
+        """Save a search term to settings.
+
+        Skipped entirely when *term* already matches the most recently saved
+        term, avoiding a full settings write (with fsync) on every debounced
+        re-apply of an unchanged search.
+        """
         if not term.strip():
             return
         from AssetsManager.core.settings import AppSettings
         settings = AppSettings.instance()
-        settings.prepend_list("search_history", term.strip(), max_items=20)
-        settings.save()
+        term = term.strip()
+        history = settings.get_list("search_history", [])
+        if history and history[0] == term:
+            return
+        settings.prepend_list("search_history", term, max_items=20)
+        if not settings.save():
+            _log.warning("failed to persist search history term %r", term)
 
     # ── First image cache ────────────────────────────────────────
 
@@ -73,8 +86,12 @@ class FileListController:
                 for i, entry in enumerate(scanner):
                     if i > 500:
                         break
-                    if entry.is_file() and Path(entry.name).suffix.lower() in IMAGE_EXTS:
-                        return entry.path
+                    try:
+                        if entry.is_file() and Path(entry.name).suffix.lower() in IMAGE_EXTS:
+                            return entry.path
+                    except OSError:
+                        # A single unreadable entry must not abort the scan.
+                        continue
         except OSError:
             pass
         return None

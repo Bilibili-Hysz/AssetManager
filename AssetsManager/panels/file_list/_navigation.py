@@ -2,16 +2,17 @@
 import os
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 from PySide6.QtCore import Qt, QTimer, QFileSystemWatcher
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, QWidget
 
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core import themes
-from AssetsManager.core.ui_scale import scaled_px
+from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.panels.file_list._loader import ThumbnailLoader
 from AssetsManager.panels.file_list._model import FileSystemModel
+from AssetsManager.widgets.stylekit import StyleKit
 
 _log = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class NavigationMixin:
         def _clear_selection_for_navigation(self) -> None: ...
         def _update_status(self) -> None: ...
         def _load_visible(self) -> None: ...
-        def _schedule_library_stats_update(self, root: str) -> None: ...
+        def _run_in_background(self, func: Callable[[], None]) -> None: ...
 
     # ── FS watcher ────────────────────────────────────────────────
 
@@ -156,6 +157,35 @@ class NavigationMixin:
         if set_root:
             QTimer.singleShot(120, lambda: self._schedule_library_stats_update(str(p)))
 
+    def _schedule_library_stats_update(self, lib_root: str):
+        """Refresh the opened library's aggregate size without blocking the UI."""
+        services = getattr(self, "_scoped_services", None)
+        session = getattr(services, "session", None)
+        metadata_service = getattr(services, "metadata_service", None)
+        if session is None or metadata_service is None:
+            _log.warning("Skipping library stats update without scoped services: %s", lib_root)
+            return
+
+        root = str(Path(lib_root).resolve())
+        session_root = str(Path(session.root).resolve())
+        if root != session_root:
+            _log.warning(
+                "Skipping library stats update for stale runtime snapshot: %s (session: %s)",
+                root,
+                session_root,
+            )
+            return
+
+        def _update() -> None:
+            try:
+                with session.operation():
+                    total_size, _ = metadata_service.get_dir_size(root, root, force=True)
+                    metadata_service.set_library_total_size(root, total_size)
+            except Exception:
+                _log.exception("Failed to update library stats for %s", root)
+
+        self._run_in_background(_update)
+
     def _go_back(self):
         if self._history:
             prev = Path(self._history.pop())
@@ -201,8 +231,11 @@ class NavigationMixin:
         parent = self._current.parent
         if parent == self._current:
             return
-        if self._root and not str(parent).startswith(str(self._root)):
-            return
+        if self._root:
+            parent_s = str(parent)
+            root_s = str(self._root)
+            if parent_s != root_s and not parent_s.startswith(root_s + os.sep):
+                return
         self._loader.clear_queue()
         self._history.append(str(self._current))
         self._forward_list.clear()
@@ -232,7 +265,7 @@ class NavigationMixin:
     # ── Breadcrumb ───────────────────────────────────────────────
 
     def _render_bc(self):
-        t = themes.get()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         while self._bc_layout.count():
             item = self._bc_layout.takeAt(0)
             if item is None:
@@ -250,7 +283,9 @@ class NavigationMixin:
             dot = QPushButton(" … ")
             dot.setFlat(True)
             dot.setCursor(Qt.CursorShape.PointingHandCursor)
-            dot.setStyleSheet(f"color: {t['muted']}; font-size: 12px; background: transparent; border: none;")
+            dot.setStyleSheet(
+                f"color: {sk.token('muted')}; font-size: {sk.pt(12)}px; "
+                f"background: transparent; border: none;")
             hidden = ancestors[:-5]
             dot.setToolTip("\n".join(str(a) for a in hidden))
             dot.clicked.connect(lambda checked, paths=hidden: self._show_bc_menu(paths, dot))
@@ -258,14 +293,16 @@ class NavigationMixin:
         for i, anc in enumerate(show):
             if i > 0 or (len(ancestors) > 5 and i == 0):
                 sep = QLabel(" > ")
-                sep.setStyleSheet(f"color: {t['muted']}; font-size: 12px; background: transparent;")
+                sep.setStyleSheet(sk.muted_css(12))
                 self._bc_layout.addWidget(sep)
             name = anc.name or str(anc)
             btn = QPushButton(name)
             btn.setFlat(True)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet(f"color: {t['muted']}; font-size: 12px; padding: 2px 4px; "
-                              f"background: transparent; border: none; border-radius: {scaled_px(3)}px;")
+            btn.setStyleSheet(
+                f"color: {sk.token('muted')}; font-size: {sk.pt(12)}px; "
+                f"padding: {sk.px(2)}px {sk.px(4)}px; background: transparent; "
+                f"border: none; border-radius: {sk.px(3)}px;")
             btn.setToolTip(str(anc))
             bpath = str(anc)
             btn.clicked.connect(lambda checked, p=bpath: self.navigate_to(p))

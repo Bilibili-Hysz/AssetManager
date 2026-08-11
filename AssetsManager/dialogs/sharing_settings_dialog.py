@@ -16,12 +16,58 @@ from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager.dialogs._share_api import ShareApiTask
+from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager.widgets.toast import Toast
 from AssetsManager import i18n
-from AssetsManager.widgets.lan_sharing import HOT_SHARING_SETTINGS, RESTART_SHARING_SETTINGS
+from AssetsManager.widgets.lan_sharing import (
+    HOT_SHARING_SETTINGS,
+    RESTART_SHARING_SETTINGS,
+    confirm_security_preflight,
+)
 
 tr = i18n.tr
 _log = logging.getLogger(__name__)
+
+# ── Dialog-local configuration classification ─────────────────
+# Keys rendered by this dialog that have no server-side consumer yet.
+# The change summary reports them as "planned" instead of implying they are
+# saved for the next start; wiring them up server-side is out of scope here.
+_PLANNED_ONLY_SETTINGS = frozenset({
+    "lan_max_connections",
+    "lan_session_timeout",
+    "lan_enable_log",
+    "lan_log_path",
+    "lan_log_rotation_mb",
+})
+
+# Feature switches read per-request by LAN routes (quota.py, commerce_policy.py,
+# shop_authorization.py), so they take effect as soon as settings are persisted.
+# They are not listed in lan_sharing.HOT_SHARING_SETTINGS (server
+# reload_settings), so the dialog adds them to its live bucket itself.
+_DIALOG_LIVE_SETTINGS = frozenset({
+    "lan_commerce_enabled",
+    "lan_seller_enabled",
+    "lan_shop_authorized_roots",
+    "lan_quota_enabled",
+    "lan_quota_period",
+    "lan_quota_limit",
+    "lan_quota_min_interval_seconds",
+})
+
+
+def _msg(key: str, fallback: str) -> str:
+    """Translate ``key`` with an English fallback while catalogs lack it.
+
+    The i18n catalogs live outside this dialog's change scope; until the keys
+    land there, missing entries resolve to ``fallback`` instead of the raw key.
+    """
+    from AssetsManager.i18n import _lookup
+    try:
+        if _lookup("en", key) is None:
+            return fallback
+    except Exception:
+        return fallback
+    return tr(key)
 
 
 def _t():
@@ -92,6 +138,7 @@ class SharingSettingsDialog(TabbedDialog):
         self._status_timer = QTimer(self)
         self._status_timer.setInterval(2000)
         self._status_timer.timeout.connect(self._poll_server_status)
+        self._closed = False
         if self._server and self._server.is_running():
             self._status_timer.start()
             self._load_share_links()
@@ -101,6 +148,7 @@ class SharingSettingsDialog(TabbedDialog):
 
     def _build_ui(self):
         """Build a desktop navigation shell with a compact top-nav fallback."""
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         self.setStyleSheet(self._dialog_qss())
         root = QVBoxLayout(self)
         root.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(12))
@@ -108,7 +156,7 @@ class SharingSettingsDialog(TabbedDialog):
 
         header = QHBoxLayout()
         title = self.make_heading(tr("sharing.dialog_title"))
-        title.setStyleSheet(f"font-size: {scaled_pt(18)}px; font-weight: bold; color: {_t()['heading']};")
+        title.setStyleSheet(sk.label_css("heading", size=18, bold=True))
         header.addWidget(title)
         header.addStretch()
         root.addLayout(header)
@@ -229,15 +277,15 @@ class SharingSettingsDialog(TabbedDialog):
 
     def _on_theme_changed(self, _name):
         super()._on_theme_changed(_name)
-        t = _t()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         self._apply_shell_theme()
-        self._status_label.setStyleSheet(f"font-weight: bold; font-size: {scaled_pt(20)}px; color: {t['heading']};")
-        self._url_label.setStyleSheet(f"font-size: {scaled_pt(15)}px; color: {t['accent']};")
+        self._status_label.setStyleSheet(sk.label_css("heading", size=20, bold=True))
+        self._url_label.setStyleSheet(sk.label_css("accent", size=15))
         if hasattr(self, '_tunnel_url_label'):
             self._tunnel_url_label.setStyleSheet(
-                f"font-size: {scaled_pt(13)}px; color: {t['accent']}; "
-                f"padding: 8px; background: {t['panel']}; "
-                f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px;")
+                f"font-size: {sk.pt(13)}px; color: {sk.token('accent')}; "
+                f"padding: {sk.px(8)}px; background: {sk.token('panel')}; "
+                f"border: 1px solid {sk.token('border')}; border-radius: {sk.px(6)}px;")
         self._apply_table_theme()
         if hasattr(self, "_configuration_nav"):
             self._apply_configuration_theme()
@@ -278,20 +326,18 @@ class SharingSettingsDialog(TabbedDialog):
 
     def _make_card(self, title: str, icon: str = "") -> tuple[QFrame, QVBoxLayout]:
         """Create a styled dashboard card with title and return (frame, content_layout)."""
-        t = _t()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         frame = QFrame()
         frame.setStyleSheet(
-            f"QFrame {{ background: {t['panel']}; border: 1px solid {t['border']}; "
-            f"border-radius: {scaled_px(10)}px; }}")
+            f"QFrame {{ background: {sk.token('panel')}; border: 1px solid {sk.token('border')}; "
+            f"border-radius: {sk.px(10)}px; }}")
 
         outer = QVBoxLayout(frame)
         outer.setContentsMargins(scaled_px(16), scaled_px(14), scaled_px(16), scaled_px(14))
         outer.setSpacing(scaled_px(10))
 
         header = QLabel(f"{icon}  {title}" if icon else title)
-        header.setStyleSheet(
-            f"font-weight: bold; font-size: {scaled_pt(13)}px; color: {t['heading']}; "
-            f"background: transparent; border: none;")
+        header.setStyleSheet(sk.label_css("heading", size=13, bold=True) + "QLabel { border: none; }")
         outer.addWidget(header)
 
         content = QVBoxLayout()
@@ -301,7 +347,7 @@ class SharingSettingsDialog(TabbedDialog):
         return frame, content
 
     def _setup_overview_tab(self, parent):
-        t = _t()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         layout = QVBoxLayout(parent)
         layout.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16))
         layout.setSpacing(scaled_px(12))
@@ -316,7 +362,7 @@ class SharingSettingsDialog(TabbedDialog):
         self._status_icon.setAccessibleName(tr("sharing.endpoint.status_indicator"))
         status_row.addWidget(self._status_icon)
         self._status_label = QLabel(tr("sharing.status_off"))
-        self._status_label.setStyleSheet(f"font-size: {scaled_pt(20)}px; font-weight: bold; color: {t['heading']};")
+        self._status_label.setStyleSheet(sk.label_css("heading", size=20, bold=True))
         status_row.addWidget(self._status_label)
         self._exposure_label = QLabel()
         self._exposure_label.setVisible(False)
@@ -330,7 +376,7 @@ class SharingSettingsDialog(TabbedDialog):
         self._url_label = QLabel()
         self._url_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self._url_label.setWordWrap(False)
-        self._url_label.setStyleSheet(f"font-size: {scaled_pt(15)}px; color: {t['accent']};")
+        self._url_label.setStyleSheet(sk.label_css("accent", size=15))
         endpoint_layout.addWidget(self._url_label)
         action_row = QHBoxLayout()
         self._copy_btn = self.make_secondary_btn(tr("sharing.btn_copy_link"), self._copy_link)
@@ -387,19 +433,19 @@ class SharingSettingsDialog(TabbedDialog):
         activity_card, activity_cl = self._make_card(tr("sharing.card_recent_activity"))
         self._activity_list = QLabel(tr("sharing.overview.no_activity"))
         self._activity_list.setWordWrap(True)
-        self._activity_list.setStyleSheet(f"color: {t['muted']}; font-size: {scaled_pt(11)}px;")
+        self._activity_list.setStyleSheet(sk.muted_css(11))
         activity_cl.addWidget(self._activity_list)
         layout.addWidget(activity_card)
         layout.addStretch()
 
     def _make_info_pair(self, label_text, value_text):
-        t = _t()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         layout = QVBoxLayout()
         layout.setSpacing(scaled_px(2))
         lbl = QLabel(label_text)
-        lbl.setStyleSheet(f"color: {t['muted']}; font-size: {scaled_pt(10)}px;")
+        lbl.setStyleSheet(sk.muted_css(10))
         val = QLabel(value_text)
-        val.setStyleSheet(f"color: {t['heading']}; font-weight: bold; font-size: {scaled_pt(12)}px;")
+        val.setStyleSheet(sk.label_css("heading", size=12, bold=True))
         layout.addWidget(lbl)
         layout.addWidget(val)
         return layout, val
@@ -485,7 +531,7 @@ class SharingSettingsDialog(TabbedDialog):
     # ══════════════════════════════════════════════════════════
 
     def _setup_users_tab(self, parent):
-        t = _t()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         layout = QVBoxLayout(parent)
         layout.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16))
         layout.setSpacing(scaled_px(12))
@@ -494,10 +540,10 @@ class SharingSettingsDialog(TabbedDialog):
         user_row = QHBoxLayout()
         user_row.addWidget(self.make_label(tr("sharing.access.signed_in_as")))
         self._admin_user_label = QLabel(self._settings.get("lan_share_name", "Admin"))
-        self._admin_user_label.setStyleSheet(f"font-weight: bold; color: {t['heading']};")
+        self._admin_user_label.setStyleSheet(sk.label_css("heading", bold=True))
         user_row.addWidget(self._admin_user_label)
         role_label = QLabel(tr("sharing.users.role_admin"))
-        role_label.setStyleSheet(f"color: {t['accent']}; font-weight: bold;")
+        role_label.setStyleSheet(sk.label_css("accent", bold=True))
         user_row.addWidget(role_label)
         user_row.addStretch()
         layout.addLayout(user_row)
@@ -606,6 +652,7 @@ class SharingSettingsDialog(TabbedDialog):
     # ══════════════════════════════════════════════════════════
 
     def _setup_settings_tab(self, parent):
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         layout = QVBoxLayout(parent)
         layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
         layout.setSpacing(scaled_px(10))
@@ -626,7 +673,7 @@ class SharingSettingsDialog(TabbedDialog):
             page_layout.setContentsMargins(scaled_px(12), scaled_px(8), scaled_px(12), scaled_px(8))
             page_layout.setSpacing(scaled_px(10))
             heading = self.make_heading(tr(f"sharing.configuration.{key}"))
-            heading.setStyleSheet(f"font-size: {scaled_pt(15)}px; color: {_t()['heading']};")
+            heading.setStyleSheet(sk.label_css("heading", size=15))
             page_layout.addWidget(heading)
             description = self.make_muted(tr(f"sharing.configuration.{key}_desc"))
             description.setWordWrap(True)
@@ -695,6 +742,12 @@ class SharingSettingsDialog(TabbedDialog):
         pw_layout.addWidget(self._pw_show)
         self._pw_widget.setVisible(False)
         sl.addWidget(self._pw_widget)
+
+        self._auth_error_label = self.make_muted("")
+        self._auth_error_label.setWordWrap(True)
+        self._auth_error_label.setVisible(False)
+        sl.addWidget(self._auth_error_label)
+        self._pw_edit.textChanged.connect(self._clear_auth_error)
 
         limits_row = QHBoxLayout()
         limits_row.addWidget(self.make_label(tr("sharing.label_max_connections")))
@@ -814,6 +867,68 @@ class SharingSettingsDialog(TabbedDialog):
         dl.addLayout(rotation_row)
         dl.addStretch()
 
+        # Commerce / Seller feature switches
+        cl = section("commerce")
+        self._commerce_enabled = self.make_checkbox(tr("sharing.commerce.enabled"))
+        cl.addWidget(self._commerce_enabled)
+        commerce_desc = self.make_muted(tr("sharing.commerce.enabled_desc"))
+        commerce_desc.setWordWrap(True)
+        cl.addWidget(commerce_desc)
+
+        self._seller_enabled = self.make_checkbox(tr("sharing.seller.enabled"))
+        cl.addWidget(self._seller_enabled)
+        self._seller_helper = self.make_muted("")
+        self._seller_helper.setWordWrap(True)
+        cl.addWidget(self._seller_helper)
+
+        cl.addWidget(self.make_label(tr("sharing.seller.authorized_roots")))
+        self._shop_authorized_roots = QTextEdit()
+        self._shop_authorized_roots.setMaximumHeight(scaled_px(80))
+        self._shop_authorized_roots.setPlaceholderText(
+            tr("sharing.seller.authorized_roots_placeholder")
+        )
+        cl.addWidget(self._shop_authorized_roots)
+        self._shop_authorized_roots_helper = self.make_muted(
+            tr("sharing.seller.authorized_roots_desc")
+        )
+        self._shop_authorized_roots_helper.setWordWrap(True)
+        cl.addWidget(self._shop_authorized_roots_helper)
+
+        self._quota_enabled = self.make_checkbox(tr("sharing.quota.enabled"))
+        cl.addWidget(self._quota_enabled)
+        quota_desc = self.make_muted(tr("sharing.quota.enabled_desc"))
+        quota_desc.setWordWrap(True)
+        cl.addWidget(quota_desc)
+
+        quota_period_row = QHBoxLayout()
+        quota_period_row.addWidget(self.make_label(tr("sharing.quota.period")))
+        self._quota_period = self.make_combobox([
+            tr("sharing.quota.daily"),
+            tr("sharing.quota.weekly"),
+        ])
+        self._quota_period.setItemData(0, "daily")
+        self._quota_period.setItemData(1, "weekly")
+        quota_period_row.addWidget(self._quota_period)
+        quota_period_row.addSpacing(scaled_px(12))
+        quota_period_row.addWidget(self.make_label(tr("sharing.quota.limit")))
+        self._quota_limit = self.make_spinbox(1, 1_000_000, 20)
+        quota_period_row.addWidget(self._quota_limit)
+        quota_period_row.addStretch()
+        cl.addLayout(quota_period_row)
+
+        quota_interval_row = QHBoxLayout()
+        quota_interval_row.addWidget(self.make_label(tr("sharing.quota.min_interval")))
+        self._quota_min_interval = self.make_spinbox(0, 86_400, 5)
+        quota_interval_row.addWidget(self._quota_min_interval)
+        quota_interval_row.addWidget(self.make_muted(tr("sharing.quota.min_interval_desc")))
+        quota_interval_row.addStretch()
+        cl.addLayout(quota_interval_row)
+        self._quota_enabled.toggled.connect(self._on_quota_toggled)
+        self._refresh_quota_controls()
+        self._commerce_enabled.toggled.connect(self._on_commerce_toggled)
+        self._refresh_commerce_controls()
+        cl.addStretch()
+
         # Internet access is omitted when the tunnel dependency is unavailable.
         from AssetsManager.lan.tunnel import is_available as is_tunnel_available
         if is_tunnel_available():
@@ -823,8 +938,7 @@ class SharingSettingsDialog(TabbedDialog):
             tl.addWidget(self._settings_tunnel_status)
 
             self._settings_tunnel_url = QLabel("")
-            self._settings_tunnel_url.setStyleSheet(
-                f"font-size: {scaled_pt(13)}px; color: {themes.get()['accent']};")
+            self._settings_tunnel_url.setStyleSheet(sk.label_css("accent", size=13))
             self._settings_tunnel_url.setVisible(False)
             tl.addWidget(self._settings_tunnel_url)
 
@@ -868,6 +982,7 @@ class SharingSettingsDialog(TabbedDialog):
 
     def _apply_configuration_theme(self):
         t = _t()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         nav_style = (
             f"QFrame {{ background: {t['base']}; border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px; }}"
             f"QPushButton {{ text-align: left; background: transparent; color: {t['body']}; border: none; "
@@ -877,7 +992,8 @@ class SharingSettingsDialog(TabbedDialog):
         )
         self._configuration_nav.setStyleSheet(nav_style)
         self._configuration_summary.setStyleSheet(
-            f"QFrame {{ background: {t['panel']}; border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px; }}"
+            f"QFrame {{ background: {sk.token('panel')}; border: 1px solid {sk.token('border')}; "
+            f"border-radius: {sk.px(6)}px; }}"
         )
 
     def _connect_configuration_tracking(self):
@@ -887,15 +1003,54 @@ class SharingSettingsDialog(TabbedDialog):
             self._ip_whitelist, self._ssl_cert, self._ssl_key, self._color_edit, self._welcome_edit,
             self._footer_edit, self._show_hidden, self._max_depth, self._exclude_patterns,
             self._blur_tags, self._enable_log, self._log_path, self._log_rotation,
+            self._commerce_enabled, self._seller_enabled, self._shop_authorized_roots,
+            self._quota_enabled, self._quota_period, self._quota_limit, self._quota_min_interval,
         ) + tuple(self._type_checks.values())
         for widget in tracked_widgets:
             signal = getattr(widget, "textChanged", None) or getattr(widget, "valueChanged", None) or getattr(widget, "toggled", None) or getattr(widget, "currentIndexChanged", None)
             if signal is not None:
                 signal.connect(self._update_configuration_summary)
 
+    def _on_commerce_toggled(self, _enabled):
+        self._refresh_commerce_controls()
+        self._update_configuration_summary()
+
+    def _on_quota_toggled(self, _enabled):
+        self._refresh_quota_controls()
+        self._update_configuration_summary()
+
+    def _refresh_commerce_controls(self):
+        commerce_enabled = self._commerce_enabled.isChecked()
+        if not commerce_enabled:
+            self._seller_enabled.blockSignals(True)
+            try:
+                self._seller_enabled.setChecked(False)
+            finally:
+                self._seller_enabled.blockSignals(False)
+        self._seller_enabled.setEnabled(commerce_enabled)
+        self._shop_authorized_roots.setEnabled(commerce_enabled)
+        self._seller_helper.setText(
+            tr("sharing.seller.available")
+            if commerce_enabled else tr("sharing.seller.requires_commerce")
+        )
+
+    def _refresh_quota_controls(self):
+        enabled = self._quota_enabled.isChecked()
+        self._quota_period.setEnabled(enabled)
+        self._quota_limit.setEnabled(enabled)
+        self._quota_min_interval.setEnabled(enabled)
+
     @staticmethod
     def _lines(widget):
         return [line.strip() for line in widget.toPlainText().splitlines() if line.strip()]
+
+    @staticmethod
+    def _bounded_int(value, default: int, minimum: int, maximum: int) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            parsed = default
+        return max(minimum, min(parsed, maximum))
 
     def _configuration_values(self):
         return {
@@ -903,6 +1058,15 @@ class SharingSettingsDialog(TabbedDialog):
             "lan_port": self._port_spin.value(),
             "lan_bind": "0.0.0.0" if self._bind_combo.currentIndex() == 0 else "127.0.0.1",
             "lan_auto_start": self._auto_start.isChecked(),
+            "lan_commerce_enabled": self._commerce_enabled.isChecked(),
+            "lan_seller_enabled": (
+                self._commerce_enabled.isChecked() and self._seller_enabled.isChecked()
+            ),
+            "lan_shop_authorized_roots": self._lines(self._shop_authorized_roots),
+            "lan_quota_enabled": self._quota_enabled.isChecked(),
+            "lan_quota_period": self._quota_period.currentData() or "daily",
+            "lan_quota_limit": self._quota_limit.value(),
+            "lan_quota_min_interval_seconds": self._quota_min_interval.value(),
             "lan_auth_mode": self._auth_mode(),
             # Existing password remains unchanged unless the user explicitly enters one.
             "lan_password": self._pw_edit.text() if self._pw_edit.text() else None,
@@ -937,14 +1101,26 @@ class SharingSettingsDialog(TabbedDialog):
         if getattr(self, "_loading_settings", False) or not hasattr(self, "_configuration_snapshot"):
             return
         changes = self._configuration_changes()
-        live_count = len(changes & HOT_SHARING_SETTINGS.keys())
+        live_keys = set(HOT_SHARING_SETTINGS) | _DIALOG_LIVE_SETTINGS
+        live_count = len(changes & live_keys)
         restart_count = len(changes & RESTART_SHARING_SETTINGS)
-        saved_count = len(changes - HOT_SHARING_SETTINGS.keys() - RESTART_SHARING_SETTINGS)
+        planned_count = len(changes & _PLANNED_ONLY_SETTINGS)
+        saved_count = len(
+            changes - live_keys - RESTART_SHARING_SETTINGS - _PLANNED_ONLY_SETTINGS
+        )
         if not changes:
             text = tr("sharing.configuration.no_unsaved_changes")
         else:
             text = tr("sharing.configuration.change_summary").format(
                 live=live_count, restart=restart_count, saved=saved_count)
+            if planned_count:
+                text = "{} · {}".format(
+                    text,
+                    _msg(
+                        "sharing.configuration.planned_note",
+                        "{count} planned — not yet active",
+                    ).format(count=planned_count),
+                )
         self._configuration_summary_label.setText(text)
         self._configuration_discard_btn.setEnabled(bool(changes))
         self._configuration_apply_btn.setEnabled(bool(changes))
@@ -965,13 +1141,18 @@ class SharingSettingsDialog(TabbedDialog):
     def _apply_configuration_changes(self, force=False):
         if not force and not self._configuration_changes():
             return
-        self._save_settings()
+        if self._save_settings() is False:
+            _log.error("Sharing settings were not persisted; keeping the dialog dirty")
+            Toast.instance(self, tr("sharing.toast.error"), level="error")
+            return False
         self._sync_configuration_snapshot()
         self.settings_changed.emit()
         self._update_configuration_summary()
+        return True
 
     def _accept_configuration_changes(self):
-        self._apply_configuration_changes(force=True)
+        if self._apply_configuration_changes(force=True) is False:
+            return
         self.accept()
 
     # ══════════════════════════════════════════════════════════
@@ -985,16 +1166,16 @@ class SharingSettingsDialog(TabbedDialog):
         self._refresh_semantic_button_icons()
 
     def _update_status(self):
-        t = _t()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         tunnel_running = bool(self._server and hasattr(self._server, "is_tunnel_running") and self._server.is_tunnel_running())
         state = _endpoint_state(self._server_status, tunnel_running)
         action = _endpoint_primary_action(state)
         details = {
-            "off": (tr("sharing.status_off"), t["muted"], tr("sharing.btn_start_sharing")),
-            "starting": (tr("sharing.btn_connecting"), t["accent"], tr("sharing.btn_connecting")),
-            "local": (tr("sharing.status_active"), t["success"], tr("sharing.btn_stop_sharing")),
-            "public": (tr("sharing.status_active"), t["success"], tr("sharing.btn_stop_tunnel")),
-            "failed": (tr("sharing.endpoint.failed"), t["danger"], tr("sharing.endpoint.try_again")),
+            "off": (tr("sharing.status_off"), sk.token("muted"), tr("sharing.btn_start_sharing")),
+            "starting": (tr("sharing.btn_connecting"), sk.token("accent"), tr("sharing.btn_connecting")),
+            "local": (tr("sharing.status_active"), sk.state_color("success"), tr("sharing.btn_stop_sharing")),
+            "public": (tr("sharing.status_active"), sk.state_color("success"), tr("sharing.btn_stop_tunnel")),
+            "failed": (tr("sharing.endpoint.failed"), sk.state_color("error"), tr("sharing.endpoint.try_again")),
         }
         label, color, action_label = details[state]
         action_icon = {
@@ -1005,7 +1186,7 @@ class SharingSettingsDialog(TabbedDialog):
             "failed": "refresh",
         }[state]
         self._status_icon.setStyleSheet(
-            f"background: {color}; border-radius: {scaled_px(6)}px; border: none;")
+            f"background: {color}; border-radius: {sk.px(6)}px; border: none;")
         self._status_label.setText(label)
         self._toggle_btn.setText(action_label)
         self._set_action_icon(self._toggle_btn, action_icon)
@@ -1022,14 +1203,14 @@ class SharingSettingsDialog(TabbedDialog):
         self._qr_btn.setVisible(bool(url))
         self._ip_info_value.setText(self._server_status.get("ip", "—") if local_url else "—")
         self._port_info_value.setText(str(self._server_status.get("port", "—")) if local_url else "—")
-        self._online_info_value.setText(str(self._server_status.get("connections", 0)))
-        self._traffic_info_value.setText(self._format_bytes(self._server_status.get("bytes_transferred", 0)))
+        self._online_info_value.setText(str(self._server_status.get("connections") or 0))
+        self._traffic_info_value.setText(self._format_bytes(self._server_status.get("bytes_transferred")))
         self._exposure_label.setVisible(state == "public")
         if state == "public":
             self._exposure_label.setText(tr("sharing.endpoint.internet_access"))
             self._exposure_label.setStyleSheet(
-                f"color: {t['heading']}; background: {t['warning']}; border-radius: {scaled_px(3)}px; "
-                f"padding: {scaled_px(3)}px {scaled_px(6)}px;")
+                f"color: {sk.token('heading')}; background: {sk.token('warning')}; "
+                f"border-radius: {sk.px(3)}px; padding: {sk.px(3)}px {sk.px(6)}px;")
 
     def _on_primary_endpoint_action(self):
         """Keep local server and public-tunnel scopes distinct on the Endpoint page."""
@@ -1084,10 +1265,10 @@ class SharingSettingsDialog(TabbedDialog):
         self._poll_task = task
 
     def _on_poll_result(self, success, data):
-        if not success or data is None:
+        if self._closed or not success or data is None:
             return
-        connections = data.get("connections", 0)
-        bytes_transferred = data.get("bytes_transferred", 0)
+        connections = data.get("connections") or 0
+        bytes_transferred = data.get("bytes_transferred") or 0
         self._online_info_value.setText(str(connections))
         self._traffic_info_value.setText(self._format_bytes(bytes_transferred))
 
@@ -1096,8 +1277,8 @@ class SharingSettingsDialog(TabbedDialog):
         if self._poll_counter % 3 == 0:  # Every 6 seconds (3 * 2s interval)
             self._refresh_all_tabs()
 
-    def _format_bytes(self, size: int | float) -> str:
-        if size == 0:
+    def _format_bytes(self, size: int | float | None) -> str:
+        if not size:
             return "0 B"
         units = ["B", "KB", "MB", "GB", "TB"]
         value = float(size)
@@ -1108,9 +1289,33 @@ class SharingSettingsDialog(TabbedDialog):
         return f"{value:.1f} {units[i]}"
 
     def _on_toggle_server(self):
+        starting = self._server is None or not self._server.is_running()
+        # The dirty check only applies once the configuration page exists; a
+        # partially constructed dialog has no unapplied changes to confirm.
+        has_config_state = (
+            hasattr(self, "_configuration_snapshot") and hasattr(self, "_name_edit")
+        )
+        if starting and has_config_state and self._configuration_changes():
+            reply = QMessageBox.question(
+                self,
+                _msg("sharing.configuration.unapplied_title", "Unapplied settings"),
+                _msg(
+                    "sharing.configuration.unapplied_start_message",
+                    "The server will start with the current form values; "
+                    "unapplied changes will be saved automatically. Continue?",
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
         self._toggle_btn.setEnabled(False)
         self._toggle_btn.setText(tr("sharing.btn_connecting"))
-        self._save_settings()
+        if self._save_settings() is False:
+            _log.error("Sharing settings were not persisted; refusing to change server state")
+            self._update_status()
+            Toast.instance(self, tr("sharing.toast.error"), level="error")
+            return
         self._sync_configuration_snapshot()
         self._update_configuration_summary()
 
@@ -1143,10 +1348,62 @@ class SharingSettingsDialog(TabbedDialog):
                     self._status_timer.stop()
                     self._toggle_btn.setEnabled(True)
                 else:
-                    self._server.start()
+                    from AssetsManager.application.security_preflight import (
+                        security_preflight_from_settings,
+                    )
+
+                    preflight = security_preflight_from_settings(self._settings)
+                    bind = self._settings.get("lan_bind", "0.0.0.0")
+                    auth_status = (False, "none")
+                    auth_reader = getattr(self._server, "auth_status", None)
+                    if callable(auth_reader):
+                        try:
+                            auth_status = auth_reader()
+                        except Exception:
+                            _log.exception("Unable to inspect LAN auth before standalone start")
+                    security_snapshot = preflight.snapshot(
+                        sharing=True,
+                        bind=bind,
+                        auth_status=auth_status,
+                    )
+                    if security_snapshot.share_state != "local_active":
+                        if not confirm_security_preflight(
+                            self,
+                            settings=self._settings,
+                            preflight=preflight,
+                            snapshot=security_snapshot,
+                            bind=bind,
+                            auth_status=auth_status,
+                        ):
+                            self._server_status = self._server.status()
+                            self._update_status()
+                            self._toggle_btn.setEnabled(True)
+                            return
+                        security_snapshot = preflight.snapshot(
+                            sharing=True,
+                            bind=bind,
+                            auth_status=auth_status,
+                        )
+                        if security_snapshot.share_state != "local_active":
+                            self._server_status = self._server.status()
+                            self._update_status()
+                            self._toggle_btn.setEnabled(True)
+                            return
+                    start_result = self._server.start(
+                        port=self._settings.get("lan_port", 8080),
+                        bind=bind,
+                        preflight=preflight,
+                    )
                     self._server_status = self._server.status()
                     self._update_status()
                     self._toggle_btn.setEnabled(True)
+                    if (
+                        isinstance(start_result, dict)
+                        and start_result.get("share_state") != "local_active"
+                    ) or not self._server.is_running():
+                        Toast.instance(self, tr("sharing.toast.error"), level="error")
+                        self._status_timer.stop()
+                        return
                     Toast.instance(self, tr("sharing.toast.server_started"), level="success")
                     self._status_timer.start()
                     self._refresh_all_tabs()
@@ -1209,7 +1466,7 @@ class SharingSettingsDialog(TabbedDialog):
         self._links_load_task = task
 
     def _on_shares_loaded(self, success, data):
-        if success and data:
+        if success and isinstance(data, dict):
             self._shares = data.get("shares", [])
             self._populate_links_table()
             if self._shares:
@@ -1222,7 +1479,7 @@ class SharingSettingsDialog(TabbedDialog):
     def _populate_links_table(self):
         filtered = self._get_filtered_shares()
         self._links_table.setRowCount(len(filtered))
-        t = _t()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
 
         for i, share in enumerate(filtered):
             name = share.get("name", share.get("paths", ["—"])[0] if share.get("paths") else "—")
@@ -1255,9 +1512,10 @@ class SharingSettingsDialog(TabbedDialog):
             copy_btn.setFixedHeight(scaled_px(24))
             copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             copy_btn.setStyleSheet(
-                f"QPushButton {{ background: {t['accent']}; color: {t['on_accent']}; "
-                f"border: none; border-radius: {scaled_px(3)}px; font-size: {scaled_pt(10)}px; padding: 2px 8px; }}"
-                f"QPushButton:hover {{ background: {t['accent']}dd; }}")
+                f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('on_accent')}; "
+                f"border: none; border-radius: {sk.px(3)}px; font-size: {sk.pt(10)}px; "
+                f"padding: {sk.px(2)}px {sk.px(8)}px; }}"
+                f"QPushButton:hover {{ background: {sk.token('accent')}dd; }}")
             copy_btn.clicked.connect(lambda checked, idx=i: self._copy_table_share_link(idx))
             actions_layout.addWidget(copy_btn)
 
@@ -1265,9 +1523,10 @@ class SharingSettingsDialog(TabbedDialog):
             delete_btn.setFixedHeight(scaled_px(24))
             delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             delete_btn.setStyleSheet(
-                f"QPushButton {{ background: {t['danger']}; color: {t['on_accent']}; "
-                f"border: none; border-radius: {scaled_px(3)}px; font-size: {scaled_pt(10)}px; padding: 2px 8px; }}"
-                f"QPushButton:hover {{ background: {t['danger']}dd; }}")
+                f"QPushButton {{ background: {sk.token('danger')}; color: {sk.token('on_accent')}; "
+                f"border: none; border-radius: {sk.px(3)}px; font-size: {sk.pt(10)}px; "
+                f"padding: {sk.px(2)}px {sk.px(8)}px; }}"
+                f"QPushButton:hover {{ background: {sk.token('danger')}dd; }}")
             delete_btn.clicked.connect(lambda checked, idx=i: self._delete_share_link(idx))
             actions_layout.addWidget(delete_btn)
 
@@ -1607,14 +1866,14 @@ class SharingSettingsDialog(TabbedDialog):
     def _toggle_tunnel(self):
         if not self._server:
             return
-        t = _t()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         if self._server.is_tunnel_running():
             self._server.stop_tunnel()
             self._tunnel_btn.setText(tr("sharing.btn_start_tunnel"))
             self._set_action_icon(self._tunnel_btn, "share")
             self._tunnel_btn.setStyleSheet(self.primary_btn_style())
             self._tunnel_status.setText(tr("sharing.tunnel_not_connected"))
-            self._tunnel_status.setStyleSheet(f"font-size: {scaled_pt(12)}px; color: {t['muted']};")
+            self._tunnel_status.setStyleSheet(sk.muted_css(12))
             self._tunnel_url_label.setVisible(False)
             self._tunnel_copy_btn.setVisible(False)
             self._tunnel_open_btn.setVisible(False)
@@ -1625,7 +1884,7 @@ class SharingSettingsDialog(TabbedDialog):
             self._tunnel_btn.setText(tr("sharing.btn_connecting"))
             self._set_action_icon(self._tunnel_btn, "refresh")
             self._tunnel_status.setText(tr("sharing.tunnel_starting"))
-            self._tunnel_status.setStyleSheet(f"font-size: {scaled_pt(12)}px; color: {t['muted']};")
+            self._tunnel_status.setStyleSheet(sk.muted_css(12))
 
             from PySide6.QtCore import QThread, Signal as QSignal
 
@@ -1636,16 +1895,35 @@ class SharingSettingsDialog(TabbedDialog):
                 def __init__(self, server):
                     super().__init__()
                     self._server = server
+                    self._cancelled = False
+
+                def cancel(self):
+                    self._cancelled = True
+                    self.requestInterruption()
 
                 def run(self):
                     # Ensure cloudflared is available (download if needed)
                     from AssetsManager.lan.tunnel import ensure_available, is_available
+                    if self._cancelled:
+                        return
                     if not is_available():
                         self.status.emit(tr("sharing.tunnel_downloading"))
                         if not ensure_available():
                             self.finished.emit("")
                             return
+                    if self._cancelled:
+                        self.finished.emit("")
+                        return
                     url = self._server.start_tunnel(timeout=30)
+                    if self._cancelled:
+                        # The dialog is gone; undo a tunnel that slipped through
+                        # between the cancel request and start_tunnel returning.
+                        if url:
+                            try:
+                                self._server.stop_tunnel()
+                            except Exception:
+                                _log.exception("Failed to roll back tunnel started during dismissal")
+                            url = ""
                     self.finished.emit(url or "")
 
             self._tunnel_worker = TunnelWorker(self._server)
@@ -1653,11 +1931,39 @@ class SharingSettingsDialog(TabbedDialog):
             self._tunnel_worker.finished.connect(self._on_tunnel_result)
             self._tunnel_worker.start()
 
+    def _cancel_tunnel_worker(self):
+        """Abort a pending tunnel start when the dialog is dismissed.
+
+        The worker thread may be parked inside start_tunnel(timeout=30), so
+        besides requesting interruption we kill any cloudflared subprocess to
+        guarantee the tunnel cannot be established after the dialog is gone.
+        """
+        worker = getattr(self, "_tunnel_worker", None)
+        if worker is None:
+            return
+        worker.cancel()
+        if worker.isRunning():
+            server = self._server
+            if server is not None:
+                try:
+                    server.stop_tunnel()
+                except Exception:
+                    _log.exception("Failed to abort pending tunnel start")
+            if not worker.wait(2000):
+                # Thread is still parked in the tunnel wait; keep the reference
+                # attached so the QThread is not destroyed while still running.
+                self._tunnel_worker = worker
+                return
+        self._tunnel_worker = None
+
     def _on_tunnel_result(self, public_url: str):
-        t = _t()
+        if self._closed:
+            return
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         if public_url:
             self._tunnel_status.setText(tr("sharing.tunnel_connected"))
-            self._tunnel_status.setStyleSheet(f"font-size: {scaled_pt(12)}px; color: {t['success']};")
+            self._tunnel_status.setStyleSheet(
+                f"color: {sk.state_color('success')}; font-size: {sk.pt(12)}px;")
             self._tunnel_url_label.setText(public_url)
             self._tunnel_url_label.setVisible(True)
             self._tunnel_btn.setText(tr("sharing.btn_stop_tunnel"))
@@ -1669,19 +1975,48 @@ class SharingSettingsDialog(TabbedDialog):
             self._update_status()
             self._data_changed.emit()
         else:
-            self._tunnel_status.setText(tr("sharing.tunnel_failed"))
-            self._tunnel_status.setStyleSheet(f"font-size: {scaled_pt(12)}px; color: {t['danger']};")
+            message = self._tunnel_failure_message()
+            self._tunnel_status.setText(message)
+            self._tunnel_status.setStyleSheet(
+                f"color: {sk.state_color('error')}; font-size: {sk.pt(12)}px;")
             self._tunnel_btn.setText(tr("sharing.btn_start_tunnel"))
             self._set_action_icon(self._tunnel_btn, "share")
             self._tunnel_btn.setStyleSheet(self.primary_btn_style())
             self._tunnel_btn.setEnabled(True)
             self._update_status()
-            Toast.instance(self, tr("sharing.toast.error"), level="error")
+            Toast.instance(self, message, level="error")
+
+    def _tunnel_failure_message(self) -> str:
+        """Map the server's tunnel block reason to a user-facing message."""
+        server = self._server
+        block_reason = ""
+        if server is not None:
+            block_reason = getattr(server, "tunnel_start_block_reason", None) or ""
+        if block_reason == "authentication_required":
+            return _msg(
+                "sharing.tunnel.auth_required",
+                "Public tunnel requires password authentication. "
+                "Enable Password in the Protection settings first.",
+            )
+        return tr("sharing.tunnel_failed")
 
     # ── Auth ──────────────────────────────────────────────────
 
     def _on_auth_changed(self, _index):
         self._pw_widget.setVisible(self._auth_mode() == "password")
+
+    def _clear_auth_error(self, *_args):
+        if hasattr(self, "_auth_error_label"):
+            self._auth_error_label.setVisible(False)
+
+    def _show_password_required_error(self):
+        message = _msg(
+            "sharing.configuration.password_required",
+            "Password protection requires a password. Enter one to enable it.",
+        )
+        self._auth_error_label.setText(message)
+        self._auth_error_label.setVisible(True)
+        Toast.instance(self, message, level="error")
 
     def _auth_mode(self):
         return self._auth_combo.currentData()
@@ -1709,6 +2044,31 @@ class SharingSettingsDialog(TabbedDialog):
         bind = s.get("lan_bind", "0.0.0.0")
         self._bind_combo.setCurrentIndex(0 if bind == "0.0.0.0" else 1)
         self._auto_start.setChecked(s.get("lan_auto_start", False))
+        self._commerce_enabled.setChecked(s.get("lan_commerce_enabled", False))
+        self._seller_enabled.setChecked(s.get("lan_seller_enabled", False))
+        raw_authorized_roots = s.get("lan_shop_authorized_roots", [])
+        if isinstance(raw_authorized_roots, str):
+            authorized_roots = [
+                value.strip()
+                for value in raw_authorized_roots.replace(";", "\n").splitlines()
+                if value.strip()
+            ]
+        elif isinstance(raw_authorized_roots, (list, tuple)):
+            authorized_roots = [str(value).strip() for value in raw_authorized_roots if str(value).strip()]
+        else:
+            authorized_roots = []
+        self._shop_authorized_roots.setPlainText("\n".join(authorized_roots))
+        self._quota_enabled.setChecked(bool(s.get("lan_quota_enabled", False)))
+        quota_period = str(s.get("lan_quota_period", "daily")).lower()
+        self._quota_period.setCurrentIndex(1 if quota_period == "weekly" else 0)
+        self._quota_limit.setValue(
+            self._bounded_int(s.get("lan_quota_limit", 20), 20, 1, 1_000_000)
+        )
+        self._quota_min_interval.setValue(
+            self._bounded_int(s.get("lan_quota_min_interval_seconds", 5), 5, 0, 86_400)
+        )
+        self._refresh_quota_controls()
+        self._refresh_commerce_controls()
 
         auth = s.get("lan_auth_mode", "none")
         self._auth_combo.setCurrentIndex(1 if auth == "password" else 0)
@@ -1770,10 +2130,24 @@ class SharingSettingsDialog(TabbedDialog):
         s.set("lan_port", self._port_spin.value())
         s.set("lan_bind", "0.0.0.0" if self._bind_combo.currentIndex() == 0 else "127.0.0.1")
         s.set("lan_auto_start", self._auto_start.isChecked())
+        commerce_enabled = self._commerce_enabled.isChecked()
+        s.set("lan_commerce_enabled", commerce_enabled)
+        s.set("lan_seller_enabled", commerce_enabled and self._seller_enabled.isChecked())
+        s.set("lan_shop_authorized_roots", self._lines(self._shop_authorized_roots))
+        s.set("lan_quota_enabled", self._quota_enabled.isChecked())
+        s.set("lan_quota_period", self._quota_period.currentData() or "daily")
+        s.set("lan_quota_limit", self._quota_limit.value())
+        s.set("lan_quota_min_interval_seconds", self._quota_min_interval.value())
 
         auth_mode = self._auth_mode()
-        s.set("lan_auth_mode", auth_mode)
         pw = self._pw_edit.text() if auth_mode == "password" else None
+        if auth_mode == "password" and not pw and not self._has_existing_password:
+            # Refuse to persist an ambiguous "password mode without a password":
+            # the server would otherwise fall back to no auth or lock everyone
+            # out with no explanation.
+            self._show_password_required_error()
+            return False
+        s.set("lan_auth_mode", auth_mode)
         if pw:
             from AssetsManager.lan.auth import hash_password
             s.set("lan_password", hash_password(pw))
@@ -1814,8 +2188,20 @@ class SharingSettingsDialog(TabbedDialog):
         s.set("lan_guest_preview", self._guest_preview.isChecked())
         s.set("lan_guest_list", self._guest_list.isChecked())
 
-        s.save()
+        return s.save()
 
     def closeEvent(self, event):
-        self._status_timer.stop()
+        self._on_dialog_closed()
         super().closeEvent(event)
+
+    def _on_dialog_closed(self):
+        """Dismissal cleanup: stop polling and cancel in-flight background work.
+
+        Runs for OK/Cancel (via TabbedDialog.done()) and window-close alike;
+        safe to call multiple times.
+        """
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
+        self._status_timer.stop()
+        self._cancel_tunnel_worker()

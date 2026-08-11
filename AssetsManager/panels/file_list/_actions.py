@@ -25,6 +25,27 @@ class ActionsMixin:
         self._undo_svc = None
         self._background_ops: list[QObject] = []
 
+    @staticmethod
+    def _consume_refresh_warnings(service) -> tuple[object, ...]:
+        """Consume only the diagnostics belonging to the current Path command."""
+        operation_id = getattr(service, "last_operation_id", None)
+        drain = getattr(service, "drain_refresh_diagnostics", None)
+        if callable(drain):
+            try:
+                diagnostics = drain(operation_id)
+            except TypeError:
+                diagnostics = drain()
+            try:
+                diagnostics = tuple(diagnostics)
+            except TypeError:
+                diagnostics = ()
+            warnings = []
+            for diagnostic_id, diagnostic_warnings in diagnostics:
+                if operation_id is None or diagnostic_id == operation_id:
+                    warnings.extend(diagnostic_warnings)
+            return tuple(warnings)
+        return tuple(getattr(service, "last_refresh_warnings", ()))
+
     # ── Clicks ───────────────────────────────────────────────────
 
     def _on_click(self, idx):
@@ -177,13 +198,25 @@ class ActionsMixin:
 
         def _do_paste():
             with self._session_operation(session):
-                if is_cut:
-                    result = service.move_to_directory(sources, dest, library_root=lib_root)
-                    if result.ok:
-                        for source, destination in zip(sources, result.changed_paths):
+                try:
+                    if is_cut:
+                        result = service.move_to_directory(sources, dest, library_root=lib_root)
+                        pairs = tuple(getattr(result, "moved_pairs", ()) or ())
+                        if not pairs:
+                            pairs = tuple(
+                                zip(sources, getattr(result, "changed_paths", ()))
+                            ) if result.ok else ()
+                        for source, destination in pairs:
                             undo_service.record_rename(str(source), str(destination))
-                else:
-                    result = service.copy_to_directory(sources, dest)
+                    else:
+                        result = service.copy_to_directory(sources, dest)
+                except ValueError as error:
+                    # The service collects OSError failures into result.errors
+                    # but refuses out-of-library sources with ValueError, which
+                    # would otherwise die silently inside the worker thread.
+                    # Route the refusal through the normal feedback path.
+                    from AssetsManager.application.file_operation_service import FileOperationResult
+                    result = FileOperationResult((), (str(error),))
             result_holder.append(result)
 
         def _on_paste_done():
@@ -197,7 +230,14 @@ class ActionsMixin:
                     operation,
                     changed_count=len(getattr(result, "changed_paths", ())),
                     errors=tuple(getattr(result, "errors", ())),
+                    warnings=tuple(getattr(result, "warnings", ())),
                 )
+                if is_cut and not result.ok and not getattr(result, "changed_paths", ()):
+                    # The cut markers were cleared before the worker ran; a
+                    # wholly refused move (e.g. sources outside the library
+                    # root) must not silently lose them.
+                    self._clipboard_source = list(sources)
+                    self._clipboard_cut = True
             self._post_refresh()
             if result_holder and not result_holder[0].ok:
                 QMessageBox.warning(self, tr("filelist.dialog.paste_error"), "\n".join(result_holder[0].errors))
@@ -248,8 +288,15 @@ class ActionsMixin:
             self._show_operation_feedback(session, "rename", running=True)
             try:
                 new_path = self._rename_file_path(path, name.strip())
+                service = self._get_file_operation_service()
+                warnings = self._consume_refresh_warnings(service)
                 self._request_operation_selection(session, [new_path])
-                self._show_operation_feedback(session, "rename", changed_count=1)
+                self._show_operation_feedback(
+                    session,
+                    "rename",
+                    changed_count=1,
+                    warnings=warnings,
+                )
                 self._post_refresh()
             except OSError as e:
                 self._show_operation_feedback(session, "rename", errors=(str(e),))
@@ -311,7 +358,11 @@ class ActionsMixin:
                     candidates = self._deletion_selection_candidates(changed_paths)
                     self._request_operation_selection(session, candidates)
                 self._show_operation_feedback(
-                    session, "trash", changed_count=len(changed_paths), errors=errors,
+                    session,
+                    "trash",
+                    changed_count=len(changed_paths),
+                    errors=errors,
+                    warnings=tuple(getattr(result, "warnings", ())),
                 )
             self._post_refresh()
 
@@ -366,7 +417,11 @@ class ActionsMixin:
                     candidates = self._deletion_selection_candidates(changed_paths)
                     self._request_operation_selection(session, candidates)
                 self._show_operation_feedback(
-                    session, "permanent_delete", changed_count=len(changed_paths), errors=errors,
+                    session,
+                    "permanent_delete",
+                    changed_count=len(changed_paths),
+                    errors=errors,
+                    warnings=tuple(getattr(result, "warnings", ())),
                 )
             self._post_refresh()
 
@@ -380,9 +435,16 @@ class ActionsMixin:
             session = getattr(self._get_scoped_services(), "session", None)
             self._show_operation_feedback(session, "new_folder", running=True)
             try:
-                created = self._get_file_operation_service().create_folder(self._current, name.strip())
+                service = self._get_file_operation_service()
+                created = service.create_folder(self._current, name.strip())
+                warnings = self._consume_refresh_warnings(service)
                 self._request_operation_selection(session, [created])
-                self._show_operation_feedback(session, "new_folder", changed_count=1)
+                self._show_operation_feedback(
+                    session,
+                    "new_folder",
+                    changed_count=1,
+                    warnings=warnings,
+                )
                 self._post_refresh()
             except OSError as e:
                 self._show_operation_feedback(session, "new_folder", errors=(str(e),))
@@ -396,20 +458,27 @@ class ActionsMixin:
         paths = [str(Path(path).resolve()) for path in self._selected_paths()]
         results: list[Path] = []
         errors: list[str] = []
+        warnings: list = []
         self._show_operation_feedback(session, "duplicate", running=True)
         def _do_dup():
             with self._session_operation(session):
                 for p in paths:
                     try:
                         results.append(service.duplicate(p, copy_label=" - Copy"))
+                        warnings.extend(self._consume_refresh_warnings(service))
                     except OSError as error:
                         errors.append(str(error))
+                        warnings.extend(self._consume_refresh_warnings(service))
         def _on_duplicate_done():
             if not self._is_current_operation_session(session):
                 return
             self._request_operation_selection(session, results)
             self._show_operation_feedback(
-                session, "duplicate", changed_count=len(results), errors=tuple(errors),
+                session,
+                "duplicate",
+                changed_count=len(results),
+                errors=tuple(errors),
+                warnings=tuple(warnings),
             )
             self._post_refresh()
 
@@ -427,11 +496,13 @@ class ActionsMixin:
         entry = undo_service.peek_undo()
         target = self._history_selection_target(entry, undo=True)
         result_holder: list[bool] = []
+        warnings_holder: list = []
         self._show_operation_feedback(session, "undo", running=True)
 
         def _do_undo():
             with self._session_operation(session):
                 result_holder.append(undo_service.perform_undo(service, lib_root))
+                warnings_holder.extend(self._consume_refresh_warnings(service))
 
         def _on_undo_done():
             if not self._is_current_operation_session(session):
@@ -441,7 +512,10 @@ class ActionsMixin:
             self._show_operation_feedback(
                 session, "undo", changed_count=1 if result_holder == [True] else 0,
                 errors=() if result_holder == [True] else ("undo_failed",),
+                warnings=tuple(warnings_holder),
             )
+            if result_holder != [True]:
+                self._offer_skip_poisoned_entry(undo=True)
             self._post_refresh()
 
         self._run_in_background(_do_undo, on_done=_on_undo_done)
@@ -461,11 +535,13 @@ class ActionsMixin:
             else ()
         )
         result_holder: list[bool] = []
+        warnings_holder: list = []
         self._show_operation_feedback(session, "redo", running=True)
 
         def _do_redo():
             with self._session_operation(session):
                 result_holder.append(undo_service.perform_redo(service, lib_root))
+                warnings_holder.extend(self._consume_refresh_warnings(service))
 
         def _on_redo_done():
             if not self._is_current_operation_session(session):
@@ -478,7 +554,10 @@ class ActionsMixin:
             self._show_operation_feedback(
                 session, "redo", changed_count=1 if result_holder == [True] else 0,
                 errors=() if result_holder == [True] else ("redo_failed",),
+                warnings=tuple(warnings_holder),
             )
+            if result_holder != [True]:
+                self._offer_skip_poisoned_entry(undo=False)
             self._post_refresh()
 
         self._run_in_background(_do_redo, on_done=_on_redo_done)
@@ -491,6 +570,30 @@ class ActionsMixin:
         if getattr(entry, "type", None) == "delete" and undo:
             return entry.path
         return None
+
+    def _offer_skip_poisoned_entry(self, *, undo: bool):
+        """Ask whether to drop a history entry whose execution keeps failing.
+
+        A blocked entry would otherwise remain at the top of the stack and
+        prevent every later undo/redo (LIFO), so the user gets an explicit
+        skip option instead of a permanently poisoned history.
+        """
+        svc = self._undo_svc
+        if svc is None:
+            return
+        method = "skip_poisoned_undo" if undo else "skip_poisoned_redo"
+        skip = getattr(svc, method, None)
+        if not callable(skip):
+            return
+        if QMessageBox.question(
+            self,
+            "Undo Failed",
+            "The previous operation could not be completed.\n\n"
+            "Skip this history entry? Skipping discards it permanently.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) == QMessageBox.StandardButton.Yes:
+            skip()
 
     # ── Selection helpers ────────────────────────────────────────
 
@@ -538,20 +641,46 @@ class ActionsMixin:
         dialog = BatchRenameDialog(paths, self)
         if dialog.exec() != dialog.DialogCode.Accepted or dialog.plan is None:
             return
-        session = getattr(self._get_scoped_services(), "session", None)
+        mutation = self._capture_mutation_context()
+        if mutation is None:
+            return
+        session, service, undo_service, lib_root = mutation
         renamed = []
         errors = []
+        warnings = []
         self._show_operation_feedback(session, "batch_rename", running=True)
-        for entry in dialog.plan.changed_entries:
-            try:
-                renamed.append(self._rename_absolute(str(entry.source), str(entry.target)))
-            except OSError as error:
-                errors.append(str(error))
-        self._request_operation_selection(session, renamed)
-        self._show_operation_feedback(
-            session, "batch_rename", changed_count=len(renamed), errors=tuple(errors),
-        )
-        self._post_refresh()
+
+        def _do_batch_rename():
+            with self._session_operation(session):
+                for entry in dialog.plan.changed_entries:
+                    old = str(Path(entry.source).resolve())
+                    new = str(Path(entry.target).resolve())
+                    if old == new:
+                        renamed.append(new)
+                        continue
+                    try:
+                        service.move(old, new, library_root=lib_root or None)
+                        undo_service.record_rename(old, new)
+                        renamed.append(new)
+                        warnings.extend(self._consume_refresh_warnings(service))
+                    except (OSError, ValueError) as error:
+                        errors.append(str(error))
+                        warnings.extend(self._consume_refresh_warnings(service))
+
+        def _on_batch_rename_done():
+            if not self._is_current_operation_session(session):
+                return
+            self._request_operation_selection(session, renamed)
+            self._show_operation_feedback(
+                session,
+                "batch_rename",
+                changed_count=len(renamed),
+                errors=tuple(errors),
+                warnings=tuple(warnings),
+            )
+            self._post_refresh()
+
+        self._run_in_background(_do_batch_rename, on_done=_on_batch_rename_done)
 
     # ── Tag dialogs ──────────────────────────────────────────────
 

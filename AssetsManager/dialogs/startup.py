@@ -22,6 +22,7 @@ from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core import icons
 from AssetsManager.widgets.elevation import apply_elevation, refresh_elevation
+from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager import i18n
 tr = i18n.tr
 
@@ -112,10 +113,9 @@ class _DetailPanel(QFrame):
         self._remove_cb = None
 
     def _refresh_button_icons(self):
-        t = themes.get()
         icon_size = QSize(scaled_px(15), scaled_px(15))
-        self._open_btn.setIcon(icons.icon("folder", color=t["on_accent"], size=scaled_px(15)))
-        self._remove_btn.setIcon(icons.icon("close", color=t["muted"], size=scaled_px(15)))
+        self._open_btn.setIcon(icons.icon("folder", color="icon_on_accent", size=scaled_px(15)))
+        self._remove_btn.setIcon(icons.icon("close", color="icon_muted", size=scaled_px(15)))
         self._open_btn.setIconSize(icon_size)
         self._remove_btn.setIconSize(icon_size)
         self._open_btn.setAccessibleName(tr("startup.open_btn"))
@@ -352,6 +352,7 @@ class StartupWindow(QMainWindow):
 
     def _setup_ui(self):
         t = themes.get()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
 
         # ── Menu bar ──────────────────────────────────────────
         self._menu_bar = QMenuBar()
@@ -370,7 +371,7 @@ class StartupWindow(QMainWindow):
 
         # ── Central widget ────────────────────────────────────
         self._central = QWidget()
-        self._central.setStyleSheet(f"background: {t['base']};")
+        self._central.setStyleSheet(f"background: {sk.token('base')};")
         self.setCentralWidget(self._central)
         root = QVBoxLayout(self._central)
         root.setContentsMargins(0, 0, 0, 0)
@@ -465,7 +466,7 @@ class StartupWindow(QMainWindow):
             f"  padding: 6px 14px; font-size: {scaled_pt(12)}px; "
             f"}}"
             f"QPushButton:hover {{ background: {alpha(t['border'], 0.188)}; }}")
-        self._browse_btn.setIcon(icons.icon("folder", color=t["body"], size=scaled_px(15)))
+        self._browse_btn.setIcon(icons.icon("folder", color="icon_secondary", size=scaled_px(15)))
         self._browse_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         self._browse_btn.setAccessibleName(tr("startup.browse_btn"))
         self._browse_btn.setToolTip(tr("startup.browse_btn"))
@@ -494,8 +495,7 @@ class StartupWindow(QMainWindow):
         self._detail._remove_btn.setText(tr("startup.remove_btn"))
         self._browse_btn.setText(tr("startup.browse_btn"))
         self._detail._refresh_button_icons()
-        t = themes.get()
-        self._browse_btn.setIcon(icons.icon("folder", color=t["body"], size=scaled_px(15)))
+        self._browse_btn.setIcon(icons.icon("folder", color="icon_secondary", size=scaled_px(15)))
         self._browse_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         self._browse_btn.setAccessibleName(tr("startup.browse_btn"))
         self._browse_btn.setToolTip(tr("startup.browse_btn"))
@@ -525,7 +525,9 @@ class StartupWindow(QMainWindow):
     # ── Data ───────────────────────────────────────────────────
 
     def _populate(self):
-        paths = self._settings.get_list("recent_libraries", [])
+        # Drop non-string entries: Path(p) raises TypeError on them and
+        # would otherwise crash the whole startup window.
+        paths = [p for p in self._settings.get_list("recent_libraries", []) if isinstance(p, str)]
         valid = [p for p in paths if Path(p).exists()]
         missing = [p for p in paths if p not in valid]
         recent = valid + missing
@@ -567,8 +569,14 @@ class StartupWindow(QMainWindow):
             self._card_layout.insertWidget(len(self._cards), indicator)
 
         if self._cards:
-            first_path = self._cards[0]._path
-            self._on_card_clicked(first_path)
+            # Preserve the previous selection across repopulation (e.g. a
+            # language refresh); fall back to the first card.
+            selected = self._selected_path
+            target = next(
+                (c for c in self._cards if c._path == selected),
+                self._cards[0],
+            )
+            self._on_card_clicked(target._path)
 
     def _on_card_clicked(self, path_str: str):
         self._selected_path = path_str
@@ -579,7 +587,7 @@ class StartupWindow(QMainWindow):
 
     def _accept(self, path_str: str = ""):
         p = path_str or self._selected_path
-        if p:
+        if p and Path(p).exists():
             self._save_recent(p)
             self.library_opened.emit(p)
             self.close()
@@ -610,7 +618,8 @@ class StartupWindow(QMainWindow):
         """Re-apply all theme-dependent styles on startup window."""
         themes.apply_to(self)
         t = themes.get()
-        self._central.setStyleSheet(f"background: {t['base']};")
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        self._central.setStyleSheet(f"background: {sk.token('base')};")
         self._apply_menu_theme()
 
         # Hero card
@@ -635,7 +644,7 @@ class StartupWindow(QMainWindow):
         self._detail.refresh_theme()
         refresh_elevation(self._detail, level=1)
         refresh_elevation(self._list_panel, level=1)
-        self._browse_btn.setIcon(icons.icon("folder", color=t["body"], size=scaled_px(15)))
+        self._browse_btn.setIcon(icons.icon("folder", color="icon_secondary", size=scaled_px(15)))
         self._browse_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
 
         # Hero text

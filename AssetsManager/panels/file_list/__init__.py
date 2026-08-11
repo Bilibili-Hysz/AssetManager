@@ -343,7 +343,7 @@ class QWidgetFileListPanel(FileListPanel):
                             tool.get("name", "Tool"),
                             lambda checked, t=tool, fp=p: run_tool(t, file_path=fp),
                         )
-                        action.setIcon(icons.icon(tool.get("icon_name") or tool.get("icon"), color=themes.get()["heading"], size=scaled_px(16), fallback="wrench"))
+                        action.setIcon(icons.icon(tool.get("icon_name") or tool.get("icon"), color="icon_primary", size=scaled_px(16), fallback="wrench"))
             self._add_command_group(menu, commands, context, "clipboard")
             self._add_command_group(menu, commands, context, "mutate")
             self._add_command_group(menu, commands, context, "history")
@@ -709,6 +709,10 @@ class QWidgetFileListPanel(FileListPanel):
         self._model._last_scan_reused = False
         if scan_reused:
             self._grid_widget.set_performance_generation(generation)
+            # The reused scan skips the model reset, so the grid may still show
+            # the 0-row layout left by an in-flight sort/filter reset. Repopulate
+            # it with the preserved (possibly re-sorted) entry count.
+            self._grid_widget.update_layout(self._model.rowCount(), self._grid_widget.width())
             if result_paths:
                 self._restore_operation_selection(result_paths)
             self._update_status()
@@ -932,8 +936,9 @@ class QWidgetFileListPanel(FileListPanel):
             self._zoom_anim = None
         self._zoom_generation = getattr(self, "_zoom_generation", 0) + 1
         generation = self._zoom_generation
-        if self._zoom_anim and self._zoom_anim.state() == QVariantAnimation.State.Running:
-            self._zoom_anim.stop()
+        anim = self._zoom_anim
+        if anim is not None and anim.state() == QVariantAnimation.State.Running:
+            anim.stop()
         start = self._thumb_size
         if start == target:
             # Rebase an interrupted transition before committing its current
@@ -950,16 +955,26 @@ class QWidgetFileListPanel(FileListPanel):
             self._on_zoom_done(generation, target)
             return
 
+        if anim is None:
+            # Reuse a single animation object so rapid zoom changes do not
+            # accumulate child QObject instances.
+            anim = QVariantAnimation(self)
+            anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+            anim.valueChanged.connect(self._on_zoom_frame)
+            anim.finished.connect(
+                lambda: self._on_zoom_done(
+                    getattr(self, "_zoom_generation", 0),
+                    getattr(self, "_zoom_anim_target", None),
+                )
+            )
+            self._zoom_anim = anim
+        self._zoom_anim_target = target
         distance = abs(target - start)
         duration = min(220, 150 + round(distance * 1.1))
-        self._zoom_anim = QVariantAnimation(self)
-        self._zoom_anim.setDuration(duration)
-        self._zoom_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._zoom_anim.setStartValue(start)
-        self._zoom_anim.setEndValue(target)
-        self._zoom_anim.valueChanged.connect(self._on_zoom_frame)
-        self._zoom_anim.finished.connect(lambda: self._on_zoom_done(generation, target))
-        self._zoom_anim.start()
+        anim.setDuration(duration)
+        anim.setStartValue(start)
+        anim.setEndValue(target)
+        anim.start()
 
     def _on_zoom_frame(self, size: int):
         if getattr(self._model, "_is_shutdown", False):
@@ -1007,21 +1022,27 @@ class QWidgetFileListPanel(FileListPanel):
     def _smooth_scroll(self, event):
         sb = self._grid_widget._scrollbar
         target = sb.value() - event.angleDelta().y()
-        if not hasattr(self, '_scroll_anim'):
-            self._scroll_anim = None
-        if self._scroll_anim and self._scroll_anim.state() == QVariantAnimation.State.Running:
-            target = self._scroll_anim.endValue() - event.angleDelta().y()
-            self._scroll_anim.stop()
+        anim = getattr(self, '_scroll_anim', None)
+        if anim is not None and anim.state() == QVariantAnimation.State.Running:
+            target = anim.endValue() - event.angleDelta().y()
+            anim.stop()
         generation = self._begin_smooth_scroll()
         self._grid_widget.set_scrolling()
-        self._scroll_anim = QVariantAnimation(self)
-        self._scroll_anim.setDuration(120)
-        self._scroll_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._scroll_anim.setStartValue(sb.value())
-        self._scroll_anim.setEndValue(target)
-        self._scroll_anim.valueChanged.connect(lambda v: self._set_scroll_animation_value(sb, v))
-        self._scroll_anim.finished.connect(lambda: self._finish_smooth_scroll(generation))
-        self._scroll_anim.start()
+        if anim is None:
+            # Reuse a single animation object instead of leaking one per wheel event.
+            anim = QVariantAnimation(self)
+            anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+            anim.valueChanged.connect(lambda v: self._set_scroll_animation_value(sb, v))
+            anim.finished.connect(self._on_smooth_scroll_finished)
+            self._scroll_anim = anim
+        self._scroll_anim_generation = generation
+        anim.setDuration(120)
+        anim.setStartValue(sb.value())
+        anim.setEndValue(target)
+        anim.start()
+
+    def _on_smooth_scroll_finished(self):
+        self._finish_smooth_scroll(getattr(self, "_scroll_anim_generation", 0))
 
     def _load_visible(self):
         if getattr(self._model, "_is_shutdown", False):

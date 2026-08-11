@@ -19,8 +19,10 @@ class GridLayout:
 
     def compute(self, item_count: int, widget_width: int, item_size: int = 96,
                 spacing: int = 12, item_hint: QSize | None = None):
-        next_item_w = item_hint.width() if item_hint is not None else item_size + spacing
-        next_item_h = item_hint.height() if item_hint is not None else item_size + spacing + 30
+        # B1: a caller-supplied item_hint of QSize(0, 0) (or any zero
+        # dimension) would divide by zero below when computing _cols.
+        next_item_w = max(1, item_hint.width() if item_hint is not None else item_size + spacing)
+        next_item_h = max(1, item_hint.height() if item_hint is not None else item_size + spacing + 30)
         if (item_count == self._item_count and widget_width == self._widget_width
                 and item_size == self._item_size and spacing == self._spacing
                 and next_item_w == self._item_w and next_item_h == self._item_h
@@ -62,6 +64,11 @@ class GridLayout:
     def row_at(self, x: int, y: int) -> int:
         if not self._rects or x < self._x0 or y < self._spacing:
             return -1
+        # B1: defense in depth — _item_w/_item_h are >= 1 after any compute()
+        # (see max(1, ...) above); guard anyway so the divisions below can
+        # never hit a zero dimension.
+        if self._item_w <= 0 or self._item_h <= 0:
+            return -1
         col = (x - self._x0) // self._item_w
         if col < 0 or col >= self._cols:
             return -1
@@ -72,7 +79,7 @@ class GridLayout:
         return idx if 0 <= idx < self._item_count else -1
 
     def visible_rows(self, scroll_y: int, viewport_h: int) -> list[int]:
-        if not self._rects:
+        if not self._rects or self._item_h <= 0:
             return []
         sy = max(0, scroll_y - self._spacing)
         first_grid_row = max(0, sy // self._item_h)

@@ -64,8 +64,8 @@ from AssetsManager import i18n
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
-from AssetsManager.core.settings import AppSettings
 from AssetsManager.core import icons
+from AssetsManager.widgets.stylekit import StyleKit
 
 tr = i18n.tr
 
@@ -118,11 +118,10 @@ class _CollapsibleSection(QWidget):
         self._apply_header_style()
 
     def _update_header_presentation(self):
-        t = themes.get()
         icon_name = "chevron_down" if self._expanded else "chevron_right"
         self._header.setText(self._title)
         self._header.setIcon(
-            icons.icon(icon_name, color=t["heading"], size=scaled_px(14)))
+            icons.icon(icon_name, color="icon_primary", size=scaled_px(14)))
         self._header.setIconSize(QSize(scaled_px(14), scaled_px(14)))
         self._header.setAccessibleName(self._title)
         self._header.setToolTip(self._title)
@@ -131,11 +130,14 @@ class _CollapsibleSection(QWidget):
         t = themes.get()
         bg = alpha(t["accent"], 0.19) if self._expanded else "transparent"
         hover_bg = alpha(t["accent"], 0.13)
+        focus_color = t.get("border_focus", t["accent"])
         self._header.setStyleSheet(
             f"QPushButton {{ text-align: left; font-weight: bold; font-size: {scaled_pt(12)}px; "
             f"color: {t['heading']}; background: {bg}; border: 1px solid {t['border']}40; "
-            f"border-radius: {scaled_px(4)}px; padding: 4px 8px; }}"
-            f"QPushButton:hover {{ background: {hover_bg}; }}")
+            f"border-radius: {scaled_px(4)}px; padding: {scaled_px(4)}px {scaled_px(8)}px; }}"
+            f"QPushButton:hover {{ background: {hover_bg}; }}"
+            f"QPushButton:focus {{ background: {hover_bg}; "
+            f"border: {scaled_px(1)}px solid {focus_color}; }}")
 
     def _on_toggle(self, checked):
         self._expanded = checked
@@ -157,6 +159,7 @@ class TabbedDialog(QDialog):
         self.setMinimumSize(*min_size)
         self.resize(*min_size)
         self._t = themes.get()
+        self._sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         self._bus_connected = False
         self._refresh_bus_connected = False
         self._heading_labels: list[QLabel] = []
@@ -187,13 +190,23 @@ class TabbedDialog(QDialog):
     def closeEvent(self, event):
         self._stop_dialog_fade()
         self._disconnect_bus()
+        self._on_dialog_closed()
         super().closeEvent(event)
 
     def done(self, result):
         # accept()/reject() hide modal dialogs without necessarily closing them.
         self._stop_dialog_fade()
         self._disconnect_bus()
+        self._on_dialog_closed()
         super().done(result)
+
+    def _on_dialog_closed(self):
+        """Dismissal hook invoked on every close path (window close and
+        accept()/reject()/done()). Subclasses stop timers, cancel background
+        workers, and detach callbacks here once the dialog is no longer
+        visible. Idempotence is the subclass's responsibility; no-op by
+        default.
+        """
 
     def _disconnect_bus(self):
         if not self._bus_connected:
@@ -211,13 +224,6 @@ class TabbedDialog(QDialog):
 
     # ── Theme ─────────────────────────────────────────────────
 
-    @staticmethod
-    def _reduce_motion() -> bool:
-        try:
-            return bool(AppSettings.instance().get("reduce_motion", False))
-        except Exception:
-            return False
-
     def _stop_dialog_fade(self):
         if self._dialog_fade_anim is not None:
             self._dialog_fade_anim.stop()
@@ -226,7 +232,7 @@ class TabbedDialog(QDialog):
 
     def _start_dialog_fade(self):
         self._stop_dialog_fade()
-        if self._reduce_motion():
+        if StyleKit.reduce_motion():
             return
         self.setWindowOpacity(0.0)
         animation = QPropertyAnimation(self, b"windowOpacity", self)
@@ -240,6 +246,7 @@ class TabbedDialog(QDialog):
 
     def _on_theme_changed(self, _name):
         self._t = themes.get()
+        self._sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         self.setStyleSheet(self._dialog_qss())
         if hasattr(self, '_tabs'):
             self._tabs.setStyleSheet(self._tab_qss())
@@ -298,99 +305,18 @@ class TabbedDialog(QDialog):
             button.setIconSize(QSize(scaled_px(15), scaled_px(15)))
 
     def _refresh_static_labels(self):
-        t = self._t
+        sk = self._sk
         for label in self._heading_labels:
-            label.setStyleSheet(
-                f"QLabel {{ color: {t['heading']}; font-weight: bold; background: transparent; }}")
+            label.setStyleSheet(sk.heading_css())
         for label in self._muted_labels:
-            label.setStyleSheet(
-                f"QLabel {{ color: {t['muted']}; font-size: {scaled_pt(11)}px; background: transparent; }}")
+            label.setStyleSheet(sk.muted_css())
 
     def _dialog_qss(self) -> str:
         """Single QSS string for the entire dialog. Cascades to all children."""
-        t = self._t
-        hover = alpha(t["hover_overlay"], t["properties"].get("opacity", {}).get("hover", 0.15))
-        return (
-            f"QDialog {{ background: {t['panel']}; color: {t['body']}; }}"
-            f"QScrollArea {{ border: none; background: {t['panel']}; }}"
-            f"QLabel {{ color: {t['body']}; background: transparent; }}"
-            f"QLineEdit, QTextEdit, QSpinBox {{ "
-            f"background: {t['input_bg']}; color: {t['input_text']}; "
-            f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; padding: 3px 6px; }}"
-            f"QComboBox {{ "
-            f"background: {t['input_bg']}; color: {t['input_text']}; "
-            f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; padding: 3px 6px; }}"
-            f"QComboBox::drop-down {{ border: none; }}"
-            f"QListWidget {{ background: {t['input_bg']}; color: {t['input_text']}; "
-            f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; "
-            f"padding: {scaled_px(2)}px; }}"
-            f"QListWidget::item {{ padding: {scaled_px(5)}px {scaled_px(6)}px; "
-            f"border-radius: {scaled_px(3)}px; }}"
-            f"QListWidget::item:hover {{ background: {hover}; }}"
-            f"QListWidget::item:selected {{ background: {alpha(t['accent'], 0.25)}; "
-            f"color: {t['heading']}; }}"
-            f"QProgressBar {{ background: {t['input_bg']}; color: {t['body']}; "
-            f"border: 1px solid {t['border']}; border-radius: {scaled_px(3)}px; "
-            f"text-align: center; }}"
-            f"QProgressBar::chunk {{ background: {t['accent']}; "
-            f"border-radius: {scaled_px(2)}px; }}"
-            f"QRadioButton, QCheckBox {{ color: {t['body']}; background: transparent; }}"
-            f"QRadioButton:checked {{ color: {t['accent']}; font-weight: bold; }}"
-            f"QRadioButton::indicator:checked {{ background: {t['accent']}; border: 2px solid {t['accent']}; "
-            f"border-radius: {scaled_px(7)}px; width: 14px; height: 14px; }}"
-            f"QGroupBox {{ color: {t['heading']}; border: 1px solid {t['border']}; "
-            f"border-radius: {scaled_px(6)}px; margin-top: 8px; padding-top: 12px; "
-            f"background: transparent; }}"
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 5px; }}"
-            f"QPushButton {{ background: {t['accent']}; color: {t['on_accent']}; "
-            f"border: none; border-radius: {scaled_px(4)}px; padding: 6px 16px; }}"
-            f"QPushButton:hover {{ background: {hover}; }}"
-            f"QPushButton:focus {{ border: 1px solid {t['border_focus']}; }}"
-            f"QPushButton[buttonVariant=\"primary\"] {{ "
-            f"background: {t['accent']}; color: {t['on_accent']}; }}"
-            f"QPushButton[buttonVariant=\"primary\"]:hover {{ "
-            f"background: {alpha(t['accent'], 0.85)}; }}"
-            f"QPushButton[buttonVariant=\"secondary\"] {{ "
-            f"background: {t['panel']}; color: {t['heading']}; "
-            f"border: 1px solid {t['border']}; }}"
-            f"QPushButton[buttonVariant=\"secondary\"]:hover {{ "
-            f"background: {hover}; }}"
-            f"QPushButton[buttonVariant=\"ghost\"] {{ "
-            f"background: transparent; color: {t['body']}; "
-            f"border: 1px solid transparent; }}"
-            f"QPushButton[buttonVariant=\"ghost\"]:hover {{ "
-            f"background: {hover}; color: {t['heading']}; }}"
-            f"QPushButton[buttonVariant=\"danger\"] {{ "
-            f"background: {t['danger']}; color: {t['on_accent']}; }}"
-            f"QPushButton[buttonVariant=\"danger\"]:hover {{ "
-            f"background: {alpha(t['danger'], 0.85)}; }}"
-            f"QScrollBar:vertical {{ background: {t['scrollbar_track']}; width: 8px; }}"
-            f"QScrollBar::handle:vertical {{ background: {t['scrollbar_thumb']}; "
-            f"border-radius: {scaled_px(4)}px; min-height: 20px; }}"
-            f"QPushButton[objectName^=\"__td_secondary_\"] {{ "
-            f"background: {t['panel']}; color: {t['heading']}; "
-            f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px; padding: 8px 16px; }}"
-            f"QPushButton[objectName^=\"__td_secondary_\"]:hover {{ "
-            f"background: {hover}; }}"
-            f"QPushButton[objectName^=\"__td_primary_\"] {{ "
-            f"background: {t['accent']}; color: {t['on_accent']}; "
-            f"border: none; border-radius: {scaled_px(6)}px; padding: 8px 16px; font-weight: bold; }}"
-            f"QPushButton[objectName^=\"__td_primary_\"]:hover {{ "
-            f"background: {alpha(t['accent'], 0.85)}; }}"
-        )
+        return self._sk.dialog_css()
 
     def _tab_qss(self) -> str:
-        t = self._t
-        return (
-            f"QTabWidget::pane {{ border: 1px solid {t['border']}; "
-            f"border-radius: {scaled_px(6)}px; background: {t['panel']}; }}"
-            f"QTabBar::tab {{ background: {t['base']}; color: {t['muted']}; "
-            f"border: 1px solid {t['border']}; padding: 8px 16px; margin-right: 2px; "
-            f"border-top-left-radius: {scaled_px(6)}px; border-top-right-radius: {scaled_px(6)}px; }}"
-            f"QTabBar::tab:selected {{ background: {t['panel']}; color: {t['heading']}; "
-            f"border-bottom-color: {t['panel']}; }}"
-            f"QTabBar::tab:hover:!selected {{ background: {alpha(t['hover_overlay'], 0.13)}; color: {t['body']}; }}"
-        )
+        return self._sk.tab_css()
 
     # ── Tabbed layout (used by subclasses with _setup_tabs) ───
 
@@ -413,6 +339,13 @@ class TabbedDialog(QDialog):
         self._button_box.rejected.connect(self.reject)
         for btn in self._button_box.buttons():
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        ok_btn = self._button_box.button(QDialogButtonBox.StandardButton.Ok)
+        cancel_btn = self._button_box.button(QDialogButtonBox.StandardButton.Cancel)
+        if ok_btn:
+            themes.set_button_variant(ok_btn, "primary")
+        themes.set_button_variant(self._apply_btn, "secondary")
+        if cancel_btn:
+            themes.set_button_variant(cancel_btn, "ghost")
         self._root_layout.addWidget(self._button_box)
 
         self._set_default_tab_order(self._button_box)
@@ -421,7 +354,16 @@ class TabbedDialog(QDialog):
         """Set tab order: tab widget → OK → Apply → Cancel."""
         ok_btn = btn_box.button(QDialogButtonBox.StandardButton.Ok)
         cancel_btn = btn_box.button(QDialogButtonBox.StandardButton.Cancel)
-        apply_btn = btn_box.button(QDialogButtonBox.StandardButton.Apply)
+        apply_btn = getattr(self, "_apply_btn", None)
+        if apply_btn is None or btn_box.buttonRole(apply_btn) != QDialogButtonBox.ButtonRole.ApplyRole:
+            apply_btn = next(
+                (
+                    button
+                    for button in btn_box.buttons()
+                    if btn_box.buttonRole(button) == QDialogButtonBox.ButtonRole.ApplyRole
+                ),
+                None,
+            )
         if ok_btn:
             self.setTabOrder(self._tabs, ok_btn)
         if apply_btn and ok_btn:
@@ -476,18 +418,13 @@ class TabbedDialog(QDialog):
 
     def make_heading(self, text):
         label = QLabel(text)
-        t = self._t
-        label.setStyleSheet(
-            f"QLabel {{ color: {t['heading']}; font-weight: bold; background: transparent; }}")
+        label.setStyleSheet(self._sk.heading_css())
         self._heading_labels.append(label)
         return label
 
     def make_muted(self, text):
         label = QLabel(text)
-        t = self._t
-        from AssetsManager.core.ui_scale import scaled_pt
-        label.setStyleSheet(
-            f"QLabel {{ color: {t['muted']}; font-size: {scaled_pt(11)}px; background: transparent; }}")
+        label.setStyleSheet(self._sk.muted_css())
         self._muted_labels.append(label)
         return label
 
@@ -543,8 +480,10 @@ class TabbedDialog(QDialog):
     @staticmethod
     def make_gear_btn(callback) -> QPushButton:
         t = themes.get()
+        hover_bg = alpha(t["accent"], 0.13)
+        focus_color = t.get("border_focus", t["accent"])
         btn = QPushButton()
-        btn.setIcon(icons.icon("settings", color=t['heading'], size=scaled_px(16)))
+        btn.setIcon(icons.icon("settings", color="icon_primary", size=scaled_px(16)))
         btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         btn.setToolTip(tr("panel.settings"))
         btn.setAccessibleName(tr("panel.settings"))
@@ -552,8 +491,12 @@ class TabbedDialog(QDialog):
         btn.setFlat(True)
         themes.set_button_variant(btn, "ghost")
         btn.setStyleSheet(
-            f"color: {t['heading']}; padding: 0; background: transparent; "
-            f"border: none; border-radius: {scaled_px(3)}px;")
+            f"QPushButton {{ color: {t['heading']}; padding: 0; background: transparent; "
+            f"border: {scaled_px(1)}px solid transparent; "
+            f"border-radius: {scaled_px(3)}px; }}"
+            f"QPushButton:hover {{ background: {hover_bg}; }}"
+            f"QPushButton:focus {{ background: {hover_bg}; "
+            f"border: {scaled_px(1)}px solid {focus_color}; }}")
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         if callback:
             btn.clicked.connect(callback)
@@ -575,7 +518,7 @@ class TabbedDialog(QDialog):
         btn = self.make_secondary_btn(tr("dialog.browse"), callback)
         btn.setProperty("semanticIcon", "folder")
         btn.setProperty("semanticIconColor", "heading")
-        btn.setIcon(icons.icon("folder", color=self._t["heading"], size=scaled_px(15)))
+        btn.setIcon(icons.icon("folder", color="icon_primary", size=scaled_px(15)))
         btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         btn.setAccessibleName(f"{label_text}: {tr('dialog.browse')}")
         btn.setToolTip(tr("dialog.browse"))
@@ -620,24 +563,27 @@ class TabbedDialog(QDialog):
     # ── Style helpers (used by SharingSettingsDialog) ──────────
 
     def primary_btn_style(self):
-        t = self._t
-        return (f"QPushButton {{ background: {t['accent']}; color: {t['on_accent']}; border: none; "
-                f"border-radius: {scaled_px(6)}px; padding: 8px 16px; font-size: {scaled_pt(13)}px; font-weight: bold; }}"
-                f"QPushButton:hover {{ background: {alpha(t['accent'], 0.85)}; }}")
+        sk = self._sk
+        px, pt = sk.px, sk.pt
+        return (f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('on_accent')}; border: none; "
+                f"border-radius: {px(6)}px; padding: {px(8)}px {px(16)}px; font-size: {pt(13)}px; font-weight: bold; }}"
+                f"QPushButton:hover {{ background: {sk._alpha('accent', 0.85)}; }}")
 
     def status_style(self, active):
-        t = self._t
-        c = t["accent"] if active else t["panel"]
-        return (f"QFrame {{ background: {alpha(c, 0.13)}; border: 1px solid {alpha(c, 0.38)}; "
-                f"border-radius: {scaled_px(6)}px; padding: 8px; }}")
+        sk = self._sk
+        px = sk.px
+        c = sk.token('accent') if active else sk.token('muted')
+        return (f"QFrame {{ background: {sk._alpha(c, 0.13)}; border: 1px solid {sk._alpha(c, 0.38)}; "
+                f"border-radius: {px(6)}px; padding: {px(8)}px; }}")
 
     def toggle_btn_style(self, active):
-        t = self._t
+        sk = self._sk
+        px, pt = sk.px, sk.pt
         if active:
-            return (f"QPushButton {{ background: {t['danger']}; color: {t['on_accent']}; border: none; "
-                    f"border-radius: {scaled_px(6)}px; padding: 8px 16px; font-size: {scaled_pt(13)}px; font-weight: bold; }}"
-                    f"QPushButton:hover {{ background: {alpha(t['danger'], 0.87)}; }}")
+            return (f"QPushButton {{ background: {sk.token('danger')}; color: {sk.token('on_accent')}; border: none; "
+                    f"border-radius: {px(6)}px; padding: {px(8)}px {px(16)}px; font-size: {pt(13)}px; font-weight: bold; }}"
+                    f"QPushButton:hover {{ background: {sk._alpha('danger', 0.87)}; }}")
         else:
-            return (f"QPushButton {{ background: {t['accent']}; color: {t['on_accent']}; border: none; "
-                    f"border-radius: {scaled_px(6)}px; padding: 8px 16px; font-size: {scaled_pt(13)}px; font-weight: bold; }}"
-                    f"QPushButton:hover {{ background: {alpha(t['accent'], 0.85)}; }}")
+            return (f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('on_accent')}; border: none; "
+                    f"border-radius: {px(6)}px; padding: {px(8)}px {px(16)}px; font-size: {pt(13)}px; font-weight: bold; }}"
+                    f"QPushButton:hover {{ background: {sk._alpha('accent', 0.85)}; }}")

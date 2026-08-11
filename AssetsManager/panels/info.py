@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QRect, QSize, QPoint, QMimeData, QUrl, QPropertyAnimation, QEasingCurve, QRunnable, QThreadPool, QObject
+from PySide6.QtCore import Qt, Signal, QRect, QSize, QPoint, QMimeData, QUrl, QPropertyAnimation, QEasingCurve, QRunnable, QThreadPool, QObject, QTimer
 from PySide6.QtWidgets import (
     QLabel, QPushButton, QHBoxLayout, QVBoxLayout, QTextEdit,
     QGroupBox, QWidget, QInputDialog, QSplitter, QScrollArea, QFrame,
@@ -22,6 +22,7 @@ from AssetsManager.core.constants import IMAGE_EXTS
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core import themes, icons
+from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager.widgets.tag_chip import create_tag_chip
 
 from AssetsManager import i18n
@@ -71,7 +72,10 @@ class _PreviewLabel(QLabel):
 
     def mouseDoubleClickEvent(self, event):
         self.view_fullscreen.emit(self.toolTip())  # fallback, panel overrides handler
-        super().mouseDoubleClickEvent(event)
+        # Accept the event so it does not propagate to the parent host,
+        # whose eventFilter would emit view_fullscreen a second time and
+        # open two overlapping viewers.
+        event.accept()
 
 
 class _FlowLayout(QLayout):
@@ -163,6 +167,7 @@ class _AsyncRequest:
 class _FileInfoSignals(QObject):
     result_ready = Signal(object, object)
     preview_ready = Signal(object, object)
+    urls_discovered = Signal(object, object)  # scanned path, list of urls
 
 
 class _FileInfoTask(QRunnable):
@@ -180,7 +185,10 @@ class _FileInfoTask(QRunnable):
         self._branch_depths = branch_depths
         self._classify_cache = classify_cache
         self.signals = _FileInfoSignals()
-        self.setAutoDelete(False)  # prevent QThreadPool from destroying before signal delivery
+        # Both signals are emitted inside run(), so the pool may reclaim the
+        # runnable as soon as run() returns; the panel keeps a Python
+        # reference (self._pending_task) until the next update.
+        self.setAutoDelete(True)
 
     def _load_preview(self, path, is_dir):
         if is_dir:
@@ -208,14 +216,14 @@ class _FileInfoTask(QRunnable):
             path, self._library_root, self._sidebar_depth, self._branch_depths)
 
         if is_project and self._controller:
+            # Discovery is read-only and safe in the worker; persisting the
+            # urls would publish AssetUrlsChanged from this thread, so the
+            # writes are deferred to the UI thread via urls_discovered.
             existing = self._controller.get_urls(path)
             if not existing:
                 discovered = self._controller.discover_urls_in_dir(path)
-                for u in discovered:
-                    try:
-                        self._controller.add_url(path, u)
-                    except ValueError:
-                        pass
+                if discovered:
+                    self.signals.urls_discovered.emit(path, discovered)
 
         dir_summary = self._controller.classify_dir(path, classify_cache=self._classify_cache) if is_dir else None
 
@@ -256,6 +264,33 @@ class _FileInfoTask(QRunnable):
         self.signals.preview_ready.emit(self._request, preview)
 
 
+class _LinkScanSignals(QObject):
+    done = Signal(object, object)  # discovered urls, scanned path
+
+
+class _LinkScanTask(QRunnable):
+    """Background URL discovery for the manual scan action."""
+
+    def __init__(self, controller, path):
+        super().__init__()
+        # Auto-delete: the pool reclaims the C++ object after run(); the
+        # panel's Python reference (self._link_scan_task) keeps the signals
+        # object alive until the queued delivery is consumed on the UI
+        # thread, so no task leak accumulates across scans.
+        self.setAutoDelete(True)
+        self._controller = controller
+        self._path = path
+        self.signals = _LinkScanSignals()
+
+    def run(self):
+        try:
+            discovered = self._controller.discover_urls_in_dir(self._path)
+        except Exception:
+            _log.exception("Manual URL scan failed for %s", self._path)
+            discovered = []
+        self.signals.done.emit(discovered, self._path)
+
+
 class InfoPanel(PanelContent):
     open_requested = Signal(str)
     copy_path_requested = Signal(str)
@@ -270,11 +305,13 @@ class InfoPanel(PanelContent):
         self._preview_pixmap: QPixmap | None = None
         self._preview_icon_name = ""
         self._notes_timer = None
+        self._notes_save_path: str | None = None
         self._rendered_tags: tuple[str, ...] = ()
         self._sidebar_depth = 2
         self._branch_depths: dict[str, int] = {}
-        self._urls_scanned: set[str] = set()  # avoid re-scanning URL discovery
         self._pending_task: _FileInfoTask | None = None
+        self._size_tasks: dict[_AsyncRequest, QObject] = {}
+        self._link_scan_task = None
         self._async_generation = 0
         self._async_request: _AsyncRequest | None = None
         self._reduce_motion = self._detect_reduce_motion()
@@ -336,18 +373,20 @@ class InfoPanel(PanelContent):
         details_layout.setContentsMargins(scaled_px(2), scaled_px(2), scaled_px(2), scaled_px(2))
         details_layout.setSpacing(scaled_px(4))
 
-        t = themes.get()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         meta = QGroupBox(tr("info.title"))
         meta.setStyleSheet(
-            f"QGroupBox {{ border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; "
-            f"margin-top: {scaled_px(4)}px; padding-top: {scaled_px(6)}px; color: {t['heading']}; }} "
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: {scaled_px(8)}px; padding: 0 {scaled_px(4)}px; }}")
+            f"QGroupBox {{ border: 1px solid {sk.token('border')}; border-radius: {sk.px(4)}px; "
+            f"margin-top: {sk.px(4)}px; padding-top: {sk.px(6)}px; color: {sk.token('heading')}; }} "
+            f"QGroupBox::title {{ subcontrol-origin: margin; left: {sk.px(8)}px; padding: 0 {sk.px(4)}px; }}")
         self._meta_grp = meta
         meta_layout = QVBoxLayout(meta)
         meta_layout.setSpacing(scaled_px(2))
 
         self._name = QLabel("—")
-        self._name.setStyleSheet(f"font-size: {scaled_pt(14)}px; font-weight: bold; padding: {scaled_px(2)}px 0;")
+        self._name.setStyleSheet(
+            sk.label_css("heading", size=14, bold=True)
+            + f" QLabel {{ padding: {sk.px(2)}px 0; }}")
         self._name.setWordWrap(True)
         meta_layout.addWidget(self._name)
 
@@ -379,9 +418,9 @@ class InfoPanel(PanelContent):
         # Tags
         tags_grp = QGroupBox(tr("info.tags"))
         tags_grp.setStyleSheet(
-            f"QGroupBox {{ border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; "
-            f"margin-top: {scaled_px(4)}px; padding-top: {scaled_px(6)}px; color: {t['heading']}; }} "
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: {scaled_px(8)}px; padding: 0 {scaled_px(4)}px; }}")
+            f"QGroupBox {{ border: 1px solid {sk.token('border')}; border-radius: {sk.px(4)}px; "
+            f"margin-top: {sk.px(4)}px; padding-top: {sk.px(6)}px; color: {sk.token('heading')}; }} "
+            f"QGroupBox::title {{ subcontrol-origin: margin; left: {sk.px(8)}px; padding: 0 {sk.px(4)}px; }}")
         self._tags_grp = tags_grp
         tags_outer = QVBoxLayout(tags_grp)
         tags_outer.setSpacing(scaled_px(4))
@@ -395,23 +434,23 @@ class InfoPanel(PanelContent):
 
         add_row = QHBoxLayout()
         self._add_tag_btn = QPushButton(tr("info.add_tag"))
-        self._add_tag_btn.setIcon(icons.icon("tag", color=t["muted"], size=scaled_px(14)))
+        self._add_tag_btn.setIcon(icons.icon("tag", color="icon_muted", size=scaled_px(14)))
         self._add_tag_btn.setIconSize(QSize(scaled_px(14), scaled_px(14)))
         self._add_tag_btn.setAccessibleName(tr("info.add_tag"))
         self._add_tag_btn.clicked.connect(self._add_tag)
         self._add_tag_btn.setStyleSheet(
-            f"background: transparent; color: {t['muted']}; border: 1px dashed {t['border']}; "
-            f"border-radius: {scaled_px(6)}px; padding: {scaled_px(2)}px {scaled_px(10)}px; font-size: {scaled_pt(11)}px;")
+            f"background: transparent; color: {sk.token('muted')}; border: 1px dashed {sk.token('border')}; "
+            f"border-radius: {sk.px(6)}px; padding: {sk.px(2)}px {sk.px(10)}px; font-size: {sk.pt(11)}px;")
         self._add_tag_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_row.addWidget(self._add_tag_btn)
         self._manage_btn = QPushButton(tr("info.manage_tags"))
-        self._manage_btn.setIcon(icons.icon("settings", color=t["muted"], size=scaled_px(14)))
+        self._manage_btn.setIcon(icons.icon("settings", color="icon_muted", size=scaled_px(14)))
         self._manage_btn.setIconSize(QSize(scaled_px(14), scaled_px(14)))
         self._manage_btn.setAccessibleName(tr("info.manage_tags"))
         self._manage_btn.clicked.connect(self._open_tag_editor)
         self._manage_btn.setStyleSheet(
-            f"background: transparent; color: {t['muted']}; border: 1px solid {t['border']}; "
-            f"border-radius: {scaled_px(6)}px; padding: {scaled_px(2)}px {scaled_px(10)}px; font-size: {scaled_pt(11)}px;")
+            f"background: transparent; color: {sk.token('muted')}; border: 1px solid {sk.token('border')}; "
+            f"border-radius: {sk.px(6)}px; padding: {sk.px(2)}px {sk.px(10)}px; font-size: {sk.pt(11)}px;")
         self._manage_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_row.addWidget(self._manage_btn)
         add_row.addStretch()
@@ -420,11 +459,10 @@ class InfoPanel(PanelContent):
 
         # Notes — fills space between Tags and Actions
         notes_grp = QGroupBox(tr("info.notes"))
-        t = themes.get()
         notes_grp.setStyleSheet(
-            f"QGroupBox {{ border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; "
-            f"margin-top: {scaled_px(4)}px; padding-top: {scaled_px(6)}px; color: {t['heading']}; }} "
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: {scaled_px(8)}px; padding: 0 {scaled_px(4)}px; }}")
+            f"QGroupBox {{ border: 1px solid {sk.token('border')}; border-radius: {sk.px(4)}px; "
+            f"margin-top: {sk.px(4)}px; padding-top: {sk.px(6)}px; color: {sk.token('heading')}; }} "
+            f"QGroupBox::title {{ subcontrol-origin: margin; left: {sk.px(8)}px; padding: 0 {sk.px(4)}px; }}")
         self._notes_grp = notes_grp
         notes_layout = QVBoxLayout(notes_grp)
         self._notes = QTextEdit()
@@ -442,33 +480,33 @@ class InfoPanel(PanelContent):
         act_bar = QWidget()
         self._act_bar = act_bar
         act_bar.setStyleSheet(f"background: transparent; "
-                              f"border-top: 1px solid {t['border']};")
+                              f"border-top: 1px solid {sk.token('border')};")
         act_bar.setFixedHeight(scaled_px(28))
         act_layout = QHBoxLayout(act_bar)
         act_layout.setContentsMargins(scaled_px(10), scaled_px(4), scaled_px(10), scaled_px(4))
         act_layout.setSpacing(scaled_px(8))
         act_layout.addStretch()
         self._open_btn = QPushButton(tr("info.open"))
-        self._open_btn.setIcon(icons.icon("folder", color=t["heading"], size=scaled_px(15)))
+        self._open_btn.setIcon(icons.icon("folder", color="icon_primary", size=scaled_px(15)))
         self._open_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         self._open_btn.setAccessibleName(tr("info.open"))
         self._open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._open_btn.setToolTip(tr("info.open_tooltip"))
         self._open_btn.setStyleSheet(
-            f"background: {t['accent']}; color: {t['heading']}; "
-            f"border: 1px solid {t['accent']}; border-radius: {scaled_px(4)}px; "
-            f"padding: {scaled_px(2)}px {scaled_px(12)}px; font-size: {scaled_pt(12)}px;")
+            f"background: {sk.token('accent')}; color: {sk.token('heading')}; "
+            f"border: 1px solid {sk.token('accent')}; border-radius: {sk.px(4)}px; "
+            f"padding: {sk.px(2)}px {sk.px(12)}px; font-size: {sk.pt(12)}px;")
         self._open_btn.clicked.connect(lambda: self.open_requested.emit(self._current_path))
         self._copy_btn = QPushButton(tr("info.copy_path"))
-        self._copy_btn.setIcon(icons.icon("file", color=t["body"], size=scaled_px(15)))
+        self._copy_btn.setIcon(icons.icon("file", color="icon_secondary", size=scaled_px(15)))
         self._copy_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         self._copy_btn.setAccessibleName(tr("info.copy_path"))
         self._copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._copy_btn.setToolTip(tr("info.copy_tooltip"))
         self._copy_btn.setStyleSheet(
-            f"background: transparent; color: {t['body']}; "
-            f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; "
-            f"padding: 2px 10px; font-size: {scaled_pt(12)}px;")
+            f"background: transparent; color: {sk.token('body')}; "
+            f"border: 1px solid {sk.token('border')}; border-radius: {sk.px(4)}px; "
+            f"padding: 2px 10px; font-size: {sk.pt(12)}px;")
         self._copy_btn.clicked.connect(lambda: self.copy_path_requested.emit(self._current_path))
         act_layout.addWidget(self._open_btn)
         act_layout.addWidget(self._copy_btn)
@@ -477,7 +515,13 @@ class InfoPanel(PanelContent):
         # ── Initial ────────────────────────────────────────────
 
         self._splitter.setSizes([160, 400])
-        self._splitter.splitterMoved.connect(self._apply_scaled_preview)
+        # Debounce splitter drags: each move event would otherwise trigger a
+        # full SmoothTransformation rescale of the preview on the UI thread.
+        self._preview_rescale_timer = QTimer(self)
+        self._preview_rescale_timer.setSingleShot(True)
+        self._preview_rescale_timer.setInterval(150)
+        self._preview_rescale_timer.timeout.connect(self._apply_scaled_preview)
+        self._splitter.splitterMoved.connect(lambda *_args: self._preview_rescale_timer.start())
         self._show_empty_state()
 
         # Subscribe to domain events through a Qt bridge for UI-safe delivery.
@@ -497,41 +541,43 @@ class InfoPanel(PanelContent):
 
     def _refresh_theme(self, _name: str = ""):
         t = themes.get()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         self._preview_host.setStyleSheet(            "background: transparent;")
         if hasattr(self, '_details_scroll'):
             self._details_scroll.viewport().setStyleSheet(            "background: transparent;")
         for grp, title in [(self._meta_grp, tr("info.title")), (self._tags_grp, tr("info.tags")),
                             (self._notes_grp, tr("info.notes"))]:
             grp.setStyleSheet(
-                f"QGroupBox {{ color: {t['heading']}; border: 1px solid {t['border']}; "
-                f"border-radius: {scaled_px(6)}px; margin-top: {scaled_px(8)}px; padding-top: {scaled_px(12)}px; }}"
-                f"QGroupBox::title {{ subcontrol-origin: margin; left: {scaled_px(10)}px; padding: 0 {scaled_px(5)}px; }}")
+                f"QGroupBox {{ color: {sk.token('heading')}; border: 1px solid {sk.token('border')}; "
+                f"border-radius: {sk.px(6)}px; margin-top: {sk.px(8)}px; padding-top: {sk.px(12)}px; }}"
+                f"QGroupBox::title {{ subcontrol-origin: margin; left: {sk.px(10)}px; padding: 0 {sk.px(5)}px; }}")
         for btn, color, icon_name in [
-            (self._add_tag_btn, t['muted'], "tag"),
-            (self._manage_btn, t['muted'], "settings"),
+            (self._add_tag_btn, "icon_muted", "tag"),
+            (self._manage_btn, "icon_muted", "settings"),
         ]:
             btn.setIcon(icons.icon(icon_name, color=color, size=scaled_px(14)))
             btn.setIconSize(QSize(scaled_px(14), scaled_px(14)))
             btn.setStyleSheet(
-                f"background: transparent; color: {color}; font-size: {scaled_pt(12)}px; "
-                f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; padding: {scaled_px(2)}px {scaled_px(10)}px;")
+                f"background: transparent; color: {t['muted']}; font-size: {sk.pt(12)}px; "
+                f"border: 1px solid {sk.token('border')}; border-radius: {sk.px(4)}px; padding: {sk.px(2)}px {sk.px(10)}px;")
         self._act_bar.setStyleSheet(
-            f"background: transparent; border-top: 1px solid {t['border']}; "
-            f"padding: {scaled_px(4)}px {scaled_px(8)}px;")
-        self._open_btn.setIcon(icons.icon("folder", color=t["heading"], size=scaled_px(15)))
+            f"background: transparent; border-top: 1px solid {sk.token('border')}; "
+            f"padding: {sk.px(4)}px {sk.px(8)}px;")
+        self._open_btn.setIcon(icons.icon("folder", color="icon_primary", size=scaled_px(15)))
         self._open_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         self._open_btn.setStyleSheet(
-            f"background: {t['accent']}; color: {t['heading']}; font-size: {scaled_pt(13)}px; "
-            f"border: 1px solid {t['accent']}; border-radius: {scaled_px(4)}px; padding: {scaled_px(2)}px {scaled_px(12)}px;")
+            f"background: {sk.token('accent')}; color: {sk.token('heading')}; font-size: {sk.pt(13)}px; "
+            f"border: 1px solid {sk.token('accent')}; border-radius: {sk.px(4)}px; padding: {sk.px(2)}px {sk.px(12)}px;")
         self._copy_btn.setStyleSheet(
-            f"background: transparent; color: {t['body']}; "
-            f"border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; "
-            f"padding: {scaled_px(2)}px {scaled_px(10)}px; font-size: {scaled_pt(12)}px;")
-        self._copy_btn.setIcon(icons.icon("file", color=t["body"], size=scaled_px(15)))
+            f"background: transparent; color: {sk.token('body')}; "
+            f"border: 1px solid {sk.token('border')}; border-radius: {sk.px(4)}px; "
+            f"padding: {sk.px(2)}px {sk.px(10)}px; font-size: {sk.pt(12)}px;")
+        self._copy_btn.setIcon(icons.icon("file", color="icon_secondary", size=scaled_px(15)))
         self._copy_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         self._refresh_empty_preview_state()
-        self._name.setStyleSheet(f"color: {t['heading']}; font-size: {scaled_pt(16)}px; font-weight: bold; "
-                                  f"background: transparent; border: none; padding: 2px 0;")
+        self._name.setStyleSheet(
+            sk.label_css("heading", size=16, bold=True)
+            + " QLabel { border: none; padding: 2px 0; }")
         # Update field labels and values
         self._refresh_field_styles()
         # Update link field
@@ -582,9 +628,9 @@ class InfoPanel(PanelContent):
 
     def _refresh_field_styles(self):
         """Update all field label/value stylesheets for current theme."""
-        t = themes.get()
-        label_style = f"color: {t['muted']}; font-size: {scaled_pt(11)}px; min-width: {scaled_px(65)}px;"
-        value_style = f"color: {t['body']}; font-size: {scaled_pt(12)}px;"
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        label_style = sk.muted_css(11) + f" QLabel {{ min-width: {sk.px(65)}px; }}"
+        value_style = sk.label_css("body", size=12)
         for field in self._fields.values():
             layout = field.layout() if field else None
             if layout is None:
@@ -601,7 +647,7 @@ class InfoPanel(PanelContent):
 
     def _refresh_link_field_style(self):
         """Update link field label/value stylesheets for current theme."""
-        t = themes.get()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         row = self._field_link
         layout = row.layout() if row else None
         if layout is None:
@@ -612,27 +658,29 @@ class InfoPanel(PanelContent):
                 w = item.widget()
                 if isinstance(w, QLabel):
                     if i == 0:  # label
-                        w.setStyleSheet(f"color: {t['muted']}; font-size: {scaled_pt(11)}px; min-width: {scaled_px(65)}px;")
+                        w.setStyleSheet(
+                            sk.muted_css(11)
+                            + f" QLabel {{ min-width: {sk.px(65)}px; }}")
                     else:  # value
-                        w.setStyleSheet(f"color: {t['body']}; font-size: {scaled_pt(12)}px;")
+                        w.setStyleSheet(sk.label_css("body", size=12))
                 elif isinstance(w, _DragLabel):
                     if not w.text() or w.text() == "—":
-                        w.setStyleSheet(f"color: {t['body']}; font-size: {scaled_pt(12)}px;")
+                        w.setStyleSheet(sk.label_css("body", size=12))
         for button in row.findChildren(QPushButton):
             icon_name = button.property("semanticIcon")
             if not icon_name:
                 continue
-            button.setIcon(icons.icon(str(icon_name), color=t["muted"], size=scaled_px(15)))
+            button.setIcon(icons.icon(str(icon_name), color="icon_muted", size=scaled_px(15)))
             button.setIconSize(QSize(scaled_px(15), scaled_px(15)))
             button.setAccessibleName(button.toolTip())
             button.setStyleSheet(
-                f"QPushButton {{ color: {t['muted']}; padding: 0; background: transparent; "
-                f"border: none; border-radius: {scaled_px(3)}px; }}"
-                f"QPushButton:hover {{ color: {t['heading']}; background: {t['accent']}; }}")
+                f"QPushButton {{ color: {sk.token('muted')}; padding: 0; background: transparent; "
+                f"border: none; border-radius: {sk.px(3)}px; }}"
+                f"QPushButton:hover {{ color: {sk.token('heading')}; background: {sk.token('accent')}; }}")
 
     def _refresh_plugin_fields_style(self):
         """Update plugin field stylesheets for current theme."""
-        t = themes.get()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         if not hasattr(self, '_plugin_fields_widget') or not self._plugin_fields_widget.isVisible():
             return
         for i in range(self._plugin_fields_layout.count()):
@@ -646,9 +694,11 @@ class InfoPanel(PanelContent):
                         label = sub.widget() if sub is not None else None
                         if isinstance(label, QLabel):
                             if j == 0:
-                                label.setStyleSheet(f"color: {t['muted']}; font-size: {scaled_pt(11)}px; min-width: {scaled_px(65)}px;")
+                                label.setStyleSheet(
+                                    sk.muted_css(11)
+                                    + f" QLabel {{ min-width: {sk.px(65)}px; }}")
                             else:
-                                label.setStyleSheet(f"color: {t['body']}; font-size: {scaled_pt(12)}px;")
+                                label.setStyleSheet(sk.label_css("body", size=12))
 
     def _register_field(self, key: str, label: str, value: str = "") -> None:
         """Register a metadata field and add it to the layout."""
@@ -670,19 +720,22 @@ class InfoPanel(PanelContent):
 
     @staticmethod
     def _make_field(label: str, value: str) -> QWidget:
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 1, 0, 1)
         lbl = QLabel(label)
         lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        lbl.setStyleSheet(f"color: {themes.get()['muted']}; font-size: {scaled_pt(11)}px; min-width: {scaled_px(65)}px;")
+        lbl.setStyleSheet(
+            sk.muted_css(11)
+            + f" QLabel {{ min-width: {sk.px(65)}px; }}")
         layout.addWidget(lbl)
         val = QLabel(value)
         val.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         val.setWordWrap(False)
         val.setMinimumSize(0, 0)
         val.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        val.setStyleSheet(f"color: {themes.get()['body']}; font-size: {scaled_pt(12)}px;")
+        val.setStyleSheet(sk.label_css("body", size=12))
         layout.addWidget(val, 1)
         return row
 
@@ -697,12 +750,15 @@ class InfoPanel(PanelContent):
 
     @staticmethod
     def _make_link_field() -> QWidget:
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 1, 0, 1)
         lbl = QLabel(tr("info.field_link"))
         lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        lbl.setStyleSheet(f"color: {themes.get()['muted']}; font-size: {scaled_pt(11)}px; min-width: {scaled_px(65)}px;")
+        lbl.setStyleSheet(
+            sk.muted_css(11)
+            + f" QLabel {{ min-width: {sk.px(65)}px; }}")
         layout.addWidget(lbl)
         link = _DragLabel("—")
         link.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -710,7 +766,7 @@ class InfoPanel(PanelContent):
         link.setMinimumSize(0, 0)
         link.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         link.setOpenExternalLinks(True)
-        link.setStyleSheet(f"color: {themes.get()['body']}; font-size: {scaled_pt(12)}px;")
+        link.setStyleSheet(sk.label_css("body", size=12))
         layout.addWidget(link, 1)
         btn_holder = QWidget()
         btn_holder.setStyleSheet("background: transparent;")
@@ -740,7 +796,7 @@ class InfoPanel(PanelContent):
             widget = item.widget() if item is not None else None
             if widget is not None:
                 widget.deleteLater()
-        t = themes.get()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         if url:
             short = url[:60] + "…" if len(url) > 60 else url
             link_label.setText(f"<a href='{url}'>{short}</a>")
@@ -748,9 +804,10 @@ class InfoPanel(PanelContent):
             link_label.set_drag_url(url)
             link_label.setCursor(Qt.CursorShape.PointingHandCursor)
             link_label.setStyleSheet(
-                f"color: {t['body']}; font-size: {scaled_pt(12)}px; text-decoration: underline;")
+                sk.label_css("body", size=12)
+                + " QLabel { text-decoration: underline; }")
             rm_btn = QPushButton()
-            rm_btn.setIcon(icons.icon("close", color=t["muted"], size=scaled_px(15)))
+            rm_btn.setIcon(icons.icon("close", color="icon_muted", size=scaled_px(15)))
             rm_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
             rm_btn.setProperty("semanticIcon", "close")
             rm_btn.setToolTip(tr("info.link_remove"))
@@ -759,9 +816,9 @@ class InfoPanel(PanelContent):
             rm_btn.setFlat(True)
             rm_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             rm_btn.setStyleSheet(
-                f"QPushButton {{ color: {t['muted']}; font-size: {scaled_pt(11)}px; padding: 0; "
-                f"background: transparent; border: none; border-radius: {scaled_px(3)}px; }}"
-                f"QPushButton:hover {{ color: {t['heading']}; background: {t['accent']}; }}")
+                f"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(11)}px; padding: 0; "
+                f"background: transparent; border: none; border-radius: {sk.px(3)}px; }}"
+                f"QPushButton:hover {{ color: {sk.token('heading')}; background: {sk.token('accent')}; }}")
             rm_btn.clicked.connect(lambda: self._remove_link(url))
             button_layout.addWidget(rm_btn)
         else:
@@ -769,10 +826,9 @@ class InfoPanel(PanelContent):
             link_label.setToolTip("")
             link_label.set_drag_url("")
             link_label.setCursor(Qt.CursorShape.ArrowCursor)
-            link_label.setStyleSheet(
-                f"color: {t['body']}; font-size: {scaled_pt(12)}px;")
+            link_label.setStyleSheet(sk.label_css("body", size=12))
             add_btn = QPushButton()
-            add_btn.setIcon(icons.icon("plus", color=t["muted"], size=scaled_px(15)))
+            add_btn.setIcon(icons.icon("plus", color="icon_muted", size=scaled_px(15)))
             add_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
             add_btn.setProperty("semanticIcon", "plus")
             add_btn.setToolTip(tr("info.link_add"))
@@ -781,13 +837,13 @@ class InfoPanel(PanelContent):
             add_btn.setFlat(True)
             add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             add_btn.setStyleSheet(
-                f"QPushButton {{ color: {t['muted']}; font-size: {scaled_pt(13)}px; padding: 0; "
-                f"background: transparent; border: none; border-radius: {scaled_px(3)}px; }}"
-                f"QPushButton:hover {{ color: {t['heading']}; background: {t['accent']}; }}")
+                f"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(13)}px; padding: 0; "
+                f"background: transparent; border: none; border-radius: {sk.px(3)}px; }}"
+                f"QPushButton:hover {{ color: {sk.token('heading')}; background: {sk.token('accent')}; }}")
             add_btn.clicked.connect(self._add_link_dialog)
             button_layout.addWidget(add_btn)
             scan_btn = QPushButton()
-            scan_btn.setIcon(icons.icon("refresh", color=t["muted"], size=scaled_px(15)))
+            scan_btn.setIcon(icons.icon("refresh", color="icon_muted", size=scaled_px(15)))
             scan_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
             scan_btn.setProperty("semanticIcon", "refresh")
             scan_btn.setToolTip(tr("info.scanner.desc"))
@@ -796,9 +852,9 @@ class InfoPanel(PanelContent):
             scan_btn.setFlat(True)
             scan_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             scan_btn.setStyleSheet(
-                f"QPushButton {{ color: {t['muted']}; font-size: {scaled_pt(13)}px; padding: 0; "
-                f"background: transparent; border: none; border-radius: {scaled_px(3)}px; }}"
-                f"QPushButton:hover {{ color: {t['heading']}; background: {t['accent']}; }}")
+                f"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(13)}px; padding: 0; "
+                f"background: transparent; border: none; border-radius: {sk.px(3)}px; }}"
+                f"QPushButton:hover {{ color: {sk.token('heading')}; background: {sk.token('accent')}; }}")
             scan_btn.clicked.connect(self._manual_scan_links)
             button_layout.addWidget(scan_btn)
 
@@ -809,9 +865,9 @@ class InfoPanel(PanelContent):
 
     def title_bar_buttons(self) -> list:
         """Return extra buttons for the dock title bar."""
-        t = themes.get()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         gear = QPushButton()
-        gear.setIcon(icons.icon("settings", color=t["heading"], size=scaled_px(16)))
+        gear.setIcon(icons.icon("settings", color="icon_primary", size=scaled_px(16)))
         gear.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         gear.setToolTip(tr("panel.settings"))
         gear.setAccessibleName(tr("panel.settings"))
@@ -819,8 +875,8 @@ class InfoPanel(PanelContent):
         gear.setFlat(True)
         gear.setProperty("semanticIcon", "settings")
         gear.setStyleSheet(
-            f"color: {t['heading']}; font-size: {scaled_pt(13)}px; font-weight: bold; "
-            f"padding: 0; background: transparent; border: none; border-radius: {scaled_px(3)}px;")
+            f"color: {sk.token('heading')}; font-size: {sk.pt(13)}px; font-weight: bold; "
+            f"padding: 0; background: transparent; border: none; border-radius: {sk.px(3)}px;")
         gear.setCursor(Qt.CursorShape.PointingHandCursor)
         gear.clicked.connect(self._show_panel_menu)
         return [gear]
@@ -915,6 +971,11 @@ class InfoPanel(PanelContent):
             self.view_fullscreen.emit(target)
 
     def _show_empty_state(self):
+        # Persist pending notes and stop the debounce timer so a stale save
+        # cannot overwrite the notes of a newly focused asset.
+        self._flush_notes_save()
+        if self._notes_timer:
+            self._notes_timer.stop()
         self._clear_preview()
         self._preview.hide()
         self._refresh_empty_preview_state()
@@ -923,15 +984,14 @@ class InfoPanel(PanelContent):
     def _refresh_empty_preview_state(self):
         if not hasattr(self, "_empty_preview_state"):
             return
-        t = themes.get()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         icon_size = scaled_px(48)
         self._empty_preview_icon.setPixmap(
-            icons.icon("file", color=t["muted"], size=icon_size).pixmap(
+            icons.icon("file", color="icon_muted", size=icon_size).pixmap(
                 QSize(icon_size, icon_size)))
         self._empty_preview_label.setText(tr("info.no_file_selected"))
         self._empty_preview_label.setStyleSheet(
-            f"color: {t['muted']}; font-size: {scaled_pt(12)}px; "
-            f"background: transparent; border: none;")
+            sk.muted_css(12) + " QLabel { border: none; }")
 
     # ── Preview loader ─────────────────────────────────────────
 
@@ -946,13 +1006,6 @@ class InfoPanel(PanelContent):
         except OSError:
             pass
         return None
-
-    def _classify_dir(self, dir_path: str) -> str:
-        if self._controller is not None:
-            if not hasattr(self, '_classify_cache'):
-                self._classify_cache = LRUCache(500)
-            return self._controller.classify_dir(dir_path, classify_cache=self._classify_cache)
-        return ""
 
     # ── Async directory size ──────────────────────────────────
 
@@ -973,6 +1026,7 @@ class InfoPanel(PanelContent):
         self._async_generation += 1
         self._async_request = None
         self._pending_task = None
+        self._size_tasks.clear()
 
     def _is_current_async_request(self, request: _AsyncRequest) -> bool:
         scoped = self._scoped_services
@@ -998,9 +1052,16 @@ class InfoPanel(PanelContent):
         class _SizeTask(QRunnable):
             def __init__(self):
                 super().__init__()
-                self.setAutoDelete(False)
+                # done is emitted inside run(); the panel keeps the signals
+                # object alive until _on_async_dir_size_done consumes it.
+                self.setAutoDelete(True)
 
             def run(self):
+                # Bail out early when the request was invalidated while this
+                # task was queued (the panel removed it from _size_tasks), so
+                # rapid folder switching does not pile up wasted scans.
+                if request not in self._size_tasks:
+                    return
                 sz = 0
                 try:
                     if scoped is not None and session:
@@ -1013,10 +1074,14 @@ class InfoPanel(PanelContent):
                 except Exception:
                     sz = 0
                 signals.done.emit(request, sz)
+        # Keep the signals object (and thus the queued delivery) alive until
+        # the result is consumed on the UI thread.
+        self._size_tasks[request] = signals
         pool = QThreadPool.globalInstance()
         pool.start(_SizeTask())
 
     def _on_async_dir_size_done(self, request: _AsyncRequest, size: int):
+        self._size_tasks.pop(request, None)
         if not self._is_current_async_request(request):
             return
         self._set_field_text(self._fields["size"], format_info_size(size))
@@ -1104,7 +1169,10 @@ class InfoPanel(PanelContent):
             return
         tag, ok = QInputDialog.getText(self, tr("info.dialog.add_tag"), tr("filelist.dialog.tag_label"))
         if ok and tag.strip():
-            self._controller.add_tag(self._current_path, tag.strip())
+            try:
+                self._controller.add_tag(self._current_path, tag.strip())
+            except ValueError:
+                _log.warning("Tag add rejected for path outside library: %s", self._current_path)
 
     def _open_tag_editor(self):
         if not self._current_path or not os.path.exists(self._current_path) or not self._controller:
@@ -1123,7 +1191,18 @@ class InfoPanel(PanelContent):
     def _remove_tag(self, tag: str):
         if not self._current_path or not self._controller:
             return
-        self._controller.remove_tag(self._current_path, tag)
+        try:
+            self._controller.remove_tag(self._current_path, tag)
+        except ValueError:
+            _log.warning("Tag remove rejected for path outside library: %s", self._current_path)
+
+    @staticmethod
+    def _same_path(a: str, b: str) -> bool:
+        """Compare two paths treating Windows junctions as identical."""
+        try:
+            return Path(a).resolve() == Path(b).resolve()
+        except Exception:
+            return str(a) == str(b)
 
     def _on_domain_tags_changed(self, event):
         """Handle a session-scoped tag update for the focused asset."""
@@ -1133,7 +1212,7 @@ class InfoPanel(PanelContent):
             or not self._controller
             or scoped is None
             or event.session_token != scoped.session.event_token
-            or event.file_path != self._current_path
+            or not self._same_path(event.file_path, self._current_path)
         ):
             return
         new_tags = self._controller.get_tags(self._current_path)
@@ -1144,7 +1223,8 @@ class InfoPanel(PanelContent):
         scoped = self._scoped_services
         if not self._current_path or not self._controller or scoped is None:
             return
-        if event.session_token == scoped.session.event_token and event.file_path == self._current_path:
+        if (event.session_token == scoped.session.event_token
+                and self._same_path(event.file_path, self._current_path)):
             notes = self._controller.get_notes(self._current_path)
             if hasattr(self, '_notes') and self._notes:
                 self._notes.blockSignals(True)
@@ -1156,7 +1236,8 @@ class InfoPanel(PanelContent):
         scoped = self._scoped_services
         if not self._current_path or not self._controller or scoped is None:
             return
-        if event.session_token == scoped.session.event_token and event.file_path == self._current_path:
+        if (event.session_token == scoped.session.event_token
+                and self._same_path(event.file_path, self._current_path)):
             urls = self._controller.get_urls(self._current_path)
             self._set_link_field(urls[0] if urls else "")
 
@@ -1167,7 +1248,6 @@ class InfoPanel(PanelContent):
         self._scoped_services = services
         self._library_root = services.session.root_str
         self._current_path = ""
-        self._urls_scanned.clear()
         self._invalidate_async_requests()
         if hasattr(self, '_classify_cache'):
             self._classify_cache.clear()
@@ -1176,6 +1256,7 @@ class InfoPanel(PanelContent):
             services.session.connection_for(services.session.root),
             metadata_svc=services.metadata_service,
             tag_svc=services.tag_service,
+            session=services.session,
         )
 
     def _on_sidebar_depth_changed(self, depth, branch_depths):
@@ -1215,39 +1296,36 @@ class InfoPanel(PanelContent):
     def _remove_link(self, url: str):
         if not self._current_path or not self._controller:
             return
-        self._controller.remove_url(self._current_path, url)
+        try:
+            self._controller.remove_url(self._current_path, url)
+        except ValueError:
+            _log.warning("Link remove rejected for path outside library: %s", self._current_path)
 
     def _manual_scan_links(self):
         if not self._current_path or not os.path.isdir(self._current_path) or not self._controller:
             return
-        discovered = self._controller.discover_urls_in_dir(self._current_path)
+        task = _LinkScanTask(self._controller, self._current_path)
+        task.signals.done.connect(self._on_manual_scan_done)
+        self._link_scan_task = task
+        QThreadPool.globalInstance().start(task)
 
-        from PySide6.QtWidgets import QMessageBox
-        info_lines = [
-            f"Path: {self._current_path}",
-            f"Library root: {self._library_root}",
-            f"Sidebar depth: {self._sidebar_depth}, branch_depths: {self._branch_depths}",
-            f"is_deepest: {self._is_deepest_folder(self._current_path)}",
-            f"URLs in DB: {self._controller.get_urls(self._current_path)}",
-            "",
-            f"Scan found {len(discovered)} URL(s):",
-        ]
-        for u in discovered[:20]:
-            info_lines.append(f"  {u}")
-        if len(discovered) > 20:
-            info_lines.append(f"  ... ({len(discovered)} total)")
-        QMessageBox.information(self, tr("info.scanner.title"), "\n".join(info_lines))
-        if discovered:
-            for u in discovered:
-                try:
-                    self._controller.add_url(self._current_path, u)
-                except ValueError:
-                    pass
-            urls = self._controller.get_urls(self._current_path)
+    def _on_manual_scan_done(self, discovered, path):
+        """Apply discovered URLs on the UI thread (queued delivery)."""
+        self._link_scan_task = None
+        if not self._controller:
+            return
+        for u in discovered:
+            try:
+                self._controller.add_url(path, u)
+            except ValueError:
+                pass
+        if path == self._current_path:
+            urls = self._controller.get_urls(path)
             self._set_link_field(urls[0] if urls else "")
 
     def _schedule_notes_save(self):
         from PySide6.QtCore import QTimer
+        self._notes_save_path = self._current_path
         if self._notes_timer is None:
             self._notes_timer = QTimer(self)
             self._notes_timer.setSingleShot(True)
@@ -1255,13 +1333,32 @@ class InfoPanel(PanelContent):
         self._notes_timer.start(1000)
 
     def _flush_notes_save(self):
-        if self._current_path and os.path.exists(self._current_path) and self._controller:
-            self._controller.save_notes(self._current_path, self._notes.toPlainText())
+        """Persist pending notes.
+
+        The debounce timer is single-shot and may fire after the focused
+        asset changed; the scheduled path guard drops such stale saves so a
+        previous file's timer cannot wipe out the new file's notes.
+        """
+        if self._notes_timer is not None:
+            self._notes_timer.stop()
+        try:
+            if self._notes_save_path is not None and self._notes_save_path != self._current_path:
+                # Timer belongs to a previously focused path; drop it.
+                return
+            path = self._current_path
+            if path and os.path.exists(path) and self._controller:
+                self._controller.save_notes(path, self._notes.toPlainText())
+        except ValueError:
+            _log.warning("Notes save rejected for path outside library: %s",
+                         self._current_path)
+        finally:
+            self._notes_save_path = None
 
     # ── Main update ────────────────────────────────────────────
 
     def update_info(self, info):
         from PySide6.QtCore import QFileInfo
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         if self._controller is None or self._scoped_services is None:
             _log.debug("update_info skipped: controller=%s lib_root=%s",
                        bool(self._controller), repr(self._library_root))
@@ -1272,14 +1369,24 @@ class InfoPanel(PanelContent):
             fi = QFileInfo(str(info))
 
         self._flush_notes_save()
+        if self._notes_timer:
+            self._notes_timer.stop()
 
         self._current_path = fi.absoluteFilePath()
         request = self._new_async_request(self._current_path)
         is_dir = fi.isDir()
 
-        # Mark as scanned for URL discovery (async task does the actual work)
-        if is_dir and self._controller and self._is_deepest_folder(self._current_path):
-            self._urls_scanned.add(self._current_path)
+        # Favorites may point outside the library root; the controller rejects
+        # those paths, so render a static fallback instead of a pending state.
+        outside_library = False
+        if self._library_root:
+            try:
+                outside_library = not Path(self._current_path).resolve().is_relative_to(
+                    Path(self._library_root).resolve())
+            except Exception:
+                outside_library = False
+
+        # URL discovery runs inside the async FileInfoTask; no state needed here.
 
         # Show placeholders immediately
         self._name.setText(fi.fileName())
@@ -1305,12 +1412,18 @@ class InfoPanel(PanelContent):
         self._notes.blockSignals(False)
         self._clear_preview()
         self._preview.setText("...")
-        self._preview.setStyleSheet(f"color: {themes.get()['muted']}; font-size: {scaled_pt(24)}px;")
+        self._preview.setStyleSheet(sk.muted_css(24))
 
         # Cancel previous pending task (stale detection handles in-flight results)
         self._pending_task = None
 
         if not self._controller:
+            return
+
+        if outside_library:
+            # Controller operations raise ValueError for paths outside the
+            # library; show a static fallback instead of a pending "..." .
+            self._show_preview_fallback()
             return
 
         # Start async load
@@ -1327,8 +1440,26 @@ class InfoPanel(PanelContent):
         )
         task.signals.result_ready.connect(self._on_file_info_ready)
         task.signals.preview_ready.connect(self._on_preview_ready)
+        task.signals.urls_discovered.connect(self._on_task_urls_discovered)
         self._pending_task = task
         QThreadPool.globalInstance().start(task)
+
+    def _on_task_urls_discovered(self, path, discovered):
+        """Persist urls discovered by the worker on the UI thread.
+
+        add_url publishes AssetUrlsChanged, so it must run on the GUI thread
+        (queued delivery from the worker via the bridge).
+        """
+        if not self._controller:
+            return
+        for url in discovered:
+            try:
+                self._controller.add_url(path, url)
+            except ValueError:
+                pass
+        if path == self._current_path:
+            urls = self._controller.get_urls(path)
+            self._set_link_field(urls[0] if urls else "")
 
     def _render_file_info(self, request, file_info):
         """Render FileInfo dataclass to widgets (no preview — handled async)."""
@@ -1366,7 +1497,12 @@ class InfoPanel(PanelContent):
 
     def _on_file_info_ready(self, request, file_info):
         """Called on main thread when async file-info load completes."""
-        if not self._is_current_async_request(request) or file_info.path != request.path:
+        # _is_current_async_request already enforces identity, generation,
+        # session and path equality. request.path comes from
+        # QFileInfo.absoluteFilePath() while file_info.path is resolved by
+        # the controller — these legitimately differ on Windows junctions
+        # (e.g. OneDrive), so no extra path comparison is performed here.
+        if not self._is_current_async_request(request):
             return
         self._render_file_info(request, file_info)
 
@@ -1402,7 +1538,7 @@ class InfoPanel(PanelContent):
         icon_size = scaled_px(64)
         self._preview.setPixmap(icons.icon(
             icon_name,
-            color=themes.get()["muted"],
+            color="icon_muted",
             size=icon_size,
             fallback="file",
         ).pixmap(QSize(icon_size, icon_size)))
@@ -1442,6 +1578,10 @@ class InfoPanel(PanelContent):
         self.flush_pending_changes()
         if self._notes_timer:
             self._notes_timer.stop()
+        # Do not retain a controller/repository backed by the old session while
+        # the library is closing or a replacement session is being assembled.
+        self._controller = None
+        self._scoped_services = None
 
     def shutdown(self):
         self.prepare_library_switch()

@@ -53,5 +53,7 @@ class Toast(QWidget):
         self._anim.setStartValue(1.0)
         self._anim.setEndValue(0.0)
         self._anim.setEasingCurve(QEasingCurve.Type.InCubic)
-        self._anim.finished.connect(self.close)
+        # deleteLater (not close): the widget must actually be destroyed after
+        # the fade-out, not merely hidden, or toasts accumulate as orphans.
+        self._anim.finished.connect(self.deleteLater)
         self._anim.start()
