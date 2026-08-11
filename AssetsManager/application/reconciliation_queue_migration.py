@@ -3,22 +3,40 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import json
 import logging
 import os
 from pathlib import Path
 import time
 from typing import Callable
 
-from AssetsManager.application.reconciliation_queue import (
-    ReconciliationQueue,
-    ReconciliationQueuePersistenceError,
-    ReconciliationTask,
-)
 from AssetsManager.application.reconciliation_queue_store import (
     SQLiteReconciliationQueueStore,
 )
+# The marker read reuses the queue's own JSON conversion helpers so the
+# migration observes exactly the task set a queue would load. The queue
+# constructor itself is deliberately NOT used for this read: it performs
+# startup lease recovery and can rewrite the marker (see
+# ``_read_legacy_marker``), which would turn a migration read into a write.
+from AssetsManager.application.reconciliation_queue import (
+    ReconciliationKind,
+    ReconciliationQueuePersistenceError,
+    ReconciliationTask,
+    _canonical_path,
+    _task_from_json,
+)
 
 _log = logging.getLogger(__name__)
+
+# Mirrors ``ReconciliationQueue.max_tasks`` so the legacy read applies the
+# same bounded load-time truncation a queue would have applied.
+_LEGACY_READ_MAX_TASKS = 200
+
+# Marker format versions accepted by the queue's own task conversion
+# (version 1 is the legacy monotonic-deadline layout; version 2 is the
+# wallclock-deadline layout). Pinned locally so the migration read does not
+# couple to the queue module's private format constant.
+_SUPPORTED_MARKER_VERSIONS = frozenset({1, 2})
 
 
 class ReconciliationMarkerMigrationError(ReconciliationQueuePersistenceError):
@@ -96,13 +114,12 @@ def migrate_reconciliation_marker(
         )
 
     try:
-        legacy_queue = ReconciliationQueue(
+        legacy_tasks = _read_legacy_marker(
+            marker,
             library_root=library_root,
-            persistence_path=marker,
             clock=clock,
             wall_clock=wall_clock,
         )
-        legacy_tasks = legacy_queue.snapshot()
     except ReconciliationQueuePersistenceError as exc:
         _log.warning(
             "Reconciliation marker is unreadable or unsupported; "
@@ -169,6 +186,69 @@ def migrate_reconciliation_marker(
         archive_path=archive,
         task_count=0,
     )
+
+
+def _read_legacy_marker(
+    marker: Path,
+    *,
+    library_root: str | Path,
+    clock: Callable[[], float] = time.monotonic,
+    wall_clock: Callable[[], float] = time.time,
+) -> tuple[ReconciliationTask, ...]:
+    """Read a legacy JSON marker strictly read-only.
+
+    Constructing a ``ReconciliationQueue`` over the marker is NOT a read: the
+    constructor performs startup lease recovery and, whenever an expired
+    running lease is found, rewrites the marker via ``_persist_unlocked``
+    (``ReconciliationQueue.__init__``). A migration must never mutate the
+    artifact it is reading, so the marker is parsed directly with the queue's
+    own JSON conversion helpers instead.
+
+    Lease recovery is intentionally deferred: the durable SQLite-backed queue
+    constructed by the bootstrap performs the same recovery at its own
+    construction after the marker has been imported or retired, so no
+    conversion is lost by reading the raw snapshot. The one observable
+    difference is a strict comparison: both the legacy snapshot and the
+    durable store are now read raw, so an expired running task can no longer
+    produce a spurious migration conflict against a non-empty durable queue.
+    """
+    if not marker.exists():
+        return ()
+    try:
+        raw = json.loads(marker.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise ValueError("unsupported reconciliation queue format")
+        version = int(raw.get("version", 0))
+        if version not in _SUPPORTED_MARKER_VERSIONS:
+            raise ValueError("unsupported reconciliation queue format")
+        tasks = raw.get("tasks", [])
+        if not isinstance(tasks, list):
+            raise ValueError("reconciliation queue tasks must be a list")
+        loaded: dict[tuple[str, str, ReconciliationKind], ReconciliationTask] = {}
+        now_monotonic = clock()
+        now_wallclock = wall_clock()
+        for item in tasks:
+            task = _task_from_json(
+                item,
+                version=version,
+                now_monotonic=now_monotonic,
+                now_wallclock=now_wallclock,
+            )
+            if task.library_root != _canonical_path(library_root):
+                continue
+            loaded[task.repair_key] = task
+        if len(loaded) > _LEGACY_READ_MAX_TASKS:
+            loaded = dict(
+                sorted(
+                    loaded.items(),
+                    key=lambda pair: pair[1].updated_at,
+                )[-_LEGACY_READ_MAX_TASKS:]
+            )
+        return tuple(loaded.values())
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ReconciliationQueuePersistenceError(
+            f"Cannot load reconciliation queue marker: {marker}"
+        ) from exc
 
 
 def _same_snapshot(

@@ -100,20 +100,31 @@ class PerformanceRecorder:
                 pass
             raise
         else:
-            self.record(
-                name,
-                (perf_counter() - started) * 1000,
-                session_token=session_token,
-                generation=generation,
-                path=path,
-                attributes=attributes,
-            )
+            try:
+                self.record(
+                    name,
+                    (perf_counter() - started) * 1000,
+                    session_token=session_token,
+                    generation=generation,
+                    path=path,
+                    attributes=attributes,
+                )
+            except (TypeError, ValueError):
+                # Telemetry must not replace the result of the measured work.
+                pass
 
     def recent(self, limit: int | None = None) -> tuple[PerformanceEvent, ...]:
-        """Return an immutable oldest-to-newest snapshot of retained events."""
+        """Return an immutable oldest-to-newest snapshot of retained events.
+
+        A non-positive ``limit`` yields an empty snapshot.
+        """
         with self._lock:
             events = tuple(self._events)
-        return events if limit is None else events[-max(0, limit):]
+        if limit is None:
+            return events
+        if limit <= 0:
+            return ()
+        return events[-limit:]
 
     def clear(self) -> None:
         with self._lock:

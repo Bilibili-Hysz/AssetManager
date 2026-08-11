@@ -24,7 +24,7 @@ def require_library_session(session: _T) -> _T:
         getattr(session, "_library_session_contract_token", None)
         is not _LIBRARY_SESSION_TOKEN
     ):
-        raise TypeError("MetadataRepository requires a real LibrarySession")
+        raise TypeError("requires a registered LibrarySession")
     return session
 
 

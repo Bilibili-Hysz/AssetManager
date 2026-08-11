@@ -121,7 +121,7 @@ def test_canonical_factory_rejects_fake_and_unmanaged_sessions(tmp_path):
     conn = sqlite3.connect(":memory:")
     fake = _fake_session(tmp_path / "library", conn)
     try:
-        with pytest.raises(TypeError, match="real LibrarySession"):
+        with pytest.raises(TypeError, match="registered LibrarySession"):
             AssetIndexRepository.for_session(fake)
     finally:
         conn.close()

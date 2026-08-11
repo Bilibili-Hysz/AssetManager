@@ -86,6 +86,15 @@ class _LanServicesHolder:
     A failed attempt is observed by every thread that joined that generation,
     while a later caller may start a new attempt. The mutable holder is kept
     outside the frozen snapshot's repr/equality/hash value semantics.
+
+    Lock order contract: the session lifecycle condition may be held while
+    taking the holder condition only in the publication direction
+    (``_publish_while_live`` -> ``_publish``). The holder condition is never
+    held while acquiring the session condition: liveness checks in ``get``
+    run outside the holder lock (the ``ready`` state is monotonic, so a
+    value captured under the holder lock stays valid). Every nested
+    acquisition therefore shares one order, and the two call paths cannot
+    deadlock against each other.
     """
 
     def __init__(
@@ -106,23 +115,33 @@ class _LanServicesHolder:
     def get(self) -> LanRuntimeServices:
         current_thread_id = threading.get_ident()
         while True:
+            ready_value = _MISSING
             with self._condition:
                 if self._state == "ready":
-                    if self._session.is_closed:
-                        raise RuntimeError(
-                            "Cannot use retained LAN services from a closed LibrarySession"
-                        )
                     assert self._value is not None
-                    return self._value
-                if self._state == "building":
+                    ready_value = self._value
+                elif self._state == "building":
                     if self._building_thread_id == current_thread_id:
                         raise RuntimeError(
                             "Recursive LAN service materialization is not allowed"
                         )
                     return self._wait_for_generation(self._generation)
 
+            if ready_value is not _MISSING:
+                # Session liveness is verified outside the holder lock:
+                # "ready" is a monotonic state, so the captured value remains
+                # valid. Checking is_closed under the holder lock would nest
+                # holder -> session-condition locks — the reverse of the
+                # session -> holder order used by _publish_while_live ->
+                # _publish — which could deadlock those two call paths.
+                if self._session.is_closed:
+                    raise RuntimeError(
+                        "Cannot use retained LAN services from a closed LibrarySession"
+                    )
+                return ready_value
+
             # Avoid taking the session lifecycle lock while holding the holder
-            # lock. Publication intentionally uses the reverse lock order.
+            # lock. Publication is the only path that nests session -> holder.
             if self._session.is_closed:
                 raise RuntimeError(
                     "Cannot materialize LAN services for a closed LibrarySession"
@@ -253,6 +272,7 @@ class ApplicationBootstrap:
         self._performance_recorder = performance_recorder
         self._plugin_host: PluginHostContext | None = None
         self._plugin_svc: PluginService | None = None
+        self._plugin_load_failures: list[str] = []
         self._runtimes: dict[int, "LibraryRuntime"] = {}
         self._runtime_lock = threading.Lock()
         self._runtime_creation: dict[int, threading.Event] = {}
@@ -285,23 +305,48 @@ class ApplicationBootstrap:
     # ── Plugin lifecycle ─────────────────────────────────────────
 
     def discover_plugins(self) -> list:
-        """Discover and load plugins. Returns loaded descriptors."""
+        """Discover and load plugins. Returns loaded descriptors.
+
+        Individual plugin failures are never swallowed silently: failed plugin
+        ids are recorded in :attr:`plugin_load_failures`, and unexpected
+        discovery/loading errors are logged with ``_log.exception``. The
+        plugin service is dropped (``plugin_service`` becomes ``None``) only
+        when the container itself cannot resolve it; a broken or missing
+        plugin never tears down an otherwise usable service.
+        """
+        self._plugin_load_failures = []
         try:
             self._plugin_svc = self.container.resolve(PluginService)
+        except Exception:
+            _log.exception("Cannot resolve plugin service; plugin support disabled")
+            self._plugin_svc = None
+            self._plugin_load_failures.append("<resolve>")
+            return []
+        try:
             descriptors = self._plugin_svc.discover()
-            if descriptors:
-                _log.info("Discovered %d plugin(s): %s",
-                          len(descriptors), [d.id for d in descriptors])
-                self._plugin_host = PluginHostContext()
-                results = self._plugin_svc.load_all_enabled(self._plugin_host)
-                loaded = [r.plugin_id for r in results if r.ok]
-                if loaded:
-                    _log.info("Loaded plugin(s): %s", loaded)
-            return descriptors
         except Exception:
             _log.exception("Plugin discovery failed")
-            self._plugin_svc = None
+            self._plugin_load_failures.append("<discover>")
             return []
+        if not descriptors:
+            return []
+        _log.info("Discovered %d plugin(s): %s",
+                  len(descriptors), [d.id for d in descriptors])
+        self._plugin_host = PluginHostContext()
+        try:
+            results = self._plugin_svc.load_all_enabled(self._plugin_host)
+        except Exception:
+            _log.exception("Plugin loading failed")
+            self._plugin_load_failures.append("<load>")
+            return descriptors
+        failed = [r.plugin_id for r in results if not r.ok]
+        if failed:
+            self._plugin_load_failures.extend(failed)
+            _log.warning("Failed to load plugin(s): %s", failed)
+        loaded = [r.plugin_id for r in results if r.ok]
+        if loaded:
+            _log.info("Loaded plugin(s): %s", loaded)
+        return descriptors
 
     @property
     def plugin_host_context(self) -> PluginHostContext | None:
@@ -310,6 +355,11 @@ class ApplicationBootstrap:
     @property
     def plugin_service(self) -> PluginService | None:
         return self._plugin_svc
+
+    @property
+    def plugin_load_failures(self) -> tuple[str, ...]:
+        """Return plugins that failed during the last discovery pass."""
+        return tuple(self._plugin_load_failures)
 
     @property
     def performance_recorder(self) -> PerformanceRecorder | None:

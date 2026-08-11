@@ -801,10 +801,15 @@ class SQLiteReconciliationQueueStore:
                             lease_token,
                         )
                     elif current.state is ReconciliationState.RUNNING:
-                        raise ReconciliationQueuePersistenceConflict(
-                            "Running reconciliation task requires attempt CAS",
-                            operation="state_mutation",
-                        )
+                        # Token-less administrative terminal/cancel of a
+                        # running task is a forced stop: the admin is
+                        # authoritative over a live worker lease, so no
+                        # attempt/lease CAS applies.  The update below clears
+                        # the lease, after which the running worker's own
+                        # completion CAS fails — the intended outcome of an
+                        # admin termination.
+                        predicate = "state='running'"
+                        predicate_params = ()
                     else:
                         predicate = "state IN ('pending', 'retryable')"
                         predicate_params = ()

@@ -94,9 +94,9 @@ def test_tag_repository_rejects_fake_session_even_when_connection_is_managed(tmp
     try:
         conn = session.connection_for(session.root)
         fake = _fake_session(session.root, conn)
-        with pytest.raises(TypeError, match="real LibrarySession"):
+        with pytest.raises(TypeError, match="registered LibrarySession"):
             TagRepository.for_session(fake)
-        with pytest.raises(TypeError, match="real LibrarySession"):
+        with pytest.raises(TypeError, match="registered LibrarySession"):
             TagRepository(conn, session=fake)
     finally:
         bootstrap.library_service.close()

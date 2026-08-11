@@ -31,9 +31,14 @@ DEFAULT_TOOLS = [
 
 
 def _load() -> list[dict]:
-    """Load tools from JSON, falling back to defaults."""
+    """Load tools from JSON, falling back to defaults (read-only).
+
+    A missing file yields the defaults without writing anything:
+    ``list_tools`` is a query and must not touch the filesystem (the
+    shared dir may be read-only, e.g. installed under Program Files).
+    Persistence happens only through the explicit ``set_tools`` save path.
+    """
     if not TOOLS_PATH.exists():
-        _save(DEFAULT_TOOLS)
         return list(DEFAULT_TOOLS)
     try:
         data = json.loads(TOOLS_PATH.read_text(encoding="utf-8"))
@@ -71,8 +76,24 @@ def list_tools() -> list[dict]:
     return _load()
 
 
-def run_tool(tool: dict, file_path: str = "", folder_path: str = "") -> None:
-    """Execute a tool with substituted arguments."""
+def set_tools(tools: list[dict]) -> None:
+    """Persist the full tool list, creating tools.json on first save."""
+    if not isinstance(tools, list) or not all(
+            isinstance(t, dict) for t in tools):
+        raise ValueError("tools must be a list of tool dicts")
+    _save(tools)
+
+
+def run_tool(tool: dict, file_path: str = "", folder_path: str = "",
+             timeout: float | None = None) -> None:
+    """Execute a tool with substituted arguments.
+
+    Fire-and-forget by default: returns right after launching, which is the
+    contract of the GUI menu callers (they start long-running apps like
+    Blender/VS Code).  Pass ``timeout`` (seconds) to wait for the tool to
+    exit; a hung process is terminated (``kill`` as a fallback) and the
+    event is logged as a warning.
+    """
     cmd = tool.get("cmd", "")
     args = tool.get("args", [])
     if not cmd or not isinstance(cmd, str):
@@ -100,11 +121,43 @@ def run_tool(tool: dict, file_path: str = "", folder_path: str = "") -> None:
         if sys.platform == "win32":
             # Windows' CreateProcess cannot execute .cmd/.bat directly
             # (WinError 193); wrap them in cmd.exe.
-            subprocess.Popen(_windows_launch_command(full), shell=False)
+            proc = subprocess.Popen(_windows_launch_command(full), shell=False)
         else:
-            subprocess.Popen(full, shell=False, start_new_session=True)
+            proc = subprocess.Popen(full, shell=False, start_new_session=True)
     except OSError:
         _log.exception("Failed to launch tool: %s", cmd)
+        return None
+    _log.debug("Launched tool %s (pid=%s)", name, getattr(proc, "pid", None))
+    if timeout is not None:
+        _wait_for_tool(proc, name, timeout)
+
+
+# Seconds allowed for a terminated tool to exit before the kill fallback.
+_TERMINATE_GRACE = 5.0
+
+
+def _wait_for_tool(proc: subprocess.Popen, name: str, timeout: float) -> None:
+    """Wait for a tool; terminate it (kill as a fallback) if it hangs."""
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        pid = getattr(proc, "pid", None)
+        _log.warning("Tool %s (pid=%s) timed out after %.1fs; terminating",
+                     name, pid, timeout)
+        try:
+            proc.terminate()
+        except OSError:
+            _log.exception("Failed to terminate tool %s (pid=%s)", name, pid)
+            return
+        try:
+            proc.wait(timeout=_TERMINATE_GRACE)
+        except subprocess.TimeoutExpired:
+            _log.warning("Tool %s (pid=%s) ignored terminate; killing",
+                         name, pid)
+            try:
+                proc.kill()
+            except OSError:
+                _log.exception("Failed to kill tool %s (pid=%s)", name, pid)
 
 
 def _windows_launch_command(full: list[str]) -> list[str]:

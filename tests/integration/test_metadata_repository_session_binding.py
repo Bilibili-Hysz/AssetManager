@@ -102,9 +102,9 @@ def test_fake_session_cannot_borrow_a_real_managed_metadata_connection(tmp_path)
     try:
         conn = real_session.connection_for(real_session.root)
         fake = _fake_session(real_session.root, conn)
-        with pytest.raises(TypeError, match="real LibrarySession"):
+        with pytest.raises(TypeError, match="registered LibrarySession"):
             MetadataRepository.for_session(fake)
-        with pytest.raises(TypeError, match="real LibrarySession"):
+        with pytest.raises(TypeError, match="registered LibrarySession"):
             MetadataRepository(conn, session=fake)
         with pytest.raises(TypeError, match="real LibrarySession"):
             MetadataService(connection_provider=fake.connection_for, session=fake)

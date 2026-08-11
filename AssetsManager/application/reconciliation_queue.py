@@ -91,6 +91,10 @@ _FINISHED_STATES = {
     ReconciliationState.CANCELLED,
 }
 
+# Durable JSON marker format version.  Module-level so the migration module
+# can accept the same marker versions without constructing a queue.
+_FORMAT_VERSION = 2
+
 
 @dataclass(frozen=True, slots=True)
 class ReconciliationTask:
@@ -297,8 +301,6 @@ class ReconciliationQueue:
     of in-process state transitions and condition notification.
     """
 
-    _FORMAT_VERSION = 2
-
     def __init__(
         self,
         *,
@@ -348,6 +350,20 @@ class ReconciliationQueue:
                 try:
                     self._persist_and_notify_unlocked()
                 except ReconciliationQueuePersistenceConflict as conflict:
+                    # Another process took over the durable generation while
+                    # this process was recovering expired leases.  Degrade to
+                    # a read-only load of the newer durable snapshot instead
+                    # of failing the library open; the owning process applies
+                    # whatever recovery is still required.
+                    try:
+                        snapshot = self._store.load_snapshot()
+                        self._set_store_snapshot_unlocked(snapshot)
+                    except Exception:
+                        # ``_persist_unlocked`` already refreshed the
+                        # in-memory snapshot when the conflict was raised; a
+                        # failed reload keeps the newest state this queue has
+                        # seen rather than failing startup.
+                        pass
                     _log.warning(
                         "Reconciliation queue startup recovery lost a cross-process "
                         "generation race; continuing with the newer durable snapshot: %s",
@@ -433,6 +449,12 @@ class ReconciliationQueue:
 
         current_now = now
         while True:
+            # Refresh the due clock from the queue's own clock on every
+            # iteration.  A caller-supplied ``now`` can be stale by the time
+            # the loop runs (the caller's clock may lag or have been captured
+            # before this wait); a fixed value would make an already-due task
+            # wait one full poll round before it is recognized.
+            current_now = self._clock()
             with self._condition:
                 if self._wake_event.is_set():
                     self._wake_event.clear()
@@ -469,7 +491,6 @@ class ReconciliationQueue:
                 return False
             if self._store is not None:
                 self._refresh_store_snapshot()
-            current_now = self._clock()
 
     def wake(self) -> None:
         """Wake a worker without waiting for a queue/DB mutation lock."""
@@ -1179,7 +1200,7 @@ class ReconciliationQueue:
             if not isinstance(raw, dict):
                 raise ValueError("unsupported reconciliation queue format")
             version = int(raw.get("version", 0))
-            if version not in {1, self._FORMAT_VERSION}:
+            if version not in {1, _FORMAT_VERSION}:
                 raise ValueError("unsupported reconciliation queue format")
             tasks = raw.get("tasks", [])
             if not isinstance(tasks, list):
@@ -1243,7 +1264,7 @@ class ReconciliationQueue:
         now_monotonic = self._clock()
         now_wallclock = self._wall_clock()
         payload = {
-            "version": self._FORMAT_VERSION,
+            "version": _FORMAT_VERSION,
             "clock": "wallclock-deadlines",
             "library_root": self.library_root,
             "tasks": [
@@ -1336,6 +1357,12 @@ def _resolve_nonretryable_attempts(
             task_id=task_id,
         )
     if task.state is ReconciliationState.RUNNING:
+        if lease_token is None:
+            # Token-less administrative forced termination of a running task
+            # is authoritative: no lease/attempt CAS applies.  A running
+            # worker's later completion CAS will then fail, which is the
+            # intended outcome of an admin terminal/cancel.
+            return None
         return task.attempts
     if lease_token is not None:
         raise ReconciliationQueuePersistenceConflict(

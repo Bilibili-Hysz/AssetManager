@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -30,6 +31,10 @@ if TYPE_CHECKING:
     from AssetsManager.application.runtime import LibraryRuntime
 
 _log = logging.getLogger(__name__)
+
+#: Maximum time ``_RouterSubscription.close`` waits for in-flight callbacks
+#: running on other threads before giving up and completing the close.
+_SUBSCRIPTION_DRAIN_TIMEOUT = 2.0
 
 
 class ProjectionDomain(StrEnum):
@@ -73,8 +78,17 @@ class _RouterSubscription:
                     self._router._subscribers.remove(self)
             current_thread = threading.get_ident()
             own_callbacks = self._active_by_thread.get(current_thread, 0)
+            deadline = time.monotonic() + _SUBSCRIPTION_DRAIN_TIMEOUT
             while self._inflight > own_callbacks:
-                self._router._drain_condition.wait()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    _log.warning(
+                        "Timed out after %.1fs waiting for in-flight callbacks "
+                        "in RouterSubscription.close(); closing anyway",
+                        _SUBSCRIPTION_DRAIN_TIMEOUT,
+                    )
+                    break
+                self._router._drain_condition.wait(timeout=remaining)
 
 
 EVENT_DOMAINS: dict[type, tuple[ProjectionDomain, ...]] = {
@@ -165,9 +179,14 @@ class RuntimeEventRouter:
         for raw in raw_paths:
             path = self._normalize_path(raw)
             if path is None:
-                return None
+                _log.debug(
+                    "Skipping unnormalizable path %r in invalidation event", raw
+                )
+                continue
             if path and path not in paths:
                 paths.append(path)
+        if raw_paths and not paths:
+            return None
         return tuple(paths)
 
     def _on_event(self, event) -> None:
@@ -228,7 +247,15 @@ class RuntimeEventRouter:
             paths = self._paths_for(event)
             if paths is None:
                 return
-            revision = self.runtime.next_revision()
+            try:
+                revision = self.runtime.next_revision()
+            except RuntimeError:
+                _log.warning(
+                    "Dropping invalidation event for runtime %s: runtime is "
+                    "closing or closed",
+                    self.runtime.epoch,
+                )
+                return
             invalidation = InvalidationEvent(
                 self.runtime.epoch, revision, EVENT_DOMAINS[type(event)], paths,
             )
