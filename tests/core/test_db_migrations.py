@@ -1,6 +1,6 @@
 from pathlib import Path
 import sqlite3
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -28,7 +28,7 @@ def test_migrate_rejects_empty_database_without_migrations_table():
 
 def test_schema_baseline_leaves_directory_cache_to_v5(memory_db):
     from AssetsManager.core import database
-    from AssetsManager.core.db_migrations import migrate
+    from AssetsManager.core.db_migrations import CURRENT_SCHEMA_VERSION, migrate
 
     conn = memory_db
     conn.executescript(database._SCHEMA)
@@ -38,7 +38,7 @@ def test_schema_baseline_leaves_directory_cache_to_v5(memory_db):
         "WHERE type='table' AND name='directory_cache'"
     ).fetchone() is None
 
-    assert migrate(conn) == 6
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
     assert conn.execute(
         "SELECT 1 FROM sqlite_master "
         "WHERE type='table' AND name='directory_cache'"
@@ -47,13 +47,17 @@ def test_schema_baseline_leaves_directory_cache_to_v5(memory_db):
 
 def test_migrate_records_baseline_schema_version(memory_db):
     from AssetsManager.core import database
-    from AssetsManager.core.db_migrations import current_version, migrate
+    from AssetsManager.core.db_migrations import (
+        CURRENT_SCHEMA_VERSION,
+        current_version,
+        migrate,
+    )
 
     conn = memory_db
     conn.executescript(database._SCHEMA)
 
-    assert migrate(conn) == 6
-    assert current_version(conn) == 6
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
+    assert current_version(conn) == CURRENT_SCHEMA_VERSION
     row = conn.execute(
         "SELECT name FROM schema_migrations WHERE version=1"
     ).fetchone()
@@ -78,19 +82,27 @@ def test_migrate_records_baseline_schema_version(memory_db):
         "SELECT name FROM schema_migrations WHERE version=6"
     ).fetchone()
     assert row6 == ("auth_share_schema",)
+    row7 = conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=7"
+    ).fetchone()
+    assert row7 == ("library_favorites",)
+    row8 = conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=8"
+    ).fetchone()
+    assert row8 == ("commerce_schema",)
 
 
 def test_migrate_is_idempotent(memory_db):
     from AssetsManager.core import database
-    from AssetsManager.core.db_migrations import migrate
+    from AssetsManager.core.db_migrations import CURRENT_SCHEMA_VERSION, migrate
 
     conn = memory_db
     conn.executescript(database._SCHEMA)
 
-    assert migrate(conn) == 6
-    assert migrate(conn) == 6
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
     count = conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0]
-    assert count == 6
+    assert count == CURRENT_SCHEMA_VERSION
 
 
 def test_preflight_without_migrations_table_is_read_only(memory_db):
@@ -136,7 +148,10 @@ def test_future_schema_version_is_rejected(memory_db):
 
 def test_open_library_runs_migrations(tmp_path, monkeypatch):
     from AssetsManager.core import database, path_resolver
-    from AssetsManager.core.db_migrations import current_version
+    from AssetsManager.core.db_migrations import (
+        CURRENT_SCHEMA_VERSION,
+        current_version,
+    )
 
     runtime = tmp_path / "RuntimeData"
     lib = tmp_path / "Library"
@@ -147,7 +162,7 @@ def test_open_library_runs_migrations(tmp_path, monkeypatch):
     try:
         manager = database.DatabaseManager()
         conn = manager.connection_for(lib)
-        assert current_version(conn) == 6
+        assert current_version(conn) == CURRENT_SCHEMA_VERSION
     finally:
         manager.close()
 
@@ -342,7 +357,7 @@ def test_v5_to_v6_creates_auth_and_share_schema(memory_db, monkeypatch):
     ).fetchall() == [(version,) for version in range(1, 6)]
 
     monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 6)
-    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:6])
     assert db_migrations.migrate(conn) == 6
     assert {row[0] for row in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
@@ -352,10 +367,57 @@ def test_v5_to_v6_creates_auth_and_share_schema(memory_db, monkeypatch):
     ).fetchall() == [(version,) for version in range(1, 7)]
 
 
-@pytest.mark.parametrize("table", ["users", "invite_codes", "share_links"])
-def test_recorded_v6_revalidates_required_auth_share_objects(memory_db, table):
+def test_v6_to_v7_creates_library_favorites_schema(memory_db, monkeypatch):
+    from AssetsManager.core import db_migrations
+
+    conn = memory_db
+    _load_v1_schema(conn)
+    all_migrations = db_migrations.MIGRATIONS
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 6)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:6])
+    assert db_migrations.migrate(conn) == 6
+
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 7)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:7])
+    assert db_migrations.migrate(conn) == 7
+    assert conn.execute(
+        "SELECT 1 FROM sqlite_master "
+        "WHERE type='table' AND name='library_favorites'"
+    ).fetchone() == (1,)
+    assert conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=7"
+    ).fetchone() == ("library_favorites",)
+
+
+def test_recorded_v7_revalidates_library_favorites(memory_db, monkeypatch):
+    from AssetsManager.core import db_migrations
     from AssetsManager.core.db_migrations import InvalidSchemaError, migrate
 
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 7)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", db_migrations.MIGRATIONS[:7])
+    conn = memory_db
+    _load_v1_schema(conn)
+    assert migrate(conn) == 7
+    conn.execute("DROP TABLE library_favorites")
+    conn.commit()
+
+    with pytest.raises(InvalidSchemaError, match="library_favorites"):
+        migrate(conn)
+
+    assert conn.execute(
+        "SELECT version FROM schema_migrations ORDER BY version"
+    ).fetchall() == [(version,) for version in range(1, 8)]
+
+
+@pytest.mark.parametrize("table", ["users", "invite_codes", "share_links"])
+def test_recorded_v6_revalidates_required_auth_share_objects(
+    memory_db, table, monkeypatch
+):
+    from AssetsManager.core import db_migrations
+    from AssetsManager.core.db_migrations import InvalidSchemaError, migrate
+
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 6)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", db_migrations.MIGRATIONS[:6])
     conn = memory_db
     _load_v1_schema(conn)
     assert migrate(conn) == 6
@@ -388,10 +450,13 @@ def test_recorded_v6_revalidates_required_auth_share_objects(memory_db, table):
     ],
 )
 def test_recorded_v6_rejects_incompatible_required_object(
-    memory_db, table, schema
+    memory_db, table, schema, monkeypatch
 ):
+    from AssetsManager.core import db_migrations
     from AssetsManager.core.db_migrations import InvalidSchemaError, migrate
 
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 6)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", db_migrations.MIGRATIONS[:6])
     conn = memory_db
     _load_v1_schema(conn)
     assert migrate(conn) == 6
@@ -435,7 +500,7 @@ def test_v6_rejects_incompatible_existing_auth_share_table(
     conn.commit()
 
     monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 6)
-    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:6])
     with pytest.raises(db_migrations.InvalidSchemaError, match=table):
         db_migrations.migrate(conn)
 
@@ -651,7 +716,10 @@ def test_preflight_rejects_fake_latest_history(memory_db):
 
 def test_v5_does_not_commit_outer_transaction(memory_db):
     from AssetsManager.core import database
-    from AssetsManager.core.db_migrations import _ensure_migrations_table
+    from AssetsManager.core.db_migrations import (
+        CURRENT_SCHEMA_VERSION,
+        _ensure_migrations_table,
+    )
 
     conn = memory_db
     conn.executescript(database._SCHEMA)
@@ -672,7 +740,7 @@ def test_v5_does_not_commit_outer_transaction(memory_db):
 
     from AssetsManager.core.db_migrations import migrate
 
-    assert migrate(conn) == 6
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
     assert conn.execute("SELECT value FROM caller_data").fetchone() == (
         "keep-until-rollback",
     )
@@ -680,6 +748,9 @@ def test_v5_does_not_commit_outer_transaction(memory_db):
     assert conn.execute("SELECT * FROM caller_data").fetchall() == []
     assert conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='directory_cache'"
+    ).fetchone() is None
+    assert conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='library_favorites'"
     ).fetchone() is None
     assert conn.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
@@ -710,3 +781,371 @@ def test_migration_failure_rolls_back_history_and_probe_ddl(memory_db, monkeypat
     assert memory_db.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='migration_probe'"
     ).fetchone() is None
+
+
+def test_v7_to_v8_creates_commerce_schema_with_foreign_keys(memory_db, monkeypatch):
+    from AssetsManager.core import db_migrations
+
+    conn = memory_db
+    conn.execute("PRAGMA foreign_keys=ON")
+    _load_v1_schema(conn)
+    all_migrations = db_migrations.MIGRATIONS
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 7)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:7])
+    assert db_migrations.migrate(conn) == 7
+    conn.execute(
+        "INSERT INTO library_favorites (owner_key, file_path) VALUES (?, ?)",
+        ("owner", "kept/path"),
+    )
+    conn.commit()
+
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 8)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:8])
+    assert db_migrations.migrate(conn) == 8
+
+    assert {row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()} >= {
+        "library_favorites",
+        "shop_items",
+        "shop_orders",
+        "shop_order_events",
+        "shop_delivery_tokens",
+    }
+    assert conn.execute(
+        "SELECT owner_key, file_path FROM library_favorites"
+    ).fetchall() == [("owner", "kept/path")]
+    assert conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=8"
+    ).fetchone() == ("commerce_schema",)
+
+    order_fks = {
+        (row[3], row[2], row[4], row[5], row[6])
+        for row in conn.execute("PRAGMA foreign_key_list('shop_orders')")
+    }
+    assert ("item_id", "shop_items", "id", "CASCADE", "RESTRICT") in order_fks
+    event_fks = {
+        (row[3], row[2], row[4], row[6])
+        for row in conn.execute("PRAGMA foreign_key_list('shop_order_events')")
+    }
+    assert ("order_id", "shop_orders", "id", "CASCADE") in event_fks
+    token_fks = {
+        (row[3], row[2], row[4], row[6])
+        for row in conn.execute("PRAGMA foreign_key_list('shop_delivery_tokens')")
+    }
+    assert ("order_id", "shop_orders", "id", "CASCADE") in token_fks
+    assert ("share_id", "share_links", "id", "SET NULL") in token_fks
+
+
+def test_v8_to_v9_creates_asset_index_state(memory_db, monkeypatch):
+    from AssetsManager.core import db_migrations
+
+    conn = memory_db
+    _load_v1_schema(conn)
+    all_migrations = db_migrations.MIGRATIONS
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 8)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:8])
+    assert db_migrations.migrate(conn) == 8
+
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 9)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:9])
+    assert db_migrations.migrate(conn) == 9
+    assert conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=9"
+    ).fetchone() == ("asset_index_state",)
+    assert {
+        row[1] for row in conn.execute("PRAGMA table_info('asset_index_state')")
+    } == {"library_root", "revision", "updated_at"}
+
+
+
+def test_asset_index_state_contract_rejects_incompatible_columns(memory_db):
+    from AssetsManager.core.schema_defs import InvalidSchemaError, validate_schema_objects
+
+    memory_db.execute(
+        "CREATE TABLE asset_index_state ("
+        "library_root TEXT PRIMARY KEY NOT NULL, "
+        "revision TEXT, "
+        "updated_at REAL)"
+    )
+    with pytest.raises(InvalidSchemaError, match="invalid columns|missing checks"):
+        validate_schema_objects(memory_db, ("asset_index_state",))
+
+
+def test_commerce_contract_rejects_weak_shop_items_constraints(memory_db):
+    from AssetsManager.core.schema_defs import InvalidSchemaError, validate_schema_objects
+
+    memory_db.execute(
+        "CREATE TABLE shop_items ("
+        "id INTEGER PRIMARY KEY, "
+        "path TEXT UNIQUE, "
+        "title TEXT, description TEXT, price_cents INTEGER, currency TEXT, "
+        "cover_path TEXT, enabled INTEGER, metadata TEXT, "
+        "created_at REAL, updated_at REAL"
+        ")"
+    )
+    memory_db.execute(
+        "CREATE INDEX idx_shop_items_enabled_updated "
+        "ON shop_items(enabled, updated_at)"
+    )
+
+    with pytest.raises(InvalidSchemaError, match="invalid columns|missing checks"):
+        validate_schema_objects(memory_db, ("shop_items",))
+
+
+def test_v9_to_v10_creates_free_download_quota_windows(memory_db, monkeypatch):
+    from AssetsManager.core import db_migrations
+
+    conn = memory_db
+    _load_v1_schema(conn)
+    all_migrations = db_migrations.MIGRATIONS
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 9)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:9])
+    assert db_migrations.migrate(conn) == 9
+
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 10)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:10])
+    assert db_migrations.migrate(conn) == 10
+    assert conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=10"
+    ).fetchone() == ("free_download_quota",)
+    assert {
+        row[1] for row in conn.execute("PRAGMA table_info('free_download_quota_windows')")
+    } == {"identity_key", "window_start", "download_count", "last_download_at"}
+
+
+def test_v8_collision_rolls_back_all_commerce_ddl_and_history(memory_db, monkeypatch):
+    from AssetsManager.core import db_migrations
+    from AssetsManager.core.db_migrations import InvalidSchemaError
+
+    conn = memory_db
+    _load_v1_schema(conn)
+    all_migrations = db_migrations.MIGRATIONS
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 7)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:7])
+    assert db_migrations.migrate(conn) == 7
+    conn.execute("CREATE TABLE shop_orders (id TEXT PRIMARY KEY)")
+    conn.commit()
+
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 8)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:8])
+    with pytest.raises(InvalidSchemaError, match="shop_orders"):
+        db_migrations.migrate(conn)
+
+    assert conn.execute(
+        "SELECT version FROM schema_migrations ORDER BY version"
+    ).fetchall() == [(version,) for version in range(1, 8)]
+    assert conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='shop_items'"
+    ).fetchone() is None
+    assert conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='shop_order_events'"
+    ).fetchone() is None
+    assert conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='shop_delivery_tokens'"
+    ).fetchone() is None
+
+
+@pytest.mark.parametrize(
+    "table",
+    [
+        "shop_items",
+        "shop_orders",
+        "shop_order_events",
+        "shop_delivery_tokens",
+        "shop_order_receipts",
+    ],
+)
+def test_latest_schema_revalidates_required_commerce_objects(memory_db, table):
+    from AssetsManager.core.db_migrations import (
+        CURRENT_SCHEMA_VERSION,
+        InvalidSchemaError,
+        migrate,
+    )
+
+    conn = memory_db
+    _load_v1_schema(conn)
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
+    conn.execute(f"DROP TABLE {table}")
+    conn.commit()
+
+    with pytest.raises(InvalidSchemaError, match=table):
+        migrate(conn)
+
+
+def test_v10_to_v11_creates_order_receipts_without_backfill(memory_db, monkeypatch):
+    from AssetsManager.core import db_migrations
+
+    conn = memory_db
+    conn.execute("PRAGMA foreign_keys=ON")
+    _load_v1_schema(conn)
+    all_migrations = db_migrations.MIGRATIONS
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 10)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:10])
+    assert db_migrations.migrate(conn) == 10
+    conn.execute(
+        "INSERT INTO shop_items (path, title, price_cents, currency) VALUES (?, ?, ?, ?)",
+        ("old.txt", "Old", 0, "CNY"),
+    )
+    item_id = conn.execute("SELECT id FROM shop_items").fetchone()[0]
+    conn.execute(
+        "INSERT INTO shop_orders "
+        "(item_id, item_path, item_title, amount_cents, currency, status) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (item_id, "old.txt", "Old", 0, "CNY", "pending"),
+    )
+    conn.commit()
+
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 11)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:11])
+    assert db_migrations.migrate(conn) == 11
+
+    assert conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=11"
+    ).fetchone() == ("shop_order_receipts",)
+    assert {
+        row[1] for row in conn.execute("PRAGMA table_info('shop_order_receipts')")
+    } == {"token_hash", "order_id", "created_at", "expires_at", "revoked_at"}
+    assert conn.execute("SELECT COUNT(*) FROM shop_order_receipts").fetchone() == (0,)
+    receipt_fks = {
+        (row[3], row[2], row[4], row[5], row[6])
+        for row in conn.execute("PRAGMA foreign_key_list('shop_order_receipts')")
+    }
+    assert ("order_id", "shop_orders", "id", "CASCADE", "CASCADE") in receipt_fks
+    indexes = {
+        row[1]: tuple(
+            index_row[2]
+            for index_row in conn.execute(f"PRAGMA index_info('{row[1]}')")
+        )
+        for row in conn.execute("PRAGMA index_list('shop_order_receipts')")
+    }
+    assert ("order_id",) in indexes.values()
+    assert indexes["idx_shop_order_receipts_availability"] == (
+        "revoked_at",
+        "expires_at",
+    )
+
+
+def test_v11_receipt_collision_rolls_back_history(memory_db, monkeypatch):
+    from AssetsManager.core import db_migrations
+    from AssetsManager.core.db_migrations import InvalidSchemaError
+
+    conn = memory_db
+    _load_v1_schema(conn)
+    all_migrations = db_migrations.MIGRATIONS
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 10)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:10])
+    assert db_migrations.migrate(conn) == 10
+    conn.execute("CREATE TABLE shop_order_receipts (token_hash TEXT PRIMARY KEY)")
+    conn.commit()
+
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 11)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:11])
+    with pytest.raises(InvalidSchemaError, match="shop_order_receipts"):
+        db_migrations.migrate(conn)
+
+    assert conn.execute(
+        "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"
+    ).fetchone() == (10,)
+
+def test_v19_upgrades_legacy_cart_checkout_schema_and_preserves_records(memory_db, monkeypatch):
+    from copy import deepcopy
+
+    from AssetsManager.core import database, db_migrations, schema_defs
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    all_migrations = db_migrations.MIGRATIONS
+    legacy_schema = db_migrations.SHOP_CARTS_SCHEMA_V16
+    current_contract = schema_defs.SCHEMA_OBJECT_CONTRACT
+    legacy_contracts = deepcopy(current_contract)
+    legacy_shop_carts = cast(dict[str, Any], legacy_contracts["shop_carts"])
+    legacy_shop_carts["columns"] = tuple(
+        value for value in legacy_shop_carts["columns"]
+        if value != "checkout_generation"
+    )
+    cast(dict[str, Any], legacy_shop_carts["column_contracts"]).pop(
+        "checkout_generation"
+    )
+    legacy_shop_carts["checks"] = tuple(
+        value for value in legacy_shop_carts["checks"]
+        if value != "checkout_generation >= 1"
+    )
+    legacy_contracts["shop_cart_checkouts"]["columns"] = tuple(
+        value
+        for value in legacy_contracts["shop_cart_checkouts"]["columns"]
+        if value not in {"checkout_generation", "request_fingerprint"}
+    )
+    cast(dict[str, Any], legacy_contracts["shop_cart_checkouts"]["column_contracts"]).pop(
+        "checkout_generation"
+    )
+    cast(dict[str, Any], legacy_contracts["shop_cart_checkouts"]["column_contracts"]).pop(
+        "request_fingerprint"
+    )
+    legacy_contracts["shop_cart_checkouts"]["unique_constraints"] = (
+        ("cart_id", "request_key"),
+        ("checkout_group_id",),
+    )
+    legacy_contracts["shop_cart_checkouts"]["checks"] = ()
+    legacy_contracts["shop_cart_checkouts"]["indexes"] = {
+        "idx_shop_cart_checkouts_cart": ("cart_id", "created_at")
+    }
+
+    monkeypatch.setattr(db_migrations, "SHOP_CARTS_SCHEMA_V16", legacy_schema)
+    monkeypatch.setattr(db_migrations, "SCHEMA_OBJECT_CONTRACT", legacy_contracts)
+    monkeypatch.setattr(schema_defs, "SCHEMA_OBJECT_CONTRACT", legacy_contracts)
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 18)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:18])
+    assert db_migrations.migrate(conn) == 18
+
+    conn.execute(
+        "INSERT INTO shop_carts(owner_type,owner_key,expires_at,created_at,updated_at) VALUES('anonymous','legacy-owner',100,1,1)"
+    )
+    cart_id = conn.execute("SELECT id FROM shop_carts WHERE owner_key='legacy-owner'").fetchone()[0]
+    conn.execute(
+        "INSERT INTO shop_cart_checkouts(cart_id,request_key,checkout_group_id,order_ids,created_at) VALUES(?,?,?,?,?)",
+        (cart_id, "legacy-key", "legacy-group", "[1]", 2),
+    )
+    conn.commit()
+
+    # Restore the current contract in both modules; the migration must validate
+    # the upgraded shape rather than the legacy copy.
+    monkeypatch.setattr(db_migrations, "SCHEMA_OBJECT_CONTRACT", current_contract)
+    monkeypatch.setattr(schema_defs, "SCHEMA_OBJECT_CONTRACT", current_contract)
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 19)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations)
+
+    assert db_migrations.migrate(conn) == 19
+    assert conn.execute(
+        "SELECT checkout_generation,request_key,checkout_group_id FROM shop_cart_checkouts"
+    ).fetchone() == (1, "legacy-key", "legacy-group")
+    assert conn.execute(
+        "SELECT checkout_generation FROM shop_carts WHERE id=?", (cart_id,)
+    ).fetchone() == (1,)
+
+
+def test_v23_adds_catalog_ordering_index_to_existing_commerce_schema(memory_db, monkeypatch):
+    from AssetsManager.core import database, db_migrations
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    all_migrations = db_migrations.MIGRATIONS
+
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 22)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:22])
+    assert db_migrations.migrate(conn) == 22
+
+    conn.execute("DROP INDEX IF EXISTS idx_shop_items_enabled_created")
+    conn.commit()
+    assert conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+        ("idx_shop_items_enabled_created",),
+    ).fetchone() is None
+
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 23)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations)
+    assert db_migrations.migrate(conn) == 23
+    assert conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+        ("idx_shop_items_enabled_created",),
+    ).fetchone() is not None

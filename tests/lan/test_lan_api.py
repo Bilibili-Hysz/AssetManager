@@ -1,6 +1,7 @@
 """Unit tests for LAN API security and basic functionality."""
 import asyncio
 from contextlib import nullcontext
+import json
 import os
 import sqlite3
 from types import SimpleNamespace
@@ -860,6 +861,7 @@ class _FakeLan:
         self.token_secret = "test-secret"
         self.local_ui_auth_secret = "test-secret"
         self.endpoint_protocol = "http"
+        self.ssl_active = False
         self._ssl_cert = None
         self._ssl_key = None
         self._port = 8080
@@ -909,6 +911,18 @@ def _init_lan_schemas(conn):
 
     AuthRepository(conn).init_tables()
     ShareRepository(conn).init_table()
+    # tag_metadata arrives via DB migration v3; fixture databases start from
+    # the baseline _SCHEMA, so mirror the migrated shape for tag routes.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS tag_metadata ("
+        "tag TEXT PRIMARY KEY, "
+        "color TEXT DEFAULT '', "
+        "icon TEXT DEFAULT '', "
+        "category TEXT DEFAULT '', "
+        "created_at REAL DEFAULT (strftime('%s','now'))"
+        ")"
+    )
+    conn.commit()
 
 
 def _legacy_server(**kwargs):
@@ -928,6 +942,7 @@ def _legacy_server(**kwargs):
     )
     from AssetsManager.core.directory_cache import DirectoryCache
     from AssetsManager.lan.server import _LanServerImpl
+    from tests.lan.support.legacy_runtime_adapter import adapt_legacy_runtime
 
     db_conn = kwargs["db_conn"]
 
@@ -981,9 +996,8 @@ def _legacy_server(**kwargs):
     options.pop("library_root")
     options.pop("thumbnail_dir")
     options.pop("db_conn")
-    return _LanServerImpl(
-        runtime=runtime, _allow_legacy_runtime=True, **options
-    )
+    runtime = adapt_legacy_runtime(runtime)
+    return _LanServerImpl(runtime=runtime, **options)
 
 
 def _make_lan_app(tmp_path, *, authenticated_context_only=False, canonical_context_only=False):
@@ -1917,6 +1931,17 @@ def test_lan_server_facade_accepts_ip_whitelist(monkeypatch):
     assert captured["ip_whitelist"] == ["127.0.0.1"]
 
 
+def test_public_lan_entrypoints_do_not_expose_legacy_runtime_switch(monkeypatch):
+    import AssetsManager.lan as lan
+    from AssetsManager.lan.manager import ShareManager
+
+    monkeypatch.setattr(lan, "_HAS_AIOHTTP", True)
+    with pytest.raises(TypeError, match="_allow_legacy_runtime"):
+        lan.LanServer(runtime=object(), _allow_legacy_runtime=True)
+    with pytest.raises(TypeError, match="_allow_legacy_runtime"):
+        ShareManager().start(runtime=object(), _allow_legacy_runtime=True)
+
+
 def test_lan_server_requires_runtime_before_server_startup(monkeypatch):
     import AssetsManager.lan as lan
     with pytest.raises(TypeError, match="runtime"):
@@ -1983,7 +2008,10 @@ def test_share_manager_passes_runtime_to_server(monkeypatch):
 
     import AssetsManager as package
     monkeypatch.setattr(package, "lan", _Lan)
-    ShareManager().start(runtime=runtime)
+    from AssetsManager.application.security_preflight import SecurityPreflight
+    preflight = SecurityPreflight()
+    preflight.confirm_trusted_lan()
+    ShareManager().start(runtime=runtime, preflight=preflight)
     assert captured["runtime"] is runtime
 
 
@@ -1993,44 +2021,52 @@ def _make_runtime_services_for_fake_session(session, connection):
 
     from AssetsManager.application import (
         AssetService,
-        AuthService,
-        MetadataService,
-        ProjectService,
         RuntimeSharingServices,
         SearchService,
-        ShareService,
         TagService,
         ThumbnailService,
     )
     from AssetsManager.core.directory_cache import DirectoryCache
 
     token_secret = "runtime-test-secret"
+    metadata_service = SimpleNamespace(
+        _connection_provider=session.connection_for, _session=session
+    )
+    tag_service = TagService(
+        connection_provider=session.connection_for, session=session
+    )
+    project_service = SimpleNamespace(
+        _connection_provider=session.connection_for,
+        _session=session,
+        _metadata_svc=metadata_service,
+        _tag_svc=tag_service,
+    )
     return SimpleNamespace(
         session=session,
         sharing_services=RuntimeSharingServices(
             token_secret=token_secret,
-            auth_service=AuthService(
-                connection, token_secret, session=session
+            # These LAN injection tests validate snapshot/session wiring rather
+            # than Auth/Share persistence.  Use an explicit binding projection
+            # instead of pretending an unmanaged object connection is a
+            # canonical DatabaseManager-owned service resource.
+            auth_service=SimpleNamespace(
+                _conn=connection, _secret=token_secret, _session=session
             ),
-            share_service=ShareService(
-                connection, token_secret, session=session
+            share_service=SimpleNamespace(
+                _conn=connection, _secret=token_secret, _session=session
             ),
         ),
-        metadata_service=MetadataService(
-            connection_provider=session.connection_for, session=session
-        ),
-        tag_service=TagService(
-            connection_provider=session.connection_for, session=session
-        ),
+        metadata_service=metadata_service,
+        tag_service=tag_service,
         thumbnail_service=ThumbnailService(
             connection_provider=session.connection_for, session=session
         ),
         lan_services=SimpleNamespace(
             asset_service=AssetService(directory_cache=DirectoryCache(connection)),
-            project_service=ProjectService(
+            project_service=project_service,
+            search_service=SearchService(
                 connection_provider=session.connection_for, session=session
             ),
-            search_service=SearchService(connection_provider=session.connection_for),
         ),
     )
 
@@ -2071,7 +2107,9 @@ def test_runtime_injection_uses_canonical_session_resources_and_services(tmp_pat
     assert server.db_conn is connection
     assert server.session_token == session.event_token
     assert server.services.runtime_services is services
+    session.connection_for.reset_mock()
     assert server.connection_for(session.root) is connection
+    session.connection_for.assert_called_once_with(session.root)
     runtime.register_lifecycle_adapter.assert_not_called()
 
     server._register_runtime_adapter()
@@ -2125,7 +2163,7 @@ def test_lan_status_does_not_claim_https_before_tls_starts(tmp_path, monkeypatch
 
 
 @pytest.mark.anyio
-async def test_lan_startup_publishes_actual_tls_result_and_resets_on_restart(
+async def test_lan_startup_publishes_tls_and_fails_closed_on_restart(
     tmp_path, monkeypatch
 ):
     from AssetsManager.application import ApplicationBootstrap
@@ -2181,11 +2219,10 @@ async def test_lan_startup_publishes_actual_tls_result_and_resets_on_restart(
 
     server._running = False
     server._lifecycle_state = "starting"
-    await server._startup()
+    with pytest.raises(OSError, match="bad certificate"):
+        await server._startup()
     assert server.ssl_active is False
     assert server.endpoint_protocol == "http"
-
-
 @pytest.mark.anyio
 async def test_local_ui_tokens_are_stable_for_same_auth_config_and_revoked_on_change(
     tmp_path,
@@ -2348,6 +2385,31 @@ def test_runtime_injection_prefers_services_snapshot_over_legacy_services(tmp_pa
     assert server.services.share_service is canonical.sharing_services.share_service
 
 
+def test_legacy_adapter_binds_provider_only_search_service(tmp_path):
+    from AssetsManager.lan.server import _LanServerImpl
+    from tests.lan.support.legacy_runtime_adapter import adapt_legacy_runtime
+
+    session = SimpleNamespace(
+        root=tmp_path / "canonical",
+        thumb_dir=tmp_path / "canonical" / "thumbs",
+        event_token="session-token",
+        is_closed=False,
+    )
+    connection = object()
+    session.connection_for = Mock(return_value=connection)
+    services = _make_runtime_services_for_fake_session(session, connection)
+    services.lan_services.search_service._session = None
+    del session.operation
+    runtime = SimpleNamespace(session=session, services=services)
+
+    assert services.lan_services.search_service._session is None
+    runtime = adapt_legacy_runtime(runtime)
+    server = _LanServerImpl(runtime=runtime)
+
+    assert services.lan_services.search_service._session is session
+    assert server.services.search_service is services.lan_services.search_service
+
+
 def test_runtime_injection_rejects_legacy_services_by_default(tmp_path):
     from AssetsManager.lan.server import _LanServerImpl
 
@@ -2374,8 +2436,9 @@ def test_runtime_injection_rejects_legacy_services_by_default(tmp_path):
         _LanServerImpl(runtime=runtime)
 
 
-def test_runtime_injection_allows_legacy_services_only_through_internal_flag(tmp_path):
+def test_legacy_adapter_upgrades_legacy_services_to_canonical_runtime(tmp_path):
     from AssetsManager.lan.server import _LanServerImpl
+    from tests.lan.support.legacy_runtime_adapter import adapt_legacy_runtime
 
     session = SimpleNamespace(
         root=tmp_path / "canonical",
@@ -2392,7 +2455,8 @@ def test_runtime_injection_allows_legacy_services_only_through_internal_flag(tmp
     del session.operation
     runtime = SimpleNamespace(session=session, services=services)
 
-    server = _LanServerImpl(runtime=runtime, _allow_legacy_runtime=True)
+    runtime = adapt_legacy_runtime(runtime)
+    server = _LanServerImpl(runtime=runtime)
     assert server.services.runtime_services is services
     assert server.services.auth_service is services.sharing_services.auth_service
     assert server.services.share_service is services.sharing_services.share_service
@@ -2463,12 +2527,13 @@ def test_runtime_server_failed_construction_does_not_register_lifecycle_adapter(
     try:
         session = bootstrap.library_service.open_session(tmp_path / "library")
         runtime = bootstrap.runtime_for(session)
+        baseline_adapters = list(runtime._lifecycle_adapters)
         getattr(runtime.services, service_name)._connection_provider = lambda _root: object()
 
         with pytest.raises(ValueError, match=f"{service_name} provider"):
             _LanServerImpl(runtime=runtime)
 
-        assert runtime._lifecycle_adapters == []
+        assert runtime._lifecycle_adapters == baseline_adapters
     finally:
         bootstrap.library_service.close()
 
@@ -2481,6 +2546,8 @@ def test_runtime_server_failed_construction_does_not_register_lifecycle_adapter(
         ("project_internal", "project_service internals"),
         ("metadata_session", "metadata_service provider"),
         ("metadata_session_none", "metadata_service provider"),
+        ("search_session", "search_service provider"),
+        ("search_session_none", "search_service provider"),
     ),
 )
 def test_runtime_server_rejects_deep_session_binding_mismatches(
@@ -2493,6 +2560,7 @@ def test_runtime_server_rejects_deep_session_binding_mismatches(
     try:
         session = bootstrap.library_service.open_session(tmp_path / "library")
         runtime = bootstrap.runtime_for(session)
+        baseline_adapters = list(runtime._lifecycle_adapters)
         lan_services = runtime.services.lan_services
 
         if binding == "asset_cache":
@@ -2506,13 +2574,20 @@ def test_runtime_server_rejects_deep_session_binding_mismatches(
                 tmp_path / "foreign"
             )
             runtime.services.metadata_service._session = foreign_session
+        elif binding == "search_session":
+            foreign_session = bootstrap.library_service.open_session(
+                tmp_path / "foreign"
+            )
+            lan_services.search_service._session = foreign_session
+        elif binding == "search_session_none":
+            lan_services.search_service._session = None
         else:
             runtime.services.metadata_service._session = None
 
         with pytest.raises(ValueError, match=message):
             _LanServerImpl(runtime=runtime)
 
-        assert runtime._lifecycle_adapters == []
+        assert runtime._lifecycle_adapters == baseline_adapters
     finally:
         bootstrap.library_service.close()
 
@@ -2587,7 +2662,9 @@ def test_runtime_server_close_race_does_not_publish_partial_binding(
     assert isinstance(server_errors[0], RuntimeError)
     assert close_errors == []
     assert session.is_closed
-    assert runtime.services.lan_services is materialized_lan_services
+    assert materialized_lan_services is not None
+    with pytest.raises(RuntimeError, match="retained LAN services"):
+        _ = runtime.services.lan_services
     assert runtime._lifecycle_adapters == []
 
 def test_runtime_server_does_not_rebind_runtime_service_providers(tmp_path):
@@ -2883,6 +2960,138 @@ async def test_batch_download_recorder_failure_does_not_change_archive_response(
 
 
 @pytest.mark.anyio
+async def test_anonymous_quota_cookie_session_keeps_one_bucket_per_browser(tmp_path, monkeypatch):
+    from AssetsManager.lan.routes import quota
+    from AssetsManager.repositories.free_download_quota_repository import FreeDownloadQuotaRepository
+
+    app, library, conn = _make_lan_app(tmp_path)
+    (library / "asset.txt").write_text("download me", encoding="utf-8")
+    FreeDownloadQuotaRepository(conn).init_tables()
+    monkeypatch.setattr(
+        quota.AppSettings,
+        "instance",
+        lambda: SimpleNamespace(get=lambda key, default=None: {
+            "lan_quota_enabled": True,
+            "lan_quota_period": "daily",
+            "lan_quota_limit": 2,
+            "lan_quota_min_interval_seconds": 0,
+            "lan_guest_list": True,
+            "lan_guest_download": True,
+            "lan_guest_preview": True,
+        }.get(key, default)),
+    )
+
+    client = await _make_client(app)
+    try:
+        # First anonymous request: no cookie yet -> Set-Cookie is issued.
+        first = await client.get("/api/quota")
+        assert first.status == 200
+        set_cookie = first.headers.getall("Set-Cookie", [])
+        assert any(value.startswith(f"{quota._QUOTA_ID_COOKIE}=") for value in set_cookie)
+        assert any("HttpOnly" in value and "SameSite=Lax" in value for value in set_cookie)
+        assert quota._QUOTA_ID_COOKIE in first.cookies
+
+        # The TestClient cookie jar replays the cookie: no reissue, same bucket.
+        second = await client.get("/api/quota")
+        assert second.status == 200
+        assert not any(
+            value.startswith(f"{quota._QUOTA_ID_COOKIE}=")
+            for value in second.headers.getall("Set-Cookie", [])
+        )
+        assert quota._QUOTA_ID_COOKIE not in second.cookies
+
+        downloaded = await client.get("/api/download/asset.txt")
+        assert downloaded.status == 200
+        await _read_body(downloaded)
+        status_body = json.loads(await (await client.get("/api/quota")).text())
+        assert status_body["used"] == 1
+
+        # Two more downloads exhaust the same browser's bucket; the third 429s.
+        assert (await client.get("/api/download/asset.txt")).status == 200
+        denied = await client.get("/api/download/asset.txt")
+        assert denied.status == 429
+        assert denied.headers["X-Quota-Remaining"] == "0"
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_anonymous_quota_buckets_are_isolated_per_browser(tmp_path, monkeypatch):
+    from AssetsManager.lan.routes import quota
+    from AssetsManager.repositories.free_download_quota_repository import FreeDownloadQuotaRepository
+
+    app, library, conn = _make_lan_app(tmp_path)
+    (library / "asset.txt").write_text("download me", encoding="utf-8")
+    FreeDownloadQuotaRepository(conn).init_tables()
+    monkeypatch.setattr(
+        quota.AppSettings,
+        "instance",
+        lambda: SimpleNamespace(get=lambda key, default=None: {
+            "lan_quota_enabled": True,
+            "lan_quota_period": "daily",
+            "lan_quota_limit": 1,
+            "lan_quota_min_interval_seconds": 0,
+            "lan_guest_list": True,
+            "lan_guest_download": True,
+            "lan_guest_preview": True,
+        }.get(key, default)),
+    )
+
+    client_a = await _make_client(app)
+    client_b = await _make_client(app)
+    try:
+        # Both anonymous browsers can download once (limit 1 each).
+        first_a = await client_a.get("/api/download/asset.txt")
+        assert first_a.status == 200
+        await _read_body(first_a)
+        first_b = await client_b.get("/api/download/asset.txt")
+        assert first_b.status == 200
+        await _read_body(first_b)
+
+        # Client A exhausts its own bucket while B still has quota left.
+        denied_a = await client_a.get("/api/download/asset.txt")
+        assert denied_a.status == 429
+        second_b = await client_b.get("/api/download/asset.txt")
+        assert second_b.status == 429
+        used_a = json.loads(await (await client_a.get("/api/quota")).text())["used"]
+        assert used_a == 1
+    finally:
+        await client_a.close()
+        await client_b.close()
+
+
+@pytest.mark.anyio
+async def test_authenticated_quota_request_gets_no_anonymous_cookie(tmp_path, monkeypatch):
+    from AssetsManager.lan.routes import quota
+    from AssetsManager.repositories.free_download_quota_repository import FreeDownloadQuotaRepository
+
+    app, library, conn = _make_lan_app(tmp_path)
+    FreeDownloadQuotaRepository(conn).init_tables()
+    monkeypatch.setattr(
+        quota.AppSettings,
+        "instance",
+        lambda: SimpleNamespace(get=lambda key, default=None: {
+            "lan_quota_enabled": True,
+            "lan_quota_period": "daily",
+            "lan_quota_limit": 2,
+            "lan_quota_min_interval_seconds": 0,
+        }.get(key, default)),
+    )
+
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/quota", headers=_local_ui_headers(app))
+        assert response.status == 200
+        assert not any(
+            value.startswith(f"{quota._QUOTA_ID_COOKIE}=")
+            for value in response.headers.getall("Set-Cookie", [])
+        )
+        assert quota._QUOTA_ID_COOKIE not in response.cookies
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
 async def test_meta_route_uses_lan_connection(tmp_path):
     app, library, conn = _make_lan_app(tmp_path)
     target = library / "asset.txt"
@@ -3110,8 +3319,10 @@ async def test_share_routes_create_and_download_scoped_file(tmp_path):
         assert download.status == 200
         assert await _read_body(download) == b"shared asset"
 
+        # Out-of-scope files are folded into 404 (indistinguishable from a
+        # missing share / file).
         blocked = await client.get(f"/api/shares/{share_id}/download/private.txt")
-        assert blocked.status == 403
+        assert blocked.status == 404
     finally:
         await client.close()
 
@@ -3126,7 +3337,8 @@ async def test_create_share_validation_contract(tmp_path):
     try:
         invalid_cases = [
             ({"password": 42}, "Invalid password format"),
-            ({"password": "abc"}, "Password must be at least 4 characters"),
+            ({"password": "abc"}, "Password must be at least 8 characters"),
+            ({"password": "1234567"}, "Password must be at least 8 characters"),
             ({"password": "x" * 129}, "Password must be less than 128 characters"),
             ({"expires_hours": "invalid"}, "Invalid expiry format"),
             ({"expires_hours": True}, "Invalid expiry format"),
@@ -3181,7 +3393,7 @@ async def test_create_share_validation_contract(tmp_path):
             headers=headers,
         )
         assert password_first.status == 400
-        assert await password_first.json() == {"error": "Password must be at least 4 characters"}
+        assert await password_first.json() == {"error": "Password must be at least 8 characters"}
 
         expiry_first = await client.post(
             "/api/shares",
@@ -3192,7 +3404,7 @@ async def test_create_share_validation_contract(tmp_path):
         assert await expiry_first.json() == {"error": "Expiry must be between 1 and 8760 hours"}
 
         valid_cases = [
-            {"password": "abcd"},
+            {"password": "abcd1234"},
             {"password": "x" * 128},
             {"expires_hours": 1},
             {"expires_hours": 8760},
@@ -3237,14 +3449,14 @@ async def test_create_share_keeps_non_validation_failures_as_500(tmp_path, monke
     client = await _make_client(app)
     try:
         def raise_validation_error(**_kwargs):
-            raise ValidationError("password", "Password must be at least 4 characters")
+            raise ValidationError("password", "Password must be at least 8 characters")
 
         monkeypatch.setattr(service, "create_share", raise_validation_error)
         invalid = await client.post(
             "/api/shares", json={"paths": ["asset.txt"]}, headers=headers,
         )
         assert invalid.status == 400
-        assert await invalid.json() == {"error": "Password must be at least 4 characters"}
+        assert await invalid.json() == {"error": "Password must be at least 8 characters"}
 
         monkeypatch.setattr(service, "create_share", lambda **_kwargs: None)
         failed = await client.post(
@@ -3302,11 +3514,11 @@ async def test_share_download_records_response_ready_and_pathless_rejection(tmp_
 
         recorder.clear()
         rejected = await client.get(f"/api/shares/{share_id}/download/private.txt")
-        assert rejected.status == 403
+        assert rejected.status == 404
         rejected_event = next(event for event in recorder.recent() if event.name == "lan.share_download")
         assert rejected_event.path is None
         assert rejected_event.attributes["outcome"] == "error"
-        assert rejected_event.attributes["status"] == 403
+        assert rejected_event.attributes["status"] == 404
         assert rejected_event.attributes["phase"] == "failed"
     finally:
         await client.close()
@@ -3341,11 +3553,11 @@ async def test_share_download_records_response_ready_and_scope_failure_is_pathle
 
         recorder.clear()
         denied = await client.get(f"/api/shares/{share_id}/download/private.txt")
-        assert denied.status == 403
+        assert denied.status == 404
         denied_event = next(event for event in recorder.recent() if event.name == "lan.share_download")
         assert denied_event.path is None
         assert denied_event.attributes == {
-            "outcome": "error", "status": 403, "phase": "failed", "kind": "share_file"
+            "outcome": "error", "status": 404, "phase": "failed", "kind": "share_file"
         }
     finally:
         await client.close()
@@ -3402,7 +3614,8 @@ async def test_share_download_uses_safe_rfc5987_filename_for_unicode_file(tmp_pa
 
 
 @pytest.mark.anyio
-async def test_share_download_limit_returns_forbidden(tmp_path):
+async def test_share_download_limit_reached_is_folded_to_not_found(tmp_path):
+    """A share over its download limit is indistinguishable from a missing share."""
     app, library, conn = _make_lan_app(tmp_path)
     target = library / "asset.txt"
     target.write_text("shared asset", encoding="utf-8")
@@ -3422,8 +3635,8 @@ async def test_share_download_limit_returns_forbidden(tmp_path):
         assert await _read_body(first) == b"shared asset"
 
         second = await client.get(f"/api/shares/{share_id}/download/asset.txt")
-        assert second.status == 403
-        assert (await second.json())["error"] == "Download limit reached"
+        assert second.status == 404
+        assert (await second.json())["error"] == "Share not found"
 
         row = conn.execute("SELECT download_count FROM share_links WHERE id=?", (share_id,)).fetchone()
         assert row == (1,)
@@ -3433,7 +3646,7 @@ async def test_share_download_limit_returns_forbidden(tmp_path):
 
 @pytest.mark.anyio
 async def test_share_download_rejected_when_increment_fails(tmp_path, monkeypatch):
-    """When increment_download fails (limit reached / not found), 403 is returned."""
+    """When increment_download fails (limit race), 429 is returned without a counter bump."""
     from AssetsManager.application.share_service import ShareService
 
     app, library, conn = _make_lan_app(tmp_path)
@@ -3453,7 +3666,11 @@ async def test_share_download_rejected_when_increment_fails(tmp_path, monkeypatc
         monkeypatch.setattr(ShareService, "increment_download", lambda _self, _share_id: False)
 
         resp = await client.get(f"/api/shares/{share_id}/download/asset.txt")
-        assert resp.status == 403  # limit reached / increment failed
+        assert resp.status == 429  # increment failed after response preparation
+        body = await resp.json()
+        assert body["error"] == "Download limit reached"
+        assert "retry_after" in body
+        assert resp.headers.get("Retry-After") == "0"
 
         row = conn.execute("SELECT download_count FROM share_links WHERE id=?", (share_id,)).fetchone()
         assert row == (0,)
@@ -3510,8 +3727,8 @@ async def test_share_download_limit_prevents_download_when_reached(tmp_path):
         assert first.status == 200
 
         second = await client.get(f"/api/shares/{share_id}/download/asset.txt")
-        assert second.status == 403
-        assert (await second.json())["error"] == "Download limit reached"
+        assert second.status == 404
+        assert (await second.json())["error"] == "Share not found"
 
         row = conn.execute("SELECT download_count FROM share_links WHERE id=?", (share_id,)).fetchone()
         assert row == (1,)
@@ -3634,6 +3851,38 @@ class TestRateLimiter:
         assert "10.0.0.1" in limiter._requests
         assert "10.0.0.2" not in limiter._requests
         assert "10.0.0.3" in limiter._requests
+
+    def test_retry_after_returns_seconds_until_oldest_request_expires(self, monkeypatch):
+        """retry_after should reflect the oldest request's remaining window."""
+        from AssetsManager.lan import security
+        from AssetsManager.lan.security import RateLimiter
+
+        fake_now = 1000.0
+        monkeypatch.setattr(security.time, "time", lambda: fake_now)
+        limiter = RateLimiter(max_requests=2, window_seconds=10)
+        assert limiter.is_allowed("127.0.0.1") is True  # t=1000
+        fake_now = 1004.0
+        assert limiter.is_allowed("127.0.0.1") is True  # t=1004
+        fake_now = 1006.0
+        assert limiter.is_allowed("127.0.0.1") is False  # window full
+        assert limiter.retry_after("127.0.0.1") == 4  # oldest (t=1000) expires at t=1010
+        assert limiter.get_remaining("127.0.0.1") == 0
+        assert limiter.retry_after("10.0.0.9") == 1  # empty bucket
+
+    def test_get_remaining_prunes_expired_entries(self, monkeypatch):
+        """get_remaining should prune expired entries without counting new ones."""
+        from AssetsManager.lan import security
+        from AssetsManager.lan.security import RateLimiter
+
+        fake_now = 1000.0
+        monkeypatch.setattr(security.time, "time", lambda: fake_now)
+        limiter = RateLimiter(max_requests=2, window_seconds=10)
+        assert limiter.is_allowed("10.0.0.1") is True  # t=1000
+        fake_now = 1005.0
+        assert limiter.is_allowed("10.0.0.1") is True  # t=1005
+        fake_now = 1011.0  # cutoff=1001, t=1000 is expired
+        assert limiter.get_remaining("10.0.0.1") == 1  # only t=1005 still active
+        assert limiter.is_allowed("10.0.0.1") is True  # expired entry pruned
 
 
 class TestAuth:
@@ -3855,7 +4104,7 @@ class TestShareSecurity:
 
             # dot-dot escapes the share scope even though it starts with "project/"
             blocked = await client.get(f"/api/shares/{share_id}/download/project/../public.txt")
-            assert blocked.status == 403
+            assert blocked.status == 404
         finally:
             await client.close()
 
@@ -3983,8 +4232,9 @@ class TestShareSecurity:
     def test_share_token_signature_is_128_bit(self):
         from AssetsManager.lan.auth import generate_share_token
         token = generate_share_token("test-share", "test-secret")
-        _, sig = token.split(".", 1)
-        assert len(sig) == 32  # 32 hex chars = 128 bits
+        parts = token.split(".")
+        assert len(parts) == 3  # ts.nonce.sig
+        assert len(parts[2]) == 32  # 32 hex chars = 128 bits
 
     @pytest.mark.anyio
     async def test_share_endpoints_accessible_through_auth_middleware(self, tmp_path):
@@ -4095,30 +4345,33 @@ class TestShareSecurity:
             client = TestClient(TestServer(server._app))
             await client.start_server()
             try:
+                auth = {"Authorization": "Bearer raw-key"}
                 with warnings.catch_warnings(record=True) as caught:
                     warnings.simplefilter("always", NotAppKeyWarning)
                     create = await client.post(
-                        "/api/shares?key=raw-key",
+                        "/api/shares",
                         json={"paths": ["file.txt"], "allow_preview": True},
+                        headers=auth,
                     )
                     assert create.status == 200
                     share_id = (await create.json())["id"]
 
                     create_for_delete = await client.post(
-                        "/api/shares?key=raw-key",
+                        "/api/shares",
                         json={"paths": ["file.txt"], "allow_preview": True},
+                        headers=auth,
                     )
                     assert create_for_delete.status == 200
                     share_id_for_delete = (await create_for_delete.json())["id"]
 
-                    list_resp = await client.get("/api/shares?key=raw-key")
+                    list_resp = await client.get("/api/shares", headers=auth)
                     assert list_resp.status == 200
                     data = await list_resp.json()
 
                     unauth_delete = await client.delete(f"/api/shares/{share_id}")
                     assert unauth_delete.status == 401
 
-                    delete_resp = await client.delete(f"/api/shares/{share_id_for_delete}?key=raw-key")
+                    delete_resp = await client.delete(f"/api/shares/{share_id_for_delete}", headers=auth)
                     assert delete_resp.status == 200
                 assert not [w for w in caught if issubclass(w.category, NotAppKeyWarning)]
                 assert len(data["shares"]) == 2
@@ -4306,7 +4559,7 @@ class TestPasswordHashLeakRegression:
             client = TestClient(TestServer(server._app))
             await client.start_server()
             try:
-                resp = await client.get("/api/users?key=admin-key")
+                resp = await client.get("/api/users", headers={"Authorization": "Bearer admin-key"})
                 assert resp.status == 200
                 data = await resp.json()
                 for u in data["users"]:
@@ -5049,10 +5302,138 @@ class TestP0ShareCookieAuthentication:
                 f"/api/shares/{share_id}/download/image.png",
                 headers={"Cookie": f"share_token={token}"},
             )
-            assert download.status == 410
+            # The download endpoint folds expired state into 404 (L2), while
+            # verify and preview still surface 410.
+            assert download.status == 404
 
             preview = await client.get(f"/api/shares/{share_id}/preview/image.png")
             assert preview.status == 410
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_share_verify_returns_429_after_five_failed_attempts(self, tmp_path):
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("content", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
+            assert create.status == 200
+            share_id = (await create.json())["id"]
+
+            # Four failures are still allowed.
+            for _ in range(4):
+                wrong = await client.post(
+                    f"/api/shares/{share_id}/verify", json={"password": "wrong-pass"}
+                )
+                assert wrong.status == 401
+
+            # The fifth failure is recorded (still 401)...
+            fifth = await client.post(
+                f"/api/shares/{share_id}/verify", json={"password": "wrong-pass"}
+            )
+            assert fifth.status == 401
+
+            # ...and every later attempt — even with the correct password —
+            # is refused with 429 until the cooldown window elapses.
+            blocked = await client.post(
+                f"/api/shares/{share_id}/verify", json={"password": "secret123"}
+            )
+            assert blocked.status == 429
+            assert blocked.headers.get("Retry-After") is not None
+            body = await blocked.json()
+            assert body["error"] == "Too many failed password attempts. Please try again later."
+            assert body["retry_after"] > 0
+
+            still_blocked = await client.post(
+                f"/api/shares/{share_id}/verify", json={"password": "wrong-pass"}
+            )
+            assert still_blocked.status == 429
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_share_verify_success_resets_failure_counter(self, tmp_path):
+        from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("content", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
+            assert create.status == 200
+            share_id = (await create.json())["id"]
+            share_svc = app[LAN_APP_KEY].services.share_service
+
+            for _ in range(4):
+                wrong = await client.post(
+                    f"/api/shares/{share_id}/verify", json={"password": "wrong-pass"}
+                )
+                assert wrong.status == 401
+
+            # A successful verification clears the counter.
+            ok = await client.post(
+                f"/api/shares/{share_id}/verify", json={"password": "secret123"}
+            )
+            assert ok.status == 200
+            assert share_svc.password_attempt_blocked(share_id) == 0
+
+            # Without the reset, the next two failures would already trip the
+            # lockout; with it, they stay plain 401s.
+            for _ in range(3):
+                wrong = await client.post(
+                    f"/api/shares/{share_id}/verify", json={"password": "wrong-pass"}
+                )
+                assert wrong.status == 401
+        finally:
+            await client.close()
+
+    @pytest.mark.anyio
+    async def test_share_verify_lockout_is_per_share(self, tmp_path):
+        app, library, conn = _make_lan_app(tmp_path)
+        (library / "file.txt").write_text("content", encoding="utf-8")
+
+        client = await _make_client(app)
+        try:
+            create = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
+            assert create.status == 200
+            share_id = (await create.json())["id"]
+            other = await client.post(
+                "/api/shares",
+                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
+                headers=_local_ui_headers(app),
+            )
+            assert other.status == 200
+            other_id = (await other.json())["id"]
+
+            for _ in range(5):
+                await client.post(
+                    f"/api/shares/{share_id}/verify", json={"password": "wrong-pass"}
+                )
+
+            locked = await client.post(
+                f"/api/shares/{share_id}/verify", json={"password": "secret123"}
+            )
+            assert locked.status == 429
+
+            unaffected = await client.post(
+                f"/api/shares/{other_id}/verify", json={"password": "secret123"}
+            )
+            assert unaffected.status == 200
         finally:
             await client.close()
 
@@ -5098,8 +5479,8 @@ class TestP0ShareCookieAuthentication:
             conn.close()
 
     @pytest.mark.anyio
-    async def test_middleware_accepts_access_key_via_query_param(self, tmp_path):
-        """Verify that access key works via ?key= query parameter."""
+    async def test_middleware_rejects_access_key_via_query_param(self, tmp_path):
+        """Verify that query-parameter auth (?key= / ?token=) is rejected."""
 
         library = tmp_path / "library"
         library.mkdir()
@@ -5128,13 +5509,13 @@ class TestP0ShareCookieAuthentication:
             client = TestClient(srv)
             await client.start_server()
             try:
-                # ?key= should work
+                # ?key= is rejected — query-parameter auth is disabled
                 resp = await client.get(f"/api/files?key={raw_key}")
-                assert resp.status == 200
+                assert resp.status == 401
 
-                # ?token= should also work
+                # ?token= is rejected too
                 resp2 = await client.get(f"/api/files?token={raw_key}")
-                assert resp2.status == 200
+                assert resp2.status == 401
 
                 # wrong key should fail
                 resp3 = await client.get("/api/files?key=wrong-key")
@@ -5803,6 +6184,59 @@ class TestUserCacheInvalidation:
         finally:
             conn.close()
 
+    def test_active_user_failure_fails_closed_once_per_ttl(self, tmp_path, monkeypatch, caplog):
+        """A failing auth probe is cached fail-closed and logged once per TTL."""
+        import logging
+        import time as _time
+        from AssetsManager.core import database
+
+        library = tmp_path / "library"
+        library.mkdir()
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        try:
+            conn.executescript(database._SCHEMA)
+            _init_lan_schemas(conn)
+            server = _legacy_server(
+                library_root=str(library),
+                thumbnail_dir=str(tmp_path / "thumbs"),
+                db_conn=conn,
+            )
+            calls = []
+
+            def _boom(*, raise_on_error):
+                calls.append(raise_on_error)
+                raise RuntimeError("auth db down")
+
+            monkeypatch.setattr(server._auth_service, "has_active_users", _boom)
+            fake_now = {"value": 1000.0}
+            monkeypatch.setattr(_time, "time", lambda: fake_now["value"])
+
+            logger = "AssetsManager.lan.server"
+            with caplog.at_level(logging.WARNING, logger=logger):
+                assert server._has_active_users() is True  # fails closed
+                assert server._has_active_users() is True  # negative cache hit
+                assert server._has_active_users() is True  # still no new probe
+            assert calls == [True]
+            assert server._has_users_cache is True
+            assert server._has_users_cache_time == 1000.0
+
+            # After the TTL elapses the probe is retried (and logged again).
+            fake_now["value"] += 31.0
+            with caplog.at_level(logging.WARNING, logger=logger):
+                assert server._has_active_users() is True
+            assert calls == [True, True]
+
+            warnings = [
+                record
+                for record in caplog.records
+                if "Unable to inspect active LAN users" in record.getMessage()
+            ]
+            assert len(warnings) == 2
+            assert all(record.levelno == logging.WARNING for record in warnings)
+            assert all(record.exc_info is None for record in warnings)
+        finally:
+            conn.close()
+
     def test_toggle_user_invalidates_active_users_cache(self, tmp_path):
         from AssetsManager.core import database
 
@@ -5888,8 +6322,9 @@ class TestUserCacheInvalidation:
                 server._has_users_cache_time = 9999999999
 
                 resp = await client.post(
-                    "/api/users/1/toggle?key=admin-key",
+                    "/api/users/1/toggle",
                     json={"active": False},
+                    headers={"Authorization": "Bearer admin-key"},
                 )
                 assert resp.status == 200
                 assert (await resp.json())["ok"] is True

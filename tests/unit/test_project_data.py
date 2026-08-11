@@ -109,6 +109,49 @@ class TestProjectData:
         assert size == 0
         assert cached is False
 
+    @pytest.mark.parametrize("separator", ["\\", "/"])
+    def test_invalidate_size_cache_respects_subtree_boundary_and_like_escaping(
+        self, monkeypatch, separator
+    ):
+        from AssetsManager.core.project_data import ProjectData
+
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        try:
+            conn.executescript(database._SCHEMA)
+            migrate(conn)
+            project_data = ProjectData(".", db_conn=conn)
+            monkeypatch.setattr(project_data, "_key", lambda path: path)
+
+            prefix = f"fixture{separator}folder%_"
+            child = f"{prefix}{separator}child"
+            sibling = f"{prefix}-copy{separator}keep"
+            wildcard_decoy = f"fixture{separator}folderAB{separator}keep"
+            rows = (prefix, child, sibling, wildcard_decoy)
+            conn.executemany(
+                "INSERT INTO file_meta "
+                "(file_path, cached_size, cached_mtime, cached_file_count) "
+                "VALUES (?, 1, 1.0, 1)",
+                ((path,) for path in rows),
+            )
+            conn.commit()
+
+            project_data.invalidate_size_cache(prefix)
+
+            cached = {
+                path: conn.execute(
+                    "SELECT cached_size, cached_mtime, cached_file_count "
+                    "FROM file_meta WHERE file_path=?",
+                    (path,),
+                ).fetchone()
+                for path in rows
+            }
+            assert cached[prefix] == (None, None, None)
+            assert cached[child] == (None, None, None)
+            assert cached[sibling] == (1, 1.0, 1)
+            assert cached[wildcard_decoy] == (1, 1.0, 1)
+        finally:
+            conn.close()
+
     def test_multiple_notes_different_files(self, project_env):
         from AssetsManager.core.project_data import ProjectData
         lib_root, _ = project_env
@@ -128,6 +171,53 @@ class TestProjectData:
         urls = pd.get_urls(file_path)
         assert "https://a.com" in urls
         assert "https://b.com" in urls
+
+    def test_explicit_managed_connection_rejects_different_root(self, tmp_path):
+        from AssetsManager.core.database import DatabaseManager
+        from AssetsManager.core.project_data import ProjectData
+
+        root_a = tmp_path / "root-a"
+        root_b = tmp_path / "root-b"
+        root_a.mkdir()
+        root_b.mkdir()
+        manager = DatabaseManager()
+        try:
+            root_b_conn = manager.connection_for(root_b)
+
+            with pytest.raises(ValueError, match="different library root"):
+                ProjectData(str(root_a), db_conn=root_b_conn)
+        finally:
+            manager.close()
+
+    def test_explicit_managed_connection_accepts_same_root(self, tmp_path):
+        from AssetsManager.core.database import DatabaseManager
+        from AssetsManager.core.project_data import ProjectData
+
+        root = tmp_path / "root"
+        root.mkdir()
+        manager = DatabaseManager()
+        try:
+            conn = manager.connection_for(root)
+
+            project_data = ProjectData(str(root), db_conn=conn)
+
+            assert project_data._db is conn
+        finally:
+            manager.close()
+
+    def test_explicit_unmanaged_connection_remains_compatible(self, tmp_path):
+        from AssetsManager.core.project_data import ProjectData
+
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        try:
+            conn.executescript(database._SCHEMA)
+            migrate(conn)
+
+            project_data = ProjectData(str(tmp_path), db_conn=conn)
+
+            assert project_data._db is conn
+        finally:
+            conn.close()
 
     def test_deprecated_get_project_data_does_not_retain_process_global_store(self, project_env):
         from AssetsManager.core.project_data import get_project_data

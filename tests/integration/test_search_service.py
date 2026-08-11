@@ -1,6 +1,26 @@
 """Tests for SearchService."""
 
+import os
+
+import pytest
+
 from AssetsManager.application.search_service import SearchService
+
+
+def test_real_session_search_service_auto_binds_asset_index_service(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.application.asset_index_service import AssetIndexService
+
+    library = tmp_path / "library"
+    library.mkdir()
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    try:
+        service = SearchService(session=session, connection_provider=session.connection_for)
+        assert isinstance(service._asset_index_service, AssetIndexService)
+        assert service._asset_index_service.session is session
+    finally:
+        bootstrap.library_service.close()
 
 
 def test_search_by_tags_finds_tagged_files(tmp_path, schema_db):
@@ -90,6 +110,22 @@ def test_search_by_tags_filters_by_category(tmp_path, schema_db):
 
     assert len(results) == 1
     assert results[0].name == "hero.png"
+
+
+def test_search_by_tags_deduplicates_multi_tag_matches(tmp_path, schema_db):
+    library = tmp_path / "lib"
+    library.mkdir()
+    asset = library / "hero.png"
+    asset.write_bytes(b"fake")
+
+    conn = schema_db
+    conn.execute("INSERT INTO file_tags (file_path, tag) VALUES (?, ?)", (str(asset.resolve()), "hero"))
+    conn.execute("INSERT INTO file_tags (file_path, tag) VALUES (?, ?)", (str(asset.resolve()), "character"))
+    conn.commit()
+
+    results = SearchService().search_by_tags(library, ["hero", "character"], db_conn=conn)
+
+    assert [result.path for result in results] == ["hero.png"]
 
 
 def test_search_by_tags_returns_empty_without_db():
@@ -231,3 +267,184 @@ def test_search_records_non_sensitive_outcomes_for_early_and_failed_paths():
         ("search.name", "unavailable"),
         ("search.name", "error"),
     ]
+
+
+def test_search_by_name_indexed_filters_library_external_absolute_paths(tmp_path, schema_db):
+    library = tmp_path / "lib"
+    library.mkdir()
+    inside = library / "inside-hero.png"
+    inside.write_bytes(b"inside")
+    outside = tmp_path / "outside-hero.png"
+    outside.write_bytes(b"outside")
+
+    root = str(library.resolve())
+    schema_db.executemany(
+        "INSERT INTO assets (file_path, name, extension, kind, size, mtime, parent_path, library_root) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (str(outside.resolve()), outside.name, ".png", "file", 7, 1.0, root, root),
+            (str(inside.resolve()), inside.name, ".png", "file", 6, 1.0, root, root),
+        ],
+    )
+    schema_db.commit()
+
+    results = SearchService().search_by_name_indexed(library, "hero", db_conn=schema_db)
+
+    assert [(result.name, result.path) for result in results] == [(inside.name, inside.name)]
+
+
+def test_search_by_name_indexed_filters_relative_parent_escape(tmp_path, schema_db):
+    library = tmp_path / "lib"
+    library.mkdir()
+    inside = library / "inside-hero.png"
+    inside.write_bytes(b"inside")
+    outside = tmp_path / "outside-hero.png"
+    outside.write_bytes(b"outside")
+
+    root = str(library.resolve())
+    schema_db.executemany(
+        "INSERT INTO assets (file_path, name, extension, kind, size, mtime, parent_path, library_root) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            ("../outside-hero.png", outside.name, ".png", "file", 7, 1.0, root, root),
+            ("inside-hero.png", inside.name, ".png", "file", 6, 1.0, root, root),
+        ],
+    )
+    schema_db.commit()
+
+    results = SearchService().search_by_name_indexed(library, "hero", db_conn=schema_db)
+
+    assert [(result.name, result.path) for result in results] == [(inside.name, inside.name)]
+
+
+def test_search_by_name_indexed_filters_symlink_to_library_external_path(tmp_path, schema_db):
+    library = tmp_path / "lib"
+    library.mkdir()
+    outside = tmp_path / "outside-hero.png"
+    outside.write_bytes(b"outside")
+    linked = library / "linked-hero.png"
+
+    try:
+        os.symlink(outside, linked)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    root = str(library.resolve())
+    schema_db.execute(
+        "INSERT INTO assets (file_path, name, extension, kind, size, mtime, parent_path, library_root) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (str(linked), linked.name, ".png", "file", 7, 1.0, root, root),
+    )
+    schema_db.commit()
+
+    assert SearchService().search_by_name_indexed(library, "hero", db_conn=schema_db) == []
+
+
+def test_search_service_accepts_managed_same_root_connection(tmp_path):
+    from AssetsManager.core.database import DatabaseManager
+
+    library = tmp_path / "library"
+    library.mkdir()
+    asset = library / "hero.png"
+    asset.write_bytes(b"asset")
+    manager = DatabaseManager()
+    try:
+        conn = manager.connection_for(library)
+        conn.execute(
+            "INSERT INTO file_tags (file_path, tag) VALUES (?, ?)",
+            (str(asset.resolve()), "hero"),
+        )
+        conn.commit()
+
+        results = SearchService(connection_provider=lambda _root: conn).search_by_tags(
+            library, ["hero"]
+        )
+
+        assert [result.path for result in results] == ["hero.png"]
+    finally:
+        manager.close()
+
+
+def test_search_service_rejects_provider_managed_foreign_root(tmp_path):
+    from AssetsManager.core.database import DatabaseManager
+
+    root_a = tmp_path / "root-a"
+    root_b = tmp_path / "root-b"
+    root_a.mkdir()
+    root_b.mkdir()
+    manager = DatabaseManager()
+    try:
+        foreign_conn = manager.connection_for(root_b)
+        service = SearchService(connection_provider=lambda _root: foreign_conn)
+
+        with pytest.raises(ValueError, match="different library root"):
+            service.search_by_tags(root_a, ["hero"])
+    finally:
+        manager.close()
+
+
+def test_search_service_provider_failure_still_degrades(tmp_path):
+    library = tmp_path / "library"
+    library.mkdir()
+
+    def failing_provider(_root):
+        raise RuntimeError("provider unavailable")
+
+    assert SearchService(connection_provider=failing_provider).search_by_tags(
+        library, ["hero"]
+    ) == []
+
+
+def test_search_service_explicit_unmanaged_connection_overrides_provider(tmp_path, schema_db):
+    library = tmp_path / "library"
+    library.mkdir()
+    asset = library / "hero.png"
+    asset.write_bytes(b"asset")
+    schema_db.execute(
+        "INSERT INTO file_tags (file_path, tag) VALUES (?, ?)",
+        (str(asset.resolve()), "hero"),
+    )
+    schema_db.commit()
+
+    def failing_provider(_root):
+        raise AssertionError("provider must not be called")
+
+    results = SearchService(connection_provider=failing_provider).search_by_tags(
+        library, ["hero"], db_conn=schema_db
+    )
+
+    assert [result.path for result in results] == ["hero.png"]
+
+
+def test_standalone_search_service_remains_unbound_and_compatible(tmp_path, schema_db):
+    library = tmp_path / "library"
+    library.mkdir()
+    asset = library / "hero.png"
+    asset.write_bytes(b"asset")
+    schema_db.execute(
+        "INSERT INTO file_tags (file_path, tag) VALUES (?, ?)",
+        (str(asset.resolve()), "hero"),
+    )
+    schema_db.commit()
+
+    service = SearchService()
+
+    assert service._session is None
+    assert [result.path for result in service.search_by_tags(
+        library, ["hero"], db_conn=schema_db
+    )] == ["hero.png"]
+
+
+def test_session_bound_search_service_rejects_operations_after_close(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    try:
+        service = bootstrap.runtime_for(session).services.search_service
+        session.close()
+
+        with pytest.raises(RuntimeError, match="closed LibrarySession"):
+            service.search_by_name("hero", scanner=object())
+    finally:
+        bootstrap.library_service.close()

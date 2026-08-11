@@ -1,4 +1,5 @@
 """Tests for MainWindow scoped-service injection."""
+import logging
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -172,3 +173,30 @@ def test_main_window_binds_runtime_to_projection_capable_tag_tree(monkeypatch):
     assert tag_tree.runtime is runtime
     for panel in panels:
         panel.set_scoped_services.assert_called_once_with(services)
+
+
+def test_main_window_logs_integrity_schedule_rejection(monkeypatch, caplog):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from AssetsManager.window import MainWindow
+
+    integrity_service = Mock()
+    integrity_service.schedule.return_value = False
+    integrity_service.last_schedule_error = "already_running"
+    services = SimpleNamespace(integrity_service=integrity_service)
+    bootstrap = Mock()
+    bootstrap.runtime_for.return_value.services = services
+
+    class Window:
+        _scoped_services_for_session = MainWindow._scoped_services_for_session
+
+    monkeypatch.setattr("AssetsManager.window._alive", lambda _panel: False)
+    window = Window()
+    window._bootstrap = bootstrap
+
+    with caplog.at_level(logging.WARNING, logger="AssetsManager.window"):
+        MainWindow._apply_scoped_services(window, object())
+
+    integrity_service.schedule.assert_called_once_with()
+    assert "already_running" in caplog.text

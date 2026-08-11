@@ -1,0 +1,211 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import pytest
+from PIL import Image
+
+from AssetsManager.application.gallery_service import (
+    GalleryService,
+    GalleryTraversalLimitError,
+    GalleryTraversalLimits,
+)
+from AssetsManager.domain.errors import MissingPathError, PathEscapeError
+
+
+def _image(path: Path, size: tuple[int, int] = (32, 16), color: tuple[int, int, int] = (20, 80, 180)) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", size, color).save(path)
+
+
+def test_gallery_home_projects_collections_and_recent_projection(tmp_path, schema_db):
+    _image(tmp_path / "collection" / "cover.jpg", (40, 40))
+    _image(tmp_path / "collection" / "project" / "wide.png", (120, 60))
+    (tmp_path / "collection" / "project" / "source.psd").write_bytes(b"source")
+    (tmp_path / "empty").mkdir()
+
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    response = service.get_home(tmp_path).to_response()
+
+    assert response["featured"]["path"] == "collection"
+    assert [entry["path"] for entry in response["collections"]] == ["collection"]
+    assert [entry["path"] for entry in response["projects"]] == []
+    assert response["stats"] == {
+        "collections": 1,
+        "projects": 1,
+        "artworks": 2,
+        "total_size_fmt": response["stats"]["total_size_fmt"],
+    }
+    assert {entry["path"] for entry in response["recent"]} == {
+        "collection/cover.jpg",
+        "collection/project/wide.png",
+    }
+    project = response["collections"][0]["path"]
+    assert project == "collection"
+    assert response["collections"][0]["artwork_count"] == 2
+    assert response["collections"][0]["file_count"] == 3
+    assert response["collections"][0]["cover_url"] == "/api/thumbnails/collection/cover.jpg?size=512"
+
+
+def test_gallery_collection_returns_child_summaries_and_filtered_entries(tmp_path, schema_db):
+    _image(tmp_path / "set" / "first.png", (10, 20))
+    _image(tmp_path / "set" / "second.jpg", (20, 10))
+    _image(tmp_path / "set" / "nested" / "third.webp")
+
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    all_entries = service.get_collection(tmp_path, "set", sort="name", kind="all")
+    assert all_entries is not None
+    assert [entry["name"] for entry in all_entries.entries] == ["first.png", "second.jpg"]
+    assert [entry["path"] for entry in all_entries.children] == ["set/nested"]
+    assert all_entries.collection["kind"] == "collection"
+
+    artwork_entries = service.get_collection(tmp_path, "set", sort="updated", kind="artwork")
+    assert artwork_entries is not None
+    assert len(artwork_entries.entries) == 2
+    assert all(entry["kind"] == "artwork" for entry in artwork_entries.entries)
+    assert all_entries.next_cursor is None
+
+
+def test_gallery_resolve_uses_library_relative_contexts(tmp_path, schema_db):
+    _image(tmp_path / "folder" / "art.png", (80, 40))
+    (tmp_path / "folder" / "notes.txt").write_text("notes", encoding="utf-8")
+
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    artwork = service.resolve(tmp_path, "folder/art.png").to_response()
+    project = service.resolve(tmp_path, "folder").to_response()
+
+    assert artwork == {
+        "kind": "artwork",
+        "path": "folder/art.png",
+        "gallery_context": "folder",
+        "workspace_context": "folder",
+    }
+    assert project["kind"] == "project"
+    assert project["path"] == "folder"
+    assert project["gallery_context"] == "folder"
+    assert project["workspace_context"] == "folder"
+
+    with pytest.raises(MissingPathError):
+        service.resolve(tmp_path, "missing")
+    with pytest.raises(ValueError, match="path escape"):
+        service.resolve(tmp_path, "../outside")
+
+
+def test_gallery_tag_projection_is_batched_and_relative_paths_are_not_exposed(tmp_path, schema_db):
+    artwork = tmp_path / "collection" / "art.png"
+    _image(artwork)
+    schema_db.execute(
+        "INSERT INTO file_tags (file_path, tag) VALUES (?, ?)",
+        (str(artwork.resolve()), "featured"),
+    )
+    schema_db.commit()
+
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    response = service.get_collection(tmp_path, "collection")
+    assert response is not None
+    assert response.entries[0]["tags"] == ["featured"]
+    assert all(not value.startswith(str(tmp_path)) for value in response.entries[0].values() if isinstance(value, str))
+
+
+def test_gallery_traversal_budget_is_enforced(tmp_path, schema_db):
+    _image(tmp_path / "set" / "one.png")
+    service = GalleryService(
+        connection_provider=lambda _root: schema_db,
+        limits=GalleryTraversalLimits(max_entries=0),
+    )
+
+    with pytest.raises(GalleryTraversalLimitError):
+        service.get_home(tmp_path)
+
+
+def test_gallery_image_url_points_to_uri_encoded_original_preview(tmp_path, schema_db):
+    _image(tmp_path / "套件" / "hero image.png")
+
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    response = service.get_collection(tmp_path, "套件")
+
+    assert response is not None
+    entry = response.entries[0]
+    assert entry["thumbnail_url"] == "/api/thumbnails/%E5%A5%97%E4%BB%B6/hero%20image.png?size=512"
+    assert entry["image_url"] == (
+        "/api/image?path=%E5%A5%97%E4%BB%B6%2Fhero%20image.png"
+    )
+
+
+def test_gallery_skips_external_symlink_and_rejects_symlink_path(tmp_path, schema_db):
+    outside = tmp_path.parent / "gallery-outside"
+    outside.mkdir()
+    _image(outside / "secret.png")
+    link = tmp_path / "external-link"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlinks are unavailable: {exc}")
+
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    response = service.get_home(tmp_path).to_response()
+    assert all(entry["path"] != "external-link" for entry in response["collections"])
+    with pytest.raises(MissingPathError):
+        service.get_collection(tmp_path, "external-link")
+
+    with pytest.raises(PathEscapeError, match="escapes root"):
+        service.resolve(tmp_path, str(outside / "secret.png"))
+
+
+def test_gallery_skips_windows_junction_or_reparse_directory(tmp_path, schema_db):
+    if not hasattr(Path, "is_junction") and os.name != "nt":
+        pytest.skip("Windows junction/reparse points are unavailable on this platform")
+    outside = tmp_path.parent / "gallery-junction-outside"
+    outside.mkdir()
+    _image(outside / "secret.png")
+    junction = tmp_path / "junction"
+    if os.name == "nt":
+        import subprocess
+
+        result = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(junction), str(outside)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            pytest.skip(f"junction creation unavailable: {result.stderr or result.stdout}")
+    else:
+        pytest.skip("Windows junction/reparse points are unavailable on this platform")
+
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    response = service.get_home(tmp_path).to_response()
+    assert all(entry["path"] != "junction" for entry in response["collections"])
+    with pytest.raises(MissingPathError):
+        service.get_collection(tmp_path, "junction")
+
+
+def test_gallery_enforces_entry_budget_while_scanning_one_directory(tmp_path, schema_db):
+    for index in range(5):
+        _image(tmp_path / "set" / f"{index}.png")
+    service = GalleryService(
+        connection_provider=lambda _root: schema_db,
+        limits=GalleryTraversalLimits(max_entries=2),
+    )
+
+    with pytest.raises(GalleryTraversalLimitError, match="entry budget"):
+        service.get_collection(tmp_path, "set")
+
+
+def test_gallery_skips_svg_from_image_projection(tmp_path, schema_db):
+    svg = tmp_path / "set" / "vector.svg"
+    svg.parent.mkdir(parents=True)
+    svg.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"></svg>',
+        encoding="utf-8",
+    )
+    _image(tmp_path / "set" / "raster.png")
+
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    response = service.get_collection(tmp_path, "set")
+
+    assert response is not None
+    assert [entry["name"] for entry in response.entries] == ["raster.png"]
+    assert all("svg" not in entry["path"].lower() for entry in response.entries)
+    assert service.resolve(tmp_path, "set/vector.svg").kind != "artwork"

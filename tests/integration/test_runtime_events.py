@@ -18,6 +18,7 @@ from AssetsManager.domain.events import (
     AssetTagsChanged,
     AssetUrlsChanged,
     DomainEvent,
+    FavoritesChanged,
     FileSystemChanged,
     InviteChanged,
     NotesChanged,
@@ -56,7 +57,10 @@ def test_model_is_frozen_and_mapping_is_exact(tmp_path):
     assert ProjectionDomain("project_detail").value == "project_detail"
     assert RuntimeEventRouter.domains_for(FileSystemChanged) == (
         ProjectionDomain.FILES, ProjectionDomain.TREE, ProjectionDomain.HOME,
-        ProjectionDomain.PROJECT_DETAIL,
+        ProjectionDomain.PROJECT_DETAIL, ProjectionDomain.FAVORITES,
+    )
+    assert RuntimeEventRouter.domains_for(FavoritesChanged) == (
+        ProjectionDomain.FAVORITES,
     )
     assert RuntimeEventRouter.domains_for(AssetTagsChanged) == (
         ProjectionDomain.METADATA, ProjectionDomain.TAGS,
@@ -85,6 +89,7 @@ def test_model_is_frozen_and_mapping_is_exact(tmp_path):
 @pytest.mark.parametrize(
     ("event_type", "expected_domain"),
     [
+        (FavoritesChanged, _projection_domain("favorites")),
         (ShareChanged, _projection_domain("shares")),
         (UserChanged, _projection_domain("users")),
         (InviteChanged, _projection_domain("users")),
@@ -129,7 +134,7 @@ def test_router_maps_paths_deterministically_and_filters_invalid_events(tmp_path
         assert received[-1].revision == 1
         assert received[-1].domains == (
             ProjectionDomain.FILES, ProjectionDomain.TREE, ProjectionDomain.HOME,
-            ProjectionDomain.PROJECT_DETAIL,
+            ProjectionDomain.PROJECT_DETAIL, ProjectionDomain.FAVORITES,
         )
 
         bus.publish(AssetTagsChanged(**_identity(session, file_path="nested\\asset.png")))

@@ -55,17 +55,22 @@ def test_runtime_sharing_bundles_are_isolated_between_libraries(tmp_path):
 
 def test_runtime_rejects_foreign_and_stale_sessions(tmp_path):
     root = tmp_path / "library"
-    foreign = LibraryService().open_session(root)
+    foreign_service = LibraryService()
+    foreign = foreign_service.open_session(root)
     bootstrap = ApplicationBootstrap()
     with pytest.raises(ValueError):
         bootstrap.runtime_for(foreign)
+    with pytest.raises(RuntimeError, match="owned by another LibraryService"):
+        bootstrap.library_service.open_session(root)
 
+    foreign_service.close_session(foreign)
     stale = bootstrap.library_service.open_session(root)
     stale.close()
     current = bootstrap.library_service.open_session(root)
     with pytest.raises(ValueError):
         bootstrap.runtime_for(stale)
     assert bootstrap.runtime_for(current).session is current
+    bootstrap.library_service.close_session(current)
 
 
 def test_same_root_reopen_gets_new_runtime_epoch(tmp_path):
@@ -192,7 +197,7 @@ def test_runtime_restores_state_after_system_exit_from_adapter_stop(tmp_path, mo
     with pytest.raises(SystemExit, match="adapter failed"):
         runtime.close()
 
-    assert runtime._state == "open"
+    assert runtime._state == "failed"
     assert runtime._cleanup_in_progress is False
     runtime.close()
 
@@ -221,7 +226,7 @@ def test_runtime_restores_state_after_system_exit_from_undo_cleanup(tmp_path, mo
     with pytest.raises(SystemExit, match="undo failed"):
         runtime.close()
 
-    assert runtime._state == "open"
+    assert runtime._state == "failed"
     assert runtime._cleanup_in_progress is False
     runtime.close()
 
@@ -234,6 +239,7 @@ def test_runtime_cleanup_waits_until_active_lease_finishes(tmp_path, monkeypatch
     session = bootstrap.library_service.open_session(tmp_path / "library")
     runtime = bootstrap.runtime_for(session)
     entered = threading.Event()
+    closing_started = threading.Event()
     release = threading.Event()
     cleanup_seen = []
 
@@ -254,8 +260,12 @@ def test_runtime_cleanup_waits_until_active_lease_finishes(tmp_path, monkeypatch
     worker.start()
     assert entered.wait(5)
 
+    bootstrap.library_service.add_session_closing_listener(
+        lambda current_session: closing_started.set()
+    )
     closer = threading.Thread(target=session.close)
     closer.start()
+    assert closing_started.wait(5)
     assert session.is_closed
     assert cleanup_seen == []
     release.set()
@@ -353,7 +363,7 @@ def test_runtime_cleanup_failure_can_retry_on_second_close(tmp_path, monkeypatch
     with pytest.raises(RuntimeError, match="cleanup failed"):
         runtime.close()
     assert calls == ["cleanup"]
-    assert runtime.next_revision() == 1
+    assert runtime._state == "failed"
 
     runtime.close()
     runtime.close()
@@ -366,10 +376,12 @@ def test_lifecycle_notifies_closing_before_drain_and_closed_before_db_close(tmp_
     session = service.open_session(tmp_path / "library")
     events = []
     entered = threading.Event()
+    closing_started = threading.Event()
     release = threading.Event()
 
     def closing(closing_session):
         events.append("closing")
+        closing_started.set()
         assert closing_session is session
         with pytest.raises(RuntimeError, match="closed"):
             with session.operation():
@@ -396,6 +408,7 @@ def test_lifecycle_notifies_closing_before_drain_and_closed_before_db_close(tmp_
     assert entered.wait(5)
     closer = threading.Thread(target=session.close)
     closer.start()
+    assert closing_started.wait(5)
     assert session.is_closed
     assert events == ["closing"]
     release.set()
@@ -501,7 +514,7 @@ def test_close_session_retains_runtime_and_database_after_adapter_stop_failure(
     service.close_session(session)
 
     assert stop_calls == ["stop", "stop"]
-    assert db_close_calls == [str(session.root)]
+    assert db_close_calls == [session.context.root_identity]
     assert id(session) not in bootstrap._runtimes
     assert service.current_session is None
 
@@ -609,7 +622,7 @@ def test_concurrent_session_close_runs_runtime_and_database_teardown_once(tmp_pa
     assert not first.is_alive()
     assert not second.is_alive()
     assert stop_calls == ["stop"]
-    assert close_calls == [str(session.root)]
+    assert close_calls == [session.context.root_identity]
 
 
 def test_successful_session_close_does_not_replay_preclose_listeners(tmp_path):
@@ -622,3 +635,128 @@ def test_successful_session_close_does_not_replay_preclose_listeners(tmp_path):
     session.close()
 
     assert preclose_calls == [session]
+
+
+def test_runtime_snapshot_exposes_session_bound_maintenance_service_per_library(tmp_path):
+    bootstrap = ApplicationBootstrap()
+    first_session = bootstrap.library_service.open_session(tmp_path / "first")
+    second_session = bootstrap.library_service.open_session(tmp_path / "second")
+
+    first_runtime = bootstrap.runtime_for(first_session)
+    second_runtime = bootstrap.runtime_for(second_session)
+    first_service = first_runtime.services_snapshot.maintenance_service
+    second_service = second_runtime.services_snapshot.maintenance_service
+
+    assert first_service is first_runtime.services.maintenance_service
+    assert first_service._session is first_session
+    assert second_service._session is second_session
+    assert first_service is not second_service
+
+    bootstrap.library_service.close()
+
+
+def test_runtime_close_stops_maintenance_service_and_keeps_vacuum_unsupported(
+    tmp_path, monkeypatch
+):
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    integrity = runtime.services.integrity_service
+    maintenance = runtime.services.maintenance_service
+    close_order = []
+    original_integrity_stop = integrity.stop
+    original_maintenance_stop = maintenance.stop
+
+    def tracked_integrity_stop():
+        close_order.append("integrity")
+        original_integrity_stop()
+
+    def tracked_maintenance_stop():
+        close_order.append("maintenance")
+        original_maintenance_stop()
+
+    monkeypatch.setattr(integrity, "stop", tracked_integrity_stop)
+    monkeypatch.setattr(maintenance, "stop", tracked_maintenance_stop)
+    monkeypatch.setattr(
+        runtime.services.undo_service,
+        "cleanup",
+        lambda: close_order.append("undo"),
+    )
+    vacuum = maintenance.vacuum()
+
+    runtime.close()
+    runtime.close()
+
+    assert close_order == ["integrity", "maintenance", "undo"]
+    assert not maintenance.running
+    with pytest.raises(RuntimeError, match="maintenance service is closed"):
+        maintenance.schedule("checkpoint")
+    assert not vacuum.supported
+    assert not vacuum.success
+
+
+def test_session_close_retries_failed_maintenance_stop_without_leaking_runtime(
+    tmp_path, monkeypatch
+):
+    bootstrap = ApplicationBootstrap()
+    service = bootstrap.library_service
+    session = service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    maintenance = runtime.services.maintenance_service
+    original_stop = maintenance.stop
+    stop_calls = []
+
+    def flaky_stop():
+        stop_calls.append("stop")
+        if len(stop_calls) == 1:
+            raise RuntimeError("maintenance stop failed")
+        original_stop()
+
+    monkeypatch.setattr(maintenance, "stop", flaky_stop)
+
+    with pytest.raises(RuntimeError, match="maintenance stop failed"):
+        service.close_session(session)
+
+    assert bootstrap._runtimes[id(session)] is runtime
+    assert service.current_session is session
+    assert session.context.db_conn.execute("SELECT 1").fetchone() == (1,)
+
+    service.close_session(session)
+
+    assert stop_calls == ["stop", "stop"]
+    assert id(session) not in bootstrap._runtimes
+    assert service.current_session is None
+    with pytest.raises(RuntimeError, match="closed LibrarySession"):
+        maintenance.schedule("checkpoint")
+
+
+def test_runtime_cache_rejects_closing_runtime_and_next_revision(tmp_path):
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+
+    runtime.mark_closing()
+    with pytest.raises(RuntimeError, match="closing or closed"):
+        runtime.next_revision()
+    with pytest.raises(RuntimeError, match="closing or closed"):
+        bootstrap.runtime_for(session)
+
+    runtime.close()
+    with pytest.raises(RuntimeError, match="closing or closed"):
+        runtime.next_revision()
+
+
+def test_reconciliation_worker_is_stopped_with_library_runtime(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    service = runtime.services.reconciliation_service
+
+    assert service is not None
+    assert service.is_running
+
+    bootstrap.library_service.close()
+
+    assert not service.is_running

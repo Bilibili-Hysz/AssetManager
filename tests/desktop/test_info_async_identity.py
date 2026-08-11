@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 from AssetsManager.controllers.info_controller import FileInfo, PluginField
@@ -148,3 +149,39 @@ def test_field_update_ignores_missing_dynamic_layout():
 
     row = QWidget()
     InfoPanel._set_field_text(row, "updated")
+
+
+def test_info_panel_injects_session_and_drops_old_controller_on_switch(tmp_path):
+    from unittest.mock import Mock
+
+    from AssetsManager.application.library_service import LibraryService
+
+    library = tmp_path / "library"
+    service = LibraryService()
+    session = service.open_session(library)
+    panel = InfoPanel()
+    try:
+        metadata_service = Mock()
+        metadata_service._session = session
+        panel.set_scoped_services(
+            SimpleNamespace(
+                session=session,
+                metadata_service=metadata_service,
+                tag_service=Mock(),
+            )
+        )
+        old_controller = panel._controller
+        assert old_controller is not None
+        assert old_controller._session is session
+
+        panel.prepare_library_switch()
+
+        assert panel._controller is None
+        assert panel._scoped_services is None
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        if not session.is_closed:
+            session.close()
+        else:
+            session._finish_close()

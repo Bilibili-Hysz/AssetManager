@@ -138,13 +138,21 @@ async def _run_managed_async(callable_, timeout=10):
 
 
 async def _scenario(tmp_path):
+    # This scenario targets LAN/runtime drain, not process-wide stale undo-dir
+    # cleanup.  Isolate the spawned-process timeout from unrelated temp trees.
+    from AssetsManager.application.undo_service import UndoService
+
+    UndoService._startup_cleanup_done = True
     bootstrap = ApplicationBootstrap()
     old_root = tmp_path / "old"
     new_root = tmp_path / "new"
     session = bootstrap.library_service.open_session(old_root)
     runtime = bootstrap.runtime_for(session)
     server = _LanServerImpl(runtime=runtime, password="window-test-password")
-    server.start(port=0, bind="127.0.0.1")
+    from AssetsManager.application.security_preflight import SecurityPreflight
+    preflight = SecurityPreflight()
+    preflight.confirm_authenticated_lan()
+    server.start(port=0, bind="127.0.0.1", preflight=preflight)
     token = generate_token(server.password_hash)
 
     ws = None
@@ -250,12 +258,18 @@ async def _scenario(tmp_path):
 
 
 async def _exit_scenario(tmp_path):
+    from AssetsManager.application.security_preflight import SecurityPreflight
+    from AssetsManager.application.undo_service import UndoService
+
+    UndoService._startup_cleanup_done = True
     app = QApplication.instance() or QApplication([])
     bootstrap = ApplicationBootstrap()
     session = bootstrap.library_service.open_session(tmp_path / "exit")
     runtime = bootstrap.runtime_for(session)
     server = _LanServerImpl(runtime=runtime, password="window-test-password")
-    server.start(port=0, bind="127.0.0.1")
+    preflight = SecurityPreflight()
+    preflight.confirm_authenticated_lan()
+    server.start(port=0, bind="127.0.0.1", preflight=preflight)
     token = generate_token(server.password_hash)
     events = []
     attempts = []
@@ -280,8 +294,10 @@ async def _exit_scenario(tmp_path):
             server._shutdown = fail_once_then_shutdown
             window = _RealExitWindow(bootstrap, session, server, events)
             close_event = QCloseEvent()
-            with pytest.raises(RuntimeError, match="explicit window stop failed"):
-                MainWindow.closeEvent(window, close_event)
+            # M5: a teardown failure is logged and must not propagate out of
+            # closeEvent (which would leave the event loop hanging); the
+            # window still closes and the app is asked to quit.
+            MainWindow.closeEvent(window, close_event)
             assert close_event.isAccepted()
             close_message = None
             deadline = asyncio.get_running_loop().time() + 2

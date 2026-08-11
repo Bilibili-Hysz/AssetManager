@@ -3,6 +3,7 @@ import time
 from contextlib import nullcontext
 from dataclasses import FrozenInstanceError
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -11,6 +12,9 @@ from AssetsManager.domain.share import ShareLink
 from AssetsManager.application.share_service import ShareService
 from AssetsManager.core import database
 from AssetsManager.repositories.share_repository import ShareRepository
+
+if TYPE_CHECKING:
+    from AssetsManager.application.context import LibrarySession
 
 
 def _make_db(memory_db):
@@ -29,7 +33,7 @@ def _bound_service(memory_db, root):
         event_token="test-session-token",
         operation=nullcontext,
     )
-    return ShareService(conn, "test-secret", session=session)
+    return ShareService(conn, "test-secret", session=cast("LibrarySession", session))
 
 
 # ── ShareLink domain tests ──────────────────────────────────────
@@ -88,6 +92,17 @@ class TestShareLink:
         )
         assert share.is_path_allowed("project/../public.txt") is False
         assert share.is_path_allowed("project/..") is False
+
+    def test_is_path_allowed_root_share_covers_whole_library(self):
+        share = ShareLink(
+            id="x", paths=(".",), created_by="user", created_at=0,
+        )
+        assert share.is_path_allowed("any/deep/path.txt") is True
+        assert share.is_path_allowed("project/../public.txt") is True
+        empty_scope = ShareLink(
+            id="y", paths=("",), created_by="user", created_at=0,
+        )
+        assert empty_scope.is_path_allowed("file.txt") is True
 
     def test_to_public_dict_hides_sensitive_fields(self):
         share = ShareLink(
@@ -192,7 +207,8 @@ class TestShareService:
         ("kwargs", "field", "message"),
         [
             ({"password": 42}, "password", "Invalid password format"),
-            ({"password": "abc"}, "password", "Password must be at least 4 characters"),
+            ({"password": "abc"}, "password", "Password must be at least 8 characters"),
+            ({"password": "1234567"}, "password", "Password must be at least 8 characters"),
             ({"password": "x" * 129}, "password", "Password must be less than 128 characters"),
             ({"expires_hours": "1"}, "expires_hours", "Invalid expiry format"),
             ({"expires_hours": True}, "expires_hours", "Invalid expiry format"),
@@ -219,7 +235,7 @@ class TestShareService:
     @pytest.mark.parametrize(
         "kwargs",
         [
-            {"password": "abcd"},
+            {"password": "abcd1234"},
             {"password": "x" * 128},
             {"expires_hours": 1},
             {"expires_hours": 8760},
@@ -283,7 +299,7 @@ class TestShareService:
         conn = _make_db(memory_db)
         svc = ShareService(conn, "test-secret")
 
-        share = svc.create_share(paths=["a"], password="secret")
+        share = svc.create_share(paths=["a"], password="secret123")
         assert share is not None
         token = svc.generate_token(share.id)
         assert svc.verify_token(token, share.id) is True
@@ -303,7 +319,7 @@ class TestShareService:
         conn = _make_db(memory_db)
         svc = ShareService(conn, "test-secret")
 
-        share = svc.create_share(paths=["project"], password="secret")
+        share = svc.create_share(paths=["project"], password="secret123")
         assert share is not None
 
         _, err = svc.validate_access(share.id, "project/file.txt")
@@ -350,3 +366,79 @@ class TestShareService:
         assert share is not None
         _, err = svc.validate_access(share.id, "other/file.txt")
         assert err == "File not in share scope"
+
+    def test_validate_access_root_share_allows_all_paths(self, tmp_path, memory_db):
+        conn = _make_db(memory_db)
+        svc = ShareService(conn, "test-secret")
+
+        share = svc.create_share(paths=["."])
+        assert share is not None
+        result_share, err = svc.validate_access(share.id, "any/deep/file.txt")
+        assert result_share is not None
+        assert err == ""
+
+
+# ── Brute-force protection ──────────────────────────────────────
+
+class TestPasswordBruteForceGuard:
+
+    def _service(self, memory_db):
+        conn = _make_db(memory_db)
+        return ShareService(conn, "test-secret")
+
+    def test_attempts_allowed_below_threshold(self, memory_db):
+        svc = self._service(memory_db)
+        share = svc.create_share(paths=["a"], password="secret123")
+        assert share is not None
+
+        for _ in range(4):
+            assert svc.password_attempt_blocked(share.id) == 0
+            svc.record_password_failure(share.id)
+        assert svc.password_attempt_blocked(share.id) == 0
+
+    def test_fifth_failure_blocks_subsequent_attempts(self, memory_db):
+        svc = self._service(memory_db)
+        share = svc.create_share(paths=["a"], password="secret123")
+        assert share is not None
+
+        for _ in range(5):
+            svc.record_password_failure(share.id)
+        assert svc.password_attempt_blocked(share.id) > 0
+
+    def test_success_resets_failure_counter(self, memory_db):
+        svc = self._service(memory_db)
+        share = svc.create_share(paths=["a"], password="secret123")
+        assert share is not None
+
+        for _ in range(4):
+            svc.record_password_failure(share.id)
+        assert svc.password_attempt_blocked(share.id) == 0
+
+        svc.reset_password_failures(share.id)
+
+        for _ in range(3):
+            svc.record_password_failure(share.id)
+        assert svc.password_attempt_blocked(share.id) == 0
+
+    def test_lockout_expires_after_cooldown(self, memory_db):
+        svc = self._service(memory_db)
+        svc.MAX_PASSWORD_FAILURES = 2
+        svc.PASSWORD_COOLDOWN_SECONDS = 0.05
+        share = svc.create_share(paths=["a"], password="secret123")
+        assert share is not None
+
+        svc.record_password_failure(share.id)
+        svc.record_password_failure(share.id)
+        assert svc.password_attempt_blocked(share.id) > 0
+
+        time.sleep(0.06)
+        assert svc.password_attempt_blocked(share.id) == 0
+
+    def test_verify_password_still_works_after_guard(self, memory_db):
+        svc = self._service(memory_db)
+        share = svc.create_share(paths=["a"], password="secret123")
+        assert share is not None
+
+        assert svc.verify_password(share.id, "secret123") is True
+        assert svc.verify_password(share.id, "wrong-pass") is False
+        assert svc.verify_password(share.id, "wrong-pass") is False

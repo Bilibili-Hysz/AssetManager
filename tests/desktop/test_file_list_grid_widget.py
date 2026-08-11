@@ -8,7 +8,7 @@ from shiboken6 import Shiboken
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPoint, QPointF, QRect, QSize, Qt
-from PySide6.QtGui import QEnterEvent, QMouseEvent, QPainter, QPixmap, QPointingDevice
+from PySide6.QtGui import QEnterEvent, QKeyEvent, QMouseEvent, QPainter, QPixmap, QPointingDevice
 from PySide6.QtWidgets import QApplication
 
 from AssetsManager.core.performance import PerformanceRecorder
@@ -1300,3 +1300,100 @@ def test_populated_model_reset_repopulates_details_view(monkeypatch, tmp_path):
 
     panel.deleteLater()
     app.processEvents()
+
+
+def test_grid_shift_arrow_without_prior_click_keeps_rows_valid():
+    app = QApplication.instance() or QApplication([])
+    widget = FileListGridWidget()
+    try:
+        widget._model_rows = 5
+        widget._last_click_row = -1
+        widget._selection = {0}
+        widget._step_mod_arrow(1, Qt.KeyboardModifier.ShiftModifier)
+        assert widget._selection == {0, 1}
+        assert widget._last_click_row == 1
+        # Stepping back from the anchored range keeps every row valid.
+        widget._step_mod_arrow(-2, Qt.KeyboardModifier.ShiftModifier)
+        assert widget._selection == {0, 1}
+        assert widget._last_click_row == 0
+    finally:
+        widget.deleteLater()
+        app.processEvents()
+
+
+def test_grid_shift_arrow_without_prior_click_upward_anchors_at_zero():
+    app = QApplication.instance() or QApplication([])
+    widget = FileListGridWidget()
+    try:
+        widget._model_rows = 5
+        widget._last_click_row = -1
+        widget._selection = {4}
+        widget._step_mod_arrow(-1, Qt.KeyboardModifier.ShiftModifier)
+        # The never-clicked anchor (-1) clamps to row 0, so the range cannot
+        # include an invalid -1 row.
+        assert widget._selection == {0}
+        assert widget._last_click_row == 0
+    finally:
+        widget.deleteLater()
+        app.processEvents()
+
+
+def test_grid_inline_rename_escape_cancels_and_closes_editor(tmp_path):
+    app, model, widget = _visible_grid(tmp_path)
+    renamed = []
+    widget.rename_requested.connect(lambda row, name: renamed.append((row, name)))
+    widget._start_rename(0)
+    editor = widget._rename_editor
+    assert editor is not None
+    editor.setText("renamed.txt")
+
+    pressed = QKeyEvent(
+        QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier
+    )
+    assert widget.eventFilter(editor, pressed) is True
+    app.processEvents()
+
+    assert widget._rename_editor is None
+    assert renamed == []
+
+
+def test_grid_inline_rename_enter_still_commits(tmp_path):
+    app, model, widget = _visible_grid(tmp_path)
+    renamed = []
+    widget.rename_requested.connect(lambda row, name: renamed.append((row, name)))
+    widget._start_rename(0)
+    editor = widget._rename_editor
+    assert editor is not None
+    editor.setText("renamed.txt")
+
+    editor.editingFinished.emit()
+    app.processEvents()
+
+    assert widget._rename_editor is None
+    assert renamed == [(0, "renamed.txt")]
+
+
+def test_grid_release_on_multi_selection_collapses_to_clicked_row():
+    app = QApplication.instance() or QApplication([])
+    widget = FileListGridWidget()
+    try:
+        widget._model_rows = 3
+        widget._click_pending_row = 1
+        widget._selection = {0, 1, 2}
+        clicked = []
+        widget.clicked.connect(clicked.append)
+        widget.mouseReleaseEvent(QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            QPointF(10, 10),
+            QPointF(10, 10),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            QPointingDevice.primaryPointingDevice(),
+        ))
+        assert widget._selection == {1}
+        assert widget._click_pending_row == -1
+        assert clicked == [1]
+    finally:
+        widget.deleteLater()
+        app.processEvents()

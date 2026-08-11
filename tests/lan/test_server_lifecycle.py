@@ -1,10 +1,15 @@
 import asyncio
 import threading
 import time
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+
+# These tests bind a fixed port (8765); under xdist --dist worksteal they
+# must never run concurrently on different workers.
+pytestmark = pytest.mark.xdist_group(name="serial")
 
 from AssetsManager.lan.server import _LanServerImpl
 
@@ -86,6 +91,10 @@ def _server_with_thread(thread):
     return server
 
 
+async def _completed():
+    pass
+
+
 def _submit_future(monkeypatch, future):
     def submit(coro, loop):
         coro.close()
@@ -106,7 +115,7 @@ def test_stop_preserves_actionable_state_when_shutdown_future_times_out(monkeypa
     assert server._thread is thread
     assert server._loop is loop
     assert server._lifecycle_state == "failed"
-    assert server.is_running()
+    assert not server.is_running()
 
 
 def test_stop_reconciles_pending_shutdown_without_submitting_overlapping_cleanup(
@@ -231,7 +240,7 @@ def test_stop_preserves_actionable_state_when_thread_join_times_out(monkeypatch)
     assert server._thread is thread
     assert server._loop is loop
     assert server._lifecycle_state == "failed"
-    assert server.is_running()
+    assert not server.is_running()
 
 
 def test_start_rejects_restart_while_previous_thread_is_alive(monkeypatch):
@@ -499,20 +508,24 @@ def test_server_registers_each_successful_generation_only_after_start(
     server._run = run_generation
     monkeypatch.setattr("AssetsManager.lan.server.threading.Thread", _ImmediateThread)
 
+    from AssetsManager.application.security_preflight import SecurityPreflight
+    preflight = SecurityPreflight()
+    preflight.confirm_authenticated_lan()
     try:
-        assert runtime._lifecycle_adapters == []
+        baseline_adapters = list(runtime._lifecycle_adapters)
+        assert server not in baseline_adapters
 
-        server.start(port=8765, bind="127.0.0.1")
-        assert runtime._lifecycle_adapters == [server]
-
-        server.stop()
-        assert runtime._lifecycle_adapters == []
-
-        server.start(port=8765, bind="127.0.0.1")
-        assert runtime._lifecycle_adapters == [server]
+        server.start(port=8765, bind="127.0.0.1", preflight=preflight)
+        assert runtime._lifecycle_adapters == [*baseline_adapters, server]
 
         server.stop()
-        assert runtime._lifecycle_adapters == []
+        assert runtime._lifecycle_adapters == baseline_adapters
+
+        server.start(port=8765, bind="127.0.0.1", preflight=preflight)
+        assert runtime._lifecycle_adapters == [*baseline_adapters, server]
+
+        server.stop()
+        assert runtime._lifecycle_adapters == baseline_adapters
     finally:
         if server._thread is not None:
             server.stop()
@@ -696,7 +709,7 @@ def test_stop_preserves_cleanup_handles_when_shutdown_stage_fails(
     assert server._thread is thread
     assert server._loop is loop
     assert server._lifecycle_state == "failed"
-    assert server.is_running()
+    assert not server.is_running()
 
     with pytest.raises(RuntimeError, match="previous server"):
         server.start(port=8765, bind="127.0.0.1")
@@ -723,6 +736,104 @@ def test_shutdown_exercises_each_cleanup_stage_after_running_is_cleared(
         asyncio.run(server._shutdown())
 
     assert calls[-1] == (failing_stage, False)
+
+
+def test_shutdown_revokes_cached_seller_sessions_before_cleanup(monkeypatch):
+    calls = []
+    seller_auth = SimpleNamespace(
+        revoke_all=lambda: calls.append("revoke") or 2,
+    )
+    server = object.__new__(_LanServerImpl)
+    server._running = True
+    server.commerce_services = SimpleNamespace(seller_auth=seller_auth)
+
+    async def close_all():
+        calls.append("close_all")
+
+    server._ws_manager = SimpleNamespace(close_all=close_all)
+    server._site = None
+    server._runner = None
+    monkeypatch.setattr("AssetsManager.lan.server.stop_runtime_realtime", lambda _server: None)
+
+    import asyncio
+    asyncio.run(server._shutdown())
+
+    assert calls == ["revoke", "close_all"]
+
+
+def test_shutdown_revokes_scoped_injected_seller_service(monkeypatch):
+    calls = []
+    server = object.__new__(_LanServerImpl)
+    server._running = True
+    server.services = SimpleNamespace(
+        seller_auth_service=SimpleNamespace(
+            revoke_all=lambda: calls.append("revoke") or 1,
+        ),
+    )
+
+    async def close_all():
+        calls.append("close_all")
+
+    server._ws_manager = SimpleNamespace(close_all=close_all)
+    server._site = None
+    server._runner = None
+    monkeypatch.setattr("AssetsManager.lan.server.stop_runtime_realtime", lambda _server: None)
+
+    import asyncio
+    asyncio.run(server._shutdown())
+
+    assert calls == ["revoke", "close_all"]
+
+
+def test_early_stop_revokes_all_cached_seller_service_holders(monkeypatch):
+    calls = []
+
+    def seller(name):
+        return SimpleNamespace(
+            revoke_all=lambda: calls.append(name) or 1,
+        )
+
+    server = object.__new__(_LanServerImpl)
+    server._running = False
+    server._lifecycle_state = "starting"
+    server._cleanup_complete = False
+    server._thread = None
+    server._loop = None
+    server._shutdown_future = None
+    server._lifecycle_lock = threading.Lock()
+    server.commerce_services = SimpleNamespace(seller_auth=seller("cached"))
+    server.services = SimpleNamespace(seller_auth_service=seller("scoped"))
+    server._services = SimpleNamespace(seller_auth_service=seller("injected"))
+
+    monkeypatch.setattr(_LanServerImpl, "_unregister_runtime_adapter", lambda _server: None)
+
+    server.stop()
+
+    assert calls == ["cached", "scoped", "injected"]
+
+
+def test_shutdown_revokes_seller_sessions_before_a_cleanup_stage_failure(monkeypatch):
+    calls = []
+    seller_auth = SimpleNamespace(
+        revoke_all=lambda: calls.append("revoke") or 1,
+    )
+    server = object.__new__(_LanServerImpl)
+    server._running = True
+    server.commerce_services = SimpleNamespace(seller_auth=seller_auth)
+
+    async def close_all():
+        calls.append("close_all")
+        raise RuntimeError("cleanup failed")
+
+    server._ws_manager = SimpleNamespace(close_all=close_all)
+    server._site = None
+    server._runner = None
+    monkeypatch.setattr("AssetsManager.lan.server.stop_runtime_realtime", lambda _server: None)
+
+    with pytest.raises(RuntimeError, match="cleanup failed"):
+        asyncio.run(server._shutdown())
+
+    assert calls == ["revoke", "close_all"]
 
 
 def test_real_thread_retries_failed_cleanup_and_closes_loop_on_owner_thread(monkeypatch):
@@ -788,6 +899,74 @@ def test_real_thread_retries_failed_cleanup_and_closes_loop_on_owner_thread(monk
     assert close_thread_ids == [thread.ident]
     assert server._thread is None
     assert server._loop is None
+
+
+@pytest.mark.parametrize("retry_succeeds", [True, False])
+def test_explicit_cleanup_retries_normal_stop_failure_once(retry_succeeds, monkeypatch):
+    """A normal stop failure is retryable by the next lifecycle caller only once."""
+
+    thread = _ThreadThatStopsWhenCleanupCompletes()
+    server = object.__new__(_LanServerImpl)
+    server._running = True
+    server._lifecycle_state = "running"
+    server._cleanup_complete = False
+    server._shutdown_future = None
+    server._lifecycle_lock = threading.Lock()
+    server._loop = object()
+    server._thread = thread
+    server._lifecycle_generation = 1
+    server._stop_reservation_generation = 1
+    server._stop_reservations = 0
+    server._cleanup_attempt_event = threading.Event()
+    server._cleanup_attempt_state = "idle"
+    server._cleanup_attempt_owner = None
+    server._cleanup_attempt_error = None
+    server._cleanup_retry_used = False
+    server._startup_cleanup_failed = False
+    server._startup_cleanup_retry_used = False
+    server._revoke_seller_sessions = lambda: None
+    server._unregister_runtime_adapter = lambda: None
+    submitted = []
+
+    async def shutdown():
+        return None
+
+    server._shutdown = shutdown
+
+    def submit(coro, loop):
+        submitted.append(coro)
+        coro.close()
+        if len(submitted) == 1 or not retry_succeeds:
+            server._publish_cleanup_attempt("failed", RuntimeError("controlled stop failure"))
+        else:
+            server._cleanup_complete = True
+            thread.cleanup_completed()
+            server._publish_cleanup_attempt("succeeded")
+        return _ShutdownFuture()
+
+    monkeypatch.setattr(asyncio, "run_coroutine_threadsafe", submit)
+
+    with pytest.raises(RuntimeError, match="controlled stop failure"):
+        server.stop()
+    assert len(submitted) == 1
+    assert server._cleanup_retry_used is False
+
+    if retry_succeeds:
+        server.stop()
+        assert server._cleanup_complete is True
+        assert server._lifecycle_state == "stopped"
+        assert not thread.is_alive()
+        server.stop()
+    else:
+        with pytest.raises(RuntimeError, match="controlled stop failure"):
+            server.stop()
+        assert server._cleanup_retry_used is True
+        assert server._cleanup_complete is False
+        assert server._lifecycle_state == "failed"
+        with pytest.raises(RuntimeError, match="controlled stop failure"):
+            server.stop()
+
+    assert len(submitted) == 2
 
 
 @pytest.mark.parametrize("startup_error", [RuntimeError("startup failed after runner initialization")])
@@ -1226,6 +1405,83 @@ def test_stop_retries_startup_cleanup_that_fails_after_reconciliation(monkeypatc
     assert server._shutdown_future is None
 
 
+def test_stop_reconciles_owner_failure_published_at_future_timeout_boundary(monkeypatch):
+    """A terminal owner publication wins even while the future is still pending."""
+
+    publication_order = []
+    result_calls = []
+    retry_submissions = []
+    thread = _ThreadThatStopsWhenCleanupCompletes()
+    server = object.__new__(_LanServerImpl)
+    server._running = False
+    server._lifecycle_state = "failed"
+    server._cleanup_complete = False
+    server._lifecycle_generation = 1
+    server._stop_reservation_generation = 1
+    server._stop_reservations = 0
+    server._startup_cleanup_failed = False
+    server._startup_cleanup_retry_used = False
+    server._cleanup_attempt_state = "running"
+    server._cleanup_attempt_owner = "startup"
+    server._cleanup_attempt_error = None
+    server._lifecycle_lock = threading.Lock()
+    server._loop = object()
+    server._thread = thread
+    server._unregister_runtime_adapter = lambda: None
+
+    class PendingFuture:
+        def done(self):
+            return False
+
+        def result(self, timeout=None):
+            result_calls.append(timeout)
+            raise AssertionError("stop must use the cleanup-attempt publication")
+
+    owner_future = PendingFuture()
+    server._shutdown_future = owner_future
+
+    class BoundaryEvent:
+        def __init__(self):
+            self._event = threading.Event()
+            self._published = False
+
+        def clear(self):
+            self._event.clear()
+
+        def set(self):
+            self._event.set()
+
+        def wait(self, timeout=None):
+            if not self._published:
+                self._published = True
+                publication_order.append("owner-failed")
+                server._publish_cleanup_attempt(
+                    "failed", RuntimeError("owner cleanup failed at timeout boundary")
+                )
+            return self._event.is_set()
+
+    server._cleanup_attempt_event = BoundaryEvent()
+
+    def submit(coro, loop):
+        retry_submissions.append(coro)
+        coro.close()
+        server._cleanup_complete = True
+        thread.cleanup_completed()
+        publication_order.append("retry-succeeded")
+        server._publish_cleanup_attempt("succeeded")
+        return _ShutdownFuture()
+
+    monkeypatch.setattr(asyncio, "run_coroutine_threadsafe", submit)
+
+    server.stop()
+
+    assert publication_order == ["owner-failed", "retry-succeeded"]
+    assert len(retry_submissions) == 1
+    assert result_calls == []
+    assert server._cleanup_complete is True
+    assert server._cleanup_attempt_state == "succeeded"
+
+
 def test_start_waits_for_definitive_delayed_startup_success():
     startup_finished = threading.Event()
     cleanup_finished = threading.Event()
@@ -1444,6 +1700,57 @@ def test_bind_failure_returns_without_waiting_for_rollback_timeout(monkeypatch):
     assert elapsed < 1.0
     if server._thread is not None:
         server._thread.join(timeout=1)
+    assert server._running is False
+    assert server._lifecycle_state == "stopped"
     assert server._cleanup_complete is True
+    server._port = 8765
+    server._started_at = None
+    server._share_name = "test"
+    server._library_root = Path(".")
+    server._access_key_hash = None
+    server._password_hash = None
+    server._auth_mode = "none"
+    server._has_users_cache = False
+    server._has_users_cache_time = 0
+    server._connections = 0
+    server._requests = 0
+    server._bytes_transferred = 0
+    assert server.is_running() is False
+    assert server.status()["restart_ready"] is True
     runtime.unregister_lifecycle_adapter.assert_called_once_with(server)
     assert server._runtime_adapter_registered is False
+
+
+def test_explicit_tls_load_failure_does_not_downgrade_to_http(monkeypatch):
+    server = object.__new__(_LanServerImpl)
+    server._ssl_cert = "missing-cert.pem"
+    server._ssl_key = "missing-key.pem"
+    server._ssl_active = False
+    server._app = {}
+    server._running = False
+    server._cleanup_complete = False
+    server._lifecycle_state = "starting"
+    server._lifecycle_generation = 1
+    server._startup_cancel_generation = None
+    server._lifecycle_lock = threading.Lock()
+    server._runner = None
+    server._site = None
+    server._ws_manager = SimpleNamespace(start_accepting=lambda: _completed())
+    server._auth_service = SimpleNamespace()
+    server._port = 8765
+    server._bind = "127.0.0.1"
+
+    class Runner:
+        async def setup(self):
+            pass
+
+    def unexpected_site(*args, **kwargs):
+        raise AssertionError("explicit TLS failure must not continue to HTTP site creation")
+
+    monkeypatch.setattr("AssetsManager.lan.server.web.AppRunner", lambda *args, **kwargs: Runner())
+    monkeypatch.setattr("AssetsManager.lan.server.web.TCPSite", unexpected_site)
+
+    with pytest.raises((FileNotFoundError, OSError)):
+        asyncio.run(_LanServerImpl._startup(server))
+
+    assert server._ssl_active is False

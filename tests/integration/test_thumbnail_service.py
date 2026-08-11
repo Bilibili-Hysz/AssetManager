@@ -81,7 +81,10 @@ def test_check_blur_returns_false_without_db(tmp_path):
     asset.write_bytes(b"fake")
 
     svc = ThumbnailService()
-    assert svc._check_blur(asset, {"nsfw"}, None) is False
+    # Fail closed: blur tags without any database access raise instead of
+    # silently deciding the file does not need blurring.
+    with pytest.raises(ValueError, match="blur policy"):
+        svc._check_blur(asset, {"nsfw"}, None)
     assert svc._check_blur(asset, None, None) is False
 
 
@@ -120,13 +123,33 @@ def test_resolve_uses_connection_provider_for_blur_tags(tmp_path):
     assert roots == [library.resolve()]
 
 
-def test_check_blur_degrades_for_closed_connection(tmp_path):
+def test_check_blur_fails_closed_for_closed_connection(tmp_path):
     asset = tmp_path / "photo.jpg"
     asset.write_bytes(b"fake")
     conn = sqlite3.connect(":memory:")
     conn.close()
 
+    with pytest.raises(sqlite3.ProgrammingError):
+        ThumbnailService()._check_blur(asset, {"nsfw"}, conn)
+
+
+def test_check_blur_returns_false_for_no_matching_tags(tmp_path):
+    asset = tmp_path / "photo.jpg"
+    asset.write_bytes(b"fake")
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE file_tags (file_path TEXT, tag TEXT)")
+
     assert ThumbnailService()._check_blur(asset, {"nsfw"}, conn) is False
+
+
+def test_check_blur_fails_closed_for_schema_error(tmp_path):
+    asset = tmp_path / "photo.jpg"
+    asset.write_bytes(b"fake")
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE file_tags (file_path TEXT, wrong_column TEXT)")
+
+    with pytest.raises(sqlite3.OperationalError):
+        ThumbnailService()._check_blur(asset, {"nsfw"}, conn)
 
 
 def test_resolve_degrades_when_connection_provider_fails(tmp_path):
@@ -144,14 +167,12 @@ def test_resolve_degrades_when_connection_provider_fails(tmp_path):
         calls.append(root)
         raise RuntimeError("provider unavailable")
 
-    result = ThumbnailService(
-        connection_provider=failing_provider, session=session
-    ).resolve(
-        asset, tmp_path / "thumbs", blur_tags={"nsfw"}, library_root=library
-    )
-
-    assert result.source_path == asset
-    assert result.should_blur is False
+    service = ThumbnailService(session=session)
+    service._connection_provider = failing_provider
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        service.resolve(
+            asset, tmp_path / "thumbs", blur_tags={"nsfw"}, library_root=library
+        )
     assert calls == [library.resolve()]
     session.close()
 
@@ -196,6 +217,60 @@ def test_process_image_blur(tmp_path):
     assert result is not None
     data, mime = result
     assert mime == "image/webp"
+
+
+def test_process_image_converts_cmyk_to_webp(tmp_path):
+    pytest.importorskip("PIL")
+    from PIL import Image
+
+    img = Image.new("CMYK", (64, 64), color=(0, 255, 255, 0))
+    src = tmp_path / "cmyk.jpg"
+    img.save(src)
+
+    svc = ThumbnailService()
+    result = svc.process_image(src, max_size=256)
+
+    assert result is not None
+    data, mime = result
+    assert mime == "image/webp"
+    out = Image.open(io.BytesIO(data))
+    assert out.mode in ("RGB", "RGBA")
+
+
+def test_process_image_converts_palette_to_webp(tmp_path):
+    pytest.importorskip("PIL")
+    from PIL import Image
+
+    img = Image.new("P", (64, 64))
+    img.putpalette([0, 0, 0] * 256)
+    src = tmp_path / "palette.png"
+    img.save(src)
+
+    svc = ThumbnailService()
+    result = svc.process_image(src, max_size=256)
+
+    assert result is not None
+    data, mime = result
+    assert mime == "image/webp"
+
+
+def test_process_image_applies_exif_orientation(tmp_path):
+    pytest.importorskip("PIL")
+    from PIL import Image
+
+    img = Image.new("RGB", (100, 50), color="red")
+    exif = img.getexif()
+    exif[274] = 6  # Orientation: rotate 90 degrees clockwise
+    src = tmp_path / "rotated.jpg"
+    img.save(src, exif=exif)
+
+    svc = ThumbnailService()
+    result = svc.process_image(src, max_size=256)
+
+    assert result is not None
+    data, mime = result
+    out = Image.open(io.BytesIO(data))
+    assert out.size == (50, 100)
 
 
 def test_process_image_returns_none_for_non_image(tmp_path):
@@ -310,6 +385,25 @@ def test_cache_metadata_rejects_closed_session(tmp_path):
         service.get_cached_source_mtime(library, "key-1")
 
 
+def test_strict_cache_metadata_rejects_unmanaged_provider_result(tmp_path):
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    library.mkdir()
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    raw = sqlite3.connect(":memory:")
+    service = ThumbnailService(session=session)
+    service._connection_provider = lambda _root: raw
+
+    try:
+        with pytest.raises(ValueError, match="does not belong to the bound LibrarySession"):
+            service.get_cached_source_mtime(library, "key-1")
+    finally:
+        raw.close()
+        bootstrap.library_service.close_session(session)
+
+
 def test_cache_metadata_provider_failure_releases_session_lease(tmp_path):
     from AssetsManager.application.bootstrap import ApplicationBootstrap
 
@@ -323,10 +417,107 @@ def test_cache_metadata_provider_failure_releases_session_lease(tmp_path):
         calls.append(root)
         raise RuntimeError("provider unavailable")
 
-    service = ThumbnailService(connection_provider=failing_provider, session=session)
+    service = ThumbnailService(session=session)
+    service._connection_provider = failing_provider
 
     with pytest.raises(RuntimeError, match="provider unavailable"):
         service.get_cached_source_mtime(library, "key-1")
 
     assert calls == [library.resolve()]
     session.close()
+
+
+def test_thumbnail_service_accepts_managed_same_root_connection(tmp_path):
+    from AssetsManager.core.database import DatabaseManager
+
+    library = tmp_path / "library"
+    library.mkdir()
+    asset = library / "photo.jpg"
+    asset.write_bytes(b"asset")
+    manager = DatabaseManager()
+    try:
+        conn = manager.connection_for(library)
+        conn.execute(
+            "INSERT INTO file_tags (file_path, tag) VALUES (?, ?)",
+            (str(asset.resolve()), "NSFW"),
+        )
+        conn.commit()
+
+        result = ThumbnailService(connection_provider=lambda _root: conn).resolve(
+            asset,
+            tmp_path / "thumbs",
+            blur_tags={"nsfw"},
+            library_root=library,
+        )
+
+        assert result.should_blur is True
+    finally:
+        manager.close()
+
+
+def test_thumbnail_service_rejects_provider_managed_foreign_root(tmp_path):
+    from AssetsManager.core.database import DatabaseManager
+
+    root_a = tmp_path / "root-a"
+    root_b = tmp_path / "root-b"
+    root_a.mkdir()
+    root_b.mkdir()
+    asset = root_a / "photo.jpg"
+    asset.write_bytes(b"asset")
+    manager = DatabaseManager()
+    try:
+        foreign_conn = manager.connection_for(root_b)
+        service = ThumbnailService(connection_provider=lambda _root: foreign_conn)
+
+        with pytest.raises(ValueError, match="different library root"):
+            service.resolve(
+                asset,
+                tmp_path / "thumbs",
+                blur_tags={"nsfw"},
+                library_root=root_a,
+            )
+    finally:
+        manager.close()
+
+
+def test_thumbnail_service_rejects_explicit_managed_foreign_root(tmp_path):
+    from AssetsManager.core.database import DatabaseManager
+
+    root_a = tmp_path / "root-a"
+    root_b = tmp_path / "root-b"
+    root_a.mkdir()
+    root_b.mkdir()
+    asset = root_a / "photo.jpg"
+    asset.write_bytes(b"asset")
+    manager = DatabaseManager()
+    try:
+        foreign_conn = manager.connection_for(root_b)
+
+        with pytest.raises(ValueError, match="different library root"):
+            ThumbnailService().resolve(
+                asset,
+                tmp_path / "thumbs",
+                blur_tags={"nsfw"},
+                db_conn=foreign_conn,
+                library_root=root_a,
+            )
+    finally:
+        manager.close()
+
+
+def test_thumbnail_cache_metadata_rejects_managed_foreign_root(tmp_path):
+    from AssetsManager.core.database import DatabaseManager
+
+    root_a = tmp_path / "root-a"
+    root_b = tmp_path / "root-b"
+    root_a.mkdir()
+    root_b.mkdir()
+    manager = DatabaseManager()
+    try:
+        foreign_conn = manager.connection_for(root_b)
+        service = ThumbnailService(connection_provider=lambda _root: foreign_conn)
+
+        with pytest.raises(ValueError, match="different library root"):
+            service.get_cached_source_mtime(root_a, "cache-key")
+    finally:
+        manager.close()

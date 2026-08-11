@@ -49,7 +49,9 @@ def test_share_link_dialog_disables_unscoped_creation():
 
 
 def test_share_link_result_mode_requires_explicit_create_another():
-    dialog = ShareLinkDialog(paths=["one.txt", "two.txt"], server=Mock(_port=8080))
+    # The server stub declares an explicit no-session contract so the
+    # staleness checks in _on_create_result treat it as sessionless.
+    dialog = ShareLinkDialog(paths=["one.txt", "two.txt"], server=Mock(_port=8080, session=None))
     try:
         dialog._on_create_result(True, {"url": "http://share.test/s/1"})
 

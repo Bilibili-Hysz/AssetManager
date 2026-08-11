@@ -165,6 +165,35 @@ def test_record_rename_and_undo(tmp_path):
     assert not (tmp_path / "new.txt").exists()
 
 
+def test_batch_move_partial_success_undo_restores_only_moved_files(tmp_path):
+    src_dir = tmp_path / "src"
+    dst_dir = tmp_path / "dst"
+    src_dir.mkdir()
+    dst_dir.mkdir()
+    good = src_dir / "good.txt"
+    good.write_text("data", encoding="utf-8")
+    missing = src_dir / "missing.txt"  # does not exist
+
+    # Batch move with one failing source: only the successful pair is
+    # reported, mirroring the FileOperationResult.moved_pairs contract
+    # that _actions.py consumes to record undo entries per moved pair.
+    result = FileOperationService().move_to_directory([good, missing], dst_dir)
+    assert not result.ok
+    assert len(result.moved_pairs) == 1
+
+    svc = UndoService()
+    for source, destination in result.moved_pairs:
+        svc.record_rename(str(source), str(destination))
+
+    assert svc.can_undo()
+    assert svc.perform_undo(FileOperationService(), str(tmp_path))
+    # The moved file is restored; the failed source never moved anywhere.
+    assert good.exists()
+    assert not (dst_dir / "good.txt").exists()
+    assert not missing.exists()
+    assert not (dst_dir / "missing.txt").exists()
+
+
 def test_undo_pushes_to_redo(tmp_path):
     src = tmp_path / "old.txt"
     src.write_text("data", encoding="utf-8")

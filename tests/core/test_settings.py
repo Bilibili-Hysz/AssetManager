@@ -1,5 +1,16 @@
 """Tests for AppSettings singleton."""
-from AssetsManager.core.settings import AppSettings
+import json
+
+import pytest
+
+import AssetsManager.core.settings as settings_module
+from AssetsManager.core.settings import (
+    SHARE_LAST_SUCCESSFUL_AUTH_KEY,
+    SHARE_LAST_SUCCESSFUL_BIND_KEY,
+    SHARE_SAFETY_ACK_VERSION_KEY,
+    TRUSTED_NETWORK_CONFIRMED_KEY,
+    AppSettings,
+)
 
 
 def test_singleton():
@@ -81,3 +92,216 @@ def test_malformed_legacy_settings_marks_migration_complete(tmp_path, monkeypatc
     second.load()
 
     assert second.get("_legacy_migrated") is True
+
+
+def _settings_at(path, *, data=None, dirty=False):
+    settings = AppSettings.__new__(AppSettings)
+    settings._path = path
+    settings._data = {} if data is None else data
+    settings._dirty = dirty
+    return settings
+
+
+def test_seller_feature_generation_changes_only_when_effective_feature_toggles_change():
+    settings = _settings_at(None, data={
+        "lan_commerce_enabled": True,
+        "lan_seller_enabled": True,
+    })
+
+    assert settings.get_seller_feature_generation() == 0
+    settings.set("lan_seller_enabled", False)
+    assert settings.get_seller_feature_generation() == 1
+    settings.set("lan_seller_enabled", False)
+    assert settings.get_seller_feature_generation() == 1
+    settings.set("lan_seller_enabled", True)
+    assert settings.get_seller_feature_generation() == 2
+    settings.set("lan_commerce_enabled", False)
+    assert settings.get_seller_feature_generation() == 3
+    settings.set("lan_commerce_enabled", True)
+    assert settings.get_seller_feature_generation() == 4
+
+
+def test_save_returns_true_and_clears_dirty_after_atomic_replace(tmp_path):
+    settings = _settings_at(tmp_path / "settings.json", data={"theme": "Forest"}, dirty=True)
+
+    assert settings.save() is True
+    assert settings._dirty is False
+    assert json.loads(settings.path.read_text(encoding="utf-8")) == {"theme": "Forest"}
+    assert settings.save() is True
+
+
+def test_save_returns_false_and_keeps_dirty_on_os_error(tmp_path, monkeypatch):
+    settings = _settings_at(tmp_path / "settings.json", data={"theme": "Forest"}, dirty=True)
+
+    def fail_replace(*args, **kwargs):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(settings_module.os, "replace", fail_replace)
+
+    assert settings.save() is False
+    assert settings._dirty is True
+    assert not settings.path.exists()
+
+
+def test_share_security_history_round_trip(tmp_path):
+    path = tmp_path / "settings.json"
+    writer = _settings_at(path)
+    auth_status = {"enabled": True, "mode": "password"}
+
+    writer.set_share_security_history("0.0.0.0", auth_status)
+    assert writer.save() is True
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload[SHARE_LAST_SUCCESSFUL_BIND_KEY] == "0.0.0.0"
+    assert payload[SHARE_LAST_SUCCESSFUL_AUTH_KEY] == auth_status
+    assert "password" not in payload
+    assert "access_key" not in payload
+
+    reader = _settings_at(path, data={"_legacy_migrated": True})
+    reader.load()
+    assert reader.get_share_security_history() == ("0.0.0.0", auth_status)
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {},
+        {SHARE_LAST_SUCCESSFUL_BIND_KEY: "0.0.0.0"},
+        {SHARE_LAST_SUCCESSFUL_AUTH_KEY: {"enabled": True, "mode": "password"}},
+        {SHARE_LAST_SUCCESSFUL_BIND_KEY: 123, SHARE_LAST_SUCCESSFUL_AUTH_KEY: {"enabled": True, "mode": "password"}},
+        {SHARE_LAST_SUCCESSFUL_BIND_KEY: "0.0.0.0", SHARE_LAST_SUCCESSFUL_AUTH_KEY: {"enabled": 1, "mode": "password"}},
+        {SHARE_LAST_SUCCESSFUL_BIND_KEY: "0.0.0.0", SHARE_LAST_SUCCESSFUL_AUTH_KEY: {"enabled": True, "mode": "password", "secret": "no"}},
+    ],
+)
+def test_share_security_history_invalid_values_read_as_no_history(data):
+    settings = _settings_at(None, data=data)
+
+    assert settings.get_share_security_history() == (None, None)
+
+
+@pytest.mark.parametrize(
+    "bind, auth_status",
+    [
+        (None, {"enabled": True, "mode": "password"}),
+        ("", {"enabled": True, "mode": "password"}),
+        ("0.0.0.0", {"enabled": 1, "mode": "password"}),
+        ("0.0.0.0", {"enabled": True}),
+        ("0.0.0.0", {"enabled": True, "mode": "password", "secret": "no"}),
+    ],
+)
+def test_share_security_history_invalid_values_raise_value_error(bind, auth_status):
+    settings = _settings_at(None)
+
+    with pytest.raises(ValueError):
+        settings.set_share_security_history(bind, auth_status)
+
+    assert settings._data == {}
+    assert settings._dirty is False
+
+
+def test_commit_share_security_history_rolls_back_memory_on_save_failure(monkeypatch):
+    old_auth_status = {"enabled": False, "mode": "none"}
+    settings = _settings_at(
+        None,
+        data={
+            SHARE_LAST_SUCCESSFUL_BIND_KEY: "127.0.0.1",
+            SHARE_LAST_SUCCESSFUL_AUTH_KEY: old_auth_status,
+        },
+        dirty=False,
+    )
+    monkeypatch.setattr(settings, "save", lambda: False)
+
+    assert settings.commit_share_security_history("0.0.0.0", {"enabled": True, "mode": "password"}) is False
+    assert settings._data == {
+        SHARE_LAST_SUCCESSFUL_BIND_KEY: "127.0.0.1",
+        SHARE_LAST_SUCCESSFUL_AUTH_KEY: old_auth_status,
+    }
+    assert settings._dirty is False
+    assert settings.get_share_security_history() == ("127.0.0.1", old_auth_status)
+
+
+def test_commit_share_security_history_restores_absent_keys_and_dirty_on_failure(monkeypatch):
+    settings = _settings_at(None, data={"other": "value"}, dirty=True)
+    monkeypatch.setattr(settings, "save", lambda: False)
+
+    assert settings.commit_share_security_history("0.0.0.0", {"enabled": True, "mode": "password"}) is False
+    assert settings._data == {"other": "value"}
+    assert settings._dirty is True
+    assert settings.get_share_security_history() == (None, None)
+
+
+def test_commit_share_security_history_returns_true_after_save(tmp_path):
+    settings = _settings_at(tmp_path / "settings.json")
+
+    assert settings.commit_share_security_history("0.0.0.0", {"enabled": True, "mode": "password"}) is True
+    assert settings._dirty is False
+    assert settings.get_share_security_history() == (
+        "0.0.0.0",
+        {"enabled": True, "mode": "password"},
+    )
+
+
+def test_commit_share_security_history_rolls_back_on_save_exception(monkeypatch):
+    settings = _settings_at(
+        None,
+        data={
+            SHARE_LAST_SUCCESSFUL_BIND_KEY: "127.0.0.1",
+            SHARE_LAST_SUCCESSFUL_AUTH_KEY: {"enabled": False, "mode": "none"},
+        },
+        dirty=False,
+    )
+
+    def fail_save():
+        raise RuntimeError("serialization failed")
+
+    monkeypatch.setattr(settings, "save", fail_save)
+
+    assert settings.commit_share_security_history(
+        "0.0.0.0", {"enabled": True, "mode": "password"}
+    ) is False
+    assert settings.get_share_security_history() == (
+        "127.0.0.1",
+        {"enabled": False, "mode": "none"},
+    )
+    assert settings._dirty is False
+
+
+def test_commit_share_safety_confirmation_returns_true_after_save(tmp_path):
+    settings = _settings_at(tmp_path / "settings.json")
+
+    assert settings.commit_share_safety_confirmation(3, True) is True
+    assert settings.get_share_safety_ack_version() == 3
+    assert settings.get_trusted_network_confirmed() is True
+    assert settings._dirty is False
+
+
+def test_commit_share_safety_confirmation_rolls_back_on_save_false(monkeypatch):
+    settings = _settings_at(
+        None,
+        data={
+            SHARE_SAFETY_ACK_VERSION_KEY: 2,
+            TRUSTED_NETWORK_CONFIRMED_KEY: False,
+        },
+        dirty=False,
+    )
+    monkeypatch.setattr(settings, "save", lambda: False)
+
+    assert settings.commit_share_safety_confirmation(3, True) is False
+    assert settings.get_share_safety_ack_version() == 2
+    assert settings.get_trusted_network_confirmed() is False
+    assert settings._dirty is False
+
+
+def test_commit_share_safety_confirmation_rolls_back_on_save_exception(monkeypatch):
+    settings = _settings_at(None, data={"other": "value"}, dirty=True)
+
+    def fail_save():
+        raise RuntimeError("save failed")
+
+    monkeypatch.setattr(settings, "save", fail_save)
+
+    assert settings.commit_share_safety_confirmation(3, True) is False
+    assert SHARE_SAFETY_ACK_VERSION_KEY not in settings._data
+    assert TRUSTED_NETWORK_CONFIRMED_KEY not in settings._data
+    assert settings._data == {"other": "value"}
+    assert settings._dirty is True

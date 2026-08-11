@@ -78,6 +78,27 @@ class TestThumbnailRepository:
         assert repo.delete_path(folder) == ["root", "child"]
         assert repo.list_all() == [("other", os.path.join(os.sep, "library", "other.png"))]
 
+    def test_delete_path_escapes_wildcards_in_source_path(self, repo, conn):
+        repo.upsert_entry("root", "/lib/my_dir", 1.0, 1, 1, 1)
+        repo.upsert_entry("child", "/lib/my_dir/img.png", 1.0, 1, 1, 1)
+        repo.upsert_entry("wildcard-sibling", "/lib/myXdir/img.png", 1.0, 1, 1, 1)
+        repo.upsert_entry("percent-dir", "/lib/50%_off/img.png", 1.0, 1, 1, 1)
+
+        assert repo.delete_path("/lib/my_dir") == ["root", "child"]
+        assert repo.list_all() == [
+            ("wildcard-sibling", "/lib/myXdir/img.png"),
+            ("percent-dir", "/lib/50%_off/img.png"),
+        ]
+
+    def test_delete_path_matches_stored_separator_style(self, repo, conn):
+        # Keys stored with "/" must be cleaned even when os.sep differs.
+        repo.upsert_entry("root", r"C:\lib\folder", 1.0, 1, 1, 1)
+        repo.upsert_entry("child", r"C:\lib\folder\img.png", 1.0, 1, 1, 1)
+        repo.upsert_entry("sibling", r"C:\lib\folder-extra.png", 1.0, 1, 1, 1)
+
+        assert repo.delete_path(r"C:\lib\folder") == ["root", "child"]
+        assert repo.list_all() == [("sibling", r"C:\lib\folder-extra.png")]
+
     def test_touch_access(self, repo, conn):
         repo.upsert_entry("key1", "/a.png", 1.0, 100, 80, 50)
         # touch_access should not raise

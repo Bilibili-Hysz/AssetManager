@@ -474,7 +474,7 @@ def test_tag_service_delegates_tag_counts_to_repository() -> None:
 
 def test_thumbnail_service_delegates_tag_lookup_to_repository() -> None:
     source = (SRC / "application" / "thumbnail_service.py").read_text(encoding="utf-8")
-    assert "TagRepository(db_conn).get_tags" in source
+    assert "tag_repository.get_tags" in source
     assert "db_conn.execute(" not in source
 
 
@@ -755,7 +755,9 @@ def test_file_operation_service_delegates_deleted_projection_cleanup() -> None:
     end = source.index("\n\ndef unique_destination", start)
     cleanup = source[start:end]
 
-    assert "TagRepository(conn).delete_path(target, commit=False)" in cleanup
+    assert "TagRepository(" in cleanup
+    assert "session=self.session" in cleanup
+    assert ".delete_path(target, commit=False)" in cleanup
     assert "MetadataRepository(conn).delete_path(target, commit=False)" in cleanup
     assert "DELETE FROM file_tags" not in cleanup
     assert "DELETE FROM file_meta" not in cleanup
@@ -789,7 +791,12 @@ def test_tag_panels_use_session_scoped_tag_events() -> None:
     info = (SRC / "panels" / "info.py").read_text(encoding="utf-8")
     tag_tree = (SRC / "panels" / "tag_tree.py").read_text(encoding="utf-8")
     assert "AssetTagsChanged" in info
-    assert "event.file_path != self._current_path" in info
+    # Path-ownership check: legacy comparison or the resolve-normalized
+    # _same_path helper introduced by P2 I-5 (junction-safe).
+    assert (
+        "event.file_path != self._current_path" in info
+        or "self._same_path(event.file_path" in info
+    )
     assert "TagCatalogChanged" in tag_tree
     assert "event.session_token != scoped.session.event_token" in tag_tree
 
@@ -967,6 +974,8 @@ def test_legacy_library_dir_helper_is_path_only() -> None:
     helper = source[start:end]
     assert "ThreadSafeSingleton" not in helper
     assert "library_data_dir" in helper
+    assert "_ensure_library_data_identity" in helper
+    assert "legacy_library_data_dir" in helper
 
 
 def test_database_singleton_helpers_are_legacy_only() -> None:
@@ -1068,9 +1077,12 @@ def test_application_does_not_import_lan_or_panels() -> None:
     )
 
 
-def test_repositories_only_depend_on_core_database_and_domain() -> None:
+def test_repositories_only_depend_on_core_infrastructure_and_domain() -> None:
     allowed_prefixes = (
         "AssetsManager.core.database",
+        "AssetsManager.core.path_resolver",
+        "AssetsManager.core.schema_defs",
+        "AssetsManager.core.session_contract",
         "AssetsManager.domain",
         "AssetsManager.repositories",
     )
@@ -1081,7 +1093,7 @@ def test_repositories_only_depend_on_core_database_and_domain() -> None:
             if any(imported == p or imported.startswith(p + ".") for p in allowed_prefixes):
                 continue
             violations.append(f"{module} imports {imported}")
-    assert not violations, "Repositories must only depend on core/database and domain:\n" + "\n".join(violations)
+    assert not violations, "Repositories must only depend on core infrastructure and domain:\n" + "\n".join(violations)
 
 
 def test_lan_does_not_import_pyside6_or_controllers() -> None:

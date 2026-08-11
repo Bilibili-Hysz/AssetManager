@@ -1,3 +1,5 @@
+import pytest
+
 import sqlite3
 
 
@@ -51,6 +53,32 @@ def test_tag_service_renames_and_deletes_tags(tmp_path):
         conn.close()
 
 
+def test_tag_service_rename_tag_migrates_tag_metadata(tmp_path):
+    from AssetsManager.application import TagService
+
+    library = tmp_path / "library"
+    library.mkdir()
+    asset = library / "asset.txt"
+    asset.write_text("asset", encoding="utf-8")
+
+    conn = _memory_conn()
+    try:
+        service = TagService(connection_provider=lambda _root: conn)
+        service.add_tag(library, asset, "hero")
+        service.set_tag_metadata(
+            library, "hero", color="red", icon="star", category="work"
+        )
+        service.rename_tag(library, "hero", "villain")
+
+        assert service.get_tags(library, asset) == ["villain"]
+        assert service.get_tag_metadata(library, "villain") == {
+            "color": "red", "icon": "star", "category": "work",
+        }
+        assert service.get_tag_metadata(library, "hero") is None
+    finally:
+        conn.close()
+
+
 def test_tag_service_uses_connection_provider(tmp_path):
     from AssetsManager.application import TagService
 
@@ -89,3 +117,152 @@ def test_tag_service_explicit_connection_overrides_provider(tmp_path):
     finally:
         explicit_conn.close()
         provider_conn.close()
+
+
+def test_tag_service_accepts_managed_same_root_connection(tmp_path):
+    from AssetsManager.application.tag_service import TagService
+    from AssetsManager.core.database import DatabaseManager
+
+    library = tmp_path / "library"
+    library.mkdir()
+    asset = library / "asset.png"
+    asset.write_bytes(b"asset")
+    manager = DatabaseManager()
+    try:
+        conn = manager.connection_for(library)
+        service = TagService(connection_provider=lambda _root: conn)
+
+        service.add_tag(library, asset, "managed")
+
+        assert service.get_tags(library, asset) == ["managed"]
+    finally:
+        manager.close()
+
+
+def test_tag_service_rejects_managed_foreign_root_connection(tmp_path):
+    import pytest
+
+    from AssetsManager.application.tag_service import TagService
+    from AssetsManager.core.database import DatabaseManager
+
+    root_a = tmp_path / "root-a"
+    root_b = tmp_path / "root-b"
+    root_a.mkdir()
+    root_b.mkdir()
+    manager = DatabaseManager()
+    try:
+        foreign_conn = manager.connection_for(root_b)
+        service = TagService(connection_provider=lambda _root: foreign_conn)
+
+        with pytest.raises(ValueError, match="different library root"):
+            service.list_tags(root_a)
+    finally:
+        manager.close()
+
+
+@pytest.mark.parametrize("operation", ["get_tags", "get_tags_for_files", "add_tag", "remove_tag", "remove_file", "get_tags_for_tree"])
+def test_tag_service_rejects_path_outside_library_root(tmp_path, operation):
+    from AssetsManager.application.tag_service import TagService
+
+    library = tmp_path / "library"
+    outside = tmp_path / "outside"
+    library.mkdir()
+    outside.mkdir()
+    asset = outside / "asset.txt"
+    conn = _memory_conn()
+    try:
+        service = TagService(connection_provider=lambda _root: conn)
+        with pytest.raises(ValueError, match="under library_root"):
+            if operation == "get_tags":
+                service.get_tags(library, asset)
+            elif operation == "get_tags_for_files":
+                service.get_tags_for_files(library, [asset])
+            elif operation == "add_tag":
+                service.add_tag(library, asset, "blocked")
+            elif operation == "remove_tag":
+                service.remove_tag(library, asset, "blocked")
+            elif operation == "remove_file":
+                service.remove_file(library, asset)
+            else:
+                service.get_tags_for_tree(library, outside)
+    finally:
+        conn.close()
+
+
+def test_tag_service_propagates_connection_provider_runtime_error(tmp_path):
+    from AssetsManager.application.tag_service import TagService
+
+    library = tmp_path / "library"
+    library.mkdir()
+
+    def provider(_root):
+        raise RuntimeError("session is closed")
+
+    service = TagService(connection_provider=provider)
+    with pytest.raises(RuntimeError, match="session is closed"):
+        service.get_all_tags(library)
+
+
+def test_tag_service_propagates_connection_provider_ownership_error(tmp_path):
+    from AssetsManager.application.tag_service import TagService
+
+    library = tmp_path / "library"
+    library.mkdir()
+
+    def provider(_root):
+        raise ValueError("foreign library root")
+
+    service = TagService(connection_provider=provider)
+    with pytest.raises(ValueError, match="foreign library root"):
+        service.get_tags(library, library / "asset.txt")
+
+
+def test_tag_service_propagates_closed_connection_error(tmp_path):
+    from AssetsManager.application.tag_service import TagService
+
+    library = tmp_path / "library"
+    library.mkdir()
+    conn = _memory_conn()
+    conn.close()
+
+    service = TagService()
+    with pytest.raises(sqlite3.ProgrammingError):
+        service.get_tags(library, library / "asset.txt", db_conn=conn)
+
+
+@pytest.mark.parametrize("operation", [
+    "get_tags",
+    "list_tags",
+    "add_tag",
+    "remove_tag",
+    "get_tags_with_metadata",
+    "get_tag_metadata",
+    "set_tag_metadata",
+])
+def test_tag_service_propagates_missing_schema_error(tmp_path, operation):
+    from AssetsManager.application.tag_service import TagService
+
+    library = tmp_path / "library"
+    library.mkdir()
+    asset = library / "asset.txt"
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+
+    try:
+        service = TagService(connection_provider=lambda _root: conn)
+        with pytest.raises(sqlite3.OperationalError):
+            if operation == "get_tags":
+                service.get_tags(library, asset)
+            elif operation == "list_tags":
+                service.list_tags(library)
+            elif operation == "add_tag":
+                service.add_tag(library, asset, "hero")
+            elif operation == "remove_tag":
+                service.remove_tag(library, asset, "hero")
+            elif operation == "get_tags_with_metadata":
+                service.get_tags_with_metadata(library)
+            elif operation == "get_tag_metadata":
+                service.get_tag_metadata(library, "hero")
+            else:
+                service.set_tag_metadata(library, "hero")
+    finally:
+        conn.close()

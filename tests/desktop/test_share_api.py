@@ -47,7 +47,7 @@ def test_share_creation_task_calls_service_and_builds_http_payload():
     task = ShareCreationTask(
         service,
         ["asset"],
-        {"password": "secret", "allow_preview": True},
+        {"password": "secret123", "allow_preview": True},
         "https://192.168.1.2:8080",
         True,
     )
@@ -61,7 +61,7 @@ def test_share_creation_task_calls_service_and_builds_http_payload():
         {"id": "share-1", "paths": ["asset"], "url": "https://192.168.1.2:8080/s/share-1", "requires_key": True},
     )]
     service.create_share.assert_called_once_with(
-        paths=["asset"], password="secret", allow_preview=True,
+        paths=["asset"], password="secret123", allow_preview=True,
     )
 
 

@@ -84,7 +84,7 @@ def test_find_first_image_returns_none_when_scandir_raises_os_error(monkeypatch,
     assert find_first_image(tmp_path) is None
 
 
-# ── get_auth_token deprecation tests ──
+# ── get_auth_token auth tests ──
 
 class _MockRequest:
     def __init__(self, *, cookies=None, headers=None, query=None):
@@ -120,22 +120,20 @@ def test_get_auth_token_prefers_bearer_header_over_stale_cookie(caplog):
     assert "DEPRECATED" not in caplog.text
 
 
-def test_get_auth_token_deprecates_query_token(caplog):
+def test_get_auth_token_rejects_query_token(caplog):
     req = _MockRequest(query={"token": "qt-tok"})
     with caplog.at_level(logging.WARNING):
         result = get_auth_token(req)
-    assert result == "qt-tok"
-    assert "DEPRECATED" in caplog.text
-    assert "?token=" in caplog.text
+    assert result == ""
+    assert "DEPRECATED" not in caplog.text
 
 
-def test_get_auth_token_deprecates_query_key(caplog):
+def test_get_auth_token_rejects_query_key(caplog):
     req = _MockRequest(query={"key": "qk-tok"})
     with caplog.at_level(logging.WARNING):
         result = get_auth_token(req)
-    assert result == "qk-tok"
-    assert "DEPRECATED" in caplog.text
-    assert "?key=" in caplog.text
+    assert result == ""
+    assert "DEPRECATED" not in caplog.text
 
 
 def test_get_auth_token_prefers_cookie_over_query(caplog):

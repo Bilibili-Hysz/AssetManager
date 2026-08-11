@@ -135,7 +135,7 @@ def test_switch_library_stops_lan_and_invalidates_thumbnails_before_closing(monk
     window._tray_manager.update_sharing_state.assert_called_once_with(False)
 
 
-def test_switch_library_continues_window_cleanup_after_lan_and_panel_failures():
+def test_switch_library_lan_stop_failure_aborts_before_touching_session():
     global events
     events = []
 
@@ -144,35 +144,23 @@ def test_switch_library_continues_window_cleanup_after_lan_and_panel_failures():
             events.append("lan.stop")
             raise RuntimeError("lan stop failed")
 
-    class _FailingSidebar(_LifecyclePanel):
-        def prepare_library_switch(self):
-            events.append(f"{self.name}.prepare")
-            raise RuntimeError("sidebar failed")
-
     window = _Window()
     window._lan_server = _FailingServer()
-    window.sidebar = _FailingSidebar("sidebar")
 
     with pytest.raises(RuntimeError, match="lan stop failed"):
         WindowLifecycleCoordinator(window, lambda widget: widget is not None).switch_library(
             "new-root"
         )
 
-    assert events == [
-        "lan.stop",
-        "notes.flush",
-        "notes.stop",
-        "loader.invalidate",
-        "loader.wait",
-        "sidebar.prepare",
-        "tag-tree.prepare",
-        "session.close",
-    ]
-    assert window.share_states == [False]
-    window._tray_manager.update_sharing_state.assert_called_once_with(False)
+    # M4: the server still reports running after the failed stop, so the
+    # switch aborts before any window state changes — no panels prepared,
+    # no session closed, no "off" notification.
+    assert events == ["lan.stop"]
+    assert window.share_states == []
+    window._tray_manager.update_sharing_state.assert_not_called()
 
 
-def test_switch_library_reports_panel_failure_after_successful_lan_stop_once():
+def test_switch_library_panel_failure_keeps_old_session_and_restores_lan():
     global events
     events = []
 
@@ -181,7 +169,11 @@ def test_switch_library_reports_panel_failure_after_successful_lan_stop_once():
             events.append(f"{self.name}.prepare")
             raise RuntimeError("sidebar failed")
 
-    window = _Window()
+    class _RestoringWindow(_Window):
+        def _toggle_sharing(self):
+            events.append("lan.restore")
+
+    window = _RestoringWindow()
     window.sidebar = _FailingSidebar("sidebar")
 
     with pytest.raises(RuntimeError, match="sidebar failed"):
@@ -189,6 +181,8 @@ def test_switch_library_reports_panel_failure_after_successful_lan_stop_once():
             "new-root"
         )
 
+    # H1: a panel failure aborts the switch — the old session stays alive
+    # and the LAN state stopped for the attempt is restored.
     assert events == [
         "lan.stop",
         "notes.flush",
@@ -197,13 +191,13 @@ def test_switch_library_reports_panel_failure_after_successful_lan_stop_once():
         "loader.wait",
         "sidebar.prepare",
         "tag-tree.prepare",
-        "session.close",
+        "lan.restore",
     ]
     assert window.share_states == [False]
     window._tray_manager.update_sharing_state.assert_called_once_with(False)
 
 
-def test_switch_library_status_failure_does_not_skip_cleanup_or_tray():
+def test_switch_library_status_failure_keeps_old_session():
     global events
     events = []
 
@@ -222,6 +216,8 @@ def test_switch_library_status_failure_does_not_skip_cleanup_or_tray():
             "new-root"
         )
 
+    # H1: a pre-close window step failure keeps the old session alive; the
+    # tray compensation still runs.
     assert events == [
         "lan.stop",
         "status.False",
@@ -231,12 +227,11 @@ def test_switch_library_status_failure_does_not_skip_cleanup_or_tray():
         "loader.wait",
         "sidebar.prepare",
         "tag-tree.prepare",
-        "session.close",
     ]
     window._tray_manager.update_sharing_state.assert_called_once_with(False)
 
 
-def test_switch_library_stop_error_wins_over_compensation_tray_failure():
+def test_switch_library_lan_stop_failure_aborts_before_compensation_updates():
     global events
     events = []
 
@@ -261,21 +256,12 @@ def test_switch_library_stop_error_wins_over_compensation_tray_failure():
             "new-root"
         )
 
-    assert events == [
-        "lan.stop",
-        "notes.flush",
-        "notes.stop",
-        "loader.invalidate",
-        "loader.wait",
-        "sidebar.prepare",
-        "tag-tree.prepare",
-        "session.close",
-    ]
-    assert window.share_states == [False]
-    window._tray_manager.update_sharing_state.assert_called_once_with(False)
+    assert events == ["lan.stop"]
+    assert window.share_states == []
+    window._tray_manager.update_sharing_state.assert_not_called()
 
 
-def test_switch_library_panel_getter_failure_does_not_skip_later_cleanup():
+def test_switch_library_panel_getter_failure_keeps_old_session():
     global events
     events = []
 
@@ -305,6 +291,7 @@ def test_switch_library_panel_getter_failure_does_not_skip_later_cleanup():
             "new-root"
         )
 
+    # H1: the getter failure aborts the switch before the session is closed.
     assert events == [
         "lan.stop",
         "notes.flush",
@@ -312,12 +299,11 @@ def test_switch_library_panel_getter_failure_does_not_skip_later_cleanup():
         "loader.invalidate",
         "loader.wait",
         "tag-tree.prepare",
-        "session.close",
     ]
     window._tray_manager.update_sharing_state.assert_called_once_with(False)
 
 
-def test_switch_library_is_running_failure_does_not_skip_cleanup():
+def test_switch_library_is_running_failure_keeps_old_session():
     global events
     events = []
 
@@ -340,7 +326,50 @@ def test_switch_library_is_running_failure_does_not_skip_cleanup():
             "new-root"
         )
 
+    # The LAN state is unknown, so the switch aborts with the session intact.
     assert events == [
+        "notes.flush",
+        "notes.stop",
+        "loader.invalidate",
+        "loader.wait",
+        "sidebar.prepare",
+        "tag-tree.prepare",
+    ]
+    window._tray_manager.update_sharing_state.assert_not_called()
+
+
+def test_switch_library_close_failure_keeps_old_session_and_raises():
+    global events
+    events = []
+
+    class _FailingService(_Service):
+        def close_session(self, session):
+            events.append("session.close")
+            raise RuntimeError("Cannot close a LibrarySession from an active operation")
+
+    class _FailureWindow(_Window):
+        def __init__(self):
+            super().__init__()
+            self._failing_service = _FailingService()
+
+        def _library_service(self):
+            return self._failing_service
+
+        def _open_library_session(self, path):
+            raise AssertionError("replacement must not open after close failure")
+
+    window = _FailureWindow()
+    original_session = window._library_session
+
+    with pytest.raises(RuntimeError, match="Cannot close a LibrarySession"):
+        WindowLifecycleCoordinator(window, lambda widget: widget is not None).switch_library(
+            "new-root"
+        )
+
+    # H2: a close_session failure becomes the window error; the window keeps
+    # pointing at the old session so the caller can retry the switch.
+    assert events == [
+        "lan.stop",
         "notes.flush",
         "notes.stop",
         "loader.invalidate",
@@ -349,6 +378,112 @@ def test_switch_library_is_running_failure_does_not_skip_cleanup():
         "tag-tree.prepare",
         "session.close",
     ]
+    assert window._library_session is original_session
+
+
+def test_switch_library_open_failure_rolls_back_to_previous_library():
+    global events
+    events = []
+
+    class _RollbackWindow(_Window):
+        def __init__(self):
+            super().__init__()
+            self.open_calls = 0
+
+        def _open_library_session(self, path):
+            self.open_calls += 1
+            events.append(f"session.open:{path}")
+            if self.open_calls == 1:
+                raise RuntimeError("db locked")
+            return _Session()
+
+        def _apply_scoped_services(self, session):
+            events.append("scoped.apply")
+
+    class _Workspace:
+        def __init__(self):
+            self.selected = []
+
+        def add_library(self, path):
+            self.selected.append(path)
+
+    window = _RollbackWindow()
+    window._workspace = _Workspace()
+
+    with pytest.raises(RuntimeError, match="db locked"):
+        WindowLifecycleCoordinator(window, lambda widget: widget is not None).switch_library(
+            "new-root"
+        )
+
+    # H3: the failed replacement open rolls back by re-opening the previous
+    # root, re-applying services, and resetting the workspace tab selection.
+    assert events == [
+        "lan.stop",
+        "notes.flush",
+        "notes.stop",
+        "loader.invalidate",
+        "loader.wait",
+        "sidebar.prepare",
+        "tag-tree.prepare",
+        "session.close",
+        "session.open:new-root",
+        f"session.open:{_Session.root}",
+        "scoped.apply",
+    ]
+    assert window._workspace.selected == [str(_Session.root)]
+
+
+def test_switch_library_open_failure_with_failed_restore_removes_tab(monkeypatch):
+    global events
+    events = []
+    notified = []
+    from AssetsManager import window_lifecycle_coordinator as lifecycle_module
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_notify_switch_failed",
+        lambda _window, message: notified.append(message),
+    )
+
+    class _FailAlwaysWindow(_Window):
+        def _open_library_session(self, path):
+            events.append(f"session.open:{path}")
+            raise RuntimeError("db locked")
+
+    class _Tabs:
+        def __init__(self):
+            self.removed = []
+
+        def remove_library(self, path):
+            self.removed.append(path)
+
+    class _Workspace:
+        def __init__(self):
+            self._tabs = _Tabs()
+
+    window = _FailAlwaysWindow()
+    window._workspace = _Workspace()
+
+    with pytest.raises(RuntimeError, match="db locked"):
+        WindowLifecycleCoordinator(window, lambda widget: widget is not None).switch_library(
+            "new-root"
+        )
+
+    # H3: when the rollback re-open also fails, the new tab is dropped and
+    # the user is notified instead of leaving a dead session behind.
+    assert events == [
+        "lan.stop",
+        "notes.flush",
+        "notes.stop",
+        "loader.invalidate",
+        "loader.wait",
+        "sidebar.prepare",
+        "tag-tree.prepare",
+        "session.close",
+        "session.open:new-root",
+        f"session.open:{_Session.root}",
+    ]
+    assert window._workspace._tabs.removed == ["new-root"]
+    assert len(notified) == 1
 
 
 def test_switch_library_is_noop_for_active_canonical_root(tmp_path):

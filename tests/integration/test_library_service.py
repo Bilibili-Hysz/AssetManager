@@ -69,17 +69,22 @@ def test_library_lock_is_shared_within_process_and_scoped_per_library(
     first_session = first_service.open_session(first_root)
     second_service = LibraryService()
 
-    same_root_session = second_service.open_session(first_root)
-    assert same_root_session.root == first_root.resolve()
+    with pytest.raises(RuntimeError, match="owned by another LibraryService"):
+        second_service.open_session(first_root)
 
     second_session = second_service.open_session(second_root)
     assert second_session.root == second_root.resolve()
+    first_lock_path = path_resolver.library_lock_path(first_root)
+    second_lock_path = path_resolver.library_lock_path(second_root)
+    assert _probe_library_lock_in_child(first_lock_path).returncode == 1
+    assert _probe_library_lock_in_child(second_lock_path).returncode == 1
 
     second_service.close_session(second_session)
+    assert _probe_library_lock_in_child(second_lock_path).returncode == 0
+    assert _probe_library_lock_in_child(first_lock_path).returncode == 1
+
     first_service.close_session(first_session)
-    assert _probe_library_lock_in_child(path_resolver.library_lock_path(first_root)).returncode == 1
-    second_service.close_session(same_root_session)
-    assert _probe_library_lock_in_child(path_resolver.library_lock_path(first_root)).returncode == 0
+    assert _probe_library_lock_in_child(first_lock_path).returncode == 0
     second_service.close()
     first_service.close()
 
@@ -142,6 +147,45 @@ def test_initialization_failure_releases_library_lock(tmp_path, monkeypatch):
     replacement_service.close_session(replacement)
     service.close()
     replacement_service.close()
+
+
+def test_failed_open_cleanup_keeps_library_lock_until_retry_succeeds(
+    tmp_path, monkeypatch
+):
+    from AssetsManager.application import library_service as library_service_module
+    from AssetsManager.application.library_service import LibraryService
+    from AssetsManager.core import path_resolver
+
+    monkeypatch.setattr(path_resolver, "runtime_root", lambda: tmp_path / "RuntimeData")
+    root = tmp_path / "library"
+    root.mkdir()
+    service = LibraryService()
+    real_context = library_service_module.LibraryContext
+
+    def fail_context(**_kwargs):
+        raise RuntimeError("context assembly failed")
+
+    monkeypatch.setattr(library_service_module, "LibraryContext", fail_context)
+    real_close_library = service._db.close_library
+    calls = 0
+
+    def fail_once(library_root):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("opening database rollback failed")
+        return real_close_library(library_root)
+
+    monkeypatch.setattr(service._db, "close_library", fail_once)
+    with pytest.raises(RuntimeError, match="context assembly failed"):
+        service.open_session(root)
+
+    lock_path = path_resolver.library_lock_path(root)
+    assert _probe_library_lock_in_child(lock_path).returncode == 1
+    service.retry_open_cleanup(root)
+    assert _probe_library_lock_in_child(lock_path).returncode == 0
+    monkeypatch.setattr(library_service_module, "LibraryContext", real_context)
+    service.close()
 
 
 def test_failed_close_keeps_library_lock_until_retry_succeeds(tmp_path, monkeypatch):
@@ -819,7 +863,7 @@ def test_close_session_does_not_close_other_library_connections(tmp_path):
     ("service_name", "method_name", "arguments", "block_target"),
     [
         ("metadata_service", "get_notes", lambda root: (root, root / "asset.txt"), "_repo"),
-        ("tag_service", "list_tags", lambda root: (root,), "_connection_provider"),
+        ("tag_service", "list_tags", lambda root: (root,), "_repo"),
         ("project_service", "count_projects", lambda root: (root,), "_count_projects_recursive"),
         ("file_operation_service", "create_folder", lambda root: (root,), "create_folder"),
         ("undo_service", "prepare_delete", lambda root: (str(root / "asset.txt"),), "_make_backup"),
@@ -860,15 +904,21 @@ def test_scoped_public_operation_lease_drains_before_close(
 
         monkeypatch.setattr(target, block_target, blocking_repo)
     elif service_name == "tag_service":
-        original = target._connection_provider
+        original = target._repo
 
-        def blocking_provider(*args, **kwargs):
-            conn = original(*args, **kwargs)
-            entered.set()
-            assert release.wait(5)
-            return conn
+        def blocking_repo(*args, **kwargs):
+            repo = original(*args, **kwargs)
+            original_list = repo.list_tags_with_counts
 
-        monkeypatch.setattr(target, block_target, blocking_provider)
+            def list_tags(*repo_args, **repo_kwargs):
+                entered.set()
+                assert release.wait(5)
+                return original_list(*repo_args, **repo_kwargs)
+
+            repo.list_tags_with_counts = list_tags
+            return repo
+
+        monkeypatch.setattr(target, block_target, blocking_repo)
     elif service_name == "project_service":
         original = target._count_projects_recursive
 
@@ -1045,3 +1095,24 @@ def test_current_property_emits_deprecation_warning():
         _ = service.current
         deprecations = [x for x in w if issubclass(x.category, DeprecationWarning)]
         assert len(deprecations) >= 1, "LibraryService.current must emit a DeprecationWarning"
+
+
+def test_closed_session_invalidates_context_and_retained_core_stores(tmp_path):
+    from AssetsManager.application.library_service import LibraryService
+
+    root = tmp_path / "library"
+    root.mkdir()
+    service = LibraryService()
+    session = service.open_session(root)
+    context = session.context
+    retained_tag_store = context.tag_store
+    retained_project_data = context.project_data
+
+    session.close()
+
+    with pytest.raises(RuntimeError, match="closed LibrarySession"):
+        context.connection_for(root)
+    with pytest.raises(RuntimeError, match="closed LibrarySession"):
+        retained_tag_store.get_all_tags()
+    with pytest.raises(RuntimeError, match="closed LibrarySession"):
+        retained_project_data.get_notes(str(root / "asset.png"))

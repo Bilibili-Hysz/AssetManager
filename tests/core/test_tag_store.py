@@ -90,6 +90,55 @@ def test_remove_file():
     _clean(s, "/test/library/g.png")
 
 
+def test_explicit_managed_connection_rejects_different_root(tmp_path):
+    from AssetsManager.core.database import DatabaseManager
+
+    root_a = tmp_path / "root-a"
+    root_b = tmp_path / "root-b"
+    root_a.mkdir()
+    root_b.mkdir()
+    manager = DatabaseManager()
+    try:
+        root_b_conn = manager.connection_for(root_b)
+
+        with pytest.raises(ValueError, match="different library root"):
+            TagStore(str(root_a), db_conn=root_b_conn)
+    finally:
+        manager.close()
+
+
+def test_explicit_managed_connection_accepts_same_root(tmp_path):
+    from AssetsManager.core.database import DatabaseManager
+
+    root = tmp_path / "root"
+    root.mkdir()
+    manager = DatabaseManager()
+    try:
+        conn = manager.connection_for(root)
+
+        store = TagStore(str(root), db_conn=conn)
+
+        assert store._db is conn
+    finally:
+        manager.close()
+
+
+def test_explicit_unmanaged_connection_remains_compatible(tmp_path):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import migrate
+
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.executescript(database._SCHEMA)
+        migrate(conn)
+
+        store = TagStore(str(tmp_path), db_conn=conn)
+
+        assert store._db is conn
+    finally:
+        conn.close()
+
+
 def test_deprecated_get_store_does_not_retain_process_global_store(tmp_path):
     from AssetsManager.core import database
     from AssetsManager.core.db_migrations import migrate

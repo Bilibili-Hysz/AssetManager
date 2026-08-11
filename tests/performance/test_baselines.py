@@ -6,6 +6,10 @@ All thresholds are calibrated for a developer machine; CI may adjust upward.
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.perf  # opt in with `pytest -m perf`
+
 import time
 import os
 from unittest.mock import patch
@@ -96,7 +100,7 @@ def test_directory_listing_many_subdirs_skip_summaries(tmp_path):
 
 # ── Metadata service ──────────────────────────────────────────
 
-def test_metadata_read_performance(tmp_path):
+def test_metadata_read_performance(tmp_path, request):
     """Single-file metadata fetch must be fast."""
     from AssetsManager.application import MetadataService
     from AssetsManager.core.database import DatabaseManager
@@ -105,6 +109,7 @@ def test_metadata_read_performance(tmp_path):
     (root / "test.txt").write_text("hello", encoding="utf-8")
 
     mgr = DatabaseManager()
+    request.addfinalizer(mgr.close)
     conn = mgr.connection_for(root)
     svc = MetadataService(connection_provider=lambda r: conn)
     svc.set_notes(str(root), str(root / "test.txt"), "sample notes")
@@ -122,13 +127,14 @@ def test_metadata_read_performance(tmp_path):
 
 # ── Tag service ───────────────────────────────────────────────
 
-def test_tag_list_performance(tmp_path):
+def test_tag_list_performance(tmp_path, request):
     """Full tag listing must be reasonably fast."""
     from AssetsManager.application import TagService
     from AssetsManager.core.database import DatabaseManager
 
     root = tmp_path
     mgr = DatabaseManager()
+    request.addfinalizer(mgr.close)
     conn = mgr.connection_for(root)
     svc = TagService(connection_provider=lambda r: conn)
 
@@ -170,7 +176,7 @@ def test_pathguard_resolve_performance(tmp_path):
 
 # ── Search (indexed) ──────────────────────────────────────────
 
-def test_indexed_search_performance(tmp_path):
+def test_indexed_search_performance(tmp_path, request):
     """Indexed name search must complete under threshold."""
     from AssetsManager.application import SearchService
     from AssetsManager.core.database import DatabaseManager
@@ -180,6 +186,7 @@ def test_indexed_search_performance(tmp_path):
         (root / f"asset_{i:04d}.txt").write_text(f"data {i}", encoding="utf-8")
 
     mgr = DatabaseManager()
+    request.addfinalizer(mgr.close)
     conn = mgr.connection_for(root)
 
     # Build index
@@ -251,7 +258,7 @@ def test_share_repository_create_and_read_performance(tmp_path):
 
 # ── DirectoryCache integration ────────────────────────────────
 
-def test_directory_listing_with_cache_uses_cached_summaries(tmp_path):
+def test_directory_listing_with_cache_uses_cached_summaries(tmp_path, request):
     """Warm listings skip subdirectory scans without relying on wall-clock timing."""
     from AssetsManager.application import AssetService, DirectoryListOptions
     from AssetsManager.core.database import DatabaseManager
@@ -264,6 +271,7 @@ def test_directory_listing_with_cache_uses_cached_summaries(tmp_path):
             (d / f"file_{j}.txt").write_text("content")
 
     mgr = DatabaseManager()
+    request.addfinalizer(mgr.close)
     conn = mgr.connection_for(tmp_path)
     cache = DirectoryCache(conn)
     svc = AssetService(directory_cache=cache)

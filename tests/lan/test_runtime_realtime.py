@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import gc
+import json
 import logging
 import threading
 import warnings
@@ -540,6 +541,79 @@ async def test_authority_revocation_wins_after_admission_authorization(
         {"epoch": "epoch-a", "revision": 8, "domains": ["files"]},
     )
     assert socket.messages == []
+
+
+@pytest.mark.anyio
+async def test_broadcast_truncates_oversized_paths_payload():
+    """Oversized frames carrying a paths list are truncated, not dropped."""
+    from AssetsManager.lan.ws import MAX_BROADCAST_FRAME_BYTES
+
+    manager = WebSocketManager()
+
+    class Socket:
+        def __init__(self):
+            self.messages = []
+            self.closed = False
+
+        async def send_str(self, message):
+            self.messages.append(message)
+
+        async def close(self, **_kwargs):
+            self.closed = True
+
+    socket = Socket()
+    assert await manager.add(socket)
+
+    prefix = "C:/Assets/Library/Subfolder/" + "x" * 96
+    paths = tuple(f"{prefix}/{i:05d}" for i in range(20000))
+    assert sum(len(p) for p in paths) > MAX_BROADCAST_FRAME_BYTES
+
+    await manager.broadcast(
+        "projection_invalidated",
+        {"epoch": "epoch-a", "revision": 8, "domains": ["files"], "paths": paths},
+    )
+
+    assert len(socket.messages) == 1
+    payload = json.loads(socket.messages[0])
+    assert payload["type"] == "projection_invalidated"
+    assert payload["epoch"] == "epoch-a"
+    assert 0 < len(payload["paths"]) < len(paths)
+    assert payload["paths"] == list(paths[:len(payload["paths"])])
+    assert len(json.dumps(payload).encode("utf-8")) <= MAX_BROADCAST_FRAME_BYTES
+    assert manager.truncated_broadcast_frames == 1
+    assert manager.dropped_broadcast_frames == 0
+    assert socket.closed is False
+
+
+@pytest.mark.anyio
+async def test_broadcast_drops_oversized_payload_without_paths():
+    """Oversized frames without a trimmable paths list are counted + dropped."""
+    manager = WebSocketManager()
+
+    class Socket:
+        def __init__(self):
+            self.messages = []
+            self.closed = False
+
+        async def send_str(self, message):
+            self.messages.append(message)
+
+        async def close(self, **_kwargs):
+            self.closed = True
+
+    socket = Socket()
+    assert await manager.add(socket)
+
+    await manager.broadcast(
+        "projection_invalidated",
+        {"epoch": "epoch-a", "revision": 8, "domains": ["files"],
+         "blob": "y" * (2 * 1024 * 1024)},
+    )
+
+    assert socket.messages == []
+    assert manager.dropped_broadcast_frames == 1
+    assert manager.truncated_broadcast_frames == 0
+    assert socket.closed is False
 
 
 @pytest.mark.anyio
@@ -1320,7 +1394,10 @@ async def test_real_library_close_session_stops_lan_server_and_websocket(
     server.stop = observe_stop
 
     try:
-        server.start(port=0, bind="127.0.0.1")
+        from AssetsManager.application.security_preflight import SecurityPreflight
+        preflight = SecurityPreflight()
+        preflight.confirm_authenticated_lan()
+        server.start(port=0, bind="127.0.0.1", preflight=preflight)
         initial_revision = runtime.revision
         client = ClientSession()
         ws = await client.ws_connect(

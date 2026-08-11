@@ -169,7 +169,10 @@ def test_real_lan_tag_mutation_refreshes_desktop_tag_tree(tmp_path):
     catalog_subscription = event_bus.subscribe(TagCatalogChanged, catalog_events.append)
 
     async def mutate_over_lan():
-        server.start(port=0, bind="127.0.0.1")
+        from AssetsManager.application.security_preflight import SecurityPreflight
+        preflight = SecurityPreflight()
+        preflight.confirm_authenticated_lan()
+        server.start(port=0, bind="127.0.0.1", preflight=preflight)
         try:
             async with ClientSession() as client:
                 response = await client.post(
@@ -447,6 +450,19 @@ def test_operation_feedback_projects_running_success_and_partial_states(tmp_path
         panel._show_operation_feedback(session, "copy", changed_count=1, errors=("blocked",))
         assert "1" in panel._operation_feedback.text()
         assert "failed" in panel._operation_feedback.text().lower()
+
+        panel._show_operation_feedback(
+            session,
+            "copy",
+            changed_count=1,
+            warnings=(object(),),
+        )
+        assert panel._operation_feedback.text() == tr(
+            "filelist.feedback.degraded",
+            operation=tr("filelist.feedback.operation.copy"),
+            count=1,
+            warnings=1,
+        )
     finally:
         panel.shutdown()
         app.processEvents()
@@ -1032,7 +1048,10 @@ def test_external_drop_uses_scoped_file_operation_service(tmp_path, monkeypatch)
 def test_in_library_drop_moves_and_records_only_successful_undo_entries(tmp_path, monkeypatch):
     from unittest.mock import Mock
 
-    from AssetsManager.application.file_operation_service import FileOperationResult
+    from AssetsManager.application.file_operation_service import (
+        FileOperationResult,
+        FileOperationWarning,
+    )
     from AssetsManager.panels.file_list._base import FileListPanel
 
     library = tmp_path / "library"
@@ -1076,7 +1095,18 @@ def test_in_library_drop_moves_and_records_only_successful_undo_entries(tmp_path
                 return MimeData(self.paths)
 
         move = Mock(side_effect=[
-            FileOperationResult((moved,), ()),
+            FileOperationResult(
+                (moved,),
+                (),
+                (
+                    FileOperationWarning(
+                        "asset_index_refresh_busy",
+                        "parent",
+                        str(destination),
+                        "busy",
+                    ),
+                ),
+            ),
             FileOperationResult((), ("move failed",)),
         ])
         copy = Mock()
@@ -1091,6 +1121,13 @@ def test_in_library_drop_moves_and_records_only_successful_undo_entries(tmp_path
         ]
         copy.assert_not_called()
         panel._undo_svc.record_rename.assert_called_once_with(str(source), str(moved))
+        assert panel._operation_feedback.text() == tr(
+            "filelist.feedback.partial_degraded",
+            operation=tr("filelist.feedback.operation.drop"),
+            count=1,
+            failed=1,
+            warnings=1,
+        )
 
         panel._undo_svc.reset_mock()
         move.reset_mock()
@@ -1179,6 +1216,67 @@ def test_paste_uses_scoped_service_for_local_system_clipboard_urls(tmp_path, mon
 
         copied.assert_not_called()
         panel._post_refresh.assert_not_called()
+    finally:
+        QApplication.clipboard().clear()
+        panel.shutdown()
+        app.setProperty("bootstrap", None)
+        app.processEvents()
+
+
+def test_paste_passes_index_warnings_to_operation_feedback(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    from AssetsManager.application.file_operation_service import (
+        FileOperationResult,
+        FileOperationWarning,
+    )
+
+    library = tmp_path / "library"
+    library.mkdir()
+    external = tmp_path / "external.txt"
+    external.write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    panel = QWidgetFileListPanel()
+    try:
+        scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
+        panel.set_scoped_services(scoped)
+        panel.navigate_to(str(library), set_root=True)
+        panel._run_in_background = lambda func, *args, on_done=None: (func(), on_done and on_done())
+        panel._post_refresh = Mock()
+        panel._show_operation_feedback = Mock()
+        monkeypatch.setattr(
+            scoped.file_operation_service,
+            "copy_to_directory",
+            Mock(
+                return_value=FileOperationResult(
+                    (library / "external.txt",),
+                    (),
+                    (
+                        FileOperationWarning(
+                            "asset_index_refresh_busy",
+                            "parent",
+                            str(library),
+                            "busy",
+                        ),
+                    ),
+                )
+            ),
+        )
+
+        mime = QMimeData()
+        mime.setUrls([QUrl.fromLocalFile(str(external))])
+        QApplication.clipboard().setMimeData(mime)
+        panel._paste()
+
+        done_calls = [
+            call
+            for call in panel._show_operation_feedback.call_args_list
+            if call.kwargs.get("warnings")
+        ]
+        assert len(done_calls) == 1
+        assert len(done_calls[0].kwargs["warnings"]) == 1
     finally:
         QApplication.clipboard().clear()
         panel.shutdown()
@@ -1284,6 +1382,45 @@ def test_cut_paste_records_undo_only_after_successful_move(tmp_path, monkeypatch
         panel._paste()
 
         panel._undo_svc.record_rename.assert_not_called()
+    finally:
+        panel.shutdown()
+        app.setProperty("bootstrap", None)
+        app.processEvents()
+
+
+def test_cut_paste_outside_library_reports_error_and_keeps_clipboard(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    library = tmp_path / "library"
+    library.mkdir()
+    external = tmp_path / "external.txt"
+    external.write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    panel = QWidgetFileListPanel()
+    try:
+        scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
+        panel.set_scoped_services(scoped)
+        panel.navigate_to(str(library), set_root=True)
+        panel._run_in_background = lambda func, *args, on_done=None: (func(), on_done and on_done())
+        panel._post_refresh = Mock()
+        monkeypatch.setattr(
+            "AssetsManager.panels.file_list._actions.QMessageBox.warning",
+            Mock(),
+        )
+
+        panel._clipboard_source = [str(external)]
+        panel._clipboard_cut = True
+        panel._paste()
+
+        # The out-of-library move refusal surfaces through the operation
+        # feedback path instead of dying silently inside the worker thread…
+        assert "failed" in panel._operation_feedback.text().lower()
+        # …and the cut markers are restored so the user can retry elsewhere.
+        assert panel._clipboard_source == [str(external)]
+        assert panel._clipboard_cut is True
+        panel._post_refresh.assert_called_once()
     finally:
         panel.shutdown()
         app.setProperty("bootstrap", None)
@@ -1442,7 +1579,10 @@ def test_partial_permanent_delete_commits_only_changed_path_backups(tmp_path, mo
 
         assert panel._undo_svc.can_undo()
         assert panel._undo_svc.peek_undo().path == str(first_target)
-        assert len(list(Path(panel._undo_svc._undo_dir).iterdir())) == 1
+        entries = list(Path(panel._undo_svc._undo_dir).iterdir())
+        # The backup file plus its projection snapshot file.
+        assert len(entries) == 2
+        assert sum(1 for entry in entries if entry.name.endswith(".projection.json")) == 1
     finally:
         panel.shutdown()
         app.setProperty("bootstrap", None)
@@ -1505,6 +1645,8 @@ def test_operation_request_without_current_directory_target_clears_prior_intent(
 def test_panel_undo_redo_use_perform_methods(tmp_path, monkeypatch):
     from unittest.mock import Mock
 
+    from AssetsManager.application.file_operation_service import FileOperationWarning
+
     app = QApplication.instance() or QApplication([])
     panel = QWidgetFileListPanel()
     try:
@@ -1514,14 +1656,47 @@ def test_panel_undo_redo_use_perform_methods(tmp_path, monkeypatch):
         panel._undo_svc.can_undo.return_value = True
         panel._undo_svc.can_redo.return_value = True
         service = Mock()
+        service.last_operation_id = None
+        service.drain_refresh_diagnostics.side_effect = [
+            (
+                (
+                    "undo-op",
+                    (
+                        FileOperationWarning(
+                            "asset_index_refresh_busy", "parent", str(tmp_path), "busy"
+                        ),
+                    ),
+                ),
+            ),
+            (
+                (
+                    "redo-op",
+                    (
+                        FileOperationWarning(
+                            "asset_index_refresh_stale", "parent", str(tmp_path), "stale"
+                        ),
+                    ),
+                ),
+            ),
+        ]
+        panel._undo_svc.perform_undo.return_value = True
+        panel._undo_svc.perform_redo.return_value = True
+        panel._show_operation_feedback = Mock()
         monkeypatch.setattr(panel, "_get_scoped_services", lambda: Mock())
         monkeypatch.setattr(panel, "_get_file_operation_service", lambda: service)
+        monkeypatch.setattr(panel, "_is_current_operation_session", lambda _session: True)
 
         panel._undo()
         panel._redo()
 
         panel._undo_svc.perform_undo.assert_called_once_with(service, panel._lib_root)
         panel._undo_svc.perform_redo.assert_called_once_with(service, panel._lib_root)
+        warning_calls = [
+            call
+            for call in panel._show_operation_feedback.call_args_list
+            if call.kwargs.get("warnings")
+        ]
+        assert len(warning_calls) == 2
     finally:
         panel.shutdown()
         app.processEvents()
@@ -2458,4 +2633,349 @@ def test_shared_open_command_navigates_directories_and_opens_files(tmp_path, is_
             panel.navigate_to.assert_not_called()
     finally:
         panel.shutdown()
+        app.processEvents()
+
+
+def test_reused_scan_after_sort_during_refresh_repopulates_grid(tmp_path):
+    """M3: sort reset during a preserved refresh zeroes the grid; the reused
+    scan must repopulate it instead of leaving the canvas blank."""
+    for name in ("b.txt", "a.txt", "c.txt"):
+        (tmp_path / name).write_text(name)
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        panel.navigate_to(str(tmp_path), set_root=True)
+        panel._model._wait_for_scan()
+        app.processEvents()
+        assert panel._grid_widget._model_rows == 3
+
+        panel._model.refresh()
+        panel._model.set_sort("name", asc=False)
+        panel._model._wait_for_scan()
+        app.processEvents()
+
+        assert panel._grid_widget._model_rows == panel._model.rowCount() == 3
+        assert panel._model._last_scan_reused is False  # flag consumed by the panel
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+def test_go_up_cannot_escape_library_root_via_prefix_collision(tmp_path):
+    """M4: root C:\\lib must not allow _go_up to reach sibling C:\\library."""
+    root = tmp_path / "lib"
+    child = root / "sub"
+    sibling = tmp_path / "library"
+    root.mkdir()
+    child.mkdir()
+    sibling.mkdir()
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        panel.navigate_to(str(root), set_root=True)
+        panel._model._wait_for_scan()
+        app.processEvents()
+
+        panel.navigate_to(str(child))
+        panel._model._wait_for_scan()
+        app.processEvents()
+        panel._go_up()
+        app.processEvents()
+        assert panel._current == root
+
+        panel.navigate_to(str(sibling))
+        panel._model._wait_for_scan()
+        app.processEvents()
+        before = panel._current
+        panel._go_up()
+        app.processEvents()
+        assert panel._current == before
+    finally:
+        panel.shutdown()
+        app.processEvents()
+
+
+# ── P2: drag-drop path resolution / keyboard focus / animation reuse ─────────
+
+
+def test_same_directory_drop_is_filtered_before_any_service_call(tmp_path, monkeypatch):
+    """Dropping a file onto its own directory must be a no-op even when the
+    QUrl path uses forward slashes while the panel destination uses backslashes."""
+    from unittest.mock import Mock
+
+    library = tmp_path / "library"
+    library.mkdir()
+    asset = library / "asset.txt"
+    asset.write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    panel = QWidgetFileListPanel()
+    try:
+        scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
+        panel.set_scoped_services(scoped)
+        panel.navigate_to(str(library), set_root=True)
+        panel._post_refresh = Mock()
+        move = Mock()
+        copy = Mock()
+        monkeypatch.setattr(scoped.file_operation_service, "move_to_directory", move)
+        monkeypatch.setattr(scoped.file_operation_service, "copy_to_directory", copy)
+
+        url_path = str(asset).replace("\\", "/")
+
+        class DropEvent:
+            def mimeData(self):
+                class MimeData:
+                    def urls(self):
+                        class Url:
+                            def toLocalFile(self):
+                                return url_path
+                        return [Url()]
+                return MimeData()
+
+        assert panel._on_drop(DropEvent()) is False
+        move.assert_not_called()
+        copy.assert_not_called()
+    finally:
+        panel.shutdown()
+        app.setProperty("bootstrap", None)
+        app.processEvents()
+
+
+def test_drop_classifies_library_and_external_sources_by_resolved_path(tmp_path, monkeypatch):
+    """A mixed drop must move in-library sources once and copy external sources
+    once, even when the drop URLs use the forward-slash QUrl spelling."""
+    from unittest.mock import Mock
+
+    from AssetsManager.application.file_operation_service import FileOperationResult
+
+    library = tmp_path / "library"
+    source_dir = library / "source"
+    source_dir.mkdir(parents=True)
+    asset = source_dir / "asset.txt"
+    asset.write_text("asset")
+    external = tmp_path / "external.txt"
+    external.write_text("external")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    panel = QWidgetFileListPanel()
+    try:
+        scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
+        panel.set_scoped_services(scoped)
+        panel.navigate_to(str(library), set_root=True)
+        panel._post_refresh = Mock()
+        panel._load_visible = Mock()
+        move = Mock(return_value=FileOperationResult(()))
+        copy = Mock(return_value=FileOperationResult(()))
+        monkeypatch.setattr(scoped.file_operation_service, "move_to_directory", move)
+        monkeypatch.setattr(scoped.file_operation_service, "copy_to_directory", copy)
+
+        url_paths = [str(asset).replace("\\", "/"), str(external).replace("\\", "/")]
+
+        class DropEvent:
+            def mimeData(self):
+                class MimeData:
+                    def urls(self):
+                        class Url:
+                            def __init__(self, path):
+                                self.path = path
+
+                            def toLocalFile(self):
+                                return self.path
+                        return [Url(path) for path in url_paths]
+                return MimeData()
+
+        assert panel._on_drop(DropEvent()) is True
+        assert move.call_args_list == [
+            (([str(asset)], str(library)), {"library_root": str(library)}),
+        ]
+        assert copy.call_args_list == [
+            (([str(external)], str(library)), {"library_root": str(library)}),
+        ]
+    finally:
+        panel.shutdown()
+        app.setProperty("bootstrap", None)
+        app.processEvents()
+
+
+def test_drop_service_value_error_is_reported_through_feedback(tmp_path, monkeypatch):
+    """Root-scope violations surface as ValueError; the drop handler must
+    report them instead of letting the exception escape."""
+    from unittest.mock import Mock
+
+    library = tmp_path / "library"
+    source_dir = library / "source"
+    source_dir.mkdir(parents=True)
+    source = source_dir / "asset.txt"
+    source.write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    panel = QWidgetFileListPanel()
+    try:
+        scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
+        panel.set_scoped_services(scoped)
+        panel.navigate_to(str(library), set_root=True)
+        panel._post_refresh = Mock()
+        panel._load_visible = Mock()
+        move = Mock(side_effect=ValueError("Path is outside library root"))
+        monkeypatch.setattr(scoped.file_operation_service, "move_to_directory", move)
+
+        class DropEvent:
+            def mimeData(self):
+                class MimeData:
+                    def urls(self):
+                        class Url:
+                            def toLocalFile(self):
+                                return str(source)
+                        return [Url()]
+                return MimeData()
+
+        assert panel._on_drop(DropEvent()) is True
+        assert "failed" in panel._operation_feedback.text().lower()
+    finally:
+        panel.shutdown()
+        app.setProperty("bootstrap", None)
+        app.processEvents()
+
+
+def test_search_focused_handle_key_passes_typing_through():
+    """Backspace/Delete typed into the search box must not trigger navigation
+    or deletion commands."""
+    panel = type("_Panel", (), {"_view_mode": "Grid"})()
+    panel._search = Mock()
+    panel._search.hasFocus.return_value = True
+    panel._go_up = Mock()
+    panel._invoke_command = Mock()
+    backspace = type("_Event", (), {
+        "key": lambda _self: Qt.Key.Key_Backspace,
+        "modifiers": lambda _self: Qt.KeyboardModifier.NoModifier,
+    })()
+    delete = type("_Event", (), {
+        "key": lambda _self: Qt.Key.Key_Delete,
+        "modifiers": lambda _self: Qt.KeyboardModifier.NoModifier,
+    })()
+
+    assert handle_key(panel, backspace) is False
+    assert handle_key(panel, delete) is False
+    panel._go_up.assert_not_called()
+    panel._invoke_command.assert_not_called()
+
+
+def test_search_focused_escape_still_clears_search_and_selection():
+    panel = type("_Panel", (), {"_view_mode": "Grid"})()
+    panel._grid_widget = Mock()
+    panel._detail_view = Mock()
+    panel._search = Mock()
+    panel._search.hasFocus.return_value = True
+    panel._update_status = Mock()
+    event = type("_Event", (), {
+        "key": lambda _self: Qt.Key.Key_Escape,
+        "modifiers": lambda _self: Qt.KeyboardModifier.NoModifier,
+    })()
+
+    assert handle_key(panel, event) is True
+    panel._grid_widget.clear_selection.assert_called_once_with()
+    panel._search.clear.assert_called_once_with()
+    panel._update_status.assert_called_once_with()
+
+
+def test_search_focused_ctrl_f_still_refocuses_the_search_field():
+    panel = type("_Panel", (), {"_view_mode": "Grid"})()
+    panel._search = Mock()
+    panel._search.hasFocus.return_value = True
+    event = type("_Event", (), {
+        "key": lambda _self: Qt.Key.Key_F,
+        "modifiers": lambda _self: Qt.KeyboardModifier.ControlModifier,
+    })()
+
+    assert handle_key(panel, event) is True
+    panel._search.setFocus.assert_called_once_with()
+    panel._search.selectAll.assert_called_once_with()
+
+
+def test_base_handle_key_defers_to_focused_search_line_edit():
+    """The legacy panel key handler must also leave search-box keys alone."""
+    from AssetsManager.panels.file_list._base import FileListPanel
+
+    panel = type("_Panel", (), {"_view_mode": "Grid"})()
+    panel._search = Mock()
+    panel._search.hasFocus.return_value = True
+    panel._go_up = Mock()
+    panel._delete = Mock()
+    backspace = type("_Event", (), {
+        "key": lambda _self: Qt.Key.Key_Backspace,
+        "modifiers": lambda _self: Qt.KeyboardModifier.NoModifier,
+    })()
+    delete = type("_Event", (), {
+        "key": lambda _self: Qt.Key.Key_Delete,
+        "modifiers": lambda _self: Qt.KeyboardModifier.NoModifier,
+    })()
+
+    assert FileListPanel._handle_key(panel, backspace) is False
+    assert FileListPanel._handle_key(panel, delete) is False
+    panel._go_up.assert_not_called()
+    panel._delete.assert_not_called()
+
+
+def test_zoom_animation_object_is_reused_across_zoom_changes():
+    """Rapid zoom changes must reuse one QVariantAnimation instead of
+    accumulating child QObjects."""
+    from AssetsManager.panels.file_list import QWidgetFileListPanel
+
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        panel._thumb_size = 96
+        panel._zoom_anim = None
+        panel._zoom_generation = 0
+        panel._grid_widget = Mock()
+        panel._grid_widget._zoom_relayout_active = False
+        panel._grid_widget._reduce_motion = False
+        panel._grid_widget.width.return_value = 400
+        panel._on_zoom_frame = Mock()
+        panel._on_zoom_done = Mock()
+
+        QWidgetFileListPanel._on_zoom_changed(panel, "128px")
+        first = panel._zoom_anim
+        QWidgetFileListPanel._on_zoom_changed(panel, "192px")
+        second = panel._zoom_anim
+
+        assert first is not None
+        assert first is second
+        second.stop()
+    finally:
+        panel.shutdown()
+        # Drop the animation references so the conftest teardown's second
+        # shutdown does not warn about disconnecting already-empty signals.
+        panel._zoom_anim = None
+        panel._scroll_anim = None
+        app.processEvents()
+
+
+def test_scroll_animation_object_is_reused_across_wheel_events():
+    from AssetsManager.panels.file_list import QWidgetFileListPanel
+
+    app = QApplication.instance() or QApplication([])
+    panel = QWidgetFileListPanel()
+    try:
+        panel._grid_widget._scrollbar.setRange(0, 1000)
+        event = type("_Event", (), {
+            "angleDelta": lambda _self: type("_Delta", (), {"y": lambda _d: 120})(),
+        })()
+        panel._smooth_scroll(event)
+        first = panel._scroll_anim
+        panel._smooth_scroll(event)
+        second = panel._scroll_anim
+
+        assert first is not None
+        assert first is second
+        first.stop()
+    finally:
+        panel.shutdown()
+        # Drop the animation references so the conftest teardown's second
+        # shutdown does not warn about disconnecting already-empty signals.
+        panel._zoom_anim = None
+        panel._scroll_anim = None
         app.processEvents()

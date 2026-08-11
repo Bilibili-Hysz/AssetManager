@@ -1,5 +1,6 @@
 """Tests for domain/auth.py — pure crypto functions."""
 import hashlib
+import hmac
 import time
 
 from AssetsManager.domain.auth import (
@@ -86,8 +87,21 @@ class TestTokenGeneration:
         h = hash_password("test")
         token = generate_token(h)
         parts = token.split(".")
-        assert len(parts) == 2
+        assert len(parts) == 3
         assert parts[0].isdigit()  # timestamp
+        assert len(parts[1]) == 8  # nonce (4 random bytes, hex)
+
+    def test_generate_token_unique_same_second(self):
+        h = hash_password("test")
+        tokens = {generate_token(h) for _ in range(50)}
+        assert len(tokens) == 50  # nonce makes same-second tokens distinct
+
+    def test_verify_token_legacy_format(self):
+        h = hash_password("test")
+        ts = str(int(time.time()))
+        sig = hmac.new(h.encode(), ts.encode(), hashlib.sha256).hexdigest()[:32]
+        legacy = f"{ts}.{sig}"
+        assert verify_token(legacy, h) is True
 
     def test_verify_token_valid(self):
         h = hash_password("test")
@@ -116,6 +130,19 @@ class TestAuthToken:
         secret = "test-secret"
         token = generate_auth_token(secret)
         assert verify_auth_token(token, secret) is True
+        assert len(token.split(".")) == 3  # ts.nonce.sig
+
+    def test_generate_auth_token_unique_same_second(self):
+        from AssetsManager.lan.utils import generate_auth_token
+        tokens = {generate_auth_token("test-secret") for _ in range(50)}
+        assert len(tokens) == 50  # nonce makes same-second tokens distinct
+
+    def test_verify_auth_token_legacy_format(self):
+        secret = "test-secret"
+        ts = str(int(time.time()))
+        sig = hmac.new(secret.encode(), ts.encode(), hashlib.sha256).hexdigest()[:32]
+        legacy = f"{ts}.{sig}"
+        assert verify_auth_token(legacy, secret) is True
 
     def test_verify_auth_token_wrong_secret(self):
         from AssetsManager.lan.utils import generate_auth_token
@@ -136,10 +163,30 @@ class TestUserToken:
     def test_generate_and_verify(self):
         secret = "test-secret"
         token = generate_user_token(42, "alice", "admin", secret)
-        # Token format: ts.user_id.sig
+        # Token format: ts.user_id.nonce.sig
         parts = token.split(".")
-        assert len(parts) == 3
+        assert len(parts) == 4
         assert parts[1] == "42"
+        assert len(parts[2]) == 8  # nonce (4 random bytes, hex)
+
+    def test_generate_user_token_unique_same_second(self):
+        secret = "test-secret"
+        tokens = {
+            generate_user_token(42, "alice", "admin", secret) for _ in range(50)
+        }
+        assert len(tokens) == 50  # nonce makes same-second tokens distinct
+
+    def test_verify_user_token_legacy_format(self):
+        secret = "test-secret"
+        ts = str(int(time.time()))
+        payload = f"{ts}.42.alice.admin"
+        sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
+        legacy = f"{ts}.42.{sig}"
+        user_info = {"id": 42, "username": "alice", "role": "admin", "is_active": True}
+        assert verify_user_token(legacy, secret, user_info=user_info) is not None
+        assert verify_user_token(
+            legacy, secret, user_info=user_info,
+        ) == {"id": 42, "username": "alice", "role": "admin"}
 
     def test_verify_user_token_needs_user_info(self):
         secret = "test-secret"
@@ -176,6 +223,20 @@ class TestShareToken:
         secret = "test-secret"
         token = generate_share_token("share123", secret)
         assert verify_share_token(token, "share123", secret) is True
+        assert len(token.split(".")) == 3  # ts.nonce.sig
+
+    def test_generate_share_token_unique_same_second(self):
+        secret = "test-secret"
+        tokens = {generate_share_token("share123", secret) for _ in range(50)}
+        assert len(tokens) == 50  # nonce makes same-second tokens distinct
+
+    def test_verify_share_token_legacy_format(self):
+        secret = "test-secret"
+        ts = str(int(time.time()))
+        message = f"{ts}.share123"
+        sig = hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()[:32]
+        legacy = f"{ts}.{sig}"
+        assert verify_share_token(legacy, "share123", secret) is True
 
     def test_verify_wrong_share_id(self):
         secret = "test-secret"

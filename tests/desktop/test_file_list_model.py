@@ -305,6 +305,102 @@ class TestFileSystemModel:
         assert filtered.attributes["row_count"] == 0
         assert all(event.elapsed_ms >= 0 for event in events)
 
+
+    def test_refresh_of_unchanged_directory_reuses_state_without_reset(self, model, tmp_path):
+        recorder = PerformanceRecorder(enabled=True)
+        model.set_performance_context(recorder, "session-a")
+        (tmp_path / "asset.txt").write_text("asset", encoding="utf-8")
+        states = []
+        model.state_changed.connect(
+            lambda state, generation, error: states.append((state, generation, error))
+        )
+
+        model.set_directory(str(tmp_path))
+        model._wait_for_scan()
+        initial_names = [model.data(model.index(row, 0)) for row in range(model.rowCount())]
+        model.refresh()
+        model._wait_for_scan()
+
+        reasons = [
+            event.attributes["reason"]
+            for event in recorder.recent()
+            if event.name == "model.reset"
+        ]
+        assert reasons == ["directory_loading", "scan_commit"]
+        assert model._last_scan_reused is True
+        assert model.scan_generation == 2
+        assert [model.data(model.index(row, 0)) for row in range(model.rowCount())] == initial_names
+        assert [state for state, _generation, _error in states] == [
+            model.STATE_LOADING,
+            model.STATE_READY,
+            model.STATE_LOADING,
+            model.STATE_READY,
+        ]
+        assert [generation for _state, generation, _error in states] == [1, 1, 2, 2]
+        assert all(error is None for _state, _generation, error in states)
+
+    def test_refresh_of_changed_directory_commits_one_reset_and_keeps_sort(self, model, tmp_path):
+        recorder = PerformanceRecorder(enabled=True)
+        model.set_performance_context(recorder, "session-a")
+        for name in ("b.txt", "a.txt"):
+            (tmp_path / name).write_text(name, encoding="utf-8")
+
+        model.set_directory(str(tmp_path))
+        model._wait_for_scan()
+        model.set_sort("name", asc=False)
+        before_refresh = [model.data(model.index(row, 0)) for row in range(model.rowCount())]
+
+        (tmp_path / "c.txt").write_text("c", encoding="utf-8")
+        model.refresh()
+        model._wait_for_scan()
+
+        reasons = [
+            event.attributes["reason"]
+            for event in recorder.recent()
+            if event.name == "model.reset"
+        ]
+        assert reasons == ["directory_loading", "scan_commit", "sort", "scan_commit"]
+        assert model._last_scan_reused is False
+        assert [model.data(model.index(row, 0)) for row in range(model.rowCount())] == [
+            "c.txt", *before_refresh
+        ]
+        assert model.list_state == model.STATE_READY
+
+    def test_sort_and_filter_each_emit_one_reset_with_ready_state(self, model, tmp_path):
+        recorder = PerformanceRecorder(enabled=True)
+        model.set_performance_context(recorder, "session-a")
+        for name in ("beta.txt", "alpha.txt", "gamma.png"):
+            (tmp_path / name).write_text(name, encoding="utf-8")
+
+        states = []
+        model.state_changed.connect(
+            lambda state, generation, error: states.append((state, generation, error))
+        )
+        model.set_directory(str(tmp_path))
+        model._wait_for_scan()
+        states.clear()
+
+        model.set_sort("name", asc=False)
+        assert model.list_state == model.STATE_READY
+        model.set_filter(text="a")
+        assert model.list_state == model.STATE_READY
+
+        reasons = [
+            event.attributes["reason"]
+            for event in recorder.recent()
+            if event.name == "model.reset"
+        ]
+        assert reasons == ["directory_loading", "scan_commit", "sort", "filter"]
+        assert [state for state, _generation, _error in states] == [
+            model.STATE_READY,
+            model.STATE_READY,
+        ]
+        assert [generation for _state, generation, _error in states] == [1, 1]
+        assert all(error is None for _state, _generation, error in states)
+        assert [model.data(model.index(row, 0)) for row in range(model.rowCount())] == [
+            "gamma.png", "beta.txt", "alpha.txt"
+        ]
+
     def test_empty_directory_resolves_empty_folder_state(self, model, tmp_path):
         model.set_directory(str(tmp_path))
         model._wait_for_scan()

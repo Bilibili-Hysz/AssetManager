@@ -1,6 +1,45 @@
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
+
+from AssetsManager.core.directory_cache import DirectoryCache
+
+from AssetsManager.core import database
+from AssetsManager.core.db_migrations import migrate
+
+
+def _migrate_with_baseline(conn) -> int:
+    conn.executescript(database._SCHEMA)
+    return migrate(conn)
+
+
+class _FakeDirEntry:
+    """Minimal os.DirEntry stand-in for scan-failure tests."""
+
+    def __init__(self, name, path, *, is_dir=True, is_file=True,
+                 is_dir_error=None, is_file_error=None, stat_result=None):
+        self.name = name
+        self.path = path
+        self._is_dir = is_dir
+        self._is_file = is_file
+        self._is_dir_error = is_dir_error
+        self._is_file_error = is_file_error
+        self._stat_result = stat_result or SimpleNamespace(st_mtime=1.0, st_size=0)
+
+    def is_dir(self, *, follow_symlinks=True):
+        if self._is_dir_error is not None:
+            raise self._is_dir_error
+        return self._is_dir
+
+    def is_file(self, *, follow_symlinks=True):
+        if self._is_file_error is not None:
+            raise self._is_file_error
+        return self._is_file
+
+    def stat(self, *, follow_symlinks=True):
+        return self._stat_result
 
 
 def test_asset_service_lists_visible_items(tmp_path):
@@ -109,12 +148,11 @@ def test_asset_service_records_directory_summary_cache_hit_and_miss(tmp_path, me
     from AssetsManager.application import AssetService
     from AssetsManager.core.directory_cache import DirectoryCache
     from AssetsManager.core.performance import PerformanceRecorder
-    from AssetsManager.core.db_migrations import migrate
 
     child = tmp_path / "child"
     child.mkdir()
     (child / "asset.png").write_bytes(b"data")
-    migrate(memory_db)
+    _migrate_with_baseline(memory_db)
     recorder = PerformanceRecorder(enabled=True)
     service = AssetService(DirectoryCache(memory_db), recorder, session_token="session-a")
 
@@ -128,13 +166,12 @@ def test_asset_service_records_directory_summary_cache_hit_and_miss(tmp_path, me
 
 def test_asset_service_records_stale_summary_cache_as_miss(tmp_path, memory_db):
     from AssetsManager.application import AssetService
-    from AssetsManager.core.db_migrations import migrate
     from AssetsManager.core.directory_cache import DirectoryCache
     from AssetsManager.core.performance import PerformanceRecorder
 
     child = tmp_path / "child"
     child.mkdir()
-    migrate(memory_db)
+    _migrate_with_baseline(memory_db)
     cache = DirectoryCache(memory_db)
     cache.set(str(child), 99, None, mtime=0)
     recorder = PerformanceRecorder(enabled=True)
@@ -151,13 +188,12 @@ def test_asset_service_records_stale_summary_cache_as_miss(tmp_path, memory_db):
 
 def test_asset_service_ignores_recorder_failure(tmp_path, memory_db, monkeypatch):
     from AssetsManager.application import AssetService
-    from AssetsManager.core.db_migrations import migrate
     from AssetsManager.core.directory_cache import DirectoryCache
     from AssetsManager.core.performance import PerformanceRecorder
 
     child = tmp_path / "child"
     child.mkdir()
-    migrate(memory_db)
+    _migrate_with_baseline(memory_db)
     recorder = PerformanceRecorder(enabled=True)
     monkeypatch.setattr(recorder, "record", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError()))
 
@@ -168,12 +204,11 @@ def test_asset_service_ignores_recorder_failure(tmp_path, memory_db, monkeypatch
 
 def test_asset_service_ignores_disabled_recorder(tmp_path, memory_db):
     from AssetsManager.application import AssetService
-    from AssetsManager.core.db_migrations import migrate
     from AssetsManager.core.directory_cache import DirectoryCache
     from AssetsManager.core.performance import PerformanceRecorder
 
     (tmp_path / "child").mkdir()
-    migrate(memory_db)
+    _migrate_with_baseline(memory_db)
     recorder = PerformanceRecorder()
 
     AssetService(DirectoryCache(memory_db), recorder).list_directory(tmp_path, tmp_path)
@@ -235,13 +270,12 @@ def test_asset_service_records_failed_directory_listing_without_masking_error(tm
 
 def test_asset_service_records_summary_events_before_enclosing_listing(tmp_path, memory_db):
     from AssetsManager.application import AssetService
-    from AssetsManager.core.db_migrations import migrate
     from AssetsManager.core.directory_cache import DirectoryCache
     from AssetsManager.core.performance import PerformanceRecorder
 
     child = tmp_path / "child"
     child.mkdir()
-    migrate(memory_db)
+    _migrate_with_baseline(memory_db)
     recorder = PerformanceRecorder(enabled=True)
 
     AssetService(DirectoryCache(memory_db), recorder, session_token="session-a").list_directory(
@@ -284,7 +318,7 @@ def test_asset_service_batches_summary_cache_misses_per_listing(tmp_path):
         (child / "asset.png").write_bytes(b"data")
     cache = Cache()
 
-    listing = AssetService(directory_cache=cache).list_directory(tmp_path, tmp_path)
+    listing = AssetService(directory_cache=cast(DirectoryCache, cache)).list_directory(tmp_path, tmp_path)
 
     assert [item.name for item in listing.items] == ["one", "two"]
     assert cache.set_calls == []
@@ -321,7 +355,7 @@ def test_asset_service_batch_lookup_mixes_hits_and_misses_without_per_entry_read
             self.batch_writes.append(entries)
 
     cache = Cache()
-    listing = AssetService(directory_cache=cache).list_directory(tmp_path, tmp_path)
+    listing = AssetService(directory_cache=cast(DirectoryCache, cache)).list_directory(tmp_path, tmp_path)
 
     assert {item.name: item.item_count for item in listing.items} == {"hit": 7, "miss": 1}
     assert cache.get_calls == 0
@@ -351,7 +385,7 @@ def test_asset_service_batch_lookup_chunks_over_500_paths_without_per_entry_read
             pass
 
     cache = Cache()
-    AssetService(directory_cache=cache).list_directory(tmp_path, tmp_path)
+    AssetService(directory_cache=cast(DirectoryCache, cache)).list_directory(tmp_path, tmp_path)
 
     assert len(cache.batch_calls) == 1
     assert len(cache.batch_calls[0]) == 501
@@ -383,7 +417,7 @@ def test_asset_service_validates_directory_summary_request_before_cache_access(
     import AssetsManager.application.asset_service as asset_service_module
 
     monkeypatch.setattr(asset_service_module, "_scan_dir_summary", fail_scan)
-    service = AssetService(FailFastCache())
+    service = AssetService(cast(DirectoryCache, FailFastCache()))
 
     if case == "empty":
         directories = []
@@ -461,3 +495,135 @@ def test_asset_service_keeps_legacy_directory_summary_signature(tmp_path):
     expected = {str(child): (None, 1)}
     assert positional == expected
     assert keyword == expected
+
+
+def test_asset_service_rejects_directory_cache_from_foreign_managed_library(tmp_path):
+    from AssetsManager.application import AssetService
+    from AssetsManager.core.database import DatabaseManager
+
+    root_a = tmp_path / "root-a"
+    root_b = tmp_path / "root-b"
+    root_a.mkdir()
+    root_b.mkdir()
+    manager = DatabaseManager()
+    try:
+        cache = DirectoryCache(manager.connection_for(root_b))
+
+        with pytest.raises(ValueError, match="different library root"):
+            AssetService(directory_cache=cache).list_directory(root_a, root_a)
+    finally:
+        manager.close()
+
+
+def test_canonical_asset_service_and_directory_cache_reject_after_session_close(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+
+    root = tmp_path / "library"
+    (root / "child").mkdir(parents=True)
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(root)
+    asset_service = bootstrap.runtime_for(session).services.asset_service
+    cache = asset_service._directory_cache
+    assert cache is not None
+
+    session.close()
+
+    with pytest.raises(RuntimeError, match="closed LibrarySession"):
+        asset_service.list_directory(root, root)
+    with pytest.raises(RuntimeError, match="closed LibrarySession"):
+        asset_service.summarize_directories([root / "child"], parent=root)
+    with pytest.raises(RuntimeError, match="closed LibrarySession"):
+        cache.get(str(root / "child"))
+    with pytest.raises(RuntimeError, match="closed LibrarySession"):
+        cache.set(str(root / "child"), 1, None, 0.0)
+    with pytest.raises(RuntimeError, match="closed LibrarySession"):
+        cache.validate_for(root)
+
+
+def test_scan_dir_summary_skips_failing_entry_without_caching(tmp_path, monkeypatch):
+    import AssetsManager.application.asset_service as asset_service_module
+    from AssetsManager.application.asset_service import _scan_dir_summary
+
+    child = tmp_path / "child"
+    child.mkdir()
+    # The failing entry must precede the first image: once a preview is found
+    # the loop stops probing entry.is_file(), so the error is only exercised
+    # while preview is still None.
+    entries = [
+        _FakeDirEntry("vanished.bin", str(child / "vanished.bin"), is_file_error=OSError(2, "vanished")),
+        _FakeDirEntry("a.png", str(child / "a.png"), is_file=True),
+        _FakeDirEntry("b.txt", str(child / "b.txt"), is_file=False),
+    ]
+    monkeypatch.setattr(asset_service_module.os, "scandir", lambda path: entries)
+
+    class Cache:
+        def get(self, *_args, **_kwargs):
+            return None
+
+        def set(self, *_args, **_kwargs):
+            raise AssertionError("incomplete scans must not write the cache")
+
+    cache_writes: list = []
+    preview, count = _scan_dir_summary(child, cache=Cache(), cache_writes=cache_writes)
+
+    assert count == 3
+    assert preview == child / "a.png"
+    assert cache_writes == []
+
+
+def test_scan_dir_summary_skips_cache_write_when_scandir_fails(tmp_path, monkeypatch):
+    import AssetsManager.application.asset_service as asset_service_module
+    from AssetsManager.application.asset_service import _scan_dir_summary
+
+    child = tmp_path / "child"
+    child.mkdir()
+    monkeypatch.setattr(
+        asset_service_module.os, "scandir", lambda path: (_ for _ in ()).throw(OSError(13, "denied"))
+    )
+
+    class Cache:
+        def get(self, *_args, **_kwargs):
+            return None
+
+        def set(self, *_args, **_kwargs):
+            raise AssertionError("incomplete scans must not write the cache")
+
+    preview, count = _scan_dir_summary(child, cache=Cache(), cache_writes=[])
+
+    assert preview is None
+    assert count == 0
+
+
+def test_list_directory_survives_entry_disappearing_mid_scan(tmp_path, monkeypatch):
+    import AssetsManager.application.asset_service as asset_service_module
+    from AssetsManager.application import AssetService
+
+    subdir = tmp_path / "subdir"
+    subdir.mkdir()
+    (tmp_path / "inner.txt").write_text("data", encoding="utf-8")
+
+    entries = [
+        _FakeDirEntry("vanished", str(tmp_path / "vanished"), is_dir_error=OSError(2, "vanished")),
+        _FakeDirEntry("inner.txt", str(tmp_path / "inner.txt"), is_dir=False, is_file=True),
+        _FakeDirEntry("subdir", str(subdir), is_dir=True),
+    ]
+    monkeypatch.setattr(asset_service_module.os, "scandir", lambda path: entries)
+
+    class Cache:
+        def __init__(self):
+            self.get_batch_calls = []
+
+        def get_batch(self, paths):
+            self.get_batch_calls.append(paths)
+            return {}
+
+        def set_batch(self, _entries):
+            pass
+
+        def validate_for(self, _root):
+            pass
+
+    service = AssetService(directory_cache=cast(DirectoryCache, Cache()))
+    listing = service.list_directory(tmp_path, tmp_path)
+
+    assert sorted(item.name for item in listing.items) == ["inner.txt", "subdir"]

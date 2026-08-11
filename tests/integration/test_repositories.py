@@ -1,4 +1,5 @@
 """Tests for TagRepository, MetadataRepository, ShareRepository, AuthRepository."""
+import pytest
 from AssetsManager.repositories.tag_repository import TagRepository
 from AssetsManager.repositories.metadata_repository import MetadataRepository
 from AssetsManager.repositories.share_repository import ShareRepository
@@ -90,6 +91,81 @@ class TestTagRepository:
         assert repo.get_tags("C:/library/folder/child.txt") == []
         assert repo.get_tags("C:/library/folder-copy/keep.txt") == ["keep"]
 
+    @pytest.mark.parametrize(
+        ("root", "child", "sibling"),
+        [
+            (
+                r"C:\library\folder",
+                r"C:\library\folder\child.txt",
+                r"C:\library\folder-copy\keep.txt",
+            ),
+            ("/library/folder", "/library/folder/child.txt", "/library/folder-copy/keep.txt"),
+        ],
+    )
+    def test_get_tags_for_tree_uses_path_boundary(self, memory_db, root, child, sibling):
+        repo = TagRepository(_make_db(memory_db))
+        repo.add_tag(root, "root")
+        repo.add_tag(child, "child")
+        repo.add_tag(sibling, "keep")
+
+        assert repo.get_tags_for_tree(root) == ["child"]
+
+    @pytest.mark.parametrize(
+        ("root", "child", "sibling"),
+        [
+            (
+                r"C:\library\folder",
+                r"C:\library\folder\child.txt",
+                r"C:\library\folder-copy\keep.txt",
+            ),
+            ("/library/folder", "/library/folder/child.txt", "/library/folder-copy/keep.txt"),
+        ],
+    )
+    def test_delete_path_uses_path_boundary(self, memory_db, root, child, sibling):
+        repo = TagRepository(_make_db(memory_db))
+        repo.add_tag(root, "root")
+        repo.add_tag(child, "child")
+        repo.add_tag(sibling, "keep")
+
+        assert repo.delete_path(root) == 2
+        assert repo.get_tags(root) == []
+        assert repo.get_tags(child) == []
+        assert repo.get_tags(sibling) == ["keep"]
+
+    @pytest.mark.parametrize(
+        ("old_root", "old_child", "sibling", "new_root", "new_child"),
+        [
+            (
+                r"C:\library\folder",
+                r"C:\library\folder\child.txt",
+                r"C:\library\folder-copy\keep.txt",
+                r"C:\archive\folder",
+                r"C:\archive\folder\child.txt",
+            ),
+            (
+                "/library/folder",
+                "/library/folder/child.txt",
+                "/library/folder-copy/keep.txt",
+                "/archive/folder",
+                "/archive/folder/child.txt",
+            ),
+        ],
+    )
+    def test_migrate_path_remaps_only_the_selected_tag_subtree(
+        self, memory_db, old_root, old_child, sibling, new_root, new_child
+    ):
+        repo = TagRepository(_make_db(memory_db))
+        repo.add_tag(old_root, "root")
+        repo.add_tag(old_child, "child")
+        repo.add_tag(sibling, "keep")
+
+        assert repo.migrate_path(old_root, new_root) == 2
+        assert repo.get_tags(old_root) == []
+        assert repo.get_tags(old_child) == []
+        assert repo.get_tags(new_root) == ["root"]
+        assert repo.get_tags(new_child) == ["child"]
+        assert repo.get_tags(sibling) == ["keep"]
+
 
 # ── AssetIndexRepository ─────────────────────────────────────────
 
@@ -113,7 +189,7 @@ class TestAssetIndexRepository:
         assert [entry.name for entry in repo.search_by_name("C:/library", "a.", 10)] == ["a.txt"]
 
     def test_delete_path_removes_descendants_without_prefix_collision(self, memory_db):
-        repo = AssetIndexRepository(_make_db(memory_db))
+        repo = AssetIndexRepository(_make_db(memory_db), library_root="C:/library")
         entries = [
             ("C:/library/folder/child.txt", "child.txt", ".txt", "file", 1, 1.0,
              "C:/library/folder", "C:/library", 1.0, 1.0),
@@ -144,11 +220,136 @@ class TestMetadataRepository:
         assert repo.get_notes("C:/library/folder/child.txt") == ""
         assert repo.get_notes("C:/library/folder-copy/keep.txt") == "keep"
 
+    @pytest.mark.parametrize(
+        ("root", "child", "sibling"),
+        [
+            (
+                r"C:\library\folder",
+                r"C:\library\folder\child.txt",
+                r"C:\library\folder-copy\keep.txt",
+            ),
+            ("/library/folder", "/library/folder/child.txt", "/library/folder-copy/keep.txt"),
+        ],
+    )
+    def test_invalidate_size_cache_uses_path_boundary(self, memory_db, root, child, sibling):
+        repo = MetadataRepository(_make_db(memory_db))
+        for path, size in ((root, 1), (child, 2), (sibling, 3)):
+            repo.set_cached_size(path, size, float(size))
+            repo.set_cached_file_count(path, size)
+
+        repo.invalidate_size_cache(root)
+
+        assert repo.get_cached_size(root) is None
+        assert repo.get_cached_size(child) is None
+        assert repo.get_cached_size(sibling) == (3, 3.0)
+        assert repo.get_cached_file_count(root) is None
+        assert repo.get_cached_file_count(child) is None
+        assert repo.get_cached_file_count(sibling) == 3
+
+    @pytest.mark.parametrize(
+        ("root", "child", "sibling"),
+        [
+            (
+                r"C:\library\folder",
+                r"C:\library\folder\child.txt",
+                r"C:\library\folder-copy\keep.txt",
+            ),
+            ("/library/folder", "/library/folder/child.txt", "/library/folder-copy/keep.txt"),
+        ],
+    )
+    def test_delete_path_uses_path_boundary(self, memory_db, root, child, sibling):
+        repo = MetadataRepository(_make_db(memory_db))
+        repo.set_notes(root, "root")
+        repo.set_notes(child, "child")
+        repo.set_notes(sibling, "keep")
+
+        assert repo.delete_path(root) == 2
+        assert repo.get_notes(root) == ""
+        assert repo.get_notes(child) == ""
+        assert repo.get_notes(sibling) == "keep"
+
+    @pytest.mark.parametrize(
+        ("old_root", "old_child", "sibling", "new_root", "new_child"),
+        [
+            (
+                r"C:\library\folder",
+                r"C:\library\folder\child.txt",
+                r"C:\library\folder-copy\keep.txt",
+                r"C:\archive\folder",
+                r"C:\archive\folder\child.txt",
+            ),
+            (
+                "/library/folder",
+                "/library/folder/child.txt",
+                "/library/folder-copy/keep.txt",
+                "/archive/folder",
+                "/archive/folder/child.txt",
+            ),
+        ],
+    )
+    def test_migrate_path_remaps_only_the_selected_metadata_subtree(
+        self, memory_db, old_root, old_child, sibling, new_root, new_child
+    ):
+        repo = MetadataRepository(_make_db(memory_db))
+        repo.set_notes(old_root, "root")
+        repo.set_notes(old_child, "child")
+        repo.set_notes(sibling, "keep")
+
+        assert repo.migrate_path(old_root, new_root) == 2
+        assert repo.get_notes(old_root) == ""
+        assert repo.get_notes(old_child) == ""
+        assert repo.get_notes(new_root) == "root"
+        assert repo.get_notes(new_child) == "child"
+        assert repo.get_notes(sibling) == "keep"
+
     def test_notes_roundtrip(self, memory_db):
         conn = _make_db(memory_db)
         repo = MetadataRepository(conn)
         repo.set_notes("/file.txt", "hello")
         assert repo.get_notes("/file.txt") == "hello"
+
+    def test_library_total_size_preserves_existing_stats(self, memory_db):
+        conn = _make_db(memory_db)
+        conn.execute(
+            "INSERT INTO library_stats "
+            "(library_path, total_size, total_files, total_projects, updated_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("/library", 10, 7, 3, 1.0),
+        )
+        conn.commit()
+
+        MetadataRepository(conn).set_library_total_size("/library", 99)
+
+        row = conn.execute(
+            "SELECT total_size, total_files, total_projects, updated_at "
+            "FROM library_stats WHERE library_path=?",
+            ("/library",),
+        ).fetchone()
+        assert row[:3] == (99, 7, 3)
+        assert row[3] > 1.0
+
+    def test_library_total_size_supports_fixture_without_updated_at(self, memory_db):
+        conn = memory_db
+        conn.execute(
+            "CREATE TABLE library_stats ("
+            "library_path TEXT PRIMARY KEY, total_size INTEGER DEFAULT 0, "
+            "total_files INTEGER DEFAULT 0, total_projects INTEGER DEFAULT 0)"
+        )
+        conn.execute(
+            "INSERT INTO library_stats "
+            "(library_path, total_size, total_files, total_projects) "
+            "VALUES (?, ?, ?, ?)",
+            ("/library", 10, 7, 3),
+        )
+        conn.commit()
+
+        MetadataRepository(conn).set_library_total_size("/library", 99)
+
+        assert conn.execute(
+            "SELECT total_size, total_files, total_projects "
+            "FROM library_stats WHERE library_path=?",
+            ("/library",),
+        ).fetchone() == (99, 7, 3)
 
     def test_urls_roundtrip(self, memory_db):
         conn = _make_db(memory_db)
@@ -524,27 +725,29 @@ class TestMetadataService:
         from AssetsManager.application.library_service import LibraryService
         conn = _make_db(memory_db)
         lib_root = str(tmp_path)
+        file_path = str((tmp_path / "test.txt").resolve())
         LibraryService().open_session(lib_root)
         svc = MetadataService(connection_provider=lambda _root: conn)
-        svc.set_notes(lib_root, "/test.txt", "hello world")
-        assert svc.get_notes(lib_root, "/test.txt") == "hello world"
-        svc.set_notes(lib_root, "/test.txt", "")
-        assert svc.get_notes(lib_root, "/test.txt") == ""
+        svc.set_notes(lib_root, file_path, "hello world")
+        assert svc.get_notes(lib_root, file_path) == "hello world"
+        svc.set_notes(lib_root, file_path, "")
+        assert svc.get_notes(lib_root, file_path) == ""
 
     def test_urls_roundtrip(self, memory_db, tmp_path):
         from AssetsManager.application.metadata_service import MetadataService
         from AssetsManager.application.library_service import LibraryService
         conn = _make_db(memory_db)
         lib_root = str(tmp_path)
+        file_path = str((tmp_path / "test.txt").resolve())
         LibraryService().open_session(lib_root)
         svc = MetadataService(connection_provider=lambda _root: conn)
-        svc.add_url(lib_root, "/test.txt", "https://example.com")
-        svc.add_url(lib_root, "/test.txt", "https://other.com")
-        urls = svc.get_urls(lib_root, "/test.txt")
+        svc.add_url(lib_root, file_path, "https://example.com")
+        svc.add_url(lib_root, file_path, "https://other.com")
+        urls = svc.get_urls(lib_root, file_path)
         assert "https://example.com" in urls
         assert "https://other.com" in urls
-        svc.remove_url(lib_root, "/test.txt", "https://example.com")
-        urls2 = svc.get_urls(lib_root, "/test.txt")
+        svc.remove_url(lib_root, file_path, "https://example.com")
+        urls2 = svc.get_urls(lib_root, file_path)
         assert "https://example.com" not in urls2
         assert "https://other.com" in urls2
 
@@ -555,11 +758,50 @@ class TestMetadataService:
         lib_root = str(tmp_path)
         LibraryService().open_session(lib_root)
         svc = MetadataService(connection_provider=lambda _root: conn)
-        svc.batch_set_cached_file_counts(lib_root, {"/dir1": 10, "/dir2": 20})
-        result = svc.batch_get_cached_file_counts(lib_root, ["/dir1", "/dir2", "/dir3"])
-        assert result["/dir1"] == 10
-        assert result["/dir2"] == 20
-        assert "/dir3" not in result
+        dir1 = tmp_path / "dir1"
+        dir2 = tmp_path / "dir2"
+        dir3 = tmp_path / "dir3"
+        svc.batch_set_cached_file_counts(lib_root, {str(dir1): 10, str(dir2): 20})
+        result = svc.batch_get_cached_file_counts(lib_root, [str(dir1), str(dir2), str(dir3)])
+        assert result[str(dir1)] == 10
+        assert result[str(dir2)] == 20
+        assert str(dir3) not in result
+
+    def test_batch_file_counts_alias_parity_and_single_db_key(self, memory_db, tmp_path):
+        from AssetsManager.application.metadata_service import MetadataService
+        from AssetsManager.application.library_service import LibraryService
+
+        conn = _make_db(memory_db)
+        lib_root = str(tmp_path)
+        LibraryService().open_session(lib_root)
+        svc = MetadataService(connection_provider=lambda _root: conn)
+        target = tmp_path / "nested" / "dir1"
+        alias = tmp_path / "nested" / "child" / ".." / "dir1"
+
+        svc.batch_set_cached_file_counts(lib_root, {str(alias): 10, str(target): 20})
+
+        result = svc.batch_get_cached_file_counts(lib_root, [str(alias), str(target)])
+        assert result == {str(alias): 20, str(target): 20}
+        rows = conn.execute(
+            "SELECT file_path, cached_file_count FROM file_meta WHERE cached_file_count IS NOT NULL"
+        ).fetchall()
+        assert rows == [(str(target.resolve()), 20)]
+
+    def test_get_cached_stats_alias_parity(self, memory_db, tmp_path):
+        from AssetsManager.application.metadata_service import MetadataService
+        from AssetsManager.application.library_service import LibraryService
+
+        conn = _make_db(memory_db)
+        lib_root = str(tmp_path)
+        LibraryService().open_session(lib_root)
+        svc = MetadataService(connection_provider=lambda _root: conn)
+        target = tmp_path / "nested" / "file.bin"
+        alias = tmp_path / "nested" / "child" / ".." / "file.bin"
+        repo = MetadataRepository(conn)
+        repo.set_cached_size(str(target.resolve()), 123, 456.0)
+
+        result = svc.get_cached_stats(lib_root, [str(alias), str(target)])
+        assert result == {str(alias): (123, 456.0), str(target): (123, 456.0)}
 
     def test_library_total_size(self, memory_db, tmp_path):
         from AssetsManager.application.metadata_service import MetadataService

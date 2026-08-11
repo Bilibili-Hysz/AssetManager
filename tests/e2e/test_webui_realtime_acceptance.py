@@ -2,22 +2,125 @@
 
 from __future__ import annotations
 
+import socket
 import time
 from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.e2e  # opt in with `pytest -m e2e` (real Chromium)
+
 playwright = pytest.importorskip("playwright.sync_api")
 from playwright.sync_api import Page, sync_playwright  # noqa: E402
 
 from AssetsManager.application import ApplicationBootstrap  # noqa: E402
+from AssetsManager.application.security_preflight import SecurityPreflight  # noqa: E402
 from AssetsManager.lan import LanServer  # noqa: E402
 from AssetsManager.lan.utils import generate_auth_token  # noqa: E402
 
 
+_CHROMIUM_UNSAFE_PORTS = frozenset(
+    {
+        1,
+        7,
+        9,
+        11,
+        13,
+        15,
+        17,
+        19,
+        20,
+        21,
+        22,
+        23,
+        25,
+        37,
+        42,
+        43,
+        53,
+        69,
+        77,
+        79,
+        87,
+        95,
+        101,
+        102,
+        103,
+        104,
+        109,
+        110,
+        111,
+        113,
+        115,
+        117,
+        119,
+        123,
+        135,
+        139,
+        143,
+        179,
+        389,
+        427,
+        465,
+        512,
+        513,
+        514,
+        515,
+        548,
+        554,
+        556,
+        563,
+        587,
+        601,
+        636,
+        989,
+        990,
+        993,
+        995,
+        1719,
+        1720,
+        1723,
+        2049,
+        3659,
+        4045,
+        5060,
+        5061,
+        6000,
+        6566,
+        6665,
+        6666,
+        6667,
+        6668,
+        6669,
+        6697,
+        10080,
+    }
+)
+
+
+def _find_browser_safe_port() -> int:
+    """Reserve a high ephemeral candidate outside Chromium's blocked ports."""
+    for _ in range(20):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind(("127.0.0.1", 0))
+            candidate = int(probe.getsockname()[1])
+        if candidate not in _CHROMIUM_UNSAFE_PORTS:
+            return candidate
+    raise RuntimeError("Could not find a Chromium-compatible ephemeral port")
+
+
 def _start_server(runtime, *, port: int | None = None) -> LanServer:
-    server = LanServer(runtime=runtime, password="Task14-Password!")
-    server.start(port=0 if port is None else port, bind="127.0.0.1")
+    preflight = SecurityPreflight()
+    preflight.confirm_authenticated_lan()
+    server = LanServer(
+        runtime=runtime,
+        password="Task14-Password!",
+        preflight=preflight,
+    )
+    server.start(
+        port=_find_browser_safe_port() if port is None else port,
+        bind="127.0.0.1",
+    )
     assert server._port > 0
     return server
 
@@ -132,19 +235,36 @@ def test_browser_401_resets_identity_and_closes_realtime(browser_page, lan_runti
 def test_real_lan_server_restarts_on_same_port(lan_runtime):
     _bootstrap, _session, _runtime, server = lan_runtime
     port = server._port
-    first_loop = server._impl._loop
+    initial = server.status()
+    assert initial["lifecycle_state"] == "running"
+    assert initial["owner_thread_alive"] is True
+    assert initial["loop_active"] is True
+    assert initial["runner_retained"] is True
+    assert initial["restart_ready"] is False
 
     _stop_server_cleanly(server)
-    assert first_loop is not None and first_loop.is_closed()
-    server.start(port=port, bind="127.0.0.1")
-    second_loop = server._impl._loop
+    stopped = server.status()
+    assert stopped["running"] is False
+    assert stopped["lifecycle_state"] == "stopped"
+    assert stopped["cleanup_complete"] is True
+    assert stopped["owner_thread_alive"] is False
+    assert stopped["loop_active"] is False
+    assert stopped["runner_retained"] is False
+    assert stopped["restart_ready"] is True
 
+    server.start(port=port, bind="127.0.0.1")
     try:
-        assert server.is_running()
-        assert server._port == port
+        restarted = server.status()
+        assert restarted["running"] is True
+        assert restarted["lifecycle_state"] == "running"
+        assert restarted["owner_thread_alive"] is True
+        assert restarted["loop_active"] is True
+        assert restarted["runner_retained"] is True
+        assert restarted["restart_ready"] is False
+        assert restarted["port"] == port
     finally:
         _stop_server_cleanly(server)
-        assert second_loop is not None and second_loop.is_closed()
+        assert server.status()["restart_ready"] is True
 
 
 def test_browser_recovers_revision_gap_after_websocket_disconnect(browser_page, lan_runtime):

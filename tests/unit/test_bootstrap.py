@@ -1,11 +1,13 @@
 """Tests for ApplicationBootstrap."""
+import sqlite3
 import threading
 from types import SimpleNamespace
 
 import pytest
 
 from AssetsManager.application.bootstrap import ApplicationBootstrap
-from AssetsManager.application.context import LibrarySession
+from AssetsManager.application.context import LibraryContext, LibrarySession
+from AssetsManager.application.library_export_service import LibraryExportService
 from AssetsManager.application.library_service import LibraryService
 from AssetsManager.application.asset_service import AssetService
 from AssetsManager.application.metadata_service import MetadataService
@@ -17,9 +19,37 @@ from AssetsManager.application.project_service import ProjectService
 from AssetsManager.application.plugin_service import PluginService
 from AssetsManager.application.undo_service import UndoService
 from AssetsManager.application.asset_index_service import AssetIndexService
+from AssetsManager.core.project_data import ProjectData
+from AssetsManager.core.tag_store import TagStore
 
 
 class TestApplicationBootstrap:
+
+    def test_build_services_uses_context_identity_when_root_key_is_omitted(
+        self, tmp_path
+    ):
+        root = tmp_path / "library"
+        root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        canonical = bootstrap.library_service.open_session(root)
+        conn = canonical.context.db_conn
+        context = LibraryContext(
+            root=root,
+            data_dir=canonical.context.data_dir,
+            thumb_dir=canonical.context.thumb_dir,
+            db_conn=conn,
+            tag_store=TagStore(str(root), db_conn=conn),
+            project_data=ProjectData(str(root), db_conn=conn),
+        )
+        manual = LibrarySession.from_context(context)
+        try:
+            services = bootstrap._build_services(manual)
+            assert services.session is manual
+            assert context.root_identity.map_key
+        finally:
+            manual.close()
+            bootstrap.library_service.close()
+
 
     @pytest.mark.parametrize("direct_close", [True, False], ids=["callback", "service"])
     def test_same_thread_close_rejects_before_lifecycle_mutation(
@@ -389,27 +419,50 @@ class TestApplicationBootstrap:
         first_root.mkdir()
         second_root.mkdir()
         bootstrap = ApplicationBootstrap()
+        contender = ApplicationBootstrap()
         first_session = bootstrap.library_service.open_session(first_root)
         second_session = bootstrap.library_service.open_session(second_root)
         first = bootstrap.runtime_for(first_session).services
         second = bootstrap.runtime_for(second_session).services
         notifications = []
+        cleanup_calls = []
         bootstrap.library_service.add_session_close_listener(notifications.append)
 
-        def fail_clear_cache():
-            raise RuntimeError("tag cache cleanup failed")
+        def fail_clear_cache_once():
+            cleanup_calls.append("clear_cache")
+            if len(cleanup_calls) == 1:
+                raise RuntimeError("tag cache cleanup failed")
 
-        monkeypatch.setattr(first_session.context.tag_store, "clear_cache", fail_clear_cache)
+        monkeypatch.setattr(
+            first_session.context.tag_store, "clear_cache", fail_clear_cache_once
+        )
 
-        bootstrap.library_service.close()
+        with pytest.raises(RuntimeError, match="tag cache cleanup failed"):
+            bootstrap.library_service.close()
 
+        first_key = str(first_session.root)
         assert first_session.is_closed
         assert second_session.is_closed
+        assert bootstrap.library_service._sessions[first_key] is first_session
+        assert bootstrap.library_service._closing_sessions[first_key] is first_session
+        assert first_session.context.db_conn.execute("SELECT 1").fetchone() == (1,)
+        with pytest.raises(RuntimeError, match="owned by another LibraryService"):
+            contender.library_service.open_session(first_root)
         assert bootstrap._runtimes == {}
         assert not first.undo_service.undo_dir.exists()
         assert not second.undo_service.undo_dir.exists()
         assert notifications.count(first_session) == 1
         assert notifications.count(second_session) == 1
+
+        bootstrap.library_service.close()
+
+        assert cleanup_calls == ["clear_cache", "clear_cache"]
+        assert first_key not in bootstrap.library_service._sessions
+        assert first_key not in bootstrap.library_service._closing_sessions
+        assert notifications.count(first_session) == 1
+        assert notifications.count(second_session) == 1
+        replacement = contender.library_service.open_session(first_root)
+        contender.library_service.close_session(replacement)
 
     def test_global_close_retains_session_when_runtime_cleanup_fails(
         self, tmp_path, monkeypatch
@@ -455,6 +508,24 @@ class TestApplicationBootstrap:
         assert new_session is not old_session
         assert new.undo_service is not old.undo_service
         assert not new.undo_service.can_undo()
+
+    def test_runtime_for_rejects_unmanaged_canonical_provider(self, tmp_path, monkeypatch):
+        root = tmp_path / "library"
+        root.mkdir()
+        bootstrap = ApplicationBootstrap()
+        session = bootstrap.library_service.open_session(root)
+        unmanaged = sqlite3.connect(":memory:", check_same_thread=False)
+
+        monkeypatch.setattr(
+            LibrarySession,
+            "connection_for",
+            lambda _session, _root=None: unmanaged,
+        )
+        try:
+            with pytest.raises(RuntimeError, match="unmanaged connection"):
+                bootstrap.runtime_for(session)
+        finally:
+            unmanaged.close()
 
     def test_runtime_for_binds_provider_to_context_connection(self, tmp_path):
         root = tmp_path / "library"
@@ -1010,3 +1081,157 @@ def test_lan_holder_is_excluded_from_snapshot_value_semantics(tmp_path, monkeypa
     assert snapshot_lookup[snapshot] == "snapshot"
     assert session_lookup[session] == "session"
     assert calls == [session]
+
+
+def test_maintenance_service_construction_failure_does_not_publish_or_block_retry(
+    tmp_path, monkeypatch
+):
+    import AssetsManager.application.bootstrap as bootstrap_module
+    from AssetsManager.application.database_maintenance_service import (
+        DatabaseMaintenanceService,
+    )
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+
+    def fail_construction(**_kwargs):
+        raise RuntimeError("maintenance construction failed")
+
+    monkeypatch.setattr(
+        bootstrap_module, "DatabaseMaintenanceService", fail_construction, raising=False
+    )
+
+    with pytest.raises(RuntimeError, match="maintenance construction failed"):
+        bootstrap.runtime_for(session)
+
+    assert bootstrap._runtimes == {}
+    assert bootstrap._runtime_creation == {}
+
+    monkeypatch.setattr(
+        bootstrap_module, "DatabaseMaintenanceService", DatabaseMaintenanceService
+    )
+    runtime = bootstrap.runtime_for(session)
+
+    assert runtime.services.maintenance_service._session is session
+    bootstrap.library_service.close()
+
+
+def test_deferred_runtime_cleanup_keeps_bootstrap_ownership_until_retry(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "library"
+    owner = ApplicationBootstrap()
+    contender = ApplicationBootstrap()
+    session = owner.library_service.open_session(root)
+    runtime = owner.runtime_for(session)
+    real_close = runtime.close
+    calls = 0
+
+    def defer_once():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return
+        return real_close()
+
+    monkeypatch.setattr(runtime, "close", defer_once)
+
+    with pytest.raises(RuntimeError, match="cleanup is pending"):
+        owner.library_service.close_session(session)
+
+    assert owner._runtimes[id(session)] is runtime
+    with pytest.raises(RuntimeError, match="owned by another LibraryService"):
+        contender.library_service.open_session(root)
+
+    owner.library_service.close_session(session)
+    replacement = contender.library_service.open_session(root)
+    contender.library_service.close_session(replacement)
+
+
+def test_bootstrap_export_restore_failure_blocks_cross_bootstrap_admission_until_ack(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "MiXeDLibrary"
+    root.mkdir()
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(root)
+    export_service = bootstrap.runtime_for(session).services.export_service
+    bootstrap.library_service.close_session(session)
+
+    def fail_restore(*_args, **_kwargs):
+        error = ValueError("unsafe restore install")
+        error.restore_recovery_required = True
+        raise error
+
+    monkeypatch.setattr(export_service, "_preflight_archive_path", lambda _path: None)
+    monkeypatch.setattr(export_service, "_restore_under_reservation", fail_restore)
+    with pytest.raises(ValueError, match="unsafe restore install"):
+        export_service.restore_backup(
+            tmp_path / "backup.zip", root, overwrite_existing=True
+        )
+
+    assert bootstrap.library_service.restore_failure_state(root) is not None
+
+    other = ApplicationBootstrap()
+    with pytest.raises(RuntimeError, match="Restore admission is blocked"):
+        other.library_service.open_session(tmp_path / "MIXEDLIBRARY")
+
+    new_export_service = LibraryExportService(
+        connection_provider=session.connection_for,
+        session=session,
+        restore_coordinator=bootstrap.library_service.restore_reservation,
+        restore_state_provider=bootstrap.library_service.restore_state_provider,
+        restore_acknowledger=bootstrap.library_service.restore_acknowledger,
+    )
+    with pytest.raises(RuntimeError, match="Restore admission is blocked"):
+        new_export_service.restore_backup(tmp_path / "new-backup.zip", root)
+
+    recovery_state = bootstrap.library_service.restore_failure_state(root)
+    assert recovery_state is not None
+    export_service.acknowledge_restore_failure(recovery_state.token)
+    assert bootstrap.library_service.restore_failure_state(root) is None
+    assert export_service.restore_failure_state is None
+    export_service._ensure_restore_admission()
+    replacement = bootstrap.library_service.open_session(root)
+    bootstrap.library_service.close_session(replacement)
+
+
+def test_materialized_lan_services_reject_access_after_session_close(tmp_path):
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    scoped = runtime.services
+
+    assert scoped.lan_services is runtime.services.lan_services
+    session.close()
+
+    with pytest.raises(RuntimeError, match="retained LAN services"):
+        _ = scoped.lan_services
+
+
+def test_reconciliation_start_failure_cleans_temporary_runtime(tmp_path, monkeypatch):
+    from AssetsManager.application.asset_index_reconciliation_service import (
+        AssetIndexReconciliationService,
+    )
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    original_start = AssetIndexReconciliationService.start
+
+    def fail_start(_service):
+        raise RuntimeError("reconciliation start failed")
+
+    monkeypatch.setattr(AssetIndexReconciliationService, "start", fail_start)
+    try:
+        with pytest.raises(RuntimeError, match="reconciliation start failed"):
+            bootstrap.runtime_for(session)
+
+        assert bootstrap._runtimes == {}
+        assert bootstrap._runtime_creation == {}
+        assert not session.is_closed
+
+        monkeypatch.setattr(AssetIndexReconciliationService, "start", original_start)
+        runtime = bootstrap.runtime_for(session)
+        assert runtime.session is session
+    finally:
+        bootstrap.library_service.close()

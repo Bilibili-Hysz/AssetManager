@@ -1,5 +1,7 @@
 """Tests for ProjectService."""
 
+import pytest
+
 from AssetsManager.application.project_service import ProjectDepthConfig, ProjectService
 
 
@@ -727,3 +729,236 @@ def test_list_projects_pagination(tmp_path, schema_db):
     assert listing["offset"] == 0
     assert listing["limit"] == 0
     assert listing["has_more"] is False
+
+
+def test_project_service_accepts_managed_same_root_connection(tmp_path):
+    from AssetsManager.core.database import DatabaseManager
+
+    library = tmp_path / "library"
+    library.mkdir()
+    manager = DatabaseManager()
+    try:
+        conn = manager.connection_for(library)
+        listing = ProjectService(connection_provider=lambda _root: conn).list_projects(
+            library, library
+        )
+
+        assert listing.items == ()
+    finally:
+        manager.close()
+
+
+@pytest.mark.parametrize("operation", ["list_projects", "get_home", "get_project_detail"])
+def test_project_service_rejects_managed_foreign_root_at_public_db_boundary(
+    tmp_path, operation
+):
+    from AssetsManager.core.database import DatabaseManager
+
+    root_a = tmp_path / "root-a"
+    root_b = tmp_path / "root-b"
+    root_a.mkdir()
+    root_b.mkdir()
+    project = root_a / "project"
+    project.mkdir()
+    manager = DatabaseManager()
+    try:
+        foreign_conn = manager.connection_for(root_b)
+        service = ProjectService(connection_provider=lambda _root: foreign_conn)
+
+        with pytest.raises(ValueError, match="different library root"):
+            if operation == "list_projects":
+                service.list_projects(root_a, root_a)
+            elif operation == "get_home":
+                service.get_home(root_a, depth_config=ProjectDepthConfig(global_depth=1))
+            else:
+                service.get_project_detail(root_a, project, rel_path="project")
+    finally:
+        manager.close()
+
+
+def test_session_bound_project_service_rejects_unmanaged_explicit_connection(tmp_path):
+    import sqlite3
+
+    from AssetsManager.application.library_service import LibraryService
+
+    library = tmp_path / "library"
+    library.mkdir()
+    library_service = LibraryService()
+    session = library_service.open_session(library)
+    unmanaged = sqlite3.connect(":memory:")
+    try:
+        service = ProjectService(
+            connection_provider=session.connection_for, session=session
+        )
+        with pytest.raises(ValueError, match="does not belong to the bound LibrarySession"):
+            service.get_home(
+                library,
+                depth_config=ProjectDepthConfig(global_depth=1),
+                db_conn=unmanaged,
+            )
+    finally:
+        unmanaged.close()
+        library_service.close_session(session)
+
+
+def test_project_service_explicit_unmanaged_connection_overrides_provider(
+    tmp_path, schema_db
+):
+    library = tmp_path / "library"
+    library.mkdir()
+
+    def failing_provider(_root):
+        raise AssertionError("provider must not be called")
+
+    listing = ProjectService(connection_provider=failing_provider).list_projects(
+        library, library, db_conn=schema_db
+    )
+
+    assert listing.items == ()
+
+
+def test_project_service_closed_session_error_is_not_converted_to_empty_tags(tmp_path):
+    from AssetsManager.application.library_service import LibraryService
+
+    library = tmp_path / "library"
+    library.mkdir()
+    (library / "project").mkdir()
+    library_service = LibraryService()
+    session = library_service.open_session(library)
+    service = ProjectService(connection_provider=session.connection_for, session=session)
+    session.close()
+
+    with pytest.raises(RuntimeError, match="closed LibrarySession"):
+        service.list_projects(
+            library, library, depth_config=ProjectDepthConfig(global_depth=1)
+        )
+
+
+def test_project_service_tag_ownership_error_is_not_converted_to_empty_tags(tmp_path, schema_db):
+    library = tmp_path / "library"
+    project = library / "project"
+    project.mkdir(parents=True)
+
+    service = ProjectService(connection_provider=lambda _root: schema_db)
+
+    def raise_ownership_error(*args, **kwargs):
+        raise ValueError("path belongs to a different library root")
+
+    service._tag_svc.get_tags_for_tree = raise_ownership_error
+
+    with pytest.raises(ValueError, match="different library root"):
+        service.get_project_detail(library, project, rel_path="project", db_conn=schema_db)
+
+
+def test_list_projects_does_not_treat_closed_connection_as_empty_cache(tmp_path):
+    import sqlite3
+
+    library = tmp_path / "library"
+    library.mkdir()
+    (library / "project").mkdir()
+    conn = sqlite3.connect(":memory:")
+    conn.close()
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        ProjectService(connection_provider=lambda _root: conn).list_projects(
+            library,
+            library,
+            depth_config=ProjectDepthConfig(global_depth=1),
+            db_conn=conn,
+        )
+
+
+def test_project_aggregate_helpers_do_not_hide_closed_connection_errors(tmp_path):
+    import sqlite3
+    from pathlib import Path
+
+    service = object.__new__(ProjectService)
+    closed = sqlite3.connect(":memory:")
+    closed.close()
+    root = Path(tmp_path)
+    target = root / "project"
+    target.mkdir()
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        service._file_count(root, target, closed)
+
+    class RaisingMetadataService:
+        def get_dir_size(self, *args, **kwargs):
+            raise sqlite3.ProgrammingError("Cannot operate on a closed database.")
+
+        def get_notes(self, *args, **kwargs):
+            raise sqlite3.ProgrammingError("Cannot operate on a closed database.")
+
+        def get_metadata(self, *args, **kwargs):
+            raise sqlite3.ProgrammingError("Cannot operate on a closed database.")
+
+    class RaisingTagService:
+        def get_tags_for_tree(self, *args, **kwargs):
+            raise sqlite3.ProgrammingError("Cannot operate on a closed database.")
+
+        def list_tags(self, *args, **kwargs):
+            raise sqlite3.ProgrammingError("Cannot operate on a closed database.")
+
+    service._metadata_svc = RaisingMetadataService()
+    service._tag_svc = RaisingTagService()
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        service._dir_size(root, target)
+    with pytest.raises(sqlite3.ProgrammingError):
+        service._tags(root, target, closed)
+    with pytest.raises(sqlite3.ProgrammingError):
+        service._notes(root, target)
+    with pytest.raises(sqlite3.ProgrammingError):
+        service._notes_and_urls(root, target)
+    with pytest.raises(sqlite3.ProgrammingError):
+        service._popular_tags(root, closed)
+
+
+def test_list_projects_rejects_target_outside_library_root(tmp_path, schema_db):
+    library = tmp_path / "library"
+    library.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    with pytest.raises(ValueError):
+        ProjectService(connection_provider=lambda _root: schema_db).list_projects(
+            library, outside, db_conn=schema_db
+        )
+
+
+def test_get_project_detail_rejects_target_outside_library_root(tmp_path, schema_db):
+    library = tmp_path / "library"
+    library.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    with pytest.raises(ValueError):
+        ProjectService(connection_provider=lambda _root: schema_db).get_project_detail(
+            library, outside, rel_path="", db_conn=schema_db
+        )
+
+
+def test_depth_config_from_dict_clamps_global_depth_bounds():
+    assert ProjectDepthConfig.from_dict({"depth": 999}).global_depth == 32
+    assert ProjectDepthConfig.from_dict({"depth": 0}).global_depth == 1
+    assert ProjectDepthConfig.from_dict({"depth": -5}).global_depth == 1
+    assert ProjectDepthConfig.from_dict({"depth": 7}).global_depth == 7
+    assert ProjectDepthConfig.from_dict({"depth": "abc"}).global_depth == 2
+    assert ProjectDepthConfig.from_dict(None).global_depth == 2
+    assert ProjectDepthConfig.from_dict({}).global_depth == 2
+
+
+def test_depth_config_from_dict_clamps_branch_depths():
+    config = ProjectDepthConfig.from_dict(
+        {
+            "depth": 2,
+            "branch_depths": {"alpha": 999, "beta": 0, "gamma": "x", "delta": 5},
+        }
+    )
+    assert config.branches == {"alpha": 32, "beta": 1, "gamma": 2, "delta": 5}
+
+
+def test_depth_config_direct_construction_is_bounded():
+    assert ProjectDepthConfig(global_depth=999).global_depth == 32
+    assert ProjectDepthConfig(global_depth=-3).global_depth == 1
+    assert ProjectDepthConfig(global_depth=2, branch_depths={"a": 100}).branches == {"a": 32}

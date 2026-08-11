@@ -1,7 +1,6 @@
 from unittest.mock import Mock
 import asyncio
 
-import pytest
 from aiohttp import web
 
 from PySide6.QtWidgets import QApplication
@@ -154,7 +153,10 @@ def test_toggle_sharing_uses_injected_library_session(monkeypatch, tmp_path):
 
     class _Settings:
         def get(self, key, default=None):
-            return default
+            return {
+                "lan_share_safety_ack_version": 1,
+                "lan_trusted_network_confirmed": True,
+            }.get(key, default)
 
     class _Session:
         root_str = str(tmp_path)
@@ -195,7 +197,10 @@ def test_toggle_sharing_injects_bootstrap_runtime(monkeypatch, tmp_path):
 
     class _Settings:
         def get(self, key, default=None):
-            return default
+            return {
+                "lan_share_safety_ack_version": 1,
+                "lan_trusted_network_confirmed": True,
+            }.get(key, default)
 
     session = type("Session", (), {"is_closed": False})()
     runtime = object()
@@ -390,18 +395,24 @@ def test_share_manager_stop_retains_server_for_retry_after_stop_failure():
     manager._server = server
     manager._state["running"] = True
 
-    with pytest.raises(RuntimeError, match="server stop failed"):
-        manager.stop()
+    # A failing server stop must not raise: the manager records the failure,
+    # keeps the handle for a later retry, and marks the state failed.
+    manager.stop()
 
     assert server.stop_calls == 1
     assert manager._server is server
-    assert manager._state["running"] is True
+    assert manager._state["running"] is False
+    assert manager._state["share_state"] == "failed"
+    assert manager._state["failure_reason"] == "server_stop_failed"
 
+    # A second stop retries the retained handle and clears it on success.
     manager.stop()
 
     assert server.stop_calls == 2
     assert manager._server is None
     assert manager._state["running"] is False
+    assert manager._state["share_state"] == "off"
+    assert manager._state["failure_reason"] is None
 
 
 def test_lan_server_restart_keeps_one_runtime_subscription_and_one_broadcast(monkeypatch):
@@ -703,3 +714,230 @@ def test_sharing_dialog_refresh_clears_runtime_data_when_stopped():
     assert dialog._links_table.rows == 0
     assert dialog._codes_table.rows == 0
     assert dialog._online_table.rows == 0
+
+
+def test_desktop_preflight_uses_runtime_active_user_auth(monkeypatch):
+    from AssetsManager import lan
+    from AssetsManager.core.settings import AppSettings
+
+    class _Settings:
+        def get(self, key, default=None):
+            return {
+                "lan_bind": "0.0.0.0",
+                "lan_auth_mode": "users",
+                "lan_share_safety_ack_version": 1,
+                "lan_trusted_network_confirmed": False,
+            }.get(key, default)
+
+    auth_service = type("AuthService", (), {
+        "has_active_users": lambda _self, **_kwargs: True,
+    })()
+    runtime = type(
+        "Runtime",
+        (),
+        {"sharing_services": type("Sharing", (), {"auth_service": auth_service})()},
+    )()
+    session = type("Session", (), {"is_closed": False})()
+    bootstrap = Mock()
+    bootstrap.runtime_for.return_value = runtime
+    server = Mock()
+
+    class _Host(LanSharingMixin):
+        _lan_server = None
+        _library_session = session
+        _bootstrap = bootstrap
+
+        def _dialog_parent(self):
+            return None
+
+        def _update_share_status(self, running, port=8080):
+            self.status = (running, port)
+
+    monkeypatch.setattr(AppSettings, "instance", classmethod(lambda cls: _Settings()))
+    monkeypatch.setattr(lan, "LanServer", Mock(return_value=server))
+
+    host = _Host()
+    host._toggle_sharing()
+
+    assert host._share_security_snapshot.effective_auth == {"enabled": True, "mode": "user"}
+    assert host._lan_server is server
+    server.start.assert_called_once_with(port=8080, bind="0.0.0.0")
+
+
+def test_desktop_retains_server_reference_when_start_rollback_failed(monkeypatch):
+    from AssetsManager import lan
+    from AssetsManager.core import settings as settings_module
+    from AssetsManager.widgets import lan_sharing
+
+    class _Settings:
+        def get(self, key, default=None):
+            return {
+                "lan_bind": "0.0.0.0",
+                "lan_share_safety_ack_version": 1,
+                "lan_trusted_network_confirmed": True,
+            }.get(key, default)
+
+    runtime = type("Runtime", (), {})()
+    session = type("Session", (), {"is_closed": False})()
+    bootstrap = Mock()
+    bootstrap.runtime_for.return_value = runtime
+    server = Mock()
+    server.start.return_value = {
+        "share_state": "failed",
+        "failure_reason": "security_post_start_rollback_failed",
+        "rollback_failed": True,
+        "running": True,
+    }
+    server.is_running.return_value = True
+
+    class _Host(LanSharingMixin):
+        _lan_server = None
+        _library_session = session
+        _bootstrap = bootstrap
+
+        def _dialog_parent(self):
+            return None
+
+        def _update_share_status(self, running, port=8080):
+            self.status = (running, port)
+
+    monkeypatch.setattr(settings_module.AppSettings, "instance", classmethod(lambda cls: _Settings()))
+    monkeypatch.setattr(lan, "LanServer", Mock(return_value=server))
+    monkeypatch.setattr(lan_sharing.QMessageBox, "warning", Mock())
+
+    host = _Host()
+    host._toggle_sharing()
+
+    assert host._lan_server is server
+    assert host._share_security_snapshot["rollback_failed"] is True
+
+
+def test_security_confirmation_persists_authenticated_decision_after_explicit_yes(monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    from AssetsManager.application.security_preflight import SecurityPreflight
+    from AssetsManager.widgets.lan_sharing import confirm_security_preflight
+
+    class _Settings:
+        def __init__(self):
+            self.calls = []
+
+        def commit_share_safety_confirmation(self, ack_version, trusted):
+            self.calls.append((ack_version, trusted))
+            return True
+
+    settings = _Settings()
+    preflight = SecurityPreflight()
+    snapshot = preflight.snapshot(
+        sharing=True,
+        bind="192.168.1.10",
+        auth_status=(True, "password"),
+    )
+    monkeypatch.setattr(
+        "AssetsManager.widgets.lan_sharing.QMessageBox.question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
+    )
+
+    assert confirm_security_preflight(
+        None,
+        settings=settings,
+        preflight=preflight,
+        snapshot=snapshot,
+        bind="192.168.1.10",
+        auth_status=(True, "password"),
+    ) is True
+    assert settings.calls == [(1, False)]
+
+
+def test_security_confirmation_cancel_does_not_persist_or_start(monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    from AssetsManager.application.security_preflight import SecurityPreflight
+    from AssetsManager.widgets.lan_sharing import confirm_security_preflight
+
+    class _Settings:
+        def __init__(self):
+            self.calls = []
+
+        def commit_share_safety_confirmation(self, ack_version, trusted):
+            self.calls.append((ack_version, trusted))
+            return True
+
+    settings = _Settings()
+    preflight = SecurityPreflight()
+    snapshot = preflight.snapshot(
+        sharing=True,
+        bind="0.0.0.0",
+        auth_status=(False, "none"),
+    )
+    monkeypatch.setattr(
+        "AssetsManager.widgets.lan_sharing.QMessageBox.question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.No,
+    )
+
+    assert confirm_security_preflight(
+        None,
+        settings=settings,
+        preflight=preflight,
+        snapshot=snapshot,
+        bind="0.0.0.0",
+        auth_status=(False, "none"),
+    ) is False
+    assert settings.calls == []
+    assert preflight.snapshot(
+        sharing=True,
+        bind="0.0.0.0",
+        auth_status=(False, "none"),
+    ).share_state == "off"
+
+
+def test_security_confirmation_commit_failure_is_fail_closed(monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    from AssetsManager.application.security_preflight import SecurityPreflight
+    from AssetsManager.widgets.lan_sharing import confirm_security_preflight
+
+    class _Settings:
+        def commit_share_safety_confirmation(self, ack_version, trusted):
+            return False
+
+    warning = Mock()
+    monkeypatch.setattr(
+        "AssetsManager.widgets.lan_sharing.QMessageBox.question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
+    )
+    monkeypatch.setattr(
+        "AssetsManager.widgets.lan_sharing.QMessageBox.warning",
+        warning,
+    )
+
+    preflight = SecurityPreflight()
+    snapshot = preflight.snapshot(
+        sharing=True,
+        bind="0.0.0.0",
+        auth_status=(False, "none"),
+    )
+    assert confirm_security_preflight(
+        None,
+        settings=_Settings(),
+        preflight=preflight,
+        snapshot=snapshot,
+        bind="0.0.0.0",
+        auth_status=(False, "none"),
+    ) is False
+    warning.assert_called_once()
+    assert preflight.snapshot(
+        sharing=True,
+        bind="0.0.0.0",
+        auth_status=(False, "none"),
+    ).share_state == "off"
+
+def test_format_bytes_tolerates_none_and_zero():
+    """Server status can report bytes_transferred=None before any traffic."""
+    dialog = SharingSettingsDialog.__new__(SharingSettingsDialog)
+    assert dialog._format_bytes(None) == "0 B"
+    assert dialog._format_bytes(0) == "0 B"
+    assert dialog._format_bytes(0.0) == "0 B"
+    assert dialog._format_bytes(1024) == "1.0 KB"
+    assert dialog._format_bytes(1536) == "1.5 KB"
+    assert dialog._format_bytes(5 * 1024 * 1024) == "5.0 MB"
