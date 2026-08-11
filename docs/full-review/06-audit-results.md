@@ -25,7 +25,7 @@
 ### 1.4 桌面 UI
 13. **6 个 widget 零生产消费方**（待接线）：command_palette/file_picker/pager_overlay/theme_gallery/status_bar/title_bar（title_bar 自带注释声明）
 14. **`AdminManagement.test.tsx` 孤儿测试**（前端）
-15. **grid 与 AssetService 双实现**：桌面 file_list 直接 os.scandir，LAN 走 AssetService——同一目录两套代码，语义一致性靠测试分别覆盖（潜在漂移风险）
+15. **grid 与 AssetService 双实现**：桌面 file_list 直接 os.scandir，LAN 走 AssetService——同一目录两套代码。**阶段 1-2 统一（2026-08-12）**：排序统一到 asset_filters.sort_key_for_entry（含语义对比测试 4 键×2 序）；_fmt_size→format_size 归并；matches_exclude 上移共享；桌面模型支持 exclude_patterns。剩余（阶段 3 远期）：读取路径共享、目录 size_fmt 差异、stat follow_symlinks 语义差异
 
 ### 1.5 前端
 16. 前端 `stats` 投影域仅前端存在（服务端 14 域，前端 15 域白名单）
