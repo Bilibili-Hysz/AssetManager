@@ -90,6 +90,26 @@ def hash_delivery_request_key(request_key: str) -> str:
     return _hash_token(normalized)
 
 
+
+def _decode_order_cursor(cursor: str | None) -> tuple[float, int] | None:
+    """Decode an opaque keyset cursor (``created_at|id``, base64url)."""
+    if not cursor:
+        return None
+    try:
+        import base64
+        raw = base64.urlsafe_b64decode(cursor.encode("ascii")).decode("ascii")
+        created_at_s, id_s = raw.split("|", 1)
+        return float(created_at_s), int(id_s)
+    except (ValueError, TypeError, UnicodeError, base64.binascii.Error):
+        raise ValidationError("cursor", "invalid pagination cursor")
+
+
+def _encode_order_cursor(created_at: object, order_id: int) -> str:
+    import base64
+    raw = f"{float(created_at)}|{int(order_id)}"
+    return base64.urlsafe_b64encode(raw.encode("ascii")).decode("ascii")
+
+
 class OrderService:
     """Enforce order state, receipt ownership, and delivery-token invariants."""
 
@@ -427,21 +447,35 @@ class OrderService:
     @session_operation
     def list_buyer_orders(
         self, library_root: str | Path, *, owner_type: str, owner_key: str,
-        status: str | None = None, limit: int = 200,
+        status: str | None = None, limit: int = 200, cursor: str | None = None,
         db_conn: sqlite3.Connection | None = None,
-    ) -> list[dict[str, Any]]:
-        """List only orders explicitly bound to the current buyer owner."""
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """List orders bound to the current buyer owner with keyset pagination.
+
+        Returns ``(orders, next_cursor)``; ``next_cursor`` is the opaque
+        base64url ``created_at|id`` marker of the last returned row when more
+        rows may exist (requested limit was reached).
+        """
         if owner_type not in {"user", "anonymous"} or not str(owner_key).strip():
             raise ValidationError("owner", "invalid buyer owner")
         if status is not None and status not in ORDER_STATUSES:
             raise ValidationError("status", "unknown order status")
+        requested_limit = min(max(int(limit), 1), 1000)
+        cursor_tuple = _decode_order_cursor(cursor)
         root = Path(library_root).resolve()
         order_repo, _ = self._repos(root, db_conn)
         rows = order_repo.list_orders_by_owner(
             owner_type=owner_type, owner_key=str(owner_key), status=status,
-            limit=min(max(int(limit), 1), 1000),
+            limit=requested_limit + 1, cursor=cursor_tuple,
         )
-        return [self._buyer_history_order(row) for raw in rows if (row := _record(raw)) is not None]
+        has_more = len(rows) > requested_limit
+        page = rows[:requested_limit]
+        orders = [self._buyer_history_order(row) for raw in page if (row := _record(raw)) is not None]
+        next_cursor = None
+        if has_more and page:
+            last = page[-1]
+            next_cursor = _encode_order_cursor(last.get("created_at"), int(last.get("id", 0)))
+        return orders, next_cursor
 
     def list_orders(self, library_root: str | Path, *, status: str | None = None,
                     limit: int = 200, db_conn: sqlite3.Connection | None = None) -> list[dict[str, Any]]:

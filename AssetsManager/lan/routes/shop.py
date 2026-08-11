@@ -688,14 +688,18 @@ async def handle_shop_buyer_orders(request: web.Request) -> web.Response:
     """Return history for the current buyer owner only."""
     try:
         owner, uid, guest, cookie_response = _buyer_owner(request)
-        orders = get_commerce_services(request).orders.list_buyer_orders(
+        orders, next_cursor = get_commerce_services(request).orders.list_buyer_orders(
             get_lan(request).library_root,
             owner_type=owner,
             owner_key=str(uid) if owner == "user" else str(guest),
             status=request.query.get("status"),
             limit=_order_limit(request),
+            cursor=request.query.get("cursor"),
         )
-        return _buyer_response({"orders": orders}, cookie=cookie_response, request=request)
+        payload = {"orders": orders}
+        if next_cursor is not None:
+            payload["next_cursor"] = next_cursor
+        return _buyer_response(payload, cookie=cookie_response, request=request)
     except Exception as exc:
         return _error_response(exc)
 

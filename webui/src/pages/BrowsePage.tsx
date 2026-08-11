@@ -423,10 +423,17 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   const handleDownload = useCallback((path: string) => {
     void (async () => {
       if (!await guardDownload()) return;
-      filesApi.download(path);
+      try {
+        await filesApi.download(path);
+      } catch (err) {
+        showToast(
+          err instanceof Error && err.message ? err.message : t('browse.download_failed'),
+          'error',
+        );
+      }
       void refreshQuota();
     })();
-  }, [filesApi, guardDownload, refreshQuota]);
+  }, [filesApi, guardDownload, refreshQuota, showToast, t]);
 
   const handleInfoDownload = useCallback((item: BrowsableItem) => {
     handleDownload(item.path);

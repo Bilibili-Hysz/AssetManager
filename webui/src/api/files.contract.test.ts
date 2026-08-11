@@ -11,20 +11,44 @@ function setup() {
 }
 
 describe('files API contract (non-download paths)', () => {
-  it('builds single-file download URLs through the configured baseUrl', () => {
-    const { api, buildUrl } = setup();
-    buildUrl.mockReturnValue('/library/api/download/assets%2Fhero.png');
-    const open = vi.fn();
-    vi.stubGlobal('window', { open });
+  it('downloads single files through the blob path with an object URL', async () => {
+    const { buildUrl } = setup();
+    const getBlobWithMetadata = vi.fn().mockResolvedValue({
+      blob: new Blob(['data'], { type: 'application/octet-stream' }),
+      filename: 'hero.png',
+    });
+    const click = vi.fn();
+    const fakeLink = { href: '', download: '', click, remove: vi.fn() };
+    const appendChild = vi.fn();
+    vi.stubGlobal('window', {
+      URL: { createObjectURL: vi.fn(() => 'blob:dl-1'), revokeObjectURL: vi.fn() },
+      setTimeout: (cb: () => void) => cb(),
+    });
+    vi.stubGlobal('document', {
+      body: { appendChild },
+      createElement: vi.fn(() => fakeLink),
+    });
 
     try {
-      api.download('assets/hero.png');
+      const apiWithBlob = createFilesApi({ getBlobWithMetadata } as unknown as ApiClient);
+      await apiWithBlob.download('assets/hero.png');
 
-      expect(buildUrl).toHaveBeenCalledWith('download/assets%2Fhero.png');
-      expect(open).toHaveBeenCalledWith('/library/api/download/assets%2Fhero.png', '_blank');
+      expect(getBlobWithMetadata).toHaveBeenCalledWith('download/assets%2Fhero.png', undefined, undefined);
+      expect(click).toHaveBeenCalledTimes(1);
+      expect(fakeLink.download).toBe('hero.png');
+      expect(appendChild).toHaveBeenCalledTimes(1);
     } finally {
       vi.unstubAllGlobals();
     }
+    expect(buildUrl).not.toHaveBeenCalled();
+  });
+
+  it('rejects with the classified API error when the download fails', async () => {
+    const {} = setup();
+    const getBlobWithMetadata = vi.fn().mockRejectedValue(new Error('Forbidden'));
+    const apiWithBlob = createFilesApi({ getBlobWithMetadata } as unknown as ApiClient);
+
+    await expect(apiWithBlob.download('assets/hero.png')).rejects.toThrow('Forbidden');
   });
 
   it('list forwards browse query params and AbortSignal', () => {

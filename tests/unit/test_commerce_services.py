@@ -371,3 +371,53 @@ def test_public_shop_media_slots_are_allowlisted_and_authorized(schema_db, tmp_p
     for slot in ("../asset.png", "gallery-1", "cover/../asset.png", "gallery-x"):
         with pytest.raises(NotFoundError):
             shop.get_public_item_media_path(root, item["id"], slot)
+
+
+def test_buyer_orders_keyset_pagination(schema_db, tmp_path):
+    """list_buyer_orders returns pages with a stable opaque next_cursor."""
+    from AssetsManager.application.order_service import (
+        _decode_order_cursor,
+        _encode_order_cursor,
+    )
+
+    root, shops, orders, _quotas, shop, order_service, _quota = _services(schema_db, tmp_path)
+    item = shop.create_item(root, {"path": "asset.txt", "title": "Asset", "price_cents": 100})
+    for i in range(7):
+        order_service.create_order_with_receipt(
+            root,
+            {"item_id": item["id"], "buyer_email": f"b{i}@example.com"},
+            buyer_owner_type="anonymous",
+            buyer_owner_key="guest",
+        )
+
+    page1, cursor1 = order_service.list_buyer_orders(
+        root, owner_type="anonymous", owner_key="guest", limit=3,
+    )
+    assert len(page1) == 3
+    assert cursor1 is not None
+    # Cursor round-trips through the opaque encoding.
+    assert _decode_order_cursor(_encode_order_cursor(1.0, 5)) == (1.0, 5)
+
+    page2, cursor2 = order_service.list_buyer_orders(
+        root, owner_type="anonymous", owner_key="guest", limit=3, cursor=cursor1,
+    )
+    assert len(page2) == 3
+    assert cursor2 is not None
+    # Pages are disjoint and stable-ordered (newest first).
+    ids1 = {row["id"] for row in page1}
+    ids2 = {row["id"] for row in page2}
+    assert ids1.isdisjoint(ids2)
+
+    page3, cursor3 = order_service.list_buyer_orders(
+        root, owner_type="anonymous", owner_key="guest", limit=3, cursor=cursor2,
+    )
+    assert len(page3) == 1
+    assert cursor3 is None
+    assert {row["id"] for row in page3}.isdisjoint(ids1 | ids2)
+
+    # Invalid cursor is rejected.
+    import pytest as _pytest
+    with _pytest.raises(Exception):
+        order_service.list_buyer_orders(
+            root, owner_type="anonymous", owner_key="guest", cursor="not-a-cursor",
+        )

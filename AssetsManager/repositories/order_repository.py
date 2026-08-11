@@ -259,13 +259,19 @@ class OrderRepository(_CommerceRepository):
 
     @_repository_operation
     def list_orders_by_owner(
-        self, *, owner_type: str, owner_key: str, status: str | None = None, limit: int = 200
+        self, *, owner_type: str, owner_key: str, status: str | None = None, limit: int = 200,
+        cursor: tuple[float, int] | None = None,
     ) -> list[dict[str, Any]]:
         where = "buyer_owner_type=? AND buyer_owner_key=?"
         parameters: list[object] = [owner_type, owner_key]
         if status is not None:
             where += " AND status=?"
             parameters.append(status)
+        if cursor is not None:
+            # Keyset pagination on the existing (created_at DESC, id DESC)
+            # ordering: strictly older than the cursor row.
+            where += " AND (created_at < ? OR (created_at = ? AND id < ?))"
+            parameters.extend([cursor[0], cursor[0], cursor[1]])
         parameters.append(max(1, min(int(limit), 1000)))
         rows = self._conn.execute(
             "SELECT id, item_id, item_path, item_title, buyer_name, buyer_email, "

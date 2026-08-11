@@ -37,6 +37,9 @@ export default function StorefrontBuyerOrdersPage() {
   const [recoveringId, setRecoveringId] = useState<number | null>(null);
   const [recoveredIds, setRecoveredIds] = useState<Set<number>>(() => new Set());
   const [recoveryFailedId, setRecoveryFailedId] = useState<number | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreFailed, setLoadMoreFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,11 +55,14 @@ export default function StorefrontBuyerOrdersPage() {
         if (cancelled) return;
         setOrders(response.orders ?? []);
         setTotal(response.total);
+        setNextCursor(response.next_cursor ?? null);
+        setLoadMoreFailed(false);
       })
       .catch(() => {
         if (cancelled) return;
         setOrders([]);
         setTotal(undefined);
+        setNextCursor(null);
         setLoadFailed(true);
       })
       .finally(() => {
@@ -64,6 +70,21 @@ export default function StorefrontBuyerOrdersPage() {
       });
     return () => { cancelled = true; };
   }, [loadRetryToken, shop, status]);
+
+  const loadMore = async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    setLoadMoreFailed(false);
+    try {
+      const response = await shop.listBuyerOrders(status || undefined, ORDER_LIMIT, nextCursor);
+      setOrders(prev => [...prev, ...(response.orders ?? [])]);
+      setNextCursor(response.next_cursor ?? null);
+    } catch {
+      setLoadMoreFailed(true);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const recoverReceipt = async (orderId: number) => {
     setRecoveringId(orderId);
@@ -149,6 +170,19 @@ export default function StorefrontBuyerOrdersPage() {
                   ))}
                 </tbody>
               </table>
+              {nextCursor && (
+                <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 16 }}>
+                  {loadMoreFailed ? (
+                    <button type="button" className="storefront-button storefront-button-ghost" onClick={() => void loadMore()}>
+                      {t('gallery.retry')}
+                    </button>
+                  ) : (
+                    <button type="button" className="storefront-button storefront-button-ghost" disabled={loadingMore} onClick={() => void loadMore()}>
+                      {loadingMore ? t('commerce.buyer_orders_loading') : t('commerce.load_more')}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </section>
