@@ -1,6 +1,7 @@
 """Cross-process library lock backed by Qt's QLockFile semantics."""
 from __future__ import annotations
 
+import os
 import threading
 from pathlib import Path
 
@@ -26,7 +27,10 @@ class LibraryLock:
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
-        self._key = str(self.path)
+        # Normalize the registry key so relative/absolute and case/slash
+        # spellings of one lock file share the same in-process lease instead
+        # of reporting a false LibraryAlreadyOpenError.
+        self._key = os.path.normcase(os.path.abspath(os.fspath(self.path)))
         self._released = False
         with _registry_guard:
             shared = _held_locks.get(self._key)

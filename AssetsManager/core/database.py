@@ -8,6 +8,7 @@ Provides:
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 import hashlib
+import logging
 import os
 import shutil
 import sqlite3
@@ -33,6 +34,12 @@ RUNTIME_ROOT = runtime_root()
 SHARED_DIR = shared_dir()
 _ORPHANED_DIR_NAME = "_orphaned"
 _LEGACY_MIGRATION_RESERVED_NAMES = frozenset({"shared", "_orphaned"})
+
+_log = logging.getLogger(__name__)
+
+# One-shot guard: compatibility helpers warn at most once per process about
+# routing through the ThreadSafeSingleton DatabaseManager instead of DI.
+_compat_singleton_warned = False
 
 
 def _flush_directory_durable(directory: Path) -> None:
@@ -221,6 +228,11 @@ class _WriteGate:
         """Return whether the current thread holds a read admission."""
         return bool(getattr(self._reader_local, "depth", 0))
 
+    def current_thread_is_writer(self) -> bool:
+        """Return whether the current thread holds the writer admission."""
+        with self._condition:
+            return self._writer and self._writer_thread == threading.get_ident()
+
     @contextmanager
     def read(self):
         depth = getattr(self._reader_local, "depth", 0)
@@ -368,6 +380,45 @@ def _identity_claim_lock(lock_path: Path):
         if acquired and unlock is not None:
             unlock()
         handle.close()
+
+
+def _legacy_migration_looks_complete(identity: RootIdentity, legacy_dir: Path,
+                                     lib_dir: Path) -> bool:
+    """Return whether a failed legacy move may be treated as already done.
+
+    ``shutil.move`` of a directory raises a spurious OSError when a concurrent
+    opener has already performed the rename (the source vanished) or when the
+    destination already received the database payload.  Both states are
+    idempotently complete: failing the open afterwards would poison a healthy
+    library over a harmless race.
+    """
+    if not lib_dir.exists():
+        return False
+    if not legacy_dir.exists():
+        # The source vanished: another opener completed the rename.
+        return True
+    # Both directories still exist: accept only the essential payload arrival.
+    return db_path(identity).exists()
+
+
+def _persisted_library_roots() -> list[str]:
+    """Return library roots recorded in application settings.
+
+    ``recent_libraries`` is the only persisted registry of library roots the
+    application maintains.  Offline roots cannot pass ``Path.exists()``, so
+    orphan cleanup consults this registry instead of the filesystem to keep
+    their RuntimeData slots protected while their drive is disconnected.
+    """
+    try:
+        from AssetsManager.core.settings import AppSettings
+
+        roots = AppSettings.instance().get_list("recent_libraries")
+    except Exception:
+        # A settings failure must never turn orphan cleanup into a destructive
+        # sweep. AppSettings already logs its own load failures; falling back
+        # to an empty registry keeps marker-based protection intact.
+        return []
+    return [root for root in roots if root] if isinstance(roots, list) else []
 
 
 class DatabaseManager:
@@ -602,9 +653,12 @@ class DatabaseManager:
                     try:
                         shutil.move(str(legacy_dir), str(lib_dir))
                     except OSError as exc:
-                        raise RuntimeError(
-                            f"Legacy RuntimeData migration failed: {legacy_dir}"
-                        ) from exc
+                        if not _legacy_migration_looks_complete(
+                            identity, legacy_dir, lib_dir
+                        ):
+                            raise RuntimeError(
+                                f"Legacy RuntimeData migration failed: {legacy_dir}"
+                            ) from exc
             lib_dir.mkdir(parents=True, exist_ok=True)
             # Prepare all per-library filesystem resources before publishing
             # a managed SQLite connection. A thumbnail-directory failure
@@ -842,6 +896,13 @@ class DatabaseManager:
         known_names = {library_data_name(r) for r in known_roots if r and Path(r).exists()}
         legacy_names = {Path(r).resolve().name for r in known_roots if r}
         known_names.update(legacy_names)
+        # Offline library roots never satisfy Path.exists(), so their hashed
+        # and legacy RuntimeData slots would be swept as orphans. Extend the
+        # protection to the persisted recent_libraries registry as well; a
+        # library is recorded there on open regardless of current availability.
+        persisted_roots = _persisted_library_roots()
+        known_names.update(library_data_name(r) for r in persisted_roots)
+        known_names.update(Path(r).resolve().name for r in persisted_roots)
         shared_root = RUNTIME_ROOT / "Shared"
         marked_names: set[str] = set()
         try:
@@ -911,6 +972,15 @@ def db_write_lock(conn: sqlite3.Connection | None = None):
         thread_id = threading.get_ident()
         with state.owner_state_lock:
             outermost = state.owner_thread != thread_id
+        # A thread already holding the legacy global write admission would
+        # deadlock inside _WriteGate.read (its own writer flag blocks the
+        # reader wait). Fail fast instead of hanging forever.
+        if _write_gate.current_thread_is_writer():
+            raise RuntimeError(
+                "Cannot acquire a connection-owned db_write_lock while the "
+                "current thread holds the legacy global db_write_lock "
+                "(this would deadlock)"
+            )
         with _write_gate.read():
             recorder = state.performance_recorder
             wait_started = time.perf_counter() if recorder is not None and outermost else None
@@ -939,6 +1009,15 @@ def db_write_lock(conn: sqlite3.Connection | None = None):
                         released_at = time.perf_counter() if recorder is not None else None
                         _record_write_lock(state, outcome, wait_started, acquired_at, released_at)
         return
+    # A thread already holding a connection-owned read admission (acquired in
+    # the branch above) would deadlock inside _WriteGate.write: its own reader
+    # count keeps the writer wait from ever being satisfied. Fail fast instead
+    # of hanging forever.
+    if _write_gate.current_thread_is_reader():
+        raise RuntimeError(
+            "Cannot acquire the legacy global db_write_lock while the current "
+            "thread holds a connection-owned db_write_lock (this would deadlock)"
+        )
     with _write_gate.write():
         yield
 
@@ -1002,9 +1081,10 @@ def get_library_dir(library_root: str) -> Path:
         try:
             shutil.move(str(legacy_dir), str(directory))
         except OSError as exc:
-            raise RuntimeError(
-                f"Legacy RuntimeData migration failed: {legacy_dir}"
-            ) from exc
+            if not _legacy_migration_looks_complete(identity, legacy_dir, directory):
+                raise RuntimeError(
+                    f"Legacy RuntimeData migration failed: {legacy_dir}"
+                ) from exc
 
     directory.mkdir(parents=True, exist_ok=True)
     return directory
@@ -1027,6 +1107,15 @@ def migrate_path_metadata(conn: sqlite3.Connection, thumb_dir: Path,
         # cross-projection migration helper. Session-bound file operations
         # reject such a transaction before moving the filesystem path.
         outer_transaction = conn.in_transaction
+        # Case semantics: the SELECT below matches with ``=`` (case-sensitive)
+        # or LIKE (case-insensitive for ASCII), while ``remap_path_subtree``
+        # is a case-sensitive prefix remap.  A row the LIKE arm selected but
+        # remap does not change (e.g. a differently-cased spelling of the
+        # subtree) is therefore skipped from both INSERT and DELETE: it must
+        # never be deleted, and on case-insensitive filesystems its stored
+        # path still resolves to the same file.  Only rows remap actually
+        # rewrites are deleted, and only by exact match, so a row remap left
+        # alone can never be removed by this migration.
         tag_rows = conn.execute(
             "SELECT file_path, tag FROM file_tags WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
             (old, descendant_pattern),
@@ -1112,7 +1201,17 @@ def migrate_path_metadata(conn: sqlite3.Connection, thumb_dir: Path,
             if old_file.exists() and old_key != new_key:
                 try:
                     if new_file.exists():
-                        old_file.unlink()
+                        # The destination thumbnail already exists. Do not
+                        # silently delete the old file: its cache row is
+                        # repointed to the destination key below, and the old
+                        # file is either regenerated from the new path or
+                        # cleaned up manually. Deleting it here would discard
+                        # a valid thumbnail without regenerating anything.
+                        _log.warning(
+                            "Thumbnail migration collision: %s already exists "
+                            "for %s; keeping %s",
+                            new_file, mapped, old_file,
+                        )
                     else:
                         old_file.replace(new_file)
                 except OSError:
@@ -1128,7 +1227,17 @@ def migrate_path_metadata(conn: sqlite3.Connection, thumb_dir: Path,
 
 def migrate_path_metadata_for_library(library_root: str | Path,
                                       old_path: str | Path, new_path: str | Path) -> None:
-    """Legacy root-based compatibility wrapper for path metadata migration."""
+    """Legacy root-based compatibility wrapper for path metadata migration.
+
+    This helper routes through ``ThreadSafeSingleton.get(DatabaseManager)``.
+    The application wires its own ``DatabaseManager`` into the DI container
+    (see ``AssetsManager.application.bootstrap``), so the singleton instance
+    used here can differ from the DI-registered one — two DatabaseManager
+    instances may then each own a connection to the same library.  Prefer the
+    session-bound ``migrate_path_metadata`` call with an explicit connection;
+    unifying the instances requires a DI refactor beyond this module's scope.
+    """
+    _warn_compat_singleton("migrate_path_metadata_for_library")
     manager = ThreadSafeSingleton.get(DatabaseManager)
     thumb_dir = manager.thumb_dir_for(library_root)
     thumb_dir.mkdir(parents=True, exist_ok=True)
@@ -1145,8 +1254,35 @@ def _thumbnail_cache_key(path: str) -> str:
     return hashlib.sha256(f"{path}|{mtime}".encode()).hexdigest()[:16]
 
 
+def _warn_compat_singleton(helper: str) -> None:
+    """Warn once per process about singleton-routed compatibility helpers.
+
+    These helpers operate on ``ThreadSafeSingleton.get(DatabaseManager)``,
+    which can be a different instance than the DI-registered DatabaseManager
+    (see ``AssetsManager.application.bootstrap``).  The warning is emitted at
+    most once per process so per-operation compatibility callers (file renames,
+    test teardown) do not flood the log.
+    """
+    global _compat_singleton_warned
+    if _compat_singleton_warned:
+        return
+    _compat_singleton_warned = True
+    _log.warning(
+        "%s routes through ThreadSafeSingleton.get(DatabaseManager), which may "
+        "differ from the DI-registered DatabaseManager instance; prefer an "
+        "explicit connection or unify the instances via DI",
+        helper,
+    )
+
+
 def close_all_dbs():
-    """Deprecated compatibility shutdown helper."""
+    """Deprecated compatibility shutdown helper.
+
+    Same singleton-vs-DI caveat as :func:`migrate_path_metadata_for_library`:
+    only the ThreadSafeSingleton instance is closed here.  Callers owning the
+    DI-registered manager should close that instance instead.
+    """
+    _warn_compat_singleton("close_all_dbs")
     ThreadSafeSingleton.get(DatabaseManager).close()
 
 
@@ -1155,6 +1291,13 @@ def clean_orphan_dirs(known_roots: list[str]):
 
 
 def get_library_stats(library_root: str):
+    """Return cached aggregate statistics for a library root.
+
+    Same singleton-vs-DI caveat as :func:`migrate_path_metadata_for_library`:
+    the stats are read through the ThreadSafeSingleton DatabaseManager, which
+    may differ from the DI-registered instance owning the caller's connection.
+    """
+    _warn_compat_singleton("get_library_stats")
     conn = ThreadSafeSingleton.get(DatabaseManager).connection_for(library_root)
     row = conn.execute(
         "SELECT total_size, total_files, total_projects FROM library_stats WHERE library_path = ?",

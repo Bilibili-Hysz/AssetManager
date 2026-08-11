@@ -7,6 +7,7 @@ future schema upgrades.
 from __future__ import annotations
 
 import sqlite3
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, cast
@@ -352,7 +353,9 @@ def _validate_history(rows: list[tuple[object, object]]) -> int:
         expected_name = expected_names.get(version if isinstance(version, int) else -1)
         if expected_name != name:
             raise MigrationHistoryError(
-                f"schema_migrations name does not match migration version {version}"
+                f"schema_migrations name does not match migration version {version}; "
+                "history migration names are immutable, restore the original "
+                "name or use a repair tool"
             )
     return max_version
 
@@ -869,6 +872,11 @@ def _add_reconciliation_lease_token_schema_v17(conn: sqlite3.Connection) -> None
         )
     validate_schema_objects(conn, (table,))
 
+# Migration history is immutable once shipped. `_validate_history` rejects any
+# recorded name that differs from the table below, so renaming a migration
+# permanently brick-restricts every database that already recorded the old
+# name. Version numbers AND names are append-only; see
+# `frozen_history_signature()` for the test-side freeze.
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "baseline_current_schema", _baseline_v1),
     Migration(2, "add_assets_index", _add_assets_index_v2),
@@ -897,11 +905,36 @@ MIGRATIONS: tuple[Migration, ...] = (
 )
 
 
-def migrate(conn: sqlite3.Connection) -> int:
-    """Apply pending migrations atomically and return the resulting version.
+def frozen_history_signature() -> tuple[tuple[int, str], ...]:
+    """Return the shipped migration history as an immutable (version, name) snapshot.
+
+    Migration names are part of the durable on-disk history: renaming a shipped
+    migration makes ``_validate_history`` reject every database that recorded
+    the old name. Tests call this function to freeze the signature so an
+    accidental rename fails loudly at test time instead of bricking user
+    databases in production.
+    """
+    return tuple((migration.version, migration.name) for migration in MIGRATIONS)
+
+
+_migration_guard = threading.Lock()
+
+
+def _is_concurrent_migration_failure(error: BaseException) -> bool:
+    """True when the failure matches a concurrent migrator race."""
+    if isinstance(error, sqlite3.IntegrityError):
+        return True
+    return isinstance(error, sqlite3.OperationalError) and "locked" in str(
+        error
+    ).lower()
+
+
+def _migrate_once(conn: sqlite3.Connection) -> int:
+    """Apply pending migrations in a single pass.
 
     A savepoint preserves an existing caller transaction. On a fresh connection
     the savepoint is committed, retaining the historical migration behavior.
+    `migrate` owns the concurrency guard and the cross-process retry.
     """
     savepoint = "migration_runner"
     outer_transaction = conn.in_transaction
@@ -963,6 +996,33 @@ def migrate(conn: sqlite3.Connection) -> int:
         conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
         conn.execute(f"RELEASE SAVEPOINT {savepoint}")
         raise
+
+
+def migrate(conn: sqlite3.Connection) -> int:
+    """Apply pending migrations atomically and return the resulting version.
+
+    A module-level guard serializes concurrent migrators inside this process
+    (e.g. two DatabaseManager instances racing on the same library), and a
+    single retry covers the cross-process race: after an IntegrityError or a
+    "database is locked" failure the recorded history is re-read — another
+    process may already have finished the migration — and the pass is re-run
+    once otherwise.
+    """
+    with _migration_guard:
+        try:
+            return _migrate_once(conn)
+        except (sqlite3.IntegrityError, sqlite3.OperationalError) as error:
+            if not _is_concurrent_migration_failure(error):
+                raise
+            try:
+                recorded = _read_history(conn)
+            except sqlite3.OperationalError:
+                # The rolled-back pass removed a migrations table it created
+                # inside its savepoint, so this connection committed nothing.
+                recorded = 0
+            if recorded == CURRENT_SCHEMA_VERSION:
+                return recorded
+            return _migrate_once(conn)
 
 
 def current_version(conn: sqlite3.Connection) -> int:
