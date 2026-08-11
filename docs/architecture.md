@@ -13,51 +13,71 @@ The recalibrated Desktop–LAN–WebUI architecture is delivered for the current
 
 The B2 thumbnail boundary is part of the local `master` baseline: ThumbnailLoader consumes a scoped ThumbnailService through an immutable runtime snapshot. Post-commit focused regression is reproducible; real-image I/O, performance and wider regression evidence remain tracked separately.
 
-A2 service validation downshift is delivered, and A3 presentation-specific assembly is now delivered: Desktop/shared services are eager in the canonical snapshot, while Asset/Project/Search materialize only for LAN composition. B1 Runtime-owned Auth/Share lifecycle remains future work.
+A2 service validation downshift and A3 presentation-specific assembly are delivered. B1 is also implemented: Desktop/shared services and the frozen Runtime sharing bundle are owned by the canonical Runtime; Asset/Project/Search remain a lazy LAN-only projection.
 
 ## Application Services
 
 | Service | Module | Purpose | Desktop | LAN | Tests |
 |---|---|---|---|---|---|
-| `LibraryService` | `library_service.py` | Open libraries, expose `LibraryContext`, hold per-library QLockFile | `app.py`, `window.py`, `lan_sharing.py` | indirect | 3 |
+| `LibraryService` | `library_service.py` | Open libraries, expose `LibraryContext`, hold per-library QLockFile | `app.py`, `window.py`, `lan_sharing.py` | indirect | 3+ |
+| `LibraryRuntime` / `RuntimeEventRouter` | `runtime.py` / `runtime_events.py` | Per-library service snapshot, projection invalidation routing, lifecycle adapters | `window.py`, panels | LAN realtime bridge | unit + integration |
 | `AssetService` | `asset_service.py` | Directory listing, filtering, sorting, validated bounded direct-child summaries | — | `/api/files`, `/api/files/summaries` | service + LAN route tests |
-| `MetadataService` | `metadata_service.py` | Notes, URLs, dir size, tags-for-asset | `InfoPanel` | `/api/meta`, `/api/projects` | 5 |
-| `TagService` | `tag_service.py` | Tag list, assign, rename, delete | `InfoPanel`, `TagTreePanel` | `/api/tags/*` | 4 |
-| `FileOperationService` | `file_operation_service.py` | Copy, move, rename, trash, duplicate, delete | `_actions.py` (7 ops) | — | 6 |
+| `MetadataService` | `metadata_service.py` | Notes, URLs, dir size (30s TTL), tags-for-asset | `InfoPanel` | `/api/meta`, `/api/projects` | 5+ |
+| `TagService` | `tag_service.py` | Tag list, assign, rename, delete | `InfoPanel`, `TagTreePanel` | `/api/tags/*` | 4+ |
+| `FileOperationService` | `file_operation_service.py` | Copy, move, rename, trash, duplicate, delete (path locks, moved_pairs) | `_actions.py` (7 ops) | — | 6+ |
 | `ThumbnailService` | `thumbnail_service.py` | Session-bound source/blur/image processing and thumbnail-cache metadata API | `FileListPanel`, `_loader.py` | `/api/thumbnails/*` | service + desktop Loader tests |
 | `ThumbnailRepository` | `thumbnail_repository.py` | Infrastructure adapter behind thumbnail persistence APIs; not a presentation dependency | — | — | service/repository tests |
-| `SearchService` | `search_service.py` | Search by tags or name | — | `/api/search` | 6 |
+| `SearchService` | `search_service.py` | Dual-track search (scanner/indexed), SearchResultSet status semantics, quick_search budget | — | `/api/search`, `/api/quicksearch` | 6+ |
 | `PluginService` | `plugin_service.py` | Plugin discovery, load, enable, disable | `app.py` (startup) | — | 7 |
-| `ProjectService` | `project_service.py` | Project listing/detail/tree/home, depth rules, preview metadata | — | `/api/projects`, `/api/projects/{path}`, `/api/tree`, `/api/home` | 10 |
-| `AssetIndexService` | `asset_index_service.py` | Populate and query `assets` table | — | — | 9 |
-| `AuthService` | `auth_service.py` | LAN users, tokens, and invite codes | — | `/api/auth/*`, `/api/users/*`, `/api/invites/*` | service + LAN route tests |
-| `ShareService` | `share_service.py` | Share-link lifecycle, password/expiry/download-limit validation, access tokens | — | `/api/shares/*`, `/s/*` | service + LAN route tests |
-| `UndoService` | `undo_service.py` | Undo/redo stack for file operations | `_actions.py` | — | 8 |
+| `ProjectService` | `project_service.py` | Project listing/detail/tree/home, depth rules (clamped 1-32), preview metadata | — | `/api/projects`, `/api/tree`, `/api/home` | 10+ |
+| `AssetIndexService` | `asset_index_service.py` | Populate and query `assets` table; revision CAS publish state machine | FileOperationService | indirect (search index) | 9+ |
+| `AssetIndexReconciliationService` + `ReconciliationQueue` | `asset_index_reconciliation_service.py` / `reconciliation_queue*.py` | Background rescan worker; cross-process persistent task queue (lease + generation CAS) | runtime lifecycle adapter | — | integration suite |
+| `AuthService` | `auth_service.py` | Users, tokens, and invite codes bound to one Runtime/session | Desktop/runtime-owned | `/api/auth/*`, `/api/users/*`, `/api/invites/*` | service + LAN route tests |
+| `ShareService` | `share_service.py` | Share-link lifecycle, password strength + brute-force lockout, validation, access tokens | Desktop `ShareCreationTask` | `/api/shares/*`, `/s/*` | service + LAN route tests |
+| `UndoService` | `undo_service.py` | Undo/redo stack for file operations; delete backups + projection snapshots | `_actions.py` | — | 8+ |
+| `DatabaseIntegrityService` | `database_integrity_service.py` | Session-bound quick check and conservative orphan metadata maintenance | Settings/runtime lifecycle | — | unit + lifecycle tests |
+| `DatabaseMaintenanceService` | `database_maintenance_service.py` | Database size, bounded WAL checkpoint, VACUUM boundary, retryable background stop | Settings/runtime lifecycle | — | unit + lifecycle tests |
+| `LibraryExportService` | `library_export_service.py` | Metadata export, bounded backup (100k members), validation, closed-session isolated restore (reservation token + ACK) | Settings adapter/runtime | — | export/restore regression tests |
+| `LibrarySettingsAdapter` | `library_settings_adapter.py` | Qt-free boundary for integrity, maintenance, export, backup, and restore state | Settings presentation | — | adapter tests |
+| `GalleryService` / `FavoriteService` | `gallery_service.py` / `favorite_service.py` | Budget-limited gallery projection / owner-scoped favorites | — | `/api/gallery/*`, `/api/favorites` | LAN route tests |
+| Commerce stack (`ShopService`, `ShopBuyerService`, `OrderService`, `QuotaService`, `FreeDownloadQuotaService`, `SellerAuthService`, `SellerProfileService`, `StorefrontAnalyticsService`) | `shop_service.py` etc. | Catalog/cart/checkout (idempotency keys), order state machine (pending→confirmed→fulfilled/revoked), delivery tokens (fulfill/rotate-revoke), quotas, seller sessions, privacy-aggregated analytics | — | `/api/shop/*` (55 routes) | commerce tests |
 
-`LibraryContext` (`context.py`) is a frozen dataclass bundling root, data_dir, thumb_dir, db_conn, tag_store, and project_data for an opened library. `LibrarySession` is the public opened-library boundary and exposes `connection_for()` so services receive a scoped `ConnectionProvider` without falling back to mutable current-library state. `ApplicationBootstrap.runtime_for(session)` remains the only production assembly path for the cached `LibraryRuntime`; Desktop and LAN consume the same runtime and canonical frozen snapshot. The snapshot object is eager and unique, but A3 splits field materialization: Metadata/Tag/Thumbnail/FileOperation/Undo/Plugin/AssetIndex are eager Desktop/shared fields, while one private single-flight holder materializes `LanRuntimeServices` (Asset/Project/Search) only when LAN is composed. Runtime caching, LAN injection, the pre-close adapter barrier, restart-generation ownership, Task D fallback removal, the Windows Task E cross-surface matrix and the Ubuntu WSL directory-symlink gate are delivered. See [`docs/compose/reports/desktop-lan-webui-architecture-migration.md`](compose/reports/desktop-lan-webui-architecture-migration.md), [`docs/compose/reports/desktop-lan-webui-architecture-recalibration.md`](compose/reports/desktop-lan-webui-architecture-recalibration.md), and [`docs/compose/reports/a3-service-assembly-2026-08-02.md`](compose/reports/a3-service-assembly-2026-08-02.md).
+> 完整服务清单（39 模块）与签名索引见 `docs/full-review/02-module-map.md`。
+
+`LibraryContext` (`context.py`) is a frozen dataclass bundling root, data_dir, thumb_dir, db_conn, tag_store, and project_data for an opened library. `LibrarySession` is the public opened-library boundary and exposes `connection_for()` so services receive a scoped `ConnectionProvider` without falling back to mutable current-library state. `ApplicationBootstrap.runtime_for(session)` remains the only production assembly path for the cached `LibraryRuntime`; Desktop and LAN consume the same runtime and canonical frozen snapshot. The snapshot object is eager and unique, but A3 splits field materialization: Metadata/Tag/Thumbnail/FileOperation/Undo/Plugin/AssetIndex/DatabaseIntegrity/DatabaseMaintenance/LibraryExport/ReconciliationQueue/ReconciliationService are eager Desktop/shared fields, while one private single-flight holder materializes `LanRuntimeServices` (Asset/Project/Search/Gallery/Favorite) only when LAN is composed. `LibrarySettingsAdapter` remains the Qt-free presentation boundary for the maintenance and recovery services, including execution errors and scheduling rejection reasons. Runtime caching, LAN injection, the pre-close adapter barrier, restart-generation ownership, Task D fallback removal, the Windows Task E cross-surface matrix and the Ubuntu WSL directory-symlink gate are delivered. See [`docs/compose/reports/desktop-lan-webui-architecture-migration.md`](compose/reports/desktop-lan-webui-architecture-migration.md), [`docs/compose/reports/desktop-lan-webui-architecture-recalibration.md`](compose/reports/desktop-lan-webui-architecture-recalibration.md), [`docs/compose/reports/a3-service-assembly-2026-08-02.md`](compose/reports/a3-service-assembly-2026-08-02.md), and [`docs/compose/reports/b1-runtime-sharing-2026-08-03.md`](compose/reports/b1-runtime-sharing-2026-08-03.md).
+
+`ApplicationBootstrap` creates and owns a frozen `RuntimeSharingServices` bundle for each live Runtime/session. It generates one non-persisted `token_secret`, constructs `AuthService` and `ShareService` with the same session DB connection and secret, and idempotently initializes both tables inside the Runtime creation/session operation lease. LAN stop/start reuses the bundle; session close invalidates it. LAN UI tokens do not use the Runtime secret directly: LAN derives `local_ui_auth_secret` from it plus `access_key/password/auth_mode`; unchanged stop/start is stable and an auth configuration change invalidates old tokens. The public `LanServer.token_secret` is a compatibility alias for the local UI secret; new consumers use `runtime_token_secret` for the Runtime-owned value. Different libraries keep separate sessions, connections, runtimes, secrets, service bundles and databases.
 
 `LibraryService` acquires a stable per-library `QLockFile` before database initialization and releases it only after the canonical session, runtime listeners and database close successfully complete. Initialization failures release the lock; close failures retain it for retry. Multiple service objects in one process share the underlying lock lease, while another process opening the same library is rejected; different libraries remain parallelizable.
 
 ## LAN Route Structure
 
-LAN API routes are split into focused modules under `AssetsManager/lan/routes/`:
+LAN API routes are split into focused modules under `AssetsManager/lan/routes/` (24 files, 139 registered routes — page 30 / core API 51 / commerce-seller 55 / auth+WS 3):
 
 | Module | Routes | Application Service |
 |---|---|---|
-| `pages.py` | `/`, `/detail` | — |
+| `pages.py` | SPA pages: `/`, `/browse`, `/detail`, `/login`, `/gallery*`, `/storefront*`, `/store*`, `/seller*`, `/app*`, `/s/{id}` (30) | — (SPA fallback to `webui/dist`) |
 | `files.py` | `/api/files`, `/api/files/summaries` | `AssetService` |
-| `metadata.py` | `/api/meta`, `/api/search`, `/api/home`, `/api/tree`, `/api/projects` | `MetadataService`, `SearchService`, `TagService`, `ProjectService` |
+| `metadata.py` | `/api/meta`, `/api/search`, `/api/home`, `/api/tree`, `/api/projects*`, `/api/notes` | `MetadataService`, `SearchService`, `TagService`, `ProjectService` |
 | `tags.py` | `/api/tags/*` | `TagService` |
-| `thumbnails.py` | `/api/thumbnails/*` | `ThumbnailService` |
-| `downloads.py` | `/api/download/*` | — |
+| `thumbnails.py` | `/api/thumbnails/*` (+ batch) | `ThumbnailService` |
+| `image.py` | `/api/image` | `ThumbnailService` (Pillow content gate) |
+| `downloads.py` | `/api/download/*`, `/api/download/batch` | free-download quota + file/zip responses |
+| `quicksearch.py` | `/api/quicksearch` | `SearchService.quick_search` |
+| `gallery.py` / `favorites.py` | `/api/gallery/*`, `/api/favorites*` | `GalleryService`, `FavoriteService` |
 | `auth.py` | `/api/auth/*` | `AuthService` |
-| `users.py` | `/api/users/*`, `/api/invites/*` | `AuthService` |
-| `shares.py` | `/api/shares/*`, `/s/*` | `ShareService`; `AuthService`/principal helpers for identity and permission context |
-| `system.py` | `/api/info`, `/api/tunnel/status`, `/api/stats` | — |
-| `websocket.py` | `/ws` | — |
-| `_helpers.py` | Shared: `validate_path`, `get_auth_token`, `build_zip_async`, etc. | — |
+| `users.py` | `/api/users/*`, `/api/invites/*`, `/api/activity`, `/api/online-users` | `AuthService` |
+| `shares.py` | `/api/shares/*`, `/s/{id}` | `ShareService`; principal helpers |
+| `system.py` | `/api/info`, `/api/tunnel/status`, `/api/stats`, `/api/revision` | runtime cursor / tunnel |
+| `quota.py` | `/api/quota` | `FreeDownloadQuotaService` |
+| `shop.py` | `/api/shop/*` (55 routes: catalog/cart/checkout/orders/delivery/seller) | Commerce stack (order/shop/shop_buyer/quota/seller services) |
+| `commerce_policy.py` / `seller_auth.py` / `seller_profile.py` / `storefront_analytics.py` | commerce policy / seller login / seller profile / analytics | Commerce services |
+| `websocket.py` | `/ws` | `WebSocketManager` |
+| `_helpers.py` / `_resource_urls.py` | Shared: `validate_path`, `get_auth_token`, `LanScopedServices`, `build_zip_async`, URL projection | — |
 
-`AssetsManager/lan/api.py` is a thin wrapper (~98 lines) that imports all handlers from `routes/` and registers them in `setup_routes()`. A2 business rules belong to application services: `TagService` owns tag-name validation, `ShareService` owns password/expiry/download-limit validation, and `AssetService` owns bounded directory-summary validation. LAN routes retain permission, JSON, `PathGuard`, and transport-normalization responsibilities, translate only `ValidationError` to the existing HTTP 400 contracts, and preserve unrelated failures as 500.
+`AssetsManager/lan/api.py` (360 lines) imports all handlers from `routes/` and registers them in `setup_routes()` (139 routes) plus the runtime realtime bridge (`on_invalidation` → `ws_manager.broadcast`). A2 business rules belong to application services: `TagService` owns tag-name validation, `ShareService` owns password/expiry/download-limit validation, and `AssetService` owns bounded directory-summary validation. LAN routes retain permission, JSON, `PathGuard`, and transport-normalization responsibilities, translate `ValidationError`/`DuplicateError` to HTTP 400/409 contracts, and preserve unrelated failures as 500. Desktop creates shares through `ShareCreationTask` → Runtime `ShareService` directly; LAN retains `/api/shares/*` management and `/s/{id}` remote links.
+
+> 完整路由表（方法+路径+权限+handler+服务）见 `docs/full-review/02-module-map.md` §7 与 LAN 审查素材。
 
 ## Desktop File List Integration
 
@@ -82,7 +102,7 @@ Undo/redo stack management delegates to `UndoService` (`application/undo_service
 
 ## Database Migrations
 
-Per-library SQLite databases are migration-aware through `AssetsManager.core.db_migrations`.
+Per-library SQLite databases are migration-aware through `AssetsManager.core.db_migrations` (`CURRENT_SCHEMA_VERSION = 23`).
 
 | Version | Name | Description |
 |---|---|---|
@@ -90,8 +110,27 @@ Per-library SQLite databases are migration-aware through `AssetsManager.core.db_
 | 2 | `add_assets_index` | Adds `assets` table with indexes on parent_path, library_root, name, extension |
 | 3 | `add_tag_metadata` | Adds `tag_metadata` for tag color, icon, and category metadata |
 | 4 | `add_plugin_metadata` | Adds `plugin_metadata` for persisted plugin-parsed file metadata |
+| 5 | `directory_cache` | Adds `directory_cache` (item_count, preview_path, mtime) |
+| 6 | `auth_share_schema` | Adds `users`, `invite_codes`, `share_links` (existing-table contract validation) |
+| 7 | `library_favorites` | Adds `library_favorites` (owner_key, file_path) |
+| 8 | `commerce_schema` | Adds shop_items/orders/order_events/delivery_tokens (frozen v8 historical DDL) |
+| 9 | `asset_index_state` | Adds `asset_index_state` (revision CAS publish) |
+| 10 | `free_download_quota` | Adds `free_download_quota_windows` |
+| 11 | `shop_order_receipts` | Adds `shop_order_receipts` (HttpOnly receipt tokens) |
+| 12 | `seller_profile` | Adds single-row `seller_profile` |
+| 13 | `storefront_analytics` | Adds view days/visitors (privacy-aggregated) |
+| 14 | `reconciliation_tasks` | Cross-process rescan task queue |
+| 15 | `reconciliation_queue_state` | Queue generation counter |
+| 16 | `shop_cart_wishlist` | Adds carts/items/checkouts/wishlist (v16 historical DDL) |
+| 17 | `reconciliation_lease_token` | Adds `lease_token` column |
+| 18 | `shop_order_buyer_owner` | Adds buyer_owner_type/key columns + index |
+| 19 | `shop_checkout_generation` | Adds cart checkout_generation; rebuilds checkouts table |
+| 20 | `shop_order_receipt_recovery` | Adds receipt recoveries |
+| 21 | `shop_checkout_fingerprint` | Adds `request_fingerprint` column |
+| 22 | `shop_delivery_attempts` | Adds idempotent delivery attempt tracking |
+| 23 | `shop_catalog_ordering_index` | Catalog ordering index + shop_items full contract validation |
 
-The assets table is populated lazily by application services, not by the migration itself. Future schema changes must be added as explicit migrations and covered by tests.
+The assets table is populated lazily by application services, not by the migration itself. Migrations run inside a SAVEPOINT (caller transaction preserved); history is validated (`MigrationHistoryError`/`UnsupportedSchemaVersion` for future versions); each version's resulting shape is contract-checked against a versioned schema contract that traces historical boundaries (e.g. v<17 `reconciliation_tasks` has no lease_token). Future schema changes must be added as explicit migrations and covered by tests.
 
 ## Plugin System
 
@@ -142,9 +181,9 @@ Legacy unscoped events (`FileCreated`, `FileRenamed`, `FileDeleted`, `FileCopied
 
 ## Application Bootstrap
 
-`ApplicationBootstrap` (`application/bootstrap.py`) owns the one application-service assembly path. `ApplicationBootstrap.runtime_for(session)` composes one canonical `LibraryRuntime` and one eager `LibraryScopedServices` snapshot object. A private holder inside that snapshot provides generation-based single-flight materialization for `LanRuntimeServices`; success is cached once, one failed generation is shared by all of its waiters, later calls may retry, recursive materialization fails loudly, and session close wins through the operation/publication barrier. Compatibility properties for Asset/Project/Search read through to that same lazy bundle and do not create a second Runtime or composition root. A runtime LAN server prefers `services_snapshot`, materializes the LAN-only bundle inside the session lease, validates common and LAN-only provider/session/cache identity, creates LAN-owned Auth/Share, then atomically publishes `LanScopedServices` before routes are installed. The `.services` fallback is restricted to legacy runtime-shaped test doubles whose `services_snapshot` attribute is statically absent. Route helpers still perform only direct lookup of `lan.services`; a missing bundle is a loud lifecycle error. Task E's Windows lifecycle, identity, realtime and Ubuntu WSL directory-symlink acceptance is recorded in the recalibration final report.
+`ApplicationBootstrap` (`application/bootstrap.py`) owns the one application-service assembly path. `ApplicationBootstrap.runtime_for(session)` composes one canonical `LibraryRuntime` and one eager `LibraryScopedServices` snapshot object. The snapshot owns a frozen `RuntimeSharingServices` bundle: one `token_secret` is generated per Runtime/session, shared by `AuthService` and `ShareService` over the same session DB connection, and never persisted. Auth/Share tables are initialized idempotently during Runtime creation inside the session operation lease. LAN stop/start reuses this bundle; session close invalidates it. A private holder inside that snapshot provides generation-based single-flight materialization for `LanRuntimeServices`; success is cached once, one failed generation is shared by all of its waiters, later calls may retry, recursive materialization fails loudly, and session close wins through the operation/publication barrier. Compatibility properties for Asset/Project/Search read through to that same lazy bundle and do not create a second Runtime or composition root. A runtime LAN server prefers `services_snapshot`, materializes the LAN-only bundle inside the session lease, validates common, LAN-only and sharing provider/session/cache identity, consumes Runtime-owned Auth/Share, then atomically publishes `LanScopedServices` before routes are installed. The `.services` fallback is restricted to legacy runtime-shaped test doubles whose `services_snapshot` attribute is statically absent. Route helpers still perform only direct lookup of `lan.services`; a missing bundle is a loud lifecycle error. Task E's Windows lifecycle, identity, realtime and Ubuntu WSL directory-symlink acceptance is recorded in the recalibration final report.
 
-LAN server stop closes websocket/site and scanner resources when supported. It does not close an injected `LibraryRuntime` or `LibrarySession`; runtime adapters and database close belong to the `ApplicationBootstrap`/`LibraryService` session lifecycle. The required ordering is adapter stop → lease drain/session cleanup → database close, and the pre-close failure/retry, restart-generation and Windows cross-surface contracts are covered by the delivered lifecycle work. `LanServer`, `ShareManager`, and desktop sharing use the canonical runtime on the primary path. The Linux directory-symlink validation passed in Ubuntu WSL, so no release gate remains open for this scope.
+LAN server stop closes websocket/site and scanner resources when supported. It does not close an injected `LibraryRuntime`, `LibrarySession`, or database connection; runtime adapters and database close belong to the `ApplicationBootstrap`/`LibraryService` session lifecycle. The required ordering is `session._begin_close()` → closing listeners/`Runtime.close_adapters()` (LAN stop) → lease drain → session-close listeners/`Runtime.close()` → database close, and the pre-close failure/retry, restart-generation and Windows cross-surface contracts are covered by the delivered lifecycle work. Without both a certificate and key, the endpoint and generated share URLs use `http://`; with both, they use `https://`. `LanServer`, `ShareManager`, and desktop sharing use the canonical runtime on the primary path. The Linux directory-symlink validation passed in Ubuntu WSL, so no release gate remains open for this scope.
 
 ### Realtime lifecycle hardening
 
@@ -156,7 +195,7 @@ WebSocket admission uses a pending-client barrier and reconciles the cursor afte
 
 ## Architecture Governance
 
-- `tests/unit/test_architecture_boundaries.py` guards key dependency rules and documents the small set of transitional exceptions. Non-presentation layers are not allowed to import PySide6.
+- `tests/unit/test_architecture_boundaries.py` guards key dependency rules and documents the small set of transitional exceptions. Non-presentation layers are not allowed to import PySide6. Repository adapters may depend on `core.database` and pure core infrastructure such as `core.path_resolver`, plus domain/repository modules; they do not depend on application, LAN, or presentation.
 - `docs/adr/0001-architecture-governance.md` records the current DB lifecycle, EventBus, plugin trust model, and LAN exposure decisions.
 - `docs/adr/0002-library-session.md` records the target opened-library session boundary and migration sequence away from implicit current-library state.
 - Existing transitional exceptions should shrink over time; new exceptions require an explicit ADR update.
@@ -167,6 +206,7 @@ All pure crypto functions (password hashing, token generation/verification) live
 
 ## Future Work
 
-- **Type checking**: Pyright covers `application`, `domain`, `di`, `repositories`, `controllers`, `lan`, core non-UI modules. Next: tackle `dialogs/`, `panels/`, `widgets/` type noise.
-- **Desktop/service unification**: `FileSystemModel` and `AssetService` now share sort/filter/category rules via `application/asset_filters.py`; `ThumbnailLoader` also uses the scoped `ThumbnailService` for cache metadata and the shared `thumbnail_cache_key`. Remaining work is stat/file-count cache unification plus real-image performance baselines.
-- **Performance baselines**: Track large directory listing, search, thumbnail cache, and LAN response times with real libraries.
+- **Type checking**: CI typecheck runs pyright with a scoped whitelist (`application/controllers/core(部分)/di/domain/lan/repositories` + selected panels/widgets/dialogs, `basic` mode) and reports **0 errors**. The remaining type-noise in mixed LAN/panel/widget compatibility domains is tracked outside the whitelist and is not a release-completion claim.
+- **Desktop/service unification**: `FileSystemModel` and `AssetService` now share sort/filter/category rules via `application/asset_filters.py`; `ThumbnailLoader` also uses the scoped `ThumbnailService` for cache metadata and the shared `thumbnail_cache_key`. Remaining work is stat/file-count cache unification plus real-image performance baselines (e.g. M6a-8 `get_home` full-table scan).
+- **Performance baselines**: Track large directory listing, search, thumbnail cache, and LAN response times with real libraries (`tests/perf/` + nightly grid telemetry).
+- **P2 defect round**: ~121 low-severity items across file_list/info/sidebar/dialogs/windows/controllers/domain (see `docs/reports/module-*.md`); delivery-token URL plaintext removal needs frontend coordination.

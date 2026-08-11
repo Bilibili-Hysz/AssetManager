@@ -16,6 +16,12 @@ A3 is delivered. Opening a Desktop library still creates one canonical `LibraryR
 
 This change does not implement B1. AuthService, ShareService, the random `token_secret`, Auth/Share table initialization, and Desktop direct share creation remain LAN-owned or future work.
 
+## Postscript — B1 follow-up (2026-08-03)
+
+The paragraph above is the historical A3 boundary as of 2026-08-02 and remains accurate for that A3 checkpoint. B1 was delivered subsequently in the current working tree: `ApplicationBootstrap` now owns the frozen `RuntimeSharingServices` bundle; LAN reuses its Auth/Share services and secret; and Desktop creates shares asynchronously through `ShareCreationTask` without requiring a running LAN server. The authoritative details are in [`b1-runtime-sharing-2026-08-03.md`](b1-runtime-sharing-2026-08-03.md).
+
+The current B1-focused verification slice is `392 passed` when run with an external writable pytest base directory. This is focused evidence, not the final full-Python or Chromium release count; those gates remain separately tracked.
+
 ## 2. Reference matrix and plan calibration
 
 The production reference scan found these Desktop dependencies:

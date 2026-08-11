@@ -1,7 +1,7 @@
 # AssetsManager Architecture Diagram
 
-**Version:** 2026-08-02 A3 per-presentation service assembly + A2/B2/B3 delivered boundaries
-**Tests:** Python 1695 passed, 1 Windows platform skip plus Ubuntu WSL symlink gate passed; A3/architecture focused 347 passed; Task D Runtime/Desktop 431 passed; current Desktop/LAN/Chromium matrix 190 passed; WebUI 37 files / 292 passed snapshot
+**Version:** 2026-08-05 A3/B1 plus session-bound maintenance, export, and recovery boundaries
+**Tests:** Counts from prior checkpoints are historical snapshots, not a final current total; rerun the final suite before publishing new totals.
 
 ---
 
@@ -32,12 +32,14 @@
 │                 APPLICATION + RUNTIME LAYER                       │
 │                                                                     │
 │  Eager Desktop/shared: Metadata  Tag  Thumbnail  FileOp  Undo     │
-│  Shared stateless: Plugin  AssetIndex  AssetFilters                │
-│  Lazy LAN-only projection: Asset  Project  Search                  │
+│  Integrity  Maintenance  Export  Plugin  AssetIndex                │
+│  Settings adapter: Qt-free maintenance/recovery boundary           │
+│  Lazy LAN-only projection: Asset  Project  Search  Gallery  Fav   │
 │  LibraryContext  LibrarySession  LibraryRuntime                    │
 │  LibraryScopedServices → LanRuntimeServices (single-flight)        │
 │  RuntimeEventRouter  DTOs  SessionPrincipal                         │
-│  AuthService/ShareService remain LAN-owned until B1               │
+│  frozen RuntimeSharingServices: Auth + Share + token_secret       │
+│  ReconciliationQueue  ReconciliationService                        │
 └──────────────────────────┬─────────────────────────────────────────┘
                            │
 ┌──────────────────────────▼─────────────────────────────────────────┐
@@ -67,10 +69,10 @@
 │  lan/scanner.py  lan/ws.py  lan/tunnel.py                          │
 │  lan/manager.py (lifecycle)                                         │
 │                                                                     │
-│  LAN → canonical snapshot + lazy LAN projection + Auth/Share      │
+│  LAN → canonical snapshot + lazy LAN projection + Runtime sharing │
 │      → auth/principal/capabilities                                  │
-│  Current A3 matrix: Chromium + Desktop + LAN = 190 passed          │
-│  Linux directory-symlink gate: Ubuntu WSL passed                  │
+│  HTTP without cert/key; HTTPS only with both configured            │
+│  LAN stop leaves Runtime/session/DB ownership to bootstrap         │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -87,6 +89,8 @@ StartupWindow.library_opened
     → LibraryContext → LibrarySession (scoped connection provider)
     → ApplicationBootstrap.runtime_for(session)
       → LibraryRuntime.services_snapshot
+        → frozen RuntimeSharingServices (Runtime secret + same DB conn)
+        → idempotent Auth/Share table init in session operation lease
         → eager Desktop/shared fields + private LAN single-flight holder
   → MainWindow
   → SidebarPanel.navigate_to(root)
@@ -117,9 +121,9 @@ SidebarPanel.directory_selected
 HTTP → aiohttp security/auth middleware
   → SessionPrincipal + Capabilities
   → route handler → PathGuard
-  → snapshot common service or once-materialized LanRuntimeServices → DTO response
+  → snapshot common/sharing service or once-materialized LanRuntimeServices → DTO response
 Runtime DomainEvent → RuntimeEventRouter
-  → epoch/revision invalidation → authenticated WebSocket
+  → epoch/revision invalidation → revalidated WebSocket (local UI secret)
   → React RealtimeProvider → domain consumer
     → explicit TAGS or recovery(null) → active tag authoritative HTTP refetch
 ```
@@ -146,8 +150,9 @@ SettingsDialog → themes.set_theme(name)
 6. `SignalBus` is the Qt presentation communication channel; `domain.event_bus` is the application/domain event channel
 7. `ThumbnailLoader` may depend on the scoped `ThumbnailService` and immutable runtime snapshot, but must not depend directly on SQLite connections or `ThumbnailRepository`
 8. `TagService`, `ShareService`, and `AssetService` own A2 business validation; LAN routes own transport and `PathGuard` boundaries
-9. A3 keeps one Runtime/snapshot: Desktop/shared fields are eager; Asset/Project/Search may be constructed only by Bootstrap's lazy LAN projection; Auth/Share remain LAN-owned until B1
+9. One Runtime/snapshot owns the frozen RuntimeSharingServices bundle; LAN derives `local_ui_auth_secret` from Runtime secret + auth configuration. Desktop calls ShareCreationTask → ShareService directly, while LAN retains HTTP management and `/s/{id}` remote sharing. Asset/Project/Search/Gallery/Favorite may be constructed only by Bootstrap's lazy LAN projection.
 10. `tests/unit/test_architecture_boundaries.py` guards runtime, principal, DTO, assembly, and teardown rules
+11. Repository adapters may use `core.database` and pure core path infrastructure such as `core.path_resolver`, but not application, LAN, or presentation
 
 ---
 
@@ -155,10 +160,11 @@ SettingsDialog → themes.set_theme(name)
 
 | Layer | Files | Lines | Tests |
 |-------|-------|-------|-------|
-| `application/` | 16 | ~2,100 | 15 test files |
-| `core/` | 34 | ~5,800 | 11 test files |
-| `lan/` | 24 | ~3,200 | 2 test files |
-| `panels/` | 18 | ~6,100 | 3 test files |
-| `widgets/` | 6 | ~900 | 0 test files |
-| `tests/` | 50+ | ~5,000+ | — |
-| **Total** | **150+** | **~27,000+** | **Python 1695 passed, 1 Windows skip; Linux symlink gate passed; WebUI 37 files / 292 snapshot; current cross-surface 190 passed** |
+| `application/` | 39 | 20,142 | current working-tree Python files |
+| `core/` | 33 | 6,863 | current working-tree Python files |
+| `lan/` | 37（13 核心 + routes/24） | 10,197 | current working-tree Python files |
+| `panels/` | 22 | 11,400 | current working-tree Python files |
+| `widgets/` | 20 | 4,600 | current working-tree Python files |
+| `webui/` | 196 ts/tsx | 20,000+ | 90 Vitest + 5 Playwright spec |
+| `tests/` | 205+ | — | **2952 passed, 7 skipped**（2026-08-11 实测） |
+| **Total** | — | — | **2026-08-11 dirty-worktree snapshot; not a release manifest** |

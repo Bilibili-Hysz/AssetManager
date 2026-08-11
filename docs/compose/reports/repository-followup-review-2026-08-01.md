@@ -21,6 +21,12 @@ remote: none configured
 - 阶段 3 Desktop–LAN–WebUI：A1、A2 与 A3 已完成；B2 ThumbnailLoader 服务边界和 B3 Desktop/Web TAGS 最小闭环已落位。B1、B2 真实性能/发布机验收与 B3 最终跨端状态验收仍待独立推进。
 - 本阶段创建的测试临时目录已按精确路径清理，未删除未知用户文件。
 
+## 1.1 后续状态：B1（2026-08-03）
+
+本报告中的 A3/B1 状态描述以 2026-08-02 的复核时点为准，其中“B1 尚未开始/仍待推进”的表述属于历史记录，不再代表当前工作树。B1 已在后续工作中交付：Runtime 拥有 `RuntimeSharingServices`，Auth/Share 共用同一 session connection 与非持久化 `token_secret`，LAN 复用该 bundle，Desktop 通过 `ShareCreationTask` 直接创建分享；HTTP 管理与远端分享链路保持不变。
+
+当前 B1 聚焦矩阵已在仓库外可写 pytest basetemp 下重跑为 `478 passed`；该数字来自当前工作树的可控聚焦运行，不等同于最终完整 Python 或 Chromium 发布门禁。详见 [`b1-runtime-sharing-2026-08-03.md`](b1-runtime-sharing-2026-08-03.md)。
+
 ## 2. 本轮代码变更
 
 ### 2.1 Undo 临时目录残留清理
