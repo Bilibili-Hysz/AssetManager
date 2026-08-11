@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import deque
+import errno
 import json
 import logging
 import os
@@ -67,8 +68,73 @@ class FileOperationResult:
 
 
 def _assert_under_root(path: Path, root: str | Path | None) -> None:
+    """Refuse paths that resolve outside the library root.
+
+    Symlink policy (deliberate, safety-first): ``resolve()`` follows
+    symlinks, so a link stored *inside* the library that points *outside*
+    it resolves to an external target and is rejected here with ValueError.
+    This is by design: moving, deleting, or copying through such a link
+    would silently mutate data outside the library.  Callers that need
+    link traversal must opt in explicitly — this guard never does.
+    """
     if root is not None and not Path(path).resolve().is_relative_to(Path(root)):
         raise ValueError(f'Path {path} is outside library root')
+
+
+_WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{number}" for number in range(1, 10)),
+    *(f"LPT{number}" for number in range(1, 10)),
+}
+
+_MAX_FILENAME_COMPONENT_UNITS = 255
+
+
+def _windows_name_error(name: str) -> str | None:
+    """Return a stable error code for a Windows-invalid name, else None.
+
+    Windows rejects device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9 —
+    even with an extension), components ending in a dot or space, control
+    characters, and components longer than 255 UTF-16 units (the
+    MAX_PATH-family limit at the name level).  The check is Windows-only:
+    every one of these is legal on POSIX filesystems.
+
+    Codes follow the ``_batch_rename`` error-key style so callers can map
+    them to localized messages: ``"invalid_name"`` / ``"reserved_name"``.
+    """
+    if os.name != "nt":
+        return None
+    if not name or name in {".", ".."}:
+        return "invalid_name"
+    if any(ord(character) < 32 for character in name):
+        return "invalid_name"
+    if name.endswith((".", " ")):
+        return "invalid_name"
+    if name.split(".", 1)[0].upper() in _WINDOWS_RESERVED_NAMES:
+        return "reserved_name"
+    if len(name.encode("utf-16-le")) // 2 > _MAX_FILENAME_COMPONENT_UNITS:
+        return "invalid_name"
+    return None
+
+
+def error_category(exc: BaseException) -> str:
+    """Classify a file-operation failure into a stable, structured category.
+
+    Returns a machine-readable key (not localized text) so callers can
+    surface or map it — e.g. ``[not_found] ...`` when collecting errors —
+    instead of relying on raw ``str(exc)`` text.
+    """
+    if isinstance(exc, PermissionError):
+        return "permission_denied"
+    if isinstance(exc, FileNotFoundError):
+        return "not_found"
+    if isinstance(exc, OSError) and (
+        exc.errno == errno.ENOSPC
+        or "no space left on device" in str(exc).lower()
+        or "磁盘空间不足" in str(exc)
+    ):
+        return "disk_full"
+    return "operation_failed"
 
 
 _path_locks_guard = threading.Lock()
@@ -387,6 +453,13 @@ class FileOperationService:
     @_measure_command("create_folder")
     def create_folder(self, parent: str | Path, name: str = "New Folder") -> Path:
         root = self._root_for(None)
+        name_error = _windows_name_error(name)
+        if name_error is not None:
+            # OSError (not ValueError) so desktop callers that catch
+            # OSError can surface the friendly, stable code to the user.
+            raise OSError(
+                f"{name_error}: invalid folder name on Windows: {name!r}"
+            )
         base = Path(parent) / name
         _assert_under_root(base, root)
         for _ in range(100):
@@ -407,6 +480,11 @@ class FileOperationService:
     def rename(self, old_path: str | Path, new_name: str,
                library_root: str | Path | None = None) -> Path:
         old = Path(old_path).resolve()
+        name_error = _windows_name_error(new_name)
+        if name_error is not None:
+            raise OSError(
+                f"{name_error}: invalid file name on Windows: {new_name!r}"
+            )
         dst = (old.parent / new_name).resolve()
         if dst.parent != old.parent:
             raise ValueError("New name must stay in the original directory")
@@ -419,6 +497,14 @@ class FileOperationService:
              library_root: str | Path | None = None) -> Path:
         src = Path(source).resolve()
         dst = Path(destination).resolve()
+        name_error = _windows_name_error(dst.name)
+        if name_error is not None:
+            # Validate before touching the filesystem so a reserved or
+            # malformed destination yields a friendly, stable code instead
+            # of a raw WinError from shutil.move/os.rename.
+            raise OSError(
+                f"{name_error}: invalid file name on Windows: {dst.name!r}"
+            )
         root = self._root_for(library_root)
         _assert_under_root(src, root)
         _assert_under_root(dst, root)
@@ -508,7 +594,7 @@ class FileOperationService:
             except OSError as exc:
                 if target is not None:
                     self._remove_partial_target(target)
-                errors.append(str(exc))
+                errors.append(f"[{error_category(exc)}] {exc}")
         return FileOperationResult(
             tuple(changed), tuple(errors), self._refresh_warnings()
         )
@@ -556,7 +642,7 @@ class FileOperationService:
                 except OSError as exc:
                     if target is not None:
                         self._remove_partial_target(target)
-                    errors.append(str(exc))
+                    errors.append(f"[{error_category(exc)}] {exc}")
         return FileOperationResult(
             tuple(changed), tuple(errors), self._refresh_warnings(),
             tuple(moved_pairs),
@@ -607,7 +693,7 @@ class FileOperationService:
                         else:
                             p.unlink()
                     except OSError as exc:
-                        errors.append(str(exc))
+                        errors.append(f"[{error_category(exc)}] {exc}")
                         continue
                     try:
                         self._clear_deleted_projection(p)
@@ -618,7 +704,7 @@ class FileOperationService:
                     try:
                         self._refresh_parents(p.parent)
                     except Exception as exc:
-                        errors.append(str(exc))
+                        errors.append(f"[{error_category(exc)}] {exc}")
                     changed.append(p)
                     bus.publish(FileDeleted(path=str(p), is_dir=is_dir))
                     self._publish_file_change("deleted", (p,))
@@ -674,7 +760,7 @@ class FileOperationService:
                         is_dir = p.is_dir()
                         send2trash(str(p))
                     except OSError as exc:
-                        errors.append(str(exc))
+                        errors.append(f"[{error_category(exc)}] {exc}")
                         continue
                     try:
                         self._clear_deleted_projection(p)
@@ -685,7 +771,7 @@ class FileOperationService:
                     try:
                         self._refresh_parents(p.parent)
                     except Exception as exc:
-                        errors.append(str(exc))
+                        errors.append(f"[{error_category(exc)}] {exc}")
                     changed.append(p)
                     bus.publish(FileDeleted(path=str(p), is_dir=is_dir))
                     self._publish_file_change("deleted", (p,))

@@ -47,6 +47,10 @@ class UndoService:
     _OWNER_MARKER = ".assetsmanager-owner"
     _STALE_AFTER_SECONDS = 7 * 24 * 60 * 60
     _MAX_STARTUP_CLEANUP = 256
+    # 1 MiB of free space kept after a backup so a copy can never exhaust
+    # the temp volume (which would break unrelated processes on the same
+    # drive).  A file is only backed up when free >= size + this margin.
+    _MIN_FREE_MARGIN = 1024 * 1024
     _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
     _ERROR_ACCESS_DENIED = 5
     _ERROR_INVALID_PARAMETER = 87
@@ -205,6 +209,7 @@ class UndoService:
             deque[UndoEntry](maxlen=max_depth), [],
         )
         self._failed_entries: set[int] = set()
+        self._last_backup_error: str | None = None
         self._performance_recorder = (
             performance_recorder if performance_recorder is not None and performance_recorder.enabled else None
         )
@@ -256,11 +261,32 @@ class UndoService:
         self._push_undo(entry)
 
     @session_operation
-    def record_delete(self, path: str) -> None:
-        """Record a delete operation with backup for undo."""
+    def record_delete(self, path: str) -> bool:
+        """Record a delete operation with backup for undo.
+
+        Returns ``True`` when the backup was created and the delete is
+        undoable.  Returns ``False`` when the backup could not be made
+        (copy failure, insufficient free disk space, ...); the concrete
+        reason is available in :attr:`last_backup_error` so the caller
+        can tell the user the delete cannot be undone instead of
+        silently dropping history.
+        """
         entry = self.prepare_delete(path)
-        if entry is not None:
-            self.commit_delete(entry)
+        if entry is None:
+            return False
+        self.commit_delete(entry)
+        return True
+
+    @property
+    def last_backup_error(self) -> str | None:
+        """Reason the most recent delete backup failed, or ``None``.
+
+        Set by the last :meth:`prepare_delete` / :meth:`record_delete`
+        attempt; cleared by the next successful one.  Only the most
+        recent failure is retained, so a caller that prepared several
+        paths should treat this as "at least one backup failed".
+        """
+        return self._last_backup_error
 
     @session_operation
     def prepare_delete(self, path: str) -> UndoEntry | None:
@@ -591,16 +617,60 @@ class UndoService:
             redo.clear()
 
     def _make_backup(self, path: str) -> str | None:
+        """Copy ``path`` into the undo directory and return the backup path.
+
+        Returns ``None`` when the copy cannot be made; the reason is then
+        recorded in :attr:`last_backup_error` and logged so the delete
+        caller can tell the user the operation cannot be undone.  No
+        hard per-file size cap is applied: the backup directory lives in
+        the system temporary directory and undo must keep working for
+        large assets, so the free-space check below is the guard.
+        """
+        self._last_backup_error = None
         try:
-            uid = os.urandom(8).hex()
-            backup = os.path.join(self._undo_dir, uid)
+            size = self._path_size(path)
+            free = shutil.disk_usage(self._undo_dir).free
+            if free < size + self._MIN_FREE_MARGIN:
+                self._fail_backup(
+                    f"not enough free disk space to back up {path} "
+                    f"(need {size} bytes, only {free} free)"
+                )
+                return None
+            backup = os.path.join(self._undo_dir, os.urandom(8).hex())
             if os.path.isdir(path):
                 shutil.copytree(path, backup)
             else:
                 shutil.copy2(path, backup)
             return backup
-        except OSError:
+        except OSError as exc:
+            self._fail_backup(f"failed to back up {path}: {exc}")
             return None
+
+    @staticmethod
+    def _path_size(path: str) -> int:
+        """Total byte size of a file or directory tree (best effort).
+
+        Returns 0 when the size cannot be determined; the subsequent
+        copy then still surfaces a concrete error through
+        :meth:`_fail_backup`.
+        """
+        if os.path.isdir(path):
+            total = 0
+            for root, _dirs, files in os.walk(path):
+                for name in files:
+                    try:
+                        total += os.path.getsize(os.path.join(root, name))
+                    except OSError:
+                        continue
+            return total
+        try:
+            return os.path.getsize(path)
+        except OSError:
+            return 0
+
+    def _fail_backup(self, message: str) -> None:
+        self._last_backup_error = message
+        _log.warning("Undo backup failed: %s", message)
 
     def _clean_backup(self, backup: str) -> None:
         try:
