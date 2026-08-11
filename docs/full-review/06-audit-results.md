@@ -80,7 +80,7 @@
 | # | 项 | 状态 |
 |---|---|---|
 | 1 | **P2 轮**：M1-M7（桌面 UI/控制器/领域约 121 项低危） | ✅ 已完成（2026-08-11） |
-| 2 | **M4 投递令牌 URL 明文**：delivery_url 含裸令牌（前端依赖 /storefront/delivery/:token）——需前后端配合改短 id/header 传递 | 记录（H2 撤销机制已兜底） |
+| 2 | **M4 投递令牌 URL 明文** | ✅ 已完成（2026-08-12）：分享链接改用一次性 share claim（v25 shop_share_claims 表，URL 零凭证 + 24h TTL + CAS 消费 + rotate 联动撤销 + 路由级限流）；legacy token 路由保留 |
 | 3 | **M6a-8 get_home 性能** | ✅ 已完成（2026-08-12）：/api/home 全表扫描提前退出（目录预览全覆盖时）+ idx_thumb_cache_mtime 索引；/api/gallery/home 30s TTL 缓存 |
 | 4 | **DB 迁移 v24** | ✅ 已完成（2026-08-12）：asset_dir_snapshot 独立表（dir mtime）+ M6a-18 快速路径比较快照（匹配→SKIPPED，失配→重扫回填） |
 | 5 | **心跳续约硬上限** | ✅ 已完成（2026-08-12）：心跳封顶 renew_until+lease_seconds + 10s 周期 sweeper 回收过期任务 |
