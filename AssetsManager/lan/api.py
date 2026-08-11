@@ -20,6 +20,17 @@ from AssetsManager.lan.routes import (
     handle_detail_page,
     handle_login_page,
     handle_browse_page,
+    handle_gallery_page,
+    handle_gallery_collection_page,
+    handle_gallery_favorites_page,
+    handle_storefront_page,
+    handle_seller_page,
+    handle_gallery_collection,
+    handle_gallery_home,
+    handle_gallery_resolve,
+    handle_add_favorite,
+    handle_favorites,
+    handle_remove_favorite,
     handle_files,
     handle_directory_summaries,
     handle_thumbnail,
@@ -34,8 +45,10 @@ from AssetsManager.lan.routes import (
     handle_create_tag,
     handle_rename_tag,
     handle_delete_tag,
+    handle_remove_tag,
     handle_search,
     handle_meta,
+    handle_save_notes,
     handle_info,
     handle_login,
     handle_register,
@@ -60,7 +73,40 @@ from AssetsManager.lan.routes import (
     handle_share_preview,
     handle_share_info,
     handle_websocket,
+    handle_public_shop_item,
+    handle_public_shop_catalog,
+    handle_public_shop_item_by_path,
+    handle_public_shop_item_media,
+    handle_shop_items,
+    handle_shop_order,
+    handle_shop_buyer_orders,
+    handle_shop_buyer_merge,
+    handle_order_receipt_recover,
+    handle_shop_cart,
+    handle_shop_cart_checkout,
+    handle_shop_cart_checkout_group,
+    handle_shop_wishlist,
+    handle_order_confirm,
+    handle_order_fulfill,
+    handle_order_delivery_rotate,
+    handle_order_delivery_revoke,
+    handle_order_revoke,
+    handle_order_stats,
+    handle_order_export,
+    handle_delivery,
+    handle_order_delivery,
+    handle_delivery_download,
+    handle_delivery_quota,
+    handle_free_quota,
+    handle_seller_status,
+    handle_seller_login,
+    handle_seller_logout,
 )
+from AssetsManager.lan.routes.image import handle_image
+from AssetsManager.lan.routes.quicksearch import handle_quicksearch
+from AssetsManager.lan.routes.seller_profile import handle_public_seller_profile, handle_seller_profile
+from AssetsManager.lan.routes.storefront_analytics import handle_storefront_view
+from AssetsManager.lan.routes.commerce_policy import seller_required
 from AssetsManager.lan.routes.system import handle_revision
 
 _log = logging.getLogger(__name__)
@@ -99,6 +145,43 @@ def setup_routes(app: web.Application):
     app.router.add_get("/browse", handle_browse_page)
     app.router.add_get("/detail", handle_detail_page)
     app.router.add_get("/login", handle_login_page)
+    app.router.add_get("/gallery", handle_gallery_page)
+    app.router.add_get("/gallery/collection", handle_gallery_collection_page)
+    app.router.add_get("/gallery/favorites", handle_gallery_favorites_page)
+    app.router.add_get("/storefront", handle_storefront_page)
+    app.router.add_get("/storefront/products", handle_storefront_page)
+    app.router.add_get("/storefront/cart", handle_storefront_page)
+    app.router.add_get("/storefront/orders", handle_storefront_page)
+    app.router.add_get("/storefront/wishlist", handle_storefront_page)
+    app.router.add_get("/storefront/product/{id}", handle_storefront_page)
+    app.router.add_get("/storefront/product/path/{item_path:.*}", handle_storefront_page)
+    app.router.add_get("/storefront/checkout/group", handle_storefront_page)
+    app.router.add_get("/storefront/checkout/{order_id}", handle_storefront_page)
+    app.router.add_get("/storefront/delivery/{token}", handle_storefront_page)
+    app.router.add_get("/seller", handle_seller_page)
+    app.router.add_get("/seller/products", handle_seller_page)
+    app.router.add_get("/seller/products/{id}", handle_seller_page)
+    app.router.add_get("/seller/orders", handle_seller_page)
+    app.router.add_get("/seller/settings", handle_seller_page)
+    # Keep deep links from the reference WebUI serving the SPA as well. The
+    # React router performs the canonical redirect; these server routes only
+    # prevent a direct browser refresh from falling through to a 404.
+    app.router.add_get("/store", handle_storefront_page)
+    app.router.add_get("/store/gallery/{tag}", handle_storefront_page)
+    app.router.add_get("/store/checkout", handle_storefront_page)
+    app.router.add_get("/store/delivery/{token}", handle_storefront_page)
+    app.router.add_get("/store/{item_path:.*}", handle_storefront_page)
+    app.router.add_get("/app", handle_seller_page)
+    app.router.add_get("/app/items", handle_seller_page)
+    app.router.add_get("/app/orders", handle_seller_page)
+    app.router.add_get("/api/gallery/home", handle_gallery_home)
+    app.router.add_get("/api/gallery/collection", handle_gallery_collection)
+    app.router.add_get("/api/gallery/resolve", handle_gallery_resolve)
+    app.router.add_get("/api/image", handle_image)
+    app.router.add_get("/api/favorites", handle_favorites)
+    app.router.add_post("/api/favorites", handle_add_favorite)
+    app.router.add_post("/api/favorites/remove", handle_remove_favorite)
+    app.router.add_delete("/api/favorites", handle_remove_favorite)
     app.router.add_get("/api/files", handle_files)
     app.router.add_post("/api/files/summaries", handle_directory_summaries)
     app.router.add_get("/api/thumbnails/{path:.*}", handle_thumbnail)
@@ -113,8 +196,11 @@ def setup_routes(app: web.Application):
     app.router.add_post("/api/tags", handle_create_tag)
     app.router.add_put("/api/tags/{name}", handle_rename_tag)
     app.router.add_delete("/api/tags/{name}", handle_delete_tag)
+    app.router.add_post("/api/tags/remove", handle_remove_tag)
     app.router.add_get("/api/search", handle_search)
+    app.router.add_get("/api/quicksearch", handle_quicksearch)
     app.router.add_get("/api/meta/{path:.*}", handle_meta)
+    app.router.add_put("/api/notes/{path:.*}", handle_save_notes)
     app.router.add_get("/api/info", handle_info)
     app.router.add_get("/api/revision", handle_revision)
     app.router.add_post("/api/auth/login", handle_login)
@@ -139,6 +225,69 @@ def setup_routes(app: web.Application):
     app.router.add_get("/api/shares/{id}/download/{path:.*}", handle_share_download)
     app.router.add_get("/api/shares/{id}/preview/{path:.*}", handle_share_preview)
     app.router.add_get("/api/shares/{id}/info", handle_share_info)
+    # Commerce contract endpoints (keep legacy singular aliases below).
+    app.router.add_get("/api/shop/cart", handle_shop_cart)
+    app.router.add_post("/api/shop/cart/items", handle_shop_cart)
+    app.router.add_patch("/api/shop/cart/items/{line_id}", handle_shop_cart)
+    app.router.add_delete("/api/shop/cart/items/{line_id}", handle_shop_cart)
+    app.router.add_delete("/api/shop/cart/items", handle_shop_cart)
+    app.router.add_post("/api/shop/cart/checkout", handle_shop_cart_checkout)
+    app.router.add_get(
+        "/api/shop/cart/checkout/{checkout_group_id}",
+        handle_shop_cart_checkout_group,
+    )
+    app.router.add_get("/api/shop/wishlist", handle_shop_wishlist)
+    app.router.add_put("/api/shop/wishlist/items/{item_id}", handle_shop_wishlist)
+    app.router.add_delete("/api/shop/wishlist/items/{item_id}", handle_shop_wishlist)
+    app.router.add_delete("/api/shop/wishlist", handle_shop_wishlist)
+    app.router.add_get("/api/shop/catalog", handle_public_shop_catalog)
+    app.router.add_get("/api/shop/items", handle_shop_items)
+    app.router.add_get("/api/shop/items/by-path", handle_public_shop_item_by_path)
+    app.router.add_get("/api/shop/items/{item_id}/media/{slot}", handle_public_shop_item_media)
+    app.router.add_get("/api/shop/items/{item_id}", handle_public_shop_item)
+    app.router.add_get("/api/shop/profile", handle_public_seller_profile)
+    app.router.add_get("/api/shop/seller-profile", handle_seller_profile)
+    app.router.add_put("/api/shop/seller-profile", handle_seller_profile)
+    app.router.add_post("/api/shop/analytics/store-view", handle_storefront_view)
+    app.router.add_post("/api/shop/items", handle_shop_items)
+    app.router.add_put("/api/shop/items", handle_shop_items)
+    app.router.add_delete("/api/shop/items", handle_shop_items)
+    app.router.add_get("/api/shop/orders/order", handle_shop_order)
+    app.router.add_post("/api/shop/orders/order", handle_shop_order)
+    app.router.add_post("/api/shop/orders/order/{order_id}/confirm", handle_order_confirm)
+    app.router.add_post("/api/shop/orders/order/{order_id}/fulfill", handle_order_fulfill)
+    app.router.add_post("/api/shop/orders/order/{order_id}/revoke", handle_order_revoke)
+    app.router.add_post(
+        "/api/shop/orders/order/{order_id}/delivery/revoke",
+        handle_order_delivery_revoke,
+    )
+    app.router.add_get("/api/shop/orders/stats", handle_order_stats)
+    app.router.add_get("/api/shop/quota", seller_required(handle_delivery_quota))
+    app.router.add_get("/api/shop/auth/seller-status", handle_seller_status)
+    app.router.add_post("/api/shop/auth/login", handle_seller_login)
+    app.router.add_post("/api/shop/auth/logout", handle_seller_logout)
+    app.router.add_put("/api/shop/items/{item_id}", handle_shop_items)
+    app.router.add_delete("/api/shop/items/{item_id}", handle_shop_items)
+    app.router.add_post("/api/shop/order", handle_shop_order)
+    app.router.add_get("/api/shop/order/{order_id}/delivery", handle_order_delivery, allow_head=False)
+    app.router.add_get("/api/shop/order/{order_id}", handle_shop_order)
+    app.router.add_get("/api/shop/orders", handle_shop_order)
+    app.router.add_get("/api/shop/buyer/orders", handle_shop_buyer_orders)
+    app.router.add_post("/api/shop/buyer/merge", handle_shop_buyer_merge)
+    app.router.add_post("/api/shop/order/{order_id}/receipt/recover", handle_order_receipt_recover)
+    app.router.add_post("/api/shop/order/{order_id}/confirm", handle_order_confirm)
+    app.router.add_post("/api/shop/order/{order_id}/fulfill", handle_order_fulfill)
+    app.router.add_post("/api/shop/order/{order_id}/delivery/rotate", handle_order_delivery_rotate)
+    app.router.add_post("/api/shop/order/{order_id}/delivery/revoke", handle_order_delivery_revoke)
+    app.router.add_post("/api/shop/order/{order_id}/revoke", handle_order_revoke)
+    app.router.add_get("/api/shop/stats", handle_order_stats)
+    app.router.add_get("/api/shop/orders/export", handle_order_export)
+    app.router.add_get("/api/shop/delivery/{token}", handle_delivery)
+    app.router.add_get("/api/shop/delivery/{token}/download", handle_delivery_download, allow_head=False)
+    app.router.add_get("/api/auth/seller-status", handle_seller_status)
+    app.router.add_post("/api/auth/seller-login", handle_seller_login)
+    app.router.add_post("/api/auth/seller-logout", handle_seller_logout)
+    app.router.add_get("/api/quota", handle_free_quota)
     app.router.add_get("/ws", handle_websocket)
 
     async def runtime_startup(started_app):

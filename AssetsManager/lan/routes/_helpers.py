@@ -155,6 +155,8 @@ __all__ = [
     "get_auth_service",
     "get_auth_token",
     "get_lan",
+    "get_gallery_service",
+    "get_favorite_service",
     "get_metadata_service",
     "get_project_service",
     "get_search_service",
@@ -194,6 +196,8 @@ class LanScopedServices:
     thumbnail_service: Any
     asset_service: Any
     share_service: Any
+    gallery_service: Any = None
+    favorite_service: Any = None
     activity_log: Any = field(default_factory=ActivityLog)
     online_users: Any = field(default_factory=OnlineUsers)
     runtime_services: Any = None
@@ -267,6 +271,14 @@ def get_auth_service(request):
     return get_services(request).auth_service
 
 
+def get_gallery_service(request):
+    return get_services(request).gallery_service
+
+
+def get_favorite_service(request):
+    return get_services(request).favorite_service
+
+
 def get_metadata_service(request):
     return get_services(request).metadata_service
 
@@ -311,17 +323,26 @@ def validated_existing_key(lan, rel_path: str) -> str:
         raise web.HTTPNotFound(reason="File not found")
 
 
-def set_auth_cookie(response: web.Response, token: str):
+def set_auth_cookie(response: web.Response, token: str, *, secure: bool = False):
+    """Set the LAN auth cookie.
+
+    ``secure`` must stay False on plain HTTP, otherwise browsers discard the
+    cookie and login breaks; callers pass ``secure=lan.ssl_active`` so the
+    flag is only set when the server is actually served over TLS.
+    """
     response.set_cookie(
         "lan_token", token, httponly=True, samesite="Lax", path="/", max_age=86400,
+        secure=secure,
     )
 
 
-def set_share_cookie(response: web.Response, share_id: str, token: str) -> None:
+def set_share_cookie(response: web.Response, share_id: str, token: str, *,
+                     secure: bool = False) -> None:
     """Set a short-lived token that is sent only to one share's API routes."""
     response.set_cookie(
         "share_token", token, httponly=True, samesite="Lax",
         path=f"/api/shares/{share_id}", max_age=3600,
+        secure=secure,
     )
 
 
@@ -333,33 +354,20 @@ def get_share_token(request) -> str:
     return request.cookies.get("share_token", "")
 
 
-def get_auth_token(request, *, allow_query: bool = True) -> str:
+def get_auth_token(request) -> str:
+    """Return a LAN credential from the Authorization header or cookie.
+
+    Query-parameter auth (?token= / ?key=) is intentionally not supported:
+    credentials in the query string leak into server logs, browser history,
+    and HTTP referer headers.  Use the Authorization: Bearer header or the
+    lan_token cookie instead.
+    """
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         return auth_header[7:]
     token = request.cookies.get("lan_token")
     if token:
         return token
-    # ── DEPRECATED: Query-parameter auth (?token=, ?key=) ──
-    # These leak credentials into server logs, browser history, and HTTP
-    # referer headers.  Prefer the Authorization: Bearer header or the
-    # lan_token cookie.
-    token = request.query.get("token", "")
-    if token:
-        _log.warning(
-            "DEPRECATED: Query-parameter auth via ?token= is deprecated "
-            "and will be removed in a future release. "
-            "Use Authorization: Bearer header instead."
-        )
-        return token if allow_query else ""
-    token = request.query.get("key", "")
-    if token:
-        _log.warning(
-            "DEPRECATED: Query-parameter auth via ?key= is deprecated "
-            "and will be removed in a future release. "
-            "Use Authorization: Bearer header instead."
-        )
-        return token if allow_query else ""
     return ""
 
 
@@ -379,6 +387,15 @@ def find_first_image(dir_path: Path) -> str | None:
         return None
 
 
+def _zip_entry_allowed(root: Path, entry: str) -> bool:
+    if os.path.islink(entry):
+        return False
+    try:
+        return Path(entry).resolve().is_relative_to(root)
+    except (ValueError, OSError):
+        return False
+
+
 def build_zip_sync(target_paths: list[tuple[Path, str | None]], zip_path: str) -> str | None:
     try:
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
@@ -388,6 +405,7 @@ def build_zip_sync(target_paths: list[tuple[Path, str | None]], zip_path: str) -
                 if target.is_file():
                     zf.write(str(target), arc_name)
                 elif target.is_dir():
+                    root = target.resolve()
                     for dirpath, dirnames, filenames in os.walk(target):
                         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
                         for fname in filenames:
@@ -396,6 +414,11 @@ def build_zip_sync(target_paths: list[tuple[Path, str | None]], zip_path: str) -
                             fp = os.path.join(dirpath, fname)
                             arc = os.path.join(arc_name, os.path.relpath(fp, target))
                             try:
+                                if not _zip_entry_allowed(root, fp):
+                                    _log.warning(
+                                        "Skipping ZIP entry outside archive root: %s", fp
+                                    )
+                                    continue
                                 zf.write(fp, arc)
                             except OSError:
                                 _log.warning("Failed to add file to ZIP: %s", fp)

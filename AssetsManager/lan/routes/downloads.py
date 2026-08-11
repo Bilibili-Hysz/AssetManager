@@ -1,5 +1,6 @@
 """Download routes: /api/download/{path}, /api/download/batch."""
 import asyncio
+import json
 import os
 from pathlib import Path
 from time import perf_counter
@@ -8,9 +9,38 @@ from urllib.parse import quote, unquote
 from aiohttp import web
 
 from AssetsManager.lan.routes._helpers import build_zip_async, get_lan, require_permission, sanitize_filename, validate_path
+from AssetsManager.lan.routes.quota import (
+    apply_free_quota_headers,
+    apply_free_quota_identity_cookie,
+    consume_free_download_quota,
+    quota_retry_after_seconds,
+)
 
 MAX_BATCH_DOWNLOAD_PATHS = 100
 MAX_BATCH_DOWNLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
+
+
+def _quota_denied_response(
+    quota_result: dict, quota_headers: dict[str, str]
+) -> web.HTTPTooManyRequests:
+    """Build the 429 response for a denied download; the caller owns cleanup."""
+    retry_after = quota_retry_after_seconds(quota_result["info"], quota_result)
+    if retry_after > 0:
+        quota_headers["Retry-After"] = str(retry_after)
+    return web.HTTPTooManyRequests(
+        text=json.dumps(
+            {
+                "error": (
+                    "Free download quota exhausted"
+                    if quota_result["reason"] == "exhausted"
+                    else "Please wait before downloading again"
+                ),
+                "quota": quota_result["info"],
+            }
+        ),
+        content_type="application/json",
+        headers=quota_headers,
+    )
 
 
 def _content_disposition_filename(name: str) -> str:
@@ -22,10 +52,19 @@ def _content_disposition_filename(name: str) -> str:
     return header
 
 
-def _file_response_with_cleanup(path: str, *, filename: str, write_eof=None) -> web.FileResponse:
+def _file_response_with_cleanup(
+    path: str,
+    *,
+    filename: str,
+    write_eof=None,
+    extra_headers: dict[str, str] | None = None,
+) -> web.FileResponse:
+    headers = {"Content-Disposition": _content_disposition_filename(filename)}
+    if extra_headers:
+        headers.update(extra_headers)
     response = web.FileResponse(
         path,
-        headers={"Content-Disposition": _content_disposition_filename(filename)},
+        headers=headers,
     )
     original_write_eof = write_eof or response.write_eof
 
@@ -86,14 +125,35 @@ async def handle_download(request):
         target = validate_path(lan, rel_path)
 
         if target.is_file():
+            try:
+                response = web.FileResponse(
+                    target,
+                    headers={
+                        "Content-Disposition": _content_disposition_filename(target.name),
+                    },
+                )
+            except Exception:
+                # Existence is guaranteed by validate_path; a construction
+                # failure means the file disappeared or is unreadable.
+                status = 404
+                return web.json_response({"error": "File not found"}, status=status)
+
+            quota_result = consume_free_download_quota(request)
+            quota_headers: dict[str, str] = {}
+            apply_free_quota_headers(quota_headers, quota_result["info"])
+            if not quota_result["allowed"]:
+                # The FileResponse is constructed but never sent, so nothing
+                # needs closing before rejecting the download.
+                status = 429
+                exc = _quota_denied_response(quota_result, quota_headers)
+                apply_free_quota_identity_cookie(exc, request)
+                raise exc
+            apply_free_quota_identity_cookie(response, request)
             status = 200
             outcome = "response_ready"
             kind = "file"
             response_path = target
-            return web.FileResponse(
-                target,
-                headers={"Content-Disposition": _content_disposition_filename(target.name)},
-            )
+            return response
 
         if target.is_dir():
             try:
@@ -118,12 +178,27 @@ async def handle_download(request):
                 except OSError:
                     pass
                 return web.json_response({"error": "Failed to create ZIP"}, status=status)
+
+            quota_result = consume_free_download_quota(request)
+            quota_headers = {}
+            apply_free_quota_headers(quota_headers, quota_result["info"])
+            if not quota_result["allowed"]:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                status = 429
+                exc = _quota_denied_response(quota_result, quota_headers)
+                apply_free_quota_identity_cookie(exc, request)
+                raise exc
             status = 200
             outcome = "response_ready"
             kind = "directory_zip"
             response_path = target
             zip_name = f"{target.name}.zip"
-            return _file_response_with_cleanup(tmp_path, filename=zip_name)
+            response = _file_response_with_cleanup(tmp_path, filename=zip_name, extra_headers=quota_headers)
+            apply_free_quota_identity_cookie(response, request)
+            return response
 
         status = 404
         return web.json_response({"error": "File not found"}, status=status)
@@ -203,13 +278,28 @@ async def handle_batch_download(request):
                 pass
             return web.json_response({"error": "Failed to create ZIP"}, status=status)
 
+        quota_result = consume_free_download_quota(request)
+        quota_headers: dict[str, str] = {}
+        apply_free_quota_headers(quota_headers, quota_result["info"])
+        if not quota_result["allowed"]:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            status = 429
+            exc = _quota_denied_response(quota_result, quota_headers)
+            apply_free_quota_identity_cookie(exc, request)
+            raise exc
+
         if len(targets) == 1:
             zip_name = f"{targets[0][1].name}.zip"
         else:
             zip_name = f"download_{len(targets)}_items.zip"
         status = 200
         outcome = "response_ready"
-        return _file_response_with_cleanup(tmp_path, filename=zip_name)
+        response = _file_response_with_cleanup(tmp_path, filename=zip_name, extra_headers=quota_headers)
+        apply_free_quota_identity_cookie(response, request)
+        return response
     except web.HTTPException as exc:
         status = exc.status
         raise

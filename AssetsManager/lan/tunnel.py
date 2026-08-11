@@ -15,26 +15,59 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
+import time
 import urllib.request
 
 _log = logging.getLogger(__name__)
 
 _CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+_DOWNLOAD_TIMEOUT = 60.0
+_download_lock = threading.Lock()
 
 
 def _download_cloudflared(dest_dir: str) -> str | None:
     """Download cloudflared binary to dest_dir. Returns path or None on failure."""
     exe_name = "cloudflared-windows-amd64.exe" if sys.platform == "win32" else "cloudflared"
     dest = os.path.join(dest_dir, exe_name)
+    fd, temporary = tempfile.mkstemp(dir=dest_dir, prefix=f".{exe_name}_", suffix=".tmp")
+    os.close(fd)
     try:
         _log.info("Downloading cloudflared to %s ...", dest)
-        urllib.request.urlretrieve(_CLOUDFLARED_URL, dest)
+        with urllib.request.urlopen(_CLOUDFLARED_URL, timeout=_DOWNLOAD_TIMEOUT) as response:
+            with open(temporary, "wb") as stream:
+                shutil.copyfileobj(response, stream)
+        if not _validate_cloudflared_binary(temporary):
+            _log.warning("Downloaded cloudflared failed validation; discarding %s", temporary)
+            return None
+        os.replace(temporary, dest)
         _log.info("cloudflared downloaded successfully")
         return dest
     except Exception as e:
         _log.warning("Failed to download cloudflared: %s", e)
         return None
+    finally:
+        if os.path.exists(temporary):
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
+
+
+def _validate_cloudflared_binary(path: str) -> bool:
+    """Smoke-test a downloaded binary: non-empty and executable via --version."""
+    try:
+        if not os.path.isfile(path) or os.path.getsize(path) == 0:
+            return False
+        result = subprocess.run(
+            [path, "--version"],
+            capture_output=True,
+            timeout=_DOWNLOAD_TIMEOUT,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
 
 
 def _find_cloudflared() -> str | None:
@@ -85,25 +118,46 @@ def ensure_available() -> str | None:
     found = _find_cloudflared()
     if found:
         return found
-    try:
-        from AssetsManager.core.path_resolver import shared_dir
-        return _download_cloudflared(str(shared_dir()))
-    except Exception:
-        return None
+    with _download_lock:
+        found = _find_cloudflared()
+        if found:
+            return found
+        try:
+            from AssetsManager.core.path_resolver import shared_dir
+            return _download_cloudflared(str(shared_dir()))
+        except Exception:
+            return None
 
 
 class TunnelManager:
     """Manages a Cloudflare Tunnel subprocess."""
 
-    def __init__(self, local_port: int = 8080):
+    def __init__(self, local_port: int = 8080, on_exit=None):
         self._port = local_port
         self._process: subprocess.Popen | None = None
         self._public_url: str | None = None
         self._ready = threading.Event()
+        self._state_lock = threading.Lock()
+        self._start_lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._on_exit = on_exit
 
     def start(self, timeout: int = 30) -> str | None:
         """Start tunnel. Returns public URL or None on failure."""
-        if self.is_running:
+        with self._start_lock:
+            return self._start_locked(timeout)
+
+    def _start_locked(self, timeout: int = 30) -> str | None:
+        with self._state_lock:
+            process = self._process
+        if process is not None and process.poll() is None:
+            if not self._ready.is_set():
+                if not self._ready.wait(timeout=timeout):
+                    _log.warning(
+                        "Cloudflare tunnel already running but not ready after %ds; stopping", timeout
+                    )
+                    self.stop()
+                    return None
             return self._public_url
 
         cf = _find_cloudflared()
@@ -112,13 +166,21 @@ class TunnelManager:
             return None
 
         try:
-            self._process = subprocess.Popen(
-                [cf, "tunnel", "--url", f"http://127.0.0.1:{self._port}"],
-                stderr=subprocess.PIPE,
-                stdout=subprocess.DEVNULL,
-                text=True,
-                bufsize=1,
-            )
+            with self._state_lock:
+                self._process = subprocess.Popen(
+                    [cf, "tunnel", "--url", f"http://127.0.0.1:{self._port}"],
+                    stderr=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
+                    text=True,
+                    bufsize=1,
+                )
+                process = self._process
+                self._public_url = None
+                self._ready.clear()
+                self._stop_event.clear()
+                threading.Thread(
+                    target=self._monitor_process, args=(process,), daemon=True,
+                ).start()
         except FileNotFoundError:
             _log.error("cloudflared not found in PATH")
             return None
@@ -127,8 +189,7 @@ class TunnelManager:
             return None
 
         # Parse stderr in a thread to find the public URL
-        def _reader():
-            process = self._process
+        def _reader(process):
             if process is None or process.stderr is None:
                 return
             try:
@@ -136,13 +197,16 @@ class TunnelManager:
                     line = line.strip()
                     match = re.search(r"(https://[a-z0-9-]+\.trycloudflare\.com)", line)
                     if match:
-                        self._public_url = match.group(1)
+                        with self._state_lock:
+                            if self._process is not process:
+                                return
+                            self._public_url = match.group(1)
                         self._ready.set()
                         _log.info("Cloudflare tunnel ready: %s", self._public_url)
             except Exception:
                 pass
 
-        t = threading.Thread(target=_reader, daemon=True)
+        t = threading.Thread(target=_reader, args=(process,), daemon=True)
         t.start()
 
         # Wait for URL with timeout
@@ -153,20 +217,64 @@ class TunnelManager:
         self.stop()
         return None
 
-    def stop(self):
-        """Stop the tunnel subprocess."""
-        if self._process:
-            try:
-                self._process.terminate()
-                self._process.wait(timeout=5)
-            except Exception:
-                try:
-                    self._process.kill()
-                except Exception:
-                    pass
+    def _monitor_process(self, process):
+        while True:
+            with self._state_lock:
+                if self._process is not process:
+                    return
+            if process.poll() is not None:
+                break
+            time.sleep(1.0)
+        with self._state_lock:
+            if self._process is not process:
+                return
             self._process = None
-        self._public_url = None
-        self._ready.clear()
+            self._public_url = None
+            self._ready.clear()
+        if self._stop_event.is_set():
+            return
+        _log.warning("cloudflared exited unexpectedly (code=%s)", process.returncode)
+        if self._on_exit is not None:
+            try:
+                self._on_exit(process.returncode)
+            except Exception:
+                _log.exception("cloudflared exit callback failed")
+
+    def stop(self):
+        """Stop the tunnel subprocess, retaining its handle on failure."""
+        with self._state_lock:
+            process = self._process
+            if process is None:
+                self._public_url = None
+                self._ready.clear()
+                return
+
+        self._stop_event.set()
+        try:
+            process.terminate()
+            process.wait(timeout=5)
+        except Exception as terminate_error:
+            try:
+                process.kill()
+                process.wait(timeout=5)
+            except Exception as kill_error:
+                raise RuntimeError("Failed to stop cloudflared tunnel") from kill_error
+            _log.warning(
+                "cloudflared required forced termination after graceful stop failed: %s",
+                terminate_error,
+            )
+
+        if process.poll() is None:
+            raise RuntimeError("cloudflared tunnel remained alive after stop")
+
+        with self._state_lock:
+            # Only clear state when this stop call is the current owner; a
+            # concurrently started tunnel must not be torn down by the stale
+            # handle of a previous stop.
+            if self._process is process:
+                self._process = None
+                self._public_url = None
+                self._ready.clear()
 
     @property
     def public_url(self) -> str | None:

@@ -6,7 +6,11 @@ from urllib.parse import unquote
 
 from aiohttp import web
 
+from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.lan.routes._helpers import get_lan, require_permission, validate_path, get_thumbnail_service
+
+_SAFE_IMAGE_EXTS = IMAGE_EXTS - {".svg"}
+_NOSNIFF_HEADERS = {"X-Content-Type-Options": "nosniff"}
 
 
 async def handle_thumbnail(request):
@@ -44,11 +48,15 @@ async def handle_thumbnail(request):
             return web.Response(status=status)
         source_path = result.source_path
 
+        if source_path.suffix.lower() not in _SAFE_IMAGE_EXTS:
+            status = 404
+            return web.Response(status=status)
+
         if not result.should_blur and max_size >= 256 and not result.cache_hit:
             outcome = "success"
             status = 200
             delivery = "original"
-            return web.FileResponse(source_path)
+            return web.FileResponse(source_path, headers=_NOSNIFF_HEADERS)
 
         def _process():
             return svc.process_image(source_path, max_size, result.should_blur)
@@ -57,14 +65,25 @@ async def handle_thumbnail(request):
         outcome = "success"
         status = 200
         if processed is None:
+            if result.should_blur:
+                outcome = "error"
+                status = 500
+                return web.json_response(
+                    {"error": "Failed to process image"},
+                    status=status,
+                    headers=_NOSNIFF_HEADERS,
+                )
             delivery = "original"
-            return web.FileResponse(source_path)
+            return web.FileResponse(source_path, headers=_NOSNIFF_HEADERS)
 
         body, content_type = processed
         delivery = "processed"
         return web.Response(
             body=body, content_type=content_type,
-            headers={"Cache-Control": "public, max-age=3600"},
+            headers={
+                "Cache-Control": "public, max-age=3600",
+                "X-Content-Type-Options": "nosniff",
+            },
         )
     except web.HTTPException as exc:
         status = exc.status

@@ -2,7 +2,7 @@
 from aiohttp import web
 
 from AssetsManager.lan.dto import UserResponse
-from AssetsManager.lan.routes._helpers import get_auth_service, get_lan, get_request_principal, set_auth_cookie
+from AssetsManager.lan.routes._helpers import get_auth_service, get_auth_token, get_lan, get_request_principal, set_auth_cookie
 from AssetsManager.lan.utils import generate_auth_token
 
 
@@ -29,7 +29,7 @@ async def handle_login(request):
         if user:
             token = auth_service.generate_user_token(user["id"], user["username"], user["role"])
             response = web.json_response({"user": UserResponse.from_record(user).to_dict()})
-            set_auth_cookie(response, token)
+            set_auth_cookie(response, token, secure=lan.ssl_active)
             _record_activity(request, "login", "signed in", user["username"])
             return response
         return web.json_response({"error": err}, status=401)
@@ -38,12 +38,12 @@ async def handle_login(request):
         if auth_service.verify_password(password, lan.password_hash):
             token = auth_service.generate_token(lan.password_hash)
             response = web.json_response({"ok": True})
-            set_auth_cookie(response, token)
+            set_auth_cookie(response, token, secure=lan.ssl_active)
             _record_activity(request, "login", "signed in")
             return response
         return web.json_response({"error": "Invalid password"}, status=401)
 
-    return web.json_response({"ok": True})
+    return web.json_response({"error": "Credentials required"}, status=400)
 
 
 async def handle_register(request):
@@ -67,7 +67,7 @@ async def handle_register(request):
         token = auth_service.generate_user_token(user["id"], user["username"], user["role"])
         lan.invalidate_user_cache()
         response = web.json_response({"user": UserResponse.from_record(user).to_dict()})
-        set_auth_cookie(response, token)
+        set_auth_cookie(response, token, secure=lan.ssl_active)
         return response
     return web.json_response({"error": err}, status=400)
 
@@ -89,7 +89,7 @@ async def handle_verify_key(request):
     if auth_service.verify_key(key, lan.access_key_hash):
         token = generate_auth_token(lan.local_ui_auth_secret)
         response = web.json_response({"ok": True})
-        set_auth_cookie(response, token)
+        set_auth_cookie(response, token, secure=lan.ssl_active)
         _record_activity(request, "login", "verified access key")
         return response
     return web.json_response({"error": "Invalid key"}, status=401)
@@ -98,6 +98,9 @@ async def handle_verify_key(request):
 async def handle_logout(request):
     response = web.json_response({"ok": True})
     response.del_cookie("lan_token", path="/")
+    token = get_auth_token(request)
+    if token:
+        get_lan(request).revoke_auth_token(token)
     return response
 
 

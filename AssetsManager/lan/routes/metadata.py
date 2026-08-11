@@ -1,5 +1,7 @@
 """Metadata routes: /api/meta/{path}, /api/search, /api/home, /api/tree, /api/projects, /api/projects/{path}."""
 import asyncio
+import logging
+import sqlite3
 from time import perf_counter
 from urllib.parse import unquote
 from urllib.parse import urlparse
@@ -7,15 +9,22 @@ from urllib.parse import urlparse
 from aiohttp import web
 
 from AssetsManager.application import ProjectDepthConfig
+from AssetsManager.application.search_service import SearchError, SearchResultSet, SearchStatus
 from AssetsManager.lan.dto import TreeItemResponse
 from AssetsManager.lan.routes._helpers import (
     get_lan, validate_path, get_metadata_service, get_project_service,
-    get_search_service, require_permission,
+    get_search_service, require_admin, require_permission, validated_existing_key,
 )
 from AssetsManager.lan.routes._resource_urls import (
     project_detail_response, project_home_response, project_listing_response,
     search_result_response,
 )
+
+
+_log = logging.getLogger(__name__)
+
+
+MAX_NOTES_LENGTH = 4000
 
 
 async def handle_meta(request):
@@ -45,12 +54,56 @@ async def handle_meta(request):
     })
 
 
+async def handle_save_notes(request):
+    """Persist notes for an existing library path (admin/local UI only)."""
+    if not require_admin(request):
+        return web.json_response({"error": "Admin access required"}, status=403)
+
+    lan = get_lan(request)
+    rel_path = unquote(request.match_info.get("path", ""))
+    if not rel_path:
+        return web.json_response({"error": "path required"}, status=400)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid request"}, status=400)
+    if not isinstance(body, dict):
+        return web.json_response({"error": "Invalid request"}, status=400)
+
+    notes = body.get("notes")
+    if not isinstance(notes, str):
+        return web.json_response({"error": "notes must be a string"}, status=400)
+    if len(notes) > MAX_NOTES_LENGTH:
+        return web.json_response(
+            {"error": f"notes must be at most {MAX_NOTES_LENGTH} characters"},
+            status=400,
+        )
+
+    try:
+        key = validated_existing_key(lan, rel_path)
+        await asyncio.to_thread(
+            get_metadata_service(request).set_notes,
+            lan.library_root,
+            key,
+            notes,
+        )
+    except web.HTTPException:
+        raise
+    except Exception:
+        _log.exception("Failed to save LAN notes")
+        return web.json_response({"error": "Failed to save notes"}, status=500)
+
+    return web.json_response({"ok": True, "path": rel_path, "notes": notes})
+
+
 async def handle_search(request):
     lan = get_lan(request)
     started = perf_counter()
     outcome = "error"
     status = 500
     result_count = -1
+    search_status: str | None = None
     try:
         if not require_permission(request, "browse"):
             status = 403
@@ -58,46 +111,95 @@ async def handle_search(request):
         query = request.query.get("q", "").lower()
         tags_param = request.query.get("tags", "")
         category = request.query.get("category", "all")
+        include_status = request.query.get("include_status", "").lower() in {"1", "true", "yes"}
 
         tag_filter = [t.strip() for t in tags_param.split(",") if t.strip()] if tags_param else []
 
         svc = get_search_service(request)
 
-        def _search():
+        def _search() -> SearchResultSet:
             if tag_filter:
-                return svc.search_by_tags(
+                return svc.search_by_tags_detailed(
                     lan.library_root, tag_filter, query=query, category=category,
                 )
             if query:
-                results = svc.search_by_name(query, category=category, scanner=lan.scanner)
-                if not results:
-                    results = svc.search_by_name_indexed(
+                primary = svc.search_by_name_detailed(
+                    query, category=category, scanner=lan.scanner,
+                )
+                if primary.results:
+                    return primary
+                try:
+                    fallback = svc.search_by_name_indexed_detailed(
                         lan.library_root, query, category=category,
                     )
-                return results
-            return []
+                except sqlite3.OperationalError:
+                    # The indexed source is optional for legacy LAN fixtures and
+                    # older libraries. Preserve the default response shape while
+                    # retaining the failure in the opt-in detailed contract.
+                    fallback = SearchResultSet.from_source(
+                        "indexed",
+                        status=SearchStatus.ERROR,
+                        errors=(SearchError("search_source_failed", "indexed", recoverable=True),),
+                    )
+                return SearchResultSet.merge(primary, fallback, fallback_used=True)
+            return SearchResultSet.from_source("request", status=SearchStatus.EMPTY)
 
-        search_results = await asyncio.to_thread(_search)
+        result_set = await asyncio.to_thread(_search)
 
-        results = [search_result_response(result) for result in search_results]
+        results = [search_result_response(result) for result in result_set.results]
         outcome = "success"
         status = 200
         result_count = len(results)
-        return web.json_response({"results": results, "count": result_count})
+        search_status = result_set.status.value
+        response = {"results": results, "count": result_count}
+        if include_status:
+            response["status"] = result_set.status.value
+            response["sources"] = [
+                {
+                    "source": source.source,
+                    "status": source.status.value,
+                    "result_count": source.result_count,
+                    "dropped_count": source.dropped_count,
+                    "error_count": source.error_count,
+                }
+                for source in result_set.sources
+            ]
+            response["errors"] = [
+                {
+                    "code": error.code,
+                    "source": error.source,
+                    "recoverable": error.recoverable,
+                }
+                for error in result_set.errors
+            ]
+            response["dropped_count"] = result_set.dropped_count
+            response["fallback_used"] = result_set.fallback_used
+        return web.json_response(response)
     finally:
-        _record_search_route(lan, started, outcome, status, result_count)
+        _record_search_route(lan, started, outcome, status, result_count, search_status=search_status)
 
 
-def _record_search_route(lan, started: float, outcome: str, status: int, result_count: int) -> None:
+def _record_search_route(
+    lan,
+    started: float,
+    outcome: str,
+    status: int,
+    result_count: int,
+    *,
+    search_status: str | None = None,
+) -> None:
     recorder = getattr(lan, "performance_recorder", None)
     if recorder is None or not recorder.enabled:
         return
     try:
+        attributes = {"outcome": outcome, "status": status, "result_count": result_count}
+        if search_status is not None:
+            attributes["search_status"] = search_status
         recorder.record(
             "lan.search",
             (perf_counter() - started) * 1000,
             session_token=getattr(lan, "session_token", None),
-            attributes={"outcome": outcome, "status": status, "result_count": result_count},
+            attributes=attributes,
         )
     except Exception:
         # Observability must not change a route response or search fallback.

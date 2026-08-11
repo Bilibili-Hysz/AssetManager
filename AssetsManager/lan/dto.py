@@ -1,6 +1,82 @@
 """Stable, public response DTOs for the LAN API."""
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Iterable, Mapping, TypedDict, cast
+
+
+class UserRecord(TypedDict, total=False):
+    """Persisted user fields consumed by the public user DTO."""
+
+    id: int | str
+    username: str
+    role: str
+    is_active: bool
+    created_at: int | float
+
+
+class InviteRecord(TypedDict, total=False):
+    """Persisted invite fields consumed by the public invite DTO."""
+
+    code: str
+    created_at: int | float
+    used_by: str | None
+    is_active: bool
+
+
+def _as_int(value: object) -> int:
+    if value is None or isinstance(value, bool):
+        raise ValueError(f"expected an integer, got {value!r}")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        try:
+            return int(round(value))
+        except (ValueError, OverflowError) as error:
+            raise ValueError(f"expected an integer, got {value!r}") from error
+    if isinstance(value, str):
+        text = value.strip()
+    elif isinstance(value, (bytes, bytearray)):
+        try:
+            text = bytes(value).decode("utf-8").strip()
+        except UnicodeDecodeError as error:
+            raise ValueError("expected an integer, got non-text bytes") from error
+    else:
+        raise ValueError(f"expected an integer, got {value!r}")
+    if not text:
+        raise ValueError("expected an integer, got empty string")
+    try:
+        return int(round(float(text)))
+    except (ValueError, OverflowError) as error:
+        raise ValueError(f"expected an integer, got {value!r}") from error
+
+
+def _as_float(value: object) -> float:
+    if value is None or isinstance(value, bool):
+        raise ValueError(f"expected a number, got {value!r}")
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip()
+    elif isinstance(value, (bytes, bytearray)):
+        try:
+            text = bytes(value).decode("utf-8").strip()
+        except UnicodeDecodeError as error:
+            raise ValueError("expected a number, got non-text bytes") from error
+    else:
+        raise ValueError(f"expected a number, got {value!r}")
+    if not text:
+        raise ValueError("expected a number, got empty string")
+    try:
+        return float(text)
+    except ValueError as error:
+        raise ValueError(f"expected a number, got {value!r}") from error
+
+
+def _as_children(value: object) -> Iterable[Mapping[str, object]]:
+    return cast(Iterable[Mapping[str, object]], value or [])
+
+
+def _as_optional_str(value: object) -> str | None:
+    return None if value is None else str(value)
 
 
 @dataclass(frozen=True)
@@ -47,8 +123,14 @@ class UserResponse:
 
     @classmethod
     def from_record(cls, record: Mapping[str, object]) -> "UserResponse":
-        return cls(int(record["id"]), str(record["username"]), str(record["role"]),
-                   bool(record["is_active"]), float(record["created_at"]))
+        user_id = record.get("id")
+        if user_id is None:
+            raise ValueError("user record missing 'id'")
+        return cls(_as_int(user_id),
+                   str(record.get("username") or ""),
+                   str(record.get("role") or ""),
+                   bool(record.get("is_active", True)),
+                   _as_float(record.get("created_at") or 0))
 
     def to_dict(self) -> dict[str, object]:
         return {"id": self.id, "username": self.username, "role": self.role,
@@ -64,9 +146,12 @@ class InviteResponse:
 
     @classmethod
     def from_record(cls, record: Mapping[str, object]) -> "InviteResponse":
-        return cls(str(record["code"]), float(record["created_at"]),
-                   record.get("used_by") if record.get("used_by") is None else str(record["used_by"]),
-                   not bool(record["is_active"]))
+        code = record.get("code")
+        if code is None:
+            raise ValueError("invite record missing 'code'")
+        return cls(str(code), _as_float(record.get("created_at") or 0),
+                   _as_optional_str(record.get("used_by")),
+                   not bool(record.get("is_active", False)))
 
     def to_dict(self) -> dict[str, object]:
         return {"code": self.code, "created_at": self.created_at, "used_by": self.used_by,
@@ -81,8 +166,8 @@ class TagResponse:
 
     @classmethod
     def from_record(cls, record: Mapping[str, object]) -> "TagResponse":
-        return cls(None if record.get("id") is None else int(record["id"]),
-                   str(record["name"]), int(record["count"]))
+        return cls(None if record.get("id") is None else _as_int(record["id"]),
+                   str(record["name"]), _as_int(record["count"]))
 
     def to_dict(self) -> dict[str, object]:
         return {"id": self.id, "name": self.name, "count": self.count}
@@ -98,12 +183,17 @@ class TreeItemResponse:
 
     @classmethod
     def from_record(cls, record: Mapping[str, object]) -> "TreeItemResponse":
-        children = record.get("children") or []
+        children = _as_children(record.get("children"))
         is_leaf = record.get("is_leaf")
         if not isinstance(is_leaf, bool):
             raise TypeError("is_leaf must be bool")
         raw_type = record.get("type")
-        item_type = "dir" if raw_type is None or raw_type == "" else raw_type
+        if raw_type is None or raw_type == "":
+            item_type = "dir"
+        elif isinstance(raw_type, str):
+            item_type = raw_type
+        else:
+            raise ValueError("tree type must be 'dir'")
         if item_type != "dir":
             raise ValueError("tree type must be 'dir'")
         return cls(str(record["name"]), str(record["path"]),
@@ -127,10 +217,10 @@ class StatsResponse:
     @classmethod
     def from_record(cls, record: Mapping[str, object]) -> "StatsResponse":
         bytes_transferred = record.get("bytes_transferred")
-        return cls(int(record.get("connections", 0)), int(record.get("requests", 0)),
-                   int(bytes_transferred) if bytes_transferred is not None else None,
+        return cls(_as_int(record.get("connections", 0)), _as_int(record.get("requests", 0)),
+                   _as_int(bytes_transferred) if bytes_transferred is not None else None,
                    str(record["bytes_transferred_fmt"]) if record.get("bytes_transferred_fmt") is not None else None,
-                   float(record.get("uptime", 0)))
+                   _as_float(record.get("uptime", 0)))
 
     def to_dict(self) -> dict[str, object]:
         return {"connections": self.connections, "requests": self.requests,

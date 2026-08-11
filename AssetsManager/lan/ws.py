@@ -13,6 +13,7 @@ MAX_WS_CONNECTIONS = 50
 WS_HEARTBEAT_INTERVAL = 30
 WS_OPERATION_TIMEOUT = 5
 HEARTBEAT_PING_TIMEOUT = 10.0
+MAX_BROADCAST_FRAME_BYTES = 1024 * 1024
 
 
 @dataclass
@@ -52,7 +53,14 @@ class _CallbackReservation:
 
 
 class WebSocketManager:
-    """Manages connected WebSocket clients and broadcasts events."""
+    """Manages connected WebSocket clients and broadcasts events.
+
+    Broadcasts whose serialized frame exceeds ``MAX_BROADCAST_FRAME_BYTES``
+    are either truncated (payloads carrying a ``paths`` list, keeping the
+    first entries until the frame fits) or dropped (everything else).
+    ``dropped_broadcast_frames`` / ``truncated_broadcast_frames`` expose
+    the resulting counters for status/observability interfaces.
+    """
 
     def __init__(self, on_connection_change=None):
         self._clients: set[web.WebSocketResponse] = set()
@@ -74,6 +82,18 @@ class WebSocketManager:
         self._ping_sequence = 0
         self._accepting = True
         self._close_all_task: asyncio.Task | None = None
+        self._dropped_broadcast_frames = 0
+        self._truncated_broadcast_frames = 0
+
+    @property
+    def dropped_broadcast_frames(self) -> int:
+        """Count of broadcasts dropped because they could not be trimmed."""
+        return self._dropped_broadcast_frames
+
+    @property
+    def truncated_broadcast_frames(self) -> int:
+        """Count of broadcasts sent after truncating an oversized ``paths`` list."""
+        return self._truncated_broadcast_frames
 
     async def start_accepting(self) -> None:
         """Open admission for a newly started server lifecycle."""
@@ -99,9 +119,13 @@ class WebSocketManager:
         count = 0
         callback_reservation = None
         while True:
-            authorized, generation = await self._authorize_for_authority(
-                authority, authority_lock, authorize,
-            )
+            try:
+                authorized, generation = await self._authorize_for_authority(
+                    authority, authority_lock, authorize,
+                )
+            except asyncio.TimeoutError:
+                await self._close(ws, code=1013, message=b"Admission timed out")
+                return False
             retry = False
             async with authority_lock:
                 transition = self._authority_transitions[authority]
@@ -140,7 +164,11 @@ class WebSocketManager:
                                     count,
                                 )
             if retry:
-                await self._authority_ready(authority)
+                try:
+                    await self._authority_ready(authority)
+                except asyncio.TimeoutError:
+                    await self._close(ws, code=1013, message=b"Admission timed out")
+                    return False
                 continue
             break
         if accepted:
@@ -149,7 +177,9 @@ class WebSocketManager:
             except BaseException as error:
                 admission_error = error
                 if isinstance(error, asyncio.CancelledError):
-                    asyncio.current_task().uncancel()
+                    current_task = asyncio.current_task()
+                    if current_task is not None:
+                        current_task.uncancel()
                 self._abandon_reserved(callback_reservation)
             finally:
                 self._abandon_reserved(callback_reservation)
@@ -165,7 +195,9 @@ class WebSocketManager:
                 try:
                     await asyncio.shield(cleanup)
                 except asyncio.CancelledError:
-                    asyncio.current_task().uncancel()
+                    current_task = asyncio.current_task()
+                    if current_task is not None:
+                        current_task.uncancel()
             await cleanup
             raise admission_error
         return True
@@ -355,19 +387,19 @@ class WebSocketManager:
                 transition = self._authority_transitions[authority]
                 transition_in_progress = transition.state != "ready"
             if transition_in_progress:
-                await transition.ready.wait()
+                await asyncio.wait_for(transition.ready.wait(), WS_OPERATION_TIMEOUT)
                 continue
             authorized = True if authorize is None else await self._run_authorizer(authorize)
             async with authority_lock:
                 transition = self._authority_transitions[authority]
                 if transition.state == "ready":
                     return authorized, transition.generation
-            await transition.ready.wait()
+            await asyncio.wait_for(transition.ready.wait(), WS_OPERATION_TIMEOUT)
 
     async def _authority_ready(self, authority):
         transition = self._authority_transitions.get(authority)
         if transition is not None and transition.state != "ready":
-            await transition.ready.wait()
+            await asyncio.wait_for(transition.ready.wait(), WS_OPERATION_TIMEOUT)
 
     async def _is_authorized(self, ws: web.WebSocketResponse) -> bool:
         authorize = self._authorizers.get(ws)
@@ -398,7 +430,9 @@ class WebSocketManager:
                 if not lease.active:
                     return False
                 if payload is not None:
-                    await ws.send_json(payload)
+                    await asyncio.wait_for(
+                        ws.send_json(payload), WS_OPERATION_TIMEOUT,
+                    )
                 lease.admission_ready.set()
                 return True
         except Exception:
@@ -455,6 +489,67 @@ class WebSocketManager:
         if dead:
             await asyncio.gather(*(self.evict(ws) for ws in dead))
 
+    def _trim_broadcast_payload(self, event_type: str, data: dict):
+        """Trim an oversized broadcast payload, or count it as dropped.
+
+        When ``data`` carries a non-empty ``paths`` list/tuple the paths
+        are truncated to the largest leading prefix that serializes within
+        95% of ``MAX_BROADCAST_FRAME_BYTES`` (headroom for the truncated
+        re-serialization), and the trimmed payload is returned so the
+        event reaches clients instead of being silently dropped. Returns
+        ``None`` when the frame cannot be safely trimmed (no ``paths``,
+        or even an empty ``paths`` list does not fit), in which case the
+        drop is counted and logged.
+
+        Only invoked when the original frame already exceeded the limit,
+        so normal broadcasts pay no extra cost.
+        """
+        paths = data.get("paths")
+        if not isinstance(paths, (list, tuple)) or not paths:
+            return self._count_dropped(event_type)
+        budget = int(MAX_BROADCAST_FRAME_BYTES * 0.95)
+        total = len(paths)
+
+        def frame_size(keep_count):
+            payload = dict(data, paths=list(paths[:keep_count]))
+            return len(json.dumps({"type": event_type, **payload}).encode("utf-8"))
+
+        low, high = 0, total
+        while low < high:
+            mid = (low + high + 1) // 2
+            if frame_size(mid) <= budget:
+                low = mid
+            else:
+                high = mid - 1
+        keep = low
+        if keep == 0:
+            # Not even a single path fits: drop rather than send a
+            # misleading empty-paths invalidation.
+            return self._count_dropped(event_type)
+        self._truncated_broadcast_frames += 1
+        _log.warning(
+            "Broadcast '%s' exceeds %d bytes; truncated paths %d -> %d "
+            "(truncated_broadcast_frames=%d)",
+            event_type,
+            MAX_BROADCAST_FRAME_BYTES,
+            total,
+            keep,
+            self._truncated_broadcast_frames,
+        )
+        return dict(data, paths=list(paths[:keep]))
+
+    def _count_dropped(self, event_type: str):
+        """Count and log a broadcast frame that had to be dropped."""
+        self._dropped_broadcast_frames += 1
+        _log.warning(
+            "Broadcast '%s' exceeds %d bytes; dropping frame "
+            "(dropped_broadcast_frames=%d)",
+            event_type,
+            MAX_BROADCAST_FRAME_BYTES,
+            self._dropped_broadcast_frames,
+        )
+        return None
+
     async def broadcast(self, event_type: str, data: dict | None = None):
         """Send a JSON event to all connected clients."""
         async with self._lock:
@@ -464,7 +559,24 @@ class WebSocketManager:
                 (ws, self._leases[ws]) for ws in self._clients
             ]
 
-        message = json.dumps({"type": event_type, **(data or {})})
+        try:
+            message = json.dumps({"type": event_type, **(data or {})})
+        except (TypeError, ValueError) as error:
+            _log.warning("Failed to serialize broadcast '%s': %s", event_type, error)
+            return
+        if len(message.encode("utf-8")) > MAX_BROADCAST_FRAME_BYTES:
+            data = self._trim_broadcast_payload(event_type, data or {})
+            if data is None:
+                return
+            try:
+                message = json.dumps({"type": event_type, **data})
+            except (TypeError, ValueError) as error:
+                _log.warning(
+                    "Failed to serialize truncated broadcast '%s': %s",
+                    event_type,
+                    error,
+                )
+                return
         async def send_to(ws, lease):
             if not await self._is_authorized(ws):
                 return ws
@@ -527,7 +639,9 @@ class WebSocketManager:
                 await asyncio.shield(teardown)
             except asyncio.CancelledError as error:
                 cancellation = cancellation or error
-                asyncio.current_task().uncancel()
+                current_task = asyncio.current_task()
+                if current_task is not None:
+                    current_task.uncancel()
         await teardown
         if cancellation is not None:
             raise cancellation

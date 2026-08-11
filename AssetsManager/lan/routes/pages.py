@@ -37,3 +37,23 @@ async def handle_login_page(request):
 
 async def handle_browse_page(request):
     return _spa_response()
+
+
+async def handle_gallery_page(request):
+    return _spa_response()
+
+
+async def handle_gallery_collection_page(request):
+    return _spa_response()
+
+
+async def handle_gallery_favorites_page(request):
+    return _spa_response()
+
+
+async def handle_storefront_page(request):
+    return _spa_response()
+
+
+async def handle_seller_page(request):
+    return _spa_response()

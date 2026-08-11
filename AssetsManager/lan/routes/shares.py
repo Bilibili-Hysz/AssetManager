@@ -1,4 +1,5 @@
 """Share link routes: /api/shares/*, /s/{id}."""
+import asyncio
 import logging
 from pathlib import Path
 from time import perf_counter
@@ -10,11 +11,13 @@ from aiohttp import web
 from AssetsManager.domain.errors import ValidationError
 from AssetsManager.domain.share import ShareLink
 from AssetsManager.domain.asset import IMAGE_EXTS
-from AssetsManager.lan.routes._helpers import get_share_service, get_lan, get_request_principal, get_share_token, require_permission, sanitize_filename, set_share_cookie, set_request_principal, validate_path
+from AssetsManager.lan.routes._helpers import LAN_APP_KEY, get_lan, get_share_service, get_request_principal, get_share_token, require_permission, sanitize_filename, set_share_cookie, set_request_principal, validate_path
 from AssetsManager.lan.principal import principal_for_request
 from AssetsManager.lan.utils import get_local_ip
 
 _log = logging.getLogger(__name__)
+
+_SAFE_IMAGE_EXTS = IMAGE_EXTS - {".svg"}
 
 
 def _content_disposition_filename(name: str) -> str:
@@ -134,7 +137,7 @@ async def handle_create_share(request):
     if not share:
         return web.json_response({"error": "Failed to create share link"}, status=500)
 
-    ip = get_local_ip()
+    ip = await asyncio.to_thread(get_local_ip)
     protocol = getattr(lan, "endpoint_protocol", "http")
     share_url = f"{protocol}://{ip}:{lan._port}/s/{share.id}"
 
@@ -162,7 +165,7 @@ async def handle_list_shares(request):
     created_by = None if principal.role == "admin" else principal.display_name
     shares = share_svc.list_shares(created_by=created_by)
 
-    ip = get_local_ip()
+    ip = await asyncio.to_thread(get_local_ip)
     protocol = getattr(lan, "endpoint_protocol", "http")
     result = []
     for share in shares:
@@ -207,6 +210,7 @@ async def handle_share_page(request):
 
 async def handle_verify_share_password(request):
     share_svc = get_share_service(request)
+    lan = request.app.get(LAN_APP_KEY)
     share_id = request.match_info.get("id", "")
 
     try:
@@ -222,18 +226,34 @@ async def handle_verify_share_password(request):
     if share.is_expired():
         return web.json_response({"error": "Share expired"}, status=410)
 
-    if not share.has_password or share_svc.verify_password(share_id, password):
-        set_request_principal(request, principal_for_request("share"))
-        token = share_svc.generate_token(share_id)
-        result = {"share": share.to_public_dict()}
-        if request.headers.get("X-AssetsManager-API-Client") == "1":
-            result["token"] = token
-            return web.json_response(result)
-        response = web.json_response(result)
-        set_share_cookie(response, share_id, token)
-        return response
+    if share.has_password:
+        # Brute-force guard (in-process per-share counter, see
+        # ShareService.password_attempt_blocked).  Both the failure and
+        # success paths run the full PBKDF2 verification, so the only
+        # timing difference is this explicit rate-limit refusal.
+        retry_after = share_svc.password_attempt_blocked(share_id)
+        if retry_after:
+            return web.json_response(
+                {"error": "Too many failed password attempts. Please try again later.",
+                 "retry_after": retry_after},
+                status=429,
+                headers={"Retry-After": str(retry_after)},
+            )
+        if not share_svc.verify_password(share_id, password):
+            share_svc.record_password_failure(share_id)
+            return web.json_response({"error": "Invalid password"}, status=401)
+        share_svc.reset_password_failures(share_id)
 
-    return web.json_response({"error": "Invalid password"}, status=401)
+    set_request_principal(request, principal_for_request("share"))
+    token = share_svc.generate_token(share_id)
+    result = {"share": share.to_public_dict()}
+    if request.headers.get("X-AssetsManager-API-Client") == "1":
+        result["token"] = token
+        return web.json_response(result)
+    response = web.json_response(result)
+    set_share_cookie(response, share_id, token,
+                     secure=getattr(lan, "ssl_active", False) if lan is not None else False)
+    return response
 
 
 async def handle_share_download(request):
@@ -247,47 +267,62 @@ async def handle_share_download(request):
         share_id = request.match_info.get("id", "")
         rel_path = unquote(request.match_info.get("path", ""))
 
-        share = share_svc.get_share_record(share_id)
-        if not share:
+        # L3: all semantic admission checks (existence, password token,
+        # expiry, download limit, path scope) live in
+        # ShareService.validate_access — keep this route's filesystem
+        # resolution (_resolve_share_target) as the only inline counterpart.
+        share, access_err = share_svc.validate_access(
+            share_id, rel_path, token=get_share_token(request)
+        )
+
+        if share is None or access_err:
+            if access_err == "Unauthorized":
+                # 401 is retained: it signals that a password-protected
+                # share needs verification (ShareReceivePage posts to
+                # /verify; the frontend does not branch on any other code).
+                status = 401
+                return web.json_response({"error": "Unauthorized"}, status=status)
+            # L2: fold every other state (unknown share, expired, download
+            # limit reached, path outside scope) into a single 404 so public
+            # callers cannot distinguish share existence / expiry / quota
+            # state — mirrors the shop get_public_item folding strategy.
             status = 404
             return web.json_response({"error": "Share not found"}, status=status)
-
-        token = get_share_token(request) if share.has_password else None
-        if share.has_password and not share_svc.verify_token(token or "", share_id):
-            status = 401
-            return web.json_response({"error": "Unauthorized"}, status=status)
-        if share.is_download_limit_reached():
-            status = 403
-            return web.json_response({"error": "Download limit reached"}, status=status)
-
-        if share.is_expired():
-            status = 410
-            return web.json_response({"error": "Share expired"}, status=status)
 
         target = _resolve_share_target(lan, share, rel_path)
 
         if not target:
-            library_root = lan.library_root.resolve()
-            candidate = (library_root / rel_path).resolve()
-            status = 403 if candidate.exists() and candidate.is_relative_to(library_root) else 404
-            return web.json_response(
-                {"error": "File not in share scope" if status == 403 else "File not found in share"}, status=status
-            )
+            status = 404
+            return web.json_response({"error": "Share not found"}, status=status)
 
         if not target.is_file():
             status = 400
             return web.json_response({"error": "Not a file"}, status=status)
-        if not share_svc.increment_download(share_id):
-            status = 403
-            return web.json_response({"error": "Download limit reached"}, status=status)
+
         set_request_principal(request, principal_for_request("share"))
-        status = 200
-        outcome = "response_ready"
-        response_path = target
-        return web.FileResponse(
+        response = web.FileResponse(
             target,
             headers={"Content-Disposition": _content_disposition_filename(target.name)},
         )
+
+        # M2: count the download only after the response is fully prepared
+        # (FileResponse construction verifies the file is readable), so a
+        # client that aborts mid-transfer still consumes quota but a failed
+        # response never does.  The DB increment is atomic against
+        # max_downloads, so concurrent races surface here as 429 instead of
+        # an oversold download.
+        if not share_svc.increment_download(share_id):
+            status = 429
+            return web.json_response(
+                {"error": "Download limit reached", "retry_after": 0},
+                status=status,
+                headers={"Retry-After": "0"},
+            )
+
+        status = 200
+        outcome = "response_ready"
+        response_path = target
+        return response
     finally:
         _record_share_download_route(lan, started, response_path, outcome, status)
 
@@ -338,11 +373,14 @@ async def handle_share_preview(request):
     if not target:
         return web.json_response({"error": "File not found in share"}, status=404)
 
-    if target.suffix.lower() not in IMAGE_EXTS:
+    if target.suffix.lower() not in _SAFE_IMAGE_EXTS:
         return web.json_response({"error": "Not an image"}, status=400)
 
     set_request_principal(request, principal_for_request("share"))
-    return web.FileResponse(target)
+    return web.FileResponse(
+        target,
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
 
 
 async def handle_share_info(request):

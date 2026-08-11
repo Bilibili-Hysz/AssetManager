@@ -20,14 +20,29 @@ class DirectoryScanner:
         self._index: list[dict] = []
         self._lock = threading.Lock()
         self._scanning = False
+        self._stop_event = threading.Event()
+        self._scan_thread: threading.Thread | None = None
 
     def start_background_scan(self):
         """Start a background thread to scan the library."""
-        if self._scanning:
-            return
-        self._scanning = True
+        with self._lock:
+            if self._scanning:
+                return
+            self._scanning = True
+        self._stop_event.clear()
         t = threading.Thread(target=self._scan_all, daemon=True)
+        self._scan_thread = t
         t.start()
+
+    def stop(self):
+        """Cancel a running scan and wait for the worker to finish (max 2s).
+
+        Safe to call repeatedly; a finished scan has nothing to cancel.
+        """
+        self._stop_event.set()
+        t = self._scan_thread
+        if t is not None and t.is_alive():
+            t.join(timeout=2)
 
     def _scan_all(self):
         """Walk the entire library and build the index."""
@@ -35,9 +50,13 @@ class DirectoryScanner:
         index = []
         try:
             for dirpath, dirnames, filenames in os.walk(self._root):
+                if self._stop_event.is_set():
+                    break
                 # Skip hidden directories
                 dirnames[:] = [d for d in dirnames if not d.startswith(".")]
                 for fname in filenames:
+                    if self._stop_event.is_set():
+                        break
                     if fname.startswith("."):
                         continue
                     fp = os.path.join(dirpath, fname)

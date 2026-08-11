@@ -2,9 +2,27 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Mapping, Any
+from typing import Any, Literal, Mapping, SupportsFloat, SupportsInt, cast
 
 from AssetsManager.lan.dto import UserResponse
+
+
+def _as_int(value: object, default: int = 0) -> int:
+    if value is None:
+        return default
+    try:
+        return int(cast(str | bytes | bytearray | SupportsInt, value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_float(value: object, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    try:
+        return float(cast(str | bytes | bytearray | SupportsFloat, value))
+    except (TypeError, ValueError):
+        return default
 
 PrincipalKind = Literal["user", "password", "access_key", "local_ui", "guest", "share"]
 PrincipalRole = Literal["admin", "user", "guest"]
@@ -76,18 +94,26 @@ def principal_for_request(kind: PrincipalKind, *, user: Mapping[str, object] | N
     """Build a principal from an explicit auth kind; credentials are never accepted."""
     all_caps = Capabilities(True, True, True, True, True, True, True, True)
     user_caps = Capabilities(True, True, True, False, False, False, False, True)
+    viewer_caps = Capabilities(True, True, False, False, False, False, False, True)
     if kind == "user":
         if user is None:
             raise ValueError("user principal requires a persisted user")
         try:
             profile = UserResponse.from_record(user).to_dict()
         except (KeyError, TypeError, ValueError):
-            profile = {"id": int(user.get("id", 0)), "username": str(user.get("username", "user")),
+            profile = {"id": _as_int(user.get("id", 0)), "username": str(user.get("username", "user")),
                        "role": str(user.get("role", "user")), "active": bool(user.get("is_active", True)),
-                       "created_at": float(user.get("created_at", 0))}
-        role = "admin" if str(user.get("role", "user")) == "admin" else "user"
+                       "created_at": _as_float(user.get("created_at", 0))}
+        role_raw = str(user.get("role", "user"))
+        if role_raw == "admin":
+            role, caps = "admin", all_caps
+        elif role_raw == "user":
+            role, caps = "user", user_caps
+        else:
+            # viewer（自注册默认）及其它未知角色：受限能力，无下载
+            role, caps = "user", viewer_caps
         return SessionPrincipal(kind, True, role, str(user.get("username", "user")),
-                                all_caps if role == "admin" else user_caps, profile)
+                                caps, profile)
     if kind in ("password", "access_key", "local_ui"):
         return SessionPrincipal(kind, True, "admin", kind, all_caps)
     if kind == "share":

@@ -19,7 +19,7 @@ async def _close_quietly(ws, **kwargs):
 
 def _authorization_validator(request, lan, principal):
     """Bind the socket to canonical identity and credential authority."""
-    token = get_auth_token(request, allow_query=False)
+    token = get_auth_token(request)
     if principal.kind == "user":
         expected = principal.user_profile or {}
         expected_id = int(expected.get("id", 0))

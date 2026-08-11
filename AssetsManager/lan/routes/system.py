@@ -1,4 +1,7 @@
 """System info routes: /api/info, /api/tunnel/status, /api/stats."""
+from collections.abc import Callable
+from typing import cast
+
 from aiohttp import web
 
 from AssetsManager.application import ProjectDepthConfig
@@ -16,10 +19,20 @@ from AssetsManager.lan.routes._helpers import (
 
 
 async def handle_info(request):
+    # NOTE: The full /api/info payload (auth_mode, share_name, library_stats,
+    # footer_text, feature_flags, ...) is intentionally served to
+    # unauthenticated requests.  The frontend login page needs auth_mode to
+    # decide which credential form to render (key / user / password, see
+    # webui/src/pages/LoginPage.tsx), and the public landing page renders
+    # share_name / library_stats / footer_text (webui/src/pages/LandingPage.tsx).
+    # No secrets or per-user data are included; the principal-specific keys
+    # below are only appended for authenticated principals.
     lan = get_lan(request)
     s = AppSettings.instance()
 
-    auth_status = getattr(lan, "auth_status", None)
+    auth_status = cast(
+        Callable[[], tuple[bool, str]] | None, getattr(lan, "auth_status", None)
+    )
     if callable(auth_status):
         auth_enabled, auth_mode = auth_status()
     else:
@@ -41,6 +54,11 @@ async def handle_info(request):
     total_size = get_metadata_service(request).get_library_total_size(lan.library_root)
 
     principal = get_request_principal(request)
+    # Seller is an effective sub-feature of Commerce. Reporting an impossible
+    # raw persisted combination here would let clients surface a Seller entry
+    # that the server correctly denies.
+    commerce_enabled = s.get("lan_commerce_enabled", False) is True
+    seller_enabled = commerce_enabled and s.get("lan_seller_enabled", False) is True
     result = {
         "version": "1.0",
         "share_name": lan.share_name,
@@ -50,6 +68,11 @@ async def handle_info(request):
         "theme_color": s.get("lan_theme_color", "#5b7ff5"),
         "welcome_msg": s.get("lan_welcome_msg", ""),
         "footer_text": s.get("lan_footer_text", ""),
+        "feature_flags": {
+            "commerce": commerce_enabled,
+            "seller": seller_enabled,
+            "quota": bool(s.get("lan_quota_enabled", False)),
+        },
         "library_stats": {
             "total_projects": total_projects,
             "total_size": total_size,

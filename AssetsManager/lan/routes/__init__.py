@@ -3,6 +3,12 @@
 Each module owns a group of related HTTP endpoints. The parent ``api.py``
 imports every handler and registers them in ``setup_routes()``.
 """
+from AssetsManager.lan.routes.commerce_policy import (
+    commerce_required,
+    seller_required,
+    seller_status_endpoint,
+    seller_logout_endpoint,
+)
 from AssetsManager.lan.routes.auth import (
     handle_login,
     handle_register,
@@ -15,8 +21,19 @@ from AssetsManager.lan.routes.downloads import (
     handle_batch_download,
 )
 from AssetsManager.lan.routes.files import handle_directory_summaries, handle_files
+from AssetsManager.lan.routes.favorites import (
+    handle_add_favorite,
+    handle_favorites,
+    handle_remove_favorite,
+)
+from AssetsManager.lan.routes.gallery import (
+    handle_gallery_collection,
+    handle_gallery_home,
+    handle_gallery_resolve,
+)
 from AssetsManager.lan.routes.metadata import (
     handle_meta,
+    handle_save_notes,
     handle_search,
     handle_home,
     handle_tree,
@@ -28,6 +45,11 @@ from AssetsManager.lan.routes.pages import (
     handle_detail_page,
     handle_login_page,
     handle_browse_page,
+    handle_gallery_page,
+    handle_gallery_collection_page,
+    handle_gallery_favorites_page,
+    handle_storefront_page,
+    handle_seller_page,
 )
 from AssetsManager.lan.routes.shares import (
     handle_create_share,
@@ -39,6 +61,45 @@ from AssetsManager.lan.routes.shares import (
     handle_share_preview,
     handle_share_info,
 )
+from AssetsManager.lan.routes.shop import (
+    handle_public_shop_item,
+    handle_public_shop_catalog,
+    handle_public_shop_item_by_path,
+    handle_public_shop_item_media,
+    handle_shop_items,
+    handle_shop_order,
+    handle_shop_buyer_orders,
+    handle_shop_buyer_merge,
+    handle_order_receipt_recover,
+    handle_shop_cart,
+    handle_shop_cart_checkout,
+    handle_shop_cart_checkout_group,
+    handle_shop_wishlist,
+    handle_order_confirm,
+    handle_order_fulfill,
+    handle_order_delivery_rotate,
+    handle_order_delivery_revoke,
+    handle_order_revoke,
+    handle_order_stats,
+    handle_order_export,
+    handle_delivery,
+    handle_order_delivery,
+    handle_delivery_download,
+)
+from AssetsManager.lan.routes.quota import (
+    handle_delivery_quota,
+    handle_free_quota,
+    handle_quota,
+)
+from AssetsManager.lan.routes.seller_auth import (
+    handle_seller_status,
+    handle_seller_login,
+    handle_seller_logout,
+)
+from AssetsManager.lan.routes.image import handle_image
+from AssetsManager.lan.routes.quicksearch import handle_quicksearch
+from AssetsManager.lan.routes.seller_profile import handle_public_seller_profile, handle_seller_profile
+from AssetsManager.lan.routes.storefront_analytics import handle_storefront_view
 from AssetsManager.lan.routes.system import (
     handle_info,
     handle_tunnel_status,
@@ -49,6 +110,7 @@ from AssetsManager.lan.routes.tags import (
     handle_create_tag,
     handle_rename_tag,
     handle_delete_tag,
+    handle_remove_tag,
 )
 from AssetsManager.lan.routes.thumbnails import (
     handle_thumbnail,
@@ -66,10 +128,25 @@ from AssetsManager.lan.routes.users import (
 from AssetsManager.lan.routes.websocket import handle_websocket
 
 __all__ = [
+    "commerce_required",
+    "seller_required",
+    "seller_status_endpoint",
+    "seller_logout_endpoint",
     "handle_index",
     "handle_detail_page",
     "handle_login_page",
     "handle_browse_page",
+    "handle_gallery_page",
+    "handle_gallery_collection_page",
+    "handle_gallery_favorites_page",
+    "handle_storefront_page",
+    "handle_seller_page",
+    "handle_gallery_collection",
+    "handle_gallery_home",
+    "handle_gallery_resolve",
+    "handle_add_favorite",
+    "handle_favorites",
+    "handle_remove_favorite",
     "handle_files",
     "handle_directory_summaries",
     "handle_thumbnail",
@@ -84,8 +161,10 @@ __all__ = [
     "handle_create_tag",
     "handle_rename_tag",
     "handle_delete_tag",
+    "handle_remove_tag",
     "handle_search",
     "handle_meta",
+    "handle_save_notes",
     "handle_info",
     "handle_login",
     "handle_register",
@@ -110,4 +189,38 @@ __all__ = [
     "handle_share_preview",
     "handle_share_info",
     "handle_websocket",
+    "handle_public_shop_item",
+    "handle_public_shop_catalog",
+    "handle_public_shop_item_by_path",
+    "handle_public_shop_item_media",
+    "handle_shop_items",
+    "handle_shop_order",
+    "handle_shop_buyer_orders",
+    "handle_shop_buyer_merge",
+    "handle_order_receipt_recover",
+    "handle_shop_cart",
+    "handle_shop_cart_checkout",
+    "handle_shop_cart_checkout_group",
+    "handle_shop_wishlist",
+    "handle_order_confirm",
+    "handle_order_fulfill",
+    "handle_order_delivery_rotate",
+    "handle_order_delivery_revoke",
+    "handle_order_revoke",
+    "handle_order_stats",
+    "handle_order_export",
+    "handle_delivery",
+    "handle_order_delivery",
+    "handle_delivery_download",
+    "handle_delivery_quota",
+    "handle_free_quota",
+    "handle_quota",
+    "handle_seller_status",
+    "handle_seller_login",
+    "handle_seller_logout",
+    "handle_image",
+    "handle_quicksearch",
+    "handle_public_seller_profile",
+    "handle_seller_profile",
+    "handle_storefront_view",
 ]

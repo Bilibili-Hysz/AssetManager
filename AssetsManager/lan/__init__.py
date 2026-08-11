@@ -17,8 +17,13 @@ This module is optional. If aiohttp is not installed, is_available()
 returns False and all other functions raise RuntimeError.
 """
 import logging
+from typing import Protocol, cast
 
 _log = logging.getLogger(__name__)
+
+class _AuthStatusProvider(Protocol):
+    def auth_status(self) -> tuple[bool, str]: ...
+
 
 try:
     from aiohttp import web as _web
@@ -45,7 +50,7 @@ class LanServer:
                   blur_tags: list[str] | None = None,
                   ssl_cert: str | None = None, ssl_key: str | None = None,
                   performance_recorder=None, session_token: str | None = None,
-                  services=None):
+                  services=None, preflight=None):
         if runtime is None:
             raise TypeError("LanServer(runtime=...) requires a live LibraryRuntime")
         if not _HAS_AIOHTTP:
@@ -69,14 +74,87 @@ class LanServer:
             session_token=session_token,
             services=services,
         )
+        self._last_security_snapshot = None
+        self._default_preflight = preflight
 
-    def start(self, port: int = 8080, bind: str = "0.0.0.0"):
-        """Start the server on the given port. Raises OSError if port is in use."""
-        self._impl.start(port=port, bind=bind)
+    def start(self, port: int = 8080, bind: str = "0.0.0.0", *, preflight=None):
+        """Start the server after the shared security preflight gate."""
+        from AssetsManager.application.security_preflight import (
+            persist_successful_share_security_history,
+            security_preflight_from_settings,
+        )
+
+        if preflight is None:
+            preflight = self._default_preflight or security_preflight_from_settings()
+        # Keep the exact holder across restart/stop and make explicit and
+        # constructor-injected paths equivalent.
+        self._default_preflight = preflight
+        auth_status = getattr(self._impl, "auth_status", None)
+        effective_status = auth_status() if callable(auth_status) else None
+        snapshot = preflight.snapshot(
+            sharing=True,
+            bind=bind,
+            auth_status=effective_status,
+        )
+        self._last_security_snapshot = snapshot
+        if snapshot.share_state != "local_active":
+            return snapshot.to_dict()
+        start_result = self._impl.start(port=port, bind=bind, preflight=preflight)
+        if isinstance(start_result, dict) and start_result.get("share_state") != "local_active":
+            self._last_security_snapshot = start_result
+            return start_result
+        # Re-read the real service-owned auth status after construction/start.
+        auth_status = getattr(self._impl, "auth_status", None)
+        effective_status = auth_status() if callable(auth_status) else effective_status
+        post_snapshot = preflight.snapshot(
+            sharing=True,
+            bind=bind,
+            auth_status=effective_status,
+        )
+        self._last_security_snapshot = post_snapshot
+        if post_snapshot.share_state != "local_active":
+            try:
+                self._impl.stop()
+            except Exception:
+                failure = post_snapshot.to_dict()
+                failure["share_state"] = "failed"
+                failure["failure_reason"] = "security_post_start_rollback_failed"
+                failure["rollback_failed"] = True
+                failure["running"] = True
+                self._last_security_snapshot = failure
+                _log.exception("Failed to roll back LAN startup after auth re-check")
+                return failure
+            return post_snapshot.to_dict()
+
+        persisted = persist_successful_share_security_history(
+            preflight, bind=bind, auth_status=effective_status
+        )
+        if persisted is False:
+            _log.warning(
+                "LAN sharing started, but the last successful security posture "
+                "could not be persisted; the next start will require safe re-confirmation"
+            )
+        return None
 
     def stop(self):
-        """Stop the server."""
+        """Stop the server and clear the exposed security activity snapshot."""
         self._impl.stop()
+        snapshot = getattr(self, "_last_security_snapshot", None)
+        if snapshot is not None:
+            try:
+                from AssetsManager.application.security_preflight import (
+                    security_preflight_from_settings,
+                )
+
+                preflight = self._default_preflight or security_preflight_from_settings()
+                auth_status = self.auth_status()
+                self._last_security_snapshot = preflight.snapshot(
+                    sharing=False,
+                    bind=getattr(self._impl, "_bind", "localhost"),
+                    auth_status=auth_status,
+                )
+            except Exception:
+                self._last_security_snapshot = None
 
     def is_running(self) -> bool:
         """Return True if the server is currently running."""
@@ -84,7 +162,53 @@ class LanServer:
 
     def status(self) -> dict:
         """Return server status info (ip, port, url, running)."""
-        return self._impl.status()
+        raw_status = self._impl.status()
+        status = dict(raw_status) if isinstance(raw_status, dict) else raw_status
+        snapshot = getattr(self, "_last_security_snapshot", None)
+        if snapshot is not None:
+            security = snapshot.to_dict() if hasattr(snapshot, "to_dict") else dict(snapshot)
+            if isinstance(status, dict):
+                status["security"] = security
+        return status
+
+    def auth_status(self) -> tuple[bool, str]:
+        """Return the effective authentication status from the server."""
+        method = getattr(self._impl, "auth_status", None)
+        if not callable(method):
+            return False, "none"
+        provider = cast(_AuthStatusProvider, self._impl)
+        return provider.auth_status()
+
+    @property
+    def security_snapshot(self):
+        """Return the latest UI-neutral security preflight snapshot."""
+        return getattr(self, "_last_security_snapshot", None)
+
+    def _update_security_tunnel_state(self, tunnel_state: str, failure_reason: str | None):
+        snapshot = getattr(self, "_last_security_snapshot", None)
+        if snapshot is None:
+            return
+        if hasattr(snapshot, "to_dict"):
+            from dataclasses import replace
+            self._last_security_snapshot = replace(
+                snapshot,
+                tunnel_state=tunnel_state,
+                failure_reason=failure_reason,
+            )
+        elif isinstance(snapshot, dict):
+            updated = dict(snapshot)
+            updated["tunnel_state"] = tunnel_state
+            updated["failure_reason"] = failure_reason
+            self._last_security_snapshot = updated
+
+    @property
+    def tunnel_start_block_reason(self) -> str | None:
+        return getattr(self._impl, "tunnel_start_block_reason", None)
+
+    @property
+    def tunnel(self):
+        """Return the server-owned, security-guarded tunnel handle."""
+        return self._impl.tunnel
 
     def broadcast(self, event_type: str, data: dict | None = None):
         """Send a WebSocket event to all connected clients."""
@@ -92,11 +216,30 @@ class LanServer:
 
     def start_tunnel(self, timeout: int = 30) -> str | None:
         """Start a public Cloudflare tunnel. Returns public URL or None."""
-        return self._impl.start_tunnel(timeout=timeout)
+        url = self._impl.start_tunnel(timeout=timeout)
+        from AssetsManager.application.security_preflight import TunnelState
+        if url:
+            self._update_security_tunnel_state(TunnelState.PUBLIC_ACTIVE.value, None)
+        else:
+            block_reason = self.tunnel_start_block_reason
+            try:
+                auth_enabled, _auth_mode = self.auth_status()
+            except Exception:
+                auth_enabled = False
+            if block_reason == "authentication_required" or not auth_enabled:
+                state = TunnelState.BLOCKED.value
+                reason = block_reason or "tunnel_authentication_required"
+            else:
+                state = TunnelState.FAILED.value
+                reason = block_reason or "tunnel_start_failed"
+            self._update_security_tunnel_state(state, reason)
+        return url
 
     def stop_tunnel(self):
         """Stop the public internet tunnel."""
         self._impl.stop_tunnel()
+        from AssetsManager.application.security_preflight import TunnelState
+        self._update_security_tunnel_state(TunnelState.STOPPED.value, None)
 
     def is_tunnel_running(self) -> bool:
         """Return True if a tunnel is currently active."""
