@@ -42,6 +42,12 @@ Thumbs.db
 .mimocode/.cron-lock
 .opencode/node_modules/
 
+# Local agent session and test artifacts.
+/.zcode/
+/tmp/
+/.pytest-tmp/
+/new-session---*.json
+
 # React/Vite local dependencies and generated metadata.
 /.vite/
 /webui/node_modules/

@@ -19,7 +19,39 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install ruff
-      - run: ruff check .
+      - name: Report tool versions
+        run: |
+          python --version
+          ruff --version
+      - name: Ruff check production, test, and packaging paths
+        run: ruff check AssetsManager tests scripts run.py
+
+  hygiene:
+    name: Git Hygiene
+    runs-on: ubuntu-latest
+    env:
+      PR_BASE: ${{ github.event.pull_request.base.sha }}
+      PUSH_BEFORE: ${{ github.event.before }}
+      CURRENT_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check whitespace errors in the change range
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${PR_BASE}" ]]; then
+            git diff --check "${PR_BASE}...${CURRENT_SHA}"
+          elif [[ -n "${PUSH_BEFORE}" && "${PUSH_BEFORE}" != "0000000000000000000000000000000000000000" ]]; then
+            if git cat-file -e "${PUSH_BEFORE}^{commit}" 2>/dev/null; then
+              git diff --check "${PUSH_BEFORE}" "${CURRENT_SHA}"
+            else
+              git show --check --format= "${CURRENT_SHA}"
+            fi
+          else
+            git show --check --format= "${CURRENT_SHA}"
+          fi
 
   typecheck:
     name: Type Check
@@ -30,6 +62,10 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install pyright
+      - name: Report tool versions
+        run: |
+          python --version
+          pyright --version
       - run: pyright
 
   webui:
@@ -46,6 +82,8 @@ jobs:
           cache: npm
           cache-dependency-path: webui/package-lock.json
       - run: npm ci
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=moderate
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
@@ -70,10 +108,103 @@ jobs:
           python-version: "3.13"
       - name: Install packaging dependencies
         run: pip install -r requirements.txt -r requirements-lan.txt -r requirements-dev.txt
-      - name: Build PyInstaller bundle
-        run: pyinstaller --noconfirm --clean AssetManager.spec
+      - name: Build PyInstaller bundle from foreign cwd
+        shell: pwsh
+        run: |
+          $packageRoot = Join-Path $env:RUNNER_TEMP "assetmanager-package"
+          $distPath = Join-Path $packageRoot "dist"
+          $workPath = Join-Path $packageRoot "work"
+          New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
+          Push-Location $env:RUNNER_TEMP
+          try {
+            & pyinstaller --noconfirm --clean --distpath $distPath --workpath $workPath (Join-Path $env:GITHUB_WORKSPACE "AssetManager.spec")
+            if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+            }
+          } finally {
+            Pop-Location
+          }
       - name: Verify bundled resources
-        run: python scripts/check_package_contents.py dist/AssetManager
+        shell: pwsh
+        run: |
+          $bundlePath = Join-Path $env:RUNNER_TEMP "assetmanager-package\dist\AssetManager"
+          python scripts/check_package_contents.py $bundlePath
+      - name: Smoke-test frozen Qt imports and icon rendering
+        shell: pwsh
+        run: |
+          $bundlePath = Join-Path $env:RUNNER_TEMP "assetmanager-package\dist\AssetManager"
+          $executable = Join-Path $bundlePath "AssetManager.exe"
+          $process = Start-Process -FilePath $executable -ArgumentList "--package-smoke" -WorkingDirectory $bundlePath -WindowStyle Hidden -PassThru -Wait
+          if ($process.ExitCode -ne 0) {
+            throw "Frozen Qt/icon package smoke failed with code $($process.ExitCode)"
+          }
+      - name: Smoke-test frozen runtime
+        shell: pwsh
+        run: |
+          $bundlePath = Join-Path $env:RUNNER_TEMP "assetmanager-package\dist\AssetManager"
+          $executable = Join-Path $bundlePath "AssetManager.exe"
+          $process = Start-Process -FilePath $executable -WorkingDirectory $bundlePath -WindowStyle Hidden -PassThru
+          try {
+            Start-Sleep -Seconds 15
+            if ($process.HasExited) {
+              throw "Frozen runtime exited early with code $($process.ExitCode)"
+            }
+          } finally {
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force
+              $process.WaitForExit()
+            }
+          }
+
+  windows-regression:
+    name: Windows Regression (Python 3.13 stable lane)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install regression dependencies
+        run: pip install -r requirements-lan.txt -r requirements-dev.txt
+      - name: Report tool versions
+        run: |
+          python --version
+          python -m pytest --version
+      - name: Run ownership, LAN, and filesystem regressions
+        run: >-
+          python -m pytest -q --tb=short
+          tests/core/test_path_resolver.py
+          tests/lan/test_path_guard.py
+          tests/lan/test_lan_api.py
+          tests/integration/test_undo_service.py
+          -k "library_lock or path_guard or lan_server or share_manager or directory_owned_by_live_process or directory_owner_marker or windows_directory_for_missing_process"
+
+  python-browser-e2e:
+    name: Python LAN Browser E2E
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - name: Build WebUI for Python LAN acceptance
+        working-directory: webui
+        run: |
+          npm ci
+          npm run build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Python LAN/browser dependencies
+        run: pip install -r requirements-lan.txt -r requirements-dev.txt "playwright>=1.50"
+      - name: Install Python Playwright Chromium
+        run: python -m playwright install chromium
+      - name: Run real LAN browser acceptance
+        run: >-
+          python -m pytest -q --tb=short
+          tests/e2e/test_webui_realtime_acceptance.py
 
   test:
     name: Test (Python ${{ matrix.python-version }})
@@ -96,5 +227,29 @@ jobs:
           pip install -r requirements-dev.txt
       - name: Compile check
         run: python -m compileall AssetsManager -q
+      - name: Report tool versions
+        run: |
+          python --version
+          python -m pytest --version
       - name: Run tests
         run: python -m pytest -q --tb=short
+
+  webui-e2e:
+    name: WebUI Browser E2E
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Run browser E2E (Mock/Shell; real backend optional)
+        run: npm run test:e2e

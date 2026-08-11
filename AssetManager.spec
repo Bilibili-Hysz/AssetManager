@@ -9,14 +9,15 @@ Core: database migrations, plugins, settings, path resolution.
 """
 from pathlib import Path
 
-_root = Path.cwd()
+_root = Path(SPECPATH).resolve()
 
 a = Analysis(
     ['run.py'],
     pathex=[str(_root)],
     binaries=[],
     datas=[
-        (str(_root / 'assets'), 'assets'),
+        # The tracked canonical icon source is capitalized; keep the bundled destination lowercase for app.py compatibility.
+        (str(_root / 'Assets' / 'icons'), 'assets/icons'),
         (str(_root / 'AssetsManager' / 'i18n' / 'en.json'), 'AssetsManager/i18n'),
         (str(_root / 'AssetsManager' / 'i18n' / 'zh.json'), 'AssetsManager/i18n'),
         (str(_root / 'AssetsManager' / 'i18n' / 'ja.json'), 'AssetsManager/i18n'),
@@ -26,8 +27,6 @@ a = Analysis(
         (str(_root / 'webui' / 'dist'), 'webui/dist'),
         # Plugin addons
         (str(_root / 'Plugins'), 'Plugins'),
-        # RuntimeData — settings and shared data for first launch
-        (str(_root / 'RuntimeData' / 'Shared'), 'RuntimeData/Shared'),
     ],
     hiddenimports=[
         # Core deps
@@ -39,6 +38,9 @@ a = Analysis(
         'PySide6.QtCore',
         'PySide6.QtGui',
         'PySide6.QtWidgets',
+        'PySide6.QtSvg',
+        'PySide6.QtOpenGL',
+        'PySide6.QtOpenGLWidgets',
         'shiboken6',
         # LAN sharing — aiohttp + dependencies
         'aiohttp',
@@ -54,7 +56,6 @@ a = Analysis(
         'aiohttp.connector',
         'aiohttp.cookiejar',
         'aiohttp.formdata',
-        'aiohttp.protocol',
         'aiohttp.resolver',
         'aiohttp.tracing',
         'aiohttp.typedefs',
@@ -72,7 +73,6 @@ a = Analysis(
         'yarl._quoting',
         'aiosignal',
         'frozenlist',
-        'async_timeout',
         'asyncio',
         'ssl',
         # LAN module
@@ -119,7 +119,6 @@ a = Analysis(
         'AssetsManager.application.search_service',
         'AssetsManager.application.share_service',
         'AssetsManager.application.tag_service',
-        'AssetsManager.application.thumbnail_repository',
         'AssetsManager.application.thumbnail_service',
         'AssetsManager.application.undo_service',
         # Domain layer
@@ -167,9 +166,8 @@ a = Analysis(
         'matplotlib', 'pandas',
         # Qt modules not used by this app
         'PySide6.QtQuick', 'PySide6.QtQml', 'PySide6.QtPdf',
-        'PySide6.QtOpenGL', 'PySide6.QtOpenGLWidgets',
         'PySide6.Qt3D', 'PySide6.QtCharts', 'PySide6.QtDataVisualization',
-        'PySide6.QtMultimedia', 'PySide6.QtSvg', 'PySide6.QtSvgWidgets',
+        'PySide6.QtMultimedia', 'PySide6.QtSvgWidgets',
         'PySide6.QtWebEngine', 'PySide6.QtWebEngineWidgets',
         'PySide6.QtDesigner', 'PySide6.QtHelp', 'PySide6.QtSql',
         # PIL formats not needed
@@ -214,7 +212,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(_root / 'assets' / 'icons' / 'icon.ico'),
+    icon=str(_root / 'Assets' / 'icons' / 'icon.ico'),
 )
 
 coll = COLLECT(
