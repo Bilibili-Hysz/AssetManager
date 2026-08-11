@@ -43,7 +43,7 @@ class WindowCoordinator:
             f"QMenu {{ background: {t['panel']}; color: {t['heading']}; "
             f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px; padding: 4px; }}"
             f"QMenu::item {{ padding: 5px 28px 5px 12px; border-radius: {scaled_px(4)}px; }}"
-            f"QMenu::item:selected {{ background: {t['accent']}; }}"
+            f"QMenu::item:selected {{ background: {t['accent']}; color: {t['on_accent']}; }}"
         )
 
     def apply_status_bar_theme(self) -> None:
