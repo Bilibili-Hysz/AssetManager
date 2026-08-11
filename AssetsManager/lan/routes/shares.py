@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from time import perf_counter
 
-from urllib.parse import quote, unquote
+from urllib.parse import quote
 
 from aiohttp import web
 
@@ -265,7 +265,7 @@ async def handle_share_download(request):
     try:
         share_svc = get_share_service(request)
         share_id = request.match_info.get("id", "")
-        rel_path = unquote(request.match_info.get("path", ""))
+        rel_path = request.match_info.get("path", "")  # aiohttp decodes match_info once
 
         # L3: all semantic admission checks (existence, password token,
         # expiry, download limit, path scope) live in
@@ -353,7 +353,7 @@ async def handle_share_preview(request):
     lan = get_lan(request)
     share_svc = get_share_service(request)
     share_id = request.match_info.get("id", "")
-    rel_path = unquote(request.match_info.get("path", ""))
+    rel_path = request.match_info.get("path", "")  # aiohttp decodes match_info once
 
     share = share_svc.get_share_record(share_id)
     if not share:

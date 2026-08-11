@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-from urllib.parse import unquote
 
 from aiohttp import web
 
@@ -25,7 +24,7 @@ _ALLOWED_SORTS = {"updated", "name"}
 
 def _path_query(request) -> str:
     raw = request.query.get("path", "")
-    path = unquote(raw)
+    path = raw  # URLSearchParams already decoded the query once
     if len(path) > MAX_GALLERY_PATH_LENGTH:
         raise web.HTTPBadRequest(reason="Path is too long")
     return path

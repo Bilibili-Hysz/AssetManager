@@ -3,7 +3,6 @@ import asyncio
 import logging
 import sqlite3
 from time import perf_counter
-from urllib.parse import unquote
 from urllib.parse import urlparse
 
 from aiohttp import web
@@ -31,7 +30,7 @@ async def handle_meta(request):
     if not require_permission(request, "browse"):
         return web.json_response({"error": "Browse access required"}, status=403)
     lan = get_lan(request)
-    rel_path = unquote(request.match_info.get("path", ""))
+    rel_path = request.match_info.get("path", "")  # aiohttp decodes match_info once
     target = validate_path(lan, rel_path)
     svc = get_metadata_service(request)
 
@@ -60,7 +59,7 @@ async def handle_save_notes(request):
         return web.json_response({"error": "Admin access required"}, status=403)
 
     lan = get_lan(request)
-    rel_path = unquote(request.match_info.get("path", ""))
+    rel_path = request.match_info.get("path", "")  # aiohttp decodes match_info once
     if not rel_path:
         return web.json_response({"error": "path required"}, status=400)
 
@@ -279,7 +278,7 @@ async def handle_project_detail(request):
     if not require_permission(request, "browse"):
         return web.json_response({"error": "Browse access required"}, status=403)
     lan = get_lan(request)
-    rel_path = unquote(request.match_info["path"])
+    rel_path = request.match_info["path"]  # aiohttp decodes match_info once
     target = validate_path(lan, rel_path)
 
     if not target.is_dir():

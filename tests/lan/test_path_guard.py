@@ -52,3 +52,34 @@ def test_path_guard_existing_key_requires_existing_file(tmp_path):
     asset = tmp_path / "asset.txt"
     asset.write_text("ok", encoding="utf-8")
     assert guard.existing_key("asset.txt") == str(asset.resolve())
+
+
+def test_path_guard_rejects_nul_and_control_characters(tmp_path):
+    from AssetsManager.lan.path_guard import InvalidPathError, PathGuard
+
+    guard = PathGuard(tmp_path)
+
+    with pytest.raises(InvalidPathError):
+        guard.resolve("a\x00b.txt")
+    with pytest.raises(InvalidPathError):
+        guard.resolve("a\x1fb.txt")
+    with pytest.raises(InvalidPathError):
+        guard.resolve("dir/\x7fsecret.txt")
+
+
+def test_path_guard_rejects_ads_separator_on_windows(tmp_path):
+    import os
+
+    from AssetsManager.lan.path_guard import InvalidPathError, PathGuard
+
+    guard = PathGuard(tmp_path)
+    if os.name == "nt":
+        with pytest.raises(InvalidPathError):
+            guard.resolve("file.txt:Zone.Identifier")
+        with pytest.raises(InvalidPathError):
+            guard.resolve("dir/file.txt:stream")
+    else:
+        # On POSIX ':' is a legal filename character; only escapes matter.
+        assert guard.resolve("file.txt:Zone.Identifier") == (
+            tmp_path / "file.txt:Zone.Identifier"
+        ).resolve()

@@ -2739,6 +2739,43 @@ async def test_download_route_serves_file(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_download_route_serves_filename_with_literal_percent_sequence(tmp_path):
+    """A literal %xx sequence in a real filename must survive a single decode.
+
+    aiohttp decodes match_info once (%%2F -> %2F); the old double unquote
+    would turn the literal ``%2F`` into ``/`` and serve the wrong file.
+    """
+    app, library, conn = _make_lan_app(tmp_path)
+    (library / "a%2Fb.txt").write_text("literal percent", encoding="utf-8")
+    (library / "a").mkdir(exist_ok=True)
+    (library / "a" / "b.txt").write_text("wrong file", encoding="utf-8")
+
+    client = await _make_client(app)
+    try:
+        # Single-encoded %252F -> match_info gets "%2F" (the literal name).
+        resp = await client.get("/api/download/a%252Fb.txt", headers=_local_ui_headers(app))
+        assert resp.status == 200
+        assert await _read_body(resp) == b"literal percent"
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_download_route_serves_filename_with_literal_percent_sign(tmp_path):
+    """A literal ``%`` followed by non-hex characters is also preserved."""
+    app, library, conn = _make_lan_app(tmp_path)
+    (library / "100%25.txt").write_text("percent file", encoding="utf-8")
+
+    client = await _make_client(app)
+    try:
+        resp = await client.get("/api/download/100%2525.txt", headers=_local_ui_headers(app))
+        assert resp.status == 200
+        assert await _read_body(resp) == b"percent file"
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
 async def test_download_routes_record_response_ready_metrics(tmp_path):
     from AssetsManager.core.performance import PerformanceRecorder
     from AssetsManager.lan.routes._helpers import LAN_APP_KEY

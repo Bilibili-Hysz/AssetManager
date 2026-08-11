@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from urllib.parse import unquote
 
 from aiohttp import web
 
@@ -128,7 +127,7 @@ async def handle_image(request: web.Request) -> web.StreamResponse:
         return web.json_response({"error": "Forbidden"}, status=403)
 
     lan = get_lan(request)
-    rel_path = unquote(request.query.get("path", ""))
+    rel_path = request.query.get("path", "")  # query already decoded once
     target = validate_path(lan, rel_path)
 
     # Resolve/validate the target before handing it to either FileResponse or

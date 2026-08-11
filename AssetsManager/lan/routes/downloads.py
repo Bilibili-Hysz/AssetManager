@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 from time import perf_counter
-from urllib.parse import quote, unquote
+from urllib.parse import quote
 
 from aiohttp import web
 
@@ -121,7 +121,7 @@ async def handle_download(request):
             status = 403
             return web.json_response({"error": "Forbidden"}, status=status)
 
-        rel_path = unquote(request.match_info["path"])
+        rel_path = request.match_info["path"]  # aiohttp decodes match_info once
         target = validate_path(lan, rel_path)
 
         if target.is_file():

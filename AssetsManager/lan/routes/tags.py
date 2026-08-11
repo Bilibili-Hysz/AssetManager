@@ -1,6 +1,5 @@
 """Tag routes: /api/tags, /api/tags/remove, /api/tags/{name}."""
 import logging
-from urllib.parse import unquote
 
 from aiohttp import web
 
@@ -96,7 +95,7 @@ async def handle_rename_tag(request):
         return web.json_response({"error": "Admin access required"}, status=403)
     lan = get_lan(request)
     svc = get_tag_service(request)
-    old_name = unquote(request.match_info["name"])
+    old_name = request.match_info["name"]  # aiohttp decodes match_info once
     try:
         body = await request.json()
     except Exception:
@@ -124,7 +123,7 @@ async def handle_delete_tag(request):
         return web.json_response({"error": "Admin access required"}, status=403)
     lan = get_lan(request)
     svc = get_tag_service(request)
-    tag_name = unquote(request.match_info["name"])
+    tag_name = request.match_info["name"]  # aiohttp decodes match_info once
     try:
         svc.delete_tag(lan.library_root, tag_name)
         return web.json_response({"ok": True})

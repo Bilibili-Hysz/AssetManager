@@ -21,7 +21,7 @@ from AssetsManager.core.format_utils import CATEGORY_MAP, format_size
 from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import ActivityChanged, PresenceChanged
-from AssetsManager.lan.path_guard import MissingPathError, PathEscapeError, PathGuard
+from AssetsManager.lan.path_guard import MissingPathError, PathEscapeError, PathGuard, PathGuardError
 
 _log = logging.getLogger(__name__)
 
@@ -312,6 +312,10 @@ def validate_path(lan, rel_path: str) -> Path:
         return PathGuard(lan.library_root).resolve(rel_path)
     except PathEscapeError:
         raise web.HTTPBadRequest(reason="Path escape detected")
+    except PathGuardError:
+        # Invalid characters (NUL / control chars, Windows ADS separators)
+        # are a client error, not a server fault — return 400 like escapes.
+        raise web.HTTPBadRequest(reason="Invalid path")
 
 
 def validated_existing_key(lan, rel_path: str) -> str:
@@ -321,6 +325,8 @@ def validated_existing_key(lan, rel_path: str) -> str:
         raise web.HTTPBadRequest(reason="Path escape detected")
     except MissingPathError:
         raise web.HTTPNotFound(reason="File not found")
+    except PathGuardError:
+        raise web.HTTPBadRequest(reason="Invalid path")
 
 
 def set_auth_cookie(response: web.Response, token: str, *, secure: bool = False):

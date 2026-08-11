@@ -6,6 +6,8 @@ routes are split into smaller modules.
 """
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
 
 
@@ -21,6 +23,18 @@ class MissingPathError(PathGuardError):
     """Raised when an existing path is required but missing."""
 
 
+class InvalidPathError(PathGuardError):
+    """Raised when a path contains characters that must never reach the
+    filesystem (NUL / C0 control characters) or — on Windows — an NTFS
+    alternate data stream separator (``:``)."""
+
+
+# C0 control characters are never valid in a request path and must not be
+# passed to pathlib (Python <=3.12 raises on NUL, newer versions silently
+# pass it through, making the behavior version-dependent).
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
 class PathGuard:
     """Validate paths against a fixed root directory."""
 
@@ -32,10 +46,19 @@ class PathGuard:
         text = str(rel_path or "")
         if not text or text == "/":
             return self.root
+        if _CONTROL_CHARS_RE.search(text):
+            raise InvalidPathError("Path contains control characters")
         cleaned = text.replace("\\", "/").strip("/")
         target = (self.root / cleaned).resolve()
         if not target.is_relative_to(self.root):
             raise PathEscapeError("Path escape detected")
+        if os.name == "nt":
+            # NTFS alternate data streams (file.txt:Zone.Identifier) pass
+            # is_relative_to but open a different stream on Windows; reject
+            # the separator inside the resolved in-root segment (an absolute
+            # path with a drive letter already failed the escape check).
+            if ":" in str(target.relative_to(self.root)):
+                raise InvalidPathError("Path contains a stream separator")
         return target
 
     def existing(self, rel_path: str | Path = "") -> Path:
