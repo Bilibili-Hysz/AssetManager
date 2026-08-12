@@ -8,6 +8,11 @@ The IP whitelist applies to direct connections: cloudflared tunnel traffic
 always originates from the loopback address 127.0.0.1, and while the tunnel
 is running loopback sources are allowed automatically, so LAN-subnet
 whitelists only constrain direct traffic.
+
+Concurrency contract: RateLimiter, AuthRateLimiter and IPBlacklist are
+deliberately unlocked and must only be touched from the server event-loop
+thread (the security middleware). Do not add UI-thread or worker-thread
+call paths without adding synchronization first.
 """
 import ipaddress
 import logging
@@ -125,16 +130,6 @@ class IPBlacklist:
 
     def is_blocked(self, ip: str) -> bool:
         return ip in self._blocked
-
-    def block(self, ip: str):
-        self._blocked.add(ip)
-
-    def unblock(self, ip: str):
-        self._blocked.discard(ip)
-
-    @property
-    def blocked_ips(self) -> list[str]:
-        return list(self._blocked)
 
 
 # ── Middleware factory ────────────────────────────────────────

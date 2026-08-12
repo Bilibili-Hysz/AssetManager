@@ -52,15 +52,6 @@ def test_blacklist_load_normalizes_ipv6_forms():
     assert blacklist.is_blocked("not-an-ip") is True
     assert blacklist.is_blocked("192.168.1.5") is False
 
-
-def test_blacklist_block_and_unblock_still_match_plain_ips():
-    blacklist = IPBlacklist()
-    blacklist.block("10.0.0.1")
-    assert blacklist.is_blocked("10.0.0.1") is True
-    blacklist.unblock("10.0.0.1")
-    assert blacklist.is_blocked("10.0.0.1") is False
-
-
 # ── middleware: whitelist normalization + tunnel bypass ──────────
 
 

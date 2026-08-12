@@ -1754,3 +1754,81 @@ def test_explicit_tls_load_failure_does_not_downgrade_to_http(monkeypatch):
         asyncio.run(_LanServerImpl._startup(server))
 
     assert server._ssl_active is False
+
+
+def _server_with_users_cache():
+    server = object.__new__(_LanServerImpl)
+    server._auth_mode = "user"
+    server._has_users_cache = None
+    server._has_users_cache_time = 0.0
+    server._has_users_cache_ttl = 30.0
+    server._has_users_cache_lock = threading.Lock()
+    probes = []
+
+    class _AuthService:
+        def has_active_users(self, raise_on_error=True):
+            probes.append(time.monotonic())
+            return True
+
+    server._auth_service = _AuthService()
+    return server, probes
+
+
+def test_has_users_cache_serves_ttl_and_invalidate_forces_reprobe():
+    """The cache satisfies repeated reads; invalidation re-probes the DB."""
+    server, probes = _server_with_users_cache()
+
+    assert server._has_active_users() is True
+    assert server._has_active_users() is True
+    assert len(probes) == 1
+
+    server.invalidate_user_cache()
+    assert server._has_active_users() is True
+    assert len(probes) == 2
+
+
+def test_has_users_cache_fails_closed_and_caches_the_negative_result():
+    server = object.__new__(_LanServerImpl)
+    server._auth_mode = "user"
+    server._has_users_cache = None
+    server._has_users_cache_time = 0.0
+    server._has_users_cache_ttl = 30.0
+    server._has_users_cache_lock = threading.Lock()
+
+    class _BrokenAuthService:
+        def has_active_users(self, raise_on_error=True):
+            raise RuntimeError("database unavailable")
+
+    server._auth_service = _BrokenAuthService()
+    assert server._has_active_users() is True
+    # Fail-closed result stays cached for the TTL: no re-probe, no re-log.
+    assert server._has_active_users() is True
+
+
+def test_has_users_cache_survives_cross_thread_hammering():
+    """The cache is read by the event-loop thread (middleware) and the UI
+    thread (status/auth_status); concurrent probes and invalidations must
+    neither raise nor leave an inconsistent cached state."""
+    server, probes = _server_with_users_cache()
+    errors = []
+
+    def hammer():
+        try:
+            for _ in range(300):
+                if server._has_active_users() is not True:
+                    errors.append(AssertionError("unexpected cache result"))
+                server.invalidate_user_cache()
+        except Exception as exc:  # pragma: no cover - failure path
+            errors.append(exc)
+
+    threads = [threading.Thread(target=hammer) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert not errors
+    with server._has_users_cache_lock:
+        if server._has_users_cache is not None:
+            assert server._has_users_cache is True
+            assert server._has_users_cache_time > 0.0

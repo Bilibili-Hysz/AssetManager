@@ -324,10 +324,17 @@ class _LanServerImpl:
         self._started_at: float | None = None
         self._metrics_lock = threading.Lock()
 
-        # User existence cache (avoid DB query on every request)
+        # User existence cache (avoid DB query on every request).
+        # _has_users_cache is read from both the event-loop thread
+        # (_auth_middleware) and the UI thread (status/auth_status), so the
+        # check/read/write pair is guarded by its own lock.
         self._has_users_cache: bool | None = None
         self._has_users_cache_time: float = 0
         self._has_users_cache_ttl: float = 30.0  # Cache for 30 seconds
+        self._has_users_cache_lock = threading.Lock()
+        # Concurrency contract: only the server event-loop thread reads or
+        # writes _revoked_tokens (auth middleware + logout handler). Keep
+        # every facade path off it, or add synchronization first.
         self._revoked_tokens: dict[str, float] = {}
 
         with _runtime_operation(runtime, session):
@@ -1551,26 +1558,30 @@ class _LanServerImpl:
             return False
         import time
         now = time.time()
-        if self._has_users_cache is not None and (now - self._has_users_cache_time) < self._has_users_cache_ttl:
-            return self._has_users_cache
+        with self._has_users_cache_lock:
+            if self._has_users_cache is not None and (now - self._has_users_cache_time) < self._has_users_cache_ttl:
+                return self._has_users_cache
         try:
             result = self._auth_service.has_active_users(raise_on_error=True)
-            self._has_users_cache = result
-            self._has_users_cache_time = now
-            return result
         except Exception:
             # Fail closed and reuse the same TTL for the negative result; the
             # next request within the window hits the cache instead of the DB.
-            self._has_users_cache = True
-            self._has_users_cache_time = now
+            with self._has_users_cache_lock:
+                self._has_users_cache = True
+                self._has_users_cache_time = now
             _log.warning(
                 "Unable to inspect active LAN users; failing closed (auth required)"
             )
             return True
+        with self._has_users_cache_lock:
+            self._has_users_cache = result
+            self._has_users_cache_time = now
+        return result
 
     def invalidate_user_cache(self):
         """Invalidate the user existence cache (call when users are added/removed)."""
-        self._has_users_cache = None
+        with self._has_users_cache_lock:
+            self._has_users_cache = None
 
     # ── Declarative public-endpoint list (keep aligned with api.py) ──
     #
