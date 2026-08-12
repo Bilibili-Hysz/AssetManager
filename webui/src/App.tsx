@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useParams, useSearchParams } from 'react-router-dom';
 import { AuthProvider } from './stores/AuthContext';
+import { QueryCacheProvider } from './cache/QueryCacheContext';
 import { RealtimeProvider } from './stores/RealtimeContext';
 import { SellerAuthProvider } from './stores/SellerAuthContext';
 import { ToastProvider } from './components/ui/Toast';
@@ -113,6 +114,7 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <RealtimeProvider>
+          <QueryCacheProvider>
           <ToastProvider>
             <DownloadProgressProvider>
               <Suspense fallback={<div className="app-route-loading" aria-busy="true" />}>
@@ -172,6 +174,7 @@ function App() {
               {paletteOpen && <CommandPalette open={true} onClose={() => setPaletteOpen(false)} />}
             </DownloadProgressProvider>
           </ToastProvider>
+          </QueryCacheProvider>
         </RealtimeProvider>
       </AuthProvider>
     </BrowserRouter>
