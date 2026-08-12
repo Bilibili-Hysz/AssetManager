@@ -126,6 +126,41 @@ export function createApiClient(options: ApiClientOptions = {}) {
   const { baseUrl = '', onUnauthorized } = options;
   const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
 
+  /**
+   * Throw the typed error for a non-OK response. Shared by the JSON, blob
+   * and progress request paths so the 401/403/429/503 classification stays
+   * in exactly one place.
+   */
+  async function throwForErrorStatus(
+    response: Response,
+    path: string,
+    onUnauthorized?: (path: string) => void,
+  ): Promise<never> {
+    if (response.status === 401) {
+      onUnauthorized?.(path);
+      throw new UnauthorizedError();
+    }
+    if (response.status === 403) {
+      throw new ForbiddenError();
+    }
+    if (response.status === 429) {
+      throw rateLimitErrorFrom(response);
+    }
+    if (response.status === 503) {
+      const errBody = await response.json().catch(() => ({}));
+      throw new ServiceUnavailableError(
+        (errBody as { error?: string }).error ?? 'Service unavailable',
+        errBody,
+      );
+    }
+    const errBody = await response.json().catch(() => ({}));
+    throw new ApiError(
+      (errBody as { error?: string }).error ?? `HTTP ${response.status}`,
+      response.status,
+      errBody,
+    );
+  }
+
   async function request<T>(
     method: HttpMethod,
     path: string,
@@ -159,34 +194,8 @@ export function createApiClient(options: ApiClientOptions = {}) {
         credentials: 'same-origin',
       });
 
-      if (response.status === 401) {
-        onUnauthorized?.(path);
-        throw new UnauthorizedError();
-      }
-
-      if (response.status === 403) {
-        throw new ForbiddenError();
-      }
-
-      if (response.status === 429) {
-        throw rateLimitErrorFrom(response);
-      }
-
-      if (response.status === 503) {
-        const errBody = await response.json().catch(() => ({}));
-        throw new ServiceUnavailableError(
-          (errBody as { error?: string }).error ?? 'Service unavailable',
-          errBody,
-        );
-      }
-
       if (!response.ok) {
-        const errBody = await response.json().catch(() => ({}));
-        throw new ApiError(
-          (errBody as { error?: string }).error ?? `HTTP ${response.status}`,
-          response.status,
-          errBody,
-        );
+        await throwForErrorStatus(response, path, onUnauthorized);
       }
 
       return await parseJsonBody<T>(response);
@@ -234,30 +243,8 @@ export function createApiClient(options: ApiClientOptions = {}) {
         credentials: 'same-origin',
       });
 
-      if (response.status === 401) {
-        onUnauthorized?.(path);
-        throw new UnauthorizedError();
-      }
-      if (response.status === 403) {
-        throw new ForbiddenError();
-      }
-      if (response.status === 429) {
-        throw rateLimitErrorFrom(response);
-      }
-      if (response.status === 503) {
-        const errBody = await response.json().catch(() => ({}));
-        throw new ServiceUnavailableError(
-          (errBody as { error?: string }).error ?? 'Service unavailable',
-          errBody,
-        );
-      }
       if (!response.ok) {
-        const errBody = await response.json().catch(() => ({}));
-        throw new ApiError(
-          (errBody as { error?: string }).error ?? `HTTP ${response.status}`,
-          response.status,
-          errBody,
-        );
+        await throwForErrorStatus(response, path, onUnauthorized);
       }
 
       return response;
@@ -314,26 +301,8 @@ export function createApiClient(options: ApiClientOptions = {}) {
         credentials: 'same-origin',
       });
 
-      if (response.status === 401) {
-        onUnauthorized?.(path);
-        throw new UnauthorizedError();
-      }
-      if (response.status === 403) throw new ForbiddenError();
-      if (response.status === 429) throw rateLimitErrorFrom(response);
-      if (response.status === 503) {
-        const errBody = await response.json().catch(() => ({}));
-        throw new ServiceUnavailableError(
-          (errBody as { error?: string }).error ?? 'Service unavailable',
-          errBody,
-        );
-      }
       if (!response.ok) {
-        const errBody = await response.json().catch(() => ({}));
-        throw new ApiError(
-          (errBody as { error?: string }).error ?? `HTTP ${response.status}`,
-          response.status,
-          errBody,
-        );
+        await throwForErrorStatus(response, path, onUnauthorized);
       }
 
       const contentLength = Number(response.headers.get('Content-Length'));
