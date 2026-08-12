@@ -197,7 +197,9 @@ test.describe('Network resilience', () => {
     await page.goto('/');
     await page.waitForTimeout(3000);
 
-    // Filter out expected errors: network failures, 404s for static assets (favicon etc.)
+    // Filter out expected errors: network failures, 404s for static assets
+    // (favicon etc.), and the auth-connect failure the app logs when no
+    // backend is present in this offline shell.
     const moduleErrors = errors.filter(e =>
       e.includes('Failed to fetch') === false &&
       e.includes('NetworkError') === false &&
@@ -205,7 +207,8 @@ test.describe('Network resilience', () => {
       e.includes('403') === false &&
       e.includes('Load failed') === false &&
       e.includes('404') === false &&
-      e.includes('Failed to load resource') === false
+      e.includes('Failed to load resource') === false &&
+      e.includes('Auth connect failed') === false
     );
     // No module loading errors
     expect(moduleErrors).toHaveLength(0);
