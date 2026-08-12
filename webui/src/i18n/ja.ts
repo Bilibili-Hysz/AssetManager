@@ -10,7 +10,7 @@ const ja: I18nDict = {
     welcome: 'アセットライブラリのファイルを閲覧・ダウンロードできます。',
     library_purpose: 'アセットを閲覧、整理、ダウンロードするためのローカルビジュアルライブラリです。',
     loading: 'サーバーに接続中...',
-    service_unavailable: 'サービスを利用できません',
+    service_building: 'ギャラリーを構築中…', building_description: '大規模なライブラリを初回スキャン中です。1分ほどかかる場合があります。', unavailable: 'サービスを利用できません',
     service_unavailable_description: 'ライブラリサービスの起動またはメンテナンス中の可能性があります。',
     retry: '再試行',
     enter_aria: 'Gallery を開いてビジュアルアセットを発見',

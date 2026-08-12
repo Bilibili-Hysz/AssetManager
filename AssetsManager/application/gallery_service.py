@@ -25,6 +25,8 @@ from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.format_utils import format_size
 from AssetsManager.domain.asset import IMAGE_EXTS, assert_under_root
 from AssetsManager.domain.errors import MissingPathError, PathEscapeError
+from AssetsManager.domain.event_bus import get_event_bus
+from AssetsManager.domain.events import FileSystemChanged
 
 try:  # Pillow is a runtime dependency, but metadata must remain best-effort.
     from PIL import Image
@@ -206,6 +208,98 @@ class GalleryService:
         self._home_cache: dict[str, tuple[float, "GalleryHome"]] = {}
         self._home_cache_lock = threading.Lock()
         self._home_cache_ttl = 30.0
+        # Background home projection: the full-library walk for very large
+        # libraries takes tens of seconds, so it must never block a request.
+        # Requests read the cache; a miss returns a "building" signal and a
+        # daemon thread computes the projection and fills the cache.
+        self._building: set[str] = set()
+        self._build_lock = threading.Lock()
+        self._refresh_timer: threading.Timer | None = None
+        self._closed = False
+        self._fs_subscription = get_event_bus().subscribe_weak(
+            FileSystemChanged, self._on_file_system_changed
+        )
+
+    def _on_file_system_changed(self, event: FileSystemChanged) -> None:
+        """Invalidate the home projection on library changes and schedule a
+        background rebuild (debounced so a burst of file events rebuilds
+        once, shortly after the last change)."""
+        if event.kind in {"gallery", "shop"}:
+            return
+        with self._home_cache_lock:
+            self._home_cache.pop(str(event.library_root), None)
+        with self._build_lock:
+            if self._refresh_timer is not None:
+                self._refresh_timer.cancel()
+            self._refresh_timer = threading.Timer(
+                self._home_cache_ttl, self._ensure_home_building, args=(str(event.library_root),)
+            )
+            self._refresh_timer.daemon = True
+            self._refresh_timer.start()
+
+    def close(self) -> None:
+        """Stop background work; called when the owning session closes."""
+        self._closed = True
+        with self._build_lock:
+            if self._refresh_timer is not None:
+                self._refresh_timer.cancel()
+                self._refresh_timer = None
+        try:
+            self._fs_subscription.unsubscribe()
+        except Exception:
+            pass
+
+    @session_operation
+    def get_home_cached(
+        self, library_root: str | Path
+    ) -> "GalleryHome | None":
+        """Return a fresh home projection, or None when a build is needed.
+
+        Fresh cache -> value. Stale cache -> the stale value (the caller
+        shows it immediately) plus a background rebuild. No cache -> None
+        plus a background build.
+        """
+        root = Path(library_root).resolve()
+        now = time.monotonic()
+        with self._home_cache_lock:
+            cached = self._home_cache.get(str(root))
+            if cached is not None:
+                if now - cached[0] >= self._home_cache_ttl:
+                    # Stale: serve it now, rebuild in the background.
+                    self._ensure_home_building(str(root))
+                return cached[1]
+        self._ensure_home_building(str(root))
+        return None
+
+    def _ensure_home_building(self, root_key: str) -> None:
+        """Start a background home build for *root_key* unless one is
+        already running or the service is closed.
+
+        Idempotence comes from the ``_building`` set, not the cache, so
+        callers may invoke this while holding ``_home_cache_lock`` (the
+        stale-value path) without deadlocking.
+        """
+        if self._closed:
+            return
+        with self._build_lock:
+            if root_key in self._building:
+                return
+            self._building.add(root_key)
+        thread = threading.Thread(
+            target=self._build_home_background, args=(root_key,), daemon=True
+        )
+        thread.start()
+
+    def _build_home_background(self, root_key: str) -> None:
+        """Compute the projection off the request path; failures leave the
+        cache empty so the next request retries the build."""
+        try:
+            self._compute_home(root_key)
+        except Exception:
+            _log.exception("Background gallery home build failed for %s", root_key)
+        finally:
+            with self._build_lock:
+                self._building.discard(root_key)
 
     @staticmethod
     def _normalize_relative_path(value: str | Path | None) -> str:
@@ -605,6 +699,20 @@ class GalleryService:
             cached = self._home_cache.get(str(root))
             if cached is not None and now - cached[0] < self._home_cache_ttl:
                 return cached[1]
+        return self._compute_home(str(root), db_conn=db_conn)
+
+    def _compute_home(
+        self,
+        root_key: str,
+        *,
+        db_conn: sqlite3.Connection | None = None,
+    ) -> GalleryHome:
+        """Compute and cache the home projection for *root_key*.
+
+        Called both synchronously (get_home) and from the background
+        builder thread; writes the cache so later reads are instant.
+        """
+        root = Path(root_key).resolve()
         conn = self._connection(root, db_conn, self._connection_provider)
         refs: list[_ImageRef] = []
         node_counts: dict[str, int] = {"collection": 0, "project": 0}

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import asyncio
+
 import pytest
 from PIL import Image
 
@@ -32,7 +34,18 @@ async def test_gallery_routes_expose_home_collection_and_resolve_contract(tmp_pa
     )
     client = await _make_client(app)
     try:
-        home = await client.get("/api/gallery/home")
+        # First request reports building (the projection builds in the
+        # background); poll until it is ready.
+        first = await client.get("/api/gallery/home")
+        if first.status == 202:
+            assert (await first.json()) == {"building": True}
+            for _ in range(100):
+                home = await client.get("/api/gallery/home")
+                if home.status == 200:
+                    break
+                await asyncio.sleep(0.05)
+        else:
+            home = first
         assert home.status == 200
         home_payload = await home.json()
         assert home_payload["projects"][0]["path"] == "set"

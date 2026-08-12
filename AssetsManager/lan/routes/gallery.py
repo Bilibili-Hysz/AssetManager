@@ -47,14 +47,19 @@ async def handle_gallery_home(request):
     lan = get_lan(request)
     service = _service_or_unavailable(request)
     try:
-        response = await asyncio.to_thread(service.get_home, lan.library_root)
+        home = service.get_home_cached(lan.library_root)
+        if home is None:
+            # A background build is already running; the client shows a
+            # building state and retries shortly (large libraries take tens
+            # of seconds to project).
+            return web.json_response({"building": True}, status=202)
+        result = web.json_response(home.to_response())
+        result.headers["Cache-Control"] = "private, no-store"
+        return result
     except GalleryTraversalLimitError as exc:
         return _traversal_response(exc)
     except (PermissionError, OSError):
         return web.json_response({"error": "Failed to build gallery"}, status=500)
-    result = web.json_response(response.to_response())
-    result.headers["Cache-Control"] = "private, no-store"
-    return result
 
 
 async def handle_gallery_collection(request):

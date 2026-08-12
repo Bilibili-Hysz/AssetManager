@@ -42,9 +42,11 @@ export default function GalleryHomePage({ onOpenPalette }: GalleryHomePageProps)
   const navigate = useNavigate();
   const [data, setData] = useState<GalleryHomeResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [building, setBuilding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const requestGenerationRef = useRef(0);
+  const pollTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const [viewMode, setViewMode] = useState<GalleryViewMode>(() => readHomeLatestView());
   const [failedFeaturedImageUrl, setFailedFeaturedImageUrl] = useState<string | null>(null);
 
@@ -60,7 +62,17 @@ export default function GalleryHomePage({ onOpenPalette }: GalleryHomePageProps)
     galleryApi.home(controller.signal)
       .then(response => {
         if (requestGeneration !== requestGenerationRef.current) return;
-        setData(response);
+        if ('building' in response && (response as { building?: boolean }).building) {
+          // The backend builds the home projection in the background for
+          // very large libraries; poll until it is ready.
+          setBuilding(true);
+          pollTimerRef.current = window.setTimeout(() => {
+            if (requestGenerationRef.current === requestGeneration) reload();
+          }, 5000);
+          return;
+        }
+        setBuilding(false);
+        setData(response as GalleryHomeResponse);
         setFailedFeaturedImageUrl(null);
       })
       .catch(err => {
@@ -71,7 +83,13 @@ export default function GalleryHomePage({ onOpenPalette }: GalleryHomePageProps)
       .finally(() => {
         if (!controller.signal.aborted && requestGeneration === requestGenerationRef.current) setLoading(false);
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (pollTimerRef.current !== null) {
+        window.clearTimeout(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
   }, [galleryApi, reloadKey, t]);
 
   const featured = data?.featured;
@@ -129,9 +147,14 @@ export default function GalleryHomePage({ onOpenPalette }: GalleryHomePageProps)
           </div>
         </section>
 
-        {loading ? (
+        {loading && !building ? (
           <div className="gallery-skeleton-grid" role="status" aria-label={t('gallery.loading')}>
             {homeSkeletonKeys.map(key => <div key={key} className="gallery-skeleton-card" />)}
+          </div>
+        ) : building ? (
+          <div className="gallery-error-state" role="status" aria-label={t('gallery.building')}>
+            <h2>{t('gallery.building')}</h2>
+            <p>{t('gallery.building_description')}</p>
           </div>
         ) : error ? (
           <div className="gallery-error-state">

@@ -118,4 +118,23 @@ describe('GalleryHomePage', () => {
     expect(screen.getByRole('heading', { name: 'Fresh collection' })).toBeDefined();
     expect(screen.queryByRole('heading', { name: 'Stale collection' })).toBeNull();
   });
+
+  it('shows the building state and polls until the backend projection is ready', async () => {
+    vi.useFakeTimers();
+    homeMock
+      .mockResolvedValueOnce({ building: true })
+      .mockResolvedValueOnce(homeResponse('Ready collection'));
+    render(<MemoryRouter><GalleryHomePage /></MemoryRouter>);
+
+    // First response reports building; the page shows the building notice.
+    await act(async () => {});
+    expect(screen.getByText('gallery.building')).toBeDefined();
+
+    // The 5s poll timer refetches; the second response resolves the data.
+    act(() => { vi.advanceTimersByTime(5000); });
+    await act(async () => {});
+    expect(screen.getByRole('heading', { name: 'Ready collection' })).toBeDefined();
+    expect(screen.queryByText('gallery.building')).toBeNull();
+    vi.useRealTimers();
+  });
 });

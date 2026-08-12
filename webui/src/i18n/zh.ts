@@ -10,7 +10,7 @@ const zh: I18nDict = {
     welcome: '浏览和下载资产库中的文件。',
     library_purpose: '一个用于浏览、整理和下载资源的本地视觉资源库。',
     loading: '正在连接服务器...',
-    service_unavailable: '服务暂不可用',
+    service_building: '正在构建图库…', building_description: '首次扫描大型图库，可能需要一分钟。', unavailable: '服务暂不可用',
     service_unavailable_description: '资源库服务可能正在启动或维护中。',
     retry: '重试',
     enter_aria: '进入 Gallery，发现视觉资源',

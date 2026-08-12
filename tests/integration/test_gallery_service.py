@@ -230,3 +230,52 @@ def test_gallery_home_cache_hits_within_ttl_and_refreshes_after(tmp_path, schema
     _image(tmp_path / "project" / "new.png", (20, 20))
     refreshed = service.get_home(tmp_path)
     assert refreshed is not first
+
+
+def test_get_home_cached_builds_in_background_and_serves_cache(tmp_path, schema_db):
+    """A cache miss returns None (the route answers 202) while a background
+    build fills the cache; subsequent reads return the projection instantly."""
+    import time
+
+    _image(tmp_path / "collection" / "cover.jpg", (40, 40))
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    try:
+        assert service.get_home_cached(tmp_path) is None
+        deadline = time.monotonic() + 10.0
+        cached = None
+        while time.monotonic() < deadline:
+            cached = service.get_home_cached(tmp_path)
+            if cached is not None:
+                break
+            time.sleep(0.05)
+        assert cached is not None
+        assert cached.projects  # a single-level folder projects as 'project'
+        # Second read is a cache hit and returns immediately.
+        assert service.get_home_cached(tmp_path) is cached
+    finally:
+        service.close()
+
+
+def test_home_cache_invalidated_on_file_system_changes(tmp_path, schema_db):
+    """A FileSystemChanged event clears the cached projection so the next
+    read triggers a background rebuild."""
+    import time
+
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileSystemChanged
+
+    _image(tmp_path / "set" / "one.png")
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    try:
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and service.get_home_cached(tmp_path) is None:
+            time.sleep(0.05)
+        assert service.get_home_cached(tmp_path) is not None
+
+        get_event_bus().publish(FileSystemChanged(
+            library_root=str(tmp_path), session_token="test", kind="files", paths=(),
+        ))
+        # Cache cleared synchronously by the event handler.
+        assert service.get_home_cached(tmp_path) is None
+    finally:
+        service.close()

@@ -8,7 +8,7 @@ const en = {
     welcome: 'Browse and download files from your asset library.',
     library_purpose: 'A local visual library for browsing, organizing, and downloading assets.',
     loading: 'Connecting to server...',
-    service_unavailable: 'Service Unavailable',
+    service_building: 'Building gallery…', building_description: 'Scanning a large library for the first time. This may take a minute.', unavailable: 'Service Unavailable',
     service_unavailable_description: 'The library service may be starting up or undergoing maintenance.',
     retry: 'Retry',
     enter_aria: 'Enter Gallery to discover visual assets',
