@@ -225,3 +225,76 @@ def test_unknown_parent_created_falls_back_to_full_rebuild(tmp_path, schema_db, 
         assert cached is not None and cached.to_response() == oracle.to_response()
     finally:
         service.close()
+
+
+def test_opposing_changes_cancel_and_fold():
+    from AssetsManager.application.gallery_service import _QueuedChange
+
+    cancel = GalleryService._cancel_opposing_changes
+
+    def c(kind, paths, old_paths=()):
+        return _QueuedChange(kind, tuple(paths), tuple(old_paths), 1)
+
+    # created then deleted within one burst: net zero.
+    assert cancel([c("created", ["a/x.png"]), c("deleted", ["a/x.png"])]) == []
+    # deleted then created: the file was replaced; both events must apply.
+    kept = cancel([c("deleted", ["a/x.png"]), c("created", ["a/x.png"])])
+    assert [change.kind for change in kept] == ["deleted", "created"]
+    # move round-trip A->B then B->A: net zero.
+    assert cancel([c("moved", ["B"], ["A"]), c("moved", ["A"], ["B"])]) == []
+    # move chain A->B then B->C folds to A->C.
+    folded = cancel([c("moved", ["B"], ["A"]), c("moved", ["C"], ["B"])])
+    assert len(folded) == 1
+    assert folded[0].old_paths == ("A",)
+    assert folded[0].paths == ("C",)
+    # unrelated events pass through untouched.
+    kept = cancel([c("created", ["a/1.png"]), c("created", ["a/2.png"])])
+    assert len(kept) == 2
+
+
+def test_create_then_delete_in_one_burst_is_a_net_noop(tmp_path, schema_db, monkeypatch):
+    """A file created and deleted inside one debounce window cancels out:
+    no fallback, the snapshot stays valid, and the oracle still matches."""
+    _image(tmp_path / "a" / "one.png", (40, 40))
+    service = _make_service(schema_db, monkeypatch)
+    monkeypatch.setattr(service, "_incremental_debounce", 0.2)
+    try:
+        assert _settle(service, tmp_path) is not None
+        temp_file = tmp_path / "a" / "temp.png"
+        _image(temp_file, (8, 8))
+        _publish(tmp_path, "created", [temp_file])
+        temp_file.unlink()
+        _publish(tmp_path, "deleted", [temp_file])
+        time.sleep(0.6)
+        state = service._home_states.get(_root_key(tmp_path))
+        assert state is not None  # a fallback would have dropped the state
+        assert "a/temp.png" not in state.files
+        cached = service.get_home_cached(tmp_path)
+        oracle = _oracle(service, tmp_path)
+        assert cached is not None and cached.to_response() == oracle.to_response()
+    finally:
+        service.close()
+
+
+def test_incremental_telemetry_counts_applied_and_fallbacks(tmp_path, schema_db, monkeypatch):
+    """incremental_stats reports applied events and fallback rebuilds."""
+    _image(tmp_path / "a" / "one.png", (40, 40))
+    service = _make_service(schema_db, monkeypatch)
+    try:
+        assert _settle(service, tmp_path) is not None
+        _image(tmp_path / "a" / "two.png", (20, 20))
+        _publish(tmp_path, "created", [tmp_path / "a" / "two.png"])
+        _wait_state(service, tmp_path, lambda state: "a/two.png" in state.files)
+        applied, fallbacks = service.incremental_stats
+        assert applied == 1 and fallbacks == 0
+
+        new_dir = tmp_path / "newdir"
+        new_dir.mkdir()
+        _image(new_dir / "art.png", (15, 15))
+        _publish(tmp_path, "created", [new_dir])
+        end = time.monotonic() + 10
+        while time.monotonic() < end and service.incremental_stats[1] < 1:
+            time.sleep(0.05)
+        assert service.incremental_stats[1] >= 1
+    finally:
+        service.close()

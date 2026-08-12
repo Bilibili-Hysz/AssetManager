@@ -277,6 +277,10 @@ class GalleryService:
         self._inc_timer: threading.Timer | None = None
         self._home_states: dict[str, _HomeState] = {}
         self._home_generation = 0
+        # Incremental telemetry: applied event count and fallback count since
+        # construction (written only by the incremental worker thread).
+        self._incremental_applied = 0
+        self._incremental_fallbacks = 0
         self._closed = False
         self._fs_subscription = get_event_bus().subscribe_weak(
             FileSystemChanged, self._on_file_system_changed
@@ -314,6 +318,63 @@ class GalleryService:
         self._schedule_incremental_apply(root_key)
 
     _MAX_PENDING_EVENTS = 500
+
+    @staticmethod
+    def _cancel_opposing_changes(changes: list[_QueuedChange]) -> list[_QueuedChange]:
+        """Collapse bursts that net out before applying them.
+
+        created(P)-then-deleted(P) cancels both (net zero against the
+        snapshot); a move round-trip A->B then B->A cancels; a move chain
+        A->B then B->C folds into A->C. Multi-path batch events pass
+        through untouched.
+        """
+        result: list[_QueuedChange] = []
+        for change in changes:
+            if len(change.paths) != 1:
+                result.append(change)
+                continue
+            path = change.paths[0]
+            if change.kind == "deleted":
+                for i in range(len(result) - 1, -1, -1):
+                    prev = result[i]
+                    if (
+                        prev.kind in {"created", "copied", "restored"}
+                        and prev.paths and prev.paths[0] == path
+                    ):
+                        result.pop(i)
+                        break
+                else:
+                    result.append(change)
+            elif change.kind == "moved" and len(change.old_paths) == 1:
+                src, dst = change.old_paths[0], path
+                cancelled = False
+                for i in range(len(result) - 1, -1, -1):
+                    prev = result[i]
+                    if (
+                        prev.kind == "moved" and len(prev.old_paths) == 1
+                        and prev.paths[0] == src and prev.old_paths[0] == dst
+                    ):
+                        # Round-trip A->B then B->A: net zero.
+                        result.pop(i)
+                        cancelled = True
+                        break
+                if not cancelled:
+                    for i in range(len(result) - 1, -1, -1):
+                        prev = result[i]
+                        if (
+                            prev.kind == "moved" and len(prev.old_paths) == 1
+                            and prev.paths[0] == src
+                        ):
+                            # Chain A->B then B->C folds to A->C.
+                            result[i] = _QueuedChange(
+                                "moved", (dst,), prev.old_paths, change.seq,
+                            )
+                            break
+                    else:
+                        result.append(change)
+            else:
+                result.append(change)
+        return result
 
     def _invalidate_and_schedule_full(self, root_key: str, library_root: str) -> None:
         """Drop the cached/state/persisted projection and schedule a full
@@ -361,6 +422,7 @@ class GalleryService:
             self._invalidate_and_schedule_full(root_key, root_key)
             return
         changes = [change for change in changes if change.seq > state.generation]
+        changes = self._cancel_opposing_changes(changes)
         if not changes:
             return
         with self._build_lock:
@@ -380,6 +442,7 @@ class GalleryService:
             home = cached[1]
             for change in changes:
                 home = self._apply_change(root_key, state, change, home)
+            self._incremental_applied += len(changes)
             with self._home_cache_lock:
                 with self._generation_lock:
                     self._home_generation += 1
@@ -387,14 +450,22 @@ class GalleryService:
                 self._home_cache[root_key] = (time.monotonic(), home)
             self._save_persisted_projection(root_key, home)
         except Exception:
-            _log.debug(
-                "Incremental gallery apply failed; falling back to a full rebuild",
+            self._incremental_fallbacks += 1
+            _log.info(
+                "Incremental gallery apply fell back to a full rebuild "
+                "(applied=%d, fallbacks=%d)",
+                self._incremental_applied, self._incremental_fallbacks,
                 exc_info=True,
             )
             self._invalidate_and_schedule_full(root_key, root_key)
         finally:
             with self._build_lock:
                 self._building.discard(root_key)
+
+    @property
+    def incremental_stats(self) -> tuple[int, int]:
+        """Return (applied_event_count, fallback_count) since construction."""
+        return self._incremental_applied, self._incremental_fallbacks
 
     def close(self) -> None:
         """Stop background work; called when the owning session closes."""
