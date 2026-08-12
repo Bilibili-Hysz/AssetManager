@@ -38,13 +38,21 @@ _FILE_ATTRIBUTE_REPARSE_POINT = 0x0400
 
 @dataclass(frozen=True)
 class GalleryTraversalLimits:
-    """Upper bounds for one gallery projection walk."""
+    """Upper bounds for one gallery projection walk.
 
-    max_entries: int = 50_000
-    max_files: int = 30_000
-    max_directories: int = 10_000
+    Defaults are sized for very large libraries (hundreds of GB / tens of
+    thousands of entries): a full walk with per-file stat aggregation for
+    a 70k-file library takes ~13s on a local disk, so the previous 10s
+    budget made gallery views fail with 429 on such libraries. The bounds
+    still cap runaway/abusive walks (entry budget ~3x a large real
+    library).
+    """
+
+    max_entries: int = 150_000
+    max_files: int = 150_000
+    max_directories: int = 40_000
     max_depth: int = 64
-    max_seconds: float = 10.0
+    max_seconds: float = 30.0
 
 
 class GalleryTraversalLimitError(RuntimeError):
