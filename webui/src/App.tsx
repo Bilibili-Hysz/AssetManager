@@ -78,7 +78,12 @@ function LegacyStorefrontCheckoutRoute() {
 
 function LegacyStorefrontDeliveryRoute() {
   const { token = '' } = useParams<{ token: string }>();
-  return <Navigate to={`/storefront/delivery/${encodeURIComponent(decodeRouteValue(token))}`} replace />;
+  const [searchParams] = useSearchParams();
+  // Preserve the query string: share-claim links arrive as
+  // /store/delivery/:token?claim=... and the delivery page needs it.
+  const query = searchParams.toString();
+  const to = `/storefront/delivery/${encodeURIComponent(decodeRouteValue(token))}${query ? `?${query}` : ''}`;
+  return <Navigate to={to} replace />;
 }
 
 function decodeRouteValue(value: string): string {

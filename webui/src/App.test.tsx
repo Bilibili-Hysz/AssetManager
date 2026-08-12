@@ -24,6 +24,7 @@ vi.mock('./pages/DetailPage', () => ({ default: () => <div>DetailPage</div> }));
 vi.mock('./pages/ShareReceivePage', () => ({ default: () => <div>ShareReceivePage</div> }));
 vi.mock('./pages/AdminPage', () => ({ default: () => <div>AdminPage</div> }));
 vi.mock('./pages/StorefrontPage', () => ({ default: () => <div>StorefrontPage</div> }));
+vi.mock('./pages/StorefrontDeliveryPage', () => ({ default: () => <div>StorefrontDeliveryPage</div> }));
 vi.mock('./pages/SellerProductsPage', () => ({ default: () => <div>SellerProductsPage</div> }));
 vi.mock('./stores/ShopBuyerContext', () => ({
   ShopBuyerProvider: ({ children }: { children: React.ReactNode }) => {
@@ -88,6 +89,16 @@ describe('App routing', () => {
     navigateTo('/storefront');
     render(<App />);
     expect(commerceProviderRender).toHaveBeenCalledTimes(1);
+  });
+
+  it('redirects legacy delivery links and preserves the claim query', async () => {
+    authState.serverInfo = { auth_enabled: true, feature_flags: { commerce: true, seller: true, quota: false } };
+    navigateTo('/store/delivery/token-abc?claim=claim-123');
+    render(<App />);
+
+    expect(await screen.findByText('StorefrontDeliveryPage')).toBeDefined();
+    expect(window.location.pathname).toBe('/storefront/delivery/token-abc');
+    expect(window.location.search).toBe('?claim=claim-123');
   });
 
   it('redirects an unauthenticated user to /login when auth is enabled', () => {
