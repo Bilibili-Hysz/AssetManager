@@ -37,6 +37,12 @@ export default defineConfig({
       provider: 'istanbul',
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/**/*.test.{ts,tsx}', 'src/i18n/*.ts', 'src/vite-env.d.ts', 'src/main.tsx'],
+      thresholds: {
+        statements: 75,
+        lines: 80,
+        functions: 70,
+        branches: 65,
+      },
     },
   },
 });

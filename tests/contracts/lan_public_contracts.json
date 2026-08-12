@@ -130,6 +130,50 @@
       "created_at": 100.0,
       "updated_at": 200.0,
       "dropped_secret": "must not leak"
+    },
+    "share_info": {
+      "id": "share-123",
+      "paths": [
+        "projects/hero.png"
+      ],
+      "created_by": "owner",
+      "created_at": 100.0,
+      "expires_at": null,
+      "max_downloads": 5,
+      "download_count": 2,
+      "allow_preview": true,
+      "has_password": false
+    },
+    "share_info_expiring": {
+      "id": "share-456",
+      "paths": [
+        "packs/hero.zip"
+      ],
+      "created_by": "owner",
+      "created_at": 100.0,
+      "expires_at": 7300.0,
+      "max_downloads": null,
+      "download_count": 0,
+      "allow_preview": true,
+      "has_password": true
+    },
+    "gallery_entry": {
+      "name": "hero",
+      "path": "projects/hero",
+      "kind": "project",
+      "parent_path": "projects",
+      "cover_path": "projects/hero/cover.png",
+      "cover_url": "/api/thumbnails/projects/hero/cover.png?size=512",
+      "width": 1920,
+      "height": 1080,
+      "aspect_ratio": 1.7777777777777777,
+      "modified": 100.0,
+      "size": 2048,
+      "size_fmt": "2.0 KB",
+      "file_count": 3,
+      "artwork_count": 2,
+      "child_count": 0,
+      "tags": []
     }
   },
   "responses": {
@@ -264,6 +308,52 @@
       "metadata": {},
       "created_at": 100.0,
       "updated_at": 200.0
+    },
+    "share_info": {
+      "id": "share-123",
+      "paths": [
+        "projects/hero.png"
+      ],
+      "created_by": "owner",
+      "created_at": 100.0,
+      "allow_preview": true,
+      "download_count": 2,
+      "max_downloads": 5,
+      "has_password": false,
+      "expired": false,
+      "expires_in_hours": null
+    },
+    "share_info_expiring": {
+      "id": "share-456",
+      "paths": [
+        "packs/hero.zip"
+      ],
+      "created_by": "owner",
+      "created_at": 100.0,
+      "allow_preview": true,
+      "download_count": 0,
+      "max_downloads": null,
+      "has_password": true,
+      "expired": false,
+      "expires_in_hours": 2.0
+    },
+    "gallery_entry": {
+      "name": "hero",
+      "path": "projects/hero",
+      "kind": "project",
+      "parent_path": "projects",
+      "cover_path": "projects/hero/cover.png",
+      "cover_url": "/api/thumbnails/projects/hero/cover.png?size=512",
+      "width": 1920,
+      "height": 1080,
+      "aspect_ratio": 1.7777777777777777,
+      "modified": 100.0,
+      "size": 2048,
+      "size_fmt": "2.0 KB",
+      "file_count": 3,
+      "artwork_count": 2,
+      "child_count": 0,
+      "tags": []
     }
   }
 }

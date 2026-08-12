@@ -171,6 +171,31 @@ def test_shop_order_conversions_match_golden():
     assert "dropped_secret" not in seller
 
 
+def test_share_link_public_dict_matches_golden(monkeypatch):
+    """ShareLink.to_public_dict strips sensitive fields and derives the expiry
+    pair (expired/expires_in_hours) from a frozen clock."""
+    from AssetsManager.domain.share import ShareLink
+
+    import AssetsManager.domain.share as share_module
+
+    monkeypatch.setattr(share_module.time, "time", lambda: 100.0)
+    expected = json.loads(CONTRACTS.read_text(encoding="utf-8"))
+    for key in ("share_info", "share_info_expiring"):
+        record = expected["records"][key]
+        share = ShareLink(
+            id=record["id"],
+            paths=tuple(record["paths"]),
+            created_by=record["created_by"],
+            created_at=record["created_at"],
+            expires_at=record["expires_at"],
+            max_downloads=record["max_downloads"],
+            download_count=record["download_count"],
+            allow_preview=record["allow_preview"],
+            has_password=record["has_password"],
+        )
+        assert share.to_public_dict() == expected["responses"][key]
+
+
 @pytest.mark.anyio
 async def test_route_responses_are_normalized_and_keep_envelopes(tmp_path, monkeypatch):
     from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app

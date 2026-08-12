@@ -1,6 +1,6 @@
 import contracts from '../../../tests/contracts/lan_public_contracts.json';
 import { describe, expect, it } from 'vitest';
-import type { InviteResponse, ProjectItem, ServerInfo, ShopBuyerOrder, ShopItem, ShopOrder, StatsResponse, Tag, TreeItem, UserResponse } from '../types/api';
+import type { GalleryEntry, InviteResponse, ProjectItem, ServerInfo, ShareInfoResponse, ShopBuyerOrder, ShopItem, ShopOrder, StatsResponse, Tag, TreeItem, UserResponse } from '../types/api';
 
 describe('LAN public DTO contracts', () => {
   it('normalizes users and invites without repository fields', () => {
@@ -98,5 +98,29 @@ describe('LAN public DTO contracts', () => {
       'updated_at',
     ]);
     expect(seller).not.toHaveProperty('dropped_secret');
+  });
+
+  it('anchors share info expiry semantics and the gallery entry shape', () => {
+    const share = contracts.responses.share_info as ShareInfoResponse;
+    expect(share).toEqual({
+      id: 'share-123', paths: ['projects/hero.png'], created_by: 'owner',
+      created_at: 100, allow_preview: true, download_count: 2, max_downloads: 5,
+      has_password: false, expired: false, expires_in_hours: null,
+    });
+
+    const expiring = contracts.responses.share_info_expiring as ShareInfoResponse;
+    expect(expiring.expired).toBe(false);
+    expect(expiring.expires_in_hours).toBe(2);
+    expect(expiring.has_password).toBe(true);
+    expect(expiring.max_downloads).toBeNull();
+
+    const entry = contracts.responses.gallery_entry as GalleryEntry;
+    const galleryKeys = Object.keys(entry).sort();
+    expect(galleryKeys).toEqual([
+      'artwork_count', 'aspect_ratio', 'child_count', 'cover_path', 'cover_url',
+      'file_count', 'height', 'kind', 'modified', 'name', 'parent_path', 'path',
+      'size', 'size_fmt', 'tags', 'width',
+    ]);
+    expect(entry.kind).toBe('project');
   });
 });

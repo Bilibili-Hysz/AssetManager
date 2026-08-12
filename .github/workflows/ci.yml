@@ -85,6 +85,8 @@ jobs:
       - name: Audit npm dependencies
         run: npm audit --audit-level=moderate
       - run: npm test
+      - name: Coverage thresholds (istanbul)
+        run: npm run coverage
       - run: npm run typecheck
       - run: npm run build
 
