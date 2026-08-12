@@ -134,7 +134,7 @@ BrowserRouter → AuthProvider → RealtimeProvider → ToastProvider → Downlo
 | # | 问题 | 位置 | 严重度 |
 |---|---|---|---|
 | C1 | **`ProjectItem` 缺 `is_project` 字段**：后端文件列表每条目都发（files.py:93,108），前端类型未声明 → BrowsePage 用 `'is_project' in item` 运行时探测绕过类型（BrowsePage.tsx:398,407） | api.ts:82-96 | ~~高~~ ✅ 已修（2026-08-12）：ProjectItem 补 `is_project?: boolean`，探测简化为 `item?.is_project` |
-| C2 | **幽灵字段**：`view_only/downloadable/password_protected`（ProjectItem:93-95）在后端全库无发送者——旧 web UI 残留超集 | api.ts:93-95,267-269 | 中（维持）：ProjectCard.tsx:59-61 有徽章读取逻辑（值恒 false 不显示）——UI 防御性读取保留，删字段会破坏编译，记录为契约超集 |
+| C2 | **幽灵字段**：`view_only/downloadable/password_protected`（ProjectItem:93-95）在后端全库无发送者——旧 web UI 残留超集 | api.ts:93-95,267-269 | 已清（2026-08-12）：ProjectCard 徽章死逻辑与类型字段删除（行为无变化），import 清理 |
 | C3 | **`summaries` 字符串真值语义脆弱**：后端 `files.py:45` `== "true"`（任何非 'true' 皆 False）；测试值 `'1'`（files.contract.test.ts:57）与生产值 `'false'` 都与默认语义无对应 | files.py:45 | 低（运行期无害） |
 | C4 | 类型超集 | api.ts:12,22-23,625 | ~~低~~ ✅ 已修（2026-08-12）：删除 ServerInfo 的 asset_root_id/total_collections/total_artworks（后端无此概念）并简化 useFavorites 库身份；StorefrontBuyerOrdersPage total 改为 `response.total ?? orders.length` fallback（后端 keyset 分页不发总数）；过时注释修正（后端已支持 cursor） |
 
@@ -155,8 +155,8 @@ BrowserRouter → AuthProvider → RealtimeProvider → ToastProvider → Downlo
 |---|---|---|---|
 | D1 | **结构性重复 fetch**：useFavorites 4 挂载点（Sidebar:124、GalleryFavoritesPage:27、GalleryHomePage:39、GalleryCollectionPage:30）同屏最多 4 并发 `GET /api/favorites`；useCommerceCatalog() 在 StorefrontPage:24 + StorefrontProductPage:25 重复；useSearch 在 Header:14 + AppHeader:35 同时挂载时重复搜索 | 各 hook | ~~高（请求放大）~~ ✅ 已修（2026-08-12）：favorites 与 search 模块级 in-flight 去重（同 query 共享 promise，实例各自 generation 守卫）；catalog 实为路由互斥（非同屏并发），记为 P3 缓存策略 |
 | D2 | **localStorage 收藏缓存每实例快照**：一个实例 toggle 后同屏其他实例不读 storage 事件，只能等 WS；`capabilities.realtime=false` 时 Sidebar 永久陈旧 | useFavorites.ts | ~~中~~ ✅ 已修（2026-08-12）：storage 事件监听（跨 tab 同步；同 tab 实例由 D1 共享请求保证一致） |
-| D3 | **recover() 惊群**：断线恢复/epoch 切换时 notify(null) 全量刷新所有注册者（+ useInvalidation 在 status 变化时重注册叠加） | RealtimeContext.tsx:146 | 中（抖动连接下成批重复请求） |
-| D4 | **BrowsePage 标签变更双路径刷新**：手动连环刷新（:362-380）与 WS 失效回调（:382-390）各自全刷，实时关闭时仅手动路径、开启时两路径叠加 | BrowsePage.tsx | 中 |
+| D3 | **recover() 惊群**：断线恢复/epoch 切换时 notify(null) 全量刷新所有注册者 | RealtimeContext.tsx:146 | 澄清（2026-08-12）：recover 已有完整防重入（pending 复用/retried/cursor 检测）；全量刷新是 gap 正确语义；请求去重需共享状态层（长期项） |
+| D4 | **BrowsePage 标签变更双路径刷新**：手动连环刷新与 WS 失效回调各自全刷 | BrowsePage.tsx | 已修（2026-08-12）：手动刷新时间戳抑制（1500ms 窗口内 WS 事件跳过，注释说明跨客户端事件碰撞权衡） |
 | D5 | **无 AbortController 的 hook**：useCommerceOrders（:282-327）、useSearch（:26-37）卸载后请求仍在飞（仅序列号防 setState） | useCommerce.ts, useSearch.ts | 低 |
 | D6 | **useCommerceCatalogPage 分页双源**：URL searchParams 是页面源，hook 内 page/pageSize 另存一份（:178-179,207-208），StorefrontProductsPage 只用 URL，hook 内 setPage 死写 | useCommerce.ts | 低 |
 | D7 | 下载后 refreshQuota 与 guardDownload 预取叠加（BrowsePage:434,491）→ 一次点击 2 次 quota 请求 | BrowsePage.tsx | 低 |
