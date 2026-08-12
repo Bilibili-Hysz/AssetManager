@@ -3,13 +3,14 @@
 # ═══════════════════════════════════════════════════════════════════
 from collections import deque
 from contextlib import contextmanager
+from datetime import datetime
 import logging
 from time import perf_counter
 import os
 from pathlib import Path
 from typing import cast
 import weakref
-from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QFileInfo, QObject, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QObject, QRunnable, QThreadPool, Signal
 from PySide6.QtGui import QIcon
 from shiboken6 import Shiboken
 from AssetsManager.application.asset_filters import (
@@ -376,7 +377,11 @@ class FileSystemModel(QAbstractListModel):
             return self._icons.get(entry.path)
         if role == Qt.ItemDataRole.ToolTipRole:
             st = self._cached_stat(entry)
-            return f"{entry.path}\n{st.st_size:,} bytes\nModified: {QFileInfo(entry.path).lastModified().toString('yyyy-MM-dd HH:mm')}"
+            modified = (
+                datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")
+                if st.st_mtime else ""
+            )
+            return f"{entry.path}\n{st.st_size:,} bytes\nModified: {modified}"
         if role == FileSystemModel.SUBTITLE_ROLE:
             return self._subtitle(entry)
         if role == FileSystemModel.RAW_PIXMAP_ROLE:
