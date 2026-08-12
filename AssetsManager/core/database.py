@@ -188,6 +188,12 @@ CREATE TABLE IF NOT EXISTS thumbnail_cache (
     created_at   REAL DEFAULT (strftime('%s','now')),
     last_access  REAL DEFAULT (strftime('%s','now'))
 );
+
+CREATE TABLE IF NOT EXISTS gallery_home (
+    id         INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+    saved_at   REAL NOT NULL,
+    projection TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_thumb_source ON thumbnail_cache(source_path);
 
 CREATE TABLE IF NOT EXISTS library_stats (

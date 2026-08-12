@@ -24,11 +24,11 @@ from AssetsManager.application.context import ConnectionProvider, LibrarySession
 from AssetsManager.application.tag_service import TagService
 from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.format_utils import format_size
-from AssetsManager.core.path_resolver import library_data_dir
 from AssetsManager.domain.asset import IMAGE_EXTS, assert_under_root
 from AssetsManager.domain.errors import MissingPathError, PathEscapeError
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import FileSystemChanged
+from AssetsManager.repositories.gallery_home_repository import GalleryHomeRepository
 
 try:  # Pillow is a runtime dependency, but metadata must remain best-effort.
     from PIL import Image
@@ -210,10 +210,10 @@ class GalleryService:
         self._home_cache: dict[str, tuple[float, "GalleryHome"]] = {}
         self._home_cache_lock = threading.Lock()
         self._home_cache_ttl = 30.0
-        # RuntimeData persistence: the projection survives process restarts
+        # Persisted projection (library database): survives process restarts
         # (a 286 GB library takes tens of seconds to build). FileSystemChanged
         # events delete it, and the TTL is a safety net for missed events.
-        self._disk_cache_ttl = 3600.0
+        self._persisted_ttl = 3600.0
         # Background home projection: the full-library walk for very large
         # libraries takes tens of seconds, so it must never block a request.
         # Requests read the cache; a miss returns a "building" signal and a
@@ -238,11 +238,9 @@ class GalleryService:
         # The persisted projection is stale too; delete it so a restart does
         # not resurrect the pre-change view.
         try:
-            disk = self._disk_cache_path(root_key)
-            if disk.is_file():
-                disk.unlink()
-        except OSError:
-            pass
+            self._persist_repository(root_key).delete()
+        except Exception:
+            _log.debug("Gallery home persisted projection delete failed", exc_info=True)
         with self._build_lock:
             if self._refresh_timer is not None:
                 self._refresh_timer.cancel()
@@ -260,7 +258,7 @@ class GalleryService:
                 self._refresh_timer.cancel()
                 self._refresh_timer = None
         try:
-            self._fs_subscription.unsubscribe()
+            self._fs_subscription.close()
         except Exception:
             pass
 
@@ -271,9 +269,10 @@ class GalleryService:
         """Return a home projection, or None when a build is needed.
 
         Fresh memory cache -> value. Stale memory -> the stale value plus
-        a background rebuild. No memory -> try the RuntimeData disk cache
-        (served immediately, rebuilt in the background); no disk cache ->
-        None plus a background build.
+        a background rebuild. No memory -> try the persisted projection in
+        the library database (served immediately, rebuilt in the
+        background); no persisted projection -> None plus a background
+        build.
         """
         root = Path(library_root).resolve()
         root_key = str(root)
@@ -285,29 +284,30 @@ class GalleryService:
                     # Stale: serve it now, rebuild in the background.
                     self._ensure_home_building(root_key)
                 return cached[1]
-            disk = self._load_disk_cache(root_key)
-            if disk is not None:
-                self._home_cache[root_key] = (now, disk)
+            persisted = self._load_persisted_projection(root_key)
+            if persisted is not None:
+                self._home_cache[root_key] = (now, persisted)
                 self._ensure_home_building(root_key)
-                return disk
+                return persisted
         self._ensure_home_building(root_key)
         return None
 
-    def _disk_cache_path(self, root_key: str) -> Path:
-        """RuntimeData location for the persisted home projection."""
-        return library_data_dir(Path(root_key).resolve()) / "gallery_home.json"
+    def _persist_repository(self, root_key: str) -> GalleryHomeRepository:
+        conn = self._connection(Path(root_key).resolve(), None, self._connection_provider)
+        if conn is None:
+            raise RuntimeError("Gallery persistence requires a connection provider")
+        return GalleryHomeRepository(conn)
 
-    def _load_disk_cache(self, root_key: str) -> "GalleryHome | None":
-        """Load a persisted projection within its TTL, or None."""
-        path = self._disk_cache_path(root_key)
+    def _load_persisted_projection(self, root_key: str) -> "GalleryHome | None":
+        """Load the persisted projection within its TTL, or None."""
         try:
-            if not path.is_file():
+            row = self._persist_repository(root_key).get()
+            if row is None:
                 return None
-            raw = json.loads(path.read_text(encoding="utf-8"))
-            saved_at = float(raw.get("saved_at", 0))
-            if time.time() - saved_at > self._disk_cache_ttl:
+            saved_at, projection_json = row
+            if time.time() - saved_at > self._persisted_ttl:
                 return None
-            projection = raw.get("projection")
+            projection = json.loads(projection_json)
             if not isinstance(projection, dict):
                 return None
             return GalleryHome(
@@ -317,26 +317,18 @@ class GalleryService:
                 recent=projection.get("recent", []),
                 stats=projection.get("stats", {}),
             )
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
-            _log.debug("Gallery home disk cache unreadable for %s", root_key, exc_info=True)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError, sqlite3.Error):
+            _log.debug("Gallery home persisted projection unreadable for %s", root_key, exc_info=True)
             return None
 
-    def _save_disk_cache(self, root_key: str, home: "GalleryHome") -> None:
-        """Persist the projection atomically (tmp + rename)."""
+    def _save_persisted_projection(self, root_key: str, home: "GalleryHome") -> None:
+        """Persist the projection into the library database."""
         try:
-            path = self._disk_cache_path(root_key)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            payload = {
-                "saved_at": time.time(),
-                "projection": home.to_response(),
-            }
-            tmp = path.with_suffix(".json.tmp")
-            tmp.write_text(
-                json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+            self._persist_repository(root_key).save(
+                time.time(), json.dumps(home.to_response(), ensure_ascii=False)
             )
-            os.replace(tmp, path)
-        except OSError:
-            _log.debug("Gallery home disk cache write failed", exc_info=True)
+        except (OSError, sqlite3.Error):
+            _log.debug("Gallery home persisted projection write failed", exc_info=True)
 
     def prewarm_home(self, library_root: str | Path) -> None:
         """Kick off a background home projection build (idempotent).
@@ -836,7 +828,7 @@ class GalleryService:
         home = GalleryHome(featured, collections, projects, recent, stats)
         with self._home_cache_lock:
             self._home_cache[str(root)] = (time.monotonic(), home)
-        self._save_disk_cache(str(root), home)
+        self._save_persisted_projection(str(root), home)
         return home
 
     @session_operation

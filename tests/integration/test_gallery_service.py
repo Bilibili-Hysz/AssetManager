@@ -281,9 +281,9 @@ def test_home_cache_invalidated_on_file_system_changes(tmp_path, schema_db):
         service.close()
 
 
-def test_home_projection_persists_to_runtime_data_and_survives_restart(tmp_path, schema_db):
-    """A built projection is written to RuntimeData; a fresh service instance
-    (simulating an app restart) loads it instead of rebuilding."""
+def test_home_projection_persists_to_database_and_survives_restart(tmp_path, schema_db):
+    """A built projection is written to the library database; a fresh service
+    instance (simulating an app restart) loads it instead of rebuilding."""
     import time
 
     _image(tmp_path / "collection" / "art.png", (40, 40))
@@ -294,12 +294,15 @@ def test_home_projection_persists_to_runtime_data_and_survives_restart(tmp_path,
         while time.monotonic() < deadline and first.get_home_cached(tmp_path) is None:
             time.sleep(0.05)
         assert first.get_home_cached(tmp_path) is not None
-        assert first._disk_cache_path(str(tmp_path)).is_file()
+        row = schema_db.execute(
+            "SELECT saved_at, projection FROM gallery_home WHERE id = 1"
+        ).fetchone()
+        assert row is not None and row[1]
     finally:
         first.close()
 
-    # A brand-new instance has no memory cache and must load the disk copy
-    # instead of answering building/None.
+    # A brand-new instance has no memory cache and must load the database
+    # copy instead of answering building/None.
     second = GalleryService(connection_provider=lambda _root: schema_db)
     try:
         restored = second.get_home_cached(tmp_path)
@@ -310,7 +313,7 @@ def test_home_projection_persists_to_runtime_data_and_survives_restart(tmp_path,
 
 
 def test_file_system_change_deletes_persisted_projection(tmp_path, schema_db):
-    """The persisted gallery_home.json is removed on library changes so a
+    """The persisted gallery_home row is removed on library changes so a
     restart cannot resurrect the pre-change view."""
     import time
 
@@ -323,13 +326,72 @@ def test_file_system_change_deletes_persisted_projection(tmp_path, schema_db):
         deadline = time.monotonic() + 10.0
         while time.monotonic() < deadline and service.get_home_cached(tmp_path) is None:
             time.sleep(0.05)
-        disk = service._disk_cache_path(str(tmp_path))
-        assert disk.is_file()
+        assert schema_db.execute(
+            "SELECT 1 FROM gallery_home WHERE id = 1"
+        ).fetchone() is not None
 
         get_event_bus().publish(FileSystemChanged(
             library_root=str(tmp_path), session_token="test", kind="files", paths=(),
         ))
-        assert not disk.exists()
+        assert schema_db.execute(
+            "SELECT 1 FROM gallery_home WHERE id = 1"
+        ).fetchone() is None
+        assert service.get_home_cached(tmp_path) is None
+    finally:
+        service.close()
+
+
+def test_expired_persisted_projection_is_ignored(tmp_path, schema_db, monkeypatch):
+    """A persisted row older than the TTL is not served; the cache misses
+    (the route answers building) while a background build repopulates it."""
+    import time
+
+    _image(tmp_path / "set" / "one.png")
+    schema_db.execute(
+        "INSERT OR REPLACE INTO gallery_home (id, saved_at, projection) "
+        "VALUES (1, ?, ?)",
+        (time.time() - 7200.0, '{"projects": []}'),
+    )
+    schema_db.commit()
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    monkeypatch.setattr(service, "_ensure_home_building", lambda _root_key: None)
+    try:
+        assert service.get_home_cached(tmp_path) is None
+        # The stale row must not be resurrected on the next read either.
+        assert service.get_home_cached(tmp_path) is None
+    finally:
+        service.close()
+
+
+def test_corrupted_persisted_projection_is_ignored(tmp_path, schema_db, monkeypatch):
+    """A non-JSON or non-dict persisted row is treated as absent instead of
+    crashing the home route."""
+    import time
+
+    _image(tmp_path / "set" / "one.png")
+    schema_db.execute(
+        "INSERT OR REPLACE INTO gallery_home (id, saved_at, projection) "
+        "VALUES (1, ?, ?)",
+        (time.time(), "{not valid json"),
+    )
+    schema_db.commit()
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    monkeypatch.setattr(service, "_ensure_home_building", lambda _root_key: None)
+    try:
+        assert service.get_home_cached(tmp_path) is None
+    finally:
+        service.close()
+
+    # A non-dict JSON payload is equally ignored.
+    schema_db.execute(
+        "INSERT OR REPLACE INTO gallery_home (id, saved_at, projection) "
+        "VALUES (1, ?, ?)",
+        (time.time(), '["a", "list"]'),
+    )
+    schema_db.commit()
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    monkeypatch.setattr(service, "_ensure_home_building", lambda _root_key: None)
+    try:
         assert service.get_home_cached(tmp_path) is None
     finally:
         service.close()

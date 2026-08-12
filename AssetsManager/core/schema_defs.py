@@ -279,6 +279,15 @@ CREATE INDEX IF NOT EXISTS idx_shop_order_receipts_availability
 """
 
 
+GALLERY_HOME_SCHEMA = """
+CREATE TABLE IF NOT EXISTS gallery_home (
+    id         INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+    saved_at   REAL NOT NULL,
+    projection TEXT NOT NULL
+);
+"""
+
+
 SHOP_SHARE_CLAIMS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS shop_share_claims (
     claim_hash TEXT PRIMARY KEY NOT NULL
@@ -1045,6 +1054,21 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
             "added_at": {"type": "REAL", "not_null": True},
         },
         "foreign_keys": ({"columns": ("owner_id",), "referenced_table": "shop_wishlist_owners", "referenced_columns": ("id",), "on_update": "CASCADE", "on_delete": "CASCADE"}, {"columns": ("item_id",), "referenced_table": "shop_items", "referenced_columns": ("id",), "on_update": "CASCADE", "on_delete": "CASCADE"}),
+    },
+    # Persisted gallery home projection (one row per library): the
+    # full-library walk takes tens of seconds on very large libraries, so
+    # the result survives process restarts. FileSystemChanged events delete
+    # it; saved_at provides a TTL safety net.
+    "gallery_home": {
+        "columns": ("id", "saved_at", "projection"),
+        "primary_key": ("id",),
+        "unique_constraints": (),
+        "column_contracts": {
+            "id": {"type": "INTEGER", "not_null": True},
+            "saved_at": {"type": "REAL", "not_null": True},
+            "projection": {"type": "TEXT", "not_null": True},
+        },
+        "checks": ("CHECK (id = 1)",),
     },
     **AUTH_SHARE_SCHEMA_CONTRACT,
 }
