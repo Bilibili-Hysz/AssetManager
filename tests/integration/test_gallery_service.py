@@ -395,3 +395,21 @@ def test_corrupted_persisted_projection_is_ignored(tmp_path, schema_db, monkeypa
         assert service.get_home_cached(tmp_path) is None
     finally:
         service.close()
+
+
+def test_home_build_captures_incremental_state(tmp_path, schema_db):
+    """Every full home build records the node/refs snapshot with a fresh
+    generation; the incremental applier (a later phase) consumes it."""
+    _image(tmp_path / "set" / "one.png", (40, 40))
+
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    try:
+        home = service.get_home(tmp_path)
+        assert home is not None
+        state = service._home_states[str(tmp_path.resolve())]
+        assert state.generation > 0
+        assert state.node is not None
+        assert state.node["artwork_count"] == 1
+        assert any(ref.path.endswith("one.png") for ref in state.refs)
+    finally:
+        service.close()

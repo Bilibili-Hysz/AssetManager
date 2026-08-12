@@ -190,6 +190,22 @@ class _ImageRef:
     modified: int
 
 
+@dataclass(frozen=True)
+class _HomeState:
+    """Immutable snapshot backing incremental home updates.
+
+    ``node`` is the summary tree as built by ``_compute_home``, ``refs``
+    every library image with its mtime (sorted like ``recent``), and
+    ``generation`` the per-service monotonic counter stamped at build time.
+    The incremental applier only trusts events newer than this generation;
+    any inconsistency falls back to a full rebuild.
+    """
+
+    node: dict[str, Any] | None
+    refs: tuple[_ImageRef, ...]
+    generation: int
+
+
 class GalleryService:
     """Build bounded Gallery projections for one live library session."""
 
@@ -221,6 +237,11 @@ class GalleryService:
         self._building: set[str] = set()
         self._build_lock = threading.Lock()
         self._refresh_timer: threading.Timer | None = None
+        # Incremental-update state: per-root snapshot of the last full build
+        # plus a monotonic generation counter. The applier (a later phase)
+        # consumes these; today only _compute_home writes them.
+        self._home_states: dict[str, _HomeState] = {}
+        self._home_generation = 0
         self._closed = False
         self._fs_subscription = get_event_bus().subscribe_weak(
             FileSystemChanged, self._on_file_system_changed
@@ -235,6 +256,7 @@ class GalleryService:
         root_key = str(Path(event.library_root).resolve())
         with self._home_cache_lock:
             self._home_cache.pop(root_key, None)
+            self._home_states.pop(root_key, None)
         # The persisted projection is stale too; delete it so a restart does
         # not resurrect the pre-change view.
         try:
@@ -827,6 +849,12 @@ class GalleryService:
         featured = collections[0] if collections else projects[0] if projects else self._summary(node)
         home = GalleryHome(featured, collections, projects, recent, stats)
         with self._home_cache_lock:
+            self._home_generation += 1
+            self._home_states[str(root)] = _HomeState(
+                node=node,
+                refs=tuple(refs),
+                generation=self._home_generation,
+            )
             self._home_cache[str(root)] = (time.monotonic(), home)
         self._save_persisted_projection(str(root), home)
         return home
