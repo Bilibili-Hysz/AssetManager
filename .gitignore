@@ -82,3 +82,7 @@ AssetsManager/core/format_utils.c
 /first_half.txt
 /root_crash_new.txt
 /test_order.txt
+
+# Playwright E2E run artifacts.
+/webui/test-results/
+/webui/playwright-report/
