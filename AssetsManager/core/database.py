@@ -1294,21 +1294,3 @@ def close_all_dbs():
 
 def clean_orphan_dirs(known_roots: list[str]):
     DatabaseManager.clean_orphan_dirs(known_roots)
-
-
-def get_library_stats(library_root: str):
-    """Return cached aggregate statistics for a library root.
-
-    Same singleton-vs-DI caveat as :func:`migrate_path_metadata_for_library`:
-    the stats are read through the ThreadSafeSingleton DatabaseManager, which
-    may differ from the DI-registered instance owning the caller's connection.
-    """
-    _warn_compat_singleton("get_library_stats")
-    conn = ThreadSafeSingleton.get(DatabaseManager).connection_for(library_root)
-    row = conn.execute(
-        "SELECT total_size, total_files, total_projects FROM library_stats WHERE library_path = ?",
-        (str(Path(library_root).resolve()),)
-    ).fetchone()
-    if row:
-        return {"total_size": row[0], "total_files": row[1], "total_projects": row[2]}
-    return {"total_size": 0, "total_files": 0, "total_projects": 0}
