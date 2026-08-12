@@ -90,6 +90,8 @@ export interface ProjectItem {
   category: string;
   thumbnail_url?: string;
   tags?: string[];
+  /** Backend sends this on every directory listing entry (files.py). */
+  is_project?: boolean;
   view_only?: boolean;
   downloadable?: boolean;
   password_protected?: boolean;

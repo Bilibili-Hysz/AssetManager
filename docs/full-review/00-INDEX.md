@@ -37,6 +37,7 @@
 | [05-frontend.md](05-frontend.md) | 前端审查：React 架构、API 客户端、状态管理、Hooks、路由、组件地图、实时协议、测试 | 前端 |
 | [06-audit-results.md](06-audit-results.md) | 审查结果：本轮发现、文档过时清单（逐条差异）、已知风险、技术债、工程红线 | 审查结果 |
 | [07-verification.md](07-verification.md) | 验证基线：测试体系、实测结果、CI、构建打包、质量门 | 验证 |
+| [08-webui-architecture-dataflow.md](08-webui-architecture-dataflow.md) | WebUI 数据流与设计架构专项：请求管线、状态模型、实时失效链路、契约一致性、问题清单（2026-08-12 补充） | 前端架构/数据流 |
 
 ## 4. 与既有文档的关系
 

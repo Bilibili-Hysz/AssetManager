@@ -22,17 +22,17 @@ describe('shop API contract', () => {
   it('lists items with an optional status filter', () => {
     const { shop, api } = setup();
     shop.list('active');
-    expect(api.get).toHaveBeenCalledWith('shop/items', { status: 'active' });
+    expect(api.get).toHaveBeenCalledWith('shop/items', { status: 'active' }, undefined);
     shop.list();
-    expect(api.get).toHaveBeenCalledWith('shop/items', undefined);
+    expect(api.get).toHaveBeenCalledWith('shop/items', undefined, undefined);
   });
 
   it('requests disabled seller items when management mode is enabled', () => {
     const { shop, api } = setup();
     shop.list(undefined, true);
     shop.list('archived', true);
-    expect(api.get).toHaveBeenNthCalledWith(1, 'shop/items', { include_disabled: true });
-    expect(api.get).toHaveBeenNthCalledWith(2, 'shop/items', { status: 'archived', include_disabled: true });
+    expect(api.get).toHaveBeenNthCalledWith(1, 'shop/items', { include_disabled: true }, undefined);
+    expect(api.get).toHaveBeenNthCalledWith(2, 'shop/items', { status: 'archived', include_disabled: true }, undefined);
   });
 
   it('requests the independent catalog with only provided snake_case query parameters', () => {
@@ -51,8 +51,8 @@ describe('shop API contract', () => {
       page: 2,
       page_size: 24,
       sort: 'newest',
-    });
-    expect(api.get).toHaveBeenNthCalledWith(2, 'shop/catalog', undefined);
+    }, undefined);
+    expect(api.get).toHaveBeenNthCalledWith(2, 'shop/catalog', undefined, undefined);
   });
 
   it('normalizes empty and surrounding-whitespace q values before requesting the catalog', () => {
@@ -60,8 +60,8 @@ describe('shop API contract', () => {
     shop.catalog({ q: "  hero  " });
     shop.catalog({ q: "   " });
 
-    expect(api.get).toHaveBeenNthCalledWith(1, 'shop/catalog', { q: 'hero' });
-    expect(api.get).toHaveBeenNthCalledWith(2, 'shop/catalog', undefined);
+    expect(api.get).toHaveBeenNthCalledWith(1, 'shop/catalog', { q: 'hero' }, undefined);
+    expect(api.get).toHaveBeenNthCalledWith(2, 'shop/catalog', undefined, undefined);
   });
 
   it('gets an item by its canonical path without putting the path in the URL path', () => {

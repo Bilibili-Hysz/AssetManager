@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from './useAuth';
 import { useRealtimeContext } from '../stores/RealtimeContext';
-import type { ShopCatalogQuery, ShopItem } from '../types/api';
+import { createShopApi } from '../api/shop';
+import type { ShopCatalogQuery, ShopItem, ShopOrder, ShopStats } from '../types/api';
 import type { StorefrontOrder, StorefrontProduct, StorefrontStats } from '../components/storefront/types';
 
-type RawShopItem = Partial<ShopItem> & {
+/**
+ * Input shape accepted by the presentation adapters. The shop domain methods
+ * (shop.ts) return the typed ShopItem/ShopOrder DTOs; these widened forms keep
+ * the defensive reads for fields the backend may omit from some responses.
+ */
+type ShopItemInput = Partial<ShopItem> & {
   id?: string | number;
   path?: string;
   downloads?: number;
@@ -13,8 +19,12 @@ type RawShopItem = Partial<ShopItem> & {
   tags?: unknown[];
   featured?: boolean;
 };
-type RawShopOrder = Record<string, unknown> & { id?: string | number; status?: string };
-type RawShopStats = Record<string, unknown>;
+type ShopOrderInput = Omit<Partial<ShopOrder>, 'id'> & {
+  id?: string | number;
+  title?: string;
+  cover_path?: string | null;
+  price_cents?: number;
+};
 
 function asNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
@@ -90,7 +100,7 @@ function storefrontMediaUrl(
   return buildUrl(`shop/items/${encodeURIComponent(itemId)}/media/${slot}?size=${size}`);
 }
 
-export function toStorefrontProduct(item: RawShopItem, buildUrl: (path: string) => string): StorefrontProduct {
+export function toStorefrontProduct(item: ShopItemInput, buildUrl: (path: string) => string): StorefrontProduct {
   const path = String(item.path ?? '');
   const coverPath = typeof item.cover_path === 'string' ? item.cover_path : '';
   const galleryPaths = Array.isArray(item.gallery_paths)
@@ -131,7 +141,7 @@ export function toStorefrontProduct(item: RawShopItem, buildUrl: (path: string) 
   };
 }
 
-export function toStorefrontOrder(order: RawShopOrder, buildUrl: (path: string) => string): StorefrontOrder {
+export function toStorefrontOrder(order: ShopOrderInput, buildUrl: (path: string) => string): StorefrontOrder {
   const rawStatus = String(order.status ?? 'pending');
   const status: StorefrontOrder['status'] = rawStatus === 'revoked' ? 'refunded'
     : rawStatus === 'confirmed' || rawStatus === 'fulfilled' ? 'paid'
@@ -173,6 +183,7 @@ export interface CommerceCatalogPageState {
  */
 export function useCommerceCatalogPage(params: ShopCatalogQuery = {}): CommerceCatalogPageState {
   const { api } = useAuth();
+  const shopApi = useMemo(() => createShopApi(api), [api]);
   const { registerInvalidation } = useRealtimeContext();
   const [products, setProducts] = useState<StorefrontProduct[]>([]);
   const [page, setPage] = useState(params.page ?? 1);
@@ -196,17 +207,12 @@ export function useCommerceCatalogPage(params: ShopCatalogQuery = {}): CommerceC
     requestControllerRef.current = controller;
     setLoading(true);
     try {
-      const response = await api.get<{
-        items?: RawShopItem[];
-        page?: number;
-        page_size?: number;
-        total?: number;
-      }>('shop/catalog', query, controller.signal);
+      const response = await shopApi.catalog(query, controller.signal);
       if (controller.signal.aborted || requestSequence !== requestSequenceRef.current) return;
-      setProducts((response.items ?? []).map(item => toStorefrontProduct(item, api.buildUrl)));
-      setPage(asNumber(response.page, query.page));
-      setPageSize(asNumber(response.page_size, query.page_size));
-      setTotal(asNumber(response.total));
+      setProducts(response.items.map(item => toStorefrontProduct(item, api.buildUrl)));
+      setPage(response.page);
+      setPageSize(response.page_size);
+      setTotal(response.total);
       setError(null);
     } catch (reason) {
       if (controller.signal.aborted || isAbortError(reason) || requestSequence !== requestSequenceRef.current) return;
@@ -216,7 +222,7 @@ export function useCommerceCatalogPage(params: ShopCatalogQuery = {}): CommerceC
     } finally {
       if (!controller.signal.aborted && requestSequence === requestSequenceRef.current) setLoading(false);
     }
-  }, [api, query]);
+  }, [api, query, shopApi]);
 
   useEffect(() => {
     void refresh();
@@ -234,16 +240,13 @@ export function useCommerceCatalogPage(params: ShopCatalogQuery = {}): CommerceC
 
 export function useCommerceCatalog(includeDisabled = false) {
   const { api } = useAuth();
+  const shopApi = useMemo(() => createShopApi(api), [api]);
   const { registerInvalidation } = useRealtimeContext();
   const [products, setProducts] = useState<StorefrontProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
   const requestSequenceRef = useRef(0);
   const requestControllerRef = useRef<AbortController | null>(null);
-  const query = useMemo((): Record<string, string | boolean> => {
-    if (includeDisabled) return { include_disabled: true };
-    return { status: 'active' };
-  }, [includeDisabled]);
 
   const refresh = useCallback(async () => {
     const requestSequence = ++requestSequenceRef.current;
@@ -252,9 +255,9 @@ export function useCommerceCatalog(includeDisabled = false) {
     requestControllerRef.current = controller;
     setLoading(true);
     try {
-      const response = await api.get<{ items: RawShopItem[] }>('shop/items', query, controller.signal);
+      const response = await shopApi.list(includeDisabled ? undefined : 'active', includeDisabled, controller.signal);
       if (controller.signal.aborted || requestSequence !== requestSequenceRef.current) return;
-      setProducts((response.items ?? []).map(item => toStorefrontProduct(item, api.buildUrl)));
+      setProducts(response.items.map(item => toStorefrontProduct(item, api.buildUrl)));
       setError(null);
     } catch (reason) {
       if (controller.signal.aborted || isAbortError(reason) || requestSequence !== requestSequenceRef.current) return;
@@ -263,7 +266,7 @@ export function useCommerceCatalog(includeDisabled = false) {
     } finally {
       if (!controller.signal.aborted && requestSequence === requestSequenceRef.current) setLoading(false);
     }
-  }, [api, query]);
+  }, [api, includeDisabled, shopApi]);
 
   useEffect(() => {
     void refresh();
@@ -281,23 +284,28 @@ export function useCommerceCatalog(includeDisabled = false) {
 
 export function useCommerceOrders() {
   const { api } = useAuth();
+  const shopApi = useMemo(() => createShopApi(api), [api]);
   const { registerInvalidation } = useRealtimeContext();
   const [orders, setOrders] = useState<StorefrontOrder[]>([]);
   const [stats, setStats] = useState<StorefrontStats>({ revenue: 0, orders: 0, products: 0 });
   const [loading, setLoading] = useState(true);
   const requestSequenceRef = useRef(0);
+  const requestControllerRef = useRef<AbortController | null>(null);
 
   const refresh = useCallback(async () => {
     const requestSequence = ++requestSequenceRef.current;
+    requestControllerRef.current?.abort();
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
     setLoading(true);
     try {
       const [orderResponse, statsResponse] = await Promise.all([
-        api.get<{ orders: RawShopOrder[] }>('shop/orders'),
-        api.get<{ stats?: RawShopStats }>('shop/stats'),
+        shopApi.listOrders(undefined, controller.signal),
+        shopApi.getStats(controller.signal),
       ]);
-      if (requestSequence !== requestSequenceRef.current) return;
-      const nextOrders = (orderResponse.orders ?? []).map(order => toStorefrontOrder(order, api.buildUrl));
-      const rawStats = statsResponse.stats ?? {};
+      if (controller.signal.aborted || requestSequence !== requestSequenceRef.current) return;
+      const nextOrders = orderResponse.orders.map(order => toStorefrontOrder(order, api.buildUrl));
+      const rawStats: Partial<ShopStats> = statsResponse.stats ?? {};
       setOrders(nextOrders);
       setStats({
         revenue: asNumber(rawStats.gross_cents) / 100,
@@ -306,19 +314,21 @@ export function useCommerceOrders() {
         views: rawStats.store_views == null ? undefined : asNumber(rawStats.store_views),
       });
     } catch {
-      if (requestSequence !== requestSequenceRef.current) return;
+      if (controller.signal.aborted || requestSequence !== requestSequenceRef.current) return;
       setOrders([]);
       setStats({ revenue: 0, orders: 0, products: 0 });
     } finally {
-      if (requestSequence === requestSequenceRef.current) setLoading(false);
+      if (!controller.signal.aborted && requestSequence === requestSequenceRef.current) setLoading(false);
     }
-  }, [api]);
+  }, [api, shopApi]);
 
   useEffect(() => {
     void refresh();
     const unregister = registerInvalidation(['orders', 'quota'], () => { void refresh(); });
     return () => {
       requestSequenceRef.current += 1;
+      requestControllerRef.current?.abort();
+      requestControllerRef.current = null;
       unregister();
     };
   }, [refresh, registerInvalidation]);

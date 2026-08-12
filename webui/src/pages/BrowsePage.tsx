@@ -404,7 +404,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
 
   const handleNavigateItem = useCallback((path: string) => {
     const item = (tagResults ?? data?.items ?? []).find(candidate => candidate.path === path);
-    if (item && 'is_project' in item && item.is_project) handleNavigateDetail(path);
+    if (item?.is_project) handleNavigateDetail(path);
     else handleNavigate(path);
   }, [data?.items, handleNavigate, handleNavigateDetail, tagResults]);
 

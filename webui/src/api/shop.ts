@@ -25,7 +25,7 @@ import type {
 
 export function createShopApi(api: ApiClient) {
   return {
-    list: (status?: 'active' | 'archived' | 'draft', includeDisabled = false) => {
+    list: (status?: 'active' | 'archived' | 'draft', includeDisabled = false, signal?: AbortSignal) => {
       const params = {
         ...(status ? { status } : {}),
         ...(includeDisabled ? { include_disabled: true } : {}),
@@ -33,9 +33,10 @@ export function createShopApi(api: ApiClient) {
       return api.get<ShopItemsResponse>(
         'shop/items',
         Object.keys(params).length > 0 ? params : undefined,
+        signal,
       );
     },
-    catalog: (params?: ShopCatalogQuery) => {
+    catalog: (params?: ShopCatalogQuery, signal?: AbortSignal) => {
       const normalizedQ = params?.q?.trim();
       const query = {
         ...(normalizedQ ? { q: normalizedQ } : {}),
@@ -46,6 +47,7 @@ export function createShopApi(api: ApiClient) {
       return api.get<ShopCatalogResponse>(
         'shop/catalog',
         Object.keys(query).length > 0 ? query : undefined,
+        signal,
       );
     },
     getItem: (id: string | number) =>
@@ -108,8 +110,8 @@ export function createShopApi(api: ApiClient) {
       api.delete<ShopWishlistResponse>('shop/wishlist/items/' + encodeURIComponent(String(itemId))),
     clearWishlist: () => api.delete<ShopWishlistResponse>('shop/wishlist'),
 
-    listOrders: (status?: string) =>
-      api.get<ShopOrdersResponse>('shop/orders', status ? { status } : undefined),
+    listOrders: (status?: string, signal?: AbortSignal) =>
+      api.get<ShopOrdersResponse>('shop/orders', status ? { status } : undefined, signal),
     listBuyerOrders: (status?: string, limit = 50, cursor?: string) =>
       api.get<ShopBuyerOrdersResponse>('shop/buyer/orders', {
         ...(status ? { status } : {}),
@@ -133,7 +135,7 @@ export function createShopApi(api: ApiClient) {
     ),
     revokeOrder: (id: string | number) =>
       api.post<{ order: ShopOrder }>(`shop/order/${encodeURIComponent(id)}/revoke`),
-    getStats: () => api.get<{ stats: ShopStats }>('shop/stats'),
+    getStats: (signal?: AbortSignal) => api.get<{ stats: ShopStats }>('shop/stats', undefined, signal),
     exportOrdersUrl: (status?: string) =>
       api.buildUrl(`shop/orders/export${status ? `?status=${encodeURIComponent(status)}` : ''}`),
 
