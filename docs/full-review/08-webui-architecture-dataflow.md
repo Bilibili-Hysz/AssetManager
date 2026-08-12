@@ -181,10 +181,10 @@ BrowserRouter → AuthProvider → RealtimeProvider → ToastProvider → Downlo
 
 ### 5.2 盲区
 
-- 快照覆盖 10 个 DTO/契约（2026-08-12 扩展）：新增 files_item（文件列表条目 10 字段精确 key + is_project 值）、info（ServerInfo envelope）与 shop_item（_public_item 转换：路径归一化/gallery 提取/status 推导/enabled bool 化）；后端 HTTP 契约测试锁定 /api/files item key 与 /api/info envelope；golden 对照发现并修复 **enabled 类型漂移**（后端发 int 0/1、前端类型声明 boolean → 后端 _public_item bool 化对齐）
+- 快照覆盖 15 个 DTO/契约（2026-08-12 收官）：新增 share_info×2（to_public_dict 敏感字段剥离 + 冻结时钟过期推导）与 gallery_entry（GalleryEntry 形状锚定）：新增 files_item（文件列表条目 10 字段精确 key + is_project 值）、info（ServerInfo envelope）与 shop_item（_public_item 转换：路径归一化/gallery 提取/status 推导/enabled bool 化）；后端 HTTP 契约测试锁定 /api/files item key 与 /api/info envelope；golden 对照发现并修复 **enabled 类型漂移**（后端发 int 0/1、前端类型声明 boolean → 后端 _public_item bool 化对齐）
 - `public-contracts.test.ts:37` `expect(stats).toEqual(contracts.responses.stats)` 自比较恒真（StatsResponse 形状零钉死）
 - `system.contract.test.ts` 用 `{library_name: ...}` sentinel 透传（后端字段是 share_name），/api/info 形状零保护
-- **coverage 配置已补（2026-08-12）**：@vitest/coverage-istanbul@3.2.6 + vite.config coverage（istanbul provider，jsdom 兼容；v8 provider 在 jsdom worker 不收集）+ `npm run coverage` script。基线：600 tests / 74.16% statements / 78.04% lines / 62.72% branch
+- **coverage 配置已补（2026-08-12）**：@vitest/coverage-istanbul@3.2.6 + vite.config coverage（istanbul provider）+ `npm run coverage` script + **CI 阈值门槛**（75 stmts/80 lines/70 funcs/65 branches，webui job 强制）。补强批次（12 个新测试文件）：74.16% → **78.19% statements / 82.26% lines**（657 tests），85% 记为后续长期目标
 
 ---
 
