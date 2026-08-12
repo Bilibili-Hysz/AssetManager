@@ -8,6 +8,7 @@ from aiohttp import web
 
 from AssetsManager.application.gallery_service import GalleryTraversalLimitError
 from AssetsManager.domain.errors import MissingPathError, PathEscapeError, ValidationError
+from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
     get_favorite_service,
     get_gallery_service,
@@ -57,13 +58,14 @@ async def _request_path(request) -> str:
 
 
 def _error_response(error: Exception) -> web.Response:
+    """Favorites-specific messages over the canonical error contract."""
     if isinstance(error, MissingPathError):
-        return web.json_response({"error": "Favorite target not found"}, status=404)
-    if isinstance(error, (PathEscapeError, ValidationError, ValueError)):
-        return web.json_response({"error": str(error)}, status=400)
-    if isinstance(error, GalleryTraversalLimitError):
-        return web.json_response({"error": str(error)}, status=error.status)
-    return web.json_response({"error": "Favorites operation failed"}, status=500)
+        return error_response("Favorite target not found", status=404, code="not_found")
+    if isinstance(error, (PathEscapeError, ValidationError, GalleryTraversalLimitError)):
+        return error_response(error)
+    if isinstance(error, ValueError):
+        return error_response(str(error), status=400, code="bad_request")
+    return error_response("Favorites operation failed", status=500, code="internal_error")
 
 
 async def handle_favorites(request):

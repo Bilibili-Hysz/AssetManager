@@ -8,6 +8,7 @@ from aiohttp import web
 from AssetsManager.application.context import ConnectionProvider
 from AssetsManager.application.seller_profile_service import SellerProfileService
 from AssetsManager.domain.errors import ValidationError
+from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import get_lan
 from AssetsManager.lan.routes.commerce_policy import commerce_required, seller_required
 from AssetsManager.lan.routes.shop import require_seller
@@ -41,11 +42,13 @@ def get_seller_profile_service(request: web.Request) -> SellerProfileService:
 
 
 def _error_response(exc: Exception) -> web.Response:
+    """Canonical error contract; unknown failures no longer leak exception
+    text (previously re-raised to aiohttp's generic 500)."""
     if isinstance(exc, ValidationError):
-        return web.json_response({"error": str(exc)}, status=400)
+        return error_response(exc)
     if isinstance(exc, ValueError):
-        return web.json_response({"error": str(exc)}, status=400)
-    raise exc
+        return error_response(str(exc), status=400, code="bad_request")
+    return error_response(exc)
 
 
 async def _json_body(request: web.Request) -> dict[str, Any]:

@@ -10,6 +10,7 @@ from AssetsManager.domain.errors import MissingPathError as DomainMissingPathErr
 from AssetsManager.domain.errors import PathEscapeError as DomainPathEscapeError
 from AssetsManager.lan.path_guard import MissingPathError as LanMissingPathError
 from AssetsManager.lan.path_guard import PathEscapeError as LanPathEscapeError
+from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
     get_gallery_service,
     get_lan,
@@ -37,10 +38,6 @@ def _service_or_unavailable(request):
     return service
 
 
-def _traversal_response(error: GalleryTraversalLimitError) -> web.Response:
-    return web.json_response({"error": str(error)}, status=error.status)
-
-
 async def handle_gallery_home(request):
     if not require_permission(request, "browse"):
         return web.json_response({"error": "Browse access required"}, status=403)
@@ -57,9 +54,9 @@ async def handle_gallery_home(request):
         result.headers["Cache-Control"] = "private, no-store"
         return result
     except GalleryTraversalLimitError as exc:
-        return _traversal_response(exc)
+        return error_response(exc)
     except (PermissionError, OSError):
-        return web.json_response({"error": "Failed to build gallery"}, status=500)
+        return error_response("Failed to build gallery", status=500, code="internal_error")
 
 
 async def handle_gallery_collection(request):
@@ -86,17 +83,17 @@ async def handle_gallery_collection(request):
     except web.HTTPException:
         raise
     except (LanPathEscapeError, DomainPathEscapeError):
-        return web.json_response({"error": "Path escape detected"}, status=400)
+        return error_response("Path escape detected", status=400, code="path_escape_detected", field="path")
     except (LanMissingPathError, DomainMissingPathError):
-        return web.json_response({"error": "Collection not found"}, status=404)
+        return error_response("Collection not found", status=404, code="not_found")
     except GalleryTraversalLimitError as exc:
-        return _traversal_response(exc)
+        return error_response(exc)
     except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+        return error_response(str(exc), status=400, code="bad_request")
     except (PermissionError, OSError):
-        return web.json_response({"error": "Failed to load gallery collection"}, status=500)
+        return error_response("Failed to load gallery collection", status=500, code="internal_error")
     if response is None:
-        return web.json_response({"error": "Collection not found"}, status=404)
+        return error_response("Collection not found", status=404, code="not_found")
     result = web.json_response(response.to_response())
     result.headers["Cache-Control"] = "private, no-store"
     return result
@@ -114,15 +111,15 @@ async def handle_gallery_resolve(request):
     except web.HTTPException:
         raise
     except (LanPathEscapeError, DomainPathEscapeError):
-        return web.json_response({"error": "Path escape detected"}, status=400)
+        return error_response("Path escape detected", status=400, code="path_escape_detected", field="path")
     except (LanMissingPathError, DomainMissingPathError):
-        return web.json_response({"error": "Path not found"}, status=404)
+        return error_response("Path not found", status=404, code="not_found")
     except GalleryTraversalLimitError as exc:
-        return _traversal_response(exc)
+        return error_response(exc)
     except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+        return error_response(str(exc), status=400, code="bad_request")
     except (PermissionError, OSError):
-        return web.json_response({"error": "Failed to resolve gallery path"}, status=500)
+        return error_response("Failed to resolve gallery path", status=500, code="internal_error")
     result = web.json_response(response.to_response())
     result.headers["Cache-Control"] = "private, no-store"
     return result

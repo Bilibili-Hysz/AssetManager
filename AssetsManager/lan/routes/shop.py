@@ -14,7 +14,6 @@ from AssetsManager.application.order_service import DEFAULT_RECEIPT_TTL, OrderSe
 from AssetsManager.application.quota_service import QuotaService
 from AssetsManager.application.seller_auth_service import SellerAuthService
 from AssetsManager.application.shop_authorization import (
-    ShopAuthorizationConfigError,
     UnauthorizedShopPathError,
 )
 from AssetsManager.application.shop_service import ShopService
@@ -25,13 +24,10 @@ from AssetsManager.domain.errors import (
     NotFoundError,
     OperationNotPermitted,
     PathEscapeError,
-    StoreNotAcceptingOrdersError,
-    PriceChangedError,
-    VersionConflictError,
-    WishlistLimitError,
     ValidationError,
 )
 from AssetsManager.lan.routes._helpers import get_lan, get_request_principal
+from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes.image import serve_verified_image
 from AssetsManager.lan.routes.commerce_policy import (
     commerce_gate,
@@ -110,107 +106,9 @@ def _catalog_query_value(request: web.Request, field: str, default: str | None =
     return values[0] if values else default
 
 
-def _error_response(exc: Exception) -> web.Response:
-    """Serialize Commerce domain failures into one stable JSON contract.
-
-    Keep ``error`` as the human-readable compatibility field while exposing a
-    machine-readable ``code`` and optional field/details metadata for the new
-    WebUI. Unknown failures are logged server-side and deliberately do not leak
-    exception text to buyers or sellers.
-    """
-    payload: dict[str, Any] = {"error": str(exc), "code": "internal_error", "details": {}}
-    status = 500
-    headers = {"Cache-Control": "private, no-store"}
-
-    if isinstance(exc, StoreNotAcceptingOrdersError):
-        return _store_not_accepting_orders_response()
-    if isinstance(exc, DeliveryPreparationError):
-        return web.json_response(
-            {"error": str(exc), "code": exc.code, "details": {}},
-            status=500,
-            headers={"Cache-Control": "no-store"},
-        )
-
-    if isinstance(exc, ValidationError):
-        payload["code"] = "validation_error"
-        if exc.field:
-            payload["field"] = exc.field
-        status = 400
-    elif isinstance(exc, PathEscapeError):
-        payload = {
-            "error": "Path escape detected",
-            "code": "path_escape_detected",
-            "field": "path",
-            "details": {},
-        }
-        status = 400
-    elif isinstance(exc, UnauthorizedShopPathError):
-        payload = {
-            "error": str(exc),
-            "code": "shop_path_not_authorized",
-            "details": {},
-        }
-        status = 403
-    elif isinstance(exc, ShopAuthorizationConfigError):
-        payload = {
-            "error": "Shop authorization configuration is invalid",
-            "code": "shop_authorization_config_invalid",
-            "details": {},
-        }
-        status = 503
-    elif isinstance(exc, (MissingPathError, NotFoundError)):
-        payload["code"] = "not_found"
-        status = 404
-        if isinstance(exc, NotFoundError):
-            entity = str(getattr(exc, "entity", "")).strip().lower()
-            if entity == "cart line":
-                payload["code"] = "cart_line_not_found"
-                payload["field"] = "line_id"
-            elif entity == "order receipt":
-                payload["code"] = "receipt_not_found"
-                payload["field"] = "order_id"
-            elif entity == "delivery":
-                payload["code"] = "delivery_not_found"
-                payload["field"] = "token"
-    elif isinstance(exc, PriceChangedError):
-        payload["code"] = "price_changed"
-        payload["field"] = "item_id"
-        payload["item_id"] = exc.item_id
-        status = 409
-    elif isinstance(exc, VersionConflictError):
-        payload["code"] = "cart_version_conflict"
-        payload["field"] = "version"
-        status = 409
-    elif isinstance(exc, WishlistLimitError):
-        payload["code"] = "wishlist_limit"
-        payload["field"] = "items"
-        payload["limit"] = exc.limit
-        status = 409
-    elif isinstance(exc, OperationNotPermitted):
-        message = str(exc)
-        lowered = message.lower()
-        if "receipt" in lowered and "expired" in lowered:
-            payload["code"] = "receipt_expired"
-            status = 410
-        elif "download limit" in lowered or "quota exceeded" in lowered:
-            payload["code"] = "delivery_quota_exhausted"
-            status = 410
-        elif "delivery token" in lowered and ("expired" in lowered or "revoked" in lowered):
-            payload["code"] = "delivery_unavailable"
-            status = 410
-        else:
-            payload["code"] = getattr(exc, "code", "operation_not_permitted")
-            status = 409
-
-    if status >= 500:
-        _log.error(
-            "Unhandled Commerce route error",
-            exc_info=(type(exc), exc, exc.__traceback__),
-        )
-        payload["error"] = "Internal server error"
-        payload["code"] = "internal_error"
-        headers = {"Cache-Control": "no-store"}
-    return web.json_response(payload, status=status, headers=headers)
+# Canonical Commerce error contract lives in routes/_errors.py; the local
+# name is kept for this module's 25 call sites and the contract tests.
+_error_response = error_response
 
 
 async def _json_body(request: web.Request) -> dict[str, Any]:
