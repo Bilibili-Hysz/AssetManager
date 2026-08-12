@@ -2,9 +2,9 @@
 import gc
 
 from AssetsManager.domain.events import (
+    AssetTagsChanged,
     DomainEvent,
-    FileRenamed,
-    TagsChanged,
+    FileSystemChanged,
 )
 from AssetsManager.domain.event_bus import EventBus
 
@@ -12,8 +12,8 @@ from AssetsManager.domain.event_bus import EventBus
 def test_subscribe_and_publish():
     bus = EventBus()
     received = []
-    bus.subscribe(TagsChanged, lambda e: received.append(e))
-    bus.publish(TagsChanged(file_path="/a", new_tags=("hero",)))
+    bus.subscribe(AssetTagsChanged, lambda e: received.append(e))
+    bus.publish(AssetTagsChanged(file_path="/a", new_tags=("hero",)))
 
     assert len(received) == 1
     assert received[0].file_path == "/a"
@@ -23,9 +23,9 @@ def test_subscribe_and_publish():
 def test_multiple_handlers():
     bus = EventBus()
     results = []
-    bus.subscribe(FileRenamed, lambda e: results.append("a"))
-    bus.subscribe(FileRenamed, lambda e: results.append("b"))
-    bus.publish(FileRenamed(old_path="/old", new_path="/new"))
+    bus.subscribe(FileSystemChanged, lambda e: results.append("a"))
+    bus.subscribe(FileSystemChanged, lambda e: results.append("b"))
+    bus.publish(FileSystemChanged(kind="moved", paths=("/new",), old_paths=("/old",)))
 
     assert results == ["a", "b"]
 
@@ -37,9 +37,9 @@ def test_unsubscribe():
     def handler(e):
         results.append(1)
 
-    bus.subscribe(FileRenamed, handler)
-    bus.unsubscribe(FileRenamed, handler)
-    bus.publish(FileRenamed(old_path="/old", new_path="/new"))
+    bus.subscribe(FileSystemChanged, handler)
+    bus.unsubscribe(FileSystemChanged, handler)
+    bus.publish(FileSystemChanged(kind="moved", paths=("/new",), old_paths=("/old",)))
 
     assert results == []
 
@@ -48,22 +48,22 @@ def test_subscription_token_close_unsubscribes():
     bus = EventBus()
     results = []
 
-    token = bus.subscribe(TagsChanged, results.append)
+    token = bus.subscribe(AssetTagsChanged, results.append)
     token.close()
-    bus.publish(TagsChanged(file_path="/a", new_tags=("hero",)))
+    bus.publish(AssetTagsChanged(file_path="/a", new_tags=("hero",)))
 
     assert results == []
-    assert bus.handler_count(TagsChanged) == 0
+    assert bus.handler_count(AssetTagsChanged) == 0
 
 
 def test_subscription_token_close_is_idempotent():
     bus = EventBus()
-    token = bus.subscribe(TagsChanged, lambda e: None)
+    token = bus.subscribe(AssetTagsChanged, lambda e: None)
 
     token.close()
     token.close()
 
-    assert bus.handler_count(TagsChanged) == 0
+    assert bus.handler_count(AssetTagsChanged) == 0
 
 
 def test_weak_subscription_does_not_keep_owner_alive():
@@ -75,15 +75,15 @@ def test_weak_subscription_does_not_keep_owner_alive():
             results.append(event)
 
     owner = Owner()
-    bus.subscribe_weak(TagsChanged, owner.handle)
-    assert bus.handler_count(TagsChanged) == 1
+    bus.subscribe_weak(AssetTagsChanged, owner.handle)
+    assert bus.handler_count(AssetTagsChanged) == 1
 
     del owner
     gc.collect()
-    bus.publish(TagsChanged(file_path="/a", new_tags=("hero",)))
+    bus.publish(AssetTagsChanged(file_path="/a", new_tags=("hero",)))
 
     assert results == []
-    assert bus.handler_count(TagsChanged) == 0
+    assert bus.handler_count(AssetTagsChanged) == 0
 
 
 def test_weak_subscription_token_close_is_idempotent():
@@ -94,11 +94,11 @@ def test_weak_subscription_token_close_is_idempotent():
             pass
 
     owner = Owner()
-    token = bus.subscribe_weak(TagsChanged, owner.handle)
+    token = bus.subscribe_weak(AssetTagsChanged, owner.handle)
     token.close()
     token.close()
 
-    assert bus.handler_count(TagsChanged) == 0
+    assert bus.handler_count(AssetTagsChanged) == 0
 
 
 def test_handler_exception_does_not_block_others():
@@ -108,9 +108,9 @@ def test_handler_exception_does_not_block_others():
     def bad_handler(e):
         raise ValueError("boom")
 
-    bus.subscribe(TagsChanged, bad_handler)
-    bus.subscribe(TagsChanged, lambda e: results.append("ok"))
-    bus.publish(TagsChanged(file_path="/a", new_tags=()))
+    bus.subscribe(AssetTagsChanged, bad_handler)
+    bus.subscribe(AssetTagsChanged, lambda e: results.append("ok"))
+    bus.publish(AssetTagsChanged(file_path="/a", new_tags=()))
 
     assert results == ["ok"]
 
@@ -122,33 +122,33 @@ def test_no_handlers_does_not_raise():
 
 def test_clear():
     bus = EventBus()
-    bus.subscribe(TagsChanged, lambda e: None)
-    bus.subscribe(FileRenamed, lambda e: None)
-    assert bus.handler_count(TagsChanged) == 1
-    assert bus.handler_count(FileRenamed) == 1
+    bus.subscribe(AssetTagsChanged, lambda e: None)
+    bus.subscribe(FileSystemChanged, lambda e: None)
+    assert bus.handler_count(AssetTagsChanged) == 1
+    assert bus.handler_count(FileSystemChanged) == 1
 
     bus.clear()
-    assert bus.handler_count(TagsChanged) == 0
-    assert bus.handler_count(FileRenamed) == 0
+    assert bus.handler_count(AssetTagsChanged) == 0
+    assert bus.handler_count(FileSystemChanged) == 0
 
 
 def test_handler_count():
     bus = EventBus()
-    assert bus.handler_count(FileRenamed) == 0
-    bus.subscribe(FileRenamed, lambda e: None)
-    bus.subscribe(FileRenamed, lambda e: None)
-    assert bus.handler_count(FileRenamed) == 2
+    assert bus.handler_count(FileSystemChanged) == 0
+    bus.subscribe(FileSystemChanged, lambda e: None)
+    bus.subscribe(FileSystemChanged, lambda e: None)
+    assert bus.handler_count(FileSystemChanged) == 2
 
 
 def test_event_timestamp_auto_set():
-    event = TagsChanged(file_path="/a", new_tags=("hero",))
+    event = AssetTagsChanged(file_path="/a", new_tags=("hero",))
     assert event.timestamp > 0
 
 
 def test_event_is_frozen():
-    event = FileRenamed(old_path="/old", new_path="/new")
+    event = FileSystemChanged(kind="moved", paths=("/new",), old_paths=("/old",))
     try:
-        event.old_path = "/changed"
+        event.kind = "changed"
         assert False, "Should have raised"
     except AttributeError:
         pass

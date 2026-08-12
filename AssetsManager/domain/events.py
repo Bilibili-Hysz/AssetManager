@@ -72,34 +72,6 @@ class PresenceChanged(DomainEvent):
 # ── File events ──────────────────────────────────────────────────
 
 @dataclass(frozen=True)
-class FileRenamed(DomainEvent):
-    """A file or directory was renamed/moved."""
-    old_path: str = ""
-    new_path: str = ""
-
-
-@dataclass(frozen=True)
-class FileDeleted(DomainEvent):
-    """A file or directory was deleted."""
-    path: str = ""
-    is_dir: bool = False
-
-
-@dataclass(frozen=True)
-class FileCreated(DomainEvent):
-    """A new file or directory was created."""
-    path: str = ""
-    is_dir: bool = False
-
-
-@dataclass(frozen=True)
-class FileCopied(DomainEvent):
-    """A file or directory was copied."""
-    source_path: str = ""
-    destination_path: str = ""
-
-
-@dataclass(frozen=True)
 class FileSystemChanged(DomainEvent):
     """A session-scoped file operation completed its projection updates."""
     library_root: str = ""
@@ -110,13 +82,6 @@ class FileSystemChanged(DomainEvent):
 
 
 # ── Metadata events ──────────────────────────────────────────────
-
-@dataclass(frozen=True)
-class TagsChanged(DomainEvent):
-    """Tags were modified for a file."""
-    file_path: str = ""
-    new_tags: tuple[str, ...] = ()
-
 
 @dataclass(frozen=True)
 class AssetTagsChanged(DomainEvent):
@@ -135,24 +100,11 @@ class TagCatalogChanged(DomainEvent):
 
 
 @dataclass(frozen=True)
-class NotesChanged(DomainEvent):
-    """Notes were modified for a file."""
-    file_path: str = ""
-
-
-@dataclass(frozen=True)
 class AssetNotesChanged(DomainEvent):
     """Notes for one asset changed within a specific library session."""
     library_root: str = ""
     session_token: str = ""
     file_path: str = ""
-
-
-@dataclass(frozen=True)
-class UrlsChanged(DomainEvent):
-    """URLs were modified for a file."""
-    file_path: str = ""
-    new_urls: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -12,7 +12,7 @@ from AssetsManager.core.path_resolver import root_identity
 from AssetsManager.core.tag_library import get_library
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.errors import ValidationError
-from AssetsManager.domain.events import AssetTagsChanged, TagCatalogChanged, TagsChanged
+from AssetsManager.domain.events import AssetTagsChanged, TagCatalogChanged
 from AssetsManager.repositories.tag_repository import TagRepository
 
 _log = logging.getLogger(__name__)
@@ -203,7 +203,6 @@ class TagService:
             return
         repo.add_tag(key, canonical, require_clean_transaction=True)
         tags = tuple(repo.get_tags(key))
-        get_event_bus().publish(TagsChanged(file_path=key, new_tags=tags))
         self._publish_asset_tags_changed(key, tags)
 
     @session_operation
@@ -218,7 +217,6 @@ class TagService:
         if match:
             repo.remove_tag(key, match, require_clean_transaction=True)
             tags = tuple(repo.get_tags(key))
-            get_event_bus().publish(TagsChanged(file_path=key, new_tags=tags))
             self._publish_asset_tags_changed(key, tags)
 
     @session_operation
@@ -230,7 +228,6 @@ class TagService:
         self._require_event_safe_transaction(repo)
         removed = repo.remove_file(key, require_clean_transaction=True)
         if removed:
-            get_event_bus().publish(TagsChanged(file_path=key, new_tags=()))
             self._publish_asset_tags_changed(key, (), publish_catalog=True)
 
     @session_operation
@@ -242,7 +239,6 @@ class TagService:
         self._require_event_safe_transaction(repo)
         paths = repo.get_files_by_tag(old_name)
         repo.rename_tag(old_name, new_name, require_clean_transaction=True)
-        get_event_bus().publish(TagsChanged())
         for path in paths:
             self._publish_asset_tags_changed(
                 path, tuple(repo.get_tags(path)), publish_catalog=False
@@ -257,7 +253,6 @@ class TagService:
         self._require_event_safe_transaction(repo)
         paths = repo.get_files_by_tag(tag_name)
         repo.delete_tag(tag_name, require_clean_transaction=True)
-        get_event_bus().publish(TagsChanged())
         for path in paths:
             self._publish_asset_tags_changed(
                 path, tuple(repo.get_tags(path)), publish_catalog=False

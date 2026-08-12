@@ -8,7 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from AssetsManager.domain.event_bus import get_event_bus
-from AssetsManager.domain.events import TagsChanged
+from AssetsManager.domain.events import AssetTagsChanged
 from AssetsManager.application.runtime_events import InvalidationEvent, ProjectionDomain
 from AssetsManager.panels._event_bridge import RuntimeEventSubscription
 from AssetsManager.panels.base import PanelContent
@@ -29,12 +29,12 @@ def test_domain_event_bridge_delivers_on_qt_thread_from_worker():
 
     try:
         panel._connect_domain_event(
-            TagsChanged,
+            AssetTagsChanged,
             lambda event: received_threads.append(threading.get_ident()),
         )
 
         worker = threading.Thread(
-            target=lambda: get_event_bus().publish(TagsChanged(file_path="/a", new_tags=("tag",)))
+            target=lambda: get_event_bus().publish(AssetTagsChanged(file_path="/a", new_tags=("tag",)))
         )
         worker.start()
         worker.join(timeout=1.0)
@@ -53,13 +53,13 @@ def test_domain_event_bridge_unsubscribes_on_panel_shutdown():
     received: list[object] = []
 
     try:
-        panel._connect_domain_event(TagsChanged, received.append)
-        assert get_event_bus().handler_count(TagsChanged) == 1
+        panel._connect_domain_event(AssetTagsChanged, received.append)
+        assert get_event_bus().handler_count(AssetTagsChanged) == 1
 
         panel.shutdown()
 
-        assert get_event_bus().handler_count(TagsChanged) == 0
-        get_event_bus().publish(TagsChanged(file_path="/a", new_tags=("tag",)))
+        assert get_event_bus().handler_count(AssetTagsChanged) == 0
+        get_event_bus().publish(AssetTagsChanged(file_path="/a", new_tags=("tag",)))
         app.processEvents()
         assert received == []
     finally:
@@ -76,10 +76,10 @@ def test_domain_event_bridge_handler_exception_does_not_affect_others():
         raise ValueError("intentional error")
 
     try:
-        panel._connect_domain_event(TagsChanged, bad_handler)
-        panel._connect_domain_event(TagsChanged, good_received.append)
+        panel._connect_domain_event(AssetTagsChanged, bad_handler)
+        panel._connect_domain_event(AssetTagsChanged, good_received.append)
 
-        get_event_bus().publish(TagsChanged(file_path="/a", new_tags=("tag",)))
+        get_event_bus().publish(AssetTagsChanged(file_path="/a", new_tags=("tag",)))
         _process_until(app, lambda: bool(good_received))
 
         assert len(good_received) == 1
@@ -96,13 +96,13 @@ def test_domain_event_bridge_delivers_multiple_events_from_multiple_workers():
     main_thread = threading.get_ident()
 
     try:
-        panel._connect_domain_event(TagsChanged, lambda e: received.append(e.file_path))
+        panel._connect_domain_event(AssetTagsChanged, lambda e: received.append(e.file_path))
 
         workers = []
         for i in range(5):
             t = threading.Thread(
                 target=lambda idx=i: get_event_bus().publish(
-                    TagsChanged(file_path=f"/file{idx}", new_tags=("tag",))
+                    AssetTagsChanged(file_path=f"/file{idx}", new_tags=("tag",))
                 )
             )
             workers.append(t)

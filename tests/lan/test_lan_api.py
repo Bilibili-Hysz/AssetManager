@@ -882,11 +882,44 @@ class _FakeLan:
         provider = self.connection_for
         self._auth_service = AuthService(db_conn, self.token_secret)
         self._share_service = ShareService(db_conn, self.token_secret)
+        # Session-bound metadata/tag services so Asset*Changed events publish,
+        # matching the production LAN composition (bootstrap builds these via
+        # for_session; the legacy session-less construction stopped publishing
+        # when the unscoped NotesChanged/TagsChanged events were removed).
+        from types import SimpleNamespace
+
+        from AssetsManager.application.context import LibraryContext, LibrarySession
+        from AssetsManager.core.path_resolver import root_identity
+        identity = root_identity(Path(library_root), strict=False)
+        context = LibraryContext(
+            root=identity.display_path,
+            data_dir=identity.display_path / ".data",
+            thumb_dir=identity.display_path / ".thumbs",
+            db_conn=db_conn,
+            tag_store=SimpleNamespace(),
+            project_data=SimpleNamespace(),
+            root_key=identity.map_key,
+        )
+        fake_session = LibrarySession.from_context(context)
+        # Register the fixture connection as "managed" so session-bound
+        # services pass DatabaseManager.require_managed_connection_owner
+        # (production binds these services to the DI-managed connection).
+        # _make_lan_app's cleanup handler pops this registry entry.
+        import threading
+
+        from AssetsManager.core import database as database_module
+        state = database_module._ConnectionWriteState(
+            threading.RLock(),
+            library_root=str(identity.display_path),
+            library_root_key=identity.map_key,
+        )
+        with database_module._connection_locks_guard:
+            database_module._connection_locks[id(db_conn)] = state
         self.services = LanScopedServices(
             auth_service=self._auth_service,
-            metadata_service=MetadataService(connection_provider=provider),
+            metadata_service=MetadataService(session=fake_session),
             project_service=ProjectService(connection_provider=provider),
-            tag_service=TagService(connection_provider=provider),
+            tag_service=TagService(session=fake_session),
             search_service=SearchService(connection_provider=provider),
             thumbnail_service=ThumbnailService(connection_provider=provider),
             asset_service=AssetService(),
@@ -1049,8 +1082,11 @@ def _make_lan_app(tmp_path, *, authenticated_context_only=False, canonical_conte
         app[LAN_APP_KEY] = _FakeLan(library, conn, tmp_path / "thumbs")
         app[AUTH_SERVICE_APP_KEY] = AuthService(conn, "test-secret")
         async def _close_db(_app):
+            from AssetsManager.core import database as database_module
             from AssetsManager.core.database import close_all_dbs
             close_all_dbs()
+            with database_module._connection_locks_guard:
+                database_module._connection_locks.pop(id(conn), None)
             conn.close()
         app.on_cleanup.append(_close_db)
         setup_routes(app)

@@ -21,7 +21,7 @@ from AssetsManager.application.context import session_operation
 from AssetsManager.core.performance import PerformanceRecorder
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import (
-    FileCopied, FileCreated, FileDeleted, FileRenamed, FileSystemChanged,
+    FileSystemChanged,
     TagCatalogChanged,
 )
 from AssetsManager.repositories.asset_index_repository import AssetIndexRevisionConflict
@@ -468,7 +468,6 @@ class FileOperationService:
                 target.mkdir()
                 self._refresh_parents(target.parent)
                 self._refresh_directory_tree(target)
-                get_event_bus().publish(FileCreated(path=str(target), is_dir=True))
                 self._publish_file_change("created", (target,))
                 return target
             except FileExistsError:
@@ -556,7 +555,6 @@ class FileOperationService:
                     "metadata", dst, status="failed", failure=exc
                 )
             self._refresh_after_move(src, dst, is_dir)
-            get_event_bus().publish(FileRenamed(old_path=str(src), new_path=str(dst)))
             self._publish_file_change("moved", (dst,), (src,))
         return dst
 
@@ -566,7 +564,6 @@ class FileOperationService:
                           library_root: str | Path | None = None) -> FileOperationResult:
         changed: list[Path] = []
         errors: list[str] = []
-        bus = get_event_bus()
         root = self._root_for(library_root)
         is_bound = root is not None
         destination = Path(destination_dir).resolve()
@@ -589,7 +586,6 @@ class FileOperationService:
                     shutil.copy2(src, target)
                 self._refresh_parents(target.parent)
                 changed.append(target)
-                bus.publish(FileCopied(source_path=str(src), destination_path=str(target)))
                 self._publish_file_change("copied", (target,), (src,))
             except OSError as exc:
                 if target is not None:
@@ -606,7 +602,6 @@ class FileOperationService:
         changed: list[Path] = []
         errors: list[str] = []
         moved_pairs: list[tuple[Path, Path]] = []
-        bus = get_event_bus()
         root = self._root_for(library_root)
         _assert_under_root(Path(destination_dir).resolve(), root)
         for source in sources:
@@ -637,7 +632,6 @@ class FileOperationService:
                     self._refresh_after_move(src, target, is_dir)
                     changed.append(target)
                     moved_pairs.append((src, target))
-                    bus.publish(FileRenamed(old_path=str(src), new_path=str(target)))
                     self._publish_file_change("moved", (target,), (src,))
                 except OSError as exc:
                     if target is not None:
@@ -667,7 +661,6 @@ class FileOperationService:
         self._refresh_parents(target.parent)
         if target.is_dir():
             self._refresh_directory_tree(target)
-        get_event_bus().publish(FileCreated(path=str(target), is_dir=target.is_dir()))
         self._publish_file_change("created", (target,), (src,))
         return target
 
@@ -677,7 +670,6 @@ class FileOperationService:
                          library_root: str | Path | None = None) -> FileOperationResult:
         changed: list[Path] = []
         errors: list[str] = []
-        bus = get_event_bus()
         root = self._root_for(library_root)
         for path in paths:
             p = Path(path).resolve()
@@ -706,7 +698,6 @@ class FileOperationService:
                     except Exception as exc:
                         errors.append(f"[{error_category(exc)}] {exc}")
                     changed.append(p)
-                    bus.publish(FileDeleted(path=str(p), is_dir=is_dir))
                     self._publish_file_change("deleted", (p,))
         return FileOperationResult(
             tuple(changed), tuple(errors), self._refresh_warnings()
@@ -735,7 +726,6 @@ class FileOperationService:
             if is_dir:
                 self._refresh_directory_tree(target)
             self._restore_projection_snapshot(source, target)
-        get_event_bus().publish(FileCreated(path=str(target), is_dir=is_dir))
         self._publish_file_change("restored", (target,))
         return target
 
@@ -747,7 +737,6 @@ class FileOperationService:
 
         changed: list[Path] = []
         errors: list[str] = []
-        bus = get_event_bus()
         root = self._root_for(library_root)
         for path in paths:
             p = Path(path).resolve()
@@ -757,7 +746,6 @@ class FileOperationService:
             with acquire_path_locks(p):
                 with self._clean_transaction_boundary():
                     try:
-                        is_dir = p.is_dir()
                         send2trash(str(p))
                     except OSError as exc:
                         errors.append(f"[{error_category(exc)}] {exc}")
@@ -773,7 +761,6 @@ class FileOperationService:
                     except Exception as exc:
                         errors.append(f"[{error_category(exc)}] {exc}")
                     changed.append(p)
-                    bus.publish(FileDeleted(path=str(p), is_dir=is_dir))
                     self._publish_file_change("deleted", (p,))
         return FileOperationResult(
             tuple(changed), tuple(errors), self._refresh_warnings()

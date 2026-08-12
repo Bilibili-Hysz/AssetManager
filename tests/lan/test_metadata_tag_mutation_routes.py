@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from AssetsManager.domain.event_bus import get_event_bus
-from AssetsManager.domain.events import NotesChanged, TagsChanged
+from AssetsManager.domain.events import AssetNotesChanged, AssetTagsChanged
 from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app
 
 
@@ -19,7 +19,7 @@ async def test_notes_route_is_admin_only_path_guarded_and_evented(tmp_path):
     target.parent.mkdir()
     target.write_text("asset", encoding="utf-8")
     events = []
-    subscription = get_event_bus().subscribe(NotesChanged, events.append)
+    subscription = get_event_bus().subscribe(AssetNotesChanged, events.append)
     client = await _make_client(app)
     try:
         guest = await client.put("/api/notes/folder%2Fasset.txt", json={"notes": "guest"})
@@ -70,7 +70,7 @@ async def test_tag_remove_route_reuses_tag_service_and_publishes_change(tmp_path
     target.write_text("asset", encoding="utf-8")
     headers = _local_ui_headers(app)
     events = []
-    subscription = get_event_bus().subscribe(TagsChanged, events.append)
+    subscription = get_event_bus().subscribe(AssetTagsChanged, events.append)
     client = await _make_client(app)
     try:
         guest = await client.post(

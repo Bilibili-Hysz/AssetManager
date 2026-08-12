@@ -68,7 +68,7 @@ def test_bound_copy_to_directory_allows_external_sources(tmp_path):
 def test_file_copied_observers_see_new_file_indexed(tmp_path):
     from AssetsManager.application import ApplicationBootstrap
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import FileCopied
+    from AssetsManager.domain.events import FileSystemChanged
 
     library = tmp_path / "library"
     external = tmp_path / "external.txt"
@@ -81,9 +81,9 @@ def test_file_copied_observers_see_new_file_indexed(tmp_path):
     observed = []
 
     def observe(event):
-        observed.append(index.get_entry(conn, event.destination_path) is not None)
+        observed.append(index.get_entry(conn, event.paths[0]) is not None)
 
-    get_event_bus().subscribe(FileCopied, observe)
+    get_event_bus().subscribe(FileSystemChanged, observe)
 
     result = scoped.file_operation_service.copy_to_directory([external], library)
 
@@ -95,7 +95,7 @@ def test_file_commands_record_after_projection_and_event_publication(tmp_path):
     from AssetsManager.application import ApplicationBootstrap
     from AssetsManager.core.performance import PerformanceRecorder
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import FileCopied
+    from AssetsManager.domain.events import FileSystemChanged
 
     library = tmp_path / "library"
     library.mkdir()
@@ -110,7 +110,7 @@ def test_file_commands_record_after_projection_and_event_publication(tmp_path):
         events = [event for event in recorder.recent() if event.name == "file.command"]
         observed.append(events == [])
 
-    get_event_bus().subscribe(FileCopied, observe)
+    get_event_bus().subscribe(FileSystemChanged, observe)
     result = scoped.file_operation_service.copy_to_directory([external], library)
 
     event = next(event for event in recorder.recent() if event.name == "file.command")
@@ -801,7 +801,7 @@ def test_trash_delete_clears_projections_before_file_deleted_subscribers_run(tmp
     from AssetsManager.application import ApplicationBootstrap
     from AssetsManager.core.tag_store import TagStore
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import FileDeleted
+    from AssetsManager.domain.events import FileSystemChanged
     from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
 
     library = tmp_path / "library"
@@ -834,7 +834,7 @@ def test_trash_delete_clears_projections_before_file_deleted_subscribers_run(tmp
             index.get_entry(conn, child),
         ))
 
-    get_event_bus().subscribe(FileDeleted, observe_projection_cleanup)
+    get_event_bus().subscribe(FileSystemChanged, observe_projection_cleanup)
 
     result = scoped.file_operation_service.delete_to_trash([target])
 
@@ -927,7 +927,7 @@ def test_bound_move_rejects_caller_outer_transaction_before_filesystem_change(tm
 def test_file_renamed_observers_see_moved_directory_projection(tmp_path):
     from AssetsManager.application import ApplicationBootstrap
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import FileRenamed
+    from AssetsManager.domain.events import FileSystemChanged
 
     library = tmp_path / "library"
     old_dir = library / "source" / "folder"
@@ -946,16 +946,16 @@ def test_file_renamed_observers_see_moved_directory_projection(tmp_path):
     observed = []
 
     def observe(event):
-        new_dir = event.new_path
+        new_dir = event.paths[0]
         new_child = str((destination / old_dir.name / "nested" / "asset.txt").resolve())
         observed.append((
-            index.get_entry(conn, event.old_path) is None,
+            index.get_entry(conn, event.old_paths[0]) is None,
             index.get_entry(conn, old_child) is None,
             index.get_entry(conn, new_dir) is not None,
             index.get_entry(conn, new_child) is not None,
         ))
 
-    get_event_bus().subscribe(FileRenamed, observe)
+    get_event_bus().subscribe(FileSystemChanged, observe)
 
     scoped.file_operation_service.move(old_dir, destination / old_dir.name)
 
@@ -967,7 +967,7 @@ def test_restore_backup_reindexes_directory_tree_before_publishing_created(tmp_p
 
     from AssetsManager.application import ApplicationBootstrap
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import FileCreated
+    from AssetsManager.domain.events import FileSystemChanged
 
     library = tmp_path / "library"
     target = library / "folder"
@@ -985,12 +985,12 @@ def test_restore_backup_reindexes_directory_tree_before_publishing_created(tmp_p
 
     def observe(event):
         observed.append((
-            event.path,
+            event.paths[0],
             index.get_entry(conn, target) is not None,
             index.get_entry(conn, child) is not None,
         ))
 
-    get_event_bus().subscribe(FileCreated, observe)
+    get_event_bus().subscribe(FileSystemChanged, observe)
 
     restored = scoped.file_operation_service.restore_backup(backup, target)
 
@@ -1003,7 +1003,7 @@ def test_create_and_duplicate_reindex_before_publishing_created(tmp_path):
 
     from AssetsManager.application import ApplicationBootstrap
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import FileCreated
+    from AssetsManager.domain.events import FileSystemChanged
 
     library = tmp_path / "library"
     source = library / "source.txt"
@@ -1016,10 +1016,10 @@ def test_create_and_duplicate_reindex_before_publishing_created(tmp_path):
     observed = []
 
     def observe(event):
-        path = Path(event.path)
+        path = Path(event.paths[0])
         observed.append((path, index.get_entry(conn, path) is not None))
 
-    get_event_bus().subscribe(FileCreated, observe)
+    get_event_bus().subscribe(FileSystemChanged, observe)
 
     created = scoped.file_operation_service.create_folder(library)
     duplicate = scoped.file_operation_service.duplicate(source)

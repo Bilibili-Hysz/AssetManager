@@ -16,7 +16,7 @@ from AssetsManager.core.path_resolver import RootIdentity, root_identity
 from AssetsManager.core.project_data import ProjectData, _SIZE_CACHE_TTL_SECONDS
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import (
-    AssetNotesChanged, AssetUrlsChanged, NotesChanged, UrlsChanged,
+    AssetNotesChanged, AssetUrlsChanged,
 )
 from AssetsManager.repositories.metadata_repository import MetadataRepository
 from AssetsManager.repositories.tag_repository import TagRepository
@@ -230,7 +230,6 @@ class MetadataService:
         repo = self._repo(root)
         self._require_event_safe_transaction(repo)
         repo.set_notes(key, text)
-        get_event_bus().publish(NotesChanged(file_path=key))
         self._publish_notes_changed(key)
 
     @session_operation
@@ -248,7 +247,6 @@ class MetadataService:
         urls = repo.add_url(key, url)
         if urls is not None:
             result = tuple(urls)
-            get_event_bus().publish(UrlsChanged(file_path=key, new_urls=result))
             self._publish_urls_changed(key, result)
 
     @session_operation
@@ -260,7 +258,6 @@ class MetadataService:
         urls = repo.remove_url(key, url)
         if urls is not None:
             result = tuple(urls)
-            get_event_bus().publish(UrlsChanged(file_path=key, new_urls=result))
             self._publish_urls_changed(key, result)
 
     @session_operation

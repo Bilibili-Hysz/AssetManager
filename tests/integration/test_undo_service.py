@@ -268,7 +268,7 @@ def test_delete_undo_and_redo_reconcile_file_projections(tmp_path):
     from AssetsManager.application import ApplicationBootstrap
     from AssetsManager.core.tag_store import TagStore
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import FileCreated, FileDeleted
+    from AssetsManager.domain.events import FileSystemChanged
     from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
 
     library = tmp_path / "library"
@@ -286,8 +286,14 @@ def test_delete_undo_and_redo_reconcile_file_projections(tmp_path):
     thumbnail_file.write_bytes(b"thumb")
     created = []
     deleted = []
-    get_event_bus().subscribe(FileCreated, created.append)
-    get_event_bus().subscribe(FileDeleted, deleted.append)
+    get_event_bus().subscribe(
+        FileSystemChanged,
+        lambda event: created.append(event) if event.kind == "restored" else None,
+    )
+    get_event_bus().subscribe(
+        FileSystemChanged,
+        lambda event: deleted.append(event) if event.kind == "deleted" else None,
+    )
     undo = scoped.undo_service
 
     try:
@@ -297,7 +303,7 @@ def test_delete_undo_and_redo_reconcile_file_projections(tmp_path):
         assert undo.perform_undo(scoped.file_operation_service)
         assert source.read_text(encoding="utf-8") == "data"
         assert index.get_entry(conn, source) is not None
-        assert created[-1].path == str(source)
+        assert created[-1].paths == (str(source),)
 
         assert undo.perform_redo(scoped.file_operation_service)
         assert not source.exists()
@@ -305,7 +311,7 @@ def test_delete_undo_and_redo_reconcile_file_projections(tmp_path):
         assert ThumbnailRepository(conn).list_all() == []
         assert not thumbnail_file.exists()
         assert index.get_entry(conn, source) is None
-        assert deleted[-1].path == str(source)
+        assert deleted[-1].paths == (str(source),)
     finally:
         undo.cleanup()
 

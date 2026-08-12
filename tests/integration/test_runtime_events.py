@@ -21,12 +21,9 @@ from AssetsManager.domain.events import (
     FavoritesChanged,
     FileSystemChanged,
     InviteChanged,
-    NotesChanged,
     PresenceChanged,
     ShareChanged,
     TagCatalogChanged,
-    TagsChanged,
-    UrlsChanged,
     UserChanged,
 )
 
@@ -147,7 +144,7 @@ def test_router_maps_paths_deterministically_and_filters_invalid_events(tmp_path
         for event in (
             FileSystemChanged(**_identity(session, session_token="wrong", paths=("x",))),
             AssetNotesChanged(**_identity(session, library_root=str(tmp_path / "other"), file_path="x")),
-            TagsChanged(file_path="x"), NotesChanged(file_path="x"), UrlsChanged(file_path="x"),
+            AssetTagsChanged(file_path="x"),
             DomainEvent(),
             FileSystemChanged(**_identity(session, paths=("../escape",), old_paths=())),
         ):

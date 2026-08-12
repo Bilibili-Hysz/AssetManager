@@ -12,9 +12,7 @@ import pytest
 from AssetsManager.application import ApplicationBootstrap
 from AssetsManager.application.metadata_service import MetadataService
 from AssetsManager.domain.event_bus import EventBus
-from AssetsManager.domain.events import (
-    AssetNotesChanged, AssetUrlsChanged, NotesChanged, UrlsChanged,
-)
+from AssetsManager.domain.events import AssetNotesChanged, AssetUrlsChanged
 from AssetsManager.repositories.metadata_repository import MetadataRepository
 
 
@@ -478,7 +476,7 @@ def test_bound_metadata_event_mutations_reject_caller_owned_transactions(
 
     bus = EventBus()
     events: list[object] = []
-    for event_type in (NotesChanged, AssetNotesChanged, UrlsChanged, AssetUrlsChanged):
+    for event_type in (AssetNotesChanged, AssetUrlsChanged):
         bus.subscribe(event_type, events.append)
     monkeypatch.setattr(event_bus_module, "_instance", bus)
 
@@ -514,9 +512,7 @@ def test_metadata_service_close_prevents_mutation_and_event_publication(
     import AssetsManager.domain.event_bus as event_bus_module
 
     bus = EventBus()
-    legacy_events: list[object] = []
     scoped_events: list[object] = []
-    bus.subscribe(NotesChanged, legacy_events.append)
     bus.subscribe(AssetNotesChanged, scoped_events.append)
     monkeypatch.setattr(event_bus_module, "_instance", bus)
 
@@ -526,7 +522,6 @@ def test_metadata_service_close_prevents_mutation_and_event_publication(
         service = bootstrap.runtime_for(session).services.metadata_service
         asset = _asset(session.root)
         service.set_notes(session.root, asset, "before-close")
-        legacy_events.clear()
         scoped_events.clear()
         conn = session.connection_for(session.root)
         statements: list[str] = []
@@ -538,7 +533,6 @@ def test_metadata_service_close_prevents_mutation_and_event_publication(
         with pytest.raises(RuntimeError, match="closed LibrarySession"):
             service.set_notes(session.root, asset, "after-close")
         assert statements == []
-        assert legacy_events == []
         assert scoped_events == []
     finally:
         bootstrap.library_service.close()

@@ -11,7 +11,7 @@ import pytest
 from AssetsManager.application import ApplicationBootstrap
 from AssetsManager.application.tag_service import TagService
 from AssetsManager.domain.event_bus import EventBus
-from AssetsManager.domain.events import AssetTagsChanged, TagCatalogChanged, TagsChanged
+from AssetsManager.domain.events import AssetTagsChanged, TagCatalogChanged
 from AssetsManager.repositories.tag_repository import TagRepository
 
 
@@ -219,7 +219,7 @@ def test_bound_tag_service_rejects_caller_outer_transaction_before_events(tmp_pa
 
     bus = EventBus()
     events: list[object] = []
-    for event_type in (TagsChanged, AssetTagsChanged, TagCatalogChanged):
+    for event_type in (AssetTagsChanged, TagCatalogChanged):
         bus.subscribe(event_type, events.append)
     monkeypatch.setattr(event_bus_module, "_instance", bus)
 
@@ -247,10 +247,8 @@ def test_bound_tag_service_remove_file_publishes_empty_asset_state(tmp_path, mon
     import AssetsManager.domain.event_bus as event_bus_module
 
     bus = EventBus()
-    legacy: list[object] = []
     scoped: list[object] = []
     catalogs: list[object] = []
-    bus.subscribe(TagsChanged, legacy.append)
     bus.subscribe(AssetTagsChanged, scoped.append)
     bus.subscribe(TagCatalogChanged, catalogs.append)
     monkeypatch.setattr(event_bus_module, "_instance", bus)
@@ -261,15 +259,13 @@ def test_bound_tag_service_remove_file_publishes_empty_asset_state(tmp_path, mon
         service = TagService(connection_provider=session.connection_for, session=session)
         asset = _asset(session.root)
         service.add_tag(session.root, asset, "hero")
-        legacy.clear()
         scoped.clear()
         catalogs.clear()
 
         service.remove_file(session.root, asset)
 
-        assert len(legacy) == len(scoped) == len(catalogs) == 1
-        assert legacy[0].file_path == str(asset.resolve())
-        assert legacy[0].new_tags == ()
+        assert len(scoped) == len(catalogs) == 1
+        assert scoped[0].file_path == str(asset.resolve())
         assert scoped[0].session_token == session.event_token
         assert scoped[0].new_tags == ()
     finally:

@@ -1,22 +1,7 @@
 """Tests verifying that application services publish correct domain events."""
 import os
-import sqlite3
-
-import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-
-@pytest.fixture
-def event_bus():
-    from AssetsManager.domain.event_bus import EventBus
-    bus = EventBus()
-    return bus
-
-
-@pytest.fixture
-def lib_root(tmp_path):
-    return str(tmp_path)
 
 
 def test_library_service_publishes_library_opened(tmp_path, monkeypatch):
@@ -42,37 +27,29 @@ def test_library_service_publishes_library_opened(tmp_path, monkeypatch):
 
 
 def test_tag_service_publishes_tags_changed_on_add(tmp_path, monkeypatch):
-    """TagService.add_tag() publishes TagsChanged."""
-    from AssetsManager.core import database
-    from AssetsManager.core.db_migrations import migrate
-    from AssetsManager.application.tag_service import TagService
+    """TagService.add_tag() publishes AssetTagsChanged."""
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
     from AssetsManager.domain.event_bus import EventBus
-    from AssetsManager.domain.events import TagsChanged
+    from AssetsManager.domain.events import AssetTagsChanged
 
     bus = EventBus()
     events = []
-    bus.subscribe(TagsChanged, events.append)
+    bus.subscribe(AssetTagsChanged, events.append)
     import AssetsManager.domain.event_bus as eb
     monkeypatch.setattr(eb, "_instance", bus)
 
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    service = bootstrap.runtime_for(session).services.tag_service
+    file_path = str(tmp_path / "library" / "file.txt")
     try:
-        conn.executescript(database._SCHEMA)
-        migrate(conn)
-
-        lib = str(tmp_path)
-        from AssetsManager.application.library_service import LibraryService
-        LibraryService().open_session(lib)
-
-        svc = TagService()
-        file_path = str(tmp_path / "file.txt")
-        svc.add_tag(lib, file_path, "hero", db_conn=conn)
+        service.add_tag(session.root, file_path, "hero")
 
         assert len(events) == 1
         assert events[0].file_path == file_path
         assert "hero" in events[0].new_tags
     finally:
-        conn.close()
+        bootstrap.library_service.close()
 
 
 def test_scoped_tag_add_publishes_asset_and_catalog_events(tmp_path, monkeypatch):
@@ -139,134 +116,107 @@ def test_scoped_tag_rename_updates_each_affected_asset_once(tmp_path, monkeypatc
 
 
 def test_tag_service_publishes_tags_changed_on_remove(tmp_path, monkeypatch):
-    """TagService.remove_tag() publishes TagsChanged."""
-    from AssetsManager.core import database
-    from AssetsManager.core.db_migrations import migrate
-    from AssetsManager.application.tag_service import TagService
+    """TagService.remove_tag() publishes AssetTagsChanged."""
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
     from AssetsManager.domain.event_bus import EventBus
-    from AssetsManager.domain.events import TagsChanged
+    from AssetsManager.domain.events import AssetTagsChanged
 
     bus = EventBus()
     events = []
-    bus.subscribe(TagsChanged, events.append)
+    bus.subscribe(AssetTagsChanged, events.append)
     import AssetsManager.domain.event_bus as eb
     monkeypatch.setattr(eb, "_instance", bus)
 
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    service = bootstrap.runtime_for(session).services.tag_service
+    file_path = str(tmp_path / "library" / "file.txt")
     try:
-        conn.executescript(database._SCHEMA)
-        migrate(conn)
-
-        lib = str(tmp_path)
-        from AssetsManager.application.library_service import LibraryService
-        LibraryService().open_session(lib)
-
-        svc = TagService()
-        file_path = str(tmp_path / "file.txt")
-        svc.add_tag(lib, file_path, "hero", db_conn=conn)
+        service.add_tag(session.root, file_path, "hero")
         events.clear()
 
-        svc.remove_tag(lib, file_path, "hero", db_conn=conn)
+        service.remove_tag(session.root, file_path, "hero")
         assert len(events) == 1
         assert "hero" not in events[0].new_tags
     finally:
-        conn.close()
+        bootstrap.library_service.close()
 
 
 def test_tag_service_publishes_on_rename(tmp_path, monkeypatch):
-    """TagService.rename_tag() publishes TagsChanged."""
-    from AssetsManager.core import database
-    from AssetsManager.core.db_migrations import migrate
-    from AssetsManager.application.tag_service import TagService
+    """TagService.rename_tag() publishes AssetTagsChanged."""
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
     from AssetsManager.domain.event_bus import EventBus
-    from AssetsManager.domain.events import TagsChanged
+    from AssetsManager.domain.events import AssetTagsChanged
 
     bus = EventBus()
     events = []
-    bus.subscribe(TagsChanged, events.append)
+    bus.subscribe(AssetTagsChanged, events.append)
     import AssetsManager.domain.event_bus as eb
     monkeypatch.setattr(eb, "_instance", bus)
 
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    service = bootstrap.runtime_for(session).services.tag_service
+    file_path = str(tmp_path / "library" / "file.txt")
     try:
-        conn.executescript(database._SCHEMA)
-        migrate(conn)
-
-        lib = str(tmp_path)
-        from AssetsManager.application.library_service import LibraryService
-        LibraryService().open_session(lib)
-
-        svc = TagService()
-        svc.add_tag(lib, str(tmp_path / "file.txt"), "hero", db_conn=conn)
+        service.add_tag(session.root, file_path, "hero")
         events.clear()
 
-        svc.rename_tag(lib, "hero", "champion", db_conn=conn)
+        service.rename_tag(session.root, "hero", "champion")
         assert len(events) == 1
     finally:
-        conn.close()
+        bootstrap.library_service.close()
 
 
 def test_metadata_service_publishes_notes_changed(tmp_path, monkeypatch):
-    """MetadataService.set_notes() publishes NotesChanged."""
-    from AssetsManager.application.metadata_service import MetadataService
+    """MetadataService.set_notes() publishes AssetNotesChanged."""
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
     from AssetsManager.domain.event_bus import EventBus
-    from AssetsManager.domain.events import NotesChanged
+    from AssetsManager.domain.events import AssetNotesChanged
 
     bus = EventBus()
     events = []
-    bus.subscribe(NotesChanged, events.append)
+    bus.subscribe(AssetNotesChanged, events.append)
     import AssetsManager.domain.event_bus as eb
     monkeypatch.setattr(eb, "_instance", bus)
 
-    lib = str(tmp_path)
-    from AssetsManager.application.library_service import LibraryService
-    LibraryService().open_session(lib)
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    service = bootstrap.runtime_for(session).services.metadata_service
+    file_path = str(tmp_path / "library" / "test.txt")
+    try:
+        service.set_notes(session.root, file_path, "hello")
 
-    from AssetsManager.core import database
-    from AssetsManager.core.db_migrations import migrate
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.executescript(database._SCHEMA)
-    migrate(conn)
-
-    svc = MetadataService(connection_provider=lambda _root: conn)
-    file_path = str(tmp_path / "test.txt")
-    svc.set_notes(lib, file_path, "hello")
-
-    assert len(events) == 1
-    assert events[0].file_path == file_path
-    conn.close()
+        assert len(events) == 1
+        assert events[0].file_path == file_path
+    finally:
+        bootstrap.library_service.close()
 
 
 def test_metadata_service_publishes_urls_changed(tmp_path, monkeypatch):
-    """MetadataService.add_url() publishes UrlsChanged."""
-    from AssetsManager.application.metadata_service import MetadataService
+    """MetadataService.add_url() publishes AssetUrlsChanged."""
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
     from AssetsManager.domain.event_bus import EventBus
-    from AssetsManager.domain.events import UrlsChanged
+    from AssetsManager.domain.events import AssetUrlsChanged
 
     bus = EventBus()
     events = []
-    bus.subscribe(UrlsChanged, events.append)
+    bus.subscribe(AssetUrlsChanged, events.append)
     import AssetsManager.domain.event_bus as eb
     monkeypatch.setattr(eb, "_instance", bus)
 
-    lib = str(tmp_path)
-    from AssetsManager.application.library_service import LibraryService
-    LibraryService().open_session(lib)
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    service = bootstrap.runtime_for(session).services.metadata_service
+    file_path = str(tmp_path / "library" / "test.txt")
+    try:
+        service.add_url(session.root, file_path, "https://example.com")
 
-    from AssetsManager.core import database
-    from AssetsManager.core.db_migrations import migrate
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.executescript(database._SCHEMA)
-    migrate(conn)
-
-    svc = MetadataService(connection_provider=lambda _root: conn)
-    file_path = str(tmp_path / "test.txt")
-    svc.add_url(lib, file_path, "https://example.com")
-
-    assert len(events) == 1
-    assert events[0].file_path == file_path
-    assert "https://example.com" in events[0].new_urls
-    conn.close()
+        assert len(events) == 1
+        assert events[0].file_path == file_path
+        assert "https://example.com" in events[0].new_urls
+    finally:
+        bootstrap.library_service.close()
 
 
 def test_scoped_metadata_events_include_session_identity(tmp_path, monkeypatch):
@@ -298,91 +248,117 @@ def test_scoped_metadata_events_include_session_identity(tmp_path, monkeypatch):
 
 
 def test_file_operation_publishes_file_created(tmp_path, monkeypatch):
-    """FileOperationService.create_folder() publishes FileCreated."""
-    from AssetsManager.application.file_operation_service import FileOperationService
+    """FileOperationService.create_folder() publishes FileSystemChanged."""
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
     from AssetsManager.domain.event_bus import EventBus
-    from AssetsManager.domain.events import FileCreated
+    from AssetsManager.domain.events import FileSystemChanged
 
     bus = EventBus()
     events = []
-    bus.subscribe(FileCreated, events.append)
+    bus.subscribe(FileSystemChanged, events.append)
     import AssetsManager.domain.event_bus as eb
     monkeypatch.setattr(eb, "_instance", bus)
 
-    svc = FileOperationService()
-    svc.create_folder(tmp_path, "MyFolder")
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    service = bootstrap.runtime_for(session).services.file_operation_service
+    try:
+        (tmp_path / "library").mkdir(exist_ok=True)
+        service.create_folder(tmp_path / "library", "MyFolder")
 
-    assert len(events) == 1
-    assert events[0].is_dir is True
-    assert "MyFolder" in events[0].path
+        assert len(events) == 1
+        assert events[0].kind == "created"
+        assert "MyFolder" in events[0].paths[0]
+    finally:
+        bootstrap.library_service.close()
 
 
 def test_file_operation_publishes_file_renamed(tmp_path, monkeypatch):
-    """FileOperationService.move() publishes FileRenamed."""
-    from AssetsManager.application.file_operation_service import FileOperationService
+    """FileOperationService.move() publishes FileSystemChanged."""
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
     from AssetsManager.domain.event_bus import EventBus
-    from AssetsManager.domain.events import FileRenamed
+    from AssetsManager.domain.events import FileSystemChanged
 
-    (tmp_path / "old.txt").write_text("x")
+    (tmp_path / "library").mkdir()
+    (tmp_path / "library" / "old.txt").write_text("x")
 
     bus = EventBus()
     events = []
-    bus.subscribe(FileRenamed, events.append)
+    bus.subscribe(FileSystemChanged, events.append)
     import AssetsManager.domain.event_bus as eb
     monkeypatch.setattr(eb, "_instance", bus)
 
-    svc = FileOperationService()
-    svc.move(tmp_path / "old.txt", tmp_path / "new.txt")
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    service = bootstrap.runtime_for(session).services.file_operation_service
+    try:
+        service.move(tmp_path / "library" / "old.txt", tmp_path / "library" / "new.txt")
 
-    assert len(events) == 1
-    assert "old.txt" in events[0].old_path
-    assert "new.txt" in events[0].new_path
+        assert len(events) == 1
+        assert events[0].kind == "moved"
+        assert "old.txt" in events[0].old_paths[0]
+        assert "new.txt" in events[0].paths[0]
+    finally:
+        bootstrap.library_service.close()
 
 
 def test_file_operation_publishes_file_deleted(tmp_path, monkeypatch):
-    """FileOperationService.delete_permanent() publishes FileDeleted."""
-    from AssetsManager.application.file_operation_service import FileOperationService
+    """FileOperationService.delete_permanent() publishes FileSystemChanged."""
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
     from AssetsManager.domain.event_bus import EventBus
-    from AssetsManager.domain.events import FileDeleted
+    from AssetsManager.domain.events import FileSystemChanged
 
-    (tmp_path / "doomed.txt").write_text("x")
+    (tmp_path / "library").mkdir()
+    (tmp_path / "library" / "doomed.txt").write_text("x")
 
     bus = EventBus()
     events = []
-    bus.subscribe(FileDeleted, events.append)
+    bus.subscribe(FileSystemChanged, events.append)
     import AssetsManager.domain.event_bus as eb
     monkeypatch.setattr(eb, "_instance", bus)
 
-    svc = FileOperationService()
-    svc.delete_permanent([tmp_path / "doomed.txt"])
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    service = bootstrap.runtime_for(session).services.file_operation_service
+    try:
+        service.delete_permanent([tmp_path / "library" / "doomed.txt"])
 
-    assert len(events) == 1
-    assert "doomed.txt" in events[0].path
-    assert events[0].is_dir is False
+        assert len(events) == 1
+        assert events[0].kind == "deleted"
+        assert "doomed.txt" in events[0].paths[0]
+    finally:
+        bootstrap.library_service.close()
 
 
 def test_file_operation_publishes_file_copied(tmp_path, monkeypatch):
-    """FileOperationService.copy_to_directory() publishes FileCopied."""
-    from AssetsManager.application.file_operation_service import FileOperationService
+    """FileOperationService.copy_to_directory() publishes FileSystemChanged."""
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
     from AssetsManager.domain.event_bus import EventBus
-    from AssetsManager.domain.events import FileCopied
+    from AssetsManager.domain.events import FileSystemChanged
 
-    (tmp_path / "source.txt").write_text("x")
-    dest = tmp_path / "dest"
+    (tmp_path / "library").mkdir()
+    (tmp_path / "library" / "source.txt").write_text("x")
+    dest = tmp_path / "library" / "dest"
     dest.mkdir()
 
     bus = EventBus()
     events = []
-    bus.subscribe(FileCopied, events.append)
+    bus.subscribe(FileSystemChanged, events.append)
     import AssetsManager.domain.event_bus as eb
     monkeypatch.setattr(eb, "_instance", bus)
 
-    svc = FileOperationService()
-    svc.copy_to_directory([tmp_path / "source.txt"], dest)
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    service = bootstrap.runtime_for(session).services.file_operation_service
+    try:
+        service.copy_to_directory([tmp_path / "library" / "source.txt"], dest)
 
-    assert len(events) == 1
-    assert events[0].source_path == str((tmp_path / "source.txt").resolve())
-    assert events[0].destination_path == str((dest / "source.txt").resolve())
+        assert len(events) == 1
+        assert events[0].kind == "copied"
+        assert events[0].old_paths == (str((tmp_path / "library" / "source.txt").resolve()),)
+        assert events[0].paths == (str((dest / "source.txt").resolve()),)
+    finally:
+        bootstrap.library_service.close()
 
 
 def test_scoped_copy_publishes_session_scoped_file_change(tmp_path, monkeypatch):

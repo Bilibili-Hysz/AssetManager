@@ -104,47 +104,47 @@ def test_failed_plugin_register_cleans_event_hook(tmp_path):
     from AssetsManager.core.plugins import PluginHostContext
     plugin_dir = _make_plugin(tmp_path, "failing.register")
     (plugin_dir / "main.py").write_text(
-        "from AssetsManager.domain.events import FileCreated\n"
+        "from AssetsManager.domain.events import FileSystemChanged\n"
         "class Plugin:\n"
         "    def register(self, ctx):\n"
-        "        ctx.hook(FileCreated, lambda event: None)\n"
+        "        ctx.hook(FileSystemChanged, lambda event: None)\n"
         "        raise RuntimeError('register failed')\n",
         encoding="utf-8",
     )
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import FileCreated
+    from AssetsManager.domain.events import FileSystemChanged
 
     manager = PluginManagerService(search_paths=[tmp_path])
     manager.discover_plugins()
     result = manager.load_plugin("failing.register", PluginHostContext())
 
     assert result.ok is False
-    assert get_event_bus().handler_count(FileCreated) == 0
+    assert get_event_bus().handler_count(FileSystemChanged) == 0
 
 
 def test_failed_plugin_unregister_still_cleans_event_hook(tmp_path):
     from AssetsManager.core.plugins import PluginHostContext
     plugin_dir = _make_plugin(tmp_path, "failing.unregister")
     (plugin_dir / "main.py").write_text(
-        "from AssetsManager.domain.events import FileCreated\n"
+        "from AssetsManager.domain.events import FileSystemChanged\n"
         "class Plugin:\n"
         "    def register(self, ctx):\n"
-        "        ctx.hook(FileCreated, lambda event: None)\n"
+        "        ctx.hook(FileSystemChanged, lambda event: None)\n"
         "    def unregister(self, ctx):\n"
         "        raise RuntimeError('unregister failed')\n",
         encoding="utf-8",
     )
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import FileCreated
+    from AssetsManager.domain.events import FileSystemChanged
 
     manager = PluginManagerService(search_paths=[tmp_path])
     manager.discover_plugins()
     context = PluginHostContext()
     assert manager.load_plugin("failing.unregister", context).ok
-    assert get_event_bus().handler_count(FileCreated) == 1
+    assert get_event_bus().handler_count(FileSystemChanged) == 1
 
     assert manager.unload_plugin("failing.unregister") is False
-    assert get_event_bus().handler_count(FileCreated) == 0
+    assert get_event_bus().handler_count(FileSystemChanged) == 0
 
 
 def test_failed_host_cleanup_still_completes_plugin_unload(tmp_path, monkeypatch):
@@ -233,7 +233,7 @@ def test_register_file_handler_with_invalid_callables():
 def test_hook_registers_event_handler():
     from AssetsManager.core.plugins.host_context import PluginHostContext
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import FileCreated
+    from AssetsManager.domain.events import FileSystemChanged
 
     ctx = PluginHostContext()
     calls = []
@@ -241,19 +241,19 @@ def test_hook_registers_event_handler():
     def on_created(event):
         calls.append(event)
 
-    ctx.hook(FileCreated, on_created)
+    ctx.hook(FileSystemChanged, on_created)
     hooks = ctx.event_hooks()
-    assert FileCreated in hooks
-    assert len(hooks[FileCreated]) == 1
+    assert FileSystemChanged in hooks
+    assert len(hooks[FileSystemChanged]) == 1
 
-    get_event_bus().publish(FileCreated(path="/asset.txt"))
+    get_event_bus().publish(FileSystemChanged(kind="created", paths=("/asset.txt",)))
     assert len(calls) == 1
 
 
 def test_unregister_plugin_keeps_shared_handler_owned_by_another_plugin():
     from AssetsManager.core.plugins.host_context import PluginHostContext
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import FileCreated
+    from AssetsManager.domain.events import FileSystemChanged
 
     ctx = PluginHostContext()
     calls = []
@@ -261,27 +261,27 @@ def test_unregister_plugin_keeps_shared_handler_owned_by_another_plugin():
     def on_created(event):
         calls.append(event)
 
-    ctx.hook(FileCreated, on_created, plugin_id="plugin_a")
-    ctx.hook(FileCreated, on_created, plugin_id="plugin_b")
+    ctx.hook(FileSystemChanged, on_created, plugin_id="plugin_a")
+    ctx.hook(FileSystemChanged, on_created, plugin_id="plugin_b")
     ctx.unregister_plugin("plugin_a")
 
-    get_event_bus().publish(FileCreated(path="/asset.txt"))
+    get_event_bus().publish(FileSystemChanged(kind="created", paths=("/asset.txt",)))
     assert len(calls) == 1
-    assert calls[0].path == "/asset.txt"
-    assert get_event_bus().handler_count(FileCreated) == 1
+    assert calls[0].paths == ("/asset.txt",)
+    assert get_event_bus().handler_count(FileSystemChanged) == 1
 
 
 def test_plugin_registration_assigns_default_hook_ownership(tmp_path):
     from AssetsManager.core.plugins import PluginHostContext
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import FileCreated
+    from AssetsManager.domain.events import FileSystemChanged
 
     plugin_dir = _make_plugin(tmp_path, "implicit.owner")
     (plugin_dir / "main.py").write_text(
-        "from AssetsManager.domain.events import FileCreated\n"
+        "from AssetsManager.domain.events import FileSystemChanged\n"
         "class Plugin:\n"
         "    def register(self, ctx):\n"
-        "        ctx.hook(FileCreated, lambda event: None)\n",
+        "        ctx.hook(FileSystemChanged, lambda event: None)\n",
         encoding="utf-8",
     )
     manager = PluginManagerService(search_paths=[tmp_path])
@@ -289,9 +289,9 @@ def test_plugin_registration_assigns_default_hook_ownership(tmp_path):
     context = PluginHostContext()
 
     assert manager.load_plugin("implicit.owner", context).ok
-    assert get_event_bus().handler_count(FileCreated) == 1
+    assert get_event_bus().handler_count(FileSystemChanged) == 1
     assert manager.unload_plugin(" implicit.owner ")
-    assert get_event_bus().handler_count(FileCreated) == 0
+    assert get_event_bus().handler_count(FileSystemChanged) == 0
 
 
 def test_hook_rejects_non_domain_event_type():
@@ -521,7 +521,7 @@ def test_unload_cleans_event_hooks():
     """Verify that unregister_plugin removes event hooks by plugin_id."""
     from AssetsManager.core.plugins.host_context import PluginHostContext
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import FileCreated
+    from AssetsManager.domain.events import FileSystemChanged
 
     ctx = PluginHostContext()
 
@@ -531,26 +531,26 @@ def test_unload_cleans_event_hooks():
     def handler_b(event):
         pass
 
-    ctx.hook(FileCreated, handler_a, plugin_id="plugin_a")
-    ctx.hook(FileCreated, handler_b, plugin_id="plugin_b")
+    ctx.hook(FileSystemChanged, handler_a, plugin_id="plugin_a")
+    ctx.hook(FileSystemChanged, handler_b, plugin_id="plugin_b")
 
     hooks = ctx.event_hooks()
-    assert len(hooks[FileCreated]) == 2
+    assert len(hooks[FileSystemChanged]) == 2
 
     ctx.unregister_plugin("plugin_a")
 
     hooks = ctx.event_hooks()
-    assert len(hooks[FileCreated]) == 1
-    _, pid = hooks[FileCreated][0]
+    assert len(hooks[FileSystemChanged]) == 1
+    _, pid = hooks[FileSystemChanged][0]
     assert pid == "plugin_b"
-    assert get_event_bus().handler_count(FileCreated) == 1
+    assert get_event_bus().handler_count(FileSystemChanged) == 1
 
 
 def test_unload_keeps_shared_handler_owned_by_other_plugin():
     """Each hook must have its own EventBus subscription token."""
     from AssetsManager.core.plugins.host_context import PluginHostContext
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import FileCreated
+    from AssetsManager.domain.events import FileSystemChanged
 
     ctx = PluginHostContext()
     calls = []
@@ -558,26 +558,26 @@ def test_unload_keeps_shared_handler_owned_by_other_plugin():
     def handler(event):
         calls.append(event)
 
-    ctx.hook(FileCreated, handler, plugin_id="plugin_a")
-    ctx.hook(FileCreated, handler, plugin_id="plugin_b")
+    ctx.hook(FileSystemChanged, handler, plugin_id="plugin_a")
+    ctx.hook(FileSystemChanged, handler, plugin_id="plugin_b")
     ctx.unregister_plugin("plugin_a")
 
-    get_event_bus().publish(FileCreated(path="/asset.txt"))
+    get_event_bus().publish(FileSystemChanged(kind="created", paths=("/asset.txt",)))
 
     assert len(calls) == 1
-    assert get_event_bus().handler_count(FileCreated) == 1
+    assert get_event_bus().handler_count(FileSystemChanged) == 1
 
 
 def test_unload_normalizes_plugin_id_for_hook_cleanup(tmp_path):
     from AssetsManager.core.plugins.host_context import PluginHostContext
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import FileCreated
+    from AssetsManager.domain.events import FileSystemChanged
 
     plugin_dir = _make_plugin(tmp_path, "normalized.plugin")
     (plugin_dir / "main.py").write_text(
-        "from AssetsManager.domain.events import FileCreated\n"
+        "from AssetsManager.domain.events import FileSystemChanged\n"
         "class Plugin:\n"
-        "    def register(self, ctx): ctx.hook(FileCreated, lambda event: None)\n",
+        "    def register(self, ctx): ctx.hook(FileSystemChanged, lambda event: None)\n",
         encoding="utf-8",
     )
     manager = PluginManagerService(search_paths=[tmp_path])
@@ -585,7 +585,7 @@ def test_unload_normalizes_plugin_id_for_hook_cleanup(tmp_path):
     assert manager.load_plugin("normalized.plugin", PluginHostContext()).ok
 
     assert manager.unload_plugin(" normalized.plugin ") is True
-    assert get_event_bus().handler_count(FileCreated) == 0
+    assert get_event_bus().handler_count(FileSystemChanged) == 0
 
 
 def test_unload_cleans_tool_windows():
