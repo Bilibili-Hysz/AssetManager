@@ -1126,6 +1126,63 @@ async def test_security_middleware_enforces_ip_whitelist():
 
 
 @pytest.mark.anyio
+async def test_security_middleware_skips_read_only_browsing_surfaces():
+    """Gallery views, thumbnail batches and the other read-only browsing
+    endpoints must not consume the rate-limit window (a gallery page fires
+    many thumbnail batches plus view requests and shares the loopback
+    bucket with the desktop stats poller)."""
+    from aiohttp import web
+    from AssetsManager.lan.security import IPBlacklist, RateLimiter, create_security_middleware
+
+    async def handler(_request):
+        return web.json_response({"ok": True})
+
+    app = web.Application(
+        middlewares=[
+            create_security_middleware(
+                RateLimiter(max_requests=3),
+                IPBlacklist(),
+            )
+        ]
+    )
+    app.router.add_get("/api/gallery/home", handler)
+    app.router.add_get("/api/gallery/collection", handler)
+    app.router.add_post("/api/thumbnails/batch", handler)
+    app.router.add_get("/api/thumbnails/hero.png", handler)
+    app.router.add_get("/api/favorites", handler)
+    app.router.add_get("/api/stats", handler)
+    app.router.add_get("/api/quicksearch", handler)
+    app.router.add_get("/api/tree", handler)
+    app.router.add_get("/api/tags", handler)
+    # A non-skipped endpoint still counts toward the window.
+    app.router.add_get("/api/shares", handler)
+    client = await _make_client(app)
+    try:
+        # The middleware app has no LAN runtime; plain requests suffice.
+        for path in (
+            "/api/gallery/home",
+            "/api/gallery/collection",
+            "/api/thumbnails/hero.png",
+            "/api/favorites",
+            "/api/stats",
+            "/api/quicksearch",
+            "/api/tree",
+            "/api/tags",
+            "/api/shares",
+            "/api/shares",
+        ):
+            assert (await client.get(path)).status == 200
+        # The thumbnail batch is a POST route and must equally skip the window.
+        assert (await client.post("/api/thumbnails/batch")).status == 200
+        # The window (3) was consumed only by /api/shares calls: the third
+        # fits, the fourth is refused.
+        assert (await client.get("/api/shares")).status == 200
+        assert (await client.get("/api/shares")).status == 429
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
 async def test_security_middleware_rate_limit_asset_prefix_is_segment_bounded():
     from aiohttp import web
     from AssetsManager.lan.security import IPBlacklist, RateLimiter, create_security_middleware

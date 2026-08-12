@@ -151,14 +151,28 @@ def create_security_middleware(
     # Paths that don't count toward rate limits (read-only browsing)
     _RATE_LIMIT_SKIP = (
         "/ws",
-        "/api/thumbnails/",
         "/api/projects",
         "/api/tags",
         "/api/info",
         "/api/tunnel/status",
-        "/assets",
     )
-    _RATE_LIMIT_SKIP_PREFIX = ("/assets",)
+    # Prefix matches: assets, thumbnails (GET single + POST batch), gallery
+    # views, favorites, quick search, metadata/notes reads, stats polling and
+    # the sidebar tree are all read-only browsing surfaces - a large gallery
+    # page fires many thumbnail batches plus view requests, and the desktop
+    # stats poller shares the loopback bucket, so counting them exhausts the
+    # window and breaks browsing (429).
+    _RATE_LIMIT_SKIP_PREFIX = (
+        "/assets",
+        "/api/thumbnails",
+        "/api/gallery",
+        "/api/favorites",
+        "/api/quicksearch",
+        "/api/stats",
+        "/api/metadata",
+        "/api/notes",
+        "/api/tree",
+    )
 
     # Auth endpoints that need stricter rate limiting
     _AUTH_ENDPOINTS = (
@@ -177,7 +191,6 @@ def create_security_middleware(
         skip_rate = (
             any(_path_matches_prefix(path, p) for p in _RATE_LIMIT_SKIP_PREFIX)
             or path in _RATE_LIMIT_SKIP
-            or (request.method == "GET" and path.startswith("/api/thumbnails/"))
             or (request.method == "GET" and path == "/api/files")
         )
 
