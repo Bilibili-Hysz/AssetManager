@@ -1234,7 +1234,10 @@ class SharingSettingsDialog(TabbedDialog):
             return
 
         port = self._server._port
-        url = f"http://localhost:{port}/api/stats"
+        # The server binds 0.0.0.0 (IPv4); 'localhost' resolves to ::1 first
+        # on Windows, and requests does not fall back to 127.0.0.1, so the
+        # IPv6 loopback connection is refused (WinError 10061).
+        url = f"http://127.0.0.1:{port}/api/stats"
         headers = {}
         if hasattr(self._server, 'token_secret'):
             from AssetsManager.lan.utils import get_auth_headers
@@ -1440,7 +1443,9 @@ class SharingSettingsDialog(TabbedDialog):
         if not self._server or not self._server.is_running():
             return None
         port = self._server._port
-        return f"http://localhost:{port}"
+        # 127.0.0.1, not localhost: the LAN server binds IPv4 only and
+        # requests pins the first resolved address (::1 on Windows).
+        return f"http://127.0.0.1:{port}"
 
     def _open_create_link_dialog(self):
         """Open the canonical creator from the Links page."""

@@ -687,7 +687,9 @@ def test_sharing_dialog_api_base_requires_running_server():
     assert dialog._get_api_base() is None
 
     dialog._server = _DialogServer()
-    assert dialog._get_api_base() == "http://localhost:8080"
+    # 127.0.0.1, not localhost: the server binds IPv4 only and Windows
+    # resolves localhost to ::1 first, which requests never falls back from.
+    assert dialog._get_api_base() == "http://127.0.0.1:8080"
 
 
 def test_sharing_dialog_refresh_clears_runtime_data_when_stopped():
