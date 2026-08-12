@@ -87,6 +87,9 @@ class FileListGridWidget(QWidget):
         self._full_rebuild_epoch = 0
         self._frame_queued = False
         self._frame_epoch = 0
+        # Last (entries identity, visible rows) fed to prioritize_dir_sizes;
+        # the reprioritization is skipped on unchanged frames.
+        self._last_prioritized_key: tuple | None = None
         self._frame_full = False
         self._frame_rect = QRect()
         self._frame_request_count = 0
@@ -616,7 +619,13 @@ class FileListGridWidget(QWidget):
         if self._zoom_relayout_active:
             visible = sorted(set(visible) | self._zoom_visible_rows)
         prioritize_sizes = getattr(self._model, "prioritize_dir_sizes", None)
-        if callable(prioritize_sizes) and getattr(self._model, "_dir_size_queue", None):
+        prioritize_key = (id(getattr(self._model, "_entries", None)), tuple(visible))
+        if (
+            callable(prioritize_sizes)
+            and getattr(self._model, "_dir_size_queue", None)
+            and prioritize_key != self._last_prioritized_key
+        ):
+            self._last_prioritized_key = prioritize_key
             visible_dir_paths = []
             for row in visible:
                 entry = self._model.entry_at(row)
