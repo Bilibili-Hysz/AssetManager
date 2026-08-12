@@ -165,7 +165,6 @@ __all__ = [
     "get_share_service",
     "get_tag_service",
     "get_thumbnail_service",
-    "get_user_permissions",
     "matches_exclude",
     "require_admin",
     "require_permission",
@@ -233,30 +232,6 @@ def require_permission(request, permission: str) -> bool:
     if principal is not None:
         return bool(getattr(principal.capabilities, permission, False))
     return False
-
-
-def get_user_permissions(user):
-    """Return permission dict for a user role, respecting guest settings."""
-    role = user.get("role", ROLE_GUEST) if user else ROLE_GUEST
-    if role == ROLE_ADMIN:
-        return {"browse": True, "download": True, "upload": True, "manage_links": True, "manage_users": True, "settings": True, "preview": True}
-    if role == ROLE_USER:
-        return {"browse": True, "download": True, "upload": False, "manage_links": False, "manage_users": False, "settings": False, "preview": True}
-    # Guest — read from settings
-    try:
-        from AssetsManager.core.settings import AppSettings
-        s = AppSettings.instance()
-        return {
-            "browse": s.get("lan_guest_list", True),
-            "download": s.get("lan_guest_download", False),
-            "upload": False,
-            "manage_links": False,
-            "manage_users": False,
-            "settings": False,
-            "preview": s.get("lan_guest_preview", True),
-        }
-    except Exception:
-        return {"browse": True, "download": False, "upload": False, "manage_links": False, "manage_users": False, "settings": False, "preview": True}
 
 
 def get_services(request) -> LanScopedServices:

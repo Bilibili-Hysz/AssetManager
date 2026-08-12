@@ -2,7 +2,6 @@ from AssetsManager.lan.routes._helpers import (
     ROLE_ADMIN,
     ROLE_GUEST,
     ROLE_USER,
-    get_user_permissions,
     require_admin,
     require_role,
 )
@@ -53,39 +52,3 @@ def test_require_role_with_non_matching_role():
     req = _make_request({"id": 0, "username": "guest", "role": ROLE_GUEST})
     result = require_role(req, ROLE_ADMIN, ROLE_USER)
     assert result is None
-
-
-def test_get_user_permissions_admin():
-    perms = get_user_permissions({"role": ROLE_ADMIN})
-    assert perms["browse"] is True
-    assert perms["download"] is True
-    assert perms["upload"] is True
-    assert perms["manage_links"] is True
-    assert perms["manage_users"] is True
-    assert perms["settings"] is True
-
-
-def test_get_user_permissions_user():
-    perms = get_user_permissions({"role": ROLE_USER})
-    assert perms["browse"] is True
-    assert perms["download"] is True
-    assert perms["upload"] is False
-    assert perms["manage_links"] is False
-    assert perms["manage_users"] is False
-    assert perms["settings"] is False
-
-
-def test_get_user_permissions_guest():
-    perms = get_user_permissions(None)
-    assert perms["browse"] is True
-    assert perms["download"] is False
-    assert perms["upload"] is False
-    assert perms["manage_links"] is False
-    assert perms["manage_users"] is False
-    assert perms["settings"] is False
-
-
-def test_get_user_permissions_unknown_role():
-    perms = get_user_permissions({"role": "unknown"})
-    assert perms["browse"] is True
-    assert perms["download"] is False
