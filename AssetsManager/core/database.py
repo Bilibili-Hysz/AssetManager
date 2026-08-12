@@ -1231,27 +1231,6 @@ def migrate_path_metadata(conn: sqlite3.Connection, thumb_dir: Path,
             conn.commit()
 
 
-def migrate_path_metadata_for_library(library_root: str | Path,
-                                      old_path: str | Path, new_path: str | Path) -> None:
-    """Legacy root-based compatibility wrapper for path metadata migration.
-
-    This helper routes through ``ThreadSafeSingleton.get(DatabaseManager)``.
-    The application wires its own ``DatabaseManager`` into the DI container
-    (see ``AssetsManager.application.bootstrap``), so the singleton instance
-    used here can differ from the DI-registered one — two DatabaseManager
-    instances may then each own a connection to the same library.  Prefer the
-    session-bound ``migrate_path_metadata`` call with an explicit connection;
-    unifying the instances requires a DI refactor beyond this module's scope.
-    """
-    _warn_compat_singleton("migrate_path_metadata_for_library")
-    manager = ThreadSafeSingleton.get(DatabaseManager)
-    thumb_dir = manager.thumb_dir_for(library_root)
-    thumb_dir.mkdir(parents=True, exist_ok=True)
-    migrate_path_metadata(
-        manager.connection_for(library_root), thumb_dir, old_path, new_path,
-    )
-
-
 def _thumbnail_cache_key(path: str) -> str:
     try:
         mtime = str(os.path.getmtime(path))
@@ -1284,9 +1263,10 @@ def _warn_compat_singleton(helper: str) -> None:
 def close_all_dbs():
     """Deprecated compatibility shutdown helper.
 
-    Same singleton-vs-DI caveat as :func:`migrate_path_metadata_for_library`:
-    only the ThreadSafeSingleton instance is closed here.  Callers owning the
-    DI-registered manager should close that instance instead.
+    Routes through the ThreadSafeSingleton DatabaseManager, which may differ
+    from the DI-registered instance: only the singleton instance is closed
+    here.  Callers owning the DI-registered manager should close that
+    instance instead.
     """
     _warn_compat_singleton("close_all_dbs")
     ThreadSafeSingleton.get(DatabaseManager).close()

@@ -768,11 +768,9 @@ class FileOperationService:
 
     def _migrate_metadata(self, library_root: Path, old_path: Path, new_path: Path) -> None:
         if self.session is None:
-            # Compatibility path for callers that still supply library_root
-            # without a scoped session. New UI/application code is session-bound.
-            from AssetsManager.core.database import migrate_path_metadata_for_library
-            migrate_path_metadata_for_library(library_root, old_path, new_path)
-            return
+            raise RuntimeError(
+                "FileOperationService metadata migration requires a LibrarySession"
+            )
         from AssetsManager.core.database import migrate_path_metadata
         migrate_path_metadata(
             self._connection(), self.session.thumb_dir, old_path, new_path,

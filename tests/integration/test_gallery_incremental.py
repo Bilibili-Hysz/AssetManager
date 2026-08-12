@@ -228,7 +228,8 @@ def test_empty_directory_created_is_a_noop(tmp_path, schema_db, monkeypatch):
 
 
 def test_incremental_directory_deleted_prunes_and_matches_full_rebuild(tmp_path, schema_db, monkeypatch):
-    import os, shutil
+    import os
+    import shutil
 
     base = time.time()
     _image(tmp_path / "a" / "keep.png", (40, 40))

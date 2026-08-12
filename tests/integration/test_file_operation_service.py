@@ -1,11 +1,26 @@
 import pytest
 
-def test_create_folder_uses_unique_destination(tmp_path):
-    from AssetsManager.application import FileOperationService
 
-    service = FileOperationService()
-    first = service.create_folder(tmp_path, "New Folder")
-    second = service.create_folder(tmp_path, "New Folder")
+@pytest.fixture
+def file_ops(tmp_path):
+    """Session-bound FileOperationService over tmp_path/library."""
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    library.mkdir(parents=True, exist_ok=True)
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    try:
+        service = bootstrap.runtime_for(session).services.file_operation_service
+        yield service, library
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_create_folder_uses_unique_destination(file_ops):
+    service, library = file_ops
+    first = service.create_folder(library, "New Folder")
+    second = service.create_folder(library, "New Folder")
 
     assert first.name == "New Folder"
     assert second.name == "New Folder_1"
@@ -13,38 +28,21 @@ def test_create_folder_uses_unique_destination(tmp_path):
     assert second.is_dir()
 
 
-def test_copy_to_directory_copies_files_and_renames_conflicts(tmp_path):
-    from AssetsManager.application import FileOperationService
+def test_copy_to_directory_copies_files_and_renames_conflicts(file_ops):
+    service, library = file_ops
 
-    src_dir = tmp_path / "src"
-    dst_dir = tmp_path / "dst"
+    src_dir = library / "src"
+    dst_dir = library / "dst"
     src_dir.mkdir()
     dst_dir.mkdir()
     src = src_dir / "asset.txt"
     src.write_text("asset", encoding="utf-8")
     (dst_dir / "asset.txt").write_text("existing", encoding="utf-8")
 
-    result = FileOperationService().copy_to_directory([src], dst_dir)
+    result = service.copy_to_directory([src], dst_dir)
 
     assert result.ok
     assert (dst_dir / "asset_1.txt").read_text(encoding="utf-8") == "asset"
-
-
-def test_unbound_copy_to_directory_rejects_external_sources(tmp_path):
-    import pytest
-
-    from AssetsManager.application import FileOperationService
-
-    library = tmp_path / "library"
-    external = tmp_path.parent / "external.txt"
-    library.mkdir()
-    external.write_text("asset", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="outside library root"):
-        FileOperationService().copy_to_directory([external], library)
-
-    assert external.exists()
-    assert not (library / external.name).exists()
 
 
 def test_bound_copy_to_directory_allows_external_sources(tmp_path):
@@ -144,36 +142,36 @@ def test_file_command_recorder_failure_does_not_change_operation(tmp_path, monke
     assert (library / "external.txt").exists()
 
 
-def test_move_to_directory_moves_and_renames_conflicts(tmp_path):
-    from AssetsManager.application import FileOperationService
+def test_move_to_directory_moves_and_renames_conflicts(file_ops):
+    service, library = file_ops
 
-    src_dir = tmp_path / "src"
-    dst_dir = tmp_path / "dst"
+    src_dir = library / "src"
+    dst_dir = library / "dst"
     src_dir.mkdir()
     dst_dir.mkdir()
     src = src_dir / "asset.txt"
     src.write_text("asset", encoding="utf-8")
     (dst_dir / "asset.txt").write_text("existing", encoding="utf-8")
 
-    result = FileOperationService().move_to_directory([src], dst_dir)
+    result = service.move_to_directory([src], dst_dir)
 
     assert result.ok
     assert not src.exists()
     assert (dst_dir / "asset_1.txt").read_text(encoding="utf-8") == "asset"
 
 
-def test_move_to_directory_partial_success_records_only_moved_pairs(tmp_path):
-    from AssetsManager.application import FileOperationService
+def test_move_to_directory_partial_success_records_only_moved_pairs(file_ops):
+    service, library = file_ops
 
-    src_dir = tmp_path / "src"
-    dst_dir = tmp_path / "dst"
+    src_dir = library / "src"
+    dst_dir = library / "dst"
     src_dir.mkdir()
     dst_dir.mkdir()
     good = src_dir / "good.txt"
     good.write_text("asset", encoding="utf-8")
     missing = src_dir / "missing.txt"  # does not exist
 
-    result = FileOperationService().move_to_directory([good, missing], dst_dir)
+    result = service.move_to_directory([good, missing], dst_dir)
 
     # Partial failure: the missing source fails, the good one still moves.
     assert not result.ok
@@ -203,18 +201,16 @@ def test_rename_migrates_metadata(tmp_path):
     assert store.get_tags(str(new)) == ["hero"]
 
 
-def test_unbound_rename_with_library_root_migrates_metadata(tmp_path):
-    from AssetsManager.application import FileOperationService
+def test_rename_with_library_root_migrates_metadata(file_ops):
     from AssetsManager.core.tag_store import TagStore
 
-    library = tmp_path / "library"
-    library.mkdir()
+    service, library = file_ops
     old = library / "old.txt"
     old.write_text("asset", encoding="utf-8")
     store = TagStore(str(library))
     store.add_tag(str(old), "hero")
 
-    new = FileOperationService().rename(old, "new.txt", library_root=library)
+    new = service.rename(old, "new.txt", library_root=library)
 
     assert store.get_tags(str(new)) == ["hero"]
 
@@ -537,27 +533,27 @@ def test_directory_copy_reindexes_copied_tree(tmp_path):
     assert index.get_entry(conn, copied_asset) is not None
 
 
-def test_rename_rejects_path_traversal_name(tmp_path):
+def test_rename_rejects_path_traversal_name(file_ops, tmp_path):
     import pytest
-    from AssetsManager.application import FileOperationService
 
-    old = tmp_path / "old.txt"
+    service, library = file_ops
+    old = library / "old.txt"
     old.write_text("asset", encoding="utf-8")
 
     with pytest.raises(ValueError):
-        FileOperationService().rename(old, "../escaped.txt")
+        service.rename(old, "../escaped.txt")
 
     assert old.exists()
     assert not (tmp_path.parent / "escaped.txt").exists()
 
 
-def test_duplicate_file(tmp_path):
-    from AssetsManager.application import FileOperationService
+def test_duplicate_file(file_ops):
+    service, library = file_ops
 
-    src = tmp_path / "asset.txt"
+    src = library / "asset.txt"
     src.write_text("asset", encoding="utf-8")
 
-    duplicate = FileOperationService().duplicate(src)
+    duplicate = service.duplicate(src)
 
     assert duplicate.name == "asset_copy.txt"
     assert duplicate.read_text(encoding="utf-8") == "asset"
@@ -626,13 +622,13 @@ def test_bound_duplicate_rejects_closed_session_without_mutating(tmp_path):
     assert not (library / "asset_copy.txt").exists()
 
 
-def test_delete_permanent_removes_files(tmp_path):
-    from AssetsManager.application import FileOperationService
+def test_delete_permanent_removes_files(file_ops):
+    service, library = file_ops
 
-    src = tmp_path / "asset.txt"
+    src = library / "asset.txt"
     src.write_text("asset", encoding="utf-8")
 
-    result = FileOperationService().delete_permanent([src])
+    result = service.delete_permanent([src])
 
     assert result.ok
     assert not src.exists()
@@ -1074,14 +1070,14 @@ def test_unique_destination_uses_atomic_reservation(tmp_path):
     assert not candidate.exists()
 
 
-def test_create_folder_survives_toctou_race(tmp_path):
+def test_create_folder_survives_toctou_race(file_ops):
     """If mkdir raises FileExistsError (TOCTOU race), create_folder retries."""
     import os
     from pathlib import Path
     from unittest.mock import patch
-    from AssetsManager.application import FileOperationService
 
-    (tmp_path / "New Folder").mkdir()
+    service, library = file_ops
+    (library / "New Folder").mkdir()
     call_count = {"n": 0}
     real_mkdir = Path.mkdir
 
@@ -1093,7 +1089,7 @@ def test_create_folder_survives_toctou_race(tmp_path):
         return real_mkdir(self, *a, **kw)
 
     with patch.object(Path, "mkdir", race_mkdir):
-        result = FileOperationService().create_folder(tmp_path, "New Folder")
+        result = service.create_folder(library, "New Folder")
 
     assert result.is_dir()
     assert call_count["n"] == 2
