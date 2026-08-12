@@ -8,6 +8,7 @@ from urllib.parse import quote
 
 from aiohttp import web
 
+from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import build_zip_async, get_lan, require_permission, sanitize_filename, validate_path
 from AssetsManager.lan.routes.quota import (
     apply_free_quota_headers,
@@ -119,7 +120,7 @@ async def handle_download(request):
     try:
         if not require_permission(request, "download"):
             status = 403
-            return web.json_response({"error": "Forbidden"}, status=status)
+            return error_response("Forbidden", status=status, code="forbidden")
 
         rel_path = request.match_info["path"]  # aiohttp decodes match_info once
         target = validate_path(lan, rel_path)
@@ -136,7 +137,7 @@ async def handle_download(request):
                 # Existence is guaranteed by validate_path; a construction
                 # failure means the file disappeared or is unreadable.
                 status = 404
-                return web.json_response({"error": "File not found"}, status=status)
+                return error_response("File not found", status=status, code="not_found")
 
             quota_result = consume_free_download_quota(request)
             quota_headers: dict[str, str] = {}
@@ -162,11 +163,12 @@ async def handle_download(request):
                 total_bytes = 0
             if total_bytes > MAX_BATCH_DOWNLOAD_BYTES:
                 status = 413
-                return web.json_response({
-                    "error": f"Total size exceeds limit ({MAX_BATCH_DOWNLOAD_BYTES // (1024*1024)} MB)",
-                    "total_bytes": total_bytes,
-                    "limit_bytes": MAX_BATCH_DOWNLOAD_BYTES,
-                }, status=status)
+                return error_response(
+                    f"Total size exceeds limit ({MAX_BATCH_DOWNLOAD_BYTES // (1024*1024)} MB)",
+                    status=status,
+                    code="payload_too_large",
+                    extra={"total_bytes": total_bytes, "limit_bytes": MAX_BATCH_DOWNLOAD_BYTES},
+                )
 
             import tempfile
             tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip")
@@ -177,7 +179,7 @@ async def handle_download(request):
                     os.unlink(tmp_path)
                 except OSError:
                     pass
-                return web.json_response({"error": "Failed to create ZIP"}, status=status)
+                return error_response("Failed to create ZIP", status=status, code="internal_error")
 
             quota_result = consume_free_download_quota(request)
             quota_headers = {}
@@ -201,7 +203,7 @@ async def handle_download(request):
             return response
 
         status = 404
-        return web.json_response({"error": "File not found"}, status=status)
+        return error_response("File not found", status=status, code="not_found")
     except web.HTTPException as exc:
         status = exc.status
         raise
@@ -218,23 +220,25 @@ async def handle_batch_download(request):
     try:
         if not require_permission(request, "download"):
             status = 403
-            return web.json_response({"error": "Forbidden"}, status=status)
+            return error_response("Forbidden", status=status, code="forbidden")
         try:
             body = await request.json()
         except Exception:
             status = 400
-            return web.json_response({"error": "Invalid request body"}, status=status)
+            return error_response("Invalid request body", status=status, code="bad_request")
 
         paths = body.get("paths", [])
         if not paths:
             status = 400
-            return web.json_response({"error": "No paths provided"}, status=status)
+            return error_response("No paths provided", status=status, code="bad_request")
         if not isinstance(paths, list):
             status = 400
-            return web.json_response({"error": "Invalid paths format"}, status=status)
+            return error_response("Invalid paths format", status=status, code="bad_request")
         if len(paths) > MAX_BATCH_DOWNLOAD_PATHS:
             status = 400
-            return web.json_response({"error": f"Too many paths (max {MAX_BATCH_DOWNLOAD_PATHS})"}, status=status)
+            return error_response(
+                f"Too many paths (max {MAX_BATCH_DOWNLOAD_PATHS})", status=status, code="bad_request"
+            )
 
         targets = []
         for rel_path in paths:
@@ -251,7 +255,7 @@ async def handle_batch_download(request):
 
         if not targets:
             status = 400
-            return web.json_response({"error": "No valid paths"}, status=status)
+            return error_response("No valid paths", status=status, code="bad_request")
         target_count = len(targets)
 
         # Enforce total-size limit
@@ -261,11 +265,12 @@ async def handle_batch_download(request):
             total_bytes = _estimate_batch_download_size(targets)
         if total_bytes > MAX_BATCH_DOWNLOAD_BYTES:
             status = 413
-            return web.json_response({
-                "error": f"Total size exceeds limit ({MAX_BATCH_DOWNLOAD_BYTES // (1024*1024)} MB)",
-                "total_bytes": total_bytes,
-                "limit_bytes": MAX_BATCH_DOWNLOAD_BYTES,
-            }, status=status)
+            return error_response(
+                f"Total size exceeds limit ({MAX_BATCH_DOWNLOAD_BYTES // (1024*1024)} MB)",
+                status=status,
+                code="payload_too_large",
+                extra={"total_bytes": total_bytes, "limit_bytes": MAX_BATCH_DOWNLOAD_BYTES},
+            )
 
         import tempfile
         tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip")
@@ -276,7 +281,7 @@ async def handle_batch_download(request):
                 os.unlink(tmp_path)
             except OSError:
                 pass
-            return web.json_response({"error": "Failed to create ZIP"}, status=status)
+            return error_response("Failed to create ZIP", status=status, code="internal_error")
 
         quota_result = consume_free_download_quota(request)
         quota_headers: dict[str, str] = {}

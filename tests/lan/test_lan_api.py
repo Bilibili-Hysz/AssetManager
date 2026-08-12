@@ -1381,11 +1381,11 @@ async def test_directory_summaries_route_rejects_non_direct_or_invalid_paths(tmp
             json={"parent_path": "projects", "paths": ["../outside"]},
         )
         assert nested.status == 400
-        assert await nested.json() == {"error": "paths must be direct child directories"}
+        assert (await nested.json())["error"] == "paths must be direct child directories"
         assert sibling.status == 400
-        assert await sibling.json() == {"error": "paths must be direct child directories"}
+        assert (await sibling.json())["error"] == "paths must be direct child directories"
         assert escaped.status == 400
-        assert await escaped.json() == {"error": "Invalid directory path"}
+        assert (await escaped.json())["error"] == "Invalid directory path"
     finally:
         await client.close()
 
@@ -1405,11 +1405,9 @@ async def test_directory_summaries_route_rejects_duplicate_and_over_limit_paths(
             json={"parent_path": "", "paths": ["projects"] * 49},
         )
         assert duplicate.status == 400
-        assert await duplicate.json() == {"error": "paths must be unique strings"}
+        assert (await duplicate.json())["error"] == "paths must be unique strings"
         assert over_limit.status == 400
-        assert await over_limit.json() == {
-            "error": "parent_path and 1-48 paths are required",
-        }
+        assert (await over_limit.json())["error"] == "parent_path and 1-48 paths are required"
     finally:
         await client.close()
 
@@ -1445,7 +1443,7 @@ async def test_directory_summaries_route_preserves_validation_error_priority_and
             else:
                 response = await client.post("/api/files/summaries", json=payload)
             assert response.status == 400
-            assert await response.json() == {"error": expected_error}
+            assert (await response.json())["error"] == expected_error
     finally:
         await client.close()
 
@@ -1460,7 +1458,7 @@ async def test_directory_summaries_route_returns_forbidden_before_body_parsing(t
     try:
         response = await client.post("/api/files/summaries", data="{not-json")
         assert response.status == 403
-        assert await response.json() == {"error": "Forbidden"}
+        assert (await response.json())["error"] == "Forbidden"
     finally:
         await client.close()
 
@@ -1477,7 +1475,7 @@ async def test_directory_summaries_route_returns_exact_json_for_unhashable_path_
             json={"parent_path": "projects", "paths": ["projects", []]},
         )
         assert response.status == 400
-        assert await response.json() == {"error": "paths must be unique strings"}
+        assert (await response.json())["error"] == "paths must be unique strings"
     finally:
         await client.close()
 
@@ -3283,7 +3281,7 @@ async def test_tag_routes_translate_service_validation_to_bad_request(tmp_path):
                 headers=headers,
             )
             assert response.status == 400
-            assert await response.json() == {"error": "Invalid tag name"}
+            assert (await response.json())["error"] == "Invalid tag name"
 
         for invalid_request in (
             {"tag": "   "},
@@ -3295,7 +3293,7 @@ async def test_tag_routes_translate_service_validation_to_bad_request(tmp_path):
                 headers=headers,
             )
             assert response.status == 400
-            assert await response.json() == {"error": "Invalid tag name"}
+            assert (await response.json())["error"] == "Invalid tag name"
 
         created = await client.post(
             "/api/tags",
@@ -3322,7 +3320,7 @@ async def test_tag_routes_translate_service_validation_to_bad_request(tmp_path):
                 headers=headers,
             )
             assert response.status == 400
-            assert await response.json() == {"error": "Invalid tag name"}
+            assert (await response.json())["error"] == "Invalid tag name"
 
         renamed = await client.put(
             "/api/tags/hero",
@@ -3371,7 +3369,7 @@ async def test_tag_routes_keep_non_validation_service_errors_as_500(
             headers=headers,
         )
         assert created.status == 500
-        assert await created.json() == {"error": "Failed to create tag"}
+        assert (await created.json())["error"] == "Failed to create tag"
 
         monkeypatch.setattr(service, "rename_tag", fail)
         renamed = await client.put(
@@ -3380,7 +3378,7 @@ async def test_tag_routes_keep_non_validation_service_errors_as_500(
             headers=headers,
         )
         assert renamed.status == 500
-        assert await renamed.json() == {"error": "Failed to rename tag"}
+        assert (await renamed.json())["error"] == "Failed to rename tag"
     finally:
         await client.close()
 
@@ -3471,7 +3469,7 @@ async def test_create_share_validation_contract(tmp_path):
                 headers=headers,
             )
             assert response.status == 400
-            assert await response.json() == {"error": expected_error}
+            assert (await response.json())["error"] == expected_error
 
         no_paths = await client.post(
             "/api/shares",

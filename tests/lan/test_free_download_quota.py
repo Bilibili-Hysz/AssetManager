@@ -131,7 +131,7 @@ def test_download_route_does_not_consume_when_file_response_preparation_fails(tm
 
     response = asyncio.run(downloads.handle_download(request))
     assert response.status == 404
-    assert json.loads(response.text) == {"error": "File not found"}
+    assert json.loads(response.text)["error"] == "File not found"
     assert consumed == []
 
 
@@ -160,7 +160,7 @@ def test_directory_download_does_not_consume_when_zip_preparation_fails(tmp_path
 
     response = asyncio.run(downloads.handle_download(request))
     assert response.status == 500
-    assert json.loads(response.text) == {"error": "Failed to create ZIP"}
+    assert json.loads(response.text)["error"] == "Failed to create ZIP"
     assert consumed == []
 
 

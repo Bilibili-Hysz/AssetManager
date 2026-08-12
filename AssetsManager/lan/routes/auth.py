@@ -2,6 +2,7 @@
 from aiohttp import web
 
 from AssetsManager.lan.dto import UserResponse
+from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import get_auth_service, get_auth_token, get_lan, get_request_principal, set_auth_cookie
 from AssetsManager.lan.utils import generate_auth_token
 
@@ -18,7 +19,7 @@ async def handle_login(request):
     try:
         body = await request.json()
     except Exception:
-        return web.json_response({"error": "Invalid request"}, status=400)
+        return error_response("Invalid request", status=400, code="bad_request")
 
     username = body.get("username", "").strip()
     password = body.get("password", "")
@@ -32,7 +33,7 @@ async def handle_login(request):
             set_auth_cookie(response, token, secure=lan.ssl_active)
             _record_activity(request, "login", "signed in", user["username"])
             return response
-        return web.json_response({"error": err}, status=401)
+        return error_response(err, status=401, code="unauthorized")
 
     if lan.password_hash:
         if auth_service.verify_password(password, lan.password_hash):
@@ -41,9 +42,9 @@ async def handle_login(request):
             set_auth_cookie(response, token, secure=lan.ssl_active)
             _record_activity(request, "login", "signed in")
             return response
-        return web.json_response({"error": "Invalid password"}, status=401)
+        return error_response("Invalid password", status=401, code="unauthorized")
 
-    return web.json_response({"error": "Credentials required"}, status=400)
+    return error_response("Credentials required", status=400, code="bad_request")
 
 
 async def handle_register(request):
@@ -51,7 +52,7 @@ async def handle_register(request):
     try:
         body = await request.json()
     except Exception:
-        return web.json_response({"error": "Invalid request"}, status=400)
+        return error_response("Invalid request", status=400, code="bad_request")
 
     username = body.get("username", "").strip()
     password = body.get("password", "")
@@ -63,13 +64,13 @@ async def handle_register(request):
     if user_id:
         user, auth_err = auth_service.authenticate_user(username, password)
         if not user:
-            return web.json_response({"error": auth_err or "Registration failed"}, status=500)
+            return error_response(auth_err or "Registration failed", status=500, code="internal_error")
         token = auth_service.generate_user_token(user["id"], user["username"], user["role"])
         lan.invalidate_user_cache()
         response = web.json_response({"user": UserResponse.from_record(user).to_dict()})
         set_auth_cookie(response, token, secure=lan.ssl_active)
         return response
-    return web.json_response({"error": err}, status=400)
+    return error_response(err, status=400, code="bad_request")
 
 
 async def handle_verify_key(request):
@@ -77,13 +78,13 @@ async def handle_verify_key(request):
     try:
         body = await request.json()
     except Exception:
-        return web.json_response({"error": "Invalid request"}, status=400)
+        return error_response("Invalid request", status=400, code="bad_request")
 
     key = body.get("key", "").strip()
     if not key:
-        return web.json_response({"error": "Key required"}, status=400)
+        return error_response("Key required", status=400, code="bad_request")
     if not lan.access_key_hash:
-        return web.json_response({"error": "No key configured"}, status=400)
+        return error_response("No key configured", status=400, code="bad_request")
 
     auth_service = get_auth_service(request)
     if auth_service.verify_key(key, lan.access_key_hash):
@@ -92,7 +93,7 @@ async def handle_verify_key(request):
         set_auth_cookie(response, token, secure=lan.ssl_active)
         _record_activity(request, "login", "verified access key")
         return response
-    return web.json_response({"error": "Invalid key"}, status=401)
+    return error_response("Invalid key", status=401, code="unauthorized")
 
 
 async def handle_logout(request):
@@ -112,4 +113,4 @@ async def handle_me(request):
             if principal.user_profile is not None:
                 payload["user"] = dict(principal.user_profile)
         return web.json_response(payload)
-    return web.json_response({"error": "Not authenticated"}, status=401)
+    return error_response("Not authenticated", status=401, code="unauthorized")

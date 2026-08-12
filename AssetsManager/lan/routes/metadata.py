@@ -10,6 +10,7 @@ from aiohttp import web
 from AssetsManager.application import ProjectDepthConfig
 from AssetsManager.application.search_service import SearchError, SearchResultSet, SearchStatus
 from AssetsManager.lan.dto import TreeItemResponse
+from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
     get_lan, validate_path, get_metadata_service, get_project_service,
     get_search_service, require_admin, require_permission, validated_existing_key,
@@ -28,7 +29,7 @@ MAX_NOTES_LENGTH = 4000
 
 async def handle_meta(request):
     if not require_permission(request, "browse"):
-        return web.json_response({"error": "Browse access required"}, status=403)
+        return error_response("Browse access required", status=403, code="forbidden")
     lan = get_lan(request)
     rel_path = request.match_info.get("path", "")  # aiohttp decodes match_info once
     target = validate_path(lan, rel_path)
@@ -56,27 +57,28 @@ async def handle_meta(request):
 async def handle_save_notes(request):
     """Persist notes for an existing library path (admin/local UI only)."""
     if not require_admin(request):
-        return web.json_response({"error": "Admin access required"}, status=403)
+        return error_response("Admin access required", status=403, code="forbidden")
 
     lan = get_lan(request)
     rel_path = request.match_info.get("path", "")  # aiohttp decodes match_info once
     if not rel_path:
-        return web.json_response({"error": "path required"}, status=400)
+        return error_response("path required", status=400, code="bad_request")
 
     try:
         body = await request.json()
     except Exception:
-        return web.json_response({"error": "Invalid request"}, status=400)
+        return error_response("Invalid request", status=400, code="bad_request")
     if not isinstance(body, dict):
-        return web.json_response({"error": "Invalid request"}, status=400)
+        return error_response("Invalid request", status=400, code="bad_request")
 
     notes = body.get("notes")
     if not isinstance(notes, str):
-        return web.json_response({"error": "notes must be a string"}, status=400)
+        return error_response("notes must be a string", status=400, code="bad_request")
     if len(notes) > MAX_NOTES_LENGTH:
-        return web.json_response(
-            {"error": f"notes must be at most {MAX_NOTES_LENGTH} characters"},
+        return error_response(
+            f"notes must be at most {MAX_NOTES_LENGTH} characters",
             status=400,
+            code="bad_request",
         )
 
     try:
@@ -91,7 +93,7 @@ async def handle_save_notes(request):
         raise
     except Exception:
         _log.exception("Failed to save LAN notes")
-        return web.json_response({"error": "Failed to save notes"}, status=500)
+        return error_response("Failed to save notes", status=500, code="internal_error")
 
     return web.json_response({"ok": True, "path": rel_path, "notes": notes})
 
@@ -106,7 +108,7 @@ async def handle_search(request):
     try:
         if not require_permission(request, "browse"):
             status = 403
-            return web.json_response({"error": "Browse access required"}, status=status)
+            return error_response("Browse access required", status=status, code="forbidden")
         query = request.query.get("q", "").lower()
         tags_param = request.query.get("tags", "")
         category = request.query.get("category", "all")
@@ -207,7 +209,7 @@ def _record_search_route(
 
 async def handle_home(request):
     if not require_permission(request, "browse"):
-        return web.json_response({"error": "Browse access required"}, status=403)
+        return error_response("Browse access required", status=403, code="forbidden")
     lan = get_lan(request)
 
     from AssetsManager.core.settings import AppSettings
@@ -222,7 +224,7 @@ async def handle_home(request):
 
 async def handle_tree(request):
     if not require_permission(request, "browse"):
-        return web.json_response({"error": "Browse access required"}, status=403)
+        return error_response("Browse access required", status=403, code="forbidden")
     lan = get_lan(request)
 
     from AssetsManager.core.settings import AppSettings
@@ -238,7 +240,7 @@ async def handle_tree(request):
 
 async def handle_projects(request):
     if not require_permission(request, "browse"):
-        return web.json_response({"error": "Browse access required"}, status=403)
+        return error_response("Browse access required", status=403, code="forbidden")
     lan = get_lan(request)
     rel_path = request.query.get("path", "")
     sort_by = request.query.get("sort", "name")
@@ -255,7 +257,7 @@ async def handle_projects(request):
 
     target = validate_path(lan, rel_path)
     if not target.is_dir():
-        return web.json_response({"error": "Not a directory"}, status=404)
+        return error_response("Not a directory", status=404, code="not_found")
 
     from AssetsManager.core.settings import AppSettings
     depth_config = ProjectDepthConfig.from_dict(AppSettings.instance().get("sidebar_depth_cfg"))
@@ -268,21 +270,21 @@ async def handle_projects(request):
             offset=offset, limit=limit,
         )
     except PermissionError:
-        return web.json_response({"error": "Permission denied"}, status=403)
+        return error_response("Permission denied", status=403, code="forbidden")
     except OSError:
-        return web.json_response({"error": "Failed to list projects"}, status=500)
+        return error_response("Failed to list projects", status=500, code="internal_error")
     return web.json_response(project_listing_response(listing))
 
 
 async def handle_project_detail(request):
     if not require_permission(request, "browse"):
-        return web.json_response({"error": "Browse access required"}, status=403)
+        return error_response("Browse access required", status=403, code="forbidden")
     lan = get_lan(request)
     rel_path = request.match_info["path"]  # aiohttp decodes match_info once
     target = validate_path(lan, rel_path)
 
     if not target.is_dir():
-        return web.json_response({"error": "Project not found"}, status=404)
+        return error_response("Project not found", status=404, code="not_found")
 
     try:
         detail = await asyncio.to_thread(
@@ -290,5 +292,5 @@ async def handle_project_detail(request):
             lan.library_root, target, rel_path=rel_path,
         )
     except OSError:
-        return web.json_response({"error": "Failed to load project"}, status=500)
+        return error_response("Failed to load project", status=500, code="internal_error")
     return web.json_response(project_detail_response(detail))

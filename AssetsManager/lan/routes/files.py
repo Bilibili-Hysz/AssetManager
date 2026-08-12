@@ -9,6 +9,7 @@ from aiohttp import web
 from AssetsManager.application import DirectoryListOptions, ProjectDepthConfig
 from AssetsManager.core.format_utils import format_size
 from AssetsManager.domain.errors import ValidationError
+from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import get_lan, get_asset_service, get_metadata_service, require_permission, validate_path
 
 
@@ -22,7 +23,7 @@ async def handle_files(request):
     try:
         if not require_permission(request, "browse"):
             status = 403
-            return web.json_response({"error": "Forbidden"}, status=status)
+            return error_response("Forbidden", status=status, code="forbidden")
         rel_path = request.query.get("path", "")
         sort_by = request.query.get("sort", "name")
         order = request.query.get("order", "asc")
@@ -32,7 +33,7 @@ async def handle_files(request):
         target = validate_path(lan, rel_path)
         if not target.is_dir():
             status = 404
-            return web.json_response({"error": "Not a directory"}, status=status)
+            return error_response("Not a directory", status=status, code="not_found")
 
         settings = lan.current_settings
         from AssetsManager.core.settings import AppSettings
@@ -69,10 +70,10 @@ async def handle_files(request):
             listing = await asyncio.to_thread(_list)
         except PermissionError:
             status = 403
-            return web.json_response({"error": "Permission denied"}, status=status)
+            return error_response("Permission denied", status=status, code="forbidden")
         except OSError:
             status = 500
-            return web.json_response({"error": "Failed to list directory"}, status=status)
+            return error_response("Failed to list directory", status=status, code="internal_error")
 
         file_paths = [str(item.absolute_path) for item in listing.items if not item.is_dir]
         cached_stats = get_metadata_service(request).get_cached_stats(
@@ -139,24 +140,26 @@ async def handle_directory_summaries(request):
     try:
         if not require_permission(request, "browse"):
             status = 403
-            return web.json_response({"error": "Forbidden"}, status=status)
+            return error_response("Forbidden", status=status, code="forbidden")
         try:
             payload = await request.json()
         except (ValueError, TypeError):
             status = 400
-            return web.json_response({"error": "Invalid JSON body"}, status=status)
+            return error_response("Invalid JSON body", status=status, code="bad_request")
         parent_path = payload.get("parent_path") if isinstance(payload, dict) else None
         paths = payload.get("paths") if isinstance(payload, dict) else None
         if not isinstance(parent_path, str) or not isinstance(paths, list):
             status = 400
-            return web.json_response({"error": "parent_path and 1-48 paths are required"}, status=status)
+            return error_response(
+                "parent_path and 1-48 paths are required", status=status, code="bad_request"
+            )
 
         asset_service = get_asset_service(request)
         try:
             asset_service.validate_directory_summary_paths(paths)
         except ValidationError as exc:
             status = 400
-            return web.json_response({"error": exc.message}, status=status)
+            return error_response(exc.message, status=status, code="bad_request")
         requested_count = len(paths)
 
         try:
@@ -165,11 +168,11 @@ async def handle_directory_summaries(request):
                 parent = asset_service.validate_directory_summary_parent(parent)
             except ValidationError as exc:
                 status = 400
-                return web.json_response({"error": exc.message}, status=status)
+                return error_response(exc.message, status=status, code="bad_request")
             directories = [validate_path(lan, path) for path in paths]
         except (web.HTTPException, OSError):
             status = 400
-            return web.json_response({"error": "Invalid directory path"}, status=status)
+            return error_response("Invalid directory path", status=status, code="bad_request")
 
         try:
             summaries = await asyncio.to_thread(
@@ -177,7 +180,7 @@ async def handle_directory_summaries(request):
             )
         except ValidationError as exc:
             status = 400
-            return web.json_response({"error": exc.message}, status=status)
+            return error_response(exc.message, status=status, code="bad_request")
         items = []
         for path, directory in zip(paths, directories, strict=True):
             preview, item_count = summaries[str(directory)]
