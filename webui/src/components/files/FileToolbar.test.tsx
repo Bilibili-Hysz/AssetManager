@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileToolbar } from './FileToolbar';
 
 vi.mock('../../hooks/useI18n', () => ({
@@ -14,7 +14,23 @@ vi.mock('../../hooks/useI18n', () => ({
   }),
 }));
 
+function baseProps(
+  overrides: Partial<Parameters<typeof FileToolbar>[0]> = {},
+): Parameters<typeof FileToolbar>[0] {
+  return {
+    sort: { sort: 'name', order: 'asc' },
+    onSortChange: vi.fn(),
+    viewMode: 'grid',
+    onViewModeChange: vi.fn(),
+    selectedCount: 0,
+    onDownloadSelected: vi.fn(),
+    ...overrides,
+  };
+}
+
 describe('FileToolbar', () => {
+  afterEach(() => cleanup());
+
   it('keeps the ZIP command visible and disabled until an explicit selection exists', () => {
     const onDownloadSelected = vi.fn();
     render(
@@ -53,4 +69,53 @@ describe('FileToolbar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Clear tag filter: featured' }));
     expect(onClearTag).toHaveBeenCalledOnce();
   });
+
+  it('changes the sort key and toggles the order', () => {
+    const onSortChange = vi.fn();
+    render(
+      <FileToolbar
+        {...baseProps({ selectedCount: 1, onSortChange })}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'sort.by' }), { target: { value: 'date' } });
+    expect(onSortChange).toHaveBeenCalledWith({ sort: 'date', order: 'asc' });
+    fireEvent.click(screen.getByRole('button', { name: 'sort.desc' }));
+    expect(onSortChange).toHaveBeenCalledWith({ sort: 'name', order: 'desc' });
+  });
+
+  it('switches the view mode', () => {
+    const onViewModeChange = vi.fn();
+    render(
+      <FileToolbar
+        {...baseProps({ selectedCount: 1, onViewModeChange })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'view.masonry' }));
+    expect(onViewModeChange).toHaveBeenCalledWith('masonry');
+    fireEvent.click(screen.getByRole('button', { name: 'view.list' }));
+    expect(onViewModeChange).toHaveBeenCalledWith('list');
+  });
+
+  it('disables the ZIP command while a download is in flight', () => {
+    render(
+      <FileToolbar
+        {...baseProps({ selectedCount: 2, isDownloadInFlight: true })}
+      />,
+    );
+    const download = screen.getByRole('button', { name: 'Download 2 selected items as ZIP' });
+    expect((download as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('toggles selection mode when provided', () => {
+    const onSelectModeToggle = vi.fn();
+    render(
+      <FileToolbar
+        {...baseProps({ selectedCount: 1, selectMode: false, onSelectModeToggle })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'browse.select' }));
+    expect(onSelectModeToggle).toHaveBeenCalledTimes(1);
+  });
 });
+
