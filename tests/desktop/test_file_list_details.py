@@ -630,7 +630,8 @@ def test_details_tags_cache_populated(tmp_path):
         _switch_to_details(panel)
         if panel._lib_root:
             from AssetsManager.core.tag_store import TagStore
-            store = TagStore(panel._lib_root)
+            conn = panel._scoped_services.session.connection_for(panel._lib_root)
+            store = TagStore(panel._lib_root, db_conn=conn)
             target = str(tmp_path / "a.txt")
             store.add_tag(target, "important")
             panel._populate_details()

@@ -27,22 +27,22 @@ class TestProjectData:
 
     def test_get_notes_empty(self, project_env):
         from AssetsManager.core.project_data import ProjectData
-        lib_root, _ = project_env
-        pd = ProjectData(lib_root)
+        lib_root, conn = project_env
+        pd = ProjectData(lib_root, db_conn=conn)
         assert pd.get_notes(str(Path(lib_root) / "nonexistent.txt")) == ""
 
     def test_set_and_get_notes(self, project_env):
         from AssetsManager.core.project_data import ProjectData
-        lib_root, _ = project_env
-        pd = ProjectData(lib_root)
+        lib_root, conn = project_env
+        pd = ProjectData(lib_root, db_conn=conn)
         file_path = str(Path(lib_root) / "test.txt")
         pd.set_notes(file_path, "hello world")
         assert pd.get_notes(file_path) == "hello world"
 
     def test_set_notes_empty_clears(self, project_env):
         from AssetsManager.core.project_data import ProjectData
-        lib_root, _ = project_env
-        pd = ProjectData(lib_root)
+        lib_root, conn = project_env
+        pd = ProjectData(lib_root, db_conn=conn)
         file_path = str(Path(lib_root) / "test.txt")
         pd.set_notes(file_path, "hello")
         pd.set_notes(file_path, "")
@@ -50,8 +50,8 @@ class TestProjectData:
 
     def test_has_notes(self, project_env):
         from AssetsManager.core.project_data import ProjectData
-        lib_root, _ = project_env
-        pd = ProjectData(lib_root)
+        lib_root, conn = project_env
+        pd = ProjectData(lib_root, db_conn=conn)
         file_path = str(Path(lib_root) / "test.txt")
         assert pd.has_notes(file_path) is False
         pd.set_notes(file_path, "note")
@@ -59,14 +59,14 @@ class TestProjectData:
 
     def test_get_urls_empty(self, project_env):
         from AssetsManager.core.project_data import ProjectData
-        lib_root, _ = project_env
-        pd = ProjectData(lib_root)
+        lib_root, conn = project_env
+        pd = ProjectData(lib_root, db_conn=conn)
         assert pd.get_urls(str(Path(lib_root) / "nonexistent.txt")) == []
 
     def test_add_and_get_url(self, project_env):
         from AssetsManager.core.project_data import ProjectData
-        lib_root, _ = project_env
-        pd = ProjectData(lib_root)
+        lib_root, conn = project_env
+        pd = ProjectData(lib_root, db_conn=conn)
         file_path = str(Path(lib_root) / "test.txt")
         pd.add_url(file_path, "https://example.com")
         urls = pd.get_urls(file_path)
@@ -74,8 +74,8 @@ class TestProjectData:
 
     def test_add_url_duplicate(self, project_env):
         from AssetsManager.core.project_data import ProjectData
-        lib_root, _ = project_env
-        pd = ProjectData(lib_root)
+        lib_root, conn = project_env
+        pd = ProjectData(lib_root, db_conn=conn)
         file_path = str(Path(lib_root) / "test.txt")
         pd.add_url(file_path, "https://example.com")
         pd.add_url(file_path, "https://example.com")
@@ -84,16 +84,16 @@ class TestProjectData:
 
     def test_add_url_invalid(self, project_env):
         from AssetsManager.core.project_data import ProjectData
-        lib_root, _ = project_env
-        pd = ProjectData(lib_root)
+        lib_root, conn = project_env
+        pd = ProjectData(lib_root, db_conn=conn)
         file_path = str(Path(lib_root) / "test.txt")
         with pytest.raises(ValueError, match="URL must start with"):
             pd.add_url(file_path, "not-a-url")
 
     def test_remove_url(self, project_env):
         from AssetsManager.core.project_data import ProjectData
-        lib_root, _ = project_env
-        pd = ProjectData(lib_root)
+        lib_root, conn = project_env
+        pd = ProjectData(lib_root, db_conn=conn)
         file_path = str(Path(lib_root) / "test.txt")
         pd.add_url(file_path, "https://example.com")
         pd.remove_url(file_path, "https://example.com")
@@ -102,8 +102,8 @@ class TestProjectData:
 
     def test_get_dir_size(self, project_env):
         from AssetsManager.core.project_data import ProjectData
-        lib_root, _ = project_env
-        pd = ProjectData(lib_root)
+        lib_root, conn = project_env
+        pd = ProjectData(lib_root, db_conn=conn)
         # get_dir_size on a non-existent path should return (0, False)
         size, cached = pd.get_dir_size(str(Path(lib_root) / "nonexistent"))
         assert size == 0
@@ -154,8 +154,8 @@ class TestProjectData:
 
     def test_multiple_notes_different_files(self, project_env):
         from AssetsManager.core.project_data import ProjectData
-        lib_root, _ = project_env
-        pd = ProjectData(lib_root)
+        lib_root, conn = project_env
+        pd = ProjectData(lib_root, db_conn=conn)
         pd.set_notes(str(Path(lib_root) / "a.txt"), "note A")
         pd.set_notes(str(Path(lib_root) / "b.txt"), "note B")
         assert pd.get_notes(str(Path(lib_root) / "a.txt")) == "note A"
@@ -163,8 +163,8 @@ class TestProjectData:
 
     def test_multiple_urls_same_file(self, project_env):
         from AssetsManager.core.project_data import ProjectData
-        lib_root, _ = project_env
-        pd = ProjectData(lib_root)
+        lib_root, conn = project_env
+        pd = ProjectData(lib_root, db_conn=conn)
         file_path = str(Path(lib_root) / "test.txt")
         pd.add_url(file_path, "https://a.com")
         pd.add_url(file_path, "https://b.com")

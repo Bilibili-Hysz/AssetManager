@@ -10,7 +10,6 @@ from sqlite3 import Connection
 
 from AssetsManager.core.database import DatabaseManager, db_write_lock
 from AssetsManager.core.path_resolver import sql_like_descendant_pattern
-from AssetsManager.core.singleton import ThreadSafeSingleton
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +38,7 @@ class ProjectData:
         if session is not None and db_conn is None:
             self._db = session.connection_for(self._root)
         elif db_conn is None:
-            self._db = ThreadSafeSingleton.get(DatabaseManager).connection_for(self._root)
+            raise TypeError(f"{type(self).__name__} requires db_conn or a LibrarySession")
         else:
             # Legacy constructor: preserve compatibility with caller-owned raw connections.
             self._db = DatabaseManager.validate_connection_owner(

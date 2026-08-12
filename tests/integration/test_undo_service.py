@@ -280,7 +280,7 @@ def test_delete_undo_and_redo_reconcile_file_projections(tmp_path):
     conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     index.index_directory(conn, library, library)
-    TagStore(str(library)).add_tag(str(source), "hero")
+    TagStore(str(library), db_conn=conn).add_tag(str(source), "hero")
     ThumbnailRepository(conn).upsert_entry("thumb", str(source.resolve()), 1.0, 1, 1, 1)
     thumbnail_file = scoped.session.thumb_dir / "thumb.webp"
     thumbnail_file.write_bytes(b"thumb")
@@ -307,7 +307,7 @@ def test_delete_undo_and_redo_reconcile_file_projections(tmp_path):
 
         assert undo.perform_redo(scoped.file_operation_service)
         assert not source.exists()
-        assert TagStore(str(library)).get_tags(str(source)) == []
+        assert TagStore(str(library), db_conn=conn).get_tags(str(source)) == []
         assert ThumbnailRepository(conn).list_all() == []
         assert not thumbnail_file.exists()
         assert index.get_entry(conn, source) is None
@@ -331,7 +331,7 @@ def test_rename_undo_and_redo_reconcile_metadata_thumbnails_and_index(tmp_path):
     conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     index.index_directory(conn, library, library)
-    TagStore(str(library)).add_tag(str(old), "hero")
+    TagStore(str(library), db_conn=conn).add_tag(str(old), "hero")
     ThumbnailRepository(conn).upsert_entry("thumb", str(old.resolve()), 1.0, 1, 1, 1)
     old_thumbnail = scoped.session.thumb_dir / "thumb.webp"
     old_thumbnail.write_bytes(b"thumb")
@@ -343,14 +343,14 @@ def test_rename_undo_and_redo_reconcile_metadata_thumbnails_and_index(tmp_path):
 
         assert undo.perform_undo(scoped.file_operation_service)
         assert old.exists()
-        assert TagStore(str(library)).get_tags(str(old)) == ["hero"]
+        assert TagStore(str(library), db_conn=conn).get_tags(str(old)) == ["hero"]
         assert index.get_entry(conn, old) is not None
         assert index.get_entry(conn, new) is None
         assert ThumbnailRepository(conn).list_all()[0][1] == str(old.resolve())
 
         assert undo.perform_redo(scoped.file_operation_service)
         assert new.exists()
-        assert TagStore(str(library)).get_tags(str(new)) == ["hero"]
+        assert TagStore(str(library), db_conn=conn).get_tags(str(new)) == ["hero"]
         assert index.get_entry(conn, old) is None
         assert index.get_entry(conn, new) is not None
         assert ThumbnailRepository(conn).list_all()[0][1] == str(new.resolve())

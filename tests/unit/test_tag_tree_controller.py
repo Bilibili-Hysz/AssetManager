@@ -50,12 +50,15 @@ def test_add_tag(lib_env):
 
 
 def test_rename_tag(lib_env):
+    from AssetsManager.core.database import DatabaseManager
+    from AssetsManager.core.singleton import ThreadSafeSingleton
     lib_root, _ = lib_env
+    conn = ThreadSafeSingleton.get(DatabaseManager).connection_for(lib_root)
     ctrl = _make_controller(lib_root)
     file_path = str(os.path.join(lib_root, "file.txt"))
     open(file_path, "w").close()
     from AssetsManager.core.tag_store import TagStore
-    store = TagStore(lib_root)
+    store = TagStore(lib_root, db_conn=conn)
     store.add_tag(file_path, "old_name")
     ctrl.rename_tag("old_name", "new_name")
     tags = ctrl.get_all_tags()
@@ -64,12 +67,15 @@ def test_rename_tag(lib_env):
 
 
 def test_delete_tag(lib_env):
+    from AssetsManager.core.database import DatabaseManager
+    from AssetsManager.core.singleton import ThreadSafeSingleton
     lib_root, _ = lib_env
+    conn = ThreadSafeSingleton.get(DatabaseManager).connection_for(lib_root)
     ctrl = _make_controller(lib_root)
     file_path = str(os.path.join(lib_root, "file.txt"))
     open(file_path, "w").close()
     from AssetsManager.core.tag_store import TagStore
-    store = TagStore(lib_root)
+    store = TagStore(lib_root, db_conn=conn)
     store.add_tag(file_path, "temp")
     count = ctrl.delete_tag("temp")
     assert count >= 0
@@ -89,12 +95,15 @@ def test_remove_tag_from_file(lib_env):
 
 
 def test_get_tag_with_files(lib_env):
+    from AssetsManager.core.database import DatabaseManager
+    from AssetsManager.core.singleton import ThreadSafeSingleton
     lib_root, _ = lib_env
+    conn = ThreadSafeSingleton.get(DatabaseManager).connection_for(lib_root)
     ctrl = _make_controller(lib_root)
     file_path = str(os.path.join(lib_root, "file.txt"))
     open(file_path, "w").close()
     from AssetsManager.core.tag_store import TagStore
-    store = TagStore(lib_root)
+    store = TagStore(lib_root, db_conn=conn)
     store.add_tag(file_path, "hero")
     store.add_tag(file_path, "villain")
     result = ctrl.get_tag_with_files()

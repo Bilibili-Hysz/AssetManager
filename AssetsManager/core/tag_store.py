@@ -19,7 +19,6 @@ from pathlib import Path
 from sqlite3 import Connection
 
 from AssetsManager.core.database import DatabaseManager
-from AssetsManager.core.singleton import ThreadSafeSingleton
 from AssetsManager.core.tag_library import get_library
 from AssetsManager.repositories.tag_repository import TagRepository
 
@@ -54,7 +53,7 @@ class TagStore:
         if session is not None and db_conn is None:
             self._db = session.connection_for(self._root)
         elif db_conn is None:
-            self._db = ThreadSafeSingleton.get(DatabaseManager).connection_for(self._root)
+            raise TypeError(f"{type(self).__name__} requires db_conn or a LibrarySession")
         else:
             # Legacy constructor: preserve compatibility with caller-owned raw connections.
             self._db = DatabaseManager.validate_connection_owner(

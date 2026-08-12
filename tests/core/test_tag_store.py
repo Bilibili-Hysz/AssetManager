@@ -10,8 +10,8 @@ def _clean(s: TagStore, *paths):
         s.remove_file(p)
 
 
-def test_add_get_tags():
-    s = TagStore("/test/library")
+def test_add_get_tags(schema_db):
+    s = TagStore("/test/library", db_conn=schema_db)
     _clean(s, "/test/library/file1.png")
     s.add_tag("/test/library/file1.png", "hero")
     s.add_tag("/test/library/file1.png", "villain")
@@ -21,8 +21,8 @@ def test_add_get_tags():
     _clean(s, "/test/library/file1.png")
 
 
-def test_get_tags_for_files():
-    s = TagStore("/test/library")
+def test_get_tags_for_files(schema_db):
+    s = TagStore("/test/library", db_conn=schema_db)
     a = os.path.abspath("/test/library/batch_a.png")
     b = os.path.abspath("/test/library/batch_b.png")
     _clean(s, a, b)
@@ -36,8 +36,8 @@ def test_get_tags_for_files():
     _clean(s, a, b)
 
 
-def test_remove_tag():
-    s = TagStore("/test/library")
+def test_remove_tag(schema_db):
+    s = TagStore("/test/library", db_conn=schema_db)
     _clean(s, "/test/library/file1.png")
     s.add_tag("/test/library/file1.png", "temp")
     s.remove_tag("/test/library/file1.png", "temp")
@@ -45,8 +45,8 @@ def test_remove_tag():
     _clean(s, "/test/library/file1.png")
 
 
-def test_get_files_by_tag():
-    s = TagStore("/test/library")
+def test_get_files_by_tag(schema_db):
+    s = TagStore("/test/library", db_conn=schema_db)
     a = os.path.abspath("/test/library/a.png")
     b = os.path.abspath("/test/library/b.png")
     c = os.path.abspath("/test/library/c.png")
@@ -61,8 +61,8 @@ def test_get_files_by_tag():
     _clean(s, a, b, c)
 
 
-def test_get_all_tags():
-    s = TagStore("/test/library")
+def test_get_all_tags(schema_db):
+    s = TagStore("/test/library", db_conn=schema_db)
     _clean(s, "/test/library/a.png", "/test/library/b.png")
     s.add_tag("/test/library/a.png", "Zebra")
     s.add_tag("/test/library/b.png", "alpha")
@@ -72,8 +72,8 @@ def test_get_all_tags():
     _clean(s, "/test/library/a.png", "/test/library/b.png")
 
 
-def test_normalize():
-    s = TagStore("/test/library")
+def test_normalize(schema_db):
+    s = TagStore("/test/library", db_conn=schema_db)
     _clean(s, "/test/library/f.png")
     s.add_tag("/test/library/f.png", "  Dupe  ")
     s.add_tag("/test/library/f.png", "DUPE")
@@ -81,8 +81,8 @@ def test_normalize():
     _clean(s, "/test/library/f.png")
 
 
-def test_remove_file():
-    s = TagStore("/test/library")
+def test_remove_file(schema_db):
+    s = TagStore("/test/library", db_conn=schema_db)
     _clean(s, "/test/library/g.png")
     s.add_tag("/test/library/g.png", "label")
     s.remove_file("/test/library/g.png")
