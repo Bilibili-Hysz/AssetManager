@@ -202,8 +202,10 @@ jobs:
       - name: Install Python Playwright Chromium
         run: python -m playwright install chromium
       - name: Run real LAN browser acceptance
+        # -m e2e overrides the pytest.ini default exclusion; without it the
+        # module-level e2e marker collects zero tests here.
         run: >-
-          python -m pytest -q --tb=short
+          python -m pytest -q --tb=short -m e2e
           tests/e2e/test_webui_realtime_acceptance.py
 
   test:
