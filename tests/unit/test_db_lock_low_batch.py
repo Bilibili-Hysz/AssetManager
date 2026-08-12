@@ -48,6 +48,7 @@ _EXPECTED_HISTORY = (
     (24, "asset_dir_mtime_snapshot"),
     (25, "shop_share_claims"),
     (26, "gallery_home_projection"),
+    (27, "revoked_tokens"),
 )
 
 

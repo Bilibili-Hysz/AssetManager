@@ -336,6 +336,10 @@ class _LanServerImpl:
         # writes _revoked_tokens (auth middleware + logout handler). Keep
         # every facade path off it, or add synchronization first.
         self._revoked_tokens: dict[str, float] = {}
+        # Durable revocation: rows persist in the library DB (via the bound
+        # AuthService) so a token signed with the persisted password hash
+        # cannot resurrect after an app restart. Loaded once on first use.
+        self._revoked_loaded = False
 
         with _runtime_operation(runtime, session):
             runtime_services = _runtime_services_snapshot(runtime)
@@ -984,17 +988,32 @@ class _LanServerImpl:
     _TOKEN_REVOCATION_MAX = 10_000
 
     def revoke_auth_token(self, token: str):
-        """Server-side revocation of a presented auth token (TTL 24h)."""
+        """Server-side revocation of a presented auth token (TTL 24h).
+
+        The revocation is persisted through the bound AuthService so a token
+        signed with the persisted password hash cannot resurrect after an
+        app restart.
+        """
         if not token:
             return
         digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
-        self._revoked_tokens[digest] = time.time() + self._TOKEN_REVOCATION_TTL
+        expires_at = time.time() + self._TOKEN_REVOCATION_TTL
+        self._revoked_tokens[digest] = expires_at
+        auth_service = getattr(self, "_auth_service", None)
+        if auth_service is not None:
+            try:
+                auth_service.revoke_token(token, ttl=self._TOKEN_REVOCATION_TTL)
+            except Exception:
+                # In-memory revocation still holds for this process; log and
+                # keep going rather than failing the logout response.
+                _log.warning("Persistent token revocation write failed", exc_info=True)
 
     def is_auth_token_revoked(self, token: str) -> bool:
         """Return True when a presented auth token has been revoked."""
         if not token:
             return False
         digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        self._load_persisted_revocations()
         expiry = self._revoked_tokens.get(digest)
         if expiry is None:
             return False
@@ -1004,6 +1023,32 @@ class _LanServerImpl:
         if len(self._revoked_tokens) > self._TOKEN_REVOCATION_MAX:
             self._prune_revoked_tokens()
         return True
+
+    def _load_persisted_revocations(self) -> None:
+        """Load revocations persisted by earlier processes, once per server.
+
+        The in-memory table is the hot-path positive cache; the library DB
+        (via the bound AuthService) is the durable source of truth across
+        app restarts.
+        """
+        if getattr(self, "_revoked_loaded", False):
+            return
+        self._revoked_loaded = True
+        auth_service = getattr(self, "_auth_service", None)
+        if auth_service is None:
+            return
+        try:
+            persisted = auth_service.load_active_revocations()
+        except Exception:
+            _log.warning("Persistent token revocation load failed", exc_info=True)
+            return
+        for digest, expires_at in persisted.items():
+            self._revoked_tokens.setdefault(digest, expires_at)
+        # Best-effort DB hygiene: drop rows whose TTL already passed.
+        try:
+            auth_service.prune_revocations()
+        except Exception:
+            pass
 
     def _prune_revoked_tokens(self) -> None:
         """Drop expired revocations; bound memory when the table grows large."""

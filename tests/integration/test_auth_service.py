@@ -218,3 +218,61 @@ def test_verify_user_token_db_failure_returns_none_for_digit_nonce_token(
     monkeypatch.setattr(svc._repo, "get_user_by_id", boom)
 
     assert svc.verify_user_token(token) is None
+
+
+def test_verify_user_token_caches_the_user_record(schema_db, monkeypatch):
+    """The per-user is_active/role lookup is cached; repeated verifications
+    within the TTL hit the cache instead of SQLite."""
+    from unittest.mock import Mock
+
+    from AssetsManager.application import auth_service as auth_service_module
+    from AssetsManager.application.auth_service import AuthService
+
+    svc = AuthService(schema_db, "test-secret")
+    fake_repo = Mock()
+    fake_repo.get_user_by_id = Mock(return_value={
+        "id": 1, "username": "alice", "role": "user", "is_active": True,
+    })
+    svc._repo = fake_repo
+    # The real verifier needs a valid signature; the cache is the unit under
+    # test, so stub the cryptographic check to return the fetched record.
+    monkeypatch.setattr(
+        auth_service_module.auth_crypto,
+        "verify_user_token",
+        lambda token, secret, user_info: user_info,
+    )
+    token = "0.1.nonce.sig"
+
+    result = svc.verify_user_token(token)
+    assert result is not None and result["username"] == "alice"
+    assert svc.verify_user_token(token) is not None
+    assert fake_repo.get_user_by_id.call_count == 1
+
+
+def test_user_cache_is_invalidated_by_activation_changes(schema_db, monkeypatch):
+    """deactivate_user drops the cached record so the next verification
+    re-reads is_active from the repository."""
+    from unittest.mock import Mock
+
+    from AssetsManager.application import auth_service as auth_service_module
+    from AssetsManager.application.auth_service import AuthService
+
+    svc = AuthService(schema_db, "test-secret")
+    record = {"id": 1, "username": "alice", "role": "user", "is_active": True}
+    fake_repo = Mock()
+    fake_repo.get_user_by_id = Mock(return_value=record)
+    fake_repo.set_user_active = Mock(return_value=True)
+    svc._repo = fake_repo
+    monkeypatch.setattr(
+        auth_service_module.auth_crypto,
+        "verify_user_token",
+        lambda token, secret, user_info: user_info,
+    )
+    token = "0.1.nonce.sig"
+
+    svc.verify_user_token(token)
+    assert fake_repo.get_user_by_id.call_count == 1
+
+    assert svc.deactivate_user(1) is True
+    svc.verify_user_token(token)
+    assert fake_repo.get_user_by_id.call_count == 2

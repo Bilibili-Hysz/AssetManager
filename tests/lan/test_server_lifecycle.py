@@ -1832,3 +1832,31 @@ def test_has_users_cache_survives_cross_thread_hammering():
         if server._has_users_cache is not None:
             assert server._has_users_cache is True
             assert server._has_users_cache_time > 0.0
+
+
+def _server_with_revocation(conn):
+    from AssetsManager.application.auth_service import AuthService
+
+    server = object.__new__(_LanServerImpl)
+    server._revoked_tokens = {}
+    server._revoked_loaded = False
+    server._TOKEN_REVOCATION_TTL = 86400
+    server._TOKEN_REVOCATION_MAX = 10000
+    server._auth_service = AuthService(conn, "test-secret")
+    return server
+
+
+def test_revocation_survives_server_restart(schema_db):
+    """A revoked token stays revoked across an app restart: the revocation
+    is persisted in the library DB, not just the in-memory table."""
+    token = "1234567890.nonce.deadbeef"
+
+    server_a = _server_with_revocation(schema_db)
+    server_a.revoke_auth_token(token)
+    assert server_a.is_auth_token_revoked(token) is True
+    assert server_a.is_auth_token_revoked("1234567890.nonce.other") is False
+
+    # A brand-new server instance over the same library DB simulates an app
+    # restart; the persisted revocation must still hold.
+    server_b = _server_with_revocation(schema_db)
+    assert server_b.is_auth_token_revoked(token) is True

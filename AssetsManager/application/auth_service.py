@@ -1,9 +1,11 @@
 """LAN authentication application service."""
 from __future__ import annotations
 
+import hashlib
 import logging
 import secrets
 import threading
+import time
 from sqlite3 import Connection
 from typing import TYPE_CHECKING
 
@@ -13,6 +15,7 @@ from AssetsManager.domain import auth as auth_crypto
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import InviteChanged, UserChanged
 from AssetsManager.repositories.auth_repository import AuthRepository
+from AssetsManager.repositories.revoked_token_repository import RevokedTokenRepository
 
 _log = logging.getLogger(__name__)
 _MISSING_PROVIDER = object()
@@ -43,6 +46,16 @@ class AuthService:
         self._event_bus = get_event_bus()
         self._library_root = ""
         self._session_token = ""
+        # Per-user record cache: token verification runs on every
+        # authenticated request, so the is_active/role lookup is cached
+        # briefly. Mutations (register/activate/deactivate) clear it; the
+        # TTL caps staleness for role edits made through the repository.
+        self._user_cache: dict[int, tuple[float, dict | None]] = {}
+        self._user_cache_lock = threading.RLock()
+        self._user_cache_ttl = 5.0
+        # Persistent token revocation lives in the library DB so revoked
+        # simple-password tokens cannot resurrect after an app restart.
+        self._revoked_repo: RevokedTokenRepository | None = None
         if session is not None:
             self._bind_session(session)
 
@@ -202,7 +215,12 @@ class AuthService:
 
     @session_operation
     def verify_user_token(self, token: str) -> dict | None:
-        """Verify a user token by fetching user info from the repo."""
+        """Verify a user token by fetching user info from the repo.
+
+        The per-user record (is_active/role/username) is cached briefly so
+        every authenticated request does not hit SQLite; mutations clear
+        the cache and the TTL caps staleness for out-of-band edits.
+        """
         try:
             parts = token.split(".", 2)
             if len(parts) != 3:
@@ -210,15 +228,62 @@ class AuthService:
             user_id = int(parts[1])
         except (ValueError, IndexError):
             return None
-        try:
-            user_info = self._repo.get_user_by_id(user_id)
-        except Exception:
-            # A simple-password token ("ts.nonce.sig") shares the three-part
-            # shape with a legacy user token when its nonce happens to be
-            # all digits; treat any DB failure as "not a user token" so the
-            # caller can fall through to password verification.
-            return None
+        hit, user_info = self._cached_user(user_id)
+        if not hit:
+            try:
+                user_info = self._repo.get_user_by_id(user_id)
+            except Exception:
+                # A simple-password token ("ts.nonce.sig") shares the
+                # three-part shape with a legacy user token when its nonce
+                # happens to be all digits; treat any DB failure as "not a
+                # user token" so the caller can fall through to password
+                # verification.
+                return None
+            self._store_cached_user(user_id, user_info)
         return auth_crypto.verify_user_token(token, self._secret, user_info)
+
+    def _cached_user(self, user_id: int) -> tuple[bool, dict | None]:
+        """Return (hit, record) for a cached user, or (False, None)."""
+        with self._user_cache_lock:
+            entry = self._user_cache.get(user_id)
+            if entry is not None and (time.monotonic() - entry[0]) < self._user_cache_ttl:
+                return True, entry[1]
+        return False, None
+
+    def _store_cached_user(self, user_id: int, user_info: dict | None) -> None:
+        with self._user_cache_lock:
+            self._user_cache[user_id] = (time.monotonic(), user_info)
+
+    def _invalidate_user_cache(self) -> None:
+        """Drop cached user records; mutations are rare, so clear all."""
+        with self._user_cache_lock:
+            self._user_cache.clear()
+
+    # ── Persistent token revocation ─────────────────────────────
+
+    def _revocation_repo(self) -> RevokedTokenRepository:
+        """Lazily build the persistent revocation repository."""
+        if self._revoked_repo is None:
+            self._revoked_repo = RevokedTokenRepository(self._conn)
+        return self._revoked_repo
+
+    def revoke_token(self, token: str, *, ttl: float = 86400.0) -> None:
+        """Persist a token revocation (SHA256 digest, default TTL 24h)."""
+        digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        self._revocation_repo().add(digest, expires_at=time.time() + ttl)
+
+    def is_token_revoked(self, token: str) -> bool:
+        """Return True when an unexpired revocation row exists."""
+        digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        return self._revocation_repo().is_revoked(digest)
+
+    def load_active_revocations(self) -> dict[str, float]:
+        """Return {digest: expires_at} for all unexpired revocation rows."""
+        return self._revocation_repo().load_active()
+
+    def prune_revocations(self) -> None:
+        """Delete expired revocation rows (best-effort hygiene)."""
+        self._revocation_repo().prune_expired()
 
     @session_operation
     def register_user(self, username: str, password: str,
@@ -250,6 +315,7 @@ class AuthService:
             user_id = self._repo.insert_user_with_invite(username, pw_hash, invite_code, email=email)
             if user_id is None:
                 return None, "Invalid or already used invite code"
+            self._invalidate_user_cache()
             self._publish(UserChanged)
             self._publish(InviteChanged)
             return user_id, ""
@@ -258,6 +324,7 @@ class AuthService:
         if user_id is None:
             return None, "Failed to create user"
 
+        self._invalidate_user_cache()
         self._publish(UserChanged)
         return user_id, ""
 
@@ -269,6 +336,7 @@ class AuthService:
     def activate_user(self, user_id: int) -> bool:
         ok = self._repo.set_user_active(user_id, True)
         if ok:
+            self._invalidate_user_cache()
             self._publish(UserChanged)
         return ok
 
@@ -276,6 +344,7 @@ class AuthService:
     def deactivate_user(self, user_id: int) -> bool:
         ok = self._repo.set_user_active(user_id, False)
         if ok:
+            self._invalidate_user_cache()
             self._publish(UserChanged)
         return ok
 

@@ -29,6 +29,7 @@ from AssetsManager.core.schema_defs import (
     SHOP_ORDER_RECEIPT_RECOVERIES_SCHEMA,
     SHOP_SHARE_CLAIMS_SCHEMA,
     GALLERY_HOME_SCHEMA,
+    REVOKED_TOKENS_SCHEMA,
     SHOP_DELIVERY_ATTEMPTS_SCHEMA,
     SHOP_CARTS_SCHEMA_V16,
     SHOP_WISHLIST_SCHEMAS,
@@ -41,7 +42,7 @@ from AssetsManager.core.schema_defs import (
 )
 
 
-CURRENT_SCHEMA_VERSION = 26
+CURRENT_SCHEMA_VERSION = 27
 _BASELINE_SCHEMA_CONTRACT = {
     "file_tags": {
         "columns": ("file_path", "tag"),
@@ -888,6 +889,19 @@ def _add_gallery_home_schema_v26(conn: sqlite3.Connection) -> None:
             conn.execute(sql)
     validate_schema_objects(conn, (table,))
 
+
+def _add_revoked_tokens_schema_v27(conn: sqlite3.Connection) -> None:
+    """Persist auth-token revocations across app restarts."""
+    table = "revoked_tokens"
+    if _table_exists(conn, table):
+        contract = dict(SCHEMA_OBJECT_CONTRACT[table])
+        contract.pop("indexes", None)
+        validate_schema_object(conn, table, contract)  # type: ignore[arg-type]
+    for statement in REVOKED_TOKENS_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    validate_schema_objects(conn, (table,))
+
 def _add_reconciliation_lease_token_schema_v17(conn: sqlite3.Connection) -> None:
     """Add the nullable durable lease identity used by the next queue phase."""
     table = "reconciliation_tasks"
@@ -932,6 +946,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(24, "asset_dir_mtime_snapshot", _add_asset_dir_mtime_schema_v24),
     Migration(25, "shop_share_claims", _add_shop_share_claims_schema_v25),
     Migration(26, "gallery_home_projection", _add_gallery_home_schema_v26),
+    Migration(27, "revoked_tokens", _add_revoked_tokens_schema_v27),
 )
 
 

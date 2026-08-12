@@ -288,6 +288,18 @@ CREATE TABLE IF NOT EXISTS gallery_home (
 """
 
 
+REVOKED_TOKENS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS revoked_tokens (
+    token_digest TEXT PRIMARY KEY NOT NULL
+                 CHECK (length(trim(token_digest)) = 64),
+    expires_at   REAL NOT NULL,
+    revoked_at   REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires
+    ON revoked_tokens(expires_at);
+"""
+
+
 SHOP_SHARE_CLAIMS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS shop_share_claims (
     claim_hash TEXT PRIMARY KEY NOT NULL
@@ -1069,6 +1081,21 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
             "projection": {"type": "TEXT", "not_null": True},
         },
         "checks": ("CHECK (id = 1)",),
+    },
+    # Persistent auth-token revocation: rows survive app restarts so a
+    # revoked simple-password token (signed with the persisted password
+    # hash) cannot resurrect before its TTL expires.
+    "revoked_tokens": {
+        "columns": ("token_digest", "expires_at", "revoked_at"),
+        "primary_key": ("token_digest",),
+        "unique_constraints": (),
+        "indexes": {"idx_revoked_tokens_expires": ("expires_at",)},
+        "column_contracts": {
+            "token_digest": {"type": "TEXT", "not_null": True},
+            "expires_at": {"type": "REAL", "not_null": True},
+            "revoked_at": {"type": "REAL", "not_null": True},
+        },
+        "checks": ("CHECK (length(trim(token_digest)) = 64)",),
     },
     **AUTH_SHARE_SCHEMA_CONTRACT,
 }
