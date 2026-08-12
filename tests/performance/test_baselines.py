@@ -6,13 +6,13 @@ All thresholds are calibrated for a developer machine; CI may adjust upward.
 """
 from __future__ import annotations
 
-import pytest
-
-pytestmark = pytest.mark.perf  # opt in with `pytest -m perf`
-
 import time
 import os
 from unittest.mock import patch
+
+import pytest
+
+pytestmark = pytest.mark.perf  # opt in with `pytest -m perf`
 
 
 # ── Threshold constants (in seconds unless noted) ──────────────

@@ -7,11 +7,11 @@ from unittest.mock import Mock
 
 import pytest
 
+from AssetsManager.lan.server import _LanServerImpl
+
 # These tests bind a fixed port (8765); under xdist --dist worksteal they
 # must never run concurrently on different workers.
 pytestmark = pytest.mark.xdist_group(name="serial")
-
-from AssetsManager.lan.server import _LanServerImpl
 
 
 class _ThreadThatStaysAlive:

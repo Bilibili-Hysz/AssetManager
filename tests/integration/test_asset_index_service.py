@@ -885,7 +885,6 @@ def test_refresh_lock_registry_is_bounded():
 def test_index_directory_rescans_when_directory_mtime_changes(tmp_path, schema_db):
     """M6a-18: the fast path must detect on-disk changes via dir_mtime."""
     import os
-    import time as _time
 
     lib = tmp_path / "lib"
     lib.mkdir()
