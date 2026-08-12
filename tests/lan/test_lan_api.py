@@ -1154,6 +1154,12 @@ async def test_security_middleware_skips_read_only_browsing_surfaces():
     app.router.add_get("/api/quicksearch", handler)
     app.router.add_get("/api/tree", handler)
     app.router.add_get("/api/tags", handler)
+    app.router.add_get("/api/home", handler)
+    app.router.add_get("/api/search", handler)
+    app.router.add_get("/api/quota", handler)
+    app.router.add_get("/api/activity", handler)
+    app.router.add_get("/api/revision", handler)
+    app.router.add_post("/api/files/summaries", handler)
     # A non-skipped endpoint still counts toward the window.
     app.router.add_get("/api/shares", handler)
     client = await _make_client(app)
@@ -1168,12 +1174,19 @@ async def test_security_middleware_skips_read_only_browsing_surfaces():
             "/api/quicksearch",
             "/api/tree",
             "/api/tags",
+            "/api/home",
+            "/api/search",
+            "/api/quota",
+            "/api/activity",
+            "/api/revision",
             "/api/shares",
             "/api/shares",
         ):
             assert (await client.get(path)).status == 200
-        # The thumbnail batch is a POST route and must equally skip the window.
+        # The thumbnail batch and directory summaries are POST routes and
+        # must equally skip the window.
         assert (await client.post("/api/thumbnails/batch")).status == 200
+        assert (await client.post("/api/files/summaries")).status == 200
         # The window (3) was consumed only by /api/shares calls: the third
         # fits, the fourth is refused.
         assert (await client.get("/api/shares")).status == 200

@@ -173,6 +173,17 @@ def create_security_middleware(
         "/api/notes",
         "/api/tree",
     )
+    # Additional read-only browsing/diagnostic endpoints that must not
+    # consume the window: landing home, search, quota, activity log,
+    # runtime revision cursor (WS recovery) and directory summaries.
+    _RATE_LIMIT_SKIP_EXACT = (
+        "/api/home",
+        "/api/search",
+        "/api/quota",
+        "/api/activity",
+        "/api/revision",
+        "/api/files/summaries",
+    )
 
     # Auth endpoints that need stricter rate limiting
     _AUTH_ENDPOINTS = (
@@ -191,6 +202,7 @@ def create_security_middleware(
         skip_rate = (
             any(_path_matches_prefix(path, p) for p in _RATE_LIMIT_SKIP_PREFIX)
             or path in _RATE_LIMIT_SKIP
+            or path in _RATE_LIMIT_SKIP_EXACT
             or (request.method == "GET" and path == "/api/files")
         )
 
