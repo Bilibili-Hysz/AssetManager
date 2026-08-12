@@ -481,7 +481,7 @@ LAN 服务器注册 **139 条路由**（页面 30 / 核心库 API 51 / Commerce-
 | `/api/files`、`/api/files/summaries` | GET/POST | browse | 文件列表/目录摘要 |
 | `/api/projects`、`/api/tree`、`/api/home` | GET | browse | 项目列表/树/首页聚合 |
 | `/api/search`、`/api/quicksearch` | GET | browse | 双轨搜索（标签/名称/索引） |
-| `/api/gallery/home|collection|resolve` | GET | browse | 画廊投影（预算受限） |
+| `/api/gallery/home|collection|resolve` | GET | browse | 画廊投影（预算受限；单文件事件增量更新，失败回退全量重建） |
 | `/api/favorites` | GET/POST/DELETE | browse | 收藏（主体作用域） |
 | `/api/tags`、`/api/tags/{name}` | GET/POST/PUT/DELETE | admin 写 | 标签管理 |
 | `/api/shares`、`/api/shares/{id}/...` | GET/POST/DELETE | manage_links | 分享管理；verify/info/download/preview 公开 |
