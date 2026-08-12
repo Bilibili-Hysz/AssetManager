@@ -8,7 +8,7 @@
 1. **`docs/migrations.md` 严重过时**：只记录到 v6，实际 v23（v7-23 完全缺失）
 2. **`path_guard.py` 无显式 NUL/ADS 拒绝**：防护完全依赖 `Path.resolve()` 规范化 + is_relative_to；若此前文档声称"NUL/ADS 显式拒绝"需修正（实际靠 resolve 兜底，module-lan-core Bug8/9 记录为低危待办）
 3. **`ProjectData.get_dir_size` 无生产调用方**（TTL 死代码问题已在 P1 修：metadata_service 接入 30s TTL）
-4. **`auth_repository.insert_user_with_invite`/`consume_invite_code` 仍为裸 except**（P1 只修了 insert_user/insert_invite_code；同类模式残留 2 处，低危记录）
+4. **`auth_repository` 裸 except**：✅ 已确认无残留（2026-08-12）——全部 except 均已结构化（业务约束→None / 数据库错误→raise / 未知→raise+日志），此条记录过时
 5. **Cython 产物 4 个 .pyd 全部存在**，源码回退保留（删除 .pyd 即回退纯 Python）
 
 ### 1.2 应用服务层
@@ -18,7 +18,7 @@
 
 ### 1.3 LAN 层
 9. **`lan/static` 已不存在**（旧静态前端废弃）；SPA 由 pages.py 托管 webui/dist
-10. **`path_guard` 对 URL 解码层**：aiohttp 双重解码后 resolve 兜底；`%00`（NUL）在 resolve 时抛 ValueError 可能 500（module-lan-core Bug8，低危记录，未修）
+10. **`path_guard` 解码层安全**：✅ 已修（2026-08-12）——C0 控制字符（含 NUL/%00 解码后）resolve 前置拒绝；resolve 的 OSError/ValueError（Windows 非法名/权限/路径库严格性）转为 InvalidPathError（400 类）而非 500，含 monkeypatch 回归测试
 11. **`/api/stats` 无 admin 检查**（仅 auth）——设计如此（容量统计），记录
 12. **路由注册 139 条**（任务描述"约 150+""约 110"均不准；routes/ 24 个 .py 含 __init__/_helpers/_resource_urls）
 

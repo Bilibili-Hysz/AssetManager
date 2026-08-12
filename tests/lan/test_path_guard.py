@@ -67,6 +67,37 @@ def test_path_guard_rejects_nul_and_control_characters(tmp_path):
         guard.resolve("dir/\x7fsecret.txt")
 
 
+def test_path_guard_turns_invalid_syntax_into_guard_error(tmp_path, monkeypatch):
+    """A filesystem-level OSError/ValueError during resolution (Windows
+    invalid names, pathlib strictness, permission failures) must surface as a
+    400-class InvalidPathError, never as a raw exception that would 500."""
+    from pathlib import Path
+
+    from AssetsManager.lan.path_guard import InvalidPathError, PathGuard
+
+    guard = PathGuard(tmp_path)
+
+    def boom_oserror(self, strict=False):
+        raise OSError(123, "invalid name")
+
+    monkeypatch.setattr(Path, "resolve", boom_oserror)
+    with pytest.raises(InvalidPathError):
+        guard.resolve("a<b.txt")
+
+    def boom_valueerror(self, strict=False):
+        raise ValueError("bad path")
+
+    monkeypatch.setattr(Path, "resolve", boom_valueerror)
+    with pytest.raises(InvalidPathError):
+        guard.resolve("bad-name")
+
+    # Control characters are still rejected before any filesystem access,
+    # independent of the resolve backend (the URL layer decodes %00 first).
+    monkeypatch.undo()
+    with pytest.raises(InvalidPathError):
+        guard.resolve("a\x00b.txt")
+
+
 def test_path_guard_rejects_ads_separator_on_windows(tmp_path):
     import os
 

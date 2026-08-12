@@ -49,7 +49,13 @@ class PathGuard:
         if _CONTROL_CHARS_RE.search(text):
             raise InvalidPathError("Path contains control characters")
         cleaned = text.replace("\\", "/").strip("/")
-        target = (self.root / cleaned).resolve()
+        try:
+            target = (self.root / cleaned).resolve()
+        except (OSError, ValueError) as exc:
+            # Windows rejects names with < > " | ? * or reserved device names
+            # (and pathlib raises ValueError for lone surrogates); surface
+            # these as a 400-class guard error instead of a 500.
+            raise InvalidPathError("Invalid path syntax") from exc
         if not target.is_relative_to(self.root):
             raise PathEscapeError("Path escape detected")
         if os.name == "nt":
