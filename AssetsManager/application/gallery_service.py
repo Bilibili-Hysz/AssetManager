@@ -8,6 +8,7 @@ connection and tag services.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sqlite3
@@ -23,6 +24,7 @@ from AssetsManager.application.context import ConnectionProvider, LibrarySession
 from AssetsManager.application.tag_service import TagService
 from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.format_utils import format_size
+from AssetsManager.core.path_resolver import library_data_dir
 from AssetsManager.domain.asset import IMAGE_EXTS, assert_under_root
 from AssetsManager.domain.errors import MissingPathError, PathEscapeError
 from AssetsManager.domain.event_bus import get_event_bus
@@ -208,6 +210,10 @@ class GalleryService:
         self._home_cache: dict[str, tuple[float, "GalleryHome"]] = {}
         self._home_cache_lock = threading.Lock()
         self._home_cache_ttl = 30.0
+        # RuntimeData persistence: the projection survives process restarts
+        # (a 286 GB library takes tens of seconds to build). FileSystemChanged
+        # events delete it, and the TTL is a safety net for missed events.
+        self._disk_cache_ttl = 3600.0
         # Background home projection: the full-library walk for very large
         # libraries takes tens of seconds, so it must never block a request.
         # Requests read the cache; a miss returns a "building" signal and a
@@ -226,8 +232,17 @@ class GalleryService:
         once, shortly after the last change)."""
         if event.kind in {"gallery", "shop"}:
             return
+        root_key = str(Path(event.library_root).resolve())
         with self._home_cache_lock:
-            self._home_cache.pop(str(event.library_root), None)
+            self._home_cache.pop(root_key, None)
+        # The persisted projection is stale too; delete it so a restart does
+        # not resurrect the pre-change view.
+        try:
+            disk = self._disk_cache_path(root_key)
+            if disk.is_file():
+                disk.unlink()
+        except OSError:
+            pass
         with self._build_lock:
             if self._refresh_timer is not None:
                 self._refresh_timer.cancel()
@@ -253,23 +268,75 @@ class GalleryService:
     def get_home_cached(
         self, library_root: str | Path
     ) -> "GalleryHome | None":
-        """Return a fresh home projection, or None when a build is needed.
+        """Return a home projection, or None when a build is needed.
 
-        Fresh cache -> value. Stale cache -> the stale value (the caller
-        shows it immediately) plus a background rebuild. No cache -> None
-        plus a background build.
+        Fresh memory cache -> value. Stale memory -> the stale value plus
+        a background rebuild. No memory -> try the RuntimeData disk cache
+        (served immediately, rebuilt in the background); no disk cache ->
+        None plus a background build.
         """
         root = Path(library_root).resolve()
+        root_key = str(root)
         now = time.monotonic()
         with self._home_cache_lock:
-            cached = self._home_cache.get(str(root))
+            cached = self._home_cache.get(root_key)
             if cached is not None:
                 if now - cached[0] >= self._home_cache_ttl:
                     # Stale: serve it now, rebuild in the background.
-                    self._ensure_home_building(str(root))
+                    self._ensure_home_building(root_key)
                 return cached[1]
-        self._ensure_home_building(str(root))
+            disk = self._load_disk_cache(root_key)
+            if disk is not None:
+                self._home_cache[root_key] = (now, disk)
+                self._ensure_home_building(root_key)
+                return disk
+        self._ensure_home_building(root_key)
         return None
+
+    def _disk_cache_path(self, root_key: str) -> Path:
+        """RuntimeData location for the persisted home projection."""
+        return library_data_dir(Path(root_key).resolve()) / "gallery_home.json"
+
+    def _load_disk_cache(self, root_key: str) -> "GalleryHome | None":
+        """Load a persisted projection within its TTL, or None."""
+        path = self._disk_cache_path(root_key)
+        try:
+            if not path.is_file():
+                return None
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            saved_at = float(raw.get("saved_at", 0))
+            if time.time() - saved_at > self._disk_cache_ttl:
+                return None
+            projection = raw.get("projection")
+            if not isinstance(projection, dict):
+                return None
+            return GalleryHome(
+                featured=projection.get("featured"),
+                collections=projection.get("collections", []),
+                projects=projection.get("projects", []),
+                recent=projection.get("recent", []),
+                stats=projection.get("stats", {}),
+            )
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            _log.debug("Gallery home disk cache unreadable for %s", root_key, exc_info=True)
+            return None
+
+    def _save_disk_cache(self, root_key: str, home: "GalleryHome") -> None:
+        """Persist the projection atomically (tmp + rename)."""
+        try:
+            path = self._disk_cache_path(root_key)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "saved_at": time.time(),
+                "projection": home.to_response(),
+            }
+            tmp = path.with_suffix(".json.tmp")
+            tmp.write_text(
+                json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+            )
+            os.replace(tmp, path)
+        except OSError:
+            _log.debug("Gallery home disk cache write failed", exc_info=True)
 
     def prewarm_home(self, library_root: str | Path) -> None:
         """Kick off a background home projection build (idempotent).
@@ -769,6 +836,7 @@ class GalleryService:
         home = GalleryHome(featured, collections, projects, recent, stats)
         with self._home_cache_lock:
             self._home_cache[str(root)] = (time.monotonic(), home)
+        self._save_disk_cache(str(root), home)
         return home
 
     @session_operation

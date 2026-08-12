@@ -279,3 +279,57 @@ def test_home_cache_invalidated_on_file_system_changes(tmp_path, schema_db):
         assert service.get_home_cached(tmp_path) is None
     finally:
         service.close()
+
+
+def test_home_projection_persists_to_runtime_data_and_survives_restart(tmp_path, schema_db):
+    """A built projection is written to RuntimeData; a fresh service instance
+    (simulating an app restart) loads it instead of rebuilding."""
+    import time
+
+    _image(tmp_path / "collection" / "art.png", (40, 40))
+
+    first = GalleryService(connection_provider=lambda _root: schema_db)
+    try:
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and first.get_home_cached(tmp_path) is None:
+            time.sleep(0.05)
+        assert first.get_home_cached(tmp_path) is not None
+        assert first._disk_cache_path(str(tmp_path)).is_file()
+    finally:
+        first.close()
+
+    # A brand-new instance has no memory cache and must load the disk copy
+    # instead of answering building/None.
+    second = GalleryService(connection_provider=lambda _root: schema_db)
+    try:
+        restored = second.get_home_cached(tmp_path)
+        assert restored is not None
+        assert restored.stats["artworks"] == 1
+    finally:
+        second.close()
+
+
+def test_file_system_change_deletes_persisted_projection(tmp_path, schema_db):
+    """The persisted gallery_home.json is removed on library changes so a
+    restart cannot resurrect the pre-change view."""
+    import time
+
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileSystemChanged
+
+    _image(tmp_path / "set" / "one.png")
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    try:
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and service.get_home_cached(tmp_path) is None:
+            time.sleep(0.05)
+        disk = service._disk_cache_path(str(tmp_path))
+        assert disk.is_file()
+
+        get_event_bus().publish(FileSystemChanged(
+            library_root=str(tmp_path), session_token="test", kind="files", paths=(),
+        ))
+        assert not disk.exists()
+        assert service.get_home_cached(tmp_path) is None
+    finally:
+        service.close()
