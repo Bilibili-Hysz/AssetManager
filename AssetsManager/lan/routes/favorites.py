@@ -70,7 +70,7 @@ def _error_response(error: Exception) -> web.Response:
 
 async def handle_favorites(request):
     if not require_permission(request, "browse"):
-        return web.json_response({"error": "Browse access required"}, status=403)
+        return error_response("Browse access required", status=403, code="forbidden")
     lan = get_lan(request)
     favorite_service = _service_or_unavailable(
         request, get_favorite_service, "Favorites"
@@ -94,7 +94,7 @@ async def handle_favorites(request):
 
 async def handle_add_favorite(request):
     if not require_permission(request, "browse"):
-        return web.json_response({"error": "Browse access required"}, status=403)
+        return error_response("Browse access required", status=403, code="forbidden")
     lan = get_lan(request)
     service = _service_or_unavailable(request, get_favorite_service, "Favorites")
     try:
@@ -111,7 +111,7 @@ async def handle_add_favorite(request):
 
 async def handle_remove_favorite(request):
     if not require_permission(request, "browse"):
-        return web.json_response({"error": "Browse access required"}, status=403)
+        return error_response("Browse access required", status=403, code="forbidden")
     lan = get_lan(request)
     service = _service_or_unavailable(request, get_favorite_service, "Favorites")
     try:

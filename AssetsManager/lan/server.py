@@ -16,6 +16,7 @@ from aiohttp import web
 
 from AssetsManager.lan.api import setup_routes, stop_runtime_realtime
 from AssetsManager.lan.auth import hash_key, hash_password, is_password_hash, verify_key, verify_token, verify_auth_token
+from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY, LAN_APP_KEY, ActivityLog, OnlineUsers, LanScopedServices
 from AssetsManager.lan.ws import WebSocketManager
 from AssetsManager.lan.scanner import DirectoryScanner
@@ -1767,4 +1768,4 @@ class _LanServerImpl:
                 set_request_principal(request, principal_for_request("password"))
                 return await handler(request)
 
-        return web.json_response({"error": "Unauthorized"}, status=401)
+        return error_response("Unauthorized", status=401, code="unauthorized")

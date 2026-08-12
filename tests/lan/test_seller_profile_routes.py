@@ -77,7 +77,9 @@ def test_seller_profile_handler_preserves_policy_and_auth_gates(monkeypatch):
 
     response = asyncio.run(routes.handle_seller_profile(_request("GET")))
     assert response.status == 403
-    assert json.loads(response.body) == {"error": "Seller authentication required"}
+    body = json.loads(response.body)
+    assert body["error"] == "Seller authentication required"
+    assert body["code"] == "forbidden"
     assert calls == []
 
     _settings(monkeypatch, commerce=False, seller=True)

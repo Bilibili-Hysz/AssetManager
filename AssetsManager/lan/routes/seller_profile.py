@@ -81,7 +81,7 @@ async def handle_public_seller_profile(request: web.Request) -> web.Response:
 async def handle_seller_profile(request: web.Request) -> web.Response:
     """Read or update the single seller profile for the current library."""
     if await require_seller(request) is None:
-        return web.json_response({"error": "Seller authentication required"}, status=403)
+        return error_response("Seller authentication required", status=403, code="forbidden")
     try:
         lan = get_lan(request)
         service = get_seller_profile_service(request)
@@ -90,7 +90,7 @@ async def handle_seller_profile(request: web.Request) -> web.Response:
         elif request.method == "PUT":
             profile = service.update_profile(lan.library_root, await _json_body(request))
         else:
-            return web.json_response({"error": "Method not allowed"}, status=405)
+            return error_response("Method not allowed", status=405, code="method_not_allowed")
         return web.json_response({"profile": profile}, headers={"Cache-Control": "no-store"})
     except Exception as exc:
         return _error_response(exc)

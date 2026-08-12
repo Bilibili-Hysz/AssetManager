@@ -40,7 +40,7 @@ def _service_or_unavailable(request):
 
 async def handle_gallery_home(request):
     if not require_permission(request, "browse"):
-        return web.json_response({"error": "Browse access required"}, status=403)
+        return error_response("Browse access required", status=403, code="forbidden")
     lan = get_lan(request)
     service = _service_or_unavailable(request)
     try:
@@ -61,7 +61,7 @@ async def handle_gallery_home(request):
 
 async def handle_gallery_collection(request):
     if not require_permission(request, "browse"):
-        return web.json_response({"error": "Browse access required"}, status=403)
+        return error_response("Browse access required", status=403, code="forbidden")
     lan = get_lan(request)
     service = _service_or_unavailable(request)
     try:
@@ -70,9 +70,9 @@ async def handle_gallery_collection(request):
         sort = request.query.get("sort", "updated")
         kind = request.query.get("kind", "all")
         if sort not in _ALLOWED_SORTS:
-            return web.json_response({"error": "Unsupported gallery sort"}, status=400)
+            return error_response("Unsupported gallery sort", status=400, code="bad_request")
         if kind not in _ALLOWED_KINDS:
-            return web.json_response({"error": "Unsupported gallery kind"}, status=400)
+            return error_response("Unsupported gallery kind", status=400, code="bad_request")
         response = await asyncio.to_thread(
             service.get_collection,
             lan.library_root,
@@ -101,7 +101,7 @@ async def handle_gallery_collection(request):
 
 async def handle_gallery_resolve(request):
     if not require_permission(request, "browse"):
-        return web.json_response({"error": "Browse access required"}, status=403)
+        return error_response("Browse access required", status=403, code="forbidden")
     lan = get_lan(request)
     service = _service_or_unavailable(request)
     try:
