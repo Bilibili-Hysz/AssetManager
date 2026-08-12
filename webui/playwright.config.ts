@@ -1,7 +1,9 @@
 import { existsSync } from 'node:fs';
 import { defineConfig } from '@playwright/test';
 
-const localChromiumExecutable = 'C:\\Users\\86177\\AppData\\Local\\ms-playwright\\chromium-1228\\chrome-win64\\chrome.exe';
+// Optional machine-local browser shortcut: point PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+// at a pre-installed Chrome for Windows to skip Playwright's own download.
+const localChromiumExecutable = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 
 export default defineConfig({
   testDir: './e2e',
@@ -12,7 +14,7 @@ export default defineConfig({
     headless: true,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
-    launchOptions: existsSync(localChromiumExecutable)
+    launchOptions: localChromiumExecutable && existsSync(localChromiumExecutable)
       ? { executablePath: localChromiumExecutable }
       : undefined,
   },
