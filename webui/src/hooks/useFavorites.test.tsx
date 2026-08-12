@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   invalidationDomains: [] as string[],
   auth: null as {
     api: object;
-    serverInfo: { asset_root_id?: string; library_root: string; share_name: string } | null;
+    serverInfo: { library_root: string; share_name: string } | null;
     principal: SessionPrincipal;
     identityGeneration: number;
   } | null,
@@ -79,7 +79,6 @@ function resetAuth(principal: SessionPrincipal = alice) {
   mocks.auth = {
     api: {},
     serverInfo: {
-      asset_root_id: 'library-root-id',
       library_root: 'D:/Libraries/assets',
       share_name: 'Assets',
     },
@@ -110,7 +109,6 @@ describe('useFavorites', () => {
     expect(mocks.list).toHaveBeenCalledWith();  // shared in-flight request, no per-instance signal
     const storageKey = localStorage.key(0);
     expect(storageKey).toBeTruthy();
-    expect(decodeURIComponent(storageKey!)).toContain('library-root-id');
     expect(decodeURIComponent(storageKey!)).toContain('D:/Libraries/assets');
     expect(decodeURIComponent(storageKey!)).toContain('user:7');
   });

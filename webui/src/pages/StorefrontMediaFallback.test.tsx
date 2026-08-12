@@ -13,7 +13,7 @@ const { buildUrl, buyerState, showToast } = vi.hoisted(() => ({
 }));
 
 vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ api: { buildUrl } }) }));
-vi.mock('../components/storefront/ShopBuyerContext', () => ({
+vi.mock('../stores/ShopBuyerContext', () => ({
   useShopBuyer: () => buyerState.current,
 }));
 vi.mock('../components/storefront/StorefrontShell', () => ({

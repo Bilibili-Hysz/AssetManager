@@ -25,7 +25,7 @@ vi.mock('./pages/ShareReceivePage', () => ({ default: () => <div>ShareReceivePag
 vi.mock('./pages/AdminPage', () => ({ default: () => <div>AdminPage</div> }));
 vi.mock('./pages/StorefrontPage', () => ({ default: () => <div>StorefrontPage</div> }));
 vi.mock('./pages/SellerProductsPage', () => ({ default: () => <div>SellerProductsPage</div> }));
-vi.mock('./components/storefront/ShopBuyerContext', () => ({
+vi.mock('./stores/ShopBuyerContext', () => ({
   ShopBuyerProvider: ({ children }: { children: React.ReactNode }) => {
     commerceProviderRender();
     return <>{children}</>;

@@ -9,8 +9,9 @@ export function createFilesApi(api: ApiClient) {
       order?: string;
       filter?: string;
       search?: string;
-      summaries?: string;
-    }, signal?: AbortSignal) => api.get<FilesResponse>('files', params as Record<string, string | undefined>, signal),
+      /** Serialized as 'true'/'false' by the client; backend defaults to true. */
+      summaries?: boolean;
+    }, signal?: AbortSignal) => api.get<FilesResponse>('files', params as Record<string, string | number | boolean | undefined>, signal),
 
     summaries: (parent_path: string, paths: string[], signal?: AbortSignal) =>
       api.post<DirectorySummariesResponse>('files/summaries', { parent_path, paths }, signal),

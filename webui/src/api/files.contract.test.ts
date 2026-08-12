@@ -40,14 +40,14 @@ describe('files API contract (non-download paths)', () => {
   it('list forwards browse query params and AbortSignal', () => {
     const { api, get } = setup();
     const signal = new AbortController().signal;
-    api.list({ path: 'projects', sort: 'name', order: 'asc', filter: 'img', search: '猫', summaries: '1' }, signal);
+    api.list({ path: 'projects', sort: 'name', order: 'asc', filter: 'img', search: '猫', summaries: false }, signal);
     expect(get).toHaveBeenCalledWith('files', {
       path: 'projects',
       sort: 'name',
       order: 'asc',
       filter: 'img',
       search: '猫',
-      summaries: '1',
+      summaries: false,
     }, signal);
   });
 

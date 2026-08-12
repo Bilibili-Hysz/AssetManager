@@ -134,9 +134,9 @@ BrowserRouter → AuthProvider → RealtimeProvider → ToastProvider → Downlo
 | # | 问题 | 位置 | 严重度 |
 |---|---|---|---|
 | C1 | **`ProjectItem` 缺 `is_project` 字段**：后端文件列表每条目都发（files.py:93,108），前端类型未声明 → BrowsePage 用 `'is_project' in item` 运行时探测绕过类型（BrowsePage.tsx:398,407） | api.ts:82-96 | ~~高~~ ✅ 已修（2026-08-12）：ProjectItem 补 `is_project?: boolean`，探测简化为 `item?.is_project` |
-| C2 | **幽灵字段**：`view_only/downloadable/password_protected`（ProjectItem:93-95）在后端全库无发送者——旧 web UI 残留超集 | api.ts:93-95,267-269 | 中（误导） |
+| C2 | **幽灵字段**：`view_only/downloadable/password_protected`（ProjectItem:93-95）在后端全库无发送者——旧 web UI 残留超集 | api.ts:93-95,267-269 | 中（维持）：ProjectCard.tsx:59-61 有徽章读取逻辑（值恒 false 不显示）——UI 防御性读取保留，删字段会破坏编译，记录为契约超集 |
 | C3 | **`summaries` 字符串真值语义脆弱**：后端 `files.py:45` `== "true"`（任何非 'true' 皆 False）；测试值 `'1'`（files.contract.test.ts:57）与生产值 `'false'` 都与默认语义无对应 | files.py:45 | 低（运行期无害） |
-| C4 | 类型超集：`ShopBuyerOrdersResponse.total?`（api.ts:625，后端从不发）、`ServerInfo.asset_root_id?`/`total_collections?`/`total_artworks?`（system.py:76-80 不发） | api.ts:12,22-23,625 | 低 |
+| C4 | 类型超集 | api.ts:12,22-23,625 | ~~低~~ ✅ 已修（2026-08-12）：删除 ServerInfo 的 asset_root_id/total_collections/total_artworks（后端无此概念）并简化 useFavorites 库身份；StorefrontBuyerOrdersPage total 改为 `response.total ?? orders.length` fallback（后端 keyset 分页不发总数）；过时注释修正（后端已支持 cursor） |
 
 ### 4.2 架构分层
 
@@ -145,9 +145,9 @@ BrowserRouter → AuthProvider → RealtimeProvider → ToastProvider → Downlo
 | A1 | **hooks 绕过领域模块直接拼端点**：useCommerce.ts 直写 `'shop/catalog'`/`'shop/items'`/`'shop/orders'`/`'shop/stats'`（:199-204,255,295-296）+ 内联宽松类型 `RawShopItem = Partial<ShopItem>`（:7-17），而 shop.ts:38-50 已有 `catalog()` 方法——端点字符串与 DTO 两层重复定义，**类型漂移最大风险点** | useCommerce.ts | ~~高~~ ✅ 已修（2026-08-12）：useCommerce 三 hook 改用 `createShopApi` 领域方法（list/catalog/listOrders/getStats 增补 signal 参数）；宽松类型精确化为 `ShopItemInput`/`ShopOrderInput`（Partial + 防御字段），useCommerceOrders 顺手补 AbortController |
 | A2 | **API 层做 DOM 副作用**：files.ts `download`/`batchDownload` 执行 createObjectURL + link.click + setTimeout revoke（:27-32,44-49），双份复制粘贴——下载触发属 UI 职责 | files.ts:18-54 | ~~中~~ ✅ 已修（2026-08-12）：api 层只返回数据（download→{blob,filename}、batchDownload→Blob）；新增 `src/utils/download.ts#triggerBlobDownload` 持有 DOM 副作用；BrowsePage 两处调用点更新 |
 | A3 | **三个 ApiClient 实例**：AuthContext / SellerAuthContext（有意）/ ShareReceivePage.tsx:14——后者无 onUnauthorized，公开分享页 401 静默不重置会话，语义不一致且无注释 | ShareReceivePage.tsx:14 | ~~中~~ ✅ 已修（2026-08-12）：确认独立 client 为有意设计（分享验证 401 不应重置访客身份），补意图注释 |
-| A4 | **contracts.test.ts 是死代码 fixture**：被 vite.config.ts:32-33 显式排除出测试，文件内注释仍声称"kept dependency-free until the SPA adds a test runner"（:7）——陈旧注释 + 不运行的共享 fixture（projectFileDownloadPath 等无引用方） | contracts.test.ts | 低 |
-| A5 | **notes.ts 内联 DTO**（:3-7 SaveNotesResponse）未入 types/api.ts | notes.ts | 低 |
-| A6 | ShopBuyerContext 放 components/storefront/ 而非 stores/（与另外三个 Context 分居） | components/storefront/ShopBuyerContext.tsx | 低 |
+| A4 | **contracts.test.ts 是死代码 fixture**：被 vite.config.ts:32-33 显式排除出测试，文件内注释仍声称"kept dependency-free until the SPA adds a test runner"（:7）——陈旧注释 + 不运行的共享 fixture（projectFileDownloadPath 等无引用方） | contracts.test.ts | ~~低~~ ✅ 已删（2026-08-12）：确认无任何引用后删除文件 + vite.config exclude 清理 |
+| A5 | **notes.ts 内联 DTO**（:3-7 SaveNotesResponse）未入 types/api.ts | notes.ts | ~~低~~ ✅ 已修（2026-08-12）：移入 types/api.ts Metadata 区块 |
+| A6 | ShopBuyerContext 放 components/storefront/ 而非 stores/（与另外三个 Context 分居） | components/storefront/ShopBuyerContext.tsx | ~~低~~ ✅ 已修（2026-08-12）：移至 stores/ShopBuyerContext.tsx（含测试），9 处 import 同步 |
 
 ### 4.3 数据流
 
@@ -160,7 +160,7 @@ BrowserRouter → AuthProvider → RealtimeProvider → ToastProvider → Downlo
 | D5 | **无 AbortController 的 hook**：useCommerceOrders（:282-327）、useSearch（:26-37）卸载后请求仍在飞（仅序列号防 setState） | useCommerce.ts, useSearch.ts | 低 |
 | D6 | **useCommerceCatalogPage 分页双源**：URL searchParams 是页面源，hook 内 page/pageSize 另存一份（:178-179,207-208），StorefrontProductsPage 只用 URL，hook 内 setPage 死写 | useCommerce.ts | 低 |
 | D7 | 下载后 refreshQuota 与 guardDownload 预取叠加（BrowsePage:434,491）→ 一次点击 2 次 quota 请求 | BrowsePage.tsx | 低 |
-| D8 | WebSocket 无心跳 ping，半死连接无法快速重连 | useWebSocket.ts | 低 |
+| D8 | WebSocket 无心跳 ping，半死连接无法快速重连 | useWebSocket.ts | ✅ 澄清（2026-08-12）：**后端已有**心跳检测（lan/ws.py `_heartbeat_cycle` 协议级 ping/pong + 超时清理），半死连接由服务端关闭触发前端 onclose 重连——前端无需主动 ping |
 
 ### 4.4 认证/安全
 

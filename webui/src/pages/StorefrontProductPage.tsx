@@ -11,7 +11,7 @@ import { canonicalizeShopPath, toStorefrontProduct, useCommerceCatalog } from '.
 import { isApiError } from '../api/errors';
 import { useAuth } from '../hooks/useAuth';
 import { createShopApi } from '../api/shop';
-import { useShopBuyer } from '../components/storefront/ShopBuyerContext';
+import { useShopBuyer } from '../stores/ShopBuyerContext';
 
 export interface StorefrontProductPageProps { product?: StorefrontProduct; }
 

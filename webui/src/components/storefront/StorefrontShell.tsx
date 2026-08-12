@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuthContext } from '../../stores/AuthContext';
 import { useI18n } from '../../hooks/useI18n';
 import './Storefront.css';
-import { useShopBuyer } from './ShopBuyerContext';
+import { useShopBuyer } from '../../stores/ShopBuyerContext';
 
 interface StorefrontShellProps {
   children: ReactNode;

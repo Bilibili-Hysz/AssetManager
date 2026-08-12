@@ -17,7 +17,7 @@ const { buyerState } = vi.hoisted(() => ({
 const api = { buildUrl: (path: string) => '/api/' + path };
 
 vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ api }) }));
-vi.mock('../components/storefront/ShopBuyerContext', () => ({ useShopBuyer: () => buyerState }));
+vi.mock('../stores/ShopBuyerContext', () => ({ useShopBuyer: () => buyerState }));
 vi.mock('../components/storefront/StorefrontShell', () => ({
   StorefrontShell: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));

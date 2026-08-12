@@ -44,7 +44,7 @@ describe('useProjects', () => {
     renderHook(() => useProjects('one'));
 
     await waitFor(() => expect(list).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'one', summaries: 'false' }),
+      expect.objectContaining({ path: 'one', summaries: false }),
       expect.any(AbortSignal),
     ));
   });

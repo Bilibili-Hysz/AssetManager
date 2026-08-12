@@ -9,7 +9,6 @@ export interface ServerInfo {
   version: string;
   share_name: string;
   library_root: string;
-  asset_root_id?: string;
   auth_enabled: boolean;
   auth_mode: 'none' | 'password' | 'key' | 'user';
   theme_color: string;
@@ -19,8 +18,6 @@ export interface ServerInfo {
     total_projects: number;
     total_size: number;
     total_size_fmt: string;
-    total_collections?: number;
-    total_artworks?: number;
   };
   principal?: SessionPrincipal;
   capabilities?: Capabilities;
@@ -288,6 +285,12 @@ export interface Metadata {
   tags: string[];
   notes: string;
   urls: string[];
+}
+
+export interface SaveNotesResponse {
+  ok: boolean;
+  path: string;
+  notes: string;
 }
 
 // ============ Thumbnails ============

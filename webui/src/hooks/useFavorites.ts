@@ -88,10 +88,9 @@ export function useFavorites() {
   showToastRef.current = showToast;
   tRef.current = t;
   const favoritesApi = useMemo(() => createFavoritesApi(api), [api]);
-  const libraryIdentity = [
-    serverInfo?.asset_root_id?.trim(),
-    serverInfo?.library_root?.trim() || serverInfo?.share_name?.trim(),
-  ].filter(Boolean).join('|') || 'unknown-library';
+  const libraryIdentity = serverInfo?.library_root?.trim()
+    || serverInfo?.share_name?.trim()
+    || 'unknown-library';
   const cacheKey = `${STORAGE_KEY}:${encodeURIComponent([
     window.location.origin,
     libraryIdentity,

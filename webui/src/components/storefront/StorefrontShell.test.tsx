@@ -12,7 +12,7 @@ const { refreshCart, refreshWishlist } = vi.hoisted(() => ({
 vi.mock('../../stores/AuthContext', () => ({
   useAuthContext: () => ({ isAuthenticated: false, user: null, logout: vi.fn() }),
 }));
-vi.mock('./ShopBuyerContext', () => ({
+vi.mock('../../stores/ShopBuyerContext', () => ({
   useShopBuyer: () => ({ cart: null, wishlist: [], refreshCart, refreshWishlist }),
 }));
 vi.mock('../../hooks/useI18n', () => ({

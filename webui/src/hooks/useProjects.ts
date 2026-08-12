@@ -48,7 +48,7 @@ export function useProjects(initialPath = ''): UseProjectsReturn {
     setIsLoading(true);
     setError(null);
     filesApi.list(
-      { path: currentPath || undefined, sort: sort.sort, order: sort.order, summaries: 'false' },
+      { path: currentPath || undefined, sort: sort.sort, order: sort.order, summaries: false },
       controller.signal,
     )
       .then(response => {

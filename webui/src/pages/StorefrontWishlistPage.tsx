@@ -2,7 +2,7 @@ import { ArrowLeft, Heart, ImageIcon, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { StorefrontShell } from '../components/storefront/StorefrontShell';
-import { useShopBuyer } from '../components/storefront/ShopBuyerContext';
+import { useShopBuyer } from '../stores/ShopBuyerContext';
 import { useAuth } from '../hooks/useAuth';
 import { assetThumbnailUrl } from '../hooks/useCommerce';
 import { useI18n } from '../hooks/useI18n';

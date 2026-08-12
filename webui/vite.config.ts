@@ -33,6 +33,5 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.{ts,tsx}'],
-    exclude: ['src/api/contracts.test.ts'],
   },
 });

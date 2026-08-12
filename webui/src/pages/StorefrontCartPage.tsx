@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError } from '../api/errors';
 import { StorefrontShell } from '../components/storefront/StorefrontShell';
 import { formatMoney } from '../components/storefront/types';
-import { useShopBuyer } from '../components/storefront/ShopBuyerContext';
+import { useShopBuyer } from '../stores/ShopBuyerContext';
 import { useAuth } from '../hooks/useAuth';
 import { assetThumbnailUrl } from '../hooks/useCommerce';
 import { useI18n } from '../hooks/useI18n';

@@ -47,8 +47,8 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ api: mocks.api, ...mocks.auth }) }));
-vi.mock('../../api/shop', () => ({ createShopApi: () => mocks.shop }));
+vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ api: mocks.api, ...mocks.auth }) }));
+vi.mock('../api/shop', () => ({ createShopApi: () => mocks.shop }));
 
 function wrapper({ children }: { children: React.ReactNode }) {
   return <ShopBuyerProvider>{children}</ShopBuyerProvider>;

@@ -8,14 +8,14 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { createShopApi } from '../../api/shop';
-import { useAuth } from '../../hooks/useAuth';
+import { createShopApi } from '../api/shop';
+import { useAuth } from '../hooks/useAuth';
 import type {
   ShopBuyerMergeResponse,
   ShopCart,
   ShopCartCheckoutResponse,
   ShopWishlistItem,
-} from '../../types/api';
+} from '../types/api';
 
 interface ShopBuyerContextValue {
   cart: ShopCart | null;

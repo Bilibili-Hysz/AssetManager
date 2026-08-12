@@ -1,10 +1,5 @@
 import type { ApiClient } from './client';
-
-export interface SaveNotesResponse {
-  ok: boolean;
-  path: string;
-  notes: string;
-}
+import type { SaveNotesResponse } from '../types/api';
 
 export function createNotesApi(api: ApiClient) {
   return {

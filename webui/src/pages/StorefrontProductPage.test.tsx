@@ -54,7 +54,7 @@ vi.mock('../hooks/useCommerce', () => ({ useCommerceCatalog: () => catalogState,
 } }));
 vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ api }) }));
 vi.mock('../api/shop', () => ({ createShopApi: () => shopApi }));
-vi.mock('../components/storefront/ShopBuyerContext', () => ({ useShopBuyer: () => buyerState }));
+vi.mock('../stores/ShopBuyerContext', () => ({ useShopBuyer: () => buyerState }));
 vi.mock('../components/storefront/StorefrontShell', () => ({
   StorefrontShell: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));

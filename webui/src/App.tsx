@@ -34,7 +34,7 @@ const SellerOrdersPage = lazy(() => import('./pages/SellerOrdersPage'));
 const SellerProductsPage = lazy(() => import('./pages/SellerProductsPage'));
 const SellerSettingsPage = lazy(() => import('./pages/SellerSettingsPage'));
 import { SellerAccessGate } from './components/storefront/SellerAccessGate';
-import { ShopBuyerProvider } from './components/storefront/ShopBuyerContext';
+import { ShopBuyerProvider } from './stores/ShopBuyerContext';
 
 type CommerceFeature = 'commerce' | 'seller' | 'quota';
 

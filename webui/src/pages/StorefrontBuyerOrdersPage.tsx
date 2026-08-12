@@ -45,16 +45,15 @@ export default function StorefrontBuyerOrdersPage() {
     let cancelled = false;
     setLoading(true);
     setLoadFailed(false);
-    // Pagination note: listBuyerOrders caps each request at ORDER_LIMIT (50)
-    // orders and accepts no cursor/offset parameter, even though the response
-    // can carry a next_cursor. A "load more" flow would require the backend to
-    // accept a cursor on shop/buyer/orders; until then the frontend reloads
-    // the first page (and a retry is offered when the load fails).
+    // Pagination note: the backend supports keyset pagination on
+    // shop/buyer/orders via the cursor query parameter and returns a
+    // next_cursor when more rows exist. It does not return a total count,
+    // so the counter falls back to the fetched page size.
     void shop.listBuyerOrders(status || undefined, ORDER_LIMIT)
       .then(response => {
         if (cancelled) return;
         setOrders(response.orders ?? []);
-        setTotal(response.total);
+        setTotal(response.total ?? response.orders?.length);
         setNextCursor(response.next_cursor ?? null);
         setLoadMoreFailed(false);
       })
