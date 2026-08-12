@@ -211,9 +211,13 @@ class ShopService:
         gallery = metadata.pop("image_paths", [])
         result["metadata"] = metadata
         result["gallery_paths"] = [str(x).replace("\\", "/") for x in gallery] if isinstance(gallery, list) else []
+        # The database stores enabled as 0/1; the public API exposes the
+        # boolean the frontend ShopItem type declares. Missing defaults to
+        # True, matching the historical status derivation below.
+        result["enabled"] = bool(result.get("enabled", True))
         stored_status = metadata.get("status")
         result["status"] = (stored_status if stored_status in {"active", "archived", "draft"}
-                             else "active" if bool(result.get("enabled", True)) else "archived")
+                             else "active" if result["enabled"] else "archived")
         return result
 
     def _publish(self, *paths: str) -> None:

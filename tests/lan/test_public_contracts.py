@@ -147,6 +147,16 @@ def test_golden_fixture_exact_equality():
     assert StatsResponse.from_record(expected["records"]["stats"]).to_dict() == expected["responses"]["stats"]
 
 
+def test_shop_item_public_conversion_matches_golden():
+    """ShopService._public_item normalizes paths, extracts gallery images from
+    metadata, and derives status — the exact shape the frontend ShopItem mirrors."""
+    from AssetsManager.application.shop_service import ShopService
+
+    expected = json.loads(CONTRACTS.read_text(encoding="utf-8"))
+    converted = ShopService._public_item(expected["records"]["shop_item"])
+    assert converted == expected["responses"]["shop_item"]
+
+
 @pytest.mark.anyio
 async def test_route_responses_are_normalized_and_keep_envelopes(tmp_path, monkeypatch):
     from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app

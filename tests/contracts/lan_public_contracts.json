@@ -82,6 +82,25 @@
         "total_size": 0,
         "total_size_fmt": "0 B"
       }
+    },
+    "shop_item": {
+      "id": 7,
+      "path": "packs\\hero.zip",
+      "title": "Hero Pack",
+      "description": "Full pack",
+      "price_cents": 1250,
+      "currency": "CNY",
+      "cover_path": "packs\\cover.png",
+      "enabled": true,
+      "created_at": 100,
+      "updated_at": 200,
+      "metadata": {
+        "image_paths": [
+          "packs\\a.png",
+          "packs\\b.png"
+        ],
+        "status": "active"
+      }
     }
   },
   "responses": {
@@ -169,6 +188,26 @@
         "total_size": 0,
         "total_size_fmt": "0 B"
       }
+    },
+    "shop_item": {
+      "id": 7,
+      "path": "packs/hero.zip",
+      "title": "Hero Pack",
+      "description": "Full pack",
+      "price_cents": 1250,
+      "currency": "CNY",
+      "cover_path": "packs/cover.png",
+      "enabled": true,
+      "created_at": 100,
+      "updated_at": 200,
+      "metadata": {
+        "status": "active"
+      },
+      "gallery_paths": [
+        "packs/a.png",
+        "packs/b.png"
+      ],
+      "status": "active"
     }
   }
 }

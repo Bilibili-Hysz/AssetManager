@@ -1,6 +1,6 @@
 import contracts from '../../../tests/contracts/lan_public_contracts.json';
 import { describe, expect, it } from 'vitest';
-import type { InviteResponse, ProjectItem, ServerInfo, StatsResponse, Tag, TreeItem, UserResponse } from '../types/api';
+import type { InviteResponse, ProjectItem, ServerInfo, ShopItem, StatsResponse, Tag, TreeItem, UserResponse } from '../types/api';
 
 describe('LAN public DTO contracts', () => {
   it('normalizes users and invites without repository fields', () => {
@@ -63,5 +63,20 @@ describe('LAN public DTO contracts', () => {
     expect(info).not.toHaveProperty('total_artworks');
     expect(info.library_stats).toEqual({ total_projects: 0, total_size: 0, total_size_fmt: '0 B' });
     expect(info.feature_flags).toEqual({ commerce: false, seller: false, quota: false });
+  });
+
+  it('anchors the shop item shape to the backend _public_item golden', () => {
+    // ShopService._public_item normalizes paths, extracts gallery_paths from
+    // metadata and derives status; the golden locks that exact conversion and
+    // this anchors every emitted key on the frontend ShopItem type.
+    const item = contracts.responses.shop_item as ShopItem;
+    expect(Object.keys(item).sort()).toEqual([
+      'cover_path', 'created_at', 'currency', 'description', 'enabled',
+      'gallery_paths', 'id', 'metadata', 'path', 'price_cents', 'status',
+      'title', 'updated_at',
+    ]);
+    expect(item.gallery_paths).toEqual(['packs/a.png', 'packs/b.png']);
+    expect(item.path).toBe('packs/hero.zip');
+    expect(item.status).toBe('active');
   });
 });
