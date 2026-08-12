@@ -4,7 +4,7 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库（元数据、标签、缩略图），也可以通过局域网内的浏览器远程浏览和下载资产。
 
-> 当前审查证据（2026-08-11，本机 Windows / Python 3.13）：最近一次 Python 全量运行结果为 **2952 passed, 7 skipped, 0 failed**；`ruff check AssetsManager tests scripts run.py` **全绿**；完整 Pyright 0 errors（CI 白名单 scope）；compileall 通过；默认 WebUI 浏览器 E2E 共 30 个测试，28 passed、2 skipped（真实后端用例无环境变量时跳过）；WebUI typecheck/build 通过。远程 Python 3.12/3.13/3.14 矩阵、clean checkout/Windows package smoke 和真实后端 Commerce 验收仍需分别看待，不据此宣称整个项目完成。完整审查文档集见 `docs/full-review/`（含模块地图、数据流、事件系统、审查结果与验证基线）。
+> 当前审查证据（2026-08-13，本机 Windows / Python 3.14.3）：最近一次 Python 全量运行结果为 **3434 passed, 7 skipped, 0 failed**；`ruff check AssetsManager tests scripts run.py` **全绿**；compileall 通过；WebUI 单测 **658 passed**、`typecheck`/`build` 通过；默认 WebUI 浏览器 E2E 共 30 个测试，**28 passed、2 skipped**（真实后端用例无环境变量时跳过）。Pyright 在本机 Python 3.14 + pyright 1.1.410 下有 23 个既有类型错误（typeshed/Qt stub 版本漂移，非本轮变更引入），3.13 下的 0 errors 声明未在本机复核。远程 Python 3.12/3.13/3.14 矩阵、clean checkout/Windows package smoke 和真实后端 Commerce 验收仍需分别看待，不据此宣称整个项目完成。完整审查文档集见 `docs/full-review/`（含模块地图、数据流、事件系统、审查结果与验证基线）。
 
 
 > **2026-08-11 更新**：完成 UI/SVG 修复轮（13 项审计 + SVG 化 + 语义色体系 + 菜单栏）、P0 高危轮（15+4）、中危轮（D1/D2/E/F/G1/G2）与 P1 轮（M6a/M9/M6c，42 项清单）——含分享密码强度与爆破防护、投递令牌 rotate 配额守恒与撤销、匿名配额 cookie 身份、备份上限与并发检测、令牌 nonce 等。所有改动处于工作区**未提交**状态（529 条变更），未执行 stage、commit、reset 或 clean。
@@ -76,7 +76,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 | Python | 3.12/3.13/3.14 | 主语言（CI 矩阵；本机 3.14） |
 | PySide6 | >=6.6,<7 | 桌面 UI 框架 (Qt 6) |
 | aiohttp | >=3.9 | 异步 HTTP 服务器（可选依赖） |
-| SQLite3 | 内置 | 数据库 (WAL 模式，迁移 v1-v23) |
+| SQLite3 | 内置 | 数据库 (WAL 模式，迁移 v1-v26) |
 | Pillow | >=10.0 | 图片处理（缩略图/EXIF/模糊） |
 | segno | >=1.6 | QR 码生成 |
 | send2trash / requests | — | 回收站删除 / HTTP 工具 |
@@ -110,9 +110,9 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 | 组件 | 说明 |
 |------|------|
 | DatabaseManager | 每库独立连接 + 身份标记 + 读写门（_WriteGate）+ 归属校验 |
-| db_migrations | 版本化迁移 v1-v23（SAVEPOINT 原子 + 契约回溯校验） |
+| db_migrations | 版本化迁移 v1-v26（SAVEPOINT 原子 + 契约回溯校验） |
 | schema_defs | 表 DDL 契约（SchemaObjectContract 校验器，fail-closed） |
-| repositories/ | **15 个 SQL 仓库**（tag/metadata/thumbnail/favorite/share/auth/asset_index/plugin_metadata/shop/order/quota/free_download_quota/seller_profile/storefront_analytics/shop_buyer）——统一 for_session 绑定 + SAVEPOINT 事务 + CAS |
+| repositories/ | **16 个 SQL 仓库**（tag/metadata/thumbnail/favorite/share/auth/asset_index/plugin_metadata/shop/order/quota/free_download_quota/seller_profile/storefront_analytics/shop_buyer/gallery_home）——统一 for_session 绑定 + SAVEPOINT 事务 + CAS |
 | LibraryLock | 跨进程库锁（QLockFile 引用计数，staleLockTime(0)） |
 | json_store / settings | JSON 原子持久化（mkstemp+fsync+os.replace） |
 
@@ -215,7 +215,7 @@ AssetsManager_old-bak/
 │   │
 │   ├── core/                   # 基础设施层（33 模块 + plugins/4）
 │   │   ├── database.py         # DatabaseManager（连接/身份标记/读写门）
-│   │   ├── db_migrations.py    # 数据库迁移 v1-v23
+│   │   ├── db_migrations.py    # 数据库迁移 v1-v26
 │   │   ├── schema_defs.py      # 表 DDL 契约 + 校验器
 │   │   ├── settings.py / config_migrator.py / json_store.py
 │   │   ├── themes.py / theme_loader.py / icons.py / bg_effects.py
@@ -235,7 +235,7 @@ AssetsManager_old-bak/
 │   │   ├── errors.py           # DomainError 层级
 │   │   ├── asset.py / auth.py / library.py / share.py
 │   │
-│   ├── repositories/           # 数据访问层（15 个 SQL 仓库）
+│   ├── repositories/           # 数据访问层（16 个 SQL 仓库）
 │   │   ├── tag/metadata/thumbnail/favorite/share/auth_repository.py
 │   │   ├── asset_index_repository.py
 │   │   ├── plugin_metadata_repository.py
@@ -284,7 +284,7 @@ AssetsManager_old-bak/
 │   ├── e2e/                    # Playwright 5 spec（30 用例）
 │   └── dist/                   # 构建产物（打进 PyInstaller bundle）
 │
-├── tests/                      # 本机复核基线（Windows：2952 passed, 7 skipped）
+├── tests/                      # 本机复核基线（Windows：3434 passed, 7 skipped）
 │   ├── core/ unit/ integration/ desktop/ lan/
 │   ├── performance/ perf/ e2e/ contracts/ fixtures/
 │
@@ -362,7 +362,7 @@ python -m compileall -q AssetsManager tests
 python -m pytest -q -p no:cacheprovider
 ```
 
-本机复核状态（2026-08-11，Windows / Python 3.13）：**Python 全量回归 2952 passed, 7 skipped, 0 failed**；**完整 Pyright 0 errors**（CI 白名单 scope）；**`ruff check AssetsManager tests scripts run.py` 全绿**；**compileall 通过**。默认浏览器 E2E 共 30 个测试，当前本机 **28 passed、2 skipped**；其中 Mock/Shell 子集为 12 passed，真实后端用例在未配置环境变量时跳过。7 个 Python skip 包括 Windows symlink 权限限制与历史 multiprocessing Queue 终止 draft。远程 CI 的 Python 3.12/3.13/3.14 矩阵仍是独立门禁；本轮 WebUI `typecheck` 与 `build` 通过。
+本机复核状态（2026-08-13，Windows / Python 3.14.3）：**Python 全量回归 3434 passed, 7 skipped, 0 failed**；**`ruff check AssetsManager tests scripts run.py` 全绿**；**compileall 通过**。默认浏览器 E2E 共 30 个测试，当前本机 **28 passed、2 skipped**；其中 Mock/Shell 子集为 12 passed，真实后端用例在未配置环境变量时跳过。7 个 Python skip 包括 Windows symlink 权限限制与历史 multiprocessing Queue 终止 draft。Pyright 在本机 Python 3.14 + pyright 1.1.410 下有 23 个既有类型错误（typeshed/Qt stub 版本漂移，非本轮变更引入），3.13 下的 0 errors 声明未在本机复核。远程 CI 的 Python 3.12/3.13/3.14 矩阵仍是独立门禁；本轮 WebUI 单测 `658 passed`、`typecheck` 与 `build` 通过。
 > **G17 边界：** Reconciliation queue 当前支持单 library、单 application owner 下的 stop-the-world cutover、lease recovery 与 stale-worker protection；不支持旧版/新版应用同时持有同一 library 的 rolling upgrade。详细证据见 `docs/compose/reports/g17-stop-the-world-cutover-release-ownership-checklist-2026-08-08.md`。
 
 ### Cython 编译加速
@@ -620,7 +620,7 @@ tests/
 ### 运行测试
 
 ```bash
-# 全部测试（基线 2952 passed, 7 skipped）
+# 全部测试（基线 3434 passed, 7 skipped）
 python -m pytest -q -p no:cacheprovider
 
 # 特定目录
