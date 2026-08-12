@@ -157,6 +157,20 @@ def test_shop_item_public_conversion_matches_golden():
     assert converted == expected["responses"]["shop_item"]
 
 
+def test_shop_order_conversions_match_golden():
+    """OrderService buyer/seller projections: delivery_available derivation,
+    safe quantity clamping, unit price enrichment, and field allowlisting
+    (unknown record fields must never leak into the public DTO)."""
+    from AssetsManager.application.order_service import OrderService
+
+    expected = json.loads(CONTRACTS.read_text(encoding="utf-8"))
+    buyer = OrderService._buyer_history_order(expected["records"]["shop_buyer_order"])
+    assert buyer == expected["responses"]["shop_buyer_order"]
+    seller = OrderService._seller_order(expected["records"]["shop_seller_order"])
+    assert seller == expected["responses"]["shop_seller_order"]
+    assert "dropped_secret" not in seller
+
+
 @pytest.mark.anyio
 async def test_route_responses_are_normalized_and_keep_envelopes(tmp_path, monkeypatch):
     from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app
