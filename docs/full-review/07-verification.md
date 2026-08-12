@@ -66,9 +66,11 @@
 | webui | ubuntu | npm ci + audit + test + typecheck + build |
 | package-smoke | windows | webui build → PyInstaller（外部 cwd）→ check_package_contents.py → `--package-smoke`（Qt/图标）→ 15s 冻结运行冒烟 |
 | windows-regression | windows | `-k` 定向（library_lock/path_guard/lan_server/share_manager/undo 等平台相关） |
-| python-browser-e2e | windows | webui build + tests/e2e/test_webui_realtime_acceptance.py（Chromium 真实 LAN） |
-| test | ubuntu | Python 3.12/3.13/3.14 矩阵（3.14 continue-on-error）：compileall + 全量 pytest |
+| python-browser-e2e | windows | webui build + tests/e2e/test_webui_realtime_acceptance.py（Chromium 真实 LAN）；`-m e2e` 覆盖 ini 默认排除（2026-08-12 修复：此前 addopts `not e2e` 收集 0 测试） |
+| test | ubuntu | Python 3.12/3.13/3.14 矩阵（3.14 continue-on-error）：compileall + 全量 pytest（xdist `-n auto --dist worksteal`；2026-08-12 修复 requirements-dev 缺 pytest-xdist 导致 CI 必失败） |
 | webui-e2e | ubuntu | Playwright chromium + npm run test:e2e（vite preview） |
+
+**release.yml**（2026-08-12 新增）：`v*` tag push → Windows PyInstaller 打包（含 webui dist）→ check_package_contents + `--package-smoke` → gh CLI 上传 zip 到 GitHub Release。
 
 全部 `QT_QPA_PLATFORM=offscreen`。
 
