@@ -12,6 +12,14 @@ interface UseSearchReturn {
   clear: () => void;
 }
 
+/**
+ * In-flight dedup across mounted useSearch instances: the header and the
+ * command palette can both be visible, so typing once must not fire two
+ * identical quick-search requests. Instances with the same query share the
+ * promise; each still guards its own state with generations.
+ */
+let sharedSearchRequest: { query: string; promise: Promise<{ results?: SearchResult[] }> } | null = null;
+
 export function useSearch(): UseSearchReturn {
   const { api, identityGeneration } = useAuth();
   const quickSearchApi = useMemo(() => createQuickSearchApi(api), [api]);
@@ -24,14 +32,21 @@ export function useSearch(): UseSearchReturn {
   const identityGenerationRef = useRef(identityGeneration);
 
   const searchNow = useCallback((value: string, generation: number) => {
-    quickSearchApi.search(value.trim())
-      .then(res => {
-        if (generation === generationRef.current) setResults(res.results ?? []);
-      })
-      .catch(() => {
-        if (generation === generationRef.current) setResults([]);
-      })
+    const trimmed = value.trim();
+    if (sharedSearchRequest && sharedSearchRequest.query === trimmed) {
+      sharedSearchRequest.promise
+        .then(res => { if (generation === generationRef.current) setResults(res.results ?? []); })
+        .catch(() => { if (generation === generationRef.current) setResults([]); })
+        .finally(() => { if (generation === generationRef.current) setIsSearching(false); });
+      return;
+    }
+    const promise = quickSearchApi.search(trimmed);
+    sharedSearchRequest = { query: trimmed, promise };
+    promise
+      .then(res => { if (generation === generationRef.current) setResults(res.results ?? []); })
+      .catch(() => { if (generation === generationRef.current) setResults([]); })
       .finally(() => {
+        if (sharedSearchRequest?.promise === promise) sharedSearchRequest = null;
         if (generation === generationRef.current) setIsSearching(false);
       });
   }, [quickSearchApi]);

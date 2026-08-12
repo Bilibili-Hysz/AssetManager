@@ -7,6 +7,15 @@ import type { Capabilities, ServerInfo, SessionPrincipal } from '../types/api';
 
 const THUMBNAIL_CACHE_STORAGE_KEY = 'lan_thumb_cache';
 
+/**
+ * A failed login/registration attempt answers 401 through the same client as
+ * a session-expired request elsewhere; resetting identity on those would log
+ * the user out (and drop the thumbnail cache) for a mere bad password. The
+ * client passes the failing path, so only non-auth endpoints trigger the
+ * full identity reset.
+ */
+const AUTH_401_PATHS = new Set(['auth/login', 'auth/register', 'auth/verify_key']);
+
 const emptyCapabilities: Capabilities = {
   browse: false, preview: false, download: false, upload: false,
   manage_links: false, manage_users: false, settings: false, realtime: false,
@@ -90,14 +99,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch { /* ignore storage failures */ }
   }, []);
 
-  const handleUnauthorized = useCallback(() => {
-    // A8 (deferred): api/client.ts fires onUnauthorized?.() for every 401 with
-    // no endpoint context (see request(): `onUnauthorized?.()` before throwing
-    // UnauthorizedError), so this callback cannot distinguish a failed login
-    // (auth/login, auth/verify_key) from a session-expired 401 elsewhere — both
-    // trigger this full identity reset. Distinguishing them requires the client
-    // to pass the request path through onUnauthorized, which lives in Group B's
-    // file (src/api/client.ts); deferred until that change is allowed.
+  const handleUnauthorized = useCallback((path: string) => {
+    if (AUTH_401_PATHS.has(path)) return;
     generationRef.current += 1;
     inFlightMeRef.current = null;
     clearIdentityStorage();

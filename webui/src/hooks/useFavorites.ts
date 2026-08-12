@@ -9,6 +9,16 @@ import { useInvalidation } from './useInvalidation';
 const STORAGE_KEY = 'am_favorites_cache:v2';
 const FAVORITES_DOMAINS = ['favorites'] as const;
 
+/**
+ * In-flight request dedup across mounted useFavorites instances: the sidebar
+ * and a gallery page each mount their own instance and refresh together on
+ * mount/invalidation, so sharing the promise keeps a single GET /api/favorites
+ * on the wire. Each instance still guards its own state updates with
+ * generations, and the shared request is deliberately not aborted by any
+ * single instance (stale responses are dropped by the guards instead).
+ */
+let sharedFavoritesRequest: Promise<{ favorites: unknown[] }> | null = null;
+
 function normalizePaths(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -96,7 +106,6 @@ export function useFavorites() {
   const itemsRef = useRef(items);
   const cacheKeyRef = useRef(cacheKey);
   const refreshGenerationRef = useRef(0);
-  const refreshControllerRef = useRef<AbortController | null>(null);
   const mutationGenerationRef = useRef(0);
   const pathMutationGenerationRef = useRef(new Map<string, number>());
   const pendingMutationsRef = useRef(new Set<number>());
@@ -121,16 +130,14 @@ export function useFavorites() {
     const mutationGeneration = mutationGenerationRef.current;
     const contextGeneration = contextGenerationRef.current;
     const requestCacheKey = cacheKeyRef.current;
-    refreshControllerRef.current?.abort();
-    const controller = new AbortController();
-    refreshControllerRef.current = controller;
     setLoading(true);
     setError(null);
 
     try {
-      const response = await favoritesApi.list(controller.signal);
-      if (controller.signal.aborted
-        || generation !== refreshGenerationRef.current
+      const response = await (sharedFavoritesRequest ??= favoritesApi
+        .list()
+        .finally(() => { sharedFavoritesRequest = null; }));
+      if (generation !== refreshGenerationRef.current
         || mutationGeneration !== mutationGenerationRef.current
         || pendingMutationsRef.current.size > 0
         || contextGeneration !== contextGenerationRef.current
@@ -140,16 +147,14 @@ export function useFavorites() {
       updateItems(favorites);
       setError(null);
     } catch (caught) {
-      if (controller.signal.aborted
-        || isAbortError(caught)
+      if (isAbortError(caught)
         || generation !== refreshGenerationRef.current
         || contextGeneration !== contextGenerationRef.current) return;
       const message = tRef.current('gallery.favorites_load_failed');
       setError(message);
       showToastRef.current(message, 'error');
     } finally {
-      if (!controller.signal.aborted
-        && generation === refreshGenerationRef.current
+      if (generation === refreshGenerationRef.current
         && contextGeneration === contextGenerationRef.current) {
         setLoading(false);
       }
@@ -160,7 +165,6 @@ export function useFavorites() {
     contextGenerationRef.current += 1;
     refreshGenerationRef.current += 1;
     mutationGenerationRef.current += 1;
-    refreshControllerRef.current?.abort();
     for (const controller of mutationControllersRef.current) controller.abort();
     mutationControllersRef.current.clear();
     cacheKeyRef.current = cacheKey;
@@ -174,7 +178,6 @@ export function useFavorites() {
     return () => {
       contextGenerationRef.current += 1;
       refreshGenerationRef.current += 1;
-      refreshControllerRef.current?.abort();
       for (const controller of mutationControllersRef.current) controller.abort();
       mutationControllersRef.current.clear();
     };
@@ -183,6 +186,21 @@ export function useFavorites() {
   useInvalidation(FAVORITES_DOMAINS, () => {
     void refresh();
   });
+
+  // Other tabs write the same localStorage key; 'storage' events fire only
+  // cross-tab, so each mounted instance stays in sync with the latest
+  // favorites without another network round-trip.
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== cacheKeyRef.current) return;
+      const latest = readCache(cacheKeyRef.current);
+      const current = pathsRef.current;
+      if (current.length === latest.length && current.every((path, index) => path === latest[index])) return;
+      updatePaths(latest);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [updatePaths]);
 
   const setFavorite = useCallback((favoritePath: string, favorite: boolean) => {
     const path = favoritePath.trim();
@@ -201,7 +219,6 @@ export function useFavorites() {
     pathMutationGenerationRef.current.set(path, generation);
     pendingMutationsRef.current.add(generation);
     refreshGenerationRef.current += 1;
-    refreshControllerRef.current?.abort();
     setLoading(false);
     setError(null);
     updatePaths(favorite

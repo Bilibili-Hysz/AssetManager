@@ -11,35 +11,21 @@ function setup() {
 }
 
 describe('files API contract (non-download paths)', () => {
-  it('downloads single files through the blob path with an object URL', async () => {
+  it('downloads single files through the blob path and returns data', async () => {
     const { buildUrl } = setup();
     const getBlobWithMetadata = vi.fn().mockResolvedValue({
       blob: new Blob(['data'], { type: 'application/octet-stream' }),
       filename: 'hero.png',
     });
-    const click = vi.fn();
-    const fakeLink = { href: '', download: '', click, remove: vi.fn() };
-    const appendChild = vi.fn();
-    vi.stubGlobal('window', {
-      URL: { createObjectURL: vi.fn(() => 'blob:dl-1'), revokeObjectURL: vi.fn() },
-      setTimeout: (cb: () => void) => cb(),
-    });
-    vi.stubGlobal('document', {
-      body: { appendChild },
-      createElement: vi.fn(() => fakeLink),
-    });
 
-    try {
-      const apiWithBlob = createFilesApi({ getBlobWithMetadata } as unknown as ApiClient);
-      await apiWithBlob.download('assets/hero.png');
+    const apiWithBlob = createFilesApi({ getBlobWithMetadata } as unknown as ApiClient);
+    const result = await apiWithBlob.download('assets/hero.png');
 
-      expect(getBlobWithMetadata).toHaveBeenCalledWith('download/assets%2Fhero.png', undefined, undefined);
-      expect(click).toHaveBeenCalledTimes(1);
-      expect(fakeLink.download).toBe('hero.png');
-      expect(appendChild).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    expect(getBlobWithMetadata).toHaveBeenCalledWith('download/assets%2Fhero.png', undefined, undefined);
+    expect(result.filename).toBe('hero.png');
+    expect(result.blob.size).toBe(4);
+    // The api layer must not touch the DOM; triggerBlobDownload lives in
+    // src/utils/download.ts and owns the save-dialog side effects.
     expect(buildUrl).not.toHaveBeenCalled();
   });
 

@@ -107,7 +107,7 @@ describe('useFavorites', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.items).toEqual([collection]);
     expect(result.current.isFavorite('collection')).toBe(true);
-    expect(mocks.list).toHaveBeenCalledWith(expect.any(AbortSignal));
+    expect(mocks.list).toHaveBeenCalledWith();  // shared in-flight request, no per-instance signal
     const storageKey = localStorage.key(0);
     expect(storageKey).toBeTruthy();
     expect(decodeURIComponent(storageKey!)).toContain('library-root-id');

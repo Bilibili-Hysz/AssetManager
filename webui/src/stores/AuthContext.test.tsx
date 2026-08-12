@@ -11,7 +11,7 @@ const info: ServerInfo = {
 };
 const getInfo = vi.fn().mockResolvedValue(info);
 const me = vi.fn();
-let onUnauthorized: (() => void) | undefined;
+let onUnauthorized: ((path: string) => void) | undefined;
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -24,7 +24,7 @@ function deferred<T>() {
 }
 
 vi.mock('../api/client', () => ({
-  createApiClient: (options: { onUnauthorized?: () => void }) => {
+  createApiClient: (options: { onUnauthorized?: (path: string) => void }) => {
     onUnauthorized = options.onUnauthorized;
     return {};
   },
@@ -200,11 +200,29 @@ describe('AuthProvider', () => {
     const initialGeneration = result.current.identityGeneration;
     sessionStorage.setItem('lan_thumb_cache', JSON.stringify({ 'private.jpg': 'private-encoded' }));
 
-    act(() => onUnauthorized?.());
+    act(() => onUnauthorized?.('files/hero.png'));
 
     await waitFor(() => expect(result.current.principal.kind).toBe('guest'));
     expect(result.current.identityGeneration).toBeGreaterThan(initialGeneration);
     expect(sessionStorage.getItem('lan_thumb_cache')).toBeNull();
+  });
+
+  it('does not reset identity when an auth endpoint returns 401', async () => {
+    me.mockResolvedValueOnce({ principal: {
+      kind: 'user', authenticated: true, role: 'user', display_name: 'alice',
+      capabilities: { browse: true, preview: true, download: true, upload: false, manage_links: false, manage_users: false, settings: false, realtime: true },
+    } });
+    const { result } = renderHook(() => useAuthContext(), { wrapper: AuthProvider });
+    await waitFor(() => expect(result.current.principal.authenticated).toBe(true));
+    const initialGeneration = result.current.identityGeneration;
+    sessionStorage.setItem('lan_thumb_cache', JSON.stringify({ 'private.jpg': 'private-encoded' }));
+
+    // A failed login must not log the user out or drop the thumbnail cache.
+    act(() => onUnauthorized?.('auth/login'));
+
+    expect(result.current.principal.kind).not.toBe('guest');
+    expect(result.current.identityGeneration).toBe(initialGeneration);
+    expect(sessionStorage.getItem('lan_thumb_cache')).not.toBeNull();
   });
 
   it('dedupes refreshMe and uses server capabilities without token state', async () => {

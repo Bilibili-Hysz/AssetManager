@@ -88,12 +88,9 @@ describe('useSearch', () => {
     expect(result.current.results).toEqual([{ path: 'after.jpg' }]);
   });
 
-  it('ignores an older search response after invalidation refetch', async () => {
+  it('shares the in-flight request when invalidation refetches the same query', async () => {
     let resolveFirst!: (value: { results: Array<{ path: string }> }) => void;
-    let resolveSecond!: (value: { results: Array<{ path: string }> }) => void;
-    search
-      .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
-      .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
+    search.mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }));
     const { result } = renderHook(() => useSearch());
 
     act(() => result.current.setQuery('report'));
@@ -102,10 +99,13 @@ describe('useSearch', () => {
     const onInvalidation = useInvalidationMock.mock.calls[0]?.[1] as ((event: unknown) => void) | undefined;
     if (!onInvalidation) return;
     await act(async () => { onInvalidation({ domains: ['files'] }); });
-    await act(async () => { resolveSecond({ results: [{ path: 'new.jpg' }] }); });
-    await act(async () => { resolveFirst({ results: [{ path: 'stale.jpg' }] }); });
+    // The same query is still in flight: instances share one request instead
+    // of firing a second identical quick-search.
+    expect(search).toHaveBeenCalledTimes(1);
+    await act(async () => { resolveFirst({ results: [{ path: 'report.jpg' }] }); });
 
-    expect(result.current.results).toEqual([{ path: 'new.jpg' }]);
+    expect(result.current.results).toEqual([{ path: 'report.jpg' }]);
+    expect(result.current.isSearching).toBe(false);
   });
 
   it('clears search state and rejects an older response after identity changes', async () => {

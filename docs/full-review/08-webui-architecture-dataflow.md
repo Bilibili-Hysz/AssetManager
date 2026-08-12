@@ -143,8 +143,8 @@ BrowserRouter → AuthProvider → RealtimeProvider → ToastProvider → Downlo
 | # | 问题 | 位置 | 严重度 |
 |---|---|---|---|
 | A1 | **hooks 绕过领域模块直接拼端点**：useCommerce.ts 直写 `'shop/catalog'`/`'shop/items'`/`'shop/orders'`/`'shop/stats'`（:199-204,255,295-296）+ 内联宽松类型 `RawShopItem = Partial<ShopItem>`（:7-17），而 shop.ts:38-50 已有 `catalog()` 方法——端点字符串与 DTO 两层重复定义，**类型漂移最大风险点** | useCommerce.ts | ~~高~~ ✅ 已修（2026-08-12）：useCommerce 三 hook 改用 `createShopApi` 领域方法（list/catalog/listOrders/getStats 增补 signal 参数）；宽松类型精确化为 `ShopItemInput`/`ShopOrderInput`（Partial + 防御字段），useCommerceOrders 顺手补 AbortController |
-| A2 | **API 层做 DOM 副作用**：files.ts `download`/`batchDownload` 执行 createObjectURL + link.click + setTimeout revoke（:27-32,44-49），双份复制粘贴——下载触发属 UI 职责 | files.ts:18-54 | 中 |
-| A3 | **三个 ApiClient 实例**：AuthContext / SellerAuthContext（有意）/ ShareReceivePage.tsx:14——后者无 onUnauthorized，公开分享页 401 静默不重置会话，语义不一致且无注释 | ShareReceivePage.tsx:14 | 中 |
+| A2 | **API 层做 DOM 副作用**：files.ts `download`/`batchDownload` 执行 createObjectURL + link.click + setTimeout revoke（:27-32,44-49），双份复制粘贴——下载触发属 UI 职责 | files.ts:18-54 | ~~中~~ ✅ 已修（2026-08-12）：api 层只返回数据（download→{blob,filename}、batchDownload→Blob）；新增 `src/utils/download.ts#triggerBlobDownload` 持有 DOM 副作用；BrowsePage 两处调用点更新 |
+| A3 | **三个 ApiClient 实例**：AuthContext / SellerAuthContext（有意）/ ShareReceivePage.tsx:14——后者无 onUnauthorized，公开分享页 401 静默不重置会话，语义不一致且无注释 | ShareReceivePage.tsx:14 | ~~中~~ ✅ 已修（2026-08-12）：确认独立 client 为有意设计（分享验证 401 不应重置访客身份），补意图注释 |
 | A4 | **contracts.test.ts 是死代码 fixture**：被 vite.config.ts:32-33 显式排除出测试，文件内注释仍声称"kept dependency-free until the SPA adds a test runner"（:7）——陈旧注释 + 不运行的共享 fixture（projectFileDownloadPath 等无引用方） | contracts.test.ts | 低 |
 | A5 | **notes.ts 内联 DTO**（:3-7 SaveNotesResponse）未入 types/api.ts | notes.ts | 低 |
 | A6 | ShopBuyerContext 放 components/storefront/ 而非 stores/（与另外三个 Context 分居） | components/storefront/ShopBuyerContext.tsx | 低 |
@@ -153,8 +153,8 @@ BrowserRouter → AuthProvider → RealtimeProvider → ToastProvider → Downlo
 
 | # | 问题 | 位置 | 严重度 |
 |---|---|---|---|
-| D1 | **结构性重复 fetch**：useFavorites 4 挂载点（Sidebar:124、GalleryFavoritesPage:27、GalleryHomePage:39、GalleryCollectionPage:30）同屏最多 4 并发 `GET /api/favorites`；useCommerceCatalog() 在 StorefrontPage:24 + StorefrontProductPage:25 重复；useSearch 在 Header:14 + AppHeader:35 同时挂载时重复搜索 | 各 hook | 高（请求放大） |
-| D2 | **localStorage 收藏缓存每实例快照**：一个实例 toggle 后同屏其他实例不读 storage 事件，只能等 WS；`capabilities.realtime=false` 时 Sidebar 永久陈旧 | useFavorites.ts | 中 |
+| D1 | **结构性重复 fetch**：useFavorites 4 挂载点（Sidebar:124、GalleryFavoritesPage:27、GalleryHomePage:39、GalleryCollectionPage:30）同屏最多 4 并发 `GET /api/favorites`；useCommerceCatalog() 在 StorefrontPage:24 + StorefrontProductPage:25 重复；useSearch 在 Header:14 + AppHeader:35 同时挂载时重复搜索 | 各 hook | ~~高（请求放大）~~ ✅ 已修（2026-08-12）：favorites 与 search 模块级 in-flight 去重（同 query 共享 promise，实例各自 generation 守卫）；catalog 实为路由互斥（非同屏并发），记为 P3 缓存策略 |
+| D2 | **localStorage 收藏缓存每实例快照**：一个实例 toggle 后同屏其他实例不读 storage 事件，只能等 WS；`capabilities.realtime=false` 时 Sidebar 永久陈旧 | useFavorites.ts | ~~中~~ ✅ 已修（2026-08-12）：storage 事件监听（跨 tab 同步；同 tab 实例由 D1 共享请求保证一致） |
 | D3 | **recover() 惊群**：断线恢复/epoch 切换时 notify(null) 全量刷新所有注册者（+ useInvalidation 在 status 变化时重注册叠加） | RealtimeContext.tsx:146 | 中（抖动连接下成批重复请求） |
 | D4 | **BrowsePage 标签变更双路径刷新**：手动连环刷新（:362-380）与 WS 失效回调（:382-390）各自全刷，实时关闭时仅手动路径、开启时两路径叠加 | BrowsePage.tsx | 中 |
 | D5 | **无 AbortController 的 hook**：useCommerceOrders（:282-327）、useSearch（:26-37）卸载后请求仍在飞（仅序列号防 setState） | useCommerce.ts, useSearch.ts | 低 |
@@ -166,7 +166,7 @@ BrowserRouter → AuthProvider → RealtimeProvider → ToastProvider → Downlo
 
 | # | 问题 | 位置 | 严重度 |
 |---|---|---|---|
-| S1 | **A8 未决**：401 handler 无请求路径上下文（AuthContext.tsx:93-105），登录失败与会话过期同路径处理——一次失败登录清掉缩略图缓存（sessionStorage）并触发全 hook 身份分支重置 | AuthContext.tsx | 中（已注释 deferred） |
+| S1 | **A8 已修（2026-08-12）**：client `onUnauthorized(path)` 带请求路径；AuthContext 跳过 auth/login、auth/register、auth/verify_key（失败登录不再登出用户/清缩略图缓存）；新增回归测试 | AuthContext.tsx | 中 |
 | S2 | Storefront 路由无 capability 门禁（仅 feature flag），与 /browse 的 capability 门禁不对称——若需"只看不下载"访客级能力此处是缺口 | App.tsx:127 | 低（设计取舍） |
 
 ---

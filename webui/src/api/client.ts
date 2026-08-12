@@ -4,7 +4,8 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export interface ApiClientOptions {
   baseUrl?: string;
-  onUnauthorized?: () => void;
+  /** Fired for every 401 with the failing request path (e.g. 'auth/login'). */
+  onUnauthorized?: (path: string) => void;
 }
 
 export interface DownloadProgress {
@@ -159,7 +160,7 @@ export function createApiClient(options: ApiClientOptions = {}) {
       });
 
       if (response.status === 401) {
-        onUnauthorized?.();
+        onUnauthorized?.(path);
         throw new UnauthorizedError();
       }
 
@@ -234,7 +235,7 @@ export function createApiClient(options: ApiClientOptions = {}) {
       });
 
       if (response.status === 401) {
-        onUnauthorized?.();
+        onUnauthorized?.(path);
         throw new UnauthorizedError();
       }
       if (response.status === 403) {
@@ -314,7 +315,7 @@ export function createApiClient(options: ApiClientOptions = {}) {
       });
 
       if (response.status === 401) {
-        onUnauthorized?.();
+        onUnauthorized?.(path);
         throw new UnauthorizedError();
       }
       if (response.status === 403) throw new ForbiddenError();

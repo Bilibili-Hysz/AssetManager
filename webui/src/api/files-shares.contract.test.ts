@@ -5,53 +5,35 @@ import { createFilesApi } from './files';
 import { createSharesApi } from './shares';
 
 describe('file and share API contracts', () => {
-  it('posts selected download paths through the progress-aware API and saves the Blob response', async () => {
-    vi.useFakeTimers();
+  it('posts selected download paths through the progress-aware API and returns the Blob', async () => {
     const client = createApiClient();
     const postBlobWithProgress = vi.spyOn(client, 'postBlobWithProgress').mockImplementation(async (_path, _body, onProgress) => {
       onProgress({ loaded: 4, total: 8 });
       return new Blob(['zip']);
     });
     const api = createFilesApi(client);
-    const createObjectURL = vi.fn().mockReturnValue('blob:assets');
-    const revokeObjectURL = vi.fn();
-    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL });
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
 
     const onProgress = vi.fn();
-    await api.batchDownload(['projects/project/report.pdf'], onProgress);
+    const blob = await api.batchDownload(['projects/project/report.pdf'], onProgress);
 
     expect(postBlobWithProgress).toHaveBeenCalledWith('download/batch', { paths: ['projects/project/report.pdf'] }, onProgress);
     expect(onProgress).toHaveBeenCalledWith({ loaded: 4, total: 8 });
-    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
-    expect(click).toHaveBeenCalledOnce();
-    vi.runAllTimers();
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:assets');
-    vi.unstubAllGlobals();
-    vi.useRealTimers();
-    click.mockRestore();
+    expect(blob.size).toBe(3);
   });
 
   it('allows batch downloads without a progress callback', async () => {
-    vi.useFakeTimers();
     const client = createApiClient();
     const postBlobWithProgress = vi.spyOn(client, 'postBlobWithProgress').mockResolvedValue(new Blob(['zip']));
     const api = createFilesApi(client);
-    const createObjectURL = vi.fn().mockReturnValue('blob:assets');
-    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
 
-    await api.batchDownload(['projects/project/report.pdf']);
+    const blob = await api.batchDownload(['projects/project/report.pdf']);
 
     expect(postBlobWithProgress).toHaveBeenCalledWith(
       'download/batch',
       { paths: ['projects/project/report.pdf'] },
       expect.any(Function),
     );
-    vi.runAllTimers();
-    vi.unstubAllGlobals();
-    vi.useRealTimers();
-    click.mockRestore();
+    expect(blob.size).toBe(3);
   });
 
   it('uses native scoped-cookie URLs without escaping path separators', () => {

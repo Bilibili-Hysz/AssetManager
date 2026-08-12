@@ -27,6 +27,7 @@ import { useI18n } from '../hooks/useI18n';
 import { useToast } from '../components/ui/Toast';
 import { useDownloadProgress } from '../components/ui/DownloadProgress';
 import { useQuota } from '../hooks/useQuota';
+import { triggerBlobDownload } from '../utils/download';
 import type { BrowsableItem, Metadata, ProjectDetail } from '../types/api';
 
 interface BrowsePageProps {
@@ -424,7 +425,8 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
     void (async () => {
       if (!await guardDownload()) return;
       try {
-        await filesApi.download(path);
+        const { blob, filename } = await filesApi.download(path);
+        triggerBlobDownload(blob, filename || path.split('/').pop() || 'download');
       } catch (err) {
         showToast(
           err instanceof Error && err.message ? err.message : t('browse.download_failed'),
@@ -482,7 +484,10 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
     downloadInFlight.current = true;
     setIsDownloadInFlight(true);
     downloadProgress.start();
-    try { await filesApi.batchDownload(paths, downloadProgress.update); }
+    try {
+      const blob = await filesApi.batchDownload(paths, downloadProgress.update);
+      triggerBlobDownload(blob, 'assets.zip');
+    }
     catch (err) { showToast(err instanceof Error ? err.message : 'Failed to download ZIP archive', 'error'); }
     finally {
       downloadProgress.finish();

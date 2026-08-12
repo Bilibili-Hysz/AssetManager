@@ -11,6 +11,10 @@ import type { ShareInfoResponse } from '../types/api';
 
 export default function ShareReceivePage() {
   const { shareId } = useParams<{ shareId: string }>();
+  // Dedicated client on purpose: share verification answers 401 for a wrong
+  // password or a revoked link. The global AuthContext client would treat
+  // that as a session expiry and reset the visitor's identity, so this page
+  // owns a client without an onUnauthorized handler.
   const api = useMemo(() => createApiClient(), []);
   const sharesApi = useMemo(() => createSharesApi(api), [api]);
   const { t } = useI18n();
