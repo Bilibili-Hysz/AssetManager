@@ -30,8 +30,19 @@ from AssetsManager.lan.server import _LanServerImpl
 )
 async def test_password_protected_lan_does_not_block_migrated_webui_surfaces(path):
     """Global LAN auth must defer to storefront/seller/receipt route guards."""
+    from aiohttp import web
+
+    from AssetsManager.lan.api import setup_routes
+
     server = object.__new__(_LanServerImpl)
-    request = make_mocked_request("GET", path)
+    server._auth_mode = "password"
+    app = web.Application()
+    setup_routes(app)
+    request = make_mocked_request("GET", path, app=app)
+    match_info = await app.router.resolve(request)
+    assert match_info is not None
+    match_info.add_app(app)
+    request._match_info = match_info
     marker = object()
 
     async def handler(_request):
@@ -127,11 +138,22 @@ async def test_public_commerce_attempts_optional_user_authentication():
     server._password_hash = None
     server._auth_service = AuthService()
     server._revoked_tokens = {}
+    from aiohttp import web
+
+    from AssetsManager.lan.api import setup_routes
+
+    app = web.Application()
+    setup_routes(app)
     request = make_mocked_request(
         "POST",
         "/api/shop/buyer/merge",
         headers={"Authorization": "Bearer user-token"},
+        app=app,
     )
+    match_info = await app.router.resolve(request)
+    assert match_info is not None
+    match_info.add_app(app)
+    request._match_info = match_info
     marker = object()
 
     async def handler(_request):

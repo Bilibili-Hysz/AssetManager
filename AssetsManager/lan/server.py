@@ -22,6 +22,7 @@ from AssetsManager.lan.ws import WebSocketManager
 from AssetsManager.lan.scanner import DirectoryScanner
 from AssetsManager.lan.tunnel import TunnelManager
 from AssetsManager.lan.security import RateLimiter, AuthRateLimiter, IPBlacklist, create_security_middleware
+from AssetsManager.lan.route_policy import request_policy
 from AssetsManager.lan.utils import get_local_ip
 
 _log = logging.getLogger(__name__)
@@ -1628,7 +1629,7 @@ class _LanServerImpl:
         with self._has_users_cache_lock:
             self._has_users_cache = None
 
-    # ── Declarative public-endpoint list (keep aligned with api.py) ──
+    # ── Public-endpoint policy ─────────────────────────────────────
     #
     # Storefront and seller pages are intentionally reachable before LAN
     # authentication: the former is a public buyer surface and the latter
@@ -1636,55 +1637,9 @@ class _LanServerImpl:
     # rule; buyer credentials (guest state, receipts and delivery tokens)
     # and seller-session credentials are validated by their handlers.
     #
-
-    _PUBLIC_PATHS: frozenset[str] = frozenset({
-        "/api/auth/login",
-        "/api/auth/register",
-        "/api/auth/verify_key",
-        "/api/auth/seller-status",
-        "/api/auth/seller-login",
-        "/api/auth/seller-logout",
-        "/api/quota",
-        "/login",
-        "/browse",
-        "/detail",
-        "/",
-        "/favicon.ico",
-    })
-
-    _PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
-        "/assets",
-        "/s",
-        "/storefront",
-        "/store",
-        "/seller",
-        "/app",
-        "/api/shop",
-    )
-
-    _PUBLIC_PATH_PREFIX_GET: tuple[str, ...] = ()
-
-    @staticmethod
-    def _path_matches_prefix(path: str, prefix: str) -> bool:
-        return path == prefix or path.startswith(f"{prefix}/")
-
-    def _is_public_share_endpoint(self, method: str, path: str) -> bool:
-        prefix = "/api/shares/"
-        if not path.startswith(prefix):
-            return False
-        parts = path[len(prefix):].split("/", 2)
-        if len(parts) < 2 or not parts[0]:
-            return False
-
-        action = parts[1]
-        has_tail = len(parts) == 3
-        if method == "POST":
-            return action == "verify" and not has_tail
-        if method != "GET":
-            return False
-        if action == "info":
-            return not has_tail
-        return action in {"download", "preview"} and has_tail
+    # The per-route auth/rate-limit policy is declared at registration time
+    # in api.py and read back through route_policy.request_policy — there is
+    # no hardcoded path list to keep aligned here.
 
     @web.middleware
     async def _auth_middleware(self, request, handler):
@@ -1733,54 +1688,19 @@ class _LanServerImpl:
                 return True
             return False
 
-        if request.path == "/api/info":
-            # Keep the endpoint publicly readable, but reflect a valid
-            # credential in its normalized identity when one is supplied.
+        policy = request_policy(request)
+        if policy.auth == "public_optional":
+            # Publicly readable, but reflect a valid credential in its
+            # normalized identity when one is supplied (/api/info, commerce).
             if self._auth_mode == "none":
                 ensure_guest()
                 return await handler(request)
-            from AssetsManager.lan.routes._helpers import get_auth_token
-            token = get_auth_token(request)
-            if token and self.is_auth_token_revoked(token):
-                token = ""
-            if token:
-                if self._access_key_hash is not None and verify_key(token, self._access_key_hash):
-                    set_request_principal(request, principal_for_request("access_key"))
-                    return await handler(request)
-                local_ui_auth_secret = self.local_ui_auth_secret
-                if local_ui_auth_secret and verify_auth_token(
-                        token, local_ui_auth_secret
-                    ):
-                    set_request_principal(request, principal_for_request("local_ui"))
-                    return await handler(request)
-                user = self._auth_service.verify_user_token(token)
-                if user:
-                    set_request_principal(request, principal_for_request("user", user=user))
-                    return await handler(request)
-                if self._password_hash is not None and verify_token(token, self._password_hash):
-                    set_request_principal(request, principal_for_request("password"))
-                    return await handler(request)
+            try_optional_principal()
             ensure_guest()
             return await handler(request)
-        if request.path in self._PUBLIC_PATHS:
+        if policy.auth == "public":
             ensure_guest()
             return await handler(request)
-        for prefix in self._PUBLIC_PATH_PREFIXES:
-            if self._path_matches_prefix(request.path, prefix):
-                if prefix == "/api/shop":
-                    # Commerce remains publicly reachable for guests, but a valid
-                    # LAN credential must still be visible to buyer/user handlers.
-                    try_optional_principal()
-                ensure_guest()
-                return await handler(request)
-        if self._is_public_share_endpoint(request.method, request.path):
-            ensure_guest()
-            return await handler(request)
-        if request.method == "GET":
-            for prefix in self._PUBLIC_PATH_PREFIX_GET:
-                if self._path_matches_prefix(request.path, prefix):
-                    ensure_guest()
-                    return await handler(request)
 
         # Check if any auth is configured
         has_key = self._access_key_hash is not None

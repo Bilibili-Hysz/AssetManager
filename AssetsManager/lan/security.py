@@ -23,9 +23,15 @@ from collections.abc import Callable
 
 from aiohttp import web
 
+from AssetsManager.lan.route_policy import RoutePolicy, request_policy
 from AssetsManager.lan.routes._errors import error_response
 
 _log = logging.getLogger(__name__)
+
+
+def _request_policy(request: web.Request) -> RoutePolicy:
+    """Resolve the declared policy for the matched route (fail-closed)."""
+    return request_policy(request)
 
 
 def _normalize_ip(ip: str) -> str:
@@ -45,10 +51,6 @@ def _normalize_ip(ip: str) -> str:
     if addr.version == 6 and addr == ipaddress.ip_address("::1"):
         return "127.0.0.1"
     return str(addr)
-
-
-def _path_matches_prefix(path: str, prefix: str) -> bool:
-    return path == prefix or path.startswith(f"{prefix}/")
 
 
 class RateLimiter:
@@ -145,63 +147,14 @@ def create_security_middleware(
     """Create aiohttp middleware for security checks."""
     allowed_ips = {_normalize_ip(ip) for ip in (ip_whitelist or []) if ip}
 
-    # Paths that don't count toward rate limits (read-only browsing)
-    _RATE_LIMIT_SKIP = (
-        "/ws",
-        "/api/projects",
-        "/api/tags",
-        "/api/info",
-        "/api/tunnel/status",
-    )
-    # Prefix matches: assets, thumbnails (GET single + POST batch), gallery
-    # views, favorites, quick search, metadata/notes reads, stats polling and
-    # the sidebar tree are all read-only browsing surfaces - a large gallery
-    # page fires many thumbnail batches plus view requests, and the desktop
-    # stats poller shares the loopback bucket, so counting them exhausts the
-    # window and breaks browsing (429).
-    _RATE_LIMIT_SKIP_PREFIX = (
-        "/assets",
-        "/api/thumbnails",
-        "/api/gallery",
-        "/api/favorites",
-        "/api/quicksearch",
-        "/api/stats",
-        "/api/metadata",
-        "/api/notes",
-        "/api/tree",
-    )
-    # Additional read-only browsing/diagnostic endpoints that must not
-    # consume the window: landing home, search, quota, activity log,
-    # runtime revision cursor (WS recovery) and directory summaries.
-    _RATE_LIMIT_SKIP_EXACT = (
-        "/api/home",
-        "/api/search",
-        "/api/quota",
-        "/api/activity",
-        "/api/revision",
-        "/api/files/summaries",
-    )
-
-    # Auth endpoints that need stricter rate limiting
-    _AUTH_ENDPOINTS = (
-        "/api/auth/login",
-        "/api/auth/register",
-        "/api/auth/verify_key",
-        "/api/auth/seller-login",
-        "/api/shop/auth/login",
-    )
-
     @web.middleware
     async def security_middleware(request: web.Request, handler):
         path = request.path
+        policy = _request_policy(request)
 
-        # Skip rate limiting for browsing/thumbnail paths
-        skip_rate = (
-            any(_path_matches_prefix(path, p) for p in _RATE_LIMIT_SKIP_PREFIX)
-            or path in _RATE_LIMIT_SKIP
-            or path in _RATE_LIMIT_SKIP_EXACT
-            or (request.method == "GET" and path == "/api/files")
-        )
+        # Skip rate limiting for routes declared as browsing surfaces
+        # (thumbnail batches, gallery views, stats polling, ...).
+        skip_rate = policy.rate_limit == "skip"
 
         # Reject requests without a remote address rather than pooling them
         # under a shared "unknown" bucket.
@@ -235,11 +188,8 @@ def create_security_middleware(
                 _log.warning("Blocked request from non-whitelisted IP: %s", ip)
                 return error_response("Forbidden", status=403, code="forbidden")
 
-        # Auth endpoint rate limiting (stricter)
-        is_auth_endpoint = path in _AUTH_ENDPOINTS or (
-            path.startswith("/api/shares/") and path.endswith("/verify")
-        )
-        if auth_rate_limiter and is_auth_endpoint:
+        # Auth endpoint rate limiting (stricter, declared per route)
+        if auth_rate_limiter and policy.rate_limit == "auth_strict":
             if not auth_rate_limiter.is_allowed(ip):
                 retry_after = auth_rate_limiter.retry_after(ip)
                 _log.warning("Auth rate limit exceeded for IP: %s", ip)

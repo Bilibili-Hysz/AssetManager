@@ -122,9 +122,18 @@ async def test_task4_auth_me_accepts_minimal_user_token_record():
 
 
 def test_task4_info_public_bypass_preserves_authenticated_principal():
-    from AssetsManager.lan.server import _LanServerImpl
+    """/api/info is public_optional: reachable as guest, but a presented
+    credential is still reflected in the normalized identity."""
+    from aiohttp import web
 
-    assert "/api/info" not in _LanServerImpl._PUBLIC_PATHS
+    from AssetsManager.lan.api import setup_routes
+    from AssetsManager.lan.route_policy import lookup
+
+    app = web.Application()
+    setup_routes(app)
+    policy = lookup(app, "GET", "/api/info")
+    assert policy.auth == "public_optional"
+    assert policy.rate_limit == "skip"
 
 
 @pytest.mark.anyio
@@ -1168,6 +1177,7 @@ async def test_security_middleware_skips_read_only_browsing_surfaces():
     many thumbnail batches plus view requests and shares the loopback
     bucket with the desktop stats poller)."""
     from aiohttp import web
+    from AssetsManager.lan.route_policy import RoutePolicy, declare
     from AssetsManager.lan.security import IPBlacklist, RateLimiter, create_security_middleware
 
     async def handler(_request):
@@ -1182,20 +1192,35 @@ async def test_security_middleware_skips_read_only_browsing_surfaces():
         ]
     )
     app.router.add_get("/api/gallery/home", handler)
+    declare(app, "/api/gallery/home", RoutePolicy(rate_limit="skip"))
     app.router.add_get("/api/gallery/collection", handler)
+    declare(app, "/api/gallery/collection", RoutePolicy(rate_limit="skip"))
     app.router.add_post("/api/thumbnails/batch", handler)
+    declare(app, "/api/thumbnails/batch", RoutePolicy(rate_limit="skip"))
     app.router.add_get("/api/thumbnails/hero.png", handler)
+    declare(app, "/api/thumbnails/hero.png", RoutePolicy(rate_limit="skip"))
     app.router.add_get("/api/favorites", handler)
+    declare(app, "/api/favorites", RoutePolicy(rate_limit="skip"))
     app.router.add_get("/api/stats", handler)
+    declare(app, "/api/stats", RoutePolicy(rate_limit="skip"))
     app.router.add_get("/api/quicksearch", handler)
+    declare(app, "/api/quicksearch", RoutePolicy(rate_limit="skip"))
     app.router.add_get("/api/tree", handler)
+    declare(app, "/api/tree", RoutePolicy(rate_limit="skip"))
     app.router.add_get("/api/tags", handler)
+    declare(app, "/api/tags", RoutePolicy(rate_limit="skip"))
     app.router.add_get("/api/home", handler)
+    declare(app, "/api/home", RoutePolicy(rate_limit="skip"))
     app.router.add_get("/api/search", handler)
+    declare(app, "/api/search", RoutePolicy(rate_limit="skip"))
     app.router.add_get("/api/quota", handler)
+    declare(app, "/api/quota", RoutePolicy(rate_limit="skip"))
     app.router.add_get("/api/activity", handler)
+    declare(app, "/api/activity", RoutePolicy(rate_limit="skip"))
     app.router.add_get("/api/revision", handler)
+    declare(app, "/api/revision", RoutePolicy(rate_limit="skip"))
     app.router.add_post("/api/files/summaries", handler)
+    declare(app, "/api/files/summaries", RoutePolicy(rate_limit="skip"))
     # A non-skipped endpoint still counts toward the window.
     app.router.add_get("/api/shares", handler)
     client = await _make_client(app)
@@ -1234,6 +1259,7 @@ async def test_security_middleware_skips_read_only_browsing_surfaces():
 @pytest.mark.anyio
 async def test_security_middleware_rate_limit_asset_prefix_is_segment_bounded():
     from aiohttp import web
+    from AssetsManager.lan.route_policy import RoutePolicy, declare
     from AssetsManager.lan.security import IPBlacklist, RateLimiter, create_security_middleware
 
     async def handler(_request):
@@ -1248,7 +1274,9 @@ async def test_security_middleware_rate_limit_asset_prefix_is_segment_bounded():
         ]
     )
     app.router.add_get("/assets", handler)
+    declare(app, "/assets", RoutePolicy(rate_limit="skip"))
     app.router.add_get("/assets/app.js", handler)
+    declare(app, "/assets/app.js", RoutePolicy(rate_limit="skip"))
     app.router.add_get("/assets-admin", handler)
     client = await _make_client(app)
     try:
@@ -5217,6 +5245,7 @@ class TestP0ShareCookieAuthentication:
         from aiohttp.test_utils import TestClient, TestServer
         from AssetsManager.core import database
         from AssetsManager.lan.auth import hash_password
+        from AssetsManager.lan.route_policy import RoutePolicy, declare
         from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY
 
         library = tmp_path / "library"
@@ -5237,6 +5266,7 @@ class TestP0ShareCookieAuthentication:
                 return web.Response(text="admin")
 
             server._app.router.add_get("/assets/app.js", handle_asset)
+            declare(server._app, "/assets/app.js", RoutePolicy(auth="public", rate_limit="skip"))
             server._app.router.add_get("/assets-admin", handle_assets_admin)
             client = TestClient(TestServer(server._app))
             await client.start_server()
