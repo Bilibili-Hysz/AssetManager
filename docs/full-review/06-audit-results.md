@@ -25,7 +25,7 @@
 ### 1.4 桌面 UI
 13. **6 个 widget 零生产消费方**（待接线）：command_palette/file_picker/pager_overlay/theme_gallery/status_bar/title_bar（title_bar 自带注释声明）
 14. **`AdminManagement.test.tsx` 孤儿测试**（前端）
-15. **grid 与 AssetService 双实现**：桌面 file_list 直接 os.scandir，LAN 走 AssetService——同一目录两套代码。**阶段 1-2 统一（2026-08-12）**：排序统一到 asset_filters.sort_key_for_entry（含语义对比测试 4 键×2 序）；_fmt_size→format_size 归并；matches_exclude 上移共享；桌面模型支持 exclude_patterns。剩余（阶段 3 远期）：读取路径共享、目录 size_fmt 差异、stat follow_symlinks 语义差异
+15. **grid 与 AssetService 双实现**：桌面 file_list 直接 os.scandir，LAN 走 AssetService——同一目录两套代码。**阶段 1-2 统一（2026-08-12）**：排序统一到 asset_filters.sort_key_for_entry（含语义对比测试 4 键×2 序）；_fmt_size→format_size 归并；matches_exclude 上移共享；桌面模型支持 exclude_patterns。**阶段 3（2026-08-12）**：过滤管线单一化——asset_filters 新增 `filters_accept` 共享谓词（hidden→exclude→include_types→max_depth→search→category，目录恒通过类型过滤），两侧同树输出等价（parity 测试 9 组合）；修复桌面大写搜索失效（matches_search 自理大小写）与 LAN category 过滤误删目录；search/category 过滤前移至 _entry_to_item（被过滤目录不再触发摘要扫描）。剩余已知差异（记录不合并）：目录 size_fmt 差异、stat follow_symlinks 语义（LAN non-follow vs 桌面 follow）、is_dir 失败策略（LAN 丢弃 vs 桌面保留）、_ScanTask 与 list_directory scandir 循环不合并（线程模型不同收益低）
 
 ### 1.5 前端
 16. 前端 `stats` 投影域仅前端存在（服务端 14 域，前端 15 域白名单）

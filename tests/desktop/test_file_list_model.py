@@ -618,7 +618,7 @@ class TestFilterAccepts:
         model.set_directory(tmp_dir)
         model._wait_for_scan()
         # _show_hidden is False by default, so hidden files are filtered out
-        # filter_accepts doesn't check _show_hidden — that's done in _apply_sort
+        # inside filter_accepts (shared with the LAN pipeline).
         visible = [e for e in model._raw_entries if model.filter_accepts(e) and not e.name.startswith(".")]
         hidden = [e for e in model._raw_entries if e.name.startswith(".")]
         assert len(hidden) == 1

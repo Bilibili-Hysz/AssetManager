@@ -10,11 +10,8 @@ from time import perf_counter
 from AssetsManager.application.context import LibrarySession, session_operation
 from AssetsManager.application.asset_filters import (
     IMAGE_EXTS,
-    extension_matches_category,
-    is_hidden,
-    matches_search,
+    filters_accept,
     sort_key_for_entry,
-    matches_exclude,
 )
 from AssetsManager.core.directory_cache import DirCacheEntry, DirectoryCache
 from AssetsManager.core.performance import PerformanceRecorder
@@ -104,7 +101,6 @@ class AssetService:
             target_depth = len([part for part in rel_path.split("/") if part])
             branch_name = options.branch_name or (rel_path.split("/", 1)[0] if rel_path else None)
             entries = list(os.scandir(target))
-            search = options.search.lower()
             items: list[AssetListItem] = []
             summary_cache_writes: list[tuple[str, int, str | None, float]] = []
             summary_cache_entries = self._summary_cache_entries(entries, options)
@@ -114,13 +110,8 @@ class AssetService:
                     root, entry, options, summary_cache_writes, summary_cache_entries, cache_lookup_complete,
                     target_depth=target_depth, branch_name=branch_name,
                 )
-                if item is None:
-                    continue
-                if not matches_search(item.name, search):
-                    continue
-                if options.filter_category != "all" and not extension_matches_category(item.extension, options.filter_category):
-                    continue
-                items.append(item)
+                if item is not None:
+                    items.append(item)
 
             if summary_cache_writes and self._directory_cache is not None:
                 self._directory_cache.set_batch(summary_cache_writes)
@@ -213,22 +204,26 @@ class AssetService:
                        *, target_depth: int = 0, branch_name: str | None = None,
                        ) -> AssetListItem | None:
         name = entry.name
-        if not options.show_hidden and is_hidden(name):
-            return None
-        if options.exclude_patterns and matches_exclude(name, options.exclude_patterns):
-            return None
-
-        ext = os.path.splitext(name)[1].lower()
         try:
             is_dir = entry.is_dir()
         except OSError:
             # The entry disappeared between scandir and stat — treat as absent.
             return None
+        if not filters_accept(
+            name,
+            is_dir,
+            show_hidden=options.show_hidden,
+            exclude_patterns=options.exclude_patterns,
+            search=options.search,
+            filter_category=options.filter_category,
+            include_types=options.include_types,
+            max_depth=options.max_depth,
+            current_depth=options.current_depth,
+        ):
+            return None
+
+        ext = os.path.splitext(name)[1].lower()
         category = "folder" if is_dir else category_for_extension(ext)
-        if options.include_types and category != "folder" and category not in options.include_types:
-            return None
-        if options.max_depth > 0 and is_dir and options.current_depth + 1 > options.max_depth:
-            return None
 
         rel = os.path.relpath(entry.path, root).replace("\\", "/")
         try:

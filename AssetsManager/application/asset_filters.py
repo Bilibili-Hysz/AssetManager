@@ -2,10 +2,11 @@
 
 import os
 import re
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Callable
 
-from AssetsManager.domain.asset import IMAGE_EXTS
+from AssetsManager.domain.asset import IMAGE_EXTS, category_for_extension
 
 # ── Category extension sets ───────────────────────────────────────
 
@@ -104,10 +105,15 @@ def is_hidden(name: str) -> bool:
 
 
 def matches_search(name: str, search: str) -> bool:
-    """Check if a name matches a search query (case-insensitive substring)."""
+    """Check if a name matches a search query (case-insensitive substring).
+
+    The function handles case folding itself, so callers may pass the
+    raw query — the desktop file list passes typed text directly, while
+    the LAN service keeps its defensive pre-lowercase as a no-op.
+    """
     if not search:
         return True
-    return search in name.lower()
+    return search.lower() in name.lower()
 
 
 def matches_exclude(name: str, patterns: list[str]) -> bool:
@@ -125,6 +131,43 @@ def matches_exclude(name: str, patterns: list[str]) -> bool:
         if fnmatch.fnmatch(name.lstrip("."), pattern.lstrip(".")):
             return True
     return False
+
+
+# ── Entry acceptance (shared filtering pipeline) ──────────────────
+
+def filters_accept(
+    name: str,
+    is_dir: bool,
+    *,
+    show_hidden: bool = True,
+    exclude_patterns: Sequence[str] = (),
+    search: str = "",
+    filter_category: str = "all",
+    include_types: Sequence[str] | None = None,
+    max_depth: int = 0,
+    current_depth: int = 0,
+) -> bool:
+    """Single accept-predicate for the desktop file list and LAN browsing.
+
+    Both surfaces run exactly the same pipeline: hidden → exclude →
+    include_types → max_depth → search → category. Directories always pass
+    the include_types and category checks so navigation never disappears
+    while filtering by file type.
+    """
+    if not show_hidden and is_hidden(name):
+        return False
+    if exclude_patterns and matches_exclude(name, exclude_patterns):
+        return False
+    ext = os.path.splitext(name)[1].lower()
+    if include_types and not is_dir and category_for_extension(ext) not in include_types:
+        return False
+    if max_depth > 0 and is_dir and current_depth + 1 > max_depth:
+        return False
+    if not matches_search(name, search):
+        return False
+    if filter_category != "all" and not is_dir and not extension_matches_category(ext, filter_category):
+        return False
+    return True
 
 
 # ── Sort helpers ──────────────────────────────────────────────────

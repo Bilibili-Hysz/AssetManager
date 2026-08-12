@@ -1,6 +1,7 @@
 """Tests for shared asset_filters module and desktop/LAN consistency."""
 from AssetsManager.application.asset_filters import (
     extension_matches_category,
+    filters_accept,
     is_hidden,
     matches_search,
     natural_key,
@@ -75,9 +76,75 @@ def test_is_hidden():
 
 def test_matches_search():
     assert matches_search("hero.png", "hero") is True
-    assert matches_search("hero.png", "HERO") is False
+    assert matches_search("hero.png", "HERO") is True  # case handled internally
+    assert matches_search("hero.png", "HeRo") is True
     assert matches_search("hero.png", "") is True
     assert matches_search("hero.png", "villain") is False
+
+
+# ── filters_accept (shared desktop/LAN accept-predicate) ───────────
+
+def test_filters_accept_defaults_pass_everything():
+    assert filters_accept("any-name.bin", False) is True
+    assert filters_accept("folder", True) is True
+
+
+def test_filters_accept_hidden():
+    assert filters_accept(".secret", False, show_hidden=False) is False
+    assert filters_accept(".secret", False, show_hidden=True) is True
+    assert filters_accept("visible.txt", False, show_hidden=False) is True
+
+
+def test_filters_accept_exclude_patterns():
+    assert filters_accept("asset.tmp", False, exclude_patterns=("*.tmp",)) is False
+    assert filters_accept(".tmp-cache", False, exclude_patterns=("*.tmp",)) is True
+    assert filters_accept("keep.txt", False, exclude_patterns=("*.tmp",)) is True
+    # Leading-dot-insensitive second pass (LAN semantics): the pattern
+    # without a dot still excludes the dot-prefixed entry, and vice versa.
+    assert filters_accept(".cache", False, exclude_patterns=("cache",)) is False
+    assert filters_accept("cache", False, exclude_patterns=(".cache",)) is False
+    assert filters_accept(".gitignore", False, exclude_patterns=(".gitignore",)) is False
+
+
+def test_filters_accept_include_types_applies_to_files_only():
+    assert filters_accept("hero.png", False, include_types=("images",)) is True
+    assert filters_accept("notes.txt", False, include_types=("images",)) is False
+    assert filters_accept("subfolder", True, include_types=("images",)) is True
+
+
+def test_filters_accept_max_depth_applies_to_dirs_only():
+    assert filters_accept("child", True, max_depth=1, current_depth=1) is False
+    assert filters_accept("child", True, max_depth=1, current_depth=0) is True
+    assert filters_accept("asset.txt", False, max_depth=1, current_depth=1) is True
+
+
+def test_filters_accept_search_is_case_insensitive():
+    assert filters_accept("hero.png", False, search="HERO") is True
+    assert filters_accept("hero.png", False, search="villain") is False
+    assert filters_accept("hero.png", False, search="") is True
+
+
+def test_filters_accept_category_keeps_directories():
+    assert filters_accept("hero.png", False, filter_category="images") is True
+    assert filters_accept("notes.txt", False, filter_category="images") is False
+    assert filters_accept("subfolder", True, filter_category="images") is True
+    assert filters_accept("subfolder", True, filter_category="Images") is True
+
+
+def test_filters_accept_combined_pipeline():
+    # hidden → exclude → include_types → max_depth → search → category
+    assert filters_accept(
+        "hero.png", False,
+        show_hidden=False, exclude_patterns=("*.png",), search="hero", filter_category="images",
+    ) is False
+    assert filters_accept(
+        "hero.png", False,
+        show_hidden=False, exclude_patterns=(), search="HERO", filter_category="images",
+    ) is True
+    assert filters_accept(
+        "subfolder", True,
+        show_hidden=False, exclude_patterns=(), search="nomatch", filter_category="images",
+    ) is False
 
 
 def test_natural_key_sorting():

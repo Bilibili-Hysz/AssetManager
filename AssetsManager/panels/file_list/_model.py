@@ -13,10 +13,7 @@ from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QFileInfo, QObje
 from PySide6.QtGui import QIcon
 from shiboken6 import Shiboken
 from AssetsManager.application.asset_filters import (
-    extension_matches_category,
-    is_hidden,
-    matches_exclude,
-    matches_search,
+    filters_accept,
     normalize_filter_category,
     normalize_sort_key,
     sort_key_for_entry,
@@ -688,16 +685,14 @@ class FileSystemModel(QAbstractListModel):
         self._lib_root = ""
 
     def filter_accepts(self, entry: os.DirEntry) -> bool:
-        if self._exclude_patterns and matches_exclude(entry.name, self._exclude_patterns):
-            return False
-        if not matches_search(entry.name, self._filter_text):
-            return False
-        cat = normalize_filter_category(self._filter_cat)
-        if cat != "all" and not self._safe_is_dir(entry):
-            ext = Path(entry.name).suffix.lower()
-            if not extension_matches_category(ext, self._filter_cat):
-                return False
-        return True
+        return filters_accept(
+            entry.name,
+            self._safe_is_dir(entry),
+            show_hidden=self._show_hidden,
+            exclude_patterns=self._exclude_patterns,
+            search=self._filter_text,
+            filter_category=self._filter_cat,
+        )
 
     @staticmethod
     def _normalize_sort_key(key: str) -> str:
@@ -708,9 +703,9 @@ class FileSystemModel(QAbstractListModel):
         return normalize_filter_category(category)
 
     def _apply_sort(self):
+        # Hidden filtering lives inside filter_accepts (shared with the LAN
+        # service pipeline), so one pass through the raw entries is enough.
         entries = [e for e in self._raw_entries if self.filter_accepts(e)]
-        if not self._show_hidden:
-            entries = [e for e in entries if not is_hidden(e.name)]
         k = normalize_sort_key(self._sort_key)
 
         def _sort_key(e):

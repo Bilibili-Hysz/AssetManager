@@ -73,6 +73,43 @@ def test_asset_service_filters_and_searches(tmp_path):
     assert [item.name for item in listing.items] == ["hero.png"]
 
 
+def test_asset_service_category_filter_keeps_directories(tmp_path):
+    """Directories survive category filtering so navigation never disappears.
+
+    This is shared pipeline semantics with the desktop file list — a
+    directory has no extension, so it can never match a category, but it
+    must remain visible for the user to drill into it.
+    """
+    from AssetsManager.application import AssetService, DirectoryListOptions
+
+    (tmp_path / "subfolder").mkdir()
+    (tmp_path / "hero.png").write_text("image", encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("doc", encoding="utf-8")
+
+    listing = AssetService().list_directory(
+        tmp_path,
+        tmp_path,
+        DirectoryListOptions(filter_category="images"),
+    )
+
+    assert [item.name for item in listing.items] == ["subfolder", "hero.png"]
+
+
+def test_asset_service_search_is_case_insensitive(tmp_path):
+    """The shared pipeline handles case itself; raw uppercase queries work."""
+    from AssetsManager.application import AssetService, DirectoryListOptions
+
+    (tmp_path / "hero.png").write_text("image", encoding="utf-8")
+
+    listing = AssetService().list_directory(
+        tmp_path,
+        tmp_path,
+        DirectoryListOptions(search="HERO"),
+    )
+
+    assert [item.name for item in listing.items] == ["hero.png"]
+
+
 def test_asset_service_respects_include_and_exclude(tmp_path):
     from AssetsManager.application import AssetService, DirectoryListOptions
 

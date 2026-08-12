@@ -16,7 +16,7 @@ from typing import Any
 
 from aiohttp import web
 
-from AssetsManager.application.asset_service import matches_exclude
+from AssetsManager.application.asset_filters import matches_exclude
 from AssetsManager.core.format_utils import CATEGORY_MAP, format_size
 from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.domain.event_bus import get_event_bus

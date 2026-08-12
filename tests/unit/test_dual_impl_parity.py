@@ -129,3 +129,87 @@ def test_desktop_filter_accepts_respects_exclude_patterns(tmp_path):
     assert "keep.txt" in accepted
     assert "skip.tmp" not in accepted
     assert ".hidden" in accepted  # hidden filtering is a separate pass
+
+
+def _model_accepted_names(root, *, show_hidden, search="", category="all", exclude=()):
+    """Desktop accept-predicate over a real directory (no Qt widgets needed)."""
+    from PySide6.QtWidgets import QApplication
+    from AssetsManager.panels.file_list._model import FileSystemModel
+
+    QApplication.instance() or QApplication([])
+    model = FileSystemModel(exclude_patterns=list(exclude))
+    model._show_hidden = show_hidden
+    model._filter_text = search
+    model._filter_cat = category
+    model._raw_entries = list(os.scandir(root))
+    return {e.name for e in model._raw_entries if model.filter_accepts(e)}
+
+
+def _lan_accepted_names(root, *, show_hidden, search="", category="all", exclude=()):
+    """LAN service result names for the same options."""
+    from AssetsManager.application import AssetService, DirectoryListOptions
+
+    listing = AssetService().list_directory(
+        root,
+        root,
+        DirectoryListOptions(
+            show_hidden=show_hidden,
+            search=search,
+            filter_category=category,
+            exclude_patterns=exclude,
+            scan_summaries=False,
+        ),
+    )
+    return {item.name for item in listing.items}
+
+
+@pytest.mark.parametrize(
+    ("kwargs",),
+    [
+        ({"show_hidden": False},),
+        ({"show_hidden": True},),
+        ({"show_hidden": False, "search": "file"},),
+        ({"show_hidden": False, "search": "IMAGE"},),
+        ({"show_hidden": False, "category": "images"},),
+        ({"show_hidden": False, "category": "documents"},),
+        ({"show_hidden": False, "exclude": ("*.txt",)},),
+        ({"show_hidden": False, "search": "a", "category": "all"},),
+        ({"show_hidden": True, "search": ".h", "category": "all"},),
+    ],
+)
+def test_filter_pipeline_matches_lan_listing(tmp_path, kwargs):
+    """Desktop filter_accepts and the LAN service accept the same entries.
+
+    The two surfaces share one pipeline (hidden → exclude → search →
+    category), so a directory tree with dirs/dotfiles/multi-category files
+    must yield identical name sets on both sides for every option combo.
+    """
+    _make_tree(tmp_path)
+    desktop = _model_accepted_names(tmp_path, **kwargs)
+    lan = _lan_accepted_names(tmp_path, **kwargs)
+    assert desktop == lan
+
+
+def test_uppercase_search_matches_on_both_surfaces(tmp_path):
+    """Search is case-insensitive on both surfaces (desktop no longer needs
+    the LAN's defensive pre-lowercase — matches_search handles it)."""
+    _make_tree(tmp_path)
+    assert "image.JPG" in _model_accepted_names(tmp_path, show_hidden=False, search="JPG")
+    assert "image.JPG" in _lan_accepted_names(tmp_path, show_hidden=False, search="JPG")
+
+
+def test_category_filter_keeps_directories_on_both_surfaces(tmp_path):
+    """Directories survive category/include_types filtering on both surfaces.
+
+    Directories never match a file-extension category, but navigation must
+    not disappear while filtering by type.
+    """
+    _make_tree(tmp_path)
+    desktop = _model_accepted_names(tmp_path, show_hidden=False, category="images")
+    lan = _lan_accepted_names(tmp_path, show_hidden=False, category="images")
+    for names in (desktop, lan):
+        assert "zeta" in names
+        assert "Alpha" in names
+        assert "asset.png" in names
+        assert "image.JPG" in names
+        assert "file2.txt" not in names
