@@ -19,8 +19,21 @@ _VIRTUAL_IFACE_MARKERS = (
 )
 
 
+def _is_fake_ip_or_benchmark(ip: str) -> bool:
+    """True for RFC 2544 benchmark space 198.18.0.0/15.
+
+    TUN-mode proxy clients (Clash fake-ip) assign addresses from this
+    reserved range to their virtual adapter and route the default route
+    through it. Such an address is never a reachable LAN address, so it
+    must not be reported as the share URL host or the local IP.
+    """
+    return ip.startswith("198.18.") or ip.startswith("198.19.")
+
+
 def _is_private_ipv4(ip: str) -> bool:
     if ip.startswith("127.") or ip.startswith("169.254.") or ip.startswith("0."):
+        return False
+    if _is_fake_ip_or_benchmark(ip):
         return False
     if ip.startswith("10.") or ip.startswith("192.168."):
         return True
@@ -42,7 +55,7 @@ def _default_route_ip() -> str | None:
         try:
             s.connect(("8.8.8.8", 80))
             ip = s.getsockname()[0]
-            if not ip.startswith("127."):
+            if not ip.startswith("127.") and not _is_fake_ip_or_benchmark(ip):
                 return ip
         finally:
             s.close()
@@ -94,7 +107,12 @@ def get_local_ip() -> str:
     """
     global _local_ip_cache
     if _local_ip_cache is not None:
-        return _local_ip_cache
+        if not _is_fake_ip_or_benchmark(_local_ip_cache):
+            return _local_ip_cache
+        # A stale fake-ip value may have been cached by an earlier call
+        # (pre-fix) or by a TUN adapter flip; re-resolve instead of
+        # reporting a virtual address as the LAN IP.
+        _local_ip_cache = None
 
     interfaces = _enumerate_private_ips()
 

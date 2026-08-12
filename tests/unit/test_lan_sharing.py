@@ -943,3 +943,53 @@ def test_format_bytes_tolerates_none_and_zero():
     assert dialog._format_bytes(1024) == "1.0 KB"
     assert dialog._format_bytes(1536) == "1.5 KB"
     assert dialog._format_bytes(5 * 1024 * 1024) == "5.0 MB"
+
+
+def test_lan_utils_exclude_fake_ip_range():
+    """TUN fake-ip space (RFC 2544 198.18.0.0/15) must never surface as a
+    LAN address or default-route IP."""
+    from AssetsManager.lan import utils as lan_utils
+
+    assert lan_utils._is_private_ipv4("198.18.0.1") is False
+    assert lan_utils._is_private_ipv4("198.19.255.254") is False
+    assert lan_utils._is_fake_ip_or_benchmark("198.18.0.1") is True
+    assert lan_utils._is_fake_ip_or_benchmark("198.19.10.5") is True
+    assert lan_utils._is_fake_ip_or_benchmark("192.168.1.10") is False
+    assert lan_utils._is_fake_ip_or_benchmark("10.0.0.5") is False
+
+
+def test_default_route_ip_rejects_fake_ip(monkeypatch):
+    """A TUN adapter as the default route must not be reported."""
+    from AssetsManager.lan import utils as lan_utils
+
+    class _Socket:
+        def __init__(self, *_args, **_kwargs):
+            self._closed = False
+
+        def connect(self, _addr):
+            pass
+
+        def getsockname(self):
+            return ("198.18.0.1", 0)
+
+        def close(self):
+            self._closed = True
+
+    monkeypatch.setattr(lan_utils.socket, "socket", _Socket)
+    assert lan_utils._default_route_ip() is None
+
+    class _RealSocket:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def connect(self, _addr):
+            pass
+
+        def getsockname(self):
+            return ("192.168.1.20", 0)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(lan_utils.socket, "socket", _RealSocket)
+    assert lan_utils._default_route_ip() == "192.168.1.20"
