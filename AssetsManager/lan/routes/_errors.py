@@ -113,6 +113,7 @@ def _mapped(
             {
                 "error": "This store is not accepting new orders",
                 "code": "store_not_accepting_orders",
+                "details": {},
             },
             status=503,
             headers={"Cache-Control": "no-store"},

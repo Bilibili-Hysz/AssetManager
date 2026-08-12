@@ -24,6 +24,7 @@ from AssetsManager.domain.errors import (
     NotFoundError,
     OperationNotPermitted,
     PathEscapeError,
+    StoreNotAcceptingOrdersError,
     ValidationError,
 )
 from AssetsManager.lan.routes._helpers import get_lan, get_request_principal
@@ -89,14 +90,7 @@ def get_commerce_services(request: web.Request) -> CommerceServices:
 
 
 def _store_not_accepting_orders_response() -> web.Response:
-    return web.json_response(
-        {
-            "error": "This store is not accepting new orders",
-            "code": "store_not_accepting_orders",
-        },
-        status=503,
-        headers={"Cache-Control": "no-store"},
-    )
+    return _error_response(StoreNotAcceptingOrdersError())
 
 
 def _catalog_query_value(request: web.Request, field: str, default: str | None = None) -> str | None:
@@ -255,7 +249,7 @@ async def handle_shop_items(request: web.Request) -> web.Response:
             )})
         seller = await require_seller(request)
         if seller is None:
-            return web.json_response({"error": "Seller authentication required"}, status=403)
+            return _error_response("Seller authentication required", status=403, code="forbidden")
         body = await _json_body(request) if (request.can_read_body and (request.content_length or 0) > 0) else {}
         if request.method == "POST":
             item = services.shop.create_item(lan.library_root, body)
@@ -406,7 +400,7 @@ async def handle_shop_order(request: web.Request) -> web.Response:
             # Do not resolve any Commerce service before seller authorization;
             # unauthenticated order listings must stay a cheap 403.
             if await require_seller(request) is None:
-                return web.json_response({"error": "Seller authentication required"}, status=403)
+                return _error_response("Seller authentication required", status=403, code="forbidden")
             status = request.query.get("status")
             limit = _order_limit(request)
             orders = get_commerce_services(request).orders
@@ -436,7 +430,7 @@ async def _order_action(request: web.Request, action: str) -> web.Response:
     if disabled is not None:
         return disabled
     if action != "confirm" and await require_seller(request) is None:
-        return web.json_response({"error": "Seller authentication required"}, status=403)
+        return _error_response("Seller authentication required", status=403, code="forbidden")
     lan = get_lan(request)
     service = get_commerce_services(request).orders
     order_id = request.match_info["order_id"]
@@ -480,7 +474,7 @@ async def handle_order_delivery_rotate(request: web.Request) -> web.Response:
     if disabled is not None:
         return disabled
     if await require_seller(request) is None:
-        return web.json_response({"error": "Seller authentication required"}, status=403)
+        return _error_response("Seller authentication required", status=403, code="forbidden")
     try:
         body = (
             await _json_body(request)
@@ -567,12 +561,11 @@ async def handle_shop_claim_delivery(request: web.Request) -> web.Response:
     now = time.time()
     if not _claim_brute_force_allowed(remote, now):
         retry_after = _claim_retry_after(remote, now)
-        return web.json_response(
-            {
-                "error": "Too many claim attempts. Please try again later.",
-                "retry_after": retry_after,
-            },
+        return _error_response(
+            "Too many claim attempts. Please try again later.",
             status=429,
+            code="rate_limited",
+            extra={"retry_after": retry_after},
             headers={"Retry-After": str(retry_after)},
         )
     try:
@@ -602,7 +595,7 @@ async def handle_order_delivery_revoke(request: web.Request) -> web.Response:
         return disabled
     seller = await require_seller(request)
     if seller is None:
-        return web.json_response({"error": "Seller authentication required"}, status=403)
+        return _error_response("Seller authentication required", status=403, code="forbidden")
     try:
         order = get_commerce_services(request).orders.revoke_delivery(
             get_lan(request).library_root,
@@ -729,9 +722,10 @@ async def handle_shop_buyer_merge(request: web.Request) -> web.Response:
         or not getattr(principal, "authenticated", False)
         or not isinstance(profile, dict)
     ):
-        return web.json_response(
-            {"error": "authenticated user required", "code": "authentication_required"},
+        return _error_response(
+            "authenticated user required",
             status=403,
+            code="authentication_required",
             headers={"Cache-Control": "private, no-store"},
         )
     try:
@@ -739,9 +733,10 @@ async def handle_shop_buyer_merge(request: web.Request) -> web.Response:
     except (TypeError, ValueError):
         user_id = 0
     if user_id <= 0:
-        return web.json_response(
-            {"error": "authenticated user required", "code": "authentication_required"},
+        return _error_response(
+            "authenticated user required",
             status=403,
+            code="authentication_required",
             headers={"Cache-Control": "private, no-store"},
         )
     try:
@@ -931,7 +926,7 @@ async def handle_shop_wishlist(request: web.Request) -> web.Response:
 @seller_required
 async def handle_order_stats(request: web.Request) -> web.Response:
     if await require_seller(request) is None:
-        return web.json_response({"error": "Seller authentication required"}, status=403)
+        return _error_response("Seller authentication required", status=403, code="forbidden")
     try:
         lan = get_lan(request)
         stats = get_commerce_services(request).orders.stats(lan.library_root)
@@ -951,7 +946,7 @@ async def handle_order_stats(request: web.Request) -> web.Response:
 @seller_required
 async def handle_order_export(request: web.Request) -> web.Response:
     if await require_seller(request) is None:
-        return web.json_response({"error": "Seller authentication required"}, status=403)
+        return _error_response("Seller authentication required", status=403, code="forbidden")
     try:
         content = get_commerce_services(request).orders.export_csv(get_lan(request).library_root)
         return web.Response(

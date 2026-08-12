@@ -33,6 +33,7 @@ def test_buyer_checkout_returns_503_when_seller_pauses_new_orders(monkeypatch):
     assert json.loads(response.body) == {
         "error": "This store is not accepting new orders",
         "code": "store_not_accepting_orders",
+        "details": {},
     }
 
 

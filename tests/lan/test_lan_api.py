@@ -3477,7 +3477,7 @@ async def test_create_share_validation_contract(tmp_path):
             headers=headers,
         )
         assert no_paths.status == 400
-        assert await no_paths.json() == {"error": "No paths provided"}
+        assert (await no_paths.json())["error"] == "No paths provided"
 
         no_valid_paths = await client.post(
             "/api/shares",
@@ -3490,7 +3490,7 @@ async def test_create_share_validation_contract(tmp_path):
             headers=headers,
         )
         assert no_valid_paths.status == 400
-        assert await no_valid_paths.json() == {"error": "No valid paths"}
+        assert (await no_valid_paths.json())["error"] == "No valid paths"
 
         password_first = await client.post(
             "/api/shares",
@@ -3498,7 +3498,7 @@ async def test_create_share_validation_contract(tmp_path):
             headers=headers,
         )
         assert password_first.status == 400
-        assert await password_first.json() == {"error": "Password must be at least 8 characters"}
+        assert (await password_first.json())["error"] == "Password must be at least 8 characters"
 
         expiry_first = await client.post(
             "/api/shares",
@@ -3506,7 +3506,7 @@ async def test_create_share_validation_contract(tmp_path):
             headers=headers,
         )
         assert expiry_first.status == 400
-        assert await expiry_first.json() == {"error": "Expiry must be between 1 and 8760 hours"}
+        assert (await expiry_first.json())["error"] == "Expiry must be between 1 and 8760 hours"
 
         valid_cases = [
             {"password": "abcd1234"},
@@ -3561,14 +3561,14 @@ async def test_create_share_keeps_non_validation_failures_as_500(tmp_path, monke
             "/api/shares", json={"paths": ["asset.txt"]}, headers=headers,
         )
         assert invalid.status == 400
-        assert await invalid.json() == {"error": "Password must be at least 8 characters"}
+        assert (await invalid.json())["error"] == "Password must be at least 8 characters"
 
         monkeypatch.setattr(service, "create_share", lambda **_kwargs: None)
         failed = await client.post(
             "/api/shares", json={"paths": ["asset.txt"]}, headers=headers,
         )
         assert failed.status == 500
-        assert await failed.json() == {"error": "Failed to create share link"}
+        assert (await failed.json())["error"] == "Failed to create share link"
 
         def raise_runtime_error(**_kwargs):
             raise RuntimeError("share creation failed")

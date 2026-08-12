@@ -299,7 +299,9 @@ def test_unauthenticated_order_listing_is_403_when_seller_enabled(monkeypatch):
     for path in ("/api/shop/orders", "/api/shop/orders/order"):
         response = asyncio.run(shop.handle_shop_order(make_mocked_request("GET", path)))
         assert response.status == 403
-        assert _payload(response) == {"error": "Seller authentication required"}
+        body = _payload(response)
+        assert body["error"] == "Seller authentication required"
+        assert body["code"] == "forbidden"
 
 
 

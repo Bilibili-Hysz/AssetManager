@@ -18,6 +18,8 @@ from collections.abc import Callable
 
 from aiohttp import web
 
+from AssetsManager.lan.routes._errors import error_response
+
 _log = logging.getLogger(__name__)
 
 
@@ -210,13 +212,13 @@ def create_security_middleware(
         # under a shared "unknown" bucket.
         if not request.remote:
             _log.warning("Rejected request without remote address: %s %s", request.method, path)
-            return web.json_response({"error": "Bad Request"}, status=400)
+            return error_response("Bad Request", status=400, code="bad_request")
         ip = _normalize_ip(request.remote)
 
         # IP blacklist check (always applies)
         if ip_blacklist.is_blocked(ip):
             _log.warning("Blocked request from blacklisted IP: %s", ip)
-            return web.json_response({"error": "Forbidden"}, status=403)
+            return error_response("Forbidden", status=403, code="forbidden")
 
         if allowed_ips and ip not in allowed_ips:
             # Traffic arriving through the cloudflared tunnel always has a
@@ -236,7 +238,7 @@ def create_security_middleware(
                 tunnel_source = tunnel_on and loopback
             if not tunnel_source:
                 _log.warning("Blocked request from non-whitelisted IP: %s", ip)
-                return web.json_response({"error": "Forbidden"}, status=403)
+                return error_response("Forbidden", status=403, code="forbidden")
 
         # Auth endpoint rate limiting (stricter)
         is_auth_endpoint = path in _AUTH_ENDPOINTS or (
