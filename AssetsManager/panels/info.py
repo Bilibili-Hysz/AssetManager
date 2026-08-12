@@ -1049,6 +1049,10 @@ class InfoPanel(PanelContent):
         scoped = self._scoped_services
         session = request.session
         dir_path = request.path
+        # Capture the panel's task registry before the class definition so the
+        # worker can consult it (self inside run() is the _SizeTask, which has
+        # no _size_tasks attribute).
+        size_tasks = self._size_tasks
         class _SizeTask(QRunnable):
             def __init__(self):
                 super().__init__()
@@ -1058,9 +1062,9 @@ class InfoPanel(PanelContent):
 
             def run(self):
                 # Bail out early when the request was invalidated while this
-                # task was queued (the panel removed it from _size_tasks), so
+                # task was queued (the panel removed it from size_tasks), so
                 # rapid folder switching does not pile up wasted scans.
-                if request not in self._size_tasks:
+                if request not in size_tasks:
                     return
                 sz = 0
                 try:

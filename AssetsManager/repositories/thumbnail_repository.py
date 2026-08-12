@@ -14,12 +14,19 @@ class ThumbnailRepository:
         self._conn = conn
 
     def get_source_mtime(self, cache_key: str) -> float | None:
-        """Return cached source mtime, or None if not found."""
-        row = self._conn.execute(
-            "SELECT source_mtime FROM thumbnail_cache WHERE cache_key=?",
-            (cache_key,),
-        ).fetchone()
-        return row[0] if row else None
+        """Return cached source mtime, or None if not found.
+
+        Serialized through the connection's db_write_lock like the write
+        operations: the ThumbnailLoader worker thread reads this while the
+        UI thread upserts/touches rows, and concurrent access to one
+        sqlite3 connection surfaces as SQLITE_MISUSE (InterfaceError).
+        """
+        with db_write_lock(self._conn):
+            row = self._conn.execute(
+                "SELECT source_mtime FROM thumbnail_cache WHERE cache_key=?",
+                (cache_key,),
+            ).fetchone()
+            return row[0] if row else None
 
     def delete_entry(self, cache_key: str) -> None:
         """Delete a single cache entry."""
@@ -57,18 +64,20 @@ class ThumbnailRepository:
 
     def list_all(self) -> list[tuple[str, str]]:
         """Return all (cache_key, source_path) rows."""
-        rows = self._conn.execute(
-            "SELECT cache_key, source_path FROM thumbnail_cache"
-        ).fetchall()
-        return [(r[0], r[1]) for r in rows]
+        with db_write_lock(self._conn):
+            rows = self._conn.execute(
+                "SELECT cache_key, source_path FROM thumbnail_cache"
+            ).fetchall()
+            return [(r[0], r[1]) for r in rows]
 
     def list_all_with_metadata(self) -> list[tuple[str, str, float]]:
         """Return all cache rows needed for baked-thumbnail validation."""
-        rows = self._conn.execute(
-            "SELECT cache_key, source_path, source_mtime "
-            "FROM thumbnail_cache ORDER BY source_mtime DESC, cache_key"
-        ).fetchall()
-        return [(row[0], row[1], row[2]) for row in rows]
+        with db_write_lock(self._conn):
+            rows = self._conn.execute(
+                "SELECT cache_key, source_path, source_mtime "
+                "FROM thumbnail_cache ORDER BY source_mtime DESC, cache_key"
+            ).fetchall()
+            return [(row[0], row[1], row[2]) for row in rows]
 
     def delete_by_key(self, cache_key: str) -> None:
         """Delete entry by cache key (for orphan cleanup)."""
