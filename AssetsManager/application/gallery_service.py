@@ -67,6 +67,10 @@ class GalleryTraversalLimitError(RuntimeError):
         self.status = status
 
 
+class _IncrementalFallback(RuntimeError):
+    """Signal that an incremental apply cannot proceed; rebuild fully."""
+
+
 class _TraversalBudget:
     def __init__(self, limits: GalleryTraversalLimits) -> None:
         self.limits = limits
@@ -191,18 +195,44 @@ class _ImageRef:
 
 
 @dataclass(frozen=True)
-class _HomeState:
-    """Immutable snapshot backing incremental home updates.
+class _QueuedChange:
+    """One FileSystemChanged event queued for incremental application."""
 
-    ``node`` is the summary tree as built by ``_compute_home``, ``refs``
-    every library image with its mtime (sorted like ``recent``), and
-    ``generation`` the per-service monotonic counter stamped at build time.
-    The incremental applier only trusts events newer than this generation;
+    kind: str
+    paths: tuple[str, ...]
+    old_paths: tuple[str, ...]
+    seq: int
+
+
+@dataclass
+class _StateNode:
+    """One node of the incremental state tree.
+
+    Mutable by convention: only the single incremental worker thread (or
+    the synchronous build path) touches these after construction.
+    """
+
+    summary: dict[str, Any]  # response-form summary (mutated in place)
+    direct_images: list[str]  # sorted direct image rel paths
+    children: list[str]  # child rel paths in response order
+
+
+@dataclass
+class _HomeState:
+    """Snapshot backing incremental home updates.
+
+    ``nodes`` is the full state tree keyed by normalized relative path
+    ("/" for the root), ``refs`` every library image with its mtime,
+    ``files`` every file (idempotency registry), and ``generation`` the
+    per-service monotonic counter stamped at build/apply time. The
+    incremental applier only trusts events newer than this generation;
     any inconsistency falls back to a full rebuild.
     """
 
     node: dict[str, Any] | None
-    refs: tuple[_ImageRef, ...]
+    nodes: dict[str, _StateNode]
+    refs: list[_ImageRef]
+    files: dict[str, tuple[int, int]]  # rel path -> (size, mtime)
     generation: int
 
 
@@ -237,9 +267,14 @@ class GalleryService:
         self._building: set[str] = set()
         self._build_lock = threading.Lock()
         self._refresh_timer: threading.Timer | None = None
-        # Incremental-update state: per-root snapshot of the last full build
-        # plus a monotonic generation counter. The applier (a later phase)
-        # consumes these; today only _compute_home writes them.
+        # Incremental-update machinery: per-root pending event queue, a
+        # short debounce, and per-root snapshots of the last build. All
+        # counters share one lock so seq/generation ordering stays exact.
+        self._pending_events: dict[str, list[_QueuedChange]] = {}
+        self._pending_lock = threading.Lock()
+        self._generation_lock = threading.Lock()
+        self._incremental_debounce = 2.0
+        self._inc_timer: threading.Timer | None = None
         self._home_states: dict[str, _HomeState] = {}
         self._home_generation = 0
         self._closed = False
@@ -248,17 +283,44 @@ class GalleryService:
         )
 
     def _on_file_system_changed(self, event: FileSystemChanged) -> None:
-        """Invalidate the home projection on library changes and schedule a
-        background rebuild (debounced so a burst of file events rebuilds
-        once, shortly after the last change)."""
+        """Queue library changes for incremental application, falling back
+        to the full rebuild semantics when no snapshot is available."""
         if event.kind in {"gallery", "shop"}:
             return
         root_key = str(Path(event.library_root).resolve())
         with self._home_cache_lock:
+            has_state = root_key in self._home_states and root_key in self._home_cache
+        if not has_state:
+            # No snapshot: run the historical full-rebuild invalidation.
+            self._invalidate_and_schedule_full(root_key, str(event.library_root))
+            return
+        with self._generation_lock:
+            self._home_generation += 1
+            seq = self._home_generation
+        with self._pending_lock:
+            queue = self._pending_events.setdefault(root_key, [])
+            queue.append(_QueuedChange(
+                event.kind, tuple(event.paths), tuple(event.old_paths), seq,
+            ))
+            if len(queue) > self._MAX_PENDING_EVENTS:
+                # Queue overflow: fall back to the full rebuild semantics.
+                self._pending_events.pop(root_key, None)
+                overflow = True
+            else:
+                overflow = False
+        if overflow:
+            self._invalidate_and_schedule_full(root_key, str(event.library_root))
+            return
+        self._schedule_incremental_apply(root_key)
+
+    _MAX_PENDING_EVENTS = 500
+
+    def _invalidate_and_schedule_full(self, root_key: str, library_root: str) -> None:
+        """Drop the cached/state/persisted projection and schedule a full
+        rebuild (debounced so a burst of events rebuilds once)."""
+        with self._home_cache_lock:
             self._home_cache.pop(root_key, None)
             self._home_states.pop(root_key, None)
-        # The persisted projection is stale too; delete it so a restart does
-        # not resurrect the pre-change view.
         try:
             self._persist_repository(root_key).delete()
         except Exception:
@@ -267,10 +329,72 @@ class GalleryService:
             if self._refresh_timer is not None:
                 self._refresh_timer.cancel()
             self._refresh_timer = threading.Timer(
-                self._home_cache_ttl, self._ensure_home_building, args=(str(event.library_root),)
+                self._home_cache_ttl, self._ensure_home_building, args=(library_root,)
             )
             self._refresh_timer.daemon = True
             self._refresh_timer.start()
+
+    def _schedule_incremental_apply(self, root_key: str) -> None:
+        """Debounce pending changes into one short apply window."""
+        if self._closed:
+            return
+        with self._build_lock:
+            if self._inc_timer is not None:
+                self._inc_timer.cancel()
+            self._inc_timer = threading.Timer(
+                self._incremental_debounce, self._apply_pending_home, args=(root_key,)
+            )
+            self._inc_timer.daemon = True
+            self._inc_timer.start()
+
+    def _apply_pending_home(self, root_key: str) -> None:
+        """Apply queued changes incrementally; fall back to a full rebuild
+        on any inconsistency, budget overrun, or concurrent full build."""
+        with self._pending_lock:
+            changes = self._pending_events.pop(root_key, None)
+        if not changes:
+            return
+        with self._home_cache_lock:
+            state = self._home_states.get(root_key)
+            cached = self._home_cache.get(root_key)
+        if state is None or cached is None:
+            self._invalidate_and_schedule_full(root_key, root_key)
+            return
+        changes = [change for change in changes if change.seq > state.generation]
+        if not changes:
+            return
+        with self._build_lock:
+            busy = root_key in self._building
+            if not busy:
+                self._building.add(root_key)
+        if busy:
+            # A full rebuild is running; its result supersedes the snapshot.
+            # Re-queue briefly instead of racing it. (Scheduling must happen
+            # outside _build_lock: _schedule_incremental_apply takes it, and
+            # threading.Lock is not reentrant.)
+            with self._pending_lock:
+                self._pending_events.setdefault(root_key, []).extend(changes)
+            self._schedule_incremental_apply(root_key)
+            return
+        try:
+            home = cached[1]
+            for change in changes:
+                home = self._apply_change(root_key, state, change, home)
+            with self._home_cache_lock:
+                with self._generation_lock:
+                    self._home_generation += 1
+                    state.generation = self._home_generation
+                self._home_cache[root_key] = (time.monotonic(), home)
+            self._save_persisted_projection(root_key, home)
+        except Exception:
+            _log.debug(
+                "Incremental gallery apply failed; falling back to a full rebuild",
+                exc_info=True,
+            )
+            self._invalidate_and_schedule_full(root_key, root_key)
+        finally:
+            with self._build_lock:
+                self._building.discard(root_key)
 
     def close(self) -> None:
         """Stop background work; called when the owning session closes."""
@@ -279,6 +403,9 @@ class GalleryService:
             if self._refresh_timer is not None:
                 self._refresh_timer.cancel()
                 self._refresh_timer = None
+            if self._inc_timer is not None:
+                self._inc_timer.cancel()
+                self._inc_timer = None
         try:
             self._fs_subscription.close()
         except Exception:
@@ -590,6 +717,8 @@ class GalleryService:
         depth: int,
         image_refs: list[_ImageRef] | None = None,
         node_counts: dict[str, int] | None = None,
+        state_nodes: dict[str, _StateNode] | None = None,
+        known_files: dict[str, tuple[int, int]] | None = None,
     ) -> dict[str, Any] | None:
         try:
             if self._path_contains_reparse_point(root, target):
@@ -626,6 +755,8 @@ class GalleryService:
                     depth=depth + 1,
                     image_refs=image_refs,
                     node_counts=node_counts,
+                    state_nodes=state_nodes,
+                    known_files=known_files,
                 )
                 if child_node is None:
                     continue
@@ -646,6 +777,8 @@ class GalleryService:
             direct_file_count += 1
             modified = int(stat_result.st_mtime)
             latest_modified = max(latest_modified, modified)
+            if known_files is not None:
+                known_files[child_relative] = (int(stat_result.st_size), modified)
             if entry.name.lower().endswith(tuple(_SAFE_GALLERY_IMAGE_EXTS)):
                 direct_images.append((child_relative, stat_result))
                 if image_refs is not None:
@@ -692,11 +825,288 @@ class GalleryService:
                 for path, stat_result in direct_images
                 if (described := self._describe_image(root, path, stat_result=stat_result, thumbnail_size=512))
             ]
+        if state_nodes is not None:
+            state_nodes[normalized or "/"] = _StateNode(
+                summary=self._summary(node),
+                direct_images=[path for path, _stat_result in direct_images],
+                children=[str(child["path"]) for child in child_nodes],
+            )
         return node
 
     @staticmethod
     def _summary(node: dict[str, Any]) -> dict[str, Any]:
         return {key: value for key, value in node.items() if key not in {"children", "entries"}}
+
+    # ── Incremental appliers (file-level v1; anything else falls back) ──
+
+    @staticmethod
+    def _parent_rel(rel: str) -> str:
+        return "/".join(part for part in rel.split("/")[:-1] if part)
+
+    def _rel(self, root: Path, absolute: str) -> str | None:
+        """Normalize an absolute event path to a library-relative path."""
+        try:
+            target = assert_under_root(Path(absolute).resolve(), root)
+        except (OSError, PathEscapeError, ValueError):
+            return None
+        return self._normalize_relative_path(str(target.relative_to(root)))
+
+    def _apply_change(
+        self,
+        root_key: str,
+        state: _HomeState,
+        change: _QueuedChange,
+        home: GalleryHome,
+    ) -> GalleryHome:
+        root = Path(root_key).resolve()
+        if change.kind in {"created", "copied", "restored"}:
+            for path in change.paths:
+                home = self._apply_file_event(root, state, home, path, None, "created")
+        elif change.kind == "deleted":
+            for path in change.paths:
+                home = self._apply_file_event(root, state, home, path, None, "deleted")
+        elif change.kind == "moved":
+            for new_path, old_path in zip(change.paths, change.old_paths):
+                home = self._apply_file_event(root, state, home, new_path, old_path, "moved")
+        else:
+            raise _IncrementalFallback(f"unsupported event kind {change.kind}")
+        return home
+
+    def _apply_file_event(
+        self,
+        root: Path,
+        state: _HomeState,
+        home: GalleryHome,
+        new_abs: str,
+        old_abs: str | None,
+        kind: str,
+    ) -> GalleryHome:
+        conn = self._connection(root, None, self._connection_provider)
+        if kind == "created":
+            rel = self._rel(root, new_abs)
+            if rel is None:
+                raise _IncrementalFallback("created path escapes the library")
+            if rel in state.files:
+                return home  # idempotent guard: already applied
+            target = Path(new_abs)
+            try:
+                if target.is_dir():
+                    raise _IncrementalFallback("directory events are not incremental yet")
+                st = target.stat()
+            except OSError as exc:
+                raise _IncrementalFallback("cannot stat created path") from exc
+            is_image = target.suffix.lower() in _SAFE_GALLERY_IMAGE_EXTS
+            parent_key = self._parent_rel(rel) or "/"
+            parent = state.nodes.get(parent_key)
+            if parent is None:
+                raise _IncrementalFallback(f"unknown parent {parent_key}")
+            state.files[rel] = (int(st.st_size), int(st.st_mtime))
+            if is_image:
+                state.refs.append(_ImageRef(rel, int(st.st_mtime)))
+                parent.direct_images.append(rel)
+                parent.direct_images.sort(key=lambda path: path.casefold())
+                if parent.summary.get("cover_path") is None or parent.direct_images[0] == rel:
+                    self._recompute_cover(root, state, parent_key)
+            self._bump_ancestors(
+                state, parent_key,
+                size_delta=int(st.st_size),
+                file_delta=1,
+                artwork_delta=1 if is_image else 0,
+                modified_candidate=int(st.st_mtime),
+            )
+            return self._recompose_home(root, state, conn)
+
+        if kind == "deleted":
+            rel = self._rel(root, new_abs)
+            if rel is None or rel not in state.files:
+                return home  # unknown or already applied
+            size, mtime = state.files.pop(rel)
+            parent_key = self._parent_rel(rel) or "/"
+            parent = state.nodes.get(parent_key)
+            if parent is None:
+                raise _IncrementalFallback(f"unknown parent {parent_key}")
+            if int(parent.summary["modified"]) == mtime:
+                # The subtree maximum left with this file; we cannot compute
+                # the next maximum without re-walking.
+                raise _IncrementalFallback("deleted file carried the max mtime")
+            is_image = any(ref.path == rel for ref in state.refs)
+            if is_image:
+                state.refs = [ref for ref in state.refs if ref.path != rel]
+                if rel in parent.direct_images:
+                    parent.direct_images.remove(rel)
+                if parent.summary.get("cover_path") == rel:
+                    self._recompute_cover(root, state, parent_key)
+            self._bump_ancestors(
+                state, parent_key,
+                size_delta=-size,
+                file_delta=-1,
+                artwork_delta=-1 if is_image else 0,
+                modified_candidate=-1,
+            )
+            return self._recompose_home(root, state, conn)
+
+        if kind == "moved" and old_abs is not None:
+            rel_old = self._rel(root, old_abs)
+            rel_new = self._rel(root, new_abs)
+            if rel_old is None or rel_new is None:
+                raise _IncrementalFallback("moved path escapes the library")
+            if rel_old == rel_new:
+                return home
+            if rel_old not in state.files:
+                raise _IncrementalFallback("moved source unknown")
+            if rel_new in state.files:
+                raise _IncrementalFallback("moved destination already known")
+            target = Path(new_abs)
+            try:
+                if target.is_dir():
+                    raise _IncrementalFallback("directory moves are not incremental yet")
+                st = target.stat()
+            except OSError as exc:
+                raise _IncrementalFallback("cannot stat moved target") from exc
+            size, old_mtime = state.files.pop(rel_old)
+            state.files[rel_new] = (int(st.st_size), int(st.st_mtime))
+            is_image = any(ref.path == rel_old for ref in state.refs)
+            if is_image:
+                state.refs = [
+                    ref if ref.path != rel_old else _ImageRef(rel_new, ref.modified)
+                    for ref in state.refs
+                ]
+            old_parent_key = self._parent_rel(rel_old) or "/"
+            new_parent_key = self._parent_rel(rel_new) or "/"
+            old_parent = state.nodes.get(old_parent_key)
+            new_parent = state.nodes.get(new_parent_key)
+            if old_parent is None or new_parent is None:
+                raise _IncrementalFallback("moved parent unknown")
+            if int(old_parent.summary["modified"]) == old_mtime:
+                raise _IncrementalFallback("moved file carried the old max mtime")
+            if is_image and rel_old in old_parent.direct_images:
+                old_parent.direct_images.remove(rel_old)
+                if old_parent.summary.get("cover_path") == rel_old:
+                    self._recompute_cover(root, state, old_parent_key)
+            if is_image:
+                new_parent.direct_images.append(rel_new)
+                new_parent.direct_images.sort(key=lambda path: path.casefold())
+                if new_parent.summary.get("cover_path") is None or new_parent.direct_images[0] == rel_new:
+                    self._recompute_cover(root, state, new_parent_key)
+            self._bump_ancestors(
+                state, old_parent_key,
+                size_delta=-size,
+                file_delta=-1,
+                artwork_delta=-1 if is_image else 0,
+                modified_candidate=-1,
+            )
+            self._bump_ancestors(
+                state, new_parent_key,
+                size_delta=int(st.st_size),
+                file_delta=1,
+                artwork_delta=1 if is_image else 0,
+                modified_candidate=int(st.st_mtime),
+            )
+            return self._recompose_home(root, state, conn)
+
+        raise _IncrementalFallback(f"unsupported event {kind}")
+
+    def _bump_ancestors(
+        self,
+        state: _HomeState,
+        start_key: str,
+        *,
+        size_delta: int,
+        file_delta: int,
+        artwork_delta: int,
+        modified_candidate: int,
+    ) -> None:
+        """Propagate aggregate deltas from *start_key* up to the root."""
+        parts = [part for part in start_key.split("/") if part]
+        touched: list[str] = []
+        for i in range(len(parts), -1, -1):
+            key = "/".join(parts[:i]) or "/"
+            node = state.nodes.get(key)
+            if node is None:
+                raise _IncrementalFallback(f"missing node {key}")
+            summary = node.summary
+            summary["size"] = max(0, int(summary["size"]) + size_delta)
+            summary["size_fmt"] = format_size(int(summary["size"]))
+            summary["file_count"] = max(0, int(summary["file_count"]) + file_delta)
+            summary["artwork_count"] = max(0, int(summary["artwork_count"]) + artwork_delta)
+            if modified_candidate > int(summary["modified"]):
+                summary["modified"] = modified_candidate
+            touched.append(key)
+        for key in touched:
+            if key == "/":
+                continue
+            parent_key = self._parent_rel(key) or "/"
+            if state.nodes is not None and parent_key in state.nodes:
+                self._resort_children(state, parent_key)
+
+    def _resort_children(self, state: _HomeState, parent_key: str) -> None:
+        parent = state.nodes.get(parent_key)
+        if parent is None:
+            raise _IncrementalFallback(f"missing parent {parent_key}")
+        parent.children.sort(key=lambda path: (
+            -int(state.nodes[path].summary["modified"]),
+            str(state.nodes[path].summary["name"]).casefold(),
+        ))
+
+    def _recompute_cover(self, root: Path, state: _HomeState, node_key: str) -> None:
+        node = state.nodes.get(node_key)
+        if node is None:
+            raise _IncrementalFallback(f"missing node {node_key}")
+        summary = node.summary
+        cover_path = (
+            node.direct_images[0]
+            if node.direct_images
+            else next(
+                (
+                    state.nodes[child].summary.get("cover_path")
+                    for child in node.children
+                    if state.nodes[child].summary.get("cover_path")
+                ),
+                None,
+            )
+        )
+        summary["cover_path"] = cover_path
+        cover = self._describe_image(root, cover_path, thumbnail_size=512) if cover_path else None
+        summary["cover_url"] = cover.get("thumbnail_url") if cover else None
+        summary["width"] = cover.get("width") if cover else None
+        summary["height"] = cover.get("height") if cover else None
+        summary["aspect_ratio"] = cover.get("aspect_ratio") if cover else None
+
+    def _recompose_home(self, root: Path, state: _HomeState, db_conn) -> GalleryHome:
+        root_node = state.nodes.get("/")
+        if root_node is None:
+            raise _IncrementalFallback("root state missing")
+        children = [
+            state.nodes[path].summary for path in root_node.children
+            if path in state.nodes
+        ]
+        collections = [item for item in children if item.get("kind") == "collection"]
+        projects = [item for item in children if item.get("kind") == "project"]
+        refs = sorted(state.refs, key=lambda item: (-item.modified, item.path.casefold()))
+        recent: list[dict[str, Any]] = []
+        for ref in refs[:24]:
+            described = self._describe_image(root, ref.path, thumbnail_size=512)
+            if described:
+                recent.append(described)
+        self._apply_tags_to_entries(root, recent, db_conn=db_conn)
+        # The build counts every non-root node by kind, not just the
+        # root's direct children.
+        collections_count = sum(
+            1 for key, entry in state.nodes.items()
+            if key != "/" and entry.summary.get("kind") == "collection"
+        )
+        projects_count = sum(
+            1 for key, entry in state.nodes.items()
+            if key != "/" and entry.summary.get("kind") == "project"
+        )
+        stats = {
+            "collections": collections_count,
+            "projects": projects_count,
+            "artworks": int(root_node.summary["artwork_count"]),
+            "total_size_fmt": str(root_node.summary["size_fmt"]),
+        }
+        featured = collections[0] if collections else projects[0] if projects else root_node.summary
+        return GalleryHome(featured, collections, projects, recent, stats)
 
     def _apply_tags(
         self,
@@ -808,6 +1218,8 @@ class GalleryService:
         conn = self._connection(root, db_conn, self._connection_provider)
         refs: list[_ImageRef] = []
         node_counts: dict[str, int] = {"collection": 0, "project": 0}
+        state_nodes: dict[str, _StateNode] = {}
+        known_files: dict[str, tuple[int, int]] = {}
         node = self._build_node(
             root,
             "",
@@ -817,6 +1229,8 @@ class GalleryService:
             depth=0,
             image_refs=refs,
             node_counts=node_counts,
+            state_nodes=state_nodes,
+            known_files=known_files,
         )
         if node is None:
             return GalleryHome(None, [], [], [], {
@@ -849,11 +1263,15 @@ class GalleryService:
         featured = collections[0] if collections else projects[0] if projects else self._summary(node)
         home = GalleryHome(featured, collections, projects, recent, stats)
         with self._home_cache_lock:
-            self._home_generation += 1
+            with self._generation_lock:
+                self._home_generation += 1
+                generation = self._home_generation
             self._home_states[str(root)] = _HomeState(
                 node=node,
-                refs=tuple(refs),
-                generation=self._home_generation,
+                nodes=state_nodes,
+                refs=refs,
+                files=known_files,
+                generation=generation,
             )
             self._home_cache[str(root)] = (time.monotonic(), home)
         self._save_persisted_projection(str(root), home)

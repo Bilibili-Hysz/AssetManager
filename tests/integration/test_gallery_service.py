@@ -256,9 +256,9 @@ def test_get_home_cached_builds_in_background_and_serves_cache(tmp_path, schema_
         service.close()
 
 
-def test_home_cache_invalidated_on_file_system_changes(tmp_path, schema_db):
-    """A FileSystemChanged event clears the cached projection so the next
-    read triggers a background rebuild."""
+def test_home_cache_updates_incrementally_on_file_system_changes(tmp_path, schema_db, monkeypatch):
+    """A supported file event is applied incrementally: the cached home
+    reflects the change after the short debounce instead of being dropped."""
     import time
 
     from AssetsManager.domain.event_bus import get_event_bus
@@ -266,17 +266,27 @@ def test_home_cache_invalidated_on_file_system_changes(tmp_path, schema_db):
 
     _image(tmp_path / "set" / "one.png")
     service = GalleryService(connection_provider=lambda _root: schema_db)
+    monkeypatch.setattr(service, "_incremental_debounce", 0.05)
     try:
         deadline = time.monotonic() + 10.0
         while time.monotonic() < deadline and service.get_home_cached(tmp_path) is None:
             time.sleep(0.05)
-        assert service.get_home_cached(tmp_path) is not None
+        before = service.get_home_cached(tmp_path)
+        assert before is not None and before.stats["artworks"] == 1
 
+        _image(tmp_path / "set" / "two.png")
         get_event_bus().publish(FileSystemChanged(
-            library_root=str(tmp_path), session_token="test", kind="files", paths=(),
+            library_root=str(tmp_path), session_token="test", kind="created",
+            paths=(str(tmp_path / "set" / "two.png"),),
         ))
-        # Cache cleared synchronously by the event handler.
-        assert service.get_home_cached(tmp_path) is None
+        deadline = time.monotonic() + 10.0
+        after = None
+        while time.monotonic() < deadline:
+            after = service.get_home_cached(tmp_path)
+            if after is not None and after.stats["artworks"] == 2:
+                break
+            time.sleep(0.05)
+        assert after is not None and after.stats["artworks"] == 2
     finally:
         service.close()
 
@@ -312,9 +322,10 @@ def test_home_projection_persists_to_database_and_survives_restart(tmp_path, sch
         second.close()
 
 
-def test_file_system_change_deletes_persisted_projection(tmp_path, schema_db):
-    """The persisted gallery_home row is removed on library changes so a
-    restart cannot resurrect the pre-change view."""
+def test_file_system_change_rewrites_persisted_projection(tmp_path, schema_db, monkeypatch):
+    """A supported event rewrites (not deletes) the persisted projection so
+    a restart serves the updated view; unsupported kinds delete it and fall
+    back to the full rebuild semantics."""
     import time
 
     from AssetsManager.domain.event_bus import get_event_bus
@@ -322,6 +333,7 @@ def test_file_system_change_deletes_persisted_projection(tmp_path, schema_db):
 
     _image(tmp_path / "set" / "one.png")
     service = GalleryService(connection_provider=lambda _root: schema_db)
+    monkeypatch.setattr(service, "_incremental_debounce", 0.05)
     try:
         deadline = time.monotonic() + 10.0
         while time.monotonic() < deadline and service.get_home_cached(tmp_path) is None:
@@ -330,9 +342,33 @@ def test_file_system_change_deletes_persisted_projection(tmp_path, schema_db):
             "SELECT 1 FROM gallery_home WHERE id = 1"
         ).fetchone() is not None
 
+        _image(tmp_path / "set" / "two.png")
+        get_event_bus().publish(FileSystemChanged(
+            library_root=str(tmp_path), session_token="test", kind="created",
+            paths=(str(tmp_path / "set" / "two.png"),),
+        ))
+
+        def persisted_reflects_two():
+            row = schema_db.execute(
+                "SELECT projection FROM gallery_home WHERE id = 1"
+            ).fetchone()
+            return row is not None and '"artworks": 2' in row[0]
+
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and not persisted_reflects_two():
+            time.sleep(0.05)
+        assert persisted_reflects_two()
+
+        # Unsupported kinds fall back: the persisted row is deleted (the
+        # full rebuild is scheduled separately).
         get_event_bus().publish(FileSystemChanged(
             library_root=str(tmp_path), session_token="test", kind="files", paths=(),
         ))
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and schema_db.execute(
+            "SELECT 1 FROM gallery_home WHERE id = 1"
+        ).fetchone() is not None:
+            time.sleep(0.05)
         assert schema_db.execute(
             "SELECT 1 FROM gallery_home WHERE id = 1"
         ).fetchone() is None
