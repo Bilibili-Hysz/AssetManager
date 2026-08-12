@@ -1376,6 +1376,7 @@ class _LanServerImpl:
             return
         protocol = self.endpoint_protocol
         _log.info("LAN sharing started on %s://%s:%d", protocol, get_local_ip(), self._port)
+        self._prewarm_gallery()
 
         # Start background file scanner for fast search
         scanner = self._scanner
@@ -1387,6 +1388,24 @@ class _LanServerImpl:
                 await asyncio.sleep(1)
         except asyncio.CancelledError:
             pass
+
+    def _prewarm_gallery(self) -> None:
+        """Build the gallery home projection in the background after startup.
+
+        Very large libraries take tens of seconds to project; prewarming
+        right after the LAN server starts means the first /gallery visit
+        finds a warm cache instead of a building state. Runs on a daemon
+        thread and never delays startup or shutdown.
+        """
+        services = getattr(self, "services", None)
+        gallery = getattr(services, "gallery_service", None)
+        root = getattr(self, "_library_root", None)
+        if gallery is None or root is None:
+            return
+        thread = threading.Thread(
+            target=lambda: gallery.prewarm_home(root), daemon=True
+        )
+        thread.start()
 
     def _revoke_seller_sessions(self) -> None:
         """Revoke every already-assembled Seller service before shutdown.

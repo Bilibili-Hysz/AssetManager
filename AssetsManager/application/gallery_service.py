@@ -271,6 +271,17 @@ class GalleryService:
         self._ensure_home_building(str(root))
         return None
 
+    def prewarm_home(self, library_root: str | Path) -> None:
+        """Kick off a background home projection build (idempotent).
+
+        Called after the LAN server starts so the first /gallery visit
+        finds a warm cache instead of a building state. Never blocks.
+        """
+        try:
+            self._ensure_home_building(str(Path(library_root).resolve()))
+        except Exception:
+            _log.debug("Gallery home prewarm skipped", exc_info=True)
+
     def _ensure_home_building(self, root_key: str) -> None:
         """Start a background home build for *root_key* unless one is
         already running or the service is closed.
