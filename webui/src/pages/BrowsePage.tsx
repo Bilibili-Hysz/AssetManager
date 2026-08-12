@@ -123,6 +123,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   const sidebarStartW = useRef(0);
   const infoDrag = useRef(false);
   const infoStartX = useRef(0);
+  const lastManualRefreshRef = useRef(0);
   const infoStartW = useRef(0);
   const rafId = useRef<number | null>(null);
   const tagSearchGeneration = useRef(0);
@@ -367,6 +368,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
       if (action === 'add') await tagsApi.add(tag, selectedItem.path);
       else await tagsApi.remove(tag, selectedItem.path);
       setTagsRefreshKey(value => value + 1);
+      lastManualRefreshRef.current = Date.now();
       refresh();
       refreshSelected();
       if (activeTag) runTagSearch(activeTag, { clearResults: false, resetFilterOnFailure: false, notifyOnFailure: false });
@@ -381,6 +383,12 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   }, [activeTag, refresh, refreshSelected, runTagSearch, selectedItem, showToast, t, tagMutationPending, tagsApi]);
 
   useInvalidation(['files', 'metadata', 'tags', 'project_detail'], event => {
+    // The tag mutation above already refreshed everything; the backend then
+    // broadcasts the change over the WebSocket, which would trigger a second
+    // identical refresh. Skip events inside the manual-refresh window (the
+    // 1.5s window only risks swallowing a genuine change from another client
+    // that lands within it — the next event still refreshes).
+    if (Date.now() - lastManualRefreshRef.current < 1500) return;
     refresh();
     if (activeTag && (!event || event.domains.includes('tags'))) {
       runTagSearch(activeTag, { clearResults: false, resetFilterOnFailure: false, notifyOnFailure: false });

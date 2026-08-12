@@ -89,9 +89,6 @@ export interface ProjectItem {
   tags?: string[];
   /** Backend sends this on every directory listing entry (files.py). */
   is_project?: boolean;
-  view_only?: boolean;
-  downloadable?: boolean;
-  password_protected?: boolean;
 }
 
 export interface PreviewPoolItem {
@@ -263,7 +260,7 @@ export interface SearchResponse {
   count: number;
 }
 
-export type BrowsableItem = SearchResult & Partial<Pick<ProjectItem, 'size' | 'size_fmt' | 'modified' | 'tags' | 'view_only' | 'downloadable' | 'password_protected'>> & {
+export type BrowsableItem = SearchResult & Partial<Pick<ProjectItem, 'size' | 'size_fmt' | 'modified' | 'tags'>> & {
   is_project?: boolean;
 };
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MoreHorizontal, Lock, Download, Eye, FolderOpen, Link2 } from 'lucide-react';
+import { MoreHorizontal, Download, Eye, FolderOpen, Link2 } from 'lucide-react';
 import type { BrowsableItem } from '../../types/api';
 import { useI18n } from '../../hooks/useI18n';
 import { LayeredPreview } from './LayeredPreview';
@@ -53,12 +53,6 @@ export function ProjectCard({
   };
 
   useEffect(() => clearInspectTimer, []);
-
-  // Permission badges
-  const badges = [];
-  if (item.view_only) badges.push({ icon: <Lock size={10} />, title: 'View Only', color: 'var(--color-warning)', bg: 'var(--color-warning-subtle)' });
-  if (item.downloadable === true) badges.push({ icon: <Download size={10} />, title: 'Downloadable', color: 'var(--color-success)', bg: 'var(--color-success-subtle)' });
-  if (item.password_protected) badges.push({ icon: <Lock size={10} />, title: 'Password Protected', color: 'var(--color-danger)', bg: 'var(--color-danger-subtle)' });
 
   // Dynamic border and background based on state
   const cardStyle = {
@@ -126,21 +120,6 @@ export function ProjectCard({
           style={{ backgroundColor: 'var(--color-surface-hover)' }}
         >
           <LayeredPreview src={thumbnail} alt="" isDir={isDir} size="grid" />
-          {/* Permission badges overlay */}
-          {badges.length > 0 && (
-            <div className="absolute top-2 right-2 flex flex-col gap-1">
-              {badges.map((badge, i) => (
-                <span
-                  key={i}
-                  className="p-1 rounded-md"
-                  style={{ color: badge.color, backgroundColor: badge.bg }}
-                  title={badge.title}
-                >
-                  {badge.icon}
-                </span>
-              ))}
-            </div>
-          )}
         </div>
         {/* Info */}
         <div className="p-2.5">
