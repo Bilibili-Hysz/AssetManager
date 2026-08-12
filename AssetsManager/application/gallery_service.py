@@ -932,16 +932,241 @@ class GalleryService:
         root = Path(root_key).resolve()
         if change.kind in {"created", "copied", "restored"}:
             for path in change.paths:
-                home = self._apply_file_event(root, state, home, path, None, "created")
+                try:
+                    is_dir = Path(path).is_dir()
+                except OSError:
+                    is_dir = False
+                if is_dir:
+                    home = self._apply_dir_event(root, state, home, path, None, "created")
+                else:
+                    home = self._apply_file_event(root, state, home, path, None, "created")
         elif change.kind == "deleted":
             for path in change.paths:
-                home = self._apply_file_event(root, state, home, path, None, "deleted")
+                rel = self._rel(root, path)
+                if rel is not None and rel in state.nodes:
+                    home = self._apply_dir_event(root, state, home, path, None, "deleted")
+                else:
+                    home = self._apply_file_event(root, state, home, path, None, "deleted")
         elif change.kind == "moved":
             for new_path, old_path in zip(change.paths, change.old_paths):
-                home = self._apply_file_event(root, state, home, new_path, old_path, "moved")
+                try:
+                    is_dir = Path(new_path).is_dir()
+                except OSError:
+                    is_dir = False
+                if is_dir:
+                    home = self._apply_dir_event(root, state, home, new_path, old_path, "moved")
+                else:
+                    home = self._apply_file_event(root, state, home, new_path, old_path, "moved")
         else:
             raise _IncrementalFallback(f"unsupported event kind {change.kind}")
         return home
+
+    @staticmethod
+    def _collect_descendants(state: _HomeState, key: str) -> list[str]:
+        """Return *key* plus every descendant state key (depth-first)."""
+        collected: list[str] = []
+        stack = [key]
+        while stack:
+            current = stack.pop()
+            collected.append(current)
+            node = state.nodes.get(current)
+            if node is not None:
+                stack.extend(node.children)
+        return collected
+
+    def _apply_dir_event(
+        self,
+        root: Path,
+        state: _HomeState,
+        home: GalleryHome,
+        new_abs: str,
+        old_abs: str | None,
+        kind: str,
+    ) -> GalleryHome:
+        conn = self._connection(root, None, self._connection_provider)
+        if kind == "created":
+            rel = self._rel(root, new_abs)
+            if rel is None or not rel:
+                raise _IncrementalFallback("directory path escapes the library")
+            if rel in state.nodes:
+                return home  # idempotent guard
+            parent_key = self._parent_rel(rel) or "/"
+            parent = state.nodes.get(parent_key)
+            if parent is None:
+                raise _IncrementalFallback(f"unknown parent {parent_key}")
+            # Bounded sub-walk of the new subtree (raises the traversal limit
+            # error on runaway trees; the caller falls back to a full build).
+            sub_refs: list[_ImageRef] = []
+            sub_nodes: dict[str, _StateNode] = {}
+            sub_files: dict[str, tuple[int, int]] = {}
+            try:
+                sub_root = self._build_node(
+                    root, rel, Path(new_abs),
+                    include_entries=False,
+                    budget=_TraversalBudget(self._limits),
+                    depth=len(rel.split("/")),
+                    image_refs=sub_refs,
+                    node_counts=None,
+                    state_nodes=sub_nodes,
+                    known_files=sub_files,
+                )
+            except GalleryTraversalLimitError as exc:
+                raise _IncrementalFallback("directory sub-walk exceeded budget") from exc
+            if sub_root is None:
+                # Empty directories are pruned by the projection: no-op.
+                return home
+            summary = sub_nodes[rel].summary
+            state.nodes.update(sub_nodes)
+            state.files.update(sub_files)
+            state.refs.extend(sub_refs)
+            parent.children.append(rel)
+            if parent.summary.get("kind") == "project":
+                parent.summary["kind"] = "collection"
+            self._resort_children(state, parent_key)
+            self._bump_ancestors(
+                state, parent_key,
+                size_delta=int(summary["size"]),
+                file_delta=int(summary["file_count"]),
+                artwork_delta=int(summary["artwork_count"]),
+                modified_candidate=int(summary["modified"]),
+                child_delta=1,
+            )
+            return self._recompose_home(root, state, conn)
+
+        if kind == "deleted":
+            rel = self._rel(root, new_abs)
+            if rel is None or not rel or rel not in state.nodes:
+                return home  # unknown or already applied
+            node = state.nodes[rel]
+            summary = node.summary
+            parent_key = self._parent_rel(rel) or "/"
+            parent = state.nodes.get(parent_key)
+            if parent is None:
+                raise _IncrementalFallback(f"unknown parent {parent_key}")
+            parent_sole_content = (
+                int(parent.summary["file_count"]) == int(summary["file_count"])
+                and len(parent.children) == 1
+            )
+            if (
+                not parent_sole_content
+                and int(parent.summary["modified"]) == int(summary["modified"])
+            ):
+                raise _IncrementalFallback("deleted directory carried the max mtime")
+            descendants = self._collect_descendants(state, rel)
+            for key in descendants:
+                state.nodes.pop(key, None)
+            prefix = rel + "/"
+            state.files = {
+                path: entry for path, entry in state.files.items()
+                if not path.startswith(prefix)
+            }
+            state.refs = [ref for ref in state.refs if not ref.path.startswith(prefix)]
+            parent.children.remove(rel)
+            self._bump_ancestors(
+                state, parent_key,
+                size_delta=-int(summary["size"]),
+                file_delta=-int(summary["file_count"]),
+                artwork_delta=-int(summary["artwork_count"]),
+                modified_candidate=-1,
+                child_delta=-1,
+            )
+            self._prune_empty_chain(state, parent_key)
+            return self._recompose_home(root, state, conn)
+
+        if kind == "moved" and old_abs is not None:
+            rel_old = self._rel(root, old_abs)
+            rel_new = self._rel(root, new_abs)
+            if rel_old is None or rel_new is None or not rel_old or not rel_new:
+                raise _IncrementalFallback("directory move escapes the library")
+            if rel_old == rel_new:
+                return home
+            if rel_old not in state.nodes:
+                raise _IncrementalFallback("moved source directory unknown")
+            if rel_new in state.nodes:
+                raise _IncrementalFallback("moved destination directory already known")
+            if self._parent_rel(rel_old) == self._parent_rel(rel_new):
+                # Same-parent rename: rewrite the subtree keys in place.
+                keys = self._collect_descendants(state, rel_old)
+                for key in keys:
+                    new_key = rel_new + key[len(rel_old):]
+                    moved_node = state.nodes.pop(key)
+                    moved_node.summary["path"] = new_key
+                    moved_node.summary["name"] = new_key.rsplit("/", 1)[-1]
+                    moved_node.summary["parent_path"] = self._parent_rel(new_key)
+                    moved_node.direct_images = [
+                        rel_new + path[len(rel_old):] for path in moved_node.direct_images
+                    ]
+                    moved_node.children = [
+                        rel_new + path[len(rel_old):] for path in moved_node.children
+                    ]
+                    cover = moved_node.summary.get("cover_path")
+                    if cover:
+                        moved_node.summary["cover_path"] = (
+                            rel_new + cover[len(rel_old):]
+                        )
+                    state.nodes[new_key] = moved_node
+                state.files = {
+                    (
+                        rel_new + path[len(rel_old):]
+                        if path == rel_old or path.startswith(rel_old + "/")
+                        else path
+                    ): entry
+                    for path, entry in state.files.items()
+                }
+                state.refs = [
+                    _ImageRef(rel_new + ref.path[len(rel_old):], ref.modified)
+                    if ref.path == rel_old or ref.path.startswith(rel_old + "/")
+                    else ref
+                    for ref in state.refs
+                ]
+                parent_key = self._parent_rel(rel_old) or "/"
+                parent = state.nodes.get(parent_key)
+                if parent is None:
+                    raise _IncrementalFallback("moved parent unknown")
+                parent.children = [
+                    rel_new if path == rel_old else path for path in parent.children
+                ]
+                # Re-describe covers for the moved node and every ancestor:
+                # their cover_paths may have pointed into the renamed subtree.
+                cover_keys = [rel_new]
+                key = parent_key
+                while True:
+                    cover_keys.append(key)
+                    if key == "/":
+                        break
+                    key = self._parent_rel(key) or "/"
+                for key in cover_keys:
+                    if key in state.nodes:
+                        self._recompute_cover(root, state, key)
+                self._resort_children(state, parent_key)
+                return self._recompose_home(root, state, conn)
+
+            # Cross-parent move: delete from the old parent, then sub-walk
+            # the destination (both guarded; any inconsistency falls back).
+            home = self._apply_dir_event(root, state, home, old_abs, None, "deleted")
+            return self._apply_dir_event(root, state, home, new_abs, None, "created")
+
+        raise _IncrementalFallback(f"unsupported directory event {kind}")
+
+    def _prune_empty_chain(self, state: _HomeState, start_key: str) -> None:
+        """Remove nodes that became empty (no files, no child dirs),
+        matching the build's pruning rule, cascading up to the root."""
+        key = start_key
+        while key != "/":
+            node = state.nodes.get(key)
+            if node is None or node.children or int(node.summary["file_count"]) > 0:
+                # Not empty: only the kind may have flipped.
+                if node is not None and not node.children:
+                    node.summary["kind"] = "project"
+                return
+            parent_key = self._parent_rel(key) or "/"
+            parent = state.nodes.get(parent_key)
+            if parent is None:
+                raise _IncrementalFallback(f"missing parent {parent_key}")
+            state.nodes.pop(key, None)
+            if key in parent.children:
+                parent.children.remove(key)
+            key = parent_key
 
     def _apply_file_event(
         self,
@@ -996,9 +1221,12 @@ class GalleryService:
             parent = state.nodes.get(parent_key)
             if parent is None:
                 raise _IncrementalFallback(f"unknown parent {parent_key}")
-            if int(parent.summary["modified"]) == mtime:
+            parent_sole_content = int(parent.summary["file_count"]) == 1 and not parent.children
+            if not parent_sole_content and int(parent.summary["modified"]) == mtime:
                 # The subtree maximum left with this file; we cannot compute
-                # the next maximum without re-walking.
+                # the next maximum without re-walking. (When it is the
+                # parent's only content the parent is pruned instead, so the
+                # maximum is irrelevant.)
                 raise _IncrementalFallback("deleted file carried the max mtime")
             is_image = any(ref.path == rel for ref in state.refs)
             if is_image:
@@ -1014,6 +1242,7 @@ class GalleryService:
                 artwork_delta=-1 if is_image else 0,
                 modified_candidate=-1,
             )
+            self._prune_empty_chain(state, parent_key)
             return self._recompose_home(root, state, conn)
 
         if kind == "moved" and old_abs is not None:
@@ -1048,7 +1277,8 @@ class GalleryService:
             new_parent = state.nodes.get(new_parent_key)
             if old_parent is None or new_parent is None:
                 raise _IncrementalFallback("moved parent unknown")
-            if int(old_parent.summary["modified"]) == old_mtime:
+            old_sole_content = int(old_parent.summary["file_count"]) == 1 and not old_parent.children
+            if not old_sole_content and int(old_parent.summary["modified"]) == old_mtime:
                 raise _IncrementalFallback("moved file carried the old max mtime")
             if is_image and rel_old in old_parent.direct_images:
                 old_parent.direct_images.remove(rel_old)
@@ -1066,6 +1296,7 @@ class GalleryService:
                 artwork_delta=-1 if is_image else 0,
                 modified_candidate=-1,
             )
+            self._prune_empty_chain(state, old_parent_key)
             self._bump_ancestors(
                 state, new_parent_key,
                 size_delta=int(st.st_size),
@@ -1086,6 +1317,7 @@ class GalleryService:
         file_delta: int,
         artwork_delta: int,
         modified_candidate: int,
+        child_delta: int = 0,
     ) -> None:
         """Propagate aggregate deltas from *start_key* up to the root."""
         parts = [part for part in start_key.split("/") if part]
@@ -1100,6 +1332,7 @@ class GalleryService:
             summary["size_fmt"] = format_size(int(summary["size"]))
             summary["file_count"] = max(0, int(summary["file_count"]) + file_delta)
             summary["artwork_count"] = max(0, int(summary["artwork_count"]) + artwork_delta)
+            summary["child_count"] = max(0, int(summary["child_count"]) + child_delta)
             if modified_candidate > int(summary["modified"]):
                 summary["modified"] = modified_candidate
             touched.append(key)

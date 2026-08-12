@@ -191,20 +191,102 @@ def test_incremental_apply_is_idempotent_for_replayed_events(tmp_path, schema_db
         service.close()
 
 
-def test_directory_event_falls_back_to_full_rebuild(tmp_path, schema_db, monkeypatch):
+def test_incremental_directory_created_matches_full_rebuild(tmp_path, schema_db, monkeypatch):
     _image(tmp_path / "a" / "one.png", (40, 40))
     service = _make_service(schema_db, monkeypatch)
-    monkeypatch.setattr(service, "_home_cache_ttl", 0.05)
     try:
         assert _settle(service, tmp_path) is not None
         new_dir = tmp_path / "newdir"
         new_dir.mkdir()
         _image(new_dir / "art.png", (15, 15))
         _publish(tmp_path, "created", [new_dir])
-        # The directory event is not incrementally appliable; the state is
-        # dropped and a full rebuild lands the new artwork.
-        _wait_artworks(service, tmp_path, 2)
+        _wait_state(service, tmp_path, lambda state: "newdir" in state.nodes)
+        incremental = service.get_home_cached(tmp_path)
+        oracle = _oracle(service, tmp_path)
+        assert incremental is not None and incremental.to_response() == oracle.to_response()
+    finally:
+        service.close()
+
+
+def test_empty_directory_created_is_a_noop(tmp_path, schema_db, monkeypatch):
+    """Empty directories are pruned from the projection: creating one is a
+    net no-op (the state stays valid and the oracle still matches)."""
+    _image(tmp_path / "a" / "one.png", (40, 40))
+    service = _make_service(schema_db, monkeypatch)
+    try:
+        assert _settle(service, tmp_path) is not None
+        empty_dir = tmp_path / "a" / "empty"
+        empty_dir.mkdir()
+        _publish(tmp_path, "created", [empty_dir])
+        time.sleep(0.5)
         assert _root_key(tmp_path) in service._home_states
+        cached = service.get_home_cached(tmp_path)
+        oracle = _oracle(service, tmp_path)
+        assert cached is not None and cached.to_response() == oracle.to_response()
+    finally:
+        service.close()
+
+
+def test_incremental_directory_deleted_prunes_and_matches_full_rebuild(tmp_path, schema_db, monkeypatch):
+    import os, shutil
+
+    base = time.time()
+    _image(tmp_path / "a" / "keep.png", (40, 40))
+    os.utime(tmp_path / "a" / "keep.png", (base - 3600, base - 3600))
+    (tmp_path / "b").mkdir()
+    _image(tmp_path / "b" / "nested" / "gone.png", (15, 15))
+    # The deleted subtree must not carry the root's max mtime (that case
+    # deliberately falls back to a full rebuild).
+    os.utime(tmp_path / "b" / "nested" / "gone.png", (base - 7200, base - 7200))
+    service = _make_service(schema_db, monkeypatch)
+    try:
+        assert _settle(service, tmp_path) is not None
+        shutil.rmtree(tmp_path / "b")
+        _publish(tmp_path, "deleted", [tmp_path / "b"])
+        _wait_state(service, tmp_path, lambda state: "b" not in state.nodes)
+        incremental = service.get_home_cached(tmp_path)
+        oracle = _oracle(service, tmp_path)
+        assert incremental is not None and incremental.to_response() == oracle.to_response()
+    finally:
+        service.close()
+
+
+def test_incremental_directory_rename_matches_full_rebuild(tmp_path, schema_db, monkeypatch):
+    _image(tmp_path / "a" / "sub" / "art.png", (15, 15))
+    service = _make_service(schema_db, monkeypatch)
+    try:
+        assert _settle(service, tmp_path) is not None
+        renamed = tmp_path / "a" / "renamed-sub"
+        (tmp_path / "a" / "sub").rename(renamed)
+        _publish(tmp_path, "moved", [renamed], [tmp_path / "a" / "sub"])
+        _wait_state(service, tmp_path, lambda state: "a/renamed-sub" in state.nodes)
+        incremental = service.get_home_cached(tmp_path)
+        oracle = _oracle(service, tmp_path)
+        assert incremental is not None and incremental.to_response() == oracle.to_response()
+    finally:
+        service.close()
+
+
+def test_incremental_directory_cross_parent_move_matches_full_rebuild(tmp_path, schema_db, monkeypatch):
+    import os
+
+    base = time.time()
+    (tmp_path / "a").mkdir()
+    _image(tmp_path / "a" / "keep.png", (40, 40))
+    os.utime(tmp_path / "a" / "keep.png", (base - 3600, base - 3600))
+    (tmp_path / "b").mkdir()
+    _image(tmp_path / "b" / "sub" / "art.png", (15, 15))
+    os.utime(tmp_path / "b", (base - 7200, base - 7200))
+    service = _make_service(schema_db, monkeypatch)
+    try:
+        assert _settle(service, tmp_path) is not None
+        moved = tmp_path / "a" / "sub"
+        (tmp_path / "b" / "sub").rename(moved)
+        _publish(tmp_path, "moved", [moved], [tmp_path / "b" / "sub"])
+        _wait_state(service, tmp_path, lambda state: "a/sub" in state.nodes)
+        incremental = service.get_home_cached(tmp_path)
+        oracle = _oracle(service, tmp_path)
+        assert incremental is not None and incremental.to_response() == oracle.to_response()
     finally:
         service.close()
 
@@ -288,10 +370,8 @@ def test_incremental_telemetry_counts_applied_and_fallbacks(tmp_path, schema_db,
         applied, fallbacks = service.incremental_stats
         assert applied == 1 and fallbacks == 0
 
-        new_dir = tmp_path / "newdir"
-        new_dir.mkdir()
-        _image(new_dir / "art.png", (15, 15))
-        _publish(tmp_path, "created", [new_dir])
+        # Unsupported kinds (e.g. the generic "files" batch signal) fall back.
+        _publish(tmp_path, "files", [tmp_path / "a" / "two.png"])
         end = time.monotonic() + 10
         while time.monotonic() < end and service.incremental_stats[1] < 1:
             time.sleep(0.05)
