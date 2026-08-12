@@ -12,10 +12,10 @@
 |---|---|---|
 | [01-桌面端-浏览与编辑.md](01-桌面端-浏览与编辑.md) | file_list / image_viewer / info / sidebar / tag_tree | 批量操作、媒体预览、文件级收藏是主要缺口 |
 | [02-桌面端-管理功能.md](02-桌面端-管理功能.md) | workspace / dialogs / themes / settings / plugins | 标签颜色无编辑 UI、无布局保存、无可视化主题编辑 |
-| [03-应用服务与数据层.md](03-应用服务与数据层.md) | application / core / repositories | 索引无初始化入口、无维护工具、无内容检索 |
+| [03-应用服务与数据层.md](03-应用服务与数据层.md) | application / core / repositories | 索引/检索和数据库维护首切片已交付；批量写、VACUUM 窗口与产品入口仍是缺口 |
 | [04-LAN服务器.md](04-LAN服务器.md) | lan / routes / ws / tunnel | **upload 是死代码**、无文件管理端点、审计不持久 |
 | [05-WebUI.md](05-WebUI.md) | webui/src | 无编辑/上传/批量操作、大目录无虚拟滚动 |
-| [06-安全与可靠性.md](06-安全与可靠性.md) | 跨层 | 无备份/导出、无单实例锁、无完整性自检 |
+| [06-安全与可靠性.md](06-安全与可靠性.md) | 跨层 | 备份/导出、QLockFile 和完整性首切片已交付；产品入口、崩溃演练与审计持久化仍是缺口 |
 | [07-优先级路线图.md](07-优先级路线图.md) | — | P0/P1/P2 矩阵与实施顺序 |
 
 ## 缺口统计速览

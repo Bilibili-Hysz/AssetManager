@@ -2,7 +2,7 @@
 
 > 审计日期：2026-08-01
 > 审计基线：`master` @ `945fd1e`，随后将本轮已存在的代码、测试与文档改动纳入仓库基线；完整状态见 [`docs/compose/reports/repository-baseline-2026-08-01.md`](../docs/compose/reports/repository-baseline-2026-08-01.md)。
-> 测试基线快照（2026-08-01）：Python **1590 passed, 1 skipped**（隔离临时目录运行）；WebUI **37 files / 289 tests passed**。2026-08-02 当前 WebUI 全量为 **37 files / 292 tests passed**，Python 增量门禁见后续复核报告。
+> 测试基线快照（2026-08-01）：Python **1590 passed, 1 skipped**（隔离临时目录运行）；WebUI **37 files / 289 tests passed**。2026-08-02 当前 WebUI 全量为 **37 files / 292 tests passed**，Python 增量门禁见后续复核报告。2026-08-05 主线非 E2E 复核（M1 补丁后）为 **2034 passed, 2 skipped, 1 warning**；该结果不包含受保护的 WebUI/E2E 发布门禁。
 
 ## 文档索引
 
@@ -10,7 +10,7 @@
 |---|---|---|
 | [01-项目总览与架构.md](01-项目总览与架构.md) | 总体架构、分层设计、模块地图、技术栈、质量指标 | 全局 |
 | [02-入口与启动链路.md](02-入口与启动链路.md) | 进程启动 → 引导 → 库会话 → Runtime 生命周期 | `main.py`, `app.py`, `bootstrap.py`, `context.py`, `runtime.py`, `runtime_events.py` |
-| [03-应用服务层.md](03-应用服务层.md) | 14 个应用服务的功能与数据流 | `application/*` |
+| [03-应用服务层.md](03-应用服务层.md) | 15 个应用服务的功能与数据流 | `application/*` |
 | [04-核心基础设施层.md](04-核心基础设施层.md) | 数据库、迁移、设置、主题、缓存、路径解析 | `core/*` |
 | [05-领域层与数据访问层.md](05-领域层与数据访问层.md) | 领域事件/错误/值对象、7 个 Repository | `domain/*`, `repositories/*` |
 | [06-LAN服务器层.md](06-LAN服务器层.md) | aiohttp 服务器、中间件链、路由、WebSocket、隧道 | `lan/*` |
@@ -45,7 +45,7 @@
 ## 审计方法论
 
 1. **静态阅读**：逐文件阅读源码（约 3 万行 Python + 数千行 TS），记录关键类/函数与行号
-2. **交叉验证**：以可追溯测试证据（Python `1590 passed, 1 skipped` 为历史基线快照；WebUI 当前全量为 `37 files / 292 passed`）验证行为描述；以 docs/ 文档交叉核对设计意图
+2. **交叉验证**：以可追溯测试证据（Python `1590 passed, 1 skipped` 为历史基线快照；2026-08-05 非 E2E 主线复核（M1 补丁后）为 `2034 passed, 2 skipped, 1 warning`；WebUI 当前全量为 `37 files / 292 passed`）验证行为描述；以 docs/ 文档交叉核对设计意图
 3. **数据流追踪**：对每条业务链路，从 UI/入口 → 服务 → Repository → SQLite 逐步追踪
 4. **风险评级**：问题按 `[高]/[中]/[低]` 分级，附文件行号证据
 
