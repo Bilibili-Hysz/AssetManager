@@ -181,10 +181,10 @@ BrowserRouter → AuthProvider → RealtimeProvider → ToastProvider → Downlo
 
 ### 5.2 盲区
 
-- 快照仅覆盖 6 个 DTO：**files items、shop 全部 DTO、错误响应、/api/info、quicksearch/thumbnails 响应形状均无前后端互相锚定的断言**
+- 快照覆盖 8 个 DTO/契约（2026-08-12 扩展）：新增 files_item（文件列表条目 10 字段精确 key + is_project 值）与 info（ServerInfo envelope）；后端新增两个 HTTP 契约测试锁定 /api/files item key 集合与 /api/info envelope（含 guest principal 附加语义）
 - `public-contracts.test.ts:37` `expect(stats).toEqual(contracts.responses.stats)` 自比较恒真（StatsResponse 形状零钉死）
 - `system.contract.test.ts` 用 `{library_name: ...}` sentinel 透传（后端字段是 share_name），/api/info 形状零保护
-- **无 setupFiles、无 coverage 配置**（覆盖率不可观测）
+- **coverage 配置已补（2026-08-12）**：@vitest/coverage-istanbul@3.2.6 + vite.config coverage（istanbul provider，jsdom 兼容；v8 provider 在 jsdom worker 不收集）+ `npm run coverage` script。基线：600 tests / 74.16% statements / 78.04% lines / 62.72% branch
 
 ---
 
@@ -208,7 +208,7 @@ BrowserRouter → AuthProvider → RealtimeProvider → ToastProvider → Downlo
 |---|---|
 | P1（高） | C1 is_project 补类型；A1 useCommerce 改用 shop.ts 领域方法（消除端点双源） |
 | P2（中） | D1 favorites/catalog/search 去重（context 级共享或 module-level 请求去重）；A2 下载副作用移出 api 层；A3 ShareReceivePage client 统一语义；D2 favorites 缓存 storage 事件同步；S1 A8 401 路径上下文 |
-| P3（低） | C2/C3/C4 类型清理；D3-D8 优化；A4 contracts.test.ts 复活或删除；契约快照扩展覆盖 files/shop DTO；补 coverage 配置 |
+| P3（低） | ~~类型清理/死代码/契约扩展/coverage~~ ✅ 全部完成（2026-08-12，提交 5431076 + 后续）；剩余维持项：D3 惊群/D4 双路径/D6 分页双源/D7 quota 重复（设计使然，见 §4） |
 
 ## 附：关键文件索引
 

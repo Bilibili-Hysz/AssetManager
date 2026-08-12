@@ -1,6 +1,6 @@
 import contracts from '../../../tests/contracts/lan_public_contracts.json';
 import { describe, expect, it } from 'vitest';
-import type { InviteResponse, StatsResponse, Tag, TreeItem, UserResponse } from '../types/api';
+import type { InviteResponse, ProjectItem, ServerInfo, StatsResponse, Tag, TreeItem, UserResponse } from '../types/api';
 
 describe('LAN public DTO contracts', () => {
   it('normalizes users and invites without repository fields', () => {
@@ -37,5 +37,31 @@ describe('LAN public DTO contracts', () => {
     expect(stats).toEqual(contracts.responses.stats);
     expect(tree).not.toHaveProperty('is_file');
     expect(stats).not.toHaveProperty('secret');
+  });
+
+  it('anchors the file-list item shape to the backend golden contract', () => {
+    const item = contracts.responses.files_item as ProjectItem;
+
+    // Every key the backend emits must be declared on ProjectItem; a drift
+    // like a missing is_project (formerly only caught by a runtime probe in
+    // BrowsePage) fails the type anchor here.
+    expect(Object.keys(item).sort()).toEqual([
+      'category', 'extension', 'is_project', 'modified', 'name', 'path',
+      'size', 'size_fmt', 'thumbnail_url', 'type',
+    ]);
+    expect(item).toHaveProperty('is_project');
+    expect(item.is_project).toBe(false);
+    expect(item.type).toBe('file');
+  });
+
+  it('keeps the ServerInfo shape free of removed ghost fields', () => {
+    // The info envelope is locked on the backend side (test_public_contracts);
+    // here the frontend type must not carry fields the backend never sends.
+    const info = contracts.responses.info as ServerInfo;
+    expect(info).not.toHaveProperty('asset_root_id');
+    expect(info).not.toHaveProperty('total_collections');
+    expect(info).not.toHaveProperty('total_artworks');
+    expect(info.library_stats).toEqual({ total_projects: 0, total_size: 0, total_size_fmt: '0 B' });
+    expect(info.feature_flags).toEqual({ commerce: false, seller: false, quota: false });
   });
 });

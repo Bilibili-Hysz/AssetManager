@@ -1,18 +1,174 @@
 {
   "records": {
-    "user": {"id": 1, "username": "owner", "role": "admin", "is_active": 1, "created_at": 100, "password_hash": "secret", "email": "owner@example.test"},
-    "invite_used": {"code": "USED", "created_at": 101, "is_active": 1, "created_by": "owner"},
-    "invite_revoked": {"code": "REVOKED", "created_at": 102, "is_active": 0, "created_by": "owner"},
-    "tag": {"name": "hero", "count": 3, "metadata": "ignored"},
-    "tree": {"name": "project", "path": "project", "is_leaf": false, "children": [{"name": "assets", "path": "project/assets", "is_leaf": true}, {"name": "source", "path": "project/source", "is_leaf": true}]},
-    "stats": {"connections": 2, "requests": 7, "bytes_transferred": 1024, "bytes_transferred_fmt": "1 KB", "uptime": 12.5, "secret": "ignored"}
+    "user": {
+      "id": 1,
+      "username": "owner",
+      "role": "admin",
+      "is_active": 1,
+      "created_at": 100,
+      "password_hash": "secret",
+      "email": "owner@example.test"
+    },
+    "invite_used": {
+      "code": "USED",
+      "created_at": 101,
+      "is_active": 1,
+      "created_by": "owner"
+    },
+    "invite_revoked": {
+      "code": "REVOKED",
+      "created_at": 102,
+      "is_active": 0,
+      "created_by": "owner"
+    },
+    "tag": {
+      "name": "hero",
+      "count": 3,
+      "metadata": "ignored"
+    },
+    "tree": {
+      "name": "project",
+      "path": "project",
+      "is_leaf": false,
+      "children": [
+        {
+          "name": "assets",
+          "path": "project/assets",
+          "is_leaf": true
+        },
+        {
+          "name": "source",
+          "path": "project/source",
+          "is_leaf": true
+        }
+      ]
+    },
+    "stats": {
+      "connections": 2,
+      "requests": 7,
+      "bytes_transferred": 1024,
+      "bytes_transferred_fmt": "1 KB",
+      "uptime": 12.5,
+      "secret": "ignored"
+    },
+    "files_item": {
+      "name": "hero.zip",
+      "path": "packs/hero.zip",
+      "type": "file",
+      "size": 2048,
+      "size_fmt": "2.0 KB",
+      "modified": 1700000000.0,
+      "extension": ".zip",
+      "category": "archives",
+      "is_project": false,
+      "thumbnail_url": "/api/thumbnails/packs/hero.zip"
+    },
+    "info": {
+      "version": "1.0",
+      "share_name": "share",
+      "library_root": "library",
+      "auth_enabled": true,
+      "auth_mode": "password",
+      "theme_color": "#5b7ff5",
+      "welcome_msg": "",
+      "footer_text": "",
+      "feature_flags": {
+        "commerce": false,
+        "seller": false,
+        "quota": false
+      },
+      "library_stats": {
+        "total_projects": 0,
+        "total_size": 0,
+        "total_size_fmt": "0 B"
+      }
+    }
   },
   "responses": {
-    "user": {"id": 1, "username": "owner", "role": "admin", "active": true, "created_at": 100.0},
-    "invite_used": {"code": "USED", "created_at": 101.0, "used_by": null, "revoked": false},
-    "invite_revoked": {"code": "REVOKED", "created_at": 102.0, "used_by": null, "revoked": true},
-    "tag": {"id": null, "name": "hero", "count": 3},
-    "tree": {"name": "project", "path": "project", "type": "dir", "is_leaf": false, "children": [{"name": "assets", "path": "project/assets", "type": "dir", "is_leaf": true, "children": []}, {"name": "source", "path": "project/source", "type": "dir", "is_leaf": true, "children": []}]},
-    "stats": {"connections": 2, "requests": 7, "bytes_transferred": 1024, "bytes_transferred_fmt": "1 KB", "uptime": 12.5}
+    "user": {
+      "id": 1,
+      "username": "owner",
+      "role": "admin",
+      "active": true,
+      "created_at": 100.0
+    },
+    "invite_used": {
+      "code": "USED",
+      "created_at": 101.0,
+      "used_by": null,
+      "revoked": false
+    },
+    "invite_revoked": {
+      "code": "REVOKED",
+      "created_at": 102.0,
+      "used_by": null,
+      "revoked": true
+    },
+    "tag": {
+      "id": null,
+      "name": "hero",
+      "count": 3
+    },
+    "tree": {
+      "name": "project",
+      "path": "project",
+      "type": "dir",
+      "is_leaf": false,
+      "children": [
+        {
+          "name": "assets",
+          "path": "project/assets",
+          "type": "dir",
+          "is_leaf": true,
+          "children": []
+        },
+        {
+          "name": "source",
+          "path": "project/source",
+          "type": "dir",
+          "is_leaf": true,
+          "children": []
+        }
+      ]
+    },
+    "stats": {
+      "connections": 2,
+      "requests": 7,
+      "bytes_transferred": 1024,
+      "bytes_transferred_fmt": "1 KB",
+      "uptime": 12.5
+    },
+    "files_item": {
+      "name": "hero.zip",
+      "path": "packs/hero.zip",
+      "type": "file",
+      "size": 2048,
+      "size_fmt": "2.0 KB",
+      "modified": 1700000000.0,
+      "extension": ".zip",
+      "category": "archives",
+      "is_project": false,
+      "thumbnail_url": "/api/thumbnails/packs/hero.zip"
+    },
+    "info": {
+      "version": "1.0",
+      "share_name": "share",
+      "library_root": "library",
+      "auth_enabled": true,
+      "auth_mode": "password",
+      "theme_color": "#5b7ff5",
+      "welcome_msg": "",
+      "footer_text": "",
+      "feature_flags": {
+        "commerce": false,
+        "seller": false,
+        "quota": false
+      },
+      "library_stats": {
+        "total_projects": 0,
+        "total_size": 0,
+        "total_size_fmt": "0 B"
+      }
+    }
   }
 }

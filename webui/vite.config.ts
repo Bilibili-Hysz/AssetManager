@@ -33,5 +33,10 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.{ts,tsx}'],
+    coverage: {
+      provider: 'istanbul',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/i18n/*.ts', 'src/vite-env.d.ts', 'src/main.tsx'],
+    },
   },
 });

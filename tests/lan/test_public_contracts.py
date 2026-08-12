@@ -194,6 +194,73 @@ async def test_route_responses_are_normalized_and_keep_envelopes(tmp_path, monke
 
 
 @pytest.mark.anyio
+async def test_files_listing_items_match_golden_key_contract(tmp_path):
+    """The file-list item shape is anchored in the golden contract so a
+    drift like a missing is_project (historically caught only by the
+    frontend's runtime probe) fails here instead."""
+    from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app
+
+    expected = json.loads(CONTRACTS.read_text(encoding="utf-8"))
+    golden_item = expected["responses"]["files_item"]
+
+    app, library, _conn = _make_lan_app(tmp_path)
+    (library / "packs").mkdir()
+    (library / "packs" / "hero.zip").write_bytes(b"x" * 2048)
+    client = await _make_client(app)
+    try:
+        response = await client.get(
+            "/api/files?path=packs&summaries=false", headers=_local_ui_headers(app),
+        )
+        assert response.status == 200
+        payload = await response.json()
+        assert set(payload.keys()) == {
+            "current_path", "parent_path", "items", "total_count", "total_size", "total_size_fmt",
+        }
+        items = payload["items"]
+        assert len(items) == 1
+        item = items[0]
+        assert set(item) == set(golden_item)
+        assert item["name"] == golden_item["name"]
+        assert item["type"] == "file"
+        assert item["extension"] == golden_item["extension"]
+        assert item["category"] == golden_item["category"]
+        assert item["is_project"] is False
+        assert item["size"] == golden_item["size"]
+        assert item["size_fmt"] == golden_item["size_fmt"]
+        assert item["thumbnail_url"].startswith("/api/thumbnails/")
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_info_route_exposes_serverinfo_shape(tmp_path):
+    """Lock the /api/info envelope keys the frontend ServerInfo mirrors."""
+    from tests.lan.test_lan_api import _make_client, _make_lan_app
+
+    app, _library, _conn = _make_lan_app(tmp_path)
+    client = await _make_client(app)
+    try:
+        # Even unauthenticated, the route attaches a guest principal (with
+        # empty capabilities); authenticated principals replace it (system.py).
+        response = await client.get("/api/info")
+        assert response.status == 200
+        payload = await response.json()
+        assert set(payload.keys()) == {
+            "version", "share_name", "library_root", "auth_enabled", "auth_mode",
+            "theme_color", "welcome_msg", "footer_text", "feature_flags",
+            "library_stats", "principal", "capabilities",
+        }
+        assert set(payload["library_stats"].keys()) == {
+            "total_projects", "total_size", "total_size_fmt",
+        }
+        assert set(payload["feature_flags"].keys()) == {"commerce", "seller", "quota"}
+        assert payload["principal"]["kind"] == "guest"
+        assert payload["principal"]["authenticated"] is False
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
 async def test_stats_route_preserves_unavailable_bytes_as_null(tmp_path, monkeypatch):
     from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app
 
