@@ -6,6 +6,7 @@ from time import perf_counter
 from aiohttp import web
 
 from AssetsManager.domain.asset import IMAGE_EXTS
+from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import get_lan, require_permission, validate_path, get_thumbnail_service
 
 _SAFE_IMAGE_EXTS = IMAGE_EXTS - {".svg"}
@@ -23,7 +24,7 @@ async def handle_thumbnail(request):
     try:
         if not require_permission(request, "preview"):
             status = 403
-            return web.json_response({"error": "Forbidden"}, status=status)
+            return error_response("Forbidden", status=status, code="forbidden")
 
         rel_path = request.match_info["path"]  # aiohttp decodes match_info once
         target = validate_path(lan, rel_path)
@@ -67,9 +68,10 @@ async def handle_thumbnail(request):
             if result.should_blur:
                 outcome = "error"
                 status = 500
-                return web.json_response(
-                    {"error": "Failed to process image"},
+                return error_response(
+                    "Failed to process image",
                     status=status,
+                    code="internal_error",
                     headers=_NOSNIFF_HEADERS,
                 )
             delivery = "original"
@@ -124,12 +126,12 @@ async def handle_thumbnail_batch(request):
     try:
         if not require_permission(request, "preview"):
             status = 403
-            return web.json_response({"error": "Forbidden"}, status=status)
+            return error_response("Forbidden", status=status, code="forbidden")
         try:
             body = await request.json()
         except Exception:
             status = 400
-            return web.json_response({"error": "Invalid JSON"}, status=status)
+            return error_response("Invalid JSON", status=status, code="bad_request")
 
         paths = body.get("paths", [])
         try:
@@ -138,7 +140,7 @@ async def handle_thumbnail_batch(request):
             max_size = 512
         if not paths or len(paths) > 100:
             status = 400
-            return web.json_response({"error": "Provide 1-100 paths"}, status=status)
+            return error_response("Provide 1-100 paths", status=status, code="bad_request")
         requested_count = len(paths)
 
         svc = get_thumbnail_service(request)

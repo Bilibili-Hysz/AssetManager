@@ -6,6 +6,7 @@ import logging
 
 from aiohttp import web
 
+from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
     get_lan,
     get_search_service,
@@ -54,14 +55,14 @@ def _quick_search_response(result, *, include_thumbnail: bool) -> dict[str, str]
 async def handle_quicksearch(request):
     """Return a small mixed file/directory result set for the command palette."""
     if not require_permission(request, "browse"):
-        return web.json_response({"error": "Browse access required"}, status=403)
+        return error_response("Browse access required", status=403, code="forbidden")
 
     can_preview = require_permission(request, "preview")
 
     try:
         limit = _parse_limit(request)
     except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+        return error_response(str(exc), status=400, code="bad_request")
 
     query = request.query.get("q", "")
     if not query.strip():
@@ -82,7 +83,7 @@ async def handle_quicksearch(request):
         raise
     except Exception:
         _log.exception("Quick search failed")
-        return web.json_response({"error": "Quick search failed"}, status=500)
+        return error_response("Quick search failed", status=500, code="internal_error")
 
     return web.json_response(
         {"results": [_quick_search_response(result, include_thumbnail=can_preview) for result in results]}

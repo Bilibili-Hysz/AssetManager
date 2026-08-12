@@ -82,7 +82,9 @@ def test_seller_login_invalid_credentials_remain_401(monkeypatch):
         seller_auth.handle_seller_login(_request({"username": "admin", "password": "wrong"}))
     )
     assert response.status == 401
-    assert json.loads(response.body) == {"error": "Invalid seller credentials"}
+    body = json.loads(response.body)
+    assert body["error"] == "Invalid seller credentials"
+    assert body["code"] == "unauthorized"
 
 
 def test_seller_login_malformed_json_is_400_not_500(monkeypatch):
@@ -100,7 +102,9 @@ def test_seller_login_malformed_json_is_400_not_500(monkeypatch):
     request.json = bad_json
     response = asyncio.run(seller_auth.handle_seller_login(request))
     assert response.status == 400
-    assert json.loads(response.body) == {"error": "Invalid request"}
+    body = json.loads(response.body)
+    assert body["error"] == "Invalid request"
+    assert body["code"] == "bad_request"
 
 
 def test_seller_login_database_failure_is_500_and_logged(monkeypatch, caplog):
@@ -114,5 +118,7 @@ def test_seller_login_database_failure_is_500_and_logged(monkeypatch, caplog):
         seller_auth.handle_seller_login(_request({"username": "admin", "password": "secret"}))
     )
     assert response.status == 500
-    assert json.loads(response.body) == {"error": "Internal server error"}
+    body = json.loads(response.body)
+    assert body["error"] == "Internal server error"
+    assert body["code"] == "internal_error"
     assert "Seller login failed unexpectedly" in caplog.text

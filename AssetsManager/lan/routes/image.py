@@ -7,6 +7,7 @@ from pathlib import Path
 from aiohttp import web
 
 from AssetsManager.domain.asset import IMAGE_EXTS
+from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
     get_lan,
     get_thumbnail_service,
@@ -98,9 +99,10 @@ async def serve_verified_image(
     if resolved.should_blur:
         processed = await asyncio.to_thread(svc.process_image, target, max_size, True)
         if processed is None:
-            return web.json_response(
-                {"error": "Failed to process image"},
+            return error_response(
+                "Failed to process image",
                 status=500,
+                code="internal_error",
                 headers=_PRIVATE_PREVIEW_HEADERS,
             )
         body, processed_content_type = processed
@@ -124,7 +126,7 @@ async def serve_verified_image(
 async def handle_image(request: web.Request) -> web.StreamResponse:
     """Stream a safe library image, applying the existing blur policy."""
     if not require_permission(request, "preview"):
-        return web.json_response({"error": "Forbidden"}, status=403)
+        return error_response("Forbidden", status=403, code="forbidden")
 
     lan = get_lan(request)
     rel_path = request.query.get("path", "")  # query already decoded once
@@ -164,9 +166,10 @@ async def handle_image(request: web.Request) -> web.StreamResponse:
             True,
         )
         if processed is None:
-            return web.json_response(
-                {"error": "Failed to process image"},
+            return error_response(
+                "Failed to process image",
                 status=500,
+                code="internal_error",
                 headers=_PRIVATE_PREVIEW_HEADERS,
             )
         body, processed_content_type = processed

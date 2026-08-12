@@ -86,7 +86,10 @@ def _plain(
     if status is None:
         status = 500
     if status >= 500:
-        headers = {"Cache-Control": "no-store"}
+        # Merge, don't replace: callers may pass security headers
+        # (X-Content-Type-Options etc.) that must survive the no-store
+        # default.
+        headers = {"Cache-Control": "no-store", **(headers or {})}
     return web.json_response(payload, status=status, headers=headers)
 
 
@@ -213,5 +216,5 @@ def _mapped(
         )
         payload["error"] = "Internal server error"
         payload["code"] = "internal_error"
-        headers = {"Cache-Control": "no-store"}
+        headers = {"Cache-Control": "no-store", **(headers or {})}
     return web.json_response(payload, status=status, headers=headers)

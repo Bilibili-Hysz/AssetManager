@@ -42,7 +42,9 @@ async def test_image_route_requires_preview_permission(tmp_path, monkeypatch):
     try:
         response = await client.get("/api/image", params={"path": "art.png"})
         assert response.status == 403
-        assert await response.json() == {"error": "Forbidden"}
+        body = await response.json()
+        assert body["error"] == "Forbidden"
+        assert body["code"] == "forbidden"
     finally:
         await client.close()
 

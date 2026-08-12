@@ -7,6 +7,7 @@ import logging
 from aiohttp import web
 
 from AssetsManager.domain.errors import OperationNotPermitted, ValidationError
+from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes.commerce_policy import (
     seller_logout_endpoint,
     seller_required,
@@ -56,17 +57,20 @@ async def handle_seller_login(request: web.Request) -> web.Response:
         response = web.json_response({"ok": True, "authenticated": True, "seller": seller})
         _set_seller_cookie(response, token, secure=getattr(request, "secure", False))
         return response
-    except (ValidationError, OperationNotPermitted) as exc:
-        # Credential and body-shape failures are expected client errors.
-        return web.json_response({"error": str(exc)}, status=401)
+    except ValidationError as exc:
+        # Body-shape failures are expected client errors.
+        return error_response(exc)
+    except OperationNotPermitted as exc:
+        # Credential failures are expected client errors.
+        return error_response(str(exc), status=401, code="unauthorized")
     except (json.JSONDecodeError, UnicodeDecodeError):
         # Malformed request bodies are client errors, not server faults.
-        return web.json_response({"error": "Invalid request"}, status=400)
+        return error_response("Invalid request", status=400, code="bad_request")
     except Exception:
         # Unanticipated failures (e.g. database faults behind authentication)
         # must stay distinguishable from bad credentials for operators.
         _log.exception("Seller login failed unexpectedly")
-        return web.json_response({"error": "Internal server error"}, status=500)
+        return error_response("Internal server error", status=500, code="internal_error")
 
 
 @seller_logout_endpoint

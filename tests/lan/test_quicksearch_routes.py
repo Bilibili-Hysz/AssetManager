@@ -46,7 +46,9 @@ async def test_quicksearch_requires_browse_permission_even_with_preview(tmp_path
     response = await handle_quicksearch(request)
 
     assert response.status == 403
-    assert _payload(response) == {"error": "Browse access required"}
+    body = _payload(response)
+    assert body["error"] == "Browse access required"
+    assert body["code"] == "forbidden"
 
 
 @pytest.mark.anyio
@@ -145,7 +147,9 @@ async def test_quicksearch_service_failure_uses_metadata_style_error_shape(tmp_p
     )
 
     assert response.status == 500
-    assert _payload(response) == {"error": "Quick search failed"}
+    body = _payload(response)
+    assert body["error"] == "Quick search failed"
+    assert body["code"] == "internal_error"
 
 
 

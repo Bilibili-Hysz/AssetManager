@@ -8,6 +8,7 @@ from AssetsManager.application import ProjectDepthConfig
 from AssetsManager.core.format_utils import format_size
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.lan.dto import RuntimeCursorResponse, StatsResponse
+from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
     get_lan,
     get_auth_service,
@@ -87,7 +88,7 @@ async def handle_info(request):
 
 async def handle_tunnel_status(request):
     if not require_admin(request):
-        return web.json_response({"error": "Admin access required"}, status=403)
+        return error_response("Admin access required", status=403, code="forbidden")
     lan = get_lan(request)
     tunnel = getattr(lan, "_tunnel", None)
     public_url = tunnel.public_url if tunnel and tunnel.is_running else None
@@ -112,8 +113,8 @@ async def handle_stats(request):
 async def handle_revision(request):
     principal = get_request_principal(request)
     if principal is None or not principal.capabilities.realtime:
-        return web.json_response({"error": "Realtime access required"}, status=403)
+        return error_response("Realtime access required", status=403, code="forbidden")
     runtime = getattr(get_lan(request), "runtime", None)
     if runtime is None:
-        return web.json_response({"error": "Runtime unavailable"}, status=503)
+        return error_response("Runtime unavailable", status=503, code="service_unavailable")
     return web.json_response(RuntimeCursorResponse(runtime.epoch, runtime.revision).to_dict())

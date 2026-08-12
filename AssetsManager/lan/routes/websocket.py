@@ -3,6 +3,7 @@ from aiohttp import WSMsgType, web
 
 from AssetsManager.lan.auth import verify_auth_token, verify_key, verify_token
 from AssetsManager.lan.principal import principal_for_request
+from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
     get_auth_token,
     get_lan,
@@ -98,7 +99,7 @@ async def handle_websocket(request):
     if ("token" in request.query or "key" in request.query
             or principal is None
             or not principal.capabilities.realtime):
-        return web.json_response({"error": "Unauthorized"}, status=401)
+        return error_response("Unauthorized", status=401, code="unauthorized")
 
     ws = web.WebSocketResponse(autoping=False)
     await ws.prepare(request)

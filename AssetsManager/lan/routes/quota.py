@@ -16,6 +16,7 @@ from AssetsManager.application.free_download_quota_service import (
     FreeDownloadQuotaService,
 )
 from AssetsManager.core.settings import AppSettings
+from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
     get_lan,
     get_request_principal,
@@ -272,13 +273,13 @@ async def handle_free_quota(request: web.Request) -> web.Response:
     except Exception:
         # Status is an optional UX endpoint; an unavailable quota store must
         # not turn the library landing page into a blank error screen.
-        return web.json_response({"error": "Quota unavailable"}, status=503)
+        return error_response("Quota unavailable", status=503, code="service_unavailable")
 
 
 async def handle_delivery_quota(request: web.Request) -> web.Response:
     """Return the existing aggregate quota for seller delivery tokens."""
     if await require_seller(request) is None:
-        return web.json_response({"error": "Seller authentication required"}, status=403)
+        return error_response("Seller authentication required", status=403, code="forbidden")
     quota = get_commerce_services(request).quota.get_quota(get_lan(request).library_root)
     return web.json_response({"quota": quota}, headers={"Cache-Control": "no-store"})
 
