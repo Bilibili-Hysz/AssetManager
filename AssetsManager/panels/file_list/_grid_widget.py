@@ -12,9 +12,9 @@ from PySide6.QtWidgets import QWidget, QScrollBar, QSizePolicy
 from AssetsManager.core import icons
 from shiboken6 import Shiboken
 from AssetsManager.core import themes
-from AssetsManager.core.color_utils import _hex_to_rgb
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager import i18n
+from AssetsManager.panels.file_list._ui_helpers import _make_folder_highlight
 from AssetsManager.panels.file_list._common import (
     EXT_TO_CATEGORY, badge_color_for_extension, badge_label_for_extension,
 )
@@ -37,10 +37,6 @@ _TEXT_LINE_GAP = scaled_px(1)
 _BADGE_H = scaled_px(14)
 _BADGE_R = scaled_px(4)
 
-
-def _make_folder_highlight(t: dict) -> QColor:
-    r, g, b = _hex_to_rgb(t["hover_overlay"])
-    return QColor(r, g, b, 80)
 _BADGE_PAD_H = scaled_px(5)
 _FULL_REBUILD_TEXTURE_BUDGET = 12
 _ZOOM_FALLBACK_TEXTURE_BUDGET = 2

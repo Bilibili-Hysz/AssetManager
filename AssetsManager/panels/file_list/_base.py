@@ -21,9 +21,9 @@ from PySide6.QtCore import (
     QEasingCurve, QVariantAnimation, QFileInfo, QItemSelectionModel,
 )
 from PySide6.QtWidgets import (
-    QPushButton, QHBoxLayout, QComboBox, QLabel, QWidget, QApplication,
+    QHBoxLayout, QComboBox, QLabel, QWidget, QApplication,
     QMenu, QSizePolicy, QTreeView, QAbstractItemView,
-    QHeaderView, QStyledItemDelegate,
+    QHeaderView,
 )
 
 from AssetsManager.panels.base import PanelContent
@@ -45,20 +45,20 @@ from AssetsManager.panels.file_list._grid_widget import FileListGridWidget
 from AssetsManager.panels.file_list._thumbnail_delivery import ThumbnailDeliveryCoordinator
 from AssetsManager.panels.file_list._detail_model import DetailModel
 from AssetsManager.panels.file_list._commands import FileListCommand, FileListCommandContext
+from AssetsManager.panels.file_list._ui_helpers import (
+    _add_command_group,
+    _always,
+    _DetailsItemDelegate,
+    _first_image_in,
+    _is_external_drop,
+    _make_nav_button,
+    _save_search_term,
+)
 from AssetsManager.application.tag_service import TagServiceAdapter
 
 _log = logging.getLogger(__name__)
 tr = i18n.tr
 _natural_key = natural_key
-
-
-class _DetailsItemDelegate(QStyledItemDelegate):
-    """Keep Details rows comfortably readable without per-row widgets."""
-
-    def sizeHint(self, option, index):
-        size = super().sizeHint(option, index)
-        size.setHeight(max(size.height(), scaled_px(32)))
-        return size
 
 
 class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
@@ -836,8 +836,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     @staticmethod
     def _save_search_term(term: str):
-        from AssetsManager.controllers.file_list_controller import FileListController
-        FileListController.save_search_term(term)
+        _save_search_term(term)
 
     # ── Thumbnail loading ───────────────────────────────────────
 
@@ -892,15 +891,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     @staticmethod
     def _first_image_in(dir_path: str) -> str | None:
-        try:
-            for i, entry in enumerate(os.scandir(dir_path)):
-                if i > 500:
-                    break
-                if entry.is_file() and Path(entry.name).suffix.lower() in IMAGE_EXTS:
-                    return entry.path
-        except OSError:
-            pass
-        return None
+        return _first_image_in(dir_path)
 
     def _first_image_cached(self, dir_path: str) -> str | None:
         if dir_path in self._first_image_cache:
@@ -1220,23 +1211,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     @staticmethod
     def _make_nav_button(icon_name, tooltip, callback, font_size=13):
-        from AssetsManager.core import themes
-        t = themes.get()
-        btn = QPushButton()
-        btn.setIcon(icons.icon(icon_name, color="icon_secondary", size=scaled_px(16)))
-        btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
-        btn.setProperty("semanticIcon", icon_name)
-        btn.setFixedSize(scaled_px(26), scaled_px(26))
-        btn.setToolTip(tooltip)
-        btn.setAccessibleName(tooltip)
-        themes.set_button_variant(btn, "ghost")
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; color: {t['body']}; "
-            f"border: none; padding: 0; min-width: {scaled_px(26)}px; }} "
-            f"QPushButton:hover {{ background: {t['panel']}80; border-radius: {scaled_px(3)}px; color: {t['heading']}; }}")
-        btn.clicked.connect(callback)
-        return btn
+        return _make_nav_button(icon_name, tooltip, callback, font_size=font_size)
 
     # ── Cleanup ─────────────────────────────────────────────────
 
@@ -1314,19 +1289,10 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         context: FileListCommandContext,
         group: str,
     ) -> None:
-        projected = [command for command in commands if command.group == group and command.visible_when(context)]
-        if not projected:
-            return
-        if menu.actions():
-            menu.addSeparator()
-        for command in projected:
-            action = menu.addAction(tr(command.label_key), command.invoke)
-            action.setEnabled(command.enabled_when(context))
-            if command.shortcut:
-                action.setShortcut(command.shortcut)
+        _add_command_group(menu, commands, context, group)
     @staticmethod
     def _always(_context: FileListCommandContext) -> bool:
-        return True
+        return _always(_context)
     def _apply_detail_theme(self):
         """Apply theme styling to the detail view (QTreeView)."""
         t = themes.get()
@@ -1533,8 +1499,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             self._show_filelist_shortcuts()
     @staticmethod
     def _is_external_drop(event) -> bool:
-        urls = [u.toLocalFile() for u in event.mimeData().urls() if u.toLocalFile()]
-        return bool(urls)
+        return _is_external_drop(event)
     def _load_visible_if_active(self):
         """Ignore delayed scan presentation work after panel shutdown."""
         if not self._model._is_shutdown:
