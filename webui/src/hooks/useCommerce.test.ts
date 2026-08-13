@@ -1,21 +1,25 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryCacheProvider } from '../cache/QueryCacheContext';
+import { assetThumbnailUrl, canonicalizeShopPath, toStorefrontOrder, toStorefrontProduct, useCommerceCatalog, useCommerceCatalogPage } from './useCommerce';
 
 const commerceMocks = vi.hoisted(() => ({
   api: {
     buildUrl: (path: string) => `/api/${path}`,
     get: vi.fn(),
   },
-  registerInvalidation: vi.fn(() => () => {}),
 }));
 
-vi.mock('./useAuth', () => ({ useAuth: () => ({ api: commerceMocks.api }) }));
-vi.mock('../stores/RealtimeContext', () => ({
-  useRealtimeContext: () => ({ registerInvalidation: commerceMocks.registerInvalidation }),
+vi.mock('./useAuth', () => ({ useAuth: () => ({ api: commerceMocks.api, identityGeneration: 0 }) }));
+vi.mock('./useInvalidation', () => ({
+  useInvalidation: () => ({}),
 }));
 
-import { assetThumbnailUrl, canonicalizeShopPath, toStorefrontOrder, toStorefrontProduct, useCommerceCatalog, useCommerceCatalogPage } from './useCommerce';
+function wrapper({ children }: { children: ReactNode }) {
+  return createElement(QueryCacheProvider, null, children);
+}
 
 function setupBuildUrl() {
   return vi.fn((path: string) => `/library/api/${path}`);
@@ -24,7 +28,6 @@ function setupBuildUrl() {
 describe('commerce resource URL mapping', () => {
   beforeEach(() => {
     commerceMocks.api.get.mockReset();
-    commerceMocks.registerInvalidation.mockClear();
   });
 
   it('canonicalizes shop paths like the backend and rejects unsafe paths', () => {
@@ -41,7 +44,7 @@ describe('commerce resource URL mapping', () => {
       .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
       .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
 
-    const { result } = renderHook(() => useCommerceCatalog());
+    const { result } = renderHook(() => useCommerceCatalog(), { wrapper });
     await waitFor(() => expect(commerceMocks.api.get).toHaveBeenCalledTimes(1));
     const latestRefresh = result.current.refresh();
     await act(async () => {
@@ -70,7 +73,7 @@ describe('commerce resource URL mapping', () => {
       page: 2,
       page_size: 10,
       sort: 'newest',
-    }));
+    }), { wrapper });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(commerceMocks.api.get).toHaveBeenCalledWith(
@@ -89,7 +92,7 @@ describe('commerce resource URL mapping', () => {
     const reason = new Error('catalog unavailable');
     commerceMocks.api.get.mockRejectedValueOnce(reason);
 
-    const { result } = renderHook(() => useCommerceCatalogPage());
+    const { result } = renderHook(() => useCommerceCatalogPage(), { wrapper });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(commerceMocks.api.get).toHaveBeenCalledWith(
@@ -111,7 +114,7 @@ describe('commerce resource URL mapping', () => {
       .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
       .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
 
-    const { result } = renderHook(() => useCommerceCatalogPage({ q: 'asset' }));
+    const { result } = renderHook(() => useCommerceCatalogPage({ q: 'asset' }), { wrapper });
     await waitFor(() => expect(commerceMocks.api.get).toHaveBeenCalledTimes(1));
 
     const latestRefresh = result.current.refresh();

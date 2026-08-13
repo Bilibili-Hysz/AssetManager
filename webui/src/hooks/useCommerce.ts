@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import { useAuth } from './useAuth';
-import { useRealtimeContext } from '../stores/RealtimeContext';
+import { useCachedQuery } from './useCachedQuery';
 import { createShopApi } from '../api/shop';
-import type { ShopCatalogQuery, ShopItem, ShopOrder, ShopStats } from '../types/api';
+import type {
+  ShopCatalogQuery, ShopCatalogResponse, ShopItem, ShopItemsResponse, ShopOrder, ShopStats,
+} from '../types/api';
 import type { StorefrontOrder, StorefrontProduct, StorefrontStats } from '../components/storefront/types';
 
 /**
@@ -160,13 +162,6 @@ export function toStorefrontOrder(order: ShopOrderInput, buildUrl: (path: string
 }
 
 
-function isAbortError(reason: unknown): boolean {
-  return typeof reason === 'object'
-    && reason !== null
-    && 'name' in reason
-    && (reason as { name?: unknown }).name === 'AbortError';
-}
-
 export interface CommerceCatalogPageState {
   products: StorefrontProduct[];
   page: number;
@@ -174,25 +169,17 @@ export interface CommerceCatalogPageState {
   total: number;
   loading: boolean;
   error: unknown;
-  refresh: () => Promise<void>;
+  refresh: () => void;
 }
 
 /**
  * Paginated public Commerce catalog hook. This is intentionally separate from
  * useCommerceCatalog so the legacy shop/items contract remains untouched.
+ * Fetches through the shared query cache keyed by the catalog query.
  */
 export function useCommerceCatalogPage(params: ShopCatalogQuery = {}): CommerceCatalogPageState {
   const { api } = useAuth();
   const shopApi = useMemo(() => createShopApi(api), [api]);
-  const { registerInvalidation } = useRealtimeContext();
-  const [products, setProducts] = useState<StorefrontProduct[]>([]);
-  const [page, setPage] = useState(params.page ?? 1);
-  const [pageSize, setPageSize] = useState(params.page_size ?? 24);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<unknown>(null);
-  const requestSequenceRef = useRef(0);
-  const requestControllerRef = useRef<AbortController | null>(null);
   const query = useMemo(() => ({
     ...(params.q !== undefined ? { q: params.q } : {}),
     page: params.page ?? 1,
@@ -200,138 +187,78 @@ export function useCommerceCatalogPage(params: ShopCatalogQuery = {}): CommerceC
     sort: params.sort ?? 'newest',
   }), [params.page, params.page_size, params.q, params.sort]);
 
-  const refresh = useCallback(async () => {
-    const requestSequence = ++requestSequenceRef.current;
-    requestControllerRef.current?.abort();
-    const controller = new AbortController();
-    requestControllerRef.current = controller;
-    setLoading(true);
-    try {
-      const response = await shopApi.catalog(query, controller.signal);
-      if (controller.signal.aborted || requestSequence !== requestSequenceRef.current) return;
-      setProducts(response.items.map(item => toStorefrontProduct(item, api.buildUrl)));
-      setPage(response.page);
-      setPageSize(response.page_size);
-      setTotal(response.total);
-      setError(null);
-    } catch (reason) {
-      if (controller.signal.aborted || isAbortError(reason) || requestSequence !== requestSequenceRef.current) return;
-      setProducts([]);
-      setTotal(0);
-      setError(reason);
-    } finally {
-      if (!controller.signal.aborted && requestSequence === requestSequenceRef.current) setLoading(false);
-    }
-  }, [api, query, shopApi]);
+  const { data, error, isLoading, refresh } = useCachedQuery<ShopCatalogResponse>({
+    key: ['shop-catalog-page', query.q ?? null, query.page, query.page_size, query.sort],
+    queryFn: signal => shopApi.catalog(query, signal),
+    domains: ['shop'],
+  });
 
-  useEffect(() => {
-    void refresh();
-    const unregister = registerInvalidation(['shop'], () => { void refresh(); });
-    return () => {
-      requestSequenceRef.current += 1;
-      requestControllerRef.current?.abort();
-      requestControllerRef.current = null;
-      unregister();
-    };
-  }, [refresh, registerInvalidation]);
+  const products = useMemo(
+    () => (data?.items ?? []).map(item => toStorefrontProduct(item, api.buildUrl)),
+    [api.buildUrl, data],
+  );
+  const page = data?.page ?? query.page;
+  const pageSize = data?.page_size ?? query.page_size;
+  const total = data?.total ?? 0;
 
-  return useMemo(() => ({ products, page, pageSize, total, loading, error, refresh }), [error, loading, page, pageSize, products, refresh, total]);
+  return useMemo(
+    () => ({ products, page, pageSize, total, loading: isLoading, error: error ?? null, refresh }),
+    [error, isLoading, page, pageSize, products, refresh, total],
+  );
 }
 
 export function useCommerceCatalog(includeDisabled = false) {
   const { api } = useAuth();
   const shopApi = useMemo(() => createShopApi(api), [api]);
-  const { registerInvalidation } = useRealtimeContext();
-  const [products, setProducts] = useState<StorefrontProduct[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<unknown>(null);
-  const requestSequenceRef = useRef(0);
-  const requestControllerRef = useRef<AbortController | null>(null);
 
-  const refresh = useCallback(async () => {
-    const requestSequence = ++requestSequenceRef.current;
-    requestControllerRef.current?.abort();
-    const controller = new AbortController();
-    requestControllerRef.current = controller;
-    setLoading(true);
-    try {
-      const response = await shopApi.list(includeDisabled ? undefined : 'active', includeDisabled, controller.signal);
-      if (controller.signal.aborted || requestSequence !== requestSequenceRef.current) return;
-      setProducts(response.items.map(item => toStorefrontProduct(item, api.buildUrl)));
-      setError(null);
-    } catch (reason) {
-      if (controller.signal.aborted || isAbortError(reason) || requestSequence !== requestSequenceRef.current) return;
-      setProducts([]);
-      setError(reason);
-    } finally {
-      if (!controller.signal.aborted && requestSequence === requestSequenceRef.current) setLoading(false);
-    }
-  }, [api, includeDisabled, shopApi]);
+  const { data, error, isLoading, refresh } = useCachedQuery<ShopItemsResponse>({
+    key: ['shop-catalog', includeDisabled],
+    queryFn: signal => shopApi.list(includeDisabled ? undefined : 'active', includeDisabled, signal),
+    domains: ['shop'],
+  });
 
-  useEffect(() => {
-    void refresh();
-    const unregister = registerInvalidation(['shop'], () => { void refresh(); });
-    return () => {
-      requestSequenceRef.current += 1;
-      requestControllerRef.current?.abort();
-      requestControllerRef.current = null;
-      unregister();
-    };
-  }, [refresh, registerInvalidation]);
+  const products = useMemo(
+    () => (data?.items ?? []).map(item => toStorefrontProduct(item, api.buildUrl)),
+    [api.buildUrl, data],
+  );
 
-  return useMemo(() => ({ products, loading, error, refresh }), [error, loading, products, refresh]);
+  return useMemo(
+    () => ({ products, loading: isLoading, error: error ?? null, refresh }),
+    [error, isLoading, products, refresh],
+  );
 }
 
 export function useCommerceOrders() {
   const { api } = useAuth();
   const shopApi = useMemo(() => createShopApi(api), [api]);
-  const { registerInvalidation } = useRealtimeContext();
-  const [orders, setOrders] = useState<StorefrontOrder[]>([]);
-  const [stats, setStats] = useState<StorefrontStats>({ revenue: 0, orders: 0, products: 0 });
-  const [loading, setLoading] = useState(true);
-  const requestSequenceRef = useRef(0);
-  const requestControllerRef = useRef<AbortController | null>(null);
 
-  const refresh = useCallback(async () => {
-    const requestSequence = ++requestSequenceRef.current;
-    requestControllerRef.current?.abort();
-    const controller = new AbortController();
-    requestControllerRef.current = controller;
-    setLoading(true);
-    try {
+  const { data, isLoading, refresh } = useCachedQuery<{ orders: StorefrontOrder[]; stats: StorefrontStats }>({
+    key: ['shop-orders'],
+    queryFn: async signal => {
       const [orderResponse, statsResponse] = await Promise.all([
-        shopApi.listOrders(undefined, controller.signal),
-        shopApi.getStats(controller.signal),
+        shopApi.listOrders(undefined, signal),
+        shopApi.getStats(signal),
       ]);
-      if (controller.signal.aborted || requestSequence !== requestSequenceRef.current) return;
-      const nextOrders = orderResponse.orders.map(order => toStorefrontOrder(order, api.buildUrl));
+      const orders = orderResponse.orders.map(order => toStorefrontOrder(order, api.buildUrl));
       const rawStats: Partial<ShopStats> = statsResponse.stats ?? {};
-      setOrders(nextOrders);
-      setStats({
-        revenue: asNumber(rawStats.gross_cents) / 100,
-        orders: asNumber(rawStats.total_orders, nextOrders.length),
-        products: 0,
-        views: rawStats.store_views == null ? undefined : asNumber(rawStats.store_views),
-      });
-    } catch {
-      if (controller.signal.aborted || requestSequence !== requestSequenceRef.current) return;
-      setOrders([]);
-      setStats({ revenue: 0, orders: 0, products: 0 });
-    } finally {
-      if (!controller.signal.aborted && requestSequence === requestSequenceRef.current) setLoading(false);
-    }
-  }, [api, shopApi]);
+      return {
+        orders,
+        stats: {
+          revenue: asNumber(rawStats.gross_cents) / 100,
+          orders: asNumber(rawStats.total_orders, orders.length),
+          products: 0,
+          views: rawStats.store_views == null ? undefined : asNumber(rawStats.store_views),
+        },
+      };
+    },
+    domains: ['orders', 'quota'],
+  });
 
-  useEffect(() => {
-    void refresh();
-    const unregister = registerInvalidation(['orders', 'quota'], () => { void refresh(); });
-    return () => {
-      requestSequenceRef.current += 1;
-      requestControllerRef.current?.abort();
-      requestControllerRef.current = null;
-      unregister();
-    };
-  }, [refresh, registerInvalidation]);
+  const orders = data?.orders ?? [];
+  const stats = data?.stats ?? { revenue: 0, orders: 0, products: 0 };
 
-  return useMemo(() => ({ orders, stats, loading, refresh }), [loading, orders, refresh, stats]);
+  return useMemo(
+    () => ({ orders, stats, loading: isLoading, refresh }),
+    [isLoading, orders, refresh, stats],
+  );
 }

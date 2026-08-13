@@ -4,11 +4,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 import { createApiClient, type ApiClient } from '../api/client';
 import { isNetworkError, isServiceUnavailableError } from '../api/errors';
+import { useQueryCache } from '../cache/QueryCacheContext';
 
 export interface SellerStatusResponse {
   enabled: boolean;
@@ -37,6 +39,19 @@ export function SellerAuthProvider({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [serviceUnavailable, setServiceUnavailable] = useState(false);
+
+  // Seller identity is a scope of its own (the seller cookie can flip while
+  // the main session stays put), so a login/logout must clear the shared
+  // query cache just like the main identityGeneration flip does. The initial
+  // status-probe flip (false -> true) is harmless: the cache is empty then.
+  const cache = useQueryCache();
+  const previousAuthenticated = useRef(authenticated);
+  useEffect(() => {
+    if (previousAuthenticated.current !== authenticated) {
+      previousAuthenticated.current = authenticated;
+      cache.clear();
+    }
+  }, [authenticated, cache]);
 
   const refresh = useCallback(async () => {
     try {
