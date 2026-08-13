@@ -61,6 +61,8 @@ class SettingsDialog(TabbedDialog):
         self._library_settings_adapter = adapter
         if hasattr(self, "_maintenance_status"):
             self._refresh_maintenance_status()
+        if hasattr(self, "_backup_status"):
+            self._refresh_backup_status()
 
     @property
     def library_settings_adapter(self):
@@ -116,6 +118,7 @@ class SettingsDialog(TabbedDialog):
         self._build_general_tab()
         self._build_thumbnails_tab()
         self._build_maintenance_tab()
+        self._build_backup_tab()
 
     # ── Tab 1: Appearance (Theme + Background) ────────────
 
@@ -604,6 +607,145 @@ class SettingsDialog(TabbedDialog):
         self._add_tab(tab, tr("settings.maintenance_title"), scrollable=True,
                       label_key="settings.maintenance_title")
         self._refresh_maintenance_status()
+
+    # ── Tab 5: Backup & restore (G6-1 product entry) ────────
+
+    def _build_backup_tab(self):
+        from AssetsManager.core.ui_scale import scaled_px
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        self._backup_layout = layout
+        layout.setSpacing(scaled_px(12))
+        layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
+
+        self._backup_group = self.make_groupbox(tr("settings.backup_title"))
+        gl = QVBoxLayout(self._backup_group)
+        gl.setSpacing(scaled_px(6))
+        gl.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(8))
+
+        self._export_btn = self.make_secondary_btn(
+            tr("settings.backup_export_metadata"), self._on_export_metadata)
+        gl.addWidget(self._export_btn)
+
+        self._backup_btn = self.make_secondary_btn(
+            tr("settings.backup_create"), self._on_create_backup)
+        gl.addWidget(self._backup_btn)
+
+        self._restore_btn = self.make_secondary_btn(
+            tr("settings.backup_restore"), self._on_restore_backup)
+        gl.addWidget(self._restore_btn)
+
+        self._backup_status = self.make_muted(tr("settings.backup_idle"))
+        self._backup_status.setWordWrap(True)
+        gl.addWidget(self._backup_status)
+
+        layout.addWidget(self._backup_group)
+
+        self._quarantine_group = self.make_groupbox(tr("settings.backup_quarantine"))
+        ql = QVBoxLayout(self._quarantine_group)
+        ql.setSpacing(scaled_px(6))
+        ql.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(8))
+        self._quarantine_status = self.make_muted(tr("settings.backup_quarantine_empty"))
+        self._quarantine_status.setWordWrap(True)
+        ql.addWidget(self._quarantine_status)
+        layout.addWidget(self._quarantine_group)
+
+        layout.addStretch()
+        self._add_tab(tab, tr("settings.backup_title"), scrollable=True,
+                      label_key="settings.backup_title")
+        self._refresh_backup_status()
+
+    def _on_export_metadata(self):
+        adapter = self.library_settings_adapter
+        if adapter is None:
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.error_no_library"))
+            return
+        default = str(adapter.library_root / "metadata-export.json")
+        destination, _selected = QFileDialog.getSaveFileName(
+            self, tr("settings.backup_export_metadata"), default, "JSON (*.json)")
+        if not destination:
+            return
+        try:
+            result = adapter.export_metadata(destination)
+            self._backup_status.setText(tr(
+                "settings.backup_export_done",
+                path=getattr(result, "destination", destination),
+            ))
+        except Exception as exc:
+            QMessageBox.warning(self, tr("dialog.error"), str(exc))
+
+    def _on_create_backup(self):
+        adapter = self.library_settings_adapter
+        if adapter is None:
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.error_no_library"))
+            return
+        default = str(adapter.library_root / "assetmanager-backup.zip")
+        destination, _selected = QFileDialog.getSaveFileName(
+            self, tr("backup.choose_destination"), default, tr("backup.file_filter"))
+        if not destination:
+            return
+        try:
+            result = adapter.create_backup(destination)
+            self._backup_status.setText(tr(
+                "settings.backup_create_done", path=result.destination))
+        except Exception as exc:
+            QMessageBox.critical(self, tr("backup.title"), tr("backup.failed").format(error=exc))
+
+    def _on_restore_backup(self):
+        adapter = self.library_settings_adapter
+        if adapter is None:
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.error_no_library"))
+            return
+        vm = adapter.view_model()
+        if not vm.restore_allowed:
+            QMessageBox.warning(
+                self, tr("restore.title"), tr("settings.backup_restore_blocked"))
+            return
+        archive, _selected = QFileDialog.getOpenFileName(
+            self, tr("restore.choose_archive"), str(adapter.library_root.parent),
+            tr("restore.file_filter"))
+        if not archive:
+            return
+        answer = QMessageBox.warning(
+            self, tr("restore.title"), tr("restore.confirm"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            result = adapter.restore_backup(archive, overwrite_existing=True)
+            self._backup_status.setText(tr(
+                "settings.backup_restore_done", path=result.data_dir))
+        except Exception as exc:
+            QMessageBox.critical(self, tr("restore.title"), tr("restore.failed").format(error=exc))
+
+    def _refresh_backup_status(self):
+        status = self._backup_status
+        adapter = self.library_settings_adapter
+        if adapter is None:
+            status.setText(tr("settings.error_no_library"))
+            self._export_btn.setEnabled(False)
+            self._backup_btn.setEnabled(False)
+            self._restore_btn.setEnabled(False)
+            self._quarantine_status.setText(tr("settings.backup_quarantine_empty"))
+            return
+        vm = adapter.view_model()
+        self._export_btn.setEnabled(True)
+        self._backup_btn.setEnabled(True)
+        self._restore_btn.setEnabled(vm.restore_allowed)
+        if vm.restore_allowed:
+            status.setText(tr("settings.backup_restore_ready"))
+        else:
+            status.setText(tr("settings.backup_restore_blocked"))
+        try:
+            entries = adapter.list_restore_quarantine()
+        except Exception:
+            entries = ()
+        if not entries:
+            self._quarantine_status.setText(tr("settings.backup_quarantine_empty"))
+        else:
+            lines = [f"{entry.name or entry.path} — {entry.modified_at}" for entry in entries[:10]]
+            self._quarantine_status.setText("\n".join(lines))
 
     def _on_run_checkpoint(self):
         adapter = self.library_settings_adapter

@@ -82,7 +82,7 @@ def test_maintenance_tab_renders_and_buttons_call_adapter(tmp_path):
         dialog.show()
         app.processEvents()
 
-        assert dialog._tabs.count() == 4
+        assert dialog._tabs.count() == 5
         assert dialog._tabs.tabText(3) == "Maintenance"
         assert dialog._run_checkpoint_btn.text() == "Run WAL Checkpoint"
         assert dialog._read_size_btn.text() == "Read Database Size"
@@ -186,12 +186,41 @@ def test_maintenance_tab_renders_without_adapter(tmp_path):
         i18n.set_language("en")
         app = QApplication.instance() or QApplication([])
         dialog = SettingsDialog()
-        assert dialog._tabs.count() == 4
+        assert dialog._tabs.count() == 5
         assert not dialog._run_checkpoint_btn.isEnabled()
         assert not dialog._read_size_btn.isEnabled()
         assert dialog._maintenance_status.text() == "No library is open."
         dialog.close()
         dialog.deleteLater()
         app.processEvents()
+    finally:
+        i18n.set_language(original_language)
+
+
+def test_backup_tab_restore_disabled_while_session_open(tmp_path):
+    original_language = i18n.current_language()
+    try:
+        i18n.set_language("en")
+        app = QApplication.instance() or QApplication([])
+        adapter, _maintenance = _adapter(tmp_path)
+        dialog = SettingsDialog()
+        dialog.set_library_settings_adapter(adapter)
+        try:
+            dialog.show()
+            app.processEvents()
+
+            assert dialog._tabs.tabText(4) == "Backup & Restore"
+            assert dialog._export_btn.isEnabled()
+            assert dialog._backup_btn.isEnabled()
+            assert not dialog._restore_btn.isEnabled()
+            assert dialog._backup_status.text() == (
+                "Restore is unavailable while the library is open. "
+                "Close the library first."
+            )
+            assert dialog._quarantine_status.text() == "No quarantined restore data."
+        finally:
+            dialog.close()
+            dialog.deleteLater()
+            app.processEvents()
     finally:
         i18n.set_language(original_language)
