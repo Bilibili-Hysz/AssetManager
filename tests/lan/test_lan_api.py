@@ -1092,8 +1092,6 @@ def _make_lan_app(tmp_path, *, authenticated_context_only=False, canonical_conte
         app[AUTH_SERVICE_APP_KEY] = AuthService(conn, "test-secret")
         async def _close_db(_app):
             from AssetsManager.core import database as database_module
-            from AssetsManager.core.database import close_all_dbs
-            close_all_dbs()
             with database_module._connection_locks_guard:
                 database_module._connection_locks.pop(id(conn), None)
             conn.close()

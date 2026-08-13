@@ -404,7 +404,7 @@ def test_lan_does_not_depend_on_desktop_presentation() -> None:
 
 
 def test_presentation_db_store_access_stays_in_documented_fallbacks() -> None:
-    forbidden_calls = {"get_store", "get_project_data", "get_library_dir", "close_all_dbs"}
+    forbidden_calls = {"get_store", "get_project_data"}
     allowed_calls = set()
     forbidden_imports = {
         "AssetsManager.core.database",
@@ -969,17 +969,6 @@ def test_sidebar_storage_does_not_open_database_manager() -> None:
         assert "AssetsManager.core.database" not in source
 
 
-def test_legacy_library_dir_helper_is_path_only() -> None:
-    source = (SRC / "core" / "database.py").read_text(encoding="utf-8")
-    start = source.index("def get_library_dir")
-    end = source.index("def migrate_path_metadata", start)
-    helper = source[start:end]
-    assert "ThreadSafeSingleton" not in helper
-    assert "library_data_dir" in helper
-    assert "_ensure_library_data_identity" in helper
-    assert "legacy_library_data_dir" in helper
-
-
 def test_database_singleton_helpers_are_legacy_only() -> None:
     allowed = {
         "core/database.py",
@@ -992,7 +981,7 @@ def test_database_singleton_helpers_are_legacy_only() -> None:
         if relative in allowed:
             continue
         source = path.read_text(encoding="utf-8")
-        if "get_lib_db(" in source or "close_all_dbs(" in source:
+        if "get_lib_db(" in source:
             violations.append(relative)
 
     assert not violations, "Database singleton helpers must stay legacy-only:\n" + "\n".join(violations)

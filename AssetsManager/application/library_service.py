@@ -6,7 +6,6 @@ from dataclasses import dataclass
 import logging
 import os
 import threading
-import warnings
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
@@ -15,7 +14,6 @@ from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.library_lock import LibraryLock
 from AssetsManager.core.path_resolver import RootIdentity, library_lock_path, root_identity
 from AssetsManager.core.project_data import ProjectData
-from AssetsManager.core.singleton import ThreadSafeSingleton
 from AssetsManager.core.tag_store import TagStore
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import LibraryOpened
@@ -454,19 +452,6 @@ class LibraryService:
         progress = _TeardownProgress(session.context)
         self._notify_listener_stage(session, progress, closing=False)
 
-    def open_library(self, root_path: str | Path) -> LibraryContext:
-        """Deprecated raw-context compatibility wrapper."""
-        warnings.warn(
-            "LibraryService.open_library() is deprecated. Use LibraryService.open_session() instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._open_library(root_path)
-
-    def _open_library(self, root_path: str | Path) -> LibraryContext:
-        context, _ = self._open(root_path)
-        return context
-
     def _open(self, root_path: str | Path) -> tuple[LibraryContext, LibrarySession]:
         identity = root_identity(root_path)
         root = identity.display_path
@@ -559,17 +544,6 @@ class LibraryService:
     def open_session(self, root_path: str | Path) -> LibrarySession:
         _, session = self._open(root_path)
         return session
-
-    @property
-    def current(self) -> LibraryContext | None:
-        """Deprecated raw current-context compatibility property."""
-        warnings.warn(
-            "LibraryService.current is deprecated. Use LibraryService.current_session instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        with self._lock:
-            return self._current
 
     @property
     def current_session(self) -> LibrarySession | None:
@@ -845,14 +819,3 @@ class LibraryService:
                 if not committed:
                     self._closing_sessions[key] = session
                 self._lifecycle.notify_all()
-
-def get_library_service() -> LibraryService:
-    """Return the LibraryService singleton.
-
-    Presentation code should prefer accessing ``bootstrap.library_service``
-    directly. This helper remains as a non-Qt fallback for tests and legacy
-    callers that still need a process-wide singleton.
-    """
-    warnings.warn("get_library_service() is deprecated, use Bootstrap.library_service instead", DeprecationWarning, stacklevel=2)
-    _log.debug("LibraryService singleton fallback used")
-    return ThreadSafeSingleton.get(LibraryService)

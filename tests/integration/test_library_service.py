@@ -26,14 +26,15 @@ def _probe_library_lock_in_child(lock_path: Path) -> subprocess.CompletedProcess
     )
 
 
-def test_open_library_returns_context(tmp_path):
+def test_open_session_exposes_context(tmp_path):
     from AssetsManager.application.library_service import LibraryService
 
     root = tmp_path / "library"
     root.mkdir()
 
     service = LibraryService()
-    context = service.open_library(root)
+    session = service.open_session(root)
+    context = session.context
 
     assert context.root == root.resolve()
     assert context.data_dir.exists()
@@ -245,27 +246,15 @@ def test_stale_session_close_does_not_release_replacement_library_lock(
     service.close()
 
 
-def test_current_context_remains_legacy_compatibility_api(tmp_path):
+def test_open_session_reuses_session(tmp_path):
     from AssetsManager.application.library_service import LibraryService
 
     root = tmp_path / "library"
     root.mkdir()
 
     service = LibraryService()
-    session = service.open_session(root)
-
-    assert service.current is session.context
-
-
-def test_open_library_reuses_context(tmp_path):
-    from AssetsManager.application.library_service import LibraryService
-
-    root = tmp_path / "library"
-    root.mkdir()
-
-    service = LibraryService()
-    first = service.open_library(str(root))
-    second = service.open_library(Path(root))
+    first = service.open_session(str(root))
+    second = service.open_session(Path(root))
 
     assert first is second
 
@@ -277,10 +266,12 @@ def test_open_session_wraps_cached_context(tmp_path):
     root.mkdir()
 
     service = LibraryService()
-    context = service.open_library(root)
     session = service.open_session(root)
+    context = session.context
+    again = service.open_session(root)
 
-    assert session.context is context
+    assert again.context is context
+    assert again is session
     assert session.root == context.root
     assert session.connection_for(root) is context.db_conn
     assert service.current_session is not None
@@ -386,21 +377,6 @@ def test_library_session_connection_provider_rejects_mismatched_root(tmp_path):
         session.connection_for(other)
 
 
-def test_library_session_raw_resources_are_deprecated(tmp_path):
-    from AssetsManager.application.library_service import LibraryService
-
-    root = tmp_path / "library"
-    root.mkdir()
-    session = LibraryService().open_session(root)
-
-    with pytest.warns(DeprecationWarning, match="db_conn"):
-        assert session.db_conn is session.connection_for(root)
-    with pytest.warns(DeprecationWarning, match="tag_store"):
-        assert session.tag_store is session.context.tag_store
-    with pytest.warns(DeprecationWarning, match="project_data"):
-        assert session.project_data is session.context.project_data
-
-
 def test_open_library_contexts_do_not_follow_current_library(tmp_path):
     from AssetsManager.application.library_service import LibraryService
 
@@ -410,15 +386,15 @@ def test_open_library_contexts_do_not_follow_current_library(tmp_path):
     second_root.mkdir()
 
     service = LibraryService()
-    first = service.open_library(first_root)
-    second = service.open_library(second_root)
+    first = service.open_session(first_root)
+    second = service.open_session(second_root)
 
     assert first is not second
-    assert first.root == first_root.resolve()
-    assert second.root == second_root.resolve()
-    assert first.db_conn is service._db.connection_for(first_root)
-    assert second.db_conn is service._db.connection_for(second_root)
-    assert first.db_conn is not second.db_conn
+    assert first.context.root == first_root.resolve()
+    assert second.context.root == second_root.resolve()
+    assert first.context.db_conn is service._db.connection_for(first_root)
+    assert second.context.db_conn is service._db.connection_for(second_root)
+    assert first.context.db_conn is not second.context.db_conn
     assert first.data_dir == service._db.data_dir_for(first_root)
     assert second.data_dir == service._db.data_dir_for(second_root)
 
@@ -429,7 +405,7 @@ def test_open_library_context_resources_share_explicit_connection(tmp_path):
     root = tmp_path / "library"
     root.mkdir()
 
-    context = LibraryService().open_library(root)
+    context = LibraryService().open_session(root).context
 
     assert context.tag_store._db is context.db_conn
     assert context.project_data._db is context.db_conn
@@ -443,7 +419,7 @@ def test_library_context_connection_provider_rejects_mismatched_root(tmp_path):
     root.mkdir()
     other.mkdir()
 
-    context = LibraryService().open_library(root)
+    context = LibraryService().open_session(root).context
 
     assert context.connection_for(root) is context.db_conn
     assert context.connection_for(str(root)) is context.db_conn
@@ -529,12 +505,6 @@ def test_closed_session_still_exposes_resources(tmp_path):
     assert session.is_closed is True
 
     import pytest
-    with pytest.warns(DeprecationWarning, match="db_conn"), pytest.raises(RuntimeError, match="closed"):
-        _ = session.db_conn
-    with pytest.warns(DeprecationWarning, match="tag_store"), pytest.raises(RuntimeError, match="closed"):
-        _ = session.tag_store
-    with pytest.warns(DeprecationWarning, match="project_data"), pytest.raises(RuntimeError, match="closed"):
-        _ = session.project_data
     with pytest.raises(RuntimeError, match="closed"):
         session.connection_for(root)
 
@@ -796,7 +766,7 @@ def test_open_library_replaces_directly_closed_canonical_session_and_context(tmp
     context = session.context
     session.close()
 
-    reopened_context = service.open_library(root)
+    reopened_context = service.open_session(root)
     replacement = service.current_session
 
     assert reopened_context is not context
@@ -1065,36 +1035,6 @@ def test_library_context_not_in_public_application_exports():
     assert "LibraryContext" not in application.__all__, (
         "LibraryContext must not be in __all__; LibrarySession is the public boundary"
     )
-
-
-def test_open_library_emits_deprecation_warning():
-    """open_library() is legacy and must emit a DeprecationWarning."""
-    import warnings
-    from AssetsManager.application.library_service import LibraryService
-    from pathlib import Path
-    import tempfile
-
-    root = Path(tempfile.mkdtemp())
-    service = LibraryService()
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        service.open_library(root)
-        deprecations = [x for x in w if issubclass(x.category, DeprecationWarning)]
-        assert len(deprecations) >= 1, "open_library() must emit a DeprecationWarning"
-    service.close()
-
-
-def test_current_property_emits_deprecation_warning():
-    """LibraryService.current is legacy and must emit a DeprecationWarning."""
-    import warnings
-    from AssetsManager.application.library_service import LibraryService
-
-    service = LibraryService()
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        _ = service.current
-        deprecations = [x for x in w if issubclass(x.category, DeprecationWarning)]
-        assert len(deprecations) >= 1, "LibraryService.current must emit a DeprecationWarning"
 
 
 def test_closed_session_invalidates_context_and_retained_core_stores(tmp_path):

@@ -307,7 +307,6 @@ def _cleanup_stores():
     yield
     from PySide6.QtCore import QThreadPool
     from PySide6.QtWidgets import QApplication
-    from AssetsManager.core import database
     from AssetsManager.core.path_resolver import library_data_dir
 
     app = QApplication.instance()
@@ -323,7 +322,7 @@ def _cleanup_stores():
     mgr = ThreadSafeSingleton.get(DatabaseManager)
     opened_roots = list(mgr._connections.keys())
 
-    database.close_all_dbs()
+    mgr.close()
 
     # Reset the global EventBus singleton to avoid handler leaks between tests
     from AssetsManager.domain import event_bus as _eb

@@ -224,12 +224,14 @@ def test_clean_orphan_dirs_ignores_settings_failure(tmp_path, monkeypatch):
     old_time = time.time() - 8 * 86400
     os.utime(str(old_orphan), (old_time, old_time))
 
+    from AssetsManager.core.singleton import ThreadSafeSingleton
+
     monkeypatch.setattr(database_module, "RUNTIME_ROOT", runtime)
 
     def broken_settings(_type):
         raise RuntimeError("settings unavailable")
 
-    monkeypatch.setattr(database_module.ThreadSafeSingleton, "get", broken_settings)
+    monkeypatch.setattr(ThreadSafeSingleton, "get", broken_settings)
 
     # The registry lookup degrades to an empty list instead of raising, and
     # cleanup proceeds with the marker-based protection only.

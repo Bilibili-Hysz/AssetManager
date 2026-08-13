@@ -351,19 +351,6 @@ def test_clean_orphan_dirs_preserves_quarantine_collisions_and_recent_dirs(
     assert recent.exists()
 
 
-def test_legacy_db_write_lock_is_reentrant_without_a_manager(monkeypatch):
-    from AssetsManager.core import database
-
-    monkeypatch.setattr(
-        database.ThreadSafeSingleton,
-        "get",
-        lambda _type: (_ for _ in ()).throw(AssertionError("manager lookup")),
-    )
-    with database.db_write_lock():
-        with database.db_write_lock():
-            assert True
-
-
 def test_sql_like_helpers_escape_wildcards_and_preserve_path_separator():
     from AssetsManager.core.path_resolver import (
         escape_sql_like,

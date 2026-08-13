@@ -111,10 +111,10 @@ def test_explicit_write_lock_uses_connection_owner_not_global_singleton(tmp_path
     manager = DatabaseManager()
     conn = manager.connection_for(lib_root)
 
-    import AssetsManager.core.database as database_module
+    from AssetsManager.core.singleton import ThreadSafeSingleton
 
     monkeypatch.setattr(
-        database_module.ThreadSafeSingleton,
+        ThreadSafeSingleton,
         "get",
         lambda _type: (_ for _ in ()).throw(AssertionError("global manager used")),
     )
@@ -200,10 +200,10 @@ def test_two_library_write_locks_are_independent(tmp_path):
 
 def test_unmanaged_connection_uses_a_stable_connection_lock(tmp_path, monkeypatch):
     conn = sqlite3.connect(str(tmp_path / "external.db"), check_same_thread=False)
-    import AssetsManager.core.database as database_module
+    from AssetsManager.core.singleton import ThreadSafeSingleton
 
     monkeypatch.setattr(
-        database_module.ThreadSafeSingleton,
+        ThreadSafeSingleton,
         "get",
         lambda _type: (_ for _ in ()).throw(AssertionError("global manager used")),
     )

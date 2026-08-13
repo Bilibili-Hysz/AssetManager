@@ -28,7 +28,6 @@ from AssetsManager.core.db_migrations import (
     migrate as migrate_db,
     preflight_recorded_version,
 )
-from AssetsManager.core.singleton import ThreadSafeSingleton
 
 RUNTIME_ROOT = runtime_root()
 SHARED_DIR = shared_dir()
@@ -39,9 +38,6 @@ _log = logging.getLogger(__name__)
 
 # One-shot guard: compatibility helpers warn at most once per process about
 # routing through the ThreadSafeSingleton DatabaseManager instead of DI.
-_compat_singleton_warned = False
-
-
 def _flush_directory_durable(directory: Path) -> None:
     """Flush a directory entry update, or fail instead of claiming durability.
 
@@ -885,16 +881,6 @@ class DatabaseManager:
                 if state is None:
                     state = _ConnectionWriteState(self._write_lock, closed=True)
                 self._close_managed_connection(key, conn, state)
-    @property
-    def db_lock(self):
-        return self._write_lock
-
-    @contextmanager
-    def write_lock(self):
-        """Serialize SQLite writes across GUI, worker, and LAN threads."""
-        with self._write_lock:
-            yield
-
     @staticmethod
     def clean_orphan_dirs(known_roots: list[str]):
         if not RUNTIME_ROOT.exists():
@@ -1059,43 +1045,6 @@ def _record_write_lock(
         pass
 
 
-def get_library_dir(library_root: str) -> Path:
-    """Return a prepared legacy-compatible library data directory.
-
-    This helper intentionally remains path-only: it does not construct or open
-    a ``DatabaseManager`` connection.  It nevertheless follows the canonical
-    identity and legacy-directory preparation protocol so compatibility callers
-    cannot create an unguarded hashed directory beside an older RuntimeData
-    directory.
-    """
-    identity = root_identity(library_root, strict=False)
-    directory = library_data_dir(identity)
-    legacy_dir = legacy_library_data_dir(identity)
-
-    DatabaseManager._ensure_library_data_identity(identity)
-    if legacy_dir != directory and legacy_dir.exists():
-        if DatabaseManager._is_reserved_legacy_dir(legacy_dir):
-            raise RuntimeError(
-                "Reserved RuntimeData directory cannot be migrated: "
-                f"{legacy_dir}"
-            )
-        if directory.exists():
-            raise RuntimeError(
-                "Legacy and hashed RuntimeData directories both exist: "
-                f"{legacy_dir} and {directory}"
-            )
-        try:
-            shutil.move(str(legacy_dir), str(directory))
-        except OSError as exc:
-            if not _legacy_migration_looks_complete(identity, legacy_dir, directory):
-                raise RuntimeError(
-                    f"Legacy RuntimeData migration failed: {legacy_dir}"
-                ) from exc
-
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory
-
-
 def migrate_path_metadata(conn: sqlite3.Connection, thumb_dir: Path,
                           old_path: str | Path, new_path: str | Path):
     """Move metadata between paths using explicit library-owned resources."""
@@ -1237,39 +1186,6 @@ def _thumbnail_cache_key(path: str) -> str:
     except OSError:
         mtime = ""
     return hashlib.sha256(f"{path}|{mtime}".encode()).hexdigest()[:16]
-
-
-def _warn_compat_singleton(helper: str) -> None:
-    """Warn once per process about singleton-routed compatibility helpers.
-
-    These helpers operate on ``ThreadSafeSingleton.get(DatabaseManager)``,
-    which can be a different instance than the DI-registered DatabaseManager
-    (see ``AssetsManager.application.bootstrap``).  The warning is emitted at
-    most once per process so per-operation compatibility callers (file renames,
-    test teardown) do not flood the log.
-    """
-    global _compat_singleton_warned
-    if _compat_singleton_warned:
-        return
-    _compat_singleton_warned = True
-    _log.warning(
-        "%s routes through ThreadSafeSingleton.get(DatabaseManager), which may "
-        "differ from the DI-registered DatabaseManager instance; prefer an "
-        "explicit connection or unify the instances via DI",
-        helper,
-    )
-
-
-def close_all_dbs():
-    """Deprecated compatibility shutdown helper.
-
-    Routes through the ThreadSafeSingleton DatabaseManager, which may differ
-    from the DI-registered instance: only the singleton instance is closed
-    here.  Callers owning the DI-registered manager should close that
-    instance instead.
-    """
-    _warn_compat_singleton("close_all_dbs")
-    ThreadSafeSingleton.get(DatabaseManager).close()
 
 
 def clean_orphan_dirs(known_roots: list[str]):

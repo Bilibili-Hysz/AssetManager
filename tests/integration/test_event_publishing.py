@@ -5,7 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 def test_library_service_publishes_library_opened(tmp_path, monkeypatch):
-    """LibraryService.open_library() publishes LibraryOpened."""
+    """LibraryService.open_session() publishes LibraryOpened."""
     from AssetsManager.application.library_service import LibraryService
     from AssetsManager.domain.event_bus import EventBus
     from AssetsManager.domain.events import LibraryOpened
@@ -19,7 +19,7 @@ def test_library_service_publishes_library_opened(tmp_path, monkeypatch):
     svc = LibraryService()
     lib = tmp_path / "testlib"
     lib.mkdir()
-    svc.open_library(str(lib))
+    svc.open_session(str(lib))
 
     assert len(events) == 1
     assert events[0].library_root == str(lib.resolve())
