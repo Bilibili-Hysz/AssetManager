@@ -493,6 +493,7 @@ class AssetIndexReconciliationService:
             and result.committed is True
         )
         if completion_timestamp >= renew_until:
+            assert result is not None  # guarded by result.published above
             if durably_committed and self._publish_revision_is_current(result):
                 # M6a-9: a durably committed tree publish is authoritative even
                 # when the worker exceeded its operation age budget.  The tree

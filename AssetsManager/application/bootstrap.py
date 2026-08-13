@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
 import sqlite3
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, cast
 
 from AssetsManager.application.asset_index_service import AssetIndexService
 from AssetsManager.application.asset_index_reconciliation_service import AssetIndexReconciliationService
@@ -138,7 +138,7 @@ class _LanServicesHolder:
                     raise RuntimeError(
                         "Cannot use retained LAN services from a closed LibrarySession"
                     )
-                return ready_value
+                return cast(LanRuntimeServices, ready_value)
 
             # Avoid taking the session lifecycle lock while holding the holder
             # lock. Publication is the only path that nests session -> holder.

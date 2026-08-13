@@ -116,7 +116,7 @@ def matches_search(name: str, search: str) -> bool:
     return search.lower() in name.lower()
 
 
-def matches_exclude(name: str, patterns: list[str]) -> bool:
+def matches_exclude(name: str, patterns: Sequence[str]) -> bool:
     """True when the entry name matches any exclude pattern.
 
     Shared by the LAN AssetService and the desktop file list so both

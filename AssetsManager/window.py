@@ -50,7 +50,7 @@ def _save_window_geometry(window: QWidget) -> None:
         was_maximized = window.isMaximized()
         if was_maximized:
             window.showNormal()
-        settings.set("window_geometry", bytes(window.saveGeometry()).hex())
+        settings.set("window_geometry", bytes(window.saveGeometry().data()).hex())
         settings.set("window_maximized", was_maximized)
         settings.save()
     except Exception:

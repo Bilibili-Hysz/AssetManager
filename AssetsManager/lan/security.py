@@ -14,6 +14,7 @@ deliberately unlocked and must only be touched from the server event-loop
 thread (the security middleware). Do not add UI-thread or worker-thread
 call paths without adding synchronization first.
 """
+from typing import cast
 import ipaddress
 import logging
 import math
@@ -46,10 +47,12 @@ def _normalize_ip(ip: str) -> str:
         addr = ipaddress.ip_address(ip)
     except ValueError:
         return ip
-    if addr.version == 6 and addr.ipv4_mapped is not None:
-        return str(addr.ipv4_mapped)
-    if addr.version == 6 and addr == ipaddress.ip_address("::1"):
-        return "127.0.0.1"
+    if addr.version == 6:
+        addr_v6 = cast(ipaddress.IPv6Address, addr)
+        if addr_v6.ipv4_mapped is not None:
+            return str(addr_v6.ipv4_mapped)
+        if addr_v6 == ipaddress.ip_address("::1"):
+            return "127.0.0.1"
     return str(addr)
 
 

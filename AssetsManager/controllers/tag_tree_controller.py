@@ -6,6 +6,7 @@ remains a pure UI renderer with no direct store access.
 from __future__ import annotations
 
 import logging
+from typing import Any, cast
 
 from AssetsManager.application.tag_service import TagService
 from AssetsManager.core.tag_library import get_library
@@ -71,7 +72,7 @@ class TagTreeController:
             list_file_tags = getattr(repo, "list_file_tags", None)
             if callable(list_file_tags):
                 grouped: dict[str, list[str]] = {}
-                for path, tag in list_file_tags():
+                for path, tag in cast(Any, list_file_tags)():
                     grouped.setdefault(tag, []).append(path)
                 return grouped
         # Legacy fallback: one query per tag.

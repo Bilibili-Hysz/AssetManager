@@ -431,6 +431,7 @@ class OrderRepository(_CommerceRepository):
                 ),
             )
             if claim_hash is not None:
+                assert share_claim_expires_at is not None  # caller contract
                 self._conn.execute(
                     "INSERT INTO shop_share_claims "
                     "(claim_hash, order_id, expires_at, claimed_at, revoked_at, created_at) "
@@ -533,6 +534,7 @@ class OrderRepository(_CommerceRepository):
                     "WHERE order_id=? AND revoked_at IS NULL",
                     (timestamp, resolved_id),
                 )
+                assert share_claim_expires_at is not None  # caller contract
                 self._conn.execute(
                     "INSERT INTO shop_share_claims "
                     "(claim_hash, order_id, expires_at, claimed_at, revoked_at, created_at) "

@@ -1064,7 +1064,8 @@ class _LanServerImpl:
         # drop oldest entries to keep memory bounded.
         if len(self._revoked_tokens) > self._TOKEN_REVOCATION_MAX:
             for digest in sorted(
-                self._revoked_tokens, key=self._revoked_tokens.get
+                self._revoked_tokens,
+                key=lambda entry: cast(float, self._revoked_tokens[entry]),
             )[: len(self._revoked_tokens) - self._TOKEN_REVOCATION_MAX]:
                 del self._revoked_tokens[digest]
 

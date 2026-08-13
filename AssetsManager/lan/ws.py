@@ -424,6 +424,7 @@ class WebSocketManager:
                     transition is not None and transition.state != "ready"
                 )
             if transition_in_progress:
+                assert transition is not None  # transition_in_progress implies it
                 await asyncio.wait_for(transition.ready.wait(), WS_OPERATION_TIMEOUT)
                 continue
             authorized = True if authorize is None else await self._run_authorizer(authorize)

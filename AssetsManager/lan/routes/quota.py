@@ -193,7 +193,7 @@ def free_download_quota_identity(request: web.Request) -> str:
     return identity
 
 
-def apply_free_quota_identity_cookie(response: web.Response, request: web.Request) -> None:
+def apply_free_quota_identity_cookie(response: web.StreamResponse, request: web.Request) -> None:
     """Attach a newly issued anonymous quota cookie to a response."""
     resolved = request.get(_QUOTA_IDENTITY_REQUEST_KEY)
     if resolved is None:

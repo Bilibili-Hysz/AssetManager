@@ -679,7 +679,7 @@ async def handle_shop_buyer_orders(request: web.Request) -> web.Response:
             limit=_order_limit(request),
             cursor=request.query.get("cursor"),
         )
-        payload = {"orders": orders}
+        payload: dict[str, object] = {"orders": orders}
         if next_cursor is not None:
             payload["next_cursor"] = next_cursor
         return _buyer_response(payload, cookie=cookie_response, request=request)

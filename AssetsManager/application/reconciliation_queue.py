@@ -356,6 +356,7 @@ class ReconciliationQueue:
                     # of failing the library open; the owning process applies
                     # whatever recovery is still required.
                     try:
+                        assert self._store is not None
                         snapshot = self._store.load_snapshot()
                         self._set_store_snapshot_unlocked(snapshot)
                     except Exception:
