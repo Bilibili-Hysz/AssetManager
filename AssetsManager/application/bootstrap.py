@@ -28,6 +28,7 @@ from AssetsManager.application.file_operation_service import FileOperationServic
 from AssetsManager.application.favorite_service import FavoriteService
 from AssetsManager.application.gallery_service import GalleryService
 from AssetsManager.application.library_export_service import LibraryExportService
+from AssetsManager.application.library_watcher_service import LibraryWatcherService
 from AssetsManager.application.library_service import LibraryService
 from AssetsManager.application.metadata_service import MetadataService
 from AssetsManager.application.plugin_service import PluginService
@@ -412,6 +413,7 @@ class ApplicationBootstrap:
                 adapter = getattr(services, adapter_name, None)
                 if adapter is not None:
                     runtime.register_lifecycle_adapter(adapter)
+            self._start_library_watcher(runtime, session)
             reconciliation_service = getattr(services, "reconciliation_service", None)
             with self._runtime_lock:
                 if (
@@ -460,6 +462,31 @@ class ApplicationBootstrap:
                 gate = self._runtime_creation.pop(key, None)
                 if gate is not None:
                     gate.set()
+
+    @staticmethod
+    def _start_library_watcher(runtime: "LibraryRuntime", session: LibrarySession) -> None:
+        """Start the resident library watcher when the interval setting enables it.
+
+        A non-positive interval disables the watcher, preserving the previous
+        behaviour (only the navigation panel's ``QFileSystemWatcher`` is used).
+        The watcher is registered as a lifecycle adapter so ``Runtime.close()``
+        calls its ``stop()`` when the session is torn down — no window-level
+        bookkeeping is needed for library switches.
+        """
+        from AssetsManager.core.settings import (
+            DEFAULT_LIBRARY_WATCHER_INTERVAL,
+            LIBRARY_WATCHER_INTERVAL_KEY,
+            AppSettings,
+        )
+
+        interval = AppSettings.instance().get(
+            LIBRARY_WATCHER_INTERVAL_KEY, DEFAULT_LIBRARY_WATCHER_INTERVAL
+        )
+        if not isinstance(interval, (int, float)) or isinstance(interval, bool) or interval <= 0:
+            return
+        watcher = LibraryWatcherService(session, interval_seconds=float(interval))
+        runtime.register_lifecycle_adapter(watcher)
+        watcher.start()
 
     @staticmethod
     def _strict_connection_provider(
