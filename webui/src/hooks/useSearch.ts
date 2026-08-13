@@ -1,6 +1,6 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from './useAuth';
-import { useInvalidation } from './useInvalidation';
+import { useCachedQuery } from './useCachedQuery';
 import { createQuickSearchApi } from '../api/quicksearch';
 import type { SearchResult } from '../types/api';
 
@@ -13,97 +13,73 @@ interface UseSearchReturn {
 }
 
 /**
- * In-flight dedup across mounted useSearch instances: the header and the
- * command palette can both be visible, so typing once must not fire two
- * identical quick-search requests. Instances with the same query share the
- * promise; each still guards its own state with generations.
+ * Debounced quick-search backed by the shared query cache. The header and
+ * the command palette each mount their own instance; instances with the same
+ * debounced query share one cache entry, so typing once still fires a single
+ * quick-search request, and the dedup also covers invalidation refetches.
  */
-let sharedSearchRequest: { query: string; promise: Promise<{ results?: SearchResult[] }> } | null = null;
-
 export function useSearch(): UseSearchReturn {
   const { api, identityGeneration } = useAuth();
   const quickSearchApi = useMemo(() => createQuickSearchApi(api), [api]);
   const [query, setQueryState] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [pendingDebounce, setPendingDebounce] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
-  const generationRef = useRef(0);
-  const queryRef = useRef(query);
   const identityGenerationRef = useRef(identityGeneration);
 
-  const searchNow = useCallback((value: string, generation: number) => {
-    const trimmed = value.trim();
-    if (sharedSearchRequest && sharedSearchRequest.query === trimmed) {
-      sharedSearchRequest.promise
-        .then(res => { if (generation === generationRef.current) setResults(res.results ?? []); })
-        .catch(() => { if (generation === generationRef.current) setResults([]); })
-        .finally(() => { if (generation === generationRef.current) setIsSearching(false); });
-      return;
-    }
-    const promise = quickSearchApi.search(trimmed);
-    sharedSearchRequest = { query: trimmed, promise };
-    promise
-      .then(res => { if (generation === generationRef.current) setResults(res.results ?? []); })
-      .catch(() => { if (generation === generationRef.current) setResults([]); })
-      .finally(() => {
-        if (sharedSearchRequest?.promise === promise) sharedSearchRequest = null;
-        if (generation === generationRef.current) setIsSearching(false);
-      });
-  }, [quickSearchApi]);
+  const activeQuery = debouncedQuery.trim();
+
+  const { data, error, isFetching } = useCachedQuery<SearchResult[]>({
+    key: ['quicksearch', activeQuery],
+    queryFn: async signal => {
+      const response = await quickSearchApi.search(activeQuery, 20, signal);
+      return response.results ?? [];
+    },
+    enabled: activeQuery !== '',
+    domains: ['files', 'metadata'],
+  });
 
   const setQuery = useCallback((q: string) => {
     setQueryState(q);
-    queryRef.current = q;
     if (timerRef.current) clearTimeout(timerRef.current);
-    const generation = ++generationRef.current;
-
     if (!q.trim()) {
-      setResults([]);
-      setIsSearching(false);
+      setPendingDebounce(false);
+      setDebouncedQuery('');
       return;
     }
-
-    setIsSearching(true);
+    setPendingDebounce(true);
     timerRef.current = setTimeout(() => {
-      searchNow(q, generation);
+      setPendingDebounce(false);
+      setDebouncedQuery(q);
     }, 200);
-  }, [searchNow]);
-
-  const clear = useCallback(() => {
-    ++generationRef.current;
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setQueryState('');
-    queryRef.current = '';
-    setResults([]);
-    setIsSearching(false);
   }, []);
 
-  useInvalidation(['files', 'metadata'], () => {
-    const activeQuery = queryRef.current.trim();
-    if (!activeQuery) return;
+  const clear = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    const generation = ++generationRef.current;
-    setIsSearching(true);
-    searchNow(activeQuery, generation);
-  });
+    setPendingDebounce(false);
+    setQueryState('');
+    setDebouncedQuery('');
+  }, []);
 
   useEffect(() => {
     if (identityGenerationRef.current === identityGeneration) return;
     identityGenerationRef.current = identityGeneration;
-    ++generationRef.current;
     if (timerRef.current) clearTimeout(timerRef.current);
-    queryRef.current = '';
+    setPendingDebounce(false);
     setQueryState('');
-    setResults([]);
-    setIsSearching(false);
+    setDebouncedQuery('');
   }, [identityGeneration]);
 
   useEffect(() => {
     return () => {
-      ++generationRef.current;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
+
+  // A failed search shows no results (the stale list from the previous query
+  // is never surfaced), matching the pre-cache behavior.
+  const results = error ? [] : (data ?? []);
+  const isSearching = query.trim() !== '' && (pendingDebounce || isFetching);
 
   return { query, results, isSearching, setQuery, clear };
 }

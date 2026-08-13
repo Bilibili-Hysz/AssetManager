@@ -3,21 +3,11 @@ import { createFavoritesApi } from '../api/favorites';
 import { useToast } from '../components/ui/Toast';
 import type { GalleryEntry, SessionPrincipal } from '../types/api';
 import { useAuth } from './useAuth';
+import { useCachedQuery } from './useCachedQuery';
 import { useI18n } from './useI18n';
-import { useInvalidation } from './useInvalidation';
 
 const STORAGE_KEY = 'am_favorites_cache:v2';
 const FAVORITES_DOMAINS = ['favorites'] as const;
-
-/**
- * In-flight request dedup across mounted useFavorites instances: the sidebar
- * and a gallery page each mount their own instance and refresh together on
- * mount/invalidation, so sharing the promise keeps a single GET /api/favorites
- * on the wire. Each instance still guards its own state updates with
- * generations, and the shared request is deliberately not aborted by any
- * single instance (stale responses are dropped by the guards instead).
- */
-let sharedFavoritesRequest: Promise<{ favorites: unknown[] }> | null = null;
 
 function normalizePaths(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -80,7 +70,7 @@ function principalIdentity(principal?: SessionPrincipal): string {
 }
 
 export function useFavorites() {
-  const { api, serverInfo, principal, identityGeneration } = useAuth();
+  const { api, serverInfo, principal } = useAuth();
   const { showToast } = useToast();
   const { t } = useI18n();
   const showToastRef = useRef(showToast);
@@ -97,14 +87,23 @@ export function useFavorites() {
     principalIdentity(principal),
   ].join('|'))}`;
 
+  // The network read path lives in the shared cache: the sidebar and the
+  // gallery pages mount their own instance but share one GET /api/favorites
+  // per library + principal (the key swap and the provider-level identity
+  // clear handle user switches). In-flight dedup replaces the old
+  // module-level sharedFavoritesRequest.
+  const { data, error, isLoading, refresh } = useCachedQuery<GalleryEntry[]>({
+    key: ['favorites', cacheKey],
+    queryFn: () => favoritesApi.list().then(response => normalizeEntries(response.favorites)),
+    domains: FAVORITES_DOMAINS,
+  });
+
   const [paths, setPaths] = useState<string[]>(() => readCache(cacheKey));
   const [items, setItems] = useState<GalleryEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const pathsRef = useRef(paths);
   const itemsRef = useRef(items);
   const cacheKeyRef = useRef(cacheKey);
-  const refreshGenerationRef = useRef(0);
   const mutationGenerationRef = useRef(0);
   const pathMutationGenerationRef = useRef(new Map<string, number>());
   const pendingMutationsRef = useRef(new Set<number>());
@@ -124,45 +123,11 @@ export function useFavorites() {
     setItems(nextItems);
   }, []);
 
-  const refresh = useCallback(async () => {
-    const generation = ++refreshGenerationRef.current;
-    const mutationGeneration = mutationGenerationRef.current;
-    const contextGeneration = contextGenerationRef.current;
-    const requestCacheKey = cacheKeyRef.current;
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await (sharedFavoritesRequest ??= favoritesApi
-        .list()
-        .finally(() => { sharedFavoritesRequest = null; }));
-      if (generation !== refreshGenerationRef.current
-        || mutationGeneration !== mutationGenerationRef.current
-        || pendingMutationsRef.current.size > 0
-        || contextGeneration !== contextGenerationRef.current
-        || requestCacheKey !== cacheKeyRef.current) return;
-      const favorites = normalizeEntries(response.favorites);
-      updatePaths(favorites.map(item => item.path));
-      updateItems(favorites);
-      setError(null);
-    } catch (caught) {
-      if (isAbortError(caught)
-        || generation !== refreshGenerationRef.current
-        || contextGeneration !== contextGenerationRef.current) return;
-      const message = tRef.current('gallery.favorites_load_failed');
-      setError(message);
-      showToastRef.current(message, 'error');
-    } finally {
-      if (generation === refreshGenerationRef.current
-        && contextGeneration === contextGenerationRef.current) {
-        setLoading(false);
-      }
-    }
-  }, [favoritesApi, updateItems, updatePaths]);
-
+  // Library/identity switch: drop every local trace of the previous context.
+  // The cache entry swaps by key (and the provider clears the whole cache on
+  // identity changes), so the fetch itself is driven by useCachedQuery.
   useEffect(() => {
     contextGenerationRef.current += 1;
-    refreshGenerationRef.current += 1;
     mutationGenerationRef.current += 1;
     for (const controller of mutationControllersRef.current) controller.abort();
     mutationControllersRef.current.clear();
@@ -172,19 +137,29 @@ export function useFavorites() {
     mutationQueueRef.current = Promise.resolve();
     updatePaths(readCache(cacheKey));
     updateItems([]);
-    void refresh();
+  }, [cacheKey, updateItems, updatePaths]);
 
-    return () => {
-      contextGenerationRef.current += 1;
-      refreshGenerationRef.current += 1;
-      for (const controller of mutationControllersRef.current) controller.abort();
-      mutationControllersRef.current.clear();
-    };
-  }, [cacheKey, identityGeneration, refresh, updateItems, updatePaths]);
+  // The server list is the source of truth once a response lands; responses
+  // arriving while optimistic mutations are pending are skipped so they
+  // cannot clobber optimistic state (the pre-cache guard, unchanged).
+  useEffect(() => {
+    if (data === undefined) return;
+    if (pendingMutationsRef.current.size > 0) return;
+    updateItems(data);
+    updatePaths(data.map(item => item.path));
+  }, [data, updateItems, updatePaths]);
 
-  useInvalidation(FAVORITES_DOMAINS, () => {
-    void refresh();
-  });
+  useEffect(() => {
+    setLoading(isLoading);
+  }, [isLoading]);
+
+  // One toast per load failure (the entry keeps the last good list visible).
+  useEffect(() => {
+    if (error != null) {
+      const message = tRef.current('gallery.favorites_load_failed');
+      showToastRef.current(message, 'error');
+    }
+  }, [error]);
 
   // Other tabs write the same localStorage key; 'storage' events fire only
   // cross-tab, so each mounted instance stays in sync with the latest
@@ -217,9 +192,7 @@ export function useFavorites() {
       : itemsRef.current.findIndex(item => item.path === path);
     pathMutationGenerationRef.current.set(path, generation);
     pendingMutationsRef.current.add(generation);
-    refreshGenerationRef.current += 1;
     setLoading(false);
-    setError(null);
     updatePaths(favorite
       ? [...pathsRef.current, path]
       : pathsRef.current.filter(candidate => candidate !== path));
@@ -269,7 +242,8 @@ export function useFavorites() {
         if (contextGeneration === contextGenerationRef.current
           && pendingMutationsRef.current.size === 0
           && mutationGenerationRef.current === generation) {
-          await refresh();
+          // Queue drained: pull the confirmed server list once.
+          refresh();
         }
       }
     });
@@ -294,11 +268,13 @@ export function useFavorites() {
     [paths],
   );
 
+  const errorMessage = error != null ? t('gallery.favorites_load_failed') : null;
+
   return {
     favorites: paths,
     items,
     loading,
-    error,
+    error: errorMessage,
     addFavorite,
     removeFavorite,
     toggleFavorite,

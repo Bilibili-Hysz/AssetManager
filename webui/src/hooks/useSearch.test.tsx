@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { act, renderHook } from '@testing-library/react';
+import { type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryCacheProvider } from '../cache/QueryCacheContext';
 import { useSearch } from './useSearch';
 
 const { search, useInvalidationMock, authState } = vi.hoisted(() => ({
@@ -21,6 +23,13 @@ vi.mock('./useInvalidation', () => ({
   useInvalidation: useInvalidationMock,
 }));
 
+function makeWrapper() {
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryCacheProvider>{children}</QueryCacheProvider>
+  );
+  return { wrapper };
+}
+
 describe('useSearch', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -35,7 +44,8 @@ describe('useSearch', () => {
   });
 
   it('cancels a pending search when cleared', () => {
-    const { result } = renderHook(() => useSearch());
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(() => useSearch(), { wrapper });
 
     act(() => result.current.setQuery('report'));
     act(() => result.current.clear());
@@ -45,7 +55,8 @@ describe('useSearch', () => {
   });
 
   it('cancels a pending search when unmounted', () => {
-    const { result, unmount } = renderHook(() => useSearch());
+    const { wrapper } = makeWrapper();
+    const { result, unmount } = renderHook(() => useSearch(), { wrapper });
 
     act(() => result.current.setQuery('report'));
     unmount();
@@ -57,7 +68,8 @@ describe('useSearch', () => {
   it('ignores an in-flight result after clearing', async () => {
     let resolveSearch!: (value: { results: Array<{ path: string }> }) => void;
     search.mockReturnValue(new Promise(resolve => { resolveSearch = resolve; }));
-    const { result } = renderHook(() => useSearch());
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(() => useSearch(), { wrapper });
 
     act(() => result.current.setQuery('report'));
     act(() => vi.advanceTimersByTime(200));
@@ -72,7 +84,8 @@ describe('useSearch', () => {
     const first = Promise.resolve({ results: [{ path: 'before.jpg' }] });
     const refreshed = Promise.resolve({ results: [{ path: 'after.jpg' }] });
     search.mockReturnValueOnce(first).mockReturnValueOnce(refreshed);
-    const { result } = renderHook(() => useSearch());
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(() => useSearch(), { wrapper });
 
     act(() => result.current.setQuery('report'));
     act(() => vi.advanceTimersByTime(200));
@@ -82,7 +95,7 @@ describe('useSearch', () => {
     expect(useInvalidationMock).toHaveBeenCalledWith(['files', 'metadata'], expect.any(Function));
     const onInvalidation = useInvalidationMock.mock.calls[0]?.[1] as ((event: unknown) => void) | undefined;
     expect(onInvalidation).toEqual(expect.any(Function));
-    await act(async () => { onInvalidation?.({ domains: ['metadata'] }); });
+    await act(async () => { onInvalidation?.({ domains: ['metadata'], paths: [] }); });
     expect(search).toHaveBeenCalledTimes(2);
     await act(async () => { await refreshed; });
     expect(result.current.results).toEqual([{ path: 'after.jpg' }]);
@@ -91,14 +104,15 @@ describe('useSearch', () => {
   it('shares the in-flight request when invalidation refetches the same query', async () => {
     let resolveFirst!: (value: { results: Array<{ path: string }> }) => void;
     search.mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }));
-    const { result } = renderHook(() => useSearch());
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(() => useSearch(), { wrapper });
 
     act(() => result.current.setQuery('report'));
     act(() => vi.advanceTimersByTime(200));
     expect(useInvalidationMock).toHaveBeenCalledWith(['files', 'metadata'], expect.any(Function));
     const onInvalidation = useInvalidationMock.mock.calls[0]?.[1] as ((event: unknown) => void) | undefined;
     if (!onInvalidation) return;
-    await act(async () => { onInvalidation({ domains: ['files'] }); });
+    await act(async () => { onInvalidation({ domains: ['files'], paths: [] }); });
     // The same query is still in flight: instances share one request instead
     // of firing a second identical quick-search.
     expect(search).toHaveBeenCalledTimes(1);
@@ -111,7 +125,8 @@ describe('useSearch', () => {
   it('clears search state and rejects an older response after identity changes', async () => {
     let resolveSearch!: (value: { results: Array<{ path: string }> }) => void;
     search.mockImplementationOnce(() => new Promise(resolve => { resolveSearch = resolve; }));
-    const { result, rerender } = renderHook(() => useSearch());
+    const { wrapper } = makeWrapper();
+    const { result, rerender } = renderHook(() => useSearch(), { wrapper });
 
     act(() => result.current.setQuery('private'));
     act(() => vi.advanceTimersByTime(200));

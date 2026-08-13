@@ -4,7 +4,7 @@
  * which is the single isolation point for cached data.
  */
 import {
-  createContext, useContext, useEffect, useMemo, useRef, type ReactNode,
+  createContext, useContext, useLayoutEffect, useMemo, useRef, type ReactNode,
 } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { createQueryCache, type QueryCache } from './queryCache';
@@ -24,7 +24,12 @@ export function QueryCacheProvider({
   const { identityGeneration } = useAuth();
   const previousGeneration = useRef(identityGeneration);
 
-  useEffect(() => {
+  // Layout effect on purpose: it must run before the children's passive
+  // subscribe effects. Otherwise a query whose key already carries the new
+  // identity (e.g. favorites scoped by principal) starts one fetch in its
+  // subscribe effect, has it aborted by this clear, and then refetches via
+  // self-healing — two requests per identity transition.
+  useLayoutEffect(() => {
     if (previousGeneration.current !== identityGeneration) {
       previousGeneration.current = identityGeneration;
       cache.clear();

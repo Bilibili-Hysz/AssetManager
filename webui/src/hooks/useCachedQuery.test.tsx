@@ -65,7 +65,7 @@ describe('useCachedQuery', () => {
     expect(queryFn).toHaveBeenCalledTimes(1);
   });
 
-  it('refresh forces a new fetch', async () => {
+  it('refresh forces a new fetch and keeps the previous data visible', async () => {
     const queryFn = vi.fn(async () => 'payload');
     const { wrapper } = makeWrapper();
     const { result } = renderHook(
@@ -74,6 +74,8 @@ describe('useCachedQuery', () => {
     );
     await waitFor(() => expect(result.current.data).toBe('payload'));
     act(() => result.current.refresh());
+    // Background refresh: the last good data stays on screen.
+    expect(result.current.data).toBe('payload');
     await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(2));
   });
 
@@ -89,5 +91,107 @@ describe('useCachedQuery', () => {
     act(() => cache.clear());
     await waitFor(() => expect(result.current.data).toBe('payload'));
     expect(queryFn.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('keeps the last good data when a fetch fails and reports the error', async () => {
+    const queryFn = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce('payload')
+      .mockRejectedValueOnce(new Error('boom'));
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(
+      () => useCachedQuery({ key: ['k'], queryFn }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.data).toBe('payload'));
+
+    act(() => result.current.refresh());
+    await waitFor(() => expect(result.current.error).toEqual(new Error('boom')));
+    expect(result.current.data).toBe('payload');
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('clears data when the very first fetch fails', async () => {
+    const queryFn = vi.fn(async () => { throw new Error('first failure'); });
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(
+      () => useCachedQuery({ key: ['k'], queryFn }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.error).toEqual(new Error('first failure')));
+    expect(result.current.data).toBeUndefined();
+  });
+
+  it('setData patches the cached snapshot for subscribers', async () => {
+    const queryFn = vi.fn(async () => ({ count: 1 }));
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(
+      () => useCachedQuery<{ count: number }>({ key: ['k'], queryFn }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.data).toEqual({ count: 1 }));
+
+    act(() => result.current.setData(prev => prev && { count: prev.count + 1 }));
+    expect(result.current.data).toEqual({ count: 2 });
+    // No refetch was triggered by the local patch.
+    expect(queryFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('setData is a no-op without live subscribers', async () => {
+    const queryFn = vi.fn(async () => 'payload');
+    const { cache, wrapper } = makeWrapper();
+    const { result, unmount } = renderHook(
+      () => useCachedQuery({ key: ['k'], queryFn }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.data).toBe('payload'));
+    const before = cache.getEntry(['k']).snapshot;
+    unmount();
+    act(() => result.current.setData(() => 'stale'));
+    expect(cache.getEntry(['k']).snapshot).toBe(before);
+  });
+
+  it('fires onFetchStart per real request, not per dedup hit', async () => {
+    let resolveFn!: (value: string) => void;
+    const queryFn = vi.fn(() => new Promise<string>(resolve => { resolveFn = resolve; }));
+    const onFetchStart = vi.fn();
+    const { wrapper } = makeWrapper();
+    const first = renderHook(
+      () => useCachedQuery({ key: ['k'], queryFn, onFetchStart }),
+      { wrapper },
+    );
+    const second = renderHook(
+      () => useCachedQuery({ key: ['k'], queryFn, onFetchStart }),
+      { wrapper },
+    );
+    expect(onFetchStart).toHaveBeenCalledTimes(1);
+    await act(async () => { resolveFn('shared'); });
+    await waitFor(() => expect(first.result.current.data).toBe('shared'));
+    await waitFor(() => expect(second.result.current.data).toBe('shared'));
+    expect(onFetchStart).toHaveBeenCalledTimes(1);
+  });
+
+  it('an aborted refresh settling does not clear the newer in-flight request', async () => {
+    let resolveFirst!: (value: string) => void;
+    let resolveSecond!: (value: string) => void;
+    const queryFn = vi
+      .fn<() => Promise<string>>()
+      .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(
+      () => useCachedQuery({ key: ['k'], queryFn }),
+      { wrapper },
+    );
+    await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(1));
+    act(() => result.current.refresh());
+    await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(2));
+
+    // The aborted first request settles: the second, still pending request
+    // must remain the tracked in-flight one.
+    await act(async () => { resolveFirst('stale'); });
+    expect(result.current.isFetching).toBe(true);
+    await act(async () => { resolveSecond('fresh'); });
+    await waitFor(() => expect(result.current.data).toBe('fresh'));
   });
 });

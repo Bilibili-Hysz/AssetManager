@@ -1,6 +1,7 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useAuth } from './useAuth';
 import { createFilesApi } from '../api/files';
+import { useCachedQuery } from './useCachedQuery';
 import type { FilesResponse } from '../types/api';
 
 export interface SortConfig {
@@ -22,48 +23,30 @@ interface UseProjectsReturn {
 }
 
 export function useProjects(initialPath = ''): UseProjectsReturn {
-  const { api, identityGeneration } = useAuth();
+  const { api } = useAuth();
   const filesApi = useMemo(() => createFilesApi(api), [api]);
 
   const [currentPath, setCurrentPath] = useState(initialPath);
-  const [data, setData] = useState<FilesResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [sort, setSortState] = useState<SortConfig>({ sort: 'name', order: 'asc' });
-  const [refreshVersion, setRefreshVersion] = useState(0);
-  const generationRef = useRef(0);
-  const identityGenerationRef = useRef(identityGeneration);
+  // Bumped on every real listing request; directory summaries are correlated
+  // against it so a superseded hydration cannot clobber a newer listing.
   const [listingGeneration, setListingGeneration] = useState(0);
+  const generationRef = useRef(0);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    const identityChanged = identityGenerationRef.current !== identityGeneration;
-    identityGenerationRef.current = identityGeneration;
-    const generation = ++generationRef.current;
-    setListingGeneration(generation);
-    if (identityChanged) {
-      setData(null);
-      setError(null);
-    }
-    setIsLoading(true);
-    setError(null);
-    filesApi.list(
+  // The listing lives in the shared cache keyed by path + sort; identity
+  // flips reset it via the provider-level cache clear, and a failed fetch
+  // keeps the last good listing visible (same as the pre-cache behavior).
+  const { data, error, isLoading, refresh, setData } = useCachedQuery<FilesResponse>({
+    key: ['projects', currentPath || '', sort.sort, sort.order],
+    queryFn: signal => filesApi.list(
       { path: currentPath || undefined, sort: sort.sort, order: sort.order, summaries: false },
-      controller.signal,
-    )
-      .then(response => {
-        if (!controller.signal.aborted && identityGenerationRef.current === identityGeneration) setData(response);
-      })
-      .catch(err => {
-        if (!controller.signal.aborted && identityGenerationRef.current === identityGeneration) {
-          setError(err instanceof Error ? err.message : 'Failed to load files');
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted && identityGenerationRef.current === identityGeneration) setIsLoading(false);
-      });
-    return () => controller.abort();
-  }, [currentPath, filesApi, identityGeneration, refreshVersion, sort]);
+      signal,
+    ),
+    onFetchStart: () => {
+      generationRef.current += 1;
+      setListingGeneration(current => current + 1);
+    },
+  });
 
   const navigateTo = useCallback((path: string) => {
     setCurrentPath(path);
@@ -73,26 +56,43 @@ export function useProjects(initialPath = ''): UseProjectsReturn {
     setSortState(config);
   }, []);
 
-  const refresh = useCallback(() => {
-    setRefreshVersion(version => version + 1);
-  }, []);
-
-  const hydrateDirectories = useCallback(async (paths: string[], signal: AbortSignal, generation: number) => {
+  const hydrateDirectories = useCallback(async (
+    paths: string[],
+    signal: AbortSignal,
+    generation: number,
+  ) => {
     if (paths.length === 0) return;
     const response = await filesApi.summaries(currentPath, paths, signal);
     if (signal.aborted || generation !== generationRef.current) return;
     setData(previous => {
-      if (!previous || previous.current_path !== currentPath || generation !== generationRef.current) return previous;
+      if (!previous || previous.current_path !== currentPath) return previous;
       const summaries = new Map(response.items.map(item => [item.path, item]));
       return {
         ...previous,
         items: previous.items.map(item => {
           const summary = item.type === 'dir' ? summaries.get(item.path) : undefined;
-          return summary ? { ...item, size_fmt: summary.size_fmt, thumbnail_url: summary.thumbnail_url ?? undefined } : item;
+          return summary
+            ? { ...item, size_fmt: summary.size_fmt, thumbnail_url: summary.thumbnail_url ?? undefined }
+            : item;
         }),
       };
     });
-  }, [currentPath, filesApi]);
+  }, [currentPath, filesApi, setData]);
 
-  return { data, isLoading, error, currentPath, sort, navigateTo, setSort, refresh, listingGeneration, hydrateDirectories };
+  const errorMessage = error instanceof Error
+    ? error.message
+    : error ? String(error) : null;
+
+  return {
+    data: data ?? null,
+    isLoading,
+    error: errorMessage,
+    currentPath,
+    sort,
+    navigateTo,
+    setSort,
+    refresh,
+    listingGeneration,
+    hydrateDirectories,
+  };
 }

@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryCacheProvider } from '../cache/QueryCacheContext';
 import { useProjects } from './useProjects';
 
 type ListItem = { path: string; type?: 'dir' | 'file'; size_fmt?: string };
@@ -12,12 +14,23 @@ const summaries = vi.fn();
 const api = {};
 
 vi.mock('./useAuth', () => ({
-  useAuth: () => ({ api }),
+  useAuth: () => ({ api, identityGeneration: 0 }),
 }));
 
 vi.mock('../api/files', () => ({
   createFilesApi: () => ({ list, summaries }),
 }));
+
+vi.mock('./useInvalidation', () => ({
+  useInvalidation: () => ({}),
+}));
+
+function makeWrapper() {
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryCacheProvider>{children}</QueryCacheProvider>
+  );
+  return { wrapper };
+}
 
 describe('useProjects', () => {
   beforeEach(() => {
@@ -26,7 +39,8 @@ describe('useProjects', () => {
   });
 
   it('refreshes the listing when the requested path changes', async () => {
-    const { result } = renderHook(() => useProjects('one'));
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(() => useProjects('one'), { wrapper });
     await waitFor(() => expect(list).toHaveBeenCalledWith(
       expect.objectContaining({ path: 'one' }),
       expect.any(AbortSignal),
@@ -41,7 +55,8 @@ describe('useProjects', () => {
   });
 
   it('explicitly requests an initial listing without eager summaries', async () => {
-    renderHook(() => useProjects('one'));
+    const { wrapper } = makeWrapper();
+    renderHook(() => useProjects('one'), { wrapper });
 
     await waitFor(() => expect(list).toHaveBeenCalledWith(
       expect.objectContaining({ path: 'one', summaries: false }),
@@ -50,8 +65,10 @@ describe('useProjects', () => {
   });
 
   it('does not refetch when rerendered with the same path', async () => {
+    const { wrapper } = makeWrapper();
     const { rerender } = renderHook(({ path }) => useProjects(path), {
       initialProps: { path: 'projects/one' },
+      wrapper,
     });
     await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
 
@@ -61,7 +78,8 @@ describe('useProjects', () => {
   });
 
   it('refreshes the listing when sort changes', async () => {
-    const { result } = renderHook(() => useProjects('projects'));
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(() => useProjects('projects'), { wrapper });
     await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
 
     act(() => result.current.setSort({ sort: 'size', order: 'desc' }));
@@ -79,7 +97,8 @@ describe('useProjects', () => {
       .mockImplementationOnce(() => new Promise<{ current_path?: string; items: ListItem[] }>(resolve => { resolveFirst = resolve; }))
       .mockImplementationOnce(() => new Promise<{ current_path?: string; items: ListItem[] }>(resolve => { resolveSecond = resolve; }));
 
-    const { result } = renderHook(() => useProjects('one'));
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(() => useProjects('one'), { wrapper });
     await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
     act(() => result.current.navigateTo('two'));
     await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
@@ -97,7 +116,8 @@ describe('useProjects', () => {
       .mockResolvedValueOnce({ current_path: 'one', items: [{ path: 'folder', type: 'dir', size_fmt: 'fresh' }] });
     summaries.mockImplementationOnce(() => new Promise(resolve => { resolveSummary = resolve; }));
 
-    const { result } = renderHook(() => useProjects('one'));
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(() => useProjects('one'), { wrapper });
     await waitFor(() => expect(result.current.data?.items[0]?.path).toBe('folder'));
     const signal = new AbortController().signal;
     const hydration = result.current.hydrateDirectories(['folder'], signal, result.current.listingGeneration);

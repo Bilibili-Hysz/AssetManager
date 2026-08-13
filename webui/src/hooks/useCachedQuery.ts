@@ -31,6 +31,8 @@ export interface UseCachedQueryOptions<T> {
   refreshInterval?: number;
   /** Disable fetching (data stays cached when previously fetched). */
   enabled?: boolean;
+  /** Called each time a new request actually starts (not on dedup hits). */
+  onFetchStart?: () => void;
 }
 
 export interface UseCachedQueryResult<T> {
@@ -41,6 +43,12 @@ export interface UseCachedQueryResult<T> {
   /** A fetch is running (including background refreshes). */
   isFetching: boolean;
   refresh: () => void;
+  /**
+   * Patch the cached data without a network round-trip (optimistic updates,
+   * hydration of extra fields). No-op while nobody is subscribed, so orphan
+   * entries cannot be written after unmount or an identity clear.
+   */
+  setData: (updater: (prev: T | undefined) => T | undefined) => void;
 }
 
 export function useCachedQuery<T>({
@@ -52,6 +60,7 @@ export function useCachedQuery<T>({
   gcTime = 300_000,
   refreshInterval,
   enabled = true,
+  onFetchStart,
 }: UseCachedQueryOptions<T>): UseCachedQueryResult<T> {
   const cache = useQueryCache();
   const entry = cache.getEntry<T>(key);
@@ -73,11 +82,14 @@ export function useCachedQuery<T>({
   enabledRef.current = enabled;
   const pathFilterRef = useRef(pathFilter);
   pathFilterRef.current = pathFilter;
+  const onFetchStartRef = useRef(onFetchStart);
+  onFetchStartRef.current = onFetchStart;
 
   const startFetch = useCallback(() => {
     if (!enabledRef.current) return;
     const current = cache.getEntry<T>(keyRef.current);
     if (current.inFlight) return; // shared in-flight request
+    onFetchStartRef.current?.();
     const controller = new AbortController();
     const previous = current.snapshot;
     current.snapshot = {
@@ -87,9 +99,14 @@ export function useCachedQuery<T>({
       fetchedAt: previous.fetchedAt,
     };
     cache.publish(keyRef.current, current.snapshot);
+    // The handlers only touch the entry's in-flight slot when it is still
+    // theirs: a refresh() aborts this request and starts a newer one, and
+    // settling the aborted promise must not clear the newer request's slot.
+    let inFlight: { promise: Promise<void>; abort: () => void };
     const promise: Promise<void> = queryFnRef.current(controller.signal).then(
       value => {
-        current.inFlight = null;
+        if (current.inFlight === inFlight) current.inFlight = null;
+        if (controller.signal.aborted) return;
         current.snapshot = {
           status: 'success',
           data: value,
@@ -99,18 +116,22 @@ export function useCachedQuery<T>({
         cache.publish(keyRef.current, current.snapshot);
       },
       (error: unknown) => {
-        current.inFlight = null;
+        if (current.inFlight === inFlight) current.inFlight = null;
         if (controller.signal.aborted) return;
+        // Like TanStack Query: an error keeps the last good data visible and
+        // records the failure separately, so consumers keep their fail-open /
+        // retain-last-value behavior across transient failures.
         current.snapshot = {
           status: 'error',
-          data: undefined,
+          data: previous.data,
           error,
           fetchedAt: Date.now(),
         };
         cache.publish(keyRef.current, current.snapshot);
       },
     );
-    current.inFlight = { promise, abort: () => controller.abort() };
+    inFlight = { promise, abort: () => controller.abort() };
+    current.inFlight = inFlight;
   }, [cache]);
 
   const refresh = useCallback(() => {
@@ -120,20 +141,36 @@ export function useCachedQuery<T>({
     startFetch();
   }, [cache, startFetch]);
 
-  // Subscribe + fetch policy + teardown.
-  useEffect(() => {
+  const setData = useCallback((updater: (prev: T | undefined) => T | undefined) => {
     const current = cache.getEntry<T>(keyRef.current);
+    if (current.subscribers === 0) return; // orphan entry: nobody would see it
+    const next = updater(current.snapshot.data);
+    if (next === current.snapshot.data) return;
+    current.snapshot = next === undefined
+      ? { status: 'idle', data: undefined, error: undefined, fetchedAt: 0 }
+      : { status: 'success', data: next, error: undefined, fetchedAt: Date.now() };
+    cache.publish(keyRef.current, current.snapshot);
+  }, [cache]);
+
+  // Subscribe + fetch policy + teardown. The key is captured when the effect
+  // runs so the cleanup decrements the entry this run subscribed to — reading
+  // keyRef in the cleanup would touch the NEXT key and leak the old entry.
+  useEffect(() => {
+    const myKey = keyRef.current;
+    const current = cache.getEntry<T>(myKey);
     current.subscribers += 1;
     if (current.gcTimer) {
       clearTimeout(current.gcTimer);
       current.gcTimer = null;
     }
     const age = Date.now() - current.snapshot.fetchedAt;
-    if (enabledRef.current && (current.snapshot.data === undefined || age > staleTime)) {
+    // staleTime = 0 means fetch on every mount; >= also retries entries whose
+    // last attempt failed (fetchedAt was stamped on the error).
+    if (enabledRef.current && (current.snapshot.data === undefined || age >= staleTime)) {
       startFetch();
     }
     return () => {
-      const leaving = cache.getEntry<T>(keyRef.current);
+      const leaving = cache.getEntry<T>(myKey);
       leaving.subscribers = Math.max(0, leaving.subscribers - 1);
       if (leaving.subscribers === 0) {
         leaving.inFlight?.abort();
@@ -143,7 +180,7 @@ export function useCachedQuery<T>({
             leaving.snapshot = {
               status: 'idle', data: undefined, error: undefined, fetchedAt: 0,
             };
-            cache.publish(keyRef.current, leaving.snapshot);
+            cache.publish(myKey, leaving.snapshot);
           }
         }, gcTime);
       }
@@ -160,16 +197,14 @@ export function useCachedQuery<T>({
     }
   }, [snapshot, enabled, startFetch]);
 
-  // WebSocket invalidation.
+  // WebSocket invalidation: refetch in the background. The previous data is
+  // deliberately kept visible — dropping it here would flash every consumer
+  // to its empty state on each projection event, which the pre-cache refresh
+  // flows never did.
   useInvalidation(
     domains,
     useCallback((event) => {
       if (!shouldInvalidate(event, domains, pathFilterRef.current)) return;
-      const current = cache.getEntry<T>(keyRef.current);
-      current.snapshot = {
-        status: 'idle', data: undefined, error: undefined, fetchedAt: 0,
-      };
-      cache.publish(keyRef.current, current.snapshot);
       startFetch();
     }, [cache, domains, startFetch]),
   );
@@ -188,5 +223,6 @@ export function useCachedQuery<T>({
     isLoading: snapshot.data === undefined && isFetching,
     isFetching,
     refresh,
+    setData,
   };
 }

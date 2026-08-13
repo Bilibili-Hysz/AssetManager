@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryCacheProvider } from '../cache/QueryCacheContext';
 import type { GalleryEntry, SessionPrincipal } from '../types/api';
 import { useFavorites } from './useFavorites';
 
@@ -75,6 +77,13 @@ const collection: GalleryEntry = {
   artwork_count: 1,
 };
 
+function makeWrapper() {
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryCacheProvider>{children}</QueryCacheProvider>
+  );
+  return { wrapper };
+}
+
 function resetAuth(principal: SessionPrincipal = alice) {
   mocks.auth = {
     api: {},
@@ -101,7 +110,8 @@ describe('useFavorites', () => {
 
   it('loads GalleryEntry projections and scopes the cache by library and principal', async () => {
     mocks.list.mockResolvedValue({ favorites: [collection] });
-    const { result } = renderHook(() => useFavorites());
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(() => useFavorites(), { wrapper });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.items).toEqual([collection]);
@@ -116,7 +126,8 @@ describe('useFavorites', () => {
   it('optimistically updates a mutation and rolls it back with a localized toast on failure', async () => {
     let rejectAdd!: (error: Error) => void;
     mocks.add.mockImplementation(() => new Promise((_resolve, reject) => { rejectAdd = reject; }));
-    const { result } = renderHook(() => useFavorites());
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(() => useFavorites(), { wrapper });
 
     await waitFor(() => expect(mocks.list).toHaveBeenCalled());
     act(() => { void result.current.addFavorite('collection'); });
@@ -133,7 +144,8 @@ describe('useFavorites', () => {
   it('serializes rapid toggles and refreshes after the final mutation', async () => {
     let resolveAdd!: (value: unknown) => void;
     mocks.add.mockImplementation(() => new Promise(resolve => { resolveAdd = resolve; }));
-    const { result } = renderHook(() => useFavorites());
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(() => useFavorites(), { wrapper });
 
     await waitFor(() => expect(mocks.list).toHaveBeenCalled());
     act(() => {
@@ -150,7 +162,8 @@ describe('useFavorites', () => {
   });
 
   it('refreshes on the favorites realtime projection domain', async () => {
-    const { result } = renderHook(() => useFavorites());
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(() => useFavorites(), { wrapper });
 
     await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(1));
     expect(mocks.invalidationDomains).toEqual(['favorites']);
@@ -163,7 +176,8 @@ describe('useFavorites', () => {
 
   it('clears prior identity data and does not leak favorites between users', async () => {
     mocks.list.mockResolvedValueOnce({ favorites: [collection] }).mockResolvedValueOnce({ favorites: [] });
-    const { result, rerender } = renderHook(() => useFavorites());
+    const { wrapper } = makeWrapper();
+    const { result, rerender } = renderHook(() => useFavorites(), { wrapper });
 
     await waitFor(() => expect(result.current.isFavorite('collection')).toBe(true));
     mocks.auth = { ...mocks.auth!, principal: bob, identityGeneration: 1 };
