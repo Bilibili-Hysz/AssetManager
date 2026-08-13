@@ -86,3 +86,15 @@ AssetsManager/core/format_utils.c
 # Playwright E2E run artifacts.
 /webui/test-results/
 /webui/playwright-report/
+
+# Local bare mirror (backup of this repo's git history).
+/mirror/
+
+
+# Local pytest basetemp (system temp is locked by a privileged process).
+/.pytest-basetemp*/
+/.pytest-bt-*/
+/.bt-*/
+/pytest-run.log
+/pytest-full*.log
+
