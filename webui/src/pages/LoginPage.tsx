@@ -158,7 +158,7 @@ export default function LoginPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-950">
-        <div className="flex flex-col items-center gap-4">
+        <div className="flex flex-col items-center gap-4" role="status" aria-label={t('landing.loading')}>
           <div className="w-8 h-8 border-2 border-brand-500/30 border-t-brand-500 rounded-full animate-spin" />
           <p className="text-sm text-slate-500">{t('landing.loading')}</p>
         </div>

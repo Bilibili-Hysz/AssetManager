@@ -107,7 +107,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       onClick={event => { if (event.target === event.currentTarget) close(); }}
       onKeyDown={handleKeyDown}
     >
-      <div className="command-palette" role="document">
+      <div className="command-palette">
         <div className="command-palette-input-row">
           <Search size={18} className="command-palette-input-icon" aria-hidden="true" />
           <input

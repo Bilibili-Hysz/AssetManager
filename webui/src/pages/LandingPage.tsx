@@ -271,6 +271,21 @@ export default function LandingPage() {
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [tuningOpen]);
 
+  // The tuning panel is a non-modal dialog: move focus into it on open and
+  // back to its trigger on close (without stealing focus on initial load).
+  const tuningToggleRef = useRef<HTMLButtonElement | null>(null);
+  const tuningPanelRef = useRef<HTMLElement | null>(null);
+  const tuningWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (tuningOpen) {
+      tuningWasOpenRef.current = true;
+      tuningPanelRef.current?.focus();
+    } else if (tuningWasOpenRef.current) {
+      tuningWasOpenRef.current = false;
+      tuningToggleRef.current?.focus();
+    }
+  }, [tuningOpen]);
+
   useEffect(() => {
     if (!canRotate || showcaseUrls.length === 0) return undefined;
     let rotationIndex = 0;
@@ -492,13 +507,13 @@ export default function LandingPage() {
         <p className="gate-stats gate-rise">{t('landing.asset_count', stats.total_projects)} · {stats.total_size_fmt || '0 B'} · {serverInfo?.footer_text || t('landing.footer_ready')}</p>
       </section>
 
-      <button type="button" className="gate-tuning-toggle" aria-label={t('landing.background_tuning')} aria-expanded={tuningOpen} aria-controls="background-tuning" onClick={() => setTuningOpen(open => !open)}>
+      <button ref={tuningToggleRef} type="button" className="gate-tuning-toggle" aria-label={t('landing.background_tuning')} aria-expanded={tuningOpen} aria-controls="background-tuning" onClick={() => setTuningOpen(open => !open)}>
         <SlidersHorizontal size={16} aria-hidden="true" />
         <span>{t('landing.background')}</span>
       </button>
 
       {tuningOpen && (
-        <section id="background-tuning" role="dialog" aria-modal="false" aria-label={t('landing.background_tuning')} className="gate-tuning-panel max-h-[calc(100dvh-2rem)] overflow-y-auto">
+        <section ref={tuningPanelRef} tabIndex={-1} id="background-tuning" role="dialog" aria-modal="false" aria-label={t('landing.background_tuning')} className="gate-tuning-panel max-h-[calc(100dvh-2rem)] overflow-y-auto">
           <div className="gate-tuning-header"><h2>{t('landing.background_tuning')}</h2><button type="button" className="gate-icon-button" aria-label={t('landing.close_background_tuning')} onClick={() => setTuningOpen(false)}><X size={18} aria-hidden="true" /></button></div>
           <div className="gate-tuning-fields">
             {backgroundFields.map(([key, label, min, max, suffix]) => (

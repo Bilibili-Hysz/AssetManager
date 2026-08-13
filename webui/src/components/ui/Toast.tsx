@@ -1,4 +1,4 @@
-import { useState, useCallback, createContext, useContext, type ReactNode } from 'react';
+import { useState, useCallback, useRef, createContext, useContext, type ReactNode } from 'react';
 import { X, CheckCircle, AlertCircle, Info } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 
@@ -20,18 +20,33 @@ let nextId = 0;
 export function ToastProvider({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+
+  const clearDismissTimer = useCallback((id: number) => {
+    const timer = timers.current.get(id);
+    if (timer !== undefined) clearTimeout(timer);
+    timers.current.delete(id);
+  }, []);
+
+  const armDismissTimer = useCallback((id: number, type: ToastType) => {
+    clearDismissTimer(id);
+    const delay = type === 'error' ? 8000 : 4000;
+    timers.current.set(id, setTimeout(() => {
+      timers.current.delete(id);
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, delay));
+  }, [clearDismissTimer]);
 
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
     const id = nextId++;
     setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4000);
-  }, []);
+    armDismissTimer(id, type);
+  }, [armDismissTimer]);
 
   const dismiss = useCallback((id: number) => {
+    clearDismissTimer(id);
     setToasts(prev => prev.filter(t => t.id !== id));
-  }, []);
+  }, [clearDismissTimer]);
 
   return (
     <ToastContext.Provider value={{ showToast }}>
@@ -42,6 +57,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={toast.id}
             role={toast.type === 'error' ? 'alert' : 'status'}
             aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
+            onMouseEnter={() => clearDismissTimer(toast.id)}
+            onMouseLeave={() => armDismissTimer(toast.id, toast.type)}
             className="flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg backdrop-blur-sm transition-theme"
             style={{
               backgroundColor: toast.type === 'success' ? 'var(--color-success-subtle)' :

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, Eye, File, Folder, FolderOpen, Star } from 'lucide-react';
+import { Download, Eye, File, Folder, FolderOpen, MoreHorizontal, Star } from 'lucide-react';
 import type { BrowsableItem } from '../../types/api';
 import { useI18n } from '../../hooks/useI18n';
 
@@ -154,10 +154,11 @@ function MasonryItem({
         {item.tags.length > 3 && <span style={{ padding: '2px 6px', color: 'var(--color-text-muted)', fontSize: '10px' }}>+{item.tags.length - 3}</span>}
       </div>}
 
-      {(onInspect || onDoubleClick || onDownload) && <div style={{ display: 'flex', gap: '4px', margin: '0 10px 10px', paddingTop: '7px', borderTop: '1px solid var(--color-border)' }}>
+      {(onInspect || onDoubleClick || onDownload || onContextMenu) && <div style={{ display: 'flex', gap: '4px', margin: '0 10px 10px', paddingTop: '7px', borderTop: '1px solid var(--color-border)' }}>
         {onInspect && <button type="button" onClick={event => { event.stopPropagation(); onInspect(item); }} aria-label={t('action.detail') + ': ' + item.name} title={t('action.inspect', item.name)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1, minWidth: 0, padding: '4px 5px', border: 0, borderRadius: '4px', background: 'transparent', color: 'var(--color-text-secondary)', fontSize: '10px', cursor: 'pointer' }}><Eye size={12} aria-hidden="true" /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('action.detail')}</span></button>}
         {onDoubleClick && <button type="button" onClick={event => { event.stopPropagation(); onDoubleClick(item); }} aria-label={isDir ? t('action.open') + ': ' + item.name : t('action.open') + ': ' + item.name} title={isDir ? t('action.open_folder', item.name) : t('action.open_item', item.name)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1, minWidth: 0, padding: '4px 5px', border: 0, borderRadius: '4px', background: 'transparent', color: 'var(--color-accent-hover)', fontSize: '10px', cursor: 'pointer' }}><FolderOpen size={12} aria-hidden="true" /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('action.open')}</span></button>}
         {onDownload && <button type="button" onClick={event => { event.stopPropagation(); onDownload(item); }} aria-label={isDir ? t('action.download') + ': ' + item.name : t('action.download') + ': ' + item.name} title={isDir ? t('action.download_folder') : t('action.download_file')} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1, minWidth: 0, padding: '4px 5px', border: 0, borderRadius: '4px', background: 'transparent', color: 'var(--color-success)', fontSize: '10px', cursor: 'pointer' }}><Download size={12} aria-hidden="true" /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('action.download')}</span></button>}
+        {onContextMenu && <button type="button" onClick={event => { event.stopPropagation(); onContextMenu(event, item); }} aria-label={t('action.item_actions', item.name)} title={t('action.item_actions', item.name)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1, minWidth: 0, padding: '4px 5px', border: 0, borderRadius: '4px', background: 'transparent', color: 'var(--color-text-secondary)', fontSize: '10px', cursor: 'pointer' }}><MoreHorizontal size={12} aria-hidden="true" /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('action.actions')}</span></button>}
       </div>}
     </div>
   );

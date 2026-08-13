@@ -147,6 +147,31 @@ export function ProjectCard({
         <span aria-hidden="true">✓</span>
         </button>
       )}
+      {/* Copy link button */}
+      {onCopyLink && (
+        <button
+          type="button"
+          aria-label={t('browse.copy_link', item.name)}
+          className={`absolute top-1.5 right-8 rounded p-1 opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100`}
+          style={{ color: 'var(--color-text-secondary)' }}
+          title={t('browse.copy_share_link')}
+          onClick={e => { e.stopPropagation(); onCopyLink(item.path); }}
+        >
+          <Link2 size={14} aria-hidden="true" />
+        </button>
+      )}
+      <button
+        type="button"
+        className="absolute top-1.5 right-1.5 rounded p-1.5 opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 group-hover:opacity-100"
+        style={{ color: 'var(--color-text)', '--tw-ring-color': 'var(--color-accent)' } as React.CSSProperties}
+        aria-label={t('browse.actions_for', item.name)}
+        onClick={e => {
+          e.stopPropagation();
+          onContextMenu?.(e);
+        }}
+      >
+        <MoreHorizontal size={16} aria-hidden="true" />
+      </button>
       {item.tags && item.tags.length > 0 && (
         <div className="flex flex-wrap gap-1 px-2.5 pb-2.5">
           {item.tags.slice(0, 3).map(tag => (
@@ -212,31 +237,6 @@ export function ProjectCard({
           )}
         </div>
       )}
-      {/* Copy link button */}
-      {onCopyLink && (
-        <button
-          type="button"
-          aria-label={t('browse.copy_link', item.name)}
-          className={`absolute top-1.5 right-8 rounded p-1 opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100`}
-          style={{ color: 'var(--color-text-secondary)' }}
-          title={t('browse.copy_share_link')}
-          onClick={e => { e.stopPropagation(); onCopyLink(item.path); }}
-        >
-          <Link2 size={14} aria-hidden="true" />
-        </button>
-      )}
-      <button
-        type="button"
-        className="absolute top-1.5 right-1.5 rounded p-1.5 opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 group-hover:opacity-100"
-        style={{ color: 'var(--color-text)', '--tw-ring-color': 'var(--color-accent)' } as React.CSSProperties}
-        aria-label={t('browse.actions_for', item.name)}
-        onClick={e => {
-          e.stopPropagation();
-          onContextMenu?.(e);
-        }}
-      >
-        <MoreHorizontal size={16} aria-hidden="true" />
-      </button>
     </div>
   );
 }
