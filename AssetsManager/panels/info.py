@@ -1012,7 +1012,6 @@ class InfoPanel(PanelContent):
             self._classify_cache.clear()
         self._controller = InfoController(
             self._library_root,
-            services.session.connection_for(services.session.root),
             metadata_svc=services.metadata_service,
             tag_svc=services.tag_service,
             session=services.session,

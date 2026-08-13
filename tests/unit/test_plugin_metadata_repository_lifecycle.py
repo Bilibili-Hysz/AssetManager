@@ -168,3 +168,24 @@ def test_session_bound_repository_rejects_foreign_connection(tmp_path):
     finally:
         if not first.is_closed:
             first.close()
+
+
+def test_for_session_derives_managed_connection(tmp_path):
+    from AssetsManager.application.library_service import LibraryService
+    from AssetsManager.repositories.plugin_metadata_repository import (
+        PluginMetadataRepository,
+    )
+
+    library = tmp_path / "library"
+    service = LibraryService()
+    session = service.open_session(library)
+    try:
+        repo = PluginMetadataRepository.for_session(session)
+        file_path = library / "asset.txt"
+        repo.upsert(str(file_path), "plugin", "name", "asset")
+        assert repo.get_fields(str(file_path))["plugin"]["name"] == "asset"
+        assert repo._session is session
+        assert repo._library_root == library.resolve()
+        assert repo._conn is session.connection_for(library)
+    finally:
+        service.close()

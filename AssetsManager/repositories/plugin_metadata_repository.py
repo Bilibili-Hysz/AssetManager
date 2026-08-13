@@ -11,7 +11,7 @@ from pathlib import Path
 from sqlite3 import Connection
 from typing import Any, Callable
 
-from AssetsManager.core.database import db_write_lock
+from AssetsManager.core.database import DatabaseManager, db_write_lock
 from AssetsManager.core.path_resolver import sql_like_descendant_pattern
 
 
@@ -50,6 +50,23 @@ class PluginMetadataRepository:
         self._library_root = (
             Path(library_root).resolve() if library_root is not None else None
         )
+
+    @classmethod
+    def for_session(cls, session: Any) -> "PluginMetadataRepository":
+        """Build a session-bound repository with a session-derived connection.
+
+        The presentation layer passes the LibrarySession instead of a raw
+        ``connection_for(...)`` result; the repository derives and validates
+        its own managed connection.
+        """
+        root = getattr(session, "root", None)
+        if root is None:
+            root = getattr(session, "root_str", None)
+        if root is None:
+            raise TypeError("PluginMetadataRepository.for_session requires session.root")
+        conn = session.connection_for(root)
+        conn = DatabaseManager.require_managed_connection_owner(root, conn)
+        return cls(conn, session=session, library_root=root)
 
     def _resolve_under_root(self, path: str | Path) -> str:
         """Return a canonical path and reject paths outside the configured root."""

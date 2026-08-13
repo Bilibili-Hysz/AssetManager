@@ -92,7 +92,7 @@ class InfoController:
     def __init__(
         self,
         library_root: str,
-        db_conn,
+        db_conn=None,
         *,
         metadata_svc: MetadataService | None = None,
         tag_svc: TagService | None = None,
@@ -103,7 +103,11 @@ class InfoController:
         if session is not None:
             if Path(session.root).resolve() != Path(library_root).resolve():
                 raise ValueError("library_root does not match the bound LibrarySession")
-            if db_conn is not session.connection_for(session.root):
+            if db_conn is None:
+                # Session-derived connection: the presentation layer passes the
+                # LibrarySession, not a raw connection_for(...) result.
+                db_conn = session.connection_for(session.root)
+            elif db_conn is not session.connection_for(session.root):
                 raise ValueError("connection does not belong to the bound LibrarySession")
         if (
             session is not None
@@ -151,12 +155,16 @@ class InfoController:
                 else TagService(connection_provider=lambda _root: conn)
             )
         self._plugin_mgr = PluginManagerService.get()
-        self._plugin_repo = (
-            PluginMetadataRepository(
-                self._db_conn, session=session, library_root=self._library_root
+        if self._db_conn is None:
+            self._plugin_repo = None
+        elif session is not None:
+            # Canonical session path: derive the repository from the session
+            # instead of hand-rolling a raw connection repository.
+            self._plugin_repo = PluginMetadataRepository.for_session(session)
+        else:
+            self._plugin_repo = PluginMetadataRepository(
+                self._db_conn, library_root=self._library_root
             )
-            if self._db_conn is not None else None
-        )
         self._classify_cache: dict[str, str] = {}
         self._classify_cache_max = 5000
         # mtime recorded when a directory summary was cached; a mismatch on

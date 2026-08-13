@@ -434,3 +434,22 @@ def test_canonical_controller_rejects_unbound_metadata_service(tmp_path):
             )
     finally:
         service.close()
+
+
+def test_canonical_controller_derives_connection_from_session(tmp_path):
+    from AssetsManager.application.library_service import LibraryService
+    from AssetsManager.controllers.info_controller import InfoController
+
+    library = tmp_path / "library"
+    service = LibraryService()
+    session = service.open_session(library)
+    try:
+        controller = InfoController(str(library), session=session)
+        assert controller._session is session
+        assert controller._db_conn is session.connection_for(library)
+        assert controller._plugin_repo is not None
+        assert controller._plugin_repo._session is session
+        assert controller._metadata_svc._session is session
+        assert controller._tag_svc._session is session
+    finally:
+        service.close()
