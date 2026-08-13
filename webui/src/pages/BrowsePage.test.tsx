@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BrowsePage from './BrowsePage';
+import { QueryCacheProvider } from '../cache/QueryCacheContext';
 import { DownloadProgressProvider } from '../components/ui/DownloadProgress';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import type { BrowsableItem } from '../types/api';
@@ -96,7 +97,11 @@ function NavigateToNewPath() {
 }
 
 function TestBrowsePage() {
-  return <DownloadProgressProvider><BrowsePage /></DownloadProgressProvider>;
+  return (
+    <QueryCacheProvider>
+      <DownloadProgressProvider><BrowsePage /></DownloadProgressProvider>
+    </QueryCacheProvider>
+  );
 }
 
 function deferred<T>() {
@@ -144,9 +149,12 @@ describe('BrowsePage', () => {
     authState.identityGeneration = 0;
   });
 
-  it('registers exactly the Browse projection domains', () => {
+  it('registers the Browse projection domains', () => {
     render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
-    expect(useInvalidationMock.mock.calls[0]?.[0]).toEqual(['files', 'metadata', 'tags', 'project_detail']);
+    const pageDomains = ['files', 'metadata', 'tags', 'project_detail'];
+    expect(useInvalidationMock.mock.calls.some(
+      ([domains]) => JSON.stringify(domains) === JSON.stringify(pageDomains),
+    )).toBe(true);
   });
 
   it('clears an inspected projection before a previous identity response resolves', async () => {

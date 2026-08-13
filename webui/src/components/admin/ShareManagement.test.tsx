@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ShareManagement } from './ShareManagement';
+import { QueryCacheProvider } from '../../cache/QueryCacheContext';
 
 const { list, deleteShare, useInvalidationMock, authState } = vi.hoisted(() => ({
   list: vi.fn(),
@@ -14,6 +15,8 @@ vi.mock('../../hooks/useAuth', () => ({ useAuth: () => authState }));
 vi.mock('../../api/shares', () => ({ createSharesApi: () => ({ list, delete: deleteShare }) }));
 vi.mock('../../hooks/useInvalidation', () => ({ useInvalidation: useInvalidationMock }));
 vi.mock('../ui/Toast', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
+
+const renderView = () => render(<QueryCacheProvider><ShareManagement /></QueryCacheProvider>);
 
 describe('ShareManagement', () => {
   afterEach(() => {
@@ -34,7 +37,7 @@ describe('ShareManagement', () => {
       .mockResolvedValueOnce({ shares: [{ id: 'server-share', url: '/server-share', paths: [], created_by: 'admin', created_at: 1, allow_preview: true, download_count: 4, max_downloads: null, has_password: false }] });
     deleteShare.mockResolvedValue(undefined);
 
-    render(<ShareManagement />);
+    renderView();
     fireEvent.click(await screen.findByRole('button', { name: /Delete \/old/ }));
 
     await waitFor(() => expect(deleteShare).toHaveBeenCalledWith('old'));
@@ -47,12 +50,12 @@ describe('ShareManagement', () => {
     list.mockResolvedValueOnce({ shares: [{ id: 'initial', url: '/initial', paths: [], created_by: 'admin', created_at: 0, allow_preview: true, download_count: 0, max_downloads: null, has_password: false }] })
       .mockResolvedValueOnce({ shares: [{ id: 'remote', url: '/remote', paths: [], created_by: 'admin', created_at: 1, allow_preview: true, download_count: 1, max_downloads: null, has_password: false }] });
 
-    render(<ShareManagement />);
+    renderView();
     await screen.findByText('/initial');
     expect(useInvalidationMock).toHaveBeenCalledWith(['shares'], expect.any(Function));
 
     await act(async () => {
-      await useInvalidationMock.mock.calls[0]![1]!();
+      await useInvalidationMock.mock.calls[0]![1]!({ domains: ['shares'], paths: [] });
     });
 
     expect(list).toHaveBeenCalledTimes(2);
@@ -67,8 +70,8 @@ describe('ShareManagement', () => {
       .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
       .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
 
-    render(<ShareManagement />);
-    await act(async () => { useInvalidationMock.mock.calls[0]![1]!(); });
+    renderView();
+    await act(async () => { useInvalidationMock.mock.calls[0]![1]!({ domains: ['shares'], paths: [] }); });
     await act(async () => {
       resolveSecond({ shares: [{ id: 'newer', url: '/newer-canonical-share', paths: [], created_by: 'admin', created_at: 999, allow_preview: true, download_count: 4, max_downloads: null, has_password: false }] });
     });
@@ -84,11 +87,11 @@ describe('ShareManagement', () => {
   it('clears the prior identity snapshot when identity generation changes', async () => {
     list.mockResolvedValueOnce({ shares: [{ id: 'old-identity', url: '/old-identity', paths: [], created_by: 'admin', created_at: 0, allow_preview: true, download_count: 0, max_downloads: null, has_password: false }] });
 
-    const { rerender } = render(<ShareManagement />);
+    const { rerender } = renderView();
     expect(await screen.findByText('/old-identity')).toBeDefined();
 
     authState.identityGeneration = 1;
-    rerender(<ShareManagement />);
+    rerender(<QueryCacheProvider><ShareManagement /></QueryCacheProvider>);
 
     expect(screen.queryByText('/old-identity')).toBeNull();
   });

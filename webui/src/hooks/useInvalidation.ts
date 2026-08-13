@@ -16,7 +16,12 @@ export function useInvalidation(
   // always surface as a status/epoch change in RealtimeProvider, while plain
   // invalidation events only bump the revision.
   useEffect(
-    () => realtime.registerInvalidation(domains, event => callbackRef.current(event)),
+    () => {
+      // Queries with no projection domains never match an event; skip the
+      // registration (the hook itself stays unconditional).
+      if (domains.length === 0) return;
+      return realtime.registerInvalidation(domains, event => callbackRef.current(event));
+    },
     [realtime.registerInvalidation, realtime.epoch, realtime.status, domainsKey],
   );
   return realtime;

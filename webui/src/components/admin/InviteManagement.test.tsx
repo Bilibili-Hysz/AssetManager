@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InviteManagement } from './InviteManagement';
 import { setLang, t } from '../../i18n';
+import { QueryCacheProvider } from '../../cache/QueryCacheContext';
 
 const { listInvites, createInvite, revokeInvite, useInvalidationMock, authState } = vi.hoisted(() => ({
   listInvites: vi.fn(),
@@ -16,6 +17,8 @@ vi.mock('../../hooks/useAuth', () => ({ useAuth: () => authState }));
 vi.mock('../../api/users', () => ({ createUsersApi: () => ({ listInvites, createInvite, revokeInvite }) }));
 vi.mock('../ui/Toast', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 vi.mock('../../hooks/useInvalidation', () => ({ useInvalidation: useInvalidationMock }));
+
+const renderView = () => render(<QueryCacheProvider><InviteManagement /></QueryCacheProvider>);
 
 describe('InviteManagement canonical refresh', () => {
   afterEach(() => {
@@ -37,7 +40,7 @@ describe('InviteManagement canonical refresh', () => {
       .mockResolvedValueOnce({ invites: [{ code: 'canonical-code', created_at: 999, revoked: false, used_by: null }] });
     createInvite.mockResolvedValue({ code: 'new-code' });
 
-    render(<InviteManagement />);
+    renderView();
     await screen.findByText('initial-code');
     fireEvent.click(screen.getByRole('button', { name: t('admin.generate_invite') }));
 
@@ -52,7 +55,7 @@ describe('InviteManagement canonical refresh', () => {
       .mockResolvedValueOnce({ invites: [{ code: 'server-replacement', created_at: 103, revoked: false, used_by: null }] });
     revokeInvite.mockResolvedValue(undefined);
 
-    render(<InviteManagement />);
+    renderView();
     const revoke = await screen.findByRole('button', { name: /Revoke active-code/ });
     fireEvent.click(revoke);
 
@@ -66,12 +69,12 @@ describe('InviteManagement canonical refresh', () => {
     listInvites.mockResolvedValueOnce({ invites: [{ code: 'initial-code', created_at: 101, revoked: false, used_by: null }] })
       .mockResolvedValueOnce({ invites: [{ code: 'remote-code', created_at: 202, revoked: false, used_by: null }] });
 
-    render(<InviteManagement />);
+    renderView();
     await screen.findByText('initial-code');
     expect(useInvalidationMock).toHaveBeenCalledWith(['users'], expect.any(Function));
 
     await act(async () => {
-      await useInvalidationMock.mock.calls[0]![1]!();
+      await useInvalidationMock.mock.calls[0]![1]!({ domains: ['users'], paths: [] });
     });
 
     expect(listInvites).toHaveBeenCalledTimes(2);
@@ -86,8 +89,8 @@ describe('InviteManagement canonical refresh', () => {
       .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
       .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
 
-    render(<InviteManagement />);
-    await act(async () => { useInvalidationMock.mock.calls[0]![1]!(); });
+    renderView();
+    await act(async () => { useInvalidationMock.mock.calls[0]![1]!({ domains: ['users'], paths: [] }); });
     await act(async () => {
       resolveSecond({ invites: [{ code: 'newer-canonical-code', created_at: 999, revoked: false, used_by: null }] });
     });
@@ -105,11 +108,11 @@ describe('InviteManagement canonical refresh', () => {
       .mockResolvedValueOnce({ invites: [{ code: 'old-identity', created_at: 101, revoked: false, used_by: null }] })
       .mockResolvedValueOnce({ invites: [] });
 
-    const { rerender } = render(<InviteManagement />);
+    const { rerender } = renderView();
     expect(await screen.findByText('old-identity')).toBeDefined();
 
     authState.identityGeneration = 1;
-    rerender(<InviteManagement />);
+    rerender(<QueryCacheProvider><InviteManagement /></QueryCacheProvider>);
 
     expect(screen.queryByText('old-identity')).toBeNull();
   });

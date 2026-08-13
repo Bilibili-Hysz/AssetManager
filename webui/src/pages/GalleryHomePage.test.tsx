@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryCacheProvider } from '../cache/QueryCacheContext';
 import GalleryHomePage from './GalleryHomePage';
 
 const { apiMock, homeMock, toggleFavoriteMock, useInvalidationMock, translateMock } = vi.hoisted(() => ({
@@ -36,13 +37,13 @@ const { apiMock, homeMock, toggleFavoriteMock, useInvalidationMock, translateMoc
   }[key] ?? key),
 }));
 
-let invalidationCallback: (() => void) | undefined;
+let invalidationCallback: ((event: unknown) => void) | undefined;
 let favorite = false;
 
 vi.mock('../api/gallery', () => ({
   createGalleryApi: () => ({ home: homeMock }),
 }));
-vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ api: apiMock }) }));
+vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ api: apiMock, identityGeneration: 0 }) }));
 vi.mock('../hooks/useFavorites', () => ({
   useFavorites: () => ({
     isFavorite: () => favorite,
@@ -50,7 +51,7 @@ vi.mock('../hooks/useFavorites', () => ({
   }),
 }));
 vi.mock('../hooks/useInvalidation', () => ({
-  useInvalidation: (_domains: readonly string[], callback: () => void) => {
+  useInvalidation: (_domains: readonly string[], callback: (event: unknown) => void) => {
     invalidationCallback = callback;
   },
 }));
@@ -79,6 +80,10 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+function renderHome() {
+  render(<QueryCacheProvider><MemoryRouter><GalleryHomePage /></MemoryRouter></QueryCacheProvider>);
+}
+
 describe('GalleryHomePage', () => {
   beforeEach(() => {
     favorite = false;
@@ -92,7 +97,7 @@ describe('GalleryHomePage', () => {
 
   it('restores the featured hero favorite shortcut while preserving workspace navigation', async () => {
     homeMock.mockResolvedValue(homeResponse('Featured collection'));
-    render(<MemoryRouter><GalleryHomePage /></MemoryRouter>);
+    renderHome();
 
     expect(await screen.findByRole('heading', { name: 'Featured collection' })).toBeDefined();
     const favoriteButton = screen.getByRole('button', { name: 'Save collection' });
@@ -106,10 +111,12 @@ describe('GalleryHomePage', () => {
     const first = deferred<ReturnType<typeof homeResponse>>();
     const second = deferred<ReturnType<typeof homeResponse>>();
     homeMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
-    render(<MemoryRouter><GalleryHomePage /></MemoryRouter>);
+    renderHome();
 
     await waitFor(() => expect(invalidationCallback).toBeDefined());
-    act(() => { invalidationCallback?.(); });
+    // null event = invalidate everything, mirroring the shared cache hook's
+    // shouldInvalidate semantics for reconnects / full invalidations.
+    act(() => { invalidationCallback?.(null); });
     second.resolve(homeResponse('Fresh collection'));
     expect(await screen.findByRole('heading', { name: 'Fresh collection' })).toBeDefined();
 
@@ -124,7 +131,7 @@ describe('GalleryHomePage', () => {
     homeMock
       .mockResolvedValueOnce({ building: true })
       .mockResolvedValueOnce(homeResponse('Ready collection'));
-    render(<MemoryRouter><GalleryHomePage /></MemoryRouter>);
+    renderHome();
 
     // First response reports building; the page shows the building notice.
     await act(async () => {});

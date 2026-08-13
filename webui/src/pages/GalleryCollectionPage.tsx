@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowLeft, SlidersHorizontal, Star, Wrench } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { createGalleryApi } from '../api/gallery';
@@ -8,8 +8,8 @@ import { GalleryLayout } from '../components/gallery/GalleryLayout';
 import { GalleryTiledGrid } from '../components/gallery/GalleryTiledGrid';
 import { GalleryViewControls, galleryMediaMode, type GalleryViewMode } from '../components/gallery/GalleryViewControls';
 import { useAuth } from '../hooks/useAuth';
+import { useCachedQuery } from '../hooks/useCachedQuery';
 import { useFavorites } from '../hooks/useFavorites';
-import { useInvalidation } from '../hooks/useInvalidation';
 import { useI18n } from '../hooks/useI18n';
 import type { GalleryCollectionResponse, GalleryEntry } from '../types/api';
 
@@ -36,28 +36,15 @@ export default function GalleryCollectionPage({ onOpenPalette }: GalleryCollecti
   const [kind, setKind] = useState<GalleryCollectionKind>('all');
   const [sort, setSort] = useState<GallerySort>('updated');
   const [viewMode, setViewMode] = useState<GalleryViewMode>('masonry');
-  const [data, setData] = useState<GalleryCollectionResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
 
-  const reload = useCallback(() => setReloadKey(value => value + 1), []);
-  useInvalidation(['files', 'home', 'metadata', 'tags'], () => reload());
+  const { data, error, isLoading, refresh } = useCachedQuery<GalleryCollectionResponse>({
+    key: ['gallery-collection', path, sort, kind],
+    queryFn: signal => galleryApi.collection(path, { sort, kind }, signal),
+    domains: ['files', 'home', 'metadata', 'tags'],
+  });
 
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-    galleryApi.collection(path, { sort, kind }, controller.signal)
-      .then(response => setData(response))
-      .catch(err => {
-        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : t('gallery.load_failed'));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [galleryApi, kind, path, reloadKey, sort, t]);
+  const loadFailed = error != null;
+  const errorMessage = error instanceof Error ? error.message : t('gallery.load_failed');
 
   const collection = data?.collection;
   const children = data?.children ?? [];
@@ -75,13 +62,13 @@ export default function GalleryCollectionPage({ onOpenPalette }: GalleryCollecti
           {path && <><span>/</span><span>{path.split('/').filter(Boolean).join(' / ')}</span></>}
         </div>
 
-        {loading ? (
+        {isLoading ? (
           <div className="gallery-skeleton-detail"><div /><div /><div /></div>
-        ) : error || !collection ? (
+        ) : loadFailed || !collection ? (
           <GalleryEmptyState
             title={t('gallery.collection_unavailable')}
-            description={error ?? t('gallery.collection_missing')}
-            onRetry={reload}
+            description={loadFailed ? errorMessage : t('gallery.collection_missing')}
+            onRetry={refresh}
           />
         ) : (
           <>

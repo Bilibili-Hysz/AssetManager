@@ -1,44 +1,27 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { Trash2, Link as LinkIcon } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { createSharesApi } from '../../api/shares';
 import type { ShareLink } from '../../types/api';
 import { useI18n } from '../../hooks/useI18n';
 import { useToast } from '../ui/Toast';
-import { useInvalidation } from '../../hooks/useInvalidation';
+import { useCachedQuery } from '../../hooks/useCachedQuery';
 
 // NOTE: this admin panel is not yet mounted on any route — wiring the Admin section
 // into the router is a later task (see D2 in the component backlog).
 
 export function ShareManagement() {
-  const { api, identityGeneration } = useAuth();
+  const { api } = useAuth();
   const sharesApi = useMemo(() => createSharesApi(api), [api]);
   const { t } = useI18n();
   const { showToast } = useToast();
-  const [shares, setShares] = useState<ShareLink[]>([]);
+  const { data, refresh } = useCachedQuery<ShareLink[]>({
+    key: ['shares'],
+    queryFn: () => sharesApi.list().then(res => res.shares),
+    domains: ['shares'],
+  });
+  const shares = data ?? [];
   const [pendingId, setPendingId] = useState<string | null>(null);
-  const requestGeneration = useRef(0);
-  const identityGenerationRef = useRef(identityGeneration);
-
-  const refreshShares = useCallback(() => {
-    const generation = ++requestGeneration.current;
-    return sharesApi.list().then(res => {
-      if (generation === requestGeneration.current) setShares(res.shares);
-    });
-  }, [sharesApi]);
-
-  useEffect(() => {
-    refreshShares().catch(() => {});
-    return () => { requestGeneration.current += 1; };
-  }, [refreshShares]);
-  useEffect(() => {
-    if (identityGenerationRef.current === identityGeneration) return;
-    identityGenerationRef.current = identityGeneration;
-    requestGeneration.current += 1;
-    setShares([]);
-    refreshShares().catch(() => {});
-  }, [identityGeneration, refreshShares]);
-  useInvalidation(['shares'], refreshShares);
 
   const handleDelete = async (id: string) => {
     // E3: require explicit confirmation before deleting a share link.
@@ -46,7 +29,7 @@ export function ShareManagement() {
     setPendingId(id);
     try {
       await sharesApi.delete(id);
-      await refreshShares();
+      refresh();
     } catch {
       showToast(t('admin.delete_share_failed'), 'error');
     } finally {

@@ -4,10 +4,10 @@ import { Link, Navigate } from 'react-router-dom';
 import { createMetadataApi } from '../api/metadata';
 import { LayeredPreview } from '../components/files/LayeredPreview';
 import { useAuth } from '../hooks/useAuth';
+import { useCachedQuery } from '../hooks/useCachedQuery';
 import { useTheme } from '../hooks/useTheme';
-import { useInvalidation } from '../hooks/useInvalidation';
 import { useI18n } from '../hooks/useI18n';
-import type { PreviewPoolItem } from '../types/api';
+import type { HomeData, PreviewPoolItem } from '../types/api';
 import './LandingPage.css';
 
 type FeaturedStatus = 'loading' | 'online' | 'empty' | 'unavailable' | 'decode-error';
@@ -158,8 +158,6 @@ export default function LandingPage() {
   const effectTimers = useRef<ReturnType<typeof window.setTimeout>[]>([]);
   const lastParticleAt = useRef(0);
   const mounted = useRef(true);
-  const homeRefreshGeneration = useRef(0);
-  const homeRefreshAbort = useRef<AbortController | null>(null);
 
   const serverAccent = serverInfo?.theme_color;
   const accent = isValidAccent(serverAccent) ? serverAccent : fallbackAccent;
@@ -180,50 +178,45 @@ export default function LandingPage() {
     });
   }, [visiblePool]);
 
-  const refreshHome = useCallback(() => {
-    if (isLoading || isProtected) return undefined;
-    const generation = ++homeRefreshGeneration.current;
-    homeRefreshAbort.current?.abort();
-    const controller = new AbortController();
-    homeRefreshAbort.current = controller;
-    setFeaturedStatus('loading');
-    metadataApi.getHome(controller.signal)
-      .then(response => {
-        if (controller.signal.aborted || generation !== homeRefreshGeneration.current) return;
-        const projects = response.preview_pool === undefined ? response.recent_projects : response.preview_pool;
-        const seenUrls = new Set<string>();
-        const candidates = projects.reduce<PreviewPoolItem[]>((items, item) => {
-          const url = item.thumbnail_url?.trim();
-          if (!url || seenUrls.has(url)) return items;
-          seenUrls.add(url);
-          items.push({ name: item.name, path: item.path, thumbnail_url: url });
-          return items;
-        }, []);
-        const shuffledPool = shuffle(candidates);
-        setPreviewPool(shuffledPool);
-        setShowcaseUrls(shuffledPool.slice(0, 6).flatMap(item => item.thumbnail_url ? [item.thumbnail_url] : []));
-        setFailedUrls(new Set());
-        setHomeStats(response.stats);
-        setFeaturedStatus(shuffledPool.length ? 'online' : 'empty');
-      })
-      .catch(() => {
-        if (!controller.signal.aborted && generation === homeRefreshGeneration.current) {
-          setPreviewPool([]);
-          setShowcaseUrls([]);
-          setFeaturedStatus('unavailable');
-        }
-      });
-    return () => {
-      controller.abort();
-      if (homeRefreshAbort.current === controller) homeRefreshAbort.current = null;
-    };
-  }, [isLoading, isProtected, metadataApi]);
+  // The hero pool lives in the shared cache; fetching is gated until the
+  // session resolves (the pre-cache refreshHome skipped the same cases).
+  const { data: homeData, error: homeError } = useCachedQuery<HomeData>({
+    key: ['home'],
+    queryFn: signal => metadataApi.getHome(signal),
+    domains: ['home'],
+    enabled: !isLoading && !isProtected,
+  });
 
+  // Each fresh response rebuilds the deduped + shuffled preview pool and the
+  // showcase rotation; the shuffle is deliberately local state, not cache.
   useEffect(() => {
-    const cleanup = refreshHome();
-    return cleanup;
-  }, [refreshHome]);
-  useInvalidation(['home'], () => { void refreshHome(); });
+    if (homeData === undefined) return;
+    const projects = homeData.preview_pool === undefined ? homeData.recent_projects : homeData.preview_pool;
+    const seenUrls = new Set<string>();
+    const candidates = projects.reduce<PreviewPoolItem[]>((items, item) => {
+      const url = item.thumbnail_url?.trim();
+      if (!url || seenUrls.has(url)) return items;
+      seenUrls.add(url);
+      items.push({ name: item.name, path: item.path, thumbnail_url: url });
+      return items;
+    }, []);
+    const shuffledPool = shuffle(candidates);
+    setPreviewPool(shuffledPool);
+    setShowcaseUrls(shuffledPool.slice(0, 6).flatMap(item => item.thumbnail_url ? [item.thumbnail_url] : []));
+    setFailedUrls(new Set());
+    setHomeStats(homeData.stats);
+    setFeaturedStatus(shuffledPool.length ? 'online' : 'empty');
+  }, [homeData]);
+
+  // Only a failed FIRST load surfaces the unavailable state; a failed
+  // refresh keeps the last good pool visible (cache retain-on-error).
+  useEffect(() => {
+    if (homeError != null && homeData === undefined) {
+      setPreviewPool([]);
+      setShowcaseUrls([]);
+      setFeaturedStatus('unavailable');
+    }
+  }, [homeError, homeData]);
 
   useEffect(() => {
     if (previewPool.length === 0) return undefined;

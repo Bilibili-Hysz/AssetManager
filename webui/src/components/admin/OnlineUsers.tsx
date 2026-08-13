@@ -1,38 +1,20 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { createUsersApi } from '../../api/users';
 import { useI18n } from '../../hooks/useI18n';
 import type { OnlineUsersResponse } from '../../types/api';
-import { useInvalidation } from '../../hooks/useInvalidation';
+import { useCachedQuery } from '../../hooks/useCachedQuery';
 
 export function OnlineUsers() {
-  const { api, identityGeneration } = useAuth();
+  const { api } = useAuth();
   const usersApi = useMemo(() => createUsersApi(api), [api]);
   const { t } = useI18n();
-  const [users, setUsers] = useState<OnlineUsersResponse['users']>([]);
-  const requestGeneration = useRef(0);
-  const mounted = useRef(true);
-  const identityGenerationRef = useRef(identityGeneration);
-
-  const refreshUsers = useCallback(() => {
-    const generation = ++requestGeneration.current;
-    usersApi.getOnlineUsers().then(res => {
-      if (mounted.current && generation === requestGeneration.current) setUsers(res.users);
-    }).catch(() => {});
-  }, [usersApi]);
-  useEffect(() => {
-    mounted.current = true;
-    refreshUsers();
-    return () => { mounted.current = false; requestGeneration.current += 1; };
-  }, [refreshUsers]);
-  useEffect(() => {
-    if (identityGenerationRef.current === identityGeneration) return;
-    identityGenerationRef.current = identityGeneration;
-    requestGeneration.current += 1;
-    setUsers([]);
-    refreshUsers();
-  }, [identityGeneration, refreshUsers]);
-  useInvalidation(['online_users'], refreshUsers);
+  const { data } = useCachedQuery<OnlineUsersResponse['users']>({
+    key: ['online-users'],
+    queryFn: () => usersApi.getOnlineUsers().then(res => res.users),
+    domains: ['online_users'],
+  });
+  const users = data ?? [];
 
   return (
     <div>

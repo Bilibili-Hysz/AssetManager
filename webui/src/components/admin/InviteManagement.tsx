@@ -1,49 +1,32 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { Plus, X } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { createUsersApi } from '../../api/users';
 import type { InviteCode } from '../../types/api';
 import { useI18n } from '../../hooks/useI18n';
 import { useToast } from '../ui/Toast';
-import { useInvalidation } from '../../hooks/useInvalidation';
+import { useCachedQuery } from '../../hooks/useCachedQuery';
 
 // NOTE: this admin panel is not yet mounted on any route — wiring the Admin section
 // into the router is a later task (see D2 in the component backlog).
 
 export function InviteManagement() {
-  const { api, identityGeneration } = useAuth();
+  const { api } = useAuth();
   const usersApi = useMemo(() => createUsersApi(api), [api]);
   const { t } = useI18n();
   const { showToast } = useToast();
-  const [invites, setInvites] = useState<InviteCode[]>([]);
+  const { data, refresh } = useCachedQuery<InviteCode[]>({
+    key: ['invites'],
+    queryFn: () => usersApi.listInvites().then(res => res.invites),
+    domains: ['users'],
+  });
+  const invites = data ?? [];
   const [pendingCode, setPendingCode] = useState<string | null>(null);
-  const requestGeneration = useRef(0);
-  const identityGenerationRef = useRef(identityGeneration);
-
-  const refreshInvites = useCallback(() => {
-    const generation = ++requestGeneration.current;
-    return usersApi.listInvites().then(res => {
-      if (generation === requestGeneration.current) setInvites(res.invites);
-    });
-  }, [usersApi]);
-
-  useEffect(() => {
-    refreshInvites().catch(() => {});
-    return () => { requestGeneration.current += 1; };
-  }, [refreshInvites]);
-  useEffect(() => {
-    if (identityGenerationRef.current === identityGeneration) return;
-    identityGenerationRef.current = identityGeneration;
-    requestGeneration.current += 1;
-    setInvites([]);
-    refreshInvites().catch(() => {});
-  }, [identityGeneration, refreshInvites]);
-  useInvalidation(['users'], refreshInvites);
 
   const handleCreate = async () => {
     try {
       await usersApi.createInvite();
-      await refreshInvites();
+      refresh();
       showToast(t('admin.invite_created'), 'success');
     } catch {
       showToast(t('admin.create_invite_failed'), 'error');
@@ -56,7 +39,7 @@ export function InviteManagement() {
     setPendingCode(code);
     try {
       await usersApi.revokeInvite(code);
-      await refreshInvites();
+      refresh();
     } catch {
       showToast(t('admin.revoke_invite_failed'), 'error');
     } finally {

@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UserManagement } from './UserManagement';
 import { setLang, t } from '../../i18n';
+import { QueryCacheProvider } from '../../cache/QueryCacheContext';
 
 const { list, toggleUser, useInvalidationMock, authState } = vi.hoisted(() => ({
   list: vi.fn(),
@@ -15,6 +16,8 @@ vi.mock('../../hooks/useAuth', () => ({ useAuth: () => authState }));
 vi.mock('../../api/users', () => ({ createUsersApi: () => ({ list, toggleUser }) }));
 vi.mock('../../hooks/useInvalidation', () => ({ useInvalidation: useInvalidationMock }));
 vi.mock('../ui/Toast', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
+
+const renderView = () => render(<QueryCacheProvider><UserManagement /></QueryCacheProvider>);
 
 describe('UserManagement canonical refresh', () => {
   afterEach(() => {
@@ -38,7 +41,7 @@ describe('UserManagement canonical refresh', () => {
       ],
     });
 
-    render(<UserManagement />);
+    renderView();
     await screen.findByText('alice');
     expect(screen.getByText('bob')).toBeDefined();
     expect(screen.getByText('user')).toBeDefined();
@@ -49,7 +52,7 @@ describe('UserManagement canonical refresh', () => {
 
   it('shows the empty state when there are no users', async () => {
     list.mockResolvedValueOnce({ users: [] });
-    render(<UserManagement />);
+    renderView();
     await screen.findByText(t('admin.no_users'));
   });
 
@@ -63,7 +66,7 @@ describe('UserManagement canonical refresh', () => {
       });
     toggleUser.mockResolvedValue(undefined);
 
-    render(<UserManagement />);
+    renderView();
     await screen.findByText('alice');
     fireEvent.click(screen.getAllByRole('button')[0]!);
 
@@ -81,12 +84,12 @@ describe('UserManagement canonical refresh', () => {
         users: [{ id: 2, username: 'remote-user', role: 'user', active: true }],
       });
 
-    render(<UserManagement />);
+    renderView();
     await screen.findByText('initial-user');
     expect(useInvalidationMock).toHaveBeenCalledWith(['users'], expect.any(Function));
 
     await act(async () => {
-      await useInvalidationMock.mock.calls[0]![1]!();
+      await useInvalidationMock.mock.calls[0]![1]!({ domains: ['users'], paths: [] });
     });
 
     expect(list).toHaveBeenCalledTimes(2);
@@ -101,8 +104,8 @@ describe('UserManagement canonical refresh', () => {
       .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
       .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
 
-    render(<UserManagement />);
-    await act(async () => { useInvalidationMock.mock.calls[0]![1]!(); });
+    renderView();
+    await act(async () => { useInvalidationMock.mock.calls[0]![1]!({ domains: ['users'], paths: [] }); });
     await act(async () => {
       resolveSecond({ users: [{ id: 2, username: 'newer-canonical-user', role: 'user', active: true }] });
     });
@@ -124,11 +127,11 @@ describe('UserManagement canonical refresh', () => {
         users: [{ id: 2, username: 'new-identity', role: 'user', active: true }],
       });
 
-    const { rerender } = render(<UserManagement />);
+    const { rerender } = renderView();
     await screen.findByText('old-identity');
 
     authState.identityGeneration = 1;
-    rerender(<UserManagement />);
+    rerender(<QueryCacheProvider><UserManagement /></QueryCacheProvider>);
 
     await waitFor(() => expect(screen.getByText('new-identity')).toBeDefined());
     expect(screen.queryByText('old-identity')).toBeNull();
@@ -140,7 +143,7 @@ describe('UserManagement canonical refresh', () => {
     });
     toggleUser.mockRejectedValue(new Error('boom'));
 
-    render(<UserManagement />);
+    renderView();
     await screen.findByText('alice');
     fireEvent.click(screen.getAllByRole('button')[0]!);
 

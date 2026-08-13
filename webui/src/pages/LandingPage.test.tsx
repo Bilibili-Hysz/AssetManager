@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import LandingPage from './LandingPage';
+import { QueryCacheProvider } from '../cache/QueryCacheContext';
 
 const getHome = vi.fn();
 const { useInvalidationMock } = vi.hoisted(() => ({ useInvalidationMock: vi.fn() }));
@@ -39,6 +40,11 @@ vi.mock('../api/metadata', () => ({ createMetadataApi: () => ({ getHome }) }));
 vi.mock('../hooks/useInvalidation', () => ({
   useInvalidation: useInvalidationMock,
 }));
+
+function LandingApp() {
+  return <QueryCacheProvider><LandingPage /></QueryCacheProvider>;
+}
+
 describe('LandingPage', () => {
   beforeEach(() => {
     localStorage.setItem('am_theme', 'dark');
@@ -73,7 +79,7 @@ describe('LandingPage', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <Routes>
-          <Route path="/" element={<LandingPage />} />
+          <Route path="/" element={<LandingApp />} />
           <Route path="/login" element={<p>Login screen</p>} />
         </Routes>
       </MemoryRouter>,
@@ -89,7 +95,7 @@ describe('LandingPage', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <Routes>
-          <Route path="/" element={<LandingPage />} />
+          <Route path="/" element={<LandingApp />} />
           <Route path="/login" element={<p>Login screen</p>} />
         </Routes>
       </MemoryRouter>,
@@ -107,7 +113,7 @@ describe('LandingPage', () => {
     };
     getHome.mockResolvedValue({ recent_projects: [], preview_pool: [], popular_tags: [], stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' } });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
 
     expect(await screen.findByRole('heading', { name: 'Northstar Archive' })).toBeDefined();
     expect(screen.getByText('No images found in this library.')).toBeDefined();
@@ -135,7 +141,7 @@ describe('LandingPage', () => {
       stats: { total_projects: 7, total_size: 7, total_size_fmt: '7 KB' },
     });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
 
     expect(await screen.findByRole('heading', { name: 'Northstar Archive' })).toBeDefined();
     expect(screen.getByText(/7 assets/)).toBeDefined();
@@ -146,7 +152,7 @@ describe('LandingPage', () => {
 
   it('registers only the home projection domain', async () => {
     getHome.mockResolvedValue({ recent_projects: [], preview_pool: [], popular_tags: [], stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' } });
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
     await waitFor(() => expect(useInvalidationMock.mock.calls[0]?.[0]).toEqual(['home']));
   });
 
@@ -161,7 +167,7 @@ describe('LandingPage', () => {
     vi.stubGlobal('matchMedia', vi.fn(() => mediaQuery));
     getHome.mockResolvedValue({ recent_projects: [], preview_pool: [], popular_tags: [], stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' } });
 
-    const { unmount } = render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    const { unmount } = render(<MemoryRouter><LandingApp /></MemoryRouter>);
     await waitFor(() => expect(mediaQuery.addEventListener).toHaveBeenCalled());
     expect(mediaQuery.addListener).not.toHaveBeenCalled();
 
@@ -187,7 +193,7 @@ describe('LandingPage', () => {
       stats: { total_projects: 1, total_size: 1, total_size_fmt: '1 KB' },
     });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
 
     expect(await screen.findByLabelText('Featured assets')).toBeDefined();
     expect(screen.getByTestId('gate-showcase-image').getAttribute('data-src')).toBe('/api/thumbnails/legacy%2Flegacy-featured.jpg');
@@ -211,7 +217,7 @@ describe('LandingPage', () => {
       stats: { total_projects: 1, total_size: 1, total_size_fmt: '1 KB' },
     });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
 
     expect(await screen.findByText('No images found in this library.')).toBeDefined();
     expect(screen.queryByLabelText('Featured assets')).toBeNull();
@@ -234,7 +240,7 @@ describe('LandingPage', () => {
       stats: { total_projects: 1518, total_size: 7, total_size_fmt: '7 KB' },
     });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
 
     await waitFor(() => expect(screen.getByRole('status').textContent).toContain('1518 artworks'));
     await waitFor(() => expect(screen.getAllByTestId('gate-showcase-image')).toHaveLength(2));
@@ -258,7 +264,7 @@ describe('LandingPage', () => {
       stats: { total_projects: 1518, total_size: 1518, total_size_fmt: '1518 KB' },
     });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
 
     await waitFor(() => expect(screen.getByRole('status').textContent).toContain('1518 artworks'));
     expect(screen.getByText(/1518 assets · 1518 KB/)).toBeDefined();
@@ -284,7 +290,7 @@ describe('LandingPage', () => {
       stats: { total_projects: 4, total_size: 4, total_size_fmt: '4 B' },
     });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
 
     await waitFor(() => expect(screen.getAllByTestId('gate-showcase-image')).toHaveLength(2));
     expect(new Set(screen.getAllByTestId('gate-showcase-image').map(image => image.getAttribute('data-src')))).toEqual(new Set([
@@ -315,7 +321,7 @@ describe('LandingPage', () => {
       stats: { total_projects: 7, total_size: 7, total_size_fmt: '7 KB' },
     });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
 
     await waitFor(() => expect(imageInstances).toHaveLength(7));
     expect(imageInstances.map(image => image.src)).toEqual(expect.arrayContaining(
@@ -345,7 +351,7 @@ describe('LandingPage', () => {
       stats: { total_projects: 7, total_size: 7, total_size_fmt: '7 KB' },
     });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
     await act(async () => { await Promise.resolve(); });
     expect(screen.getAllByTestId('gate-showcase-image')).toHaveLength(6);
     const initial = screen.getAllByTestId('gate-showcase-image').map(image => image.getAttribute('data-src'));
@@ -365,7 +371,7 @@ describe('LandingPage', () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     getHome.mockResolvedValue({ recent_projects: [], preview_pool: [], popular_tags: [], stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' } });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
     fireEvent.pointerMove(screen.getByRole('main'), { pointerType: 'mouse', clientX: 40, clientY: 40 });
     fireEvent.pointerDown(screen.getByRole('main'), { pointerType: 'mouse', clientX: 40, clientY: 40 });
 
@@ -375,7 +381,7 @@ describe('LandingPage', () => {
 
   it('suppresses pointer effects while the page is hidden', () => {
     getHome.mockResolvedValue({ recent_projects: [], preview_pool: [], popular_tags: [], stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' } });
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
 
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
     fireEvent(document, new Event('visibilitychange'));
@@ -402,7 +408,7 @@ describe('LandingPage', () => {
       stats: { total_projects: 7, total_size: 7, total_size_fmt: '7 B' },
     });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
     await waitFor(() => expect(screen.getAllByTestId('gate-showcase-image')).toHaveLength(6));
 
     const initialShowcase = screen.getAllByTestId('gate-showcase-image').map(image => image.getAttribute('data-src'));
@@ -431,7 +437,7 @@ describe('LandingPage', () => {
       stats: { total_projects: 1, total_size: 12, total_size_fmt: '12 B' },
     });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
 
     expect(await screen.findByRole('heading', { name: 'Northstar Archive' })).toBeDefined();
     expect(screen.getByText('Designer')).toBeDefined();
@@ -445,7 +451,7 @@ describe('LandingPage', () => {
   it('aborts the home request when unmounted', () => {
     getHome.mockReturnValue(new Promise(() => {}));
 
-    const { unmount } = render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    const { unmount } = render(<MemoryRouter><LandingApp /></MemoryRouter>);
     expect(getHome).toHaveBeenCalledOnce();
     const signal = getHome.mock.calls[0]![0] as AbortSignal;
 
@@ -475,7 +481,7 @@ describe('LandingPage', () => {
       stats: { total_projects: 1, total_size: 1, total_size_fmt: '1 KB' },
     });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
 
     const image = await screen.findByRole('img', { name: 'broken.jpg' });
     expect(screen.getAllByTestId('layered-preview-back')).toHaveLength(2);
@@ -489,7 +495,7 @@ describe('LandingPage', () => {
   it('shows an unavailable status while preserving library entry when featured assets fail to load', async () => {
     getHome.mockRejectedValue(new Error('Home request failed'));
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
 
     expect(await screen.findByText('Library unavailable')).toBeDefined();
     expect(screen.queryByText('Library online', { selector: '.sr-only' })).toBeNull();
@@ -499,7 +505,7 @@ describe('LandingPage', () => {
 
   it('opens and closes background tuning with accessible controls', () => {
     getHome.mockResolvedValue({ recent_projects: [], popular_tags: [], stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' } });
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
 
     const toggle = screen.getByRole('button', { name: 'Background tuning' });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
@@ -520,7 +526,7 @@ describe('LandingPage', () => {
     vi.stubGlobal('localStorage', storage);
     Object.defineProperty(window, 'localStorage', { configurable: true, value: storage });
     getHome.mockResolvedValue({ recent_projects: [], popular_tags: [], stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' } });
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
 
     fireEvent.click(screen.getByRole('button', { name: 'Background tuning' }));
     const blur = screen.getByRole('slider', { name: /Blur/ });
@@ -543,7 +549,7 @@ describe('LandingPage', () => {
     vi.useFakeTimers();
     getHome.mockResolvedValue({ recent_projects: [], preview_pool: [], popular_tags: [], stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' } });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
     const baselineTimers = vi.getTimerCount();
     fireEvent.pointerMove(screen.getByRole('main'), { pointerType: 'mouse', clientX: 20, clientY: 30 });
     expect(vi.getTimerCount()).toBe(baselineTimers + 3);
@@ -556,7 +562,7 @@ describe('LandingPage', () => {
     vi.useFakeTimers();
     getHome.mockResolvedValue({ recent_projects: [], preview_pool: [], popular_tags: [], stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' } });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
     const baselineTimers = vi.getTimerCount();
     fireEvent.pointerDown(screen.getByRole('main'), { pointerType: 'mouse', clientX: 20, clientY: 30 });
     expect(vi.getTimerCount()).toBe(baselineTimers + 2);
@@ -570,7 +576,7 @@ describe('LandingPage', () => {
   it('renders and positions a cursor glow for mouse movement', async () => {
     getHome.mockResolvedValue({ recent_projects: [], preview_pool: [], popular_tags: [], stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' } });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
     const pointerMove = new Event('pointermove', { bubbles: true });
     Object.assign(pointerMove, { pointerType: 'mouse', clientX: 84, clientY: 126 });
     fireEvent(screen.getByRole('main'), pointerMove);
@@ -585,7 +591,7 @@ describe('LandingPage', () => {
   it('gives body-level pointer particles a resolved effect color', () => {
     getHome.mockResolvedValue({ recent_projects: [], preview_pool: [], popular_tags: [], stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' } });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
     fireEvent.pointerMove(screen.getByRole('main'), { pointerType: 'mouse', clientX: 84, clientY: 126 });
 
     expect(document.querySelector<HTMLElement>('.gate-particle')?.style.getPropertyValue('--gate-effect-color')).toBeTruthy();
@@ -594,7 +600,7 @@ describe('LandingPage', () => {
   it('emits a visible particle trail for a mouse movement', () => {
     getHome.mockResolvedValue({ recent_projects: [], preview_pool: [], popular_tags: [], stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' } });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
     fireEvent.pointerMove(screen.getByRole('main'), { pointerType: 'mouse', clientX: 84, clientY: 126 });
 
     expect(document.querySelectorAll('.gate-particle').length).toBeGreaterThanOrEqual(3);
@@ -603,7 +609,7 @@ describe('LandingPage', () => {
   it('gives body-level click ripples a concrete border color', () => {
     getHome.mockResolvedValue({ recent_projects: [], preview_pool: [], popular_tags: [], stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' } });
 
-    render(<MemoryRouter><LandingPage /></MemoryRouter>);
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
     fireEvent.pointerDown(screen.getByRole('main'), { pointerType: 'mouse', clientX: 84, clientY: 126 });
 
     expect(document.querySelector<HTMLElement>('.gate-ripple')?.style.borderColor).toBe('rgb(99, 102, 241)');

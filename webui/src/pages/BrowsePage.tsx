@@ -15,6 +15,7 @@ import { ContextMenu } from '../components/ui/ContextMenu';
 import { Skeleton } from '../components/ui/Skeleton';
 import { ShareDialog } from '../components/shares/ShareDialog';
 import { useAuth } from '../hooks/useAuth';
+import { useCachedQuery } from '../hooks/useCachedQuery';
 import { useInvalidation } from '../hooks/useInvalidation';
 import { useProjects } from '../hooks/useProjects';
 import { useThumbnailCache } from '../hooks/useThumbnailCache';
@@ -28,11 +29,16 @@ import { useToast } from '../components/ui/Toast';
 import { useDownloadProgress } from '../components/ui/DownloadProgress';
 import { useQuota } from '../hooks/useQuota';
 import { triggerBlobDownload } from '../utils/download';
-import type { BrowsableItem, Metadata, ProjectDetail } from '../types/api';
+import type { BrowsableItem, Metadata, ProjectDetail, SearchResponse } from '../types/api';
 
 interface BrowsePageProps {
   onOpenPalette?: () => void;
 }
+
+/** The inspected-item query discriminates by the browsed entry's kind. */
+type SelectedDetail =
+  | { kind: 'dir'; detail: ProjectDetail }
+  | { kind: 'file'; meta: Metadata };
 
 export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -63,14 +69,9 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: BrowsableItem; trigger?: HTMLElement } | null>(null);
   const [sharePaths, setSharePaths] = useState<string[] | null>(null);
   const [shareDialogTrigger, setShareDialogTrigger] = useState<HTMLElement | null | undefined>(undefined);
-  const [selectedMetadata, setSelectedMetadata] = useState<Metadata | null>(null);
-  const [selectedProjectDetail, setSelectedProjectDetail] = useState<ProjectDetail | null>(null);
   const [selectedItem, setSelectedItem] = useState<BrowsableItem | null>(null);
-  const [metadataLoading, setMetadataLoading] = useState(false);
   const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [tagResults, setTagResults] = useState<BrowsableItem[] | null>(null);
   const [isDownloadInFlight, setIsDownloadInFlight] = useState(false);
-  const [tagLoading, setTagLoading] = useState(false);
   const [tagMutationPending, setTagMutationPending] = useState(false);
   const [tagsRefreshKey, setTagsRefreshKey] = useState(0);
 
@@ -126,39 +127,74 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   const lastManualRefreshRef = useRef(0);
   const infoStartW = useRef(0);
   const rafId = useRef<number | null>(null);
-  const tagSearchGeneration = useRef(0);
   const downloadInFlight = useRef(false);
-  const tagSearchAbort = useRef<AbortController | null>(null);
-  const metadataGeneration = useRef(0);
-  const metadataAbort = useRef<AbortController | null>(null);
   const summaryAbort = useRef<AbortController | null>(null);
   const summaryPaths = useRef(new Set<string>());
   const summaryPending = useRef<string[]>([]);
   const summaryFlushScheduled = useRef(false);
   const identityGenerationRef = useRef(identityGeneration);
 
+  // ── Cached tag search + inspected-item detail ──
+  // Both flows fetch through useCachedQuery but register NO invalidation
+  // domains of their own: the page-level useInvalidation below owns the
+  // 1.5s manual-refresh suppression window, which must cover them too.
+  const activeTagRef = useRef(activeTag);
+  activeTagRef.current = activeTag;
+  const selectedItemRef = useRef(selectedItem);
+  selectedItemRef.current = selectedItem;
+  // Per-trigger failure policy: a user-initiated filter resets the filter
+  // and toasts on failure; background re-searches stay silent.
+  const tagSearchFailureHandlingRef = useRef({ resetFilterOnFailure: false, notifyOnFailure: false });
+
+  const { data: tagData, error: tagError, isFetching: tagFetching, refresh: refreshTagSearch } = useCachedQuery<SearchResponse>({
+    key: ['tag-search', activeTag ?? ''],
+    queryFn: signal => metaApi.search('', activeTag ?? '', undefined, signal),
+    enabled: activeTag !== null,
+  });
+
+  const { data: selectedData, isFetching: selectedFetching, refresh: refreshSelectedQuery, setData: setSelectedData } = useCachedQuery<SelectedDetail>({
+    key: ['item-metadata', selectedItem?.path ?? '', selectedItem?.type ?? ''],
+    queryFn: signal => {
+      const item = selectedItem;
+      if (!item) return Promise.reject(new Error('no item selected'));
+      return item.type === 'dir'
+        ? metaApi.getProjectDetail(item.path, signal).then(detail => ({ kind: 'dir' as const, detail }))
+        : metaApi.getMeta(item.path, signal).then(meta => ({ kind: 'file' as const, meta }));
+    },
+    enabled: selectedItem !== null,
+  });
+
+  // Derived views: a key change (new tag / new item) resets data to
+  // undefined, mirroring the old explicit clears; a failed first fetch
+  // leaves data undefined so the panels fall back like before.
+  const selectedMetadata = selectedData?.kind === 'file' ? selectedData.meta : null;
+  const selectedProjectDetail = selectedData?.kind === 'dir' ? selectedData.detail : null;
+  const metadataLoading = selectedItem !== null && selectedFetching;
+  // SearchResult widens to BrowsableItem (the optional fields are all
+  // partial), matching how the pre-cache flow stored these results.
+  const tagResults: BrowsableItem[] | null = activeTag !== null ? (tagData?.results ?? null) : null;
+  const tagLoading = activeTag !== null && tagFetching;
+
+  // Tag-search failure policy (see tagSearchFailureHandlingRef).
+  useEffect(() => {
+    if (tagError == null) return;
+    const handling = tagSearchFailureHandlingRef.current;
+    if (handling.resetFilterOnFailure) {
+      setActiveTag(null);
+      setSearchParams(currentPath ? { path: currentPath } : {}, { replace: true });
+    }
+    if (handling.notifyOnFailure) showToast(t('info.tag_filter_failed'), 'error');
+  }, [tagError, currentPath, setSearchParams, showToast, t]);
+
   useEffect(() => {
     if (identityGenerationRef.current === identityGeneration) return;
     identityGenerationRef.current = identityGeneration;
-    tagSearchGeneration.current += 1;
-    tagSearchAbort.current?.abort();
-    metadataGeneration.current += 1;
-    metadataAbort.current?.abort();
     setSelected(new Set());
     setSelectedItem(null);
-    setSelectedMetadata(null);
-    setSelectedProjectDetail(null);
-    setMetadataLoading(false);
     setActiveTag(null);
-    setTagResults(null);
-    setTagLoading(false);
   }, [identityGeneration]);
 
   useEffect(() => () => {
-    tagSearchGeneration.current += 1;
-    tagSearchAbort.current?.abort();
-    metadataGeneration.current += 1;
-    metadataAbort.current?.abort();
     summaryAbort.current?.abort();
   }, []);
 
@@ -196,11 +232,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
     const requestedPath = searchParams.get('path') || '';
     if (searchParams.get('tag')) return;
     if (requestedPath !== currentPath) {
-      tagSearchGeneration.current += 1;
-      metadataGeneration.current += 1;
-      metadataAbort.current?.abort();
       setActiveTag(null);
-      setTagResults(null);
       navigateTo(requestedPath);
     }
   }, [currentPath, navigateTo, searchParams]);
@@ -253,25 +285,14 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   }, []);
 
   const handleNavigate = useCallback((path: string) => {
-    tagSearchGeneration.current += 1;
-    metadataGeneration.current += 1;
-    metadataAbort.current?.abort();
-    tagSearchAbort.current?.abort();
     setActiveTag(null);
-    setTagResults(null);
-    setTagLoading(false);
     navigateTo(path);
     setSearchParams(path ? { path } : {}, { replace: true });
     setSelected(new Set());
     setSelectedItem(null);
-    setSelectedMetadata(null);
-    setSelectedProjectDetail(null);
-    setActiveTag(null);
-    setTagResults(null);
   }, [navigateTo, setSearchParams]);
 
   const handleNavigateDetail = useCallback((path: string) => {
-    tagSearchGeneration.current += 1;
     navigate(`/detail?path=${encodeURIComponent(path)}`);
   }, [navigate]);
 
@@ -290,75 +311,54 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   }, []);
 
   const handleCardClick = useCallback((item: BrowsableItem) => {
-    const generation = ++metadataGeneration.current;
-    metadataAbort.current?.abort();
-    const abortController = new AbortController();
-    metadataAbort.current = abortController;
     setSelectedItem(item);
-    setSelectedMetadata(null);
-    setSelectedProjectDetail(null);
-    setMetadataLoading(true);
-    const detailRequest = item.type === 'dir'
-      ? metaApi.getProjectDetail(item.path, abortController.signal)
-      : metaApi.getMeta(item.path, abortController.signal);
-    detailRequest
-      .then(detail => {
-        if (generation !== metadataGeneration.current) return;
-        if (item.type === 'dir') setSelectedProjectDetail(detail as ProjectDetail);
-        else setSelectedMetadata(detail as Metadata);
-      })
-      .catch(() => {
-        if (generation === metadataGeneration.current) setSelectedMetadata(null);
-      })
-      .finally(() => {
-        if (generation === metadataGeneration.current) setMetadataLoading(false);
-      });
-  }, [metaApi]);
+    // A different card switches the cache key and fetches on its own; a
+    // re-click on the same card re-inspects it (abort + refetch, as the
+    // pre-cache flow did).
+    const current = selectedItemRef.current;
+    if (current && current.path === item.path && current.type === item.type) {
+      refreshSelectedQuery();
+    }
+  }, [refreshSelectedQuery]);
 
   const refreshSelected = useCallback(() => {
-    if (selectedItem) handleCardClick(selectedItem);
-  }, [handleCardClick, selectedItem]);
+    if (selectedItem) refreshSelectedQuery();
+  }, [refreshSelectedQuery, selectedItem]);
 
   const handleNotesSave = useCallback(async (notesPath: string, notes: string): Promise<boolean> => {
     try {
       const saved = await notesApi.save(notesPath, notes);
-      setSelectedMetadata(prev => prev && prev.path === notesPath ? { ...prev, notes: saved.notes } : prev);
-      setSelectedProjectDetail(prev => prev && prev.path === notesPath ? { ...prev, notes: saved.notes } : prev);
+      // Local optimistic patch on the cached entry; the projection event
+      // will confirm it via a background refetch.
+      setSelectedData(prev => {
+        if (!prev) return prev;
+        if (prev.kind === 'dir' && prev.detail.path === notesPath) {
+          return { kind: 'dir', detail: { ...prev.detail, notes: saved.notes } };
+        }
+        if (prev.kind === 'file' && prev.meta.path === notesPath) {
+          return { kind: 'file', meta: { ...prev.meta, notes: saved.notes } };
+        }
+        return prev;
+      });
       showToast(t('info.notes_saved'), 'success');
       return true;
     } catch {
       showToast(t('info.notes_save_failed'), 'error');
       return false;
     }
-  }, [notesApi, showToast, t]);
+  }, [notesApi, setSelectedData, showToast, t]);
 
   const runTagSearch = useCallback(
     (tag: string, options: { clearResults: boolean; resetFilterOnFailure: boolean; notifyOnFailure: boolean }) => {
-      const generation = ++tagSearchGeneration.current;
-      tagSearchAbort.current?.abort();
-      const controller = new AbortController();
-      tagSearchAbort.current = controller;
-      if (options.clearResults) setTagResults(null);
-      setTagLoading(true);
-      metaApi.search('', tag, undefined, controller.signal)
-        .then(response => {
-          if (generation !== tagSearchGeneration.current) return;
-          setTagResults(response.results);
-        })
-        .catch(() => {
-          if (controller.signal.aborted || generation !== tagSearchGeneration.current) return;
-          if (options.resetFilterOnFailure) {
-            setActiveTag(null);
-            setTagResults(null);
-            setSearchParams(currentPath ? { path: currentPath } : {}, { replace: true });
-          }
-          if (options.notifyOnFailure) showToast(t('info.tag_filter_failed'), 'error');
-        })
-        .finally(() => {
-          if (generation === tagSearchGeneration.current) setTagLoading(false);
-        });
+      tagSearchFailureHandlingRef.current = {
+        resetFilterOnFailure: options.resetFilterOnFailure,
+        notifyOnFailure: options.notifyOnFailure,
+      };
+      // A new tag switches the cache key and fetches on its own; re-searching
+      // the active tag refreshes the existing entry in place.
+      if (activeTagRef.current === tag) refreshTagSearch();
     },
-    [currentPath, metaApi, setSearchParams, showToast, t],
+    [refreshTagSearch],
   );
 
   const mutateSelectedTag = useCallback(async (tag: string, action: 'add' | 'remove') => {
@@ -470,18 +470,12 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   const handleTagFilter = useCallback((tag: string) => {
     setActiveTag(tag);
     setSelected(new Set());
-    setSelectedMetadata(null);
-    setSelectedProjectDetail(null);
     setSearchParams({ tag }, { replace: true });
     runTagSearch(tag, { clearResults: true, resetFilterOnFailure: true, notifyOnFailure: true });
   }, [runTagSearch, setSearchParams]);
 
   const handleClearTagFilter = useCallback(() => {
-    tagSearchGeneration.current += 1;
-    tagSearchAbort.current?.abort();
     setActiveTag(null);
-    setTagResults(null);
-    setTagLoading(false);
     setSearchParams(currentPath ? { path: currentPath } : {}, { replace: true });
   }, [currentPath, setSearchParams]);
 

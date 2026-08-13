@@ -1,39 +1,21 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useMemo } from 'react';
 import { Clock } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { createUsersApi } from '../../api/users';
 import type { ActivityLog } from '../../types/api';
 import { useI18n } from '../../hooks/useI18n';
-import { useInvalidation } from '../../hooks/useInvalidation';
+import { useCachedQuery } from '../../hooks/useCachedQuery';
 
 export function ActivityLogView() {
-  const { api, identityGeneration } = useAuth();
+  const { api } = useAuth();
   const usersApi = useMemo(() => createUsersApi(api), [api]);
   const { t } = useI18n();
-  const [activities, setActivities] = useState<ActivityLog[]>([]);
-  const requestGeneration = useRef(0);
-  const mounted = useRef(true);
-  const identityGenerationRef = useRef(identityGeneration);
-
-  const refreshActivity = useCallback(() => {
-    const generation = ++requestGeneration.current;
-    usersApi.getActivity().then(res => {
-      if (mounted.current && generation === requestGeneration.current) setActivities(res.activities);
-    }).catch(() => {});
-  }, [usersApi]);
-  useEffect(() => {
-    mounted.current = true;
-    refreshActivity();
-    return () => { mounted.current = false; requestGeneration.current += 1; };
-  }, [refreshActivity]);
-  useEffect(() => {
-    if (identityGenerationRef.current === identityGeneration) return;
-    identityGenerationRef.current = identityGeneration;
-    requestGeneration.current += 1;
-    setActivities([]);
-    refreshActivity();
-  }, [identityGeneration, refreshActivity]);
-  useInvalidation(['activity'], refreshActivity);
+  const { data } = useCachedQuery<ActivityLog[]>({
+    key: ['activity'],
+    queryFn: () => usersApi.getActivity().then(res => res.activities),
+    domains: ['activity'],
+  });
+  const activities = data ?? [];
 
   return (
     <div>

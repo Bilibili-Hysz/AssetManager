@@ -3,6 +3,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AdminPage from './AdminPage';
+import { QueryCacheProvider } from '../cache/QueryCacheContext';
 import { setLang } from '../i18n';
 
 const authState = vi.hoisted(() => ({
@@ -41,9 +42,11 @@ describe('AdminPage', () => {
     setLang('en');
     authState.role = 'admin';
     render(
-      <MemoryRouter>
-        <AdminPage />
-      </MemoryRouter>,
+      <QueryCacheProvider>
+        <MemoryRouter>
+          <AdminPage />
+        </MemoryRouter>
+      </QueryCacheProvider>,
     );
     expect(await screen.findByText('Admin Console')).toBeDefined();
     // Section headings repeat inside the child panels (both use admin.* keys).
@@ -58,9 +61,11 @@ describe('AdminPage', () => {
   it('renders nothing for a non-admin role (defensive fallback)', () => {
     authState.role = 'user';
     const { container } = render(
-      <MemoryRouter>
-        <AdminPage />
-      </MemoryRouter>,
+      <QueryCacheProvider>
+        <MemoryRouter>
+          <AdminPage />
+        </MemoryRouter>
+      </QueryCacheProvider>,
     );
     expect(container.firstChild).toBeNull();
   });

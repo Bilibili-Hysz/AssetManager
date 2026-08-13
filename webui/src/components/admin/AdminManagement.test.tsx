@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InviteManagement } from './InviteManagement';
 import { UserManagement } from './UserManagement';
 import { ShareManagement } from './ShareManagement';
+import { QueryCacheProvider } from '../../cache/QueryCacheContext';
 import { setLang, t } from '../../i18n';
 
 const { showToast, listInvites, createInvite, listShares, deleteShare, listUsers, toggleUser, revokeInvite, useInvalidationMock, authState } = vi.hoisted(() => ({
@@ -45,6 +47,10 @@ vi.mock('../../api/shares', () => ({
   }),
 }));
 
+function renderView(ui: ReactNode) {
+  return render(<QueryCacheProvider>{ui}</QueryCacheProvider>);
+}
+
 describe('admin management translations', () => {
   beforeEach(() => vi.stubGlobal('confirm', vi.fn(() => true)));
   afterEach(() => vi.unstubAllGlobals());
@@ -67,7 +73,7 @@ describe('admin management translations', () => {
     ] });
     createInvite.mockResolvedValue({ code: 'new-code' });
 
-    render(<InviteManagement />);
+    renderView(<InviteManagement />);
     expect(await screen.findByText(used)).toBeDefined();
     expect(screen.getByText(active)).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: t('admin.generate_invite') }));
@@ -78,7 +84,7 @@ describe('admin management translations', () => {
   it('renders normalized user activity and sends active toggle', async () => {
     setLang('en');
     listUsers.mockResolvedValue({ users: [{ id: 7, username: 'member', role: 'user', active: true, created_at: 100 }] });
-    render(<UserManagement />);
+    renderView(<UserManagement />);
     expect(await screen.findByText('member')).toBeDefined();
     fireEvent.click(screen.getByRole('button'));
     await waitFor(() => expect(toggleUser).toHaveBeenCalledWith(7, false));
@@ -91,14 +97,14 @@ describe('admin management translations', () => {
       .mockResolvedValueOnce({ users: [{ id: 7, username: 'canonical-user', role: 'user', active: false, created_at: 100 }] });
     toggleUser.mockResolvedValue(undefined);
 
-    render(<UserManagement />);
+    renderView(<UserManagement />);
     await screen.findByText('member');
     expect(useInvalidationMock).toHaveBeenCalledWith(['users'], expect.any(Function));
 
     fireEvent.click(screen.getByRole('button'));
     await waitFor(() => expect(toggleUser).toHaveBeenCalledWith(7, false));
     await act(async () => {
-      await useInvalidationMock.mock.calls[0]![1]!();
+      await useInvalidationMock.mock.calls[0]![1]!({ domains: ['users'], paths: [] });
     });
     expect(listUsers).toHaveBeenCalledTimes(3);
     expect(screen.getByText(t('admin.disable'))).toBeDefined();
@@ -112,8 +118,8 @@ describe('admin management translations', () => {
       .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
       .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
 
-    render(<UserManagement />);
-    await act(async () => { useInvalidationMock.mock.calls[0]![1]!(); });
+    renderView(<UserManagement />);
+    await act(async () => { useInvalidationMock.mock.calls[0]![1]!({ domains: ['users'], paths: [] }); });
     await act(async () => {
       resolveSecond({ users: [{ id: 8, username: 'newer-canonical-user', role: 'user', active: true, created_at: 999 }] });
     });
@@ -129,11 +135,11 @@ describe('admin management translations', () => {
   it('clears the prior identity snapshot when identity generation changes', async () => {
     listUsers.mockResolvedValueOnce({ users: [{ id: 7, username: 'old-identity', role: 'user', active: true, created_at: 1 }] });
 
-    const { rerender } = render(<UserManagement />);
+    const { rerender } = renderView(<UserManagement />);
     expect(await screen.findByText('old-identity')).toBeDefined();
 
     authState.identityGeneration = 1;
-    rerender(<UserManagement />);
+    rerender(<QueryCacheProvider><UserManagement /></QueryCacheProvider>);
 
     expect(screen.queryByText('old-identity')).toBeNull();
   });
@@ -146,7 +152,7 @@ describe('admin management translations', () => {
     setLang(lang as 'en' | 'zh' | 'ja');
     listShares.mockResolvedValue({ shares: [{ id: 'share-1', url: '/share/1', paths: [], created_by: 'admin', created_at: 0, allow_preview: true, download_count: 2, max_downloads: 5, has_password: false }] });
 
-    render(<ShareManagement />);
+    renderView(<ShareManagement />);
     expect(await screen.findByText(downloads)).toBeDefined();
   });
 });

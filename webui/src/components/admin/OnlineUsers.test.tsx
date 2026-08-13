@@ -2,6 +2,7 @@
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OnlineUsers } from './OnlineUsers';
+import { QueryCacheProvider } from '../../cache/QueryCacheContext';
 
 const { getOnlineUsers, useInvalidationMock, authState } = vi.hoisted(() => ({
   getOnlineUsers: vi.fn(),
@@ -13,6 +14,8 @@ let api: object = {};
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => authState }));
 vi.mock('../../api/users', () => ({ createUsersApi: () => ({ getOnlineUsers }) }));
 vi.mock('../../hooks/useInvalidation', () => ({ useInvalidation: useInvalidationMock }));
+
+const renderView = () => render(<QueryCacheProvider><OnlineUsers /></QueryCacheProvider>);
 
 describe('OnlineUsers', () => {
   afterEach(cleanup);
@@ -32,8 +35,8 @@ describe('OnlineUsers', () => {
       .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
       .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
 
-    render(<OnlineUsers />);
-    await act(async () => { useInvalidationMock.mock.calls[0]![1]!(); });
+    renderView();
+    await act(async () => { useInvalidationMock.mock.calls[0]![1]!({ domains: ['online_users'], paths: [] }); });
     await act(async () => { resolveSecond({ users: [{ username: 'new-user', ip: '127.0.0.2' }] }); });
     expect(screen.getByText('new-user')).toBeDefined();
 
@@ -43,18 +46,18 @@ describe('OnlineUsers', () => {
   });
 
   it('registers only the users domain', () => {
-    render(<OnlineUsers />);
+    renderView();
     expect(useInvalidationMock.mock.calls[0]?.[0]).toEqual(['online_users']);
   });
 
   it('clears the prior identity snapshot when identity generation changes', async () => {
     getOnlineUsers.mockResolvedValueOnce({ users: [{ username: 'old-user', ip: '127.0.0.1' }] });
 
-    const { rerender } = render(<OnlineUsers />);
+    const { rerender } = renderView();
     expect(await screen.findByText('old-user')).toBeDefined();
 
     authState.identityGeneration = 1;
-    rerender(<OnlineUsers />);
+    rerender(<QueryCacheProvider><OnlineUsers /></QueryCacheProvider>);
 
     expect(screen.queryByText('old-user')).toBeNull();
   });

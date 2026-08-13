@@ -2,15 +2,16 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryCacheProvider } from '../cache/QueryCacheContext';
 
 const { collectionMock, toggleFavoriteMock, i18nMock, authMock } = vi.hoisted(() => ({
   collectionMock: vi.fn(),
   toggleFavoriteMock: vi.fn(),
   i18nMock: { t: (key: string) => key },
-  authMock: { api: {} },
+  authMock: { api: {}, identityGeneration: 0 },
 }));
 
-let invalidationCallback: (() => void) | undefined;
+let invalidationCallback: ((event: unknown) => void) | undefined;
 
 vi.mock('../api/gallery', () => ({
   createGalleryApi: () => ({ collection: collectionMock }),
@@ -22,7 +23,7 @@ vi.mock('../hooks/useFavorites', () => ({
   useFavorites: () => ({ isFavorite: () => false, toggleFavorite: toggleFavoriteMock }),
 }));
 vi.mock('../hooks/useInvalidation', () => ({
-  useInvalidation: (_domains: readonly string[], callback: () => void) => { invalidationCallback = callback; },
+  useInvalidation: (_domains: readonly string[], callback: (event: unknown) => void) => { invalidationCallback = callback; },
 }));
 // Stable reference: the page's fetch effect depends on `t`, so a fresh
 // object per render would restart the request loop forever.
@@ -47,6 +48,16 @@ function collectionResponse(name: string) {
   };
 }
 
+function renderCollection() {
+  render(
+    <QueryCacheProvider>
+      <MemoryRouter initialEntries={['/gallery/collection?path=projects/hero']}>
+        <GalleryCollectionPage />
+      </MemoryRouter>
+    </QueryCacheProvider>,
+  );
+}
+
 describe('GalleryCollectionPage', () => {
   beforeEach(() => {
     collectionMock.mockReset();
@@ -58,46 +69,32 @@ describe('GalleryCollectionPage', () => {
 
   it('renders the collection heading once loaded', async () => {
     collectionMock.mockResolvedValue(collectionResponse('Hero Pack'));
-    render(
-      <MemoryRouter initialEntries={['/gallery/collection?path=projects/hero']}>
-        <GalleryCollectionPage />
-      </MemoryRouter>,
-    );
+    renderCollection();
     expect(await screen.findByRole('heading', { name: 'Hero Pack' })).toBeDefined();
     expect(collectionMock).toHaveBeenCalledWith('projects/hero', { sort: 'updated', kind: 'all' }, expect.any(AbortSignal));
   });
 
   it('shows the unavailable state with retry on failure', async () => {
     collectionMock.mockRejectedValue(new Error('boom'));
-    render(
-      <MemoryRouter initialEntries={['/gallery/collection?path=projects/hero']}>
-        <GalleryCollectionPage />
-      </MemoryRouter>,
-    );
+    renderCollection();
     expect(await screen.findByText('gallery.collection_unavailable')).toBeDefined();
     fireRetry();
   });
 
   it('shows the missing state when the collection is absent', async () => {
     collectionMock.mockResolvedValue({ collection: null, children: [], entries: [] });
-    render(
-      <MemoryRouter initialEntries={['/gallery/collection?path=projects/hero']}>
-        <GalleryCollectionPage />
-      </MemoryRouter>,
-    );
+    renderCollection();
     expect(await screen.findByText('gallery.collection_missing')).toBeDefined();
   });
 
   it('refetches when realtime invalidation fires', async () => {
     collectionMock.mockResolvedValue(collectionResponse('Hero Pack'));
-    render(
-      <MemoryRouter initialEntries={['/gallery/collection?path=projects/hero']}>
-        <GalleryCollectionPage />
-      </MemoryRouter>,
-    );
+    renderCollection();
     await screen.findByRole('heading', { name: 'Hero Pack' });
     expect(collectionMock).toHaveBeenCalledTimes(1);
-    await waitFor(() => { invalidationCallback?.(); });
+    // null event = invalidate everything, mirroring the shared cache hook's
+    // shouldInvalidate semantics for reconnects / full invalidations.
+    await waitFor(() => { invalidationCallback?.(null); });
     expect(collectionMock).toHaveBeenCalledTimes(2);
   });
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, RefreshCw, Wrench } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { createGalleryApi } from '../api/gallery';
@@ -9,10 +9,16 @@ import { GallerySection } from '../components/gallery/GallerySection';
 import { GalleryTiledGrid } from '../components/gallery/GalleryTiledGrid';
 import { GalleryViewControls, galleryMediaMode, type GalleryViewMode } from '../components/gallery/GalleryViewControls';
 import { useAuth } from '../hooks/useAuth';
+import { useCachedQuery } from '../hooks/useCachedQuery';
 import { useFavorites } from '../hooks/useFavorites';
-import { useInvalidation } from '../hooks/useInvalidation';
 import { useI18n } from '../hooks/useI18n';
 import type { GalleryEntry, GalleryHomeResponse } from '../types/api';
+
+/**
+ * The backend reports `building` on the home projection while it assembles
+ * the response for very large libraries; it is not part of the public type.
+ */
+type GalleryHomeQueryResponse = GalleryHomeResponse & { building?: boolean };
 
 const homeSkeletonKeys = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'];
 const homeLatestViewStorageKey = 'am_gallery_home_latest_view';
@@ -40,57 +46,33 @@ export default function GalleryHomePage({ onOpenPalette }: GalleryHomePageProps)
   const galleryApi = useMemo(() => createGalleryApi(api), [api]);
   const { t } = useI18n();
   const navigate = useNavigate();
-  const [data, setData] = useState<GalleryHomeResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [building, setBuilding] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-  const requestGenerationRef = useRef(0);
-  const pollTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const [viewMode, setViewMode] = useState<GalleryViewMode>(() => readHomeLatestView());
   const [failedFeaturedImageUrl, setFailedFeaturedImageUrl] = useState<string | null>(null);
 
-  const reload = useCallback(() => setReloadKey(value => value + 1), []);
-  useInvalidation(['files', 'home', 'metadata', 'tags'], () => reload());
+  const { data, error, isLoading, refresh } = useCachedQuery<GalleryHomeQueryResponse>({
+    key: ['gallery-home'],
+    queryFn: signal => galleryApi.home(signal) as Promise<GalleryHomeQueryResponse>,
+    domains: ['files', 'home', 'metadata', 'tags'],
+  });
 
+  const building = data?.building ?? false;
+  const loadFailed = error != null;
+  const errorMessage = error instanceof Error ? error.message : t('gallery.load_failed');
+
+  // The backend builds the home projection in the background for very large
+  // libraries; poll until it is ready. Each building response re-arms the
+  // timer, so a library that stays in `building` keeps polling every 5s like
+  // the pre-cache flow.
   useEffect(() => {
-    requestGenerationRef.current += 1;
-    const requestGeneration = requestGenerationRef.current;
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-    galleryApi.home(controller.signal)
-      .then(response => {
-        if (requestGeneration !== requestGenerationRef.current) return;
-        if ('building' in response && (response as { building?: boolean }).building) {
-          // The backend builds the home projection in the background for
-          // very large libraries; poll until it is ready.
-          setBuilding(true);
-          pollTimerRef.current = window.setTimeout(() => {
-            if (requestGenerationRef.current === requestGeneration) reload();
-          }, 5000);
-          return;
-        }
-        setBuilding(false);
-        setData(response as GalleryHomeResponse);
-        setFailedFeaturedImageUrl(null);
-      })
-      .catch(err => {
-        if (!controller.signal.aborted && requestGeneration === requestGenerationRef.current) {
-          setError(err instanceof Error ? err.message : t('gallery.load_failed'));
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted && requestGeneration === requestGenerationRef.current) setLoading(false);
-      });
-    return () => {
-      controller.abort();
-      if (pollTimerRef.current !== null) {
-        window.clearTimeout(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-    };
-  }, [galleryApi, reloadKey, t]);
+    if (!building) return;
+    const timer = setTimeout(() => { refresh(); }, 5000);
+    return () => clearTimeout(timer);
+  }, [building, data, refresh]);
+
+  // A fresh response may reference a new cover; retry the failed image.
+  useEffect(() => {
+    if (data && !data.building) setFailedFeaturedImageUrl(null);
+  }, [data]);
 
   const featured = data?.featured;
   const collections = data?.collections ?? [];
@@ -147,7 +129,7 @@ export default function GalleryHomePage({ onOpenPalette }: GalleryHomePageProps)
           </div>
         </section>
 
-        {loading && !building ? (
+        {isLoading && !building ? (
           <div className="gallery-skeleton-grid" role="status" aria-label={t('gallery.loading')}>
             {homeSkeletonKeys.map(key => <div key={key} className="gallery-skeleton-card" />)}
           </div>
@@ -156,12 +138,12 @@ export default function GalleryHomePage({ onOpenPalette }: GalleryHomePageProps)
             <h2>{t('gallery.building')}</h2>
             <p>{t('gallery.building_description')}</p>
           </div>
-        ) : error ? (
+        ) : loadFailed ? (
           <div className="gallery-error-state">
             <h2>{t('gallery.unavailable')}</h2>
-            <p>{error}</p>
+            <p>{errorMessage}</p>
             <div className="gallery-empty-actions">
-              <button type="button" className="gallery-secondary-button" onClick={reload}><RefreshCw size={15} /> {t('gallery.retry')}</button>
+              <button type="button" className="gallery-secondary-button" onClick={refresh}><RefreshCw size={15} /> {t('gallery.retry')}</button>
               <Link to="/browse" className="gallery-secondary-button"><Wrench size={15} /> {t('gallery.open_workspace_action')}</Link>
             </div>
           </div>

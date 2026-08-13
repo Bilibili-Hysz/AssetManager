@@ -1,44 +1,27 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { Shield, ShieldOff } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { createUsersApi } from '../../api/users';
 import type { User } from '../../types/api';
 import { useI18n } from '../../hooks/useI18n';
 import { useToast } from '../ui/Toast';
-import { useInvalidation } from '../../hooks/useInvalidation';
+import { useCachedQuery } from '../../hooks/useCachedQuery';
 
 // NOTE: this admin panel is not yet mounted on any route — wiring the Admin section
 // into the router is a later task (see D2 in the component backlog).
 
 export function UserManagement() {
-  const { api, identityGeneration } = useAuth();
+  const { api } = useAuth();
   const usersApi = useMemo(() => createUsersApi(api), [api]);
   const { t } = useI18n();
   const { showToast } = useToast();
-  const [users, setUsers] = useState<User[]>([]);
+  const { data, refresh } = useCachedQuery<User[]>({
+    key: ['users'],
+    queryFn: () => usersApi.list().then(res => res.users),
+    domains: ['users'],
+  });
+  const users = data ?? [];
   const [pendingId, setPendingId] = useState<number | null>(null);
-  const requestGeneration = useRef(0);
-  const identityGenerationRef = useRef(identityGeneration);
-
-  const refreshUsers = useCallback(() => {
-    const generation = ++requestGeneration.current;
-    return usersApi.list().then(res => {
-      if (generation === requestGeneration.current) setUsers(res.users);
-    });
-  }, [usersApi]);
-
-  useEffect(() => {
-    refreshUsers().catch(() => {});
-    return () => { requestGeneration.current += 1; };
-  }, [refreshUsers]);
-  useEffect(() => {
-    if (identityGenerationRef.current === identityGeneration) return;
-    identityGenerationRef.current = identityGeneration;
-    requestGeneration.current += 1;
-    setUsers([]);
-    refreshUsers().catch(() => {});
-  }, [identityGeneration, refreshUsers]);
-  useInvalidation(['users'], refreshUsers);
 
   const handleToggle = async (id: number, current: boolean) => {
     // E2: require explicit confirmation before enabling/disabling an account.
@@ -47,7 +30,7 @@ export function UserManagement() {
     setPendingId(id);
     try {
       await usersApi.toggleUser(id, !current);
-      await refreshUsers();
+      refresh();
     } catch {
       showToast(t('admin.toggle_user_failed'), 'error');
     } finally {
