@@ -18,7 +18,6 @@ from AssetsManager.application.file_operation_service import unique_destination
 from AssetsManager.application.context import LibrarySession
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import FileSystemChanged
-from AssetsManager.lan.path_guard import assert_under_root
 
 ProgressCallback = Callable[[int, int], None]
 
@@ -81,8 +80,10 @@ class ImportService:
 
     @staticmethod
     def _under_root(path: str | Path, root: str | Path) -> bool:
+        # application-layer containment check (the LAN PathGuard lives in the
+        # lan layer, which application must not import).
         try:
-            assert_under_root(root, path)
+            Path(path).resolve().relative_to(Path(root).resolve())
             return True
         except ValueError:
             return False
@@ -125,7 +126,10 @@ class ImportService:
 
         root = self.session.root
         # Reject an out-of-library destination up front.
-        assert_under_root(root, destination_dir)
+        if not self._under_root(destination_dir, root):
+            raise ValueError(
+                f"Import destination escapes the library root: {destination_dir}"
+            )
         destination = Path(destination_dir).resolve()
 
         # Expand and categorize sources before touching the filesystem, so the
