@@ -4,7 +4,7 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库（元数据、标签、缩略图），也可以通过局域网内的浏览器远程浏览和下载资产。
 
-> 当前审查证据（2026-08-13，本机 Windows / Python 3.14.3）：最近一次 Python 全量运行结果为 **3456 passed, 7 skipped, 0 failed**；`ruff check AssetsManager tests scripts run.py` **全绿**；compileall 通过；WebUI 单测 **658 passed**、`typecheck`/`build` 通过；默认 WebUI 浏览器 E2E 共 30 个测试，**28 passed、2 skipped**（真实后端用例无环境变量时跳过）。Pyright 在本机 Python 3.14 + pyright 1.1.410 下有 23 个既有类型错误（typeshed/Qt stub 版本漂移，非本轮变更引入），3.13 下的 0 errors 声明未在本机复核。远程 Python 3.12/3.13/3.14 矩阵、clean checkout/Windows package smoke 和真实后端 Commerce 验收仍需分别看待，不据此宣称整个项目完成。完整审查文档集见 `docs/full-review/`（含模块地图、数据流、事件系统、审查结果与验证基线）。
+> 当前审查证据（2026-08-13，本机 Windows / Python 3.14.3）：最近一次 Python 全量运行结果为 **3462 passed, 7 skipped, 0 failed**；`ruff check AssetsManager tests scripts run.py` **全绿**；compileall 通过；WebUI 单测 **683 passed**（103 个测试文件）、`typecheck`/`build` 通过；默认 WebUI 浏览器 E2E 共 50 个测试（6 个 spec，含 20 个 axe-core 双主题无障碍扫描），**48 passed、2 skipped**（真实后端用例无环境变量时跳过）。Pyright 在本机 Python 3.14 + pyright 1.1.410 下有 23 个既有类型错误（typeshed/Qt stub 版本漂移，非本轮变更引入），3.13 下的 0 errors 声明未在本机复核。远程 Python 3.12/3.13/3.14 矩阵、clean checkout/Windows package smoke 和真实后端 Commerce 验收仍需分别看待，不据此宣称整个项目完成。完整审查文档集见 `docs/full-review/`（含模块地图、数据流、事件系统、审查结果与验证基线）。
 
 
 > **2026-08-11 更新**：完成 UI/SVG 修复轮（13 项审计 + SVG 化 + 语义色体系 + 菜单栏）、P0 高危轮（15+4）、中危轮（D1/D2/E/F/G1/G2）与 P1 轮（M6a/M9/M6c，42 项清单）——含分享密码强度与爆破防护、投递令牌 rotate 配额守恒与撤销、匿名配额 cookie 身份、备份上限与并发检测、令牌 nonce 等。所有改动处于工作区**未提交**状态（529 条变更），未执行 stage、commit、reset 或 clean。
@@ -278,7 +278,7 @@ AssetsManager_old-bak/
 │   ├── di/                     # 依赖注入容器
 │   └── i18n/                   # 国际化（en 710 / zh 749 / ja 749 keys）
 │
-├── webui/                      # React 18 + Vite + TS SPA（196 ts/tsx）
+├── webui/                      # React 18 + Vite + TS SPA（217 ts/tsx）
 │   ├── src/                    # api(15 工厂)/stores(3 Context)/hooks(21)
 │   │                           # pages(24)/components(10 域)/types/i18n
 │   ├── e2e/                    # Playwright 5 spec（30 用例）
@@ -362,7 +362,7 @@ python -m compileall -q AssetsManager tests
 python -m pytest -q -p no:cacheprovider
 ```
 
-本机复核状态（2026-08-13，Windows / Python 3.14.3）：**Python 全量回归 3456 passed, 7 skipped, 0 failed**；**`ruff check AssetsManager tests scripts run.py` 全绿**；**compileall 通过**。默认浏览器 E2E 共 30 个测试，当前本机 **28 passed、2 skipped**；其中 Mock/Shell 子集为 12 passed，真实后端用例在未配置环境变量时跳过。7 个 Python skip 包括 Windows symlink 权限限制与历史 multiprocessing Queue 终止 draft。Pyright 在本机 Python 3.14 + pyright 1.1.410 下有 23 个既有类型错误（typeshed/Qt stub 版本漂移，非本轮变更引入），3.13 下的 0 errors 声明未在本机复核。远程 CI 的 Python 3.12/3.13/3.14 矩阵仍是独立门禁；本轮 WebUI 单测 `658 passed`、`typecheck` 与 `build` 通过。
+本机复核状态（2026-08-13，Windows / Python 3.14.3）：**Python 全量回归 3462 passed, 7 skipped, 0 failed**；**`ruff check AssetsManager tests scripts run.py` 全绿**；**compileall 通过**。默认浏览器 E2E 共 50 个测试（6 个 spec，含 20 个 axe-core 双主题无障碍扫描），当前本机 **48 passed、2 skipped**；其中 Mock/Shell 子集为 12 passed，真实后端用例在未配置环境变量时跳过。7 个 Python skip 包括 Windows symlink 权限限制与历史 multiprocessing Queue 终止 draft。Pyright 在本机 Python 3.14 + pyright 1.1.410 下有 23 个既有类型错误（typeshed/Qt stub 版本漂移，非本轮变更引入），3.13 下的 0 errors 声明未在本机复核。远程 CI 的 Python 3.12/3.13/3.14 矩阵仍是独立门禁；本轮 WebUI 单测 `683 passed`、`typecheck` 与 `build` 通过。
 > **G17 边界：** Reconciliation queue 当前支持单 library、单 application owner 下的 stop-the-world cutover、lease recovery 与 stale-worker protection；不支持旧版/新版应用同时持有同一 library 的 rolling upgrade。详细证据见 `docs/compose/reports/g17-stop-the-world-cutover-release-ownership-checklist-2026-08-08.md`。
 
 ### Cython 编译加速
@@ -451,7 +451,7 @@ $env:REAL_COMMERCE_SELLER_PASSWORD = "<isolated-admin-password>"
 npm run test:e2e -- e2e/commerce-real-backend.spec.ts
 ```
 
-默认 `webui-e2e` job 现在运行全部 5 个 spec；真实后端 spec 在未设置环境变量时自带 skip，因此默认本机结果为 28 passed、2 skipped。Mock/Shell 子集仍为 12 个测试；设置隔离后端环境变量后才会执行真实 Commerce 链路。
+默认 `webui-e2e` job 现在运行全部 6 个 spec（含 axe-core 无障碍门禁）；真实后端 spec 在未设置环境变量时自带 skip，因此默认本机结果为 48 passed、2 skipped。Mock/Shell 子集仍为 12 个测试；设置隔离后端环境变量后才会执行真实 Commerce 链路。
 
 ---
 
@@ -474,7 +474,7 @@ server.start(port=8080)
 
 ### API 端点
 
-LAN 服务器注册 **139 条路由**（页面 30 / 核心库 API 51 / Commerce-Seller 55 / 认证与 WS）。完整路由表（方法+路径+权限+handler+服务）见 `docs/full-review/02-module-map.md` 与 `docs/compose/reports` 系列；主要端点：
+LAN 服务器注册 **139 条路由**（实测 `api.py` `_add` 注册：页面 32 / Commerce-Seller 53 / 认证 8 / 核心库 API 46）。完整路由表（方法+路径+权限+handler+服务）见 `docs/full-review/02-module-map.md` 与 `docs/compose/reports` 系列；主要端点：
 
 | 端点 | 方法 | 权限 | 说明 |
 |------|------|------|------|

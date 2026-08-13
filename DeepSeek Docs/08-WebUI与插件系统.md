@@ -84,7 +84,7 @@ disable_plugin(id) → 先 unload（调用 unregister）再禁用
 - `set_language`：切换后 `AppSettings` 持久化 + 发 `signal_bus.language_changed`
 - Web 端独立 i18n：`webui/src/api/i18n.js` + `lan/static/i18n/*.json`（旧静态 UI 遗留）——**新旧两套 Web i18n 并存**（旧静态 UI 已被 React 替换，仅遗留文件）
 
-## 4. 测试体系（tests/，114 个 Python 文件，1590 passed, 1 skipped）
+## 4. 测试体系（tests/，229 个测试文件；当前 Python 全量 3462 passed, 7 skipped；WebUI 单测 103 files / 683 tests；浏览器 E2E 48 passed, 2 skipped 含 axe 门禁）
 
 | 目录 | 覆盖 | 说明 |
 |---|---|---|
