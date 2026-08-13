@@ -101,7 +101,7 @@ describe('useSearch', () => {
     expect(result.current.results).toEqual([{ path: 'after.jpg' }]);
   });
 
-  it('shares the in-flight request when invalidation refetches the same query', async () => {
+  it('aborts an in-flight search and restarts on invalidation', async () => {
     let resolveFirst!: (value: { results: Array<{ path: string }> }) => void;
     search.mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }));
     const { wrapper } = makeWrapper();
@@ -113,12 +113,12 @@ describe('useSearch', () => {
     const onInvalidation = useInvalidationMock.mock.calls[0]?.[1] as ((event: unknown) => void) | undefined;
     if (!onInvalidation) return;
     await act(async () => { onInvalidation({ domains: ['files'], paths: [] }); });
-    // The same query is still in flight: instances share one request instead
-    // of firing a second identical quick-search.
-    expect(search).toHaveBeenCalledTimes(1);
-    await act(async () => { resolveFirst({ results: [{ path: 'report.jpg' }] }); });
+    // The in-flight request predates the event and could miss its change: it
+    // is aborted and a fresh request fires.
+    expect(search).toHaveBeenCalledTimes(2);
 
-    expect(result.current.results).toEqual([{ path: 'report.jpg' }]);
+    await act(async () => { resolveFirst({ results: [{ path: 'stale.jpg' }] }); });
+    expect(result.current.results).toEqual([]);
     expect(result.current.isSearching).toBe(false);
   });
 

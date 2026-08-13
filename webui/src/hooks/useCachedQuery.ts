@@ -197,16 +197,17 @@ export function useCachedQuery<T>({
     }
   }, [snapshot, enabled, startFetch]);
 
-  // WebSocket invalidation: refetch in the background. The previous data is
-  // deliberately kept visible — dropping it here would flash every consumer
-  // to its empty state on each projection event, which the pre-cache refresh
-  // flows never did.
+  // WebSocket invalidation: refetch in the background, aborting any in-flight
+  // request. An event means the projection changed, so a response started
+  // before the event may be stale — aborting + restarting matches the legacy
+  // generation-guard flows (stale responses dropped, newest response wins).
+  // The previous data stays visible (no flash to the empty state).
   useInvalidation(
     domains,
     useCallback((event) => {
       if (!shouldInvalidate(event, domains, pathFilterRef.current)) return;
-      startFetch();
-    }, [cache, domains, startFetch]),
+      refresh();
+    }, [domains, refresh]),
   );
 
   // Optional polling.
