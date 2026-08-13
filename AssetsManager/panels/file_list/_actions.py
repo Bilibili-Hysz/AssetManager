@@ -673,11 +673,8 @@ class ActionsMixin:
     def _manage_tags_dialog(self, paths):
         if not self._lib_root:
             return
-        from AssetsManager.application.tag_service import TagServiceAdapter
         from AssetsManager.dialogs.tag_editor_dialog import TagEditorDialog
-        scoped = self._get_scoped_services()
-        adapter = TagServiceAdapter(self._lib_root, scoped.tag_service if scoped is not None else None)
-        dlg = TagEditorDialog(adapter, paths[0] if paths else str(self._current), self)
+        dlg = TagEditorDialog(self._tags_port, paths[0] if paths else str(self._current), self)
         dlg.exec()
         self._post_refresh()
 

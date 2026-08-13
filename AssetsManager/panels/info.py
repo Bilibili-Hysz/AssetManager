@@ -2,6 +2,8 @@
 
 Layout: QSplitter(preview / metadata scroll) + fixed Actions bar at bottom.
 """
+from __future__ import annotations
+
 import logging
 import os
 from pathlib import Path
@@ -16,6 +18,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QPixmap
 
 from AssetsManager.panels.base import PanelContent
+from AssetsManager.application.desktop_ports import TagsViewPort
 from AssetsManager.core.cache import LRUCache
 from AssetsManager.core.constants import IMAGE_EXTS
 from AssetsManager.core.signal_bus import get as bus
@@ -51,6 +54,8 @@ class InfoPanel(PanelContent):
         super().__init__(parent)
         self._library_root = ""
         self._scoped_services = None
+        self._metadata_port = None
+        self._tags_port: "TagsViewPort | None" = None
         self._controller = None
         self._current_path = ""
         self._preview_pixmap: QPixmap | None = None
@@ -808,6 +813,7 @@ class InfoPanel(PanelContent):
         # worker can consult it (self inside run() is the _SizeTask, which has
         # no _size_tasks attribute).
         size_tasks = self._size_tasks
+        metadata_port = self._metadata_port
         class _SizeTask(QRunnable):
             def __init__(self):
                 super().__init__()
@@ -823,9 +829,9 @@ class InfoPanel(PanelContent):
                     return
                 sz = 0
                 try:
-                    if scoped is not None and session:
+                    if scoped is not None and session and metadata_port is not None:
                         with session.operation():
-                            sz, _ = scoped.metadata_service.get_dir_size(
+                            sz, _ = metadata_port.get_dir_size(
                                 scoped.session.root, dir_path
                             )
                     else:
@@ -936,13 +942,11 @@ class InfoPanel(PanelContent):
     def _open_tag_editor(self):
         if not self._current_path or not os.path.exists(self._current_path) or not self._controller:
             return
-        from AssetsManager.application.tag_service import TagServiceAdapter
         from AssetsManager.dialogs.tag_editor_dialog import TagEditorDialog
-        scoped = self._scoped_services
-        if scoped is None:
+        tags_port = self._tags_port
+        if tags_port is None:
             return
-        adapter = TagServiceAdapter(self._library_root, scoped.tag_service)
-        dlg = TagEditorDialog(adapter, self._current_path, self)
+        dlg = TagEditorDialog(tags_port, self._current_path, self)
         if dlg.exec() == dlg.DialogCode.Accepted and dlg.was_modified():
             new_tags = self._controller.get_tags(self._current_path)
             self._render_tags(new_tags)
@@ -1002,10 +1006,13 @@ class InfoPanel(PanelContent):
 
     def set_scoped_services(self, services):
         """Bind library-scoped services resolved by MainWindow."""
+        from AssetsManager.application.desktop_ports import RootBoundTagService
         from AssetsManager.controllers.info_controller import InfoController
 
         self._scoped_services = services
         self._library_root = services.session.root_str
+        self._metadata_port = services.metadata_service
+        self._tags_port = RootBoundTagService(self._library_root, services.tag_service)
         self._current_path = ""
         self._invalidate_async_requests()
         if hasattr(self, '_classify_cache'):

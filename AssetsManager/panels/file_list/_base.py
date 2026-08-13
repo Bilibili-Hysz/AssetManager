@@ -54,7 +54,6 @@ from AssetsManager.panels.file_list._ui_helpers import (
     _make_nav_button,
     _save_search_term,
 )
-from AssetsManager.application.tag_service import TagServiceAdapter
 
 _log = logging.getLogger(__name__)
 tr = i18n.tr
@@ -85,6 +84,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._drag_started = False
         self._scoped_services = None
         self._thumbnail_service = None
+        self._file_ops_port = None
+        self._tags_service = None
+        self._tags_port = None
         self._operation_feedback_generation = 0
 
         # Controller for non-UI business logic
@@ -345,6 +347,13 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         if callable(clear_feedback):
             clear_feedback()
         self._scoped_services = services
+        # Desktop ports: the panel holds injected port objects instead of
+        # reaching into the scoped bundle for tag/metadata/file-operation
+        # services (metadata flows through the model's own service binding).
+        from AssetsManager.application.desktop_ports import RootBoundTagService
+        self._file_ops_port = services.file_operation_service
+        self._tags_service = services.tag_service
+        self._tags_port = RootBoundTagService(services.session.root_str, services.tag_service)
         # Capture the service object together with the session bundle.  This
         # is intentionally a snapshot, not a later lookup through a mutable
         # application container; async thumbnail work must retain the service
@@ -464,18 +473,16 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._grid_widget.set_performance_context(recorder, session_token, generation)
 
     def _get_file_operation_service(self):
-        scoped = self._scoped_services
-        if scoped is not None:
-            return scoped.file_operation_service
-        raise RuntimeError("FileListPanel scoped services not injected")
+        if self._file_ops_port is None:
+            raise RuntimeError("FileListPanel scoped services not injected")
+        return self._file_ops_port
 
     def _get_tag_service(self):
         if not self._lib_root:
             raise RuntimeError("FileListPanel requires a library root for TagService")
-        scoped = self._scoped_services
-        if scoped is None:
+        if self._tags_service is None:
             raise RuntimeError("FileListPanel scoped services not injected")
-        return scoped.tag_service
+        return self._tags_service
 
     def _configure_library_runtime(self, root: str):
         """Bind file-list runtime helpers to a library root."""
@@ -922,12 +929,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def _populate_details(self):
         self._capture_detail_selection()
-        scoped = self._get_scoped_services()
-        store = (
-            TagServiceAdapter(self._lib_root, scoped.tag_service)
-            if scoped is not None and self._lib_root
-            else None
-        )
+        store = self._tags_port if self._lib_root else None
         self._detail_model.set_source(self._model, store=store, lib_root=self._lib_root)
         self._restore_detail_selection()
         self._update_status()
@@ -1130,7 +1132,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         in_library = [p for p in sources if p.is_relative_to(root)]
         external = [p for p in sources if p not in in_library]
 
-        service = scoped.file_operation_service
+        service = self._get_file_operation_service()
         changed_paths = []
         errors = []
         warnings = []
@@ -1274,6 +1276,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._controller.set_file_operations(None, None)
         self._scoped_services = None
         self._thumbnail_service = None
+        self._file_ops_port = None
+        self._tags_service = None
+        self._tags_port = None
         self._undo_svc = None
         self._clear_operation_feedback()
         super().shutdown()

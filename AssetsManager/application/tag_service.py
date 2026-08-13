@@ -336,38 +336,8 @@ class TagService:
         """
 
 
-class TagServiceAdapter:
-    """Adapter that makes TagService conform to TagStoreProtocol.
-
-    ``TagEditorDialog`` expects a ``TagStore``-like object.  This adapter
-    wraps ``TagService`` so the dialog can use it without knowing about
-    ``library_root``.
-    """
-
-    def __init__(self, library_root: str | Path, svc: TagService | None = None):
-        self._root = str(Path(library_root).resolve())
-        self._svc = svc or TagService()
-
-    def get_tags(self, filepath: str) -> list[str]:
-        return self._svc.get_tags(self._root, filepath)
-
-    def get_tags_for_files(self, filepaths: list[str]) -> dict[str, list[str]]:
-        return self._svc.get_tags_for_files(self._root, filepaths)
-
-    def add_tag(self, filepath: str, tag: str) -> None:
-        self._svc.add_tag(self._root, filepath, tag)
-
-    def remove_tag(self, filepath: str, tag: str) -> None:
-        self._svc.remove_tag(self._root, filepath, tag)
-
-    def remove_file(self, filepath: str) -> None:
-        self._svc.remove_file(self._root, filepath)
-
-    def get_all_tags(self) -> list[str]:
-        return self._svc.get_all_tags(self._root)
-
-    def get_files_by_tag(self, tag: str) -> set[str]:
-        return self._svc.get_files_by_tag(self._root, tag)
-
-    def save(self) -> None:
-        pass  # auto-commit
+# ``TagServiceAdapter``'s root-bound adapter moved to the desktop port layer
+# (``AssetsManager.application.desktop_ports.RootBoundTagService``).  This
+# re-export is retained purely for backward compatibility with existing
+# tests/docs that import the historical name from this module.
+from AssetsManager.application.desktop_ports import RootBoundTagService as TagServiceAdapter  # noqa: E402, F401

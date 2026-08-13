@@ -34,6 +34,7 @@ class TagTreePanel(PanelContent):
         self._controller: TagTreeController | None = None
         self._active_tag_filter: str | None = None
         self._scoped_services = None
+        self._tags_port = None
         self._runtime = None
         self._runtime_subscription = None
         self._binding_generation = 0
@@ -300,7 +301,8 @@ class TagTreePanel(PanelContent):
         self._runtime = runtime
         self._scoped_services = services
         self._library_root = services.session.root_str
-        self._controller = TagTreeController(self._library_root, tag_svc=services.tag_service)
+        self._tags_port = services.tag_service
+        self._controller = TagTreeController(self._library_root, tag_svc=self._tags_port)
         if self._active_tag_filter and old_root != self._library_root:
             self._active_tag_filter = None
         if runtime is not None:
@@ -320,6 +322,7 @@ class TagTreePanel(PanelContent):
         self._runtime = None
         self._controller = None
         self._scoped_services = None
+        self._tags_port = None
         self._active_tag_filter = None
         self._tree.clear()
 
@@ -339,7 +342,7 @@ class TagTreePanel(PanelContent):
             and not scoped.session.is_closed
             and scoped.session.root_str == root
         ):
-            self._controller = TagTreeController(root, tag_svc=scoped.tag_service)
+            self._controller = TagTreeController(root, tag_svc=self._tags_port)
         else:
             self._controller = None
         self._active_tag_filter = None
