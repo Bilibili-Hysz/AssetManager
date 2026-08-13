@@ -52,6 +52,8 @@ LAN_ROUTES = ROOT / "AssetsManager" / "lan" / "routes"
 APPLICATION = ROOT / "AssetsManager" / "application"
 THEMES = ROOT / "assets" / "Themes"
 WIDGETS = ROOT / "AssetsManager" / "widgets"
+CORE = ROOT / "AssetsManager" / "core"
+DIALOGS = ROOT / "AssetsManager" / "dialogs"
 I18N = ROOT / "AssetsManager" / "i18n"
 
 MARKER_RE = re.compile(r"<!-- stats:(?P<body>[^>]*) -->")
@@ -130,6 +132,8 @@ def measured() -> dict[str, str]:
         "app_services": str(count_module_files(APPLICATION)),
         "themes": str(count_files("*.json", THEMES)),
         "widgets": str(count_module_files(WIDGETS)),
+        "core": str(count_module_files(CORE)),
+        "dialogs": str(count_module_files(DIALOGS)),
         "domain_events": str(count_domain_events()),
         "icons": str(count_icons()),
         **{k: str(v) for k, v in i18n.items()},
@@ -152,6 +156,8 @@ _ANCHORS: dict[str, tuple[re.Pattern[str], str, str]] = {
     "app_services_ascii": (re.compile(r"Application Layer（\d+ 模块）"), "Application Layer（{v} 模块）", "app_services"),
     "themes": (re.compile(r"\d+ 个主题 JSON"), "{v} 个主题 JSON", "themes"),
     "widgets": (re.compile(r"可复用 Qt 组件（\d+ 个）"), "可复用 Qt 组件（{v} 个）", "widgets"),
+    "core": (re.compile(r"基础设施层（\d+ 模块"), "基础设施层（{v} 模块", "core"),
+    "dialogs": (re.compile(r"Qt 对话框（\d+ 个）"), "Qt 对话框（{v} 个）", "dialogs"),
     "domain_events": (re.compile(r"\d+ 个领域事件"), "{v} 个领域事件", "domain_events"),
     "icons": (re.compile(r"（\d+ 图标"), "（{v} 图标", "icons"),
 }

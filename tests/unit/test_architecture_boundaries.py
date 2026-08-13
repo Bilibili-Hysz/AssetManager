@@ -614,8 +614,13 @@ def test_lan_runtime_services_are_built_only_by_bootstrap() -> None:
 
 def test_lan_server_projects_runtime_services_without_reassembly() -> None:
     source = (SRC / "lan" / "server.py").read_text(encoding="utf-8")
+    # The canonical snapshot accessor moved to runtime_validation.py in the
+    # server split (01c26b9); server.py must keep calling it and projecting
+    # the snapshot instead of reassembling services.
+    validation = (SRC / "lan" / "runtime_validation.py").read_text(encoding="utf-8")
 
-    assert "runtime.services_snapshot" in source
+    assert "runtime.services_snapshot" in validation
+    assert "_runtime_services_snapshot(runtime)" in source
     assert "runtime_services.lan_services" in source
     assert "runtime_services.sharing_services" in source
     assert "runtime_services=runtime_services" in source
