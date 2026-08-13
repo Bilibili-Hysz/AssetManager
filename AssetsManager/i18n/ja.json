@@ -239,7 +239,7 @@
   "tagstyle.clear": "クリア",
   "tagstyle.clear_color": "色をクリア",
   "viewer.no_image": "画像がありません",
-  "viewer.footer": "スクロールで拡大縮小 · ドラッグで移動 · 左右キーで前後 · Esc で閉じる",
+  "viewer.footer": "スクロールで拡大縮小 · ドラッグで移動 · ←/→ 前後 · スペース再生 · R 回転 · Esc で閉じる",
   "dock.float": "ポップアウト / ドック",
   "dock.close": "パネルを閉じる",
   "dock.split_h": "水平分割",

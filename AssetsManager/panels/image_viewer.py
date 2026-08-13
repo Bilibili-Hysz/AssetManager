@@ -6,6 +6,8 @@ Features:
   - Smooth wheel zoom anchored under cursor
   - Fit-to-window / Actual-size shortcuts
   - Prev/Next image navigation with keyboard
+  - Slideshow auto-advance (Space)
+  - Rotate 90° (R / Shift+R)
   - Theme-aware styling
   - Cursor feedback (grab/grabbing via QGraphicsView default)
 """
@@ -16,7 +18,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal, QRectF, QRect, QTimer, QSize
 from PySide6.QtGui import (
     QPixmap, QColor, QPainter, QPen, QFont,
-    QImageReader,
+    QImageReader, QTransform,
 )
 from PySide6.QtWidgets import (
     QFrame, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
@@ -100,9 +102,15 @@ class ImageViewerOverlay(QFrame):
         self._host = parent
         self._host_window = owner
         self._pixmap: QPixmap | None = None
+        self._base_pixmap: QPixmap | None = None
+        self._rotation = 0
         self._current_path: str = ""
         self._image_list: list[str] = []
         self._image_idx = -1
+        # Slideshow auto-advance timer (toggled with Space).
+        self._slideshow_timer = QTimer(self)
+        self._slideshow_timer.setInterval(3000)
+        self._slideshow_timer.timeout.connect(lambda: self._nav(1))
         # Directory scan cache: parent dir -> (dir mtime, sorted image list).
         # Keyed by directory so paging through a folder rescans at most once
         # per change instead of once per image. Capacity is capped (simple
@@ -147,6 +155,8 @@ class ImageViewerOverlay(QFrame):
                 self._pixmap = None
                 return
             self._pixmap = QPixmap.fromImage(qimg)
+            self._base_pixmap = self._pixmap
+            self._rotation = 0
             self._update_scene()
             self.update()
         except Exception:
@@ -250,6 +260,28 @@ class ImageViewerOverlay(QFrame):
         if target != self._current_path:
             self.load_image(target)
             QTimer.singleShot(10, self._view.fit_in_view)
+
+    def _toggle_slideshow(self):
+        """Start/stop auto-advance through the directory image list."""
+        if self._slideshow_timer.isActive():
+            self._slideshow_timer.stop()
+        else:
+            self._slideshow_timer.start()
+        self.update()
+
+    def _rotate(self, degrees: int):
+        """Rotate the displayed image by *degrees* (multiples of 90)."""
+        if self._base_pixmap is None or self._base_pixmap.isNull():
+            return
+        self._rotation = (self._rotation + degrees) % 360
+        self._pixmap = self._base_pixmap.transformed(
+            QTransform().rotate(self._rotation)
+        )
+        self._update_scene()
+        self.update()
+
+    def _slideshow_active(self) -> bool:
+        return self._slideshow_timer.isActive()
 
     # ── Chrome painting ─────────────────────────────────────────
 
@@ -361,12 +393,16 @@ class ImageViewerOverlay(QFrame):
         k = event.key()
         if k in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
             self.close()
+        elif k == Qt.Key.Key_Space:
+            self._toggle_slideshow()
         elif k == Qt.Key.Key_Left:
             self._nav(-1)
         elif k == Qt.Key.Key_Right:
             self._nav(1)
         elif k == Qt.Key.Key_F:
             self._view.fit_in_view()
+        elif k == Qt.Key.Key_R:
+            self._rotate(-90 if event.modifiers() & Qt.KeyboardModifier.ShiftModifier else 90)
         elif k in (Qt.Key.Key_1, Qt.Key.Key_0):
             self._view.reset_zoom()
         elif k == Qt.Key.Key_Plus or k == Qt.Key.Key_Equal:

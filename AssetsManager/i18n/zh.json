@@ -239,7 +239,7 @@
   "tagstyle.clear": "清除",
   "tagstyle.clear_color": "清除颜色",
   "viewer.no_image": "无图像",
-  "viewer.footer": "滚轮缩放 · 拖拽平移 · 使用左右键浏览 · Esc 关闭",
+  "viewer.footer": "滚轮缩放 · 拖拽平移 · ←/→ 浏览 · 空格播放 · R 旋转 · Esc 关闭",
   "dock.float": "弹出 / 停靠",
   "dock.close": "关闭面板",
   "dock.split_h": "水平分割",
