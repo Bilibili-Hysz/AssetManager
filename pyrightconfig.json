@@ -66,7 +66,6 @@
     "AssetsManager/widgets/tab_container.py",
     "AssetsManager/widgets/tag_chip.py",
     "AssetsManager/widgets/theme_preview.py",
-    "AssetsManager/widgets/title_bar.py",
     "AssetsManager/widgets/toast.py",
     "AssetsManager/widgets/tray.py",
     "AssetsManager/widgets/workspace_bar.py"

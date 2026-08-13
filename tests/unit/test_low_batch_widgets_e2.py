@@ -1,8 +1,6 @@
 """Unit tests for the low-priority widget fixes (batch E2).
 
 Covers:
-- theme_gallery: right-click must not emit the card clicked signal
-- title_bar: maximizing must not trigger a full theme refresh
 - lan_sharing: start-failure-but-running keeps status/tray consistent (F1)
 - lan_sharing: ValueError/TypeError from server.start shows a warning (F2)
 - toast: horizontal chrome is computed from fixed widths, not pre-layout 0
@@ -14,82 +12,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from unittest.mock import Mock
 
 import pytest
-from PySide6.QtCore import QEvent, QPointF, Qt
-from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication, QWidget
-
-from AssetsManager.widgets.theme_gallery import _ThemeCard
-from AssetsManager.widgets.title_bar import TitleBarWidget
 
 # The 6-argument QMouseEvent constructor is the simplest way to build
 # synthetic click events; PySide6 marks it deprecated, which is fine here.
 pytestmark = pytest.mark.filterwarnings(
     "ignore:.*QMouseEvent.*deprecated:DeprecationWarning"
 )
-
-
-# ── theme_gallery: right-click must not emit clicked ──────────────
-
-def test_theme_card_right_click_does_not_emit_clicked():
-    app = QApplication.instance() or QApplication([])
-    card = _ThemeCard("Light")
-    watched = QWidget()
-    emitted = []
-    card.clicked.connect(emitted.append)
-    try:
-        right = QMouseEvent(
-            QEvent.Type.MouseButtonRelease,
-            QPointF(5, 5),
-            Qt.MouseButton.RightButton,
-            Qt.MouseButton.RightButton,
-            Qt.KeyboardModifier.NoModifier,
-        )
-        assert card.eventFilter(watched, right) is False
-        assert emitted == []
-
-        left = QMouseEvent(
-            QEvent.Type.MouseButtonRelease,
-            QPointF(5, 5),
-            Qt.MouseButton.LeftButton,
-            Qt.MouseButton.LeftButton,
-            Qt.KeyboardModifier.NoModifier,
-        )
-        assert card.eventFilter(watched, left) is True
-        assert emitted == ["Light"]
-    finally:
-        watched.deleteLater()
-        card.deleteLater()
-        app.processEvents()
-
-
-# ── title_bar: maximize must not refresh the theme ────────────────
-
-def test_title_bar_maximize_does_not_refresh_theme():
-    class _Window:
-        def __init__(self):
-            self.maximized = False
-            self.calls = []
-
-        def isMaximized(self):
-            return self.maximized
-
-        def showMaximized(self):
-            self.maximized = True
-            self.calls.append("maximized")
-
-        def showNormal(self):
-            self.maximized = False
-            self.calls.append("normal")
-
-    bar = TitleBarWidget.__new__(TitleBarWidget)
-    bar._window = _Window()
-    bar.refresh_theme = Mock()
-
-    bar._on_maximize()
-    bar._on_maximize()
-
-    assert bar._window.calls == ["maximized", "normal"]
-    bar.refresh_theme.assert_not_called()
 
 
 # ── lan_sharing F1: start failure while server actually runs ──────

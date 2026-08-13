@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager.widgets.elevation import apply_elevation
-from AssetsManager.widgets.title_bar import TitleBarWidget
 
 
 class _VisualDialog(TabbedDialog):
@@ -229,27 +228,6 @@ def test_close_event_invokes_dialog_closed_hook():
     assert calls.count("closed") >= 1
     dialog.deleteLater()
     app.processEvents()
-
-
-# ── TitleBar tests ─────────────────────────────────────────────
-
-
-def test_title_bar_has_border_bottom():
-    """TitleBarWidget includes border-bottom for visual separation."""
-    app = QApplication.instance() or QApplication([])
-    window = QWidget()
-    window.resize(800, 400)
-    try:
-        bar = TitleBarWidget(window)
-        bar.show()
-        app.processEvents()
-        qss = bar.styleSheet()
-        assert "border-bottom" in qss
-        assert "border" in qss
-    finally:
-        bar.deleteLater()
-        window.deleteLater()
-        app.processEvents()
 
 
 # ── Heading accent + Slider theme tests ────────────────────────

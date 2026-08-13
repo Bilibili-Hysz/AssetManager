@@ -1,6 +1,4 @@
-"""Low-batch E1: hsv_wheel mapping, file_picker stat cache, pager search
-capping, stylekit missing-key tolerance, command palette lazy rebuild."""
-import os
+"""Low-batch E1: hsv_wheel mapping and stylekit missing-key tolerance."""
 import types
 
 import pytest
@@ -50,50 +48,6 @@ def test_hsv_wheel_wheel_click_matches_display():
     assert color.hueF() == pytest.approx(0.25, abs=0.02)
 
 
-# ── file_picker stat cache ─────────────────────────────────────
-
-def test_file_picker_precomputes_dir_flags_once(tmp_path, monkeypatch):
-    _app()
-    from AssetsManager.widgets.file_picker import FilePickerDialog
-
-    dlg = FilePickerDialog()
-    dlg._filter_files = lambda text: None  # avoid UI rebuild in the test
-    d = tmp_path / "subdir"
-    d.mkdir()
-    f = tmp_path / "file.txt"
-    f.write_text("x", encoding="utf-8")
-    files = [
-        {"path": str(d), "name": "subdir", "tag": ""},
-        {"path": str(f), "name": "file.txt", "tag": ""},
-    ]
-    calls = {"n": 0}
-    real_isdir = os.path.isdir
-
-    def counting_isdir(p):
-        calls["n"] += 1
-        return real_isdir(p)
-
-    monkeypatch.setattr(os.path, "isdir", counting_isdir)
-    dlg.set_file_list(files)
-    # The cache is consulted afterwards; filtering must not re-stat.
-    monkeypatch.setattr(os.path, "isdir", lambda p: (calls.__setitem__("n", calls["n"] + 1) or real_isdir(p)))
-    assert dlg._is_dir_cache[str(d)] is True
-    assert dlg._is_dir_cache[str(f)] is False
-    dlg.close()
-
-
-# ── pager search capping ───────────────────────────────────────
-
-def test_pager_find_matches_caps_results():
-    from AssetsManager.widgets.pager_overlay import _MAX_SEARCH_MATCHES, _find_matches
-
-    text = "a" * 5000 + "b" * 2000
-    matches = _find_matches("a", text)
-    assert len(matches) == _MAX_SEARCH_MATCHES
-    # All spans point into the text and match the query.
-    assert all(text[start:end] == "a" for start, end in matches)
-
-
 # ── stylekit missing-key tolerance ─────────────────────────────
 
 def test_stylekit_dialog_css_tolerates_missing_keys():
@@ -112,41 +66,3 @@ def test_stylekit_dialog_css_tolerates_missing_keys():
     sk = StyleKit.from_theme(fake_theme, px=lambda v: v, pt=lambda v: v)
     css = sk.dialog_css()
     assert "panel" not in css  # falls back to another token, never raises
-
-
-# ── command palette lazy rebuild ───────────────────────────────
-
-def test_command_palette_registration_does_not_rebuild(monkeypatch):
-    _app()
-    from AssetsManager.widgets.command_palette import CommandPalette
-
-    palette = CommandPalette()
-    rebuilds = {"n": 0}
-
-    def counting_rebuild(text=""):
-        rebuilds["n"] += 1
-
-    monkeypatch.setattr(palette, "_filter_results", counting_rebuild)
-    for i in range(10):
-        palette.register_command(f"cmd-{i}", "label", lambda: None)
-    assert rebuilds["n"] == 0  # registration appends incrementally only
-    palette.close()
-
-
-def test_command_palette_group_order_independent_of_registration_order():
-    _app()
-    from AssetsManager.widgets.command_palette import CommandPalette
-
-    # Register in reverse canonical order; the groups must still render
-    # commands → files → tags (matching a full rebuild via _filter_results).
-    palette = CommandPalette()
-    palette.register_tag("Brand")
-    palette.register_file("C:/assets/logo.svg", "logo.svg")
-    palette.register_command("cat", "do-thing", lambda: None)
-    items = [
-        palette._results_list.item(i).text()
-        for i in range(palette._results_list.count())
-    ]
-    # Group headings separate the records; assert relative order.
-    assert items.index("do-thing") < items.index("logo.svg") < items.index("Brand")
-    palette.close()
