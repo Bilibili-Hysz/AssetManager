@@ -102,7 +102,11 @@ def _guest_capabilities(settings: Any) -> Capabilities:
 def principal_for_request(kind: PrincipalKind, *, user: Mapping[str, object] | None = None,
                           settings: Any = None) -> SessionPrincipal:
     """Build a principal from an explicit auth kind; credentials are never accepted."""
-    all_caps = Capabilities(True, True, True, True, True, True, True, True)
+    # ``upload`` is intentionally False for every principal: the capability is
+    # retired (gap G4-1) — no upload endpoint exists, so no identity may claim
+    # it.  Keeping the field (always False) preserves the public capabilities
+    # shape while removing the former admin ``upload: True`` false promise.
+    all_caps = Capabilities(True, True, True, False, True, True, True, True)
     user_caps = Capabilities(True, True, True, False, False, False, False, True)
     viewer_caps = Capabilities(True, True, False, False, False, False, False, True)
     if kind == "user":

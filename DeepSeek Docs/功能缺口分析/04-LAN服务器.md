@@ -9,6 +9,8 @@
 - **用户影响**：团队协作场景无法通过浏览器向库添加文件；权限模型对用户是"虚假承诺"
 - **实现路径**：`POST /api/upload`（multipart，PathGuard 校验目标目录 + `sanitize_filename` + `unique_destination` 防冲突 → `FileOperationService.copy` 语义 + 事件广播）；限流/大小限制（复用 downloads 的 500MB 常量思路）；WebUI 拖放上传组件；**完成权限语义闭环**（L）
 
+> **处理状态（2026-08-15）**：选择「下线能力声明」——`principal.py` 的 `all_caps`（admin/password/access_key/local_ui）将 `upload` 由 `True` 改为 `False`，消除「admin 有上传」的虚假承诺；`upload` 字段保留为恒 `False` 的保留字段（公开 capabilities 形状不变，无契约/TS 涟漪）。真正实现上传仍列为 P1/P2 后续（`G4-2` 远程文件管理是其姊妹项，可一并在「实现上传」时补）。
+
 ## G4-2 无远程文件管理端点 [P1][L]
 
 - **现状**：Web 端只能浏览/下载；无 重命名/移动/删除/新建文件夹 端点（桌面 `FileOperationService` 7 个操作全部未暴露）；标签写接口 admin-only（tags.py:41-70）
