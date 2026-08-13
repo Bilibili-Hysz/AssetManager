@@ -186,3 +186,39 @@ def test_routes_do_not_reimplement_the_library_root_check():
                 line_no = src[: m.start()].count("\n") + 1
                 violations.append(f"{file.name}:{line_no}")
     assert violations == [], f"inline is_relative_to outside the allowlist: {violations}"
+
+
+# ── Domain/LAN error unification contract ────────────────────────
+
+def test_lan_path_errors_are_domain_subclasses_and_path_guard_errors():
+    """The LAN PathGuard errors must be catchable both as domain errors
+    (error mapping) and as PathGuardError (route-local handlers)."""
+    from AssetsManager.domain.errors import (
+        MissingPathError as DomainMissingPathError,
+    )
+    from AssetsManager.domain.errors import PathEscapeError as DomainPathEscapeError
+    from AssetsManager.lan.path_guard import (
+        MissingPathError,
+        PathEscapeError,
+        PathGuardError,
+    )
+
+    assert issubclass(PathEscapeError, DomainPathEscapeError)
+    assert issubclass(PathEscapeError, PathGuardError)
+    assert issubclass(MissingPathError, DomainMissingPathError)
+    assert issubclass(MissingPathError, PathGuardError)
+
+    # Raise points carry path/root context for the domain error payload.
+    escape = PathEscapeError("/outside", "/root")
+    assert escape.path == "/outside" and escape.root == "/root"
+    missing = MissingPathError("/missing")
+    assert missing.path == "/missing"
+
+
+def test_path_guard_raise_sites_are_domain_catchable(tmp_path):
+    from AssetsManager.domain.errors import PathEscapeError as DomainPathEscapeError
+    from AssetsManager.lan.path_guard import PathGuard
+
+    guard = PathGuard(tmp_path / "library")
+    with pytest.raises(DomainPathEscapeError):
+        guard.resolve("../outside.txt")

@@ -6,10 +6,8 @@ import asyncio
 from aiohttp import web
 
 from AssetsManager.application.gallery_service import GalleryTraversalLimitError
-from AssetsManager.domain.errors import MissingPathError as DomainMissingPathError
-from AssetsManager.domain.errors import PathEscapeError as DomainPathEscapeError
-from AssetsManager.lan.path_guard import MissingPathError as LanMissingPathError
-from AssetsManager.lan.path_guard import PathEscapeError as LanPathEscapeError
+from AssetsManager.domain.errors import MissingPathError
+from AssetsManager.domain.errors import PathEscapeError
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
     get_gallery_service,
@@ -82,9 +80,9 @@ async def handle_gallery_collection(request):
         )
     except web.HTTPException:
         raise
-    except (LanPathEscapeError, DomainPathEscapeError):
+    except PathEscapeError:
         return error_response("Path escape detected", status=400, code="path_escape_detected", field="path")
-    except (LanMissingPathError, DomainMissingPathError):
+    except MissingPathError:
         return error_response("Collection not found", status=404, code="not_found")
     except GalleryTraversalLimitError as exc:
         return error_response(exc)
@@ -110,9 +108,9 @@ async def handle_gallery_resolve(request):
         response = await asyncio.to_thread(service.resolve, lan.library_root, relative_path)
     except web.HTTPException:
         raise
-    except (LanPathEscapeError, DomainPathEscapeError):
+    except PathEscapeError:
         return error_response("Path escape detected", status=400, code="path_escape_detected", field="path")
-    except (LanMissingPathError, DomainMissingPathError):
+    except MissingPathError:
         return error_response("Path not found", status=404, code="not_found")
     except GalleryTraversalLimitError as exc:
         return error_response(exc)

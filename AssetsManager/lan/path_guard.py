@@ -10,17 +10,36 @@ import os
 import re
 from pathlib import Path
 
+from AssetsManager.domain.errors import MissingPathError as DomainMissingPathError
+from AssetsManager.domain.errors import PathEscapeError as DomainPathEscapeError
+
 
 class PathGuardError(ValueError):
     """Base error for path guard failures."""
 
 
-class PathEscapeError(PathGuardError):
-    """Raised when a path resolves outside the allowed root."""
+class PathEscapeError(DomainPathEscapeError, PathGuardError):
+    """Raised when a path resolves outside the allowed root.
+
+    Inherits the domain :class:`AssetsManager.domain.errors.PathEscapeError`
+    so domain-level handlers (e.g. the LAN error mapping) treat it uniformly,
+    and ``PathGuardError`` so LAN route-local ``except PathGuardError``
+    handlers keep working unchanged.
+    """
+
+    def __init__(self, path: str = "", root: str = ""):
+        DomainPathEscapeError.__init__(self, path, root)
 
 
-class MissingPathError(PathGuardError):
-    """Raised when an existing path is required but missing."""
+class MissingPathError(DomainMissingPathError, PathGuardError):
+    """Raised when an existing path is required but missing.
+
+    Mirrors :class:`AssetsManager.domain.errors.MissingPathError` for the
+    same catch-compatibility reasons as :class:`PathEscapeError`.
+    """
+
+    def __init__(self, path: str = ""):
+        DomainMissingPathError.__init__(self, path)
 
 
 class InvalidPathError(PathGuardError):
@@ -61,7 +80,7 @@ def assert_under_root(root: str | Path, candidate: str | Path) -> Path:
     resolved_root = Path(root).resolve()
     resolved = Path(candidate).resolve()
     if not resolved.is_relative_to(resolved_root):
-        raise PathEscapeError("Path escape detected")
+        raise PathEscapeError(str(resolved), str(resolved_root))
     return resolved
 
 
@@ -87,7 +106,7 @@ class PathGuard:
             # these as a 400-class guard error instead of a 500.
             raise InvalidPathError("Invalid path syntax") from exc
         if not target.is_relative_to(self.root):
-            raise PathEscapeError("Path escape detected")
+            raise PathEscapeError(str(target), str(self.root))
         if os.name == "nt":
             # NTFS alternate data streams (file.txt:Zone.Identifier) pass
             # is_relative_to but open a different stream on Windows; reject
@@ -102,7 +121,7 @@ class PathGuard:
         """Resolve a path and require that it exists."""
         target = self.resolve(rel_path)
         if not target.exists():
-            raise MissingPathError("File not found")
+            raise MissingPathError(str(target))
         return target
 
     def existing_key(self, rel_path: str | Path = "") -> str:
