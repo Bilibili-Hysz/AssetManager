@@ -21,7 +21,7 @@ from AssetsManager.core.format_utils import CATEGORY_MAP, format_size
 from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import ActivityChanged, PresenceChanged
-from AssetsManager.lan.path_guard import MissingPathError, PathEscapeError, PathGuard, PathGuardError
+from AssetsManager.lan.path_guard import MissingPathError, PathEscapeError, PathGuard, PathGuardError, assert_under_root
 
 _log = logging.getLogger(__name__)
 
@@ -372,8 +372,9 @@ def _zip_entry_allowed(root: Path, entry: str) -> bool:
     if os.path.islink(entry):
         return False
     try:
-        return Path(entry).resolve().is_relative_to(root)
-    except (ValueError, OSError):
+        assert_under_root(root, entry)
+        return True
+    except (PathGuardError, ValueError, OSError):
         return False
 
 

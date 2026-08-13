@@ -114,3 +114,75 @@ def test_path_guard_rejects_ads_separator_on_windows(tmp_path):
         assert guard.resolve("file.txt:Zone.Identifier") == (
             tmp_path / "file.txt:Zone.Identifier"
         ).resolve()
+
+
+# ── Shared predicates + single-validation-channel contract ─────────
+
+def test_reject_path_text_rejects_control_characters_and_ads():
+    import os
+
+    from AssetsManager.lan.path_guard import InvalidPathError, reject_path_text
+
+    with pytest.raises(InvalidPathError):
+        reject_path_text("a\x00b")
+    with pytest.raises(InvalidPathError):
+        reject_path_text("a\nb")
+    if os.name == "nt":
+        with pytest.raises(InvalidPathError):
+            reject_path_text("file.txt:stream")
+    else:
+        # POSIX ':' is a legal filename character.
+        reject_path_text("file.txt:stream")
+
+
+def test_assert_under_root_accepts_and_rejects(tmp_path):
+    from AssetsManager.lan.path_guard import PathEscapeError, assert_under_root
+
+    inside = tmp_path / "dir" / "file.txt"
+    inside.parent.mkdir()
+    inside.write_text("x", encoding="utf-8")
+    assert assert_under_root(tmp_path, inside) == inside.resolve()
+
+    outside = tmp_path.parent / "outside.txt"
+    outside.write_text("x", encoding="utf-8")
+    with pytest.raises(PathEscapeError):
+        assert_under_root(tmp_path, outside)
+
+
+def test_share_target_resolution_uses_the_shared_gate():
+    import tempfile
+    from types import SimpleNamespace
+
+    from AssetsManager.lan.routes.shares import _resolve_share_target
+
+    library = Path(tempfile.mkdtemp(prefix="am-lib-"))
+    (library / "scoped").mkdir()
+    (library / "scoped" / "asset.txt").write_text("x", encoding="utf-8")
+    lan = SimpleNamespace(library_root=library)
+    share = SimpleNamespace(paths=["scoped"])
+
+    assert _resolve_share_target(lan, share, "scoped/asset.txt") is not None
+    # NUL must be rejected by the shared character gate, never reach pathlib.
+    assert _resolve_share_target(lan, share, "scoped\x00evil") is None
+    # Parent escape is rejected by the shared containment predicate.
+    assert _resolve_share_target(lan, share, "../outside.txt") is None
+
+
+def test_routes_do_not_reimplement_the_library_root_check():
+    """Contract: route modules must not inline is_relative_to against the
+    library root.  The shared predicates (PathGuard / assert_under_root) are
+    the only library-root containment checks; share-scope checks inside
+    _resolve_share_target are the sole permitted is_relative_to use."""
+    import re
+    from pathlib import Path as _P
+
+    routes_dir = _P(__file__).resolve().parent.parent.parent / "AssetsManager" / "lan" / "routes"
+    allowed = {"shares.py"}
+    violations = []
+    for file in sorted(routes_dir.glob("*.py")):
+        src = file.read_text(encoding="utf-8")
+        for m in re.finditer(r"\.is_relative_to\(", src):
+            if file.name not in allowed:
+                line_no = src[: m.start()].count("\n") + 1
+                violations.append(f"{file.name}:{line_no}")
+    assert violations == [], f"inline is_relative_to outside the allowlist: {violations}"

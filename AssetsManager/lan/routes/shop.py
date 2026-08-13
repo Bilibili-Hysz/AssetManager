@@ -27,6 +27,7 @@ from AssetsManager.domain.errors import (
     StoreNotAcceptingOrdersError,
     ValidationError,
 )
+from AssetsManager.lan.path_guard import PathGuardError, assert_under_root
 from AssetsManager.lan.routes._helpers import get_lan, get_request_principal
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes.image import serve_verified_image
@@ -340,9 +341,12 @@ async def handle_public_shop_item_media(request: web.Request) -> web.StreamRespo
             size = min(max(int(request.query.get("size", "512")), 16), 2048)
         except (TypeError, ValueError):
             size = 512
-        root = Path(lan.library_root).resolve()
-        target = (root / relative).resolve()
-        if not target.is_relative_to(root):
+        # The media path comes from the database, not the query string, but it
+        # must still be confined to the library root — resolve + containment
+        # go through the shared predicate so no route re-implements it.
+        try:
+            target = assert_under_root(lan.library_root, Path(lan.library_root) / relative)
+        except (PathGuardError, ValueError, OSError):
             return web.Response(status=404)
         return await serve_verified_image(request, target, max_size=size, public=True)
     except Exception as exc:

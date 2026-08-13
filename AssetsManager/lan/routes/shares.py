@@ -11,6 +11,7 @@ from aiohttp import web
 from AssetsManager.domain.errors import ValidationError
 from AssetsManager.domain.share import ShareLink
 from AssetsManager.domain.asset import IMAGE_EXTS
+from AssetsManager.lan.path_guard import PathGuardError, assert_under_root, reject_path_text
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import LAN_APP_KEY, get_lan, get_share_service, get_request_principal, get_share_token, require_permission, sanitize_filename, set_share_cookie, set_request_principal, validate_path
 from AssetsManager.lan.principal import principal_for_request
@@ -33,20 +34,19 @@ def _content_disposition_filename(name: str) -> str:
 def _resolve_share_target(lan, share: ShareLink, rel_path: str) -> Path | None:
     """Resolve a path within a share's scope, with path traversal protection.
 
-    Uses canonical path containment (``Path.is_relative_to``) instead of
-    string prefix checks so that ``..`` segments and other tricks cannot
-    escape the share scope.
+    Reuses the PathGuard character gate and the shared containment predicate
+    instead of inline checks, so ``..`` segments, control characters, and
+    NTFS stream separators are all rejected by the same code every other
+    route uses.
     """
-    library_root = lan.library_root.resolve()
     try:
-        candidate = (library_root / rel_path).resolve()
-    except (ValueError, OSError):
-        return None
-    if not candidate.is_relative_to(library_root):
+        reject_path_text(rel_path)
+        candidate = assert_under_root(lan.library_root, Path(lan.library_root) / rel_path)
+    except (PathGuardError, ValueError, OSError):
         return None
     for sp in share.paths:
         try:
-            full = (library_root / sp).resolve()
+            full = (Path(lan.library_root) / sp).resolve()
         except (ValueError, OSError):
             continue
         if not full.exists():

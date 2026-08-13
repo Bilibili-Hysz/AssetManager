@@ -35,6 +35,36 @@ class InvalidPathError(PathGuardError):
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
+def reject_path_text(text: str) -> None:
+    """Reject path text that must never reach the filesystem.
+
+    Raises :class:`InvalidPathError` for C0 control characters (including
+    NUL) and — on Windows — the NTFS alternate data stream separator (``:``).
+    Every route-level path resolution must go through this gate, either
+    directly or via :meth:`PathGuard.resolve`, so no route re-implements
+    the character check inline.
+    """
+    if _CONTROL_CHARS_RE.search(text):
+        raise InvalidPathError("Path contains control characters")
+    if os.name == "nt" and ":" in text:
+        raise InvalidPathError("Path contains a stream separator")
+
+
+def assert_under_root(root: str | Path, candidate: str | Path) -> Path:
+    """Resolve *candidate* (an absolute path) and require it under *root*.
+
+    Raises :class:`PathEscapeError` when the resolved candidate escapes the
+    resolved root.  This is the single post-resolution containment re-check
+    for TOCTOU defense: a symlink swap after ``PathGuard.resolve`` is caught
+    here instead of by an inline ``is_relative_to`` in each route.
+    """
+    resolved_root = Path(root).resolve()
+    resolved = Path(candidate).resolve()
+    if not resolved.is_relative_to(resolved_root):
+        raise PathEscapeError("Path escape detected")
+    return resolved
+
+
 class PathGuard:
     """Validate paths against a fixed root directory."""
 
@@ -62,7 +92,8 @@ class PathGuard:
             # NTFS alternate data streams (file.txt:Zone.Identifier) pass
             # is_relative_to but open a different stream on Windows; reject
             # the separator inside the resolved in-root segment (an absolute
-            # path with a drive letter already failed the escape check).
+            # path with a drive letter already failed the escape check, and
+            # its drive colon must not be treated as a stream separator).
             if ":" in str(target.relative_to(self.root)):
                 raise InvalidPathError("Path contains a stream separator")
         return target

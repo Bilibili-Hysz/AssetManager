@@ -7,6 +7,7 @@ from pathlib import Path
 from aiohttp import web
 
 from AssetsManager.domain.asset import IMAGE_EXTS
+from AssetsManager.lan.path_guard import PathGuardError, assert_under_root
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
     get_lan,
@@ -75,9 +76,10 @@ async def serve_verified_image(
     """Deliver a root-confined, verified raster using thumbnail/blur policy."""
     if not target.is_file() or target.suffix.lower() not in _SAFE_IMAGE_EXTS:
         return _not_found()
-    target = target.resolve()
     lan = get_lan(request)
-    if not target.is_relative_to(Path(lan.library_root).resolve()):
+    try:
+        target = assert_under_root(lan.library_root, target)
+    except PathGuardError:
         return _not_found()
     content_type = await asyncio.to_thread(_inspect_image, target)
     if content_type is None:
@@ -132,12 +134,15 @@ async def handle_image(request: web.Request) -> web.StreamResponse:
     rel_path = request.query.get("path", "")  # query already decoded once
     target = validate_path(lan, rel_path)
 
-    # Resolve/validate the target before handing it to either FileResponse or
-    # Pillow.  PathGuard follows symlinks and rejects paths outside the library.
+    # Re-check containment after the final resolution before handing the path
+    # to FileResponse or Pillow.  PathGuard resolves symlinks and rejects
+    # escapes, but the on-disk entry may have been swapped since; the single
+    # shared predicate keeps this TOCTOU defense out of route-local logic.
     if not target.is_file() or target.suffix.lower() not in _SAFE_IMAGE_EXTS:
         return _not_found()
-    target = target.resolve()
-    if not target.is_relative_to(Path(lan.library_root).resolve()):
+    try:
+        target = assert_under_root(lan.library_root, target)
+    except PathGuardError:
         return _not_found()
 
     content_type = await asyncio.to_thread(_inspect_image, target)
