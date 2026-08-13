@@ -54,14 +54,15 @@ jobs:
           fi
 
   typecheck:
-    name: Type Check
+    name: Type Check (pyright hard gate)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: pip install pyright
+      - name: Install pyright (pinned; bump deliberately)
+        run: pip install pyright==1.1.410
       - name: Report tool versions
         run: |
           python --version

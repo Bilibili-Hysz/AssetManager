@@ -76,5 +76,6 @@
   "extraPaths": ["AssetsManager"],
   "typeCheckingMode": "basic",
   "reportMissingImports": false,
-  "reportMissingTypeStubs": false
+  "reportMissingTypeStubs": false,
+  "reportMissingModuleSource": false
 }

@@ -525,11 +525,11 @@ class FileSystemModel(QAbstractListModel):
             done = Signal(object)
 
         class _SizeTask(QRunnable):
-            def __init__(s, done):
+            def __init__(self, done):
                 super().__init__()
-                s._done = done
+                self._done = done
 
-            def run(s):
+            def run(self):
                 try:
                     if session is None:
                         if model._is_shutdown:
@@ -555,7 +555,7 @@ class FileSystemModel(QAbstractListModel):
                 finally:
                     # Emitted on every exit path so the model can drop its
                     # reference once the pool has finished (auto-delete).
-                    s._done.done.emit(s)
+                    self._done.done.emit(self)
 
         done = _SizeTaskDone()
         task = _SizeTask(done)
