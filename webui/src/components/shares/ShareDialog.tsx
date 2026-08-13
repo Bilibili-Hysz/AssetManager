@@ -42,15 +42,15 @@ export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialog
         allow_preview: allowPreview,
       });
       if (!res.url) {
-        // E6 note: kept untranslated — ShareDialog.test.tsx asserts this exact English
-        // string through a key-pass-through t() mock (test update is out of scope).
-        showToast('Share URL was not returned by the server', 'error');
+        // share.url_missing is asserted as a key through the key-pass-through
+        // t() mock in ShareDialog.test.tsx.
+        showToast(t('share.url_missing'), 'error');
         return;
       }
       setShareUrl(res.url);
       showToast(t('share.link_created'), 'success');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to create share', 'error');
+      showToast(err instanceof Error ? err.message : t('share.create_failed'), 'error');
     } finally {
       setCreating(false);
     }
@@ -61,9 +61,9 @@ export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialog
       await navigator.clipboard.writeText(shareUrl);
       showToast(t('action.copied'), 'success');
     } catch {
-      // E6 note: kept untranslated — ShareDialog.test.tsx asserts this exact English
-      // string through a key-pass-through t() mock (test update is out of scope).
-      showToast('Failed to copy share link', 'error');
+      // share.copy_failed is asserted as a key through the key-pass-through
+      // t() mock in ShareDialog.test.tsx.
+      showToast(t('share.copy_failed'), 'error');
     }
   };
 
@@ -84,7 +84,7 @@ export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialog
               type="button"
               onClick={handleCopy}
               aria-label={t('action.copy')}
-              className="px-3 py-1 text-xs text-white bg-brand-500 hover:bg-brand-600 rounded-md transition-colors"
+              className="px-3 py-1 text-xs text-white bg-brand-600 hover:bg-brand-700 rounded-md transition-colors"
             >
               {t('action.copy')}
             </button>
@@ -148,7 +148,7 @@ export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialog
             type="button"
             onClick={handleCreate}
             disabled={creating}
-            className="w-full py-2 text-sm text-white bg-brand-500 hover:bg-brand-600 disabled:opacity-50 rounded-lg transition-colors"
+            className="w-full py-2 text-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 rounded-lg transition-colors"
           >
             {creating ? t('browse.loading') : t('share.create_btn')}
           </button>

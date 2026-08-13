@@ -17,6 +17,9 @@ interface AppLayoutProps {
   infoWidth: number;
   onSidebarDragStart: (e: React.MouseEvent) => void;
   onInfoDragStart: (e: React.MouseEvent) => void;
+  /** Keyboard resize: positive widens the panel (ArrowRight for sidebar). */
+  onSidebarResizeStep?: (delta: number) => void;
+  onInfoResizeStep?: (delta: number) => void;
   onSidebarToggle: () => void;
   onInfoToggle: () => void;
   onViewModeToggle?: () => void;
@@ -36,6 +39,7 @@ export function AppLayout({
   sidebarOpen, infoOpen,
   sidebarWidth, infoWidth,
   onSidebarDragStart, onInfoDragStart,
+  onSidebarResizeStep, onInfoResizeStep,
   onSidebarToggle, onInfoToggle,
   onViewModeToggle, viewMode = 'grid', onSelectModeToggle, selectMode = false,
 }: AppLayoutProps) {
@@ -66,9 +70,13 @@ export function AppLayout({
             {/* Drag handle */}
             <button
               type="button"
-              className="absolute right-0 top-0 w-1.5 h-full cursor-col-resize z-10 transition-colors hover:opacity-100 opacity-0"
-              aria-label="Resize sidebar"
+              className="absolute right-0 top-0 w-1.5 h-full cursor-col-resize z-10 transition-colors hover:opacity-100 opacity-0 focus-visible:opacity-100"
+              aria-label={t('browse.resize_sidebar')}
               onMouseDown={onSidebarDragStart}
+              onKeyDown={e => {
+                if (e.key === 'ArrowRight') { e.preventDefault(); onSidebarResizeStep?.(32); }
+                else if (e.key === 'ArrowLeft') { e.preventDefault(); onSidebarResizeStep?.(-32); }
+              }}
             />
           </div>
         )}
@@ -117,9 +125,13 @@ export function AppLayout({
             {/* Drag handle */}
             <button
               type="button"
-              className="absolute left-0 top-0 w-1.5 h-full cursor-col-resize z-10 transition-colors hover:opacity-100 opacity-0"
-              aria-label="Resize info panel"
+              className="absolute left-0 top-0 w-1.5 h-full cursor-col-resize z-10 transition-colors hover:opacity-100 opacity-0 focus-visible:opacity-100"
+              aria-label={t('browse.resize_info')}
               onMouseDown={onInfoDragStart}
+              onKeyDown={e => {
+                if (e.key === 'ArrowLeft') { e.preventDefault(); onInfoResizeStep?.(32); }
+                else if (e.key === 'ArrowRight') { e.preventDefault(); onInfoResizeStep?.(-32); }
+              }}
             />
             {infoPanel}
           </div>

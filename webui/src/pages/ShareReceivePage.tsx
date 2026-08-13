@@ -117,7 +117,7 @@ export default function ShareReceivePage() {
           <button
             type="submit"
             disabled={verifying}
-            className="w-full py-2.5 text-sm text-white bg-brand-500 hover:bg-brand-600 disabled:opacity-60 rounded-lg transition-colors"
+            className="w-full py-2.5 text-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 rounded-lg transition-colors"
           >
             {t('share.verify_btn')}
           </button>

@@ -5,12 +5,15 @@ import { FileToolbar } from './FileToolbar';
 
 vi.mock('../../hooks/useI18n', () => ({
   useI18n: () => ({
-    t: (key: string) => ({
+    t: (key: string, ...args: (string | number)[]) => ({
       'sort.name': 'Name',
       'sort.date': 'Date',
       'sort.size': 'Size',
       'browse.selected': '{0} selected',
-    })[key] ?? key,
+      'browse.clear_tag_named': 'Clear tag filter: {0}',
+      'browse.download_selected_zip': 'Download {0} selected items as ZIP',
+      'browse.downloading_zip': 'Downloading ZIP...',
+    })[key]?.replace('{0}', String(args[0])) ?? key,
   }),
 }));
 

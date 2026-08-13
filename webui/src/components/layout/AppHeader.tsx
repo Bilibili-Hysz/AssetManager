@@ -138,13 +138,13 @@ export function AppHeader({
           </button>
         )}
         {showResults && (query.trim() || isSearching) && (
-          <div className="app-header-search-results" role="listbox">
+          <div className="app-header-search-results">
             {isSearching ? (
               <div className="app-header-search-message">{t('browse.loading')}</div>
             ) : results.length === 0 ? (
               <div className="app-header-search-message">{t('header.no_results')}</div>
             ) : results.map(result => (
-              <button type="button" role="option" key={result.path} className="app-header-search-result" onClick={() => handleResultClick(result)}>
+              <button type="button" key={result.path} className="app-header-search-result" onClick={() => handleResultClick(result)}>
                 {result.type === 'dir' ? <FolderOpen size={16} className="app-header-search-result-icon" aria-hidden="true" /> : <File size={16} className="app-header-search-file-icon" aria-hidden="true" />}
                 <span className="app-header-search-result-copy">
                   <span>{result.name}</span>

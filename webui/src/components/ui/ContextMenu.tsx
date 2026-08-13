@@ -64,10 +64,36 @@ export function ContextMenu({ x, y, items, trigger, onClose }: ContextMenuProps)
     setClamped({ x: nextX, y: nextY });
   }, [x, y]);
 
+  // Roving focus within the menu (WCAG 2.1.1); Tab closes and returns focus
+  // to the trigger instead of dumping it into the page behind the menu.
+  const handleMenuKeyDown = (e: React.KeyboardEvent) => {
+    const buttons = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
+    if (buttons.length === 0) return;
+    const currentIndex = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      buttons[(currentIndex + 1) % buttons.length]!.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      buttons[(currentIndex - 1 + buttons.length) % buttons.length]!.focus();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      buttons[0]!.focus();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      buttons[buttons.length - 1]!.focus();
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      restoreFocusRef.current = true;
+      onClose();
+    }
+  };
+
   return (
     <div
       ref={menuRef}
       role="menu"
+      onKeyDown={handleMenuKeyDown}
       className="fixed z-50 min-w-[180px] rounded-lg py-1"
       style={{
         left: clamped?.x ?? x,
@@ -80,7 +106,7 @@ export function ContextMenu({ x, y, items, trigger, onClose }: ContextMenuProps)
     >
       {items.map((item, i) => (
         item.divider ? (
-          <div key={i} className="my-1" style={{ borderTop: '1px solid var(--color-border)' }} />
+          <div key={i} role="separator" className="my-1" style={{ borderTop: '1px solid var(--color-border)' }} />
         ) : (
           <button
             type="button"

@@ -6,9 +6,9 @@ import { SINGLE_CLICK_DELAY_MS } from './ProjectCard';
 
 let testLang = 'en';
 const messages: Record<string, Record<string, string>> = {
-  en: { 'sort.name': 'Name', 'sort.size': 'Size', 'info.modified': 'Modified', 'action.actions': 'Actions', 'action.item_actions': 'Actions for {0}' },
-  zh: { 'sort.name': '名称', 'sort.size': '大小', 'info.modified': '修改时间', 'action.actions': '操作', 'action.item_actions': '{0} 的操作' },
-  ja: { 'sort.name': '名前', 'sort.size': 'サイズ', 'info.modified': '更新日', 'action.actions': '操作', 'action.item_actions': '{0} の操作' },
+  en: { 'sort.name': 'Name', 'sort.size': 'Size', 'info.modified': 'Modified', 'action.actions': 'Actions', 'action.item_actions': 'Actions for {0}', 'browse.select_zip': 'Select {0} for ZIP download' },
+  zh: { 'sort.name': '名称', 'sort.size': '大小', 'info.modified': '修改时间', 'action.actions': '操作', 'action.item_actions': '{0} 的操作', 'browse.select_zip': '选择 {0} 以 ZIP 下载' },
+  ja: { 'sort.name': '名前', 'sort.size': 'サイズ', 'info.modified': '更新日', 'action.actions': '操作', 'action.item_actions': '{0} の操作', 'browse.select_zip': '{0} を ZIP ダウンロード用に選択' },
 };
 
 vi.mock('../../hooks/useI18n', () => ({
@@ -82,6 +82,7 @@ describe('ProjectList translations', () => {
 
   it('keeps the ZIP selection control for files', () => {
     const onZipSelect = vi.fn();
+    testLang = 'en';
     render(
       <ProjectList
         items={[{ name: 'asset.png', path: 'asset.png', type: 'file', extension: '.png', category: 'image' }]}

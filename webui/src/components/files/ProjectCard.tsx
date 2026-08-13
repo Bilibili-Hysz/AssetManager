@@ -130,7 +130,7 @@ export function ProjectCard({
       {!isDir && (
         <button
           type="button"
-          aria-label={`Select ${item.name} for ZIP download`}
+          aria-label={t('browse.select_zip', item.name)}
           aria-pressed={Boolean(selected)}
           className="absolute top-2 left-2 flex h-5 w-5 items-center justify-center rounded border-2 text-[10px] font-bold focus-visible:outline-none focus-visible:ring-2 transition-colors"
           style={{
@@ -216,10 +216,10 @@ export function ProjectCard({
       {onCopyLink && (
         <button
           type="button"
-          aria-label={`Copy link for ${item.name}`}
+          aria-label={t('browse.copy_link', item.name)}
           className={`absolute top-1.5 right-8 rounded p-1 opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100`}
           style={{ color: 'var(--color-text-secondary)' }}
-          title="Copy share link"
+          title={t('browse.copy_share_link')}
           onClick={e => { e.stopPropagation(); onCopyLink(item.path); }}
         >
           <Link2 size={14} aria-hidden="true" />
@@ -229,7 +229,7 @@ export function ProjectCard({
         type="button"
         className="absolute top-1.5 right-1.5 rounded p-1.5 opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 group-hover:opacity-100"
         style={{ color: 'var(--color-text)', '--tw-ring-color': 'var(--color-accent)' } as React.CSSProperties}
-        aria-label={`Actions for ${item.name}`}
+        aria-label={t('browse.actions_for', item.name)}
         onClick={e => {
           e.stopPropagation();
           onContextMenu?.(e);

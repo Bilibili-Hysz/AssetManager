@@ -214,7 +214,7 @@ describe('BrowsePage', () => {
     await waitFor(() => expect(screen.getByTestId('active-tag').textContent).toBe('featured'));
     expect(search).toHaveBeenCalledWith('', 'featured', undefined, expect.any(AbortSignal));
     expect(screen.getByTestId('location-search').textContent).toBe('?tag=featured');
-    fireEvent.click(screen.getByTitle('Clear tag filter'));
+    fireEvent.click(screen.getByTitle('browse.clear_tag'));
     expect(screen.queryByTestId('active-tag')).toBeNull();
   });
 
@@ -301,10 +301,10 @@ describe('BrowsePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Select asset' }));
     fireEvent.click(screen.getByRole('button', { name: 'Download selected' }));
 
-    await waitFor(() => expect(screen.getByRole('progressbar', { name: 'Download in progress' })).toBeDefined());
+    await waitFor(() => expect(screen.getByRole('progressbar', { name: 'action.download_in_progress' })).toBeDefined());
     pending.reject(new Error('ZIP failed'));
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('ZIP failed', 'error'));
-    expect(screen.queryByRole('progressbar', { name: 'Download in progress' })).toBeNull();
+    expect(screen.queryByRole('progressbar', { name: 'action.download_in_progress' })).toBeNull();
   });
 
   it('clears a failed tag filter and restores the directory listing', async () => {
@@ -613,7 +613,7 @@ describe('BrowsePage', () => {
 
     pending.resolve();
     await waitFor(() => expect((screen.getByRole('button', { name: 'Download selected' }) as HTMLButtonElement).disabled).toBe(false));
-    expect(screen.queryByRole('progressbar', { name: 'Download in progress' })).toBeNull();
+    expect(screen.queryByRole('progressbar', { name: 'action.download_in_progress' })).toBeNull();
   });
 
   it('applies workspace shortcuts outside editable elements and clears transient state before selection', async () => {

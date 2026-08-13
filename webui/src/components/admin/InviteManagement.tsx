@@ -53,7 +53,7 @@ export function InviteManagement() {
         <h3 className="text-lg font-semibold text-white">{t('admin.invites')}</h3>
         <button
           onClick={handleCreate}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-brand-500 hover:bg-brand-600 rounded-md transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-brand-600 hover:bg-brand-700 rounded-md transition-colors"
         >
           <Plus size={14} /> {t('admin.generate_invite')}
         </button>

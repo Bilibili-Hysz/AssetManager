@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
 import type { DownloadProgress as DownloadProgressValue } from '../../api/client';
+import { useI18n } from '../../hooks/useI18n';
 
 export type DownloadProgressState =
   | { status: 'hidden'; progress: null; label: string }
@@ -15,8 +16,9 @@ interface DownloadProgressContextValue {
 const DownloadProgressContext = createContext<DownloadProgressContextValue | null>(null);
 
 export function DownloadProgressProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<DownloadProgressState>({ status: 'hidden', progress: null, label: 'Download in progress' });
-  const start = useCallback((label = 'Download in progress') => setState({ status: 'indeterminate', progress: null, label }), []);
+  const { t } = useI18n();
+  const [state, setState] = useState<DownloadProgressState>({ status: 'hidden', progress: null, label: t('action.download_in_progress') });
+  const start = useCallback((label = t('action.download_in_progress')) => setState({ status: 'indeterminate', progress: null, label }), [t]);
   const update = useCallback((next: DownloadProgressValue) => setState(previous => {
     // E10: guard against a zero/unknown total — a determinate bar from loaded/total
     // would otherwise jump straight to 100% (loaded/0 = Infinity).

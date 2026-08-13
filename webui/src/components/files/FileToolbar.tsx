@@ -76,7 +76,7 @@ export function FileToolbar({
           }}
         >
           <span>{activeTag}</span>
-          <button type="button" onClick={onClearTag} aria-label={`Clear tag filter: ${activeTag}`} style={{ color: 'var(--color-accent)' }}>
+          <button type="button" onClick={onClearTag} aria-label={t('browse.clear_tag_named', activeTag)} style={{ color: 'var(--color-accent)' }}>
             <X size={13} aria-hidden="true" />
           </button>
         </div>
@@ -105,7 +105,7 @@ export function FileToolbar({
         type="button"
         onClick={onDownloadSelected}
         disabled={selectedCount === 0 || isDownloadInFlight}
-        aria-label={`Download ${selectedCount} selected items as ZIP`}
+        aria-label={t('browse.download_selected_zip', selectedCount)}
         className="flex items-center gap-1 px-2.5 py-1 text-[11px] text-white rounded-md transition-colors disabled:cursor-not-allowed"
         style={{
           backgroundColor: selectedCount > 0 && !isDownloadInFlight ? 'var(--color-accent)' : 'var(--color-elevated)',
@@ -113,7 +113,7 @@ export function FileToolbar({
         }}
       >
         <Download size={13} aria-hidden="true" />
-        {isDownloadInFlight ? 'Downloading ZIP...' : t('browse.selected').replace('{0}', String(selectedCount))}
+        {isDownloadInFlight ? t('browse.downloading_zip') : t('browse.selected').replace('{0}', String(selectedCount))}
       </button>
 
       {/* View mode */}

@@ -29,7 +29,7 @@ describe('ShareDialog', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'share.create_btn' }));
 
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Share URL was not returned by the server', 'error'));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('share.url_missing', 'error'));
     expect(screen.queryByRole('button', { name: 'action.copy' })).toBeNull();
   });
 
@@ -82,7 +82,7 @@ describe('ShareDialog', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'share.create_btn' }));
 
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Failed to create share', 'error'));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('share.create_failed', 'error'));
   });
 
   it('shows toast on clipboard copy failure', async () => {
@@ -95,7 +95,7 @@ describe('ShareDialog', () => {
     await waitFor(() => expect(screen.getByDisplayValue('http://server/s/share-1')).toBeDefined());
     fireEvent.click(screen.getByRole('button', { name: 'action.copy' }));
 
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Failed to copy share link', 'error'));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('share.copy_failed', 'error'));
   });
 
   it('shows success toast after copy', async () => {

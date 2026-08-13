@@ -239,7 +239,7 @@ export function Sidebar({ onNavigate, currentPath, activeTag = null, onTagFilter
             <h2 id="sidebar-tags-heading" className="text-xs font-medium text-slate-300">{t('info.tags')}</h2>
             <span className="text-[10px] text-slate-500">{tags.length}</span>
           </div>
-          {activeTag && onClearTagFilter && <button type="button" onClick={onClearTagFilter} aria-label="Clear tag filter" title="Clear tag filter" className="rounded p-1 text-indigo-300 hover:bg-indigo-500/15"><X size={13} aria-hidden="true" /></button>}
+          {activeTag && onClearTagFilter && <button type="button" onClick={onClearTagFilter} aria-label={t('browse.clear_tag')} title={t('browse.clear_tag')} className="rounded p-1 text-indigo-300 hover:bg-indigo-500/15"><X size={13} aria-hidden="true" /></button>}
         </div>
         {tags.length > 0 && (
           <div className="relative mb-2">

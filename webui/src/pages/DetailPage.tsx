@@ -285,9 +285,9 @@ export default function DetailPage({ onOpenPalette }: DetailPageProps) {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-slate-700/50 bg-slate-800/50">
-                        <th className="text-left text-xs text-slate-500 font-medium px-4 py-2">Name</th>
-                        <th className="text-left text-xs text-slate-500 font-medium px-4 py-2 w-24">Size</th>
-                        <th className="text-left text-xs text-slate-500 font-medium px-4 py-2 w-20">Action</th>
+                        <th scope="col" className="text-left text-xs text-slate-500 font-medium px-4 py-2">{t('sort.name')}</th>
+                        <th scope="col" className="text-left text-xs text-slate-500 font-medium px-4 py-2 w-24">{t('sort.size')}</th>
+                        <th scope="col" className="text-left text-xs text-slate-500 font-medium px-4 py-2 w-20">{t('detail.action')}</th>
                       </tr>
                     </thead>
                     <tbody>

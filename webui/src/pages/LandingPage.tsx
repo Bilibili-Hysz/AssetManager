@@ -406,7 +406,7 @@ export default function LandingPage() {
               void retryConnect().finally(() => setRetrying(false));
             }}
             disabled={retrying}
-            className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-brand-500 hover:bg-brand-600 rounded-lg transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition-colors"
           >
             <RefreshCw size={16} aria-hidden="true" />
             {t('landing.retry')}

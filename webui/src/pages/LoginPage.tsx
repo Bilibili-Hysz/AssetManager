@@ -192,6 +192,7 @@ export default function LoginPage() {
             {showUserMode && (
               <button
                 onClick={() => { setView('login'); setError(''); }}
+                aria-pressed={view === 'login'}
                 className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
                   view === 'login'
                     ? 'bg-brand-500/10 text-brand-400 border-r border-slate-700/50'
@@ -205,6 +206,7 @@ export default function LoginPage() {
             {showPasswordMode && !showUserMode && (
               <button
                 onClick={() => { setView('login'); setError(''); }}
+                aria-pressed={view === 'login'}
                 className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
                   view === 'login'
                     ? 'bg-brand-500/10 text-brand-400'
@@ -218,6 +220,7 @@ export default function LoginPage() {
             {showKeyMode && (
               <button
                 onClick={() => { setView('key'); setError(''); }}
+                aria-pressed={view === 'key'}
                 className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
                   view === 'key'
                     ? 'bg-brand-500/10 text-brand-400'
@@ -256,7 +259,7 @@ export default function LoginPage() {
             <button
               onClick={() => handleKeyLogin()}
               disabled={loading || !accessKey.trim()}
-              className="w-full py-2.5 text-sm text-white bg-brand-500 hover:bg-brand-600 disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-2"
+              className="w-full py-2.5 text-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               {loading ? (
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -316,7 +319,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 text-sm text-white bg-brand-500 hover:bg-brand-600 disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-2"
+              className="w-full py-2.5 text-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               {loading ? (
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -438,7 +441,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 text-sm text-white bg-brand-500 hover:bg-brand-600 disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-2"
+              className="w-full py-2.5 text-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               {loading ? (
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />

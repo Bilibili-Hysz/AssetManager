@@ -6,6 +6,8 @@ import { Breadcrumb } from './Breadcrumb';
 vi.mock('../../hooks/useI18n', () => ({
   useI18n: () => ({
     t: (key: string) => ({
+      'breadcrumb.navigation': 'Workspace navigation',
+      'breadcrumb.home': 'Home',
       'action.close_sidebar': 'Close sidebar',
       'action.open_sidebar': 'Open sidebar',
       'action.close_info': 'Close information panel',

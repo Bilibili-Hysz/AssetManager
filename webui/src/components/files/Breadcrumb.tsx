@@ -16,7 +16,7 @@ export function Breadcrumb({ path, onNavigate, onSidebarToggle, onInfoToggle, si
 
   return (
     <nav
-      aria-label="Workspace navigation"
+      aria-label={t('breadcrumb.navigation')}
       className="flex items-center gap-2 px-3 py-2 text-xs flex-shrink-0 transition-theme"
       style={{
         borderBottom: '1px solid var(--color-border)',
@@ -38,7 +38,7 @@ export function Breadcrumb({ path, onNavigate, onSidebarToggle, onInfoToggle, si
         onClick={() => onNavigate('')}
         className="flex items-center gap-1 transition-colors p-0.5"
         style={{ color: 'var(--color-text-muted)' }}
-        aria-label="Home"
+        aria-label={t('breadcrumb.home')}
       >
         <Home size={13} />
       </button>

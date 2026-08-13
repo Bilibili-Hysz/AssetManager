@@ -75,11 +75,11 @@ export function ProjectList({ items, selected, onSelect, onZipSelect = onSelect,
         <table className="w-full">
           <thead>
             <tr className="border-b border-slate-700/50 bg-slate-800/50">
-              <th className="text-left text-[11px] text-slate-500 font-medium px-3 py-2 w-8" />
-              <th className="text-left text-[11px] text-slate-500 font-medium px-3 py-2">{t('sort.name')}</th>
-              <th className="text-left text-[11px] text-slate-500 font-medium px-3 py-2 w-20">{t('sort.size')}</th>
-              <th className="text-left text-[11px] text-slate-500 font-medium px-3 py-2 w-32 hidden md:table-cell">{t('info.modified')}</th>
-              <th className="w-10"><span className="sr-only">{t('action.actions')}</span></th>
+              <th scope="col" className="text-left text-[11px] text-slate-500 font-medium px-3 py-2 w-8" />
+              <th scope="col" className="text-left text-[11px] text-slate-500 font-medium px-3 py-2">{t('sort.name')}</th>
+              <th scope="col" className="text-left text-[11px] text-slate-500 font-medium px-3 py-2 w-20">{t('sort.size')}</th>
+              <th scope="col" className="text-left text-[11px] text-slate-500 font-medium px-3 py-2 w-32 hidden md:table-cell">{t('info.modified')}</th>
+              <th scope="col" className="w-10"><span className="sr-only">{t('action.actions')}</span></th>
             </tr>
           </thead>
           <tbody>
@@ -106,7 +106,7 @@ export function ProjectList({ items, selected, onSelect, onZipSelect = onSelect,
                     {!isDir && (
                       <button
                         type="button"
-                        aria-label={`Select ${item.name} for ZIP download`}
+                        aria-label={t('browse.select_zip', item.name)}
                         aria-pressed={selected.has(item.path)}
                         className={`mr-2 inline-flex h-5 w-5 items-center justify-center rounded border-2 text-[10px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${selected.has(item.path) ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-500 text-transparent hover:border-indigo-400'}`}
                         onClick={e => {
@@ -197,8 +197,8 @@ export function ProjectList({ items, selected, onSelect, onZipSelect = onSelect,
                        <button
                          type="button"
                          className="rounded p-1 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
-                         aria-label={`Copy link for ${item.name}`}
-                         title="Copy share link"
+                         aria-label={t('browse.copy_link', item.name)}
+                         title={t('browse.copy_share_link')}
                          onClick={e => { e.stopPropagation(); onCopyLink(item.path); }}
                        >
                          <Link2 size={15} aria-hidden="true" />

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
+import { useI18n } from '../../hooks/useI18n';
 
 interface ResizablePanelProps {
   children: ReactNode;
@@ -15,6 +16,7 @@ export function ResizablePanel({
   maxWidth = 400,
   side = 'right',
 }: ResizablePanelProps) {
+  const { t } = useI18n();
   const [width, setWidth] = useState(defaultWidth);
   const isDragging = useRef(false);
   const startX = useRef(0);
@@ -55,13 +57,28 @@ export function ResizablePanel({
     document.addEventListener('mouseup', stopDrag);
   }, [width, side, minWidth, maxWidth, stopDrag]);
 
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const widen = side === 'right' ? e.key === 'ArrowLeft' : e.key === 'ArrowRight';
+    const narrow = side === 'right' ? e.key === 'ArrowRight' : e.key === 'ArrowLeft';
+    if (widen) {
+      e.preventDefault();
+      setWidth(current => Math.max(minWidth, Math.min(maxWidth, current + 16)));
+    } else if (narrow) {
+      e.preventDefault();
+      setWidth(current => Math.max(minWidth, Math.min(maxWidth, current - 16)));
+    }
+  }, [side, minWidth, maxWidth]);
+
   return (
     <div className="relative flex-shrink-0" style={{ width }}>
-      <div
-        className={`absolute top-0 w-1 h-full cursor-col-resize z-10 hover:bg-brand-500/50 transition-colors ${
+      <button
+        type="button"
+        aria-label={t('browse.resize_panel')}
+        className={`absolute top-0 w-1 h-full cursor-col-resize z-10 hover:bg-brand-500/50 focus-visible:opacity-100 transition-colors ${
           side === 'left' ? 'right-0' : 'left-0'
         }`}
         onMouseDown={handleMouseDown}
+        onKeyDown={handleKeyDown}
       />
       {children}
     </div>

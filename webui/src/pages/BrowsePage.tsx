@@ -256,6 +256,14 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
     document.body.style.userSelect = 'none';
   }, [infoWidth]);
 
+  const handleSidebarResizeStep = useCallback((delta: number) => {
+    setSidebarWidth(width => Math.max(150, Math.min(400, width + delta)));
+  }, []);
+
+  const handleInfoResizeStep = useCallback((delta: number) => {
+    setInfoWidth(width => Math.max(200, Math.min(400, width + delta)));
+  }, []);
+
   useEffect(() => {
     const handleMove = (e: MouseEvent) => {
       if (rafId.current) return;
@@ -491,7 +499,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
       const blob = await filesApi.batchDownload(paths, downloadProgress.update);
       triggerBlobDownload(blob, 'assets.zip');
     }
-    catch (err) { showToast(err instanceof Error ? err.message : 'Failed to download ZIP archive', 'error'); }
+    catch (err) { showToast(err instanceof Error ? err.message : t('browse.download_zip_failed'), 'error'); }
     finally {
       downloadProgress.finish();
       downloadInFlight.current = false;
@@ -624,6 +632,8 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
       infoWidth={infoWidth}
       onSidebarDragStart={handleSidebarDragStart}
       onInfoDragStart={handleInfoDragStart}
+      onSidebarResizeStep={handleSidebarResizeStep}
+      onInfoResizeStep={handleInfoResizeStep}
       onSidebarToggle={handleSidebarToggle}
       onInfoToggle={handleInfoToggle}
       onViewModeToggle={() => handleViewModeChange(viewMode === 'grid' ? 'list' : 'grid')}
@@ -649,7 +659,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
        {activeTag && (
          <div className="mx-4 mt-3 flex items-center justify-between border-b border-indigo-500/20 bg-indigo-500/5 px-3 py-2 text-xs text-indigo-200">
            <span>{t('browse.tag_banner', activeTag)}</span>
-           <button type="button" onClick={handleClearTagFilter} className="rounded p-1 text-indigo-200 hover:bg-indigo-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" aria-label="Clear tag filter" title="Clear tag filter">
+           <button type="button" onClick={handleClearTagFilter} className="rounded p-1 text-indigo-200 hover:bg-indigo-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" aria-label={t('browse.clear_tag')} title={t('browse.clear_tag')}>
              <X size={14} />
            </button>
          </div>
@@ -693,7 +703,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
           <button
             type="button"
             onClick={() => void refresh()}
-            className="mt-4 px-4 py-2 text-sm text-white bg-brand-500 hover:bg-brand-600 rounded-lg transition-colors"
+            className="mt-4 px-4 py-2 text-sm text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition-colors"
           >
             {t('gallery.retry')}
           </button>
