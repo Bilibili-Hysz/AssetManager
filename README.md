@@ -77,7 +77,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 | Python | 3.12/3.13/3.14 | 主语言（CI 矩阵；本机 3.14） |
 | PySide6 | >=6.6,<7 | 桌面 UI 框架 (Qt 6) |
 | aiohttp | >=3.9 | 异步 HTTP 服务器（可选依赖） |
-| SQLite3 | 内置 | 数据库 (WAL 模式，迁移 v1-v26) |
+| SQLite3 | 内置 | 数据库 (WAL 模式，迁移 v1-v27) |
 | Pillow | >=10.0 | 图片处理（缩略图/EXIF/模糊） |
 | segno | >=1.6 | QR 码生成 |
 | send2trash / requests | — | 回收站删除 / HTTP 工具 |
@@ -111,7 +111,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 | 组件 | 说明 |
 |------|------|
 | DatabaseManager | 每库独立连接 + 身份标记 + 读写门（_WriteGate）+ 归属校验 |
-| db_migrations | 版本化迁移 v1-v26（SAVEPOINT 原子 + 契约回溯校验） |
+| db_migrations | 版本化迁移 v1-v27（SAVEPOINT 原子 + 契约回溯校验） |
 | schema_defs | 表 DDL 契约（SchemaObjectContract 校验器，fail-closed） |
 | repositories/ | **16 个 SQL 仓库**（tag/metadata/thumbnail/favorite/share/auth/asset_index/plugin_metadata/shop/order/quota/free_download_quota/seller_profile/storefront_analytics/shop_buyer/gallery_home）——统一 for_session 绑定 + SAVEPOINT 事务 + CAS |
 | LibraryLock | 跨进程库锁（QLockFile 引用计数，staleLockTime(0)） |
@@ -216,7 +216,7 @@ AssetsManager_old-bak/
 │   │
 │   ├── core/                   # 基础设施层（33 模块 + plugins/4）
 │   │   ├── database.py         # DatabaseManager（连接/身份标记/读写门）
-│   │   ├── db_migrations.py    # 数据库迁移 v1-v26
+│   │   ├── db_migrations.py    # 数据库迁移 v1-v27
 │   │   ├── schema_defs.py      # 表 DDL 契约 + 校验器
 │   │   ├── settings.py / config_migrator.py / json_store.py
 │   │   ├── themes.py / theme_loader.py / icons.py / bg_effects.py
