@@ -4,8 +4,8 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库（元数据、标签、缩略图），也可以通过局域网内的浏览器远程浏览和下载资产。
 
-<!-- stats: e2e=51/2 e2e_specs=6 hooks=14 pages=26 python=3450/7 python_test_files=229 routes=139 stores=4 ts=114 webui=683 webui_test_files=103 -->
-> 当前审查证据（2026-08-13，本机 Windows / Python 3.14.3）：最近一次 Python 全量运行结果为 **3462 passed, 7 skipped, 0 failed**；`ruff check AssetsManager tests scripts run.py` **全绿**；compileall 通过；WebUI 单测 **683 passed**（103 个测试文件）、`typecheck`/`build` 通过；默认 WebUI 浏览器 E2E 共 53 个测试（6 个 spec，含 23 个 axe-core 双主题无障碍扫描），**51 passed、2 skipped**（真实后端用例无环境变量时跳过）。Pyright 在本机 Python 3.14 + pyright 1.1.410 下 **0 errors**（2026-08-13 将 23 个既有类型错误全部修复；3.13 声明未在本机复核）。远程 Python 3.12/3.13/3.14 矩阵、clean checkout/Windows package smoke 和真实后端 Commerce 验收仍需分别看待，不据此宣称整个项目完成。完整审查文档集见 `docs/full-review/`（含模块地图、数据流、事件系统、审查结果与验证基线）。
+<!-- stats: app_services=39 domain_events=15 e2e_specs=6 hooks=14 i18n_en=760 i18n_ja=760 i18n_zh=760 icons=56 pages=26 python_test_files=224 repos=17 routes=139 routes_modules=24 schema_version=27 stores=4 themes=22 ts=114 webui_test_files=103 widgets=13 -->
+> 当前审查证据（2026-08-13，本机 Windows / Python 3.14.3）：最近一次 Python 全量运行结果为 **3450 passed, 7 skipped, 0 failed**；`ruff check AssetsManager tests scripts run.py` **全绿**；compileall 通过；WebUI 单测 **683 passed**（103 个测试文件）、`typecheck`/`build` 通过；默认 WebUI 浏览器 E2E 共 53 个测试（6 个 spec，含 23 个 axe-core 双主题无障碍扫描），**51 passed、2 skipped**（真实后端用例无环境变量时跳过）。Pyright 在本机 Python 3.14 + pyright 1.1.410 下 **0 errors**（2026-08-13 将 23 个既有类型错误全部修复；3.13 声明未在本机复核）。远程 Python 3.12/3.13/3.14 矩阵、clean checkout/Windows package smoke 和真实后端 Commerce 验收仍需分别看待，不据此宣称整个项目完成。完整审查文档集见 `docs/full-review/`（含模块地图、数据流、事件系统、审查结果与验证基线）。
 
 
 > **2026-08-11 更新**：完成 UI/SVG 修复轮（13 项审计 + SVG 化 + 语义色体系 + 菜单栏）、P0 高危轮（15+4）、中危轮（D1/D2/E/F/G1/G2）与 P1 轮（M6a/M9/M6c，42 项清单）——含分享密码强度与爆破防护、投递令牌 rotate 配额守恒与撤销、匿名配额 cookie 身份、备份上限与并发检测、令牌 nonce 等。所有改动处于工作区**未提交**状态（529 条变更），未执行 stage、commit、reset 或 clean。
@@ -92,7 +92,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 | QThreadPool | 异步任务执行（缩略图加载/后台扫描） |
 | signal_bus | Qt 信号总线（7 信号，低频协调） |
 | event_bus | 领域事件总线（业务逻辑，线程安全） |
-| icons.py | SVG 图标注册表（48 图标，DPR 感知渲染，语义色 token） |
+| icons.py | SVG 图标注册表（56 图标，DPR 感知渲染，语义色 token） |
 
 ### LAN 服务器
 
@@ -113,7 +113,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 | DatabaseManager | 每库独立连接 + 身份标记 + 读写门（_WriteGate）+ 归属校验 |
 | db_migrations | 版本化迁移 v1-v27（SAVEPOINT 原子 + 契约回溯校验） |
 | schema_defs | 表 DDL 契约（SchemaObjectContract 校验器，fail-closed） |
-| repositories/ | **16 个 SQL 仓库**（tag/metadata/thumbnail/favorite/share/auth/asset_index/plugin_metadata/shop/order/quota/free_download_quota/seller_profile/storefront_analytics/shop_buyer/gallery_home）——统一 for_session 绑定 + SAVEPOINT 事务 + CAS |
+| repositories/ | **17 个 SQL 仓库**（tag/metadata/thumbnail/favorite/share/auth/asset_index/plugin_metadata/shop/order/quota/free_download_quota/seller_profile/storefront_analytics/shop_buyer/gallery_home/revoked_token）——统一 for_session 绑定 + SAVEPOINT 事务 + CAS |
 | LibraryLock | 跨进程库锁（QLockFile 引用计数，staleLockTime(0)） |
 | json_store / settings | JSON 原子持久化（mkstemp+fsync+os.replace） |
 
@@ -231,12 +231,12 @@ AssetsManager_old-bak/
 │   │       ├── descriptor.py / host_context.py / loader.py / manager.py
 │   │
 │   ├── domain/                 # 领域层（无基础设施依赖）
-│   │   ├── events.py           # 19 个领域事件（frozen dataclass）
+│   │   ├── events.py           # 15 个领域事件（frozen dataclass）
 │   │   ├── event_bus.py        # 领域事件总线（线程安全）
 │   │   ├── errors.py           # DomainError 层级
 │   │   ├── asset.py / auth.py / library.py / share.py
 │   │
-│   ├── repositories/           # 数据访问层（16 个 SQL 仓库）
+│   ├── repositories/           # 数据访问层（17 个 SQL 仓库）
 │   │   ├── tag/metadata/thumbnail/favorite/share/auth_repository.py
 │   │   ├── asset_index_repository.py
 │   │   ├── plugin_metadata_repository.py
@@ -269,15 +269,15 @@ AssetsManager_old-bak/
 │   │   ├── sidebar_favorites/sidebar_recent/sidebar_settings
 │   │   ├── tag_editor/plugin_manager/color_picker/generic_settings
 │   │
-│   ├── widgets/                # 可复用 Qt 组件（20 个）
+│   ├── widgets/                # 可复用 Qt 组件（13 个）
 │   │   ├── toast/status_indicator/tag_chip/tab_container
 │   │   ├── workspace_bar/tray/hsv_wheel/stylekit/elevation
-│   │   ├── lan_sharing/collapsible_panel/shortcut_manager/status_bar
-│   │   ├── command_palette/file_picker/pager_overlay/theme_gallery
-│   │   ├── theme_preview/title_bar（后 6 个为零消费方待接线组件）
+│   │   ├── lan_sharing/collapsible_panel/shortcut_manager
+│   │   ├── theme_preview（2026-08-13 删除 6 个零消费方组件：
+│   │   │   command_palette/file_picker/pager_overlay/theme_gallery/status_bar/title_bar）
 │   │
 │   ├── di/                     # 依赖注入容器
-│   └── i18n/                   # 国际化（en 710 / zh 749 / ja 749 keys）
+│   └── i18n/                   # 国际化（en 760 / zh 760 / ja 760 keys）
 │
 ├── webui/                      # React 18 + Vite + TS SPA（217 ts/tsx）
 │   ├── src/                    # api(15 工厂)/stores(4 Context)/hooks(14)
