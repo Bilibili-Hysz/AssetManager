@@ -1,5 +1,6 @@
 """Contract tests for LAN projection of application resource references."""
 
+from AssetsManager.application.gallery_service import GalleryCollection, GalleryHome
 from AssetsManager.application.project_service import (
     ProjectDepthConfig,
     ProjectDetail,
@@ -9,6 +10,10 @@ from AssetsManager.application.project_service import (
 )
 from AssetsManager.application.search_service import SearchResult
 from AssetsManager.lan.routes._resource_urls import (
+    gallery_collection_response,
+    gallery_entry_response,
+    gallery_home_response,
+    image_url,
     project_detail_response,
     project_home_response,
     project_listing_response,
@@ -133,3 +138,69 @@ def test_project_home_json_contract_preserves_optional_thumbnail_key():
         "name": "alpha", "path": "alpha",
         "thumbnail_url": "/api/thumbnails/alpha/cover.png",
     }]
+
+
+def test_image_url_encodes_path_as_single_query_value():
+    assert image_url("套件/hero image.png") == (
+        "/api/image?path=%E5%A5%97%E4%BB%B6%2Fhero%20image.png"
+    )
+
+
+def test_gallery_entry_response_projects_node_and_artwork_urls():
+    node = {
+        "name": "hero", "path": "projects/hero", "kind": "project",
+        "parent_path": "projects", "cover_path": "projects/hero/cover.png",
+        "width": 1920, "height": 1080, "aspect_ratio": 1.7777777777777777,
+        "modified": 100, "size": 2048, "size_fmt": "2.0 KB",
+        "file_count": 3, "artwork_count": 2, "child_count": 0, "tags": [],
+    }
+    assert gallery_entry_response(node) == {
+        **node,
+        "cover_url": "/api/thumbnails/projects/hero/cover.png?size=512",
+    }
+
+    artwork = {
+        "name": "hero image.png", "path": "套件/hero image.png", "kind": "artwork",
+        "parent_path": "套件", "width": 32, "height": 16, "aspect_ratio": 2.0,
+        "modified": 1, "size": 10, "size_fmt": "10 B", "extension": ".png", "tags": [],
+    }
+    assert gallery_entry_response(artwork) == {
+        **artwork,
+        "thumbnail_url": "/api/thumbnails/%E5%A5%97%E4%BB%B6/hero%20image.png?size=512",
+        "image_url": "/api/image?path=%E5%A5%97%E4%BB%B6%2Fhero%20image.png",
+    }
+
+    coverless = dict(node, kind="collection", cover_path=None)
+    assert gallery_entry_response(coverless)["cover_url"] is None
+
+
+def test_gallery_home_and_collection_responses_attach_urls_without_mutating_input():
+    node = {
+        "name": "set", "path": "set", "kind": "project", "parent_path": "",
+        "cover_path": "set/art.png", "width": 40, "height": 40,
+        "aspect_ratio": 1.0, "modified": 1, "size": 1, "size_fmt": "1 B",
+        "file_count": 1, "artwork_count": 1, "child_count": 0, "tags": [],
+    }
+    artwork = {
+        "name": "art.png", "path": "set/art.png", "kind": "artwork",
+        "parent_path": "set", "width": 40, "height": 40, "aspect_ratio": 1.0,
+        "modified": 1, "size": 1, "size_fmt": "1 B", "extension": ".png", "tags": [],
+    }
+    home = GalleryHome(node, [node], [], [artwork], {
+        "collections": 1, "projects": 0, "artworks": 1, "total_size_fmt": "1 B",
+    })
+    home_response = gallery_home_response(home)
+    assert home_response["featured"]["cover_url"] == "/api/thumbnails/set/art.png?size=512"
+    assert home_response["collections"][0]["cover_url"] == "/api/thumbnails/set/art.png?size=512"
+    assert home_response["recent"][0]["thumbnail_url"] == "/api/thumbnails/set/art.png?size=512"
+    assert home_response["recent"][0]["image_url"] == "/api/image?path=set%2Fart.png"
+    # The service's cached projection is never mutated with URL keys.
+    assert "cover_url" not in node
+    assert "thumbnail_url" not in artwork
+
+    collection = GalleryCollection(node, [node], [artwork])
+    collection_response = gallery_collection_response(collection)
+    assert collection_response["collection"]["cover_url"] == "/api/thumbnails/set/art.png?size=512"
+    assert collection_response["children"][0]["cover_url"] == "/api/thumbnails/set/art.png?size=512"
+    assert collection_response["entries"][0]["thumbnail_url"] == "/api/thumbnails/set/art.png?size=512"
+    assert collection_response["entries"][0]["image_url"] == "/api/image?path=set%2Fart.png"

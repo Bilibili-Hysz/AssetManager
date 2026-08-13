@@ -18,7 +18,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
 from typing import Any, Iterable
-from urllib.parse import quote
 
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.application.tag_service import TagService
@@ -109,8 +108,6 @@ class GalleryImage:
     name: str
     path: str
     parent_path: str
-    thumbnail_url: str
-    image_url: str
     width: int | None
     height: int | None
     aspect_ratio: float | None
@@ -125,8 +122,6 @@ class GalleryImage:
             "path": self.path,
             "kind": "artwork",
             "parent_path": self.parent_path,
-            "thumbnail_url": self.thumbnail_url,
-            "image_url": self.image_url,
             "width": self.width,
             "height": self.height,
             "aspect_ratio": self.aspect_ratio,
@@ -234,6 +229,26 @@ class _HomeState:
     refs: list[_ImageRef]
     files: dict[str, tuple[int, int]]  # rel path -> (size, mtime)
     generation: int
+
+
+# Pre-separation persisted projections carried transport URLs (``cover_url``,
+# ``thumbnail_url``, ``image_url``) inside the home JSON.  Those keys are now
+# assembled only at the LAN route layer, so a legacy row must have them
+# stripped on load to keep the restored projection URL-free.
+_LEGACY_URL_KEYS = frozenset({"cover_url", "thumbnail_url", "image_url"})
+
+
+def _strip_legacy_url_fields(value: Any) -> Any:
+    """Recursively drop legacy URL keys from a persisted projection value."""
+    if isinstance(value, dict):
+        return {
+            key: _strip_legacy_url_fields(item)
+            for key, item in value.items()
+            if key not in _LEGACY_URL_KEYS
+        }
+    if isinstance(value, list):
+        return [_strip_legacy_url_fields(item) for item in value]
+    return value
 
 
 class GalleryService:
@@ -534,6 +549,7 @@ class GalleryService:
             projection = json.loads(projection_json)
             if not isinstance(projection, dict):
                 return None
+            projection = _strip_legacy_url_fields(projection)
             return GalleryHome(
                 featured=projection.get("featured"),
                 collections=projection.get("collections", []),
@@ -618,17 +634,6 @@ class GalleryService:
         parent = relative_path.rsplit("/", 1)[0] if "/" in relative_path else ""
         return parent
 
-    @staticmethod
-    def _thumbnail_url(relative_path: str, size: int) -> str:
-        encoded = quote(relative_path, safe="/")
-        return f"/api/thumbnails/{encoded}?size={size}"
-
-    @staticmethod
-    def _image_url(relative_path: str) -> str:
-        """Build the URI-encoded high-resolution image preview URL."""
-        encoded = quote(relative_path, safe="")
-        return f"/api/image?path={encoded}"
-
     @classmethod
     def _image_dimensions(cls, path: Path) -> tuple[int | None, int | None, float | None]:
         if Image is None:
@@ -649,7 +654,6 @@ class GalleryService:
         relative_path: str,
         *,
         stat_result: os.stat_result | None = None,
-        thumbnail_size: int = 512,
     ) -> dict[str, Any] | None:
         target = (root / relative_path).resolve()
         try:
@@ -669,8 +673,6 @@ class GalleryService:
             name=target.name,
             path=relative_path,
             parent_path=parent or "",
-            thumbnail_url=cls._thumbnail_url(relative_path, thumbnail_size),
-            image_url=cls._image_url(relative_path),
             width=width,
             height=height,
             aspect_ratio=aspect_ratio,
@@ -869,7 +871,7 @@ class GalleryService:
             if direct_images
             else next((str(child["cover_path"]) for child in child_nodes if child.get("cover_path")), None)
         )
-        cover = self._describe_image(root, cover_path, thumbnail_size=512) if cover_path else None
+        cover = self._describe_image(root, cover_path) if cover_path else None
         normalized = self._normalize_relative_path(relative_path)
         is_root = not normalized
         kind = "collection" if is_root or child_nodes else "project"
@@ -881,7 +883,6 @@ class GalleryService:
             "kind": kind,
             "parent_path": self._parent_path(normalized),
             "cover_path": cover_path,
-            "cover_url": cover.get("thumbnail_url") if cover else None,
             "width": cover.get("width") if cover else None,
             "height": cover.get("height") if cover else None,
             "aspect_ratio": cover.get("aspect_ratio") if cover else None,
@@ -898,7 +899,7 @@ class GalleryService:
             node["entries"] = [
                 described
                 for path, stat_result in direct_images
-                if (described := self._describe_image(root, path, stat_result=stat_result, thumbnail_size=512))
+                if (described := self._describe_image(root, path, stat_result=stat_result))
             ]
         if state_nodes is not None:
             state_nodes[normalized or "/"] = _StateNode(
@@ -1374,8 +1375,7 @@ class GalleryService:
             )
         )
         summary["cover_path"] = cover_path
-        cover = self._describe_image(root, cover_path, thumbnail_size=512) if cover_path else None
-        summary["cover_url"] = cover.get("thumbnail_url") if cover else None
+        cover = self._describe_image(root, cover_path) if cover_path else None
         summary["width"] = cover.get("width") if cover else None
         summary["height"] = cover.get("height") if cover else None
         summary["aspect_ratio"] = cover.get("aspect_ratio") if cover else None
@@ -1393,7 +1393,7 @@ class GalleryService:
         refs = sorted(state.refs, key=lambda item: (-item.modified, item.path.casefold()))
         recent: list[dict[str, Any]] = []
         for ref in refs[:24]:
-            described = self._describe_image(root, ref.path, thumbnail_size=512)
+            described = self._describe_image(root, ref.path)
             if described:
                 recent.append(described)
         self._apply_tags_to_entries(root, recent, db_conn=db_conn)
@@ -1558,7 +1558,7 @@ class GalleryService:
         refs.sort(key=lambda item: (-item.modified, item.path.casefold()))
         recent: list[dict[str, Any]] = []
         for ref in refs[:24]:
-            described = self._describe_image(root, ref.path, thumbnail_size=512)
+            described = self._describe_image(root, ref.path)
             if described:
                 recent.append(described)
         self._apply_tags_to_entries(root, recent, db_conn=conn)
@@ -1656,7 +1656,7 @@ class GalleryService:
                 if node is not None:
                     result.append(self._summary(node))
                 continue
-            described = self._describe_image(root, normalized, thumbnail_size=512)
+            described = self._describe_image(root, normalized)
             if described is not None:
                 result.append(described)
         self._apply_tags_to_entries(root, result, db_conn=conn)

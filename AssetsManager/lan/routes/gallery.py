@@ -15,6 +15,10 @@ from AssetsManager.lan.routes._helpers import (
     require_permission,
     validate_path,
 )
+from AssetsManager.lan.routes._resource_urls import (
+    gallery_collection_response,
+    gallery_home_response,
+)
 
 MAX_GALLERY_PATH_LENGTH = 4_096
 _ALLOWED_KINDS = {"all", "artwork", "works"}
@@ -48,7 +52,7 @@ async def handle_gallery_home(request):
             # building state and retries shortly (large libraries take tens
             # of seconds to project).
             return web.json_response({"building": True}, status=202)
-        result = web.json_response(home.to_response())
+        result = web.json_response(gallery_home_response(home))
         result.headers["Cache-Control"] = "private, no-store"
         return result
     except GalleryTraversalLimitError as exc:
@@ -92,7 +96,7 @@ async def handle_gallery_collection(request):
         return error_response("Failed to load gallery collection", status=500, code="internal_error")
     if response is None:
         return error_response("Collection not found", status=404, code="not_found")
-    result = web.json_response(response.to_response())
+    result = web.json_response(gallery_collection_response(response))
     result.headers["Cache-Control"] = "private, no-store"
     return result
 

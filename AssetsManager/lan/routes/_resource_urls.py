@@ -15,6 +15,15 @@ def download_url(path: str) -> str:
     return f"/api/download/{quote(path, safe='/')}"
 
 
+def image_url(path: str) -> str:
+    """Build a LAN original-image preview URL from a library-relative path.
+
+    The path is carried as a query parameter, so it is percent-encoded as a
+    single opaque value (``/`` becomes ``%2F``) and decoded once by aiohttp.
+    """
+    return f"/api/image?path={quote(path, safe='')}"
+
+
 def search_result_response(result) -> dict:
     return {
         "name": result.name,
@@ -73,4 +82,45 @@ def _project_summary_response(project: dict, *, nullable_thumbnail: bool = False
             response[key] = value
         elif value or nullable_thumbnail:
             response["thumbnail_url"] = thumbnail_url(value) if value else None
+    return response
+
+
+_GALLERY_THUMBNAIL_SIZE = 512
+
+
+def gallery_entry_response(entry: dict) -> dict:
+    """Attach transport URLs to one gallery entry (node or artwork summary).
+
+    The application service emits only ``cover_path``/``path``; the LAN layer
+    is the single place that projects those references onto preview URLs.
+    Artwork entries get ``thumbnail_url`` + ``image_url``; collection/project
+    nodes get ``cover_url`` (or ``None`` when they have no cover).
+    """
+    response = dict(entry)
+    if entry.get("kind") == "artwork":
+        response["thumbnail_url"] = thumbnail_url(entry["path"], size=_GALLERY_THUMBNAIL_SIZE)
+        response["image_url"] = image_url(entry["path"])
+    else:
+        cover_path = entry.get("cover_path")
+        response["cover_url"] = (
+            thumbnail_url(cover_path, size=_GALLERY_THUMBNAIL_SIZE) if cover_path else None
+        )
+    return response
+
+
+def gallery_home_response(home) -> dict:
+    response = home.to_response()
+    if response["featured"] is not None:
+        response["featured"] = gallery_entry_response(response["featured"])
+    response["collections"] = [gallery_entry_response(entry) for entry in response["collections"]]
+    response["projects"] = [gallery_entry_response(entry) for entry in response["projects"]]
+    response["recent"] = [gallery_entry_response(entry) for entry in response["recent"]]
+    return response
+
+
+def gallery_collection_response(collection) -> dict:
+    response = collection.to_response()
+    response["collection"] = gallery_entry_response(response["collection"])
+    response["children"] = [gallery_entry_response(entry) for entry in response["children"]]
+    response["entries"] = [gallery_entry_response(entry) for entry in response["entries"]]
     return response

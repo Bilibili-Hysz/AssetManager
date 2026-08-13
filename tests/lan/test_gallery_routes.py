@@ -49,13 +49,16 @@ async def test_gallery_routes_expose_home_collection_and_resolve_contract(tmp_pa
         assert home.status == 200
         home_payload = await home.json()
         assert home_payload["projects"][0]["path"] == "set"
+        assert home_payload["projects"][0]["cover_url"] == "/api/thumbnails/set/art.png?size=512"
         assert home_payload["stats"]["artworks"] == 1
 
         collection = await client.get("/api/gallery/collection?path=set&sort=name")
         assert collection.status == 200
         collection_payload = await collection.json()
         assert collection_payload["collection"]["kind"] == "project"
+        assert collection_payload["collection"]["cover_url"] == "/api/thumbnails/set/art.png?size=512"
         assert collection_payload["entries"][0]["thumbnail_url"] == "/api/thumbnails/set/art.png?size=512"
+        assert collection_payload["entries"][0]["image_url"] == "/api/image?path=set%2Fart.png"
 
         resolved = await client.get("/api/gallery/resolve?path=set%2Fart.png")
         assert resolved.status == 200

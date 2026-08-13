@@ -45,7 +45,10 @@ def test_gallery_home_projects_collections_and_recent_projection(tmp_path, schem
     assert project == "collection"
     assert response["collections"][0]["artwork_count"] == 2
     assert response["collections"][0]["file_count"] == 3
-    assert response["collections"][0]["cover_url"] == "/api/thumbnails/collection/cover.jpg?size=512"
+    # The service is transport-free: it exposes cover_path only; URL assembly
+    # is the LAN route layer's job (see test_url_projection_contract.py).
+    assert response["collections"][0]["cover_path"] == "collection/cover.jpg"
+    assert "cover_url" not in response["collections"][0]
 
 
 def test_gallery_collection_returns_child_summaries_and_filtered_entries(tmp_path, schema_db):
@@ -119,7 +122,7 @@ def test_gallery_traversal_budget_is_enforced(tmp_path, schema_db):
         service.get_home(tmp_path)
 
 
-def test_gallery_image_url_points_to_uri_encoded_original_preview(tmp_path, schema_db):
+def test_gallery_service_emits_no_transport_urls(tmp_path, schema_db):
     _image(tmp_path / "套件" / "hero image.png")
 
     service = GalleryService(connection_provider=lambda _root: schema_db)
@@ -127,9 +130,14 @@ def test_gallery_image_url_points_to_uri_encoded_original_preview(tmp_path, sche
 
     assert response is not None
     entry = response.entries[0]
-    assert entry["thumbnail_url"] == "/api/thumbnails/%E5%A5%97%E4%BB%B6/hero%20image.png?size=512"
-    assert entry["image_url"] == (
-        "/api/image?path=%E5%A5%97%E4%BB%B6%2Fhero%20image.png"
+    # The service keeps the library-relative path only; the LAN route layer
+    # is the single owner of thumbnail/image URL projection.
+    assert entry["path"] == "套件/hero image.png"
+    assert "thumbnail_url" not in entry
+    assert "image_url" not in entry
+    assert all(
+        not (isinstance(value, str) and value.startswith("/api/"))
+        for value in entry.values()
     )
 
 
@@ -429,6 +437,77 @@ def test_corrupted_persisted_projection_is_ignored(tmp_path, schema_db, monkeypa
     monkeypatch.setattr(service, "_ensure_home_building", lambda _root_key: None)
     try:
         assert service.get_home_cached(tmp_path) is None
+    finally:
+        service.close()
+
+
+def test_legacy_persisted_projection_urls_are_stripped_on_load(tmp_path, schema_db, monkeypatch):
+    """A pre-separation persisted row carries URL keys; the restored home is
+    served URL-free and re-projected at the route layer instead."""
+    import json
+    import time
+
+    legacy = {
+        "featured": {
+            "name": "set", "path": "set", "kind": "project", "parent_path": "",
+            "cover_path": "set/cover.png",
+            "cover_url": "/api/thumbnails/set/cover.png?size=512",
+            "width": 40, "height": 40, "aspect_ratio": 1.0, "modified": 1,
+            "size": 1, "size_fmt": "1 B", "file_count": 1, "artwork_count": 1,
+            "child_count": 0, "tags": [],
+        },
+        "collections": [],
+        "projects": [
+            {
+                "name": "set", "path": "set", "kind": "project", "parent_path": "",
+                "cover_path": "set/cover.png",
+                "cover_url": "/api/thumbnails/set/cover.png?size=512",
+                "width": 40, "height": 40, "aspect_ratio": 1.0, "modified": 1,
+                "size": 1, "size_fmt": "1 B", "file_count": 1, "artwork_count": 1,
+                "child_count": 0, "tags": [],
+            },
+        ],
+        "recent": [
+            {
+                "name": "cover.png", "path": "set/cover.png", "kind": "artwork",
+                "parent_path": "set",
+                "thumbnail_url": "/api/thumbnails/set/cover.png?size=512",
+                "image_url": "/api/image?path=set%2Fcover.png",
+                "width": 40, "height": 40, "aspect_ratio": 1.0, "modified": 1,
+                "size": 1, "size_fmt": "1 B", "extension": ".png", "tags": [],
+            },
+        ],
+        "stats": {"collections": 0, "projects": 1, "artworks": 1, "total_size_fmt": "1 B"},
+    }
+    schema_db.execute(
+        "INSERT OR REPLACE INTO gallery_home (id, saved_at, projection) "
+        "VALUES (1, ?, ?)",
+        (time.time(), json.dumps(legacy, ensure_ascii=False)),
+    )
+    schema_db.commit()
+
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    monkeypatch.setattr(service, "_ensure_home_building", lambda _root_key: None)
+    try:
+        home = service.get_home_cached(tmp_path)
+        assert home is not None
+        restored = home.to_response()
+
+        def collect(values):
+            for value in values:
+                if isinstance(value, dict):
+                    yield from collect(value.values())
+                elif isinstance(value, list):
+                    yield from collect(value)
+
+        assert not any(
+            isinstance(value, str) and value.startswith("/api/")
+            for value in collect(restored.values())
+        )
+        assert "cover_url" not in restored["projects"][0]
+        assert "thumbnail_url" not in restored["recent"][0]
+        assert "image_url" not in restored["recent"][0]
+        assert restored["projects"][0]["cover_path"] == "set/cover.png"
     finally:
         service.close()
 
