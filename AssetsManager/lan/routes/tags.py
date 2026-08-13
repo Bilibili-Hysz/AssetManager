@@ -7,7 +7,7 @@ from AssetsManager.domain.errors import DuplicateError, ValidationError
 from AssetsManager.lan.dto import TagResponse
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
-    get_lan, get_tag_service, require_admin, require_permission, validated_existing_key,
+    get_lan, get_tag_service, require_admin, require_permission, require_user_write, validated_existing_key,
 )
 
 _log = logging.getLogger(__name__)
@@ -27,8 +27,8 @@ async def handle_tags(request):
 
 
 async def handle_create_tag(request):
-    if not require_admin(request):
-        return error_response("Admin access required", status=403, code="forbidden")
+    if not require_user_write(request):
+        return error_response("Write access required", status=403, code="forbidden")
     lan = get_lan(request)
     svc = get_tag_service(request)
     try:

@@ -24,6 +24,15 @@ def _as_float(value: object, default: float = 0.0) -> float:
     except (TypeError, ValueError):
         return default
 
+
+def _can_write(user: Mapping[str, object]) -> bool:
+    """Return the persisted per-user metadata/tag write flag (default off)."""
+    value = user.get("can_write", 0)
+    try:
+        return bool(int(cast(str | bytes | bytearray | SupportsInt, value)))
+    except (TypeError, ValueError):
+        return False
+
 PrincipalKind = Literal["user", "password", "access_key", "local_ui", "guest", "share"]
 PrincipalRole = Literal["admin", "user", "guest"]
 
@@ -54,6 +63,7 @@ class SessionPrincipal:
     display_name: str
     capabilities: Capabilities
     user_profile: dict[str, object] | None = None
+    can_write: bool = False
 
     def to_dict(self) -> dict[str, object]:
         result: dict[str, object] = {
@@ -113,7 +123,7 @@ def principal_for_request(kind: PrincipalKind, *, user: Mapping[str, object] | N
             # viewer（自注册默认）及其它未知角色：受限能力，无下载
             role, caps = "user", viewer_caps
         return SessionPrincipal(kind, True, role, str(user.get("username", "user")),
-                                caps, profile)
+                                caps, profile, _can_write(user))
     if kind in ("password", "access_key", "local_ui"):
         return SessionPrincipal(kind, True, "admin", kind, all_caps)
     if kind == "share":

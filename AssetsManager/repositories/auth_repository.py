@@ -215,7 +215,8 @@ class AuthRepository:
     def get_user_by_username(self, username: str) -> dict | None:
         """Get a user by username."""
         row = self._conn.execute(
-            "SELECT id, username, password, email, role, is_active, created_at "
+            "SELECT id, username, password, email, role, is_active, created_at, "
+            "can_write "
             "FROM users WHERE username=?",
             (username,),
         ).fetchone()
@@ -229,13 +230,15 @@ class AuthRepository:
             "role": row[4],
             "is_active": row[5],
             "created_at": row[6],
+            "can_write": row[7],
         }
 
     @_repository_operation
     def get_user_by_id(self, user_id: int) -> dict | None:
         """Get a user by ID."""
         row = self._conn.execute(
-            "SELECT id, username, password, email, role, is_active, created_at "
+            "SELECT id, username, password, email, role, is_active, created_at, "
+            "can_write "
             "FROM users WHERE id=?",
             (user_id,),
         ).fetchone()
@@ -249,6 +252,7 @@ class AuthRepository:
             "role": row[4],
             "is_active": row[5],
             "created_at": row[6],
+            "can_write": row[7],
         }
 
     @_repository_operation
@@ -325,11 +329,12 @@ class AuthRepository:
     def list_users(self, include_password: bool = False) -> list[dict]:
         """List all users."""
         rows = self._conn.execute(
-            "SELECT id, username, password, email, role, is_active, created_at FROM users"
+            "SELECT id, username, password, email, role, is_active, created_at, "
+            "can_write FROM users"
         ).fetchall()
         result = []
         for r in rows:
-            d = {"id": r[0], "username": r[1], "email": r[3], "role": r[4], "is_active": r[5], "created_at": r[6]}
+            d = {"id": r[0], "username": r[1], "email": r[3], "role": r[4], "is_active": r[5], "created_at": r[6], "can_write": r[7]}
             if include_password:
                 d["password_hash"] = r[2]
             result.append(d)
@@ -342,6 +347,17 @@ class AuthRepository:
             cur = self._conn.execute(
                 "UPDATE users SET is_active=? WHERE id=?",
                 (1 if active else 0, user_id),
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    @_repository_operation
+    def set_user_can_write(self, user_id: int, enabled: bool) -> bool:
+        """Enable or disable per-user metadata/tag write access. Returns True if updated."""
+        with db_write_lock(self._conn):
+            cur = self._conn.execute(
+                "UPDATE users SET can_write=? WHERE id=?",
+                (1 if enabled else 0, user_id),
             )
             self._conn.commit()
             return cur.rowcount > 0

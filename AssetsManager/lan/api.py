@@ -59,6 +59,7 @@ from AssetsManager.lan.routes import (
     handle_me,
     handle_users,
     handle_toggle_user,
+    handle_update_user,
     handle_invites,
     handle_create_invite,
     handle_revoke_invite,
@@ -242,6 +243,7 @@ def setup_routes(app: web.Application):
     _add(app, "GET", "/api/auth/me", handle_me)
     _add(app, "GET", "/api/users", handle_users)
     _add(app, "POST", "/api/users/{id}/toggle", handle_toggle_user)
+    _add(app, "PATCH", "/api/users/{username}", handle_update_user)
     _add(app, "GET", "/api/invites", handle_invites)
     _add(app, "POST", "/api/invites", handle_create_invite)
     _add(app, "POST", "/api/invites/{code}/revoke", handle_revoke_invite)

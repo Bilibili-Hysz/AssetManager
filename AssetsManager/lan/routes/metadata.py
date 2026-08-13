@@ -13,7 +13,7 @@ from AssetsManager.lan.dto import TreeItemResponse
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
     get_lan, validate_path, get_metadata_service, get_project_service,
-    get_search_service, require_admin, require_permission, validated_existing_key,
+    get_search_service, require_permission, require_user_write, validated_existing_key,
 )
 from AssetsManager.lan.routes._resource_urls import (
     project_detail_response, project_home_response, project_listing_response,
@@ -55,9 +55,9 @@ async def handle_meta(request):
 
 
 async def handle_save_notes(request):
-    """Persist notes for an existing library path (admin/local UI only)."""
-    if not require_admin(request):
-        return error_response("Admin access required", status=403, code="forbidden")
+    """Persist notes for an existing library path (admin or can_write user)."""
+    if not require_user_write(request):
+        return error_response("Write access required", status=403, code="forbidden")
 
     lan = get_lan(request)
     rel_path = request.match_info.get("path", "")  # aiohttp decodes match_info once

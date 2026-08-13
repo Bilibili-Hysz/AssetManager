@@ -4,7 +4,7 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库（元数据、标签、缩略图），也可以通过局域网内的浏览器远程浏览和下载资产。
 
-<!-- stats: app_services=39 core=29 dialogs=15 domain_events=15 e2e_specs=6 hooks=14 i18n_en=775 i18n_ja=775 i18n_zh=775 icons=56 pages=26 python_test_files=224 repos=17 routes=139 routes_modules=24 schema_version=27 stores=4 themes=22 ts=114 webui_test_files=103 widgets=13 -->
+<!-- stats: app_services=40 core=29 dialogs=15 domain_events=15 e2e_specs=6 hooks=14 i18n_en=775 i18n_ja=775 i18n_zh=775 icons=56 pages=26 python_test_files=227 repos=17 routes=140 routes_modules=24 schema_version=28 stores=4 themes=22 ts=114 webui_test_files=103 widgets=13 -->
 > 当前审查证据（2026-08-13，本机 Windows / Python 3.14.3，DSH 沙箱环境）：最近一次 Python 全量运行结果为 **3450 passed, 7 skipped, 0 failed**（沙箱下以 `-n 0` 单进程运行；4 个依赖 multiprocessing 命名管道的测试被沙箱阻断，CI 环境不受影响）；`ruff check AssetsManager tests scripts run.py` **全绿**；compileall 通过；**pyright 0 errors / 0 warnings**（CI "Type Check (pyright hard gate)" 固定 1.1.410）。WebUI 单测/typecheck/build/E2E 在上一次会话实测为 683/通过/51 passed 2 skipped（本机沙箱禁止 Node 子进程管道，未复跑；以 CI 为准）。远程 Python 3.12/3.13/3.14 矩阵、clean checkout/Windows package smoke 和真实后端 Commerce 验收仍需分别看待，不据此宣称整个项目完成。完整审查文档集见 `docs/full-review/`（含模块地图、数据流、事件系统、审查结果与验证基线）。
 
 
@@ -77,7 +77,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 | Python | 3.12/3.13/3.14 | 主语言（CI 矩阵；本机 3.14） |
 | PySide6 | >=6.6,<7 | 桌面 UI 框架 (Qt 6) |
 | aiohttp | >=3.9 | 异步 HTTP 服务器（可选依赖） |
-| SQLite3 | 内置 | 数据库 (WAL 模式，迁移 v1-v27) |
+| SQLite3 | 内置 | 数据库 (WAL 模式，迁移 v1-v28) |
 | Pillow | >=10.0 | 图片处理（缩略图/EXIF/模糊） |
 | segno | >=1.6 | QR 码生成 |
 | send2trash / requests | — | 回收站删除 / HTTP 工具 |
@@ -98,7 +98,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 
 | 组件 | 说明 |
 |------|------|
-| aiohttp.web | REST API（139 条路由）+ WebSocket |
+| aiohttp.web | REST API（140 条路由）+ WebSocket |
 | aiohttp middleware | 认证、安全、速率限制（顺序：security → metrics → auth） |
 | PathGuard | 路径遍历防护（resolve + is_relative_to） |
 | HMAC tokens | 认证令牌（ts.nonce.sig，24h；不支持 query 认证） |
@@ -111,7 +111,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 | 组件 | 说明 |
 |------|------|
 | DatabaseManager | 每库独立连接 + 身份标记 + 读写门（_WriteGate）+ 归属校验 |
-| db_migrations | 版本化迁移 v1-v27（SAVEPOINT 原子 + 契约回溯校验） |
+| db_migrations | 版本化迁移 v1-v28（SAVEPOINT 原子 + 契约回溯校验） |
 | schema_defs | 表 DDL 契约（SchemaObjectContract 校验器，fail-closed） |
 | repositories/ | **17 个 SQL 仓库**（tag/metadata/thumbnail/favorite/share/auth/asset_index/plugin_metadata/shop/order/quota/free_download_quota/seller_profile/storefront_analytics/shop_buyer/gallery_home/revoked_token）——统一 for_session 绑定 + SAVEPOINT 事务 + CAS |
 | LibraryLock | 跨进程库锁（QLockFile 引用计数，staleLockTime(0)） |
@@ -147,7 +147,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 │  │FileListController│ │InfoController│ │TagTreeController│ │
 │  └────────┬────────┘ └─────┬──────┘ └────────┬─────────┘ │
 ├───────────┼────────────────┼──────────────────┼───────────┤
-│                  Application Layer（39 模块）              │
+│                  Application Layer（40 模块）              │
 │  LibraryService  Runtime/LibrarySession  RuntimeEventRouter│
 │  AssetIndex/Reconciliation/Undo/FileOperation/Export       │
 │  Metadata/Tag/Thumbnail/Search/Project/Gallery/Favorite    │
@@ -162,7 +162,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 │  session_contract  performance  crash_handler  bg_effects  │
 └────────────────────────────────────────────────────────────┘
         LAN 层（aiohttp：server/manager/ws/security/tunnel/
-        path_guard/principal/dto + routes/ 24 模块 139 条路由）
+        path_guard/principal/dto + routes/ 24 模块 140 条路由）
 ```
 
 ### 架构原则
@@ -188,7 +188,7 @@ AssetsManager_old-bak/
 │   ├── window_lifecycle_coordinator.py  # 库切换与退出编排
 │   ├── dock_factory.py         # QDockWidget 工厂
 │   │
-│   ├── application/            # 应用服务层（39 模块，20k 行）
+│   ├── application/            # 应用服务层（40 模块，20k 行）
 │   │   ├── bootstrap.py        # DI 装配（LibraryScopedServices/LanRuntimeServices）
 │   │   ├── runtime.py          # LibraryRuntime（服务快照/事件路由/生命周期）
 │   │   ├── context.py          # LibrarySession/LibraryContext（operation 租约）
@@ -216,7 +216,7 @@ AssetsManager_old-bak/
 │   │
 │   ├── core/                   # 基础设施层（29 模块 + plugins/4）
 │   │   ├── database.py         # DatabaseManager（连接/身份标记/读写门）
-│   │   ├── db_migrations.py    # 数据库迁移 v1-v27
+│   │   ├── db_migrations.py    # 数据库迁移 v1-v28
 │   │   ├── schema_defs.py      # 表 DDL 契约 + 校验器
 │   │   ├── settings.py / config_migrator.py / json_store.py
 │   │   ├── themes.py / theme_loader.py / icons.py / bg_effects.py
@@ -475,7 +475,7 @@ server.start(port=8080)
 
 ### API 端点
 
-LAN 服务器注册 **139 条路由**（实测 `api.py` `_add` 注册：页面 32 / Commerce-Seller 53 / 认证 8 / 核心库 API 46）。完整路由表（方法+路径+权限+handler+服务）见 `docs/full-review/02-module-map.md` 与 `docs/compose/reports` 系列；主要端点：
+LAN 服务器注册 **140 条路由**（实测 `api.py` `_add` 注册：页面 32 / Commerce-Seller 53 / 认证 8 / 核心库 API 46）。完整路由表（方法+路径+权限+handler+服务）见 `docs/full-review/02-module-map.md` 与 `docs/compose/reports` 系列；主要端点：
 
 | 端点 | 方法 | 权限 | 说明 |
 |------|------|------|------|

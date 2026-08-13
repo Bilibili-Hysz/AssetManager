@@ -45,6 +45,24 @@ CREATE TABLE IF NOT EXISTS users (
     role        TEXT DEFAULT 'viewer',
     created_at  REAL DEFAULT (strftime('%s','now')),
     last_login  REAL,
+    is_active   INTEGER DEFAULT 1,
+    can_write   INTEGER NOT NULL DEFAULT 0
+);
+"""
+
+# Historical v6 snapshot: migration v6 first created ``users`` without the
+# per-user write flag; v28 adds ``can_write``. The shared ``USERS_SCHEMA`` is
+# the current shape, so the v6 checkpoint uses this immutable copy to keep
+# v1-v27 on-disk history byte-compatible.
+USERS_SCHEMA_V6 = """
+CREATE TABLE IF NOT EXISTS users (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    username    TEXT UNIQUE NOT NULL,
+    password    TEXT NOT NULL,
+    email       TEXT,
+    role        TEXT DEFAULT 'viewer',
+    created_at  REAL DEFAULT (strftime('%s','now')),
+    last_login  REAL,
     is_active   INTEGER DEFAULT 1
 );
 """
@@ -579,6 +597,7 @@ AUTH_SHARE_SCHEMA_CONTRACT: dict[str, SchemaObjectContract] = {
             "created_at",
             "last_login",
             "is_active",
+            "can_write",
         ),
         "primary_key": ("id",),
         "unique_constraints": (("username",),),

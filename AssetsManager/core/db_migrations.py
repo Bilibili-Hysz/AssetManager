@@ -35,14 +35,14 @@ from AssetsManager.core.schema_defs import (
     SHOP_WISHLIST_SCHEMAS,
     SELLER_PROFILE_SCHEMA,
     STOREFRONT_ANALYTICS_SCHEMAS,
-    USERS_SCHEMA,
+    USERS_SCHEMA_V6,
     InvalidSchemaError,  # noqa: F401 - compatibility export
     validate_schema_object,
     validate_schema_objects,
 )
 
 
-CURRENT_SCHEMA_VERSION = 27
+CURRENT_SCHEMA_VERSION = 28
 _BASELINE_SCHEMA_CONTRACT = {
     "file_tags": {
         "columns": ("file_path", "tag"),
@@ -181,6 +181,11 @@ def _reconciliation_tasks_contract(*, include_lease_token: bool) -> SchemaObject
 def _versioned_schema_contract(table: str, version: int) -> SchemaObjectContract:
     """Return the contract that was valid at a recorded migration boundary."""
     contract = cast(SchemaObjectContract, dict(SCHEMA_OBJECT_CONTRACT[table]))
+
+    if table == "users" and version < 28:
+        contract["columns"] = tuple(
+            column for column in contract["columns"] if column != "can_write"
+        )
 
     if table == "reconciliation_tasks" and version < 17:
         return _reconciliation_tasks_contract(include_lease_token=False)
@@ -540,9 +545,14 @@ def _add_directory_cache_v5(conn: sqlite3.Connection) -> None:
 
 
 def _add_auth_share_schema_v6(conn: sqlite3.Connection) -> None:
-    """Create auth/share tables, rejecting incompatible existing tables."""
+    """Create auth/share tables, rejecting incompatible existing tables.
+
+    ``users`` is created with its v6 shape (no ``can_write``); v28 adds that
+    column. The on-disk history for a database created at v6 must stay
+    byte-compatible with the historical checkpoint.
+    """
     schemas = (
-        ("users", USERS_SCHEMA),
+        ("users", USERS_SCHEMA_V6),
         ("invite_codes", INVITE_CODES_SCHEMA),
         ("share_links", SHARE_LINKS_SCHEMA),
     )
@@ -902,6 +912,19 @@ def _add_revoked_tokens_schema_v27(conn: sqlite3.Connection) -> None:
             conn.execute(sql)
     validate_schema_objects(conn, (table,))
 
+
+def _add_user_can_write_schema_v28(conn: sqlite3.Connection) -> None:
+    """Add the per-user metadata/tag write flag (default off)."""
+    table = "users"
+    columns = {
+        str(row[1]) for row in conn.execute(f"PRAGMA table_info('{table}')")
+    }
+    if "can_write" not in columns:
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN can_write INTEGER NOT NULL DEFAULT 0"
+        )
+    validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
+
 def _add_reconciliation_lease_token_schema_v17(conn: sqlite3.Connection) -> None:
     """Add the nullable durable lease identity used by the next queue phase."""
     table = "reconciliation_tasks"
@@ -947,6 +970,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(25, "shop_share_claims", _add_shop_share_claims_schema_v25),
     Migration(26, "gallery_home_projection", _add_gallery_home_schema_v26),
     Migration(27, "revoked_tokens", _add_revoked_tokens_schema_v27),
+    Migration(28, "user_can_write", _add_user_can_write_schema_v28),
 )
 
 

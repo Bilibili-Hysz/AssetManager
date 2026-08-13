@@ -120,6 +120,7 @@ from AssetsManager.lan.routes.thumbnails import (
 from AssetsManager.lan.routes.users import (
     handle_users,
     handle_toggle_user,
+    handle_update_user,
     handle_invites,
     handle_create_invite,
     handle_revoke_invite,
@@ -174,6 +175,7 @@ __all__ = [
     "handle_me",
     "handle_users",
     "handle_toggle_user",
+    "handle_update_user",
     "handle_invites",
     "handle_create_invite",
     "handle_revoke_invite",

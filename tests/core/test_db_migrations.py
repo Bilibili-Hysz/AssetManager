@@ -1220,3 +1220,87 @@ def test_latest_schema_revalidates_shop_share_claims(memory_db):
 
     with pytest.raises(InvalidSchemaError, match="shop_share_claims"):
         migrate(conn)
+
+
+def test_fresh_schema_contains_user_can_write_column(memory_db):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import CURRENT_SCHEMA_VERSION, migrate
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
+
+    columns = {
+        str(row[1]) for row in conn.execute("PRAGMA table_info('users')")
+    }
+    assert "can_write" in columns
+    not_null = {
+        str(row[1]): row[3] for row in conn.execute("PRAGMA table_info('users')")
+    }
+    assert not_null["can_write"] == 1  # NOT NULL
+    default = {
+        str(row[1]): row[4] for row in conn.execute("PRAGMA table_info('users')")
+    }
+    assert default["can_write"] == "0"  # DEFAULT 0
+
+
+def test_v28_upgrades_users_with_existing_rows_defaulting_to_zero(memory_db, monkeypatch):
+    from AssetsManager.core import db_migrations
+
+    conn = memory_db
+    _load_v1_schema(conn)
+    all_migrations = db_migrations.MIGRATIONS
+
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 27)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations[:27])
+    assert db_migrations.migrate(conn) == 27
+
+    # Existing users created at v27 have no can_write value yet.
+    conn.execute(
+        "INSERT INTO users (username, password, email, role, is_active) "
+        "VALUES ('alice', 'hash', NULL, 'viewer', 1)"
+    )
+    conn.commit()
+    columns_before = {
+        str(row[1]) for row in conn.execute("PRAGMA table_info('users')")
+    }
+    assert "can_write" not in columns_before
+
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 28)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations)
+    assert db_migrations.migrate(conn) == 28
+
+    assert conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=28"
+    ).fetchone() == ("user_can_write",)
+    assert conn.execute(
+        "SELECT can_write FROM users WHERE username='alice'"
+    ).fetchone() == (0,)
+
+
+def test_v28_upgrade_revalidates_users_contract(memory_db, monkeypatch):
+    from AssetsManager.core import db_migrations
+    from AssetsManager.core.db_migrations import InvalidSchemaError
+
+    conn = memory_db
+    _load_v1_schema(conn)
+    all_migrations = db_migrations.MIGRATIONS
+
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 28)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", all_migrations)
+    assert db_migrations.migrate(conn) == 28
+
+    # A users table missing can_write fails the current-contract revalidation.
+    conn.execute("DROP TABLE users")
+    conn.commit()
+    conn.execute(
+        "CREATE TABLE users ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, "
+        "password TEXT NOT NULL, email TEXT, role TEXT DEFAULT 'viewer', "
+        "created_at REAL DEFAULT (strftime('%s','now')), last_login REAL, "
+        "is_active INTEGER DEFAULT 1)"
+    )
+    conn.commit()
+
+    with pytest.raises(InvalidSchemaError, match="users"):
+        db_migrations.migrate(conn)

@@ -240,7 +240,17 @@ class AuthService:
                 # verification.
                 return None
             self._store_cached_user(user_id, user_info)
-        return auth_crypto.verify_user_token(token, self._secret, user_info)
+        verified = auth_crypto.verify_user_token(token, self._secret, user_info)
+        if verified is not None:
+            # The domain verifier returns only the signed identity fields;
+            # carry the persisted per-user write flag forward so authorization
+            # gates can see it without an extra DB round-trip. A non-None
+            # verification implies user_info is a live record, but guard for
+            # a cached None (unknown user) anyway.
+            verified["can_write"] = int(
+                bool((user_info or {}).get("can_write", 0))
+            )
+        return verified
 
     def _cached_user(self, user_id: int) -> tuple[bool, dict | None]:
         """Return (hit, record) for a cached user, or (False, None)."""
@@ -343,6 +353,22 @@ class AuthService:
     @session_operation
     def deactivate_user(self, user_id: int) -> bool:
         ok = self._repo.set_user_active(user_id, False)
+        if ok:
+            self._invalidate_user_cache()
+            self._publish(UserChanged)
+        return ok
+
+    @session_operation
+    def get_user_by_username(self, username: str) -> dict | None:
+        return self._repo.get_user_by_username(username)
+
+    @session_operation
+    def set_user_can_write(self, username: str, enabled: bool) -> bool:
+        """Enable or disable per-user metadata/tag write access by username."""
+        user = self._repo.get_user_by_username(username)
+        if user is None:
+            return False
+        ok = self._repo.set_user_can_write(int(user["id"]), enabled)
         if ok:
             self._invalidate_user_cache()
             self._publish(UserChanged)

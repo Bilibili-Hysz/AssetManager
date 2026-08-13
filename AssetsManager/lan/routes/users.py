@@ -41,6 +41,46 @@ async def handle_toggle_user(request):
     return web.json_response({"ok": ok})
 
 
+async def handle_update_user(request):
+    """Update a user's per-user write flag (admin only).
+
+    The body must contain only ``{"can_write": true|false}``; any other field
+    is rejected with 400 so the endpoint cannot silently mutate unrelated
+    account state.
+    """
+    if not require_admin(request):
+        return error_response("Admin access required", status=403, code="forbidden")
+    auth_service = get_auth_service(request)
+
+    username = request.match_info.get("username", "")
+    try:
+        body = await request.json()
+    except Exception:
+        return error_response("Invalid request", status=400, code="bad_request")
+    if not isinstance(body, dict):
+        return error_response("Invalid request", status=400, code="bad_request")
+
+    unknown = set(body) - {"can_write"}
+    if unknown:
+        return error_response(
+            "Only 'can_write' may be updated", status=400, code="bad_request"
+        )
+    if "can_write" not in body:
+        return error_response(
+            "'can_write' is required", status=400, code="bad_request"
+        )
+    value = body["can_write"]
+    if not isinstance(value, bool):
+        return error_response(
+            "'can_write' must be a boolean", status=400, code="bad_request"
+        )
+
+    ok = auth_service.set_user_can_write(username, value)
+    if not ok:
+        return error_response("User not found", status=404, code="not_found")
+    return web.json_response({"ok": True, "username": username, "can_write": value})
+
+
 async def handle_invites(request):
     if not require_admin(request):
         return error_response("Admin access required", status=403, code="forbidden")

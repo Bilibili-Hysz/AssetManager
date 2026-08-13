@@ -169,6 +169,7 @@ __all__ = [
     "require_admin",
     "require_permission",
     "require_role",
+    "require_user_write",
     "sanitize_filename",
     "set_request_principal",
     "set_auth_cookie",
@@ -224,6 +225,23 @@ def require_role(request, *roles):
 def require_admin(request):
     """Return user dict if admin, else None."""
     return require_role(request, ROLE_ADMIN)
+
+
+def require_user_write(request):
+    """Return the canonical principal when it may write metadata/tags.
+
+    LAN admin principals (password / access_key / local_ui) are always
+    allowed. A ``user`` principal is allowed only when the persisted user
+    record carries ``can_write``. Guests and shares never qualify.
+    """
+    principal = get_request_principal(request)
+    if principal is None:
+        return None
+    if principal.kind in ("password", "access_key", "local_ui"):
+        return principal
+    if principal.kind == "user" and bool(getattr(principal, "can_write", False)):
+        return principal
+    return None
 
 
 def require_permission(request, permission: str) -> bool:
