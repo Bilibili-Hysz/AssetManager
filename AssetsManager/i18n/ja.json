@@ -762,5 +762,20 @@
   "sharing.security.blocked_message": "LAN 共有を開始できません：{reason}。",
   "tageditor.filter_tooltip": "タグ候補リストをフィルター",
   "workspace.add_library": "ライブラリを追加",
-  "settings.theme_save_failed": "テーマの保存に失敗しました"
+  "settings.theme_save_failed": "テーマの保存に失敗しました",
+  "menu.backup_library": "ライブラリをバックアップ…",
+  "menu.restore_library": "ライブラリを復元…",
+  "backup.title": "ライブラリのバックアップ",
+  "backup.no_library": "先にライブラリを開いてください。",
+  "backup.choose_destination": "バックアップ先を選択",
+  "backup.file_filter": "AssetManager バックアップ (*.assetbackup.zip)",
+  "backup.success": "バックアップを作成しました：\n{path}\n{files} ファイル、{size} バイト",
+  "backup.failed": "バックアップに失敗しました：\n{error}",
+  "restore.title": "ライブラリの復元",
+  "restore.no_library": "先にライブラリを開いてください。",
+  "restore.choose_archive": "バックアップアーカイブを選択",
+  "restore.file_filter": "AssetManager バックアップ (*.assetbackup.zip)",
+  "restore.confirm": "復元すると現在のライブラリデータがバックアップ内容で置き換えられ、元に戻せません。続行しますか？",
+  "restore.success": "ライブラリデータを復元しました：\n{path}\n再オープンして読み込んでください。",
+  "restore.failed": "復元に失敗しました：\n{error}"
 }

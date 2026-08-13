@@ -266,6 +266,10 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._recent_menu.aboutToShow.connect(self._rebuild_recent_menu)
         self._menu_lib.addSeparator()
         self._menu_act_refresh = self._menu_lib.addAction(tr("menu.refresh"), self._refresh_all)
+        self._menu_lib.addSeparator()
+        self._menu_act_backup = self._menu_lib.addAction(tr("menu.backup_library"), self._backup_library)
+        self._menu_act_restore = self._menu_lib.addAction(tr("menu.restore_library"), self._restore_library)
+        self._menu_lib.addSeparator()
         # A real exit even when the system tray makes close() hide instead.
         self._menu_act_exit = self._menu_lib.addAction(tr("menu.exit"), self.request_exit)
         self._menu_act_settings = bar.addAction(tr("menu.settings"), self._open_settings)
@@ -738,6 +742,83 @@ class MainWindow(LanSharingMixin, QMainWindow):
             dlg.set_library_settings_adapter(LibrarySettingsAdapter(scoped))
         if dlg.exec() == SettingsDialog.DialogCode.Accepted:
             themes.apply_to(self)
+
+    def _backup_library(self):
+        """Back up the current library's RuntimeData to a portable archive."""
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+        session = getattr(self, "_library_session", None)
+        if session is None:
+            QMessageBox.information(self, tr("backup.title"), tr("backup.no_library"))
+            return
+        scoped = self._scoped_services_for_session(session)
+        service = scoped.export_service
+        default_name = service.backup_filename(session.root)
+        destination, _selected = QFileDialog.getSaveFileName(
+            self,
+            tr("backup.choose_destination"),
+            str(Path(session.root) / default_name),
+            tr("backup.file_filter"),
+        )
+        if not destination:
+            return
+        try:
+            result = service.create_backup(session.root, destination)
+        except Exception as exc:
+            QMessageBox.critical(
+                self, tr("backup.title"), tr("backup.failed").format(error=exc)
+            )
+            return
+        QMessageBox.information(
+            self,
+            tr("backup.title"),
+            tr("backup.success").format(
+                path=result.destination,
+                files=result.file_count,
+                size=result.bytes_written,
+            ),
+        )
+
+    def _restore_library(self):
+        """Restore the current library's RuntimeData from a backup archive."""
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+        session = getattr(self, "_library_session", None)
+        if session is None:
+            QMessageBox.information(self, tr("restore.title"), tr("restore.no_library"))
+            return
+        archive, _selected = QFileDialog.getOpenFileName(
+            self,
+            tr("restore.choose_archive"),
+            str(Path.home()),
+            tr("restore.file_filter"),
+        )
+        if not archive:
+            return
+        answer = QMessageBox.warning(
+            self,
+            tr("restore.title"),
+            tr("restore.confirm"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        scoped = self._scoped_services_for_session(session)
+        try:
+            result = scoped.export_service.restore_backup(
+                archive, session.root, overwrite_existing=True
+            )
+        except Exception as exc:
+            QMessageBox.critical(
+                self, tr("restore.title"), tr("restore.failed").format(error=exc)
+            )
+            return
+        QMessageBox.information(
+            self,
+            tr("restore.title"),
+            tr("restore.success").format(path=result.data_dir),
+        )
 
     def _on_ui_scale_changed(self, scale: float):
         """Re-apply stylesheet and update font when UI scale changes."""

@@ -762,5 +762,20 @@
   "sharing.security.blocked_message": "局域网分享已阻止：{reason}。",
   "tageditor.filter_tooltip": "过滤标签建议列表",
   "workspace.add_library": "添加库",
-  "settings.theme_save_failed": "主题保存失败"
+  "settings.theme_save_failed": "主题保存失败",
+  "menu.backup_library": "备份库…",
+  "menu.restore_library": "恢复库…",
+  "backup.title": "备份库",
+  "backup.no_library": "请先打开一个库。",
+  "backup.choose_destination": "选择备份位置",
+  "backup.file_filter": "AssetManager 备份 (*.assetbackup.zip)",
+  "backup.success": "备份已创建：\n{path}\n{files} 个文件，{size} 字节",
+  "backup.failed": "备份失败：\n{error}",
+  "restore.title": "恢复库",
+  "restore.no_library": "请先打开一个库。",
+  "restore.choose_archive": "选择备份文件",
+  "restore.file_filter": "AssetManager 备份 (*.assetbackup.zip)",
+  "restore.confirm": "恢复将用备份内容替换当前库的全部数据，此操作不可撤销。继续？",
+  "restore.success": "库数据已从以下备份恢复：\n{path}\n请重新打开库以加载。",
+  "restore.failed": "恢复失败：\n{error}"
 }
