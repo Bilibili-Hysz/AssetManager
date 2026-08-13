@@ -16,6 +16,12 @@ from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager.dialogs._share_api import ShareApiTask
+from AssetsManager.dialogs._sharing_helpers import (
+    _msg,
+    _t,
+    _endpoint_state,
+    _endpoint_primary_action,
+)
 from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager.widgets.toast import Toast
 from AssetsManager import i18n
@@ -53,46 +59,6 @@ _DIALOG_LIVE_SETTINGS = frozenset({
     "lan_quota_limit",
     "lan_quota_min_interval_seconds",
 })
-
-
-def _msg(key: str, fallback: str) -> str:
-    """Translate ``key`` with an English fallback while catalogs lack it.
-
-    The i18n catalogs live outside this dialog's change scope; until the keys
-    land there, missing entries resolve to ``fallback`` instead of the raw key.
-    """
-    from AssetsManager.i18n import _lookup
-    try:
-        if _lookup("en", key) is None:
-            return fallback
-    except Exception:
-        return fallback
-    return tr(key)
-
-
-def _t():
-    return themes.get()
-
-
-def _endpoint_state(status: dict, tunnel_running: bool = False) -> str:
-    """Map server facts to the small set of states rendered by the endpoint page."""
-    state = status.get("state")
-    if state in {"starting", "failed"}:
-        return state
-    if not status.get("running", False):
-        return "off"
-    return "public" if tunnel_running else "local"
-
-
-def _endpoint_primary_action(state: str) -> str:
-    """Return the action scope, leaving translated presentation to the widget."""
-    return {
-        "off": "start",
-        "starting": "busy",
-        "local": "stop_server",
-        "public": "stop_tunnel",
-        "failed": "retry",
-    }.get(state, "start")
 
 
 class SharingSettingsDialog(TabbedDialog):

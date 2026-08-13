@@ -12,7 +12,7 @@ import logging
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QObject, QRunnable, QThreadPool, QTimer, QSize
+from PySide6.QtCore import Qt, Signal, QThreadPool, QTimer, QSize
 from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QLineEdit, QPushButton, QHBoxLayout,
     QMenu, QInputDialog, QApplication, QAbstractItemView, QLabel, QWidget,
@@ -27,6 +27,11 @@ from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core import themes, icons
 from AssetsManager.dialogs.sidebar_favorites import SidebarFavorites
 from AssetsManager.dialogs.sidebar_recent import SidebarRecentFolders
+from AssetsManager.panels._sidebar_parts import (
+    _fs_level,
+    _PreloadTask,
+    VTYPE_FS,
+)
 
 tr = i18n.tr
 
@@ -40,7 +45,6 @@ VTYPE_FAV_HEADER = "fav_header"
 VTYPE_REC_HEADER = "rec_header"
 VTYPE_FAV_CHILD = "fav_child"
 VTYPE_REC_CHILD = "rec_child"
-VTYPE_FS = "fs"
 _ICON_ROLE = Qt.ItemDataRole.UserRole + 2
 
 _FAVORITE_ICON_MAP = {
@@ -73,60 +77,6 @@ _FAVORITE_ICON_MAP = {
     "\u2139": "info",
     "\u2139\ufe0f": "info",
 }
-
-
-def _fs_level(item: QTreeWidgetItem) -> int:
-    """Return how many FS levels deep this item is (1 = top-level FS item)."""
-    level = 0
-    it = item
-    while it:
-        vt = it.data(0, Qt.ItemDataRole.UserRole + 1)
-        if vt == VTYPE_FS:
-            level += 1
-        it = it.parent()
-    return level
-
-
-class _PreloadSignals(QObject):
-    # text, results, search generation, library root at schedule time
-    done = Signal(str, object, int, object)
-
-
-class _PreloadTask(QRunnable):
-    def __init__(self, root_paths, text, gen, root, max_depth=2):
-        super().__init__()
-        # Auto-delete: the pool reclaims the C++ runnable once run() returns,
-        # so a task replaced by a newer search (self._preload_task = None)
-        # cannot leak. done is emitted inside run() and the panel keeps the
-        # Python reference (self._preload_task) until the next search, so the
-        # queued delivery still reaches _on_preload_done.
-        self.setAutoDelete(True)
-        self._root_paths = root_paths
-        self._text = text
-        self._gen = gen
-        self._root = root
-        self._max_depth = max_depth
-        self.signals = _PreloadSignals()
-
-    def run(self):
-        results = []
-        for root_path in self._root_paths:
-            self._scan_recursive(root_path, 0, results)
-        self.signals.done.emit(self._text, results, self._gen, self._root)
-
-    def _scan_recursive(self, path, depth, results):
-        if depth >= self._max_depth:
-            return
-        try:
-            entries = sorted(os.scandir(path),
-                             key=lambda e: (not e.is_dir(), e.name.lower()))
-            results.append((path, [(e.name, e.path, e.is_dir()) for e in entries
-                                   if not e.name.startswith(".")]))
-            for entry in entries:
-                if entry.is_dir() and not entry.name.startswith("."):
-                    self._scan_recursive(entry.path, depth + 1, results)
-        except OSError:
-            pass
 
 
 class SidebarPanel(PanelContent):
