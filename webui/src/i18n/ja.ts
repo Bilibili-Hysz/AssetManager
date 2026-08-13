@@ -84,6 +84,7 @@ const ja: I18nDict = {
     resize_panel: 'パネルの幅を調整',
     resize_sidebar: 'サイドバーの幅を調整',
     resize_info: '情報パネルの幅を調整',
+    download_file_named: '{0} をダウンロード',
     download_selected_zip: '選択した {0} 件を ZIP でダウンロード',
     downloading_zip: 'ZIP をダウンロード中...',
     download_zip_failed: 'ZIP アーカイブのダウンロードに失敗しました',
@@ -319,7 +320,7 @@ const ja: I18nDict = {
     next: '次の画像',
     title: '画像ビューアー',
     image_index: '画像 {0}',
-    hint: 'スクロールでズーム。ダブルクリックで切り替え。0 キーでリセット。',
+    hint: 'スクロールでズーム。ダブルクリックで切り替え。0 キーでリセット。ズーム時は Ctrl+矢印で移動。',
   },
   status: {
     connected: '接続済み',

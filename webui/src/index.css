@@ -130,6 +130,10 @@ img {
     --color-text: #0f172a;
     --color-text-secondary: #475569;
     /* Muted must hold >= 4.5:1 on white; #94a3b8 is ~2.6:1. */
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse, .animate-spin { animation: none; }
+}
     --color-text-muted: #64748b;
     --color-text-inverse: #f8fafc;
 
@@ -228,6 +232,10 @@ img {
   html.light .bg-slate-700\/80 { background-color: var(--color-elevated); }
 
   /* ── Text ── */
+  html.dark .text-slate-400,
+  html.dark .text-slate-500 { color: var(--color-text-secondary); }
+  html.dark .text-slate-600 { color: var(--color-text-muted); }
+  html.dark .hover\:text-slate-500:hover { color: var(--color-text-secondary); }
   html.light .text-slate-100,
   html.light .text-slate-200,
   html.light .text-slate-300 { color: var(--color-text); }
@@ -235,6 +243,12 @@ img {
   html.light .text-slate-500 { color: var(--color-text-secondary); }
   html.light .text-slate-600 { color: var(--color-text-muted); }
   html.light .text-white { color: var(--color-text); }
+  html.light .bg-brand-600,
+  html.light .bg-brand-700 { color: #ffffff; }
+  html.light .text-brand-400 { color: var(--color-accent); }
+  html.light .storefront-link { color: #4f46e5; }
+  html.light .storefront-link:hover { color: #4338ca; }
+  html.light .storefront-eyebrow { color: #4f46e5; }
   html.light .text-white\/60,
   html.light .text-white\/70 { color: var(--color-text-secondary); }
   html.light .text-slate-500 { color: var(--color-text-secondary); }

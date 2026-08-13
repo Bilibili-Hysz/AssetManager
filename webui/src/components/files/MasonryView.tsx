@@ -104,7 +104,7 @@ function MasonryItem({
           {showImage ? (
             <img
               src={thumb}
-              alt={item.name}
+              alt=""
               loading="lazy"
               draggable={false}
               onError={() => setFailedThumb(thumb ?? null)}
@@ -112,7 +112,7 @@ function MasonryItem({
             />
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '120px', gap: '6px' }}>
-              {isDir ? <Folder size={32} style={{ color: '#f59e0b' }} /> : <File size={32} style={{ color: '#64748b' }} />}
+              {isDir ? <Folder size={32} aria-hidden="true" style={{ color: '#f59e0b' }} /> : <File size={32} aria-hidden="true" style={{ color: '#64748b' }} />}
             </div>
           )}
         </div>
@@ -145,7 +145,7 @@ function MasonryItem({
           onClick={event => { event.stopPropagation(); onToggleFavorite(item.path); }}
           style={{ position: 'absolute', top: '8px', right: '8px', width: '24px', height: '24px', borderRadius: '4px', border: 'none', background: 'rgba(0,0,0,0.3)', color: fav ? '#fbbf24' : 'rgba(255,255,255,0.6)', display: 'grid', placeItems: 'center', cursor: 'pointer', opacity: hover || fav ? 1 : 0, transition: 'opacity 150ms, color 150ms' }}
         >
-          <Star size={14} fill={fav ? '#fbbf24' : 'none'} />
+          <Star size={14} fill={fav ? '#fbbf24' : 'none'} aria-hidden="true" />
         </button>
       )}
 

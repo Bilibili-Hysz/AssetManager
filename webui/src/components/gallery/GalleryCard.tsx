@@ -62,7 +62,7 @@ export const GalleryCard = memo(function GalleryCard({
           {imageUrl && imageUrl !== failedImageUrl ? (
             <img
               src={imageUrl}
-              alt={entry.name}
+              alt=""
               loading="lazy"
               draggable={false}
               onError={() => setFailedImageUrl(imageUrl)}
@@ -70,7 +70,7 @@ export const GalleryCard = memo(function GalleryCard({
             />
           ) : (
             <span className="gallery-card-placeholder" style={{ aspectRatio: mediaAspectRatio }}>
-              {isArtwork ? <ImageOff size={34} /> : <FolderOpen size={42} />}
+              {isArtwork ? <ImageOff size={34} aria-hidden="true" /> : <FolderOpen size={42} aria-hidden="true" />}
             </span>
           )}
         </button>
@@ -99,7 +99,7 @@ export const GalleryCard = memo(function GalleryCard({
                 aria-label={t('gallery.download_entry', entry.name)}
                 title={t('gallery.download_entry', entry.name)}
               >
-                <Download size={14} />
+                <Download size={14} aria-hidden="true" />
               </button>
             )}
             {onWorkspace && (
@@ -110,7 +110,7 @@ export const GalleryCard = memo(function GalleryCard({
                 aria-label={t('gallery.open_workspace', entry.name)}
                 title={t('gallery.workspace')}
               >
-                <Wrench size={14} />
+                <Wrench size={14} aria-hidden="true" />
               </button>
             )}
           </div>

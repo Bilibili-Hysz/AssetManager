@@ -117,7 +117,7 @@ describe('Header menus', () => {
 
     const trigger = screen.getByRole('button', { name: triggerName });
     fireEvent.click(trigger);
-    const item = screen.getByRole('button', { name: itemName });
+    const item = screen.getByRole('menuitem', { name: itemName });
     item.focus();
 
     fireEvent.keyDown(item, { key: 'Escape' });
@@ -135,7 +135,7 @@ describe('Header menus', () => {
 
     const trigger = screen.getByRole('button', { name: triggerName });
     fireEvent.click(trigger);
-    const item = screen.getByRole('button', { name: itemName });
+    const item = screen.getByRole('menuitem', { name: itemName });
     item.focus();
     trigger.focus();
     fireEvent.click(trigger);

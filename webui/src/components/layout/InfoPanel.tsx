@@ -140,7 +140,7 @@ export function InfoPanel({
               {previewError ? (
                 <span className="flex h-full w-full items-center justify-center rounded text-xs text-slate-500">Preview unavailable</span>
               ) : (
-                <img src={previewUrl} alt={`${selected.name} preview`} draggable={false} onLoad={() => setPreviewLoaded(true)} onError={() => setPreviewError(true)} className={`${previewLoaded ? '' : 'opacity-0'} h-full w-full rounded object-contain`} />
+                <img src={previewUrl} alt="" draggable={false} onLoad={() => setPreviewLoaded(true)} onError={() => setPreviewError(true)} className={`${previewLoaded ? '' : 'opacity-0'} h-full w-full rounded object-contain`} />
               )}
             </button>}
             {loading ? (

@@ -84,6 +84,7 @@ const zh: I18nDict = {
     resize_panel: '调整面板宽度',
     resize_sidebar: '调整侧边栏宽度',
     resize_info: '调整信息面板宽度',
+    download_file_named: '下载 {0}',
     download_selected_zip: '以 ZIP 下载选中的 {0} 项',
     downloading_zip: '正在下载 ZIP...',
     download_zip_failed: 'ZIP 压缩包下载失败',
@@ -319,7 +320,7 @@ const zh: I18nDict = {
     next: '下一张图片',
     title: '图片查看器',
     image_index: '图片 {0}',
-    hint: '滚动可缩放，双击切换，按 0 重置。',
+    hint: '滚动可缩放，双击切换，按 0 重置。放大后可用 Ctrl+方向键平移。',
   },
   status: {
     connected: '已连接',

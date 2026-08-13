@@ -18,7 +18,8 @@ export default function NotFoundPage() {
       <p className="text-[var(--color-text-secondary)]">{t('error.unknown')}</p>
       <Link
         to="/"
-        className="mt-2 rounded-lg bg-[var(--color-accent)] px-4 py-2 font-medium text-white transition-theme hover:bg-[var(--color-accent-hover)]"
+        className="mt-2 rounded-lg px-4 py-2 font-medium transition-theme hover:opacity-90"
+        style={{ backgroundColor: '#4f46e5', color: '#ffffff' }}
       >
         {t('gallery.back_to_gallery')}
       </Link>

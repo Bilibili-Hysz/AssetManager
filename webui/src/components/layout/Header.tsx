@@ -162,6 +162,7 @@ export function Header() {
             type="button"
             ref={languageTriggerRef}
             aria-label={t('header.language')}
+            aria-haspopup="menu"
             aria-expanded={openMenu === 'language'}
             onClick={() => toggleMenu('language')}
             className="p-1.5 rounded-md transition-colors hover:opacity-80"
@@ -171,6 +172,7 @@ export function Header() {
           </button>
           <div data-header-menu hidden={openMenu !== 'language'} className="absolute right-0 top-full mt-1 z-50">
             <div
+              role="menu"
               className="rounded-lg py-1 min-w-[120px]"
               style={{
                 backgroundColor: 'var(--color-surface)',
@@ -181,6 +183,7 @@ export function Header() {
               {supportedLangs.map(l => (
                 <button
                   type="button"
+                  role="menuitem"
                   key={l}
                   className="w-full px-3 py-1.5 text-sm text-left transition-colors"
                   style={{ color: lang === l ? 'var(--color-accent)' : 'var(--color-text)' }}
@@ -220,6 +223,7 @@ export function Header() {
               type="button"
               ref={userTriggerRef}
               aria-label={user?.username ?? t('perm.admin')}
+              aria-haspopup="menu"
               aria-expanded={openMenu === 'user'}
               onClick={() => toggleMenu('user')}
               className="flex items-center gap-1.5 px-2 py-1.5 text-sm rounded-md transition-colors"
@@ -230,6 +234,7 @@ export function Header() {
             </button>
             <div data-header-menu hidden={openMenu !== 'user'} className="absolute right-0 top-full mt-1 z-50">
               <div
+                role="menu"
                 className="rounded-lg py-1 min-w-[140px]"
                 style={{
                   backgroundColor: 'var(--color-surface)',
@@ -244,12 +249,13 @@ export function Header() {
                   {user?.username} · {role === 'admin' ? t('perm.admin') : t('perm.user')}
                 </div>
                 {role === 'admin' && (
-                  <button type="button" onClick={() => navigate('/admin')} className="w-full px-3 py-1.5 text-sm text-left transition-colors" style={{ color: 'var(--color-text)' }}>
+                  <button type="button" role="menuitem" onClick={() => navigate('/admin')} className="w-full px-3 py-1.5 text-sm text-left transition-colors" style={{ color: 'var(--color-text)' }}>
                     {t('header.admin')}
                   </button>
                 )}
                 <button
                   type="button"
+                  role="menuitem"
                   onClick={logout}
                   className="w-full px-3 py-1.5 text-sm text-left transition-colors flex items-center gap-2"
                   style={{ color: 'var(--color-text)' }}

@@ -21,21 +21,26 @@ export function TagChip({ name, count, onRemove, onClick }: TagChipProps) {
   };
   return (
     <span
-      role={interactive ? 'button' : undefined}
-      tabIndex={interactive ? 0 : undefined}
-      onKeyDown={interactive ? handleKeyDown : undefined}
-      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors ${
-        onClick ? 'cursor-pointer' : ''
-      }`}
+      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors"
       style={{
         backgroundColor: 'var(--color-accent-subtle)',
         color: 'var(--color-accent)',
         border: '1px solid var(--color-accent-border)',
       }}
-      onClick={onClick}
     >
-      {name}
-      {count != null && <span style={{ opacity: 0.7 }}>({count})</span>}
+      {/* E8: a chip with onClick behaves as a button — role + focus + Enter/Space.
+          Kept as a SIBLING of the remove button: nesting a button inside a
+          role="button" span is an invalid interactive control (nested-interactive). */}
+      <span
+        role={interactive ? 'button' : undefined}
+        tabIndex={interactive ? 0 : undefined}
+        onKeyDown={interactive ? handleKeyDown : undefined}
+        className={`inline-flex items-center gap-1 ${onClick ? 'cursor-pointer' : ''}`}
+        onClick={onClick}
+      >
+        {name}
+        {count != null && <span style={{ opacity: 0.7 }}>({count})</span>}
+      </span>
       {onRemove && (
         <button
           type="button"

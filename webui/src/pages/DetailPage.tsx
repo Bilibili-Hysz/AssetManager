@@ -303,7 +303,7 @@ export default function DetailPage({ onOpenPalette }: DetailPageProps) {
                             <td className="px-4 py-2.5">
                               <a
                                 href={api.buildUrl(`download/${encodeURIComponent(filePath)}`)}
-                                aria-label={`Download ${file.name}`}
+                                aria-label={t('browse.download_file_named', file.name)}
                                 className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
                                 onClick={event => {
                                   event.preventDefault();

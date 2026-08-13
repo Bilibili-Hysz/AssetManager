@@ -65,8 +65,8 @@ export function ProductCard({
         aria-label={`${t('commerce.preview')} ${product.name}`}
       >
         {product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="product-card-media-placeholder" aria-hidden="true"><ImageIcon size={34} /></span>}
-        <span className="product-card-overlay"><ArrowUpRight size={18} /></span>
-        {product.featured && <span className="product-card-badge"><Star size={12} /> {t('commerce.featured')}</span>}
+        <span className="product-card-overlay"><ArrowUpRight size={18} aria-hidden="true" /></span>
+        {product.featured && <span className="product-card-badge"><Star size={12} aria-hidden="true" /> {t('commerce.featured')}</span>}
       </button>
       <div className="product-card-body">
         <div className="product-card-heading">
@@ -78,13 +78,13 @@ export function ProductCard({
         {!compact && product.description && <p className="product-card-description">{product.description}</p>}
         <div className="product-card-meta">
           <strong>{product.price === 0 ? t('commerce.free') : formatMoney(product.price, product.currency)}</strong>
-          {product.downloads !== undefined && <span><Download size={13} /> {product.downloads.toLocaleString()}</span>}
+          {product.downloads !== undefined && <span><Download size={13} aria-hidden="true" /> {product.downloads.toLocaleString()}</span>}
         </div>
-        {!sellerMode && <Link className="product-card-quick-action" to={href}><ShoppingCart size={15} /> {product.price === 0 ? t('commerce.get_asset') : t('commerce.buy_now')}</Link>}
+        {!sellerMode && <Link className="product-card-quick-action" to={href}><ShoppingCart size={15} aria-hidden="true" /> {product.price === 0 ? t('commerce.get_asset') : t('commerce.buy_now')}</Link>}
         {sellerMode && (
           <div className="product-card-seller-actions">
-            <Link to={href}><Pencil size={14} /> {t('seller.edit')}</Link>
-            <span><Eye size={14} /> {t(`seller.status_${status}`)}</span>
+            <Link to={href}><Pencil size={14} aria-hidden="true" /> {t('seller.edit')}</Link>
+            <span><Eye size={14} aria-hidden="true" /> {t(`seller.status_${status}`)}</span>
           </div>
         )}
         {canShowLifecycleActions && (
@@ -97,7 +97,7 @@ export function ProductCard({
                   onClick={() => runLifecycle(onRestore)}
                   disabled={lifecycleDisabled}
                 >
-                  <RotateCcw size={13} /> {t('seller.restore_product')}
+                  <RotateCcw size={13} aria-hidden="true" /> {t('seller.restore_product')}
                 </button>
               )
               : onArchive && (
@@ -107,7 +107,7 @@ export function ProductCard({
                   onClick={() => runLifecycle(onArchive)}
                   disabled={lifecycleDisabled}
                 >
-                  <Archive size={13} /> {t('seller.archive_product')}
+                  <Archive size={13} aria-hidden="true" /> {t('seller.archive_product')}
                 </button>
               )}
             {onRemove && (
@@ -117,7 +117,7 @@ export function ProductCard({
                 onClick={() => runLifecycle(onRemove)}
                 disabled={lifecycleDisabled}
               >
-                <Trash2 size={13} /> {t('action.delete')}
+                <Trash2 size={13} aria-hidden="true" /> {t('action.delete')}
               </button>
             )}
           </div>
@@ -128,10 +128,10 @@ export function ProductCard({
 }
 
 export function ProductStat({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return <div className="product-stat"><span className="product-stat-icon">{icon}</span><span><strong>{value}</strong><small>{label}</small></span></div>;
+  return <div className="product-stat"><span className="product-stat-icon" aria-hidden="true">{icon}</span><span><strong>{value}</strong><small>{label}</small></span></div>;
 }
 
 export function EmptyState({ title, description, action }: { title: string; description: string; action?: ReactNode }) {
-  return <div className="storefront-empty"><Heart size={24} /><h3>{title}</h3><p>{description}</p>{action}</div>;
+  return <div className="storefront-empty"><Heart size={24} aria-hidden="true" /><h3>{title}</h3><p>{description}</p>{action}</div>;
 }
 

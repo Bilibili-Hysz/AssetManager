@@ -82,6 +82,7 @@ const en = {
     resize_panel: 'Resize panel',
     resize_sidebar: 'Resize sidebar',
     resize_info: 'Resize info panel',
+    download_file_named: 'Download {0}',
     download_selected_zip: 'Download {0} selected items as ZIP',
     downloading_zip: 'Downloading ZIP...',
     download_zip_failed: 'Failed to download ZIP archive',
@@ -330,7 +331,7 @@ const en = {
     next: 'Next image',
     title: 'Image viewer',
     image_index: 'Image {0}',
-    hint: 'Scroll to zoom. Double-click to toggle. Press 0 to reset.',
+    hint: 'Scroll to zoom. Double-click to toggle. Press 0 to reset. Ctrl+Arrows pan when zoomed.',
   },
   status: {
     connected: 'Connected',

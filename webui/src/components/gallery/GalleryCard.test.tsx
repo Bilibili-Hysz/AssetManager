@@ -41,7 +41,7 @@ describe('GalleryCard', () => {
 
   it('shows a placeholder when the image fails to load', () => {
     render(<GalleryCard entry={entry} onOpen={() => {}} />);
-    const image = screen.getByAltText('hero.png');
+    const image = screen.getByRole('button', { name: 'gallery.open_entry' }).querySelector('img')!;
     fireEvent.error(image);
     expect(screen.queryByAltText('hero.png')).toBeNull();
   });

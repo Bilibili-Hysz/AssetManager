@@ -66,7 +66,7 @@ describe('InfoPanel', () => {
       onClose={vi.fn()}
     />);
 
-    const preview = screen.getByAltText('asset.png preview');
+    const preview = screen.getByRole('button', { name: 'Open asset.png preview' }).querySelector('img')!
     const tag = screen.getByRole('button', { name: 'featured' });
     const notes = screen.getByText('Inspection note');
     const url = screen.getByRole('link', { name: 'https://example.com/reference' });
@@ -88,7 +88,7 @@ describe('InfoPanel', () => {
     />);
 
     const trigger = screen.getByRole('button', { name: 'Open hero.png preview' });
-    const preview = screen.getByAltText('hero.png preview');
+    const preview = screen.getByRole('button', { name: 'Open hero.png preview' }).querySelector('img')!
     expect(trigger.className).toContain('aspect-video');
     expect(preview.className).toContain('object-contain');
     expect(preview.className).not.toContain('object-cover');
@@ -128,7 +128,7 @@ describe('InfoPanel', () => {
       }}
     />);
 
-    const cover = screen.getByAltText('Project Alpha preview');
+    const cover = screen.getByRole('button', { name: 'Open Project Alpha preview' }).querySelector('img')!
     expect(cover.getAttribute('src')).toBe('/api/thumbnails/projects/alpha/cover.png?size=512');
     fireEvent.click(screen.getByRole('button', { name: 'Open Project Alpha preview' }));
     expect(screen.getByRole('img', { name: 'Image 2' }).getAttribute('src')).toBe(
@@ -152,7 +152,7 @@ describe('InfoPanel', () => {
       }}
     />);
 
-    expect(screen.getByAltText('Nested Project preview').getAttribute('src')).toBe(
+    expect(screen.getByRole('button', { name: 'Open Nested Project preview' }).querySelector('img')!.getAttribute('src')).toBe(
       '/api/thumbnails/projects/nested/cover.png',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Open Nested Project preview' }));
@@ -167,7 +167,7 @@ describe('InfoPanel', () => {
       selected={{ name: 'hero.png', path: 'characters/hero.png', type: 'file', extension: '.png', category: 'images' }}
     />);
 
-    expect(screen.getByAltText('hero.png preview').getAttribute('src')).toBe(
+    expect(screen.getByRole('button', { name: 'Open hero.png preview' }).querySelector('img')!.getAttribute('src')).toBe(
       '/api/thumbnails/characters/hero.png?size=512',
     );
   });
@@ -189,7 +189,7 @@ describe('InfoPanel', () => {
     />);
 
     expect(screen.getByRole('button', { name: 'Open hero.png preview' })).toBeDefined();
-    expect(screen.getByAltText('hero.png preview').getAttribute('src')).toBe(
+    expect(screen.getByRole('button', { name: 'Open hero.png preview' }).querySelector('img')!.getAttribute('src')).toBe(
       '/api/thumbnails/characters/hero.png?size=512',
     );
   });
@@ -200,7 +200,7 @@ describe('InfoPanel', () => {
       selected={{ name: 'hero.png', path: 'hero.png', type: 'file', extension: '.png', category: 'images' }}
     />);
 
-    fireEvent.error(screen.getByAltText('hero.png preview'));
+    fireEvent.error(screen.getByRole('button', { name: 'Open hero.png preview' }).querySelector('img')!);
 
     expect(screen.getByText('Preview unavailable')).toBeDefined();
   });
