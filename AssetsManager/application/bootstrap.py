@@ -252,7 +252,9 @@ class LibraryScopedServices:
             return
         value = self._lan_holder._value
         assert value is not None  # "ready" always has a published value
-        gallery = value.gallery_service
+        # getattr keeps teardown tolerant of fakes/older snapshots that lack
+        # the field (e.g. test doubles using SimpleNamespace).
+        gallery = getattr(value, "gallery_service", None)
         if gallery is not None:
             gallery.close()
 
