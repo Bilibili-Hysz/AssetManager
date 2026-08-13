@@ -98,10 +98,10 @@ export default function SellerGalleryEditor({ coverPath, galleryPaths, buildUrl,
       ? assetThumbnailUrl(normalized, 256, buildUrl)
       : '';
     if (!url) {
-      return <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] text-xs text-[var(--color-text-secondary)]" aria-label={`${label} preview unavailable`}><ImageOff size={18} aria-hidden="true" /></div>;
+      return <div role="img" className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] text-xs text-[var(--color-text-secondary)]" aria-label={`${label} preview unavailable`}><ImageOff size={18} aria-hidden="true" /></div>;
     }
     if (failedPreviews[normalized]) {
-      return <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-1 text-center text-[10px] text-[var(--color-text-secondary)]" aria-label={`${label} preview unavailable`}>{t('landing.previews_unavailable')}</div>;
+      return <div role="img" className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-1 text-center text-[10px] text-[var(--color-text-secondary)]" aria-label={`${label} preview unavailable`}>{t('landing.previews_unavailable')}</div>;
     }
     return <img src={url} alt={`${label}: ${normalized}`} className="h-20 w-20 shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] object-cover" onError={() => setFailedPreviews(current => ({ ...current, [normalized]: true }))} />;
   };

@@ -128,6 +128,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   const infoStartW = useRef(0);
   const rafId = useRef<number | null>(null);
   const downloadInFlight = useRef(false);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
   const summaryAbort = useRef<AbortController | null>(null);
   const summaryPaths = useRef(new Set<string>());
   const summaryPending = useRef<string[]>([]);
@@ -559,6 +560,14 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
     const handleWorkspaceShortcut = (event: KeyboardEvent) => {
       if (isEditableTarget(event.target) || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
 
+      // WCAG 2.1.4: single-key shortcuts (g/s) only apply while the
+      // workspace — the file list component — has focus. Escape stays
+      // global because it is not a single-character shortcut.
+      if (event.key === 'g' || event.key === 's') {
+        const workspace = workspaceRef.current;
+        if (!workspace || !document.activeElement || !workspace.contains(document.activeElement)) return;
+      }
+
       if (event.key === 'g') {
         event.preventDefault();
         handleViewModeChange(viewMode === 'grid' ? 'list' : 'grid');
@@ -625,7 +634,8 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
         setSelected(new Set());
       }}
     >
-      <div data-testid="browse-workspace" className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
+      <div data-testid="browse-workspace" ref={workspaceRef} className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
+       <h1 className="sr-only">{t('browse.workspace')}</h1>
        <div data-testid="file-list-header" className="flex-shrink-0">
         <Breadcrumb
          path={currentPath}
@@ -665,7 +675,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
 
       <div data-testid="file-list-canvas" className="min-h-0 min-w-0 flex-1 overflow-y-auto">
        {visibleLoading ? (
-        <div data-testid="file-list-loading-grid" className="grid w-full min-w-0 grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3 p-4">
+        <div data-testid="file-list-loading-grid" role="status" aria-label={t('browse.loading')} className="grid w-full min-w-0 grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3 p-4">
           {Array.from({ length: 12 }).map((_, i) => (
             <div key={i} className="rounded-lg border border-slate-700/50 overflow-hidden">
               <Skeleton className="aspect-square rounded-none" />

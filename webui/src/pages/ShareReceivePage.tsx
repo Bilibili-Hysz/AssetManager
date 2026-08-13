@@ -109,6 +109,7 @@ export default function ShareReceivePage() {
             type="password"
             value={password}
             onChange={e => setPassword(e.target.value)}
+            aria-label={t('share.password')}
             placeholder={t('share.password')}
             className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700/50 rounded-lg text-sm text-slate-200
               focus:outline-none focus:border-brand-500/50"

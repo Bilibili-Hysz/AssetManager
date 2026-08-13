@@ -77,6 +77,7 @@ export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialog
               type="text"
               value={shareUrl}
               readOnly
+              aria-label={t('share.link_created')}
               className="flex-1 bg-transparent text-sm text-slate-200 outline-none"
             />
             <button
@@ -92,8 +93,9 @@ export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialog
       ) : (
         <div className="space-y-4">
           <div>
-            <label className="block text-xs text-slate-500 mb-1">{t('share.password')}</label>
+            <label htmlFor="share-password" className="block text-xs text-slate-500 mb-1">{t('share.password')}</label>
             <input
+              id="share-password"
               type="text"
               value={password}
               onChange={e => setPassword(e.target.value)}
@@ -105,8 +107,9 @@ export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialog
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs text-slate-500 mb-1">{t('share.expires')}</label>
+              <label htmlFor="share-expires" className="block text-xs text-slate-500 mb-1">{t('share.expires')}</label>
               <input
+                id="share-expires"
                 type="number"
                 value={expiresHours}
                 onChange={e => setExpiresHours(Number(e.target.value))}
@@ -117,8 +120,9 @@ export function ShareDialog({ open, onClose, paths, returnFocusTo }: ShareDialog
               />
             </div>
             <div>
-              <label className="block text-xs text-slate-500 mb-1">{t('share.max_downloads')}</label>
+              <label htmlFor="share-max-downloads" className="block text-xs text-slate-500 mb-1">{t('share.max_downloads')}</label>
               <input
+                id="share-max-downloads"
                 type="number"
                 value={maxDownloads}
                 onChange={e => setMaxDownloads(Number(e.target.value))}

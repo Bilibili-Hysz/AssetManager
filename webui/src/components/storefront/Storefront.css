@@ -8,6 +8,7 @@
 .storefront-nav a:hover, .storefront-nav a.is-active { color: var(--color-text); background: var(--color-surface-hover); }
 .storefront-search { display: flex; align-items: center; gap: 8px; min-width: 180px; max-width: 280px; height: 38px; margin-left: auto; padding: 0 11px; border: 1px solid var(--color-border); border-radius: 9px; color: var(--color-text-muted); background: var(--color-surface); }
 .storefront-search input { width: 100%; border: 0; outline: 0; color: var(--color-text); background: transparent; font: inherit; font-size: 13px; }
+.storefront-search input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
 .storefront-header-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .storefront-search + .storefront-header-actions { margin-left: 0; }
 .storefront-icon-button, .storefront-menu-button, .product-card-more { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--color-border); border-radius: 9px; color: var(--color-text-secondary); background: var(--color-surface); cursor: pointer; }
@@ -119,6 +120,7 @@
 .seller-filter-buttons button { min-height: 34px; padding: 0 11px; border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-secondary); background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
 .seller-filter-buttons button.is-active, .seller-filter-buttons button:hover { color: var(--color-text); border-color: #8b5cf6; background: rgb(124 58 237 / 12%); }
 .seller-search { min-height: 36px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 8px; outline: none; color: var(--color-text); background: var(--color-surface); font: inherit; font-size: 12px; }
+.seller-search input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
 .seller-form { display: grid; gap: 17px; max-width: 700px; }
 .seller-form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
 .seller-field { display: grid; gap: 7px; }

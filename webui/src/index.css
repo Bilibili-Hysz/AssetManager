@@ -38,7 +38,8 @@ img {
     /* Text */
     --color-text: #f1f5f9;
     --color-text-secondary: #94a3b8;
-    --color-text-muted: #64748b;
+    /* Muted must hold >= 4.5:1 on the surface (#0f172a); #64748b is ~3.7:1. */
+    --color-text-muted: #8492a5;
     --color-text-inverse: #0f172a;
 
     /* Accent */
@@ -128,7 +129,8 @@ img {
 
     --color-text: #0f172a;
     --color-text-secondary: #475569;
-    --color-text-muted: #94a3b8;
+    /* Muted must hold >= 4.5:1 on white; #94a3b8 is ~2.6:1. */
+    --color-text-muted: #64748b;
     --color-text-inverse: #f8fafc;
 
     --color-accent: #4f46e5;

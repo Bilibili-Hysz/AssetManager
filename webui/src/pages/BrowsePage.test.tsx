@@ -619,10 +619,15 @@ describe('BrowsePage', () => {
   it('applies workspace shortcuts outside editable elements and clears transient state before selection', async () => {
     render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
 
+    // Single-key shortcuts apply while the workspace has focus (WCAG 2.1.4).
+    screen.getByRole('button', { name: 'Select asset' }).focus();
     fireEvent.keyDown(document, { key: 'g' });
     expect(screen.getByTestId('view-mode').textContent).toBe('list');
     fireEvent.click(screen.getByRole('button', { name: 'Filter tag' }));
     await waitFor(() => expect(screen.getByTestId('active-tag').textContent).toBe('featured'));
+    // The view switch unmounted the focused grid button; keep focus inside
+    // the workspace so the single-key shortcut still applies.
+    screen.getByRole('button', { name: 'List asset' }).focus();
     fireEvent.keyDown(document, { key: 's' });
     expect(screen.getByRole('button', { name: 'mobile.done' })).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: 'List asset' }));
@@ -642,6 +647,16 @@ describe('BrowsePage', () => {
     fireEvent.keyDown(input, { key: 's' });
     expect(screen.getByRole('button', { name: 'mobile.done' })).toBeDefined();
     input.remove();
+  });
+
+  it('ignores single-key workspace shortcuts while focus is outside the workspace', () => {
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+
+    // Focus stays on the body: g/s must not fire (WCAG 2.1.4 scoping).
+    fireEvent.keyDown(document, { key: 'g' });
+    expect(screen.getByTestId('view-mode').textContent).toBe('grid');
+    fireEvent.keyDown(document, { key: 's' });
+    expect(screen.getByRole('button', { name: 'mobile.select' })).toBeDefined();
   });
 
   it('passes file and directory thumbnails to the project view', () => {

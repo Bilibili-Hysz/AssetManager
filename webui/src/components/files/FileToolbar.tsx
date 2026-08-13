@@ -125,6 +125,7 @@ export function FileToolbar({
           type="button"
           onClick={() => onViewModeChange('masonry')}
           aria-label={t('view.masonry')}
+          aria-pressed={viewMode === 'masonry'}
           className="p-1.5 transition-colors"
           style={{
             backgroundColor: viewMode === 'masonry' ? 'var(--color-elevated)' : 'transparent',
@@ -137,6 +138,7 @@ export function FileToolbar({
           type="button"
           onClick={() => onViewModeChange('grid')}
           aria-label={t('view.grid')}
+          aria-pressed={viewMode === 'grid'}
           className="p-1.5 transition-colors"
           style={{
             backgroundColor: viewMode === 'grid' ? 'var(--color-elevated)' : 'transparent',
@@ -149,6 +151,7 @@ export function FileToolbar({
           type="button"
           onClick={() => onViewModeChange('list')}
           aria-label={t('view.list')}
+          aria-pressed={viewMode === 'list'}
           className="p-1.5 transition-colors"
           style={{
             backgroundColor: viewMode === 'list' ? 'var(--color-elevated)' : 'transparent',

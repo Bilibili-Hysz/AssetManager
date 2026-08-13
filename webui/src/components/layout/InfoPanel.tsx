@@ -144,7 +144,7 @@ export function InfoPanel({
               )}
             </button>}
             {loading ? (
-              <div className="space-y-3" aria-label="Loading inspection details">
+              <div className="space-y-3" role="group" aria-label="Loading inspection details">
                 <div className="skeleton h-4 w-3/4" />
                 <div className="skeleton h-4 w-1/2" />
                 <div className="skeleton h-4 w-2/3" />

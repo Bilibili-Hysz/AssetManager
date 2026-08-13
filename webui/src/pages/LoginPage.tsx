@@ -235,8 +235,9 @@ export default function LoginPage() {
         {view === 'key' && (
           <div className="bg-slate-900 border border-slate-700/50 rounded-xl p-6 space-y-4">
             <div className="space-y-3">
-              <label className="block text-xs text-slate-500">{t('auth.access_key')}</label>
+              <label htmlFor="login-access-key" className="block text-xs text-slate-500">{t('auth.access_key')}</label>
               <input
+                id="login-access-key"
                 type="text"
                 value={accessKey}
                 onChange={e => setAccessKey(e.target.value)}
@@ -249,7 +250,7 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <p className="text-xs text-red-400 bg-red-900/20 border border-red-900/30 rounded-lg px-3 py-2">{error}</p>
+              <p role="alert" className="text-xs text-red-400 bg-red-900/20 border border-red-900/30 rounded-lg px-3 py-2">{error}</p>
             )}
 
             <button
@@ -271,8 +272,9 @@ export default function LoginPage() {
           <form onSubmit={handleLogin} className="bg-slate-900 border border-slate-700/50 rounded-xl p-6 space-y-4">
             {showUserMode && (
               <div className="space-y-3">
-                <label className="block text-xs text-slate-500">{t('auth.username')}</label>
+                <label htmlFor="login-username" className="block text-xs text-slate-500">{t('auth.username')}</label>
                 <input
+                  id="login-username"
                   type="text"
                   value={loginUsername}
                   onChange={e => setLoginUsername(e.target.value)}
@@ -285,9 +287,10 @@ export default function LoginPage() {
             )}
 
             <div className="space-y-3">
-              <label className="block text-xs text-slate-500">{t('auth.password')}</label>
+              <label htmlFor="login-password" className="block text-xs text-slate-500">{t('auth.password')}</label>
               <div className="relative">
                 <input
+                  id="login-password"
                   type={showPassword ? 'text' : 'password'}
                   value={loginPassword}
                   onChange={e => setLoginPassword(e.target.value)}
@@ -307,7 +310,7 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <p className="text-xs text-red-400 bg-red-900/20 border border-red-900/30 rounded-lg px-3 py-2">{error}</p>
+              <p role="alert" className="text-xs text-red-400 bg-red-900/20 border border-red-900/30 rounded-lg px-3 py-2">{error}</p>
             )}
 
             <button
@@ -357,8 +360,9 @@ export default function LoginPage() {
             </button>
 
             <div className="space-y-3">
-              <label className="block text-xs text-slate-500">{t('auth.username')}</label>
+              <label htmlFor="register-username" className="block text-xs text-slate-500">{t('auth.username')}</label>
               <input
+                id="register-username"
                 type="text"
                 value={regUsername}
                 onChange={e => setRegUsername(e.target.value)}
@@ -370,8 +374,9 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-3">
-              <label className="block text-xs text-slate-500">{t('auth.password')}</label>
+              <label htmlFor="register-password" className="block text-xs text-slate-500">{t('auth.password')}</label>
               <input
+                id="register-password"
                 type="password"
                 value={regPassword}
                 onChange={e => setRegPassword(e.target.value)}
@@ -382,8 +387,9 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-3">
-              <label className="block text-xs text-slate-500">{t('auth.confirm_password')}</label>
+              <label htmlFor="register-confirm" className="block text-xs text-slate-500">{t('auth.confirm_password')}</label>
               <input
+                id="register-confirm"
                 type="password"
                 value={regConfirm}
                 onChange={e => setRegConfirm(e.target.value)}
@@ -394,8 +400,9 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-3">
-              <label className="block text-xs text-slate-500">{t('auth.email')}</label>
+              <label htmlFor="register-email" className="block text-xs text-slate-500">{t('auth.email')}</label>
               <input
+                id="register-email"
                 type="email"
                 value={regEmail}
                 onChange={e => setRegEmail(e.target.value)}
@@ -406,8 +413,9 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-3">
-              <label className="block text-xs text-slate-500">{t('auth.invite_code')}</label>
+              <label htmlFor="register-invite" className="block text-xs text-slate-500">{t('auth.invite_code')}</label>
               <input
+                id="register-invite"
                 type="text"
                 value={regInvite}
                 onChange={e => setRegInvite(e.target.value)}
@@ -418,11 +426,11 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <p className="text-xs text-red-400 bg-red-900/20 border border-red-900/30 rounded-lg px-3 py-2">{error}</p>
+              <p role="alert" className="text-xs text-red-400 bg-red-900/20 border border-red-900/30 rounded-lg px-3 py-2">{error}</p>
             )}
 
             {regErrors.length > 0 && (
-              <div className="text-xs text-red-400 bg-red-900/20 border border-red-900/30 rounded-lg px-3 py-2 space-y-1">
+              <div role="alert" className="text-xs text-red-400 bg-red-900/20 border border-red-900/30 rounded-lg px-3 py-2 space-y-1">
                 {regErrors.map((err, i) => <p key={i}>{err}</p>)}
               </div>
             )}

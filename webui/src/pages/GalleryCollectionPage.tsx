@@ -110,6 +110,7 @@ export default function GalleryCollectionPage({ onOpenPalette }: GalleryCollecti
                     key={value}
                     type="button"
                     className={kind === value ? 'gallery-filter-active' : ''}
+                    aria-pressed={kind === value}
                     onClick={() => setKind(value)}
                   >
                     {value === 'all' ? t('gallery.all') : t('gallery.works')}

@@ -454,7 +454,7 @@ export default function LandingPage() {
         <h1 className="gate-repository gate-rise">{name}</h1>
         <p className="gate-purpose gate-rise">{t('landing.library_purpose')}</p>
 
-        {showcaseUrls.length > 0 && <div className="gate-showcase gate-rise" aria-label={t('landing.featured_assets')}>
+        {showcaseUrls.length > 0 && <div className="gate-showcase gate-rise" role="group" aria-label={t('landing.featured_assets')}>
           {showcaseUrls.map(url => {
             const item = previewPool.find(candidate => candidate.thumbnail_url === url);
             if (!item) return null;

@@ -117,7 +117,7 @@ function App() {
           <QueryCacheProvider>
           <ToastProvider>
             <DownloadProgressProvider>
-              <Suspense fallback={<div className="app-route-loading" aria-busy="true" />}>
+              <Suspense fallback={<div className="app-route-loading" role="status" aria-busy="true" />}>
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/login" element={<LoginPage />} />

@@ -174,7 +174,7 @@ export default function DetailPage({ onOpenPalette }: DetailPageProps) {
 
       <div className="detail-content">
         {loading ? (
-          <div className="space-y-4">
+          <div className="space-y-4" role="status" aria-label={t('browse.loading')}>
             <Skeleton className="h-48 w-full rounded-xl" />
             <Skeleton className="h-6 w-1/3" />
             <Skeleton className="h-4 w-1/2" />
