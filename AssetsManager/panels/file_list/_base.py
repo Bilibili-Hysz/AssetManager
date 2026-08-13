@@ -18,7 +18,7 @@ from pathlib import Path
 
 from PySide6.QtCore import (
     Qt, Signal, QEvent, QRect,
-    QSize, QUrl, QMimeData, QTimer, QPoint,
+    QSize, QUrl, QMimeData, QTimer, QPoint, QModelIndex,
 )
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont, QPen, QPainterPath
 from PySide6.QtWidgets import (
@@ -401,6 +401,23 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         if self._list_view:
             self._list_view.setStyleSheet(
                 "QListView { background: transparent; border: none; }")
+
+    def _view_selected_rows(self) -> list[QModelIndex]:
+        """Selected rows of the active list-style view.
+
+        Subclasses with a non-QListView surface (the grid canvas) override
+        this with their native selection; this base implementation serves the
+        legacy QListView-backed panel.
+        """
+        if self._list_view:
+            return self._list_view.selectionModel().selectedRows()
+        return []
+
+    def _view_edit_index(self, idx: QModelIndex) -> bool:
+        """Start inline rename for an index of the active list-style view."""
+        if self._list_view and idx.isValid():
+            return self._list_view.edit(idx)
+        return False
 
     def _sync_selection_anim(self):
         """Forward selection state to delegate for animation. Override in subclass."""

@@ -103,7 +103,7 @@ class ActionsMixin:
     def _ctx_menu(self, pos):
         widget = self.sender()
         if widget is self._list_view:
-            idxs = self._list_view.selectionModel().selectedRows()
+            idxs = self._view_selected_rows()
             paths = [self._model.path_at(i.row()) for i in idxs if i.isValid()]
         else:
             sel = self._detail_view.selectionModel().selectedRows()
@@ -602,7 +602,7 @@ class ActionsMixin:
             sel = self._detail_view.selectionModel().selectedRows()
             return [self._detail_model.data(i, Qt.ItemDataRole.UserRole)
                     for i in sel if i.isValid()]
-        idxs = self._list_view.selectionModel().selectedRows()
+        idxs = self._view_selected_rows()
         return [self._model.path_at(i.row()) for i in idxs if i.isValid()]
 
     def _open_selected(self):
@@ -626,14 +626,14 @@ class ActionsMixin:
                 else:
                     self._detail_view.edit(sel[0])
             return
-        indices = self._list_view.selectionModel().selectedRows()
+        indices = self._view_selected_rows()
         if not indices:
             return
         paths = [self._model.path_at(i.row()) for i in indices if i.isValid()]
         if len(paths) > 1:
             self._batch_rename(paths)
         else:
-            self._list_view.edit(indices[0])
+            self._view_edit_index(indices[0])
 
     def _batch_rename(self, paths):
         from AssetsManager.panels.file_list._batch_rename_dialog import BatchRenameDialog

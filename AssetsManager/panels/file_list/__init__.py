@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 
 from PySide6.QtCore import (
-    Qt, QTimer, QEasingCurve, QVariantAnimation, QModelIndex, QRect, QPoint, QEvent, Signal, QFileInfo, QObject, QSize,
+    Qt, QTimer, QEasingCurve, QVariantAnimation, QModelIndex, QPoint, QEvent, QFileInfo, QSize,
     QItemSelectionModel,
 )
 from PySide6.QtWidgets import (
@@ -41,109 +41,6 @@ class _DetailsItemDelegate(QStyledItemDelegate):
         size = super().sizeHint(option, index)
         size.setHeight(max(size.height(), scaled_px(32)))
         return size
-
-
-class _ListShim:
-    """Thin compatibility shim bridging _list_view API to _grid_widget."""
-
-    def __init__(self, panel):
-        self._p = panel
-        self._selection_model = _SelShim(panel)
-
-    @property
-    def gw(self):
-        return self._p._grid_widget
-
-    def viewport(self):
-        return self.gw
-
-    def verticalScrollBar(self):
-        return self.gw._scrollbar
-
-    def selectionModel(self):
-        return self._selection_model
-
-    def clearSelection(self):
-        self.gw.clear_selection()
-
-    def selectAll(self):
-        self.gw.select_all()
-
-    def indexAt(self, pos):
-        row = self.gw._layout.row_at(pos.x(), pos.y() + self.gw._scroll_y) if self.gw._layout else -1
-        if row >= 0:
-            return self._p._model.index(row, 0)
-        return QModelIndex()
-
-    def visualRect(self, idx):
-        if self._p._grid_layout and idx.isValid():
-            r = self._p._grid_layout.rect_at(idx.row())
-            if r:
-                return QRect(r.x(), r.y() - self.gw._scroll_y, r.width(), r.height())
-        return QRect()
-
-    def edit(self, idx):
-        if idx.isValid() and hasattr(self.gw, '_start_rename'):
-            self.gw._start_rename(idx.row())
-            return True
-        return False
-
-    def setVisible(self, v): self.gw.setVisible(v)
-    def setViewMode(self, _m): pass
-    def setIconSize(self, _sz): pass
-    def scheduleDelayedItemsLayout(self): self.gw.update()
-    def set_zoom_in_progress(self, _v): pass
-    def clear_render_cache(self): self.gw.invalidate_textures()
-    def setStyleSheet(self, _s): pass
-    def hide(self): self.gw.hide()
-    def deleteLater(self): pass
-
-
-class _SelShim(QObject):
-    """SelectionModel shim for ActionsMixin compatibility."""
-    selectionChanged = Signal()
-    Select = QItemSelectionModel.SelectionFlag.Select
-
-    def __init__(self, panel):
-        super().__init__(panel)
-        self._p = panel
-
-    def clear(self):
-        self._p._grid_widget.clear_selection()
-
-    def select(self, idx, flags):
-        if not idx.isValid():
-            return
-        gw = self._p._grid_widget
-        old = gw._selection.copy()
-        if flags & QItemSelectionModel.SelectionFlag.Clear:
-            gw._selection.clear()
-        if flags & QItemSelectionModel.SelectionFlag.Select:
-            gw._selection.add(idx.row())
-        if old != gw._selection:
-            gw._apply_selection_progress(old)
-            gw.selection_changed.emit()
-            self.selectionChanged.emit()
-            gw.update()
-
-    def currentIndex(self):
-        row = self._p._last_click_row
-        if row < 0 and self._p._grid_widget._selection:
-            row = next(iter(self._p._grid_widget._selection))
-        if row >= 0:
-            return self._p._model.index(row, 0)
-        return QModelIndex()
-
-    def selectedRows(self):
-        rows = []
-        for r in self._p._grid_widget.selection_model_rows():
-            idx = self._p._model.index(r, 0)
-            if idx.isValid():
-                rows.append(idx)
-        return rows
-
-    def isSelected(self, idx):
-        return idx.row() in self._p._grid_widget.selection_model_rows()
 
 
 class QWidgetFileListPanel(FileListPanel):
@@ -239,7 +136,8 @@ class QWidgetFileListPanel(FileListPanel):
         self.content_layout.insertWidget(
             self.content_layout.indexOf(self._status_bar), self._detail_view)
 
-        self._list_view = _ListShim(self)
+        # The base class leaves _list_view None (no QListView surface); the
+        # grid canvas implements _view_selected_rows/_view_edit_index instead.
         self._connect_bus(bus().language_changed, self._refresh_language)
         self._connect_bus(bus().ui_scale_changed, self._on_ui_scale_changed)
         self.initialize_navigation()
@@ -547,6 +445,22 @@ class QWidgetFileListPanel(FileListPanel):
         else:
             self._grid_widget.select_all()
         self._update_status()
+
+    def _view_selected_rows(self) -> list[QModelIndex]:
+        """Native grid implementation of the list-view selection API."""
+        rows = []
+        for row in self._grid_widget.selection_model_rows():
+            idx = self._model.index(row, 0)
+            if idx.isValid():
+                rows.append(idx)
+        return rows
+
+    def _view_edit_index(self, idx: QModelIndex) -> bool:
+        """Native grid implementation of the list-view inline-rename API."""
+        if idx.isValid() and hasattr(self._grid_widget, '_start_rename'):
+            self._grid_widget._start_rename(idx.row())
+            return True
+        return False
 
     def _quick_share_from_context(self, paths: list[str], global_pos):
         """Delegate Quick Share to the canonical LAN share-link creator."""

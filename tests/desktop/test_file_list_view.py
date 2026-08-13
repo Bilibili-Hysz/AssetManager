@@ -8,7 +8,7 @@ from aiohttp import ClientSession
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QItemSelectionModel, QMimeData, QPoint, QUrl, Qt
+from PySide6.QtCore import QMimeData, QPoint, QUrl, Qt
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
@@ -784,7 +784,7 @@ def test_grid_scrollbar_uses_shared_animation_gate():
         app.processEvents()
 
 
-def test_grid_selection_shim_supports_actions_api(tmp_path):
+def test_grid_selection_rows_support_actions_api(tmp_path):
     (tmp_path / "a.txt").write_text("a")
     (tmp_path / "b.txt").write_text("b")
     app = QApplication.instance() or QApplication([])
@@ -794,22 +794,20 @@ def test_grid_selection_shim_supports_actions_api(tmp_path):
         panel._model._wait_for_scan()
         panel._grid_widget.update_layout(panel._model.rowCount(), 400)
 
-        selection = panel._list_view.selectionModel()
-        first = panel._model.index(0, 0)
-        selection.select(first, QItemSelectionModel.SelectionFlag.Select)
+        panel._grid_widget._selection.add(0)
+        panel._grid_widget.update()
 
-        assert selection.currentIndex().isValid()
-        assert [idx.row() for idx in selection.selectedRows()] == [0]
+        assert [idx.row() for idx in panel._view_selected_rows()] == [0]
 
-        selection.clear()
+        panel._grid_widget.clear_selection()
 
-        assert selection.selectedRows() == []
+        assert panel._view_selected_rows() == []
     finally:
         panel.shutdown()
         app.processEvents()
 
 
-def test_grid_selection_shim_emits_selection_changed(tmp_path):
+def test_grid_selection_change_reaches_panel_listeners(tmp_path):
     (tmp_path / "a.txt").write_text("a")
     app = QApplication.instance() or QApplication([])
     panel = QWidgetFileListPanel()
@@ -818,11 +816,10 @@ def test_grid_selection_shim_emits_selection_changed(tmp_path):
         panel._model._wait_for_scan()
         panel._grid_widget.update_layout(panel._model.rowCount(), 400)
 
-        selection = panel._list_view.selectionModel()
         seen = []
-        selection.selectionChanged.connect(lambda: seen.append(True))
+        panel._grid_widget.selection_changed.connect(lambda: seen.append(True))
 
-        selection.select(panel._model.index(0, 0), QItemSelectionModel.SelectionFlag.Select)
+        panel._select_grid_paths({str(panel._model.path_at(0))})
 
         assert seen == [True]
     finally:
