@@ -482,6 +482,10 @@ class GalleryService:
         except Exception:
             pass
 
+    def stop(self) -> None:
+        """Lifecycle-adapter alias so runtime teardown can close this service."""
+        self.close()
+
     @session_operation
     def get_home_cached(
         self, library_root: str | Path

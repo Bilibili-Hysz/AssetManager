@@ -159,6 +159,10 @@ class LibraryRuntime:
         try:
             self.close_adapters()
             self.services.undo_service.cleanup()
+            # Close already-materialized LAN services that hold event-bus
+            # subscriptions (gallery_service), without materializing them if
+            # the LAN adapter was never composed for this session.
+            self.services.close_lan_services()
         except BaseException:
             with self._condition:
                 self._state = "failed"

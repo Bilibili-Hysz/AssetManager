@@ -239,6 +239,23 @@ class LibraryScopedServices:
         """Return the once-materialized LAN-only application projection."""
         return self._lan_holder.get()
 
+    def close_lan_services(self) -> None:
+        """Close already-materialized LAN services, never materializing them.
+
+        ``GalleryService`` subscribes to the global event bus in its
+        constructor; runtime teardown must close it (and any other LAN
+        service with subscriptions) when it was composed, otherwise the
+        subscription leaks for the life of the process.  Services that were
+        never materialized are left untouched.
+        """
+        if self._lan_holder._state != "ready":
+            return
+        value = self._lan_holder._value
+        assert value is not None  # "ready" always has a published value
+        gallery = value.gallery_service
+        if gallery is not None:
+            gallery.close()
+
     @property
     def asset_service(self) -> AssetService:
         """Compatibility read-through to the LAN-only service projection."""
