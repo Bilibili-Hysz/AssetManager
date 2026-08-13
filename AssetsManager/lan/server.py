@@ -2,9 +2,6 @@
 import asyncio
 import inspect
 import concurrent.futures
-import hashlib
-import hmac
-import json
 import logging
 import ssl
 import threading
@@ -16,8 +13,18 @@ from aiohttp import web
 
 from AssetsManager.lan.api import setup_routes, stop_runtime_realtime
 from AssetsManager.lan.auth import hash_key, hash_password, is_password_hash, verify_key, verify_token, verify_auth_token
+from AssetsManager.lan.guarded_tunnel import _GuardedTunnel
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY, LAN_APP_KEY, ActivityLog, OnlineUsers, LanScopedServices
+from AssetsManager.lan.runtime_validation import (
+    _MISSING,
+    _derive_local_ui_auth_secret,
+    _observe_broadcast,
+    _runtime_operation,
+    _runtime_services_snapshot,
+    _validate_runtime_service_bindings,
+)
+from AssetsManager.lan.token_revocations import TokenRevocationRegistry
 from AssetsManager.lan.ws import WebSocketManager
 from AssetsManager.lan.scanner import DirectoryScanner
 from AssetsManager.lan.tunnel import TunnelManager
@@ -26,186 +33,6 @@ from AssetsManager.lan.route_policy import request_policy
 from AssetsManager.lan.utils import get_local_ip
 
 _log = logging.getLogger(__name__)
-
-_MISSING = object()
-
-
-def _observe_broadcast(future):
-    """Consume a background broadcast future so exceptions never go unobserved."""
-    try:
-        future.result()
-    except Exception:
-        _log.exception("WebSocket broadcast failed")
-
-
-def _runtime_services_snapshot(runtime: Any) -> Any:
-    """Return the required canonical runtime service snapshot."""
-    if inspect.getattr_static(runtime, "services_snapshot", _MISSING) is _MISSING:
-        raise ValueError("runtime must expose the canonical services_snapshot contract")
-    return runtime.services_snapshot
-
-
-def _runtime_operation(runtime: Any, session: Any):
-    """Return the required canonical session operation boundary."""
-    operation = getattr(session, "operation", None)
-    if not callable(operation):
-        raise ValueError("runtime session must provide an operation boundary")
-    return cast(Any, operation())
-
-
-def _derive_local_ui_auth_secret(
-    token_secret: str,
-    *,
-    password: str | None,
-    access_key: str | None,
-    auth_mode: str | None,
-) -> str:
-    """Derive a stable, auth-config-bound secret for access-key UI tokens."""
-    auth_config = json.dumps(
-        {
-            "access_key": access_key,
-            "auth_mode": auth_mode,
-            "password": password,
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-    return hmac.new(
-        token_secret.encode("utf-8"),
-        b"lan-local-ui-auth-v1\0" + auth_config,
-        hashlib.sha256,
-    ).hexdigest()
-
-
-def _provider_matches_session(service: Any, session: Any) -> bool:
-    provider = getattr(service, "_connection_provider", None)
-    expected_provider = session.connection_for
-    provider_self = getattr(provider, "__self__", None)
-    provider_func = getattr(provider, "__func__", None)
-    if provider_self is not None:
-        return (
-            provider_self is session
-            and provider_func is getattr(expected_provider, "__func__", None)
-        )
-    return provider == expected_provider
-
-
-def _service_session_matches(
-    service: Any, session: Any, *, required: bool
-) -> bool:
-    has_session_binding = (
-        inspect.getattr_static(service, "_session", _MISSING) is not _MISSING
-    )
-    if not has_session_binding:
-        return not required
-    bound_session = service._session
-    if required:
-        return bound_session is session
-    return bound_session is None or bound_session is session
-
-
-def _validate_runtime_service_bindings(
-    runtime_services: Any,
-    lan_services: Any,
-    sharing_services: Any,
-    session: Any,
-    db_conn: Any,
-) -> None:
-    for owner, name, requires_session in (
-        (runtime_services, "metadata_service", True),
-        (runtime_services, "tag_service", True),
-        (runtime_services, "thumbnail_service", True),
-        (lan_services, "project_service", True),
-        # Every canonical LAN service is bound to the current session.
-        (lan_services, "search_service", True),
-    ):
-        service = getattr(owner, name, None)
-        if (
-            service is None
-            or not _provider_matches_session(service, session)
-            or not _service_session_matches(
-                service,
-                session,
-                required=requires_session,
-            )
-        ):
-            raise ValueError(
-                f"runtime {name} provider is not bound to its LibrarySession"
-            )
-
-    project_service = getattr(lan_services, "project_service", None)
-    for name in ("_metadata_svc", "_tag_svc"):
-        nested = getattr(project_service, name, None)
-        if (
-            nested is None
-            or not _provider_matches_session(nested, session)
-            or not _service_session_matches(
-                nested, session, required=True
-            )
-        ):
-            raise ValueError(
-                "runtime project_service internals are not bound to its LibrarySession"
-            )
-
-    gallery_service = getattr(lan_services, "gallery_service", None)
-    if gallery_service is not None and (
-        not _provider_matches_session(gallery_service, session)
-        or not _service_session_matches(gallery_service, session, required=True)
-    ):
-        raise ValueError("runtime gallery_service is not bound to its LibrarySession")
-
-    favorite_service = getattr(lan_services, "favorite_service", None)
-    if favorite_service is not None and (
-        not _provider_matches_session(favorite_service, session)
-        or not _service_session_matches(favorite_service, session, required=True)
-    ):
-        raise ValueError("runtime favorite_service is not bound to its LibrarySession")
-
-    asset_service = getattr(lan_services, "asset_service", None)
-    directory_cache = getattr(asset_service, "_directory_cache", None)
-    if directory_cache is None or getattr(directory_cache, "_conn", _MISSING) is not db_conn:
-        raise ValueError(
-            "runtime asset_service cache is not bound to its LibrarySession"
-        )
-
-    token_secret = getattr(sharing_services, "token_secret", None)
-    if not isinstance(token_secret, str) or not token_secret:
-        raise ValueError("runtime sharing token secret is unavailable")
-    for name in ("auth_service", "share_service"):
-        service = getattr(sharing_services, name, None)
-        if (
-            service is None
-            or getattr(service, "_conn", _MISSING) is not db_conn
-            or getattr(service, "_secret", _MISSING) != token_secret
-            or not _service_session_matches(
-                service, session, required=True
-            )
-        ):
-            raise ValueError(
-                f"runtime {name} is not bound to its LibrarySession sharing bundle"
-            )
-
-
-class _GuardedTunnel:
-    """Read-only tunnel view whose lifecycle always passes the auth gate."""
-
-    def __init__(self, owner):
-        self._owner = owner
-
-    @property
-    def is_running(self) -> bool:
-        return self._owner._tunnel.is_running
-
-    @property
-    def public_url(self) -> str | None:
-        return self._owner._tunnel.public_url
-
-    def start(self, timeout: int = 30) -> str | None:
-        return self._owner.start_tunnel(timeout=timeout)
-
-    def stop(self):
-        return self._owner.stop_tunnel()
 
 
 class _LanServerImpl:
@@ -341,6 +168,7 @@ class _LanServerImpl:
         # AuthService) so a token signed with the persisted password hash
         # cannot resurrect after an app restart. Loaded once on first use.
         self._revoked_loaded = False
+        self._token_revocations = TokenRevocationRegistry(self)
 
         with _runtime_operation(runtime, session):
             runtime_services = _runtime_services_snapshot(runtime)
@@ -989,88 +817,30 @@ class _LanServerImpl:
     _TOKEN_REVOCATION_TTL = 86400.0
     _TOKEN_REVOCATION_MAX = 10_000
 
+    def _token_revocation_registry(self) -> TokenRevocationRegistry:
+        """Return the (lazily built) host-bound token revocation registry.
+
+        Built on first use so ``object.__new__(_LanServerImpl)`` skeleton test
+        fixtures that bypass ``__init__`` keep working unchanged.
+        """
+        registry = getattr(self, "_token_revocations", None)
+        if registry is None:
+            registry = TokenRevocationRegistry(self)
+            self._token_revocations = registry
+        return registry
+
     def revoke_auth_token(self, token: str):
         """Server-side revocation of a presented auth token (TTL 24h).
 
-        The revocation is persisted through the bound AuthService so a token
-        signed with the persisted password hash cannot resurrect after an
-        app restart.
+        Delegates to the host-bound :class:`TokenRevocationRegistry`, which
+        stores the in-memory table on this instance (``_revoked_tokens``) and
+        persists through the bound AuthService.
         """
-        if not token:
-            return
-        digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
-        expires_at = time.time() + self._TOKEN_REVOCATION_TTL
-        self._revoked_tokens[digest] = expires_at
-        auth_service = getattr(self, "_auth_service", None)
-        if auth_service is not None:
-            try:
-                auth_service.revoke_token(token, ttl=self._TOKEN_REVOCATION_TTL)
-            except Exception:
-                # In-memory revocation still holds for this process; log and
-                # keep going rather than failing the logout response.
-                _log.warning("Persistent token revocation write failed", exc_info=True)
+        self._token_revocation_registry().revoke_auth_token(token)
 
     def is_auth_token_revoked(self, token: str) -> bool:
         """Return True when a presented auth token has been revoked."""
-        if not token:
-            return False
-        digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
-        self._load_persisted_revocations()
-        expiry = self._revoked_tokens.get(digest)
-        if expiry is None:
-            return False
-        if expiry <= time.time():
-            del self._revoked_tokens[digest]
-            return False
-        if len(self._revoked_tokens) > self._TOKEN_REVOCATION_MAX:
-            self._prune_revoked_tokens()
-        return True
-
-    def _load_persisted_revocations(self) -> None:
-        """Load revocations persisted by earlier processes, once per server.
-
-        The in-memory table is the hot-path positive cache; the library DB
-        (via the bound AuthService) is the durable source of truth across
-        app restarts.
-        """
-        if getattr(self, "_revoked_loaded", False):
-            return
-        self._revoked_loaded = True
-        auth_service = getattr(self, "_auth_service", None)
-        if auth_service is None:
-            return
-        try:
-            persisted = auth_service.load_active_revocations()
-        except Exception:
-            _log.warning("Persistent token revocation load failed", exc_info=True)
-            return
-        for digest, expires_at in persisted.items():
-            self._revoked_tokens.setdefault(digest, expires_at)
-        # Best-effort DB hygiene: drop rows whose TTL already passed.
-        try:
-            auth_service.prune_revocations()
-        except Exception:
-            pass
-
-    def _prune_revoked_tokens(self) -> None:
-        """Drop expired revocations; bound memory when the table grows large."""
-        now = time.time()
-        expired = [
-            digest for digest, expires_at in self._revoked_tokens.items()
-            if expires_at <= now
-        ]
-        for digest in expired:
-            del self._revoked_tokens[digest]
-        # The table is still large after pruning (mass revocation burst);
-        # drop oldest entries to keep memory bounded.
-        if len(self._revoked_tokens) > self._TOKEN_REVOCATION_MAX:
-            for digest in sorted(
-                self._revoked_tokens,
-                key=lambda entry: cast(float, self._revoked_tokens[entry]),
-            )[: len(self._revoked_tokens) - self._TOKEN_REVOCATION_MAX]:
-                del self._revoked_tokens[digest]
-
-    # ── Properties for API handlers ─────────────────────────────
+        return self._token_revocation_registry().is_auth_token_revoked(token)
 
     @property
     def library_root(self) -> Path:
