@@ -151,6 +151,37 @@ describe('useCachedQuery', () => {
     expect(cache.getEntry(['k']).snapshot).toBe(before);
   });
 
+  it('a stale setData after unmount and clear leaves no orphan entry', async () => {
+    const queryFn = vi.fn(async () => 'payload');
+    const { cache, wrapper } = makeWrapper();
+    const { result, unmount } = renderHook(
+      () => useCachedQuery({ key: ['k'], queryFn }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.data).toBe('payload'));
+    unmount();
+    act(() => cache.clear());
+    act(() => result.current.setData(() => 'stale'));
+    // setData must not create an entry for a key that no longer exists.
+    expect(cache.peekEntry(['k'])).toBeUndefined();
+  });
+
+  it('setData still applies after a cache clear (subscription re-established)', async () => {
+    const queryFn = vi.fn(async () => 'payload');
+    const { cache, wrapper } = makeWrapper();
+    const { result } = renderHook(
+      () => useCachedQuery({ key: ['k'], queryFn }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.data).toBe('payload'));
+
+    act(() => cache.clear());
+    await waitFor(() => expect(result.current.data).toBe('payload'));
+
+    act(() => result.current.setData(() => 'patched'));
+    expect(result.current.data).toBe('patched');
+  });
+
   it('fires onFetchStart per real request, not per dedup hit', async () => {
     let resolveFn!: (value: string) => void;
     const queryFn = vi.fn(() => new Promise<string>(resolve => { resolveFn = resolve; }));

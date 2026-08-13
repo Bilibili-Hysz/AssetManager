@@ -142,8 +142,10 @@ export function useCachedQuery<T>({
   }, [cache, startFetch]);
 
   const setData = useCallback((updater: (prev: T | undefined) => T | undefined) => {
-    const current = cache.getEntry<T>(keyRef.current);
-    if (current.subscribers === 0) return; // orphan entry: nobody would see it
+    // peek, not getEntry: creating an entry here would leave an orphan (no
+    // subscribers, no gcTimer) in the cache for every stale optimistic write.
+    const current = cache.peekEntry<T>(keyRef.current);
+    if (!current || current.subscribers === 0) return; // nobody would see it
     const next = updater(current.snapshot.data);
     if (next === current.snapshot.data) return;
     current.snapshot = next === undefined
@@ -153,12 +155,14 @@ export function useCachedQuery<T>({
   }, [cache]);
 
   // Subscribe + fetch policy + teardown. The key is captured when the effect
-  // runs so the cleanup decrements the entry this run subscribed to — reading
+  // runs so the cleanup releases the entry this run subscribed to — reading
   // keyRef in the cleanup would touch the NEXT key and leak the old entry.
+  // Subscriber counts live in the cache's registry (not on the entries) so a
+  // cache clear — which discards entries — cannot orphan live subscriptions.
   useEffect(() => {
     const myKey = keyRef.current;
+    cache.addSubscriber(myKey);
     const current = cache.getEntry<T>(myKey);
-    current.subscribers += 1;
     if (current.gcTimer) {
       clearTimeout(current.gcTimer);
       current.gcTimer = null;
@@ -170,20 +174,23 @@ export function useCachedQuery<T>({
       startFetch();
     }
     return () => {
-      const leaving = cache.getEntry<T>(myKey);
-      leaving.subscribers = Math.max(0, leaving.subscribers - 1);
-      if (leaving.subscribers === 0) {
-        leaving.inFlight?.abort();
-        leaving.inFlight = null;
-        leaving.gcTimer = setTimeout(() => {
-          if (leaving.subscribers === 0 && !leaving.inFlight) {
-            leaving.snapshot = {
-              status: 'idle', data: undefined, error: undefined, fetchedAt: 0,
-            };
-            cache.publish(myKey, leaving.snapshot);
-          }
-        }, gcTime);
-      }
+      cache.removeSubscriber(myKey);
+      if (cache.subscriberCount(myKey) > 0) return;
+      const leaving = cache.peekEntry<T>(myKey);
+      if (!leaving) return;
+      leaving.inFlight?.abort();
+      leaving.inFlight = null;
+      leaving.gcTimer = setTimeout(() => {
+        // Only reclaim when this exact entry still owns the key; a timer armed
+        // by a stale entry must not clobber a replacement's snapshot.
+        const live = cache.peekEntry<T>(myKey);
+        if (live === leaving && cache.subscriberCount(myKey) === 0 && !leaving.inFlight) {
+          leaving.snapshot = {
+            status: 'idle', data: undefined, error: undefined, fetchedAt: 0,
+          };
+          cache.publish(myKey, leaving.snapshot);
+        }
+      }, gcTime);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keyString, staleTime, gcTime, enabled, startFetch]);
