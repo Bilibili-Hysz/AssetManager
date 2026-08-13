@@ -1,3 +1,10 @@
+/**
+ * Buyer cart/wishlist state. Identity contract (see cache/QueryCacheContext):
+ * this scope deliberately has NO counter of its own — it reuses the main
+ * AuthContext.identityGeneration as its generation signal, so every guard
+ * here (isCurrentIdentity / commit / operation tail) speaks the same
+ * "identity flip = reset" language as the cache and the seller scope.
+ */
 import {
   createContext,
   useCallback,
