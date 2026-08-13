@@ -104,3 +104,7 @@ AssetsManager/core/format_utils.c
 /.probe-*/
 /am-probe-*/
 
+
+# Local agent tooling config (user-provided .zcode/.agents definitions).
+/.agents/
+
