@@ -785,11 +785,13 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
     def _on_search_changed(self, text):
         """Debounce search to avoid O(n) scandir on every keystroke."""
         self._model._filter_text = text.lower()
-        if self._search_timer is None:
-            self._search_timer = QTimer(self)
-            self._search_timer.setSingleShot(True)
-            self._search_timer.timeout.connect(self._apply_search)
-        self._search_timer.start(200)
+        timer = self._search_timer
+        if timer is None:
+            timer = QTimer(self)
+            self._search_timer = timer
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._apply_search)
+        timer.start(200)
 
     def _apply_search(self):
         self._model.set_filter(

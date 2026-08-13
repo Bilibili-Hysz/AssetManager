@@ -447,8 +447,9 @@ class FileSystemModel(QAbstractListModel):
                 self._dir_size_queue.append(dir_path)
             return
         if self._size_pool is None:
-            self._size_pool = QThreadPool()
-            self._size_pool.setMaxThreadCount(1)
+            pool = QThreadPool()
+            self._size_pool = pool
+            pool.setMaxThreadCount(1)
         self._pending_dir_sizes.add(dir_path)
         self._dir_size_queue.append(dir_path)
         self._trim_dir_size_queue()

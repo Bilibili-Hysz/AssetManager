@@ -463,9 +463,10 @@ class _LanServerImpl:
             ip_whitelist=self._ip_whitelist,
             tunnel_active=self._tunnel_active,
         )
-        self._app = web.Application(middlewares=[security_mw, self._metrics_middleware, self._auth_middleware])
-        self._app[LAN_APP_KEY] = self
-        setup_routes(self._app)
+        app = web.Application(middlewares=[security_mw, self._metrics_middleware, self._auth_middleware])
+        self._app = app
+        app[LAN_APP_KEY] = self
+        setup_routes(app)
 
     def _tunnel_active(self) -> bool:
         """True while the cloudflared tunnel is up (loopback whitelist bypass)."""
@@ -1344,11 +1345,12 @@ class _LanServerImpl:
         app = self._app
         assert app is not None
         app[AUTH_SERVICE_APP_KEY] = self._auth_service
-        self._runner = web.AppRunner(
+        runner = web.AppRunner(
             app,
             access_log=None,  # Disable default access log
         )
-        await self._runner.setup()
+        self._runner = runner
+        await runner.setup()
 
         # SSL context for HTTPS. Explicit TLS configuration is fail-closed:
         # never silently downgrade a requested HTTPS server to HTTP.
@@ -1360,14 +1362,15 @@ class _LanServerImpl:
             ssl_context.load_cert_chain(self._ssl_cert, self._ssl_key)
             _log.info("HTTPS enabled with cert: %s", self._ssl_cert)
 
-        self._site = web.TCPSite(
-            self._runner,
+        site = web.TCPSite(
+            runner,
             self._bind,
             self._port,
             ssl_context=ssl_context,
         )
+        self._site = site
         try:
-            await self._site.start()
+            await site.start()
         except BaseException:
             _log.exception("Failed to start server on port %d", self._port)
             raise
@@ -1384,7 +1387,8 @@ class _LanServerImpl:
                 self._running = True
         if cancelled:
             self._running = False
-            await self._runner.cleanup()
+            assert runner is not None
+            await runner.cleanup()
             self._site = None
             self._runner = None
             self._ssl_active = False
@@ -1424,7 +1428,8 @@ class _LanServerImpl:
                 if self._lifecycle_state == "starting":
                     self._lifecycle_state = "failed"
             if cleanup_owned_here:
-                await self._runner.cleanup()
+                assert runner is not None
+                await runner.cleanup()
                 self._site = None
                 self._runner = None
                 self._cleanup_complete = True

@@ -6,6 +6,7 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtCore import Qt, Signal, QRect, QSize, QPoint, QMimeData, QUrl, QPropertyAnimation, QEasingCurve, QRunnable, QThreadPool, QObject, QTimer
 from PySide6.QtWidgets import (
@@ -616,12 +617,14 @@ class InfoPanel(PanelContent):
             item = layout.itemAt(0) if layout is not None else None
             label = item.widget() if item is not None else None
             if isinstance(label, QLabel):
-                label.setText(tr(label_key))
+                # PySide6 stubs type QLayoutItem.widget() as None, so the
+                # isinstance check cannot narrow it for pyright.
+                cast(QLabel, label).setText(tr(label_key))
         link_layout = self._field_link.layout()
         link_item = link_layout.itemAt(0) if link_layout is not None else None
         link_label = link_item.widget() if link_item is not None else None
         if isinstance(link_label, QLabel):
-            link_label.setText(tr("info.field_link"))
+            cast(QLabel, link_label).setText(tr("info.field_link"))
         if not self._current_path:
             self._show_empty_state()
         self._refresh_theme()
@@ -693,12 +696,13 @@ class InfoPanel(PanelContent):
                         sub = layout.itemAt(j)
                         label = sub.widget() if sub is not None else None
                         if isinstance(label, QLabel):
+                            qlabel = cast(QLabel, label)
                             if j == 0:
-                                label.setStyleSheet(
+                                qlabel.setStyleSheet(
                                     sk.muted_css(11)
                                     + f" QLabel {{ min-width: {sk.px(65)}px; }}")
                             else:
-                                label.setStyleSheet(sk.label_css("body", size=12))
+                                qlabel.setStyleSheet(sk.label_css("body", size=12))
 
     def _register_field(self, key: str, label: str, value: str = "") -> None:
         """Register a metadata field and add it to the layout."""
@@ -745,8 +749,9 @@ class InfoPanel(PanelContent):
         item = layout.itemAt(1) if layout is not None else None
         val_label = item.widget() if item is not None else None
         if isinstance(val_label, QLabel):
-            val_label.setText(value)
-            val_label.setToolTip(value if value and value != "—" else "")
+            qlabel = cast(QLabel, val_label)
+            qlabel.setText(value)
+            qlabel.setToolTip(value if value and value != "—" else "")
 
     @staticmethod
     def _make_link_field() -> QWidget:

@@ -1,6 +1,7 @@
 """Main window — QDockWidget-based docking layout with workspace tab bar."""
 import logging
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QTimer, QSize
 from PySide6.QtGui import QPixmap, QPainter
@@ -25,17 +26,21 @@ tr = i18n.tr
 
 try:
     import shiboken6
-    def _alive(widget):
-        try:
-            return widget is not None and shiboken6.isValid(widget)
-        except Exception:
-            return False
+    _shiboken6 = shiboken6
 except ImportError:
-    def _alive(widget):
-        try:
-            return widget is not None and widget.winId() is not None
-        except Exception:
+    _shiboken6 = None
+
+
+def _alive(widget) -> bool:
+    """True while a C++-backed widget has not yet been destroyed."""
+    try:
+        if widget is None:
             return False
+        if _shiboken6 is not None:
+            return _shiboken6.isValid(widget)
+        return widget.winId() is not None
+    except Exception:
+        return False
 
 
 def _save_window_geometry(window: QWidget) -> None:
@@ -648,8 +653,9 @@ class MainWindow(LanSharingMixin, QMainWindow):
                 # L9: a fixed minimum keeps narrow restores usable without
                 # pinning the panel to half the saved width; the saved width
                 # is applied directly via resize().
-                panel.setMinimumWidth(scaled_px(120))
-                panel.resize(w, panel.height())
+                qpanel = cast(QWidget, panel)
+                qpanel.setMinimumWidth(scaled_px(120))
+                qpanel.resize(w, qpanel.height())
 
     def _on_dir_selected(self, path):
         self.setWindowTitle(f"{tr('app.name')} — {path}")
