@@ -777,5 +777,13 @@
   "restore.file_filter": "AssetManager 备份 (*.assetbackup.zip)",
   "restore.confirm": "恢复将用备份内容替换当前库的全部数据，此操作不可撤销。继续？",
   "restore.success": "库数据已从以下备份恢复：\n{path}\n请重新打开库以加载。",
-  "restore.failed": "恢复失败：\n{error}"
+  "restore.failed": "恢复失败：\n{error}",
+  "menu.import_assets": "导入文件/文件夹…",
+  "import.title": "导入资产",
+  "import.no_library": "请先打开一个库。",
+  "import.choose_sources": "选择要导入的文件或文件夹",
+  "import.choose_destination": "选择目标文件夹",
+  "import.in_progress": "正在导入…",
+  "import.success": "导入完成：\n已复制 {copied} 个，跳过 {skipped} 个，失败 {failed} 个",
+  "import.failed": "导入失败：\n{error}"
 }

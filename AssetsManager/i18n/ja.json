@@ -777,5 +777,13 @@
   "restore.file_filter": "AssetManager バックアップ (*.assetbackup.zip)",
   "restore.confirm": "復元すると現在のライブラリデータがバックアップ内容で置き換えられ、元に戻せません。続行しますか？",
   "restore.success": "ライブラリデータを復元しました：\n{path}\n再オープンして読み込んでください。",
-  "restore.failed": "復元に失敗しました：\n{error}"
+  "restore.failed": "復元に失敗しました：\n{error}",
+  "menu.import_assets": "ファイル/フォルダをインポート…",
+  "import.title": "アセットのインポート",
+  "import.no_library": "先にライブラリを開いてください。",
+  "import.choose_sources": "インポートするファイルまたはフォルダを選択",
+  "import.choose_destination": "インポート先フォルダを選択",
+  "import.in_progress": "インポート中…",
+  "import.success": "インポートが完了しました：\nコピー {copied} 件、スキップ {skipped} 件、失敗 {failed} 件",
+  "import.failed": "インポートに失敗しました：\n{error}"
 }

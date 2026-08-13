@@ -777,5 +777,13 @@
   "restore.file_filter": "AssetManager Backup (*.assetbackup.zip)",
   "restore.confirm": "Restore replaces all current library data with the backup content. This cannot be undone. Continue?",
   "restore.success": "Library data restored from:\n{path}\nReopen the library to load it.",
-  "restore.failed": "Restore failed:\n{error}"
+  "restore.failed": "Restore failed:\n{error}",
+  "menu.import_assets": "Import Files/Folders…",
+  "import.title": "Import Assets",
+  "import.no_library": "Open a library first.",
+  "import.choose_sources": "Choose files or folders to import",
+  "import.choose_destination": "Choose destination folder",
+  "import.in_progress": "Importing…",
+  "import.success": "Import complete:\n{copied} copied, {skipped} skipped, {failed} failed",
+  "import.failed": "Import failed:\n{error}"
 }

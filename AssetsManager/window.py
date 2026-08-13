@@ -269,6 +269,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._menu_lib.addSeparator()
         self._menu_act_backup = self._menu_lib.addAction(tr("menu.backup_library"), self._backup_library)
         self._menu_act_restore = self._menu_lib.addAction(tr("menu.restore_library"), self._restore_library)
+        self._menu_act_import = self._menu_lib.addAction(tr("menu.import_assets"), self._import_assets)
         self._menu_lib.addSeparator()
         # A real exit even when the system tray makes close() hide instead.
         self._menu_act_exit = self._menu_lib.addAction(tr("menu.exit"), self.request_exit)
@@ -620,6 +621,12 @@ class MainWindow(LanSharingMixin, QMainWindow):
             self._menu_act_share_unavailable.setToolTip(tr("menu.sharing_install_hint"))
         if hasattr(self, '_menu_act_shortcuts'):
             self._menu_act_shortcuts.setText(tr("menu.keyboard_shortcuts"))
+        if hasattr(self, '_menu_act_backup'):
+            self._menu_act_backup.setText(tr("menu.backup_library"))
+        if hasattr(self, '_menu_act_restore'):
+            self._menu_act_restore.setText(tr("menu.restore_library"))
+        if hasattr(self, '_menu_act_import'):
+            self._menu_act_import.setText(tr("menu.import_assets"))
         if hasattr(self, '_share_toggle_btn'):
             self._share_toggle_btn.setToolTip(tr("sharing.toggle_tooltip"))
             self._share_toggle_btn.setAccessibleName(tr("sharing.toggle_tooltip"))
@@ -819,6 +826,110 @@ class MainWindow(LanSharingMixin, QMainWindow):
             tr("restore.title"),
             tr("restore.success").format(path=result.data_dir),
         )
+
+    def _import_assets(self):
+        """Import files/folders into the current library via a background task."""
+        from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
+        from PySide6.QtWidgets import QFileDialog, QMessageBox, QProgressDialog
+
+        session = getattr(self, "_library_session", None)
+        if session is None:
+            QMessageBox.information(self, tr("import.title"), tr("import.no_library"))
+            return
+        scoped = self._scoped_services_for_session(session)
+        file_operations = scoped.file_operation_service
+
+        current_dir = getattr(self.file_list, "_current", None)
+        default_dir = str(Path(current_dir) if current_dir else session.root)
+
+        sources, _selected = QFileDialog.getOpenFileNames(
+            self,
+            tr("import.choose_sources"),
+            str(Path.home()),
+        )
+        if not sources:
+            return
+        destination = QFileDialog.getExistingDirectory(
+            self,
+            tr("import.choose_destination"),
+            default_dir,
+        )
+        if not destination:
+            return
+
+        from AssetsManager.application.import_service import ImportService
+        service = ImportService(session, file_operations)
+
+        # Cancellation semantics: each file copy is non-interruptible
+        # (shutil.copy2), so the Cancel button stops scheduling new copies
+        # while already-copied files are retained.
+        class _ImportDone(QObject):
+            finished = Signal(object)
+            progress = Signal(int, int)
+
+        class _ImportTask(QRunnable):
+            def __init__(self, done):
+                super().__init__()
+                self._done = done
+
+            def run(self):
+                try:
+                    result = service.import_sources(
+                        sources,
+                        destination,
+                        progress=self._done.progress.emit,
+                    )
+                except Exception as exc:
+                    self._done.finished.emit(("error", exc))
+                    return
+                self._done.finished.emit(("ok", result))
+
+        done = _ImportDone()
+        task = _ImportTask(done)
+
+        progress_dialog = QProgressDialog(
+            tr("import.in_progress"),
+            tr("dialog.cancel"),
+            0,
+            0,
+            self,
+        )
+        progress_dialog.setWindowTitle(tr("import.title"))
+        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        progress_dialog.setMinimumDuration(500)
+        # A single large file cannot be interrupted mid-copy; disable cancel
+        # rather than imply a prompt stop that will not happen.
+        progress_dialog.setCancelButton(None)
+
+        def _on_progress(done_count, total):
+            if total > 0:
+                progress_dialog.setRange(0, total)
+                progress_dialog.setValue(done_count)
+
+        def _on_finished(payload):
+            progress_dialog.close()
+            status, value = payload
+            if status == "error":
+                QMessageBox.critical(
+                    self, tr("import.title"), tr("import.failed").format(error=value)
+                )
+                return
+            result = value
+            QMessageBox.information(
+                self,
+                tr("import.title"),
+                tr("import.success").format(
+                    copied=result.copied,
+                    skipped=result.skipped,
+                    failed=len(result.failed),
+                ),
+            )
+
+        done.finished.connect(_on_finished)
+        done.progress.connect(_on_progress)
+        self._import_task = task
+        QThreadPool.globalInstance().start(task)
+        progress_dialog.exec()
 
     def _on_ui_scale_changed(self, scale: float):
         """Re-apply stylesheet and update font when UI scale changes."""
