@@ -38,6 +38,8 @@
 - **现状**：`api/client.ts` fetch 失败/非 2xx 仅 console/部分组件 Toast；导航到不可用库（503 SPA 缺失）显示空白页；认证过期（401）无统一跳转登录
 - **实现路径**：client.ts 统一错误分类 → 401 跳 /login、503 显示"服务未构建"页、网络错误全局 Toast（S）
 
+> **已处理（2026-08-15 核实）**：`api/errors.ts` 已有 `ApiError/UnauthorizedError(401)/ForbiddenError(403)/ServiceUnavailableError(503)/NetworkError`；`api/client.ts` 已统一分类 401/403/429/503 + 网络错误；`AuthContext`/`SellerAuthContext` 经 `onUnauthorized` 跳转登录、`serviceUnavailable` 状态；`LandingPage` 渲染 `service_unavailable` 页；`ProtectedRoute` 未认证 `<Navigate to="/login">`。此缺口已随 `f2dc8b7`/`51e5020`/`a315868` 关闭，文档标注仅做状态同步。
+
 ## G5-8 无分享创建与管理的前端闭环 [P2][M]
 
 - **现状**：`components/shares/ShareDialog.tsx` 存在（管理列表）；创建分享依赖桌面端对话框（ShareLinkDialog）；无 QR 显示
