@@ -52,12 +52,13 @@
 .detail-download-button {
   min-height: 34px;
   padding: 0 12px;
-  background: var(--color-accent);
+  /* Accent alone is 4.46:1 with white; the dark mix clears 4.5:1 in both themes. */
+  background: color-mix(in srgb, var(--color-accent) 82%, #0f172a);
   color: white;
 }
 
 .detail-download-button:hover {
-  background: var(--color-accent-hover);
+  background: color-mix(in srgb, var(--color-accent-hover) 70%, #0f172a);
   transform: translateY(-1px);
 }
 

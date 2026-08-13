@@ -11,20 +11,6 @@ describe('queryCache core', () => {
     expect(cache.getEntry(['a', 2]).snapshot.data).toBeUndefined();
   });
 
-  it('invalidate resets matching keys and notifies listeners', () => {
-    const cache = createQueryCache();
-    const listener = vi.fn();
-    cache.subscribe(listener);
-    cache.getEntry(['files:list', 'p']);
-    cache.getEntry(['tags:list']);
-    cache.publish(['files:list', 'p'], { status: 'success', data: 'x', error: undefined, fetchedAt: 1 });
-    cache.publish(['tags:list'], { status: 'success', data: 'y', error: undefined, fetchedAt: 1 });
-    cache.invalidate(key => key[0] === 'files:list');
-    expect(cache.getEntry(['files:list', 'p']).snapshot.data).toBeUndefined();
-    expect(cache.getEntry(['tags:list']).snapshot.data).toBe('y');
-    expect(listener).toHaveBeenCalled();
-  });
-
   it('clear resets every entry and aborts in-flight requests', () => {
     const cache = createQueryCache();
     const abort = vi.fn();

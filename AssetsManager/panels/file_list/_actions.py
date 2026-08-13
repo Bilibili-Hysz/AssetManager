@@ -49,6 +49,11 @@ class ActionsMixin:
     # ── Clicks ───────────────────────────────────────────────────
 
     def _on_click(self, idx):
+        # Only the legacy QListView surface reaches this handler; the grid
+        # panel routes clicks through _on_grid_click. Guard defensively so a
+        # viewless panel can never crash on a stray click event.
+        if self._list_view is None:
+            return
         if QApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier:
             if self._last_click_row >= 0:
                 start = min(self._last_click_row, idx.row())

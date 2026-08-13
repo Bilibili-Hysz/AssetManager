@@ -137,7 +137,9 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           {t(mode === 'gallery' ? 'commands.mode_gallery' : 'commands.mode_workspace')}
         </div>
 
-        <div id="command-palette-results" ref={listRef} className="command-palette-results" role="listbox" aria-busy={isSearching}>
+        {/* The container is only a listbox when it actually holds options;
+            the empty/searching/no-results states are plain message blocks. */}
+        <div id="command-palette-results" ref={listRef} className="command-palette-results" role={results.length > 0 ? 'listbox' : undefined} aria-busy={isSearching}>
           {!query.trim() && !isSearching ? (
             <div className="command-palette-empty">
               <strong>{t('commands.empty_title')}</strong>

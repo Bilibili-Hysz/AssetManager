@@ -40,7 +40,6 @@ export interface QueryCache {
   /** Look up an entry WITHOUT creating one (setData must not orphan entries). */
   peekEntry<T>(key: QueryKey): CacheEntry<T> | undefined;
   publish<T>(key: QueryKey, snapshot: QuerySnapshot<T>): void;
-  invalidate(predicate: (key: QueryKey) => boolean): void;
   clear(): void;
   subscribe(listener: () => void): () => void;
   addSubscriber(key: QueryKey): void;
@@ -90,19 +89,6 @@ export function createQueryCache(): QueryCache {
       return entries.get(serializeKey(key)) as CacheEntry<T> | undefined;
     },
     publish,
-    invalidate(predicate: (key: QueryKey) => boolean): void {
-      let changed = false;
-      for (const [rawKey, entry] of entries) {
-        if (!predicate(JSON.parse(rawKey) as QueryKey)) continue;
-        if (entry.snapshot.data !== undefined || entry.snapshot.error !== undefined) {
-          entry.snapshot = {
-            status: 'idle', data: undefined, error: undefined, fetchedAt: 0,
-          };
-          changed = true;
-        }
-      }
-      if (changed) notify();
-    },
     clear(): void {
       for (const entry of entries.values()) {
         entry.inFlight?.abort();

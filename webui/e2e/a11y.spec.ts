@@ -8,7 +8,8 @@ import AxeBuilder from '@axe-core/playwright';
  * source, not in this file — the curated tag set is the contract.
  */
 
-async function mockApis(page: Page) {
+async function mockApis(page: Page, options: { authEnabled?: boolean } = {}) {
+  const authEnabled = options.authEnabled ?? false;
   const json = (body: unknown) => ({
     status: 200,
     contentType: 'application/json',
@@ -18,8 +19,12 @@ async function mockApis(page: Page) {
     version: 'test',
     share_name: 'Test Library',
     library_root: '/library',
-    auth_enabled: true,
-    auth_mode: 'password',
+    // Auth disabled by default: ProtectedRoute renders the real workspace
+    // pages for the guest principal instead of redirecting to /login (which
+    // would make the /browse, /detail and /gallery scans silently scan the
+    // login page). The /login scan opts back in to render the real login UI.
+    auth_enabled: authEnabled,
+    auth_mode: authEnabled ? 'password' : 'none',
     theme_color: '#6366f1',
     welcome_msg: '',
     footer_text: '',
@@ -76,24 +81,68 @@ const ROUTES = [
   '/seller/products',
 ];
 
+/** Wait for the React shell, then one bounded task-turn for lazy effects. */
+async function settleApp(page: Page) {
+  await page.waitForFunction(() => (document.querySelector('#root')?.childElementCount ?? 0) > 0);
+  // Mocked APIs resolve in microtasks; give effects one extra turn to commit
+  // route-level lazy content before the scan.
+  await page.waitForTimeout(300);
+}
+
+async function expectCleanScan(page: Page, label: string) {
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+  expect(
+    results.violations.map(v => ({
+      id: v.id, impact: v.impact, help: v.help,
+      nodes: v.nodes.map(n => ({ target: n.target, summary: n.failureSummary })),
+    })),
+    `axe violations on ${label}`,
+  ).toEqual([]);
+}
+
 for (const route of ROUTES) {
   for (const theme of ['dark', 'light'] as const) {
     test(`axe scan is clean: ${route} (${theme})`, async ({ page }) => {
-      await mockApis(page);
+      await mockApis(page, { authEnabled: route === '/login' });
       await page.addInitScript(value => localStorage.setItem('am_theme', value), theme);
       await page.goto(route);
-      // Let route-level lazy content settle before scanning.
-      await page.waitForTimeout(1000);
-      const results = await new AxeBuilder({ page })
-        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-        .analyze();
-      expect(
-        results.violations.map(v => ({
-          id: v.id, impact: v.impact, help: v.help,
-          nodes: v.nodes.map(n => ({ target: n.target, summary: n.failureSummary })),
-        })),
-        `axe violations on ${route} (${theme})`,
-      ).toEqual([]);
+      await settleApp(page);
+      await expectCleanScan(page, `${route} (${theme})`);
     });
   }
 }
+
+// Interaction states the initial-render scans cannot see. Keep this list
+// deliberately short: every entry needs an interaction step and must be
+// deterministic in the mocked-app environment.
+test('axe scan is clean: tuning panel open (dark)', async ({ page }) => {
+  await mockApis(page);
+  await page.addInitScript(value => localStorage.setItem('am_theme', value), 'dark');
+  await page.goto('/');
+  await settleApp(page);
+  await page.getByRole('button', { name: 'Background tuning' }).click();
+  await expect(page.getByRole('dialog', { name: 'Background tuning' })).toBeVisible();
+  await expectCleanScan(page, 'tuning panel open (dark)');
+});
+
+test('axe scan is clean: language menu open (dark)', async ({ page }) => {
+  await mockApis(page);
+  await page.addInitScript(value => localStorage.setItem('am_theme', value), 'dark');
+  await page.goto('/browse');
+  await settleApp(page);
+  await page.getByRole('button', { name: 'Language' }).click();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await expectCleanScan(page, 'language menu open (dark)');
+});
+
+test('axe scan is clean: command palette open (dark)', async ({ page }) => {
+  await mockApis(page);
+  await page.addInitScript(value => localStorage.setItem('am_theme', value), 'dark');
+  await page.goto('/gallery');
+  await settleApp(page);
+  await page.keyboard.press('Control+K');
+  await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
+  await expectCleanScan(page, 'command palette open (dark)');
+});

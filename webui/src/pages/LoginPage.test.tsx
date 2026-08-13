@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import LoginPage from './LoginPage';
 
 let authMode: 'key' | 'password' = 'key';
+let authLoading = false;
 const authApi = {
   loginWithPassword: vi.fn(),
   verifyKey: vi.fn(),
@@ -19,7 +20,7 @@ vi.mock('../hooks/useAuth', () => ({
     authMode,
     authApi,
     refreshMe,
-    isLoading: false,
+    isLoading: authLoading,
   }),
 }));
 vi.mock('../hooks/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
@@ -32,6 +33,13 @@ describe('LoginPage registration policy', () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    authLoading = false;
+  });
+
+  it('exposes the auth-loading spinner as a status region', () => {
+    authLoading = true;
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    expect(screen.getByRole('status', { name: 'landing.loading' })).toBeDefined();
   });
 
   it.each(['key', 'password'] as const)('hides registration in %s mode because the endpoint does not support it', mode => {
