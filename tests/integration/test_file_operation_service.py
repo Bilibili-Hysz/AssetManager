@@ -207,7 +207,7 @@ def test_rename_with_library_root_migrates_metadata(file_ops):
     service, library = file_ops
     old = library / "old.txt"
     old.write_text("asset", encoding="utf-8")
-    store = TagStore(str(library))
+    store = TagStore(str(library), db_conn=service.session.connection_for(library))
     store.add_tag(str(old), "hero")
 
     new = service.rename(old, "new.txt", library_root=library)
@@ -650,7 +650,7 @@ def test_permanent_delete_clears_projection_subtree_and_reindexes_parent(tmp_pat
     index = scoped.asset_index_service
     index.index_directory(conn, library, library)
     index.index_directory(conn, library, target)
-    TagStore(str(library)).add_tag(str(child), "hero")
+    TagStore(str(library), db_conn=conn).add_tag(str(child), "hero")
     conn.execute("INSERT INTO file_meta (file_path, notes) VALUES (?, ?)", (str(child.resolve()), "note"))
     ThumbnailRepository(conn).upsert_entry("thumb", str(child.resolve()), 1.0, 1, 1, 1)
     thumbnail_file = scoped.session.thumb_dir / "thumb.webp"
@@ -660,7 +660,7 @@ def test_permanent_delete_clears_projection_subtree_and_reindexes_parent(tmp_pat
 
     assert result.ok
     assert conn.execute("SELECT 1 FROM file_meta WHERE file_path=?", (str(child.resolve()),)).fetchone() is None
-    assert TagStore(str(library)).get_tags(str(child)) == []
+    assert TagStore(str(library), db_conn=scoped.session.connection_for(library)).get_tags(str(child)) == []
     assert ThumbnailRepository(conn).list_all() == []
     assert not thumbnail_file.exists()
     assert index.get_entry(conn, target) is None
@@ -689,7 +689,7 @@ def test_projection_cleanup_failure_rolls_back_prior_repository_deletes(
         scoped = bootstrap.runtime_for(session).services
         conn = session.connection_for(session.root)
         key = str(target.resolve())
-        TagStore(str(library)).add_tag(key, "hero")
+        TagStore(str(library), db_conn=scoped.session.connection_for(library)).add_tag(key, "hero")
         MetadataRepository(conn).set_notes(key, "note")
 
         def fail_favorite_delete(self, file_path, *, commit=True):
@@ -700,7 +700,7 @@ def test_projection_cleanup_failure_rolls_back_prior_repository_deletes(
         with pytest.raises(sqlite3.OperationalError, match="injected favorite"):
             scoped.file_operation_service._clear_deleted_projection(target)
 
-        assert TagStore(str(library)).get_tags(key) == ["hero"]
+        assert TagStore(str(library), db_conn=scoped.session.connection_for(library)).get_tags(key) == ["hero"]
         assert MetadataRepository(conn).get_notes(key) == "note"
         assert conn.in_transaction is False
     finally:
@@ -733,7 +733,7 @@ def test_projection_cleanup_rolls_back_all_db_projections_on_late_failure(
         key = str(child.resolve())
         scoped.asset_index_service.index_directory(conn, library, library)
         scoped.asset_index_service.index_directory(conn, library, target)
-        TagStore(str(library)).add_tag(key, "hero")
+        TagStore(str(library), db_conn=scoped.session.connection_for(library)).add_tag(key, "hero")
         MetadataRepository(conn).set_notes(key, "note")
         FavoriteRepository(conn).add("owner", key)
         ThumbnailRepository(conn).upsert_entry("thumb", key, 1.0, 1, 1, 1)
@@ -752,7 +752,7 @@ def test_projection_cleanup_rolls_back_all_db_projections_on_late_failure(
         with pytest.raises(sqlite3.OperationalError, match="injected"):
             scoped.file_operation_service._clear_deleted_projection(target)
 
-        assert TagStore(str(library)).get_tags(key) == ["hero"]
+        assert TagStore(str(library), db_conn=scoped.session.connection_for(library)).get_tags(key) == ["hero"]
         assert MetadataRepository(conn).get_notes(key) == "note"
         assert FavoriteRepository(conn).contains("owner", key)
         assert ThumbnailRepository(conn).list_all() == [("thumb", key)]
@@ -811,7 +811,7 @@ def test_trash_delete_clears_projections_before_file_deleted_subscribers_run(tmp
     index = scoped.asset_index_service
     index.index_directory(conn, library, library)
     index.index_directory(conn, library, target)
-    TagStore(str(library)).add_tag(str(child), "hero")
+    TagStore(str(library), db_conn=conn).add_tag(str(child), "hero")
     conn.execute("INSERT INTO file_meta (file_path, notes) VALUES (?, ?)", (str(child.resolve()), "note"))
     ThumbnailRepository(conn).upsert_entry("thumb", str(child.resolve()), 1.0, 1, 1, 1)
     thumbnail_file = scoped.session.thumb_dir / "thumb.webp"
@@ -822,7 +822,7 @@ def test_trash_delete_clears_projections_before_file_deleted_subscribers_run(tmp
 
     def observe_projection_cleanup(event):
         observed.append((
-            TagStore(str(library)).get_tags(str(child)),
+            TagStore(str(library), db_conn=conn).get_tags(str(child)),
             conn.execute("SELECT 1 FROM file_meta WHERE file_path=?", (str(child.resolve()),)).fetchone(),
             ThumbnailRepository(conn).list_all(),
             thumbnail_file.exists(),
