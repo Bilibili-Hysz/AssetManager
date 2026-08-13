@@ -1,4 +1,5 @@
 """Shared test fixtures."""
+import itertools
 import os
 import shutil
 import sqlite3
@@ -7,6 +8,30 @@ import time
 from pathlib import Path
 
 import pytest
+
+# ── DSH sandbox basetemp sweep tolerance ──────────────────────────
+# Under the DSH harness sandbox a pytest-created basetemp directory can
+# stop being scandir-able once the creating session finishes (the sandbox
+# revokes directory listing on process exit).  pytest's dead-symlink sweep
+# then raises PermissionError during pytest_sessionfinish, which surfaces
+# as an INTERNALERROR that hides the real test summary and poisons the
+# exit code.  The sweep only removes stale symlinks left inside the
+# basetemp; skipping it on PermissionError is a strict no-op in every
+# non-sandbox environment and preserves the exit code that reflects the
+# actual test results.
+import _pytest.tmpdir as _pytest_tmpdir_plugin
+
+_original_cleanup_dead_symlinks = _pytest_tmpdir_plugin.cleanup_dead_symlinks
+
+
+def _cleanup_dead_symlinks_tolerant(root) -> None:
+    try:
+        _original_cleanup_dead_symlinks(root)
+    except PermissionError:
+        pass
+
+
+_pytest_tmpdir_plugin.cleanup_dead_symlinks = _cleanup_dead_symlinks_tolerant
 
 
 # ── Test-session runtime-data protection ──────────────────────────
@@ -275,6 +300,44 @@ def pytest_sessionfinish(session, exitstatus):
         return
     _restore_shared_config()
     _cleanup_test_runtime_data()
+    # tmp_path replacement dirs live under the workspace root (see the
+    # fixture below); best-effort sweep of what the sandbox still allows.
+    shutil.rmtree(_TMP_PATHS_ROOT, ignore_errors=True)
+
+
+# ── Sandbox-tolerant tmp_path / mkdtemp ───────────────────────────
+# Under the DSH sandbox, directories created with an explicit mode (every
+# tempfile.mkdtemp call passes mode 0o700) become unusable immediately: the
+# mode leaks into an ACL that denies listing and file creation even to the
+# creating process.  pytest's built-in tmp_path therefore errors at setup.
+# When the sandbox temp dir is detected we replace tempfile.mkdtemp with a
+# default-mode mkdir under the workspace root and route tmp_path through it;
+# TemporaryDirectory and test-local mkdtemp calls inherit the fix, and the
+# one-unique-dir-per-test semantics stay unchanged everywhere else.
+_TMP_PATHS_ROOT = Path(__file__).resolve().parent.parent / ".pytest-tmp-paths"
+_TMP_PATHS_COUNTER = itertools.count()
+_SANDBOX_TEMP = "dsh-" in tempfile.gettempdir().lower()
+
+
+def _sandbox_mkdtemp(suffix=None, prefix=None, dir=None) -> str:
+    base = Path(dir) if dir is not None else _TMP_PATHS_ROOT
+    base.mkdir(exist_ok=True)
+    name = f"{prefix or 'tmp'}{suffix or ''}{next(_TMP_PATHS_COUNTER)}-{os.getpid()}"
+    path = base / name
+    path.mkdir()  # default mode — the sandbox breaks 0o700 directories
+    return str(path)
+
+
+def pytest_configure(config):
+    if _SANDBOX_TEMP:
+        tempfile.mkdtemp = _sandbox_mkdtemp
+
+
+@pytest.fixture
+def tmp_path(request) -> Path:
+    path = Path(tempfile.mkdtemp(prefix="am-test-"))
+    request.addfinalizer(lambda: shutil.rmtree(path, ignore_errors=True))
+    return path
 
 
 @pytest.fixture

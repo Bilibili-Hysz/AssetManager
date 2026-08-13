@@ -95,6 +95,12 @@ AssetsManager/core/format_utils.c
 /.pytest-basetemp*/
 /.pytest-bt-*/
 /.bt-*/
+/.pytest-tmp-paths/
 /pytest-run.log
 /pytest-full*.log
+
+
+# Sandbox probe leftovers (0o700 dirs the sandbox cannot delete).
+/.probe-*/
+/am-probe-*/
 
