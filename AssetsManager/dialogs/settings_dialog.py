@@ -598,6 +598,14 @@ class SettingsDialog(TabbedDialog):
             tr("settings.maintenance_read_size"), self._on_read_size)
         gl.addWidget(self._read_size_btn)
 
+        self._integrity_btn = self.make_secondary_btn(
+            tr("settings.maintenance_run_integrity"), self._on_run_integrity)
+        gl.addWidget(self._integrity_btn)
+
+        self._integrity_status = self.make_muted(tr("settings.maintenance_integrity_idle"))
+        self._integrity_status.setWordWrap(True)
+        gl.addWidget(self._integrity_status)
+
         self._maintenance_status = self.make_muted(tr("settings.maintenance_idle"))
         self._maintenance_status.setWordWrap(True)
         gl.addWidget(self._maintenance_status)
@@ -770,6 +778,17 @@ class SettingsDialog(TabbedDialog):
             return
         self._maintenance_status.setText(self._format_result_text(result))
 
+    def _on_run_integrity(self):
+        adapter = self.library_settings_adapter
+        if adapter is None:
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.error_no_library"))
+            return
+        try:
+            adapter.start_integrity_check()
+        except Exception as exc:
+            QMessageBox.warning(self, tr("dialog.error"), str(exc))
+        self._refresh_maintenance_status()
+
     def _refresh_maintenance_status(self):
         """Pull the adapter view model and render the maintenance state."""
         status = self._maintenance_status
@@ -778,10 +797,25 @@ class SettingsDialog(TabbedDialog):
             status.setText(tr("settings.error_no_library"))
             self._run_checkpoint_btn.setEnabled(False)
             self._read_size_btn.setEnabled(False)
+            self._integrity_btn.setEnabled(False)
+            self._integrity_status.setText(tr("settings.error_no_library"))
             return
         vm = adapter.view_model()
         self._run_checkpoint_btn.setEnabled(not vm.maintenance_running)
         self._read_size_btn.setEnabled(not vm.maintenance_running)
+        self._integrity_btn.setEnabled(not vm.integrity_running)
+        if vm.integrity_running:
+            self._integrity_status.setText(tr("settings.maintenance_integrity_running"))
+        elif vm.integrity_schedule_error:
+            self._integrity_status.setText(tr(
+                "settings.maintenance_integrity_error", error=vm.integrity_schedule_error))
+        elif vm.integrity_error:
+            self._integrity_status.setText(tr(
+                "settings.maintenance_integrity_error", error=vm.integrity_error))
+        elif vm.integrity_report is not None:
+            self._integrity_status.setText(tr("settings.maintenance_integrity_ok"))
+        else:
+            self._integrity_status.setText(tr("settings.maintenance_integrity_idle"))
         if vm.maintenance_running:
             status.setText(tr("settings.maintenance_running"))
         elif vm.maintenance_schedule_error:
