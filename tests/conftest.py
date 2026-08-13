@@ -302,6 +302,9 @@ def pytest_sessionfinish(session, exitstatus):
     _cleanup_test_runtime_data()
     # tmp_path replacement dirs live under the workspace root (see the
     # fixture below); best-effort sweep of what the sandbox still allows.
+    for path in _SANDBOX_TMP_PATHS:
+        shutil.rmtree(path, ignore_errors=True)
+    _SANDBOX_TMP_PATHS.clear()
     shutil.rmtree(_TMP_PATHS_ROOT, ignore_errors=True)
 
 
@@ -317,6 +320,7 @@ def pytest_sessionfinish(session, exitstatus):
 _TMP_PATHS_ROOT = Path(__file__).resolve().parent.parent / ".pytest-tmp-paths"
 _TMP_PATHS_COUNTER = itertools.count()
 _SANDBOX_TEMP = "dsh-" in tempfile.gettempdir().lower()
+_SANDBOX_TMP_PATHS: list[Path] = []
 
 
 def _sandbox_mkdtemp(suffix=None, prefix=None, dir=None) -> str:
@@ -336,7 +340,14 @@ def pytest_configure(config):
 @pytest.fixture
 def tmp_path(request) -> Path:
     path = Path(tempfile.mkdtemp(prefix="am-test-"))
-    request.addfinalizer(lambda: shutil.rmtree(path, ignore_errors=True))
+    if _SANDBOX_TEMP:
+        # Deferred cleanup: a per-test rmtree can run before the monkeypatch
+        # fixture is undone (parameter order), tripping over a leaked
+        # os.scandir patch; sweep these at session end like pytest's own
+        # basetemp retention does.
+        _SANDBOX_TMP_PATHS.append(path)
+    else:
+        request.addfinalizer(lambda: shutil.rmtree(path, ignore_errors=True))
     return path
 
 
