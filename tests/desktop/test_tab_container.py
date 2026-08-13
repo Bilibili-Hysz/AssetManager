@@ -129,7 +129,8 @@ def test_container_panel_zoom_and_scroll_animations_are_panel_owned(monkeypatch)
         def stop(self):
             self.stop_calls += 1
 
-    monkeypatch.setattr(file_list, "QVariantAnimation", Animation)
+    # The merged panel lives in _base; its module namespace owns the import.
+    monkeypatch.setattr(file_list._base, "QVariantAnimation", Animation)
     QApplication.instance() or QApplication([])
     container = TabContainer()
     panel = container.current_file_list()

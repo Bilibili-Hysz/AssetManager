@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt, QItemSelectionModel
 from PySide6.QtWidgets import QApplication
 
 from AssetsManager.i18n import tr
-from AssetsManager.panels.file_list import QWidgetFileListPanel
+from AssetsManager.panels.file_list import FileListPanel
 
 
 def _make_panel(tmp_path):
@@ -16,7 +16,7 @@ def _make_panel(tmp_path):
     (tmp_path / "sub").mkdir()
     app = QApplication.instance() or QApplication([])
     bootstrap = app.property("bootstrap")
-    panel = QWidgetFileListPanel()
+    panel = FileListPanel()
     session = bootstrap.library_service.open_session(tmp_path)
     panel.set_scoped_services(bootstrap.runtime_for(session).services)
     panel.navigate_to(str(tmp_path), set_root=True)
@@ -650,7 +650,7 @@ def test_details_tags_cache_populated(tmp_path):
 def test_details_file_size_is_human_readable(tmp_path):
     (tmp_path / "large.bin").write_bytes(b"x" * 1536)
     app = QApplication.instance() or QApplication([])
-    panel = QWidgetFileListPanel()
+    panel = FileListPanel()
     panel.navigate_to(str(tmp_path), set_root=True)
     panel._model._wait_for_scan()
     try:

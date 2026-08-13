@@ -7,12 +7,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from AssetsManager.domain.events import FileSystemChanged
-from AssetsManager.panels.file_list import QWidgetFileListPanel
+from AssetsManager.panels.file_list import FileListPanel
 
 
 def test_file_list_ignores_foreign_session_file_events(monkeypatch):
     app = QApplication.instance() or QApplication([])
-    panel = QWidgetFileListPanel()
+    panel = FileListPanel()
     try:
         panel._scoped_services = SimpleNamespace(session=SimpleNamespace(event_token="current"))
         starts = []
@@ -30,7 +30,7 @@ def test_file_list_ignores_foreign_session_file_events(monkeypatch):
 
 def test_file_list_debounces_filesystem_refreshes():
     app = QApplication.instance() or QApplication([])
-    panel = QWidgetFileListPanel()
+    panel = FileListPanel()
     try:
         assert panel._file_op_timer.isSingleShot()
         assert panel._file_op_timer.interval() == 500
@@ -42,7 +42,7 @@ def test_file_list_debounces_filesystem_refreshes():
 
 def test_file_list_shutdown_ignores_filesystem_watcher(monkeypatch):
     app = QApplication.instance() or QApplication([])
-    panel = QWidgetFileListPanel()
+    panel = FileListPanel()
     try:
         panel._first_image_cache = Mock()
         panel._loader.clear_cache = Mock()

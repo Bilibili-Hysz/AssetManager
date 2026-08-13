@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QTabWidget, QPushButton, QMenu,
 )
 from AssetsManager.core.ui_scale import scaled_px
-from AssetsManager.panels.file_list import QWidgetFileListPanel
+from AssetsManager.panels.file_list import FileListPanel
 from AssetsManager.panels.base import PanelContent
 from AssetsManager import i18n
 tr = i18n.tr
@@ -41,7 +41,7 @@ class TabContainer(PanelContent):
         self.content_layout.addWidget(self._tabs)
         self._tabs.setCornerWidget(self._new_tab_button(), Qt.Corner.TopRightCorner)
 
-        self._tabs_to_filelists: dict[int, QWidgetFileListPanel] = {}
+        self._tabs_to_filelists: dict[int, FileListPanel] = {}
         self._extension_bar = None
         self._add_tab()
 
@@ -75,7 +75,7 @@ class TabContainer(PanelContent):
         return btn
 
     def _add_tab(self, path: str | None = None):
-        panel = QWidgetFileListPanel()
+        panel = FileListPanel()
         idx = self._tabs.addTab(panel, tr("tab.new"))
         self._tabs_to_filelists[idx] = panel
         self._tabs.setCurrentIndex(idx)
@@ -93,7 +93,7 @@ class TabContainer(PanelContent):
         self._tabs_to_filelists = {
             i: panel
             for i in range(self._tabs.count())
-            if isinstance((panel := self._tabs.widget(i)), QWidgetFileListPanel)
+            if isinstance((panel := self._tabs.widget(i)), FileListPanel)
         }
 
     def _close_tab(self, idx):
@@ -106,7 +106,7 @@ class TabContainer(PanelContent):
         self._tabs.removeTab(idx)
         self._rebuild_tab_map()
 
-    def _update_panel_tab_title(self, panel: QWidgetFileListPanel, path: str):
+    def _update_panel_tab_title(self, panel: FileListPanel, path: str):
         idx = self._tabs.indexOf(panel)
         if idx >= 0:
             self._update_tab_title(idx, path)
@@ -151,7 +151,7 @@ class TabContainer(PanelContent):
         if self._tabs.count() == 0:
             self._add_tab()
 
-    def current_file_list(self) -> QWidgetFileListPanel | None:
+    def current_file_list(self) -> FileListPanel | None:
         idx = self._tabs.currentIndex()
         return self._tabs_to_filelists.get(idx)
 
@@ -184,7 +184,7 @@ class TabContainer(PanelContent):
         # to avoid index shifting issues.
         while self._tabs.count() > 1:
             panel = self._tabs.widget(self._tabs.count() - 1)
-            if isinstance(panel, QWidgetFileListPanel):
+            if isinstance(panel, FileListPanel):
                 panel.shutdown()
                 panel.deleteLater()
             self._tabs.removeTab(self._tabs.count() - 1)
@@ -192,7 +192,7 @@ class TabContainer(PanelContent):
         self._tabs_to_filelists = {}
         if self._tabs.count() > 0:
             w = self._tabs.widget(0)
-            if isinstance(w, QWidgetFileListPanel):
+            if isinstance(w, FileListPanel):
                 self._tabs_to_filelists[0] = w
         fl = self.current_file_list()
         if fl and paths:

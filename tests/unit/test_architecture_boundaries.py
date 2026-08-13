@@ -782,7 +782,9 @@ def test_file_list_shutdown_releases_tracked_panel_subscriptions() -> None:
 
 
 def test_file_list_uses_session_scoped_file_events() -> None:
-    source = (SRC / "panels" / "file_list" / "__init__.py").read_text(encoding="utf-8")
+    # The merged single-class panel lives in _base.py (the package __init__
+    # is now a thin re-export).
+    source = (SRC / "panels" / "file_list" / "_base.py").read_text(encoding="utf-8")
     assert "FileSystemChanged" in source
     assert "event.session_token != scoped.session.event_token" in source
 

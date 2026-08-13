@@ -13,7 +13,6 @@ from PySide6.QtWidgets import QApplication
 
 from AssetsManager.core.performance import PerformanceRecorder
 from AssetsManager.panels.file_list._base import FileListPanel
-from AssetsManager.panels.file_list import QWidgetFileListPanel
 from AssetsManager.panels.file_list._grid_widget import FileListGridWidget
 from AssetsManager.panels.file_list._grid_layout import GridLayout
 from AssetsManager.panels.file_list._model import FileSystemModel
@@ -908,7 +907,7 @@ def test_zoom_frame_scales_grid_without_reflowing_columns():
     panel._grid_widget = Mock()
     panel._grid_widget.width.return_value = 400
 
-    QWidgetFileListPanel._on_zoom_frame(panel, 128)
+    FileListPanel._on_zoom_frame(panel, 128)
 
     panel._grid_widget.set_zoom_thumb_size.assert_called_once_with(128)
     panel._grid_widget.update_layout.assert_not_called()
@@ -923,7 +922,7 @@ def test_zoom_start_captures_target_layout_before_animation():
     panel._on_zoom_frame = Mock()
     panel._on_zoom_done = Mock()
 
-    QWidgetFileListPanel._on_zoom_changed(panel, "128px")
+    FileListPanel._on_zoom_changed(panel, "128px")
 
     panel._grid_widget.begin_zoom.assert_called_once_with(128, None)
     assert panel._zoom_anim.duration() == 185
@@ -941,7 +940,7 @@ def test_zoom_start_forwards_a_pending_pointer_anchor():
     panel._on_zoom_frame = Mock()
     panel._on_zoom_done = Mock()
 
-    QWidgetFileListPanel._on_zoom_changed(panel, "128px")
+    FileListPanel._on_zoom_changed(panel, "128px")
 
     panel._grid_widget.begin_zoom.assert_called_once_with(128, QPoint(84, 126))
     assert panel._pending_zoom_anchor is None
@@ -958,7 +957,7 @@ def test_zoom_reduce_motion_commits_without_starting_an_animation():
     panel._grid_widget._reduce_motion = True
     panel._on_zoom_done = Mock()
 
-    QWidgetFileListPanel._on_zoom_changed(panel, "128px")
+    FileListPanel._on_zoom_changed(panel, "128px")
 
     assert panel._thumb_size == 128
     panel._grid_widget.begin_zoom.assert_called_once_with(128, None)
@@ -982,7 +981,7 @@ def test_wheel_zoom_captures_the_pointer_as_the_zoom_anchor():
     event.angleDelta.return_value = QPoint(0, 120)
     event.position.return_value = QPointF(90, 70)
 
-    QWidgetFileListPanel._wheel_zoom_evt(panel, event, panel._grid_widget)
+    FileListPanel._wheel_zoom_evt(panel, event, panel._grid_widget)
 
     assert captured == [(2, QPoint(90, 70))]
     assert panel._pending_zoom_anchor is None
@@ -998,7 +997,7 @@ def test_zoom_same_interpolated_size_commits_active_layout():
     panel._on_zoom_frame = Mock()
     panel._on_zoom_done = Mock()
 
-    QWidgetFileListPanel._on_zoom_changed(panel, "128px")
+    FileListPanel._on_zoom_changed(panel, "128px")
 
     panel._grid_widget.begin_zoom.assert_called_once_with(128, None)
     panel._on_zoom_done.assert_called_once_with(1)
@@ -1014,7 +1013,7 @@ def test_zoom_done_commits_generation_target_not_last_frame_size():
     panel._grid_widget.width.return_value = 400
     panel._load_visible = Mock()
 
-    QWidgetFileListPanel._on_zoom_done(panel, 2, 128)
+    FileListPanel._on_zoom_done(panel, 2, 128)
 
     assert panel._thumb_size == 128
     panel._loader.set_size.assert_called_once_with(128)
@@ -1211,7 +1210,7 @@ def test_stale_zoom_completion_does_not_invalidate_grid_textures():
     panel._model = type("_Model", (), {"rowCount": lambda _self: 5})()
     panel._grid_widget.width.return_value = 400
 
-    QWidgetFileListPanel._on_zoom_done(panel, 1)
+    FileListPanel._on_zoom_done(panel, 1)
 
     panel._loader.set_size.assert_not_called()
     panel._grid_widget.invalidate_textures.assert_not_called()
@@ -1227,7 +1226,7 @@ def test_current_zoom_completion_invalidates_grid_textures_once():
     panel._grid_widget.width.return_value = 400
     panel._load_visible = Mock()
 
-    QWidgetFileListPanel._on_zoom_done(panel, 2)
+    FileListPanel._on_zoom_done(panel, 2)
 
     panel._loader.set_size.assert_called_once_with(128)
     panel._grid_widget.invalidate_textures.assert_called_once_with()
@@ -1286,7 +1285,7 @@ def test_restore_view_mode_uses_saved_stable_id():
 
 def test_populated_model_reset_repopulates_details_view(monkeypatch, tmp_path):
     app = QApplication.instance() or QApplication([])
-    panel = QWidgetFileListPanel()
+    panel = FileListPanel()
     panel._view_combo.setCurrentIndex(panel._view_combo.findData("Details"))
     (tmp_path / "asset.txt").write_text("asset")
     panel._model._raw_entries = list(__import__("os").scandir(tmp_path))

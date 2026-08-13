@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
 )
 
 from AssetsManager.panels.sidebar import SidebarPanel
-from AssetsManager.panels.file_list import FileListPanel
 from AssetsManager.panels.info import InfoPanel
 from AssetsManager.panels.empty import EmptyPanel
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
@@ -35,7 +34,6 @@ tr = i18n.tr
 
 PANELS = {
     "sidebar":       ("dock.sidebar",      SidebarPanel),
-    "file_list":     ("dock.file_list",    FileListPanel),
     "file_list_tabs": ("dock.file_list",   TabContainer),
     "info":          ("dock.info",         InfoPanel),
     "tag_tree":      ("dock.tag_tree",     TagTreePanel),

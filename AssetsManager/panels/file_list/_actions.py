@@ -48,34 +48,6 @@ class ActionsMixin:
 
     # ── Clicks ───────────────────────────────────────────────────
 
-    def _on_click(self, idx):
-        # Only the legacy QListView surface reaches this handler; the grid
-        # panel routes clicks through _on_grid_click. Guard defensively so a
-        # viewless panel can never crash on a stray click event.
-        if self._list_view is None:
-            return
-        if QApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier:
-            if self._last_click_row >= 0:
-                start = min(self._last_click_row, idx.row())
-                end = max(self._last_click_row, idx.row())
-                sel = self._list_view.selectionModel()
-                sel.clear()
-                for r in range(start, end + 1):
-                    sel.select(self._model.index(r, 0), sel.Select)
-            return
-        self._last_click_row = idx.row()
-        path = self._model.path_at(idx.row())
-        if path:
-            self.file_selected.emit(QFileInfo(path))
-            bus().file_focused.emit(str(path))
-
-    def _on_double_click(self, idx):
-        path = self._model.path_at(idx.row())
-        if path and os.path.isdir(path):
-            self.navigate_to(path)
-        elif path:
-            self.file_double_clicked.emit(path)
-
     def _on_tree_click(self, index, col=0):
         path = self._detail_model.data(index, Qt.ItemDataRole.UserRole)
         if not path:
@@ -104,20 +76,6 @@ class ActionsMixin:
             self.file_double_clicked.emit(path)
 
     # ── Context menu ────────────────────────────────────────────
-
-    def _ctx_menu(self, pos):
-        widget = self.sender()
-        if widget is self._list_view:
-            idxs = self._view_selected_rows()
-            paths = [self._model.path_at(i.row()) for i in idxs if i.isValid()]
-        else:
-            sel = self._detail_view.selectionModel().selectedRows()
-            paths = [self._detail_model.data(i, Qt.ItemDataRole.UserRole)
-                     for i in sel if i.isValid()]
-        self._show_context_menu(
-            [path for path in paths if isinstance(path, str)],
-            widget.viewport().mapToGlobal(pos),
-        )
 
     def _open_file(self, path):
         if os.path.isdir(path):

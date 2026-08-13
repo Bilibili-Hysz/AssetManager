@@ -404,8 +404,8 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
     @staticmethod
     def _create_file_list_panel():
-        from AssetsManager.panels.file_list import QWidgetFileListPanel
-        return QWidgetFileListPanel()
+        from AssetsManager.panels.file_list import FileListPanel
+        return FileListPanel()
 
     def _setup_status_bar(self):
         """Setup status bar with share indicator."""
