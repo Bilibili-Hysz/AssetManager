@@ -10,7 +10,7 @@ from AssetsManager.core.protocols import TagStoreProtocol
 from AssetsManager.core.tag_library import get_library
 from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager.core import icons, themes
-from AssetsManager.widgets.tag_chip import create_tag_chip
+from AssetsManager.widgets.tag_chip import create_tag_chip, tag_color_from
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager import i18n
 tr = i18n.tr
@@ -185,7 +185,9 @@ class TagEditorDialog(TabbedDialog):
         self._clear_current_chips()
         tags = self._store.get_tags(self._file_path)
         for tag in tags:
-            chip = create_tag_chip(tag, on_remove=self._remove_tag)
+            chip = create_tag_chip(
+                tag, on_remove=self._remove_tag, color=tag_color_from(self._store, tag)
+            )
             self._current_flow_layout.addWidget(chip)
             self._current_chips.append(chip)
         self._current_flow_layout.addStretch()

@@ -25,7 +25,7 @@ from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core import themes, icons
 from AssetsManager.widgets.stylekit import StyleKit
-from AssetsManager.widgets.tag_chip import create_tag_chip
+from AssetsManager.widgets.tag_chip import create_tag_chip, tag_color_from
 from AssetsManager.panels._info_parts import (
     _DragLabel,
     _PreviewLabel,
@@ -884,7 +884,11 @@ class InfoPanel(PanelContent):
         self._rendered_tags = ()
 
     def _make_tag_chip(self, tag: str) -> QWidget:
-        return create_tag_chip(tag, on_remove=self._remove_tag)
+        return create_tag_chip(
+            tag,
+            on_remove=self._remove_tag,
+            color=tag_color_from(self._tags_port, tag),
+        )
 
     def _render_tags(self, tags: list[str]):
         normalized = tuple(str(tag) for tag in tags)

@@ -116,3 +116,36 @@ def test_library_root_property(lib_env):
     lib_root, _ = lib_env
     ctrl = _make_controller(lib_root)
     assert ctrl.library_root == lib_root
+
+
+def test_set_and_get_tag_metadata(lib_env):
+    lib_root, _ = lib_env
+    ctrl = _make_controller(lib_root)
+    assert ctrl.get_tag_metadata("hero") is None
+
+    ctrl.set_tag_metadata("hero", color="#ff0000", icon="star", category="character")
+    assert ctrl.get_tag_metadata("hero") == {
+        "color": "#ff0000",
+        "icon": "star",
+        "category": "character",
+    }
+
+
+def test_get_tag_with_files_includes_color_icon_and_category(lib_env):
+    from AssetsManager.core.database import DatabaseManager
+    from AssetsManager.core.singleton import ThreadSafeSingleton
+    lib_root, _ = lib_env
+    conn = ThreadSafeSingleton.get(DatabaseManager).connection_for(lib_root)
+    ctrl = _make_controller(lib_root)
+    file_path = str(os.path.join(lib_root, "file.txt"))
+    open(file_path, "w").close()
+    from AssetsManager.core.tag_store import TagStore
+    store = TagStore(lib_root, db_conn=conn)
+    store.add_tag(file_path, "hero")
+
+    ctrl.set_tag_metadata("hero", color="#00ff00", icon="heart", category="work")
+
+    entries = {entry["tag"]: entry for entry in ctrl.get_tag_with_files()}
+    assert entries["hero"]["color"] == "#00ff00"
+    assert entries["hero"]["icon"] == "heart"
+    assert entries["hero"]["category"] == "work"

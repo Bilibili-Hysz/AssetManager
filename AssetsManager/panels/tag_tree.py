@@ -23,6 +23,7 @@ from AssetsManager.domain.events import TagCatalogChanged
 from AssetsManager import i18n
 tr = i18n.tr
 _ICON_ROLE = Qt.ItemDataRole.UserRole + 1
+_COLOR_ROLE = Qt.ItemDataRole.UserRole + 2
 
 
 class TagTreePanel(PanelContent):
@@ -100,10 +101,12 @@ class TagTreePanel(PanelContent):
     @staticmethod
     def _set_item_icon(item: QTreeWidgetItem, icon_name: str, color: str | None = None):
         normalized = icons.normalize(icon_name, fallback="file")
+        tint = color or "icon_secondary"
         item.setData(0, _ICON_ROLE, normalized)
+        item.setData(0, _COLOR_ROLE, tint)
         item.setIcon(0, icons.icon(
             normalized,
-            color=color or "icon_secondary",
+            color=tint,
             size=scaled_px(18),
         ))
 
@@ -118,8 +121,9 @@ class TagTreePanel(PanelContent):
                     continue
                 icon_name = item.data(0, _ICON_ROLE)
                 if icon_name:
+                    tint = item.data(0, _COLOR_ROLE) or "icon_secondary"
                     item.setIcon(0, icons.icon(
-                        str(icon_name), color="icon_secondary", size=scaled_px(18)
+                        str(icon_name), color=str(tint), size=scaled_px(18)
                     ))
                 stack.append(item)
 
@@ -174,7 +178,7 @@ class TagTreePanel(PanelContent):
             item = QTreeWidgetItem([f"{tag}  ({count})"])
             item.setData(0, Qt.ItemDataRole.UserRole, tag)
             icon_name = icons.normalize(str(entry.get("icon") or ""), fallback="tag")
-            self._set_item_icon(item, icon_name)
+            self._set_item_icon(item, icon_name, entry.get("color") or None)
             self._tree.addTopLevelItem(item)
             for f in files:
                 name = Path(f).name
@@ -213,6 +217,8 @@ class TagTreePanel(PanelContent):
             return
         menu = QMenu(self)
         if item.parent() is None:
+            menu.addAction(tr("tagtree.menu.style"),
+                           lambda t=data: self._edit_tag_style(t))
             menu.addAction(tr("tagtree.menu.rename"),
                            lambda t=data: self._rename_tag(t))
             menu.addAction(tr("tagtree.menu.delete"),
@@ -235,6 +241,29 @@ class TagTreePanel(PanelContent):
         if ok and new_tag.strip() and new_tag.strip().lower() != old_tag.lower() and self._controller:
             self._controller.rename_tag(old_tag, new_tag.strip())
             self._populate()
+
+    def _edit_tag_style(self, tag):
+        """Open the tag style editor and persist any accepted changes."""
+        from AssetsManager.dialogs.tag_style_dialog import TagStyleDialog
+
+        if not self._controller:
+            return
+        metadata = self._controller.get_tag_metadata(tag) or {}
+        dialog = TagStyleDialog(
+            tag,
+            color=str(metadata.get("color") or ""),
+            icon=str(metadata.get("icon") or ""),
+            category=str(metadata.get("category") or ""),
+            parent=self,
+        )
+        dialog.saved.connect(self._on_tag_style_saved)
+        dialog.exec()
+
+    def _on_tag_style_saved(self, tag, color, icon, category):
+        if not self._controller:
+            return
+        self._controller.set_tag_metadata(tag, color=color, icon=icon, category=category)
+        self._populate()
 
     def _delete_tag(self, tag):
         files = self._controller.get_files_for_tag(tag) if self._controller else []

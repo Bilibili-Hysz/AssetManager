@@ -55,6 +55,10 @@ class TagsViewPort(Protocol):
         """Return all file paths that have a given tag."""
         ...
 
+    def get_tag_metadata(self, tag: str) -> dict[str, str] | None:
+        """Return a tag's color/icon/category metadata, or None."""
+        ...
+
     def save(self) -> None:
         """Persist pending changes."""
         ...
@@ -159,6 +163,9 @@ class RootBoundTagService:
 
     def get_files_by_tag(self, tag: str) -> set[str]:
         return self._svc.get_files_by_tag(self._root, tag)
+
+    def get_tag_metadata(self, tag: str) -> dict[str, str] | None:
+        return self._svc.get_tag_metadata(self._root, tag)
 
     def save(self) -> None:
         pass  # auto-commit

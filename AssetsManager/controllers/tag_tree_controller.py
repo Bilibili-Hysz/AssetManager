@@ -38,10 +38,12 @@ class TagTreeController:
 
         Uses a single batch query (repository ``list_file_tags``) instead of
         one SQL statement per tag, avoiding N+1 queries on large libraries.
+        Each entry also carries the tag's visual metadata (icon/color/
+        category) so the tree can render it without a second lookup.
         """
         tags = self.get_all_tags()
-        icons_by_tag = {
-            meta.get("name"): str(meta.get("icon") or "")
+        metadata_by_tag = {
+            meta.get("name"): meta
             for meta in self._tag_svc.get_tags_with_metadata(self._library_root)
         }
         files_by_tag = self._files_by_tag_batch(tags)
@@ -50,10 +52,24 @@ class TagTreeController:
                 "tag": tag,
                 "count": len(files_by_tag.get(tag, [])),
                 "files": sorted(files_by_tag.get(tag, [])),
-                "icon": icons_by_tag.get(tag, ""),
+                "icon": str((metadata_by_tag.get(tag) or {}).get("icon") or ""),
+                "color": str((metadata_by_tag.get(tag) or {}).get("color") or ""),
+                "category": str((metadata_by_tag.get(tag) or {}).get("category") or ""),
             }
             for tag in tags
         ]
+
+    def get_tag_metadata(self, tag: str) -> dict[str, str] | None:
+        """Return a tag's visual metadata (color/icon/category), or None."""
+        return self._tag_svc.get_tag_metadata(self._library_root, tag)
+
+    def set_tag_metadata(
+        self, tag: str, color: str = "", icon: str = "", category: str = ""
+    ) -> None:
+        """Persist a tag's visual metadata and invalidate the tag catalog."""
+        self._tag_svc.set_tag_metadata(
+            self._library_root, tag, color=color, icon=icon, category=category
+        )
 
     def _files_by_tag_batch(self, tags: list[str]) -> dict[str, list[str]]:
         """Return {tag: [file paths]} from one batch query when possible.
