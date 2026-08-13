@@ -1,8 +1,8 @@
 """Policy layer for the ordinary library-download quota.
 
 Commerce delivery tokens have a separate quota model.  This service owns the
-periodic free-download policy used only by ``/api/download`` and its batch
-counterpart.
+periodic free-download policy used only by the LAN download endpoint and its
+batch counterpart.
 """
 from __future__ import annotations
 

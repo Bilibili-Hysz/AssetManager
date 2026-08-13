@@ -27,6 +27,8 @@ jobs:
         run: ruff check AssetsManager tests scripts run.py
       - name: Verify generated TS contracts have no drift
         run: python scripts/gen_ts_types.py --check
+      - name: Verify front/back separation boundary gates
+        run: python scripts/check_boundaries.py
 
   hygiene:
     name: Git Hygiene

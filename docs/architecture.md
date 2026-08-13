@@ -15,6 +15,18 @@ The B2 thumbnail boundary is part of the local `master` baseline: ThumbnailLoade
 
 A2 service validation downshift and A3 presentation-specific assembly are delivered. B1 is also implemented: Desktop/shared services and the frozen Runtime sharing bundle are owned by the canonical Runtime; Asset/Project/Search remain a lazy LAN-only projection.
 
+## Boundary Rules
+
+Five separation rules govern new code (from the front/back separation plan; a violation is a defect at bug priority):
+
+1. Application-layer return values and parameters must not carry URL, HTTP, or transport semantics.
+2. The presentation layer must not hold a `Connection` or `Repository`.
+3. Prefer in-process calls over HTTP when both sides live in one process.
+4. Business validation belongs only in the service layer.
+5. Each end assembles only the services it consumes.
+
+Static gates are enforced by `scripts/check_boundaries.py` (gates 1/2/3/5) and `scripts/gen_ts_types.py --check` (gate 6), both run in the CI `lint` job.
+
 ## Application Services
 
 | Service | Module | Purpose | Desktop | LAN | Tests |

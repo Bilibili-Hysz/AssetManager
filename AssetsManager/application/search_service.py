@@ -698,10 +698,11 @@ class SearchService:
     ) -> list[QuickSearchResult]:
         """Search visible files and directories with a bounded filesystem scan.
 
-        This intentionally remains separate from ``/api/search``.  The legacy
-        search contract is file-oriented and may consult tag/index sources;
-        command-palette search needs a small mixed file/directory projection,
-        path matching, and a hard scan budget instead.
+        This intentionally remains separate from the LAN search endpoint.
+        The legacy search contract is file-oriented and may consult
+        tag/index sources; command-palette search needs a small mixed
+        file/directory projection, path matching, and a hard scan budget
+        instead.
 
         The scan never follows symlinks, rejects resolved paths outside the
         canonical library root, skips hidden path components, and bounds both
