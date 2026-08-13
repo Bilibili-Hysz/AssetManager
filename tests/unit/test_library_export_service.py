@@ -16,6 +16,7 @@ import zipfile
 import pytest
 
 import AssetsManager.application.library_export_service as export_module
+import AssetsManager.application.library_export_io as export_io_module
 from AssetsManager.application import ApplicationBootstrap, LibraryExportService
 from AssetsManager.core import path_resolver
 
@@ -1093,9 +1094,9 @@ def test_quarantine_write_rejects_simulated_junction_and_preserves_source(
     real_check = LibraryExportService._is_link_or_junction
 
     monkeypatch.setattr(
-        LibraryExportService,
-        "_is_link_or_junction",
-        staticmethod(lambda path: path == quarantine or real_check(path)),
+        export_io_module,
+        "is_link_or_junction",
+        lambda path: path == quarantine or real_check(path),
     )
     monkeypatch.setattr(export_module, "library_data_dir", lambda _root: data_dir)
 
@@ -1175,9 +1176,9 @@ def test_restore_rejects_unsafe_staging_descendant_before_install(
             return real_is_link_or_junction(path)
 
         monkeypatch.setattr(
-            export_module.LibraryExportService,
-            "_is_link_or_junction",
-            staticmethod(simulated_link_or_junction),
+            export_io_module,
+            "is_link_or_junction",
+            simulated_link_or_junction,
         )
         original_extract = service._extract_validated_backup
 
@@ -1313,9 +1314,9 @@ def test_list_restore_quarantine_rejects_simulated_ancestor_junction(tmp_path, m
         monkeypatch.setattr(export_module, "library_data_dir", lambda _root: data_dir)
         monkeypatch.setattr(export_module, "library_lock_path", lambda _root: tmp_path / "library.lock")
         monkeypatch.setattr(
-            LibraryExportService,
-            "_is_link_or_junction",
-            staticmethod(lambda path: path == orphaned),
+            export_io_module,
+            "is_link_or_junction",
+            lambda path: path == orphaned,
         )
 
         with pytest.raises(ValueError, match="not a real directory"):

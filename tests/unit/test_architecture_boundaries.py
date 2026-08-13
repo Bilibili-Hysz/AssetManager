@@ -854,7 +854,7 @@ def test_qualified_attribute_reads_flags_direct_database_manager_current_syntax(
     )
 
     assert _database_manager_current_violations([route]) == [
-        f"{route}:4:11 handle_request reads DatabaseManager.current",
+        f"{_module_name(route)}:4:11 handle_request reads DatabaseManager.current",
     ]
 
 
@@ -871,7 +871,7 @@ def test_qualified_attribute_reads_flags_known_database_manager_import_alias(
     )
 
     assert _database_manager_current_violations([route]) == [
-        f"{route}:4:11 handle_request reads DatabaseManager.current",
+        f"{_module_name(route)}:4:11 handle_request reads DatabaseManager.current",
     ]
 
 
@@ -891,9 +891,9 @@ def test_qualified_attribute_reads_flags_database_module_and_full_qualified_chai
     )
 
     assert _database_manager_current_violations([route]) == [
-        f"{route}:5:12 handle_request reads DatabaseManager.current",
-        f"{route}:6:13 handle_request reads DatabaseManager.current",
-        f"{route}:7:11 handle_request reads DatabaseManager.current",
+        f"{_module_name(route)}:5:12 handle_request reads DatabaseManager.current",
+        f"{_module_name(route)}:6:13 handle_request reads DatabaseManager.current",
+        f"{_module_name(route)}:7:11 handle_request reads DatabaseManager.current",
     ]
 
 
