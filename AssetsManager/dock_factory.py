@@ -126,19 +126,27 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
         if isinstance(ext, QWidget):
             layout.addWidget(ext, 1)
 
+    btn_style = (
+        f"color: {t['heading']}; font-size: {scaled_pt(14)}px; font-weight: bold; "
+        f"padding: 0; background: transparent; border: none; border-radius: {scaled_px(3)}px;")
+
+    # Extra panel buttons (e.g. settings gears) share the dock's title-bar
+    # presentation so theme and UI-scale refresh always rebuild them coherently.
     for btn in extra_buttons:
         semantic_icon = btn.property("semanticIcon")
-        if semantic_icon and isinstance(btn, QPushButton):
+        if isinstance(btn, QPushButton) and semantic_icon:
             btn.setIcon(icons.icon(semantic_icon, color="icon_primary", size=scaled_px(15)))
+            btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+            btn.setFixedSize(scaled_px(20), scaled_px(20))
+            btn.setFlat(True)
+            themes.set_button_variant(btn, "ghost")
+            btn.setStyleSheet(btn_style)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
     layout.addStretch()
 
     for btn in extra_buttons:
         layout.addWidget(btn)
-
-    btn_style = (
-        f"color: {t['heading']}; font-size: {scaled_pt(14)}px; font-weight: bold; "
-        f"padding: 0; background: transparent; border: none; border-radius: {scaled_px(3)}px;")
 
     _dock = dock
     float_btn = QPushButton()
@@ -229,10 +237,21 @@ def _refresh_docks_on_language(_code: str = ""):
             _DOCK_TITLES.pop(d, None)
 
 
+def _refresh_docks_on_scale(_scale: float):
+    """Rebuild dock title bars when the UI scale changes."""
+    for d, (i18n_key, title, btns) in list(_DOCK_TITLES.items()):
+        try:
+            if d.widget() is not None:
+                d.setTitleBarWidget(_build_title_bar(title, d, btns))
+        except RuntimeError:
+            _DOCK_TITLES.pop(d, None)
+
+
 def install_dock_refresh_handlers():
-    """Install theme/language refresh handlers on the signal bus.
+    """Install theme/language/scale refresh handlers on the signal bus.
 
     Must be called once during application startup before any dock is created.
     """
     bus().theme_changed.connect(_refresh_docks_on_theme)
     bus().language_changed.connect(_refresh_docks_on_language)
+    bus().ui_scale_changed.connect(_refresh_docks_on_scale)

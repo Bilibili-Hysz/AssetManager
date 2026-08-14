@@ -1,7 +1,10 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from PySide6.QtWidgets import QPushButton
+
 from AssetsManager.controllers.info_controller import FileInfo, PluginField
+from AssetsManager.panels import info as info_module
 from AssetsManager.panels.info import InfoPanel
 
 
@@ -38,6 +41,37 @@ def test_info_language_refresh_updates_visible_labels():
         assert panel._tags_grp.title()
         assert panel._notes.placeholderText()
         assert panel._open_btn.text()
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+
+
+def test_info_group_qss_is_stable_across_theme_refresh():
+    panel = InfoPanel()
+    try:
+        before = panel._meta_grp.styleSheet()
+        panel._refresh_theme("Navy")
+        assert panel._meta_grp.styleSheet() == before
+        assert "QGroupBox" in before
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+
+
+def test_info_scaled_geometry_refresh_recalculates_fixed_metrics(monkeypatch):
+    panel = InfoPanel()
+    try:
+        panel._set_link_field("")
+        monkeypatch.setattr(info_module, "scaled_px", lambda value: value * 2)
+
+        panel.refresh_scaled_geometry()
+
+        assert panel._act_bar.height() == 56
+        assert panel._preview.minimumHeight() == 120
+        assert panel._tags_flow_layout.spacing() == 8
+        link_buttons = panel._field_link.findChildren(QPushButton)
+        assert link_buttons
+        assert all(button.width() == 36 for button in link_buttons)
     finally:
         panel.shutdown()
         panel.deleteLater()

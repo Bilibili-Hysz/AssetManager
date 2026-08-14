@@ -80,6 +80,59 @@ def test_file_list_state_controls_keep_semantic_icons_after_state_changes():
         app.processEvents()
 
 
+def test_file_list_toolbar_combos_have_tooltips_and_accessible_names():
+    app = QApplication.instance() or QApplication([])
+    panel = FileListPanel()
+    try:
+        for combo in (
+            panel._sort_combo,
+            panel._filter_combo,
+            panel._view_combo,
+            panel._zoom_combo,
+        ):
+            assert combo.toolTip()
+            assert combo.accessibleName() == combo.toolTip()
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_file_list_status_bar_uses_border_subtle_hairline():
+    from AssetsManager.core import themes
+
+    app = QApplication.instance() or QApplication([])
+    panel = FileListPanel()
+    try:
+        hairline = themes.get()["border_subtle"]
+        assert hairline in panel._status_bar.styleSheet()
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_file_list_breadcrumb_highlights_current_segment():
+    from AssetsManager.core import themes
+    from PySide6.QtWidgets import QPushButton
+
+    app = QApplication.instance() or QApplication([])
+    panel = FileListPanel()
+    try:
+        panel._current = Path("C:/library/assets/characters")
+        panel._render_bc()
+
+        buttons = panel._breadcrumb.findChildren(QPushButton)
+        assert buttons
+        assert themes.get()["heading"] in buttons[-1].styleSheet()
+        assert "font-weight: bold" in buttons[-1].styleSheet()
+        assert themes.get()["muted"] in buttons[0].styleSheet()
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
 def test_lan_mutation_event_refreshes_desktop_file_list_for_same_session(tmp_path):
     """A LAN-originated filesystem event reaches the active Desktop panel."""
     app = QApplication.instance() or QApplication([])

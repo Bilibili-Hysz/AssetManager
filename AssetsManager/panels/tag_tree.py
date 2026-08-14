@@ -63,6 +63,7 @@ class TagTreePanel(PanelContent):
         add_btn.setIcon(icons.icon("tag", color="icon_secondary", size=scaled_px(16)))
         add_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         add_btn.setAccessibleName(tr("tagtree.new_tag"))
+        add_btn.setToolTip(tr("tagtree.new_tag"))
         add_btn.clicked.connect(self._add_tag)
         add_btn.setMaximumWidth(scaled_px(72))
         bar.addWidget(add_btn)

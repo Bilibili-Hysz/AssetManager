@@ -25,6 +25,7 @@ from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core import themes, icons
+from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager.dialogs.sidebar_favorites import SidebarFavorites
 from AssetsManager.dialogs.sidebar_recent import SidebarRecentFolders
 from AssetsManager.panels._sidebar_parts import (
@@ -772,8 +773,13 @@ class SidebarPanel(PanelContent):
             if vtype == VTYPE_FS:
                 frontier.append(item)
             elif vtype in (VTYPE_FAV_HEADER, VTYPE_REC_HEADER):
-                # Virtual headers are already populated — expand in place.
+                # Virtual headers are already populated — expand in place and
+                # persist the state so a later refresh keeps them expanded.
                 item.setExpanded(True)
+                if vtype == VTYPE_FAV_HEADER:
+                    self._fav_expanded = True
+                else:
+                    self._rec_expanded = True
         self._expand_frontier = frontier
         self._process_expand_frontier()
 
@@ -814,9 +820,11 @@ class SidebarPanel(PanelContent):
                 visible = True
         item.setHidden(not visible)
         if visible:
-            self._match_count += 1
-            # Highlight matching items
+            # Count only direct name hits; ancestor branches kept visible for
+            # context must not inflate the "N matches" feedback.
             if text in item.text(0).lower():
+                self._match_count += 1
+                # Highlight matching items
                 self._highlight_item(item, direct=True)
             else:
                 self._highlight_item(item, direct=False)
@@ -834,12 +842,15 @@ class SidebarPanel(PanelContent):
             # Direct match: accent color + bold + background flash
             item.setForeground(0, QBrush(QColor(t["accent"])))
             font.setBold(True)
-            # Flash background briefly
-            item.setBackground(0, QBrush(QColor(t["accent"] + "30")))
-            # Fade out background after 500ms
-            from PySide6.QtCore import QTimer
-            generation = self._tree_generation
-            QTimer.singleShot(500, lambda: self._clear_highlight_background(item, generation))
+            if not StyleKit.reduce_motion():
+                # Flash background briefly (respect the global reduced-motion
+                # preference; the text/weight change remains as feedback).
+                flash = QColor(t["accent"])
+                flash.setAlphaF(0.19)
+                item.setBackground(0, QBrush(flash))
+                from PySide6.QtCore import QTimer
+                generation = self._tree_generation
+                QTimer.singleShot(500, lambda: self._clear_highlight_background(item, generation))
         else:
             # Ancestor of match: muted accent
             item.setForeground(0, QBrush(QColor(t["muted"])))
@@ -1025,8 +1036,6 @@ class SidebarPanel(PanelContent):
         _find(self._tree.invisibleRootItem(), path)
 
     def title_bar_buttons(self) -> list:
-        from AssetsManager.core import themes
-        t = themes.get()
         gear = QPushButton()
         gear.setIcon(icons.icon("settings", color="icon_primary", size=scaled_px(16)))
         gear.setIconSize(QSize(scaled_px(16), scaled_px(16)))
@@ -1035,9 +1044,7 @@ class SidebarPanel(PanelContent):
         gear.setFixedSize(scaled_px(20), scaled_px(20))
         gear.setFlat(True)
         gear.setProperty("semanticIcon", "settings")
-        gear.setStyleSheet(
-            f"color: {t['heading']}; font-size: {scaled_pt(13)}px; font-weight: bold; "
-            f"padding: 0; background: transparent; border: none; border-radius: {scaled_px(3)}px;")
+        themes.set_button_variant(gear, "ghost")
         gear.setCursor(Qt.CursorShape.PointingHandCursor)
         gear.clicked.connect(self._show_settings_menu)
         return [gear]

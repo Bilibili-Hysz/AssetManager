@@ -45,7 +45,7 @@ def _first_image_in(dir_path: str) -> str | None:
     return str(result) if result is not None else None
 
 
-def _make_nav_button(icon_name, tooltip, callback, font_size=13):
+def _make_nav_button(icon_name, tooltip, callback):
     t = themes.get()
     btn = QPushButton()
     btn.setIcon(icons.icon(icon_name, color="icon_secondary", size=scaled_px(16)))

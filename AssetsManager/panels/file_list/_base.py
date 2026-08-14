@@ -141,9 +141,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
         self._nav_buttons = []
         self._nav_tooltip_keys = ("filelist.back", "filelist.forward", "filelist.up")
-        self._nav_buttons.append(self._make_nav_button("arrow_left", tr("filelist.back"), self._go_back, font_size=10))
-        self._nav_buttons.append(self._make_nav_button("arrow_right", tr("filelist.forward"), self._go_forward, font_size=10))
-        self._nav_buttons.append(self._make_nav_button("arrow_up", tr("filelist.up"), self._go_up, font_size=10))
+        self._nav_buttons.append(self._make_nav_button("arrow_left", tr("filelist.back"), self._go_back))
+        self._nav_buttons.append(self._make_nav_button("arrow_right", tr("filelist.forward"), self._go_forward))
+        self._nav_buttons.append(self._make_nav_button("arrow_up", tr("filelist.up"), self._go_up))
         for b in self._nav_buttons:
             tb.addWidget(b)
 
@@ -156,21 +156,27 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         ):
             self._sort_combo.addItem(label, key)
         self._sort_combo.currentTextChanged.connect(self._on_sort_changed)
+        self._sort_combo.setToolTip(tr("filelist.sort_tooltip"))
+        self._sort_combo.setAccessibleName(tr("filelist.sort_tooltip"))
         tb.addWidget(self._sort_combo)
 
-        self._sort_btn = self._make_nav_button("arrow_up_down", tr("filelist.sort_dir"), self._toggle_sort_dir, font_size=14)
+        self._sort_btn = self._make_nav_button("arrow_up_down", tr("filelist.sort_dir"), self._toggle_sort_dir)
         tb.addWidget(self._sort_btn)
 
         self._filter_combo = QComboBox()
         for key, _label in FILTER_CATEGORY_LABELS:
             self._filter_combo.addItem(tr(f"filelist.filter.{key}"), key)
         self._filter_combo.currentTextChanged.connect(self._on_filter_changed)
+        self._filter_combo.setToolTip(tr("filelist.filter_tooltip"))
+        self._filter_combo.setAccessibleName(tr("filelist.filter_tooltip"))
         tb.addWidget(self._filter_combo)
 
         self._view_combo = QComboBox()
         self._view_combo.addItem(tr("filelist.view.grid"), userData="Grid")
         self._view_combo.addItem(tr("filelist.view.details"), userData="Details")
         self._view_combo.currentIndexChanged.connect(self._on_view_changed)
+        self._view_combo.setToolTip(tr("filelist.view_tooltip"))
+        self._view_combo.setAccessibleName(tr("filelist.view_tooltip"))
         tb.addWidget(self._view_combo)
 
         self._zoom_combo = QComboBox()
@@ -178,12 +184,14 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             self._zoom_combo.addItem(f"{sz}px")
         self._zoom_combo.setCurrentIndex(2)
         self._zoom_combo.currentTextChanged.connect(self._on_zoom_changed)
+        self._zoom_combo.setToolTip(tr("filelist.zoom_tooltip"))
+        self._zoom_combo.setAccessibleName(tr("filelist.zoom_tooltip"))
         tb.addWidget(self._zoom_combo)
 
         tb.addStretch()
-        self._hidden_btn = self._make_nav_button("eye", tr("filelist.hidden"), self._toggle_hidden, font_size=12)
+        self._hidden_btn = self._make_nav_button("eye", tr("filelist.hidden"), self._toggle_hidden)
         tb.addWidget(self._hidden_btn)
-        self._refresh_btn = self._make_nav_button("refresh", tr("filelist.refresh"), self._do_refresh, font_size=15)
+        self._refresh_btn = self._make_nav_button("refresh", tr("filelist.refresh"), self._do_refresh)
         tb.addWidget(self._refresh_btn)
 
         # Search — inline at end of toolbar
@@ -346,7 +354,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         t = themes.get()
         self._status_bar.setStyleSheet(
             f"background: transparent; "
-            f"border-top: 1px solid {t['border']};")
+            f"border-top: 1px solid {t['border_subtle']};")
         self._status.setStyleSheet(
             f"color: {t['muted']}; font-size: {scaled_pt(11)}px; background: transparent;")
         self._operation_feedback.setStyleSheet(
@@ -797,7 +805,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         text = self._search.text().strip()
         if text:
             count = self._model.rowCount()
-            self._toast(f"{count} results for \"{text}\"")
+            self._toast(tr("filelist.search.results", count=count, text=text))
 
     def _toast(self, text: str):
         Toast.info(self._grid_widget, text, duration=2000)
@@ -1181,8 +1189,8 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             button.setText("")
 
     @staticmethod
-    def _make_nav_button(icon_name, tooltip, callback, font_size=13):
-        return _make_nav_button(icon_name, tooltip, callback, font_size=font_size)
+    def _make_nav_button(icon_name, tooltip, callback):
+        return _make_nav_button(icon_name, tooltip, callback)
 
     # ── Cleanup ─────────────────────────────────────────────────
 

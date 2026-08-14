@@ -132,10 +132,7 @@ class InfoPanel(PanelContent):
 
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         meta = QGroupBox(tr("info.title"))
-        meta.setStyleSheet(
-            f"QGroupBox {{ border: 1px solid {sk.token('border')}; border-radius: {sk.px(4)}px; "
-            f"margin-top: {sk.px(4)}px; padding-top: {sk.px(6)}px; color: {sk.token('heading')}; }} "
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: {sk.px(8)}px; padding: 0 {sk.px(4)}px; }}")
+        meta.setStyleSheet(self._group_css(sk))
         self._meta_grp = meta
         meta_layout = QVBoxLayout(meta)
         meta_layout.setSpacing(scaled_px(2))
@@ -174,10 +171,7 @@ class InfoPanel(PanelContent):
 
         # Tags
         tags_grp = QGroupBox(tr("info.tags"))
-        tags_grp.setStyleSheet(
-            f"QGroupBox {{ border: 1px solid {sk.token('border')}; border-radius: {sk.px(4)}px; "
-            f"margin-top: {sk.px(4)}px; padding-top: {sk.px(6)}px; color: {sk.token('heading')}; }} "
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: {sk.px(8)}px; padding: 0 {sk.px(4)}px; }}")
+        tags_grp.setStyleSheet(self._group_css(sk))
         self._tags_grp = tags_grp
         tags_outer = QVBoxLayout(tags_grp)
         tags_outer.setSpacing(scaled_px(4))
@@ -227,10 +221,7 @@ class InfoPanel(PanelContent):
 
         # Notes — fills space between Tags and Actions
         notes_grp = QGroupBox(tr("info.notes"))
-        notes_grp.setStyleSheet(
-            f"QGroupBox {{ border: 1px solid {sk.token('border')}; border-radius: {sk.px(4)}px; "
-            f"margin-top: {sk.px(4)}px; padding-top: {sk.px(6)}px; color: {sk.token('heading')}; }} "
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: {sk.px(8)}px; padding: 0 {sk.px(4)}px; }}")
+        notes_grp.setStyleSheet(self._group_css(sk))
         self._notes_grp = notes_grp
         notes_layout = QVBoxLayout(notes_grp)
         self._notes = QTextEdit()
@@ -305,7 +296,38 @@ class InfoPanel(PanelContent):
         self._connect_bus(bus().theme_changed, self._refresh_theme)
         self._connect_bus(bus().language_changed, self._refresh_language)
         self._connect_bus(bus().ui_scale_changed, self._refresh_theme)
+        self._connect_bus(bus().ui_scale_changed, self.refresh_scaled_geometry)
         self._load_sidebar_depth_cfg()
+
+    @staticmethod
+    def _group_css(sk) -> str:
+        """Single source for InfoPanel group-box QSS (build + theme refresh).
+
+        Uses the global hairline token instead of a full-strength border so
+        the metadata/tags/notes sections read as layers, not boxed-in cards.
+        """
+        return (
+            f"QGroupBox {{ color: {sk.token('heading')}; border: 1px solid {sk.token('border_subtle')}; "
+            f"border-radius: {sk.px(6)}px; margin-top: {sk.px(8)}px; padding-top: {sk.px(12)}px; }}"
+            f"QGroupBox::title {{ subcontrol-origin: margin; left: {sk.px(10)}px; padding: 0 {sk.px(5)}px; }}"
+        )
+
+    def refresh_scaled_geometry(self, _scale: float | None = None):
+        """Re-apply scale-dependent fixed geometry that QSS refresh cannot reach."""
+        if hasattr(self, "_act_bar"):
+            self._act_bar.setFixedHeight(scaled_px(28))
+        if hasattr(self, "_preview"):
+            self._preview.setMinimumHeight(scaled_px(60))
+        if hasattr(self, "_tags_flow_layout"):
+            self._tags_flow_layout.setSpacing(scaled_px(4))
+        if hasattr(self, "_field_link"):
+            for btn in self._field_link.findChildren(QPushButton):
+                btn.setFixedSize(scaled_px(18), scaled_px(18))
+                btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        layout = self.layout()
+        if layout is not None:
+            layout.invalidate()
+            layout.activate()
 
     def _refresh_theme(self, _name: str = ""):
         t = themes.get()
@@ -313,12 +335,8 @@ class InfoPanel(PanelContent):
         self._preview_host.setStyleSheet(            "background: transparent;")
         if hasattr(self, '_details_scroll'):
             self._details_scroll.viewport().setStyleSheet(            "background: transparent;")
-        for grp, title in [(self._meta_grp, tr("info.title")), (self._tags_grp, tr("info.tags")),
-                            (self._notes_grp, tr("info.notes"))]:
-            grp.setStyleSheet(
-                f"QGroupBox {{ color: {sk.token('heading')}; border: 1px solid {sk.token('border')}; "
-                f"border-radius: {sk.px(6)}px; margin-top: {sk.px(8)}px; padding-top: {sk.px(12)}px; }}"
-                f"QGroupBox::title {{ subcontrol-origin: margin; left: {sk.px(10)}px; padding: 0 {sk.px(5)}px; }}")
+        for grp in (self._meta_grp, self._tags_grp, self._notes_grp):
+            grp.setStyleSheet(self._group_css(sk))
         for btn, color, icon_name in [
             (self._add_tag_btn, "icon_muted", "tag"),
             (self._manage_btn, "icon_muted", "settings"),
@@ -641,7 +659,6 @@ class InfoPanel(PanelContent):
 
     def title_bar_buttons(self) -> list:
         """Return extra buttons for the dock title bar."""
-        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         gear = QPushButton()
         gear.setIcon(icons.icon("settings", color="icon_primary", size=scaled_px(16)))
         gear.setIconSize(QSize(scaled_px(16), scaled_px(16)))
@@ -650,9 +667,7 @@ class InfoPanel(PanelContent):
         gear.setFixedSize(scaled_px(20), scaled_px(20))
         gear.setFlat(True)
         gear.setProperty("semanticIcon", "settings")
-        gear.setStyleSheet(
-            f"color: {sk.token('heading')}; font-size: {sk.pt(13)}px; font-weight: bold; "
-            f"padding: 0; background: transparent; border: none; border-radius: {sk.px(3)}px;")
+        themes.set_button_variant(gear, "ghost")
         gear.setCursor(Qt.CursorShape.PointingHandCursor)
         gear.clicked.connect(self._show_panel_menu)
         return [gear]

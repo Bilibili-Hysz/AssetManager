@@ -302,11 +302,14 @@ class NavigationMixin:
             btn = QPushButton(name)
             btn.setFlat(True)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            current = i == len(show) - 1
             btn.setStyleSheet(
-                f"color: {sk.token('muted')}; font-size: {sk.pt(12)}px; "
+                f"color: {sk.token('heading') if current else sk.token('muted')}; "
+                f"font-size: {sk.pt(12)}px; font-weight: {'bold' if current else 'normal'}; "
                 f"padding: {sk.px(2)}px {sk.px(4)}px; background: transparent; "
                 f"border: none; border-radius: {sk.px(3)}px;")
             btn.setToolTip(str(anc))
+            btn.setAccessibleName(name)
             bpath = str(anc)
             btn.clicked.connect(lambda checked, p=bpath: self.navigate_to(p))
             self._bc_layout.addWidget(btn)
