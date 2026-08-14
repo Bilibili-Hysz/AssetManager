@@ -1651,11 +1651,20 @@ class FileListGridWidget(QWidget):
         self._scroll_y = value
         self.set_scrolling()
         dy = value - old_sy
-        # Repaint only the newly-exposed band: the viewport composite shifts the
-        # previous texture and re-composites just that strip. Fall back to a full
-        # repaint when a thumbnail fade is baking opacity into the composite
-        # (allow_scroll is false) or the jump spans the whole viewport.
-        if self._thumb_opacity or abs(dy) >= self.height():
+        # Overlays (hover lift, selection highlight, fades) are drawn on top of
+        # the viewport composite and move with the scroll. A strip-only repaint
+        # would leave their old pixels behind, so any active overlay forces a
+        # full repaint. Otherwise repaint only the newly-exposed band, which the
+        # viewport composite shifts and re-composites.
+        has_overlay = (
+            self._hover_row >= 0
+            or self._hover_progress
+            or self._selection_progress
+            or self._selection
+            or self._thumb_opacity
+            or self._rubber_band_active
+        )
+        if has_overlay or abs(dy) >= self.height():
             self._request_frame(full=True)
             return
         if dy > 0:
