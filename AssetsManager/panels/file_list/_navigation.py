@@ -22,6 +22,9 @@ _FS_REFRESH_DEBOUNCE_MS = 500
 class NavigationMixin:
     """Provides navigate_to, back/forward/up, breadcrumb, and FS watcher."""
 
+    # The host surface below is the canonical contract, mirrored by
+    # `FileListHost` in `_host.py` (which `_base.py` asserts `FileListPanel`
+    # satisfies).  Keep the two in sync.
     if TYPE_CHECKING:
         _model: FileSystemModel
         _loader: ThumbnailLoader

@@ -51,6 +51,7 @@
     "AssetsManager/panels/file_list/_base.py",
     "AssetsManager/panels/file_list/__init__.py",
     "AssetsManager/panels/file_list/_detail_model.py",
+    "AssetsManager/panels/file_list/_host.py",
     "AssetsManager/panels/file_list/_loader.py",
     "AssetsManager/panels/file_list/_navigation.py",
     "AssetsManager/panels/file_list/_navigation.py",

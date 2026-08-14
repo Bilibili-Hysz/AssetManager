@@ -15,6 +15,7 @@ Architecture:
 import os
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import (
     Qt, Signal, QEvent, QSize, QTimer, QPoint, QModelIndex,
@@ -1810,3 +1811,11 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             f"Escape - {tr('filelist.help.clear')}",
         ]
         QMessageBox.information(self, tr("filelist.help.title"), "\n".join(lines))
+
+
+if TYPE_CHECKING:
+    from AssetsManager.panels.file_list._host import FileListHost
+
+    # Lock the mixin host contract: FileListPanel must provide the surface
+    # NavigationMixin relies on (see _host.FileListHost).
+    _host_contract: FileListHost = FileListPanel()
