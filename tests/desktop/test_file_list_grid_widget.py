@@ -882,8 +882,10 @@ def test_grid_dirty_cached_texture_is_scaled_to_replacement_layout(tmp_path, mon
 
     widget.repaint()
 
-    target = draw_pixmap.call_args_list[-1].args[0]
-    assert isinstance(target, QRect)
+    # The stale dirty texture is drawn scaled (QRect target) into the viewport
+    # composite; the final viewport blit uses an integer x offset instead.
+    targets = [call.args[0] for call in draw_pixmap.call_args_list]
+    assert any(isinstance(t, QRect) for t in targets)
     widget.deleteLater()
     app.processEvents()
 
