@@ -242,3 +242,37 @@ def test_library_lock_distinct_paths_stay_distinct(tmp_path):
     finally:
         lock_a.release()
         lock_b.release()
+
+
+def _write_fake_lock_file(lock_file, pid: int) -> None:
+    """Write a QLockFile-format lock file recording the given owner PID."""
+    lock_file.write_text(
+        f"{pid}\npython\nHOST\n00000000-0000-0000-0000-000000000000\n\n",
+        encoding="utf-8",
+    )
+
+
+def test_library_lock_recovers_stale_lock_from_dead_process(tmp_path):
+    """A lock left by a crashed/force-killed process must not block reopening."""
+    from AssetsManager.core.library_lock import LibraryLock
+
+    lock_file = tmp_path / "stale.lock"
+    _write_fake_lock_file(lock_file, 99999999)  # far outside any live PID range
+
+    lock = LibraryLock(lock_file)  # must not raise
+
+    try:
+        assert lock._lock.isLocked()
+    finally:
+        lock.release()
+
+
+def test_library_lock_does_not_recover_live_lock(tmp_path):
+    """A lock owned by a live PID is still reported as already open."""
+    from AssetsManager.core.library_lock import LibraryAlreadyOpenError
+
+    lock_file = tmp_path / "live.lock"
+    _write_fake_lock_file(lock_file, os.getpid())  # our own, live process
+
+    with pytest.raises(LibraryAlreadyOpenError):
+        LibraryLock(lock_file)

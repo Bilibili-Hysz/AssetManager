@@ -16,6 +16,39 @@ _registry_guard = threading.Lock()
 _held_locks: dict[str, tuple[QLockFile, int]] = {}
 
 
+def _pid_is_alive(pid: int) -> bool:
+    """Return True when a process with *pid* currently exists.
+
+    Used to distinguish a live library lock from a stale one left behind by a
+    crashed or force-killed process. When liveness cannot be determined the
+    result is ``True`` (fail closed — the lock is treated as live).
+    """
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+        try:
+            # PROCESS_QUERY_LIMITED_INFORMATION — succeeds for any normal
+            # process we can see; returns NULL once the PID has been reaped.
+            handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+        except Exception:
+            return True
+        if not handle:
+            return False
+        try:
+            ctypes.windll.kernel32.CloseHandle(handle)
+        except Exception:
+            pass
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except (PermissionError, OSError):
+        return True
+    return True
+
+
 class LibraryLock:
     """Small infrastructure wrapper that keeps Qt out of application code.
 
@@ -41,11 +74,25 @@ class LibraryLock:
 
             self.path.parent.mkdir(parents=True, exist_ok=True)
             lock = QLockFile(str(self.path))
-            # Never infer liveness from the PID marker or delete it ourselves.
-            # Qt's long-lived-resource mode uses a zero stale timeout and
-            # reports a live lock to the caller instead.
+            # Never infer liveness from the PID marker or delete it ourselves
+            # blindly. Qt's long-lived-resource mode uses a zero stale timeout
+            # and reports a live lock to the caller instead; recover only when
+            # the recorded PID is provably gone (crashed / force-killed).
             lock.setStaleLockTime(0)
-            if lock.tryLock(0):
+            acquired = lock.tryLock(0)
+            if not acquired and lock.error() == QLockFile.LockError.LockFailedError:
+                pid, _host, _app = lock.getLockInfo()
+                if pid > 0 and not _pid_is_alive(pid):
+                    try:
+                        self.path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                    else:
+                        lock = QLockFile(str(self.path))
+                        lock.setStaleLockTime(0)
+                        acquired = lock.tryLock(0)
+
+            if acquired:
                 self._lock = lock
                 _held_locks[self._key] = (lock, 1)
                 return
