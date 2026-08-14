@@ -403,7 +403,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
     def _is_current_operation_session(self, session) -> bool:
         scoped = self._scoped_services
         return bool(
-            not getattr(self._model, "_is_shutdown", False)
+            not getattr(self._model, "is_shutdown", False)
             and scoped is not None
             and getattr(scoped, "session", None) is session
             and not getattr(session, "is_closed", False)
@@ -597,15 +597,15 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             self._loader.bind_runtime(None, "", "", None, None)
 
     def _toggle_sort_dir(self):
-        self._model._sort_asc = not self._model._sort_asc
+        self._model.set_sort_ascending(not self._model.sort_ascending)
         self._refresh_state_icons()
-        self._model.set_sort(self._sort_key(), self._model._sort_asc)
+        self._model.set_sort(self._sort_key(), self._model.sort_ascending)
         if self._view_mode == "Details":
             self._populate_details()
         self._load_visible()
 
     def _toggle_hidden(self):
-        self._model._show_hidden = not self._model._show_hidden
+        self._model.set_show_hidden(not self._model.show_hidden)
         self._refresh_state_icons()
         self._post_refresh()
 
@@ -649,7 +649,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
     def _deletion_selection_candidates(self, paths) -> tuple[str, ...]:
         """Prefer the next visible survivor, then the previous visible survivor."""
         deleted = {str(Path(path).resolve()) for path in paths}
-        entries = self._detail_model._entries if self._view_mode == "Details" else self._model._entries
+        entries = self._detail_model.entries if self._view_mode == "Details" else self._model.entries
         visible_paths = [str(Path(entry.path).resolve()) for entry in entries]
         deleted_rows = [row for row, path in enumerate(visible_paths) if path in deleted]
         if not deleted_rows:
@@ -737,13 +737,13 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         anim.start()
 
     def _on_zoom_frame(self, size: int):
-        if getattr(self._model, "_is_shutdown", False):
+        if getattr(self._model, "is_shutdown", False):
             return
         self._thumb_size = size
         self._grid_widget.set_zoom_thumb_size(size)
 
     def _on_zoom_done(self, generation: int | None = None, target_size: int | None = None):
-        if getattr(self._model, "_is_shutdown", False):
+        if getattr(self._model, "is_shutdown", False):
             return
         if generation is not None and generation != getattr(self, "_zoom_generation", 0):
             return
@@ -781,7 +781,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._grid_widget._scrollbar.wheelEvent(event)
 
     def _on_sort_changed(self):
-        self._model.set_sort(self._sort_key(), self._model._sort_asc)
+        self._model.set_sort(self._sort_key(), self._model.sort_ascending)
         if self._view_mode == "Details":
             self._populate_details()
         self._load_visible()
@@ -798,7 +798,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def _on_search_changed(self, text):
         """Debounce search to avoid O(n) scandir on every keystroke."""
-        self._model._filter_text = text.lower()
+        self._model.set_filter_text(text.lower())
         timer = self._search_timer
         if timer is None:
             timer = QTimer(self)
@@ -855,7 +855,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
     # ── Thumbnail loading ───────────────────────────────────────
 
     def _load_visible(self):
-        if getattr(self._model, "_is_shutdown", False):
+        if getattr(self._model, "is_shutdown", False):
             return
         total = self._model.rowCount()
         if total == 0:
@@ -892,7 +892,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             self._loader.request(row, path, priority=priority, item_path=item_path)
 
     def _on_thumbnail_ready(self, row: int, path: str, img):
-        if getattr(self._model, "_is_shutdown", False):
+        if getattr(self._model, "is_shutdown", False):
             return
         self._thumbnail_delivery.handle_ready(row, path, img)
 
@@ -918,15 +918,15 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def _on_dir_size_ready(self, dir_path: str, size_str: str, gen: int = 0):
         """Handle async directory size result — update subtitle and refresh affected row."""
-        if self._model._is_shutdown:
+        if getattr(self._model, "is_shutdown", False):
             return
-        self._model._pending_dir_sizes.discard(dir_path)
-        if gen and gen != self._model._dir_size_gen:
+        self._model.discard_pending_dir_size(dir_path)
+        if gen and gen != self._model.dir_size_generation:
             return
-        if dir_path not in self._model._subtitle_cache:
+        if self._model.subtitle_for(dir_path) is None:
             return
-        self._model._subtitle_cache[dir_path] = size_str
-        row = self._model._path_index.get(dir_path, -1)
+        self._model.set_subtitle(dir_path, size_str)
+        row = self._model.row_for_path(dir_path)
         if row >= 0:
             idx = self._model.index(row, 0)
             if idx.isValid():
@@ -943,15 +943,15 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
 
     def _on_detail_dir_size_ready(self, dir_path: str, size_str: str, gen: int = 0):
-        if getattr(self._model, "_is_shutdown", False):
+        if getattr(self._model, "is_shutdown", False):
             return
-        if gen and gen != self._model._dir_size_gen:
+        if gen and gen != self._model.dir_size_generation:
             return
-        self._model._pending_dir_sizes.discard(dir_path)
-        self._model._subtitle_cache[dir_path] = size_str
-        self._model._dir_size_cache[dir_path] = size_str
+        self._model.discard_pending_dir_size(dir_path)
+        self._model.set_subtitle(dir_path, size_str)
+        self._model.set_dir_size(dir_path, size_str)
         # Find the row for this directory and emit dataChanged for Size column only
-        for i, entry in enumerate(self._detail_model._entries):
+        for i, entry in enumerate(self._detail_model.entries):
             if entry.path == dir_path:
                 idx = self._detail_model.index(i, 2)  # Size column
                 if idx.isValid():
@@ -977,7 +977,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             e = self._model.entry_at(i)
             if e and not e.is_dir():
                 try:
-                    total_sz += self._model._cached_stat(e).st_size
+                    total_sz += self._model.cached_stat(e).st_size
                 except (OSError, AttributeError):
                     pass
         self._cached_total_sz = total_sz
@@ -1207,8 +1207,8 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def _refresh_state_icons(self) -> None:
         """Keep stateful toolbar controls icon-only across every refresh path."""
-        sort_icon = "arrow_up" if self._model._sort_asc else "arrow_down"
-        hidden_icon = "eye" if self._model._show_hidden else "eye_off"
+        sort_icon = "arrow_up" if self._model.sort_ascending else "arrow_down"
+        hidden_icon = "eye" if self._model.show_hidden else "eye_off"
         for button, icon_name in (
             (self._sort_btn, sort_icon),
             (self._hidden_btn, hidden_icon),
@@ -1514,7 +1514,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         return _is_external_drop(event)
     def _load_visible_if_active(self):
         """Ignore delayed scan presentation work after panel shutdown."""
-        if not self._model._is_shutdown:
+        if not getattr(self._model, "is_shutdown", False):
             self._load_visible()
     def _navigate_or_open(self, path: str):
         if os.path.isdir(path):
@@ -1550,7 +1550,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         if generation == self._model.scan_generation:
             self._update_status()
     def _on_file_operation(self, event):
-        if getattr(self._model, "_is_shutdown", False):
+        if getattr(self._model, "is_shutdown", False):
             return
         scoped = self._scoped_services
         if scoped is None or event.session_token != scoped.session.event_token:
@@ -1612,8 +1612,8 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             return
         self._presentation_generation = generation
         result_paths = self._consume_operation_selection()
-        scan_reused = bool(getattr(self._model, "_last_scan_reused", False))
-        self._model._last_scan_reused = False
+        scan_reused = self._model.last_scan_reused
+        self._model.clear_last_scan_reused()
         if scan_reused:
             self._grid_widget.set_performance_generation(generation)
             # A reused scan emits scan_committed without a model reset; clear the
@@ -1675,9 +1675,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             Qt.Orientation.Horizontal, 0, len(self._detail_model.HEADER_KEYS) - 1)
         self._update_status()
     def _rename_detail_row(self, row: int, new_name: str):
-        if not (0 <= row < len(self._detail_model._entries)):
+        if not (0 <= row < len(self._detail_model.entries)):
             return
-        self._rename_path(self._detail_model._entries[row].path, new_name)
+        self._rename_path(self._detail_model.entries[row].path, new_name)
     def _rename_grid_row(self, row: int, new_name: str):
         ent = self._model.entry_at(row)
         if not ent:
@@ -1723,7 +1723,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
     def _select_detail_paths(self, paths: set[str]) -> None:
         sm = self._detail_view.selectionModel()
         sm.clearSelection()
-        for row, entry in enumerate(self._detail_model._entries):
+        for row, entry in enumerate(self._detail_model.entries):
             if entry.path in paths:
                 idx = self._detail_model.index(row, 0)
                 if idx.isValid():
@@ -1732,8 +1732,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
     def _select_grid_paths(self, paths: set[str]) -> None:
         old = self._grid_widget._selection.copy()
         self._grid_widget._selection = {
-            row for path, row in self._model._path_index.items()
-            if path in paths
+            row
+            for path in paths
+            if (row := self._model.row_for_path(path)) >= 0
         }
         if old != self._grid_widget._selection:
             self._grid_widget._apply_selection_progress(old)

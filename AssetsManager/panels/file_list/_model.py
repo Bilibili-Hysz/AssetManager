@@ -655,6 +655,83 @@ class FileSystemModel(QAbstractListModel):
         e = self.entry_at(row)
         return e.path if e else None
 
+    # ── Read/write accessors for presentation collaborators ──────
+    # The panel, detail model, grid canvas, and thumbnail coordinator read the
+    # model's caches through these instead of reaching into private attributes.
+
+    @property
+    def entries(self) -> list[os.DirEntry]:
+        """Read-only view of the current (sorted/filtered) entries."""
+        return self._entries
+
+    @property
+    def is_shutdown(self) -> bool:
+        return self._is_shutdown
+
+    @property
+    def sort_ascending(self) -> bool:
+        return self._sort_asc
+
+    @property
+    def show_hidden(self) -> bool:
+        return self._show_hidden
+
+    @property
+    def dir_size_generation(self) -> int:
+        return self._dir_size_gen
+
+    @property
+    def last_scan_reused(self) -> bool:
+        return self._last_scan_reused
+
+    @property
+    def has_pending_dir_size_work(self) -> bool:
+        return bool(self._dir_size_queue)
+
+    def set_sort_ascending(self, ascending: bool) -> None:
+        self._sort_asc = ascending
+
+    def set_show_hidden(self, value: bool) -> None:
+        self._show_hidden = value
+
+    def set_filter_text(self, text: str) -> None:
+        self._filter_text = text
+
+    def clear_last_scan_reused(self) -> None:
+        self._last_scan_reused = False
+
+    def cached_stat(self, entry: os.DirEntry) -> os.stat_result:
+        """Return the cached stat for *entry*, populating it on first access."""
+        return self._cached_stat(entry)
+
+    def row_for_path(self, path: str) -> int:
+        """Return the current row index for *path*, or -1 when absent."""
+        return self._path_index.get(path, -1)
+
+    def icon_for(self, path: str) -> QIcon | None:
+        return self._icons.get(path)
+
+    def raw_pixmap(self, path: str):
+        return self._raw_pixmaps.get(path)
+
+    def set_raw_pixmap(self, path: str, pixmap) -> None:
+        self._raw_pixmaps[path] = pixmap
+
+    def subtitle_for(self, path: str) -> str | None:
+        return self._subtitle_cache.get(path)
+
+    def set_subtitle(self, path: str, text: str) -> None:
+        self._subtitle_cache[path] = text
+
+    def dir_size_for(self, path: str) -> str | None:
+        return self._dir_size_cache.get(path)
+
+    def set_dir_size(self, path: str, text: str) -> None:
+        self._dir_size_cache[path] = text
+
+    def discard_pending_dir_size(self, path: str) -> None:
+        self._pending_dir_sizes.discard(path)
+
     def shutdown(self):
         """Wait for background directory-size tasks before stores are closed."""
         self._is_shutdown = True

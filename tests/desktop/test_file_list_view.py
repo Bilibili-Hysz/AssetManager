@@ -339,14 +339,14 @@ def test_grid_thumbnail_delivery_batches_only_current_model_rows(tmp_path):
 
 def test_thumbnail_result_is_ignored_after_panel_shutdown():
     panel = type("_Panel", (), {})()
-    panel._model = type("_Model", (), {"_is_shutdown": True})()
+    panel._model = type("_Model", (), {"is_shutdown": True})()
 
     FileListPanel._on_thumbnail_ready(panel, 0, "/library/asset.png", Mock())
 
 
 def test_grid_thumbnail_delivery_is_ignored_after_panel_shutdown():
     panel = type("_Panel", (), {})()
-    panel._model = type("_Model", (), {"_is_shutdown": True})()
+    panel._model = type("_Model", (), {"is_shutdown": True})()
     panel._thumbnail_delivery = Mock()
 
     FileListPanel._on_thumbnail_ready(panel, 0, "/library/asset.png", Mock())
@@ -356,7 +356,7 @@ def test_grid_thumbnail_delivery_is_ignored_after_panel_shutdown():
 
 def test_delayed_grid_load_is_ignored_after_panel_shutdown():
     panel = type("_Panel", (), {})()
-    panel._model = type("_Model", (), {"_is_shutdown": True})()
+    panel._model = type("_Model", (), {"is_shutdown": True})()
     panel._loader = Mock()
 
     FileListPanel._load_visible(panel)
@@ -368,7 +368,7 @@ def test_delayed_grid_load_is_ignored_after_panel_shutdown():
 
 def test_file_operation_is_ignored_after_panel_shutdown():
     panel = type("_Panel", (), {})()
-    panel._model = type("_Model", (), {"_is_shutdown": True})()
+    panel._model = type("_Model", (), {"is_shutdown": True})()
     panel._file_op_timer = Mock()
 
     FileListPanel._on_file_operation(panel, Mock())
@@ -980,7 +980,7 @@ def test_prepare_library_switch_drains_thumbnails_before_directory_size_work():
 def test_directory_size_result_is_ignored_after_panel_shutdown():
     panel = type("_Panel", (), {})()
     panel._model = type("_Model", (), {
-        "_is_shutdown": True,
+        "is_shutdown": True,
         "_pending_dir_sizes": {"/library/folder"},
     })()
 

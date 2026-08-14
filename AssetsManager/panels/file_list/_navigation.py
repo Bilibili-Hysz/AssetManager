@@ -66,7 +66,7 @@ class NavigationMixin:
 
     def _on_fs_changed(self, path):
         """Coalesce bursty watcher notifications into one model refresh."""
-        if self._model._is_shutdown:
+        if self._model.is_shutdown:
             return
         domain_timer = getattr(self, "_file_op_timer", None)
         if domain_timer is not None and domain_timer.isActive():
@@ -88,7 +88,7 @@ class NavigationMixin:
         refresh.  The model scan and thumbnail delivery path will replace
         changed entries, while unchanged cards can be painted immediately.
         """
-        if self._model._is_shutdown:
+        if self._model.is_shutdown:
             return
 
         changed_path = self._pending_fs_changed_path

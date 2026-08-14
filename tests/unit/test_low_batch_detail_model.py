@@ -17,8 +17,9 @@ from types import SimpleNamespace
 from PySide6.QtCore import QPersistentModelIndex, QSize, Qt
 from PySide6.QtWidgets import QApplication
 
+from AssetsManager.application.asset_filters import natural_key
 from AssetsManager.panels.file_list._batch_rename import _name_errors, plan_batch_rename
-from AssetsManager.panels.file_list._detail_model import DetailModel, _natural_key
+from AssetsManager.panels.file_list._detail_model import DetailModel
 from AssetsManager.panels.file_list._grid_layout import GridLayout
 
 _app = QApplication.instance() or QApplication([])
@@ -82,8 +83,8 @@ def test_do_sort_size_and_date_columns_keep_directories_on_top():
 # ── Natural sort key ──────────────────────────────────────────────
 
 def test_natural_key_orders_file2_before_file10():
-    assert _natural_key("file2") < _natural_key("file10")
-    names = sorted(["file10", "file2", "file1", "file11"], key=_natural_key)
+    assert natural_key("file2") < natural_key("file10")
+    names = sorted(["file10", "file2", "file1", "file11"], key=natural_key)
     assert names == ["file1", "file2", "file10", "file11"]
 
 

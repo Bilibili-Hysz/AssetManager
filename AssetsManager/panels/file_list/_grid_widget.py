@@ -649,10 +649,10 @@ class FileListGridWidget(QWidget):
         if self._zoom_relayout_active:
             visible = sorted(set(visible) | self._zoom_visible_rows)
         prioritize_sizes = getattr(self._model, "prioritize_dir_sizes", None)
-        prioritize_key = (id(getattr(self._model, "_entries", None)), tuple(visible))
+        prioritize_key = (id(getattr(self._model, "entries", None)), tuple(visible))
         if (
             callable(prioritize_sizes)
-            and getattr(self._model, "_dir_size_queue", None)
+            and getattr(self._model, "has_pending_dir_size_work", False)
             and prioritize_key != self._last_prioritized_key
         ):
             self._last_prioritized_key = prioritize_key

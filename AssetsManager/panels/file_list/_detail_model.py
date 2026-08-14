@@ -5,7 +5,6 @@ Enables efficient display of large directories (10000+ files).
 """
 import logging
 import os
-import re
 import datetime
 from pathlib import Path
 
@@ -14,16 +13,11 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QFileIconProvider
 
 from AssetsManager.panels.file_list._model import FileSystemModel
+from AssetsManager.application.asset_filters import natural_key
 from AssetsManager import i18n
 tr = i18n.tr
 
 _log = logging.getLogger(__name__)
-
-_natural_split = re.compile(r'(\d+)')
-
-def _natural_key(s: str):
-    """Natural sort: 'file2' < 'file10'."""
-    return [(int(x) if x.isdigit() else x.lower()) for x in _natural_split.split(s)]
 
 
 class DetailModel(QAbstractItemModel):
@@ -44,11 +38,16 @@ class DetailModel(QAbstractItemModel):
         self._tags_cache: dict[str, str] = {}
         self._icon_provider = QFileIconProvider()
 
+    @property
+    def entries(self) -> list:
+        """Read-only view of the detail model's current entries."""
+        return self._entries
+
     def set_source(self, fs_model: FileSystemModel, store=None, lib_root: str | None = None):
         """Set the source FileSystemModel and optional tag store."""
         self.beginResetModel()
         self._fs_model = fs_model
-        self._entries = list(fs_model._entries) if fs_model else []
+        self._entries = list(fs_model.entries) if fs_model else []
         self._store = store
         self._lib_root = lib_root
         self._rebuild_tags_cache()
@@ -60,7 +59,7 @@ class DetailModel(QAbstractItemModel):
         """Re-read entries from source model."""
         if self._fs_model:
             self.beginResetModel()
-            self._entries = list(self._fs_model._entries)
+            self._entries = list(self._fs_model.entries)
             self._rebuild_tags_cache()
             if self._entries and self._sort_column >= 0:
                 self._do_sort(self._sort_column, self._sort_order)
@@ -154,7 +153,7 @@ class DetailModel(QAbstractItemModel):
         return None
 
     def _icon_for(self, entry) -> QIcon:
-        icon = self._fs_model._icons.get(entry.path) if self._fs_model else None
+        icon = self._fs_model.icon_for(entry.path) if self._fs_model else None
         if icon and not icon.isNull():
             return icon
         return self._icon_provider.icon(QFileInfo(entry.path))
@@ -220,20 +219,20 @@ class DetailModel(QAbstractItemModel):
         def _sort_key(entry):
             is_dir = entry.is_dir()
             if column == 0:
-                return _natural_key(entry.name)
+                return natural_key(entry.name)
             elif column == 1:
                 # Same ext semantics as the shared sort_key_for_entry
                 # (application/asset_filters.py): os.path.splitext.
                 ext = os.path.splitext(entry.name)[1].lower() if not is_dir else ""
-                return (ext, _natural_key(entry.name))
+                return (ext, natural_key(entry.name))
             elif column == 2:
                 return self._size_sort_value(entry, is_dir, fs)
             elif column == 3:
                 return self._date_sort_value(entry, fs)
             elif column == 4:
                 tags = self._tags_cache.get(entry.path, "")
-                return (tags.lower(), _natural_key(entry.name))
-            return _natural_key(entry.name)
+                return (tags.lower(), natural_key(entry.name))
+            return natural_key(entry.name)
 
         self._entries.sort(key=_sort_key, reverse=not ascending)
         # Stable — only reorders the dir/file boundary; order inside each
@@ -246,10 +245,10 @@ class DetailModel(QAbstractItemModel):
         if is_dir:
             if not fs:
                 return 0
-            cached = fs._dir_size_cache.get(entry.path) or fs._subtitle_cache.get(entry.path)
+            cached = fs.dir_size_for(entry.path) or fs.subtitle_for(entry.path)
             return DetailModel._parse_size_text(cached)
         try:
-            return fs._cached_stat(entry).st_size if fs else 0
+            return fs.cached_stat(entry).st_size if fs else 0
         except (OSError, AttributeError):
             return 0
 
@@ -274,14 +273,14 @@ class DetailModel(QAbstractItemModel):
     def _date_sort_value(entry, fs) -> float:
         """Return mtime for sorting."""
         try:
-            st = fs._cached_stat(entry) if fs else None
+            st = fs.cached_stat(entry) if fs else None
             return st.st_mtime if st and st.st_mtime > 0 else 0.0
         except (OSError, AttributeError):
             return 0.0
 
     def _display_data(self, entry, col: int) -> str:
         fs_model = self._fs_model
-        if fs_model is None or fs_model._is_shutdown:
+        if fs_model is None or fs_model.is_shutdown:
             return ""
         if col == 0:
             return entry.name
@@ -293,12 +292,12 @@ class DetailModel(QAbstractItemModel):
             if entry.is_dir():
                 return self._dir_size_display(entry)
             try:
-                return FileSystemModel._fmt_size(fs_model._cached_stat(entry).st_size)
+                return FileSystemModel._fmt_size(fs_model.cached_stat(entry).st_size)
             except (OSError, AttributeError):
                 return "—"
         if col == 3:
             try:
-                st = fs_model._cached_stat(entry)
+                st = fs_model.cached_stat(entry)
                 if st.st_mtime > 0:
                     return datetime.datetime.fromtimestamp(st.st_mtime).strftime('%Y-%m-%d')
             except (OSError, AttributeError, ValueError, OverflowError):
@@ -310,13 +309,12 @@ class DetailModel(QAbstractItemModel):
 
     def _dir_size_display(self, entry) -> str:
         fs_model = self._fs_model
-        if fs_model is None or fs_model._is_shutdown:
+        if fs_model is None or fs_model.is_shutdown:
             return "..."
-        for cache in (fs_model._subtitle_cache, fs_model._dir_size_cache):
-            sz = cache.get(entry.path)
+        for sz in (fs_model.subtitle_for(entry.path), fs_model.dir_size_for(entry.path)):
             if sz and sz not in ("...", ""):
                 return sz
-        row = fs_model._path_index.get(entry.path, -1)
+        row = fs_model.row_for_path(entry.path)
         if row >= 0:
             idx = fs_model.index(row, 0)
             dsz = fs_model.data(idx, Qt.ItemDataRole(FileSystemModel.DIR_SIZE_ROLE))

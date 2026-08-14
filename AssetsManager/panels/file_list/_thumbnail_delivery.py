@@ -28,7 +28,7 @@ class ThumbnailDeliveryCoordinator:
         self._timer.stop()
 
     def handle_ready(self, row: int, path: str, image) -> None:
-        if self._model._is_shutdown:
+        if self._model.is_shutdown:
             return
         if image is None or image.isNull():
             return
@@ -47,7 +47,7 @@ class ThumbnailDeliveryCoordinator:
             return
         entry = self._model.entry_at(row)
         if entry is not None:
-            self._model._raw_pixmaps[entry.path] = pixmap
+            self._model.set_raw_pixmap(entry.path, pixmap)
         # Deliberate bypass: FileSystemModel.setData(DecorationRole) stores the
         # icon without emitting dataChanged. Thumbnail invalidation is owned by
         # this coordinator (batched below into commit_thumbnail_rows), so a
@@ -58,7 +58,7 @@ class ThumbnailDeliveryCoordinator:
         self._timer.start()
 
     def flush(self) -> None:
-        if self._model._is_shutdown:
+        if self._model.is_shutdown:
             self.clear()
             return
         if not self._batch:
