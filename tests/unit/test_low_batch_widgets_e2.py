@@ -12,6 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from unittest.mock import Mock
 
 import pytest
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QWidget
 
 # The 6-argument QMouseEvent constructor is the simplest way to build
@@ -264,3 +265,19 @@ def test_toast_horizontal_chrome_uses_fixed_widths_before_layout():
         parent.close()
         parent.deleteLater()
         app.processEvents()
+
+
+def test_toast_deletes_itself_after_fade_out():
+    from AssetsManager.widgets.toast import Toast
+
+    app = QApplication.instance() or QApplication([])
+    parent = QWidget()
+    toast = Toast(parent, "hello", duration=100000)
+    toast._start_fade_out()  # bypass the dismiss timer, drive the fade directly
+    QTest.qWait(800)  # 300ms fade animation + margin for deleteLater
+    app.processEvents()
+    # After the fade the widget must be destroyed, not merely hidden.
+    with pytest.raises(RuntimeError):
+        toast.isVisible()
+    parent.deleteLater()
+    app.processEvents()

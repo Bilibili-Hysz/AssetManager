@@ -45,7 +45,7 @@ from AssetsManager.panels.file_list._common import (
 )
 from AssetsManager.panels.file_list._navigation import NavigationMixin
 from AssetsManager.panels.file_list._actions import ActionsMixin
-from AssetsManager.panels.file_list._toast import Toast
+from AssetsManager.widgets.toast import Toast
 from AssetsManager.panels.file_list._grid_layout import GridLayout
 from AssetsManager.panels.file_list._grid_widget import FileListGridWidget
 from AssetsManager.panels.file_list._thumbnail_delivery import ThumbnailDeliveryCoordinator
@@ -824,7 +824,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             self._toast(f"{count} results for \"{text}\"")
 
     def _toast(self, text: str):
-        Toast(text, parent=self._grid_widget, duration_ms=2000)
+        Toast.info(self._grid_widget, text, duration=2000)
 
     def _sort_key(self):
         return self._sort_combo.currentData() or self._sort_combo.currentText()

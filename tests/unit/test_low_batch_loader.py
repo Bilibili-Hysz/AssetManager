@@ -1,18 +1,12 @@
 """Unit tests for ThumbnailLoader safety/performance fixes.
 
 Covers: bounded wait_for_runtime, set_size under lock, request-after-stop
-no-op, clear_thumb_cache deletion outside the mutex, and Toast self-deletion
-after fade-out.  Loader tests are pure logic and need no QApplication; only
-the Toast test creates one (mirroring tests/unit/test_lan_sharing.py).
+no-op, and clear_thumb_cache deletion outside the mutex.  Loader tests are
+pure logic and need no QApplication.
 """
 import time
 
-import pytest
-from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
-
 from AssetsManager.panels.file_list._loader import ThumbnailLoader
-from AssetsManager.panels.file_list._toast import Toast
 
 
 def test_wait_for_runtime_times_out_instead_of_hanging():
@@ -65,14 +59,3 @@ def test_clear_thumb_cache_deletes_outside_mutex(tmp_path):
 
     assert count == 3
     assert sorted(p.name for p in cache_dir.iterdir()) == ["keep.png"]
-
-
-def test_toast_deletes_itself_after_fade_out():
-    app = QApplication.instance() or QApplication([])
-    toast = Toast("hello", parent=None, duration_ms=100000)
-    toast._start_fade()  # bypass the duration timer, drive the fade directly
-    QTest.qWait(800)  # 300ms fade animation + margin for deleteLater
-    app.processEvents()
-    # After the fade the widget must be destroyed, not merely hidden.
-    with pytest.raises(RuntimeError):
-        toast.isVisible()
