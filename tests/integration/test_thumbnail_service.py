@@ -521,3 +521,60 @@ def test_thumbnail_cache_metadata_rejects_managed_foreign_root(tmp_path):
             service.get_cached_source_mtime(root_a, "cache-key")
     finally:
         manager.close()
+
+
+def _make_video(path, size=(64, 48), duration=0.5):
+    """Create a tiny test video via ffmpeg; skip if ffmpeg is unavailable."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y", "-f", "lavfi",
+                "-i", f"color=c=red:s={size[0]}x{size[1]}:d={duration}",
+                "-pix_fmt", "yuv420p", str(path),
+            ],
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pytest.skip("ffmpeg unavailable")
+    if result.returncode != 0 or not path.exists():
+        pytest.skip("ffmpeg could not create a test video")
+    return path
+
+
+def test_resolve_extracts_video_first_frame(tmp_path):
+    video = _make_video(tmp_path / "clip.mp4")
+    thumbs = tmp_path / "thumbs"
+
+    svc = ThumbnailService()
+    result = svc.resolve(video, thumbs, max_size=256)
+
+    assert result.found
+    assert result.source_path is not None
+    assert result.source_path.suffix == ".jpg"
+    assert result.source_path.exists()
+    # The extracted frame is a real image Pillow can open.
+    from PIL import Image
+    with Image.open(result.source_path) as frame:
+        assert frame.size[0] > 0 and frame.size[1] > 0
+
+
+def test_resolve_returns_empty_for_missing_video(tmp_path):
+    svc = ThumbnailService()
+    result = svc.resolve(tmp_path / "missing.mp4", tmp_path / "thumbs", max_size=256)
+    assert not result.found
+
+
+def test_resolve_reuses_cached_video_frame(tmp_path):
+    video = _make_video(tmp_path / "clip.mov")
+    thumbs = tmp_path / "thumbs"
+    svc = ThumbnailService()
+
+    first = svc.resolve(video, thumbs, max_size=256)
+    assert first.found and first.source_path is not None
+
+    second = svc.resolve(video, thumbs, max_size=256)
+    assert second.found
+    assert second.source_path == first.source_path

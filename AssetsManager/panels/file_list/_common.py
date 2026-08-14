@@ -1,6 +1,9 @@
 """Shared constants and helpers for the file_list package."""
 from PySide6.QtGui import QColor
-from AssetsManager.core.constants import IMAGE_EXTS as IMAGE_EXTS  # noqa: F401
+from AssetsManager.core.constants import (  # noqa: F401
+    IMAGE_EXTS as IMAGE_EXTS,
+    VIDEO_EXTS as VIDEO_EXTS,
+)
 from AssetsManager.application.asset_filters import (  # noqa: F401
     FILTER_CATEGORY_EXTS,
     FILTER_CATEGORY_LABELS,

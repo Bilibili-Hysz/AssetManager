@@ -8,6 +8,9 @@ from AssetsManager.domain.errors import PathEscapeError
 
 IMAGE_EXTS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".ico", ".svg"})
 
+# Video container extensions eligible for first-frame thumbnail extraction.
+VIDEO_EXTS: frozenset[str] = frozenset({".mp4", ".mov", ".avi", ".mkv", ".webm", ".wmv"})
+
 
 def category_for_extension(ext: str) -> str:
     """Return the category name for a file extension.

@@ -5,6 +5,7 @@ import hashlib
 import io
 import logging
 import sqlite3
+import subprocess
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +17,7 @@ from AssetsManager.application.context import (
 )
 from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.path_resolver import root_identity
-from AssetsManager.domain.asset import IMAGE_EXTS
+from AssetsManager.domain.asset import IMAGE_EXTS, VIDEO_EXTS
 from AssetsManager.repositories.tag_repository import TagRepository
 from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
 
@@ -234,7 +235,37 @@ class ThumbnailService:
                 source_path=target, should_blur=should_blur, cache_hit=False,
             )
 
+        # Video: extract the first frame into the cache and serve that.
+        if target.suffix.lower() in VIDEO_EXTS and target.exists():
+            cache_key = self._cache_key(target)
+            frame = thumbnail_dir / f"{cache_key}.jpg"
+            if not frame.exists() and not self._extract_video_frame(target, frame):
+                return ThumbnailResult()
+            return ThumbnailResult(
+                source_path=frame, should_blur=should_blur, cache_hit=False,
+            )
+
         return ThumbnailResult()
+
+    @staticmethod
+    def _extract_video_frame(source_path: Path, destination: Path) -> bool:
+        """Extract the first frame of a video into *destination* via ffmpeg."""
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-y", "-i", str(source_path),
+                    "-frames:v", "1",
+                    "-vf", "scale=512:512:force_original_aspect_ratio=decrease",
+                    str(destination),
+                ],
+                capture_output=True,
+                timeout=30,
+            )
+            return result.returncode == 0 and destination.exists()
+        except (OSError, subprocess.SubprocessError):
+            _log.debug("video frame extraction failed for %s", source_path)
+            return False
 
     def process_image(
         self,

@@ -36,7 +36,13 @@ from AssetsManager import i18n
 
 from AssetsManager.panels.file_list._model import FileSystemModel
 from AssetsManager.panels.file_list._loader import ThumbnailLoader
-from AssetsManager.panels.file_list._common import IMAGE_EXTS, FILTER_CATEGORY_LABELS, ZOOM_PRESETS, natural_key
+from AssetsManager.panels.file_list._common import (
+    FILTER_CATEGORY_LABELS,
+    IMAGE_EXTS,
+    VIDEO_EXTS,
+    ZOOM_PRESETS,
+    natural_key,
+)
 from AssetsManager.panels.file_list._navigation import NavigationMixin
 from AssetsManager.panels.file_list._actions import ActionsMixin
 from AssetsManager.panels.file_list._toast import Toast
@@ -877,7 +883,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
                 if preview:
                     candidates.append((i, preview, priority, ent.path))
                     retained_paths.add(preview)
-            elif ent.is_file() and Path(ent.name).suffix.lower() in IMAGE_EXTS:
+            elif ent.is_file() and Path(ent.name).suffix.lower() in IMAGE_EXTS | VIDEO_EXTS:
                 candidates.append((i, ent.path, priority, None))
                 retained_paths.add(ent.path)
         self._loader.retain_deferred(retained_paths)

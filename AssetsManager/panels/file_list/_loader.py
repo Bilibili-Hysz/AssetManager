@@ -18,7 +18,7 @@ from PySide6.QtGui import QImage, QImageReader
 
 from AssetsManager.application.thumbnail_service import thumbnail_cache_key
 from AssetsManager.core.performance import PerformanceRecorder
-from AssetsManager.panels.file_list._common import IMAGE_EXTS
+from AssetsManager.panels.file_list._common import IMAGE_EXTS, VIDEO_EXTS
 
 _log = logging.getLogger(__name__)
 
@@ -757,10 +757,12 @@ class ThumbnailLoader(QObject):
         if not os.path.isfile(path):
             return None
         ext = Path(path).suffix.lower()
-        if ext not in IMAGE_EXTS:
-            return None
         runtime = runtime or self._runtime()
         if not self._is_current_generation(runtime.generation):
+            return None
+        if ext in VIDEO_EXTS:
+            return self._load_video_frame(path, runtime)
+        if ext not in IMAGE_EXTS:
             return None
         key = self._disk_key(path)
         if get_bake_size() >= 0:
@@ -772,6 +774,29 @@ class ThumbnailLoader(QObject):
             if runtime.recorder is not None:
                 self._record("thumbnail.cache", runtime=runtime, path=path, attributes={"tier": "disk", "outcome": "miss"})
         return self._read_with_qimagereader(path, runtime)
+
+    def _load_video_frame(self, path: str, runtime: _Runtime) -> QImage | None:
+        """Extract and load a video's first frame as a thumbnail.
+
+        Delegates extraction to the thumbnail service (ffmpeg first frame),
+        which caches the ``.jpg`` frame under the cache directory keyed by the
+        same disk key used for image thumbnails.
+        """
+        service = runtime.thumbnail_service
+        if service is None or not runtime.cache_dir:
+            return None
+        try:
+            result = service.resolve(
+                Path(path), Path(runtime.cache_dir), max_size=512,
+            )
+        except Exception:
+            _log.exception("Video thumbnail resolve failed: %s", path)
+            return None
+        if not result.found or result.source_path is None:
+            return None
+        if not self._is_current_generation(runtime.generation):
+            return None
+        return self._read_with_qimagereader(str(result.source_path), runtime, bake=False)
 
     def _record(
         self,
@@ -799,8 +824,14 @@ class ThumbnailLoader(QObject):
             # Diagnostics must not affect loader state or cross-thread delivery.
             pass
 
-    def _read_with_qimagereader(self, path: str, runtime: _Runtime | None = None) -> QImage | None:
-        """Thread-safe image loading via QImageReader. Returns unscaled QImage."""
+    def _read_with_qimagereader(
+        self, path: str, runtime: _Runtime | None = None, bake: bool = True,
+    ) -> QImage | None:
+        """Thread-safe image loading via QImageReader. Returns unscaled QImage.
+
+        ``bake=False`` skips the native webp bake step — used for already-cached
+        video frames, which should not be re-baked into a second cache entry.
+        """
         runtime = runtime or self._runtime()
         try:
             reader = QImageReader(path)
@@ -815,9 +846,10 @@ class ThumbnailLoader(QObject):
                 img = reader.read()
             if img.isNull() or not self._is_current_generation(runtime.generation):
                 return None
-            key = self._disk_key(path)
-            if runtime.cache_dir and get_bake_size() >= 0 and self._should_bake(path, runtime.lib_root):
-                self._queue_bake_native(key, path, runtime)
+            if bake:
+                key = self._disk_key(path)
+                if runtime.cache_dir and get_bake_size() >= 0 and self._should_bake(path, runtime.lib_root):
+                    self._queue_bake_native(key, path, runtime)
             return img
         except Exception:
             _log.exception("QImageReader failed: %s", path)

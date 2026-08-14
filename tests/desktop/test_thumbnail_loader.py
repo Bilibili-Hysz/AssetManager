@@ -1,11 +1,13 @@
 import os
 import threading
 import time
+from pathlib import Path
 from unittest.mock import Mock
 
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
+from AssetsManager.application.thumbnail_service import ThumbnailResult
 from AssetsManager.core.performance import PerformanceRecorder
 from AssetsManager.panels.file_list._loader import ThumbnailLoader
 
@@ -784,3 +786,38 @@ def test_thumbnail_loader_visible_request_displaces_deferred_prefetch_at_capacit
     assert str(paths[1]) not in loader._pending_items
     release.set()
     loader._pool.waitForDone(5000)
+
+
+def test_thumbnail_loader_video_resolves_first_frame_via_service(tmp_path):
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"not a real video")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+
+    frame = tmp_path / "frame.png"
+    frame_img = QImage(16, 12, QImage.Format.Format_RGB32)
+    frame_img.fill(0xFF336699)
+    assert frame_img.save(str(frame), "PNG")
+
+    service = Mock()
+    service.resolve.return_value = ThumbnailResult(source_path=frame)
+
+    loader = ThumbnailLoader()
+    loader.bind_runtime(service, str(cache_dir), str(tmp_path))
+    runtime = loader._runtime()
+
+    img = loader._load_image(str(video), runtime)
+
+    assert img is not None and not img.isNull()
+    assert (img.size().width(), img.size().height()) == (16, 12)
+    service.resolve.assert_called_once_with(Path(video), Path(cache_dir), max_size=512)
+
+
+def test_thumbnail_loader_video_returns_none_when_service_missing(tmp_path):
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"not a real video")
+
+    loader = ThumbnailLoader()
+    runtime = loader._runtime()
+
+    assert loader._load_image(str(video), runtime) is None
