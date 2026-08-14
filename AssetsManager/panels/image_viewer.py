@@ -8,6 +8,10 @@ Features:
   - Prev/Next image navigation with keyboard
   - Slideshow auto-advance (Space)
   - Rotate 90° (R / Shift+R)
+  - Copy to clipboard (Ctrl+C)
+  - Save As (Ctrl+S)
+  - EXIF overlay (I)
+  - Thumbnail strip (T)
   - Theme-aware styling
   - Cursor feedback (grab/grabbing via QGraphicsView default)
 """
@@ -22,7 +26,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QFrame, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
-    QApplication,
+    QApplication, QFileDialog,
 )
 
 from AssetsManager.core import icons, themes
@@ -116,6 +120,13 @@ class ImageViewerOverlay(QFrame):
         # per change instead of once per image. Capacity is capped (simple
         # drop-oldest) to keep memory bounded.
         self._dir_list_cache: dict[str, tuple[float | None, list[str]]] = {}
+        # EXIF overlay (toggled with I).
+        self._show_exif = False
+        self._exif: dict[str, str] = {}
+        # Thumbnail strip (toggled with T); thumbnails are loaded lazily.
+        self._show_strip = False
+        self._strip_thumbs: dict[int, QPixmap] = {}
+        self._strip_thumb_w = scaled_px(56)
 
         self._m = scaled_px(8)
         self._header_h = scaled_px(36)
@@ -142,6 +153,10 @@ class ImageViewerOverlay(QFrame):
             return
         self._current_path = path
         self._build_image_list()
+        self._exif = {}
+        self._strip_thumbs = {}
+        if self._show_exif:
+            self._exif = self._read_exif(path)
         try:
             reader = QImageReader(path)
             reader.setAutoTransform(True)
@@ -199,10 +214,33 @@ class ImageViewerOverlay(QFrame):
         c = self._container_rect()
         return QRect(c.x(), c.bottom() - self._footer_h, c.width(), self._footer_h)
 
+    def _strip_h(self) -> int:
+        """Height of the thumbnail strip (0 when hidden)."""
+        return scaled_px(64) if self._show_strip else 0
+
+    def _exif_w(self) -> int:
+        """Width of the EXIF side panel (0 when hidden)."""
+        return scaled_px(200) if self._show_exif else 0
+
     def _view_rect(self) -> QRect:
         c = self._container_rect()
-        return QRect(c.x(), c.y() + self._header_h,
-                     c.width(), c.height() - self._header_h - self._footer_h)
+        top = c.y() + self._header_h
+        bottom = c.bottom() - self._footer_h - self._strip_h()
+        left = c.x()
+        right = c.right() - self._exif_w()
+        return QRect(left, top, max(0, right - left + 1), max(0, bottom - top + 1))
+
+    def _strip_rect(self) -> QRect:
+        c = self._container_rect()
+        return QRect(c.x(), c.bottom() - self._footer_h - self._strip_h(),
+                     c.width(), self._strip_h())
+
+    def _exif_rect(self) -> QRect:
+        c = self._container_rect()
+        top = c.y() + self._header_h
+        bottom = c.bottom() - self._footer_h - self._strip_h()
+        return QRect(c.right() - self._exif_w() + 1, top,
+                     self._exif_w(), max(0, bottom - top + 1))
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -282,6 +320,145 @@ class ImageViewerOverlay(QFrame):
 
     def _slideshow_active(self) -> bool:
         return self._slideshow_timer.isActive()
+
+    # ── Copy / Save ─────────────────────────────────────────────
+
+    def _copy_to_clipboard(self):
+        """Copy the current (possibly rotated) image to the clipboard."""
+        if self._pixmap and not self._pixmap.isNull():
+            QApplication.clipboard().setPixmap(self._pixmap)
+
+    def _save_as(self):
+        """Prompt for a destination and save the current image there."""
+        if not self._pixmap or self._pixmap.isNull():
+            return
+        default = self._suggested_save_path()
+        path, _ = QFileDialog.getSaveFileName(
+            self, tr("viewer.save_title"), default, tr("viewer.save_filter"),
+        )
+        if path:
+            self._save_pixmap_to(path)
+
+    def _suggested_save_path(self) -> str:
+        base = Path(self._current_path).stem if self._current_path else "image"
+        if self._current_path:
+            return str(Path(self._current_path).with_name(f"{base}_edited.png"))
+        return f"{base}_edited.png"
+
+    def _save_pixmap_to(self, destination: str) -> bool:
+        """Write the current pixmap to *destination*. Returns success."""
+        if not self._pixmap or self._pixmap.isNull():
+            return False
+        try:
+            ok = self._pixmap.save(destination)
+            if not ok:
+                _log.warning("Pixmap save failed: %s", destination)
+            return bool(ok)
+        except Exception:
+            _log.warning("Pixmap save failed: %s", destination, exc_info=True)
+            return False
+
+    # ── EXIF overlay ─────────────────────────────────────────────
+
+    @staticmethod
+    def _read_exif(path: str) -> dict[str, str]:
+        """Read EXIF tags from *path* as an ordered ``{label: value}`` map.
+
+        Returns an empty dict when the image has no EXIF, the library is
+        unavailable, or decoding fails — EXIF is a best-effort viewer nicety.
+        """
+        try:
+            from PIL import ExifTags, Image
+        except ImportError:
+            return {}
+        try:
+            with Image.open(path) as img:
+                exif = img.getexif()
+            if not exif:
+                return {}
+            result: dict[str, str] = {}
+            for tag_id, value in exif.items():
+                label = ExifTags.TAGS.get(tag_id)
+                if label is None:
+                    continue
+                if isinstance(value, bytes):
+                    value = value.decode("utf-8", "replace").rstrip("\x00")
+                result[str(label)] = str(value)[:80]
+            return result
+        except Exception:
+            _log.debug("EXIF read failed for %s", path, exc_info=True)
+            return {}
+
+    def _toggle_exif(self):
+        """Show/hide the EXIF side panel."""
+        self._show_exif = not self._show_exif
+        if self._show_exif and self._current_path:
+            self._exif = self._read_exif(self._current_path)
+        self._view.setGeometry(self._view_rect())
+        self.update()
+
+    # ── Thumbnail strip ──────────────────────────────────────────
+
+    def _strip_layout(self):
+        """Return ``(strip_rect, gap, thumb_w, start_index, visible_count)``."""
+        sr = self._strip_rect()
+        gap = scaled_px(4)
+        tw = self._strip_thumb_w
+        visible = max(0, (sr.width() - 2 * gap) // (tw + gap))
+        start = 0
+        if self._image_list and visible < len(self._image_list):
+            start = max(0, min(self._image_idx - visible // 2,
+                               len(self._image_list) - visible))
+        return sr, gap, tw, start, visible
+
+    def _strip_start_index(self) -> int:
+        return self._strip_layout()[3]
+
+    def _strip_index_at(self, x: int) -> int:
+        """Map an x coordinate in the strip to an image-list index (or -1)."""
+        if not self._show_strip or not self._image_list:
+            return -1
+        sr, gap, tw, start, visible = self._strip_layout()
+        if not sr.contains(x, sr.center().y()):
+            return -1
+        rel = (x - sr.x() - gap) // (tw + gap)
+        if rel < 0 or rel >= visible:
+            return -1
+        idx = start + rel
+        return idx if 0 <= idx < len(self._image_list) else -1
+
+    def _ensure_strip_thumb(self, index: int) -> QPixmap | None:
+        """Load (and cache) a downscaled thumbnail for ``_image_list[index]``."""
+        if index in self._strip_thumbs:
+            return self._strip_thumbs[index]
+        if not (0 <= index < len(self._image_list)):
+            return None
+        path = self._image_list[index]
+        try:
+            reader = QImageReader(path)
+            reader.setAutoTransform(True)
+            orig = reader.size()
+            if not orig.isValid():
+                return None
+            reader.setScaledSize(orig.scaled(
+                self._strip_thumb_w, self._strip_thumb_w,
+                Qt.AspectRatioMode.KeepAspectRatio))
+            qimg = reader.read()
+            if qimg.isNull():
+                return None
+            pm = QPixmap.fromImage(qimg)
+            self._strip_thumbs[index] = pm
+            return pm
+        except Exception:
+            _log.debug("Strip thumbnail load failed for %s", path, exc_info=True)
+            return None
+
+    def _toggle_strip(self):
+        """Show/hide the thumbnail navigation strip."""
+        self._show_strip = not self._show_strip
+        self._strip_thumbs.clear()
+        self._view.setGeometry(self._view_rect())
+        self.update()
 
     # ── Chrome painting ─────────────────────────────────────────
 
@@ -363,7 +540,85 @@ class ImageViewerOverlay(QFrame):
             p.drawText(QRect(footer.x() + 14, footer.y(), footer.width() - 30, footer.height()),
                         Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, dims)
 
+        # ── Thumbnail strip ──
+        if self._show_strip:
+            self._paint_strip(p, t)
+
+        # ── EXIF side panel ──
+        if self._show_exif:
+            self._paint_exif(p, t)
+
         p.end()
+
+    def _paint_strip(self, p, t):
+        sr, gap, tw, start, visible = self._strip_layout()
+        if sr.isNull() or visible <= 0:
+            return
+        p.setBrush(QColor(t["header"]))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawRoundedRect(sr, 8, 8)
+        for rel in range(visible):
+            idx = start + rel
+            if idx >= len(self._image_list):
+                break
+            cell = QRect(sr.x() + gap + rel * (tw + gap), sr.y() + gap,
+                         tw, sr.height() - 2 * gap)
+            thumb = self._ensure_strip_thumb(idx)
+            if thumb is not None and not thumb.isNull():
+                sw, sh = thumb.width(), thumb.height()
+                scale = min(cell.width() / sw, cell.height() / sh)
+                dw, dh = int(sw * scale), int(sh * scale)
+                p.drawPixmap(QRect(cell.x() + (cell.width() - dw) // 2,
+                                   cell.y() + (cell.height() - dh) // 2, dw, dh), thumb)
+            else:
+                p.setBrush(QColor(t["panel"]))
+                p.setPen(Qt.PenStyle.NoPen)
+                p.drawRect(cell)
+            if idx == self._image_idx:
+                p.setPen(QPen(QColor(t["accent"]), 2))
+            else:
+                p.setPen(QPen(QColor(t["border"]), 1))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawRect(cell)
+
+    def _paint_exif(self, p, t):
+        panel = self._exif_rect()
+        if panel.isNull():
+            return
+        p.setBrush(QColor(t["panel"]))
+        p.setPen(QPen(QColor(t["border"]), 1))
+        p.drawRoundedRect(panel, 8, 8)
+
+        title_font = QFont()
+        title_font.setPointSize(scaled_pt(10))
+        title_font.setBold(True)
+        p.setFont(title_font)
+        p.setPen(QColor(t["heading"]))
+        p.drawText(QRect(panel.x() + 10, panel.y() + 6, panel.width() - 20, 20),
+                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                   tr("viewer.exif_title"))
+
+        body_font = QFont()
+        body_font.setPointSize(scaled_pt(9))
+        p.setFont(body_font)
+        if not self._exif:
+            p.setPen(QColor(t["muted"]))
+            p.drawText(QRect(panel.x() + 10, panel.y() + 30, panel.width() - 20, 20),
+                       Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                       tr("viewer.exif_none"))
+            return
+        y = panel.y() + 30
+        row_h = 18
+        for label, value in self._exif.items():
+            if y > panel.bottom() - row_h:
+                break
+            p.setPen(QColor(t["muted"]))
+            p.drawText(QRect(panel.x() + 10, y, panel.width() - 20, row_h),
+                       Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, label)
+            p.setPen(QColor(t["body"]))
+            p.drawText(QRect(panel.x() + 10, y, panel.width() - 20, row_h),
+                       Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, value)
+            y += row_h
 
     # ── Input handling ──────────────────────────────────────────
 
@@ -387,6 +642,14 @@ class ImageViewerOverlay(QFrame):
             if close_r.contains(event.pos()):
                 self.close()
                 return
+            if self._show_strip:
+                idx = self._strip_index_at(event.pos().x())
+                if idx >= 0 and idx != self._image_idx:
+                    self._image_idx = idx
+                    target = self._image_list[idx]
+                    self.load_image(target)
+                    QTimer.singleShot(10, self._view.fit_in_view)
+                    return
         super().mousePressEvent(event)
 
     def keyPressEvent(self, event):
@@ -403,6 +666,14 @@ class ImageViewerOverlay(QFrame):
             self._view.fit_in_view()
         elif k == Qt.Key.Key_R:
             self._rotate(-90 if event.modifiers() & Qt.KeyboardModifier.ShiftModifier else 90)
+        elif k == Qt.Key.Key_C and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self._copy_to_clipboard()
+        elif k == Qt.Key.Key_S and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self._save_as()
+        elif k == Qt.Key.Key_I:
+            self._toggle_exif()
+        elif k == Qt.Key.Key_T:
+            self._toggle_strip()
         elif k in (Qt.Key.Key_1, Qt.Key.Key_0):
             self._view.reset_zoom()
         elif k == Qt.Key.Key_Plus or k == Qt.Key.Key_Equal:
