@@ -7,7 +7,6 @@ become plain module functions used by both the panel and the grid canvas.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QSize
@@ -19,7 +18,7 @@ from AssetsManager.core import themes
 from AssetsManager.core.color_utils import _hex_to_rgb
 from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager import i18n
-from AssetsManager.panels.file_list._common import IMAGE_EXTS
+from AssetsManager.application.asset_filters import find_first_image
 from AssetsManager.panels.file_list._commands import FileListCommand, FileListCommandContext
 
 tr = i18n.tr
@@ -40,15 +39,10 @@ def _make_folder_highlight(t: dict) -> QColor:
 
 
 def _first_image_in(dir_path: str) -> str | None:
-    try:
-        for i, entry in enumerate(os.scandir(dir_path)):
-            if i > 500:
-                break
-            if entry.is_file() and Path(entry.name).suffix.lower() in IMAGE_EXTS:
-                return entry.path
-    except OSError:
-        pass
-    return None
+    # Delegates to the shared application helper (capped scan to avoid a long
+    # synchronous scandir on the GUI thread for huge directories).
+    result = find_first_image(Path(dir_path), limit=500)
+    return str(result) if result is not None else None
 
 
 def _make_nav_button(icon_name, tooltip, callback, font_size=13):

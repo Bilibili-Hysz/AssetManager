@@ -85,11 +85,17 @@ def extension_matches_category(ext: str, category: str) -> bool:
 
 # ── File helpers ─────────────────────────────────────────────────
 
-def find_first_image(dir_path: Path) -> Path | None:
-    """Return the path of the first image file in a directory, or None."""
+def find_first_image(dir_path: Path, limit: int | None = None) -> Path | None:
+    """Return the path of the first image file in a directory, or None.
+
+    ``limit`` bounds the number of directory entries scanned; ``None`` scans
+    the whole directory.  Scans in filesystem order (not sorted).
+    """
     try:
         with os.scandir(dir_path) as entries:
-            for entry in entries:
+            for i, entry in enumerate(entries):
+                if limit is not None and i >= limit:
+                    break
                 if entry.is_file() and Path(entry.name).suffix.lower() in IMAGE_EXTS:
                     return Path(entry.path)
         return None
