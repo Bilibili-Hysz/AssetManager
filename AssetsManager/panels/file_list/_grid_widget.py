@@ -30,12 +30,12 @@ _CATEGORY_LABELS: dict[str, str] = dict(FILTER_CATEGORY_LABELS)
 # Layout constants — matching GridDelegate exactly (scaled for DPI)
 _CARD_PAD = scaled_px(6)
 _PREVIEW_MARGIN = scaled_px(4)
-_CORNER_R = scaled_px(8)
-_PREVIEW_R = scaled_px(6)
+_CORNER_R = scaled_px(10)
+_PREVIEW_R = scaled_px(8)
 _TEXT_TOP_GAP = scaled_px(5)
 _TEXT_LINE_GAP = scaled_px(1)
 _BADGE_H = scaled_px(14)
-_BADGE_R = scaled_px(4)
+_BADGE_R = scaled_px(6)
 
 _BADGE_PAD_H = scaled_px(5)
 _FULL_REBUILD_TEXTURE_BUDGET = 12
@@ -1376,20 +1376,6 @@ class FileListGridWidget(QWidget):
                        self._fm_sub.elidedText(label, Qt.TextElideMode.ElideRight, rect.width()))
 
     # ── Badge ────────────────────────────────────────────────
-
-    @staticmethod
-    def _ext_name_color(ext: str) -> QColor:
-        t = themes.get()
-        cat = EXT_TO_CATEGORY.get(ext)
-        if cat == "Images":
-            return QColor(t['success'])
-        if cat == "3D Models":
-            return QColor(t['accent'])
-        if cat == "Videos":
-            return QColor("#c480d4")  # purple — no theme equivalent
-        if cat == "Archives":
-            return QColor(t['warning'])
-        return QColor(t['muted'])
 
     def _draw_badge(self, p: QPainter, preview_rect: QRect, ext: str):
         color = badge_color_for_extension(ext)

@@ -12,6 +12,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
 from AssetsManager.core import themes
 from AssetsManager.core.color_utils import alpha
+from AssetsManager.core.constants import DEFAULT_LAN_THEME_COLOR
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
@@ -753,9 +754,9 @@ class SharingSettingsDialog(TabbedDialog):
 
         color_row = QHBoxLayout()
         color_row.addWidget(self.make_label(tr("sharing.label_theme_color")))
-        self._color_edit = self.make_input("#5b7ff5")
+        self._color_edit = self.make_input(DEFAULT_LAN_THEME_COLOR)
         color_row.addWidget(self._color_edit)
-        reset_btn = self.make_secondary_btn(tr("sharing.btn_reset"), lambda: self._color_edit.setText("#5b7ff5"))
+        reset_btn = self.make_secondary_btn(tr("sharing.btn_reset"), lambda: self._color_edit.setText(DEFAULT_LAN_THEME_COLOR))
         reset_btn.setFixedWidth(scaled_px(60))
         color_row.addWidget(reset_btn)
         bl.addLayout(color_row)
@@ -1043,7 +1044,7 @@ class SharingSettingsDialog(TabbedDialog):
             "lan_ip_whitelist": self._lines(self._ip_whitelist),
             "lan_ssl_cert": self._ssl_cert.text() or None,
             "lan_ssl_key": self._ssl_key.text() or None,
-            "lan_theme_color": self._color_edit.text() or "#5b7ff5",
+            "lan_theme_color": self._color_edit.text() or DEFAULT_LAN_THEME_COLOR,
             "lan_welcome_msg": self._welcome_edit.toPlainText(),
             "lan_footer_text": self._footer_edit.text(),
             "lan_include_types": [key for key, check in self._type_checks.items() if check.isChecked()],
@@ -2061,7 +2062,7 @@ class SharingSettingsDialog(TabbedDialog):
             "\n".join(s.get("lan_exclude_patterns", [".git", "node_modules", "__pycache__", ".thumbnails"]))
         )
 
-        self._color_edit.setText(s.get("lan_theme_color", "#5b7ff5"))
+        self._color_edit.setText(s.get("lan_theme_color", DEFAULT_LAN_THEME_COLOR))
         self._welcome_edit.setPlainText(s.get("lan_welcome_msg", ""))
         self._footer_edit.setText(s.get("lan_footer_text", ""))
 
@@ -2139,7 +2140,7 @@ class SharingSettingsDialog(TabbedDialog):
         exclude = [line.strip() for line in self._exclude_patterns.toPlainText().splitlines() if line.strip()]
         s.set("lan_exclude_patterns", exclude)
 
-        s.set("lan_theme_color", self._color_edit.text() or "#5b7ff5")
+        s.set("lan_theme_color", self._color_edit.text() or DEFAULT_LAN_THEME_COLOR)
         s.set("lan_welcome_msg", self._welcome_edit.toPlainText())
         s.set("lan_footer_text", self._footer_edit.text())
 

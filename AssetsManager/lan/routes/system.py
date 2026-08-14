@@ -5,6 +5,7 @@ from typing import cast
 from aiohttp import web
 
 from AssetsManager.application import ProjectDepthConfig
+from AssetsManager.core.constants import DEFAULT_LAN_THEME_COLOR
 from AssetsManager.core.format_utils import format_size
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.lan.dto import RuntimeCursorResponse, StatsResponse
@@ -66,7 +67,7 @@ async def handle_info(request):
         "library_root": lan.library_root.name,
         "auth_enabled": auth_enabled,
         "auth_mode": auth_mode,
-        "theme_color": s.get("lan_theme_color", "#5b7ff5"),
+        "theme_color": s.get("lan_theme_color", DEFAULT_LAN_THEME_COLOR),
         "welcome_msg": s.get("lan_welcome_msg", ""),
         "footer_text": s.get("lan_footer_text", ""),
         "feature_flags": {

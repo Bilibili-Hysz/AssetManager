@@ -26,6 +26,7 @@ from shiboken6 import isValid
 
 from AssetsManager.core import icons, themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+from AssetsManager.widgets.elevation import apply_elevation
 from AssetsManager.widgets.stylekit import StyleKit
 
 _LEVEL_COLORS = {
@@ -116,18 +117,24 @@ class Toast(QWidget):
 
         # ── Outer shell (left bar + body) ──────────────────────
         row = QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 0, 0)
+        shadow_margin = px(8)
+        row.setContentsMargins(shadow_margin, shadow_margin, shadow_margin, shadow_margin)
         row.setSpacing(0)
         row.addWidget(border_bar)
         row.addWidget(body)
+        # Subtle elevation on the opaque card so the toast "floats" above the
+        # underlying window. The outer margin reserves room for the shadow.
+        apply_elevation(body, level=1)
         self._text_labels = tuple(
             label for label in (msg_label, sub_label) if label is not None
         )
-        # Horizontal chrome (accent bar + body margins + optional icon
-        # column). Computed from the fixed widths set above instead of
-        # widget.width(), which is still 0 before the toast is laid out.
+        # Horizontal chrome (shadow margin + accent bar + body margins +
+        # optional icon column). Computed from the fixed widths set above
+        # instead of widget.width(), which is still 0 before the toast is laid
+        # out.
         self._horizontal_chrome = (
-            px(4)
+            2 * shadow_margin
+            + px(4)
             + body_layout.contentsMargins().left()
             + body_layout.contentsMargins().right()
             + (px(20) if icon_label is not None else 0)

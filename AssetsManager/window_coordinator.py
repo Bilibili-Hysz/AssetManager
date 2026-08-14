@@ -49,7 +49,7 @@ class WindowCoordinator:
     def apply_status_bar_theme(self) -> None:
         t = themes.get()
         w = self._window
-        w._share_status_label.setStyleSheet(f"color: {t['muted']}; padding: 0 8px;")
+        w._share_status_label.setStyleSheet(f"color: {t['muted']}; padding: 0 {scaled_px(8)}px;")
         w.statusBar().setStyleSheet(
             f"QStatusBar {{ background: {t['header']}; color: {t['body']}; "
             f"border-top: 1px solid {t['border']}; font-size: {scaled_pt(11)}px; }}"

@@ -15,6 +15,7 @@ from PySide6.QtCore import QSize
 from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QWidget
 from AssetsManager import i18n
 from AssetsManager.core import icons
+from AssetsManager.core.constants import DEFAULT_LAN_THEME_COLOR
 from AssetsManager.core.ui_scale import scaled_px
 
 if TYPE_CHECKING:
@@ -42,7 +43,7 @@ HOT_SHARING_SETTINGS = {
     "lan_exclude_patterns": "exclude_patterns",
 }
 HOT_SHARING_DEFAULTS = {
-    "lan_share_name": "AssetManager", "lan_blur_tags": [], "lan_theme_color": "#5b7ff5",
+    "lan_share_name": "AssetManager", "lan_blur_tags": [], "lan_theme_color": DEFAULT_LAN_THEME_COLOR,
     "lan_welcome_msg": "", "lan_footer_text": "", "lan_show_hidden": False,
     "lan_max_depth": 0, "lan_include_types": None, "lan_exclude_patterns": None,
 }
@@ -363,13 +364,13 @@ class LanSharingMixin:
                     f"{tr('sharing.status_active')} · {url}"
                 )
                 self._share_status_label.setStyleSheet(
-                    f"color: {t['accent']}; padding: 0 8px;"
+                    f"color: {t['accent']}; padding: 0 {scaled_px(8)}px;"
                 )
                 self._share_status_label.setToolTip(tr("sharing.click_to_copy"))
             else:
                 self._share_status_label.setText(tr("sharing.off"))
                 self._share_status_label.setStyleSheet(
-                    f"color: {t['muted']}; padding: 0 8px;"
+                    f"color: {t['muted']}; padding: 0 {scaled_px(8)}px;"
                 )
                 self._share_status_label.setToolTip(tr("sharing.click_to_share"))
 

@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 from AssetsManager.core import icons
+from AssetsManager.core.constants import DEFAULT_LAN_THEME_COLOR
 from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager import i18n
 
@@ -99,7 +100,7 @@ class TagStyleDialog(QDialog):
     def _pick_color(self):
         from AssetsManager.dialogs.color_picker_dialog import ColorPickerDialog
 
-        current = QColor(self._color) if self._color else QColor("#5b7ff5")
+        current = QColor(self._color) if self._color else QColor(DEFAULT_LAN_THEME_COLOR)
         dialog = ColorPickerDialog(initial_color=current, parent=self)
         dialog.color_selected.connect(self._on_color_picked)
         dialog.exec()
