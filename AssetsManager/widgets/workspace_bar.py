@@ -93,7 +93,7 @@ class WorkspaceBar(QTabBar):
         self._renamer_style = (
             f"QLineEdit {{ background: {t['panel']}; color: {t['heading']}; "
             f"border: 1px solid {alpha(t['accent'], 0.627)}; border-radius: {scaled_px(4)}px; "
-            f"padding: 2px 6px; font-size: {scaled_pt(11)}px; selection-background-color: {alpha(t['accent'], 0.50)}; }}"
+            f"padding: {scaled_px(2)}px {scaled_px(6)}px; font-size: {scaled_pt(11)}px; selection-background-color: {alpha(t['accent'], 0.50)}; }}"
         )
         self.setStyleSheet(
             f"QTabBar {{ background: transparent; }}"
@@ -101,8 +101,8 @@ class WorkspaceBar(QTabBar):
             f"  background: transparent; color: {t['muted']}; "
             f"  border: 1px solid transparent; "
             f"  border-top-left-radius: {scaled_px(6)}px; border-top-right-radius: {scaled_px(6)}px; "
-            f"  padding: 2px 8px; margin-right: 1px; "
-            f"  font-size: {scaled_pt(11)}px; min-width: 22px; max-width: 140px;"
+            f"  padding: {scaled_px(2)}px {scaled_px(8)}px; margin-right: {scaled_px(1)}px; "
+            f"  font-size: {scaled_pt(11)}px; min-width: {scaled_px(22)}px; max-width: {scaled_px(140)}px;"
             f"}} "
             f"QTabBar::tab:selected {{ "
             f"  color: {t['heading']}; "

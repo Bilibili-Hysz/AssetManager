@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
 )
 
+from AssetsManager.core import themes
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 
@@ -337,7 +338,7 @@ class _ColorSwatchSection(QGroupBox):
         swatch = self._swatches.get(color_name)
         if swatch:
             swatch.setStyleSheet(
-                f"background: {color_hex}; border: 1px solid #555; border-radius: 4px;"
+                f"background: {color_hex}; border: 1px solid {themes.color('border')}; border-radius: {scaled_px(4)}px;"
             )
 
     def set_all_colors(self, colors: dict[str, str]) -> None:

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QSpinBox, QGroupBox, QButtonGroup,
 )
 from PySide6.QtGui import QColor
+from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager.widgets.hsv_wheel import HSVWheel, BrightnessSlider
 from AssetsManager import i18n
@@ -93,7 +94,7 @@ class ColorPickerDialog(QDialog):
         self._preview = QLabel()
         self._preview.setFixedSize(scaled_px(32), scaled_px(32))
         self._preview.setStyleSheet(
-            f"background: {self._color.name()}; border: 1px solid #555; border-radius: 4px;"
+            f"background: {self._color.name()}; border: 1px solid {themes.color('border')}; border-radius: {scaled_px(4)}px;"
         )
         hex_row.addWidget(self._preview)
         hex_row.addStretch()
@@ -201,7 +202,7 @@ class ColorPickerDialog(QDialog):
             self._hex_input.setText(self._color.name())
             # Preview
             self._preview.setStyleSheet(
-                f"background: {self._color.name()}; border: 1px solid #555; border-radius: 4px;"
+                f"background: {self._color.name()}; border: 1px solid {themes.color('border')}; border-radius: {scaled_px(4)}px;"
             )
         finally:
             self._updating = False
