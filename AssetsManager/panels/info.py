@@ -49,6 +49,7 @@ class InfoPanel(PanelContent):
     open_requested = Signal(str)
     copy_path_requested = Signal(str)
     view_fullscreen = Signal(str)  # request viewer panel
+    navigate_requested = Signal(str)  # request file-list navigation
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -209,6 +210,17 @@ class InfoPanel(PanelContent):
             f"border-radius: {sk.px(6)}px; padding: {sk.px(2)}px {sk.px(10)}px; font-size: {sk.pt(11)}px;")
         self._manage_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_row.addWidget(self._manage_btn)
+        self._browse_btn = QPushButton(tr("info.browse_tags"))
+        self._browse_btn.setIcon(icons.icon("tag", color="icon_muted", size=scaled_px(14)))
+        self._browse_btn.setIconSize(QSize(scaled_px(14), scaled_px(14)))
+        self._browse_btn.setAccessibleName(tr("info.browse_tags"))
+        self._browse_btn.setToolTip(tr("info.browse_tags_tooltip"))
+        self._browse_btn.clicked.connect(self._open_tag_browser)
+        self._browse_btn.setStyleSheet(
+            f"background: transparent; color: {sk.token('muted')}; border: 1px solid {sk.token('border')}; "
+            f"border-radius: {sk.px(6)}px; padding: {sk.px(2)}px {sk.px(10)}px; font-size: {sk.pt(11)}px;")
+        self._browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_row.addWidget(self._browse_btn)
         add_row.addStretch()
         tags_outer.addLayout(add_row)
         details_layout.addWidget(tags_grp)
@@ -310,6 +322,7 @@ class InfoPanel(PanelContent):
         for btn, color, icon_name in [
             (self._add_tag_btn, "icon_muted", "tag"),
             (self._manage_btn, "icon_muted", "settings"),
+            (self._browse_btn, "icon_muted", "tag"),
         ]:
             btn.setIcon(icons.icon(icon_name, color=color, size=scaled_px(14)))
             btn.setIconSize(QSize(scaled_px(14), scaled_px(14)))
@@ -357,6 +370,9 @@ class InfoPanel(PanelContent):
         self._add_tag_btn.setAccessibleName(tr("info.add_tag"))
         self._manage_btn.setText(tr("info.manage_tags"))
         self._manage_btn.setAccessibleName(tr("info.manage_tags"))
+        self._browse_btn.setText(tr("info.browse_tags"))
+        self._browse_btn.setAccessibleName(tr("info.browse_tags"))
+        self._browse_btn.setToolTip(tr("info.browse_tags_tooltip"))
         self._notes.setPlaceholderText(tr("info.notes_placeholder"))
         self._preview.setToolTip(tr("info.preview_dbl_click"))
         self._open_btn.setText(tr("info.open"))
@@ -954,6 +970,16 @@ class InfoPanel(PanelContent):
         if dlg.exec() == dlg.DialogCode.Accepted and dlg.was_modified():
             new_tags = self._controller.get_tags(self._current_path)
             self._render_tags(new_tags)
+
+    def _open_tag_browser(self):
+        """Open the standalone tag browser and forward file clicks to navigation."""
+        scoped = self._scoped_services
+        if scoped is None:
+            return
+        from AssetsManager.dialogs.tag_browser_dialog import TagBrowserDialog
+        dlg = TagBrowserDialog(scoped, self)
+        dlg.directory_selected.connect(self.navigate_requested.emit)
+        dlg.exec()
 
     def _remove_tag(self, tag: str):
         if not self._current_path or not self._controller:

@@ -175,7 +175,7 @@
 
 ## 未修项（后续轮次）
 
-- **P7**：~~tag_tree 文件行点击 emit directory_selected 全应用无消费者~~ **已修复（2026-08-15）**：`window.py` 现已创建 tag_tree dock（左侧，垂直分栏于 sidebar 之下）并接线 `tag_tree.directory_selected → file_list.navigate_to`（navigate_to 对文件路径自动落到父目录）。测试 `test_tag_tree_file_click_emits_directory_selected`。
+- **P7**：tag_tree 文件行点击 emit directory_selected 全应用无消费者（需 window/dock_factory 接线 → file_list.navigate_to）。注：2026-08-15 曾以 dock 形式接线，后按用户要求改为独立窗口，接线随新入口重做。
 - **P8**：tag_tree 标签过滤无效果（get_tag_filter() 无消费方，需跨面板下发；且 file_list model 尚无按 tag 过滤维度——属独立特性，仍待做）
 - **W4 残余**：lan_sharing F4 重启路径重复弹确认（保守注释化，未改逻辑）
 - **D8 残余**：share_link_dialog 关闭后 worker 清理（_on_dialog_closed 已断开信号，任务本身仍会跑完——线程池负载场景可接受）

@@ -82,6 +82,26 @@ def test_tag_tree_file_click_emits_directory_selected():
         _app().processEvents()
 
 
+def test_tag_browser_dialog_forwards_file_click(monkeypatch):
+    _app()
+    from AssetsManager.dialogs.tag_browser_dialog import TagBrowserDialog
+    from AssetsManager.panels.tag_tree import TagTreePanel
+
+    # Avoid the controller/tag-store query during construction; the dialog
+    # only needs the panel to exist for the forwarding assertion.
+    monkeypatch.setattr(TagTreePanel, "set_scoped_services", lambda self, services, **kw: None)
+    dlg = TagBrowserDialog(object())
+    try:
+        emitted = []
+        dlg.directory_selected.connect(emitted.append)
+        dlg._on_file_selected("C:/lib/a.png")
+        assert emitted == ["C:/lib/a.png"]
+    finally:
+        dlg.close()
+        dlg.deleteLater()
+        _app().processEvents()
+
+
 def test_tag_tree_rename_refreshes_tree(monkeypatch):
     _app()
     panel = TagTreePanel()
