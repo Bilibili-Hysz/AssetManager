@@ -944,27 +944,21 @@ class FileListGridWidget(QWidget):
         self._frame_rect = QRect()
         self._frame_request_count = 0
 
-    def _request_frame(self, rows=None, *, full: bool = False, overlay: bool = False, rect: QRect | None = None) -> None:
+    def _request_frame(self, rows=None, *, full: bool = False, overlay: bool = False) -> None:
         """Coalesce visual invalidations until Qt can schedule one repaint."""
         self._frame_request_count += 1
         if full or self._frame_full:
             self._frame_full = True
-        elif rect is not None and not rect.isEmpty():
-            clipped = rect.intersected(self.rect())
-            if not clipped.isEmpty():
-                self._frame_rect = (
-                    clipped if self._frame_rect.isNull() else self._frame_rect.united(clipped)
-                )
         elif rows is not None and self._layout is not None and hasattr(self._layout, "rect_at"):
             for row in rows:
-                row_rect = self._layout.rect_at(row)
-                if row_rect is None:
+                rect = self._layout.rect_at(row)
+                if rect is None:
                     continue
                 padding = (
-                    max(scaled_px(8), int(max(row_rect.width(), row_rect.height()) * 0.05) + scaled_px(6))
+                    max(scaled_px(8), int(max(rect.width(), rect.height()) * 0.05) + scaled_px(6))
                     if overlay else scaled_px(2)
                 )
-                viewport_rect = row_rect.translated(0, -self._scroll_y).adjusted(
+                viewport_rect = rect.translated(0, -self._scroll_y).adjusted(
                     -padding, -padding, padding, padding)
                 viewport_rect = viewport_rect.intersected(self.rect())
                 if not viewport_rect.isEmpty():
@@ -1647,34 +1641,14 @@ class FileListGridWidget(QWidget):
                 self._scrollbar.setValue(rect.top() - self.height() // 4)
 
     def _on_scroll(self, value: int):
-        old_sy = self._scroll_y
         self._scroll_y = value
         self.set_scrolling()
-        dy = value - old_sy
-        # Overlays (hover lift, selection highlight, fades) are drawn on top of
-        # the viewport composite and move with the scroll. A strip-only repaint
-        # would leave their old pixels behind, so any active overlay forces a
-        # full repaint. Otherwise repaint only the newly-exposed band, which the
-        # viewport composite shifts and re-composites.
-        has_overlay = (
-            self._hover_row >= 0
-            or self._hover_progress
-            or self._selection_progress
-            or self._selection
-            or self._thumb_opacity
-            or self._rubber_band_active
-        )
-        if has_overlay or abs(dy) >= self.height():
-            self._request_frame(full=True)
-            return
-        if dy > 0:
-            rect = QRect(0, self.height() - dy, self.width(), dy)
-        elif dy < 0:
-            rect = QRect(0, 0, self.width(), -dy)
-        else:
-            # Clamped at a scroll end: no newly-exposed content to paint.
-            return
-        self._request_frame(rect=rect)
+        # Scrolling shifts the whole visible content, so the full viewport must
+        # be re-blitted to screen every frame. The per-frame cost is one
+        # drawPixmap: `_viewport_compose` re-composites the offscreen texture
+        # cheaply (shift + repaint only the newly-exposed strip), and a partial
+        # screen repaint would leave the non-strip region showing stale pixels.
+        self._request_frame(full=True)
 
     # ── Resize ───────────────────────────────────────────────
 

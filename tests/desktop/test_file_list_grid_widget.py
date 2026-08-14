@@ -971,37 +971,22 @@ def test_grid_scroll_blit_repaints_newly_exposed_strip(monkeypatch):
     app.processEvents()
 
 
-def test_grid_scroll_falls_back_to_full_repaint_with_hover(monkeypatch):
+def test_grid_scroll_always_requests_full_repaint(monkeypatch):
+    # Scrolling shifts the whole viewport, so the screen blit must be full even
+    # though the offscreen composite is re-built incrementally. A strip-only
+    # screen repaint would leave stale (ghosted) pixels outside the strip.
     widget = FileListGridWidget()
     widget.set_layout_ref(GridLayout())
     widget._model_rows = 10
     widget.resize(300, 200)
     widget.update_layout(10, 300)
     widget._scroll_y = 0
-    widget._hover_row = 3
     requested = []
     monkeypatch.setattr(widget, "_request_frame", lambda **kwargs: requested.append(kwargs))
 
     widget._on_scroll(50)
 
     assert requested == [{"full": True}]
-
-
-def test_grid_scroll_uses_strip_repaint_without_overlays(monkeypatch):
-    widget = FileListGridWidget()
-    widget.set_layout_ref(GridLayout())
-    widget._model_rows = 10
-    widget.resize(300, 200)
-    widget.update_layout(10, 300)
-    widget._scroll_y = 0
-    requested = []
-    monkeypatch.setattr(widget, "_request_frame", lambda **kwargs: requested.append(kwargs))
-
-    widget._on_scroll(50)
-
-    assert len(requested) == 1
-    assert requested[0].get("full") is not True
-    assert requested[0]["rect"] == QRect(0, widget.height() - 50, widget.width(), 50)
 
 
 def test_grid_mark_scan_settled_clears_reset_guard():
