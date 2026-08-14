@@ -128,7 +128,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._header_title = QLabel(tr("filelist.header"))
         self._header_title.setStyleSheet(
             f"color: {t['heading']}; font-size: {scaled_pt(12)}px; font-weight: bold; "
-            f"background: transparent; border: none; padding: 2px 4px;")
+            f"background: transparent; border: none; padding: {scaled_px(2)}px {scaled_px(4)}px;")
         header_layout.addWidget(self._header_title)
         header_layout.addStretch()
         self.content_layout.addWidget(self._header)
@@ -521,7 +521,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
         self._header_title.setStyleSheet(
             f"color: {t['heading']}; font-size: {scaled_pt(12)}px; font-weight: bold; "
-            f"background: transparent; border: none; padding: 2px 4px;")
+            f"background: transparent; border: none; padding: {scaled_px(2)}px {scaled_px(4)}px;")
         self._fst_status_style()
         for btn in self._nav_buttons:
             btn.setStyleSheet(
