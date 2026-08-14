@@ -39,3 +39,12 @@
 4. **V4 + 其余局部样式扫尾**（逐步）。
 
 > 说明：`plugin_manager_dialog`/`theme_preview` 里的 `t.get("danger","#e74c3c")` 等**带默认值的 fallback hex** 属于正常兜底，不列为问题；真正的问题是「无 token、无 scaled 的裸硬编码」。
+
+## 6. 局部样式摸底结论（238 处 `setStyleSheet` 扫描后）
+
+- 全部 238 处 `setStyleSheet` 现已归类为三类：
+  1. **token 驱动**（`StyleKit.label_css/muted_css/state_css`、`themes.color/get`、`alpha`、`scaled_px/scaled_pt`）——占绝大多数，主题切换可正确跟随。
+  2. **合法 fallback**（`t.get("danger","#e74c3c")`、`get("accent","#888888")`、`QColor(...).get("accent","#4a60b0")`）——兜底值，正常。
+  3. **对比度派生文字色**（`tag_chip.py`/`tag_style_dialog.py` 的 `#ffffff`/`#1b1b1b` 按背景明度选择）——逻辑所需，正常。
+- **裸硬编码（无 token、无 scaled）已在 V1–V4 清理完毕**：`color_picker_dialog`、`theme_preview`、`workspace_bar`、`info.py`。
+- 结论：硬编码样式问题已收口；剩余「局部 vs 全局 QSS」是结构取舍（特定控件用局部样式属正常），无需再逐处收敛。
