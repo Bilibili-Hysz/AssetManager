@@ -166,6 +166,7 @@ class InfoPanel(PanelContent):
         self._plugin_fields_layout.setContentsMargins(0, 0, 0, 0)
         self._plugin_fields_layout.setSpacing(scaled_px(2))
         self._plugin_fields_widget.setVisible(False)
+        self._plugin_field_rows: dict[str, QWidget] = {}
         meta_layout.addWidget(self._plugin_fields_widget)
 
         details_layout.addWidget(meta)
@@ -466,10 +467,7 @@ class InfoPanel(PanelContent):
             button.setIcon(icons.icon(str(icon_name), color="icon_muted", size=scaled_px(15)))
             button.setIconSize(QSize(scaled_px(15), scaled_px(15)))
             button.setAccessibleName(button.toolTip())
-            button.setStyleSheet(
-                f"QPushButton {{ color: {sk.token('muted')}; padding: 0; background: transparent; "
-                f"border: none; border-radius: {sk.px(3)}px; }}"
-                f"QPushButton:hover {{ color: {sk.token('heading')}; background: {sk.token('accent')}; }}")
+        self._style_link_buttons()
 
     def _refresh_plugin_fields_style(self):
         """Update plugin field stylesheets for current theme."""
@@ -543,8 +541,7 @@ class InfoPanel(PanelContent):
             qlabel.setText(value)
             qlabel.setToolTip(value if value and value != "—" else "")
 
-    @staticmethod
-    def _make_link_field() -> QWidget:
+    def _make_link_field(self) -> QWidget:
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         row = QWidget()
         layout = QHBoxLayout(row)
@@ -569,7 +566,48 @@ class InfoPanel(PanelContent):
         btn_holder_layout.setContentsMargins(0, 0, 0, 0)
         btn_holder_layout.setSpacing(2)
         layout.addWidget(btn_holder)
+
+        # Reusable link action buttons. ``_set_link_field`` only toggles
+        # visibility, avoiding a button create/destroy cycle per file switch.
+        self._link_rm_btn = self._make_link_button(
+            "close", "close", tr("info.link_remove"), lambda: self._remove_link(self._current_link_url))
+        self._link_add_btn = self._make_link_button(
+            "plus", "plus", tr("info.link_add"), self._add_link_dialog)
+        self._link_scan_btn = self._make_link_button(
+            "refresh", "refresh", tr("info.scanner.desc"), self._manual_scan_links)
+        for btn in (self._link_rm_btn, self._link_add_btn, self._link_scan_btn):
+            btn_holder_layout.addWidget(btn)
+            btn.hide()
+        self._current_link_url = ""
         return row
+
+    @staticmethod
+    def _make_link_button(property_icon, icon_name, tooltip, callback) -> QPushButton:
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        btn = QPushButton()
+        btn.setIcon(icons.icon(icon_name, color="icon_muted", size=scaled_px(15)))
+        btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        btn.setProperty("semanticIcon", property_icon)
+        btn.setToolTip(tooltip)
+        btn.setAccessibleName(tooltip)
+        btn.setFixedSize(scaled_px(18), scaled_px(18))
+        btn.setFlat(True)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(
+            f"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(11)}px; padding: 0; "
+            f"background: transparent; border: none; border-radius: {sk.px(3)}px; }}"
+            f"QPushButton:hover {{ color: {sk.token('heading')}; background: {sk.token('accent')}; }}")
+        btn.clicked.connect(callback)
+        return btn
+
+    def _style_link_buttons(self):
+        """Re-tint the reusable link buttons after theme/scale changes."""
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        for btn in (self._link_rm_btn, self._link_add_btn, self._link_scan_btn):
+            btn.setStyleSheet(
+                f"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(11)}px; padding: 0; "
+                f"background: transparent; border: none; border-radius: {sk.px(3)}px; }}"
+                f"QPushButton:hover {{ color: {sk.token('heading')}; background: {sk.token('accent')}; }}")
 
     def _set_link_field(self, url: str):
         row = self._field_link
@@ -577,20 +615,10 @@ class InfoPanel(PanelContent):
         if layout is None:
             return
         link_item = layout.itemAt(1)
-        button_item = layout.itemAt(2)
         link_label = link_item.widget() if link_item is not None else None
-        btn_holder = button_item.widget() if button_item is not None else None
-        if not isinstance(link_label, _DragLabel) or btn_holder is None:
+        if not isinstance(link_label, _DragLabel):
             return
-        button_layout = btn_holder.layout()
-        if button_layout is None:
-            return
-        # Clear buttons
-        while button_layout.count():
-            item = button_layout.takeAt(0)
-            widget = item.widget() if item is not None else None
-            if widget is not None:
-                widget.deleteLater()
+        self._current_link_url = url
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         if url:
             short = url[:60] + "…" if len(url) > 60 else url
@@ -601,57 +629,16 @@ class InfoPanel(PanelContent):
             link_label.setStyleSheet(
                 sk.label_css("body", size=12)
                 + " QLabel { text-decoration: underline; }")
-            rm_btn = QPushButton()
-            rm_btn.setIcon(icons.icon("close", color="icon_muted", size=scaled_px(15)))
-            rm_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
-            rm_btn.setProperty("semanticIcon", "close")
-            rm_btn.setToolTip(tr("info.link_remove"))
-            rm_btn.setAccessibleName(tr("info.link_remove"))
-            rm_btn.setFixedSize(scaled_px(18), scaled_px(18))
-            rm_btn.setFlat(True)
-            rm_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            rm_btn.setStyleSheet(
-                f"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(11)}px; padding: 0; "
-                f"background: transparent; border: none; border-radius: {sk.px(3)}px; }}"
-                f"QPushButton:hover {{ color: {sk.token('heading')}; background: {sk.token('accent')}; }}")
-            rm_btn.clicked.connect(lambda: self._remove_link(url))
-            button_layout.addWidget(rm_btn)
         else:
             link_label.setText("—")
             link_label.setToolTip("")
             link_label.set_drag_url("")
             link_label.setCursor(Qt.CursorShape.ArrowCursor)
             link_label.setStyleSheet(sk.label_css("body", size=12))
-            add_btn = QPushButton()
-            add_btn.setIcon(icons.icon("plus", color="icon_muted", size=scaled_px(15)))
-            add_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
-            add_btn.setProperty("semanticIcon", "plus")
-            add_btn.setToolTip(tr("info.link_add"))
-            add_btn.setAccessibleName(tr("info.link_add"))
-            add_btn.setFixedSize(scaled_px(18), scaled_px(18))
-            add_btn.setFlat(True)
-            add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            add_btn.setStyleSheet(
-                f"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(13)}px; padding: 0; "
-                f"background: transparent; border: none; border-radius: {sk.px(3)}px; }}"
-                f"QPushButton:hover {{ color: {sk.token('heading')}; background: {sk.token('accent')}; }}")
-            add_btn.clicked.connect(self._add_link_dialog)
-            button_layout.addWidget(add_btn)
-            scan_btn = QPushButton()
-            scan_btn.setIcon(icons.icon("refresh", color="icon_muted", size=scaled_px(15)))
-            scan_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
-            scan_btn.setProperty("semanticIcon", "refresh")
-            scan_btn.setToolTip(tr("info.scanner.desc"))
-            scan_btn.setAccessibleName(tr("info.scanner.desc"))
-            scan_btn.setFixedSize(scaled_px(18), scaled_px(18))
-            scan_btn.setFlat(True)
-            scan_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            scan_btn.setStyleSheet(
-                f"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(13)}px; padding: 0; "
-                f"background: transparent; border: none; border-radius: {sk.px(3)}px; }}"
-                f"QPushButton:hover {{ color: {sk.token('heading')}; background: {sk.token('accent')}; }}")
-            scan_btn.clicked.connect(self._manual_scan_links)
-            button_layout.addWidget(scan_btn)
+        is_dir = bool(self._current_path and os.path.isdir(self._current_path))
+        self._link_rm_btn.setVisible(bool(url))
+        self._link_add_btn.setVisible(not url)
+        self._link_scan_btn.setVisible(not url and is_dir)
 
     # ── Panel settings toggle ───────────────────────────────────
 
@@ -1371,16 +1358,22 @@ class InfoPanel(PanelContent):
         """Render plugin-contributed metadata fields from FileInfo."""
         self._plugin_fields_widget.setUpdatesEnabled(False)
         try:
-            while self._plugin_fields_layout.count():
-                item = self._plugin_fields_layout.takeAt(0)
-                w = item.widget() if item else None
-                if w is not None:
-                    w.deleteLater()
+            seen = set()
             for field in plugin_fields:
-                self._plugin_fields_layout.addWidget(
-                    self._make_field(field.key.capitalize(), str(field.value))
-                )
-            self._plugin_fields_widget.setVisible(self._plugin_fields_layout.count() > 0)
+                key = field.key.capitalize()
+                seen.add(key)
+                row = self._plugin_field_rows.get(key)
+                if row is None:
+                    row = self._make_field(key, str(field.value))
+                    self._plugin_field_rows[key] = row
+                    self._plugin_fields_layout.addWidget(row)
+                else:
+                    self._set_field_text(row, str(field.value))
+                row.setVisible(True)
+            for key, row in list(self._plugin_field_rows.items()):
+                if key not in seen:
+                    row.setVisible(False)
+            self._plugin_fields_widget.setVisible(bool(seen))
         except Exception:
             _log.exception("Plugin field rendering failed")
             self._plugin_fields_widget.setVisible(False)

@@ -79,6 +79,59 @@ def test_info_scaled_geometry_refresh_recalculates_fixed_metrics(monkeypatch):
         panel.deleteLater()
 
 
+def test_info_link_buttons_are_reused_across_url_updates(tmp_path):
+    panel = InfoPanel()
+    try:
+        panel._current_path = str(tmp_path)
+        panel._set_link_field("")
+        add_btn = panel._link_add_btn
+        scan_btn = panel._link_scan_btn
+        assert not add_btn.isHidden()
+        assert not scan_btn.isHidden()  # directories offer URL scanning
+
+        panel._set_link_field("https://example.com/asset")
+        assert panel._link_rm_btn is panel._link_rm_btn
+        assert not panel._link_rm_btn.isHidden()
+        assert add_btn.isHidden()
+        assert scan_btn.isHidden()
+
+        panel._set_link_field("")
+        assert panel._link_add_btn is add_btn
+        assert not add_btn.isHidden()
+
+        file_path = tmp_path / "asset.txt"
+        file_path.write_text("x", encoding="utf-8")
+        panel._current_path = str(file_path)
+        panel._set_link_field("")
+        assert scan_btn.isHidden()  # scan action is directory-only
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+
+
+def test_info_plugin_fields_are_reused_and_updated():
+    panel = InfoPanel()
+    try:
+        panel._render_plugin_fields([PluginField("author", "A", "test")])
+        first_row = panel._plugin_field_rows["Author"]
+
+        panel._render_plugin_fields([
+            PluginField("author", "B", "test"),
+            PluginField("source", "S", "test"),
+        ])
+
+        assert panel._plugin_field_rows["Author"] is first_row
+        assert first_row.layout().itemAt(1).widget().text() == "B"
+        assert panel._plugin_fields_layout.count() == 2
+
+        panel._render_plugin_fields([])
+        assert first_row.isHidden()
+        assert panel._plugin_fields_widget.isHidden()
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+
+
 def test_info_preview_states_are_explicit_and_sequential():
     panel = InfoPanel()
     try:
