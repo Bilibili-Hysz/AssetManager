@@ -770,6 +770,7 @@
   "colorpicker.title": "Color Picker",
   "info.drag_to_browser_hint": "Drag into the browser or click to open\n{url}",
   "settings.cannot_delete_builtin": "Built-in themes cannot be deleted.",
+  "settings.builtin_read_only": "Built-in themes cannot be overwritten. Save the edited colors as a custom theme?",
   "settings.theme_no_name": "The theme file has no name.",
   "sharing.default_footer": "Built with AssetManager",
   "sharing.install_segno_hint": "Install segno to enable QR codes",

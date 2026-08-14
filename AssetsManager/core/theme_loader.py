@@ -242,6 +242,56 @@ class ThemeLoader(QObject):
         del self._paths[name]
         return True
 
+    def is_custom_theme(self, name: str) -> bool:
+        """Return True when the named theme is a user theme (U_ file prefix)."""
+        filepath = self._paths.get(name)
+        return filepath is not None and self._extract_prefix(filepath) == "U_"
+
+    def save_custom_theme(
+        self, name: str, colors: dict, properties: dict | None = None
+    ) -> bool:
+        """Overwrite a custom theme's colors/properties, preserving metadata.
+
+        Only themes backed by a ``U_``-prefixed file may be overwritten; built-in
+        themes are rejected. The updated data must still pass schema validation,
+        and the file is replaced atomically so the directory watcher never
+        observes a half-written JSON document.
+
+        Returns:
+            True if the theme was written and the in-memory copy updated.
+        """
+        if not self.is_custom_theme(name):
+            return False
+        data = self._themes.get(name)
+        filepath = self._paths.get(name)
+        if data is None or filepath is None:
+            return False
+
+        import copy
+        updated = copy.deepcopy(data)
+        updated["name"] = name
+        updated["colors"] = dict(colors)
+        updated["properties"] = dict(properties or {})
+
+        valid, _errors = self.validate_theme(updated)
+        if not valid:
+            return False
+
+        tmp_path = filepath + ".tmp"
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(updated, f, indent=2, ensure_ascii=False)
+            os.replace(tmp_path, filepath)
+        except (IOError, OSError):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            return False
+
+        self._themes[name] = updated
+        return True
+
     def export_theme(self, name: str, dest_path: str) -> bool:
         """Export a theme to a JSON file.
 

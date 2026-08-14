@@ -757,6 +757,7 @@
   "shortcuts.filelist_rename": "重命名选中文件",
   "settings.theme_no_name": "主题文件没有名称。",
   "settings.cannot_delete_builtin": "无法删除内置主题。",
+  "settings.builtin_read_only": "内置主题不可覆盖。是否将修改后的颜色另存为自定义主题？",
   "sharing.placeholder_cert": "/path/to/cert.pem",
   "sharing.placeholder_key": "/path/to/key.pem",
   "sharing.placeholder_blocked_ips": "192.168.1.100\n10.0.0.50",

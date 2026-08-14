@@ -232,6 +232,92 @@ def test_delete_custom_theme(tmp_path):
     assert loader.get_theme("Navy") is None
 
 
+# ── is_custom_theme / save_custom_theme ─────────────────────
+
+def _write_custom_theme_file(path, name, accent="#4a60b0"):
+    """Write a U_-prefixed theme with metadata beyond the minimal helper."""
+    data = {
+        "version": 1,
+        "name": name,
+        "description": "Custom variant",
+        "dark": True,
+        "colors": {
+            "base": "#1a1a1a", "panel": "#252525", "header": "#2d2d2d",
+            "border": "#444444", "heading": "#e0e0e0", "body": "#c0c0c0",
+            "muted": "#666666", "accent": accent, "success": "#40b870",
+            "warning": "#f5b040", "danger": "#f06060", "favorite": "#f0d060",
+            "recent": "#70b8e0",
+        },
+        "properties": {"border_radius": {"sm": 8}},
+        "background": {"enabled": False},
+    }
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return data
+
+
+def test_is_custom_theme_distinguishes_prefix(tmp_path):
+    _write_theme(tmp_path / "D_navy.json", "Navy")
+    _write_theme(tmp_path / "L_dawn.json", "Dawn", dark=False)
+    _write_custom_theme_file(tmp_path / "U_custom.json", "Custom")
+
+    loader = ThemeLoader(themes_dir=str(tmp_path))
+    loader.scan_directory()
+
+    assert loader.is_custom_theme("Custom") is True
+    assert loader.is_custom_theme("Navy") is False
+    assert loader.is_custom_theme("Dawn") is False
+    assert loader.is_custom_theme("Missing") is False
+
+
+def test_save_custom_theme_updates_file_and_preserves_metadata(tmp_path):
+    path = tmp_path / "U_custom.json"
+    original = _write_custom_theme_file(path, "Custom")
+    loader = ThemeLoader(themes_dir=str(tmp_path))
+    loader.scan_directory()
+
+    colors = dict(original["colors"])
+    colors["accent"] = "#d9952e"
+    assert loader.save_custom_theme(
+        "Custom", colors, {"border_radius": {"sm": 10, "md": 12}}
+    ) is True
+
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["colors"]["accent"] == "#d9952e"
+    assert saved["properties"] == {"border_radius": {"sm": 10, "md": 12}}
+    # Metadata outside colors/properties survives the edit.
+    assert saved["version"] == 1
+    assert saved["dark"] is True
+    assert saved["description"] == "Custom variant"
+    assert saved["background"] == {"enabled": False}
+    assert loader.get_theme("Custom")["colors"]["accent"] == "#d9952e"
+
+
+def test_save_custom_theme_rejects_builtin(tmp_path):
+    path = tmp_path / "D_navy.json"
+    _write_theme(path, "Navy")
+
+    loader = ThemeLoader(themes_dir=str(tmp_path))
+    loader.scan_directory()
+
+    assert loader.save_custom_theme("Navy", {"accent": "#ff0000"}) is False
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["colors"]["accent"] == "#4a60b0"
+
+
+def test_save_custom_theme_rejects_invalid_colors(tmp_path):
+    path = tmp_path / "U_custom.json"
+    original = _write_custom_theme_file(path, "Custom")
+    loader = ThemeLoader(themes_dir=str(tmp_path))
+    loader.scan_directory()
+
+    invalid = dict(original["colors"])
+    invalid.pop("base")
+    assert loader.save_custom_theme("Custom", invalid) is False
+
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert "base" in saved["colors"]
+
+
 def test_reload_on_change_emits_signal(tmp_path):
     path = tmp_path / "D_navy.json"
     _write_theme(path, "Navy")

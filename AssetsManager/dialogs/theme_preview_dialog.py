@@ -21,6 +21,7 @@ class ThemePreviewDialog(QDialog):
         self.setMinimumSize(scaled_px(800), scaled_px(500))
         self._renderer = ThemePreviewRenderer()
         self._current_theme_name: str | None = None
+        self._baseline_data: dict = {}
         self._setup_ui()
         self._load_themes()
 
@@ -117,49 +118,62 @@ class ThemePreviewDialog(QDialog):
             # Flatten: merge colors dict with properties at top level
             flat = dict(raw.get("colors", {}))
             flat["properties"] = raw.get("properties", {})
+            self._baseline_data = flat
             self._renderer.apply_theme(self._preview, flat)
 
+    def _theme_data(self) -> dict:
+        """Return the currently previewed (possibly edited) theme data."""
+        return self._preview.theme_data()
+
+    def _preview_is_dirty(self) -> bool:
+        """Whether the preview colors/properties differ from the loaded theme."""
+        return self._theme_data() != self._baseline_data
+
+    def _write_custom_theme(self, name: str) -> bool:
+        """Persist the previewed edits back into a U_-prefixed custom theme."""
+        data = self._theme_data()
+        colors = {k: v for k, v in data.items() if k != "properties"}
+        return themes._get_loader().save_custom_theme(
+            name, colors, data.get("properties", {})
+        )
+
     def _on_color_changed(self, color_name: str, hex_val: str) -> None:
-        self._preview._theme_data[color_name] = hex_val
-        self._renderer.apply_theme(self._preview, self._preview._theme_data)
+        data = self._theme_data()
+        data[color_name] = hex_val
+        self._renderer.apply_theme(self._preview, data)
 
     def _on_apply(self):
         current = self._theme_list.currentItem()
         if current is None:
             return
         name = current.data(Qt.ItemDataRole.UserRole)
-        if name:
-            if not name.startswith('U_'):
-                themes.set_theme(name)
-                self.accept()
-                return
-            theme_data = self._preview._theme_data
-            if theme_data:
-                import json
-                from AssetsManager.core.path_resolver import themes_dir
-                loader = themes._get_loader()
-                file_path = loader._paths.get(name)
-                if file_path is None:
-                    file_path = themes_dir() / f"U_{name.replace(' ', '_')}.json"
-                try:
-                    colors = {k: v for k, v in theme_data.items() if k != "properties"}
-                    props = theme_data.get("properties", {})
-                    nested = {"name": name, "colors": colors, "properties": props}
-                    # Preserve dark/description of the existing custom theme.
-                    original = loader._themes.get(name, {})
-                    if "dark" in original:
-                        nested["dark"] = original["dark"]
-                    if "description" in original:
-                        nested["description"] = original["description"]
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        json.dump(nested, f, indent=2, ensure_ascii=False)
-                except OSError:
+        if not name:
+            return
+        loader = themes._get_loader()
+
+        if loader.is_custom_theme(name):
+            # Custom themes are editable: write the previewed colors back to
+            # the U_ JSON file before applying them.
+            if self._preview_is_dirty():
+                if not self._write_custom_theme(name):
                     QMessageBox.warning(
                         self, tr("dialog.error"), tr("settings.theme_save_failed"))
                     return
                 themes.reload_themes()
             themes.set_theme(name)
             self.accept()
+            return
+
+        # Built-in themes are read-only. Edited preview colors must not be
+        # silently discarded: offer to save them as a custom variant first.
+        if self._preview_is_dirty():
+            answer = QMessageBox.question(
+                self, tr("dialog.confirm"), tr("settings.builtin_read_only"))
+            if answer == QMessageBox.StandardButton.Yes:
+                self._on_save_as_custom()
+                return
+        themes.set_theme(name)
+        self.accept()
 
     def _on_new_custom_theme(self):
         from AssetsManager.core.themes import _get_loader
@@ -196,31 +210,16 @@ class ThemePreviewDialog(QDialog):
         if not ok or not name.strip():
             return
         name = name.strip()
-        theme_data = self._preview._theme_data
+        theme_data = self._theme_data()
         if not theme_data:
             return
         base_name = self._current_theme_name or themes.name()
         if loader.create_custom_theme(name, base_name):
-            import json
-            from AssetsManager.core.path_resolver import themes_dir
-            path = themes_dir() / f"U_{name.replace(' ', '_')}.json"
             colors = {k: v for k, v in theme_data.items() if k != "properties"}
-            nested = {
-                "name": name,
-                "colors": colors,
-                "properties": theme_data.get("properties", {}),
-            }
-            # Keep the base theme's dark/description fields (create_custom_theme
-            # copied the raw base data; the write-back must not drop them).
-            original = loader._themes.get(name, {})
-            if "dark" in original:
-                nested["dark"] = original["dark"]
-            if "description" in original:
-                nested["description"] = original["description"]
-            try:
-                path.write_text(
-                    json.dumps(nested, indent=2, ensure_ascii=False), encoding="utf-8")
-            except OSError:
+            if not loader.save_custom_theme(
+                name, colors, theme_data.get("properties", {})
+            ):
+                loader.delete_custom_theme(name)
                 QMessageBox.warning(
                     self, tr("dialog.error"), tr("settings.theme_save_failed"))
                 return

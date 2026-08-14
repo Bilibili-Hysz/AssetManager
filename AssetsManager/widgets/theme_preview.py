@@ -413,6 +413,10 @@ class ThemePreviewWidget(QWidget):
     def set_theme_data(self, theme_data: dict) -> None:
         self._theme_data = dict(theme_data)
 
+    def theme_data(self) -> dict:
+        """Return a copy of the currently previewed (possibly edited) theme data."""
+        return dict(self._theme_data)
+
     def _get_current_color(self, color_name: str) -> QColor:
         colors = {k: self._theme_data[k] for k in self._theme_data if k != "properties"}
         hex_val = colors.get(color_name, "#888888")

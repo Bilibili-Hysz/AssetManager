@@ -757,6 +757,7 @@
   "shortcuts.filelist_rename": "選択ファイルの名前を変更",
   "settings.theme_no_name": "テーマファイルに名前がありません。",
   "settings.cannot_delete_builtin": "組み込みテーマは削除できません。",
+  "settings.builtin_read_only": "組み込みテーマは上書きできません。編集した色をカスタムテーマとして保存しますか？",
   "sharing.placeholder_cert": "/path/to/cert.pem",
   "sharing.placeholder_key": "/path/to/key.pem",
   "sharing.placeholder_blocked_ips": "192.168.1.100\n10.0.0.50",
