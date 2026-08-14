@@ -4,7 +4,7 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库（元数据、标签、缩略图），也可以通过局域网内的浏览器远程浏览和下载资产。
 
-<!-- stats: app_services=42 core=29 dialogs=17 domain_events=15 e2e_specs=6 hooks=14 i18n_en=812 i18n_ja=812 i18n_zh=812 icons=56 pages=26 python_test_files=232 repos=17 routes=140 routes_modules=24 schema_version=28 stores=4 themes=22 ts=115 webui_test_files=103 widgets=13 -->
+<!-- stats: app_services=42 core=29 dialogs=17 domain_events=15 e2e_specs=6 hooks=14 i18n_en=812 i18n_ja=812 i18n_zh=812 icons=56 pages=26 python_test_files=233 repos=17 routes=140 routes_modules=24 schema_version=29 stores=4 themes=22 ts=115 webui_test_files=103 widgets=13 -->
 > 当前审查证据（2026-08-13，本机 Windows / Python 3.14.3，DSH 沙箱环境）：最近一次 Python 全量运行结果为 **3447 passed, 7 skipped**（沙箱下以 `-n 0` 单进程运行；4 个 multiprocessing 命名管道测试 + 1 个沙箱偶发被阻断，CI 环境不受影响）；`ruff check AssetsManager tests scripts run.py` **全绿**；compileall 通过；**pyright 0 errors / 0 warnings**（CI "Type Check (pyright hard gate)" 固定 1.1.410）。WebUI 单测/typecheck/build/E2E 在上一次会话实测为 683/通过/51 passed 2 skipped（本机沙箱禁止 Node 子进程管道，未复跑；以 CI 为准）。CI Python 3.12/3.13/3.14 矩阵为硬门禁（3.14 已从 continue-on-error 转正，待首次 CI 实跑确认）；clean checkout/Windows package smoke 和真实后端 Commerce 验收仍需分别看待。完整审查文档集见 `docs/full-review/`（含模块地图、数据流、事件系统、审查结果与验证基线）。
 
 
@@ -77,7 +77,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 | Python | 3.12/3.13/3.14 | 主语言（CI 矩阵；本机 3.14） |
 | PySide6 | >=6.6,<7 | 桌面 UI 框架 (Qt 6) |
 | aiohttp | >=3.9 | 异步 HTTP 服务器（可选依赖） |
-| SQLite3 | 内置 | 数据库 (WAL 模式，迁移 v1-v28) |
+| SQLite3 | 内置 | 数据库 (WAL 模式，迁移 v1-v29) |
 | Pillow | >=10.0 | 图片处理（缩略图/EXIF/模糊） |
 | segno | >=1.6 | QR 码生成 |
 | send2trash / requests | — | 回收站删除 / HTTP 工具 |
@@ -111,7 +111,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 | 组件 | 说明 |
 |------|------|
 | DatabaseManager | 每库独立连接 + 身份标记 + 读写门（_WriteGate）+ 归属校验 |
-| db_migrations | 版本化迁移 v1-v28（SAVEPOINT 原子 + 契约回溯校验） |
+| db_migrations | 版本化迁移 v1-v29（SAVEPOINT 原子 + 契约回溯校验） |
 | schema_defs | 表 DDL 契约（SchemaObjectContract 校验器，fail-closed） |
 | repositories/ | **17 个 SQL 仓库**（tag/metadata/thumbnail/favorite/share/auth/asset_index/plugin_metadata/shop/order/quota/free_download_quota/seller_profile/storefront_analytics/shop_buyer/gallery_home/revoked_token）——统一 for_session 绑定 + SAVEPOINT 事务 + CAS |
 | LibraryLock | 跨进程库锁（QLockFile 引用计数，staleLockTime(0)） |
@@ -216,7 +216,7 @@ AssetsManager_old-bak/
 │   │
 │   ├── core/                   # 基础设施层（29 模块 + plugins/4）
 │   │   ├── database.py         # DatabaseManager（连接/身份标记/读写门）
-│   │   ├── db_migrations.py    # 数据库迁移 v1-v28
+│   │   ├── db_migrations.py    # 数据库迁移 v1-v29
 │   │   ├── schema_defs.py      # 表 DDL 契约 + 校验器
 │   │   ├── settings.py / config_migrator.py / json_store.py
 │   │   ├── themes.py / theme_loader.py / icons.py / bg_effects.py

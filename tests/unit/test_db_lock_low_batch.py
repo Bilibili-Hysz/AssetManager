@@ -50,6 +50,7 @@ _EXPECTED_HISTORY = (
     (26, "gallery_home_projection"),
     (27, "revoked_tokens"),
     (28, "user_can_write"),
+    (29, "activity_log"),
 )
 
 

@@ -104,6 +104,19 @@ CREATE INDEX IF NOT EXISTS idx_library_favorites_path
     ON library_favorites(file_path);
 """
 
+ACTIVITY_LOG_SCHEMA = """
+CREATE TABLE IF NOT EXISTS activity_log (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    username  TEXT NOT NULL DEFAULT 'guest',
+    action    TEXT NOT NULL,
+    details   TEXT NOT NULL DEFAULT '',
+    ip        TEXT NOT NULL DEFAULT 'unknown',
+    timestamp REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_activity_log_timestamp
+    ON activity_log(timestamp);
+"""
+
 ASSET_INDEX_STATE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS asset_index_state (
     library_root TEXT PRIMARY KEY NOT NULL,
@@ -635,6 +648,22 @@ AUTH_SHARE_SCHEMA_CONTRACT: dict[str, SchemaObjectContract] = {
 # Small, shared object manifest used by migration and repository compatibility
 # paths. Contracts describe required shape only; additive columns remain valid.
 SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
+    "activity_log": {
+        "columns": ("id", "username", "action", "details", "ip", "timestamp"),
+        "primary_key": ("id",),
+        "unique_constraints": (),
+        "indexes": {
+            "idx_activity_log_timestamp": ("timestamp",),
+        },
+        "column_contracts": {
+            "id": {"type": "INTEGER", "not_null": True},
+            "username": {"type": "TEXT", "not_null": True},
+            "action": {"type": "TEXT", "not_null": True},
+            "details": {"type": "TEXT", "not_null": True},
+            "ip": {"type": "TEXT", "not_null": True},
+            "timestamp": {"type": "REAL", "not_null": True},
+        },
+    },
     "asset_index_state": {
         "columns": ("library_root", "revision", "updated_at"),
         "primary_key": ("library_root",),

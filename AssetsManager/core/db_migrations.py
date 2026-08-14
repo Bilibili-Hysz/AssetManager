@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, cast
 
 from AssetsManager.core.schema_defs import (
+    ACTIVITY_LOG_SCHEMA,
     ASSET_INDEX_STATE_SCHEMA,
     RECONCILIATION_QUEUE_STATE_SCHEMA,
     RECONCILIATION_TASKS_SCHEMA,
@@ -42,7 +43,7 @@ from AssetsManager.core.schema_defs import (
 )
 
 
-CURRENT_SCHEMA_VERSION = 28
+CURRENT_SCHEMA_VERSION = 29
 _BASELINE_SCHEMA_CONTRACT = {
     "file_tags": {
         "columns": ("file_path", "tag"),
@@ -925,6 +926,17 @@ def _add_user_can_write_schema_v28(conn: sqlite3.Connection) -> None:
         )
     validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
 
+def _add_activity_log_schema_v29(conn: sqlite3.Connection) -> None:
+    """Create the persisted LAN activity/audit log."""
+    if _table_exists(conn, "activity_log"):
+        validate_schema_object(
+            conn, "activity_log", SCHEMA_OBJECT_CONTRACT["activity_log"]
+        )
+        return
+    for statement in ACTIVITY_LOG_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+
 def _add_reconciliation_lease_token_schema_v17(conn: sqlite3.Connection) -> None:
     """Add the nullable durable lease identity used by the next queue phase."""
     table = "reconciliation_tasks"
@@ -971,6 +983,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(26, "gallery_home_projection", _add_gallery_home_schema_v26),
     Migration(27, "revoked_tokens", _add_revoked_tokens_schema_v27),
     Migration(28, "user_can_write", _add_user_can_write_schema_v28),
+    Migration(29, "activity_log", _add_activity_log_schema_v29),
 )
 
 

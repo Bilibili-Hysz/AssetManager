@@ -17,6 +17,7 @@ from typing import Any
 from aiohttp import web
 
 from AssetsManager.application.asset_filters import matches_exclude
+from AssetsManager.core.database import db_write_lock
 from AssetsManager.core.format_utils import CATEGORY_MAP, format_size
 from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.domain.event_bus import get_event_bus
@@ -41,13 +42,28 @@ _SANITIZE_RE = re.compile(r'[\x00-\x1f\x7f"\\/]')
 
 
 class ActivityLog:
-    def __init__(self, max_entries=100, *, event_bus=None, library_root="", session_token=""):
+    def __init__(self, max_entries=100, *, event_bus=None, library_root="",
+                 session_token="", connection_provider=None):
         self._entries = deque(maxlen=max_entries)
         self._lock = threading.Lock()
         self._next_id = 1
         self._event_bus = event_bus or get_event_bus()
         self._library_root = library_root
         self._session_token = session_token
+        # Zero-arg callable returning the library DB connection; None keeps
+        # the in-memory behavior (tests, no-DB server paths). Persistence SQL
+        # lives here (not a repository) because the LAN routes layer may not
+        # import the repositories package (architecture gate).
+        self._connection_provider = connection_provider
+
+    def _connection(self):
+        if self._connection_provider is None:
+            return None
+        try:
+            return self._connection_provider()
+        except Exception:
+            _log.exception("Activity log connection unavailable")
+            return None
 
     def add(self, user, action, detail="", *, ip="unknown"):
         with self._lock:
@@ -60,6 +76,19 @@ class ActivityLog:
                 "timestamp": time.time(),
             })
             self._next_id += 1
+        conn = self._connection()
+        if conn is not None:
+            try:
+                with db_write_lock(conn):
+                    conn.execute(
+                        "INSERT INTO activity_log "
+                        "(username, action, details, ip, timestamp) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (user or "guest", action, detail, ip or "unknown", time.time()),
+                    )
+                    conn.commit()
+            except Exception:
+                _log.exception("Activity log persistence failed")
         if self._library_root and self._session_token:
             try:
                 self._event_bus.publish(ActivityChanged(
@@ -70,6 +99,27 @@ class ActivityLog:
                 _log.exception("Activity projection notification failed")
 
     def recent(self, count=10):
+        conn = self._connection()
+        if conn is not None:
+            try:
+                rows = conn.execute(
+                    "SELECT id, username, action, details, ip, timestamp "
+                    "FROM activity_log ORDER BY id DESC LIMIT ?",
+                    (count,),
+                ).fetchall()
+                return [
+                    {
+                        "id": row[0],
+                        "username": row[1],
+                        "action": row[2],
+                        "details": row[3],
+                        "ip": row[4],
+                        "timestamp": row[5],
+                    }
+                    for row in rows
+                ]
+            except Exception:
+                _log.exception("Activity log read failed")
         with self._lock:
             return list(self._entries)[-count:]
 

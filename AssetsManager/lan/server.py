@@ -245,6 +245,7 @@ class _LanServerImpl:
                 activity_log=ActivityLog(
                     library_root=event_library_root,
                     session_token=runtime_session_token,
+                    connection_provider=lambda: db_conn,
                 ),
                 online_users=OnlineUsers(
                     library_root=event_library_root,

@@ -23,6 +23,8 @@
 - **用户影响**：管理审计（谁下载了什么）无法回溯
 - **实现路径**：新增 `activity_log` 表（user/action/detail/ip/timestamp + 可选 share_id），ActivityLog 写表 + 读接口分页；在线用户保持内存（实时语义）（S-M）
 
+> **已处理（2026-08-15）**：新增 `activity_log` 表（迁移 v29，schema_version 28→29，frozen-history 已冻结）+ `ActivityLog` 写库/读库（`connection_provider` 注入，`server.py` 传入 `lambda: db_conn`；无 provider 时回退内存 deque，读写失败只记日志不回滚）。因 LAN routes 层禁止 import repositories，持久化 SQL 内联于 `_helpers.py`（`core.database.db_write_lock`）。测试 `tests/integration/test_activity_repository.py` 覆盖写库/读库/计数/无 provider 回退/失败保内存。剩余（可选后续）：`recent` 偏移分页、导出、在线用户持久化（保持内存为实时语义）。
+
 ## G4-4 分享链接能力缺口 [P1][M]
 
 - **现状**（share 相关）：① 分享页（`/s/{id}`）无**视频预览**（`handle_share_preview` 仅 IMAGE_EXTS，shares.py:283-300）② 无"暂停/恢复"分享 ③ Web 端无 QR 展示（QR 仅桌面 ShareQrDialog）④ 无分享链接有效期到期前提醒 ⑤ `handle_list_shares` 不分页（大列表拖慢）
