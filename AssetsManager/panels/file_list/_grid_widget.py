@@ -40,6 +40,7 @@ _BADGE_R = scaled_px(6)
 _BADGE_PAD_H = scaled_px(5)
 _FULL_REBUILD_TEXTURE_BUDGET = 12
 _ZOOM_FALLBACK_TEXTURE_BUDGET = 2
+_ZOOM_TARGET_TEXTURE_BUDGET = 6
 _PATH_TEXTURE_CACHE_LIMIT = 200
 
 
@@ -72,6 +73,7 @@ class FileListGridWidget(QWidget):
         self._zoom_source_rects: list[QRect] = []
         self._zoom_target_rects: list[QRect] = []
         self._zoom_fallback_textures: dict[int, QPixmap] = {}
+        self._zoom_target_textures: dict[int, QPixmap] = {}
         self._zoom_visible_rows: set[int] = set()
         self._zoom_anchor_y_offset = 0
         self._zoom_start_size = self._thumb_size
@@ -257,6 +259,7 @@ class FileListGridWidget(QWidget):
         self._entrance_visible.clear()
         self._thumb_opacity.clear()
         self._zoom_fallback_textures.clear()
+        self._zoom_target_textures = {}
         self._zoom_source_rects = source_rects
         self._zoom_start_size = self._thumb_size
         self._zoom_target_size = target_size
@@ -323,6 +326,20 @@ class FileListGridWidget(QWidget):
         self._zoom_fallback_textures.clear()
         self._zoom_visible_rows.clear()
         self._zoom_anchor_y_offset = 0
+        # Swap in the target-size textures pre-rendered during the animation so
+        # the visible cards stay crisp. Rows that were never pre-rendered (off
+        # screen, or budget-exhausted) keep their stale source-size texture and
+        # are marked dirty for the paced rebuild.
+        target_rows = set(self._zoom_target_textures)
+        for row, tex in self._zoom_target_textures.items():
+            self._cache_texture(row, tex)
+        self._zoom_target_textures = {}
+        self._path_textures.clear()
+        self._dirty = {r for r in range(self._model_rows) if r not in target_rows}
+        if self._dirty:
+            self._full_rebuild_epoch += 1
+            self._full_rebuild_pending = True
+        self._record_invalidation("zoom", self._model_rows, len(self._textures))
         self._request_frame(full=True)
 
     def invalidate_textures(self):
@@ -645,6 +662,7 @@ class FileListGridWidget(QWidget):
 
         texture_build_count = 0
         zoom_fallback_count = 0
+        zoom_target_count = 0
         deferred_texture_count = 0
         # Clip to the repaint region. Qt clips the painter, but the loop would
         # otherwise still pay Python overhead + draw-call setup for every cell
@@ -697,6 +715,20 @@ class FileListGridWidget(QWidget):
                     texture_build_count += 1
                 else:
                     deferred_texture_count += 1
+
+        # During zoom, pre-render the target-size card textures (budget-limited)
+        # so the finish_zoom commit can swap them in crisply instead of popping
+        # each card one-by-one after the animation ends.
+        if self._zoom_relayout_active:
+            for row in sorted(self._zoom_visible_rows):
+                if zoom_target_count >= _ZOOM_TARGET_TEXTURE_BUDGET:
+                    break
+                if row in self._zoom_target_textures:
+                    continue
+                target_tex = self._render_zoom_target(row)
+                if target_tex is not None:
+                    self._zoom_target_textures[row] = target_tex
+                    zoom_target_count += 1
 
         # ── Pass 2: draw ──
         if self._zoom_relayout_active:
@@ -1201,6 +1233,18 @@ class FileListGridWidget(QWidget):
         try:
             self._thumb_size = self._zoom_start_size
             return self._render_item(row, source_rect)
+        finally:
+            self._thumb_size = original_size
+
+    def _render_zoom_target(self, row: int) -> QPixmap | None:
+        """Pre-render a target-sized card so the post-zoom commit stays crisp."""
+        rects = self._zoom_target_rects
+        if row < 0 or row >= len(rects):
+            return None
+        original_size = self._thumb_size
+        try:
+            self._thumb_size = self._zoom_target_size
+            return self._render_item(row, rects[row])
         finally:
             self._thumb_size = original_size
 

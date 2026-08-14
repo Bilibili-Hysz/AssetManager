@@ -1231,7 +1231,29 @@ def test_grid_finish_zoom_adjusts_scrollbar_for_anchor():
     assert widget._zoom_relayout_active is False
 
 
-def test_stale_zoom_completion_does_not_invalidate_grid_textures():
+def test_grid_finish_zoom_commits_prerendered_target_textures():
+    widget = FileListGridWidget()
+    widget.set_layout_ref(GridLayout())
+    widget._zoom_relayout_active = True
+    widget._model_rows = 5
+    widget._zoom_anchor_y_offset = 0
+    widget._zoom_target_textures = {0: QPixmap(10, 10), 1: QPixmap(10, 10)}
+    widget._textures = {2: QPixmap(10, 10)}
+    widget._path_textures = {"/stale": QPixmap(10, 10)}
+    widget._dirty = set()
+
+    widget.finish_zoom()
+
+    assert widget._textures[0] is not None
+    assert widget._textures[1] is not None
+    # Rows without a pre-rendered target texture are marked dirty for rebuild.
+    assert widget._dirty == {2, 3, 4}
+    assert widget._path_textures == {}
+    assert widget._full_rebuild_pending is True
+    assert widget._zoom_target_textures == {}
+
+
+def test_stale_zoom_completion_skips_zoom_finish():
     panel = type("_Panel", (), {})()
     panel._zoom_generation = 2
     panel._thumb_size = 96
@@ -1243,10 +1265,10 @@ def test_stale_zoom_completion_does_not_invalidate_grid_textures():
     FileListPanel._on_zoom_done(panel, 1)
 
     panel._loader.set_size.assert_not_called()
-    panel._grid_widget.invalidate_textures.assert_not_called()
+    panel._grid_widget.finish_zoom.assert_not_called()
 
 
-def test_current_zoom_completion_invalidates_grid_textures_once():
+def test_current_zoom_completion_finishes_zoom_once():
     panel = type("_Panel", (), {})()
     panel._zoom_generation = 2
     panel._thumb_size = 128
@@ -1259,7 +1281,7 @@ def test_current_zoom_completion_invalidates_grid_textures_once():
     FileListPanel._on_zoom_done(panel, 2)
 
     panel._loader.set_size.assert_called_once_with(128)
-    panel._grid_widget.invalidate_textures.assert_called_once_with()
+    panel._grid_widget.finish_zoom.assert_called_once_with()
     panel._grid_widget.update_layout.assert_called_once_with(5, 400)
     panel._load_visible.assert_called_once_with()
 

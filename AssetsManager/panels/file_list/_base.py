@@ -752,8 +752,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._loader.set_size(self._thumb_size)
         self._grid_widget.set_thumb_size(self._thumb_size)
         self._grid_widget.update_layout(self._model.rowCount(), self._grid_widget.width())
+        # finish_zoom commits the target-size textures pre-rendered during the
+        # animation and marks any remaining stale rows dirty for the paced rebuild.
         self._grid_widget.finish_zoom()
-        self._grid_widget.invalidate_textures()
         self._load_visible()
 
     def _wheel_zoom_evt(self, event, source=None):
