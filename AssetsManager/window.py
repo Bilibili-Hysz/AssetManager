@@ -400,6 +400,15 @@ class MainWindow(LanSharingMixin, QMainWindow):
         if not isinstance(self.info, InfoPanel):
             raise RuntimeError("Info dock did not create InfoPanel")
 
+        # Tag browser dock — stacked below the sidebar on the left.
+        self.tag_tree_dock = dock.create(tr("dock.tag_tree"), self, Qt.DockWidgetArea.LeftDockWidgetArea,
+                                         panel_type="tag_tree")
+        from AssetsManager.panels.tag_tree import TagTreePanel
+        self.tag_tree = self.tag_tree_dock.widget()
+        if not isinstance(self.tag_tree, TagTreePanel):
+            raise RuntimeError("TagTree dock did not create TagTreePanel")
+        self.splitDockWidget(self.sidebar_dock, self.tag_tree_dock, Qt.Orientation.Vertical)
+
         # ── Status bar ──────────────────────────────────────────
         self._setup_status_bar()
 
@@ -407,6 +416,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._restore_workspace_tabs()
 
         self.sidebar.directory_selected.connect(self._on_sidebar_navigate)
+        self.tag_tree.directory_selected.connect(self._on_sidebar_navigate)
         self.file_list.file_double_clicked.connect(self._on_file_double_clicked)
         self.info.open_requested.connect(self._on_file_double_clicked)
         self.info.copy_path_requested.connect(self._copy_to_clipboard)

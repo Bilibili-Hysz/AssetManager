@@ -56,6 +56,32 @@ def test_tag_tree_populate_is_idempotent():
         _app().processEvents()
 
 
+def test_tag_tree_file_click_emits_directory_selected():
+    _app()
+    panel = TagTreePanel()
+    try:
+        file_path = str(Path("C:/lib/a.txt"))
+        ctrl = Mock()
+        ctrl.get_tag_with_files.return_value = [
+            {"tag": "hero", "count": 1, "files": [file_path], "icon": ""},
+        ]
+        panel._controller = ctrl
+        panel._populate()
+        emitted = []
+        panel.directory_selected.connect(emitted.append)
+
+        top = panel._tree.topLevelItem(0)
+        child = top.child(0)
+        assert child is not None
+        panel._on_click(child, 0)
+
+        assert emitted == [file_path]
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        _app().processEvents()
+
+
 def test_tag_tree_rename_refreshes_tree(monkeypatch):
     _app()
     panel = TagTreePanel()
