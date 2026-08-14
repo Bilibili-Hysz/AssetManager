@@ -259,6 +259,13 @@ class FileListGridWidget(QWidget):
         self._entrance_visible.clear()
         self._thumb_opacity.clear()
         self._zoom_fallback_textures.clear()
+        # An interrupted zoom leaves pre-rendered target textures behind. Commit
+        # them so the committed cache tracks the zoom size instead of lagging at
+        # the original (small) size — which would force the next animation to
+        # upscale that small cache across several zoom steps and blur for a frame.
+        if self._zoom_target_textures:
+            for row, tex in self._zoom_target_textures.items():
+                self._cache_texture(row, tex)
         self._zoom_target_textures = {}
         self._zoom_source_rects = source_rects
         self._zoom_start_size = self._thumb_size

@@ -1231,6 +1231,25 @@ def test_grid_finish_zoom_adjusts_scrollbar_for_anchor():
     assert widget._zoom_relayout_active is False
 
 
+def test_grid_begin_zoom_commits_interrupted_target_textures():
+    widget = FileListGridWidget()
+    widget.set_layout_ref(GridLayout())
+    widget.resize(400, 300)
+    widget.update_layout(20, 400)
+    widget._zoom_relayout_active = True
+    widget._zoom_target_textures = {0: QPixmap(10, 10), 1: QPixmap(10, 10)}
+    widget._textures = {}
+    widget._dirty = set()
+
+    widget.begin_zoom(96)
+
+    # Leftover target textures from the interrupted zoom are committed so the
+    # cache tracks the zoom size instead of lagging at the original size.
+    assert widget._textures[0] is not None
+    assert widget._textures[1] is not None
+    assert widget._zoom_target_textures == {}
+
+
 def test_grid_finish_zoom_commits_prerendered_target_textures():
     widget = FileListGridWidget()
     widget.set_layout_ref(GridLayout())
