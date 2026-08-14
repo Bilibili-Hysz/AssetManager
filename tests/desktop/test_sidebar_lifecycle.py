@@ -2,8 +2,12 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from unittest.mock import Mock
+
 from PySide6.QtWidgets import QApplication, QTreeWidgetItem
 
+from AssetsManager.i18n import tr
+from AssetsManager.panels import sidebar as sidebar_module
 from AssetsManager.panels.sidebar import SidebarPanel
 
 
@@ -18,7 +22,7 @@ def test_sidebar_prepare_invalidates_pending_library_search(monkeypatch, tmp_pat
         monkeypatch.setattr(
             panel,
             "_apply_preloaded_entries",
-            lambda parent_path, entries: applied.append((parent_path, entries)),
+            lambda parent_path, entries, index=None: applied.append((parent_path, entries)),
         )
 
         panel.prepare_library_switch()
@@ -53,6 +57,58 @@ def test_sidebar_search_counts_only_direct_matches():
         # kept visible for context must not inflate the match counter.
         assert panel._match_count == 1
         assert not branch.isHidden()
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_sidebar_build_path_index_maps_filesystem_items_once():
+    app = QApplication.instance() or QApplication([])
+    panel = SidebarPanel()
+    try:
+        root_item = QTreeWidgetItem(["root"])
+        panel._tree.addTopLevelItem(root_item)
+        panel._set_vtype(root_item, sidebar_module.VTYPE_FS, "C:/root")
+        child = QTreeWidgetItem(["child"])
+        root_item.addChild(child)
+        panel._set_vtype(child, sidebar_module.VTYPE_FS, "C:/root/child")
+
+        index = panel._build_path_index()
+
+        assert index.get("C:/root") is root_item
+        assert index.get("C:/root/child") is child
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_sidebar_search_uses_configured_depth_and_scope_tooltip(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    panel = SidebarPanel()
+    try:
+        panel._depth = 3
+        panel._branch_depths = {"models": 4}
+        captured = {}
+
+        class _FakeTask:
+            def __init__(self, roots, text, gen, root, max_depth=2):
+                captured["max_depth"] = max_depth
+                self.signals = Mock()
+
+        monkeypatch.setattr(sidebar_module, "_PreloadTask", _FakeTask)
+        monkeypatch.setattr(
+            sidebar_module.QThreadPool,
+            "globalInstance",
+            lambda: Mock(start=lambda task: None),
+        )
+        panel._search_pending = "hero"
+
+        panel._do_search()
+
+        assert captured["max_depth"] == 4
+        assert panel._search.toolTip() == tr("sidebar.search_scope_hint")
     finally:
         panel.shutdown()
         panel.deleteLater()

@@ -1190,10 +1190,16 @@ class FileListGridWidget(QWidget):
         QTimer.singleShot(0, update)
 
     def _draw_interaction_overlay(self, p: QPainter, row: int, item_rect: QRect, opacity: float):
-        """Paint selection and hover without rebuilding the cached item texture."""
+        """Paint selection, hover, and keyboard focus without rebuilding the cache."""
         selection_progress = 1.0 if row in self._selection else self._animator._selection_progress.get(row, 0.0)
         hover_progress = 1.0 if row == self._hover_row else self._animator._hover_progress.get(row, 0.0)
-        if selection_progress <= 0.01 and hover_progress <= 0.01:
+        focus_row = -1
+        if self.hasFocus():
+            if self._last_click_row in self._selection:
+                focus_row = self._last_click_row
+            elif self._selection:
+                focus_row = min(self._selection)
+        if selection_progress <= 0.01 and hover_progress <= 0.01 and row != focus_row:
             return
 
         card = self._card_rect_in_item(QRect(0, 0, item_rect.width(), item_rect.height()))
@@ -1216,6 +1222,12 @@ class FileListGridWidget(QWidget):
             p.setPen(QPen(border, 1))
             p.setBrush(fill)
         p.drawRoundedRect(card, _CORNER_R, _CORNER_R)
+        if row == focus_row:
+            # Keyboard focus indicator for the anchor card: dashed accent ring,
+            # independent from hover/selection fills.
+            p.setPen(QPen(self._clr_accent, 1, Qt.PenStyle.DashLine))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawRoundedRect(card.adjusted(2, 2, -2, -2), max(1, _CORNER_R - 2), max(1, _CORNER_R - 2))
         p.restore()
 
     # ── Folder / Image rendering ────────────────────────────

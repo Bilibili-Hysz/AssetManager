@@ -37,6 +37,27 @@ def alpha(hex_color: str, opacity: float) -> str:
     return f"rgba({r}, {g}, {b}, {opacity:.2f})"
 
 
+def contrast_on(
+    hex_color: str,
+    *,
+    dark: str = "#1b1b1b",
+    light: str = "#ffffff",
+    fallback: str = "#ffffff",
+) -> str:
+    """Return a readable foreground (dark or light) for a colored background.
+
+    Mirrors the historical tag swatch heuristic (HSL lightness > 160/255 gets
+    dark text) so callers can share one implementation without visual drift.
+    Invalid colors return ``fallback``.
+    """
+    try:
+        r, g, b = _hex_to_rgb(hex_color)
+    except (ValueError, IndexError):
+        return fallback
+    _, lightness, _ = colorsys.rgb_to_hls(r / 255.0, g / 255.0, b / 255.0)
+    return dark if lightness > (160.0 / 255.0) else light
+
+
 def lighten(hex_color: str, factor: float = 1.3) -> str:
     """Lighten a color by multiplying its HSL lightness.
 

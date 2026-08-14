@@ -839,6 +839,23 @@ def test_grid_rounded_draws_enable_antialiasing_only_locally():
     ]
 
 
+def test_grid_interaction_overlay_draws_focus_ring_for_anchor_row(monkeypatch):
+    widget = FileListGridWidget()
+    painter = Mock()
+    widget._selection = {0, 1}
+    widget._last_click_row = 0
+    monkeypatch.setattr(widget, "hasFocus", lambda: True)
+
+    widget._draw_interaction_overlay(painter, 0, QRect(0, 0, 100, 100), 1.0)
+
+    dashed_pens = [
+        call.args[0]
+        for call in painter.setPen.call_args_list
+        if call.args and call.args[0].style() == Qt.PenStyle.DashLine
+    ]
+    assert dashed_pens, "anchor card should get a dashed keyboard focus ring"
+
+
 def test_grid_light_relayout_preserves_cached_textures_and_dirty_rows():
     widget = FileListGridWidget()
     widget.set_layout_ref(GridLayout())

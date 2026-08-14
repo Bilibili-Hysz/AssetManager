@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 from AssetsManager.core import icons
+from AssetsManager.core.color_utils import contrast_on
 from AssetsManager.core.constants import DEFAULT_LAN_THEME_COLOR
 from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager import i18n
@@ -126,12 +127,7 @@ class TagStyleDialog(QDialog):
     @staticmethod
     def _contrast_text(color: str) -> str:
         """Pick black or white text for readability on the swatch background."""
-        if not color:
-            return "#cccccc"
-        qcolor = QColor(color)
-        if not qcolor.isValid():
-            return "#cccccc"
-        return "#1b1b1b" if qcolor.lightness() > 160 else "#ffffff"
+        return contrast_on(color, fallback="#cccccc")
 
     def _select_current_icon(self):
         index = self._icon_combo.findData(self._icon)

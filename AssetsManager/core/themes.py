@@ -88,6 +88,15 @@ _EXTENDED_FALLBACKS = {
     "disabled_bg":         lambda t: t.get("base", "#1a1a1a"),
     "tooltip_bg":          lambda t: t.get("header", "#2d2d2d"),
     "tooltip_text":        lambda t: t.get("heading", "#e0e0e0"),
+    # Semantic file-category colors. Themes may override these so category
+    # badges adapt to dark/light palettes while staying distinguishable from
+    # chrome accents. Defaults preserve the historical fixed-hex palette.
+    "category_blend":      lambda t: "#2f7aa3",
+    "category_model":      lambda t: "#3f8c69",
+    "category_texture":    lambda t: "#8a6d3b",
+    "category_archive":    lambda t: "#6f5a92",
+    "category_bundled":    lambda t: "#7c6a39",
+    "category_default":    lambda t: "#49555d",
     # Low-contrast "hairline" border for container/panel separation. Kept
     # distinct from ``border`` (input outlines) so surfaces read as layered
     # rather than boxed-in.

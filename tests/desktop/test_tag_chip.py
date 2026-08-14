@@ -101,9 +101,11 @@ def test_tag_chip_has_hover_and_visible_keyboard_focus_styles():
     try:
         chip.show()
         app.processEvents()
-        assert chip.focusPolicy() == chip.focusPolicy().NoFocus
-        assert close_btn.focusPolicy() != close_btn.focusPolicy().NoFocus
+        assert chip.focusPolicy() == Qt.FocusPolicy.StrongFocus
+        assert close_btn.focusPolicy() == Qt.FocusPolicy.StrongFocus
+        assert close_btn.width() >= 20 and close_btn.height() >= 20
         assert "QWidget#TagChip:hover" in chip.styleSheet()
+        assert "QWidget#TagChip:focus" in chip.styleSheet()
         assert "QPushButton#TagChipClose:hover" in close_btn.styleSheet()
         assert "QPushButton#TagChipClose:focus" in close_btn.styleSheet()
         assert (

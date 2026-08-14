@@ -1,5 +1,6 @@
 """Shared constants and helpers for the file_list package."""
 from PySide6.QtGui import QColor
+from AssetsManager.core import themes
 from AssetsManager.core.constants import (  # noqa: F401
     IMAGE_EXTS as IMAGE_EXTS,
     VIDEO_EXTS as VIDEO_EXTS,
@@ -20,16 +21,25 @@ for _cat, _exts in FILTER_CATEGORY_EXTS.items():
 
 
 # ── Category badge colors ────────────────────────────────────────
-# These are intentionally distinct from theme tokens — they identify
-# file categories, not UI chrome. Do NOT replace with theme colors.
+# Badge colors resolve through semantic category_* theme tokens (see
+# themes._EXTENDED_FALLBACKS) so themes can adapt category identity colors
+# to their palette. The fallback hexes preserve the historical fixed palette.
+_CATEGORY_TOKEN_BY_BADGE: dict[str, str] = {
+    "blend_library": "category_blend",
+    "model_pack": "category_model",
+    "texture_pack": "category_texture",
+    "archive_pack": "category_archive",
+    "bundled_assets": "category_bundled",
+    "default": "category_default",
+}
 
-CATEGORY_BADGE_COLORS: dict[str, QColor] = {
-    "blend_library":  QColor("#2f7aa3"),
-    "model_pack":     QColor("#3f8c69"),
-    "texture_pack":   QColor("#8a6d3b"),
-    "archive_pack":   QColor("#6f5a92"),
-    "bundled_assets": QColor("#7c6a39"),
-    "default":        QColor("#49555d"),
+_CATEGORY_FALLBACK_COLORS: dict[str, str] = {
+    "blend_library": "#2f7aa3",
+    "model_pack": "#3f8c69",
+    "texture_pack": "#8a6d3b",
+    "archive_pack": "#6f5a92",
+    "bundled_assets": "#7c6a39",
+    "default": "#49555d",
 }
 
 # Extension → badge category mapping
@@ -43,9 +53,11 @@ for _ext in FILTER_CATEGORY_EXTS.get("archives", set()):
 
 
 def badge_color_for_extension(ext: str) -> QColor:
-    """Return the category badge color for a file extension."""
+    """Return the theme-aware category badge color for a file extension."""
     cat = _EXT_BADGE_MAP.get(ext.lower(), "default")
-    return CATEGORY_BADGE_COLORS.get(cat, CATEGORY_BADGE_COLORS["default"])
+    token = _CATEGORY_TOKEN_BY_BADGE[cat]
+    value = themes.get().get(token) or _CATEGORY_FALLBACK_COLORS[cat]
+    return QColor(value)
 
 
 def badge_label_for_extension(ext: str) -> str:

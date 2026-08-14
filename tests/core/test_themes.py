@@ -117,6 +117,24 @@ def test_selectable_themes_meet_extended_contrast_contract():
             )
 
 
+def test_category_tokens_are_merged_with_historical_defaults():
+    for name in themes.names():
+        palette = themes.get(name)
+        assert palette["category_blend"] == "#2f7aa3"
+        assert palette["category_model"] == "#3f8c69"
+        assert palette["category_texture"] == "#8a6d3b"
+        assert palette["category_archive"] == "#6f5a92"
+        assert palette["category_bundled"] == "#7c6a39"
+        assert palette["category_default"] == "#49555d"
+
+
+def test_badge_color_resolves_through_category_theme_token():
+    from AssetsManager.panels.file_list._common import badge_color_for_extension
+
+    expected = themes.get()["category_texture"]
+    assert badge_color_for_extension(".png").name().lower() == expected
+
+
 def test_set_theme():
     themes.set_theme("Slate")
     assert themes.get() == themes.get("Slate")

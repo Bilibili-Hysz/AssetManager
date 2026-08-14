@@ -61,6 +61,7 @@ class InfoPanel(PanelContent):
         self._current_path = ""
         self._preview_pixmap: QPixmap | None = None
         self._preview_icon_name = ""
+        self._preview_state = "empty"  # empty | loading | image | fallback
         self._notes_timer = None
         self._notes_save_path: str | None = None
         self._rendered_tags: tuple[str, ...] = ()
@@ -695,10 +696,22 @@ class InfoPanel(PanelContent):
     def _clear_preview(self):
         self._preview_pixmap = None
         self._preview_icon_name = ""
+        self._preview_state = ""
         self._preview.clear()
         self._preview.setStyleSheet("")
         self._empty_preview_state.hide()
         self._preview.show()
+
+    def _show_loading_state(self):
+        """Explicit loading placeholder for the async preview window."""
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        self._preview_pixmap = None
+        self._preview_icon_name = ""
+        self._empty_preview_state.hide()
+        self._preview.show()
+        self._preview.setText("...")
+        self._preview.setStyleSheet(sk.muted_css(24))
+        self._preview_state = "loading"
 
     def _apply_scaled_preview(self):
         if self._preview_pixmap is None or self._preview_pixmap.isNull():
@@ -771,6 +784,7 @@ class InfoPanel(PanelContent):
         self._preview.hide()
         self._refresh_empty_preview_state()
         self._empty_preview_state.show()
+        self._preview_state = "empty"
 
     def _refresh_empty_preview_state(self):
         if not hasattr(self, "_empty_preview_state"):
@@ -1168,7 +1182,6 @@ class InfoPanel(PanelContent):
 
     def update_info(self, info):
         from PySide6.QtCore import QFileInfo
-        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         if self._controller is None or self._scoped_services is None:
             _log.debug("update_info skipped: controller=%s lib_root=%s",
                        bool(self._controller), repr(self._library_root))
@@ -1220,9 +1233,7 @@ class InfoPanel(PanelContent):
         self._notes.blockSignals(True)
         self._notes.setPlainText("")
         self._notes.blockSignals(False)
-        self._clear_preview()
-        self._preview.setText("...")
-        self._preview.setStyleSheet(sk.muted_css(24))
+        self._show_loading_state()
 
         # Cancel previous pending task (stale detection handles in-flight results)
         self._pending_task = None
@@ -1325,6 +1336,7 @@ class InfoPanel(PanelContent):
             self._preview.show()
             self._preview_icon_name = ""
             self._preview_pixmap = pixmap
+            self._preview_state = "image"
             self._apply_scaled_preview()
         else:
             self._show_preview_fallback()
@@ -1333,6 +1345,7 @@ class InfoPanel(PanelContent):
         """Show a theme-aware semantic icon when no preview image is available."""
         self._empty_preview_state.hide()
         self._preview.show()
+        self._preview_state = "fallback"
         suffix = Path(self._current_path).suffix.lower().lstrip(".")
         is_dir = os.path.isdir(self._current_path)
         hints = {

@@ -1,8 +1,8 @@
 """Shared tag chip widget creation."""
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton
 from PySide6.QtCore import Qt, QSize
 from AssetsManager.core import icons, themes
+from AssetsManager.core.color_utils import contrast_on, darken, lighten
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.tag_library import get_library
 from AssetsManager.widgets.stylekit import StyleKit
@@ -29,10 +29,7 @@ def _synonyms_text_for(tag: str) -> str:
 
 def _contrast_text(color: str) -> str:
     """Return black or white text for readability on a tag-color background."""
-    qcolor = QColor(color)
-    if not qcolor.isValid():
-        return "#ffffff"
-    return "#1b1b1b" if qcolor.lightness() > 160 else "#ffffff"
+    return contrast_on(color)
 
 
 def tag_color_from(store, tag: str) -> str | None:
@@ -79,10 +76,15 @@ def create_tag_chip(tag: str, on_remove=None, parent=None, color: str | None = N
     chip = QWidget(parent)
     chip.setObjectName("TagChip")
     chip.setAccessibleName(f"Tag: {tag}")
+    chip.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    hover_background = (
+        lighten(background, 1.08) if themes.is_dark() else darken(background, 0.92)
+    )
     chip.setStyleSheet(
         f"QWidget#TagChip {{ background: {background}; "
         f"border: 1px solid transparent; border-radius: {sk.px(6)}px; }}"
-        f"QWidget#TagChip:hover {{ border-color: {label_color}; }}")
+        f"QWidget#TagChip:hover {{ border-color: {label_color}; background: {hover_background}; }}"
+        f"QWidget#TagChip:focus {{ border: 1px solid {label_color}; }}")
     layout = QHBoxLayout(chip)
     layout.setContentsMargins(scaled_px(6), scaled_px(2), scaled_px(4), scaled_px(2))
     layout.setSpacing(scaled_px(2))
@@ -98,13 +100,13 @@ def create_tag_chip(tag: str, on_remove=None, parent=None, color: str | None = N
         close_btn = QPushButton()
         close_btn.setObjectName("TagChipClose")
         close_btn.setIcon(
-            icons.icon("close", color=close_tint, size=scaled_px(12)))
-        close_btn.setIconSize(QSize(scaled_px(12), scaled_px(12)))
+            icons.icon("close", color=close_tint, size=scaled_px(14)))
+        close_btn.setIconSize(QSize(scaled_px(14), scaled_px(14)))
         close_btn.setAccessibleName(f"Remove tag: {tag}")
         close_btn.setAccessibleDescription(
             f"Removes the {tag} tag from this item")
         close_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        close_btn.setFixedSize(scaled_px(18), scaled_px(18))
+        close_btn.setFixedSize(scaled_px(20), scaled_px(20))
         close_btn.setFlat(True)
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.setStyleSheet(

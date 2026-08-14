@@ -91,3 +91,19 @@ class TestContrastRatio:
         from AssetsManager.core.color_utils import contrast_ratio
         ratio = contrast_ratio("#b0b0c8", "#1e1e2a")
         assert 1.0 < ratio < 21.0
+
+
+class TestContrastOn:
+
+    def test_light_background_gets_dark_text(self):
+        from AssetsManager.core.color_utils import contrast_on
+        assert contrast_on("#ff6b6b") == "#1b1b1b"
+
+    def test_dark_background_gets_light_text(self):
+        from AssetsManager.core.color_utils import contrast_on
+        assert contrast_on("#1a1a1a") == "#ffffff"
+
+    def test_invalid_color_returns_fallback(self):
+        from AssetsManager.core.color_utils import contrast_on
+        assert contrast_on("not-a-color") == "#ffffff"
+        assert contrast_on("", fallback="#cccccc") == "#cccccc"

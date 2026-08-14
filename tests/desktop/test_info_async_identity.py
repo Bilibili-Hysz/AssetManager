@@ -77,6 +77,30 @@ def test_info_scaled_geometry_refresh_recalculates_fixed_metrics(monkeypatch):
         panel.deleteLater()
 
 
+def test_info_preview_states_are_explicit_and_sequential():
+    panel = InfoPanel()
+    try:
+        assert panel._preview_state == "empty"
+
+        panel._show_loading_state()
+        assert panel._preview_state == "loading"
+        assert panel._preview.text() == "..."
+        assert not panel._preview.isHidden()
+
+        panel._current_path = "C:/library/asset.xyz"
+        panel._show_preview_fallback()
+        assert panel._preview_state == "fallback"
+        assert panel._preview.pixmap() is not None
+
+        panel._show_empty_state()
+        assert panel._preview_state == "empty"
+        assert panel._preview.isHidden()
+        assert not panel._empty_preview_state.isHidden()
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+
+
 def test_file_info_and_preview_reject_old_navigate_away_back_completion(tmp_path):
     panel = InfoPanel()
     session = Mock(is_closed=False)

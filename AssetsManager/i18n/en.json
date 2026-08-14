@@ -166,6 +166,7 @@
   "sidebar.searching": "Searching...",
   "sidebar.filter_placeholder": "Filter...  (Ctrl+F)",
   "sidebar.filter_matches": "Filter...  ({count} matches)",
+  "sidebar.search_scope_hint": "Search covers filesystem folders only; favorites and recent folders are not filtered.",
   "sidebar.favorites": "Favorites ({count})",
   "sidebar.recent_folders": "Recent Folders ({count})",
   "sidebar.menu.add_fav": "Add to Favorites",

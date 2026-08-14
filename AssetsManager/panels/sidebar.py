@@ -663,13 +663,20 @@ class SidebarPanel(PanelContent):
         if text:
             roots = [self._library_root] if self._library_root else self.ROOTS
             self._search.setPlaceholderText(tr("sidebar.searching"))
-            task = _PreloadTask(roots, text, gen, self._library_root, max_depth=2)
+            self._search.setToolTip(tr("sidebar.search_scope_hint"))
+            # Search should honor the user's depth configuration instead of a
+            # fixed depth-2 scan, bounded to keep the preload cheap.
+            configured_depth = max(
+                [self._depth, *self._branch_depths.values()], default=2)
+            max_depth = max(2, min(configured_depth, 5))
+            task = _PreloadTask(roots, text, gen, self._library_root, max_depth=max_depth)
             # Bound QObject slot: queued to the UI thread when the worker emits.
             task.signals.done.connect(self._on_preload_done)
             self._preload_task = task
             QThreadPool.globalInstance().start(task)
         else:
             self._match_count = 0
+            self._search.setToolTip("")
             for i in range(self._tree.topLevelItemCount()):
                 item = self._tree.topLevelItem(i)
                 if item is None:
@@ -687,8 +694,11 @@ class SidebarPanel(PanelContent):
         self._begin_tree_update_batch()
         if root != self._library_root or not self._controller.is_current_search(gen):
             return
+        # Build the path→item index once for the whole batch; the previous
+        # per-result BFS made the fill O(results × tree size).
+        index = self._build_path_index()
         for parent_path, entries in results:
-            self._apply_preloaded_entries(parent_path, entries)
+            self._apply_preloaded_entries(parent_path, entries, index)
         self._match_count = 0
         for i in range(self._tree.topLevelItemCount()):
             item = self._tree.topLevelItem(i)
@@ -705,9 +715,12 @@ class SidebarPanel(PanelContent):
         else:
             self._search.setPlaceholderText(tr("sidebar.filter_placeholder"))
 
-    def _apply_preloaded_entries(self, parent_path, entries):
+    def _apply_preloaded_entries(self, parent_path, entries, index=None):
         """Find the tree item for parent_path and populate children from scan results."""
-        parent_item = self._find_item_by_path(parent_path)
+        if index is not None:
+            parent_item = index.get(parent_path)
+        else:
+            parent_item = self._find_item_by_path(parent_path)
         if not parent_item:
             return
         self._begin_tree_update_batch()
@@ -735,6 +748,28 @@ class SidebarPanel(PanelContent):
                 QTreeWidgetItem(child, ["..."])
             elif is_dir:
                 child.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator)
+
+    def _build_path_index(self) -> dict[str, QTreeWidgetItem]:
+        """Build one path→item map for a search batch (single BFS, O(N))."""
+        from collections import deque
+        index: dict[str, QTreeWidgetItem] = {}
+        queue = deque()
+        root = self._tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            child = root.child(i)
+            if child is not None:
+                queue.append(child)
+        while queue:
+            item = queue.popleft()
+            if self._get_vtype(item) == VTYPE_FS:
+                path = item.data(0, Qt.ItemDataRole.UserRole)
+                if path:
+                    index[path] = item
+            for i in range(item.childCount()):
+                child = item.child(i)
+                if child is not None:
+                    queue.append(child)
+        return index
 
     def _find_item_by_path(self, target_path):
         """Find a tree item by its stored path (BFS)."""
