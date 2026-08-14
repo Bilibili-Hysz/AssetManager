@@ -637,10 +637,19 @@ class FileListGridWidget(QWidget):
         texture_build_count = 0
         zoom_fallback_count = 0
         deferred_texture_count = 0
+        # Clip to the repaint region. Qt clips the painter, but the loop would
+        # otherwise still pay Python overhead + draw-call setup for every cell
+        # on each partial update (hover/selection animation), turning a
+        # one-cell repaint into a whole-grid repaint.
+        update_rect = _evt.rect()
+        skipped_dirty = False
 
         for row in visible:
             rect = self._layout.rect_at(row)
             if rect is None:
+                continue
+            if not update_rect.intersects(rect.translated(0, -sy)):
+                skipped_dirty = skipped_dirty or (row in self._dirty)
                 continue
             dirty = row in self._dirty
             tex = self._textures.get(row)
@@ -746,7 +755,7 @@ class FileListGridWidget(QWidget):
         self._record_performance(
             "grid.frame", started, session_token, generation, len(visible), texture_build_count, deferred_texture_count
         )
-        if deferred_texture_count:
+        if deferred_texture_count or (self._full_rebuild_pending and skipped_dirty):
             self._queue_full_rebuild_update()
         elif self._full_rebuild_pending:
             self._full_rebuild_pending = False
