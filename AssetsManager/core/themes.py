@@ -88,6 +88,10 @@ _EXTENDED_FALLBACKS = {
     "disabled_bg":         lambda t: t.get("base", "#1a1a1a"),
     "tooltip_bg":          lambda t: t.get("header", "#2d2d2d"),
     "tooltip_text":        lambda t: t.get("heading", "#e0e0e0"),
+    # Low-contrast "hairline" border for container/panel separation. Kept
+    # distinct from ``border`` (input outlines) so surfaces read as layered
+    # rather than boxed-in.
+    "border_subtle":       lambda t: alpha(t.get("border", "#555555"), 0.5),
     # Semantic icon colors — themes may override these to tune icon tint
     # without affecting text colors. Defaults inherit from text tokens.
     "icon_primary":        lambda t: t.get("heading", "#e0e0e0"),
@@ -454,7 +458,7 @@ def stylesheet() -> str:
     Cached result is invalidated on theme change.
     """
     global _cached_stylesheet, _cached_stylesheet_theme, _cached_stylesheet_scale
-    from AssetsManager.core.ui_scale import get_ui_scale, scaled_px
+    from AssetsManager.core.ui_scale import get_ui_scale, scaled_px, scaled_pt
     scale = get_ui_scale()
     with _themes_lock:
         if (
@@ -464,7 +468,20 @@ def stylesheet() -> str:
         ):
             return _cached_stylesheet
     t = get()
-    hov = alpha(t["hover_overlay"], t["properties"].get("opacity", {}).get("hover", 0.15))
+    props = t.get("properties", {})
+    radius = props.get("border_radius", {})
+    r_sm = scaled_px(int(radius.get("sm", 8)))
+    r_md = scaled_px(int(radius.get("md", 10)))
+    r_lg = scaled_px(int(radius.get("lg", 14)))
+    spacing = props.get("spacing", {})
+    s_xs = scaled_px(int(spacing.get("xs", 4)))
+    s_sm = scaled_px(int(spacing.get("sm", 8)))
+    s_md = scaled_px(int(spacing.get("md", 12)))
+    s_lg = scaled_px(int(spacing.get("lg", 16)))
+    font = props.get("font_size", {})
+    f_sm = scaled_pt(int(font.get("sm", 12)))
+    hov = alpha(t["hover_overlay"], props.get("opacity", {}).get("hover", 0.15))
+    hairline = t.get("border_subtle", alpha(t["border"], 0.5))
     pane_opacity = bg_panel_opacity()
     hdr_opacity = bg_header_opacity()
     panel_alpha = alpha(t["panel"], pane_opacity * hdr_opacity) if bg_enabled() else t["panel"]
@@ -477,100 +494,109 @@ def stylesheet() -> str:
     QDockWidget {{ background: transparent; }}
     QDockWidget::title {{
         background: {dock_title_bg};
-        border: 1px solid {t['border']};
-        border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px;
-        padding: 5px 10px;
+        border: 1px solid {hairline};
+        border-top-left-radius: {r_md}px; border-top-right-radius: {r_md}px;
+        padding: {s_sm}px {s_md}px;
         color: {t['heading']};
-        font-size: 12px; font-weight: bold;
+        font-size: {f_sm}px; font-weight: bold;
     }}
-    QMenuBar {{ background: {menubar_bg}; color: {t['heading']}; border-bottom: 1px solid {t['border']}; }}
-    QMenuBar::item:selected {{ background: {t['border']}; }}
-    QMenu {{ background: {t['panel']}; color: {t['heading']}; border: 1px solid {t['border']}; }}
-    QMenu::item:selected {{ background: {t['accent']}; color: {t['heading']}; }}
+    QMenuBar {{ background: {menubar_bg}; color: {t['heading']}; border-bottom: 1px solid {hairline}; }}
+    QMenuBar::item:selected {{ background: {t['hover_overlay']}; }}
+    QMenu {{ background: {t['panel']}; color: {t['heading']}; border: 1px solid {hairline}; border-radius: {r_md}px; padding: {s_xs}px; }}
+    QMenu::item {{ padding: {s_sm}px {s_lg}px; border-radius: {r_sm}px; }}
+    QMenu::item:selected {{ background: {t['accent']}; color: {t['on_accent']}; }}
     QListWidget, QTreeWidget, QTabWidget::pane {{
-        background: transparent; border: none; padding: {scaled_px(4)}px;
+        background: transparent; border: none; padding: {s_xs}px;
         color: {t['body']}; outline: none;
     }}
     QTabBar::tab {{
-        background: {t['panel']}; color: {t['body']};
-        border: 1px solid {t['border']}; padding: {scaled_px(4)}px {scaled_px(12)}px;
-        border-top-left-radius: {scaled_px(4)}px; border-top-right-radius: {scaled_px(4)}px;
+        background: transparent; color: {t['muted']};
+        border: 1px solid transparent; padding: {s_sm}px {s_md}px;
+        border-radius: {r_md}px; margin-right: {s_xs}px;
     }}
-    QTabBar::tab:selected {{ background: {t['accent']}; color: {t['on_accent']}; }}
-    QListWidget::item, QTreeWidget::item {{ padding: {scaled_px(3)}px {scaled_px(6)}px; }}
+    QTabBar::tab:hover:!selected {{ background: {hov}; }}
+    QTabBar::tab:selected {{ background: {t['panel']}; color: {t['heading']}; border-color: {hairline}; }}
+    QListWidget::item, QTreeWidget::item {{ padding: {s_sm}px {s_md}px; border-radius: {r_sm}px; }}
     QListWidget::item:selected, QTreeWidget::item:selected {{
-        background: {t['accent']}; border-radius: {scaled_px(4)}px; color: {t['on_accent']};
+        background: {t['accent']}; border-radius: {r_sm}px; color: {t['on_accent']};
     }}
     QLabel {{ color: {t['body']}; }}
     QLineEdit, QTextEdit, QComboBox, QSpinBox {{
         background: {t['input_bg']}; color: {t['input_text']};
-        border: 1px solid {t['border']}; border-radius: {scaled_px(4)}px; padding: {scaled_px(3)}px {scaled_px(6)}px;
+        border: 1px solid {t['border']}; border-radius: {r_sm}px; padding: {s_sm}px {s_md}px;
+        selection-background-color: {t['accent']}; selection-color: {t['on_accent']};
     }}
-    QComboBox::drop-down {{ border: none; }}
+    QLineEdit:focus, QTextEdit:focus, QSpinBox:focus {{ border: 1px solid {t['border_focus']}; }}
+    QComboBox::drop-down {{ border: none; width: {s_lg}px; }}
     QComboBox QAbstractItemView {{
         background: {t['panel']}; color: {t['body']};
-        border: 1px solid {t['border']}; selection-background-color: {t['accent']};
+        border: 1px solid {hairline}; selection-background-color: {t['accent']}; selection-color: {t['on_accent']};
     }}
     QGroupBox {{
-        color: {t['heading']}; border: 1px solid {t['border']};
-        border-radius: {scaled_px(6)}px; margin-top: {scaled_px(8)}px; padding-top: {scaled_px(12)}px;
+        color: {t['heading']}; border: 1px solid {hairline};
+        border-radius: {r_md}px; margin-top: {s_md}px; padding-top: {s_md}px;
     }}
-    QGroupBox::title {{ subcontrol-origin: margin; left: {scaled_px(10)}px; padding: 0 {scaled_px(5)}px; }}
-    QRadioButton, QCheckBox {{ color: {t['body']}; }}
+    QGroupBox::title {{ subcontrol-origin: margin; left: {s_md}px; padding: 0 {s_xs}px; }}
+    QRadioButton, QCheckBox {{ color: {t['body']}; spacing: {s_sm}px; }}
     QPushButton {{
         background: {t['accent']}; color: {t['on_accent']};
-        border: none; border-radius: {scaled_px(4)}px; padding: {scaled_px(6)}px {scaled_px(16)}px;
+        border: none; border-radius: {r_sm}px; padding: {s_sm}px {s_lg}px;
+        font-weight: 600;
     }}
-    QPushButton:hover {{ background: {hov}; }}
-    QPushButton:pressed {{ background: {t['muted']}; }}
+    QPushButton:hover {{ background: {alpha(t['accent'], 0.88)}; }}
+    QPushButton:pressed {{ background: {alpha(t['accent'], 0.72)}; }}
     QPushButton:focus {{ border: 1px solid {t['border_focus']}; }}
     QPushButton[buttonVariant="primary"] {{
         background: {t['accent']}; color: {t['on_accent']};
     }}
     QPushButton[buttonVariant="primary"]:hover {{
-        background: {alpha(t['accent'], 0.85)};
+        background: {alpha(t['accent'], 0.88)};
+    }}
+    QPushButton[buttonVariant="primary"]:pressed {{
+        background: {alpha(t['accent'], 0.72)};
     }}
     QPushButton[buttonVariant="secondary"] {{
         background: {t['panel']}; color: {t['heading']};
-        border: 1px solid {t['border']};
+        border: 1px solid {hairline};
     }}
     QPushButton[buttonVariant="secondary"]:hover {{
-        background: {alpha(t['hover_overlay'], 0.10)};
+        background: {hov};
+    }}
+    QPushButton[buttonVariant="secondary"]:pressed {{
+        background: {alpha(t['accent'], 0.18)};
     }}
     QPushButton[buttonVariant="ghost"] {{
         background: transparent; color: {t['body']};
         border: 1px solid transparent;
     }}
     QPushButton[buttonVariant="ghost"]:hover {{
-        background: {alpha(t['hover_overlay'], 0.10)};
+        background: {hov};
         color: {t['heading']};
     }}
     QPushButton[buttonVariant="danger"] {{
         background: {t['danger']}; color: {t['on_accent']};
     }}
     QPushButton[buttonVariant="danger"]:hover {{
-        background: {alpha(t['danger'], 0.85)};
+        background: {alpha(t['danger'], 0.88)};
     }}
     QPushButton:disabled {{
         background: {t['disabled_bg']}; color: {t['disabled_text']};
     }}
     QScrollBar:vertical {{
-        background: {t['scrollbar_track']}; width: {scaled_px(8)}px;
-        border-radius: {scaled_px(4)}px;
+        background: transparent; width: {scaled_px(6)}px;
     }}
     QScrollBar::handle:vertical {{
-        background: {t['scrollbar_thumb']}; border-radius: {scaled_px(4)}px; min-height: {scaled_px(20)}px;
+        background: {t['scrollbar_thumb']}; border-radius: {scaled_px(3)}px; min-height: {scaled_px(24)}px;
     }}
     QScrollBar::handle:vertical:hover {{
         background: {t['scrollbar_thumb_hover']};
     }}
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
     QScrollBar:horizontal {{
-        background: {t['scrollbar_track']}; height: {scaled_px(8)}px;
-        border-radius: {scaled_px(4)}px;
+        background: transparent; height: {scaled_px(6)}px;
     }}
     QScrollBar::handle:horizontal {{
-        background: {t['scrollbar_thumb']}; border-radius: {scaled_px(4)}px; min-width: {scaled_px(20)}px;
+        background: {t['scrollbar_thumb']}; border-radius: {scaled_px(3)}px; min-width: {scaled_px(24)}px;
     }}
     QScrollBar::handle:horizontal:hover {{
         background: {t['scrollbar_thumb_hover']};
@@ -581,7 +607,7 @@ def stylesheet() -> str:
         background: {t['panel']};
     }}
     QSplitter::handle {{
-        background: {t['border']};
+        background: {hairline};
     }}
     QSplitter::handle:hover {{
         background: {t['accent']};
@@ -589,8 +615,8 @@ def stylesheet() -> str:
     QSplitter {{ background: transparent; }}
     #PanelContent {{
         background: {panel_alpha};
-        border: 1px solid {t['border']};
-        border-bottom-left-radius: {scaled_px(7)}px; border-bottom-right-radius: {scaled_px(7)}px;
+        border: 1px solid {hairline};
+        border-bottom-left-radius: {r_lg}px; border-bottom-right-radius: {r_lg}px;
         border-top: none;
     }}
 """

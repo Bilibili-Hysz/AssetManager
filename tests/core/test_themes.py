@@ -96,6 +96,18 @@ def test_stylesheet_contains_semantic_button_variants_and_focus_state():
     assert "QPushButton:focus" in qss
 
 
+def test_border_subtle_token_derived_from_border_and_used_in_qss():
+    from AssetsManager.core.color_utils import alpha
+
+    t = themes.get("Navy")
+    assert "border_subtle" in t
+    assert t["border_subtle"] == alpha(t["border"], 0.5)
+
+    qss = themes.stylesheet()
+    # The hairline token drives container separation instead of the raw border.
+    assert t["border_subtle"] in qss
+
+
 def test_set_button_variant_updates_dynamic_property():
     from PySide6.QtWidgets import QPushButton
 
