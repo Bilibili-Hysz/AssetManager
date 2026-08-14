@@ -867,12 +867,18 @@ class FileListGridWidget(QWidget):
         w = int(self.width() * dpr)
         h = int(self.height() * dpr)
         tex = self._viewport_tex
-        if tex is None or tex.width() != w or tex.height() != h:
+        size_changed = tex is None or tex.width() != w or tex.height() != h
+        if size_changed:
             tex = QPixmap(w, h)
             tex.setDevicePixelRatio(dpr)
             self._viewport_tex = tex
 
-        if self._viewport_full_required(dpr) or not allow_scroll:
+        # A freshly-allocated texture (resize) has no contents: recompositing
+        # unconditionally. `_viewport_full_required` alone would miss this
+        # because the new texture already matches the new size and epoch, which
+        # would otherwise fall through to the incremental blit and copy a
+        # blank/black pixmap.
+        if size_changed or self._viewport_full_required(dpr) or not allow_scroll:
             painter = QPainter(tex)
             painter.fillRect(self.rect(), self._clr_panel)
             self._viewport_paint_cells(painter, sy, visible, skip_rows)

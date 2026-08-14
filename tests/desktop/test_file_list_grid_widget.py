@@ -890,6 +890,30 @@ def test_grid_dirty_cached_texture_is_scaled_to_replacement_layout(tmp_path, mon
     app.processEvents()
 
 
+def test_grid_resize_recomposites_viewport_instead_of_blitting_blank():
+    app = QApplication.instance() or QApplication([])
+    widget = FileListGridWidget()
+    widget.set_layout_ref(GridLayout())
+    widget.resize(200, 200)
+    # Seed a stale viewport texture at the pre-resize size with a matching
+    # epoch, so `_viewport_full_required` alone would report "no rebuild" and
+    # fall through to the incremental blit against a freshly-allocated (blank)
+    # texture.
+    widget._viewport_tex = QPixmap(50, 50)
+    widget._viewport_epoch = widget._full_rebuild_epoch
+    widget._viewport_sy = 0
+
+    result = widget._viewport_compose(
+        0, [], allow_scroll=True, dirty_rows=set(), skip_rows=set(),
+    )
+
+    image = result.toImage()
+    center = image.pixelColor(image.width() // 2, image.height() // 2)
+    assert center == widget._clr_panel
+    widget.deleteLater()
+    app.processEvents()
+
+
 def test_grid_layout_marks_only_new_rows_dirty_when_cache_exists():
     widget = FileListGridWidget()
     widget.set_layout_ref(GridLayout())
