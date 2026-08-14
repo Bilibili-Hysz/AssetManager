@@ -47,6 +47,11 @@ VTYPE_FAV_CHILD = "fav_child"
 VTYPE_REC_CHILD = "rec_child"
 _ICON_ROLE = Qt.ItemDataRole.UserRole + 2
 
+# Max directories loaded per event-loop tick during "expand all", so a large
+# tree reveals progressively instead of blocking the UI thread on the first
+# click (each directory expands via a synchronous scandir).
+_EXPAND_ALL_BATCH = 8
+
 _FAVORITE_ICON_MAP = {
     "\u2b50": "star",
     "\U0001f4c1": "folder",
@@ -144,7 +149,7 @@ class SidebarPanel(PanelContent):
         self._expand_btn.setToolTip(tr("sidebar.expand_all"))
         self._expand_btn.setAccessibleName(tr("sidebar.expand_all"))
         self._expand_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
-        self._expand_btn.clicked.connect(self._tree.expandAll)
+        self._expand_btn.clicked.connect(self._expand_all)
         self._collapse_btn = QPushButton()
         self._collapse_btn.setIcon(icons.icon("arrow_up", color="icon_secondary", size=scaled_px(16)))
         self._collapse_btn.setToolTip(tr("sidebar.collapse_all"))
@@ -188,6 +193,7 @@ class SidebarPanel(PanelContent):
         self._fav_expanded: bool | None = None
         self._rec_expanded: bool | None = None
         self._state = {"depth": 2, "expanded": set()}
+        self._expand_frontier: list[QTreeWidgetItem] = []
         self._populate()
         self._connect_bus(bus().refresh_requested, self._populate)
         self._connect_bus(bus().theme_changed, self._on_theme_changed)
@@ -748,15 +754,50 @@ class SidebarPanel(PanelContent):
                     queue.append(child)
         return None
 
-    def _expand_all_children(self, item):
-        placeholder = item.child(0) if item.childCount() == 1 else None
-        if placeholder is not None and placeholder.text(0) == "...":
-            item.removeChild(placeholder)
-            self._load_children(item, 0)
-        for i in range(item.childCount()):
-            child = item.child(i)
-            if self._get_vtype(child) == VTYPE_FS:
-                self._expand_all_children(child)
+    def _expand_all(self):
+        """Progressive expand-all: reveal filesystem items in small batches.
+
+        Replaces ``QTreeWidget.expandAll`` (which expanded every level
+        synchronously via the itemExpanded→_load_children chain and froze the UI
+        on the first click for large trees). Each tick expands at most
+        ``_EXPAND_ALL_BATCH`` directories, yielding to the event loop so the
+        tree paints progress instead of blocking.
+        """
+        frontier: list[QTreeWidgetItem] = []
+        for i in range(self._tree.topLevelItemCount()):
+            item = self._tree.topLevelItem(i)
+            if item is None:
+                continue
+            vtype = self._get_vtype(item)
+            if vtype == VTYPE_FS:
+                frontier.append(item)
+            elif vtype in (VTYPE_FAV_HEADER, VTYPE_REC_HEADER):
+                # Virtual headers are already populated — expand in place.
+                item.setExpanded(True)
+        self._expand_frontier = frontier
+        self._process_expand_frontier()
+
+    def _process_expand_frontier(self):
+        next_frontier: list[QTreeWidgetItem] = []
+        budget = _EXPAND_ALL_BATCH
+        while self._expand_frontier and budget > 0:
+            item = self._expand_frontier.pop(0)
+            if item is None:
+                continue
+            self._tree.expandItem(item)  # triggers _on_expand → lazy load
+            for i in range(item.childCount()):
+                child = item.child(i)
+                if child is None or self._get_vtype(child) != VTYPE_FS:
+                    continue
+                if child.childCount() == 1 and child.child(0).text(0) == "...":
+                    next_frontier.append(child)
+            budget -= 1
+        if self._expand_frontier:
+            # Still more directories in the current level — continue next tick.
+            QTimer.singleShot(0, self._process_expand_frontier)
+        elif next_frontier:
+            self._expand_frontier = next_frontier
+            QTimer.singleShot(0, self._process_expand_frontier)
 
     def _filter_item(self, item, text):
         if not text:
