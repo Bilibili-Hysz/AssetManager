@@ -1615,6 +1615,10 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._model._last_scan_reused = False
         if scan_reused:
             self._grid_widget.set_performance_generation(generation)
+            # A reused scan emits scan_committed without a model reset; clear the
+            # grid's scan-reset guard so a later sort/filter still captures the
+            # path texture cache instead of dropping it and rebuilding all cards.
+            self._grid_widget.mark_scan_settled()
             # The reused scan skips the model reset, so the grid may still show
             # the 0-row layout left by an in-flight sort/filter reset. Repopulate
             # it with the preserved (possibly re-sorted) entry count.

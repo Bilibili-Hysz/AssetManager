@@ -914,6 +914,73 @@ def test_grid_resize_recomposites_viewport_instead_of_blitting_blank():
     app.processEvents()
 
 
+def test_grid_scroll_blit_repaints_newly_exposed_strip(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    widget = FileListGridWidget()
+    widget.set_layout_ref(GridLayout())
+    widget.resize(300, 200)
+    widget._layout.compute(30, 300, 96, item_hint=QSize(120, 150))
+    widget._model_rows = 30
+    # Seed a valid viewport texture at scroll 0 with a matching epoch so the
+    # incremental blit path is taken.
+    widget._viewport_tex = QPixmap(300, 200)
+    widget._viewport_epoch = widget._full_rebuild_epoch
+    widget._viewport_sy = 0
+    widget._thumb_opacity.clear()
+
+    painted = []
+    monkeypatch.setattr(
+        widget, "_viewport_paint_cells",
+        lambda painter, sy, rows, skip_rows: painted.append((sy, set(rows))),
+    )
+
+    # Scroll down by 120 (< height): content shifts up, the bottom band
+    # [80, 200] is newly exposed and must be repainted.
+    visible = widget._layout.visible_rows(120, 200)
+    widget._viewport_compose(
+        120, visible, allow_scroll=True, dirty_rows=set(), skip_rows=set(),
+    )
+
+    sy, rows = painted[0]
+    assert sy == 120
+    bottom_strip = QRect(0, widget.height() - 120, widget.width(), 120)
+    expected = {
+        r for r in visible
+        if widget._layout.rect_at(r).translated(0, -120).intersects(bottom_strip)
+    }
+    assert expected and rows == expected
+
+    # Scroll up by 120 (back to 0): content shifts down, the top band [0, 120]
+    # is newly exposed and must be repainted.
+    widget._viewport_sy = 120
+    widget._viewport_tex = QPixmap(300, 200)
+    painted.clear()
+    widget._viewport_compose(
+        0, visible, allow_scroll=True, dirty_rows=set(), skip_rows=set(),
+    )
+
+    sy, rows = painted[0]
+    assert sy == 0
+    top_strip = QRect(0, 0, widget.width(), 120)
+    expected = {
+        r for r in visible
+        if widget._layout.rect_at(r).translated(0, 0).intersects(top_strip)
+    }
+    assert expected and rows == expected
+    widget.deleteLater()
+    app.processEvents()
+
+
+def test_grid_mark_scan_settled_clears_reset_guard():
+    widget = FileListGridWidget()
+    widget._on_scan_started(1)
+    assert widget._scan_reset_pending is True
+
+    widget.mark_scan_settled()
+
+    assert widget._scan_reset_pending is False
+
+
 def test_grid_layout_marks_only_new_rows_dirty_when_cache_exists():
     widget = FileListGridWidget()
     widget.set_layout_ref(GridLayout())

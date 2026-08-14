@@ -385,6 +385,16 @@ class FileListGridWidget(QWidget):
         self._scan_reset_pending = True
         self._path_textures.clear()
 
+    def mark_scan_settled(self) -> None:
+        """Clear the scan-reset guard after a reused scan skipped model reset.
+
+        ``_scan_reset_pending`` is otherwise only cleared in ``_on_model_reset``;
+        a no-change ``preserve_existing`` scan emits ``scan_committed`` without a
+        reset, which would otherwise make the next sort/filter drop the path
+        texture cache and rebuild every card.
+        """
+        self._scan_reset_pending = False
+
     def _capture_path_textures(self):
         """Keep card textures available across sort/filter model resets."""
         if getattr(self, "_scan_reset_pending", False):
@@ -905,11 +915,14 @@ class FileListGridWidget(QWidget):
             scratch.setDevicePixelRatio(dpr)
             self._viewport_scratch = scratch
         painter = QPainter(scratch)
+        # Shifting the previous composite by -dy moves its content up for
+        # dy > 0 (scrolling down), so the newly-exposed band is at the bottom
+        # edge, and at the top edge when scrolling up (dy < 0).
         painter.drawPixmap(0, -dy, tex)
         if dy > 0:
-            strip = QRect(0, 0, self.width(), dy)
+            strip = QRect(0, self.height() - dy, self.width(), dy)
         else:
-            strip = QRect(0, self.height() + dy, self.width(), -dy)
+            strip = QRect(0, 0, self.width(), -dy)
         painter.fillRect(strip, self._clr_panel)
         rows = set()
         for row in visible:
@@ -931,21 +944,27 @@ class FileListGridWidget(QWidget):
         self._frame_rect = QRect()
         self._frame_request_count = 0
 
-    def _request_frame(self, rows=None, *, full: bool = False, overlay: bool = False) -> None:
+    def _request_frame(self, rows=None, *, full: bool = False, overlay: bool = False, rect: QRect | None = None) -> None:
         """Coalesce visual invalidations until Qt can schedule one repaint."""
         self._frame_request_count += 1
         if full or self._frame_full:
             self._frame_full = True
+        elif rect is not None and not rect.isEmpty():
+            clipped = rect.intersected(self.rect())
+            if not clipped.isEmpty():
+                self._frame_rect = (
+                    clipped if self._frame_rect.isNull() else self._frame_rect.united(clipped)
+                )
         elif rows is not None and self._layout is not None and hasattr(self._layout, "rect_at"):
             for row in rows:
-                rect = self._layout.rect_at(row)
-                if rect is None:
+                row_rect = self._layout.rect_at(row)
+                if row_rect is None:
                     continue
                 padding = (
-                    max(scaled_px(8), int(max(rect.width(), rect.height()) * 0.05) + scaled_px(6))
+                    max(scaled_px(8), int(max(row_rect.width(), row_rect.height()) * 0.05) + scaled_px(6))
                     if overlay else scaled_px(2)
                 )
-                viewport_rect = rect.translated(0, -self._scroll_y).adjusted(
+                viewport_rect = row_rect.translated(0, -self._scroll_y).adjusted(
                     -padding, -padding, padding, padding)
                 viewport_rect = viewport_rect.intersected(self.rect())
                 if not viewport_rect.isEmpty():
@@ -1628,9 +1647,25 @@ class FileListGridWidget(QWidget):
                 self._scrollbar.setValue(rect.top() - self.height() // 4)
 
     def _on_scroll(self, value: int):
+        old_sy = self._scroll_y
         self._scroll_y = value
         self.set_scrolling()
-        self._request_frame(full=True)
+        dy = value - old_sy
+        # Repaint only the newly-exposed band: the viewport composite shifts the
+        # previous texture and re-composites just that strip. Fall back to a full
+        # repaint when a thumbnail fade is baking opacity into the composite
+        # (allow_scroll is false) or the jump spans the whole viewport.
+        if self._thumb_opacity or abs(dy) >= self.height():
+            self._request_frame(full=True)
+            return
+        if dy > 0:
+            rect = QRect(0, self.height() - dy, self.width(), dy)
+        elif dy < 0:
+            rect = QRect(0, 0, self.width(), -dy)
+        else:
+            # Clamped at a scroll end: no newly-exposed content to paint.
+            return
+        self._request_frame(rect=rect)
 
     # ── Resize ───────────────────────────────────────────────
 

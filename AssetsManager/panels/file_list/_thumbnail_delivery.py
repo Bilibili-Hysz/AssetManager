@@ -48,6 +48,11 @@ class ThumbnailDeliveryCoordinator:
         entry = self._model.entry_at(row)
         if entry is not None:
             self._model._raw_pixmaps[entry.path] = pixmap
+        # Deliberate bypass: FileSystemModel.setData(DecorationRole) stores the
+        # icon without emitting dataChanged. Thumbnail invalidation is owned by
+        # this coordinator (batched below into commit_thumbnail_rows), so a
+        # per-item model signal would double-invalidate the grid. Do not "fix"
+        # setData to emit dataChanged without removing this batching.
         self._model.setData(index, QIcon(pixmap), Qt.ItemDataRole.DecorationRole)
         self._batch[row] = path
         self._timer.start()
