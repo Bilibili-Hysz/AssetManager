@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 from PySide6.QtCore import Qt, Signal, QPoint
-from PySide6.QtGui import QColor, QPainter, QLinearGradient, QPixmap
+from PySide6.QtGui import QColor, QPainter, QLinearGradient, QRadialGradient, QPixmap
 from PySide6.QtWidgets import QWidget, QSizePolicy
 from AssetsManager.core.ui_scale import scaled_px
 
@@ -75,12 +75,16 @@ class HSVWheel(QWidget):
         if self._wheel_cache is not None:
             painter.drawPixmap(int(cx - radius), int(cy - radius), self._wheel_cache)
 
-        # Draw saturation gradient (center = white, edge = full saturation)
-        for r in range(int(radius) - 1, 0, -1):
-            sat = r / radius
-            color = QColor.fromHsvF(self._hue, sat, self._value)
-            painter.setPen(color)
-            painter.drawEllipse(int(cx - r), int(cy - r), r * 2, r * 2)
+        # Draw saturation gradient (center = white, edge = full saturation).
+        # A single QRadialGradient replaces the previous per-pixel ring loop
+        # (~radius drawEllipse calls) — the same look in one draw call, and no
+        # concentric-ring banding.
+        sat_gradient = QRadialGradient(cx, cy, radius)
+        sat_gradient.setColorAt(0.0, QColor.fromHsvF(self._hue, 0.0, self._value))
+        sat_gradient.setColorAt(1.0, QColor.fromHsvF(self._hue, 1.0, self._value))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(sat_gradient)
+        painter.drawEllipse(int(cx - radius), int(cy - radius), int(radius * 2), int(radius * 2))
 
         # Draw selection indicator
         angle_rad = math.radians(_hue_to_angle(self._hue))
