@@ -145,132 +145,8 @@ class FileListGridWidget(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumSize(100, 100)
 
-    # ── Texture-cache delegation (backward-compatible surface) ──
-
-    def _cache_texture(self, row: int, texture: QPixmap) -> None:
-        self._cache._cache_texture(row, texture)
-
-    def _clear_textures(self) -> None:
-        self._cache._clear_textures()
-
-    def _store_texture_bytes(self, row: int, texture: QPixmap) -> None:
-        self._cache._store_texture_bytes(row, texture)
-
-    def _remove_texture_bytes(self, row: int) -> None:
-        self._cache._remove_texture_bytes(row)
-
-    def _refresh_texture_accounting(self) -> None:
-        self._cache._refresh_texture_accounting()
-
-    def _capture_path_textures(self) -> None:
-        self._cache._capture_path_textures()
-
-    @property
-    def _textures(self):
-        return self._cache._textures
-
-    @_textures.setter
-    def _textures(self, value) -> None:
-        self._cache._textures = value
-
-    @property
-    def _path_textures(self):
-        return self._cache._path_textures
-
-    @_path_textures.setter
-    def _path_textures(self, value) -> None:
-        self._cache._path_textures = value
-
-    @property
-    def _texture_bytes(self) -> "dict[int, int]":
-        return self._cache._texture_bytes
-
-    @property
-    def _texture_cache_bytes(self) -> int:
-        return self._cache._texture_cache_bytes
-
-    # ── Animation delegation (backward-compatible surface) ──
-
-    def _anim_tick(self):
-        self._animator._anim_tick()
-
-    def _apply_selection_progress(self, old_selection: set[int]) -> None:
-        self._animator._apply_selection_progress(old_selection)
-
     def _on_anim_changed(self, changed_rows: set[int]) -> None:
         self._request_frame(changed_rows, overlay=True)
-
-    @property
-    def _thumb_opacity(self) -> "dict[int, float]":
-        return self._animator._thumb_opacity
-
-    @_thumb_opacity.setter
-    def _thumb_opacity(self, value) -> None:
-        self._animator._thumb_opacity = value
-
-    @property
-    def _thumbnail_rows(self) -> "set[int]":
-        return self._animator._thumbnail_rows
-
-    @_thumbnail_rows.setter
-    def _thumbnail_rows(self, value) -> None:
-        self._animator._thumbnail_rows = value
-
-    @property
-    def _hover_progress(self) -> "dict[int, float]":
-        return self._animator._hover_progress
-
-    @_hover_progress.setter
-    def _hover_progress(self, value) -> None:
-        self._animator._hover_progress = value
-
-    @property
-    def _selection_progress(self) -> "dict[int, float]":
-        return self._animator._selection_progress
-
-    @_selection_progress.setter
-    def _selection_progress(self, value) -> None:
-        self._animator._selection_progress = value
-
-    @property
-    def _entrance_queue(self) -> "list[int]":
-        return self._animator._entrance_queue
-
-    @_entrance_queue.setter
-    def _entrance_queue(self, value) -> None:
-        self._animator._entrance_queue = value
-
-    @property
-    def _entrance_visible(self) -> "set[int]":
-        return self._animator._entrance_visible
-
-    @_entrance_visible.setter
-    def _entrance_visible(self, value) -> None:
-        self._animator._entrance_visible = value
-
-    @property
-    def _anim_timer(self) -> QTimer:
-        return self._animator._anim_timer
-
-    @property
-    def _presented_generation(self) -> int:
-        return self._animator._presented_generation
-
-    @property
-    def _pending_presentation(self) -> "tuple[int, list[int], bool] | None":
-        return self._animator._pending_presentation
-
-    @_pending_presentation.setter
-    def _pending_presentation(self, value) -> None:
-        self._animator._pending_presentation = value
-
-    @property
-    def _reduce_motion(self) -> bool:
-        return self._animator._reduce_motion
-
-    @_reduce_motion.setter
-    def _reduce_motion(self, value) -> None:
-        self._animator._reduce_motion = value
 
     def _update_item_hint(self):
         """Item size matching GridDelegate.sizeHint."""
@@ -584,7 +460,7 @@ class FileListGridWidget(QWidget):
     def select_all(self):
         old = self._selection.copy()
         self._selection = set(range(self._model_rows))
-        self._apply_selection_progress(old)
+        self._animator._apply_selection_progress(old)
         if old != self._selection:
             self.selection_changed.emit()
         self._request_frame(self._selection | old, overlay=True)
@@ -592,7 +468,7 @@ class FileListGridWidget(QWidget):
     def clear_selection(self):
         old = self._selection.copy()
         self._selection.clear()
-        self._apply_selection_progress(old)
+        self._animator._apply_selection_progress(old)
         self.selection_changed.emit()
         self._request_frame(old, overlay=True)
 
@@ -1564,7 +1440,7 @@ class FileListGridWidget(QWidget):
                     self._hover_row = row
                     self.selection_changed.emit()
                     # Seed selection progress for animation
-                    self._apply_selection_progress(old_selection)
+                    self._animator._apply_selection_progress(old_selection)
                     self._request_frame(self._selection | old_selection, overlay=True)
             elif event.button() == Qt.MouseButton.LeftButton:
                 self._rubber_band_active = True
@@ -1573,7 +1449,7 @@ class FileListGridWidget(QWidget):
                 if not (event.modifiers() & Qt.KeyboardModifier.ControlModifier):
                     old_sel = self._selection.copy()
                     self._selection.clear()
-                    self._apply_selection_progress(old_sel)
+                    self._animator._apply_selection_progress(old_sel)
                 self.selection_changed.emit()
                 self._request_frame(full=True)
         super().mousePressEvent(event)
@@ -1671,7 +1547,7 @@ class FileListGridWidget(QWidget):
             if row in self._selection and len(self._selection) > 1:
                 old_sel = self._selection.copy()
                 self._selection = {row}
-                self._apply_selection_progress(old_sel)
+                self._animator._apply_selection_progress(old_sel)
                 self.clicked.emit(row)
                 self.selection_changed.emit()
                 self._request_frame(self._selection | old_sel, overlay=True)

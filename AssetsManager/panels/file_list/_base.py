@@ -684,7 +684,8 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             return
 
         self._grid_widget.begin_zoom(target, anchor_pos)
-        if getattr(self._grid_widget, "_reduce_motion", False) is True:
+        animator = getattr(self._grid_widget, "_animator", None)
+        if getattr(animator, "_reduce_motion", False) is True:
             self._thumb_size = target
             self._grid_widget.set_zoom_thumb_size(target)
             self._on_zoom_done(generation, target)
@@ -1698,7 +1699,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             if (row := self._model.row_for_path(path)) >= 0
         }
         if old != self._grid_widget._selection:
-            self._grid_widget._apply_selection_progress(old)
+            self._grid_widget._animator._apply_selection_progress(old)
             self._grid_widget.selection_changed.emit()
             self._grid_widget.update()
     def _selected_commands(

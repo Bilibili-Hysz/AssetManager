@@ -166,7 +166,7 @@ def test_grid_invalidation_records_aggregate_reason(tmp_path):
     app, _model, widget = _visible_grid(tmp_path)
     recorder = PerformanceRecorder(enabled=True)
     widget.set_performance_context(recorder, "session-a", 7)
-    widget._textures[0] = object()
+    widget._cache._textures[0] = object()
 
     widget.invalidate_textures()
 
@@ -198,17 +198,17 @@ def test_grid_thumbnail_delivery_telemetry_is_pathless(tmp_path):
 def test_grid_thumbnail_commit_invalidates_once_and_starts_each_fade_once():
     app = QApplication.instance() or QApplication([])
     widget = FileListGridWidget()
-    widget._reduce_motion = False
-    widget._textures[2] = object()
+    widget._animator._reduce_motion = False
+    widget._cache._textures[2] = object()
 
     widget.commit_thumbnail_rows([2, 4])
     widget.commit_thumbnail_rows([2, 4])
 
     assert widget._dirty == {2, 4}
-    assert widget._textures[2] is not None
-    assert widget._thumb_opacity == {4: 0.0}
-    assert widget._thumbnail_rows == {2, 4}
-    assert widget._anim_timer.isActive()
+    assert widget._cache._textures[2] is not None
+    assert widget._animator._thumb_opacity == {4: 0.0}
+    assert widget._animator._thumbnail_rows == {2, 4}
+    assert widget._animator._anim_timer.isActive()
     widget.deleteLater()
     app.processEvents()
 
@@ -217,11 +217,11 @@ def test_grid_full_invalidation_keeps_previous_textures_visible():
     widget = FileListGridWidget()
     cached = object()
     widget._model_rows = 3
-    widget._textures[1] = cached
+    widget._cache._textures[1] = cached
 
     widget.invalidate_textures()
 
-    assert widget._textures[1] is cached
+    assert widget._cache._textures[1] is cached
     assert widget._dirty == {0, 1, 2}
     assert widget._full_rebuild_pending is True
 
@@ -229,14 +229,14 @@ def test_grid_full_invalidation_keeps_previous_textures_visible():
 def test_grid_failed_dirty_replacement_keeps_previous_texture(tmp_path, monkeypatch):
     app, _model, widget = _visible_grid(tmp_path)
     cached = QPixmap(10, 10)
-    widget._textures[0] = cached
+    widget._cache._textures[0] = cached
     widget._dirty = {0}
     widget._full_rebuild_pending = False
     monkeypatch.setattr(widget, "_render_item", Mock(return_value=None))
 
     widget.repaint()
 
-    assert widget._textures[0] is cached
+    assert widget._cache._textures[0] is cached
     assert widget._dirty == {0}
     widget.deleteLater()
     app.processEvents()
@@ -349,9 +349,9 @@ def test_grid_animation_tick_requests_only_changed_card_regions(monkeypatch):
     widget.update_layout(3, 400)
     requested = []
     monkeypatch.setattr(widget, "_request_frame", lambda rows=None, **kwargs: requested.append((set(rows or []), kwargs)))
-    widget._thumb_opacity = {1: 0.0}
+    widget._animator._thumb_opacity = {1: 0.0}
 
-    widget._anim_tick()
+    widget._animator._anim_tick()
 
     assert requested == [({1}, {"overlay": True})]
 
@@ -369,9 +369,9 @@ def test_grid_animation_tick_stays_local_after_scroll(monkeypatch):
         "_request_frame",
         lambda rows=None, **kwargs: requested.append((set(rows or []), kwargs)),
     )
-    widget._thumb_opacity = {4: 0.0}
+    widget._animator._thumb_opacity = {4: 0.0}
 
-    widget._anim_tick()
+    widget._animator._anim_tick()
 
     assert requested == [({4}, {"overlay": True})]
 
@@ -379,14 +379,14 @@ def test_grid_animation_tick_stays_local_after_scroll(monkeypatch):
 def test_grid_selection_fade_completion_does_not_emit_selection_changed():
     app = QApplication.instance() or QApplication([])
     widget = FileListGridWidget()
-    widget._selection_progress = {1: 0.005}
+    widget._animator._selection_progress = {1: 0.005}
     changed = []
     widget.selection_changed.connect(lambda: changed.append(True))
 
-    widget._anim_tick()
+    widget._animator._anim_tick()
 
     assert changed == []
-    assert widget._selection_progress == {}
+    assert widget._animator._selection_progress == {}
     widget.deleteLater()
     app.processEvents()
 
@@ -428,11 +428,11 @@ def test_grid_stale_rebuild_callback_releases_scheduler_latch(monkeypatch):
 
 def test_grid_newer_empty_commit_discards_hidden_presentation():
     widget = FileListGridWidget()
-    widget._pending_presentation = (4, [0, 1], True)
+    widget._animator._pending_presentation = (4, [0, 1], True)
 
     widget.discard_pending_presentation(5)
 
-    assert widget._pending_presentation is None
+    assert widget._animator._pending_presentation is None
 
 
 def test_grid_texture_byte_accounting_cleans_evicted_and_cleared_entries():
@@ -442,20 +442,20 @@ def test_grid_texture_byte_accounting_cleans_evicted_and_cleared_entries():
     widget.set_performance_context(PerformanceRecorder(enabled=True), "session-a", 7)
     first = QPixmap(10, 20)
     second = QPixmap(20, 10)
-    widget._store_texture_bytes(1, first)
-    widget._store_texture_bytes(2, second)
+    widget._cache._store_texture_bytes(1, first)
+    widget._cache._store_texture_bytes(2, second)
 
-    assert widget._texture_cache_bytes == 1600
-    widget._textures[1] = first
-    widget._textures[2] = second
-    widget._textures.pop(1)
-    widget._remove_texture_bytes(1)
-    assert widget._texture_cache_bytes == 800
+    assert widget._cache._texture_cache_bytes == 1600
+    widget._cache._textures[1] = first
+    widget._cache._textures[2] = second
+    widget._cache._textures.pop(1)
+    widget._cache._remove_texture_bytes(1)
+    assert widget._cache._texture_cache_bytes == 800
 
-    widget._clear_textures()
+    widget._cache._clear_textures()
 
-    assert widget._texture_cache_bytes == 0
-    assert widget._texture_bytes == {}
+    assert widget._cache._texture_cache_bytes == 0
+    assert widget._cache._texture_bytes == {}
 
 
 def test_grid_disabled_cache_accounting_avoids_pixmap_size_reads(monkeypatch):
@@ -463,10 +463,10 @@ def test_grid_disabled_cache_accounting_avoids_pixmap_size_reads(monkeypatch):
     texture = Mock()
     monkeypatch.setattr(texture, "width", lambda: (_ for _ in ()).throw(AssertionError()))
 
-    widget._store_texture_bytes(1, texture)
+    widget._cache._store_texture_bytes(1, texture)
 
-    assert widget._texture_cache_bytes == 0
-    assert widget._texture_bytes == {}
+    assert widget._cache._texture_cache_bytes == 0
+    assert widget._cache._texture_bytes == {}
 
 
 def test_grid_texture_cache_evicts_lru_and_keeps_byte_accounting_scoped():
@@ -478,16 +478,16 @@ def test_grid_texture_cache_evicts_lru_and_keeps_byte_accounting_scoped():
     widget.set_performance_context(recorder, "session-a", 7)
     texture = QPixmap(10, 10)
     for row in range(200):
-        widget._textures[row] = texture
-        widget._store_texture_bytes(row, texture)
+        widget._cache._textures[row] = texture
+        widget._cache._store_texture_bytes(row, texture)
 
-    widget._textures.move_to_end(0)
-    widget._cache_texture(200, texture)
+    widget._cache._textures.move_to_end(0)
+    widget._cache._cache_texture(200, texture)
 
-    assert 1 not in widget._textures
-    assert 0 in widget._textures
-    assert len(widget._textures) == 200
-    assert widget._texture_cache_bytes == 200 * 400
+    assert 1 not in widget._cache._textures
+    assert 0 in widget._cache._textures
+    assert len(widget._cache._textures) == 200
+    assert widget._cache._texture_cache_bytes == 200 * 400
     event = next(event for event in recorder.recent() if event.name == "grid.texture_eviction")
     assert (event.session_token, event.generation, event.path) == ("session-a", 7, None)
     assert event.attributes == {"texture_cache_count": 199, "texture_cache_bytes": 199 * 400}
@@ -501,18 +501,18 @@ def test_grid_animation_tick_records_scoped_counts_and_preserves_queue():
     widget.set_layout_ref(GridLayout())
     widget.update_layout(4, 400)
     widget.resize(400, 300)
-    widget._entrance_queue = [0, 1]
+    widget._animator._entrance_queue = [0, 1]
     recorder = PerformanceRecorder(enabled=True)
     widget.set_performance_context(recorder, "session-a", 7)
 
-    widget._anim_tick()
+    widget._animator._anim_tick()
 
     event = next(event for event in recorder.recent() if event.name == "grid.animation_tick")
     assert event.session_token == "session-a"
     assert event.generation == 7
     assert event.path is None
     assert set(event.attributes) == {"visible_item_count", "queued_entrance_count"}
-    assert len(widget._entrance_queue) < 2
+    assert len(widget._animator._entrance_queue) < 2
 
     widget.deleteLater()
     app.processEvents()
@@ -521,17 +521,17 @@ def test_grid_animation_tick_records_scoped_counts_and_preserves_queue():
 def test_grid_presentation_starts_entrance_once_per_generation():
     app = QApplication.instance() or QApplication([])
     widget = FileListGridWidget()
-    widget._reduce_motion = False
+    widget._animator._reduce_motion = False
     widget._model_rows = 3
     widget.show()
     app.processEvents()
 
     assert widget.begin_presentation(4, [0, 1]) is True
-    assert widget._entrance_queue == [0, 1]
+    assert widget._animator._entrance_queue == [0, 1]
     assert widget.begin_presentation(4, [0, 1]) is False
-    assert widget._entrance_queue == [0, 1]
+    assert widget._animator._entrance_queue == [0, 1]
     assert widget.begin_presentation(5, [1, 2]) is True
-    assert widget._entrance_queue == [1, 2]
+    assert widget._animator._entrance_queue == [1, 2]
 
     widget.deleteLater()
     app.processEvents()
@@ -541,16 +541,16 @@ def test_grid_show_consumes_only_a_presentation_committed_while_hidden():
     app = QApplication.instance() or QApplication([])
     widget = FileListGridWidget()
     widget._model_rows = 2
-    widget._reduce_motion = False
+    widget._animator._reduce_motion = False
 
     assert widget.begin_presentation(4, [0, 1]) is True
-    assert widget._pending_presentation == (4, [0, 1], True)
+    assert widget._animator._pending_presentation == (4, [0, 1], True)
 
     widget.show()
     app.processEvents()
 
-    assert widget._presented_generation == 4
-    assert widget._entrance_queue == [0, 1]
+    assert widget._animator._presented_generation == 4
+    assert widget._animator._entrance_queue == [0, 1]
     assert widget.begin_presentation(4, [0, 1]) is False
     widget.deleteLater()
     app.processEvents()
@@ -563,7 +563,7 @@ def test_grid_disabled_telemetry_does_not_read_clock(tmp_path, monkeypatch):
     monkeypatch.setattr(_grid_widget, "perf_counter", lambda: (_ for _ in ()).throw(AssertionError()))
 
     widget.repaint()
-    widget._anim_tick()
+    widget._animator._anim_tick()
 
     monkeypatch.undo()
     widget.deleteLater()
@@ -576,7 +576,7 @@ def test_grid_recorder_failure_does_not_change_animation_state():
     widget.set_layout_ref(GridLayout())
     widget.update_layout(4, 400)
     widget.resize(400, 300)
-    widget._entrance_queue = [0, 1]
+    widget._animator._entrance_queue = [0, 1]
     class _FailingRecorder:
         enabled = True
 
@@ -587,9 +587,9 @@ def test_grid_recorder_failure_does_not_change_animation_state():
     recorder = _FailingRecorder()
     widget.set_performance_context(recorder, "session-a", 7)
 
-    widget._anim_tick()
+    widget._animator._anim_tick()
 
-    assert len(widget._entrance_queue) < 2
+    assert len(widget._animator._entrance_queue) < 2
     widget.deleteLater()
     app.processEvents()
 
@@ -601,7 +601,7 @@ def test_grid_performance_context_has_no_visual_side_effects():
     widget.set_performance_context(PerformanceRecorder(enabled=True), "session-a", 7)
 
     assert update.call_count == 0
-    assert widget._anim_timer.isActive() is False
+    assert widget._animator._anim_timer.isActive() is False
 
 
 def test_grid_rebind_replaces_session_and_generation_attribution(tmp_path):
@@ -696,44 +696,44 @@ def test_grid_thumb_batch_marks_only_loaded_rows_dirty():
 
 def test_grid_static_data_change_preserves_interaction_and_thumbnail_fades():
     widget = FileListGridWidget()
-    widget._textures[1] = object()
-    widget._thumbnail_rows = {1}
-    widget._thumb_opacity = {1: 0.4}
-    widget._hover_progress = {1: 0.7}
-    widget._selection_progress = {1: 0.8}
+    widget._cache._textures[1] = object()
+    widget._animator._thumbnail_rows = {1}
+    widget._animator._thumb_opacity = {1: 0.4}
+    widget._animator._hover_progress = {1: 0.7}
+    widget._animator._selection_progress = {1: 0.8}
     widget._dirty.clear()
 
     index = type("_Index", (), {"row": lambda _self: 1})()
     widget._on_data_changed(index, index, [FileSystemModel.SUBTITLE_ROLE])
 
     assert widget._dirty == {1}
-    assert widget._thumbnail_rows == {1}
-    assert widget._thumb_opacity == {1: 0.4}
-    assert widget._hover_progress == {1: 0.7}
-    assert widget._selection_progress == {1: 0.8}
+    assert widget._animator._thumbnail_rows == {1}
+    assert widget._animator._thumb_opacity == {1: 0.4}
+    assert widget._animator._hover_progress == {1: 0.7}
+    assert widget._animator._selection_progress == {1: 0.8}
 
 
 def test_grid_nonvisual_data_change_does_not_invalidate_texture():
     widget = FileListGridWidget()
-    widget._textures[1] = object()
+    widget._cache._textures[1] = object()
     widget._dirty.clear()
     index = type("_Index", (), {"row": lambda _self: 1})()
 
     widget._on_data_changed(index, index, [FileSystemModel.DIR_SIZE_ROLE])
 
-    assert widget._textures[1] is not None
+    assert widget._cache._textures[1] is not None
     assert widget._dirty == set()
 
 
 def test_grid_empty_role_data_change_invalidates_static_texture():
     widget = FileListGridWidget()
-    widget._textures[1] = object()
+    widget._cache._textures[1] = object()
     widget._dirty.clear()
     index = type("_Index", (), {"row": lambda _self: 1})()
 
     widget._on_data_changed(index, index, [])
 
-    assert 1 not in widget._textures
+    assert 1 not in widget._cache._textures
     assert widget._dirty == {1}
 
 
@@ -742,16 +742,16 @@ def test_grid_empty_role_data_change_invalidates_static_texture():
 def test_grid_selection_change_preserves_cached_textures():
     widget = FileListGridWidget()
     cached = object()
-    widget._textures[3] = cached
+    widget._cache._textures[3] = cached
     widget._selection = {3}
     widget._dirty.clear()
 
     widget._selection.clear()
-    widget._apply_selection_progress({3})
+    widget._animator._apply_selection_progress({3})
 
-    assert widget._textures[3] is cached
+    assert widget._cache._textures[3] is cached
     assert widget._dirty == set()
-    assert widget._selection_progress[3] == 1.0
+    assert widget._animator._selection_progress[3] == 1.0
 
 
 def test_grid_hover_transition_preserves_cached_textures():
@@ -759,8 +759,8 @@ def test_grid_hover_transition_preserves_cached_textures():
     widget = FileListGridWidget()
     old_cached = object()
     new_cached = object()
-    widget._textures[1] = old_cached
-    widget._textures[2] = new_cached
+    widget._cache._textures[1] = old_cached
+    widget._cache._textures[2] = new_cached
     widget._hover_row = 1
     widget._dirty.clear()
     widget._layout = type("_Layout", (), {"row_at": lambda _self, _x, _y: 2})()
@@ -777,10 +777,10 @@ def test_grid_hover_transition_preserves_cached_textures():
             QPointingDevice.primaryPointingDevice(),
         ))
 
-    assert widget._textures[1] is old_cached
-    assert widget._textures[2] is new_cached
+    assert widget._cache._textures[1] is old_cached
+    assert widget._cache._textures[2] is new_cached
     assert widget._dirty == set()
-    assert widget._hover_progress == {1: 1.0, 2: 0.0}
+    assert widget._animator._hover_progress == {1: 1.0, 2: 0.0}
 
     widget.deleteLater()
     app.processEvents()
@@ -789,7 +789,7 @@ def test_grid_hover_transition_preserves_cached_textures():
 def test_grid_enter_respects_reduce_motion(monkeypatch):
     app = QApplication.instance() or QApplication([])
     widget = FileListGridWidget()
-    widget._reduce_motion = True
+    widget._animator._reduce_motion = True
     widget._layout = type("_Layout", (), {"row_at": lambda _self, _x, _y: 2})()
     monkeypatch.setattr(widget, "mapFromGlobal", lambda _pos: QPoint(0, 0))
     monkeypatch.setattr(widget, "cursor", lambda: type("_Cursor", (), {"pos": lambda _self: QPoint(0, 0)})())
@@ -797,17 +797,17 @@ def test_grid_enter_respects_reduce_motion(monkeypatch):
     widget.enterEvent(QEnterEvent(QPointF(), QPointF(), QPointF()))
 
     assert widget._hover_row == 2
-    assert widget._hover_progress == {}
-    assert widget._anim_timer.isActive() is False
+    assert widget._animator._hover_progress == {}
+    assert widget._animator._anim_timer.isActive() is False
     widget.deleteLater()
     app.processEvents()
 
 
 def test_grid_reduce_motion_keeps_hover_feedback_without_transition(monkeypatch):
     widget = FileListGridWidget()
-    widget._reduce_motion = True
+    widget._animator._reduce_motion = True
     widget._hover_row = 2
-    widget._hover_progress = {1: 0.5}
+    widget._animator._hover_progress = {1: 0.5}
     requested = []
     monkeypatch.setattr(
         widget,
@@ -815,9 +815,9 @@ def test_grid_reduce_motion_keeps_hover_feedback_without_transition(monkeypatch)
         lambda rows=None, **kwargs: requested.append((set(rows or []), kwargs)),
     )
 
-    widget._anim_tick()
+    widget._animator._anim_tick()
 
-    assert widget._hover_progress == {}
+    assert widget._animator._hover_progress == {}
     assert requested == [({1}, {"overlay": True})]
 
 
@@ -842,12 +842,12 @@ def test_grid_rounded_draws_enable_antialiasing_only_locally():
 def test_grid_light_relayout_preserves_cached_textures_and_dirty_rows():
     widget = FileListGridWidget()
     widget.set_layout_ref(GridLayout())
-    widget._textures[0] = object()
+    widget._cache._textures[0] = object()
     widget._dirty = {1}
 
     widget.update_layout(3, 400, relayout_only=True)
 
-    assert widget._textures[0] is not None
+    assert widget._cache._textures[0] is not None
     assert widget._dirty == {1}
     assert widget._zoom_relayout_active is True
 
@@ -860,19 +860,19 @@ def test_grid_resize_relayout_preserves_existing_texture_content():
     widget = FileListGridWidget()
     widget.set_layout_ref(GridLayout())
     cached = object()
-    widget._textures[0] = cached
+    widget._cache._textures[0] = cached
     widget._model_rows = 3
     widget._dirty.clear()
 
     widget.update_layout(3, 800)
 
-    assert widget._textures[0] is cached
+    assert widget._cache._textures[0] is cached
     assert widget._dirty == set()
 
 
 def test_grid_dirty_cached_texture_is_scaled_to_replacement_layout(tmp_path, monkeypatch):
     app, _model, widget = _visible_grid(tmp_path)
-    widget._textures[0] = QPixmap(10, 10)
+    widget._cache._textures[0] = QPixmap(10, 10)
     widget._dirty = {0}
     widget._full_rebuild_pending = True
     monkeypatch.setattr(widget, "_render_item", Mock(return_value=None))
@@ -921,7 +921,7 @@ def test_grid_mark_scan_settled_clears_reset_guard():
 def test_grid_layout_marks_only_new_rows_dirty_when_cache_exists():
     widget = FileListGridWidget()
     widget.set_layout_ref(GridLayout())
-    widget._textures[0] = object()
+    widget._cache._textures[0] = object()
     widget._model_rows = 2
     widget._dirty.clear()
 
@@ -984,7 +984,7 @@ def test_zoom_reduce_motion_commits_without_starting_an_animation():
     panel._zoom_generation = 0
     panel._grid_widget = Mock()
     panel._grid_widget._zoom_relayout_active = False
-    panel._grid_widget._reduce_motion = True
+    panel._grid_widget._animator._reduce_motion = True
     panel._on_zoom_done = Mock()
 
     FileListPanel._on_zoom_changed(panel, "128px")
@@ -1052,7 +1052,7 @@ def test_zoom_done_commits_generation_target_not_last_frame_size():
 
 def test_grid_does_not_cache_intermediate_zoom_texture(tmp_path, monkeypatch):
     app, _model, widget = _visible_grid(tmp_path)
-    widget._textures.clear()
+    widget._cache._textures.clear()
     widget._dirty = {0}
     widget._zoom_relayout_active = True
     render_item = Mock(side_effect=widget._render_item)
@@ -1071,20 +1071,20 @@ def test_grid_zoom_cancels_card_fades_and_entrance_stagger():
     widget.set_layout_ref(GridLayout())
     widget.resize(800, 600)
     widget.update_layout(8, 800)
-    widget._thumb_opacity = {0: 0.4, 3: 0.8}
-    widget._entrance_queue = [0, 1, 2]
-    widget._entrance_visible = {4}
+    widget._animator._thumb_opacity = {0: 0.4, 3: 0.8}
+    widget._animator._entrance_queue = [0, 1, 2]
+    widget._animator._entrance_visible = {4}
 
     widget.begin_zoom(128)
 
-    assert widget._thumb_opacity == {}
-    assert widget._entrance_queue == []
-    assert widget._entrance_visible == set()
+    assert widget._animator._thumb_opacity == {}
+    assert widget._animator._entrance_queue == []
+    assert widget._animator._entrance_visible == set()
 
 
 def test_grid_zoom_interpolates_dirty_texture_position(tmp_path, monkeypatch):
     app, _model, widget = _visible_grid(tmp_path)
-    widget._textures[0] = QPixmap(10, 10)
+    widget._cache._textures[0] = QPixmap(10, 10)
     widget._dirty = {0}
     widget.begin_zoom(180)
     widget.set_zoom_thumb_size(128)
@@ -1103,16 +1103,16 @@ def test_grid_zoom_interpolates_dirty_texture_position(tmp_path, monkeypatch):
 def test_grid_thumbnail_commit_during_zoom_does_not_start_fade():
     widget = FileListGridWidget()
     widget._zoom_relayout_active = True
-    widget._reduce_motion = False
+    widget._animator._reduce_motion = False
 
     widget.commit_thumbnail_rows([3])
 
-    assert widget._thumb_opacity == {}
+    assert widget._animator._thumb_opacity == {}
 
 
 def test_grid_zoom_renders_temporary_fallback_without_caching(tmp_path, monkeypatch):
     app, _model, widget = _visible_grid(tmp_path)
-    widget._textures.clear()
+    widget._cache._textures.clear()
     widget.begin_zoom(180)
     widget.set_zoom_thumb_size(128)
     render_item = Mock(side_effect=widget._render_item)
@@ -1122,7 +1122,7 @@ def test_grid_zoom_renders_temporary_fallback_without_caching(tmp_path, monkeypa
 
     assert render_item.call_count <= 2
     assert widget._zoom_fallback_textures
-    assert widget._textures == {}
+    assert widget._cache._textures == {}
     widget.deleteLater()
     app.processEvents()
 
@@ -1238,15 +1238,15 @@ def test_grid_begin_zoom_commits_interrupted_target_textures():
     widget.update_layout(20, 400)
     widget._zoom_relayout_active = True
     widget._zoom_target_textures = {0: QPixmap(10, 10), 1: QPixmap(10, 10)}
-    widget._textures = {}
+    widget._cache._textures = {}
     widget._dirty = set()
 
     widget.begin_zoom(96)
 
     # Leftover target textures from the interrupted zoom are committed so the
     # cache tracks the zoom size instead of lagging at the original size.
-    assert widget._textures[0] is not None
-    assert widget._textures[1] is not None
+    assert widget._cache._textures[0] is not None
+    assert widget._cache._textures[1] is not None
     assert widget._zoom_target_textures == {}
 
 
@@ -1257,17 +1257,17 @@ def test_grid_finish_zoom_commits_prerendered_target_textures():
     widget._model_rows = 5
     widget._zoom_anchor_y_offset = 0
     widget._zoom_target_textures = {0: QPixmap(10, 10), 1: QPixmap(10, 10)}
-    widget._textures = {2: QPixmap(10, 10)}
-    widget._path_textures = {"/stale": QPixmap(10, 10)}
+    widget._cache._textures = {2: QPixmap(10, 10)}
+    widget._cache._path_textures = {"/stale": QPixmap(10, 10)}
     widget._dirty = set()
 
     widget.finish_zoom()
 
-    assert widget._textures[0] is not None
-    assert widget._textures[1] is not None
+    assert widget._cache._textures[0] is not None
+    assert widget._cache._textures[1] is not None
     # Rows without a pre-rendered target texture are marked dirty for rebuild.
     assert widget._dirty == {2, 3, 4}
-    assert widget._path_textures == {}
+    assert widget._cache._path_textures == {}
     assert widget._full_rebuild_pending is True
     assert widget._zoom_target_textures == {}
 

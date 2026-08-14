@@ -228,9 +228,9 @@ def _run_scenario(
     widget.repaint()
 
     # Exercise the real entrance/animation callback without forcing a threshold.
-    widget._entrance_queue = list(range(min(item_count, 24)))
+    widget._animator._entrance_queue = list(range(min(item_count, 24)))
     for _ in range(4):
-        widget._anim_tick()
+        widget._animator._anim_tick()
         app.processEvents()
 
     events = [

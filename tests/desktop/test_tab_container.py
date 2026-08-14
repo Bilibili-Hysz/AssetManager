@@ -60,17 +60,17 @@ def test_panel_shutdown_stops_grid_animation_and_thumbnail_delivery_timers():
     panel = container.current_file_list()
     assert panel is not None
     try:
-        panel._grid_widget._anim_timer.start()
+        panel._grid_widget._animator._anim_timer.start()
         panel._thumbnail_delivery._timer.start()
-        panel._grid_widget._pending_presentation = (1, [0], True)
+        panel._grid_widget._animator._pending_presentation = (1, [0], True)
         panel._zoom_anim = Mock()
         panel._scroll_anim = Mock()
 
         panel.shutdown()
 
-        assert not panel._grid_widget._anim_timer.isActive()
+        assert not panel._grid_widget._animator._anim_timer.isActive()
         assert not panel._thumbnail_delivery._timer.isActive()
-        assert panel._grid_widget._pending_presentation is None
+        assert panel._grid_widget._animator._pending_presentation is None
         panel._zoom_anim.stop.assert_called_once()
         panel._scroll_anim.stop.assert_called_once()
     finally:

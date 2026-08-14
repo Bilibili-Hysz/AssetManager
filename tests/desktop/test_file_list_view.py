@@ -291,8 +291,8 @@ def test_details_scan_commits_latest_grid_presentation_before_switching_back(tmp
         assert begin_presentation.call_args.args[0] == panel._model.scan_generation
         panel._view_combo.setCurrentIndex(grid)
         app.processEvents()
-        assert panel._grid_widget._pending_presentation is not None
-        assert panel._grid_widget._pending_presentation[0] == panel._model.scan_generation
+        assert panel._grid_widget._animator._pending_presentation is not None
+        assert panel._grid_widget._animator._pending_presentation[0] == panel._model.scan_generation
     finally:
         panel.shutdown()
         app.processEvents()
@@ -2928,7 +2928,7 @@ def test_zoom_animation_object_is_reused_across_zoom_changes():
         panel._zoom_generation = 0
         panel._grid_widget = Mock()
         panel._grid_widget._zoom_relayout_active = False
-        panel._grid_widget._reduce_motion = False
+        panel._grid_widget._animator._reduce_motion = False
         panel._grid_widget.width.return_value = 400
         panel._on_zoom_frame = Mock()
         panel._on_zoom_done = Mock()
