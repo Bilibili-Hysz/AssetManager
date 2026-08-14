@@ -13,11 +13,13 @@ from unittest.mock import Mock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import QEvent, QPointF, Qt
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QColor, QMouseEvent
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QScrollArea
 
+from AssetsManager import i18n
 from AssetsManager.core import themes
+from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager.core.plugins.descriptor import (
     PLUGIN_STATE_ACTIVE,
     PLUGIN_STATE_LOADABLE,
@@ -86,6 +88,70 @@ def test_sidebar_settings_preserves_out_of_range_depth_values(tmp_path):
         result = dialog.result()
         assert result["global_depth"] == 10
         assert result["branch_depths"] == {"branch-a": 20}
+    finally:
+        dialog.close()
+        dialog.deleteLater()
+        app.processEvents()
+
+
+def test_sidebar_settings_branch_rows_show_name_and_folder_icon(tmp_path):
+    """Each branch row keeps its name text next to the folder icon.
+
+    Regression: a QLabel with both text and a pixmap only renders the
+    pixmap, so the old single-label row showed an icon without a name.
+    """
+    app = _app()
+    root = tmp_path / "root"
+    (root / "alpha").mkdir(parents=True)
+    (root / "beta").mkdir(parents=True)
+    dialog = SidebarSettingsDialog(root_paths=[str(root)])
+    try:
+        labels = [
+            label for label in dialog.findChildren(QLabel)
+            if label.accessibleName() in {"alpha", "beta"}
+        ]
+        for name in ("alpha", "beta"):
+            matching = [label for label in labels if label.accessibleName() == name]
+            assert any(
+                label.text() == name
+                and (label.pixmap() is None or label.pixmap().isNull())
+                for label in matching
+            ), f"{name}: branch name label missing"
+            assert any(
+                label.text() == ""
+                and label.pixmap() is not None
+                and not label.pixmap().isNull()
+                for label in matching
+            ), f"{name}: folder icon label missing"
+    finally:
+        dialog.close()
+        dialog.deleteLater()
+        app.processEvents()
+
+
+def test_sidebar_settings_default_height_shows_branch_depth_controls(tmp_path):
+    """The default dialog height keeps the Branch Depths section visible."""
+    app = _app()
+    root = tmp_path / "root"
+    for name in ("alpha", "beta", "gamma", "delta"):
+        (root / name).mkdir(parents=True)
+    dialog = SidebarSettingsDialog(root_paths=[str(root)])
+    try:
+        dialog.show()
+        app.processEvents()
+
+        scroll = dialog.findChild(QScrollArea)
+        reset_btn = next(
+            button for button in dialog.findChildren(QPushButton)
+            if button.text() == i18n.tr("sidebar_settings.reset")
+        )
+        assert scroll is not None
+        assert scroll.isVisible()
+        assert scroll.height() >= scaled_px(120)
+
+        top_left = reset_btn.mapTo(dialog, QPoint(0, 0))
+        assert top_left.y() >= 0
+        assert top_left.y() + reset_btn.height() <= dialog.height()
     finally:
         dialog.close()
         dialog.deleteLater()

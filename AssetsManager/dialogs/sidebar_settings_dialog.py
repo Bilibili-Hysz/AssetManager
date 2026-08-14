@@ -29,7 +29,7 @@ class SidebarSettingsDialog(TabbedDialog):
         self._show_filter_init = show_filter
         self._global_depth_init = global_depth
         super().__init__(parent, title=tr("sidebar_settings.title"),
-                         min_size=(scaled_px(420), scaled_px(320)))
+                         min_size=(scaled_px(420), scaled_px(560)))
 
     def _build_ui(self):
         self.setStyleSheet(self._dialog_qss())
@@ -103,15 +103,20 @@ class SidebarSettingsDialog(TabbedDialog):
                     continue
                 seen_branches.add(name)
                 row = QHBoxLayout()
-                lbl = QLabel(name)
-                lbl.setPixmap(
+                icon_lbl = QLabel()
+                icon_lbl.setPixmap(
                     icons.icon("folder", color="icon_secondary", size=scaled_px(15))
                     .pixmap(scaled_px(15), scaled_px(15))
                 )
+                icon_lbl.setAccessibleName(name)
+                row.addWidget(icon_lbl)
+                # QLabel shows either text or a pixmap, never both. Keep the
+                # folder icon and the branch name in separate labels so the
+                # name stays visible next to its depth spinbox.
+                lbl = QLabel(name)
                 lbl.setToolTip(name)
                 lbl.setAccessibleName(name)
-                lbl.setMinimumWidth(scaled_px(180))
-                row.addWidget(lbl)
+                row.addWidget(lbl, 1)
                 sb = QSpinBox()
                 # Same out-of-range handling as the global depth spin: extend
                 # the range so configured branch depths are not silently
