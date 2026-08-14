@@ -46,7 +46,6 @@ def _first_image_in(dir_path: str) -> str | None:
 
 
 def _make_nav_button(icon_name, tooltip, callback):
-    t = themes.get()
     btn = QPushButton()
     btn.setIcon(icons.icon(icon_name, color="icon_secondary", size=scaled_px(16)))
     btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
@@ -56,10 +55,6 @@ def _make_nav_button(icon_name, tooltip, callback):
     btn.setAccessibleName(tooltip)
     themes.set_button_variant(btn, "ghost")
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    btn.setStyleSheet(
-        f"QPushButton {{ background: transparent; color: {t['body']}; "
-        f"border: none; padding: 0; min-width: {scaled_px(26)}px; }} "
-        f"QPushButton:hover {{ background: {t['panel']}80; border-radius: {scaled_px(3)}px; color: {t['heading']}; }}")
     btn.clicked.connect(callback)
     return btn
 

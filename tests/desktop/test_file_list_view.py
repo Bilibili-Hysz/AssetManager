@@ -112,6 +112,31 @@ def test_file_list_status_bar_uses_border_subtle_hairline():
         app.processEvents()
 
 
+def test_file_list_chrome_style_is_stable_across_refresh():
+    app = QApplication.instance() or QApplication([])
+    panel = FileListPanel()
+    try:
+        before = (
+            panel._header.styleSheet(),
+            panel._header_title.styleSheet(),
+            panel._nav_buttons[0].styleSheet(),
+        )
+
+        panel._apply_chrome_style()
+
+        after = (
+            panel._header.styleSheet(),
+            panel._header_title.styleSheet(),
+            panel._nav_buttons[0].styleSheet(),
+        )
+        assert before == after
+        assert "min-width" in panel._nav_buttons[0].styleSheet()
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
 def test_file_list_breadcrumb_highlights_current_segment():
     from AssetsManager.core import themes
     from PySide6.QtWidgets import QPushButton

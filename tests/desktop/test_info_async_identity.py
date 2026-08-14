@@ -1,11 +1,13 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from PySide6.QtWidgets import QPushButton
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QPushButton, QTreeWidgetItem
 
 from AssetsManager.controllers.info_controller import FileInfo, PluginField
 from AssetsManager.panels import info as info_module
 from AssetsManager.panels.info import InfoPanel
+from AssetsManager.panels.tag_tree import TagTreePanel
 
 
 def _file_info(path, *, name, plugin_value):
@@ -96,6 +98,50 @@ def test_info_preview_states_are_explicit_and_sequential():
         assert panel._preview_state == "empty"
         assert panel._preview.isHidden()
         assert not panel._empty_preview_state.isHidden()
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+
+
+def test_tag_tree_file_click_emits_navigation_signal():
+    panel = TagTreePanel()
+    try:
+        tag_item = QTreeWidgetItem(["hero"])
+        tag_item.setData(0, Qt.ItemDataRole.UserRole, "hero")
+        file_item = QTreeWidgetItem(["asset.png"])
+        file_item.setData(0, Qt.ItemDataRole.UserRole, "C:/library/asset.png")
+        tag_item.addChild(file_item)
+        panel._tree.addTopLevelItem(tag_item)
+        captured = []
+        panel.directory_selected.connect(captured.append)
+
+        panel._on_click(file_item, 0)
+
+        assert captured == ["C:/library/asset.png"]
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+
+
+def test_info_tag_browser_forwards_file_click_to_navigation_signal(monkeypatch):
+    panel = InfoPanel()
+    try:
+        panel._scoped_services = Mock()
+        fake_dialog = Mock()
+        monkeypatch.setattr(
+            "AssetsManager.dialogs.tag_browser_dialog.TagBrowserDialog",
+            lambda services, parent: fake_dialog,
+        )
+        captured = []
+        panel.navigate_requested.connect(captured.append)
+
+        panel._open_tag_browser()
+
+        fake_dialog.directory_selected.connect.assert_called_once()
+        connected = fake_dialog.directory_selected.connect.call_args.args[0]
+        connected("C:/library/asset.png")
+        fake_dialog.exec.assert_called_once()
+        assert captured == ["C:/library/asset.png"]
     finally:
         panel.shutdown()
         panel.deleteLater()

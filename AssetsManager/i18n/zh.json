@@ -166,6 +166,7 @@
   "sidebar.filter_placeholder": "过滤...  (Ctrl+F)",
   "sidebar.filter_matches": "过滤...  ({count} 项匹配)",
   "sidebar.search_scope_hint": "搜索仅覆盖文件系统目录；收藏夹与最近访问不参与过滤。",
+  "sidebar.empty_hint": "将文件夹拖到此处，或通过右键菜单添加收藏。",
   "sidebar.favorites": "收藏夹 ({count})",
   "sidebar.recent_folders": "最近访问 ({count})",
   "sidebar.menu.add_fav": "加入收藏",

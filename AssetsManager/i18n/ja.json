@@ -166,6 +166,7 @@
   "sidebar.filter_placeholder": "フィルタ...  (Ctrl+F)",
   "sidebar.filter_matches": "フィルタ...  ({count} 件一致)",
   "sidebar.search_scope_hint": "検索はファイルシステム内のみが対象です。お気に入りと最近のフォルダは絞り込み対象外です。",
+  "sidebar.empty_hint": "ここにフォルダをドラッグするか、右クリックメニューからお気に入りを追加できます。",
   "sidebar.favorites": "お気に入り ({count})",
   "sidebar.recent_folders": "最近のフォルダ ({count})",
   "sidebar.menu.add_fav": "お気に入りに追加",

@@ -15,7 +15,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal, QThreadPool, QTimer, QSize
 from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QLineEdit, QPushButton, QHBoxLayout,
-    QMenu, QInputDialog, QApplication, QAbstractItemView, QLabel, QWidget,
+    QVBoxLayout, QMenu, QInputDialog, QApplication, QAbstractItemView,
+    QLabel, QWidget,
 )
 from PySide6.QtGui import QKeyEvent, QBrush, QColor
 
@@ -170,6 +171,27 @@ class SidebarPanel(PanelContent):
         self.content_layout.addLayout(bar)
 
         self.content_layout.addWidget(self._tree, 1)
+
+        # ── Empty state (replaces the tree when nothing to show) ──
+        self._empty_state = QWidget()
+        empty_layout = QVBoxLayout(self._empty_state)
+        empty_layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
+        empty_layout.setSpacing(scaled_px(8))
+        empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._empty_icon = QLabel()
+        self._empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(self._empty_icon, 0, Qt.AlignmentFlag.AlignCenter)
+        self._empty_text = QLabel()
+        self._empty_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._empty_text.setWordWrap(True)
+        empty_layout.addWidget(self._empty_text, 0, Qt.AlignmentFlag.AlignCenter)
+        self._empty_hint = QLabel()
+        self._empty_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._empty_hint.setWordWrap(True)
+        empty_layout.addWidget(self._empty_hint, 0, Qt.AlignmentFlag.AlignCenter)
+        self._refresh_empty_state()
+        self.content_layout.addWidget(self._empty_state, 1)
+        self._empty_state.hide()
 
         # ── Status bar ──────────────────────────────────────────
 
@@ -393,9 +415,22 @@ class SidebarPanel(PanelContent):
                     item.setExpanded(self._rec_expanded)
 
         total = self._tree.topLevelItemCount()
-        if total == 0:
+        has_content = False
+        for i in range(total):
+            item = self._tree.topLevelItem(i)
+            if item is not None and (
+                self._get_vtype(item) == VTYPE_FS or item.childCount() > 0
+            ):
+                has_content = True
+                break
+        if not has_content:
             self._status.setText(tr("sidebar.status_empty"))
+            self._tree.hide()
+            self._refresh_empty_state()
+            self._empty_state.show()
         else:
+            self._tree.show()
+            self._empty_state.hide()
             self._status.setText(tr("sidebar.status_root_folders", count=total))
 
 
@@ -1016,6 +1051,7 @@ class SidebarPanel(PanelContent):
         self._apply_tree_style()
         self._refresh_item_icons()
         self._apply_status_style()
+        self._refresh_empty_state()
         self._apply_nav_btn_style()
 
     def _apply_status_style(self):
@@ -1025,6 +1061,20 @@ class SidebarPanel(PanelContent):
             f"border-top: 1px solid {t['border']};")
         self._status.setStyleSheet(
             f"color: {t['muted']}; font-size: {scaled_pt(11)}px; background: transparent;")
+
+    def _refresh_empty_state(self):
+        """Re-tint the empty-state icon/text after theme/language changes."""
+        if not hasattr(self, "_empty_state"):
+            return
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        icon_size = scaled_px(40)
+        self._empty_icon.setPixmap(
+            icons.icon("folder", color="icon_muted", size=icon_size).pixmap(
+                QSize(icon_size, icon_size)))
+        self._empty_text.setText(tr("sidebar.status_empty"))
+        self._empty_text.setStyleSheet(sk.muted_css(12))
+        self._empty_hint.setText(tr("sidebar.empty_hint"))
+        self._empty_hint.setStyleSheet(sk.muted_css(11))
 
     def _apply_nav_btn_style(self):
         t = themes.get()

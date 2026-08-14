@@ -115,6 +115,30 @@ def test_sidebar_search_uses_configured_depth_and_scope_tooltip(monkeypatch):
         app.processEvents()
 
 
+def test_sidebar_empty_state_replaces_tree_when_nothing_to_show(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(SidebarPanel, "ROOTS", [])
+    monkeypatch.setattr(
+        "AssetsManager.dialogs.sidebar_favorites.SidebarFavorites.list_all",
+        lambda _self: [],
+    )
+    monkeypatch.setattr(
+        "AssetsManager.dialogs.sidebar_recent.SidebarRecentFolders.list_all",
+        lambda _self: [],
+    )
+    panel = SidebarPanel()
+    try:
+        assert panel._tree.isHidden()
+        assert not panel._empty_state.isHidden()
+        assert panel._empty_text.text() == tr("sidebar.status_empty")
+        assert panel._empty_hint.text() == tr("sidebar.empty_hint")
+        assert panel._empty_icon.pixmap() is not None
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
 def test_sidebar_expand_all_persists_virtual_header_expansion():
     app = QApplication.instance() or QApplication([])
     panel = SidebarPanel()

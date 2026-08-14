@@ -115,20 +115,12 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._loader = ThumbnailLoader(size=self._thumb_size)
         # ── Panel header ─────────────────────────────────────────
 
-        t = themes.get()
         self._header = QWidget()
-        self._header.setStyleSheet(
-            f"background: {themes.header_for_dock()}; "
-            f"border: 1px solid {t['border']}; "
-            f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
         header_layout = QHBoxLayout(self._header)
         header_layout.setContentsMargins(scaled_px(10), scaled_px(3), scaled_px(6), scaled_px(3))
         header_layout.setSpacing(scaled_px(4))
 
         self._header_title = QLabel(tr("filelist.header"))
-        self._header_title.setStyleSheet(
-            f"color: {t['heading']}; font-size: {scaled_pt(12)}px; font-weight: bold; "
-            f"background: transparent; border: none; padding: {scaled_px(2)}px {scaled_px(4)}px;")
         header_layout.addWidget(self._header_title)
         header_layout.addStretch()
         self.content_layout.addWidget(self._header)
@@ -206,6 +198,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._search_timer: QTimer | None = None
         self.content_layout.addLayout(tb)
         self._refresh_state_icons()
+        self._apply_chrome_style()
 
         # ── Breadcrumb ──────────────────────────────────────────
 
@@ -482,13 +475,45 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             raise RuntimeError("FileListPanel scoped services do not match navigation root")
         self._model.set_library_root(scoped.session.root_str, scoped.session)
 
+    @staticmethod
+    def _header_css(t: dict) -> str:
+        return (
+            f"background: {themes.header_for_dock()}; border: 1px solid {t['border']}; "
+            f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; "
+        )
+
+    @staticmethod
+    def _header_title_css(t: dict) -> str:
+        return (
+            f"color: {t['heading']}; font-size: {scaled_pt(12)}px; font-weight: bold; "
+            f"background: transparent; border: none; padding: {scaled_px(2)}px {scaled_px(4)}px;"
+        )
+
+    @staticmethod
+    def _nav_button_css(t: dict) -> str:
+        return (
+            f"QPushButton {{ background: transparent; color: {t['body']}; "
+            f"border: none; padding: 0; min-width: {scaled_px(26)}px; }} "
+            f"QPushButton:hover {{ background: {alpha(t['panel'], 0.50)}; border-radius: {scaled_px(3)}px; "
+            f"color: {t['heading']}; }}"
+        )
+
+    def _apply_chrome_style(self):
+        """Single source for header/title/nav/status chrome styling."""
+        t = themes.get()
+        if hasattr(self, "_header"):
+            self._header.setStyleSheet(self._header_css(t))
+        if hasattr(self, "_header_title"):
+            self._header_title.setStyleSheet(self._header_title_css(t))
+        if hasattr(self, "_nav_buttons"):
+            for btn in self._nav_buttons:
+                btn.setStyleSheet(self._nav_button_css(t))
+        if hasattr(self, "_status_bar"):
+            self._fst_status_style()
+
     def refresh_header(self):
         """Re-apply header bar styling (called on bg opacity changes)."""
-        t = themes.get()
-        self._header.setStyleSheet(
-            f"background: {themes.header_for_dock()}; "
-            f"border: 1px solid {t['border']}; "
-            f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
+        self._apply_chrome_style()
 
     def refresh_contents(self):
         """Refresh the active directory after an application-wide update."""
@@ -523,20 +548,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         pass
 
     def _on_theme_changed(self, _name):
-        t = themes.get()
-        self._header.setStyleSheet(
-            f"background: {themes.header_for_dock()}; border: 1px solid {t['border']}; "
-            f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
-        self._header_title.setStyleSheet(
-            f"color: {t['heading']}; font-size: {scaled_pt(12)}px; font-weight: bold; "
-            f"background: transparent; border: none; padding: {scaled_px(2)}px {scaled_px(4)}px;")
-        self._fst_status_style()
-        for btn in self._nav_buttons:
-            btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {t['body']}; "
-                f"border: none; padding: 0; font-size: {scaled_pt(10)}px; }} "
-                f"QPushButton:hover {{ background: {alpha(t['panel'], 0.50)}; border-radius: {scaled_px(3)}px; "
-                f"color: {t['heading']}; }}")
+        self._apply_chrome_style()
         self._grid_widget.refresh_theme()
         self._apply_detail_theme()
 
@@ -1619,6 +1631,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._finish_smooth_scroll(getattr(self, "_scroll_anim_generation", 0))
     def _on_ui_scale_changed(self, _scale: float) -> None:
         """Re-measure canvas text and Details chrome after a live scale change."""
+        self._apply_chrome_style()
         self._grid_widget.refresh_scale()
         self._grid_widget.update_layout(self._model.rowCount(), self._grid_widget.width())
         self._detail_view.setIconSize(QSize(scaled_px(18), scaled_px(18)))
