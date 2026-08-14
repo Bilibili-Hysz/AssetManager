@@ -37,21 +37,23 @@
       "disabled": 0.5
     },
     "border_radius": {
-      "sm": 4,
-      "md": 6,
-      "lg": 8
+      "sm": 8,
+      "md": 10,
+      "lg": 14,
+      "xl": 20
     },
     "spacing": {
       "xs": 4,
       "sm": 8,
       "md": 12,
-      "lg": 16
+      "lg": 16,
+      "xl": 24
     },
     "font_size": {
-      "sm": 11,
-      "md": 12,
-      "lg": 13,
-      "xl": 14
+      "sm": 12,
+      "md": 13,
+      "lg": 14,
+      "xl": 16
     },
     "animation": {
       "duration_ms": 200
