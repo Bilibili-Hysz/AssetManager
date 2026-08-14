@@ -1410,9 +1410,9 @@ class FileListGridWidget(QWidget):
     def _apply_scrollbar_theme(self):
         t = themes.get()
         self._scrollbar.setStyleSheet(
-            f"QScrollBar:vertical {{ background: {t['panel']}; width:{scaled_px(8)}px; }}"
-            f"QScrollBar::handle:vertical {{ background: {t['border']}; "
-            f"border-radius:{scaled_px(4)}px; min-height:30px; }}"
+            f"QScrollBar:vertical {{ background: transparent; width:{scaled_px(6)}px; }}"
+            f"QScrollBar::handle:vertical {{ background: {t['scrollbar_thumb']}; "
+            f"border-radius:{scaled_px(3)}px; min-height:{scaled_px(24)}px; }}"
             f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}")
 
     def refresh_theme(self):
@@ -1445,7 +1445,7 @@ class FileListGridWidget(QWidget):
     def _relayout_scrollbar(self):
         if self.width() <= 0 or self.height() <= 0:
             return
-        scrollbar_w = scaled_px(8)
+        scrollbar_w = scaled_px(6)
         self._scrollbar.setGeometry(self.width() - scrollbar_w, 0, scrollbar_w, self.height())
 
     def scroll_to(self, row: int):

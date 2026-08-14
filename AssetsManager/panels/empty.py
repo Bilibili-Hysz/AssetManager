@@ -1,8 +1,8 @@
 """Empty placeholder panel with visible border, background, and status hint."""
 from PySide6.QtWidgets import QLabel, QVBoxLayout
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from AssetsManager.panels.base import PanelContent
-from AssetsManager.core import themes
+from AssetsManager.core import icons, themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager import i18n
@@ -16,6 +16,12 @@ class EmptyPanel(PanelContent):
         self.setMinimumHeight(scaled_px(100))
 
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+
+        # ── Semantic icon (muted, above the title) ────────────
+        self._icon_label = QLabel()
+        self._icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._icon_label.setStyleSheet("background: transparent;")
+        self._set_icon("folder", "icon_muted")
 
         # ── Main label (heading color, larger) ────────────────
         label = QLabel()
@@ -34,12 +40,19 @@ class EmptyPanel(PanelContent):
         # ── Layout ────────────────────────────────────────────
         col = QVBoxLayout()
         col.setContentsMargins(0, 0, 0, 0)
-        col.setSpacing(sk.px(6))
+        col.setSpacing(sk.px(8))
         col.addStretch()
+        col.addWidget(self._icon_label)
         col.addWidget(label)
         col.addWidget(sub)
         col.addStretch()
         self.content_layout.addLayout(col)
+
+    def _set_icon(self, name: str, color: str):
+        """Render a semantic SVG icon into the placeholder label."""
+        size = scaled_px(40)
+        self._icon_label.setPixmap(
+            icons.icon(name, color=color, size=size).pixmap(QSize(size, size)))
 
     # ── Factory helpers ──────────────────────────────────────
 
@@ -49,6 +62,7 @@ class EmptyPanel(PanelContent):
         p = cls(parent=parent, subtitle=subtitle or tr(
             "panel.loading", default="Loading…"))
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        p._set_icon("clock", "icon_accent")
         labels = p.findChildren(QLabel)
         for lb in labels:
             if lb.text() in ("Empty", tr("panel.empty", default="Empty")):
@@ -62,6 +76,7 @@ class EmptyPanel(PanelContent):
         p = cls(parent=parent, subtitle=subtitle or tr(
             "panel.error.hint", default="Something went wrong"))
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        p._set_icon("close", "danger")
         labels = p.findChildren(QLabel)
         for lb in labels:
             if lb.text() in ("Empty", tr("panel.empty", default="Empty")):

@@ -2,6 +2,7 @@
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QSize
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton
 from AssetsManager.core import icons, themes
+from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 
 
@@ -57,12 +58,13 @@ class CollapsiblePanel(QWidget):
 
     def _apply_header_style(self):
         t = themes.get()
-        bg = _alpha(t["accent"], 0.19) if self._expanded else "transparent"
-        hover_bg = _alpha(t["accent"], 0.13)
+        bg = alpha(t["accent"], 0.19) if self._expanded else "transparent"
+        hover_bg = alpha(t["accent"], 0.13)
+        hairline = t.get("border_subtle", alpha(t["border"], 0.5))
         self._header_btn.setStyleSheet(
             f"QPushButton {{ text-align: left; font-weight: bold; font-size: {scaled_pt(12)}px; "
-            f"color: {t['heading']}; background: {bg}; border: 1px solid {t['border']}40; "
-            f"border-radius: {scaled_px(4)}px; padding: 4px 8px; }}"
+            f"color: {t['heading']}; background: {bg}; border: 1px solid {hairline}; "
+            f"border-radius: {scaled_px(8)}px; padding: {scaled_px(6)}px {scaled_px(10)}px; }}"
             f"QPushButton:hover {{ background: {hover_bg}; }}")
 
     def _on_toggle(self, checked):
@@ -94,8 +96,3 @@ class CollapsiblePanel(QWidget):
             anim.finished.connect(lambda: self._content.setVisible(False))
         self._anim = anim
         anim.start()
-
-
-def _alpha(hex_color: str, alpha: float) -> str:
-    a = int(alpha * 255)
-    return f"{hex_color}{a:02x}"
