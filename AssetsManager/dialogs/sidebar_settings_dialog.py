@@ -77,7 +77,7 @@ class SidebarSettingsDialog(TabbedDialog):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setMaximumHeight(scaled_px(200))
-        scroll.setStyleSheet(f"QScrollArea {{ background: {sk.token('base')}; border: none; }}"
+        scroll.setStyleSheet(f"QScrollArea {{ background: {sk.token('panel')}; border: none; }}"
                              f"QScrollArea > QWidget {{ background: transparent; }}")
         branch_widget = QWidget()
         branch_widget.setStyleSheet("background: transparent;")
