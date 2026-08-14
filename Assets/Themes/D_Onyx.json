@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "name": "Onyx",
+  "description": "Polished near-black interface with warm amber accents",
+  "dark": true,
+  "colors": {
+    "base": "#0f0f13",
+    "panel": "#181820",
+    "header": "#22222e",
+    "border": "#414151",
+    "heading": "#f0f0f5",
+    "body": "#bfbfcd",
+    "muted": "#7e7e90",
+    "accent": "#d9952e",
+    "success": "#55cf88",
+    "warning": "#f0b44e",
+    "danger": "#ef6b5e",
+    "favorite": "#e8c85a",
+    "recent": "#7dc2e8",
+    "on_accent": "#171006",
+    "hover_overlay": "#ffffff",
+    "selected_overlay": "#d9952e",
+    "border_focus": "#d9952e",
+    "input_bg": "#181820",
+    "input_text": "#f0f0f5",
+    "scrollbar_track": "#0f0f13",
+    "scrollbar_thumb": "#5f5f6e",
+    "scrollbar_thumb_hover": "#6a6a7a",
+    "disabled_text": "#5a5a68",
+    "disabled_bg": "#131318",
+    "tooltip_bg": "#22222e",
+    "tooltip_text": "#f0f0f5"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.15,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 8,
+      "md": 10,
+      "lg": 14,
+      "xl": 20
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16,
+      "xl": 24
+    },
+    "font_size": {
+      "sm": 12,
+      "md": 13,
+      "lg": 14,
+      "xl": 16
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  },
+  "background": {
+    "enabled": false,
+    "image": "",
+    "scale": "fill",
+    "opacity": 1.0,
+    "panel_opacity": 0.88,
+    "header_opacity": 1.0
+  }
+}

@@ -39,6 +39,35 @@ def test_all_themes():
     assert "Lilac" in names
 
 
+def test_builtin_filename_prefix_matches_dark_flag():
+    """D_ themes must be dark and L_ themes light so grouping is unambiguous."""
+    import json
+    from AssetsManager.core.path_resolver import themes_dir
+
+    for path in sorted(themes_dir().glob("D_*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert data.get("dark") is True, f"{path.name}: expected dark: true"
+
+    for path in sorted(themes_dir().glob("L_*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert data.get("dark") is False, f"{path.name}: expected dark: false"
+
+
+def test_bundled_mint_theme_groups_as_light():
+    """Regression: Mint is light, so it must live under the L_ prefix."""
+    from AssetsManager.core.theme_loader import ThemeLoader
+    from AssetsManager.core.path_resolver import themes_dir
+
+    loader = ThemeLoader(themes_dir=str(themes_dir()))
+    loader.scan_directory()
+    groups = loader.list_themes()
+
+    light_names = [t["name"] for t in groups["Light"]]
+    dark_names = [t["name"] for t in groups["Dark"]]
+    assert "Mint" in light_names
+    assert "Mint" not in dark_names
+
+
 def test_get_theme():
     t = themes.get()
     assert "base" in t
@@ -61,6 +90,24 @@ def test_selectable_themes_meet_text_contrast_contract():
         ("muted", "base", 3.0),
         ("muted", "panel", 3.0),
         ("on_accent", "accent", 4.5),
+    )
+    for name in themes.names():
+        palette = themes.get(name)
+        for foreground, background, threshold in checks:
+            assert contrast_ratio(palette[foreground], palette[background]) >= threshold, (
+                f"{name}: {foreground}/{background} contrast is below {threshold}:1"
+            )
+
+
+def test_selectable_themes_meet_extended_contrast_contract():
+    """Input/tooltip text stays readable and scrollbars meet WCAG non-text 3:1."""
+    from AssetsManager.core.color_utils import contrast_ratio
+
+    checks = (
+        ("input_text", "input_bg", 4.5),
+        ("tooltip_text", "tooltip_bg", 4.5),
+        ("scrollbar_thumb", "scrollbar_track", 3.0),
+        ("scrollbar_thumb_hover", "scrollbar_track", 3.0),
     )
     for name in themes.names():
         palette = themes.get(name)

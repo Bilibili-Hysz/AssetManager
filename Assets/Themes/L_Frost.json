@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "name": "Frost",
+  "description": "Frosted blue-white interface with deep cyan accents",
+  "dark": false,
+  "colors": {
+    "base": "#eef4f8",
+    "panel": "#f7fbfd",
+    "header": "#e0ebf2",
+    "border": "#bfd2de",
+    "heading": "#14242e",
+    "body": "#3c4f5d",
+    "muted": "#697d8b",
+    "accent": "#2a7d9b",
+    "success": "#2a8f5a",
+    "warning": "#b97420",
+    "danger": "#b43a3a",
+    "favorite": "#7a6420",
+    "recent": "#3a6f8f",
+    "on_accent": "#ffffff",
+    "hover_overlay": "#000000",
+    "selected_overlay": "#2a7d9b",
+    "border_focus": "#2a7d9b",
+    "input_bg": "#f7fbfd",
+    "input_text": "#14242e",
+    "scrollbar_track": "#eef4f8",
+    "scrollbar_thumb": "#7390a1",
+    "scrollbar_thumb_hover": "#708b9c",
+    "disabled_text": "#b6c4cc",
+    "disabled_bg": "#e0ebf2",
+    "tooltip_bg": "#e0ebf2",
+    "tooltip_text": "#14242e"
+  },
+  "properties": {
+    "opacity": {
+      "hover": 0.08,
+      "disabled": 0.5
+    },
+    "border_radius": {
+      "sm": 8,
+      "md": 10,
+      "lg": 14,
+      "xl": 20
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16,
+      "xl": 24
+    },
+    "font_size": {
+      "sm": 12,
+      "md": 13,
+      "lg": 14,
+      "xl": 16
+    },
+    "animation": {
+      "duration_ms": 200
+    }
+  },
+  "background": {
+    "enabled": false,
+    "image": "",
+    "scale": "fill",
+    "opacity": 1.0,
+    "panel_opacity": 0.88,
+    "header_opacity": 1.0
+  }
+}
