@@ -24,7 +24,7 @@
 | V2 | `widgets/theme_preview.py:339-340`、`dialogs/theme_preview_dialog.py:88` | 色板 `border: 1px solid #555; border-radius: 4px` 硬编码 | 同 V1 |
 | V3 | `widgets/workspace_bar.py:96-120` | 多处硬编码 `padding: 2px 8px` 等 | 改用 `scaled_px`/`StyleKit` |
 | V4 | `panels/info.py:277,349` | 局部 `setStyleSheet` 混用 `sk.pt` 与硬编码 `padding: 2px 0` | 统一到 `StyleKit` |
-| V5 | 浮动对话框缺阴影 | 仅 `startup.py`/`toast.py`/`plugin_manager_dialog.py` 用了 `apply_elevation`；`tag_browser_dialog`/`share_link_dialog`/`color_picker_dialog` 等浮动表面无轻投影 | 对浮动/无边框表面补 `apply_elevation(level=1)` |
+| V5 | （已更正，非问题） | 核查后：`dialogs/` 目录下无 `FramelessWindowHint`/`Tool` 窗口，对话框均为常规 `QDialog`（由系统提供窗口阴影）；`apply_elevation` 的实际用途是给**窗口内的卡片式容器**（startup 的 detail/list panel、toast、plugin_manager）加阴影，不是给对话框 | 无需处理；如需进一步「卡片化」，可评估 info 面板/侧栏卡片是否要 elevation，属设计取舍 |
 
 ## 4. 主题应用一致性（结构性）
 

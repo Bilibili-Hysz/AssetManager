@@ -274,7 +274,7 @@ class InfoPanel(PanelContent):
         self._copy_btn.setStyleSheet(
             f"background: transparent; color: {sk.token('body')}; "
             f"border: 1px solid {sk.token('border')}; border-radius: {sk.px(4)}px; "
-            f"padding: 2px 10px; font-size: {sk.pt(12)}px;")
+            f"padding: {sk.px(2)}px {sk.px(10)}px; font-size: {sk.pt(12)}px;")
         self._copy_btn.clicked.connect(lambda: self.copy_path_requested.emit(self._current_path))
         act_layout.addWidget(self._open_btn)
         act_layout.addWidget(self._copy_btn)
@@ -346,7 +346,7 @@ class InfoPanel(PanelContent):
         self._refresh_empty_preview_state()
         self._name.setStyleSheet(
             sk.label_css("heading", size=16, bold=True)
-            + " QLabel { border: none; padding: 2px 0; }")
+            + f" QLabel {{ border: none; padding: {sk.px(2)}px 0; }}")
         # Update field labels and values
         self._refresh_field_styles()
         # Update link field
