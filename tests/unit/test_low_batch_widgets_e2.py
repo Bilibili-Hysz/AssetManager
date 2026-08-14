@@ -245,16 +245,18 @@ def test_toast_horizontal_chrome_uses_fixed_widths_before_layout():
     parent = QWidget()
     toasts = []
     try:
+        # shadow_margin reserves scaled_px(8) on each side for elevation.
+        shadow = 2 * scaled_px(8)
         with_icon = Toast(parent, "Saved", icon="check")
         toasts.append(with_icon)
         assert with_icon._horizontal_chrome == (
-            scaled_px(4) + scaled_px(12) + scaled_px(12) + scaled_px(20)
+            shadow + scaled_px(4) + scaled_px(12) + scaled_px(12) + scaled_px(20)
         )
 
         no_icon = Toast(parent, "Plain")
         toasts.append(no_icon)
         assert no_icon._horizontal_chrome == (
-            scaled_px(4) + scaled_px(12) + scaled_px(12)
+            shadow + scaled_px(4) + scaled_px(12) + scaled_px(12)
         )
     finally:
         for toast in toasts:

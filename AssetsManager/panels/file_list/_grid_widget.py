@@ -97,6 +97,7 @@ class FileListGridWidget(QWidget):
         self._viewport_scratch: QPixmap | None = None
         self._viewport_sy = 0
         self._viewport_epoch = 0
+        self._viewport_skipped: set[int] = set()
         self._hover_row: int = -1
         self._selection: set[int] = set()
         self._last_click_row: int = -1
@@ -722,9 +723,21 @@ class FileListGridWidget(QWidget):
                     p.drawPixmap(texture_rect, tex)
                 self._draw_interaction_overlay(p, row, texture_rect, op)
         else:
-            allow_scroll = not self._thumb_opacity and not self._hover_progress
+            allow_scroll = not self._thumb_opacity
+            # Hover-lifted cells are drawn on top, so their normal position in
+            # the viewport must stay clear of stale baked content. When the
+            # lifted set changes, force a full composite to erase/re-bake.
+            skip_rows = set()
+            if not self._reduce_motion:
+                if self._hover_row >= 0:
+                    skip_rows.add(self._hover_row)
+                skip_rows.update(self._hover_progress.keys())
+            if skip_rows != self._viewport_skipped:
+                self._viewport_skipped = set(skip_rows)
+                self._viewport_tex = None
             viewport = self._viewport_compose(
                 sy, visible, allow_scroll=allow_scroll, dirty_rows=viewport_dirty,
+                skip_rows=skip_rows,
             )
             p.drawPixmap(0, 0, viewport)
             # Hover lift + interaction overlay are drawn on top of the composite.
@@ -801,9 +814,15 @@ class FileListGridWidget(QWidget):
             or tex.height() != int(self.height() * dpr)
         )
 
-    def _viewport_paint_cells(self, painter: QPainter, sy: int, rows) -> None:
-        """Paint the given rows' textures into a viewport painter."""
+    def _viewport_paint_cells(self, painter: QPainter, sy: int, rows, skip_rows: set) -> None:
+        """Paint the given rows' textures into a viewport painter.
+
+        ``skip_rows`` are cells rendered on top (hover lift), so their normal
+        position must stay clear of stale baked content.
+        """
         for row in rows:
+            if row in skip_rows:
+                continue
             rect = self._layout.rect_at(row)
             if rect is None:
                 continue
@@ -841,7 +860,7 @@ class FileListGridWidget(QWidget):
                 painter.restore()
 
     def _viewport_compose(
-        self, sy: int, visible, *, allow_scroll: bool, dirty_rows: set,
+        self, sy: int, visible, *, allow_scroll: bool, dirty_rows: set, skip_rows: set,
     ) -> QPixmap:
         """Compose (or scroll-blit) the viewport texture and return it."""
         dpr = max(1.0, float(self.devicePixelRatioF() or 1.0))
@@ -856,7 +875,7 @@ class FileListGridWidget(QWidget):
         if self._viewport_full_required(dpr) or not allow_scroll:
             painter = QPainter(tex)
             painter.fillRect(self.rect(), self._clr_panel)
-            self._viewport_paint_cells(painter, sy, visible)
+            self._viewport_paint_cells(painter, sy, visible, skip_rows)
             painter.end()
             self._viewport_epoch = self._full_rebuild_epoch
             self._viewport_sy = sy
@@ -866,7 +885,7 @@ class FileListGridWidget(QWidget):
         if abs(dy) >= self.height():
             painter = QPainter(tex)
             painter.fillRect(self.rect(), self._clr_panel)
-            self._viewport_paint_cells(painter, sy, visible)
+            self._viewport_paint_cells(painter, sy, visible, skip_rows)
             painter.end()
             self._viewport_sy = sy
             return tex
@@ -893,7 +912,7 @@ class FileListGridWidget(QWidget):
                 continue
             if strip.intersects(rect.translated(0, -sy)) or row in dirty_rows:
                 rows.add(row)
-        self._viewport_paint_cells(painter, sy, rows)
+        self._viewport_paint_cells(painter, sy, rows, skip_rows)
         painter.end()
         self._viewport_tex, self._viewport_scratch = scratch, tex
         self._viewport_sy = sy
