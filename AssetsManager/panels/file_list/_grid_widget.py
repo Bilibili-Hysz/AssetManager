@@ -89,15 +89,6 @@ class FileListGridWidget(QWidget):
         self._frame_full = False
         self._frame_rect = QRect()
         self._frame_request_count = 0
-        # Viewport composite cache (scroll blit): the visible cells are
-        # composited into one offscreen texture so a scroll frame only shifts
-        # the previous composite and repaints the newly-exposed strip instead
-        # of re-drawing every visible cell.
-        self._viewport_tex: QPixmap | None = None
-        self._viewport_scratch: QPixmap | None = None
-        self._viewport_sy = 0
-        self._viewport_epoch = 0
-        self._viewport_skipped: set[int] = set()
         self._hover_row: int = -1
         self._selection: set[int] = set()
         self._last_click_row: int = -1
@@ -661,9 +652,6 @@ class FileListGridWidget(QWidget):
         # one-cell repaint into a whole-grid repaint.
         update_rect = _evt.rect()
         skipped_dirty = False
-        # Rows that are dirty at frame start need re-compositing into the
-        # viewport even when the scroll delta is zero (thumbnail load, etc.).
-        viewport_dirty = set(row for row in visible if row in self._dirty)
 
         # ── Pass 1: ensure cell textures are built (budget-limited) ──
         for row in visible:
@@ -712,8 +700,8 @@ class FileListGridWidget(QWidget):
 
         # ── Pass 2: draw ──
         if self._zoom_relayout_active:
-            # Zoom relayout keeps a per-cell path (fallback textures and the
-            # scale animation are not represented by the viewport cache).
+            # Zoom relayout interpolates card geometry per cell via the scale
+            # animation, so it keeps its own per-cell path.
             p.translate(0, -sy)
             for row in visible:
                 rect = self._layout.rect_at(row)
@@ -733,24 +721,36 @@ class FileListGridWidget(QWidget):
                     p.drawPixmap(texture_rect, tex)
                 self._draw_interaction_overlay(p, row, texture_rect, op)
         else:
-            allow_scroll = not self._thumb_opacity
-            # Hover-lifted cells are drawn on top, so their normal position in
-            # the viewport must stay clear of stale baked content. When the
-            # lifted set changes, force a full composite to erase/re-bake.
-            skip_rows = set()
-            if not self._reduce_motion:
-                if self._hover_row >= 0:
-                    skip_rows.add(self._hover_row)
-                skip_rows.update(self._hover_progress.keys())
-            if skip_rows != self._viewport_skipped:
-                self._viewport_skipped = set(skip_rows)
-                self._viewport_tex = None
-            viewport = self._viewport_compose(
-                sy, visible, allow_scroll=allow_scroll, dirty_rows=viewport_dirty,
-                skip_rows=skip_rows,
-            )
-            p.drawPixmap(0, 0, viewport)
-            # Hover lift + interaction overlay are drawn on top of the composite.
+            # ── Pass 2a: draw non-lifted cells directly (per-cell) ──
+            # Each card texture is drawn at its translated position. Hover-lifted
+            # cells are deferred to Pass 2b so their scale overlap stays above
+            # neighbouring cards.
+            for row in visible:
+                rect = self._layout.rect_at(row)
+                if rect is None or not update_rect.intersects(rect.translated(0, -sy)):
+                    continue
+                if not self._reduce_motion and (row == self._hover_row or row in self._hover_progress):
+                    continue
+                vp = rect.translated(0, -sy)
+                op = self._thumb_opacity.get(row, 1.0)
+                tex = self._textures.get(row)
+                if tex is not None:
+                    dirty = row in self._dirty
+                    if op < 1.0:
+                        p.save()
+                        p.setOpacity(op)
+                        if dirty:
+                            p.drawPixmap(vp, tex)
+                        else:
+                            p.drawPixmap(vp.topLeft(), tex)
+                        p.restore()
+                    elif dirty:
+                        p.drawPixmap(vp, tex)
+                    else:
+                        p.drawPixmap(vp.topLeft(), tex)
+                else:
+                    self._draw_texture_placeholder(p, vp)
+            # ── Pass 2b: hover lift + interaction overlay (drawn on top) ──
             lift_scale = 1.075
             lift_dy = -5
             for row in visible:
@@ -812,130 +812,6 @@ class FileListGridWidget(QWidget):
             self._queue_full_rebuild_update()
         elif self._full_rebuild_pending:
             self._full_rebuild_pending = False
-
-    # ── Viewport composite (scroll blit) ───────────────────────
-
-    def _viewport_full_required(self, dpr: float) -> bool:
-        tex = self._viewport_tex
-        return (
-            tex is None
-            or self._viewport_epoch != self._full_rebuild_epoch
-            or tex.width() != int(self.width() * dpr)
-            or tex.height() != int(self.height() * dpr)
-        )
-
-    def _viewport_paint_cells(self, painter: QPainter, sy: int, rows, skip_rows: set) -> None:
-        """Paint the given rows' textures into a viewport painter.
-
-        ``skip_rows`` are cells rendered on top (hover lift), so their normal
-        position must stay clear of stale baked content.
-        """
-        for row in rows:
-            if row in skip_rows:
-                continue
-            rect = self._layout.rect_at(row)
-            if rect is None:
-                continue
-            vp = rect.translated(0, -sy)
-            tex = self._textures.get(row)
-            op = self._thumb_opacity.get(row, 1.0)
-            if tex is not None and not tex.isNull():
-                # A dirty row still carrying a stale texture (rebuild deferred
-                # or failed) is scaled to the current cell rect, matching the
-                # per-cell path's "dirty → QRect target" behavior.
-                scaled = row in self._dirty
-                if op < 1.0:
-                    painter.save()
-                    painter.setOpacity(op)
-                    if scaled:
-                        painter.drawPixmap(vp, tex)
-                    else:
-                        painter.drawPixmap(vp.topLeft(), tex)
-                    painter.restore()
-                elif scaled:
-                    painter.drawPixmap(vp, tex)
-                else:
-                    painter.drawPixmap(vp.topLeft(), tex)
-            else:
-                card = self._card_rect_in_item(QRect(0, 0, rect.width(), rect.height()))
-                card.translate(vp.topLeft())
-                painter.save()
-                painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-                painter.setPen(QPen(self._clr_border, 1))
-                painter.setBrush(QColor(
-                    self._clr_heading.red(), self._clr_heading.green(),
-                    self._clr_heading.blue(), 6,
-                ))
-                painter.drawRoundedRect(card, _CORNER_R, _CORNER_R)
-                painter.restore()
-
-    def _viewport_compose(
-        self, sy: int, visible, *, allow_scroll: bool, dirty_rows: set, skip_rows: set,
-    ) -> QPixmap:
-        """Compose (or scroll-blit) the viewport texture and return it."""
-        dpr = max(1.0, float(self.devicePixelRatioF() or 1.0))
-        w = int(self.width() * dpr)
-        h = int(self.height() * dpr)
-        tex = self._viewport_tex
-        size_changed = tex is None or tex.width() != w or tex.height() != h
-        if size_changed:
-            tex = QPixmap(w, h)
-            tex.setDevicePixelRatio(dpr)
-            self._viewport_tex = tex
-
-        # A freshly-allocated texture (resize) has no contents: recompositing
-        # unconditionally. `_viewport_full_required` alone would miss this
-        # because the new texture already matches the new size and epoch, which
-        # would otherwise fall through to the incremental blit and copy a
-        # blank/black pixmap.
-        if size_changed or self._viewport_full_required(dpr) or not allow_scroll:
-            painter = QPainter(tex)
-            painter.fillRect(self.rect(), self._clr_panel)
-            self._viewport_paint_cells(painter, sy, visible, skip_rows)
-            painter.end()
-            self._viewport_epoch = self._full_rebuild_epoch
-            self._viewport_sy = sy
-            return tex
-
-        dy = sy - self._viewport_sy
-        if abs(dy) >= self.height():
-            painter = QPainter(tex)
-            painter.fillRect(self.rect(), self._clr_panel)
-            self._viewport_paint_cells(painter, sy, visible, skip_rows)
-            painter.end()
-            self._viewport_sy = sy
-            return tex
-
-        # Incremental scroll: shift the previous composite and repaint only
-        # the newly-exposed strip plus any dirty rows, using a ping-pong
-        # scratch texture to avoid self-blit overlap.
-        scratch = self._viewport_scratch
-        if scratch is None or scratch.width() != w or scratch.height() != h:
-            scratch = QPixmap(w, h)
-            scratch.setDevicePixelRatio(dpr)
-            self._viewport_scratch = scratch
-        painter = QPainter(scratch)
-        # Shifting the previous composite by -dy moves its content up for
-        # dy > 0 (scrolling down), so the newly-exposed band is at the bottom
-        # edge, and at the top edge when scrolling up (dy < 0).
-        painter.drawPixmap(0, -dy, tex)
-        if dy > 0:
-            strip = QRect(0, self.height() - dy, self.width(), dy)
-        else:
-            strip = QRect(0, 0, self.width(), -dy)
-        painter.fillRect(strip, self._clr_panel)
-        rows = set()
-        for row in visible:
-            rect = self._layout.rect_at(row)
-            if rect is None:
-                continue
-            if strip.intersects(rect.translated(0, -sy)) or row in dirty_rows:
-                rows.add(row)
-        self._viewport_paint_cells(painter, sy, rows, skip_rows)
-        painter.end()
-        self._viewport_tex, self._viewport_scratch = scratch, tex
-        self._viewport_sy = sy
-        return self._viewport_tex
 
     def _cancel_frame(self) -> None:
         self._frame_epoch += 1
@@ -1644,10 +1520,9 @@ class FileListGridWidget(QWidget):
         self._scroll_y = value
         self.set_scrolling()
         # Scrolling shifts the whole visible content, so the full viewport must
-        # be re-blitted to screen every frame. The per-frame cost is one
-        # drawPixmap: `_viewport_compose` re-composites the offscreen texture
-        # cheaply (shift + repaint only the newly-exposed strip), and a partial
-        # screen repaint would leave the non-strip region showing stale pixels.
+        # be repainted every frame. Each visible card texture is re-drawn at its
+        # new offset (cheap per-cell drawPixmap); a partial repaint would leave
+        # stale pixels in the region that did not receive a new cell.
         self._request_frame(full=True)
 
     # ── Resize ───────────────────────────────────────────────

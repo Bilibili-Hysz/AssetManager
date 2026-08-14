@@ -882,99 +882,18 @@ def test_grid_dirty_cached_texture_is_scaled_to_replacement_layout(tmp_path, mon
 
     widget.repaint()
 
-    # The stale dirty texture is drawn scaled (QRect target) into the viewport
-    # composite; the final viewport blit uses an integer x offset instead.
+    # A dirty row still carrying a stale texture is drawn scaled to the current
+    # cell rect (QRect target) instead of at its native size.
     targets = [call.args[0] for call in draw_pixmap.call_args_list]
     assert any(isinstance(t, QRect) for t in targets)
     widget.deleteLater()
     app.processEvents()
 
 
-def test_grid_resize_recomposites_viewport_instead_of_blitting_blank():
-    app = QApplication.instance() or QApplication([])
-    widget = FileListGridWidget()
-    widget.set_layout_ref(GridLayout())
-    widget.resize(200, 200)
-    # Seed a stale viewport texture at the pre-resize size with a matching
-    # epoch, so `_viewport_full_required` alone would report "no rebuild" and
-    # fall through to the incremental blit against a freshly-allocated (blank)
-    # texture.
-    widget._viewport_tex = QPixmap(50, 50)
-    widget._viewport_epoch = widget._full_rebuild_epoch
-    widget._viewport_sy = 0
-
-    result = widget._viewport_compose(
-        0, [], allow_scroll=True, dirty_rows=set(), skip_rows=set(),
-    )
-
-    image = result.toImage()
-    center = image.pixelColor(image.width() // 2, image.height() // 2)
-    assert center == widget._clr_panel
-    widget.deleteLater()
-    app.processEvents()
-
-
-def test_grid_scroll_blit_repaints_newly_exposed_strip(monkeypatch):
-    app = QApplication.instance() or QApplication([])
-    widget = FileListGridWidget()
-    widget.set_layout_ref(GridLayout())
-    widget.resize(300, 200)
-    widget._layout.compute(30, 300, 96, item_hint=QSize(120, 150))
-    widget._model_rows = 30
-    # Seed a valid viewport texture at scroll 0 with a matching epoch so the
-    # incremental blit path is taken.
-    widget._viewport_tex = QPixmap(300, 200)
-    widget._viewport_epoch = widget._full_rebuild_epoch
-    widget._viewport_sy = 0
-    widget._thumb_opacity.clear()
-
-    painted = []
-    monkeypatch.setattr(
-        widget, "_viewport_paint_cells",
-        lambda painter, sy, rows, skip_rows: painted.append((sy, set(rows))),
-    )
-
-    # Scroll down by 120 (< height): content shifts up, the bottom band
-    # [80, 200] is newly exposed and must be repainted.
-    visible = widget._layout.visible_rows(120, 200)
-    widget._viewport_compose(
-        120, visible, allow_scroll=True, dirty_rows=set(), skip_rows=set(),
-    )
-
-    sy, rows = painted[0]
-    assert sy == 120
-    bottom_strip = QRect(0, widget.height() - 120, widget.width(), 120)
-    expected = {
-        r for r in visible
-        if widget._layout.rect_at(r).translated(0, -120).intersects(bottom_strip)
-    }
-    assert expected and rows == expected
-
-    # Scroll up by 120 (back to 0): content shifts down, the top band [0, 120]
-    # is newly exposed and must be repainted.
-    widget._viewport_sy = 120
-    widget._viewport_tex = QPixmap(300, 200)
-    painted.clear()
-    widget._viewport_compose(
-        0, visible, allow_scroll=True, dirty_rows=set(), skip_rows=set(),
-    )
-
-    sy, rows = painted[0]
-    assert sy == 0
-    top_strip = QRect(0, 0, widget.width(), 120)
-    expected = {
-        r for r in visible
-        if widget._layout.rect_at(r).translated(0, 0).intersects(top_strip)
-    }
-    assert expected and rows == expected
-    widget.deleteLater()
-    app.processEvents()
-
-
 def test_grid_scroll_always_requests_full_repaint(monkeypatch):
-    # Scrolling shifts the whole viewport, so the screen blit must be full even
-    # though the offscreen composite is re-built incrementally. A strip-only
-    # screen repaint would leave stale (ghosted) pixels outside the strip.
+    # Scrolling shifts the whole visible content, so the full viewport must be
+    # repainted every frame (each card re-drawn at its new offset). A strip-only
+    # repaint would leave stale pixels in the region that received no new cell.
     widget = FileListGridWidget()
     widget.set_layout_ref(GridLayout())
     widget._model_rows = 10
