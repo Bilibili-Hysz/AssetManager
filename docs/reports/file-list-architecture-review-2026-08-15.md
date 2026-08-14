@@ -1,5 +1,7 @@
 # FileList 模块架构审查（2026-08-15）
 
+> 状态更新（同会话收尾）：§6 的 **#1–#8 已全部落地并提交**——#1 合并 Toast、#2 `FileSystemModel` 访问器、#3 统一自然排序、#4 删死代码、#5 抽状态/反馈纯助手、#6 拆 `GridTextureCache`/`Animator`、#7 `FileListHost` Protocol、#8 首图收敛。详见提交 `2cec322`、`a1e8a17`、`60fee44`、`f808baa`、`575541a`。
+
 范围：`AssetsManager/panels/file_list/`（约 5900 行）及其直接协作对象（`controllers/file_list_controller.py`、`application/asset_filters.py`）。目标：评估模块划分、职责边界、耦合与重复，给出可执行的重构建议，不做代码改动。
 
 ## 1. 模块地图
