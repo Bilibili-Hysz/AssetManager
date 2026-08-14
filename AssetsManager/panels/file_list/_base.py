@@ -61,6 +61,11 @@ from AssetsManager.panels.file_list._ui_helpers import (
     _make_nav_button,
     _save_search_term,
 )
+from AssetsManager.panels.file_list._status_helpers import (
+    compute_total_size,
+    status_text,
+    operation_feedback_text,
+)
 
 _log = logging.getLogger(__name__)
 tr = i18n.tr
@@ -425,44 +430,13 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             not self._is_current_operation_session(session)
         ):
             return
-        label = tr(f"filelist.feedback.operation.{operation}")
-        if running:
-            text = tr("filelist.feedback.running", operation=label)
-        elif errors and changed_count:
-            if warnings:
-                text = tr(
-                    "filelist.feedback.partial_degraded",
-                    operation=label,
-                    count=changed_count,
-                    failed=len(errors),
-                    warnings=len(warnings),
-                )
-            else:
-                text = tr(
-                    "filelist.feedback.partial",
-                    operation=label,
-                    count=changed_count,
-                    failed=len(errors),
-                )
-        elif errors:
-            if warnings:
-                text = tr(
-                    "filelist.feedback.failed_degraded",
-                    operation=label,
-                    failed=len(errors),
-                    warnings=len(warnings),
-                )
-            else:
-                text = tr("filelist.feedback.failed", operation=label, failed=len(errors))
-        elif warnings:
-            text = tr(
-                "filelist.feedback.degraded",
-                operation=label,
-                count=changed_count,
-                warnings=len(warnings),
-            )
-        else:
-            text = tr("filelist.feedback.succeeded", operation=label, count=changed_count)
+        text = operation_feedback_text(
+            operation=operation,
+            changed_count=changed_count,
+            errors=errors,
+            warnings=warnings,
+            running=running,
+        )
         self._operation_feedback.setText(text)
         self._operation_feedback.show()
         if running:
@@ -973,49 +947,35 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._update_status()
 
     def _compute_total_sz(self):
-        total_sz = 0
-        for i in range(self._model.rowCount()):
-            e = self._model.entry_at(i)
-            if e and not e.is_dir():
-                try:
-                    total_sz += self._model.cached_stat(e).st_size
-                except (OSError, AttributeError):
-                    pass
-        self._cached_total_sz = total_sz
+        self._cached_total_sz = compute_total_size(self._model)
 
     def _update_status(self):
         state = getattr(self._model, "list_state", None)
         if state is not None and state == getattr(self._model, "STATE_LOADING", None):
-            self._status.setText(tr("filelist.state.loading"))
+            self._status.setText(status_text(state=state, view_mode=self._view_mode, total=0, selected=0, size_str=""))
             return
         if state is not None and state == getattr(self._model, "STATE_SCAN_ERROR", None):
-            self._status.setText(tr("filelist.state.scan_error"))
+            self._status.setText(status_text(state=state, view_mode=self._view_mode, total=0, selected=0, size_str=""))
             return
         if state is not None and state == getattr(self._model, "STATE_EMPTY_FOLDER", None):
-            self._status.setText(tr("filelist.empty"))
+            self._status.setText(status_text(state=state, view_mode=self._view_mode, total=0, selected=0, size_str=""))
             return
         if state is not None and state == getattr(self._model, "STATE_EMPTY_FILTERED", None):
-            self._status.setText(tr("filelist.state.empty_filtered"))
+            self._status.setText(status_text(state=state, view_mode=self._view_mode, total=0, selected=0, size_str=""))
             return
         total = self._model.rowCount()
         mode = self._view_mode
         if self._view_mode == "Details":
             sel = len(self._detail_view.selectionModel().selectedRows())
-            if sel > 0:
-                self._status.setText(tr("filelist.status_selected", sel=sel, total=total, sz="", mode=mode))
-            else:
-                self._status.setText(tr("filelist.status_total", total=total, sz="", mode=mode))
+            self._status.setText(status_text(state=state, view_mode=mode, total=total, selected=sel, size_str=""))
         elif hasattr(self, '_grid_widget') and self._grid_widget is not None:
             if self._cached_total_sz < 0:
                 self._compute_total_sz()
             sz_str = self._controller.format_total_size_suffix(self._cached_total_sz)
             sel = len(self._grid_widget.selection_model_rows())
-            if sel > 0:
-                self._status.setText(tr("filelist.status_selected", sel=sel, total=total, sz=sz_str, mode=mode))
-            else:
-                self._status.setText(tr("filelist.status_total", total=total, sz=sz_str, mode=mode))
+            self._status.setText(status_text(state=state, view_mode=mode, total=total, selected=sel, size_str=sz_str))
         else:
-            self._status.setText(tr("filelist.status_total", total=total, sz="", mode=mode))
+            self._status.setText(status_text(state=state, view_mode=mode, total=total, selected=0, size_str=""))
 
     # ── Keyboard ────────────────────────────────────────────────
 

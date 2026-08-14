@@ -3,7 +3,6 @@
 Matches GridDelegate layout exactly: CARD_PAD=6, PREVIEW_MARGIN=4,
 _TEXT_TOP_GAP=5, _TEXT_LINE_GAP=1, font 9pt bold + 8pt sub.
 """
-from collections import OrderedDict
 from time import perf_counter
 import weakref
 from PySide6.QtCore import Qt, QSize, QRect, QPoint, QTimer, Signal, QEvent
@@ -21,6 +20,8 @@ from AssetsManager.panels.file_list._common import (
 from AssetsManager.application.asset_filters import FILTER_CATEGORY_LABELS
 from AssetsManager.panels.file_list._model import FileSystemModel
 from AssetsManager.panels.file_list._grid_layout import GridLayout
+from AssetsManager.panels.file_list._grid_texture_cache import GridTextureCache
+from AssetsManager.panels.file_list._animator import Animator
 
 tr = i18n.tr
 
@@ -41,7 +42,6 @@ _BADGE_PAD_H = scaled_px(5)
 _FULL_REBUILD_TEXTURE_BUDGET = 12
 _ZOOM_FALLBACK_TEXTURE_BUDGET = 2
 _ZOOM_TARGET_TEXTURE_BUDGET = 6
-_PATH_TEXTURE_CACHE_LIMIT = 200
 
 
 class FileListGridWidget(QWidget):
@@ -63,10 +63,13 @@ class FileListGridWidget(QWidget):
         self._thumb_size = scaled_px(96)
 
         self._scroll_y = 0
-        self._textures: OrderedDict[int, QPixmap] = OrderedDict()
-        self._path_textures: OrderedDict[str, QPixmap] = OrderedDict()
-        self._texture_bytes: dict[int, int] = {}
-        self._texture_cache_bytes = 0
+        self._cache: GridTextureCache = GridTextureCache(
+            recorder=lambda: self._performance_recorder,
+            session_token=lambda: self._performance_session_token,
+            generation=lambda: self._performance_generation,
+            model=lambda: self._model,
+            scan_reset_pending=lambda: getattr(self, "_scan_reset_pending", False),
+        )
         self._zoom_relayout_active = False
         self._zoom_scale_x = 1.0
         self._zoom_scale_y = 1.0
@@ -127,18 +130,12 @@ class FileListGridWidget(QWidget):
         self._apply_scrollbar_theme()
 
         # ── Animation state ────────────────────────────────────
-        self._thumb_opacity: dict[int, float] = {}
-        self._thumbnail_rows: set[int] = set()
-        self._hover_progress: dict[int, float] = {}
-        self._selection_progress: dict[int, float] = {}
-        self._anim_timer = QTimer(self)
-        self._anim_timer.setInterval(16)
-        self._anim_timer.timeout.connect(self._anim_tick)
-        self._entrance_queue: list[int] = []
-        self._entrance_visible: set[int] = set()
-        self._presented_generation = -1
-        self._pending_presentation: tuple[int, list[int], bool] | None = None
-        self._reduce_motion = self._detect_reduce_motion()
+        self._animator: Animator = Animator(
+            parent=self,
+            reduce_motion=self._detect_reduce_motion(),
+            on_changed=self._on_anim_changed,
+            host=self,
+        )
         self._performance_recorder = None
         self._performance_session_token: str | None = None
         self._performance_generation: int | None = None
@@ -147,6 +144,133 @@ class FileListGridWidget(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumSize(100, 100)
+
+    # ── Texture-cache delegation (backward-compatible surface) ──
+
+    def _cache_texture(self, row: int, texture: QPixmap) -> None:
+        self._cache._cache_texture(row, texture)
+
+    def _clear_textures(self) -> None:
+        self._cache._clear_textures()
+
+    def _store_texture_bytes(self, row: int, texture: QPixmap) -> None:
+        self._cache._store_texture_bytes(row, texture)
+
+    def _remove_texture_bytes(self, row: int) -> None:
+        self._cache._remove_texture_bytes(row)
+
+    def _refresh_texture_accounting(self) -> None:
+        self._cache._refresh_texture_accounting()
+
+    def _capture_path_textures(self) -> None:
+        self._cache._capture_path_textures()
+
+    @property
+    def _textures(self):
+        return self._cache._textures
+
+    @_textures.setter
+    def _textures(self, value) -> None:
+        self._cache._textures = value
+
+    @property
+    def _path_textures(self):
+        return self._cache._path_textures
+
+    @_path_textures.setter
+    def _path_textures(self, value) -> None:
+        self._cache._path_textures = value
+
+    @property
+    def _texture_bytes(self) -> "dict[int, int]":
+        return self._cache._texture_bytes
+
+    @property
+    def _texture_cache_bytes(self) -> int:
+        return self._cache._texture_cache_bytes
+
+    # ── Animation delegation (backward-compatible surface) ──
+
+    def _anim_tick(self):
+        self._animator._anim_tick()
+
+    def _apply_selection_progress(self, old_selection: set[int]) -> None:
+        self._animator._apply_selection_progress(old_selection)
+
+    def _on_anim_changed(self, changed_rows: set[int]) -> None:
+        self._request_frame(changed_rows, overlay=True)
+
+    @property
+    def _thumb_opacity(self) -> "dict[int, float]":
+        return self._animator._thumb_opacity
+
+    @_thumb_opacity.setter
+    def _thumb_opacity(self, value) -> None:
+        self._animator._thumb_opacity = value
+
+    @property
+    def _thumbnail_rows(self) -> "set[int]":
+        return self._animator._thumbnail_rows
+
+    @_thumbnail_rows.setter
+    def _thumbnail_rows(self, value) -> None:
+        self._animator._thumbnail_rows = value
+
+    @property
+    def _hover_progress(self) -> "dict[int, float]":
+        return self._animator._hover_progress
+
+    @_hover_progress.setter
+    def _hover_progress(self, value) -> None:
+        self._animator._hover_progress = value
+
+    @property
+    def _selection_progress(self) -> "dict[int, float]":
+        return self._animator._selection_progress
+
+    @_selection_progress.setter
+    def _selection_progress(self, value) -> None:
+        self._animator._selection_progress = value
+
+    @property
+    def _entrance_queue(self) -> "list[int]":
+        return self._animator._entrance_queue
+
+    @_entrance_queue.setter
+    def _entrance_queue(self, value) -> None:
+        self._animator._entrance_queue = value
+
+    @property
+    def _entrance_visible(self) -> "set[int]":
+        return self._animator._entrance_visible
+
+    @_entrance_visible.setter
+    def _entrance_visible(self, value) -> None:
+        self._animator._entrance_visible = value
+
+    @property
+    def _anim_timer(self) -> QTimer:
+        return self._animator._anim_timer
+
+    @property
+    def _presented_generation(self) -> int:
+        return self._animator._presented_generation
+
+    @property
+    def _pending_presentation(self) -> "tuple[int, list[int], bool] | None":
+        return self._animator._pending_presentation
+
+    @_pending_presentation.setter
+    def _pending_presentation(self, value) -> None:
+        self._animator._pending_presentation = value
+
+    @property
+    def _reduce_motion(self) -> bool:
+        return self._animator._reduce_motion
+
+    @_reduce_motion.setter
+    def _reduce_motion(self, value) -> None:
+        self._animator._reduce_motion = value
 
     def _update_item_hint(self):
         """Item size matching GridDelegate.sizeHint."""
@@ -174,7 +298,7 @@ class FileListGridWidget(QWidget):
     def set_model(self, model):
         self._model = model
         model.modelReset.connect(self._on_model_reset)
-        model.modelAboutToBeReset.connect(self._capture_path_textures)
+        model.modelAboutToBeReset.connect(self._cache._capture_path_textures)
         model.scan_started.connect(self._on_scan_started)
         model.dataChanged.connect(self._on_data_changed)
 
@@ -190,10 +314,10 @@ class FileListGridWidget(QWidget):
         self._performance_session_token = session_token if self._performance_recorder is not None else None
         self._performance_generation = generation if self._performance_recorder is not None else None
         if self._performance_recorder is not None:
-            self._refresh_texture_accounting()
+            self._cache._refresh_texture_accounting()
         else:
-            self._texture_bytes.clear()
-            self._texture_cache_bytes = 0
+            self._cache._texture_bytes.clear()
+            self._cache._texture_cache_bytes = 0
 
     def set_performance_generation(self, generation: int) -> None:
         if self._performance_recorder is not None:
@@ -201,7 +325,7 @@ class FileListGridWidget(QWidget):
 
     def set_thumb_size(self, size: int):
         if size != self._thumb_size:
-            self._path_textures.clear()
+            self._cache._path_textures.clear()
         self._thumb_size = size
         self._update_item_hint()
 
@@ -255,9 +379,9 @@ class FileListGridWidget(QWidget):
         # Zoom owns the visual timeline. Entrance and thumbnail fades would
         # otherwise advance only the already-textured rows while the rest of
         # the viewport follows the geometry interpolation.
-        self._entrance_queue.clear()
-        self._entrance_visible.clear()
-        self._thumb_opacity.clear()
+        self._animator._entrance_queue.clear()
+        self._animator._entrance_visible.clear()
+        self._animator._thumb_opacity.clear()
         self._zoom_fallback_textures.clear()
         # An interrupted zoom leaves pre-rendered target textures behind. Commit
         # them so the committed cache tracks the zoom size instead of lagging at
@@ -265,7 +389,7 @@ class FileListGridWidget(QWidget):
         # upscale that small cache across several zoom steps and blur for a frame.
         if self._zoom_target_textures:
             for row, tex in self._zoom_target_textures.items():
-                self._cache_texture(row, tex)
+                self._cache._cache_texture(row, tex)
         self._zoom_target_textures = {}
         self._zoom_source_rects = source_rects
         self._zoom_start_size = self._thumb_size
@@ -339,20 +463,20 @@ class FileListGridWidget(QWidget):
         # are marked dirty for the paced rebuild.
         target_rows = set(self._zoom_target_textures)
         for row, tex in self._zoom_target_textures.items():
-            self._cache_texture(row, tex)
+            self._cache._cache_texture(row, tex)
         self._zoom_target_textures = {}
-        self._path_textures.clear()
+        self._cache._path_textures.clear()
         self._dirty = {r for r in range(self._model_rows) if r not in target_rows}
         if self._dirty:
             self._full_rebuild_epoch += 1
             self._full_rebuild_pending = True
-        self._record_invalidation("zoom", self._model_rows, len(self._textures))
+        self._record_invalidation("zoom", self._model_rows, len(self._cache._textures))
         self._request_frame(full=True)
 
     def invalidate_textures(self):
-        previous_count = len(self._textures)
+        previous_count = len(self._cache._textures)
         self._full_rebuild_epoch += 1
-        self._path_textures.clear()
+        self._cache._path_textures.clear()
         # Keep the prior card textures on screen until their replacements are
         # ready. Clearing them made a paced rebuild visibly turn into blanks.
         self._dirty = set(range(self._model_rows))
@@ -371,18 +495,18 @@ class FileListGridWidget(QWidget):
         for r in rows:
             path = self._model.path_at(r) if self._model is not None else None
             if path:
-                self._path_textures.pop(path, None)
-            has_visible_texture = r in self._textures
+                self._cache._path_textures.pop(path, None)
+            has_visible_texture = r in self._cache._textures
             self._dirty.add(r)
-            if r not in self._thumbnail_rows:
-                self._thumbnail_rows.add(r)
+            if r not in self._animator._thumbnail_rows:
+                self._animator._thumbnail_rows.add(r)
                 # A texture contains the entire card, not just its preview.
                 # Fading a replacement would briefly hide the whole card.
-                if not has_visible_texture and not self._reduce_motion and not self._zoom_relayout_active:
-                    self._thumb_opacity[r] = 0.0
-        self._record_invalidation("thumbnail_batch", len(rows), len(self._textures))
-        if self._thumb_opacity and not self._anim_timer.isActive():
-            self._anim_timer.start()
+                if not has_visible_texture and not self._animator._reduce_motion and not self._zoom_relayout_active:
+                    self._animator._thumb_opacity[r] = 0.0
+        self._record_invalidation("thumbnail_batch", len(rows), len(self._cache._textures))
+        if self._animator._thumb_opacity and not self._animator._anim_timer.isActive():
+            self._animator._anim_timer.start()
         self._request_frame(rows)
 
     def start_thumbnail_delivery_measurement(self) -> float | None:
@@ -398,7 +522,7 @@ class FileListGridWidget(QWidget):
     def _on_scan_started(self, _generation: int):
         """Drop path textures before a new filesystem scan can change files."""
         self._scan_reset_pending = True
-        self._path_textures.clear()
+        self._cache._path_textures.clear()
 
     def mark_scan_settled(self) -> None:
         """Clear the scan-reset guard after a reused scan skipped model reset.
@@ -410,37 +534,21 @@ class FileListGridWidget(QWidget):
         """
         self._scan_reset_pending = False
 
-    def _capture_path_textures(self):
-        """Keep card textures available across sort/filter model resets."""
-        if getattr(self, "_scan_reset_pending", False):
-            self._path_textures.clear()
-            return
-        if self._model is None:
-            return
-        for row, texture in list(self._textures.items()):
-            path = self._model.path_at(row)
-            if not path:
-                continue
-            self._path_textures[path] = texture
-            self._path_textures.move_to_end(path)
-        while len(self._path_textures) > _PATH_TEXTURE_CACHE_LIMIT:
-            self._path_textures.popitem(last=False)
-
     def _on_model_reset(self):
         self._scan_reset_pending = False
-        previous_count = len(self._textures)
+        previous_count = len(self._cache._textures)
         self._full_rebuild_epoch += 1
-        self._clear_textures()
+        self._cache._clear_textures()
         self._dirty.clear()
         self._full_rebuild_pending = False
         self._full_rebuild_update_queued = False
         self._selection.clear()
-        self._thumb_opacity.clear()
-        self._thumbnail_rows.clear()
-        self._hover_progress.clear()
-        self._selection_progress.clear()
-        self._entrance_queue.clear()
-        self._entrance_visible.clear()
+        self._animator._thumb_opacity.clear()
+        self._animator._thumbnail_rows.clear()
+        self._animator._hover_progress.clear()
+        self._animator._selection_progress.clear()
+        self._animator._entrance_queue.clear()
+        self._animator._entrance_visible.clear()
         self._cancel_frame()
         self._record_invalidation("model_reset", self._model_rows, previous_count)
 
@@ -459,14 +567,14 @@ class FileListGridWidget(QWidget):
         if roles and not roles.intersection(static_roles):
             return
         changed_count = bottom_right.row() - top_left.row() + 1
-        previous_count = len(self._textures)
+        previous_count = len(self._cache._textures)
         for r in range(top_left.row(), bottom_right.row() + 1):
             path = self._model.path_at(r) if self._model is not None else None
             if path:
-                self._path_textures.pop(path, None)
+                self._cache._path_textures.pop(path, None)
             self._dirty.add(r)
-            self._textures.pop(r, None)
-            self._remove_texture_bytes(r)
+            self._cache._textures.pop(r, None)
+            self._cache._remove_texture_bytes(r)
         self._record_invalidation("model_data", changed_count, previous_count)
         self._request_frame(range(top_left.row(), bottom_right.row() + 1))
 
@@ -510,11 +618,11 @@ class FileListGridWidget(QWidget):
                                  self._thumb_size, item_hint=self._item_hint)
             th = self._layout.total_height
             self._scrollbar.setRange(0, max(0, th - self.height()))
-            to_del = [r for r in self._textures if r >= item_count]
+            to_del = [r for r in self._cache._textures if r >= item_count]
             for r in to_del:
-                del self._textures[r]
-                self._remove_texture_bytes(r)
-            if not relayout_only and not self._textures:
+                del self._cache._textures[r]
+                self._cache._remove_texture_bytes(r)
+            if not relayout_only and not self._cache._textures:
                 self._dirty |= set(range(item_count))
             elif not relayout_only and item_count > previous_item_count:
                 self._dirty |= set(range(previous_item_count, item_count))
@@ -607,8 +715,8 @@ class FileListGridWidget(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
-        if self._pending_presentation is not None:
-            QTimer.singleShot(0, self._present_pending_generation)
+        if self._animator._pending_presentation is not None:
+            QTimer.singleShot(0, self._animator._present_pending_generation)
 
     def paintEvent(self, _evt):
         if not self._model or not self.isVisible():
@@ -624,14 +732,14 @@ class FileListGridWidget(QWidget):
         # hot path pixmap-only; rounded overlays enable AA locally below.
         p.setRenderHint(
             QPainter.RenderHint.SmoothPixmapTransform,
-            self._zoom_relayout_active and not self._reduce_motion,
+            self._zoom_relayout_active and not self._animator._reduce_motion,
         )
         dpr = max(1.0, float(self.devicePixelRatioF() or 1.0))
         if dpr != self._texture_dpr:
             self._texture_dpr = dpr
             self._full_rebuild_epoch += 1
-            self._clear_textures()
-            self._path_textures.clear()
+            self._cache._clear_textures()
+            self._cache._path_textures.clear()
             self._dirty = set(range(self._model_rows))
             self._full_rebuild_pending = True
         if not themes.bg_enabled():
@@ -687,18 +795,18 @@ class FileListGridWidget(QWidget):
                 skipped_dirty = skipped_dirty or (row in self._dirty)
                 continue
             dirty = row in self._dirty
-            tex = self._textures.get(row)
-            if tex is None and self._path_textures and not self._zoom_relayout_active:
+            tex = self._cache._textures.get(row)
+            if tex is None and self._cache._path_textures and not self._zoom_relayout_active:
                 path = self._model.path_at(row)
                 if path:
-                    cached = self._path_textures.pop(path, None)
+                    cached = self._cache.take_path_texture(path)
                     if cached is not None:
                         tex = cached
-                        self._cache_texture(row, cached)
+                        self._cache._cache_texture(row, cached)
                         self._dirty.discard(row)
                         dirty = False
             if tex is not None:
-                self._textures.move_to_end(row)
+                self._cache._textures.move_to_end(row)
             elif self._zoom_relayout_active:
                 tex = self._zoom_fallback_textures.get(row)
                 if (
@@ -715,7 +823,7 @@ class FileListGridWidget(QWidget):
                     texture_started = perf_counter() if recorder is not None else None
                     replacement = self._render_item(row, rect)
                     if replacement is not None:
-                        self._cache_texture(row, replacement)
+                        self._cache._cache_texture(row, replacement)
                     self._record_texture_performance(texture_started, session_token, generation, row)
                     if replacement is not None:
                         self._dirty.discard(row)
@@ -746,10 +854,10 @@ class FileListGridWidget(QWidget):
                 rect = self._layout.rect_at(row)
                 if rect is None or not update_rect.intersects(rect.translated(0, -sy)):
                     continue
-                tex = self._textures.get(row) or self._zoom_fallback_textures.get(row)
+                tex = self._cache._textures.get(row) or self._zoom_fallback_textures.get(row)
                 if tex is None:
                     continue
-                op = self._thumb_opacity.get(row, 1.0)
+                op = self._animator._thumb_opacity.get(row, 1.0)
                 texture_rect = self._zoom_texture_rect(rect, row)
                 if op < 1.0:
                     p.save()
@@ -768,11 +876,11 @@ class FileListGridWidget(QWidget):
                 rect = self._layout.rect_at(row)
                 if rect is None or not update_rect.intersects(rect.translated(0, -sy)):
                     continue
-                if not self._reduce_motion and (row == self._hover_row or row in self._hover_progress):
+                if not self._animator._reduce_motion and (row == self._hover_row or row in self._animator._hover_progress):
                     continue
                 vp = rect.translated(0, -sy)
-                op = self._thumb_opacity.get(row, 1.0)
-                tex = self._textures.get(row)
+                op = self._animator._thumb_opacity.get(row, 1.0)
+                tex = self._cache._textures.get(row)
                 if tex is not None:
                     dirty = row in self._dirty
                     if op < 1.0:
@@ -797,10 +905,10 @@ class FileListGridWidget(QWidget):
                 if rect is None or not update_rect.intersects(rect.translated(0, -sy)):
                     continue
                 vp = rect.translated(0, -sy)
-                op = self._thumb_opacity.get(row, 1.0)
-                tex = self._textures.get(row)
+                op = self._animator._thumb_opacity.get(row, 1.0)
+                tex = self._cache._textures.get(row)
                 draw_rect = vp
-                if row == self._hover_row and not self._reduce_motion and tex is not None:
+                if row == self._hover_row and not self._animator._reduce_motion and tex is not None:
                     sw = int(vp.width() * lift_scale)
                     sh = int(vp.height() * lift_scale)
                     dx = (vp.width() - sw) // 2
@@ -813,8 +921,8 @@ class FileListGridWidget(QWidget):
                         p.restore()
                     else:
                         p.drawPixmap(target, tex)
-                elif row in self._hover_progress:
-                    pv = self._hover_progress[row]
+                elif row in self._animator._hover_progress:
+                    pv = self._animator._hover_progress[row]
                     if pv > 0.01 and tex is not None:
                         s = 1.0 + 0.075 * pv
                         sw = int(vp.width() * s)
@@ -944,126 +1052,18 @@ class FileListGridWidget(QWidget):
 
     def begin_presentation(self, generation: int, visible_rows: list[int], animate: bool = True) -> bool:
         """Commit one content generation and optionally start its one-shot entrance."""
-        if generation <= self._presented_generation or (
-            self._pending_presentation is not None and generation <= self._pending_presentation[0]
-        ):
-            return False
-        if not self.isVisible() or self.width() == 0 or self.height() == 0:
-            self._pending_presentation = (generation, list(visible_rows), animate)
-            return True
-        self._start_presentation(generation, visible_rows, animate)
-        return True
+        return self._animator.begin_presentation(generation, visible_rows, animate)
 
     def stop_animations(self) -> None:
         """Cancel panel-owned presentation and queued repaint work before teardown."""
-        self._anim_timer.stop()
+        self._animator.stop()
         self._cancel_frame()
         self._full_rebuild_epoch += 1
         self._full_rebuild_update_queued = False
-        self._entrance_queue.clear()
-        self._entrance_visible.clear()
-        self._pending_presentation = None
-
-    def _present_pending_generation(self) -> None:
-        pending = self._pending_presentation
-        if pending is None or not self.isVisible() or self.width() == 0 or self.height() == 0:
-            return
-        self._pending_presentation = None
-        self._start_presentation(*pending)
 
     def discard_pending_presentation(self, generation: int) -> None:
         """Discard a hidden presentation superseded by an empty newer commit."""
-        if self._pending_presentation is not None and self._pending_presentation[0] <= generation:
-            self._pending_presentation = None
-
-    def _start_presentation(self, generation: int, visible_rows: list[int], animate: bool) -> None:
-        self._presented_generation = generation
-        self._entrance_queue.clear()
-        self._entrance_visible.clear()
-        if self._reduce_motion or not animate:
-            return
-        self._entrance_queue.extend(row for row in visible_rows if 0 <= row < self._model_rows)
-        if self._entrance_queue and not self._anim_timer.isActive():
-            self._anim_timer.start()
-
-    def _apply_selection_progress(self, old_selection: set[int]):
-        """Seed deselected rows for the selection overlay fade-out."""
-        if self._reduce_motion:
-            return
-        for r in old_selection - self._selection:
-            self._selection_progress[r] = 1.0
-        if self._selection_progress and not self._anim_timer.isActive():
-            self._anim_timer.start()
-
-    def _anim_tick(self):
-        """Process all animations: fade, hover, selection, entrance stagger."""
-        recorder = self._performance_recorder
-        started = perf_counter() if recorder is not None else None
-        session_token = self._performance_session_token
-        generation = self._performance_generation
-        active = False
-        changed_rows: set[int] = set()
-
-        if self._reduce_motion and self._hover_progress:
-            changed_rows.update(self._hover_progress)
-            self._hover_progress.clear()
-
-        # Thumbnail fade-in: linear step per frame
-        for row in list(self._thumb_opacity):
-            v = self._thumb_opacity[row] + 0.12
-            if v >= 1.0:
-                del self._thumb_opacity[row]
-            else:
-                self._thumb_opacity[row] = v
-                active = True
-            changed_rows.add(row)
-
-        # Hover fade-out (only deselected rows are animated)
-        for row in list(self._hover_progress):
-            target = 1.0 if row == self._hover_row else 0.0
-            cur = self._hover_progress[row]
-            cur += (target - cur) * 0.30
-            if abs(cur - target) < 0.01:
-                if target == 0.0:
-                    del self._hover_progress[row]
-                else:
-                    self._hover_progress[row] = 1.0
-                changed_rows.add(row)
-                continue
-            self._hover_progress[row] = cur
-            active = True
-            changed_rows.add(row)
-
-        # Selection fade-out (only deselected rows are animated)
-        for row in list(self._selection_progress):
-            cur = self._selection_progress[row]
-            cur += (0.0 - cur) * 0.30
-            if abs(cur) < 0.01:
-                del self._selection_progress[row]
-                changed_rows.add(row)
-                continue
-            self._selection_progress[row] = cur
-            active = True
-            changed_rows.add(row)
-
-        # Entrance stagger: reveal next item in queue each tick
-        if self._entrance_queue and not self._zoom_relayout_active:
-            n = max(1, len(self._entrance_queue) // 12)
-            for _ in range(n):
-                if self._entrance_queue:
-                    r = self._entrance_queue.pop(0)
-                    self._entrance_visible.add(r)
-                    self._thumb_opacity[r] = 0.0
-                    changed_rows.add(r)
-            active = True
-
-        if not active:
-            self._anim_timer.stop()
-        self._request_frame(changed_rows, overlay=True)
-        visible_count = 0
-        if recorder is not None and self._layout is not None:
-            visible_count = len(self._layout.visible_rows(self._scroll_y, self.height()))
-        self._record_performance("grid.animation_tick", started, session_token, generation, visible_count)
+        self._animator.discard_pending_presentation(generation)
 
     def _record_performance(
         self,
@@ -1081,12 +1081,12 @@ class FileListGridWidget(QWidget):
         try:
             attributes = {
                 "visible_item_count": visible_count,
-                "queued_entrance_count": len(self._entrance_queue),
+                "queued_entrance_count": len(self._animator._entrance_queue),
             }
             if texture_build_count is not None:
                 attributes.update(
-                    texture_cache_count=len(self._textures),
-                    texture_cache_bytes=self._texture_cache_bytes,
+                    texture_cache_count=len(self._cache._textures),
+                    texture_cache_bytes=self._cache._texture_cache_bytes,
                     texture_build_count=texture_build_count,
                     deferred_texture_count=deferred_texture_count or 0,
                 )
@@ -1313,62 +1313,10 @@ class FileListGridWidget(QWidget):
 
         QTimer.singleShot(0, update)
 
-    def _clear_textures(self) -> None:
-        self._textures.clear()
-        self._texture_bytes.clear()
-        self._texture_cache_bytes = 0
-
-    def _store_texture_bytes(self, row: int, texture: QPixmap) -> None:
-        if self._performance_recorder is None:
-            return
-        previous = self._texture_bytes.pop(row, 0)
-        byte_size = max(0, texture.width() * texture.height() * 4)
-        self._texture_bytes[row] = byte_size
-        self._texture_cache_bytes = max(0, self._texture_cache_bytes - previous + byte_size)
-
-    def _cache_texture(self, row: int, texture: QPixmap) -> None:
-        if row not in self._textures and len(self._textures) >= 200:
-            evicted_row, _ = self._textures.popitem(last=False)
-            self._remove_texture_bytes(evicted_row)
-            self._record_texture_eviction()
-        self._textures[row] = texture
-        self._store_texture_bytes(row, texture)
-
-    def _remove_texture_bytes(self, row: int) -> None:
-        if self._performance_recorder is None:
-            return
-        self._texture_cache_bytes = max(0, self._texture_cache_bytes - self._texture_bytes.pop(row, 0))
-
-    def _refresh_texture_accounting(self) -> None:
-        self._texture_bytes = {
-            row: max(0, texture.width() * texture.height() * 4)
-            for row, texture in self._textures.items()
-        }
-        self._texture_cache_bytes = sum(self._texture_bytes.values())
-
-    def _record_texture_eviction(self) -> None:
-        recorder = self._performance_recorder
-        if recorder is None:
-            return
-        try:
-            recorder.record(
-                "grid.texture_eviction",
-                0.0,
-                session_token=self._performance_session_token,
-                generation=self._performance_generation,
-                attributes={
-                    "texture_cache_count": len(self._textures),
-                    "texture_cache_bytes": self._texture_cache_bytes,
-                },
-            )
-        except Exception:
-            # Diagnostics must not affect texture cache eviction or rendering state.
-            pass
-
     def _draw_interaction_overlay(self, p: QPainter, row: int, item_rect: QRect, opacity: float):
         """Paint selection and hover without rebuilding the cached item texture."""
-        selection_progress = 1.0 if row in self._selection else self._selection_progress.get(row, 0.0)
-        hover_progress = 1.0 if row == self._hover_row else self._hover_progress.get(row, 0.0)
+        selection_progress = 1.0 if row in self._selection else self._animator._selection_progress.get(row, 0.0)
+        hover_progress = 1.0 if row == self._hover_row else self._animator._hover_progress.get(row, 0.0)
         if selection_progress <= 0.01 and hover_progress <= 0.01:
             return
 
@@ -1529,11 +1477,11 @@ class FileListGridWidget(QWidget):
             f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}")
 
     def refresh_theme(self):
-        previous_count = len(self._textures)
+        previous_count = len(self._cache._textures)
         self._full_rebuild_epoch += 1
         self._rebuild_theme()
-        self._clear_textures()
-        self._path_textures.clear()
+        self._cache._clear_textures()
+        self._cache._path_textures.clear()
         self._dirty = set(range(self._model_rows))
         self._full_rebuild_pending = True
         self._record_invalidation("theme", self._model_rows, previous_count)
@@ -1541,12 +1489,12 @@ class FileListGridWidget(QWidget):
 
     def refresh_scale(self):
         """Refresh scale-dependent metrics and repaint cached card textures."""
-        previous_count = len(self._textures)
+        previous_count = len(self._cache._textures)
         self._full_rebuild_epoch += 1
         self._refresh_text_metrics()
         self._apply_scrollbar_theme()
-        self._clear_textures()
-        self._path_textures.clear()
+        self._cache._clear_textures()
+        self._cache._path_textures.clear()
         self._dirty = set(range(self._model_rows))
         self._full_rebuild_pending = True
         self._record_invalidation("scale", self._model_rows, previous_count)
@@ -1653,14 +1601,14 @@ class FileListGridWidget(QWidget):
                         preview_sel.add(r)
                 if preview_sel != self._selection:
                     # Seed selection progress for animation
-                    if not self._reduce_motion:
+                    if not self._animator._reduce_motion:
                         for r in preview_sel - self._selection:
-                            self._selection_progress.setdefault(r, 0.0)
+                            self._animator._selection_progress.setdefault(r, 0.0)
                         for r in self._selection - preview_sel:
-                            if r not in self._selection_progress:
-                                self._selection_progress[r] = 1.0
-                        if not self._anim_timer.isActive():
-                            self._anim_timer.start()
+                            if r not in self._animator._selection_progress:
+                                self._animator._selection_progress[r] = 1.0
+                        if not self._animator._anim_timer.isActive():
+                            self._animator._anim_timer.start()
                     self._selection = preview_sel
                     self.selection_changed.emit()
             self._request_frame(full=True)
@@ -1675,13 +1623,13 @@ class FileListGridWidget(QWidget):
             if self._hover_row != row:
                 old = self._hover_row
                 self._hover_row = row
-                if not self._reduce_motion:
+                if not self._animator._reduce_motion:
                     if old >= 0:
-                        self._hover_progress.setdefault(old, 1.0)
+                        self._animator._hover_progress.setdefault(old, 1.0)
                     if row >= 0:
-                        self._hover_progress.setdefault(row, 0.0)
-                    if not self._anim_timer.isActive():
-                        self._anim_timer.start()
+                        self._animator._hover_progress.setdefault(row, 0.0)
+                    if not self._animator._anim_timer.isActive():
+                        self._animator._anim_timer.start()
                 self._request_frame([old, row], overlay=True)
         super().mouseMoveEvent(event)
 
@@ -1703,11 +1651,11 @@ class FileListGridWidget(QWidget):
                             self._selection.add(r)
                             final_sel.add(r)
                 # Seed progress for final selection
-                if not self._reduce_motion and final_sel:
+                if not self._animator._reduce_motion and final_sel:
                     for r in final_sel:
-                        self._selection_progress.setdefault(r, 0.0)
-                    if not self._anim_timer.isActive():
-                        self._anim_timer.start()
+                        self._animator._selection_progress.setdefault(r, 0.0)
+                    if not self._animator._anim_timer.isActive():
+                        self._animator._anim_timer.start()
                 self.selection_changed.emit()
             self._rubber_band_origin = None
             self._rubber_band_rect = QRect()
@@ -1738,12 +1686,12 @@ class FileListGridWidget(QWidget):
             if row >= 0 and self._hover_row != row:
                 old = self._hover_row
                 self._hover_row = row
-                if not self._reduce_motion:
+                if not self._animator._reduce_motion:
                     if old >= 0:
-                        self._hover_progress.setdefault(old, 1.0)
-                    self._hover_progress.setdefault(row, 0.0)
-                    if not self._anim_timer.isActive():
-                        self._anim_timer.start()
+                        self._animator._hover_progress.setdefault(old, 1.0)
+                    self._animator._hover_progress.setdefault(row, 0.0)
+                    if not self._animator._anim_timer.isActive():
+                        self._animator._anim_timer.start()
                 self._request_frame([old, row], overlay=True)
         super().enterEvent(event)
 
@@ -1751,10 +1699,10 @@ class FileListGridWidget(QWidget):
         if self._hover_row >= 0:
             old = self._hover_row
             self._hover_row = -1
-            if not self._reduce_motion:
-                self._hover_progress.setdefault(old, 1.0)
-                if not self._anim_timer.isActive():
-                    self._anim_timer.start()
+            if not self._animator._reduce_motion:
+                self._animator._hover_progress.setdefault(old, 1.0)
+                if not self._animator._anim_timer.isActive():
+                    self._animator._anim_timer.start()
             self._request_frame([old], overlay=True)
         super().leaveEvent(event)
 
