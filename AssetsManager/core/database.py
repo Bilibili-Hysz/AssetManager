@@ -21,9 +21,10 @@ from pathlib import Path
 
 from AssetsManager.core.performance import PerformanceRecorder
 from AssetsManager.core.path_resolver import (
-    runtime_root, library_data_dir, library_data_name,
-    library_data_identity_path, legacy_library_data_dir, thumb_dir,
-    db_path, RootIdentity, root_identity, remap_path_subtree, sql_like_descendant_pattern,
+    runtime_root, SHARED_DIR as _PATH_SHARED_DIR, library_data_dir,
+    library_data_name, library_data_identity_path, legacy_library_data_dir,
+    thumb_dir, db_path, RootIdentity, root_identity, remap_path_subtree,
+    sql_like_descendant_pattern,
 )
 from AssetsManager.core.db_migrations import (
     migrate as migrate_db,
@@ -31,6 +32,10 @@ from AssetsManager.core.db_migrations import (
 )
 
 RUNTIME_ROOT = runtime_root()
+# Compatibility re-export: historical consumers imported the shared-data path
+# from core.database.  The canonical definition lives in path_resolver so the
+# settings/database module cycle stays broken.
+SHARED_DIR = _PATH_SHARED_DIR
 _ORPHANED_DIR_NAME = "_orphaned"
 _LEGACY_MIGRATION_RESERVED_NAMES = frozenset({"shared", "_orphaned"})
 

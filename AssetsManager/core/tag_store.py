@@ -91,8 +91,10 @@ class TagStore:
             self._db = DatabaseManager.validate_connection_owner(
                 self._root, db_conn, allow_unmanaged=True
             )
-        self._repo = repository or _build_repository(
-            self._root, self._db, session
+        self._repo = (
+            repository
+            if repository is not None
+            else _build_repository(self._root, self._db, session)
         )
         self._resolve_cache: dict[str, str] = {}
         from threading import Lock

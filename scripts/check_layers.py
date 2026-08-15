@@ -156,7 +156,7 @@ def _is_exception(source: str, imported: str) -> bool:
 def collect_violations() -> list[Violation]:
     violations: list[Violation] = []
     for path in sorted(SRC.rglob("*.py")):
-        if "__pycache__" in path.parts or path.name == "__init__.py":
+        if "__pycache__" in path.parts:
             continue
         source = _module_name(path)
         source_layer = _layer_for(source)

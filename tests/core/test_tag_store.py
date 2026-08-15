@@ -157,3 +157,12 @@ def test_deprecated_get_store_does_not_retain_process_global_store(tmp_path):
         assert first._db is second._db is conn
     finally:
         conn.close()
+
+
+def test_tag_store_requires_installed_repository_factory(monkeypatch, schema_db):
+    import AssetsManager.core.tag_store as tag_store_module
+
+    monkeypatch.setattr(tag_store_module, "_default_repository_factory", None)
+
+    with pytest.raises(RuntimeError, match="repository factory"):
+        TagStore("/test/library", db_conn=schema_db)
