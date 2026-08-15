@@ -694,23 +694,61 @@ def test_grid_thumb_batch_marks_only_loaded_rows_dirty():
     assert widget._dirty == {1, 9}
 
 
-def test_grid_static_data_change_preserves_interaction_and_thumbnail_fades():
+def test_grid_subtitle_change_patches_cached_texture_without_rebuild(monkeypatch):
+    from AssetsManager.panels.file_list import _grid_widget
+
+    app = QApplication.instance() or QApplication([])
     widget = FileListGridWidget()
-    widget._cache._textures[1] = object()
-    widget._animator._thumbnail_rows = {1}
-    widget._animator._thumb_opacity = {1: 0.4}
-    widget._animator._hover_progress = {1: 0.7}
-    widget._animator._selection_progress = {1: 0.8}
-    widget._dirty.clear()
+    try:
+        texture = QPixmap(120, 170)
+        widget._cache._textures[1] = texture
+        index = type("_Index", (), {"row": lambda _self: 1})()
+        widget._model = Mock()
+        widget._model.index.return_value = index
+        widget._model.data.return_value = "1.5 KB"
+        painter = Mock()
+        painter_cls = Mock()
+        painter_cls.RenderHint = QPainter.RenderHint
+        painter_cls.CompositionMode = QPainter.CompositionMode
+        painter_cls.return_value = painter
+        monkeypatch.setattr(_grid_widget, "QPainter", painter_cls)
+        widget._animator._thumbnail_rows = {1}
+        widget._animator._thumb_opacity = {1: 0.4}
+        widget._animator._hover_progress = {1: 0.7}
+        widget._animator._selection_progress = {1: 0.8}
+        widget._dirty.clear()
 
-    index = type("_Index", (), {"row": lambda _self: 1})()
-    widget._on_data_changed(index, index, [FileSystemModel.SUBTITLE_ROLE])
+        widget._on_data_changed(index, index, [FileSystemModel.SUBTITLE_ROLE])
 
-    assert widget._dirty == {1}
-    assert widget._animator._thumbnail_rows == {1}
-    assert widget._animator._thumb_opacity == {1: 0.4}
-    assert widget._animator._hover_progress == {1: 0.7}
-    assert widget._animator._selection_progress == {1: 0.8}
+        assert widget._cache._textures[1] is texture
+        assert widget._dirty == set()
+        assert painter.fillRect.call_count == 1
+        assert any(
+            len(call.args) == 3 and call.args[2] == "1.5 KB"
+            for call in painter.drawText.call_args_list
+        )
+        assert widget._animator._thumbnail_rows == {1}
+        assert widget._animator._thumb_opacity == {1: 0.4}
+        assert widget._animator._hover_progress == {1: 0.7}
+        assert widget._animator._selection_progress == {1: 0.8}
+    finally:
+        widget.deleteLater()
+        app.processEvents()
+
+
+def test_grid_subtitle_change_marks_uncached_row_dirty():
+    app = QApplication.instance() or QApplication([])
+    widget = FileListGridWidget()
+    try:
+        widget._dirty.clear()
+        index = type("_Index", (), {"row": lambda _self: 1})()
+
+        widget._on_data_changed(index, index, [FileSystemModel.SUBTITLE_ROLE])
+
+        assert widget._dirty == {1}
+    finally:
+        widget.deleteLater()
+        app.processEvents()
 
 
 def test_grid_nonvisual_data_change_does_not_invalidate_texture():

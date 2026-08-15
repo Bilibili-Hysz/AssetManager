@@ -1067,6 +1067,21 @@ def test_directory_size_result_is_ignored_after_panel_shutdown():
     assert panel._model._pending_dir_sizes == {"/library/folder"}
 
 
+def test_directory_size_result_skips_redundant_subtitle_emission():
+    model = Mock()
+    model.is_shutdown = False
+    model.dir_size_generation = 1
+    model.subtitle_for.return_value = "1.0 KB"
+    panel = Mock()
+    panel._model = model
+
+    FileListPanel._on_dir_size_ready(panel, "/library/folder", "1.0 KB", 1)
+
+    model.discard_pending_dir_size.assert_called_once_with("/library/folder")
+    model.set_subtitle.assert_not_called()
+    model.dataChanged.emit.assert_not_called()
+
+
 def test_external_drop_uses_scoped_file_operation_service(tmp_path, monkeypatch):
     from unittest.mock import Mock
 

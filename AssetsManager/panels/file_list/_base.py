@@ -920,6 +920,10 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             return
         if self._model.subtitle_for(dir_path) is None:
             return
+        if self._model.subtitle_for(dir_path) == size_str:
+            # Same rendered value: skip the dataChanged emission that would
+            # otherwise trigger another in-place texture patch / rebuild.
+            return
         self._model.set_subtitle(dir_path, size_str)
         row = self._model.row_for_path(dir_path)
         if row >= 0:

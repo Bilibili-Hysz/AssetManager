@@ -430,10 +430,21 @@ class FileListGridWidget(QWidget):
             Qt.ItemDataRole.DisplayRole,
             Qt.ItemDataRole.EditRole,
             Qt.ItemDataRole.DecorationRole,
-            FileSystemModel.SUBTITLE_ROLE,
             FileSystemModel.IS_DIR_ROLE,
         }
-        if roles and not roles.intersection(static_roles):
+        if FileSystemModel.SUBTITLE_ROLE in roles:
+            remaining = roles - {FileSystemModel.SUBTITLE_ROLE}
+            if not remaining.intersection(static_roles):
+                # Directory-size subtitle updates rewrite only the cached card's
+                # subtitle band in place instead of invalidating and re-rendering
+                # the thumbnail, folder art, name, and badge (F-08, no overlay
+                # layer). Rows without a cached texture fall back to the normal
+                # dirty/rebuild path.
+                for row in range(top_left.row(), bottom_right.row() + 1):
+                    self._patch_subtitle_texture(row)
+                self._request_frame(range(top_left.row(), bottom_right.row() + 1))
+                return
+        if roles and not roles.intersection(static_roles | {FileSystemModel.SUBTITLE_ROLE}):
             return
         changed_count = bottom_right.row() - top_left.row() + 1
         previous_count = self._cache.texture_count
@@ -666,6 +677,11 @@ class FileListGridWidget(QWidget):
         # on each partial update (hover/selection animation), turning a
         # one-cell repaint into a whole-grid repaint.
         update_rect = _evt.rect()
+        # Scroll frames repaint the whole viewport; every visible cell
+        # intersects it, so the per-cell Python-level intersects check is pure
+        # overhead there and is skipped. Long-term band-level invalidation
+        # would make scroll frames partial again (audit F-07).
+        update_is_full = update_rect.contains(self.rect())
         skipped_dirty = False
 
         # ── Pass 1: ensure cell textures are built (budget-limited) ──
@@ -673,7 +689,7 @@ class FileListGridWidget(QWidget):
             rect = self._layout.rect_at(row)
             if rect is None:
                 continue
-            if not update_rect.intersects(rect.translated(0, -sy)):
+            if not update_is_full and not update_rect.intersects(rect.translated(0, -sy)):
                 skipped_dirty = skipped_dirty or (row in self._dirty)
                 continue
             dirty = row in self._dirty
@@ -734,7 +750,7 @@ class FileListGridWidget(QWidget):
             p.translate(0, -sy)
             for row in visible:
                 rect = self._layout.rect_at(row)
-                if rect is None or not update_rect.intersects(rect.translated(0, -sy)):
+                if rect is None or (not update_is_full and not update_rect.intersects(rect.translated(0, -sy))):
                     continue
                 tex = self._cache.texture_for(row) or self._zoom_fallback_textures.get(row)
                 if tex is None:
@@ -756,7 +772,7 @@ class FileListGridWidget(QWidget):
             # neighbouring cards.
             for row in visible:
                 rect = self._layout.rect_at(row)
-                if rect is None or not update_rect.intersects(rect.translated(0, -sy)):
+                if rect is None or (not update_is_full and not update_rect.intersects(rect.translated(0, -sy))):
                     continue
                 if not self._animator.reduce_motion and (
                     row == self._hover_row or self._animator.has_hover_progress(row)
@@ -786,7 +802,7 @@ class FileListGridWidget(QWidget):
             lift_dy = -5
             for row in visible:
                 rect = self._layout.rect_at(row)
-                if rect is None or not update_rect.intersects(rect.translated(0, -sy)):
+                if rect is None or (not update_is_full and not update_rect.intersects(rect.translated(0, -sy))):
                     continue
                 vp = rect.translated(0, -sy)
                 op = self._animator.thumbnail_opacity(row)
@@ -1114,6 +1130,69 @@ class FileListGridWidget(QWidget):
         painter.setBrush(QColor(self._clr_heading.red(), self._clr_heading.green(), self._clr_heading.blue(), 6))
         painter.drawRoundedRect(card, _CORNER_R, _CORNER_R)
         painter.restore()
+
+    def _subtitle_rect_for(self, item_rect: QRect) -> QRect:
+        """Return the subtitle band inside ``item_rect`` (matches _render_item)."""
+        card = self._card_rect_in_item(QRect(0, 0, item_rect.width(), item_rect.height()))
+        preview = QRect(
+            card.x() + _PREVIEW_MARGIN,
+            card.y() + _PREVIEW_MARGIN,
+            self._thumb_size,
+            self._thumb_size,
+        )
+        name_y = preview.bottom() + _TEXT_TOP_GAP
+        sub_y = name_y + self._fm_name.height() + _TEXT_LINE_GAP
+        return QRect(preview.left(), sub_y, max(1, preview.width()), self._fm_sub.height())
+
+    def _patch_subtitle_texture(self, row: int) -> bool:
+        """Rewrite one cached card's subtitle band in place.
+
+        Returns True when a cached texture was patched, False when the row has
+        no cached texture and must go through the normal dirty rebuild path.
+        """
+        tex = self._cache.texture_for(row)
+        if tex is None or tex.isNull():
+            self._dirty.add(row)
+            return False
+        if self._model is None:
+            self._dirty.add(row)
+            return False
+        subtitle = self._model.data(
+            self._model.index(row, 0), FileSystemModel.SUBTITLE_ROLE
+        )
+        size = tex.deviceIndependentSize()
+        item_rect = QRect(0, 0, size.width(), size.height())
+        band = self._subtitle_rect_for(item_rect)
+        painter = QPainter(tex)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
+            # Erase the previous baked text with the exact card fill color.
+            # CompositionMode_Source replaces the pixels (instead of blending
+            # over the old glyphs) so the band returns to its original fill.
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+            painter.fillRect(
+                band,
+                QColor(
+                    self._clr_heading.red(),
+                    self._clr_heading.green(),
+                    self._clr_heading.blue(),
+                    10,
+                ),
+            )
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+            if subtitle:
+                painter.setFont(self._font_sub)
+                painter.setPen(self._clr_muted)
+                painter.drawText(
+                    band,
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                    self._fm_sub.elidedText(
+                        subtitle, Qt.TextElideMode.ElideRight, band.width()
+                    ),
+                )
+        finally:
+            painter.end()
+        return True
 
     def _render_zoom_fallback(self, row: int, rect: QRect) -> QPixmap | None:
         """Render a source-sized temporary card for a newly visible zoom row."""
