@@ -747,7 +747,7 @@ def test_grid_selection_change_preserves_cached_textures():
     widget._dirty.clear()
 
     widget._selection.clear()
-    widget._animator._apply_selection_progress({3})
+    widget._animator.apply_selection_progress({3})
 
     assert widget._cache._textures[3] is cached
     assert widget._dirty == set()
@@ -1001,7 +1001,7 @@ def test_zoom_reduce_motion_commits_without_starting_an_animation():
     panel._zoom_generation = 0
     panel._grid_widget = Mock()
     panel._grid_widget._zoom_relayout_active = False
-    panel._grid_widget._animator._reduce_motion = True
+    panel._grid_widget.reduce_motion_enabled.return_value = True
     panel._on_zoom_done = Mock()
 
     FileListPanel._on_zoom_changed(panel, "128px")
@@ -1481,6 +1481,90 @@ def test_grid_release_on_multi_selection_collapses_to_clicked_row():
         assert widget._selection == {1}
         assert widget._click_pending_row == -1
         assert clicked == [1]
+    finally:
+        widget.deleteLater()
+        app.processEvents()
+
+
+def test_grid_texture_cache_exposes_explicit_lifecycle_api():
+    app = QApplication.instance() or QApplication([])
+    widget = FileListGridWidget()
+    try:
+        widget.set_performance_context(PerformanceRecorder(enabled=True), "session-a", 7)
+        texture = QPixmap(10, 20)
+        widget._cache.cache_texture(1, texture)
+        widget._cache.cache_texture(4, texture)
+
+        assert widget._cache.texture_count == 2
+        assert widget._cache.has_texture(1)
+        assert widget._cache.texture_for(1) is texture
+        assert widget._cache.has_textures is True
+        assert widget._cache.texture_cache_bytes == 1600
+
+        widget._cache.drop_rows_above(3)
+        assert widget._cache.texture_count == 1
+        assert widget._cache.has_texture(1)
+        assert not widget._cache.has_texture(4)
+        assert widget._cache.texture_cache_bytes == 800
+
+        widget._cache.clear()
+        assert widget._cache.has_textures is False
+        assert widget._cache.texture_cache_bytes == 0
+    finally:
+        widget.deleteLater()
+        app.processEvents()
+
+
+def test_grid_animator_exposes_explicit_fade_and_progress_api():
+    app = QApplication.instance() or QApplication([])
+    widget = FileListGridWidget()
+    try:
+        widget._animator._reduce_motion = False
+        widget._selection = {0}
+
+        widget._animator.begin_thumbnail_fade(2, has_visible_texture=False, allow_fade=True)
+        assert widget._animator.thumbnail_opacity(2) == 0.0
+        assert widget._animator.has_thumbnail_fades() is True
+
+        widget._animator.apply_selection_progress({0, 1})
+        assert widget._animator.selection_progress_value(1) == 1.0
+
+        widget._animator.setdefault_hover_progress(1, 0.0)
+        assert widget._animator.has_hover_progress(1)
+        assert widget._animator.hover_progress_value(1) == 0.0
+
+        widget._animator.reset_for_model_reset()
+        assert widget._animator.thumbnail_opacity(2, 1.0) == 1.0
+        assert widget._animator.selection_progress_value(1) == 0.0
+        assert not widget._animator.has_hover_progress(1)
+        assert widget._animator.queued_entrance_count == 0
+    finally:
+        widget.deleteLater()
+        app.processEvents()
+
+
+def test_grid_set_selection_rows_seeds_fade_and_emits_once():
+    app = QApplication.instance() or QApplication([])
+    widget = FileListGridWidget()
+    try:
+        widget._animator._reduce_motion = False
+        widget._selection = {0, 1}
+        changed = []
+        widget.selection_changed.connect(lambda: changed.append(True))
+        widget.update = Mock()
+
+        widget.set_selection_rows({2})
+
+        assert widget._selection == {2}
+        assert widget._animator.selection_progress_value(0) == 1.0
+        assert widget._animator.selection_progress_value(1) == 1.0
+        assert changed == [True]
+        widget.update.assert_called_once_with()
+
+        widget.update.reset_mock()
+        widget.set_selection_rows({2})
+        assert changed == [True]
+        widget.update.assert_not_called()
     finally:
         widget.deleteLater()
         app.processEvents()

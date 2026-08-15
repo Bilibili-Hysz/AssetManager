@@ -21,6 +21,7 @@ from AssetsManager.panels.base import PanelContent
 from AssetsManager.application.desktop_ports import TagsViewPort
 from AssetsManager.core.cache import LRUCache
 from AssetsManager.core.constants import IMAGE_EXTS
+from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core import themes, icons
@@ -43,6 +44,10 @@ tr = i18n.tr
 
 PREVIEW_LOAD_MAX = 2000
 _MAX_ANIMATED_TAGS = 8
+# Hidden chips are pooled for reuse instead of being rebuilt on every file
+# switch. The pool is LRU-bounded so browsing a huge tag vocabulary cannot
+# accumulate one live QWidget per tag seen over a long session.
+_TAG_CHIP_POOL_LIMIT = 96
 
 
 class InfoPanel(PanelContent):
@@ -183,6 +188,7 @@ class InfoPanel(PanelContent):
         flow_layout = _FlowLayout(self._tags_flow, margin=0, spacing=scaled_px(4))
         self._tags_flow_layout = flow_layout
         self._tags_widgets: list[QWidget] = []
+        self._tag_chip_pool: dict[str, QWidget] = {}
         tags_outer.addWidget(self._tags_flow)
 
         add_row = QHBoxLayout()
@@ -235,7 +241,6 @@ class InfoPanel(PanelContent):
 
         self._details_scroll.setWidget(details_widget)
         self._splitter.addWidget(self._details_scroll)
-
         # ── Actions (fixed at bottom, outside scroll) ──────────
 
         act_bar = QWidget()
@@ -284,6 +289,14 @@ class InfoPanel(PanelContent):
         self._preview_rescale_timer.timeout.connect(self._apply_scaled_preview)
         self._splitter.splitterMoved.connect(lambda *_args: self._preview_rescale_timer.start())
         self._show_empty_state()
+        self._restore_layout_state()
+        # Debounce splitter drags for persistence too. Connected AFTER restore
+        # so applying saved sizes cannot schedule an immediate save-back.
+        self._layout_save_timer = QTimer(self)
+        self._layout_save_timer.setSingleShot(True)
+        self._layout_save_timer.setInterval(500)
+        self._layout_save_timer.timeout.connect(self._save_layout_state)
+        self._splitter.splitterMoved.connect(lambda *_args: self._layout_save_timer.start())
 
         # Subscribe to domain events through a Qt bridge for UI-safe delivery.
         from AssetsManager.domain.events import (
@@ -377,7 +390,6 @@ class InfoPanel(PanelContent):
     @staticmethod
     def _detect_reduce_motion() -> bool:
         try:
-            from AssetsManager.core.settings import AppSettings
             return bool(AppSettings.instance().get("reduce_motion", False))
         except Exception:
             return False
@@ -663,22 +675,74 @@ class InfoPanel(PanelContent):
     def _show_panel_menu(self):
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self)
-        for label, widget in [
-            (tr("info.preview"), self._preview_host),
-            (tr("info.title"), self._meta_grp),
-            (tr("info.tags"), self._tags_grp),
-            (tr("info.notes"), self._notes_grp),
-            (tr("info.actions"), self._act_bar),
+        for key, label, widget in [
+            ("preview", tr("info.preview"), self._preview_host),
+            ("meta", tr("info.title"), self._meta_grp),
+            ("tags", tr("info.tags"), self._tags_grp),
+            ("notes", tr("info.notes"), self._notes_grp),
+            ("actions", tr("info.actions"), self._act_bar),
         ]:
             a = menu.addAction(label)
             a.setCheckable(True)
-            a.setChecked(widget.isVisible())
-            a.toggled.connect(lambda v, w=widget: w.setVisible(v))
+            a.setChecked(not widget.isHidden())
+            a.toggled.connect(lambda v, k=key, w=widget: self._set_section_visible(k, w, v))
         btn = self.sender()
         if isinstance(btn, QWidget):
             menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
         else:
             menu.exec(self.cursor().pos())
+
+    def _section_widgets(self):
+        return [
+            ("preview", self._preview_host),
+            ("meta", self._meta_grp),
+            ("tags", self._tags_grp),
+            ("notes", self._notes_grp),
+            ("actions", self._act_bar),
+        ]
+
+    def _set_section_visible(self, key: str, widget: QWidget, visible: bool) -> None:
+        widget.setVisible(visible)
+        self._save_layout_state()
+
+    def _restore_layout_state(self) -> None:
+        """Restore saved section visibility and splitter sizes."""
+        try:
+            data = AppSettings.instance().get("info_panel_layout")
+        except Exception:
+            return
+        if not isinstance(data, dict):
+            return
+        sections = data.get("sections")
+        if isinstance(sections, dict):
+            for key, widget in self._section_widgets():
+                saved = sections.get(key)
+                if isinstance(saved, bool):
+                    widget.setVisible(saved)
+        sizes = data.get("splitter")
+        if isinstance(sizes, (list, tuple)) and len(sizes) == 2:
+            try:
+                width, height = int(sizes[0]), int(sizes[1])
+                if width > 0 and height > 0:
+                    self._splitter.setSizes([width, height])
+            except (TypeError, ValueError):
+                pass
+
+    def _save_layout_state(self) -> None:
+        """Persist section visibility and splitter sizes."""
+        try:
+            data = {
+                # isHidden() reflects the explicit per-section preference even
+                # before the panel itself has been shown (isVisible() would
+                # report False for every section in that case).
+                "sections": {key: not widget.isHidden() for key, widget in self._section_widgets()},
+                "splitter": list(self._splitter.sizes()),
+            }
+            settings = AppSettings.instance()
+            settings.set("info_panel_layout", data)
+            settings.save()
+        except Exception:
+            _log.exception("Failed to save InfoPanel layout state")
 
     def _clear_preview(self):
         self._preview_pixmap = None
@@ -908,34 +972,93 @@ class InfoPanel(PanelContent):
     # ── Tags ───────────────────────────────────────────────────
 
     def _clear_tags(self):
+        """Drop every chip (full teardown: library switch, shutdown)."""
         self._tag_render_generation = getattr(self, "_tag_render_generation", 0) + 1
         for w in self._tags_widgets:
             self._tags_flow_layout.removeWidget(w)
             w.deleteLater()
         self._tags_widgets.clear()
+        for chip in self._tag_chip_pool.values():
+            chip.deleteLater()
+        self._tag_chip_pool.clear()
         self._rendered_tags = ()
 
-    def _make_tag_chip(self, tag: str) -> QWidget:
-        return create_tag_chip(
+    def _make_tag_chip(self, tag: str, color: str | None) -> QWidget:
+        chip = create_tag_chip(
             tag,
             on_remove=self._remove_tag,
-            color=tag_color_from(self._tags_port, tag),
+            color=color,
         )
+        # Remember the color the chip was built for so a tag-color edit can
+        # replace the pooled widget instead of leaving stale styling.
+        chip.setProperty("tagColor", color or "")
+        return chip
+
+    def _discard_tag_chip(self, chip: QWidget) -> None:
+        """Detach and schedule one pooled chip for deletion."""
+        self._tags_flow_layout.removeWidget(chip)
+        chip.hide()
+        chip.setParent(None)
+        chip.deleteLater()
+
+    def _evict_tag_chip_pool(self, rendered: list[QWidget]) -> None:
+        """Drop the least-recently-used hidden chips above the pool limit."""
+        while len(self._tag_chip_pool) > _TAG_CHIP_POOL_LIMIT:
+            _stale_tag, stale_chip = next(iter(self._tag_chip_pool.items()))
+            if stale_chip in rendered:
+                # Never evict a chip that is currently on screen, even if the
+                # rendered tag set itself exceeds the pool limit.
+                break
+            del self._tag_chip_pool[_stale_tag]
+            self._discard_tag_chip(stale_chip)
 
     def _render_tags(self, tags: list[str]):
+        """Render the tag set, reusing pooled chips and diffing widget churn.
+
+        Chips are kept in an LRU pool keyed by tag name: switching files with
+        an overlapping tag vocabulary only hides/removes the difference, and a
+        chip is rebuilt only when it is new or its tag color changed.
+        """
         normalized = tuple(str(tag) for tag in tags)
         if normalized == self._rendered_tags and self._tags_widgets:
             return
+        self._tag_render_generation = getattr(self, "_tag_render_generation", 0) + 1
         self._tags_flow.setUpdatesEnabled(False)
         try:
-            self._clear_tags()
-            self._rendered_tags = normalized
-            for i, tag in enumerate(normalized):
-                chip = self._make_tag_chip(tag)
-                self._tags_widgets.append(chip)
+            for widget in self._tags_widgets:
+                self._tags_flow_layout.removeWidget(widget)
+                widget.hide()
+            self._tags_widgets.clear()
+
+            rendered: list[QWidget] = []
+            fresh_chips: list[QWidget] = []
+            for tag in normalized:
+                color = tag_color_from(self._tags_port, tag)
+                chip = self._tag_chip_pool.pop(tag, None)
+                if chip is None or chip.property("tagColor") != (color or ""):
+                    if chip is not None:
+                        self._discard_tag_chip(chip)
+                    chip = self._make_tag_chip(tag, color)
+                    fresh_chips.append(chip)
+                else:
+                    # A pooled chip may have been hidden mid fade-in (opacity 0).
+                    # Reuse is always shown fully opaque; only newly built chips
+                    # go through the staggered entrance animation.
+                    fade_anim = getattr(chip, "_fade_anim", None)
+                    if fade_anim is not None:
+                        fade_anim.stop()
+                    chip.setWindowOpacity(1.0)
+                chip.show()
                 self._tags_flow_layout.addWidget(chip)
+                self._tags_widgets.append(chip)
+                rendered.append(chip)
+                # Re-insertion at the end doubles as the pool's LRU recency.
+                self._tag_chip_pool[tag] = chip
+            self._evict_tag_chip_pool(rendered)
+            self._rendered_tags = normalized
+            for i, chip in enumerate(fresh_chips):
                 if i < _MAX_ANIMATED_TAGS:
-                    # Staggered fade-in animation for the first visible chips.
+                    # Staggered fade-in animation for the first newly built chips.
                     self._animate_tag_in(chip, delay=i * 50)
                 else:
                     chip.setWindowOpacity(1.0)
@@ -1060,6 +1183,9 @@ class InfoPanel(PanelContent):
         self._metadata_port = services.metadata_service
         self._tags_port = RootBoundTagService(self._library_root, services.tag_service)
         self._current_path = ""
+        # Pooled chips carry styles/colors resolved against the old library's
+        # tag service; rebuild them on the next selection.
+        self._clear_tags()
         self._invalidate_async_requests()
         if hasattr(self, '_classify_cache'):
             self._classify_cache.clear()
@@ -1075,7 +1201,6 @@ class InfoPanel(PanelContent):
         self._branch_depths = dict(branch_depths or {})
 
     def _load_sidebar_depth_cfg(self):
-        from AssetsManager.core.settings import AppSettings
         try:
             cfg = AppSettings.instance().get("sidebar_depth_cfg")
             if isinstance(cfg, dict):
@@ -1216,7 +1341,7 @@ class InfoPanel(PanelContent):
         self._set_field_text(self._fields["path"], fi.absolutePath())
         self._fields["summary"].hide()
         self._set_link_field("")
-        self._clear_tags()
+        self._render_tags([])
         self._notes.blockSignals(True)
         self._notes.setPlainText("")
         self._notes.blockSignals(False)

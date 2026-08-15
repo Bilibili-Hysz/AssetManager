@@ -42,6 +42,88 @@ class Animator:
         self._presented_generation = -1
         self._pending_presentation: tuple[int, list[int], bool] | None = None
 
+    # ── Explicit widget-facing API ─────────────────────────────
+
+    @property
+    def reduce_motion(self) -> bool:
+        return self._reduce_motion
+
+    @property
+    def queued_entrance_count(self) -> int:
+        return len(self._entrance_queue)
+
+    def has_pending_presentation(self) -> bool:
+        """True when a presentation is waiting for the host to become visible."""
+        return self._pending_presentation is not None
+
+    def present_pending(self) -> None:
+        """Start the most recent presentation queued while the host was hidden."""
+        self._present_pending_generation()
+
+    def cancel_entrance(self) -> None:
+        """Abort entrance staggering and thumbnail fades (e.g. zoom takeover)."""
+        self._entrance_queue.clear()
+        self._entrance_visible.clear()
+        self._thumb_opacity.clear()
+
+    def reset_for_model_reset(self) -> None:
+        """Drop all per-row animation state for a new model generation."""
+        self._thumb_opacity.clear()
+        self._thumbnail_rows.clear()
+        self._hover_progress.clear()
+        self._selection_progress.clear()
+        self._entrance_queue.clear()
+        self._entrance_visible.clear()
+
+    def begin_thumbnail_fade(
+        self,
+        row: int,
+        *,
+        has_visible_texture: bool,
+        allow_fade: bool,
+    ) -> None:
+        """Track one replacement texture and seed its fade exactly once."""
+        first_track = row not in self._thumbnail_rows
+        self._thumbnail_rows.add(row)
+        if first_track and not has_visible_texture and not self._reduce_motion and allow_fade:
+            self._thumb_opacity[row] = 0.0
+            self.ensure_running()
+
+    def ensure_running(self) -> None:
+        """Start the 16 ms animation timer when it is not already running."""
+        if not self._anim_timer.isActive():
+            self._anim_timer.start()
+
+    def thumbnail_opacity(self, row: int, default: float = 1.0) -> float:
+        return self._thumb_opacity.get(row, default)
+
+    def has_thumbnail_fades(self) -> bool:
+        """True while at least one thumbnail fade-in is still in progress."""
+        return bool(self._thumb_opacity)
+
+    def hover_progress_value(self, row: int) -> float | None:
+        """Return the hover progress for ``row``, or None when not animated."""
+        return self._hover_progress.get(row)
+
+    def has_hover_progress(self, row: int) -> bool:
+        return row in self._hover_progress
+
+    def selection_progress_value(self, row: int, default: float = 0.0) -> float:
+        return self._selection_progress.get(row, default)
+
+    def has_selection_progress(self, row: int) -> bool:
+        return row in self._selection_progress
+
+    def setdefault_hover_progress(self, row: int, value: float) -> None:
+        """Seed a hover transition (no-op under reduce-motion)."""
+        if not self._reduce_motion:
+            self._hover_progress.setdefault(row, value)
+
+    def setdefault_selection_progress(self, row: int, value: float) -> None:
+        """Seed a selection transition (no-op under reduce-motion)."""
+        if not self._reduce_motion:
+            self._selection_progress.setdefault(row, value)
+
     def begin_presentation(self, generation: int, visible_rows: list[int], animate: bool = True) -> bool:
         """Commit one content generation and optionally start its one-shot entrance."""
         host = self._host
@@ -78,7 +160,7 @@ class Animator:
         if self._entrance_queue and not self._anim_timer.isActive():
             self._anim_timer.start()
 
-    def _apply_selection_progress(self, old_selection: set[int]) -> None:
+    def apply_selection_progress(self, old_selection: set[int]) -> None:
         """Seed deselected rows for the selection overlay fade-out."""
         if self._reduce_motion:
             return

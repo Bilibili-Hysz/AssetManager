@@ -42,6 +42,77 @@ class GridTextureCache:
         """Pop and return the path-keyed texture cached for ``path`` (or None)."""
         return self._path_textures.pop(path, None)
 
+    # ── Explicit widget-facing API ─────────────────────────────
+
+    def capture_path_textures(self) -> None:
+        """Keep card textures available across sort/filter model resets."""
+        self._capture_path_textures()
+
+    def clear_path_textures(self) -> None:
+        """Drop every path-keyed texture (scan, theme, scale, thumb-size)."""
+        self._path_textures.clear()
+
+    def clear(self) -> None:
+        """Drop every row texture and its byte accounting."""
+        self._clear_textures()
+
+    def refresh_accounting(self) -> None:
+        """Recompute byte accounting from the currently cached textures."""
+        self._refresh_texture_accounting()
+
+    def clear_byte_accounting(self) -> None:
+        """Disable byte accounting without touching cached textures."""
+        self._texture_bytes.clear()
+        self._texture_cache_bytes = 0
+
+    def cache_texture(self, row: int, texture: QPixmap) -> None:
+        """Insert/refresh a row texture under the LRU eviction policy."""
+        self._cache_texture(row, texture)
+
+    def discard_path_texture(self, path: str) -> QPixmap | None:
+        """Pop a path-keyed texture without touching row textures."""
+        return self._path_textures.pop(path, None)
+
+    def texture_for(self, row: int) -> QPixmap | None:
+        """Return the texture cached for ``row`` (None when absent)."""
+        return self._textures.get(row)
+
+    def has_texture(self, row: int) -> bool:
+        """True when ``row`` currently has a cached texture."""
+        return row in self._textures
+
+    def drop_texture(self, row: int) -> None:
+        """Remove one row texture and release its byte accounting."""
+        if row in self._textures:
+            del self._textures[row]
+            self._remove_texture_bytes(row)
+
+    def drop_rows_above(self, count: int) -> None:
+        """Drop cached textures for rows that no longer exist in the model."""
+        for row in [candidate for candidate in self._textures if candidate >= count]:
+            self.drop_texture(row)
+
+    def touch(self, row: int) -> None:
+        """Mark a cached row as most-recently-used."""
+        if row in self._textures:
+            self._textures.move_to_end(row)
+
+    @property
+    def texture_count(self) -> int:
+        return len(self._textures)
+
+    @property
+    def has_textures(self) -> bool:
+        return bool(self._textures)
+
+    @property
+    def has_path_textures(self) -> bool:
+        return bool(self._path_textures)
+
+    @property
+    def texture_cache_bytes(self) -> int:
+        return self._texture_cache_bytes
+
     def _clear_textures(self) -> None:
         self._textures.clear()
         self._texture_bytes.clear()

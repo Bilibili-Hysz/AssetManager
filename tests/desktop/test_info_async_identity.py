@@ -342,3 +342,165 @@ def test_info_panel_injects_session_and_drops_old_controller_on_switch(tmp_path)
             session.close()
         else:
             session._finish_close()
+
+
+def _install_fake_app_settings(monkeypatch, initial=None):
+    """Patch the panel's AppSettings import with an in-memory test double."""
+    state = dict(initial or {})
+
+    class _FakeAppSettings:
+        def __init__(self):
+            self.save_calls = 0
+
+        @classmethod
+        def instance(cls):
+            if getattr(cls, "_instance", None) is None:
+                cls._instance = cls()
+            return cls._instance
+
+        def get(self, key, default=None):
+            return state.get(key, default)
+
+        def set(self, key, value):
+            state[key] = value
+
+        def save(self):
+            self.save_calls += 1
+            return True
+
+    fake_cls = _FakeAppSettings
+    monkeypatch.setattr(info_module, "AppSettings", fake_cls)
+    return state, fake_cls.instance()
+
+
+def test_info_panel_restores_and_persists_section_visibility(monkeypatch):
+    state, settings = _install_fake_app_settings(monkeypatch, {
+        "info_panel_layout": {
+            "sections": {
+                "preview": False,
+                "meta": True,
+                "tags": False,
+                "notes": True,
+                "actions": False,
+            },
+            "splitter": [111, 222],
+        },
+    })
+    panel = InfoPanel()
+    try:
+        assert panel._preview_host.isHidden()
+        assert not panel._meta_grp.isHidden()
+        assert panel._tags_grp.isHidden()
+        assert not panel._notes_grp.isHidden()
+        assert panel._act_bar.isHidden()
+
+        # Splitters normalize setSizes() until the panel is shown, so pin the
+        # restore contract at the QSplitter call boundary.
+        applied = []
+        monkeypatch.setattr(panel._splitter, "setSizes", lambda sizes: applied.append(sizes))
+        panel._restore_layout_state()
+        assert applied == [[111, 222]]
+
+        panel._set_section_visible("meta", panel._meta_grp, False)
+        panel._set_section_visible("actions", panel._act_bar, True)
+        saved = state["info_panel_layout"]
+        assert saved["sections"] == {
+            "preview": False,
+            "meta": False,
+            "tags": False,
+            "notes": True,
+            "actions": True,
+        }
+        assert isinstance(saved["splitter"], list) and len(saved["splitter"]) == 2
+        assert settings.save_calls == 2
+    finally:
+        panel._layout_save_timer.stop()
+        panel.shutdown()
+        panel.deleteLater()
+
+
+def test_info_panel_ignores_malformed_layout_preferences(monkeypatch):
+    _install_fake_app_settings(monkeypatch, {
+        "info_panel_layout": {
+            "sections": {"preview": "no", "notes": 0},
+            "splitter": [0, -1],
+        },
+    })
+    panel = InfoPanel()
+    try:
+        # Non-bool saved visibility is ignored, so the default (all shown) is
+        # kept. The unattached footer bar reports hidden until a dock hosts it.
+        assert all(
+            not widget.isHidden()
+            for key, widget in panel._section_widgets()
+            if key != "actions"
+        )
+        assert panel._act_bar.isHidden()
+    finally:
+        panel._layout_save_timer.stop()
+        panel.shutdown()
+        panel.deleteLater()
+
+
+def test_info_tag_chips_are_reused_and_only_differences_are_rebuilt():
+    panel = InfoPanel()
+    panel._reduce_motion = True
+    try:
+        panel._render_tags(["alpha", "beta"])
+        alpha = panel._tag_chip_pool["alpha"]
+        beta = panel._tag_chip_pool["beta"]
+        assert panel._tags_widgets == [alpha, beta]
+        assert panel._tags_flow_layout.count() == 2
+
+        # Reordering + one new tag keeps both old chip instances alive.
+        panel._render_tags(["beta", "alpha", "gamma"])
+        assert panel._tag_chip_pool["alpha"] is alpha
+        assert panel._tag_chip_pool["beta"] is beta
+        gamma = panel._tag_chip_pool["gamma"]
+        assert panel._tags_widgets == [beta, alpha, gamma]
+        assert panel._tags_flow_layout.count() == 3
+
+        # Shrinking the set hides the difference instead of deleting widgets.
+        panel._render_tags(["gamma"])
+        assert panel._tags_widgets == [gamma]
+        assert panel._tags_flow_layout.count() == 1
+        assert alpha.isHidden()
+        assert beta.isHidden()
+
+        # A previously hidden chip is pulled out of the pool intact, and a
+        # mid-fade opacity reset cannot leave the reused chip invisible.
+        alpha.setWindowOpacity(0.0)
+        panel._render_tags(["alpha"])
+        assert panel._tag_chip_pool["alpha"] is alpha
+        assert not alpha.isHidden()
+        assert alpha.windowOpacity() == 1.0
+        assert panel._tags_widgets == [alpha]
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+
+
+def test_info_tag_chip_pool_evicts_lru_hidden_chips(monkeypatch):
+    monkeypatch.setattr(info_module, "_TAG_CHIP_POOL_LIMIT", 3)
+    panel = InfoPanel()
+    panel._reduce_motion = True
+    try:
+        # All rendered chips are protected from eviction, so the pool may
+        # exceed the limit while the whole set is on screen.
+        panel._render_tags(["a", "b", "c", "d"])
+        assert set(panel._tag_chip_pool) == {"a", "b", "c", "d"}
+
+        panel._render_tags(["e"])
+        assert "a" not in panel._tag_chip_pool
+        assert "b" not in panel._tag_chip_pool
+        assert set(panel._tag_chip_pool) == {"c", "d", "e"}
+        assert panel._tags_widgets == [panel._tag_chip_pool["e"]]
+
+        # LRU recency: touching c keeps it while d is the next eviction victim.
+        panel._render_tags(["c"])
+        panel._render_tags(["f"])
+        assert "d" not in panel._tag_chip_pool
+        assert set(panel._tag_chip_pool) == {"c", "e", "f"}
+    finally:
+        panel.shutdown()
+        panel.deleteLater()

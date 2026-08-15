@@ -698,14 +698,13 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         if start == target:
             # Rebase an interrupted transition before committing its current
             # size, otherwise the previous target's scroll anchor can snap.
-            if self._grid_widget._zoom_relayout_active:
+            if self._grid_widget.is_zoom_active():
                 self._grid_widget.begin_zoom(target, anchor_pos)
                 self._on_zoom_done(generation)
             return
 
         self._grid_widget.begin_zoom(target, anchor_pos)
-        animator = getattr(self._grid_widget, "_animator", None)
-        if getattr(animator, "_reduce_motion", False) is True:
+        if self._grid_widget.reduce_motion_enabled() is True:
             self._thumb_size = target
             self._grid_widget.set_zoom_thumb_size(target)
             self._on_zoom_done(generation, target)
@@ -1713,16 +1712,11 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
                     sm.select(idx, QItemSelectionModel.SelectionFlag.Select
                               | QItemSelectionModel.SelectionFlag.Rows)
     def _select_grid_paths(self, paths: set[str]) -> None:
-        old = self._grid_widget._selection.copy()
-        self._grid_widget._selection = {
+        self._grid_widget.set_selection_rows({
             row
             for path in paths
             if (row := self._model.row_for_path(path)) >= 0
-        }
-        if old != self._grid_widget._selection:
-            self._grid_widget._animator._apply_selection_progress(old)
-            self._grid_widget.selection_changed.emit()
-            self._grid_widget.update()
+        })
     def _selected_commands(
         self, context: FileListCommandContext, global_pos: QPoint, path: str,
     ) -> tuple[FileListCommand, ...]:
