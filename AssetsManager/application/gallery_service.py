@@ -44,9 +44,12 @@ class GalleryTraversalLimits:
     """Upper bounds for one gallery projection walk.
 
     Defaults are sized for very large libraries (hundreds of GB / tens of
-    thousands of entries): a full walk with per-file stat aggregation for
-    a 70k-file library takes ~13s on a local disk, so the previous 10s
-    budget made gallery views fail with 429 on such libraries. The bounds
+    thousands of entries).  A full 70k-file walk with per-file stat
+    aggregation plus per-directory cover decode takes 30-60s on a real
+    library, so the hard time budget is generous while a separate soft
+    decode budget (``decode_soft_seconds``, default 70% of the hard one)
+    drops cover dimension decodes once the walk runs long — the walk then
+    always finishes and persists instead of failing with 429.  The bounds
     still cap runaway/abusive walks (entry budget ~3x a large real
     library).
     """
@@ -55,7 +58,8 @@ class GalleryTraversalLimits:
     max_files: int = 150_000
     max_directories: int = 40_000
     max_depth: int = 64
-    max_seconds: float = 30.0
+    max_seconds: float = 60.0
+    decode_soft_seconds: float | None = None
 
 
 class GalleryTraversalLimitError(RuntimeError):
@@ -74,13 +78,35 @@ class _TraversalBudget:
     def __init__(self, limits: GalleryTraversalLimits) -> None:
         self.limits = limits
         self.started_at = monotonic()
+        soft = limits.decode_soft_seconds
+        self.decode_until = self.started_at + (
+            soft if soft is not None else limits.max_seconds * 0.7
+        )
         self.entries = 0
         self.files = 0
         self.directories = 0
 
+    def _progress(self) -> str:
+        return (
+            f"entries={self.entries}, files={self.files}, "
+            f"directories={self.directories}, elapsed={monotonic() - self.started_at:.1f}s"
+        )
+
     def check_time(self) -> None:
         if monotonic() - self.started_at > self.limits.max_seconds:
-            raise GalleryTraversalLimitError("Gallery traversal time budget exceeded", status=429)
+            raise GalleryTraversalLimitError(
+                f"Gallery traversal time budget exceeded ({self._progress()})",
+                status=429,
+            )
+
+    def can_decode(self) -> bool:
+        """Whether expensive per-image dimension decodes are still allowed.
+
+        Cover decodes are best-effort metadata; once the walk has used its
+        soft budget the walk keeps going and records cover paths without
+        dimensions rather than failing the whole build.
+        """
+        return monotonic() < self.decode_until
 
     def enter_directory(self, depth: int) -> None:
         self.check_time()
@@ -281,6 +307,12 @@ class GalleryService:
         # daemon thread computes the projection and fills the cache.
         self._building: set[str] = set()
         self._build_lock = threading.Lock()
+        # Failed builds back off before retrying: without this, a library
+        # that cannot finish within the budget would be re-walked on every
+        # polling request (a 30-60s full traversal each time, pinning the
+        # CPU). A failure stamps a timestamp; retries wait it out.
+        self._build_failures: dict[str, float] = {}
+        self._build_backoff = 60.0
         self._refresh_timer: threading.Timer | None = None
         # Incremental-update machinery: per-root pending event queue, a
         # short debounce, and per-root snapshots of the last build. All
@@ -311,7 +343,7 @@ class GalleryService:
             has_state = root_key in self._home_states and root_key in self._home_cache
         if not has_state:
             # No snapshot: run the historical full-rebuild invalidation.
-            self._invalidate_and_schedule_full(root_key, str(event.library_root))
+            self._invalidate_and_schedule_full(root_key)
             return
         with self._generation_lock:
             self._home_generation += 1
@@ -328,7 +360,7 @@ class GalleryService:
             else:
                 overflow = False
         if overflow:
-            self._invalidate_and_schedule_full(root_key, str(event.library_root))
+            self._invalidate_and_schedule_full(root_key)
             return
         self._schedule_incremental_apply(root_key)
 
@@ -391,7 +423,7 @@ class GalleryService:
                 result.append(change)
         return result
 
-    def _invalidate_and_schedule_full(self, root_key: str, library_root: str) -> None:
+    def _invalidate_and_schedule_full(self, root_key: str) -> None:
         """Drop the cached/state/persisted projection and schedule a full
         rebuild (debounced so a burst of events rebuilds once)."""
         with self._home_cache_lock:
@@ -405,7 +437,7 @@ class GalleryService:
             if self._refresh_timer is not None:
                 self._refresh_timer.cancel()
             self._refresh_timer = threading.Timer(
-                self._home_cache_ttl, self._ensure_home_building, args=(library_root,)
+                self._home_cache_ttl, self._ensure_home_building, args=(root_key,)
             )
             self._refresh_timer.daemon = True
             self._refresh_timer.start()
@@ -434,7 +466,7 @@ class GalleryService:
             state = self._home_states.get(root_key)
             cached = self._home_cache.get(root_key)
         if state is None or cached is None:
-            self._invalidate_and_schedule_full(root_key, root_key)
+            self._invalidate_and_schedule_full(root_key)
             return
         changes = [change for change in changes if change.seq > state.generation]
         changes = self._cancel_opposing_changes(changes)
@@ -472,7 +504,7 @@ class GalleryService:
                 self._incremental_applied, self._incremental_fallbacks,
                 exc_info=True,
             )
-            self._invalidate_and_schedule_full(root_key, root_key)
+            self._invalidate_and_schedule_full(root_key)
         finally:
             with self._build_lock:
                 self._building.discard(root_key)
@@ -583,7 +615,8 @@ class GalleryService:
 
     def _ensure_home_building(self, root_key: str) -> None:
         """Start a background home build for *root_key* unless one is
-        already running or the service is closed.
+        already running, the service is closed, or a recent failure is
+        still backing off (in which case a retry timer is re-armed).
 
         Idempotence comes from the ``_building`` set, not the cache, so
         callers may invoke this while holding ``_home_cache_lock`` (the
@@ -594,19 +627,46 @@ class GalleryService:
         with self._build_lock:
             if root_key in self._building:
                 return
+            last_failure = self._build_failures.get(root_key)
+            if last_failure is not None:
+                remaining = self._build_backoff - (monotonic() - last_failure)
+                if remaining > 0:
+                    self._schedule_retry(root_key, remaining)
+                    return
             self._building.add(root_key)
         thread = threading.Thread(
             target=self._build_home_background, args=(root_key,), daemon=True
         )
         thread.start()
 
+    def _schedule_retry(self, root_key: str, delay: float) -> None:
+        """Re-arm the single retry timer (callers hold ``_build_lock``).
+
+        Shared with ``_invalidate_and_schedule_full``: whichever reason
+        triggers next wins, and the timer is always single.
+        """
+        if self._refresh_timer is not None:
+            self._refresh_timer.cancel()
+        self._refresh_timer = threading.Timer(
+            delay, self._ensure_home_building, args=(root_key,)
+        )
+        self._refresh_timer.daemon = True
+        self._refresh_timer.start()
+
     def _build_home_background(self, root_key: str) -> None:
         """Compute the projection off the request path; failures leave the
-        cache empty so the next request retries the build."""
+        cache empty, stamp the failure timestamp (retries then back off
+        instead of re-walking on every poll), and let the next request
+        retry after the backoff."""
         try:
             self._compute_home(root_key)
         except Exception:
             _log.exception("Background gallery home build failed for %s", root_key)
+            with self._build_lock:
+                self._build_failures[root_key] = monotonic()
+        else:
+            with self._build_lock:
+                self._build_failures.pop(root_key, None)
         finally:
             with self._build_lock:
                 self._building.discard(root_key)
@@ -654,6 +714,7 @@ class GalleryService:
         relative_path: str,
         *,
         stat_result: os.stat_result | None = None,
+        budget: "_TraversalBudget | None" = None,
     ) -> dict[str, Any] | None:
         target = (root / relative_path).resolve()
         try:
@@ -667,7 +728,12 @@ class GalleryService:
             stat_result = stat_result or target.stat()
         except (OSError, ValueError):
             return None
-        width, height, aspect_ratio = cls._image_dimensions(target)
+        width = height = aspect_ratio = None
+        if budget is None or budget.can_decode():
+            # Dimension decode is best-effort: past the soft budget the walk
+            # keeps the cover path and skips the per-image decode so very
+            # large libraries still finish within the hard budget.
+            width, height, aspect_ratio = cls._image_dimensions(target)
         parent = cls._parent_path(relative_path)
         return GalleryImage(
             name=target.name,
@@ -682,15 +748,22 @@ class GalleryService:
         ).to_dict()
 
     @staticmethod
-    def _entry_is_reparse_point(entry: os.DirEntry[str]) -> bool:
-        """Return whether *entry* is a link, junction, or reparse point."""
+    def _entry_is_reparse_point(
+        entry: os.DirEntry[str], stat_result: os.stat_result | None = None
+    ) -> bool:
+        """Return whether *entry* is a link, junction, or reparse point.
+
+        ``stat_result`` is the pre-fetched ``entry.stat(follow_symlinks=False)``
+        from the scan loop; passing it avoids a second stat per entry.
+        """
         try:
             if entry.is_symlink():
                 return True
             is_junction = getattr(entry, "is_junction", None)
             if callable(is_junction) and is_junction():
                 return True
-            stat_result = entry.stat(follow_symlinks=False)
+            if stat_result is None:
+                stat_result = entry.stat(follow_symlinks=False)
         except OSError:
             return True
         return bool(
@@ -759,14 +832,24 @@ class GalleryService:
 
     def _visible_entries(
         self, target: Path, budget: _TraversalBudget, depth: int
-    ) -> list[os.DirEntry[str]]:
-        """Materialize only entries which have already consumed traversal budget."""
-        visible: list[os.DirEntry[str]] = []
+    ) -> list[tuple[os.DirEntry[str], os.stat_result | None]]:
+        """Materialize only entries which have already consumed traversal
+        budget.
+
+        Each kept entry carries the ``stat(follow_symlinks=False)`` result
+        fetched here so ``_build_node`` reuses it for file aggregation
+        instead of issuing a second stat per file.
+        """
+        visible: list[tuple[os.DirEntry[str], os.stat_result | None]] = []
         try:
             with os.scandir(target) as iterator:
                 for entry in iterator:
                     budget.check_time()
-                    if self._entry_is_reparse_point(entry):
+                    try:
+                        stat_result = entry.stat(follow_symlinks=False)
+                    except OSError:
+                        stat_result = None
+                    if self._entry_is_reparse_point(entry, stat_result):
                         budget.visit_entry(depth + 1, is_file=False)
                         continue
                     try:
@@ -775,11 +858,11 @@ class GalleryService:
                         is_file = False
                     budget.visit_entry(depth + 1, is_file=is_file)
                     if not entry.name.startswith("."):
-                        visible.append(entry)
+                        visible.append((entry, stat_result))
         except OSError:
             return visible
         budget.check_time()
-        visible.sort(key=lambda entry: entry.name.casefold())
+        visible.sort(key=lambda item: item[0].name.casefold())
         budget.check_time()
         return visible
 
@@ -813,7 +896,7 @@ class GalleryService:
         direct_file_count = 0
         latest_modified = 0
 
-        for entry in self._visible_entries(target, budget, depth):
+        for entry, stat_result in self._visible_entries(target, budget, depth):
             try:
                 is_dir = entry.is_dir(follow_symlinks=False)
                 is_file = entry.is_file(follow_symlinks=False)
@@ -845,10 +928,12 @@ class GalleryService:
 
             if not is_file:
                 continue
-            try:
-                stat_result = entry.stat(follow_symlinks=False)
-            except OSError:
-                continue
+            if stat_result is None:
+                # The scan pre-fetched the stat; only retry when it failed.
+                try:
+                    stat_result = entry.stat(follow_symlinks=False)
+                except OSError:
+                    continue
             total_size += int(stat_result.st_size)
             file_count += 1
             direct_file_count += 1
@@ -871,7 +956,7 @@ class GalleryService:
             if direct_images
             else next((str(child["cover_path"]) for child in child_nodes if child.get("cover_path")), None)
         )
-        cover = self._describe_image(root, cover_path) if cover_path else None
+        cover = self._describe_image(root, cover_path, budget=budget) if cover_path else None
         normalized = self._normalize_relative_path(relative_path)
         is_root = not normalized
         kind = "collection" if is_root or child_nodes else "project"
@@ -899,7 +984,7 @@ class GalleryService:
             node["entries"] = [
                 described
                 for path, stat_result in direct_images
-                if (described := self._describe_image(root, path, stat_result=stat_result))
+                if (described := self._describe_image(root, path, stat_result=stat_result, budget=budget))
             ]
         if state_nodes is not None:
             state_nodes[normalized or "/"] = _StateNode(

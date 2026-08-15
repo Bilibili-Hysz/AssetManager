@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -142,29 +143,37 @@ def test_gallery_service_emits_no_transport_urls(tmp_path, schema_db):
 
 
 def test_gallery_skips_external_symlink_and_rejects_symlink_path(tmp_path, schema_db):
-    outside = tmp_path.parent / "gallery-outside"
+    # The outside directory lives next to tmp_path (it must be outside the
+    # library root) under a per-test name: a fixed name leaks across test
+    # runs and workers, and symlink skips would leave it behind.
+    outside = tmp_path.parent / f"gallery-outside-{tmp_path.name}"
     outside.mkdir()
     _image(outside / "secret.png")
     link = tmp_path / "external-link"
     try:
         link.symlink_to(outside, target_is_directory=True)
     except (OSError, NotImplementedError) as exc:
+        shutil.rmtree(outside, ignore_errors=True)
         pytest.skip(f"symlinks are unavailable: {exc}")
 
-    service = GalleryService(connection_provider=lambda _root: schema_db)
-    response = service.get_home(tmp_path).to_response()
-    assert all(entry["path"] != "external-link" for entry in response["collections"])
-    with pytest.raises(MissingPathError):
-        service.get_collection(tmp_path, "external-link")
+    try:
+        service = GalleryService(connection_provider=lambda _root: schema_db)
+        response = service.get_home(tmp_path).to_response()
+        assert all(entry["path"] != "external-link" for entry in response["collections"])
+        with pytest.raises(MissingPathError):
+            service.get_collection(tmp_path, "external-link")
 
-    with pytest.raises(PathEscapeError, match="escapes root"):
-        service.resolve(tmp_path, str(outside / "secret.png"))
+        with pytest.raises(PathEscapeError, match="escapes root"):
+            service.resolve(tmp_path, str(outside / "secret.png"))
+    finally:
+        link.unlink(missing_ok=True)
+        shutil.rmtree(outside, ignore_errors=True)
 
 
 def test_gallery_skips_windows_junction_or_reparse_directory(tmp_path, schema_db):
     if not hasattr(Path, "is_junction") and os.name != "nt":
         pytest.skip("Windows junction/reparse points are unavailable on this platform")
-    outside = tmp_path.parent / "gallery-junction-outside"
+    outside = tmp_path.parent / f"gallery-junction-outside-{tmp_path.name}"
     outside.mkdir()
     _image(outside / "secret.png")
     junction = tmp_path / "junction"
@@ -178,15 +187,20 @@ def test_gallery_skips_windows_junction_or_reparse_directory(tmp_path, schema_db
             check=False,
         )
         if result.returncode != 0:
+            shutil.rmtree(outside, ignore_errors=True)
             pytest.skip(f"junction creation unavailable: {result.stderr or result.stdout}")
     else:
+        shutil.rmtree(outside, ignore_errors=True)
         pytest.skip("Windows junction/reparse points are unavailable on this platform")
 
-    service = GalleryService(connection_provider=lambda _root: schema_db)
-    response = service.get_home(tmp_path).to_response()
-    assert all(entry["path"] != "junction" for entry in response["collections"])
-    with pytest.raises(MissingPathError):
-        service.get_collection(tmp_path, "junction")
+    try:
+        service = GalleryService(connection_provider=lambda _root: schema_db)
+        response = service.get_home(tmp_path).to_response()
+        assert all(entry["path"] != "junction" for entry in response["collections"])
+        with pytest.raises(MissingPathError):
+            service.get_collection(tmp_path, "junction")
+    finally:
+        shutil.rmtree(outside, ignore_errors=True)
 
 
 def test_gallery_enforces_entry_budget_while_scanning_one_directory(tmp_path, schema_db):
@@ -526,5 +540,75 @@ def test_home_build_captures_incremental_state(tmp_path, schema_db):
         assert state.node is not None
         assert state.node["artwork_count"] == 1
         assert any(ref.path.endswith("one.png") for ref in state.refs)
+    finally:
+        service.close()
+
+
+def test_cover_dimensions_skipped_past_decode_soft_budget(tmp_path, schema_db):
+    """Once the walk passes its decode soft budget, covers keep their paths
+    but skip the per-image dimension decode so huge libraries still finish
+    the build instead of failing the hard time budget."""
+    _image(tmp_path / "set" / "cover.jpg", (40, 40))
+
+    service = GalleryService(
+        connection_provider=lambda _root: schema_db,
+        limits=GalleryTraversalLimits(decode_soft_seconds=0),
+    )
+    try:
+        response = service.get_home(tmp_path).to_response()
+        project = response["projects"][0]
+        assert project["cover_path"] == "set/cover.jpg"
+        assert project["width"] is None
+        assert project["height"] is None
+        # The recent post-pass (a fixed 24-item list) sits outside the soft
+        # budget and still carries decoded dimensions.
+        assert response["recent"][0]["width"] == 40
+        assert response["recent"][0]["height"] == 40
+    finally:
+        service.close()
+
+
+def test_failed_background_build_backs_off_before_retry(tmp_path, schema_db, monkeypatch):
+    """A failed background build stamps a backoff: polls inside the backoff
+    must not restart the expensive full walk (they re-arm a single retry
+    timer instead), and the build resumes once the backoff elapses."""
+    import time
+
+    _image(tmp_path / "set" / "one.png")
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    monkeypatch.setattr(service, "_build_backoff", 60.0)
+
+    def fail_build(_root_key):
+        raise RuntimeError("simulated build failure")
+
+    monkeypatch.setattr(service, "_compute_home", fail_build)
+    retry_delays: list[float] = []
+    monkeypatch.setattr(
+        service, "_schedule_retry",
+        lambda _root_key, delay: retry_delays.append(delay),
+    )
+
+    root_key = str(tmp_path.resolve())
+    try:
+        assert service.get_home_cached(tmp_path) is None  # starts the failing build
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and root_key not in service._build_failures:
+            time.sleep(0.05)
+        assert root_key in service._build_failures
+
+        # A new poll within the backoff must not start another build thread.
+        service._ensure_home_building(root_key)
+        assert root_key not in service._building
+        assert retry_delays and 0 < retry_delays[-1] <= 60.0
+
+        # Once the backoff elapses the build runs again and clears the stamp.
+        monkeypatch.setattr(service, "_compute_home", lambda _root_key: None)
+        service._build_failures[root_key] = time.monotonic() - 120.0
+        service._ensure_home_building(root_key)
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and root_key in service._building:
+            time.sleep(0.05)
+        assert root_key not in service._building
+        assert root_key not in service._build_failures
     finally:
         service.close()
