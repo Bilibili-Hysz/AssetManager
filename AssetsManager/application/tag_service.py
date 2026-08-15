@@ -4,12 +4,13 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from sqlite3 import Connection
+from typing import Callable
 
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
+from AssetsManager.application.tag_canonicalizer import canonical_tag
 from AssetsManager.core import icons
 from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.path_resolver import root_identity
-from AssetsManager.core.tag_library import get_library
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.errors import ValidationError
 from AssetsManager.domain.events import AssetTagsChanged, TagCatalogChanged
@@ -79,8 +80,10 @@ class TagService:
     """
 
     def __init__(self, connection_provider: ConnectionProvider | None = None,
-                 session: LibrarySession | None = None):
+                 session: LibrarySession | None = None,
+                 canonicalize: Callable[[str], str] | None = None):
         self._session = session
+        self._canonicalize = canonicalize if canonicalize is not None else canonical_tag
         self._repository: TagRepository | None = None
         self._root_identity = None
         if isinstance(session, LibrarySession):
@@ -194,7 +197,7 @@ class TagService:
                 db_conn: Connection | None = None) -> None:
         """Add a tag to a file, resolving to canonical form."""
         tag = self.validate_tag_name(tag)
-        canonical = get_library().canonical(tag)
+        canonical = self._canonicalize(tag)
         key = _resolve_under_root(library_root, path)
         repo = self._repo(db_conn, library_root)
         self._require_event_safe_transaction(repo)

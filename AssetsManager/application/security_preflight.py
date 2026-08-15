@@ -395,9 +395,9 @@ class SecurityPreflight:
 def security_preflight_from_settings(settings: Any = None) -> SecurityPreflight:
     """Build the canonical preflight holder from persisted application state."""
     if settings is None:
-        from AssetsManager.core.settings import AppSettings
+        from AssetsManager.application.app_settings_provider import get_app_settings
 
-        settings = AppSettings.instance()
+        settings = get_app_settings()
     ack_version, trusted_network_confirmed = settings_security_values(settings)
     previous_bind, previous_auth_status = settings_security_history(settings)
     return SecurityPreflight(

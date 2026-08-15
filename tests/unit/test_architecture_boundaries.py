@@ -761,6 +761,21 @@ def test_file_list_plugin_actions_use_scoped_plugin_service() -> None:
     assert 'getattr(scoped, "plugin_service", None)' in source
 
 
+def test_g3_app_settings_has_single_application_call_site() -> None:
+    sites: list[Path] = []
+    for path in (SRC / "application").rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        if "AppSettings.instance()" in source:
+            sites.append(path)
+    assert sites == [SRC / "application" / "bootstrap.py"]
+
+
+def test_g3_application_has_no_get_library_access() -> None:
+    for path in (SRC / "application").rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        assert "get_library(" not in source, path
+
+
 def test_file_operation_service_delegates_deleted_projection_cleanup() -> None:
     source = (SRC / "application" / "file_operation_service.py").read_text(encoding="utf-8")
     start = source.index("    def _clear_deleted_projection(self, path: Path) -> None:")

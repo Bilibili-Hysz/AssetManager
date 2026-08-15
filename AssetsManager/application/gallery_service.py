@@ -20,12 +20,12 @@ from stat import S_ISREG
 from time import monotonic
 from typing import Any, Callable, Iterable
 
+from AssetsManager.application.app_settings_provider import get_app_settings
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.application.project_service import ProjectDepthConfig
 from AssetsManager.application.tag_service import TagService
 from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.format_utils import format_size
-from AssetsManager.core.settings import AppSettings
 from AssetsManager.domain.asset import IMAGE_EXTS, assert_under_root
 from AssetsManager.domain.errors import MissingPathError, PathEscapeError
 from AssetsManager.domain.event_bus import get_event_bus
@@ -1249,7 +1249,7 @@ class GalleryService:
         if self._depth_config_override is not None:
             return self._depth_config_override
         try:
-            raw = AppSettings.instance().get("sidebar_depth_cfg")
+            raw = get_app_settings().get("sidebar_depth_cfg")
             return ProjectDepthConfig.from_dict(raw or {})
         except Exception:
             return ProjectDepthConfig()

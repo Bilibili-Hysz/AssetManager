@@ -48,6 +48,19 @@ def _tag_store_repository_factory_installed():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _application_provider_seams_installed():
+    """Install the G3 settings/tag-canonicalizer seams for application tests."""
+    from AssetsManager.application.app_settings_provider import install_app_settings_provider
+    from AssetsManager.application.tag_canonicalizer import install_tag_canonicalizer
+    from AssetsManager.core.settings import AppSettings
+    from AssetsManager.core.tag_library import get_library
+
+    install_app_settings_provider(lambda: AppSettings.instance())
+    install_tag_canonicalizer(get_library().canonical)
+    yield
+
+
 # ── Test-session runtime-data protection ──────────────────────────
 # Tests create per-library SQLite databases and identity markers under
 # RuntimeData/.  A full suite can leave tens of thousands of artifact

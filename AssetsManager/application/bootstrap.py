@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Callable, cast
 
 from AssetsManager.application.asset_index_service import AssetIndexService
 from AssetsManager.application.asset_index_reconciliation_service import AssetIndexReconciliationService
+from AssetsManager.application.app_settings_provider import install_app_settings_provider
 from AssetsManager.application.auth_service import AuthService
 from AssetsManager.application.asset_service import AssetService
 from AssetsManager.application.context import ConnectionProvider, LibrarySession
@@ -50,6 +51,7 @@ from AssetsManager.core.directory_cache import DirectoryCache
 from AssetsManager.core.performance import PerformanceRecorder
 from AssetsManager.core.path_resolver import RootIdentity, library_data_dir
 from AssetsManager.core.plugins import PluginHostContext
+from AssetsManager.core.settings import AppSettings
 from AssetsManager.di import ServiceContainer
 
 _log = logging.getLogger(__name__)
@@ -290,6 +292,10 @@ class ApplicationBootstrap:
     ):
         self.container = container or ServiceContainer()
         self._performance_recorder = performance_recorder
+        # G3: the single settings-singleton call site in the application layer.
+        # Every other application module resolves settings through the seam.
+        self._app_settings = AppSettings.instance()
+        install_app_settings_provider(lambda: self._app_settings)
         self._plugin_host: PluginHostContext | None = None
         self._plugin_svc: PluginService | None = None
         self._plugin_load_failures: list[str] = []
@@ -482,8 +488,7 @@ class ApplicationBootstrap:
                 if gate is not None:
                     gate.set()
 
-    @staticmethod
-    def _start_library_watcher(runtime: "LibraryRuntime", session: LibrarySession) -> None:
+    def _start_library_watcher(self, runtime: "LibraryRuntime", session: LibrarySession) -> None:
         """Start the resident library watcher when the interval setting enables it.
 
         A non-positive interval disables the watcher, preserving the previous
@@ -495,10 +500,9 @@ class ApplicationBootstrap:
         from AssetsManager.core.settings import (
             DEFAULT_LIBRARY_WATCHER_INTERVAL,
             LIBRARY_WATCHER_INTERVAL_KEY,
-            AppSettings,
         )
 
-        interval = AppSettings.instance().get(
+        interval = self._app_settings.get(
             LIBRARY_WATCHER_INTERVAL_KEY, DEFAULT_LIBRARY_WATCHER_INTERVAL
         )
         if not isinstance(interval, (int, float)) or isinstance(interval, bool) or interval <= 0:

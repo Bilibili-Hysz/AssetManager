@@ -40,8 +40,11 @@ def main():
     _log = logging.getLogger(__name__)
 
     from AssetsManager.application.bootstrap import ApplicationBootstrap
+    from AssetsManager.application.tag_canonicalizer import install_tag_canonicalizer
+    from AssetsManager.core.tag_library import get_library
     from AssetsManager.dock_factory import install_dock_refresh_handlers
     from AssetsManager.core.performance import PerformanceRecorder
+    install_tag_canonicalizer(get_library().canonical)
     telemetry_enabled = AppSettings.instance().get("performance_telemetry_enabled", False)
     bootstrap = ApplicationBootstrap(
         performance_recorder=PerformanceRecorder(enabled=True) if telemetry_enabled else None

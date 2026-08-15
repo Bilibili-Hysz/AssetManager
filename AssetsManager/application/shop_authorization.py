@@ -6,7 +6,7 @@ import re
 from collections.abc import Iterable
 from typing import Any
 
-from AssetsManager.core.settings import AppSettings
+from AssetsManager.application.app_settings_provider import get_app_settings
 from AssetsManager.domain.errors import OperationNotPermitted, ValidationError
 
 AUTHORIZED_ROOTS_SETTING = "lan_shop_authorized_roots"
@@ -56,7 +56,7 @@ def normalize_relative_shop_path(value: Any, *, field: str = "path") -> str:
 
 
 def _raw_authorized_roots(settings: Any | None = None) -> Any:
-    settings_obj: Any = AppSettings.instance() if settings is None else settings
+    settings_obj: Any = get_app_settings() if settings is None else settings
     value = settings_obj.get(AUTHORIZED_ROOTS_SETTING, _MISSING)
     if value is _MISSING:
         return os.environ.get(AUTHORIZED_ROOTS_ENV, "")

@@ -7,6 +7,7 @@ import threading
 import time
 from typing import Any, Callable
 
+from AssetsManager.application.app_settings_provider import get_app_settings
 from AssetsManager.application.auth_service import AuthService
 from AssetsManager.domain.errors import OperationNotPermitted, ValidationError
 
@@ -19,9 +20,7 @@ def hash_seller_token(token: str) -> str:
 
 def _default_seller_feature_generation() -> int:
     try:
-        from AssetsManager.core.settings import AppSettings
-
-        return AppSettings.instance().get_seller_feature_generation()
+        return get_app_settings().get_seller_feature_generation()
     except Exception:
         # A missing settings provider must not prevent the auth service from
         # starting; the generation remains stable at the safe default.
