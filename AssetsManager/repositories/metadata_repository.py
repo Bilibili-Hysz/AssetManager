@@ -10,7 +10,7 @@ from pathlib import Path
 from sqlite3 import Connection
 from typing import Any, Callable, TypeVar
 
-from AssetsManager.core.database import DatabaseManager, db_write_lock
+from AssetsManager.core.database import DatabaseManager, db_write_lock, locked_read
 from AssetsManager.core.path_resolver import (
     RootIdentity,
     path_key_separator,
@@ -257,6 +257,7 @@ class MetadataRepository:
     # ── Notes ────────────────────────────────────────────────────
 
     @_repository_operation
+    @locked_read
     def get_notes(self, file_path: str) -> str:
         """Return notes for a file path."""
         file_path = self._path_key(file_path)
@@ -267,6 +268,7 @@ class MetadataRepository:
         return row[0] if row else ""
 
     @_repository_operation
+    @locked_read
     def get_notes_and_urls(self, file_path: str) -> tuple[str, list[str]]:
         """Return notes and URLs for a file path from one metadata row."""
         file_path = self._path_key(file_path)
@@ -279,6 +281,7 @@ class MetadataRepository:
         return (row[0] or "", self._decode_urls(file_path, row[1]))
 
     @_repository_operation
+    @locked_read
     def list_file_metadata(self) -> list[tuple[str, str, list[str]]]:
         """Return all file metadata rows for export and maintenance reads."""
         rows = self._conn.execute(
@@ -303,6 +306,7 @@ class MetadataRepository:
     # ── URLs ─────────────────────────────────────────────────────
 
     @_repository_operation
+    @locked_read
     def get_urls(self, file_path: str) -> list[str]:
         """Return URLs for a file path."""
         file_path = self._path_key(file_path)
@@ -401,6 +405,7 @@ class MetadataRepository:
     # ── Size cache ───────────────────────────────────────────────
 
     @_repository_operation
+    @locked_read
     def get_cached_size(self, file_path: str) -> tuple[int, float] | None:
         """Return (cached_size, cached_mtime) or None if not cached."""
         file_path = self._path_key(file_path)
@@ -426,6 +431,7 @@ class MetadataRepository:
             )
 
     @_repository_operation
+    @locked_read
     def get_cached_file_count(self, file_path: str) -> int | None:
         """Return cached file count, or None if not cached."""
         file_path = self._path_key(file_path)
@@ -450,6 +456,7 @@ class MetadataRepository:
             )
 
     @_repository_operation
+    @locked_read
     def batch_get_cached_file_counts(self, file_paths: list[str]) -> dict[str, int]:
         """Return {path: count} for directories that have cached file counts."""
         if not file_paths:
@@ -487,6 +494,7 @@ class MetadataRepository:
     # ── Stats ────────────────────────────────────────────────────
 
     @_repository_operation
+    @locked_read
     def get_cached_stats(self, file_paths: list[str]) -> dict[str, tuple[int, float]]:
         """Return {path: (cached_size, cached_mtime)} for given paths."""
         if not file_paths:
@@ -506,6 +514,7 @@ class MetadataRepository:
         return results
 
     @_repository_operation
+    @locked_read
     def get_library_total_size(self, library_path: str) -> int:
         """Return total size from library_stats, or 0 if not available."""
         library_path = self._root_path_key(library_path)

@@ -16,6 +16,7 @@ from AssetsManager.repositories.shop_repository import (
     _json_load,
     _repository_operation,
     _transaction,
+    locked_read,
 )
 
 _log = logging.getLogger(__name__)
@@ -84,6 +85,7 @@ class OrderRepository(_CommerceRepository):
             "created_at": float(row[7]),
         }
 
+    @locked_read
     def _select_order(self, order_id: int | str) -> tuple[Any, ...] | None:
         return self._conn.execute(
             "SELECT id, item_id, item_path, item_title, buyer_name, buyer_email, "
@@ -240,6 +242,7 @@ class OrderRepository(_CommerceRepository):
         return None if row is None else self._row_to_dict(row)
 
     @_repository_operation
+    @locked_read
     def list_orders(
         self, *, status: str | None = None, limit: int = 500
     ) -> list[dict[str, Any]]:
@@ -258,6 +261,7 @@ class OrderRepository(_CommerceRepository):
         return [self._row_to_dict(row) for row in rows]
 
     @_repository_operation
+    @locked_read
     def list_orders_by_owner(
         self, *, owner_type: str, owner_key: str, status: str | None = None, limit: int = 200,
         cursor: tuple[float, int] | None = None,
@@ -553,6 +557,7 @@ class OrderRepository(_CommerceRepository):
             return None if row is None else self._row_to_dict(row)
 
     @_repository_operation
+    @locked_read
     def get_receipt_state(self, order_id: int | str) -> dict[str, Any] | None:
         row = self._conn.execute(
             "SELECT created_at,expires_at,revoked_at FROM shop_order_receipts WHERE order_id=?",
@@ -634,6 +639,7 @@ class OrderRepository(_CommerceRepository):
             )
 
     @_repository_operation
+    @locked_read
     def get_share_claim(self, claim_hash: str) -> dict[str, Any] | None:
         row = self._conn.execute(
             "SELECT claim_hash, order_id, expires_at, claimed_at, revoked_at, "
@@ -682,6 +688,7 @@ class OrderRepository(_CommerceRepository):
             return cursor.rowcount
 
     @_repository_operation
+    @locked_read
     def get_order_with_receipt(
         self, order_id: int | str, token_hash: str
     ) -> dict[str, Any] | None:
@@ -723,6 +730,7 @@ class OrderRepository(_CommerceRepository):
         )
 
     @_repository_operation
+    @locked_read
     def get_delivery(self, token_hash: str) -> dict[str, Any] | None:
         row = self._conn.execute(
             self._delivery_select("t.token_hash=?"), (token_hash,)
@@ -730,6 +738,7 @@ class OrderRepository(_CommerceRepository):
         return None if row is None else self._delivery_row_to_dict(row)
 
     @_repository_operation
+    @locked_read
     def get_delivery_by_order_id(self, order_id: int | str) -> dict[str, Any] | None:
         # "Newest" is the insertion order (rowid), which is immune to clock
         # skew between token issuance paths.
@@ -779,6 +788,7 @@ class OrderRepository(_CommerceRepository):
             "failure_code": None if row[10] is None else str(row[10]),
         }
 
+    @locked_read
     def _select_delivery_attempt(
         self,
         credential_kind: str,
@@ -1175,6 +1185,7 @@ class OrderRepository(_CommerceRepository):
             )
 
     @_repository_operation
+    @locked_read
     def list_events(
         self, order_id: int | str, *, limit: int = 1000
     ) -> list[dict[str, Any]]:
@@ -1187,6 +1198,7 @@ class OrderRepository(_CommerceRepository):
         return [self._event_to_dict(row) for row in rows]
 
     @_repository_operation
+    @locked_read
     def stats(self) -> dict[str, int]:
         rows = self._conn.execute(
             "SELECT status, COUNT(*), COALESCE(SUM(amount_cents), 0) "
@@ -1201,6 +1213,7 @@ class OrderRepository(_CommerceRepository):
         return result
 
     @_repository_operation
+    @locked_read
     def export_orders(self) -> list[dict[str, Any]]:
         rows = self.list_orders(limit=5000)
         token_rows = self._conn.execute(

@@ -23,7 +23,10 @@ from AssetsManager.lan.route_policy import DEFAULT_POLICY, POLICY_KEY, lookup
 
 # ── Frozen historical logic (pre-declaration lists) ────────────────
 
-_OLD_SKIP = frozenset({"/ws", "/api/projects", "/api/tags", "/api/info", "/api/tunnel/status"})
+_OLD_SKIP = frozenset({"/ws", "/api/projects", "/api/tags", "/api/tunnel/status"})
+# /api/info left the skip set on 2026-08-15 (H-L2): it serves the public
+# landing page, so an unauthenticated client could force the full-library
+# project count walk per request; it now gets the general rate limit.
 _OLD_SKIP_PREFIX = (
     "/assets", "/api/thumbnails", "/api/gallery", "/api/favorites",
     "/api/quicksearch", "/api/stats", "/api/metadata", "/api/notes",

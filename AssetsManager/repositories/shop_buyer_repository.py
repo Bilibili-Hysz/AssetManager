@@ -17,6 +17,7 @@ from AssetsManager.repositories.shop_repository import (
     _CommerceRepository,
     _repository_operation,
     _transaction,
+    locked_read,
 )
 
 
@@ -25,6 +26,7 @@ WISHLIST_LIMIT = 500
 
 
 class CartRepository(_CommerceRepository):
+    @locked_read
     def _cart(self, owner_type: str, owner_key: str) -> dict[str, Any] | None:
         row = self._conn.execute(
             "SELECT id,owner_type,owner_key,user_id,status,version,checkout_generation,expires_at,created_at,updated_at FROM shop_carts WHERE owner_type=? AND owner_key=?",
@@ -114,6 +116,7 @@ class CartRepository(_CommerceRepository):
             "updated_at": float(row[9]),
         }
 
+    @locked_read
     def _lines(self, cart_id: int) -> list[dict[str, Any]]:
         rows = self._conn.execute(
             "SELECT id,item_id,quantity,unit_price_cents,currency,item_path,item_title,line_status,created_at,updated_at FROM shop_cart_items WHERE cart_id=? ORDER BY id",
@@ -376,6 +379,7 @@ class CartRepository(_CommerceRepository):
             )
 
     @_repository_operation
+    @locked_read
     def find_checkout(
         self, cart_id: int, checkout_generation: int, request_key: str
     ) -> dict[str, Any] | None:
@@ -405,6 +409,7 @@ class CartRepository(_CommerceRepository):
         }
 
     @_repository_operation
+    @locked_read
     def get_checkout(
         self,
         *,
@@ -437,6 +442,7 @@ class CartRepository(_CommerceRepository):
 
 
 class WishlistRepository(_CommerceRepository):
+    @locked_read
     def _owner_existing(
         self, kind: str, *, user_id: int | None = None, token_hash: str | None = None
     ) -> int | None:

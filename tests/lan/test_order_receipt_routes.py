@@ -379,7 +379,10 @@ def test_delivery_zip_failure_does_not_consume_quota(monkeypatch, tmp_path):
     from AssetsManager.lan.routes import _helpers
     monkeypatch.setattr(_helpers, "build_zip_async", fail_zip)
 
+    # request=None: the failing zip path returns before the cleanup wrapper
+    # needs the request task.
     response = asyncio.run(shop_routes._delivery_file_response(
+        None,
         target,
         consume=lambda: calls.append("consumed"),
     ))

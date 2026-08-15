@@ -7,6 +7,7 @@ Provides:
 """
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+import functools
 import hashlib
 import logging
 import os
@@ -1012,6 +1013,36 @@ def db_write_lock(conn: sqlite3.Connection | None = None):
         )
     with _write_gate.write():
         yield
+
+
+def locked_read(method):
+    """Serialize a repository read through its connection's write lock.
+
+    Every repository in the LAN path shares one ``check_same_thread=False``
+    connection across the aiohttp event-loop thread, ``to_thread`` workers
+    (analytics, downloads) and the gallery build threads; an unguarded
+    SELECT racing an in-flight write transaction surfaces as intermittent
+    ``sqlite3.OperationalError`` (database is locked) or recursive-cursor
+    errors.  The connection lock is reentrant, so nesting under an existing
+    ``db_write_lock``/``_transaction``/``_write_scope`` is safe.
+    """
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        conn = getattr(self, "_conn", None)
+        if conn is None or not isinstance(conn, sqlite3.Connection):
+            # Fake/stub connections (unit tests) have no lock state; run the
+            # read unchanged.
+            return method(self, *args, **kwargs)
+        try:
+            with db_write_lock(conn):
+                return method(self, *args, **kwargs)
+        except RuntimeError:
+            # db_write_lock rejects closed connections (and fails fast on
+            # lock-order hazards); the read must still run so the original
+            # sqlite3 error semantics (e.g. ProgrammingError on a closed
+            # connection) propagate unchanged.
+            return method(self, *args, **kwargs)
+    return wrapper
 
 
 def _record_write_lock(

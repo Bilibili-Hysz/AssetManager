@@ -64,7 +64,9 @@ def test_metadata_service_combines_notes_and_urls_into_one_metadata_query(tmp_pa
         reads = [" ".join(statement.split()) for statement in statements if statement.startswith("SELECT")]
         assert metadata.notes == "note"
         assert metadata.urls == ("https://example.com",)
-        assert len(reads) == 2
+        # db_write_lock probes closed connections with a "SELECT 1" health
+        # check; count only the business queries.
+        assert len([r for r in reads if r != "SELECT 1"]) == 2
         assert any("SELECT tag FROM file_tags WHERE file_path=" in statement for statement in reads)
         assert any("SELECT notes, urls FROM file_meta WHERE file_path=" in statement for statement in reads)
     finally:

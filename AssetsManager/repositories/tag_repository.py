@@ -9,7 +9,7 @@ from pathlib import Path
 from sqlite3 import Connection
 from typing import Any, Callable, TypeVar
 
-from AssetsManager.core.database import DatabaseManager, db_write_lock
+from AssetsManager.core.database import DatabaseManager, db_write_lock, locked_read
 from AssetsManager.core.path_resolver import (
     RootIdentity,
     path_key_separator,
@@ -241,6 +241,7 @@ class TagRepository:
     # ── Reads ─────────────────────────────────────────────────────
 
     @_repository_operation
+    @locked_read
     def get_tags(self, file_path: str) -> list[str]:
         """Return all tags for a file path, sorted alphabetically."""
         file_path = self._path_key(file_path)
@@ -251,6 +252,7 @@ class TagRepository:
         return [r[0] for r in rows]
 
     @_repository_operation
+    @locked_read
     def list_tags_with_counts(self) -> list[dict[str, int | str]]:
         """Return all tags with their usage counts, sorted by tag."""
         rows = self._conn.execute(
@@ -259,6 +261,7 @@ class TagRepository:
         return [{"name": row[0], "count": row[1]} for row in rows]
 
     @_repository_operation
+    @locked_read
     def get_tags_for_files(self, file_paths: list[str]) -> dict[str, list[str]]:
         """Return tags for multiple files, keyed by canonical file path."""
         if not file_paths:
@@ -279,6 +282,7 @@ class TagRepository:
         return result
 
     @_repository_operation
+    @locked_read
     def list_file_tags(self) -> list[tuple[str, str]]:
         """Return every file/tag pair in deterministic order."""
         rows = self._conn.execute(
@@ -287,6 +291,7 @@ class TagRepository:
         return [(str(file_path), str(tag)) for file_path, tag in rows]
 
     @_repository_operation
+    @locked_read
     def get_all_tags(self) -> list[str]:
         """Return all unique tags across all files."""
         rows = self._conn.execute(
@@ -295,6 +300,7 @@ class TagRepository:
         return [r[0] for r in rows]
 
     @_repository_operation
+    @locked_read
     def get_files_by_tag(self, tag: str) -> list[str]:
         """Return all file paths that have a given tag."""
         rows = self._conn.execute(
@@ -304,6 +310,7 @@ class TagRepository:
         return [r[0] for r in rows]
 
     @_repository_operation
+    @locked_read
     def get_files_by_tag_case_insensitive(self, tag: str) -> list[str]:
         """Return file paths for a tag using SQLite's case-insensitive match."""
         rows = self._conn.execute(
@@ -313,6 +320,7 @@ class TagRepository:
         return [row[0] for row in rows]
 
     @_repository_operation
+    @locked_read
     def get_tags_for_tree(self, dir_path: str) -> list[str]:
         """Return all unique tags for files under a directory prefix."""
         dir_path = self._path_key(dir_path)
@@ -324,6 +332,7 @@ class TagRepository:
         return [r[0] for r in rows]
 
     @_repository_operation
+    @locked_read
     def get_tag_metadata(self, tag: str) -> dict[str, str] | None:
         """Return metadata for a tag, or None if not set."""
         row = self._conn.execute(
@@ -335,6 +344,7 @@ class TagRepository:
         return {"color": row[0], "icon": row[1], "category": row[2]}
 
     @_repository_operation
+    @locked_read
     def get_tags_with_metadata(self) -> list[dict]:
         """Return all tags with their metadata."""
         rows = self._conn.execute(

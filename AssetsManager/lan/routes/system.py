@@ -1,5 +1,8 @@
 """System info routes: /api/info, /api/tunnel/status, /api/stats."""
+import asyncio
+import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import cast
 
 from aiohttp import web
@@ -18,6 +21,28 @@ from AssetsManager.lan.routes._helpers import (
     get_request_principal,
     require_admin,
 )
+
+# /api/info is public, so an unauthenticated client could force the
+# full-library project count walk on every landing/storefront refresh.  The
+# count is cached per library root (30s TTL) and the walk itself runs off the
+# event loop; together they turn the endpoint into a cheap cache read instead
+# of a 0.5-3s per-request directory traversal.
+_INFO_COUNT_CACHE: dict[str, tuple[float, int]] = {}
+_INFO_COUNT_TTL = 30.0
+
+
+def _cached_project_count(project_service, root, depth_config) -> int:
+    key = str(Path(root).resolve())
+    now = time.time()
+    cached = _INFO_COUNT_CACHE.get(key)
+    if cached is not None and now - cached[0] < _INFO_COUNT_TTL:
+        return cached[1]
+    total = project_service.count_projects(root, depth_config=depth_config)
+    if len(_INFO_COUNT_CACHE) > 8:
+        # Different sessions re-root the library; keep the map bounded.
+        _INFO_COUNT_CACHE.clear()
+    _INFO_COUNT_CACHE[key] = (now, total)
+    return total
 
 
 async def handle_info(request):
@@ -52,7 +77,12 @@ async def handle_info(request):
             auth_mode = "none"
 
     depth_config = ProjectDepthConfig.from_dict(s.get("sidebar_depth_cfg"))
-    total_projects = get_project_service(request).count_projects(lan.library_root, depth_config=depth_config)
+    total_projects = await asyncio.to_thread(
+        _cached_project_count,
+        get_project_service(request),
+        lan.library_root,
+        depth_config,
+    )
     total_size = get_metadata_service(request).get_library_total_size(lan.library_root)
 
     principal = get_request_principal(request)

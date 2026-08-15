@@ -16,6 +16,7 @@ from AssetsManager.repositories.shop_repository import (
     _CommerceRepository,
     _repository_operation,
     _transaction,
+    locked_read,
 )
 
 
@@ -74,6 +75,7 @@ class SellerProfileRepository(_CommerceRepository):
                 "VALUES (1, '', '', '', 1)"
             )
 
+    @locked_read
     def _select_profile(self) -> tuple[Any, ...] | None:
         return self._conn.execute(
             "SELECT store_name, contact_email, description, accept_orders, updated_at "

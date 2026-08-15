@@ -25,6 +25,12 @@ class DirectoryScanner:
         self._scanning = False
         self._stop_event = threading.Event()
         self._scan_thread: threading.Thread | None = None
+        # Scan generation: stop() only joins for 2s, so a superseded worker
+        # may still be alive when the next scan starts. A stale worker must
+        # neither publish its partial index nor clear the new scan's
+        # _scanning flag (which would let a second start spawn a third
+        # concurrent scan, and would release the gallery prewarm early).
+        self._generation = 0
 
     def start_background_scan(self):
         """Start a background thread to scan the library."""
@@ -32,8 +38,10 @@ class DirectoryScanner:
             if self._scanning:
                 return
             self._scanning = True
+            self._generation += 1
+            generation = self._generation
         self._stop_event.clear()
-        t = threading.Thread(target=self._scan_all, daemon=True)
+        t = threading.Thread(target=self._scan_all, args=(generation,), daemon=True)
         self._scan_thread = t
         t.start()
 
@@ -51,7 +59,7 @@ class DirectoryScanner:
         """os.walk error callback: log permission errors instead of silently skipping."""
         _log.warning("scan permission error: %s", exc)
 
-    def _scan_all(self):
+    def _scan_all(self, generation: int):
         """Walk the entire library and build the index."""
         _log.info("Scanning library: %s", self._root)
         index = []
@@ -86,6 +94,11 @@ class DirectoryScanner:
             _log.warning("Library scan failed: %s", e)
 
         with self._lock:
+            if generation != self._generation:
+                # A newer scan started while this one was still walking:
+                # neither publish the stale index nor clear the new scan's
+                # _scanning flag.
+                return
             # If the scan was cancelled, do NOT publish the partial index —
             # keep the previous (complete) index so callers never see a
             # half-built one after stop().

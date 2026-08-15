@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import time
 
-from AssetsManager.repositories.shop_repository import _CommerceRepository, _repository_operation, _transaction
+from AssetsManager.repositories.shop_repository import _CommerceRepository, _repository_operation, _transaction, locked_read
 
 
 class StorefrontAnalyticsRepository(_CommerceRepository):
@@ -108,6 +108,7 @@ class StorefrontAnalyticsRepository(_CommerceRepository):
             return max(0, int(cursor.rowcount))
 
     @_repository_operation
+    @locked_read
     def total_views(self) -> int:
         row = self._conn.execute(
             "SELECT COALESCE(SUM(view_count), 0) FROM shop_storefront_view_days"
@@ -115,6 +116,7 @@ class StorefrontAnalyticsRepository(_CommerceRepository):
         return max(0, int(row[0] if row else 0))
 
     @_repository_operation
+    @locked_read
     def daily_views(self, day: str) -> int:
         normalized_day = self._validate_day(day)
         row = self._conn.execute(

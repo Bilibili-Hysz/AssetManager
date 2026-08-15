@@ -137,3 +137,28 @@ def test_scanner_completes_and_indexes_correct_count(tmp_path):
     _wait_scan_finished(scanner)
     assert scanner.is_scanning() is False
     assert scanner.file_count() == expected
+
+
+def test_superseded_scan_generation_does_not_publish_or_clear_flag(tmp_path):
+    """A stale worker finishing after a newer scan started must neither
+    publish its partial index nor clear the new scan's _scanning flag
+    (M-L1: stop() only joins for 2s, so superseded workers stay alive)."""
+    root = tmp_path / "lib"
+    root.mkdir()
+    (root / "a.txt").write_text("a")
+    (root / "b.txt").write_text("b")
+
+    scanner = DirectoryScanner(str(root), None)
+    scanner._scanning = True  # a newer scan is in progress
+    scanner._generation = 2
+    scanner._scan_all(1)  # the superseded worker finishes
+
+    assert scanner._index == []  # partial index not published
+    assert scanner._scanning is True  # newer scan's flag untouched
+    assert scanner.is_scanning() is True
+
+    # The current generation still publishes and clears normally.
+    scanner._stop_event.clear()
+    scanner._scan_all(2)
+    assert scanner.file_count() == 2
+    assert scanner._scanning is False

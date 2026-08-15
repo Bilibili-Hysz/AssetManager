@@ -234,7 +234,7 @@ def setup_routes(app: web.Application):
     _add(app, "GET", "/api/quicksearch", handle_quicksearch, policy=_SKIP)
     _add(app, "GET", "/api/meta/{path:.*}", handle_meta)
     _add(app, "PUT", "/api/notes/{path:.*}", handle_save_notes, policy=_SKIP)
-    _add(app, "GET", "/api/info", handle_info, policy=_OPTIONAL_SKIP)
+    _add(app, "GET", "/api/info", handle_info, policy=_PUBLIC_OPTIONAL)
     _add(app, "GET", "/api/revision", handle_revision, policy=_SKIP)
     _add(app, "POST", "/api/auth/login", handle_login, policy=_PUBLIC_AUTH_STRICT)
     _add(app, "POST", "/api/auth/register", handle_register, policy=_PUBLIC_AUTH_STRICT)

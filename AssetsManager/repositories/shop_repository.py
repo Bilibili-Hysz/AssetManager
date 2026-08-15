@@ -10,7 +10,7 @@ from pathlib import Path
 from sqlite3 import Connection, IntegrityError, OperationalError
 from typing import Any, Callable, Iterable, Iterator, TypeVar
 
-from AssetsManager.core.database import DatabaseManager, db_write_lock
+from AssetsManager.core.database import DatabaseManager, db_write_lock, locked_read
 from AssetsManager.core.path_resolver import RootIdentity, root_identity
 from AssetsManager.core.schema_defs import (
     COMMERCE_SCHEMAS,
@@ -225,6 +225,7 @@ class ShopRepository(_CommerceRepository):
     _JSON1_PROBE_LOCK = threading.Lock()
 
     @classmethod
+    @locked_read
     def _json1_available(cls, conn: Connection) -> bool:
         """Return whether SQLite JSON1 functions are usable, probed once."""
         if cls._JSON1_AVAILABLE is not None:
@@ -330,6 +331,7 @@ class ShopRepository(_CommerceRepository):
             raise ValueError("currency must be a three-letter code")
         return title, price_cents, currency
 
+    @locked_read
     def _select_item(self, item_id: int) -> tuple[Any, ...] | None:
         return self._conn.execute(
             "SELECT id, path, title, description, price_cents, currency, cover_path, "
@@ -395,6 +397,7 @@ class ShopRepository(_CommerceRepository):
         return None if row is None else self._row_to_dict(row)
 
     @_repository_operation
+    @locked_read
     def get_by_path(self, path: str) -> dict[str, Any] | None:
         row = self._conn.execute(
             "SELECT id, path, title, description, price_cents, currency, cover_path, "
@@ -404,6 +407,7 @@ class ShopRepository(_CommerceRepository):
         return None if row is None else self._row_to_dict(row)
 
     @_repository_operation
+    @locked_read
     def list_items(
         self,
         *,

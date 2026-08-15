@@ -14,6 +14,7 @@ from AssetsManager.repositories.shop_repository import (
     _CommerceRepository,
     _repository_operation,
     _transaction,
+    locked_read,
 )
 
 
@@ -63,6 +64,7 @@ class FreeDownloadQuotaRepository(_CommerceRepository):
             validate_schema_objects(self._conn, (_TABLE,))
 
     @_repository_operation
+    @locked_read
     def get_window(self, identity_key: str, window_start: int) -> dict[str, Any] | None:
         identity = _validate_identity(identity_key)
         row = self._conn.execute(

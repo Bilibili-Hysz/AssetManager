@@ -54,6 +54,7 @@ def _content_disposition_filename(name: str) -> str:
 
 
 def _file_response_with_cleanup(
+    request,
     path: str,
     *,
     filename: str,
@@ -69,16 +70,26 @@ def _file_response_with_cleanup(
     )
     original_write_eof = write_eof or response.write_eof
 
+    def _cleanup() -> None:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
     async def _write_eof_and_cleanup(data: bytes = b""):
         try:
             return await original_write_eof(data)
         finally:
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
+            _cleanup()
 
     response.write_eof = _write_eof_and_cleanup
+    # Client aborts and prepare() failures never reach write_eof, which
+    # would leave the temporary ZIP behind forever; the request task's
+    # completion is the final cleanup point (idempotent with the normal
+    # write_eof path).
+    task = getattr(request, "task", None)
+    if task is not None:
+        task.add_done_callback(lambda _finished: _cleanup())
     return response
 
 
@@ -198,7 +209,7 @@ async def handle_download(request):
             kind = "directory_zip"
             response_path = target
             zip_name = f"{target.name}.zip"
-            response = _file_response_with_cleanup(tmp_path, filename=zip_name, extra_headers=quota_headers)
+            response = _file_response_with_cleanup(request, tmp_path, filename=zip_name, extra_headers=quota_headers)
             apply_free_quota_identity_cookie(response, request)
             return response
 
@@ -302,7 +313,7 @@ async def handle_batch_download(request):
             zip_name = f"download_{len(targets)}_items.zip"
         status = 200
         outcome = "response_ready"
-        response = _file_response_with_cleanup(tmp_path, filename=zip_name, extra_headers=quota_headers)
+        response = _file_response_with_cleanup(request, tmp_path, filename=zip_name, extra_headers=quota_headers)
         apply_free_quota_identity_cookie(response, request)
         return response
     except web.HTTPException as exc:

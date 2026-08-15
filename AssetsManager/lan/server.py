@@ -1207,11 +1207,13 @@ class _LanServerImpl:
             return
         protocol = self.endpoint_protocol
         _log.info("LAN sharing started on %s://%s:%d", protocol, get_local_ip(), self._port)
-        self._prewarm_gallery()
 
-        # Start background file scanner for fast search
+        # Start the scanner before prewarming the gallery: prewarm waits for
+        # the scanner to finish so the two full-library traversals do not
+        # compete for disk I/O (see _prewarm_gallery).
         scanner = self._scanner
         scanner.start_background_scan()
+        self._prewarm_gallery()
 
         # Keep the loop running
         try:
@@ -1245,7 +1247,7 @@ class _LanServerImpl:
                 return
             deadline = time.monotonic() + 300.0
             while time.monotonic() < deadline:
-                if not scanner.is_scanning():
+                if getattr(self, "_cleanup_complete", False) or not scanner.is_scanning():
                     return
                 time.sleep(1.0)
 
@@ -1305,6 +1307,18 @@ class _LanServerImpl:
                 scanner.stop()
             except Exception:
                 _log.exception("Failed to stop background scanner during LAN shutdown")
+        # Stop gallery background builds (prewarm / full walks): without
+        # this a daemon build thread keeps traversing the library for tens
+        # of seconds after sharing stops, and a prewarm thread waiting on
+        # the scanner would still start one last full walk. The service is
+        # rebuilt on the next start(), so closing it here is safe.
+        services = getattr(self, "services", None)
+        gallery = getattr(services, "gallery_service", None)
+        if gallery is not None and callable(getattr(gallery, "close", None)):
+            try:
+                gallery.close()
+            except Exception:
+                _log.exception("Failed to stop gallery service during LAN shutdown")
         self._revoke_seller_sessions()
         try:
             stop_runtime_realtime(self)

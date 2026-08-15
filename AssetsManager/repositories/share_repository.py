@@ -15,7 +15,7 @@ from pathlib import Path
 from sqlite3 import Connection, IntegrityError
 from typing import Any, Callable, TypeVar
 
-from AssetsManager.core.database import DatabaseManager, db_write_lock
+from AssetsManager.core.database import DatabaseManager, db_write_lock, locked_read
 from AssetsManager.core.path_resolver import RootIdentity, root_identity
 from AssetsManager.core.schema_defs import validate_schema_objects
 from AssetsManager.core.schema_defs import SHARE_LINKS_SCHEMA
@@ -240,6 +240,7 @@ class ShareRepository:
             return []
 
     @_repository_operation
+    @locked_read
     def get(self, share_id: str, *, include_unavailable: bool = False) -> dict | None:
         """Get a share link by ID.
 
@@ -277,6 +278,7 @@ class ShareRepository:
         }
 
     @_repository_operation
+    @locked_read
     def list_all(self, created_by: str | None = None) -> list[dict]:
         """List share links, optionally filtered by creator."""
         if created_by:
@@ -386,6 +388,7 @@ class ShareRepository:
             return cur.rowcount > 0
 
     @_repository_operation
+    @locked_read
     def get_password_hash(self, share_id: str) -> str | None:
         """Return the password hash for a share link, or None."""
         row = self._conn.execute(

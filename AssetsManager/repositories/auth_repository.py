@@ -15,7 +15,7 @@ from pathlib import Path
 from sqlite3 import Connection
 from typing import Any, Callable, TypeVar
 
-from AssetsManager.core.database import DatabaseManager, db_write_lock
+from AssetsManager.core.database import DatabaseManager, db_write_lock, locked_read
 from AssetsManager.core.path_resolver import RootIdentity, root_identity
 from AssetsManager.core.schema_defs import validate_schema_objects
 from AssetsManager.core.schema_defs import INVITE_CODES_SCHEMA, USERS_SCHEMA
@@ -196,6 +196,7 @@ class AuthRepository:
     # ── Users ────────────────────────────────────────────────────
 
     @_repository_operation
+    @locked_read
     def has_active_users(self, *, raise_on_error: bool = True) -> bool:
         """Check if there are any active users."""
         try:
@@ -212,6 +213,7 @@ class AuthRepository:
             return False
 
     @_repository_operation
+    @locked_read
     def get_user_by_username(self, username: str) -> dict | None:
         """Get a user by username."""
         row = self._conn.execute(
@@ -234,6 +236,7 @@ class AuthRepository:
         }
 
     @_repository_operation
+    @locked_read
     def get_user_by_id(self, user_id: int) -> dict | None:
         """Get a user by ID."""
         row = self._conn.execute(
@@ -326,6 +329,7 @@ class AuthRepository:
             return None
 
     @_repository_operation
+    @locked_read
     def list_users(self, include_password: bool = False) -> list[dict]:
         """List all users."""
         rows = self._conn.execute(
@@ -391,6 +395,7 @@ class AuthRepository:
             raise
 
     @_repository_operation
+    @locked_read
     def get_invite_code(self, code: str) -> dict | None:
         """Get an invite code by code string."""
         row = self._conn.execute(
@@ -402,6 +407,7 @@ class AuthRepository:
         return {"code": row[0], "created_by": row[1], "created_at": row[2], "is_active": row[3]}
 
     @_repository_operation
+    @locked_read
     def list_invite_codes(self) -> list[dict]:
         """List all invite codes."""
         rows = self._conn.execute(
@@ -424,6 +430,7 @@ class AuthRepository:
             return cur.rowcount > 0
 
     @_repository_operation
+    @locked_read
     def verify_invite_code(self, code: str) -> bool:
         """Check if an invite code is valid and unused."""
         row = self._conn.execute(
@@ -457,6 +464,7 @@ class AuthRepository:
             return False
 
     @_repository_operation
+    @locked_read
     def has_active_invite_codes(self, *, raise_on_error: bool = True) -> bool:
         """Check if there are any active unused invite codes.
 

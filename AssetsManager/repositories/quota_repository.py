@@ -8,6 +8,7 @@ from AssetsManager.repositories.shop_repository import (
     _CommerceRepository,
     _repository_operation,
     _transaction,
+    locked_read,
 )
 
 
@@ -32,6 +33,7 @@ class QuotaRepository(_CommerceRepository):
             "last_download_at": None if row[9] is None else float(row[9]),
         }
 
+    @locked_read
     def _select_token(self, token_hash: str) -> tuple[Any, ...] | None:
         return self._conn.execute(
             "SELECT token_hash, order_id, share_id, delivery_path, max_downloads, "
@@ -133,6 +135,7 @@ class QuotaRepository(_CommerceRepository):
             return cursor.rowcount > 0
 
     @_repository_operation
+    @locked_read
     def get_quota(self) -> dict[str, int]:
         row = self._conn.execute(
             "SELECT COUNT(*), COALESCE(SUM(max_downloads), 0), "

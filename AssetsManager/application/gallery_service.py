@@ -441,6 +441,8 @@ class GalleryService:
     def _invalidate_and_schedule_full(self, root_key: str) -> None:
         """Drop the cached/state/persisted projection and schedule a full
         rebuild (debounced so a burst of events rebuilds once)."""
+        if self._closed:
+            return
         with self._home_cache_lock:
             self._home_cache.pop(root_key, None)
             self._home_states.pop(root_key, None)
@@ -473,6 +475,8 @@ class GalleryService:
     def _apply_pending_home(self, root_key: str) -> None:
         """Apply queued changes incrementally; fall back to a full rebuild
         on any inconsistency, budget overrun, or concurrent full build."""
+        if self._closed:
+            return
         with self._pending_lock:
             changes = self._pending_events.pop(root_key, None)
         if not changes:
@@ -560,6 +564,8 @@ class GalleryService:
         background); no persisted projection -> None plus a background
         build.
         """
+        if self._closed:
+            return None
         root = Path(library_root).resolve()
         root_key = str(root)
         now = time.monotonic()
@@ -874,6 +880,8 @@ class GalleryService:
             with os.scandir(target) as iterator:
                 for entry in iterator:
                     budget.check_time()
+                    if self._closed:
+                        raise GalleryTraversalLimitError("Gallery build cancelled")
                     try:
                         is_symlink = entry.is_symlink()
                         is_junction = False
@@ -943,6 +951,8 @@ class GalleryService:
         stack: list[tuple[Path, str, int]] = [(target, relative_path, depth)]
         while stack:
             current, rel, current_depth = stack.pop()
+            if self._closed:
+                raise GalleryTraversalLimitError("Gallery build cancelled")
             for entry, stat_result in self._visible_entries(current, budget, current_depth):
                 try:
                     is_dir = entry.is_dir(follow_symlinks=False)

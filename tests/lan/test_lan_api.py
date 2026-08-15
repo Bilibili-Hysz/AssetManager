@@ -133,7 +133,9 @@ def test_task4_info_public_bypass_preserves_authenticated_principal():
     setup_routes(app)
     policy = lookup(app, "GET", "/api/info")
     assert policy.auth == "public_optional"
-    assert policy.rate_limit == "skip"
+    # H-L2 (2026-08-15): /api/info got the general rate limit back so an
+    # unauthenticated client cannot drive the project-count walk freely.
+    assert policy.rate_limit == "general"
 
 
 @pytest.mark.anyio
@@ -4824,7 +4826,8 @@ def test_file_response_cleanup_runs_when_write_fails(tmp_path):
     async def _fail(_data=b""):
         raise RuntimeError("client disconnected")
 
-    response = _file_response_with_cleanup(str(zip_path), filename="download.zip", write_eof=_fail)
+    # request=None: no task callback, only the write_eof cleanup path.
+    response = _file_response_with_cleanup(None, str(zip_path), filename="download.zip", write_eof=_fail)
 
     async def _run():
         with pytest.raises(RuntimeError):
