@@ -17,6 +17,24 @@ from AssetsManager.core.performance import PerformanceRecorder
 _app = QApplication.instance() or QApplication([])
 
 
+class _OSWithScandir:
+    """Proxy the real ``os`` module with only ``scandir`` overridden.
+
+    Patching ``AssetsManager.panels.file_list._model.os.scandir`` would
+    mutate the global ``os`` module (``_model.os`` *is* ``os``) and leak
+    into stdlib teardown paths such as ``shutil.rmtree``'s directory walk.
+    """
+
+    def __init__(self, scandir):
+        self._scandir = scandir
+
+    def __getattr__(self, name):
+        return getattr(os, name)
+
+    def scandir(self, path):
+        return self._scandir(path)
+
+
 @pytest.fixture
 def tmp_dir():
     """Create a temporary directory with test files."""
@@ -62,7 +80,9 @@ class TestFileSystemModel:
         def fail_scan(_path):
             raise PermissionError("denied")
 
-        monkeypatch.setattr("AssetsManager.panels.file_list._model.os.scandir", fail_scan)
+        monkeypatch.setattr(
+            "AssetsManager.panels.file_list._model.os", _OSWithScandir(fail_scan)
+        )
         model.set_directory(str(tmp_path))
         model._wait_for_scan()
 
@@ -421,7 +441,9 @@ class TestFileSystemModel:
         def denied(_path):
             raise PermissionError("denied")
 
-        monkeypatch.setattr("AssetsManager.panels.file_list._model.os.scandir", denied)
+        monkeypatch.setattr(
+            "AssetsManager.panels.file_list._model.os", _OSWithScandir(denied)
+        )
         model.set_directory(str(tmp_path))
         model._wait_for_scan()
 

@@ -1,9 +1,28 @@
 import logging
 import builtins
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
 from AssetsManager.lan.routes._helpers import find_first_image, sanitize_filename, get_auth_token
+
+
+class _OSWithScandir:
+    """Proxy the real ``os`` module with only ``scandir`` overridden.
+
+    Patching ``AssetsManager.lan.routes._helpers.os.scandir`` would mutate
+    the global ``os`` module (``_helpers.os`` *is* ``os``) and leak into
+    stdlib teardown paths such as ``shutil.rmtree``'s directory walk.
+    """
+
+    def __init__(self, scandir):
+        self._scandir = scandir
+
+    def __getattr__(self, name):
+        return getattr(os, name)
+
+    def scandir(self, path):
+        return self._scandir(path)
 
 
 def test_sanitize_filename_normal():
@@ -70,7 +89,9 @@ def test_find_first_image_ignores_nested_images_and_returns_none_without_direct_
 def test_find_first_image_preserves_first_scanned_entry_when_names_normalize_equally(monkeypatch, tmp_path: Path):
     first = SimpleNamespace(name="Alpha.jpg", path=str(tmp_path / "Alpha.jpg"), is_file=lambda: True)
     second = SimpleNamespace(name="alpha.JPG", path=str(tmp_path / "alpha.JPG"), is_file=lambda: True)
-    monkeypatch.setattr("AssetsManager.lan.routes._helpers.os.scandir", lambda _path: [first, second])
+    monkeypatch.setattr(
+        "AssetsManager.lan.routes._helpers.os", _OSWithScandir(lambda _path: [first, second])
+    )
 
     assert find_first_image(tmp_path) == first.path
 
@@ -79,7 +100,7 @@ def test_find_first_image_returns_none_when_scandir_raises_os_error(monkeypatch,
     def raise_os_error(_path):
         raise OSError("unavailable")
 
-    monkeypatch.setattr("AssetsManager.lan.routes._helpers.os.scandir", raise_os_error)
+    monkeypatch.setattr("AssetsManager.lan.routes._helpers.os", _OSWithScandir(raise_os_error))
 
     assert find_first_image(tmp_path) is None
 

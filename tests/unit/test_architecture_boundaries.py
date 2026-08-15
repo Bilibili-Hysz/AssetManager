@@ -15,7 +15,12 @@ SRC = ROOT / "AssetsManager"
 
 
 def _module_name(path: Path) -> str:
-    rel = path.relative_to(ROOT).with_suffix("")
+    try:
+        rel = path.relative_to(ROOT).with_suffix("")
+    except ValueError:
+        # Synthetic files created under tmp_path: with a debug temproot the
+        # temp dir lives outside the repository, so fall back to the stem.
+        return path.stem
     return ".".join(rel.parts)
 
 
@@ -172,7 +177,7 @@ def _database_manager_current_violations(files: list[Path]) -> list[str]:
     """Return location-preserving conservative DatabaseManager.current syntax violations."""
     violations: list[str] = []
     for path in files:
-        module = _module_name(path) if path.is_relative_to(ROOT) else str(path)
+        module = _module_name(path)
         for scope, owner, attr, _chain, lineno, col_offset in sorted(
             _qualified_attribute_reads(path), key=lambda occurrence: occurrence[4:]
         ):
