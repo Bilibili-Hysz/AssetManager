@@ -646,3 +646,124 @@ def test_prewarm_wait_hook_runs_on_build_thread_before_walk(tmp_path, schema_db)
         assert service.get_home_cached(tmp_path) is not None
     finally:
         service.close()
+
+
+def test_gallery_projects_follow_project_depth_and_aggregate_inside(tmp_path, schema_db):
+    """Directories at the configured project depth are display leaves:
+    their whole subtree aggregates into one project node (stats, artwork
+    list, cover), and nothing deeper is projected as a node."""
+    from AssetsManager.application.project_service import ProjectDepthConfig
+
+    _image(tmp_path / "branch" / "proj" / "textures" / "t.png", (16, 16))
+    _image(tmp_path / "branch" / "proj" / "cover.png", (40, 40))
+    (tmp_path / "branch" / "proj" / "readme.txt").write_text("notes")
+    _image(tmp_path / "branch" / "other" / "x.png", (20, 20))
+
+    service = GalleryService(
+        connection_provider=lambda _root: schema_db,
+        depth_config=ProjectDepthConfig(global_depth=2),
+    )
+    try:
+        response = service.get_home(tmp_path).to_response()
+        # branch (depth 1 < 2) projects as a collection; the two depth-2
+        # directories are projects whose inner folders are not projected.
+        assert [entry["path"] for entry in response["collections"]] == ["branch"]
+        assert [entry["path"] for entry in response["projects"]] == []
+        assert response["stats"] == {
+            "collections": 1,
+            "projects": 2,
+            "artworks": 3,
+            "total_size_fmt": response["stats"]["total_size_fmt"],
+        }
+        assert {entry["path"] for entry in response["recent"]} == {
+            "branch/proj/cover.png",
+            "branch/proj/textures/t.png",
+            "branch/other/x.png",
+        }
+
+        # The branch lists the projects as its children, one node each.
+        branch = service.get_collection(tmp_path, "branch")
+        assert branch is not None
+        assert {child["path"] for child in branch.children} == {
+            "branch/other", "branch/proj",
+        }
+        proj = next(child for child in branch.children if child["path"] == "branch/proj")
+        assert proj["kind"] == "project"
+        assert proj["file_count"] == 3  # t.png + cover.png + readme.txt
+        assert proj["artwork_count"] == 2
+        assert proj["cover_path"] == "branch/proj/cover.png"  # sorted first
+
+        # The project's own page lists every artwork inside it.
+        proj_page = service.get_collection(tmp_path, "branch/proj")
+        assert proj_page is not None
+        assert proj_page.children == []
+        assert [entry["path"] for entry in proj_page.entries] == [
+            "branch/proj/cover.png", "branch/proj/textures/t.png",
+        ]
+
+        # Paths deeper than the project floor are not part of the projection.
+        assert service.get_collection(tmp_path, "branch/proj/textures") is None
+    finally:
+        service.close()
+
+
+def test_gallery_branch_depth_override_makes_top_level_directories_projects(tmp_path, schema_db):
+    """branch_depths can lower a branch's floor so its first-level
+    directories are projects (matching the sidebar's per-branch config)."""
+    from AssetsManager.application.project_service import ProjectDepthConfig
+
+    _image(tmp_path / "flat" / "leaf" / "inner" / "a.png", (16, 16))
+
+    service = GalleryService(
+        connection_provider=lambda _root: schema_db,
+        depth_config=ProjectDepthConfig(global_depth=3, branch_depths={"flat": 1}),
+    )
+    try:
+        response = service.get_home(tmp_path).to_response()
+        assert [entry["path"] for entry in response["projects"]] == ["flat"]
+        flat = service.get_collection(tmp_path, "flat")
+        assert flat is not None
+        # leaf is inside the flat project and not projected as a node.
+        assert flat.children == []
+        assert [entry["path"] for entry in flat.entries] == ["flat/leaf/inner/a.png"]
+    finally:
+        service.close()
+
+
+def test_file_change_inside_project_updates_incrementally(tmp_path, schema_db, monkeypatch):
+    """File events inside a project keep working incrementally: the project
+    node is the parent, so stats/covers update without a full rebuild."""
+    import time
+
+    from AssetsManager.application.project_service import ProjectDepthConfig
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileSystemChanged
+
+    _image(tmp_path / "branch" / "proj" / "textures" / "one.png", (16, 16))
+    service = GalleryService(
+        connection_provider=lambda _root: schema_db,
+        depth_config=ProjectDepthConfig(global_depth=2),
+    )
+    monkeypatch.setattr(service, "_incremental_debounce", 0.05)
+    try:
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and service.get_home_cached(tmp_path) is None:
+            time.sleep(0.05)
+        before = service.get_home_cached(tmp_path)
+        assert before is not None and before.stats["artworks"] == 1
+
+        _image(tmp_path / "branch" / "proj" / "textures" / "two.png", (16, 16))
+        get_event_bus().publish(FileSystemChanged(
+            library_root=str(tmp_path), session_token="test", kind="created",
+            paths=(str(tmp_path / "branch" / "proj" / "textures" / "two.png"),),
+        ))
+        deadline = time.monotonic() + 10.0
+        after = None
+        while time.monotonic() < deadline:
+            after = service.get_home_cached(tmp_path)
+            if after is not None and after.stats["artworks"] == 2:
+                break
+            time.sleep(0.05)
+        assert after is not None and after.stats["artworks"] == 2
+    finally:
+        service.close()

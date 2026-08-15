@@ -21,9 +21,11 @@ from time import monotonic
 from typing import Any, Callable, Iterable
 
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
+from AssetsManager.application.project_service import ProjectDepthConfig
 from AssetsManager.application.tag_service import TagService
 from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.format_utils import format_size
+from AssetsManager.core.settings import AppSettings
 from AssetsManager.domain.asset import IMAGE_EXTS, assert_under_root
 from AssetsManager.domain.errors import MissingPathError, PathEscapeError
 from AssetsManager.domain.event_bus import get_event_bus
@@ -279,7 +281,17 @@ def _strip_legacy_url_fields(value: Any) -> Any:
 
 
 class GalleryService:
-    """Build bounded Gallery projections for one live library session."""
+    """Build bounded Gallery projections for one live library session.
+
+    The projection tree is capped at the project depth (``sidebar_depth_cfg``,
+    the same config the desktop sidebar and the workspace use): directories
+    at or below the configured depth are *projects* — display leaves whose
+    whole subtree aggregates into one node.  Everything deeper inside a
+    project (textures/, models/, ...) is never projected as a node, so a
+    70k-file library with tens of thousands of inner directories only
+    produces covers for the branches and the projects the user actually
+    browses, not for every folder.
+    """
 
     def __init__(
         self,
@@ -287,10 +299,12 @@ class GalleryService:
         session: LibrarySession | None = None,
         *,
         limits: GalleryTraversalLimits | None = None,
+        depth_config: ProjectDepthConfig | None = None,
     ) -> None:
         self._connection_provider = connection_provider
         self._session = session
         self._limits = limits or GalleryTraversalLimits()
+        self._depth_config_override = depth_config
         self._tag_service = TagService(connection_provider=connection_provider, session=session)
         # Home projection cache: the full-library traversal plus per-image
         # PIL header decodes is expensive; a short TTL keeps repeated loads
@@ -901,6 +915,134 @@ class GalleryService:
         budget.check_time()
         return visible
 
+    def _aggregate_project(
+        self,
+        root: Path,
+        relative_path: str,
+        target: Path,
+        *,
+        budget: _TraversalBudget,
+        depth: int,
+        image_refs: list[_ImageRef] | None = None,
+        known_files: dict[str, tuple[int, int]] | None = None,
+    ) -> tuple[int, int, list[tuple[str, os.stat_result]], int]:
+        """Walk one project subtree without projecting child nodes.
+
+        The project is the gallery's display leaf (project depth from
+        ``sidebar_depth_cfg``): its whole subtree collapses into size /
+        file count / latest modification and an artwork list.  No child
+        summaries, covers, or state nodes are produced for inner
+        directories, which is what keeps very large libraries (and their
+        textures/models folders) from generating a cover per directory.
+        """
+        budget.enter_directory(depth)
+        total_size = 0
+        file_count = 0
+        latest_modified = 0
+        images: list[tuple[str, os.stat_result]] = []
+        stack: list[tuple[Path, str, int]] = [(target, relative_path, depth)]
+        while stack:
+            current, rel, current_depth = stack.pop()
+            for entry, stat_result in self._visible_entries(current, budget, current_depth):
+                try:
+                    is_dir = entry.is_dir(follow_symlinks=False)
+                    is_file = entry.is_file(follow_symlinks=False)
+                except OSError:
+                    continue
+                child_rel = "/".join(part for part in (rel, entry.name) if part)
+                if is_dir:
+                    stack.append((Path(entry.path), child_rel, current_depth + 1))
+                    continue
+                if not is_file:
+                    continue
+                if stat_result is None:
+                    try:
+                        stat_result = entry.stat(follow_symlinks=False)
+                    except OSError:
+                        continue
+                total_size += int(stat_result.st_size)
+                file_count += 1
+                modified = int(stat_result.st_mtime)
+                latest_modified = max(latest_modified, modified)
+                if known_files is not None:
+                    known_files[child_rel] = (int(stat_result.st_size), modified)
+                if entry.name.lower().endswith(tuple(_SAFE_GALLERY_IMAGE_EXTS)):
+                    images.append((child_rel, stat_result))
+                    if image_refs is not None:
+                        image_refs.append(_ImageRef(child_rel, modified))
+        images.sort(key=lambda item: item[0].casefold())
+        return total_size, file_count, images, latest_modified
+
+    def _build_project_node(
+        self,
+        root: Path,
+        relative_path: str,
+        target: Path,
+        *,
+        include_entries: bool,
+        budget: _TraversalBudget,
+        depth: int,
+        image_refs: list[_ImageRef] | None = None,
+        node_counts: dict[str, int] | None = None,
+        state_nodes: dict[str, _StateNode] | None = None,
+        known_files: dict[str, tuple[int, int]] | None = None,
+    ) -> dict[str, Any] | None:
+        """Build one project leaf node: the whole subtree aggregates into a
+        single node (stats, artwork list, cover) with no inner directory
+        projected.  Used both from ``_build_node`` for directories at the
+        project floor and directly for project-root collection pages."""
+        proj_size, proj_files, proj_images, proj_modified = self._aggregate_project(
+            root, relative_path, target,
+            budget=budget,
+            depth=depth,
+            image_refs=image_refs,
+            known_files=known_files,
+        )
+        if proj_files == 0:
+            return None  # empty subtree pruned like an empty directory
+        cover_path = proj_images[0][0] if proj_images else None
+        cover = (
+            self._describe_image(root, cover_path, budget=budget)
+            if cover_path
+            else None
+        )
+        node: dict[str, Any] = {
+            "name": target.name,
+            "path": relative_path,
+            "kind": "project",
+            "parent_path": self._parent_path(relative_path),
+            "cover_path": cover_path,
+            "width": cover.get("width") if cover else None,
+            "height": cover.get("height") if cover else None,
+            "aspect_ratio": cover.get("aspect_ratio") if cover else None,
+            "modified": proj_modified,
+            "size": proj_size,
+            "size_fmt": format_size(proj_size),
+            "file_count": proj_files,
+            "artwork_count": len(proj_images),
+            "child_count": 0,
+            "tags": [],
+        }
+        if include_entries:
+            node["entries"] = [
+                described
+                for path, stat_result in proj_images
+                if (
+                    described := self._describe_image(
+                        root, path, stat_result=stat_result, budget=budget
+                    )
+                )
+            ]
+        if node_counts is not None:
+            node_counts["project"] = node_counts.get("project", 0) + 1
+        if state_nodes is not None:
+            state_nodes[relative_path] = _StateNode(
+                summary=self._summary(node),
+                direct_images=[path for path, _stat_result in proj_images],
+                children=[],
+            )
+        return node
+
     def _build_node(
         self,
         root: Path,
@@ -914,6 +1056,7 @@ class GalleryService:
         node_counts: dict[str, int] | None = None,
         state_nodes: dict[str, _StateNode] | None = None,
         known_files: dict[str, tuple[int, int]] | None = None,
+        project_depth: ProjectDepthConfig | None = None,
         skip_reparse_check: bool = False,
     ) -> dict[str, Any] | None:
         if not skip_reparse_check:
@@ -927,6 +1070,12 @@ class GalleryService:
                 if self._path_contains_reparse_point(root, target):
                     return None
             except (OSError, PathEscapeError, ValueError):
+                return None
+        if project_depth is not None and relative_path:
+            # A caller may point straight into a project (e.g. a stale
+            # /gallery/collection link). The project is the display leaf;
+            # anything deeper is not part of the projection.
+            if len(relative_path.split("/")) > self._project_floor(project_depth, relative_path):
                 return None
         budget.enter_directory(depth)
         child_nodes: list[dict[str, Any]] = []
@@ -946,6 +1095,37 @@ class GalleryService:
             child_path = Path(entry.path)
 
             if is_dir:
+                child_floor = (
+                    self._project_floor(project_depth, child_relative)
+                    if project_depth is not None
+                    else None
+                )
+                if child_floor is not None and depth + 1 == child_floor:
+                    # Project leaf: aggregate the whole subtree into one
+                    # node (project depth from sidebar_depth_cfg) instead
+                    # of projecting every inner directory.
+                    child_node = self._build_project_node(
+                        root, child_relative, child_path,
+                        include_entries=False,
+                        budget=budget,
+                        depth=depth + 1,
+                        image_refs=image_refs,
+                        node_counts=node_counts,
+                        state_nodes=state_nodes,
+                        known_files=known_files,
+                    )
+                    if child_node is None:
+                        continue
+                    child_nodes.append(child_node)
+                    total_size += int(child_node["size"])
+                    file_count += int(child_node["file_count"])
+                    latest_modified = max(latest_modified, int(child_node["modified"]))
+                    continue
+                if child_floor is not None and depth + 1 > child_floor:
+                    # Inside a project while building a project root
+                    # directly: not part of the projection (project roots
+                    # go through _build_project_node, so this is defensive).
+                    continue
                 child_node = self._build_node(
                     root,
                     child_relative,
@@ -957,6 +1137,7 @@ class GalleryService:
                     node_counts=node_counts,
                     state_nodes=state_nodes,
                     known_files=known_files,
+                    project_depth=project_depth,
                     skip_reparse_check=True,
                 )
                 if child_node is None:
@@ -1053,6 +1234,32 @@ class GalleryService:
             return None
         return self._normalize_relative_path(str(target.relative_to(root)))
 
+    def _depth_config(self) -> ProjectDepthConfig:
+        """Project depth config (override or live ``sidebar_depth_cfg``)."""
+        if self._depth_config_override is not None:
+            return self._depth_config_override
+        try:
+            raw = AppSettings.instance().get("sidebar_depth_cfg")
+            return ProjectDepthConfig.from_dict(raw or {})
+        except Exception:
+            return ProjectDepthConfig()
+
+    @staticmethod
+    def _project_floor(config: ProjectDepthConfig, relative_path: str) -> int:
+        """Depth at which directories become project leaves (branch-aware)."""
+        branch = relative_path.split("/", 1)[0] if relative_path else ""
+        return config.branches.get(branch, config.global_depth)
+
+    def _inside_project(self, relative_path: str) -> bool:
+        """Whether *relative_path* is a directory deeper than its project
+        floor — i.e. inside a project, where nothing is projected."""
+        parts = relative_path.split("/")
+        if len(parts) < 2:
+            return False
+        config = self._depth_config()
+        floor = config.branches.get(parts[0], config.global_depth)
+        return len(parts) > floor
+
     def _apply_change(
         self,
         root_key: str,
@@ -1074,6 +1281,16 @@ class GalleryService:
         elif change.kind == "deleted":
             for path in change.paths:
                 rel = self._rel(root, path)
+                if (
+                    rel is not None
+                    and rel not in state.nodes
+                    and rel not in state.files
+                    and self._inside_project(rel)
+                ):
+                    # A directory inside a project vanished: it is not in
+                    # the state tree (projects aggregate), so the project's
+                    # stats cannot be patched incrementally.
+                    raise _IncrementalFallback("directory deleted inside a project")
                 if rel is not None and rel in state.nodes:
                     home = self._apply_dir_event(root, state, home, path, None, "deleted")
                 else:
@@ -1121,6 +1338,11 @@ class GalleryService:
                 raise _IncrementalFallback("directory path escapes the library")
             if rel in state.nodes:
                 return home  # idempotent guard
+            if self._inside_project(rel):
+                # Projects aggregate their whole subtree; a new directory
+                # inside one needs a project-level re-aggregation, which the
+                # incremental applier does not support — rebuild instead.
+                raise _IncrementalFallback("directory created inside a project")
             parent_key = self._parent_rel(rel) or "/"
             parent = state.nodes.get(parent_key)
             if parent is None:
@@ -1140,6 +1362,7 @@ class GalleryService:
                     node_counts=None,
                     state_nodes=sub_nodes,
                     known_files=sub_files,
+                    project_depth=self._depth_config(),
                 )
             except GalleryTraversalLimitError as exc:
                 raise _IncrementalFallback("directory sub-walk exceeded budget") from exc
@@ -1665,6 +1888,7 @@ class GalleryService:
             node_counts=node_counts,
             state_nodes=state_nodes,
             known_files=known_files,
+            project_depth=self._depth_config(),
         )
         if node is None:
             return GalleryHome(None, [], [], [], {
@@ -1730,14 +1954,33 @@ class GalleryService:
         if not target.is_dir():
             return None
         conn = self._connection(root, db_conn, self._connection_provider)
-        node = self._build_node(
-            root,
-            normalized,
-            target,
-            include_entries=True,
-            budget=_TraversalBudget(self._limits),
-            depth=len([part for part in normalized.split("/") if part]),
-        )
+        config = self._depth_config()
+        depth = len([part for part in normalized.split("/") if part])
+        node = None
+        if normalized:
+            floor = self._project_floor(config, normalized)
+            if depth == floor:
+                # The collection page for a project root: the whole subtree
+                # aggregates into the project node (inner dirs are not
+                # projected).
+                node = self._build_project_node(
+                    root, normalized, target,
+                    include_entries=True,
+                    budget=_TraversalBudget(self._limits),
+                    depth=depth,
+                )
+            elif depth > floor:
+                return None  # inside a project: not part of the projection
+        if node is None:
+            node = self._build_node(
+                root,
+                normalized,
+                target,
+                include_entries=True,
+                budget=_TraversalBudget(self._limits),
+                depth=depth,
+                project_depth=config,
+            )
         if node is None:
             return None
         self._apply_tags(root, node, db_conn=conn)
