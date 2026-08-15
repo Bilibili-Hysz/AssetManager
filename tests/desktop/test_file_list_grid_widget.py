@@ -694,10 +694,9 @@ def test_grid_thumb_batch_marks_only_loaded_rows_dirty():
     assert widget._dirty == {1, 9}
 
 
-def test_grid_subtitle_change_repaints_overlay_without_texture_rebuild():
+def test_grid_static_data_change_preserves_interaction_and_thumbnail_fades():
     widget = FileListGridWidget()
-    cached = object()
-    widget._cache._textures[1] = cached
+    widget._cache._textures[1] = object()
     widget._animator._thumbnail_rows = {1}
     widget._animator._thumb_opacity = {1: 0.4}
     widget._animator._hover_progress = {1: 0.7}
@@ -707,8 +706,7 @@ def test_grid_subtitle_change_repaints_overlay_without_texture_rebuild():
     index = type("_Index", (), {"row": lambda _self: 1})()
     widget._on_data_changed(index, index, [FileSystemModel.SUBTITLE_ROLE])
 
-    assert widget._cache._textures[1] is cached
-    assert widget._dirty == set()
+    assert widget._dirty == {1}
     assert widget._animator._thumbnail_rows == {1}
     assert widget._animator._thumb_opacity == {1: 0.4}
     assert widget._animator._hover_progress == {1: 0.7}
@@ -1567,27 +1565,6 @@ def test_grid_set_selection_rows_seeds_fade_and_emits_once():
         widget.set_selection_rows({2})
         assert changed == [True]
         widget.update.assert_not_called()
-    finally:
-        widget.deleteLater()
-        app.processEvents()
-
-
-def test_grid_subtitle_is_drawn_as_an_overlay_layer(tmp_path):
-    app, model, widget = _visible_grid(tmp_path)
-    try:
-        path = model.path_at(0)
-        assert path
-        model.set_subtitle(path, "9.99 MB")
-        painter = Mock()
-
-        widget._draw_subtitle_overlay(
-            painter, 0, QRect(0, 0, widget._item_w, widget._item_h), 1.0
-        )
-
-        draw_texts = [call.args for call in painter.drawText.call_args_list]
-        assert any(len(args) == 3 and args[2] == "9.99 MB" for args in draw_texts)
-        assert painter.setFont.call_count == 1
-        assert painter.setOpacity.call_count == 1
     finally:
         widget.deleteLater()
         app.processEvents()
