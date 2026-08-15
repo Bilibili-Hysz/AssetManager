@@ -430,10 +430,19 @@ class FileListGridWidget(QWidget):
             Qt.ItemDataRole.DisplayRole,
             Qt.ItemDataRole.EditRole,
             Qt.ItemDataRole.DecorationRole,
-            FileSystemModel.SUBTITLE_ROLE,
             FileSystemModel.IS_DIR_ROLE,
         }
-        if roles and not roles.intersection(static_roles):
+        if FileSystemModel.SUBTITLE_ROLE in roles:
+            remaining = roles - {FileSystemModel.SUBTITLE_ROLE}
+            if not remaining.intersection(static_roles):
+                # Subtitles (directory sizes) are painted as a separate layer,
+                # so their arrival only repaints the overlay — the cached card
+                # texture, thumbnail, name, and badge stay untouched.
+                self._request_frame(
+                    range(top_left.row(), bottom_right.row() + 1), overlay=True
+                )
+                return
+        if roles and not roles.intersection(static_roles | {FileSystemModel.SUBTITLE_ROLE}):
             return
         changed_count = bottom_right.row() - top_left.row() + 1
         previous_count = self._cache.texture_count
@@ -666,6 +675,11 @@ class FileListGridWidget(QWidget):
         # on each partial update (hover/selection animation), turning a
         # one-cell repaint into a whole-grid repaint.
         update_rect = _evt.rect()
+        # Scroll frames repaint the whole viewport; every visible cell
+        # intersects it, so the per-cell Python-level intersects check is pure
+        # overhead there and is skipped. Long-term band-level invalidation
+        # would make scroll frames partial again (audit F-07).
+        update_is_full = update_rect.contains(self.rect())
         skipped_dirty = False
 
         # ── Pass 1: ensure cell textures are built (budget-limited) ──
@@ -673,7 +687,7 @@ class FileListGridWidget(QWidget):
             rect = self._layout.rect_at(row)
             if rect is None:
                 continue
-            if not update_rect.intersects(rect.translated(0, -sy)):
+            if not update_is_full and not update_rect.intersects(rect.translated(0, -sy)):
                 skipped_dirty = skipped_dirty or (row in self._dirty)
                 continue
             dirty = row in self._dirty
@@ -734,7 +748,7 @@ class FileListGridWidget(QWidget):
             p.translate(0, -sy)
             for row in visible:
                 rect = self._layout.rect_at(row)
-                if rect is None or not update_rect.intersects(rect.translated(0, -sy)):
+                if rect is None or (not update_is_full and not update_rect.intersects(rect.translated(0, -sy))):
                     continue
                 tex = self._cache.texture_for(row) or self._zoom_fallback_textures.get(row)
                 if tex is None:
@@ -748,6 +762,7 @@ class FileListGridWidget(QWidget):
                     p.restore()
                 else:
                     p.drawPixmap(texture_rect, tex)
+                self._draw_subtitle_overlay(p, row, texture_rect, op)
                 self._draw_interaction_overlay(p, row, texture_rect, op)
         else:
             # ── Pass 2a: draw non-lifted cells directly (per-cell) ──
@@ -756,7 +771,7 @@ class FileListGridWidget(QWidget):
             # neighbouring cards.
             for row in visible:
                 rect = self._layout.rect_at(row)
-                if rect is None or not update_rect.intersects(rect.translated(0, -sy)):
+                if rect is None or (not update_is_full and not update_rect.intersects(rect.translated(0, -sy))):
                     continue
                 if not self._animator.reduce_motion and (
                     row == self._hover_row or self._animator.has_hover_progress(row)
@@ -786,12 +801,15 @@ class FileListGridWidget(QWidget):
             lift_dy = -5
             for row in visible:
                 rect = self._layout.rect_at(row)
-                if rect is None or not update_rect.intersects(rect.translated(0, -sy)):
+                if rect is None or (not update_is_full and not update_rect.intersects(rect.translated(0, -sy))):
                     continue
                 vp = rect.translated(0, -sy)
                 op = self._animator.thumbnail_opacity(row)
                 tex = self._cache.texture_for(row)
                 draw_rect = vp
+                lifted_row = not self._animator.reduce_motion and (
+                    row == self._hover_row or self._animator.has_hover_progress(row)
+                )
                 if row == self._hover_row and not self._animator.reduce_motion and tex is not None:
                     sw = int(vp.width() * lift_scale)
                     sh = int(vp.height() * lift_scale)
@@ -822,6 +840,8 @@ class FileListGridWidget(QWidget):
                             p.restore()
                         else:
                             p.drawPixmap(target, tex)
+                if tex is not None or not lifted_row:
+                    self._draw_subtitle_overlay(p, row, draw_rect, op)
                 self._draw_interaction_overlay(p, row, draw_rect, op)
 
         # ── Rubber band overlay ──
@@ -1053,7 +1073,6 @@ class FileListGridWidget(QWidget):
         is_dir = self._model.data(self._model.index(row, 0), FileSystemModel.IS_DIR_ROLE)
         pixmap = self._model.data(self._model.index(row, 0), FileSystemModel.RAW_PIXMAP_ROLE)
         name = self._model.data(self._model.index(row, 0), Qt.ItemDataRole.DisplayRole)
-        subtitle = self._model.data(self._model.index(row, 0), FileSystemModel.SUBTITLE_ROLE)
         card = self._card_rect_in_item(QRect(0, 0, item_rect.width(), item_rect.height()))
 
         # Interaction states are painted later so mouse movement and selection
@@ -1092,15 +1111,9 @@ class FileListGridWidget(QWidget):
             name or "", Qt.TextElideMode.ElideRight, name_rect.width())
         tp.drawText(name_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, elided)
 
-        if subtitle:
-            tp.setFont(self._font_sub)
-            tp.setPen(self._clr_muted)
-            sub_y = name_rect.bottom() + _TEXT_LINE_GAP
-            sub_rect = QRect(text_left, sub_y, text_width, self._fm_sub.height())
-            elided_sub = self._fm_sub.elidedText(
-                subtitle or "", Qt.TextElideMode.ElideRight, sub_rect.width())
-            tp.drawText(sub_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
-                        elided_sub)
+        # The subtitle is deliberately NOT baked into the texture: directory
+        # sizes arrive asynchronously and are painted as a separate overlay
+        # layer, so a subtitle update never invalidates this cached card.
 
         tp.end()
 
@@ -1113,6 +1126,47 @@ class FileListGridWidget(QWidget):
         painter.setPen(QPen(self._clr_border, 1))
         painter.setBrush(QColor(self._clr_heading.red(), self._clr_heading.green(), self._clr_heading.blue(), 6))
         painter.drawRoundedRect(card, _CORNER_R, _CORNER_R)
+        painter.restore()
+
+    def _subtitle_rect_for(self, item_rect: QRect) -> QRect:
+        """Return the subtitle band inside ``item_rect`` (matches GridDelegate)."""
+        card = self._card_rect_in_item(QRect(0, 0, item_rect.width(), item_rect.height()))
+        preview = QRect(
+            card.x() + _PREVIEW_MARGIN,
+            card.y() + _PREVIEW_MARGIN,
+            self._thumb_size,
+            self._thumb_size,
+        )
+        name_y = preview.bottom() + _TEXT_TOP_GAP
+        sub_y = name_y + self._fm_name.height() + _TEXT_LINE_GAP
+        return QRect(preview.left(), sub_y, max(1, preview.width()), self._fm_sub.height())
+
+    def _draw_subtitle_overlay(
+        self, painter: QPainter, row: int, item_rect: QRect, opacity: float
+    ) -> None:
+        """Paint the current subtitle (async directory size) as its own layer."""
+        if self._model is None:
+            return
+        subtitle = self._model.data(
+            self._model.index(row, 0), FileSystemModel.SUBTITLE_ROLE
+        )
+        if not subtitle:
+            return
+        rect = self._subtitle_rect_for(
+            QRect(0, 0, item_rect.width(), item_rect.height())
+        )
+        rect.translate(item_rect.topLeft())
+        painter.save()
+        painter.setFont(self._font_sub)
+        painter.setPen(self._clr_muted)
+        painter.setOpacity(opacity)
+        painter.drawText(
+            rect,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+            self._fm_sub.elidedText(
+                subtitle, Qt.TextElideMode.ElideRight, rect.width()
+            ),
+        )
         painter.restore()
 
     def _render_zoom_fallback(self, row: int, rect: QRect) -> QPixmap | None:

@@ -7,6 +7,7 @@ from unittest.mock import Mock
 from PySide6.QtWidgets import QApplication, QTreeWidgetItem
 
 from AssetsManager.i18n import tr
+from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.panels import sidebar as sidebar_module
 from AssetsManager.panels.sidebar import SidebarPanel
 
@@ -176,5 +177,159 @@ def test_sidebar_restores_section_visibility_preferences(monkeypatch):
         assert panel._search.isHidden()
     finally:
         panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_sidebar_save_restore_state_round_trips_layout_preferences(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    (tmp_path / "models").mkdir()
+    panel = SidebarPanel()
+    try:
+        panel._library_root = str(tmp_path)
+        panel._depth = 4
+        panel._branch_depths = {"models": 3}
+        panel._show_favs = False
+        panel._show_recs = True
+        panel._show_filter = False
+        panel._fav_expanded = True
+        panel._rec_expanded = False
+
+        snapshot = panel.save_state()
+        assert snapshot == {
+            "depth": 4,
+            "branch_depths": {"models": 3},
+            "show_favs": False,
+            "show_recs": True,
+            "show_filter": False,
+            "fav_expanded": True,
+            "rec_expanded": False,
+        }
+
+        # Mutate away from the snapshot, then restore it.
+        panel._depth = 1
+        panel._branch_depths = {}
+        panel._show_favs = True
+        panel._show_recs = False
+        panel._show_filter = True
+        panel._fav_expanded = None
+        panel._rec_expanded = None
+        emitted = []
+        def _on_depth_changed(depth, branches):
+            emitted.append((depth, branches))
+
+        bus().sidebar_depth_changed.connect(_on_depth_changed)
+        try:
+            panel.restore_state(snapshot)
+        finally:
+            bus().sidebar_depth_changed.disconnect(_on_depth_changed)
+
+        assert panel._depth == 4
+        assert panel._branch_depths == {"models": 3}
+        assert panel._show_favs is False
+        assert panel._show_recs is True
+        assert panel._show_filter is False
+        assert panel._fav_expanded is True
+        assert panel._rec_expanded is False
+        assert panel._search.isHidden()
+        assert emitted == [(4, {"models": 3})]
+        vtypes = [
+            panel._get_vtype(panel._tree.topLevelItem(i))
+            for i in range(panel._tree.topLevelItemCount())
+        ]
+        assert sidebar_module.VTYPE_FAV_HEADER not in vtypes
+        assert sidebar_module.VTYPE_REC_HEADER in vtypes
+        assert sidebar_module.VTYPE_FS in vtypes
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_sidebar_restore_state_ignores_malformed_preferences(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    panel = SidebarPanel()
+    try:
+        panel._library_root = str(tmp_path)
+        panel._depth = 2
+        panel._show_favs = True
+        panel._show_filter = True
+
+        panel.restore_state({
+            "depth": "deep",
+            "branch_depths": [("models", 9)],
+            "show_favs": "yes",
+            "show_recs": 1,
+            "show_filter": None,
+            "fav_expanded": "maybe",
+            "rec_expanded": 0,
+        })
+
+        assert panel._depth == 2
+        assert panel._branch_depths == {}
+        assert panel._show_favs is True
+        assert panel._show_recs is True
+        assert panel._show_filter is True
+        assert panel._fav_expanded is None
+        assert panel._rec_expanded is None
+        assert not panel._search.isHidden()
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_sidebar_clone_shares_data_sources_and_layout_state(monkeypatch, tmp_path):
+    app = QApplication.instance() or QApplication([])
+
+    class _Store:
+        def __init__(self):
+            self.list_all_calls = 0
+
+        def list_all(self):
+            self.list_all_calls += 1
+            return []
+
+    favs = _Store()
+    recents = _Store()
+    services = object()
+    panel = SidebarPanel()
+    cloned = None
+    try:
+        panel._favs = favs
+        panel._recents = recents
+        panel._scoped_services = services
+        panel._library_root = str(tmp_path)
+        panel._depth = 3
+        panel._branch_depths = {"models": 4}
+        panel._show_filter = False
+        panel._fav_expanded = True
+
+        populated = []
+        monkeypatch.setattr(
+            SidebarPanel,
+            "_populate",
+            lambda self: populated.append(self),
+        )
+        cloned = panel.clone()
+
+        assert populated == [cloned]
+        assert cloned is not panel
+        assert cloned._favs is favs
+        assert cloned._recents is recents
+        assert cloned._scoped_services is services
+        assert cloned._library_root == str(tmp_path)
+        assert cloned._depth == 3
+        assert cloned._branch_depths == {"models": 4}
+        assert cloned._show_filter is False
+        assert cloned._fav_expanded is True
+        assert cloned._search.isHidden()
+        assert favs.list_all_calls == 0
+        assert recents.list_all_calls == 0
+    finally:
+        panel.shutdown()
+        if cloned is not None:
+            cloned.shutdown()
+            cloned.deleteLater()
         panel.deleteLater()
         app.processEvents()

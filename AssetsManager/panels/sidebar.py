@@ -92,12 +92,18 @@ class SidebarPanel(PanelContent):
     ROOTS = [str(Path.home()), str(Path.home() / "Documents"),
              str(Path.home() / "Downloads"), str(Path.home() / "Pictures")]
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, _shared_sources: dict | None = None, _populate: bool = True):
         super().__init__(parent)
-        self._favs = SidebarFavorites()
-        self._recents = SidebarRecentFolders()
-        self._library_root: str | None = None
-        self._scoped_services = None
+        # ``clone`` passes shared favorites/recent stores so the second panel
+        # reuses the already-loaded data sources instead of re-reading JSON.
+        shared = _shared_sources or {}
+        self._favs = shared.get("favs") or SidebarFavorites()
+        self._recents = shared.get("recents") or SidebarRecentFolders()
+        library_root = shared.get("library_root")
+        self._library_root: str | None = (
+            library_root if isinstance(library_root, str) and library_root else None
+        )
+        self._scoped_services = shared.get("services")
         self._search_pending = ""
         self._search_timer = None
         self._match_count = 0
@@ -217,7 +223,8 @@ class SidebarPanel(PanelContent):
         self._rec_expanded: bool | None = None
         self._state = {"depth": 2, "expanded": set()}
         self._expand_frontier: list[QTreeWidgetItem] = []
-        self._populate()
+        if _populate:
+            self._populate()
         self._connect_bus(bus().refresh_requested, self._populate)
         self._connect_bus(bus().theme_changed, self._on_theme_changed)
         self._connect_bus(bus().language_changed, self._on_language_changed)
@@ -1167,24 +1174,62 @@ class SidebarPanel(PanelContent):
     # ── Clone / State ───────────────────────────────────────────────
 
     def clone(self):
-        from copy import deepcopy
-        new = SidebarPanel()
-        new._state = deepcopy(self._state)
-        new._depth = self._depth
-        new._branch_depths = dict(self._branch_depths)
-        new._show_favs = self._show_favs
-        new._show_recs = self._show_recs
-        new._show_filter = self._show_filter
-        new._fav_expanded = self._fav_expanded
-        new._rec_expanded = self._rec_expanded
-        if self._library_root:
-            new._library_root = self._library_root
-            new._favs.set_library_root(self._library_root)
-            new._recents.set_library_root(self._library_root)
+        # Share the loaded favorites/recent stores and scoped services, and
+        # defer the first tree population until the copied preferences are in
+        # place — the clone never re-reads store JSON nor scans the default
+        # ROOTS before adopting the source panel's library root.
+        new = SidebarPanel(
+            _shared_sources={
+                "favs": self._favs,
+                "recents": self._recents,
+                "services": self._scoped_services,
+                "library_root": self._library_root,
+            },
+            _populate=False,
+        )
+        new.restore_state(self.save_state())
         return new
 
     def save_state(self) -> dict:
-        return self._state
+        """Snapshot the sidebar layout preferences for dock save/restore."""
+        return {
+            "depth": self._depth,
+            "branch_depths": dict(self._branch_depths),
+            "show_favs": self._show_favs,
+            "show_recs": self._show_recs,
+            "show_filter": self._show_filter,
+            "fav_expanded": self._fav_expanded,
+            "rec_expanded": self._rec_expanded,
+        }
 
     def restore_state(self, state: dict):
+        """Apply a saved layout snapshot and rebuild the tree to match."""
+        if not isinstance(state, dict):
+            return
         self._state = state
+        depth = state.get("depth")
+        if isinstance(depth, int) and not isinstance(depth, bool):
+            self._depth = max(1, min(5, depth))
+        branches = state.get("branch_depths")
+        if isinstance(branches, dict):
+            self._branch_depths = {
+                str(name): int(value)
+                for name, value in branches.items()
+                if (
+                    isinstance(name, str)
+                    and isinstance(value, int)
+                    and not isinstance(value, bool)
+                    and 1 <= value <= 5
+                )
+            }
+        for key in ("show_favs", "show_recs", "show_filter"):
+            value = state.get(key)
+            if isinstance(value, bool):
+                setattr(self, f"_{key}", value)
+        for key in ("fav_expanded", "rec_expanded"):
+            value = state.get(key)
+            if isinstance(value, bool) or value is None:
+                setattr(self, f"_{key}", value)
+        self._search.setVisible(self._show_filter)
+        self._populate()
+        bus().sidebar_depth_changed.emit(self._depth, dict(self._branch_depths))
