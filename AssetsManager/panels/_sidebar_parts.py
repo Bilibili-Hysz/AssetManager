@@ -7,8 +7,10 @@ needs it; the panel imports it back so the existing name keeps resolving.
 """
 import os
 
-from PySide6.QtCore import Qt, Signal, QRunnable, QObject
+from PySide6.QtCore import Qt, Signal, QObject
 from PySide6.QtWidgets import QTreeWidgetItem
+
+from AssetsManager.core.workers import CancellationToken, CancellableRunnable
 
 VTYPE_FS = "fs"
 
@@ -30,9 +32,10 @@ class _PreloadSignals(QObject):
     done = Signal(str, object, int, object)
 
 
-class _PreloadTask(QRunnable):
-    def __init__(self, root_paths, text, gen, root, max_depth=2):
-        super().__init__()
+class _PreloadTask(CancellableRunnable):
+    def __init__(self, root_paths, text, gen, root, max_depth=2,
+                 cancel_token: CancellationToken | None = None):
+        super().__init__(generation=gen, cancel_token=cancel_token)
         # Auto-delete: the pool reclaims the C++ runnable once run() returns,
         # so a task replaced by a newer search (self._preload_task = None)
         # cannot leak. done is emitted inside run() and the panel keeps the
@@ -49,18 +52,25 @@ class _PreloadTask(QRunnable):
     def run(self):
         results = []
         for root_path in self._root_paths:
+            if self.is_cancelled():
+                break
             self._scan_recursive(root_path, 0, results)
-        self.signals.done.emit(self._text, results, self._gen, self._root)
+        if not self.is_cancelled():
+            self.signals.done.emit(self._text, results, self._gen, self._root)
 
     def _scan_recursive(self, path, depth, results):
-        if depth >= self._max_depth:
+        if self.is_cancelled() or depth >= self._max_depth:
             return
         try:
             entries = sorted(os.scandir(path),
                              key=lambda e: (not e.is_dir(), e.name.lower()))
+            if self.is_cancelled():
+                return
             results.append((path, [(e.name, e.path, e.is_dir()) for e in entries
                                    if not e.name.startswith(".")]))
             for entry in entries:
+                if self.is_cancelled():
+                    return
                 if entry.is_dir() and not entry.name.startswith("."):
                     self._scan_recursive(entry.path, depth + 1, results)
         except OSError:

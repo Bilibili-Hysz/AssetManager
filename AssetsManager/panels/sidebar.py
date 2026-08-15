@@ -12,7 +12,7 @@ import logging
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QThreadPool, QTimer, QSize
+from PySide6.QtCore import Qt, Signal, QTimer, QSize
 from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QLineEdit, QPushButton, QHBoxLayout,
     QVBoxLayout, QMenu, QInputDialog, QApplication, QAbstractItemView,
@@ -26,6 +26,7 @@ from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core import themes, icons
+from AssetsManager.core.workers import BoundedPool, CancellationToken
 from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager.dialogs.sidebar_favorites import SidebarFavorites
 from AssetsManager.dialogs.sidebar_recent import SidebarRecentFolders
@@ -108,6 +109,8 @@ class SidebarPanel(PanelContent):
         self._search_timer = None
         self._match_count = 0
         self._preload_task: _PreloadTask | None = None
+        self._preload_pool = BoundedPool(2)
+        self._preload_token = CancellationToken()
         from AssetsManager.controllers.sidebar_controller import SidebarController
         self._controller = SidebarController()
 
@@ -257,6 +260,10 @@ class SidebarPanel(PanelContent):
         self._tree_generation += 1
         self._controller.next_search_gen()
         self._preload_task = None
+        self._preload_token.cancel()
+        self._preload_token = CancellationToken()
+        self._preload_pool.cancel_all()
+        self._preload_pool.drain(3_000)
         if self._search_timer is not None:
             self._search_timer.stop()
 
@@ -697,6 +704,8 @@ class SidebarPanel(PanelContent):
         # Bump the search generation even when clearing so in-flight preload
         # results from a previous query are invalidated.
         gen = self._controller.next_search_gen()
+        self._preload_token.cancel()
+        self._preload_token = CancellationToken()
         self._preload_task = None
         if text:
             roots = [self._library_root] if self._library_root else self.ROOTS
@@ -707,11 +716,14 @@ class SidebarPanel(PanelContent):
             configured_depth = max(
                 [self._depth, *self._branch_depths.values()], default=2)
             max_depth = max(2, min(configured_depth, 5))
-            task = _PreloadTask(roots, text, gen, self._library_root, max_depth=max_depth)
+            task = _PreloadTask(
+                roots, text, gen, self._library_root,
+                max_depth=max_depth, cancel_token=self._preload_token,
+            )
             # Bound QObject slot: queued to the UI thread when the worker emits.
             task.signals.done.connect(self._on_preload_done)
             self._preload_task = task
-            QThreadPool.globalInstance().start(task)
+            self._preload_pool.start(task)
         else:
             self._match_count = 0
             self._search.setToolTip("")

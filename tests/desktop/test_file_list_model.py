@@ -128,12 +128,18 @@ class TestFileSystemModel:
             def waitForDone(self):
                 pass
 
+            def cancel_all(self):
+                pass
+
+            def drain(self, _timeout_ms=5000):
+                pass
+
         library = tmp_path / "library"
         folder = library / "folder"
         folder.mkdir(parents=True)
         (folder / "asset.bin").write_bytes(b"abc")
         pool = CapturingPool()
-        monkeypatch.setattr("AssetsManager.panels.file_list._model.QThreadPool", lambda: pool)
+        monkeypatch.setattr("AssetsManager.panels.file_list._model.BoundedPool", lambda max_thread_count=1: pool)
         metadata_service = Mock()
         metadata_service.get_dir_size.return_value = (0, False)
         model = FileSystemModel()
@@ -162,6 +168,12 @@ class TestFileSystemModel:
             def waitForDone(self):
                 pass
 
+            def cancel_all(self):
+                pass
+
+            def drain(self, _timeout_ms=5000):
+                pass
+
         library_a = tmp_path / "library-a"
         library_b = tmp_path / "library-b"
         folder_a = library_a / "folder"
@@ -170,7 +182,7 @@ class TestFileSystemModel:
         folder_b.mkdir(parents=True)
         (folder_a / "asset.bin").write_bytes(b"abc")
         pool = CapturingPool()
-        monkeypatch.setattr("AssetsManager.panels.file_list._model.QThreadPool", lambda: pool)
+        monkeypatch.setattr("AssetsManager.panels.file_list._model.BoundedPool", lambda max_thread_count=1: pool)
         bootstrap = ApplicationBootstrap()
         session_a = bootstrap.library_service.open_session(library_a)
         session_b = bootstrap.library_service.open_session(library_b)
@@ -228,6 +240,12 @@ class TestFileSystemModel:
                 self.waited = False
 
             def waitForDone(self):
+                self.waited = True
+
+            def cancel_all(self):
+                pass
+
+            def drain(self, _timeout_ms=5000):
                 self.waited = True
 
         pool = CapturingPool()

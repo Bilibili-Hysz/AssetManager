@@ -109,6 +109,8 @@
 - `prepare_library_switch/shutdown` 全部有界 drain；`WindowLifecycleCoordinator` 增加任务注册表。
 - 验收：大库浏览后立即切库主线程不超阈值（新增桌面回归测试）。
 
+**状态：已完成** —— 新增 `core/workers.py`（`CancellationToken`/`CancellableRunnable`/`BoundedPool`）；扫描、目录大小、侧栏预载、文件信息、链接扫描、导入任务全部携带代际取消令牌并迁移到私有有界池；`prepare_library_switch`/`shutdown` 采用 3s 有界 drain；`WindowLifecycleCoordinator` 负责取消并 drain 导入任务；`tests/unit/test_workers.py` 锁定取消与切库时限。
+
 **批次 D2 — PanelState 统一 API**
 
 - 定义 `PanelState(key, save(ctx)/restore(ctx))`；Info/Sidebar/FileList/TabContainer 统一委托。

@@ -845,7 +845,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
     def _import_assets(self):
         """Import files/folders into the current library via a background task."""
-        from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
+        from PySide6.QtCore import QObject, Signal
         from PySide6.QtWidgets import QFileDialog, QMessageBox, QProgressDialog
 
         session = getattr(self, "_library_session", None)
@@ -874,8 +874,12 @@ class MainWindow(LanSharingMixin, QMainWindow):
         if not destination:
             return
 
-        from AssetsManager.application.import_service import ImportService
+        from AssetsManager.application.import_service import ImportCancelled, ImportService
+        from AssetsManager.core.workers import BoundedPool, CancellationToken, CancellableRunnable
         service = ImportService(session, file_operations)
+        import_token = CancellationToken()
+        self._import_token = import_token
+        self._import_pool = BoundedPool(1)
 
         # Cancellation semantics: each file copy is non-interruptible
         # (shutil.copy2), so the Cancel button stops scheduling new copies
@@ -884,9 +888,9 @@ class MainWindow(LanSharingMixin, QMainWindow):
             finished = Signal(object)
             progress = Signal(int, int)
 
-        class _ImportTask(QRunnable):
+        class _ImportTask(CancellableRunnable):
             def __init__(self, done):
-                super().__init__()
+                super().__init__(cancel_token=import_token)
                 self._done = done
 
             def run(self):
@@ -895,7 +899,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
                         sources,
                         destination,
                         progress=self._done.progress.emit,
+                        should_cancel=import_token.is_cancelled,
                     )
+                except ImportCancelled:
+                    self._done.finished.emit(("cancelled", None))
+                    return
                 except Exception as exc:
                     self._done.finished.emit(("error", exc))
                     return
@@ -926,6 +934,8 @@ class MainWindow(LanSharingMixin, QMainWindow):
         def _on_finished(payload):
             progress_dialog.close()
             status, value = payload
+            if status == "cancelled":
+                return
             if status == "error":
                 QMessageBox.critical(
                     self, tr("import.title"), tr("import.failed").format(error=value)
@@ -945,8 +955,9 @@ class MainWindow(LanSharingMixin, QMainWindow):
         done.finished.connect(_on_finished)
         done.progress.connect(_on_progress)
         self._import_task = task
-        QThreadPool.globalInstance().start(task)
+        self._import_pool.start(task)
         progress_dialog.exec()
+        self._import_task = None
 
     def _on_ui_scale_changed(self, scale: float):
         """Re-apply stylesheet and update font when UI scale changes."""

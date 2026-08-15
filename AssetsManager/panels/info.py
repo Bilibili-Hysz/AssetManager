@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import cast
 
-from PySide6.QtCore import Qt, Signal, QSize, QPropertyAnimation, QEasingCurve, QRunnable, QThreadPool, QObject, QTimer
+from PySide6.QtCore import Qt, Signal, QSize, QPropertyAnimation, QEasingCurve, QObject, QTimer
 from PySide6.QtWidgets import (
     QLabel, QPushButton, QHBoxLayout, QVBoxLayout, QTextEdit,
     QGroupBox, QWidget, QInputDialog, QSplitter, QScrollArea, QFrame,
@@ -24,6 +24,7 @@ from AssetsManager.core.constants import IMAGE_EXTS
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+from AssetsManager.core.workers import BoundedPool, CancellableRunnable, CancellationToken
 from AssetsManager.core import themes, icons
 from AssetsManager.core.color_utils import alpha, darken, lighten
 from AssetsManager.widgets.stylekit import StyleKit
@@ -78,6 +79,11 @@ class InfoPanel(PanelContent):
         self._link_scan_task = None
         self._async_generation = 0
         self._async_request: _AsyncRequest | None = None
+        self._info_pool = BoundedPool(2)
+        self._info_token = CancellationToken()
+        self._link_token = CancellationToken()
+        self._size_pool = BoundedPool(1)
+        self._size_token = CancellationToken()
         self._reduce_motion = self._detect_reduce_motion()
 
         # ── Splitter ──────────────────────────────────────────
@@ -928,6 +934,16 @@ class InfoPanel(PanelContent):
         self._async_request = None
         self._pending_task = None
         self._size_tasks.clear()
+        self._info_token.cancel()
+        self._info_token = CancellationToken()
+        self._link_token.cancel()
+        self._link_token = CancellationToken()
+        self._size_token.cancel()
+        self._size_token = CancellationToken()
+        self._info_pool.cancel_all()
+        self._info_pool.drain(3_000)
+        self._size_pool.cancel_all()
+        self._size_pool.drain(3_000)
 
     def _is_current_async_request(self, request: _AsyncRequest) -> bool:
         scoped = self._scoped_services
@@ -942,7 +958,7 @@ class InfoPanel(PanelContent):
 
     def _start_async_dir_size(self, request: _AsyncRequest):
         """Compute directory size using DB cache (ProjectData), fall back to scan."""
-        from PySide6.QtCore import QThreadPool, Signal, QObject
+        from PySide6.QtCore import Signal, QObject
         class _SizeSignals(QObject):
             done = Signal(object, object)
         signals = _SizeSignals()
@@ -955,9 +971,10 @@ class InfoPanel(PanelContent):
         # no _size_tasks attribute).
         size_tasks = self._size_tasks
         metadata_port = self._metadata_port
-        class _SizeTask(QRunnable):
+        cancel_token = self._size_token
+        class _SizeTask(CancellableRunnable):
             def __init__(self):
-                super().__init__()
+                super().__init__(cancel_token=cancel_token)
                 # done is emitted inside run(); the panel keeps the signals
                 # object alive until _on_async_dir_size_done consumes it.
                 self.setAutoDelete(True)
@@ -966,12 +983,14 @@ class InfoPanel(PanelContent):
                 # Bail out early when the request was invalidated while this
                 # task was queued (the panel removed it from size_tasks), so
                 # rapid folder switching does not pile up wasted scans.
-                if request not in size_tasks:
+                if self.is_cancelled() or request not in size_tasks:
                     return
                 sz = 0
                 try:
                     if scoped is not None and session and metadata_port is not None:
                         with session.operation():
+                            if self.is_cancelled():
+                                return
                             sz, _ = metadata_port.get_dir_size(
                                 scoped.session.root, dir_path
                             )
@@ -979,12 +998,12 @@ class InfoPanel(PanelContent):
                         return
                 except Exception:
                     sz = 0
-                signals.done.emit(request, sz)
+                if not self.is_cancelled():
+                    signals.done.emit(request, sz)
         # Keep the signals object (and thus the queued delivery) alive until
         # the result is consumed on the UI thread.
         self._size_tasks[request] = signals
-        pool = QThreadPool.globalInstance()
-        pool.start(_SizeTask())
+        self._size_pool.start(_SizeTask())
 
     def _on_async_dir_size_done(self, request: _AsyncRequest, size: int):
         self._size_tasks.pop(request, None)
@@ -1285,10 +1304,14 @@ class InfoPanel(PanelContent):
     def _manual_scan_links(self):
         if not self._current_path or not os.path.isdir(self._current_path) or not self._controller:
             return
-        task = _LinkScanTask(self._controller, self._current_path)
+        self._link_token.cancel()
+        self._link_token = CancellationToken()
+        task = _LinkScanTask(
+            self._controller, self._current_path, cancel_token=self._link_token
+        )
         task.signals.done.connect(self._on_manual_scan_done)
         self._link_scan_task = task
-        QThreadPool.globalInstance().start(task)
+        self._info_pool.start(task)
 
     def _on_manual_scan_done(self, discovered, path):
         """Apply discovered URLs on the UI thread (queued delivery)."""
@@ -1415,12 +1438,14 @@ class InfoPanel(PanelContent):
             sidebar_depth=self._sidebar_depth,
             branch_depths=self._branch_depths,
             classify_cache=self._classify_cache,
+            generation=request.generation,
+            cancel_token=self._info_token,
         )
         task.signals.result_ready.connect(self._on_file_info_ready)
         task.signals.preview_ready.connect(self._on_preview_ready)
         task.signals.urls_discovered.connect(self._on_task_urls_discovered)
         self._pending_task = task
-        QThreadPool.globalInstance().start(task)
+        self._info_pool.start(task)
 
     def _on_task_urls_discovered(self, path, discovered):
         """Persist urls discovered by the worker on the UI thread.
@@ -1564,6 +1589,7 @@ class InfoPanel(PanelContent):
         self.flush_pending_changes()
         if self._notes_timer:
             self._notes_timer.stop()
+        self._invalidate_async_requests()
         # Do not retain a controller/repository backed by the old session while
         # the library is closing or a replacement session is being assembled.
         self._controller = None

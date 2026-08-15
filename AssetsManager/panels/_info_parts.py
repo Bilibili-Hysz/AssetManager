@@ -10,12 +10,13 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QRect, QSize, QPoint, QMimeData, QUrl, QRunnable, QObject
+from PySide6.QtCore import Qt, Signal, QRect, QSize, QPoint, QMimeData, QUrl, QObject
 from PySide6.QtWidgets import QLabel, QLayout, QLayoutItem
 from PySide6.QtGui import QDrag
 
 from AssetsManager.application.context import LibrarySession
 from AssetsManager.core.constants import IMAGE_EXTS
+from AssetsManager.core.workers import CancellationToken, CancellableRunnable
 
 from AssetsManager import i18n
 
@@ -159,12 +160,13 @@ class _FileInfoSignals(QObject):
     urls_discovered = Signal(object, object)  # scanned path, list of urls
 
 
-class _FileInfoTask(QRunnable):
+class _FileInfoTask(CancellableRunnable):
     """Background task for heavy file-info operations."""
 
     def __init__(self, request, controller, library_root,
-                 sidebar_depth, branch_depths, classify_cache):
-        super().__init__()
+                 sidebar_depth, branch_depths, classify_cache,
+                 generation: int = 0, cancel_token: CancellationToken | None = None):
+        super().__init__(generation=generation, cancel_token=cancel_token)
         self._request = request
         self._path = request.path
         self._controller = controller
@@ -192,11 +194,15 @@ class _FileInfoTask(QRunnable):
         return None
 
     def run(self):
+        if self.is_cancelled():
+            return
         try:
             with self._session.operation():
-                self._run_scoped()
+                if not self.is_cancelled():
+                    self._run_scoped()
         except Exception:
-            _log.exception("FileInfoTask failed for %s", self._path)
+            if not self.is_cancelled():
+                _log.exception("FileInfoTask failed for %s", self._path)
 
     def _run_scoped(self):
         from AssetsManager.controllers.info_controller import InfoController
@@ -205,16 +211,18 @@ class _FileInfoTask(QRunnable):
         is_project = is_dir and InfoController.is_deepest_folder(
             path, self._library_root, self._sidebar_depth, self._branch_depths)
 
-        if is_project and self._controller:
+        if is_project and self._controller and not self.is_cancelled():
             # Discovery is read-only and safe in the worker; persisting the
             # urls would publish AssetUrlsChanged from this thread, so the
             # writes are deferred to the UI thread via urls_discovered.
             existing = self._controller.get_urls(path)
             if not existing:
                 discovered = self._controller.discover_urls_in_dir(path)
-                if discovered:
+                if discovered and not self.is_cancelled():
                     self.signals.urls_discovered.emit(path, discovered)
 
+        if self.is_cancelled():
+            return
         dir_summary = self._controller.classify_dir(path, classify_cache=self._classify_cache) if is_dir else None
 
         if is_dir:
@@ -248,21 +256,24 @@ class _FileInfoTask(QRunnable):
             is_project=is_project,
         )
 
+        if self.is_cancelled():
+            return
         self.signals.result_ready.emit(self._request, file_info)
 
         preview = self._load_preview(path, is_dir)
-        self.signals.preview_ready.emit(self._request, preview)
+        if not self.is_cancelled():
+            self.signals.preview_ready.emit(self._request, preview)
 
 
 class _LinkScanSignals(QObject):
     done = Signal(object, object)  # discovered urls, scanned path
 
 
-class _LinkScanTask(QRunnable):
+class _LinkScanTask(CancellableRunnable):
     """Background URL discovery for the manual scan action."""
 
-    def __init__(self, controller, path):
-        super().__init__()
+    def __init__(self, controller, path, cancel_token: CancellationToken | None = None):
+        super().__init__(cancel_token=cancel_token)
         # Auto-delete: the pool reclaims the C++ object after run(); the
         # panel's Python reference (self._link_scan_task) keeps the signals
         # object alive until the queued delivery is consumed on the UI
@@ -273,9 +284,12 @@ class _LinkScanTask(QRunnable):
         self.signals = _LinkScanSignals()
 
     def run(self):
+        if self.is_cancelled():
+            return
         try:
             discovered = self._controller.discover_urls_in_dir(self._path)
         except Exception:
             _log.exception("Manual URL scan failed for %s", self._path)
             discovered = []
-        self.signals.done.emit(discovered, self._path)
+        if not self.is_cancelled():
+            self.signals.done.emit(discovered, self._path)

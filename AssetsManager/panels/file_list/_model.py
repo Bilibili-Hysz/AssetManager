@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import cast
 import weakref
-from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QObject, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QObject, QRunnable, Signal
 from PySide6.QtGui import QIcon
 from shiboken6 import Shiboken
 from AssetsManager.application.asset_filters import (
@@ -21,17 +21,17 @@ from AssetsManager.application.asset_filters import (
 )
 from AssetsManager.application.context import LibrarySession
 from AssetsManager.core.cache import LRUCache
+from AssetsManager.core.workers import BoundedPool, CancellationToken, CancellableRunnable
 
 _log = logging.getLogger(__name__)
 
 class _ScanSignals(QObject):
     scan_done = Signal(list, dict, object)  # (entries, stat_cache, error)
 
-class _ScanTask(QRunnable):
-    def __init__(self, path: str, gen: int):
-        super().__init__()
+class _ScanTask(CancellableRunnable):
+    def __init__(self, path: str, gen: int, cancel_token: CancellationToken):
+        super().__init__(generation=gen, cancel_token=cancel_token)
         self._path = path
-        self._gen = gen
         self.signals = _ScanSignals()
 
     def run(self):
@@ -42,8 +42,12 @@ class _ScanTask(QRunnable):
         entries = []
         stat_cache: dict[str, os.stat_result] = {}
         error: OSError | None = None
+        cancelled = False
         try:
             for entry in os.scandir(self._path):
+                if self.is_cancelled():
+                    cancelled = True
+                    break
                 entries.append(entry)
                 try:
                     stat_cache[entry.path] = entry.stat()
@@ -51,7 +55,8 @@ class _ScanTask(QRunnable):
                     pass
         except OSError as exc:
             error = exc
-        signals.scan_done.emit(entries, stat_cache, error)
+        if not cancelled:
+            signals.scan_done.emit(entries, stat_cache, error)
 
 class FileSystemModel(QAbstractListModel):
     """Model backed by os.scandir. Supports sort, filter, and per-item roles."""
@@ -93,12 +98,15 @@ class FileSystemModel(QAbstractListModel):
         self._lib_root: str = ""
         self._metadata_service = None
         self._session: LibrarySession | None = None
-        self._size_pool: QThreadPool | None = None
+        self._size_pool: BoundedPool | None = None
+        self._scan_pool: BoundedPool = BoundedPool(1)
+        self._scan_token = CancellationToken()
         self._pending_dir_sizes: set[str] = set()
         self._dir_size_queue: deque[str] = deque()
         self._dir_size_active: str | None = None
         self._dir_size_active_generation: int | None = None
         self._dir_size_gen = 0
+        self._dir_size_token = CancellationToken()
         self._scan_gen = 0
         self._preserve_scan_generation: int | None = None
         self._preserve_scan_view_state: tuple | None = None
@@ -197,12 +205,16 @@ class FileSystemModel(QAbstractListModel):
         if active is not None:
             self._pending_dir_sizes.add(active)
         self._dir_size_gen += 1
+        self._dir_size_token.cancel()
+        self._dir_size_token = CancellationToken()
 
     def set_directory(self, path: str, *, preserve_existing: bool = False):
         preserve_existing = bool(preserve_existing and self._dir_path and self._dir_path == path)
         self._dir_path = path
         self._scan_gen += 1
         gen = self._scan_gen
+        self._scan_token.cancel()
+        self._scan_token = CancellationToken()
         self._preserve_scan_generation = gen if preserve_existing else None
         self._preserve_scan_view_state = (
             self._sort_key,
@@ -229,7 +241,7 @@ class FileSystemModel(QAbstractListModel):
                 self._path_index = {}
         self._emit_state()
 
-        task = _ScanTask(path, gen)
+        task = _ScanTask(path, gen, self._scan_token)
         self._active_scan_task = task  # keep strong reference until scan_done delivery
         model_ref = weakref.ref(self)
 
@@ -239,7 +251,7 @@ class FileSystemModel(QAbstractListModel):
                 model._on_scan_done(entries, stats, error, gen)
 
         task.signals.scan_done.connect(complete)
-        QThreadPool.globalInstance().start(task)
+        self._scan_pool.start(task)
 
     @staticmethod
     def _scan_signature(entries: list[os.DirEntry], stat_cache: dict[str, os.stat_result]):
@@ -331,9 +343,18 @@ class FileSystemModel(QAbstractListModel):
 
     def _wait_for_scan(self):
         """Block until the background scan completes. For testing only."""
-        QThreadPool.globalInstance().waitForDone()
+        from PySide6.QtCore import QThreadPool
         from PySide6.QtWidgets import QApplication
         app = QApplication.instance()
+        for _ in range(200):
+            if not self._scan_loading and self._active_scan_task is None:
+                break
+            self._scan_pool.drain(50)
+            if app is not None:
+                app.processEvents()
+        # Tests schedule related background mutations on the global pool;
+        # drain it too so their queued on_done callbacks are observable.
+        QThreadPool.globalInstance().waitForDone(10_000)
         if app is not None:
             app.processEvents()
 
@@ -447,9 +468,7 @@ class FileSystemModel(QAbstractListModel):
                 self._dir_size_queue.append(dir_path)
             return
         if self._size_pool is None:
-            pool = QThreadPool()
-            self._size_pool = pool
-            pool.setMaxThreadCount(1)
+            self._size_pool = BoundedPool(1)
         self._pending_dir_sizes.add(dir_path)
         self._dir_size_queue.append(dir_path)
         self._trim_dir_size_queue()
@@ -506,6 +525,7 @@ class FileSystemModel(QAbstractListModel):
 
     def _submit_dir_size_task(self, dir_path: str) -> None:
         gen = self._dir_size_gen
+        cancel_token = self._dir_size_token
         # All mutable scoped dependencies are captured before the task is queued.
         lib_root = self._lib_root
         session = self._session
@@ -524,30 +544,37 @@ class FileSystemModel(QAbstractListModel):
             # (and its captured session closure) alive until it is released.
             done = Signal(object)
 
-        class _SizeTask(QRunnable):
+        class _SizeTask(CancellableRunnable):
             def __init__(self, done):
-                super().__init__()
+                super().__init__(generation=gen, cancel_token=cancel_token)
                 self._done = done
 
             def run(self):
                 try:
+                    if self.is_cancelled():
+                        abort_task()
+                        return
                     if session is None:
                         if model._is_shutdown:
                             abort_task()
                             return
-                        total = FileSystemModel._cached_dir_size(dir_path, lib_root, metadata_service)
+                        total = FileSystemModel._cached_dir_size(
+                            dir_path, lib_root, metadata_service, cancel_token
+                        )
                     else:
                         # A queued task refuses after close; a running task keeps its
                         # original session alive through cache read, scan, and write.
                         try:
                             with session.operation():
-                                total = FileSystemModel._cached_dir_size(dir_path, lib_root, metadata_service)
+                                total = FileSystemModel._cached_dir_size(
+                                    dir_path, lib_root, metadata_service, cancel_token
+                                )
                         except RuntimeError:
                             # A caller that closes before a queued task starts must not
                             # leak an exception from the Qt worker thread.
                             abort_task()
                             return
-                    if model._is_shutdown:
+                    if self.is_cancelled() or model._is_shutdown:
                         abort_task()
                         return
                     result = FileSystemModel._fmt_size(total) if total > 0 else "Empty"
@@ -562,7 +589,7 @@ class FileSystemModel(QAbstractListModel):
         done.done.connect(self._on_size_task_done)
         self._active_size_task = task  # keep the wrapper alive while the pool runs it
         try:
-            cast(QThreadPool, self._size_pool).start(task)
+            cast(BoundedPool, self._size_pool).start(task)
         except Exception:
             self._active_size_task = None
             self._dir_size_active = None
@@ -576,7 +603,10 @@ class FileSystemModel(QAbstractListModel):
             self._active_size_task = None
 
     @staticmethod
-    def _cached_dir_size(dir_path: str, lib_root: str, metadata_svc=None) -> int:
+    def _cached_dir_size(
+        dir_path: str, lib_root: str, metadata_svc=None,
+        cancel_token: CancellationToken | None = None,
+    ) -> int:
         MAX_BYTES = 10_737_418_240  # 10 GB
         if lib_root:
             try:
@@ -589,7 +619,11 @@ class FileSystemModel(QAbstractListModel):
         byte_total = 0
         try:
             for root, _dirs, files in os.walk(dir_path):
+                if cancel_token is not None and cancel_token.is_cancelled():
+                    break
                 for f in files:
+                    if cancel_token is not None and cancel_token.is_cancelled():
+                        break
                     try:
                         byte_total += os.path.getsize(os.path.join(root, f))
                     except OSError:
@@ -732,17 +766,32 @@ class FileSystemModel(QAbstractListModel):
     def discard_pending_dir_size(self, path: str) -> None:
         self._pending_dir_sizes.discard(path)
 
+    def _drain_worker_pool(self, pool, timeout_ms: int = 3000) -> None:
+        """Bound-drain a pool, tolerating test doubles with the old surface."""
+        cancel_all = getattr(pool, "cancel_all", None)
+        if callable(cancel_all):
+            cancel_all()
+        drain = getattr(pool, "drain", None)
+        if callable(drain):
+            drain(timeout_ms)
+            return
+        wait = getattr(pool, "waitForDone", None)
+        if callable(wait):
+            wait()
+
     def shutdown(self):
-        """Wait for background directory-size tasks before stores are closed."""
+        """Cancel and bound-drain background tasks before stores are closed."""
         self._is_shutdown = True
         self._scan_gen += 1
+        self._scan_token.cancel()
         if self._active_scan_task is not None:
             task = self._active_scan_task
             if Shiboken.isValid(task):
                 task.signals.scan_done.disconnect()
             self._active_scan_task = None
+        self._drain_worker_pool(self._scan_pool)
         if self._size_pool is not None:
-            self._size_pool.waitForDone()
+            self._drain_worker_pool(self._size_pool)
             self._size_pool = None
         self._active_size_task = None
         self._dir_size_active = None
@@ -751,10 +800,12 @@ class FileSystemModel(QAbstractListModel):
         self._pending_dir_sizes.clear()
 
     def prepare_library_switch(self):
-        """Drain session-bound directory-size work before its session closes."""
+        """Cancel and bound-drain directory-size work before its session closes."""
         self._dir_size_gen += 1
+        self._dir_size_token.cancel()
+        self._dir_size_token = CancellationToken()
         if self._size_pool is not None:
-            self._size_pool.waitForDone()
+            self._drain_worker_pool(self._size_pool)
         self._active_size_task = None
         self._dir_size_active = None
         self._dir_size_active_generation = None

@@ -169,7 +169,17 @@ class WindowLifecycleCoordinator:
                 else:
                     lan_stopped = True
 
+        def stop_import() -> None:
+            token = getattr(window, "_import_token", None)
+            if token is not None:
+                token.cancel()
+            pool = getattr(window, "_import_pool", None)
+            if pool is not None:
+                pool.cancel_all()
+                pool.drain(3_000)
+
         run_window_step(stop_lan)
+        run_window_step(stop_import)
 
         # M4: a failed LAN stop must not silently continue the switch while
         # the server is still up — the UI would misreport it as stopped and
@@ -279,7 +289,17 @@ class WindowLifecycleCoordinator:
             if lan_server and lan_server.is_running():
                 lan_server.stop()
 
+        def cleanup_import() -> None:
+            token = getattr(window, "_import_token", None)
+            if token is not None:
+                token.cancel()
+            pool = getattr(window, "_import_pool", None)
+            if pool is not None:
+                pool.cancel_all()
+                pool.drain(3_000)
+
         run_cleanup(cleanup_lan)
+        run_cleanup(cleanup_import)
         for name in ("info", "sidebar", "tag_tree"):
             def cleanup_panel(name=name) -> None:
                 panel = getattr(window, name, None)

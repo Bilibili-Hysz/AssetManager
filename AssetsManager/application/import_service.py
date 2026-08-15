@@ -20,6 +20,11 @@ from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import FileSystemChanged
 
 ProgressCallback = Callable[[int, int], None]
+CancelCheck = Callable[[], bool]
+
+
+class ImportCancelled(Exception):
+    """Raised when an import observes its cancellation check returning True."""
 
 
 @dataclass
@@ -49,7 +54,9 @@ class ImportService:
 
     @classmethod
     def _collect_files(
-        cls, sources: list[str | Path]
+        cls,
+        sources: list[str | Path],
+        should_cancel: CancelCheck | None = None,
     ) -> list[tuple[Path, Path]]:
         """Expand sources into (source, relative-path) pairs, skipping dot entries.
 
@@ -62,6 +69,8 @@ class ImportService:
         def walk_dir(directory: Path, base: Path) -> None:
             with os.scandir(directory) as it:
                 for entry in it:
+                    if should_cancel is not None and should_cancel():
+                        raise ImportCancelled()
                     if entry.name.startswith("."):
                         continue
                     path = Path(entry.path)
@@ -71,6 +80,8 @@ class ImportService:
                         collected.append((path, path.relative_to(base)))
 
         for source in sources:
+            if should_cancel is not None and should_cancel():
+                raise ImportCancelled()
             src = Path(source)
             if src.is_dir():
                 walk_dir(src, src)
@@ -112,12 +123,15 @@ class ImportService:
         destination_dir: str | Path,
         *,
         progress: ProgressCallback | None = None,
+        should_cancel: CancelCheck | None = None,
     ) -> ImportResult:
         """Import *sources* into *destination_dir*.
 
         Raises ValueError when the destination is outside ``session.root``.
         Raises RuntimeError when the session is already closed.  An empty
         *sources* list is a no-op returning ``ImportResult(0, 0, [])``.
+        ``should_cancel`` is consulted between files; when it returns True the
+        import stops with :class:`ImportCancelled` before the batch event.
         """
         if self.session.is_closed:
             raise RuntimeError("Cannot use a closed LibrarySession")
@@ -143,7 +157,7 @@ class ImportService:
             else:
                 external.append(source)
 
-        files = self._collect_files(external)
+        files = self._collect_files(external, should_cancel)
         skipped = len(in_library)
         total = len(files)
 
@@ -155,6 +169,8 @@ class ImportService:
             progress(done, total)
 
         for src, rel in files:
+            if should_cancel is not None and should_cancel():
+                raise ImportCancelled()
             try:
                 self._copy_one(src, rel, destination)
                 copied += 1
@@ -163,6 +179,9 @@ class ImportService:
             done += 1
             if progress is not None:
                 progress(done, total)
+
+        if should_cancel is not None and should_cancel():
+            raise ImportCancelled()
 
         # Refresh the index projection for the populated destination and emit
         # a single batch event, reusing the file-operation service's own

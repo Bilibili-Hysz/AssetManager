@@ -95,16 +95,12 @@ def test_sidebar_search_uses_configured_depth_and_scope_tooltip(monkeypatch):
         captured = {}
 
         class _FakeTask:
-            def __init__(self, roots, text, gen, root, max_depth=2):
+            def __init__(self, roots, text, gen, root, max_depth=2, cancel_token=None):
                 captured["max_depth"] = max_depth
                 self.signals = Mock()
 
         monkeypatch.setattr(sidebar_module, "_PreloadTask", _FakeTask)
-        monkeypatch.setattr(
-            sidebar_module.QThreadPool,
-            "globalInstance",
-            lambda: Mock(start=lambda task: None),
-        )
+        monkeypatch.setattr(panel._preload_pool, "start", lambda task: None)
         panel._search_pending = "hero"
 
         panel._do_search()
