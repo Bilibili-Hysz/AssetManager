@@ -9,13 +9,38 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
+from AssetsManager.core.event_contracts import (
+    DomainEventBase,
+    EventSubscriptionPort,
+)
 from AssetsManager.core.plugins.descriptor import ALL_PERMISSIONS
-from AssetsManager.domain.event_bus import EventSubscription, get_event_bus
-from AssetsManager.domain.events import DomainEvent
 
 _log = logging.getLogger(__name__)
+
+# The core plugin host must not import the domain event bus directly.  The
+# application composition root installs the canonical bus through this seam;
+# tests install an equivalent provider in the shared conftest.
+_EventBusProvider = Callable[[], Any]
+_event_bus_provider: _EventBusProvider | None = None
+
+
+def install_event_bus_provider(provider: _EventBusProvider) -> None:
+    """Install the event bus used by plugin event hooks."""
+    global _event_bus_provider
+    if not callable(provider):
+        raise TypeError("event bus provider must be callable")
+    _event_bus_provider = provider
+
+
+def _event_bus() -> Any:
+    if _event_bus_provider is None:
+        raise RuntimeError(
+            "Plugin event bus provider is not installed; "
+            "ApplicationBootstrap installs the domain event bus."
+        )
+    return _event_bus_provider()
 
 
 @dataclass(frozen=True)
@@ -127,7 +152,7 @@ class PluginHostContext:
         self._search_providers: list[SearchProviderContribution] = []
         self._theme_tokens: list[ThemeTokenContribution] = []
         self._event_hooks: dict[type, list[tuple[Callable, str]]] = {}
-        self._event_subscriptions: list[tuple[str, EventSubscription, dict[str, bool]]] = []
+        self._event_subscriptions: list[tuple[str, EventSubscriptionPort, dict[str, bool]]] = []
         self._registering_plugin_id = ""
         self._event_hooks_lock = threading.Lock()
         self._notifications: list[dict[str, str]] = []
@@ -376,13 +401,13 @@ class PluginHostContext:
         finally:
             self._registering_plugin_id = previous
 
-    def hook(self, event_type: type[DomainEvent], handler: Callable, plugin_id: str = "") -> None:
+    def hook(self, event_type: type[DomainEventBase], handler: Callable, plugin_id: str = "") -> None:
         """Register a handler for a lifecycle event.
 
         The handler runs synchronously in the EventBus publishing thread. It
         must not mutate Qt UI directly; unload closes the host-owned subscription.
         """
-        if not isinstance(event_type, type) or not issubclass(event_type, DomainEvent):
+        if not isinstance(event_type, type) or not issubclass(event_type, DomainEventBase):
             raise TypeError("hook event_type must be a DomainEvent subclass")
         if not callable(handler):
             _log.warning("hook: handler must be callable")
@@ -390,13 +415,13 @@ class PluginHostContext:
         owner = plugin_id or self._registering_plugin_id
         active = {"value": True}
 
-        def dispatch(event: DomainEvent) -> None:
+        def dispatch(event: DomainEventBase) -> None:
             if active["value"]:
                 handler(event)
 
         with self._event_hooks_lock:
             self._event_hooks.setdefault(event_type, []).append((handler, owner))
-            subscription = get_event_bus().subscribe(event_type, dispatch)
+            subscription = _event_bus().subscribe(event_type, dispatch)
             self._event_subscriptions.append((owner, subscription, active))
 
     def file_handlers(self) -> list[FileHandlerContribution]:

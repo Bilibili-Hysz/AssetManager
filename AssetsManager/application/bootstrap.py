@@ -51,8 +51,10 @@ from AssetsManager.core.directory_cache import DirectoryCache
 from AssetsManager.core.performance import PerformanceRecorder
 from AssetsManager.core.path_resolver import RootIdentity, library_data_dir
 from AssetsManager.core.plugins import PluginHostContext
+from AssetsManager.core.plugins.host_context import install_event_bus_provider
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.di import ServiceContainer
+from AssetsManager.domain.event_bus import get_event_bus
 
 _log = logging.getLogger(__name__)
 
@@ -296,6 +298,9 @@ class ApplicationBootstrap:
         # Every other application module resolves settings through the seam.
         self._app_settings = AppSettings.instance()
         install_app_settings_provider(lambda: self._app_settings)
+        # G4: core plugin hooks subscribe through this seam instead of
+        # importing the domain event bus directly.
+        install_event_bus_provider(get_event_bus)
         self._plugin_host: PluginHostContext | None = None
         self._plugin_svc: PluginService | None = None
         self._plugin_load_failures: list[str] = []

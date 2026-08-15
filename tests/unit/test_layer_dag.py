@@ -25,7 +25,7 @@ def test_layer_dag_has_no_undocumented_violations() -> None:
 
 def test_transitional_exception_registry_shrinks() -> None:
     # Every exception must name an owning batch so removal stays trackable.
-    assert check_layers.ALLOWED_EXCEPTIONS
+    assert check_layers.ALLOWED_EXCEPTIONS is not None
     assert all(batch for _source, _imported, batch in check_layers.ALLOWED_EXCEPTIONS)
 
     # G1 promised to remove core -> application/repositories edges.
@@ -43,6 +43,12 @@ def test_transitional_exception_registry_shrinks() -> None:
         batch == "G2"
         for _source, _imported, batch in check_layers.ALLOWED_EXCEPTIONS
     ), "G2 presentation -> LAN exceptions should be gone"
+
+    # G4 promised to remove core -> domain and controller -> panel edges.
+    assert not any(
+        batch == "G4"
+        for _source, _imported, batch in check_layers.ALLOWED_EXCEPTIONS
+    ), "G4 core/domain and controller/panel exceptions should be gone"
 
 
 def test_g2_sharing_presentation_has_no_lan_imports() -> None:

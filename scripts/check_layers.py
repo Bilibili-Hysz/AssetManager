@@ -71,15 +71,11 @@ ALLOWED_EDGES: dict[str, set[str]] = {
 }
 
 # Transitional exceptions: (source module, imported module, owner batch).
-# Batch G1 removed the core -> application/repositories edges; batch G2
-# removed presentation -> LAN via injected desktop ports.  Batch G4 will
-# address core -> domain and controller -> panel edges.
-ALLOWED_EXCEPTIONS: set[tuple[str, str, str]] = {
-    ("AssetsManager.core.constants", "AssetsManager.domain.asset", "G4"),
-    ("AssetsManager.core.plugins.host_context", "AssetsManager.domain.event_bus", "G4"),
-    ("AssetsManager.core.plugins.host_context", "AssetsManager.domain.events", "G4"),
-    ("AssetsManager.controllers.info_controller", "AssetsManager.panels.file_list._common", "G4"),
-}
+# Batch G1 removed core -> application/repositories edges; G2 removed
+# presentation -> LAN via injected desktop ports; G3 removed application
+# settings/tag-library escapes; G4 removed the last core -> domain and
+# controller -> panel edges.  The registry is now empty.
+ALLOWED_EXCEPTIONS: set[tuple[str, str, str]] = set()
 
 TOP_LEVEL_LAYER = "presentation_top"
 

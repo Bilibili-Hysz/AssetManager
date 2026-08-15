@@ -494,7 +494,7 @@ class InfoController:
             # Fall through and rescan the changed directory.
         if len(self._classify_mtimes) >= self._classify_cache_max * 2:
             self._classify_mtimes.clear()
-        from AssetsManager.panels.file_list._common import FILTER_CATEGORIES
+        from AssetsManager.application.asset_filters import FILTER_CATEGORIES
         result = ""
         try:
             counts: dict[str, int] = {}

@@ -6,14 +6,14 @@ without Qt, and can be used for undo/redo event sourcing in the future.
 """
 from __future__ import annotations
 
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+
+from AssetsManager.core.event_contracts import DomainEventBase
 
 
 @dataclass(frozen=True)
-class DomainEvent:
+class DomainEvent(DomainEventBase):
     """Base class for all domain events."""
-    timestamp: float = field(default_factory=time.time)
 
 
 # ── Library events ───────────────────────────────────────────────

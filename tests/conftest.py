@@ -53,11 +53,14 @@ def _application_provider_seams_installed():
     """Install the G3 settings/tag-canonicalizer seams for application tests."""
     from AssetsManager.application.app_settings_provider import install_app_settings_provider
     from AssetsManager.application.tag_canonicalizer import install_tag_canonicalizer
+    from AssetsManager.core.plugins.host_context import install_event_bus_provider
     from AssetsManager.core.settings import AppSettings
     from AssetsManager.core.tag_library import get_library
+    from AssetsManager.domain.event_bus import get_event_bus
 
     install_app_settings_provider(lambda: AppSettings.instance())
     install_tag_canonicalizer(get_library().canonical)
+    install_event_bus_provider(get_event_bus)
     yield
 
 

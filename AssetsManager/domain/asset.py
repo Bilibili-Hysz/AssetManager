@@ -4,12 +4,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from AssetsManager.core.constants import (
+    IMAGE_EXTS,
+    VIDEO_EXTS as VIDEO_EXTS,  # noqa: F401  (re-exported compatibility surface)
+)
 from AssetsManager.domain.errors import PathEscapeError
-
-IMAGE_EXTS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".ico", ".svg"})
-
-# Video container extensions eligible for first-frame thumbnail extraction.
-VIDEO_EXTS: frozenset[str] = frozenset({".mp4", ".mov", ".avi", ".mkv", ".webm", ".wmv"})
 
 
 def category_for_extension(ext: str) -> str:

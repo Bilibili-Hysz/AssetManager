@@ -30,3 +30,18 @@ def test_tag_canonicalizer_rejects_non_callable():
 
     with pytest.raises(TypeError, match="callable"):
         install_tag_canonicalizer(object())  # type: ignore[arg-type]
+
+
+def test_plugin_event_bus_provider_fails_closed_when_uninstalled(monkeypatch):
+    from AssetsManager.core.plugins import host_context
+
+    monkeypatch.setattr(host_context, "_event_bus_provider", None)
+    with pytest.raises(RuntimeError, match="not installed"):
+        host_context._event_bus()
+
+
+def test_plugin_event_bus_provider_rejects_non_callable():
+    from AssetsManager.core.plugins.host_context import install_event_bus_provider
+
+    with pytest.raises(TypeError, match="callable"):
+        install_event_bus_provider(object())  # type: ignore[arg-type]
