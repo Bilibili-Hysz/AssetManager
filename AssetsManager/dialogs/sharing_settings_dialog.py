@@ -201,11 +201,20 @@ class SharingSettingsDialog(TabbedDialog):
 
     def _apply_shell_theme(self):
         t = _t()
+        radius = scaled_px(int(themes.prop("border_radius", "sm")))
+        pad_y = scaled_px(int(themes.prop("spacing", "sm")))
+        pad_x = scaled_px(int(themes.prop("spacing", "md")))
+        hover_bg = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
+        focus_color = t.get("border_focus", t["accent"])
+        pressed_bg = alpha(t["accent"], 0.18)
         nav_style = (
-            f"QFrame {{ background: {t['base']}; border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px; }}"
+            f"QFrame {{ background: {t['base']}; border: 1px solid {t['border_subtle']}; "
+            f"border-radius: {radius}px; }}"
             f"QPushButton {{ text-align: left; background: transparent; color: {t['body']}; border: none; "
-            f"border-radius: {scaled_px(4)}px; padding: {scaled_px(8)}px {scaled_px(10)}px; }}"
-            f"QPushButton:hover {{ background: {t['hover_overlay']}; }}"
+            f"border-radius: {radius}px; padding: {pad_y}px {pad_x}px; }}"
+            f"QPushButton:hover {{ background: {hover_bg}; }}"
+            f"QPushButton:pressed {{ background: {pressed_bg}; }}"
+            f"QPushButton:focus {{ background: {hover_bg}; border: 1px solid {focus_color}; }}"
             f"QPushButton:checked {{ background: {t['accent']}; color: {t['on_accent']}; font-weight: bold; }}"
         )
         self._nav_rail.setStyleSheet(nav_style)
@@ -250,27 +259,30 @@ class SharingSettingsDialog(TabbedDialog):
         self._url_label.setStyleSheet(sk.label_css("accent", size=15))
         if hasattr(self, '_tunnel_url_label'):
             self._tunnel_url_label.setStyleSheet(
-                f"font-size: {sk.pt(13)}px; color: {sk.token('accent')}; "
-                f"padding: {sk.px(8)}px; background: {sk.token('panel')}; "
-                f"border: 1px solid {sk.token('border')}; border-radius: {sk.px(6)}px;")
+                f"font-size: {sk.pt(int(sk.prop('font_size', 'md')))}px; color: {sk.token('accent')}; "
+                f"padding: {sk.px(int(sk.prop('spacing', 'sm')))}px; background: {sk.token('panel')}; "
+                f"border: 1px solid {sk.token('border_subtle')}; "
+                f"border-radius: {sk.px(int(sk.prop('border_radius', 'sm')))}px;")
         self._apply_table_theme()
         if hasattr(self, "_configuration_nav"):
             self._apply_configuration_theme()
 
     def _apply_table_theme(self):
         t = _t()
+        radius = scaled_px(int(themes.prop("border_radius", "sm")))
+        pad_x = scaled_px(int(themes.prop("spacing", "sm")))
         table_style = (
             f"QTableWidget {{ background: {t['panel']}; color: {t['body']}; "
             f"alternate-background-color: {alpha(t['header'], 0.18)}; "
             f"selection-background-color: {alpha(t['accent'], 0.24)}; "
             f"selection-color: {t['heading']}; "
-            f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px; outline: none; }}"
-            f"QTableWidget::item {{ padding: {scaled_px(5)}px {scaled_px(8)}px; border: none; "
+            f"border: 1px solid {t['border_subtle']}; border-radius: {radius}px; outline: none; }}"
+            f"QTableWidget::item {{ padding: {scaled_px(5)}px {pad_x}px; border: none; "
             f"border-bottom: 1px solid {alpha(t['border'], 0.16)}; }}"
             f"QTableWidget::item:hover {{ background: {alpha(t['accent'], 0.10)}; }}"
             f"QTableWidget::item:selected {{ background: {alpha(t['accent'], 0.24)}; color: {t['heading']}; }}"
             f"QHeaderView::section {{ background: {t['header']}; color: {t['heading']}; "
-            f"padding: {scaled_px(6)}px {scaled_px(8)}px; border: none; "
+            f"padding: {scaled_px(6)}px {pad_x}px; border: none; "
             f"border-right: 1px solid {alpha(t['border'], 0.24)}; "
             f"font-weight: bold; }}"
         )
@@ -296,8 +308,8 @@ class SharingSettingsDialog(TabbedDialog):
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         frame = QFrame()
         frame.setStyleSheet(
-            f"QFrame {{ background: {sk.token('panel')}; border: 1px solid {sk.token('border')}; "
-            f"border-radius: {sk.px(10)}px; }}")
+            f"QFrame {{ background: {sk.token('panel')}; border: 1px solid {sk.token('border_subtle')}; "
+            f"border-radius: {sk.px(int(sk.prop('border_radius', 'md')))}px; }}")
 
         outer = QVBoxLayout(frame)
         outer.setContentsMargins(scaled_px(16), scaled_px(14), scaled_px(16), scaled_px(14))
@@ -950,17 +962,26 @@ class SharingSettingsDialog(TabbedDialog):
     def _apply_configuration_theme(self):
         t = _t()
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        radius = scaled_px(int(themes.prop("border_radius", "sm")))
+        pad_y = scaled_px(int(themes.prop("spacing", "sm")))
+        pad_x = scaled_px(int(themes.prop("spacing", "sm")))
+        hover_bg = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
+        focus_color = t.get("border_focus", t["accent"])
+        pressed_bg = alpha(t["accent"], 0.18)
         nav_style = (
-            f"QFrame {{ background: {t['base']}; border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px; }}"
+            f"QFrame {{ background: {t['base']}; border: 1px solid {t['border_subtle']}; "
+            f"border-radius: {radius}px; }}"
             f"QPushButton {{ text-align: left; background: transparent; color: {t['body']}; border: none; "
-            f"border-radius: {scaled_px(4)}px; padding: {scaled_px(7)}px {scaled_px(8)}px; }}"
-            f"QPushButton:hover {{ background: {t['hover_overlay']}; }}"
+            f"border-radius: {radius}px; padding: {pad_y}px {pad_x}px; }}"
+            f"QPushButton:hover {{ background: {hover_bg}; }}"
+            f"QPushButton:pressed {{ background: {pressed_bg}; }}"
+            f"QPushButton:focus {{ background: {hover_bg}; border: 1px solid {focus_color}; }}"
             f"QPushButton:checked {{ background: {t['accent']}; color: {t['on_accent']}; font-weight: bold; }}"
         )
         self._configuration_nav.setStyleSheet(nav_style)
         self._configuration_summary.setStyleSheet(
-            f"QFrame {{ background: {sk.token('panel')}; border: 1px solid {sk.token('border')}; "
-            f"border-radius: {sk.px(6)}px; }}"
+            f"QFrame {{ background: {sk.token('panel')}; border: 1px solid {sk.token('border_subtle')}; "
+            f"border-radius: {radius}px; }}"
         )
 
     def _connect_configuration_tracking(self):
@@ -1153,7 +1174,7 @@ class SharingSettingsDialog(TabbedDialog):
             "failed": "refresh",
         }[state]
         self._status_icon.setStyleSheet(
-            f"background: {color}; border-radius: {sk.px(6)}px; border: none;")
+            f"background: {color}; border-radius: {sk.px(int(sk.prop('border_radius', 'sm')))}px; border: none;")
         self._status_label.setText(label)
         self._toggle_btn.setText(action_label)
         self._set_action_icon(self._toggle_btn, action_icon)
@@ -1177,7 +1198,8 @@ class SharingSettingsDialog(TabbedDialog):
             self._exposure_label.setText(tr("sharing.endpoint.internet_access"))
             self._exposure_label.setStyleSheet(
                 f"color: {sk.token('heading')}; background: {sk.token('warning')}; "
-                f"border-radius: {sk.px(3)}px; padding: {sk.px(3)}px {sk.px(6)}px;")
+                f"border-radius: {sk.px(int(sk.prop('border_radius', 'sm')))}px; "
+                f"padding: {sk.px(int(sk.prop('spacing', 'xs')))}px {sk.px(int(sk.prop('spacing', 'sm')))}px;")
 
     def _on_primary_endpoint_action(self):
         """Keep local server and public-tunnel scopes distinct on the Endpoint page."""
@@ -1485,9 +1507,12 @@ class SharingSettingsDialog(TabbedDialog):
             copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             copy_btn.setStyleSheet(
                 f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('on_accent')}; "
-                f"border: none; border-radius: {sk.px(3)}px; font-size: {sk.pt(10)}px; "
-                f"padding: {sk.px(2)}px {sk.px(8)}px; }}"
-                f"QPushButton:hover {{ background: {sk.token('accent')}dd; }}")
+                f"border: none; border-radius: {sk.px(int(sk.prop('border_radius', 'sm')))}px; "
+                f"font-size: {sk.pt(10)}px; "
+                f"padding: {sk.px(int(sk.prop('spacing', 'xs')))}px {sk.px(int(sk.prop('spacing', 'sm')))}px; }}"
+                f"QPushButton:hover {{ background: {alpha(sk.token('accent'), 0.87)}; }}"
+                f"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.18)}; }}"
+                f"QPushButton:focus {{ border: 1px solid {sk.token('border_focus', sk.token('accent'))}; }}")
             copy_btn.clicked.connect(lambda checked, idx=i: self._copy_table_share_link(idx))
             actions_layout.addWidget(copy_btn)
 
@@ -1496,9 +1521,12 @@ class SharingSettingsDialog(TabbedDialog):
             delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             delete_btn.setStyleSheet(
                 f"QPushButton {{ background: {sk.token('danger')}; color: {sk.token('on_accent')}; "
-                f"border: none; border-radius: {sk.px(3)}px; font-size: {sk.pt(10)}px; "
-                f"padding: {sk.px(2)}px {sk.px(8)}px; }}"
-                f"QPushButton:hover {{ background: {sk.token('danger')}dd; }}")
+                f"border: none; border-radius: {sk.px(int(sk.prop('border_radius', 'sm')))}px; "
+                f"font-size: {sk.pt(10)}px; "
+                f"padding: {sk.px(int(sk.prop('spacing', 'xs')))}px {sk.px(int(sk.prop('spacing', 'sm')))}px; }}"
+                f"QPushButton:hover {{ background: {alpha(sk.token('danger'), 0.87)}; }}"
+                f"QPushButton:pressed {{ background: {alpha(sk.token('danger'), 0.18)}; }}"
+                f"QPushButton:focus {{ border: 1px solid {sk.token('border_focus', sk.token('danger'))}; }}")
             delete_btn.clicked.connect(lambda checked, idx=i: self._delete_share_link(idx))
             actions_layout.addWidget(delete_btn)
 
@@ -1935,7 +1963,7 @@ class SharingSettingsDialog(TabbedDialog):
         if public_url:
             self._tunnel_status.setText(tr("sharing.tunnel_connected"))
             self._tunnel_status.setStyleSheet(
-                f"color: {sk.state_color('success')}; font-size: {sk.pt(12)}px;")
+                f"color: {sk.state_color('success')}; font-size: {sk.pt(int(sk.prop('font_size', 'sm')))}px;")
             self._tunnel_url_label.setText(public_url)
             self._tunnel_url_label.setVisible(True)
             self._tunnel_btn.setText(tr("sharing.btn_stop_tunnel"))
@@ -1950,7 +1978,7 @@ class SharingSettingsDialog(TabbedDialog):
             message = self._tunnel_failure_message()
             self._tunnel_status.setText(message)
             self._tunnel_status.setStyleSheet(
-                f"color: {sk.state_color('error')}; font-size: {sk.pt(12)}px;")
+                f"color: {sk.state_color('error')}; font-size: {sk.pt(int(sk.prop('font_size', 'sm')))}px;")
             self._tunnel_btn.setText(tr("sharing.btn_start_tunnel"))
             self._set_action_icon(self._tunnel_btn, "share")
             self._tunnel_btn.setStyleSheet(self.primary_btn_style())

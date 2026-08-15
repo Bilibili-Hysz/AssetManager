@@ -14,6 +14,7 @@ from AssetsManager.dialogs._share_api import (
     ShareCreationTask, _runtime_epoch, _service_runtime, _service_session,
 )
 from AssetsManager import i18n
+from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px
 
 tr = i18n.tr
@@ -58,8 +59,12 @@ class ShareLinkDialog(TabbedDialog):
     def _build_ui(self):
         """Build the share link creation dialog."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16))
-        layout.setSpacing(scaled_px(12))
+        layout.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "lg"))),
+            scaled_px(int(themes.prop("spacing", "lg"))),
+            scaled_px(int(themes.prop("spacing", "lg"))),
+            scaled_px(int(themes.prop("spacing", "lg"))))
+        layout.setSpacing(scaled_px(int(themes.prop("spacing", "md"))))
 
         # Path display
         path_group = self.make_groupbox(tr("sharelink.group.path"))
@@ -75,7 +80,7 @@ class ShareLinkDialog(TabbedDialog):
         # Options
         options_group = self.make_groupbox(tr("sharelink.group.options"))
         options_layout = QVBoxLayout(options_group)
-        options_layout.setSpacing(scaled_px(8))
+        options_layout.setSpacing(scaled_px(int(themes.prop("spacing", "sm"))))
 
         # Password
         self._password_input = self.make_input(tr("sharelink.placeholder.password"))
@@ -117,9 +122,11 @@ class ShareLinkDialog(TabbedDialog):
         self._url_label = self.make_label("")
         self._url_label.setWordWrap(True)
         self._url_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        padding_sm = scaled_px(int(themes.prop("spacing", "sm")))
+        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
         self._url_label.setStyleSheet(
-            f"padding: {scaled_px(8)}px; background: {self._t['panel']}; "
-            f"border: 1px solid {self._t['border']}; border-radius: {scaled_px(4)}px;"
+            f"padding: {padding_sm}px; background: {self._t['panel']}; "
+            f"border: 1px solid {self._t['border_subtle']}; border-radius: {radius_sm}px;"
         )
         result_layout.addWidget(self._url_label)
 

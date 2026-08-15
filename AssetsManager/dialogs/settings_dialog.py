@@ -102,8 +102,9 @@ class SettingsDialog(TabbedDialog):
         row_l.setSpacing(scaled_px(6))
         swatch = QFrame()
         swatch.setFixedSize(scaled_px(12), scaled_px(12))
+        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
         swatch.setStyleSheet(
-            f"background: {accent}; border: 1px solid {accent}; border-radius: {scaled_px(3)}px;")
+            f"background: {accent}; border: 1px solid {accent}; border-radius: {radius_sm}px;")
         row_l.addWidget(swatch)
         rb = QRadioButton(name)
         rb.setMinimumHeight(scaled_px(24))
@@ -127,8 +128,12 @@ class SettingsDialog(TabbedDialog):
         tab = QWidget()
         layout = QVBoxLayout(tab)
         self._appearance_layout = layout
-        layout.setSpacing(scaled_px(12))
-        layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
+        layout.setSpacing(scaled_px(int(themes.prop("spacing", "md"))))
+        layout.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
 
         self._setup_theme_section(layout)
 
@@ -179,7 +184,7 @@ class SettingsDialog(TabbedDialog):
 
         btn_row = QHBoxLayout()
         self._effects_layout = btn_row
-        btn_row.setSpacing(scaled_px(8))
+        btn_row.setSpacing(scaled_px(int(themes.prop("spacing", "sm"))))
         current_effect = themes.bg_effect()
         effect_label = {"none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"), "mosaic": tr("settings.bg_mosaic")}.get(current_effect, tr("settings.bg_effect_none"))
         self._effect_btn = QPushButton()
@@ -212,7 +217,7 @@ class SettingsDialog(TabbedDialog):
 
         btn_row = QHBoxLayout()
         self._theme_layout = btn_row
-        btn_row.setSpacing(scaled_px(8))
+        btn_row.setSpacing(scaled_px(int(themes.prop("spacing", "sm"))))
 
         current_mode = AppSettings.instance().get("appearance_mode", "dark")
         mode_text = tr("settings.dark_mode") if current_mode == "dark" else tr("settings.light_mode")
@@ -502,8 +507,12 @@ class SettingsDialog(TabbedDialog):
         tab = QWidget()
         layout = QVBoxLayout(tab)
         self._general_layout = layout
-        layout.setSpacing(scaled_px(12))
-        layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
+        layout.setSpacing(scaled_px(int(themes.prop("spacing", "md"))))
+        layout.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
 
         lang_map = i18n.languages()
         lang_opts = {code: lang_map.get(code, code) for code in ("en", "zh", "ja")}
@@ -535,8 +544,12 @@ class SettingsDialog(TabbedDialog):
         tab = QWidget()
         layout = QVBoxLayout(tab)
         self._thumbnails_layout = layout
-        layout.setSpacing(scaled_px(12))
-        layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
+        layout.setSpacing(scaled_px(int(themes.prop("spacing", "md"))))
+        layout.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
 
         current_quality = AppSettings.instance().get("thumb_quality", "default")
         quality_labels = {
@@ -553,7 +566,11 @@ class SettingsDialog(TabbedDialog):
         cl = QVBoxLayout(self._cache_group)
         self._cache_layout = cl
         cl.setSpacing(scaled_px(6))
-        cl.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(8))
+        cl.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
 
         self._clear_btn = self.make_secondary_btn(tr("settings.thumb_clear"), self._clear_thumbnails)
         cl.addWidget(self._clear_btn)
@@ -581,14 +598,22 @@ class SettingsDialog(TabbedDialog):
         tab = QWidget()
         layout = QVBoxLayout(tab)
         self._maintenance_layout = layout
-        layout.setSpacing(scaled_px(12))
-        layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
+        layout.setSpacing(scaled_px(int(themes.prop("spacing", "md"))))
+        layout.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
 
         self._maintenance_group = self.make_groupbox(tr("settings.maintenance_title"))
         gl = QVBoxLayout(self._maintenance_group)
         self._maintenance_group_layout = gl
         gl.setSpacing(scaled_px(6))
-        gl.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(8))
+        gl.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
 
         self._run_checkpoint_btn = self.make_secondary_btn(
             tr("settings.maintenance_run_checkpoint"), self._on_run_checkpoint)
@@ -623,13 +648,21 @@ class SettingsDialog(TabbedDialog):
         tab = QWidget()
         layout = QVBoxLayout(tab)
         self._backup_layout = layout
-        layout.setSpacing(scaled_px(12))
-        layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
+        layout.setSpacing(scaled_px(int(themes.prop("spacing", "md"))))
+        layout.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
 
         self._backup_group = self.make_groupbox(tr("settings.backup_title"))
         gl = QVBoxLayout(self._backup_group)
         gl.setSpacing(scaled_px(6))
-        gl.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(8))
+        gl.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
 
         self._export_btn = self.make_secondary_btn(
             tr("settings.backup_export_metadata"), self._on_export_metadata)
@@ -652,7 +685,11 @@ class SettingsDialog(TabbedDialog):
         self._quarantine_group = self.make_groupbox(tr("settings.backup_quarantine"))
         ql = QVBoxLayout(self._quarantine_group)
         ql.setSpacing(scaled_px(6))
-        ql.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(8))
+        ql.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
         self._quarantine_status = self.make_muted(tr("settings.backup_quarantine_empty"))
         self._quarantine_status.setWordWrap(True)
         ql.addWidget(self._quarantine_status)
@@ -948,16 +985,26 @@ class SettingsDialog(TabbedDialog):
             scaled_px(self._logical_min_size[0]), scaled_px(self._logical_min_size[1]))
         for layout in (self._appearance_layout, self._general_layout,
                        self._thumbnails_layout, self._maintenance_layout):
-            layout.setSpacing(scaled_px(12))
-            layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
-        self._effects_layout.setSpacing(scaled_px(8))
-        self._theme_layout.setSpacing(scaled_px(8))
+            layout.setSpacing(scaled_px(int(themes.prop("spacing", "md"))))
+            layout.setContentsMargins(
+                scaled_px(int(themes.prop("spacing", "sm"))),
+                scaled_px(int(themes.prop("spacing", "sm"))),
+                scaled_px(int(themes.prop("spacing", "sm"))),
+                scaled_px(int(themes.prop("spacing", "sm"))))
+        self._effects_layout.setSpacing(scaled_px(int(themes.prop("spacing", "sm"))))
+        self._theme_layout.setSpacing(scaled_px(int(themes.prop("spacing", "sm"))))
         self._cache_layout.setSpacing(scaled_px(6))
         self._cache_layout.setContentsMargins(
-            scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(8))
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
         self._maintenance_group_layout.setSpacing(scaled_px(6))
         self._maintenance_group_layout.setContentsMargins(
-            scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(8))
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
         self._mode_btn.setMinimumWidth(scaled_px(100))
         self._theme_btn.setMinimumWidth(scaled_px(160))
         self._effect_btn.setMinimumWidth(scaled_px(120))

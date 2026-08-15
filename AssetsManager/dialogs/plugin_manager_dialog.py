@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from AssetsManager.core import themes
 from AssetsManager.core import icons
+from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.plugins.descriptor import (
     PLUGIN_STATE_ACTIVE,
     PLUGIN_STATE_DISABLED,
@@ -91,18 +92,21 @@ class PluginCard(QFrame):
     def refresh_presentation(self):
         t = themes.get()
         self.setFixedHeight(scaled_px(72))
-        self._layout.setContentsMargins(scaled_px(12), scaled_px(8), scaled_px(12), scaled_px(8))
-        self._layout.setSpacing(scaled_px(12))
+        br_sm = scaled_px(int(themes.prop("border_radius", "sm")))
+        sp_xs = scaled_px(int(themes.prop("spacing", "xs")))
+        sp_md = scaled_px(int(themes.prop("spacing", "md")))
+        self._layout.setContentsMargins(sp_md, scaled_px(int(themes.prop("spacing", "sm"))), sp_md, scaled_px(int(themes.prop("spacing", "sm"))))
+        self._layout.setSpacing(sp_md)
         self._info_layout.setSpacing(scaled_px(2))
         self._status_dot.setFixedSize(scaled_px(10), scaled_px(10))
         self._name_label.setStyleSheet(
-            f"font-size: {scaled_pt(13)}px; font-weight: bold; color: {t['heading']}; background: transparent; border: none;")
+            f"font-size: {scaled_pt(int(themes.prop('font_size', 'md')))}px; font-weight: bold; color: {t['heading']}; background: transparent; border: none;")
         self._desc_label.setStyleSheet(
-            f"font-size: {scaled_pt(11)}px; color: {t['muted']}; background: transparent; border: none;")
+            f"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; color: {t['muted']}; background: transparent; border: none;")
         self._version_label.setStyleSheet(
-            f"font-size: {scaled_pt(10)}px; color: {t['muted']}; background: {t['header']}; "
-            f"border: 1px solid {t['border']}; border-radius: {scaled_px(3)}px; "
-            f"padding: {scaled_px(2)}px {scaled_px(6)}px;")
+            f"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; color: {t['muted']}; background: {t['header']}; "
+            f"border: 1px solid {t.get('border_subtle', alpha(t['border'], 0.5))}; border-radius: {br_sm}px; "
+            f"padding: {sp_xs}px {scaled_px(int(themes.prop('spacing', 'sm')))}px;")
         self._toggle.setFixedSize(scaled_px(44), scaled_px(24))
         self._update_dot()
         self._update_style(t)
@@ -123,16 +127,20 @@ class PluginCard(QFrame):
         else:
             color = t.get("muted", "#999999")
         self._status_dot.setStyleSheet(
-            f"background: {color}; border-radius: {scaled_px(5)}px; border: none;"
+            f"background: {color}; border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; border: none;"
         )
 
     def _update_toggle_style(self, t):
         accent = t.get("accent", "#4a60b0")
         muted = t.get("muted", "#666666")
+        hover_bg = alpha(t.get("hover_overlay", "#ffffff"), themes.prop("opacity", "hover"))
         self._toggle.setStyleSheet(
             f"QToolButton {{ background: {muted}; border-radius: {scaled_px(12)}px; "
-            f"border: 1px solid {t['border']}; }}"
+            f"border: 1px solid {t['border_subtle']}; }}"
+            f"QToolButton:hover {{ background: {hover_bg}; border-color: {accent}; }}"
             f"QToolButton:checked {{ background: {accent}; border-color: {accent}; }}"
+            f"QToolButton:checked:hover {{ background: {alpha(accent, 0.85)}; }}"
+            f"QToolButton:pressed {{ background: {alpha(accent, 0.18)}; }}"
             f"QToolButton:focus {{ border: 2px solid {t['border_focus']}; }}"
         )
         self._toggle.setAccessibleName(
@@ -140,16 +148,19 @@ class PluginCard(QFrame):
         )
 
     def _update_style(self, t):
+        br_md = scaled_px(int(themes.prop("border_radius", "md")))
+        border_subtle = t.get("border_subtle", alpha(t["border"], 0.5))
+        hover_bg = alpha(t.get("hover_overlay", "#ffffff"), themes.prop("opacity", "hover"))
         if self._selected:
             self.setStyleSheet(
-                f"PluginCard {{ background: {t['accent']}20; border: 1px solid {t['accent']}; "
-                f"border-radius: {scaled_px(6)}px; }}"
+                f"PluginCard {{ background: {alpha(t['accent'], 0.13)}; border: 1px solid {t['accent']}; "
+                f"border-radius: {br_md}px; }}"
             )
         else:
             self.setStyleSheet(
-                f"PluginCard {{ background: {t['panel']}; border: 1px solid {t['border']}; "
-                f"border-radius: {scaled_px(6)}px; }}"
-                f"PluginCard:hover {{ border-color: {t['accent']}80; }}"
+                f"PluginCard {{ background: {t['panel']}; border: 1px solid {border_subtle}; "
+                f"border-radius: {br_md}px; }}"
+                f"PluginCard:hover {{ border-color: {alpha(t['accent'], 0.5)}; background: {hover_bg}; }}"
             )
 
     def set_selected(self, selected: bool):
@@ -230,6 +241,7 @@ class PluginDetailPanel(QWidget):
         self._toggle_btn = QPushButton(tr("plugins.toggle", default="Toggle Enabled"))
         self._toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._toggle_btn.setAccessibleName(tr("plugins.toggle", default="Toggle Enabled"))
+        themes.set_button_variant(self._toggle_btn, "primary")
         self._toggle_btn.clicked.connect(self._on_toggle)
         self._button_layout.addWidget(self._toggle_btn)
 
@@ -242,22 +254,27 @@ class PluginDetailPanel(QWidget):
     def refresh_presentation(self):
         t = themes.get()
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
-        self._layout.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16))
-        self._layout.setSpacing(scaled_px(12))
+        br_sm = scaled_px(int(themes.prop("border_radius", "sm")))
+        sp_sm = scaled_px(int(themes.prop("spacing", "sm")))
+        sp_lg = scaled_px(int(themes.prop("spacing", "lg")))
+        fs_sm = scaled_pt(int(themes.prop("font_size", "sm")))
+        self._layout.setContentsMargins(sp_lg, sp_lg, sp_lg, sp_lg)
+        self._layout.setSpacing(scaled_px(int(themes.prop("spacing", "md"))))
         self._fields_layout.setSpacing(scaled_px(6))
-        self._button_layout.setSpacing(scaled_px(8))
+        self._button_layout.setSpacing(sp_sm)
         self._name_label.setStyleSheet(sk.label_css("heading", size=18, bold=True))
-        self._separator.setStyleSheet(f"color: {sk.token('border')};")
+        self._separator.setStyleSheet(f"color: {sk.token('border_subtle')};")
         self._desc_label.setStyleSheet(sk.label_css("body", size=12))
         danger = t.get("danger", "#e74c3c")
         self._diag_label.setStyleSheet(
-            f"font-size: {scaled_pt(11)}px; color: {danger}; background: {danger}15; "
-            f"border: 1px solid {danger}30; border-radius: {scaled_px(4)}px; padding: {scaled_px(8)}px;")
+            f"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; color: {danger}; background: {alpha(danger, 0.08)}; "
+            f"border: 1px solid {alpha(danger, 0.19)}; border-radius: {br_sm}px; padding: {sp_sm}px;")
         self._toggle_btn.setStyleSheet(
             f"QPushButton {{ background: {t['accent']}; color: {t.get('on_accent', 'white')}; border: none; "
-            f"padding: {scaled_px(8)}px {scaled_px(16)}px; border-radius: {scaled_px(4)}px; "
-            f"font-size: {scaled_pt(12)}px; font-weight: bold; }}"
-            f"QPushButton:hover {{ background: {t['accent']}cc; }}")
+            f"padding: {sp_sm}px {sp_lg}px; border-radius: {br_sm}px; "
+            f"font-size: {fs_sm}px; font-weight: bold; }}"
+            f"QPushButton:hover {{ background: {alpha(t.get('hover_overlay', '#ffffff'), themes.prop('opacity', 'hover'))}; }}"
+            f"QPushButton:pressed {{ background: {alpha(t['accent'], 0.18)}; }}")
         self._update_toggle_text()
 
     def show_plugin(self, plugin_id: str, record):
@@ -286,10 +303,12 @@ class PluginDetailPanel(QWidget):
             badge_color = t.get("muted", "#999999")
 
         self._status_badge.setText(badge_text)
+        br_sm = scaled_px(int(themes.prop("border_radius", "sm")))
+        sp_xs = scaled_px(int(themes.prop("spacing", "xs")))
         self._status_badge.setStyleSheet(
-            f"font-size: {scaled_pt(11)}px; font-weight: bold; color: white; "
-            f"background: {badge_color}; border-radius: {scaled_px(3)}px; "
-            f"padding: {scaled_px(2)}px {scaled_px(8)}px;"
+            f"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; font-weight: bold; color: white; "
+            f"background: {badge_color}; border-radius: {br_sm}px; "
+            f"padding: {sp_xs}px {scaled_px(int(themes.prop('spacing', 'sm')))}px;"
         )
 
         # Fields
@@ -328,19 +347,20 @@ class PluginDetailPanel(QWidget):
 
     def _add_field(self, label: str, value: str):
         t = themes.get()
+        fs_sm = scaled_pt(int(themes.prop("font_size", "sm")))
         row = QHBoxLayout()
-        row.setSpacing(scaled_px(8))
+        row.setSpacing(scaled_px(int(themes.prop("spacing", "sm"))))
 
         lbl = QLabel(f"{label}:")
         lbl.setStyleSheet(
-            f"font-size: {scaled_pt(11)}px; font-weight: bold; color: {t['muted']}; "
+            f"font-size: {fs_sm}px; font-weight: bold; color: {t['muted']}; "
             f"background: transparent; border: none; min-width: {scaled_px(80)}px;"
         )
         row.addWidget(lbl)
 
         val = QLabel(str(value))
         val.setStyleSheet(
-            f"font-size: {scaled_pt(11)}px; color: {t['heading']}; background: transparent; border: none;"
+            f"font-size: {fs_sm}px; color: {t['heading']}; background: transparent; border: none;"
         )
         val.setWordWrap(True)
         row.addWidget(val, 1)
@@ -459,13 +479,15 @@ class PluginManagerDialog(TabbedDialog):
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         self._left_panel.setFixedWidth(scaled_px(360))
         self._left_panel.setStyleSheet(f"background: {sk.token('header')};")
-        self._left_layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(12))
+        sp_md = scaled_px(int(themes.prop("spacing", "md")))
+        sp_lg = scaled_px(int(themes.prop("spacing", "lg")))
+        self._left_layout.setContentsMargins(sp_md, sp_lg, sp_md, sp_md)
         self._left_layout.setSpacing(scaled_px(10))
         self._list_layout.setSpacing(scaled_px(6))
         self._title_label.setStyleSheet(
-            f"font-size: {scaled_pt(16)}px; font-weight: bold; color: {t['heading']}; background: transparent;")
+            f"font-size: {scaled_pt(int(themes.prop('font_size', 'xl')))}px; font-weight: bold; color: {t['heading']}; background: transparent;")
         self._count_label.setStyleSheet(
-            f"font-size: {scaled_pt(11)}px; color: {t['muted']}; background: transparent;")
+            f"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; color: {t['muted']}; background: transparent;")
         for card in self._cards.values():
             card.refresh_presentation()
         self._detail.refresh_presentation()

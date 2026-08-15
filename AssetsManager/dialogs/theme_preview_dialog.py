@@ -32,7 +32,11 @@ class ThemePreviewDialog(QDialog):
 
         left = QWidget()
         left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
+        left_layout.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
         self._theme_list = QListWidget()
         self._theme_list.currentItemChanged.connect(self._on_theme_selected)
         left_layout.addWidget(self._theme_list)

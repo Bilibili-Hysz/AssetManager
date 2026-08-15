@@ -29,7 +29,7 @@ class ColorPickerDialog(QDialog):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(scaled_px(8))
+        layout.setSpacing(scaled_px(int(themes.prop("spacing", "sm"))))
 
         # Top: HSV wheel + brightness slider
         top = QHBoxLayout()
@@ -93,8 +93,9 @@ class ColorPickerDialog(QDialog):
         hex_row.addWidget(self._hex_input)
         self._preview = QLabel()
         self._preview.setFixedSize(scaled_px(32), scaled_px(32))
+        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
         self._preview.setStyleSheet(
-            f"background: {self._color.name()}; border: 1px solid {themes.color('border')}; border-radius: {scaled_px(4)}px;"
+            f"background: {self._color.name()}; border: 1px solid {themes.color('border')}; border-radius: {radius_sm}px;"
         )
         hex_row.addWidget(self._preview)
         hex_row.addStretch()
@@ -202,7 +203,7 @@ class ColorPickerDialog(QDialog):
             self._hex_input.setText(self._color.name())
             # Preview
             self._preview.setStyleSheet(
-                f"background: {self._color.name()}; border: 1px solid {themes.color('border')}; border-radius: {scaled_px(4)}px;"
+                f"background: {self._color.name()}; border: 1px solid {themes.color('border')}; border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px;"
             )
         finally:
             self._updating = False

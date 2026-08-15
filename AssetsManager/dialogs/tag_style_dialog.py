@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 from AssetsManager.core import icons
+from AssetsManager.core import themes
 from AssetsManager.core.color_utils import contrast_on
 from AssetsManager.core.constants import DEFAULT_LAN_THEME_COLOR
 from AssetsManager.core.ui_scale import scaled_px
@@ -52,7 +53,7 @@ class TagStyleDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(scaled_px(10))
         form = QFormLayout()
-        form.setSpacing(scaled_px(8))
+        form.setSpacing(scaled_px(int(themes.prop("spacing", "sm"))))
 
         # ── Color ─────────────────────────────────────────────
         color_row = QHBoxLayout()
@@ -118,9 +119,10 @@ class TagStyleDialog(QDialog):
         color = self._color or ""
         self._color_btn.setText(color or tr("tagstyle.no_color"))
         text = self._contrast_text(color)
+        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
         self._color_btn.setStyleSheet(
             f"QPushButton {{ background: {color or 'transparent'}; "
-            f"border: 1px solid #555; border-radius: {scaled_px(4)}px; "
+            f"border: 1px solid {themes.color('border')}; border-radius: {radius_sm}px; "
             f"color: {text}; }}"
         )
 

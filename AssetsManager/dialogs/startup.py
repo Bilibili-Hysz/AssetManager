@@ -151,17 +151,18 @@ class _DetailPanel(QFrame):
         self._path.setText(path)
         self._path.show()
 
+        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
         if exists:
             self._status.setText(tr("startup.ready"))
             self._status.setStyleSheet(
                 f"font-size: {scaled_pt(11)}px; font-weight: bold; padding: 2px 8px; "
-                f"border-radius: {scaled_px(4)}px; color: {t['success']}; "
+                f"border-radius: {radius_sm}px; color: {t['success']}; "
                 f"background: {_interpolate_color(t['success'], -0.75)};")
         else:
             self._status.setText(tr("startup.missing"))
             self._status.setStyleSheet(
                 f"font-size: {scaled_pt(11)}px; font-weight: bold; padding: 2px 8px; "
-                f"border-radius: {scaled_px(4)}px; color: {t['danger']}; "
+                f"border-radius: {radius_sm}px; color: {t['danger']}; "
                 f"background: {_interpolate_color(t['danger'], -0.75)};")
         self._status.show()
 
@@ -197,30 +198,35 @@ class _DetailPanel(QFrame):
             f"#{name} {{"
             f"  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
             f"    stop:0 {t['panel']}, stop:1 {t['base']}); "
-            f"  border: 1px solid {alpha(t['border'], 0.313)}; border-radius: {scaled_px(10)}px; "
+            f"  border: 1px solid {t['border_subtle']}; "
+            f"  border-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; "
             f"}}")
 
     def _primary_btn_qss(self) -> str:
         t = themes.get()
+        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
+        hover_bg = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
         return (
             f"QPushButton {{"
             f"  background: {t['accent']}; color: {t['heading']}; "
-            f"  border: none; border-radius: {scaled_px(6)}px; "
+            f"  border: none; border-radius: {radius_sm}px; "
             f"  padding: 9px 0; font-size: {scaled_pt(13)}px; font-weight: bold; "
             f"}}"
-            f"QPushButton:hover {{ background: {_interpolate_color(t['accent'], 0.15)}; }}"
-            f"QPushButton:pressed {{ background: {_interpolate_color(t['accent'], -0.15)}; }}"
+            f"QPushButton:hover {{ background: {hover_bg}; }}"
+            f"QPushButton:pressed {{ background: {alpha(t['accent'], 0.18)}; }}"
             f"QPushButton:disabled {{ background: {alpha(t['muted'], 0.25)}; color: {t['muted']}; }}")
 
     def _ghost_btn_qss(self) -> str:
         t = themes.get()
+        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
+        hover_bg = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
         return (
             f"QPushButton {{"
             f"  background: transparent; color: {t['muted']}; "
-            f"  border: none; border-radius: {scaled_px(6)}px; "
+            f"  border: none; border-radius: {radius_sm}px; "
             f"  padding: 6px 0; font-size: {scaled_pt(11)}px; "
             f"}}"
-            f"QPushButton:hover {{ color: {t['body']}; background: {alpha(t['border'], 0.188)}; }}")
+            f"QPushButton:hover {{ color: {t['body']}; background: {hover_bg}; }}")
 
 
 # ── Library card row (right column list item) ──────────────────
@@ -270,6 +276,8 @@ class _LibraryCard(QFrame):
 
     def _apply_style(self):
         t = themes.get()
+        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
+        hover_bg = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
         # Dot indicator
         dot_fg = t["success"] if self._exists else t["danger"]
         dot_bg = alpha(dot_fg, 0.25) if self._exists else alpha(dot_fg, 0.13)
@@ -277,7 +285,7 @@ class _LibraryCard(QFrame):
             tr("startup.ready" if self._exists else "startup.missing"))
         self._dot.setStyleSheet(
             f"background: {dot_bg}; border: 2px solid {dot_fg}; "
-            f"border-radius: {scaled_px(5)}px; padding: 0;")
+            f"border-radius: {radius_sm}px; padding: 0;")
         # Name and path labels
         self._name_label.setStyleSheet(
             f"font-size: {scaled_pt(13)}px; font-weight: bold; color: {t['heading']}; "
@@ -295,10 +303,10 @@ class _LibraryCard(QFrame):
         self.setStyleSheet(
             f"#libraryCard {{"
             f"  background: {bg}; "
-            f"  border: 1px solid {border}; border-radius: {scaled_px(8)}px; "
+            f"  border: 1px solid {border}; border-radius: {radius_sm}px; "
             f"}}"
             f"#libraryCard:hover {{"
-            f"  background: {alpha(t['border'], 0.125)}; "
+            f"  background: {hover_bg}; "
             f"}}")
 
     def mousePressEvent(self, event):
@@ -385,7 +393,7 @@ class StartupWindow(QMainWindow):
             f"    stop:0 {_interpolate_color(t['panel'], 0.06)}, "
             f"    stop:0.5 {t['panel']}, "
             f"    stop:1 {t['panel']}); "
-            f"  border-bottom: 1px solid {alpha(t['border'], 0.188)}; "
+            f"  border-bottom: 1px solid {t['border_subtle']}; "
             f"}}")
         hero_layout = QVBoxLayout(self._hero_card)
         hero_layout.setContentsMargins(scaled_px(28), scaled_px(14), scaled_px(28), scaled_px(12))
@@ -427,7 +435,8 @@ class StartupWindow(QMainWindow):
             f"#listPanel {{"
             f"  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
             f"    stop:0 {_interpolate_color(t['panel'], 0.03)}, stop:1 {t['base']}); "
-            f"  border: 1px solid {alpha(t['border'], 0.188)}; border-radius: {scaled_px(10)}px; "
+            f"  border: 1px solid {t['border_subtle']}; "
+            f"  border-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; "
             f"}}")
         apply_elevation(self._list_panel, level=1)
         right_layout = QVBoxLayout(self._list_panel)
@@ -462,10 +471,11 @@ class StartupWindow(QMainWindow):
         self._browse_btn.setStyleSheet(
             f"QPushButton {{"
             f"  background: transparent; color: {t['body']}; "
-            f"  border: 1px solid {alpha(t['border'], 0.375)}; border-radius: {scaled_px(6)}px; "
+            f"  border: 1px solid {alpha(t['border'], 0.375)}; "
+            f"  border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; "
             f"  padding: 6px 14px; font-size: {scaled_pt(12)}px; "
             f"}}"
-            f"QPushButton:hover {{ background: {alpha(t['border'], 0.188)}; }}")
+            f"QPushButton:hover {{ background: {alpha(t['hover_overlay'], themes.prop('opacity', 'hover'))}; }}")
         self._browse_btn.setIcon(icons.icon("folder", color="icon_secondary", size=scaled_px(15)))
         self._browse_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         self._browse_btn.setAccessibleName(tr("startup.browse_btn"))
@@ -505,16 +515,17 @@ class StartupWindow(QMainWindow):
 
     def _apply_menu_theme(self):
         t = themes.get()
+        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
         self._menu_bar.setStyleSheet(
             f"QMenuBar {{ background: {t['header']}; color: {t['heading']}; "
             f"border-bottom: 1px solid {alpha(t['border'], 0.25)}; "
             f"padding: 2px 0; font-size: {scaled_pt(12)}px; }}"
-            f"QMenuBar::item {{ padding: 4px 10px; border-radius: {scaled_px(4)}px; }}"
+            f"QMenuBar::item {{ padding: 4px 10px; border-radius: {radius_sm}px; }}"
             f"QMenuBar::item:selected {{ background: {alpha(t['accent'], 0.313)}; }}"
             f"QMenu {{ background: {t['panel']}; color: {t['heading']}; "
             f"border: 1px solid {t['border']}; "
-            f"border-radius: {scaled_px(6)}px; padding: 4px; }}"
-            f"QMenu::item {{ padding: 5px 28px 5px 12px; border-radius: {scaled_px(4)}px; }}"
+            f"border-radius: {radius_sm}px; padding: 4px; }}"
+            f"QMenu::item {{ padding: 5px 28px 5px 12px; border-radius: {radius_sm}px; }}"
             f"QMenu::item:selected {{ background: {t['accent']}; }}")
 
     def _open_settings(self):
@@ -629,7 +640,7 @@ class StartupWindow(QMainWindow):
             f"    stop:0 {_interpolate_color(t['panel'], 0.06)}, "
             f"    stop:0.5 {t['panel']}, "
             f"    stop:1 {t['panel']}); "
-            f"  border-bottom: 1px solid {alpha(t['border'], 0.188)}; "
+            f"  border-bottom: 1px solid {t['border_subtle']}; "
             f"}}")
 
         # List panel
@@ -637,7 +648,8 @@ class StartupWindow(QMainWindow):
             f"#listPanel {{"
             f"  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
             f"    stop:0 {_interpolate_color(t['panel'], 0.03)}, stop:1 {t['base']}); "
-            f"  border: 1px solid {alpha(t['border'], 0.188)}; border-radius: {scaled_px(10)}px; "
+            f"  border: 1px solid {t['border_subtle']}; "
+            f"  border-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; "
             f"}}")
 
         # Detail panel
@@ -666,10 +678,11 @@ class StartupWindow(QMainWindow):
         self._browse_btn.setStyleSheet(
             f"QPushButton {{"
             f"  background: transparent; color: {t['body']}; "
-            f"  border: 1px solid {alpha(t['border'], 0.375)}; border-radius: {scaled_px(6)}px; "
+            f"  border: 1px solid {alpha(t['border'], 0.375)}; "
+            f"  border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; "
             f"  padding: 6px 14px; font-size: {scaled_pt(12)}px; "
             f"}}"
-            f"QPushButton:hover {{ background: {alpha(t['border'], 0.188)}; }}")
+            f"QPushButton:hover {{ background: {alpha(t['hover_overlay'], themes.prop('opacity', 'hover'))}; }}")
 
         # Library cards
         for c in self._cards:
