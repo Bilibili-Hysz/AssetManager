@@ -978,6 +978,7 @@ async def handle_delivery(request: web.Request) -> web.Response:
         return _error_response(exc)
 
 async def _delivery_file_response(
+    request: web.Request | None,
     target: Path,
     *,
     consume: Callable[[], object] | None = None,
@@ -1041,7 +1042,7 @@ async def _delivery_file_response(
             pass
         raise
     return _file_response_with_cleanup(
-        zip_path, filename=sanitize_filename(f"{target.name}.zip")
+        request, zip_path, filename=sanitize_filename(f"{target.name}.zip")
     )
 
 
@@ -1067,6 +1068,7 @@ async def handle_order_delivery(request: web.Request) -> web.StreamResponse:
             root, order_id, receipt, request_key=request_key
         )
         return await _delivery_file_response(
+            request,
             target,
             consume=lambda: orders.resolve_delivery_by_receipt(
                 root, order_id, receipt, **consume_kwargs
@@ -1096,6 +1098,7 @@ async def handle_delivery_download(request: web.Request) -> web.StreamResponse:
             root, token, request_key=request_key
         )
         return await _delivery_file_response(
+            request,
             target,
             consume=lambda: orders.resolve_delivery(
                 root, token, **consume_kwargs
