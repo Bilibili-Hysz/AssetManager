@@ -34,16 +34,24 @@ class WindowCoordinator:
     def apply_menu_theme(self) -> None:
         t = themes.get()
         w = self._window
+        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
+        radius_md = scaled_px(int(themes.prop("border_radius", "md")))
+        spacing_xs = scaled_px(int(themes.prop("spacing", "xs")))
+        spacing_sm = scaled_px(int(themes.prop("spacing", "sm")))
+        font_sm = scaled_pt(int(themes.prop("font_size", "sm")))
+        hover = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
+        pressed = alpha(t["accent"], 0.72)
         w._menu_widget.setStyleSheet(f"background: {t['header']};")
         w._menu_bar.setStyleSheet(
             f"QMenuBar {{ background: transparent; color: {t['heading']}; "
-            f"border: none; padding: 2px 8px; font-size: {scaled_pt(12)}px; }}"
-            f"QMenuBar::item {{ padding: 3px 10px; border-radius: {scaled_px(4)}px; }}"
-            f"QMenuBar::item:selected {{ background: {alpha(t['accent'], 0.313)}; }}"
+            f"border: none; padding: 2px {spacing_sm}px; font-size: {font_sm}px; }}"
+            f"QMenuBar::item {{ padding: {spacing_xs}px 10px; border-radius: {radius_sm}px; }}"
+            f"QMenuBar::item:selected {{ background: {hover}; }}"
             f"QMenu {{ background: {t['panel']}; color: {t['heading']}; "
-            f"border: 1px solid {t['border']}; border-radius: {scaled_px(6)}px; padding: 4px; }}"
-            f"QMenu::item {{ padding: 5px 28px 5px 12px; border-radius: {scaled_px(4)}px; }}"
+            f"border: 1px solid {t['border']}; border-radius: {radius_md}px; padding: {spacing_xs}px; }}"
+            f"QMenu::item {{ padding: 5px 28px 5px 12px; border-radius: {radius_sm}px; }}"
             f"QMenu::item:selected {{ background: {t['accent']}; color: {t['on_accent']}; }}"
+            f"QMenu::item:pressed {{ background: {pressed}; color: {t['on_accent']}; }}"
         )
 
     def apply_status_bar_theme(self) -> None:

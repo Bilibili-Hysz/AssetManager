@@ -90,9 +90,14 @@ class WorkspaceBar(QTabBar):
 
     def _apply_style(self):
         t = themes.get()
+        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
+        radius_md = scaled_px(int(themes.prop("border_radius", "md")))
+        spacing_sm = scaled_px(int(themes.prop("spacing", "sm")))
+        hover = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
+        pressed = alpha(t["accent"], 0.18)
         self._renamer_style = (
             f"QLineEdit {{ background: {t['panel']}; color: {t['heading']}; "
-            f"border: 1px solid {alpha(t['accent'], 0.627)}; border-radius: {scaled_px(4)}px; "
+            f"border: 1px solid {alpha(t['accent'], 0.627)}; border-radius: {radius_sm}px; "
             f"padding: {scaled_px(2)}px {scaled_px(6)}px; font-size: {scaled_pt(11)}px; selection-background-color: {alpha(t['accent'], 0.50)}; }}"
         )
         self.setStyleSheet(
@@ -100,8 +105,8 @@ class WorkspaceBar(QTabBar):
             f"QTabBar::tab {{ "
             f"  background: transparent; color: {t['muted']}; "
             f"  border: 1px solid transparent; "
-            f"  border-top-left-radius: {scaled_px(6)}px; border-top-right-radius: {scaled_px(6)}px; "
-            f"  padding: {scaled_px(2)}px {scaled_px(8)}px; margin-right: {scaled_px(1)}px; "
+            f"  border-top-left-radius: {radius_md}px; border-top-right-radius: {radius_md}px; "
+            f"  padding: {scaled_px(2)}px {spacing_sm}px; margin-right: {scaled_px(1)}px; "
             f"  font-size: {scaled_pt(11)}px; min-width: {scaled_px(22)}px; max-width: {scaled_px(140)}px;"
             f"}} "
             f"QTabBar::tab:selected {{ "
@@ -112,21 +117,29 @@ class WorkspaceBar(QTabBar):
             f"}} "
             f"QTabBar::tab:hover:!selected {{ "
             f"  color: {t['body']}; "
-            f"  background: {alpha(t['panel'], 0.50)}; "
-            f"  border: 1px solid {alpha(t['border'], 0.50)}; "
+            f"  background: {hover}; "
+            f"  border: 1px solid {t['border_subtle']}; "
+            f"}} "
+            f"QTabBar::tab:pressed:!selected {{ "
+            f"  color: {t['heading']}; "
+            f"  background: {pressed}; "
+            f"  border: 1px solid {t['border_subtle']}; "
             f"}} "
             f"QTabBar::close-button {{ "
             f"  background: transparent;"
             f"  margin: 0px; padding: 0px;"
             f"}} "
             f"QTabBar::close-button:hover {{ "
-            f"  background: {alpha(t['accent'], 0.375)}; border-radius: {scaled_px(3)}px;"
+            f"  background: {alpha(t['accent'], 0.375)}; border-radius: {radius_sm}px;"
             f"}} "
             f"QTabBar QToolButton {{ "
             f"  color: {t['muted']}; background: transparent; border: none;"
             f"}} "
             f"QTabBar QToolButton:hover {{ "
-            f"  color: {t['heading']}; background: {alpha(t['panel'], 0.50)};"
+            f"  color: {t['heading']}; background: {hover}; border-radius: {radius_sm}px;"
+            f"}} "
+            f"QTabBar QToolButton:pressed {{ "
+            f"  color: {t['heading']}; background: {pressed}; border-radius: {radius_sm}px;"
             f"}} "
         )
 
@@ -355,14 +368,19 @@ class WorkspaceSection(QWidget):
 
     def _apply_style(self):
         t = themes.get()
+        radius_md = scaled_px(int(themes.prop("border_radius", "md")))
+        pressed = alpha(t["accent"], 0.18)
         self._sep.setStyleSheet(
-            f"QFrame {{ color: {t['border']}; background: {t['border']}; }}")
+            f"QFrame {{ color: {t['border_subtle']}; background: {t['border_subtle']}; }}")
+        themes.set_button_variant(self._add_btn, "primary")
         self._add_btn.setIcon(icons.icon("plus", color="icon_primary", size=scaled_px(12)))
         self._add_btn.setIconSize(QSize(scaled_px(12), scaled_px(12)))
         self._add_btn.setStyleSheet(
             f"QPushButton {{ background: {alpha(t['accent'], 0.753)}; color: {t['heading']}; "
-            f"border: 1px solid {t['accent']}; border-radius: {scaled_px(10)}px; }} "
+            f"border: 1px solid {t['accent']}; border-radius: {radius_md}px; }} "
             f"QPushButton:hover {{ background: {t['accent']}; color: {t['on_accent']}; "
+            f"border: 1px solid {t['accent']}; }} "
+            f"QPushButton:pressed {{ background: {pressed}; color: {t['on_accent']}; "
             f"border: 1px solid {t['accent']}; }} ")
         self._tabs._apply_style()
 

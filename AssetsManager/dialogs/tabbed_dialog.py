@@ -129,12 +129,16 @@ class _CollapsibleSection(QWidget):
     def _apply_header_style(self):
         t = themes.get()
         bg = alpha(t["accent"], 0.19) if self._expanded else "transparent"
-        hover_bg = alpha(t["accent"], 0.13)
+        hover_bg = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
         focus_color = t.get("border_focus", t["accent"])
+        radius = scaled_px(int(themes.prop("border_radius", "sm")))
+        pad_x = scaled_px(int(themes.prop("spacing", "xs")))
+        pad_y = scaled_px(int(themes.prop("spacing", "sm")))
+        fs_sm = scaled_pt(int(themes.prop("font_size", "sm")))
         self._header.setStyleSheet(
-            f"QPushButton {{ text-align: left; font-weight: bold; font-size: {scaled_pt(12)}px; "
+            f"QPushButton {{ text-align: left; font-weight: bold; font-size: {fs_sm}px; "
             f"color: {t['heading']}; background: {bg}; border: 1px solid {t['border']}40; "
-            f"border-radius: {scaled_px(4)}px; padding: {scaled_px(4)}px {scaled_px(8)}px; }}"
+            f"border-radius: {radius}px; padding: {pad_x}px {pad_y}px; }}"
             f"QPushButton:hover {{ background: {hover_bg}; }}"
             f"QPushButton:focus {{ background: {hover_bg}; "
             f"border: {scaled_px(1)}px solid {focus_color}; }}")
@@ -493,7 +497,7 @@ class TabbedDialog(QDialog):
         btn.setStyleSheet(
             f"QPushButton {{ color: {t['heading']}; padding: 0; background: transparent; "
             f"border: {scaled_px(1)}px solid transparent; "
-            f"border-radius: {scaled_px(3)}px; }}"
+            f"border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; }}"
             f"QPushButton:hover {{ background: {hover_bg}; }}"
             f"QPushButton:focus {{ background: {hover_bg}; "
             f"border: {scaled_px(1)}px solid {focus_color}; }}")
@@ -562,28 +566,52 @@ class TabbedDialog(QDialog):
 
     # ── Style helpers (used by SharingSettingsDialog) ──────────
 
+    def _btn_shape(self, sk):
+        """Tokenized geometry shared by the local button style helpers."""
+        px, pt = sk.px, sk.pt
+        return {
+            "radius": px(int(sk.prop("border_radius", "sm", 8))),
+            "pad_y": px(int(sk.prop("spacing", "sm", 8))),
+            "pad_x": px(int(sk.prop("spacing", "lg", 16))),
+            "font": pt(int(sk.prop("font_size", "md", 13))),
+        }
+
     def primary_btn_style(self):
         sk = self._sk
-        px, pt = sk.px, sk.pt
-        return (f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('on_accent')}; border: none; "
-                f"border-radius: {px(6)}px; padding: {px(8)}px {px(16)}px; font-size: {pt(13)}px; font-weight: bold; }}"
-                f"QPushButton:hover {{ background: {sk._alpha('accent', 0.85)}; }}")
+        shape = self._btn_shape(sk)
+        focus_color = sk.token('border_focus', sk.token('accent'))
+        hover_bg = sk._alpha('accent', 0.85)
+        pressed_bg = sk._darker('accent', 115)
+        return (f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('on_accent')}; "
+                f"border: 1px solid transparent; "
+                f"border-radius: {shape['radius']}px; padding: {shape['pad_y']}px {shape['pad_x']}px; "
+                f"font-size: {shape['font']}px; font-weight: bold; }}"
+                f"QPushButton:hover {{ background: {hover_bg}; }}"
+                f"QPushButton:pressed {{ background: {pressed_bg}; }}"
+                f"QPushButton:focus {{ border: 1px solid {focus_color}; }}")
 
     def status_style(self, active):
         sk = self._sk
         px = sk.px
         c = sk.token('accent') if active else sk.token('muted')
         return (f"QFrame {{ background: {sk._alpha(c, 0.13)}; border: 1px solid {sk._alpha(c, 0.38)}; "
-                f"border-radius: {px(6)}px; padding: {px(8)}px; }}")
+                f"border-radius: {px(int(sk.prop('border_radius', 'sm', 8)))}px; "
+                f"padding: {px(int(sk.prop('spacing', 'sm', 8)))}px; }}")
 
     def toggle_btn_style(self, active):
         sk = self._sk
-        px, pt = sk.px, sk.pt
+        shape = self._btn_shape(sk)
+        focus_color = sk.token('border_focus', sk.token('accent'))
         if active:
-            return (f"QPushButton {{ background: {sk.token('danger')}; color: {sk.token('on_accent')}; border: none; "
-                    f"border-radius: {px(6)}px; padding: {px(8)}px {px(16)}px; font-size: {pt(13)}px; font-weight: bold; }}"
-                    f"QPushButton:hover {{ background: {sk._alpha('danger', 0.87)}; }}")
+            base, hover_bg, pressed_bg = (
+                sk.token('danger'), sk._alpha('danger', 0.87), sk._darker('danger', 115))
         else:
-            return (f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('on_accent')}; border: none; "
-                    f"border-radius: {px(6)}px; padding: {px(8)}px {px(16)}px; font-size: {pt(13)}px; font-weight: bold; }}"
-                    f"QPushButton:hover {{ background: {sk._alpha('accent', 0.85)}; }}")
+            base, hover_bg, pressed_bg = (
+                sk.token('accent'), sk._alpha('accent', 0.85), sk._darker('accent', 115))
+        return (f"QPushButton {{ background: {base}; color: {sk.token('on_accent')}; "
+                f"border: 1px solid transparent; "
+                f"border-radius: {shape['radius']}px; padding: {shape['pad_y']}px {shape['pad_x']}px; "
+                f"font-size: {shape['font']}px; font-weight: bold; }}"
+                f"QPushButton:hover {{ background: {hover_bg}; }}"
+                f"QPushButton:pressed {{ background: {pressed_bg}; }}"
+                f"QPushButton:focus {{ border: 1px solid {focus_color}; }}")

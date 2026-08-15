@@ -226,8 +226,8 @@ class StyleKit:
             f"color: {color}; "
             f"background: {self._alpha(color, 0.13)}; "
             f"border: 1px solid {self._alpha(color, 0.38)}; "
-            f"border-radius: {self.px(6)}px; "
-            f"padding: {self.px(8)}px;"
+            f"border-radius: {self.px(int(self.prop('border_radius', 'sm', 8)))}px; "
+            f"padding: {self.px(int(self.prop('spacing', 'sm', 8)))}px;"
         )
 
     def state_color(self, state: str = "idle") -> str:
@@ -245,12 +245,20 @@ class StyleKit:
     def dialog_css(self) -> str:
         """Full QSS for a themed dialog. Covers all common Qt widgets."""
         t = self.t
-        hover = self._alpha("hover_overlay", t.get("properties", {}).get("opacity", {}).get("hover", 0.15))
+        hover = self._alpha("hover_overlay", self.prop("opacity", "hover", 0.15))
         accent_hover = self._lighter("accent", 110)
         accent_pressed = self._darker("accent", 115)
         danger_hover = self._lighter("danger", 110)
         danger_pressed = self._darker("danger", 115)
         px, pt = self.px, self.pt
+        # Tokenized geometry — fallbacks mirror D_Default.json properties.
+        br_sm = px(int(self.prop("border_radius", "sm", 8)))
+        br_md = px(int(self.prop("border_radius", "md", 10)))
+        sp_xs = px(int(self.prop("spacing", "xs", 4)))
+        sp_sm = px(int(self.prop("spacing", "sm", 8)))
+        sp_md = px(int(self.prop("spacing", "md", 12)))
+        sp_lg = px(int(self.prop("spacing", "lg", 16)))
+        fs_sm = pt(int(self.prop("font_size", "sm", 12)))
         return (
             # ── Container ───────────────────────────────────────
             f"QDialog {{ background: {t.get('panel', t.get('base', ''))}; color: {t.get('body', t.get('base', ''))}; }}"
@@ -259,8 +267,8 @@ class StyleKit:
             # ── Inputs ──────────────────────────────────────────
             f"QLineEdit, QTextEdit, QSpinBox, QDoubleSpinBox {{ "
             f"background: {t.get('input_bg', t.get('base', ''))}; color: {t.get('input_text', t.get('base', ''))}; "
-            f"border: 1px solid {t.get('border', t.get('base', ''))}; border-radius: {px(4)}px; "
-            f"padding: {px(3)}px {px(6)}px; }}"
+            f"border: 1px solid {t.get('border', t.get('base', ''))}; border-radius: {br_sm}px; "
+            f"padding: {sp_xs}px {sp_sm}px; }}"
             f"QLineEdit:focus, QTextEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {{ "
             f"border: 2px solid {t.get('border_focus', t.get('base', ''))}; }}"
             f"QLineEdit:read-only, QTextEdit:read-only, "
@@ -273,73 +281,73 @@ class StyleKit:
             f"border-color: {t.get('disabled_bg', t.get('base', ''))}; }}"
             f"QComboBox {{ "
             f"background: {t.get('input_bg', t.get('base', ''))}; color: {t.get('input_text', t.get('base', ''))}; "
-            f"border: 1px solid {t.get('border', t.get('base', ''))}; border-radius: {px(4)}px; "
-            f"padding: {px(3)}px {px(6)}px; }}"
+            f"border: 1px solid {t.get('border', t.get('base', ''))}; border-radius: {br_sm}px; "
+            f"padding: {sp_xs}px {sp_sm}px; }}"
             f"QComboBox:focus {{ border: 2px solid {t.get('border_focus', t.get('base', ''))}; }}"
             f"QComboBox:disabled {{ background: {t.get('disabled_bg', t.get('base', ''))}; "
             f"color: {t.get('disabled_text', t.get('base', ''))}; border-color: {t.get('disabled_bg', t.get('base', ''))}; }}"
             f"QComboBox::drop-down {{ border: none; }}"
             # ── List ────────────────────────────────────────────
             f"QListWidget {{ background: {t.get('input_bg', t.get('base', ''))}; color: {t.get('input_text', t.get('base', ''))}; "
-            f"border: 1px solid {t.get('border', t.get('base', ''))}; border-radius: {px(4)}px; "
-            f"padding: {px(2)}px; }}"
-            f"QListWidget::item {{ padding: {px(5)}px {px(6)}px; "
-            f"border-radius: {px(3)}px; }}"
+            f"border: 1px solid {t.get('border', t.get('base', ''))}; border-radius: {br_sm}px; "
+            f"padding: {sp_xs}px; }}"
+            f"QListWidget::item {{ padding: {sp_sm}px {sp_sm}px; "
+            f"border-radius: {br_sm}px; }}"
             f"QListWidget::item:hover {{ background: {hover}; }}"
             f"QListWidget::item:selected {{ background: {self._alpha('accent', 0.25)}; "
             f"color: {t.get('heading', t.get('base', ''))}; }}"
             # ── Progress ────────────────────────────────────────
             f"QProgressBar {{ background: {t.get('input_bg', t.get('base', ''))}; color: {t.get('body', t.get('base', ''))}; "
-            f"border: 1px solid {t.get('border', t.get('base', ''))}; border-radius: {px(3)}px; "
+            f"border: 1px solid {t.get('border', t.get('base', ''))}; border-radius: {br_sm}px; "
             f"text-align: center; }}"
             f"QProgressBar::chunk {{ background: {t.get('accent', t.get('base', ''))}; "
-            f"border-radius: {px(2)}px; }}"
+            f"border-radius: {br_sm}px; }}"
             # ── Radio + Checkbox ────────────────────────────────
             f"QRadioButton, QCheckBox {{ color: {t.get('body', t.get('base', ''))}; background: transparent; "
-            f"spacing: {px(6)}px; }}"
+            f"spacing: {sp_sm}px; }}"
             f"QRadioButton:focus, QCheckBox:focus {{ color: {t.get('border_focus', t.get('base', ''))}; }}"
             f"QRadioButton:disabled, QCheckBox:disabled {{ color: {t.get('disabled_text', t.get('base', ''))}; }}"
             f"QRadioButton:checked {{ color: {t.get('accent', t.get('base', ''))}; font-weight: bold; }}"
             f"QRadioButton::indicator {{ width: {px(14)}px; height: {px(14)}px; }}"
             f"QRadioButton::indicator:checked {{ background: {t.get('accent', t.get('base', ''))}; "
-            f"border: 2px solid {t.get('accent', t.get('base', ''))}; border-radius: {px(7)}px; }}"
+            f"border: 2px solid {t.get('accent', t.get('base', ''))}; border-radius: {br_md}px; }}"
             f"QRadioButton::indicator:unchecked {{ background: {t.get('input_bg', t.get('base', ''))}; "
-            f"border: 2px solid {t.get('border', t.get('base', ''))}; border-radius: {px(7)}px; }}"
+            f"border: 2px solid {t.get('border', t.get('base', ''))}; border-radius: {br_md}px; }}"
             f"QRadioButton::indicator:hover {{ border-color: {t.get('accent', t.get('base', ''))}; }}"
             f"QRadioButton::indicator:focus {{ border-color: {t.get('border_focus', t.get('base', ''))}; }}"
             f"QRadioButton::indicator:disabled {{ background: {t.get('disabled_bg', t.get('base', ''))}; "
             f"border-color: {t.get('disabled_text', t.get('base', ''))}; }}"
             f"QCheckBox::indicator {{ width: {px(14)}px; height: {px(14)}px; }}"
             f"QCheckBox::indicator:checked {{ background: {t.get('accent', t.get('base', ''))}; "
-            f"border: 2px solid {t.get('accent', t.get('base', ''))}; border-radius: {px(3)}px; }}"
+            f"border: 2px solid {t.get('accent', t.get('base', ''))}; border-radius: {br_sm}px; }}"
             f"QCheckBox::indicator:unchecked {{ background: {t.get('input_bg', t.get('base', ''))}; "
-            f"border: 2px solid {t.get('border', t.get('base', ''))}; border-radius: {px(3)}px; }}"
+            f"border: 2px solid {t.get('border', t.get('base', ''))}; border-radius: {br_sm}px; }}"
             f"QCheckBox::indicator:hover {{ border-color: {t.get('accent', t.get('base', ''))}; }}"
             f"QCheckBox::indicator:focus {{ border-color: {t.get('border_focus', t.get('base', ''))}; }}"
             f"QCheckBox::indicator:disabled {{ background: {t.get('disabled_bg', t.get('base', ''))}; "
             f"border-color: {t.get('disabled_text', t.get('base', ''))}; }}"
             # ── Group box ───────────────────────────────────────
             f"QGroupBox {{ color: {t.get('heading', t.get('base', ''))}; border: 1px solid {t.get('border', t.get('base', ''))}; "
-            f"border-radius: {px(6)}px; margin-top: {px(8)}px; "
-            f"padding-top: {px(12)}px; background: transparent; }}"
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: {px(10)}px; "
-            f"padding: 0 {px(5)}px; }}"
+            f"border-radius: {br_md}px; margin-top: {sp_sm}px; "
+            f"padding-top: {sp_md}px; background: transparent; }}"
+            f"QGroupBox::title {{ subcontrol-origin: margin; left: {sp_md}px; "
+            f"padding: 0 {sp_sm}px; }}"
             # ── Slider ──────────────────────────────────────────
             f"QSlider::groove:horizontal {{ background: {t.get('border', t.get('base', ''))}; "
-            f"height: {px(4)}px; border-radius: {px(2)}px; }}"
+            f"height: {px(4)}px; border-radius: {br_sm}px; }}"
             f"QSlider::handle:horizontal {{ background: {t.get('accent', t.get('base', ''))}; "
             f"width: {px(14)}px; height: {px(14)}px; "
-            f"margin: {self._signed_px(-5)}px 0; border-radius: {px(7)}px; "
+            f"margin: {self._signed_px(-5)}px 0; border-radius: {br_md}px; "
             f"border: 2px solid {t.get('accent', t.get('base', ''))}; }}"
             f"QSlider::handle:horizontal:hover {{ "
             f"background: {self._alpha('accent', 0.85)}; "
             f"border-color: {self._alpha('accent', 0.85)}; }}"
             f"QSlider::sub-page:horizontal {{ background: {t.get('accent', t.get('base', ''))}; "
-            f"border-radius: {px(2)}px; }}"
+            f"border-radius: {br_sm}px; }}"
             # ── Push buttons ────────────────────────────────────
             f"QPushButton {{ background: {t.get('accent', t.get('base', ''))}; color: {t.get('on_accent', t.get('base', ''))}; "
-            f"border: none; border-radius: {px(4)}px; "
-            f"padding: {px(6)}px {px(16)}px; }}"
+            f"border: none; border-radius: {br_sm}px; "
+            f"padding: {sp_sm}px {sp_lg}px; }}"
             f"QPushButton:hover {{ background: {hover}; }}"
             f"QPushButton[buttonVariant=\"primary\"] {{ "
             f"background: {t.get('accent', t.get('base', ''))}; color: {t.get('on_accent', t.get('base', ''))}; }}"
@@ -375,34 +383,37 @@ class StyleKit:
             f"QScrollBar:vertical {{ background: {t.get('scrollbar_track', t.get('base', ''))}; "
             f"width: {px(8)}px; }}"
             f"QScrollBar::handle:vertical {{ background: {t.get('scrollbar_thumb', t.get('base', ''))}; "
-            f"border-radius: {px(4)}px; min-height: {px(20)}px; }}"
+            f"border-radius: {br_sm}px; min-height: {px(20)}px; }}"
             # ── ToolTip ─────────────────────────────────────────
             f"QToolTip {{ background: {t.get('tooltip_bg', t.get('header', t.get('base', '')))}; "
             f"color: {t.get('tooltip_text', t.get('heading', t.get('base', '')))}; "
             f"border: 1px solid {t.get('border', t.get('base', ''))}; "
-            f"border-radius: {px(4)}px; "
-            f"padding: {px(4)}px {px(8)}px; "
-            f"font-size: {pt(11)}px; }}"
+            f"border-radius: {br_sm}px; "
+            f"padding: {sp_xs}px {sp_sm}px; "
+            f"font-size: {fs_sm}px; }}"
             # ── QMessageBox ─────────────────────────────────────
             f"QMessageBox {{ background: {t.get('panel', t.get('base', ''))}; color: {t.get('body', t.get('base', ''))}; }}"
-            f"QMessageBox QLabel {{ color: {t.get('body', t.get('base', ''))}; font-size: {pt(12)}px; }}"
+            f"QMessageBox QLabel {{ color: {t.get('body', t.get('base', ''))}; font-size: {fs_sm}px; }}"
         )
 
     def tab_css(self) -> str:
         """QSS for QTabWidget used inside dialogs."""
         t = self.t
         px = self.px
+        br_md = px(int(self.prop("border_radius", "md", 10)))
+        sp_sm = px(int(self.prop("spacing", "sm", 8)))
+        sp_lg = px(int(self.prop("spacing", "lg", 16)))
         return (
             f"QTabWidget::pane {{ border: 1px solid {t.get('border', t.get('base', ''))}; "
-            f"border-radius: {px(6)}px; background: {t.get('panel', t.get('base', ''))}; }}"
+            f"border-radius: {br_md}px; background: {t.get('panel', t.get('base', ''))}; }}"
             f"QTabBar::tab {{ background: {t.get('base', '')}; color: {t.get('muted', t.get('base', ''))}; "
-            f"border: 1px solid {t.get('border', t.get('base', ''))}; padding: {px(8)}px {px(16)}px; "
+            f"border: 1px solid {t.get('border', t.get('base', ''))}; padding: {sp_sm}px {sp_lg}px; "
             f"margin-right: {px(2)}px; "
-            f"border-top-left-radius: {px(6)}px; border-top-right-radius: {px(6)}px; }}"
+            f"border-top-left-radius: {br_md}px; border-top-right-radius: {br_md}px; }}"
             f"QTabBar::tab:selected {{ background: {t.get('panel', t.get('base', ''))}; color: {t.get('heading', t.get('base', ''))}; "
             f"border-bottom-color: {t.get('panel', t.get('base', ''))}; }}"
             f"QTabBar::tab:hover:!selected {{ "
-            f"background: {self._alpha('hover_overlay', 0.13)}; color: {t.get('body', t.get('base', ''))}; }}"
+            f"background: {self._alpha('hover_overlay', self.prop('opacity', 'hover', 0.15))}; color: {t.get('body', t.get('base', ''))}; }}"
         )
 
     # ── Widget factories ──────────────────────────────────────
@@ -430,11 +441,14 @@ class StyleKit:
         badge.setStyleSheet(
             f"background: {self._alpha(color_key, 0.13)}; "
             f"border: 1px solid {self._alpha(color_key, 0.38)}; "
-            f"border-radius: {self.px(10)}px; "
-            f"padding: {self.px(2)}px {self.px(8)}px;")
+            f"border-radius: {self.px(int(self.prop('border_radius', 'md', 10)))}px; "
+            f"padding: {self.px(int(self.prop('spacing', 'xs', 4)))}px {self.px(int(self.prop('spacing', 'sm', 8)))}px;")
         row = QHBoxLayout(badge)
-        row.setContentsMargins(self.px(6), self.px(2), self.px(6), self.px(2))
-        row.setSpacing(self.px(4))
+        row.setContentsMargins(self.px(int(self.prop("spacing", "sm", 8))),
+                               self.px(int(self.prop("spacing", "xs", 4))),
+                               self.px(int(self.prop("spacing", "sm", 8))),
+                               self.px(int(self.prop("spacing", "xs", 4))))
+        row.setSpacing(self.px(int(self.prop("spacing", "xs", 4))))
         text = QLabel(state.capitalize())
         text.setStyleSheet(
             f"color: {color}; font-size: {self.pt(11)}px; font-weight: bold; "

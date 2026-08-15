@@ -337,8 +337,9 @@ class _ColorSwatchSection(QGroupBox):
     def update_swatch(self, color_name: str, color_hex: str) -> None:
         swatch = self._swatches.get(color_name)
         if swatch:
+            radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
             swatch.setStyleSheet(
-                f"background: {color_hex}; border: 1px solid {themes.color('border')}; border-radius: {scaled_px(4)}px;"
+                f"background: {color_hex}; border: 1px solid {themes.color('border')}; border-radius: {radius_sm}px;"
             )
 
     def set_all_colors(self, colors: dict[str, str]) -> None:
@@ -686,7 +687,7 @@ class ThemePreviewRenderer:
             width: {scaled_px(14)}px;
             height: {scaled_px(14)}px;
             margin: -{scaled_px(5)}px 0;
-            border-radius: {scaled_px(7)}px;
+            border-radius: {r_md}px;
         }}
         QSlider::sub-page:horizontal {{
             background: {accent};

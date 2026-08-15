@@ -371,9 +371,12 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._share_toggle_btn.setFixedSize(scaled_px(28), scaled_px(28))
         self._share_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         themes.set_button_variant(self._share_toggle_btn, "ghost")
+        btn_radius = scaled_px(int(themes.prop("border_radius", "sm")))
+        btn_hover = alpha(themes.get()["hover_overlay"], themes.prop("opacity", "hover"))
         self._share_toggle_btn.setStyleSheet(
             f"QPushButton {{ background: transparent; border: none; }}"
-            f"QPushButton:hover {{ background: {alpha(themes.get()['hover_overlay'], 0.1)}; border-radius: {scaled_px(4)}px; }}"
+            f"QPushButton:hover {{ background: {btn_hover}; border-radius: {btn_radius}px; }}"
+            f"QPushButton:pressed {{ background: {alpha(themes.get()['accent'], 0.18)}; border-radius: {btn_radius}px; }}"
         )
         self._share_toggle_btn.clicked.connect(self._toggle_sharing)
         layout.addWidget(self._share_toggle_btn)

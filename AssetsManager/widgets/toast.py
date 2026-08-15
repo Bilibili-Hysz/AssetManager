@@ -59,11 +59,15 @@ class Toast(QWidget):
         color_token = _LEVEL_COLORS.get(level, "accent")
         border_color = sk.token(color_token, sk.token("accent"))
         px = sk.px
+        radius_sm = px(int(sk.prop("border_radius", "sm", 8)))
 
         # ── Left accent bar ────────────────────────────────────
         border_bar = QWidget()
         border_bar.setFixedWidth(px(4))
-        border_bar.setStyleSheet(f"background: {border_color};")
+        border_bar.setStyleSheet(
+            f"background: {border_color}; "
+            f"border-top-left-radius: {radius_sm}px; border-bottom-left-radius: {radius_sm}px;"
+        )
 
         # ── Icon label (semantic SVG icon) ────────────────────
         icon_label = None
@@ -110,7 +114,7 @@ class Toast(QWidget):
         body = QWidget()
         body.setStyleSheet(
             f"background: {sk.token('panel')}; border: 1px solid {sk.token('border')}; "
-            f"border-left: none; border-radius: 0 {px(8)}px {px(8)}px 0;")
+            f"border-left: none; border-radius: 0 {radius_sm}px {radius_sm}px 0;")
         body_layout = QHBoxLayout(body)
         body_layout.setContentsMargins(px(12), px(10), px(12), px(10))
         body_layout.addLayout(inner_row)
@@ -142,7 +146,7 @@ class Toast(QWidget):
 
         # Rounded corners on the left side of the accent bar
         self.setStyleSheet(
-            f"background: transparent; border-radius: {px(8)}px;")
+            f"background: transparent; border-radius: {radius_sm}px;")
 
         # ── Opacity effect + fade animation ────────────────────
         reduce_motion = StyleKit.reduce_motion()

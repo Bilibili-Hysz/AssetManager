@@ -310,7 +310,7 @@ def test_tab_css():
 def test_tab_css_scales_all_padding_and_margin_values():
     sk = StyleKit(theme=_SAMPLE_THEME, px=lambda value: value * 3)
     css = sk.tab_css()
-    assert "padding: 24px 48px" in css
+    assert "padding: 12px 36px" in css
     assert "margin-right: 6px" in css
 
 

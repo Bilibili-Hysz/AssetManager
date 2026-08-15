@@ -20,7 +20,7 @@ def generic_settings_dialog(parent=None) -> QDialog:
 
     msg = QLabel(tr("panel.no_settings"))
     msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    msg.setStyleSheet(sk.label_css("body", size=14))
+    msg.setStyleSheet(sk.label_css("body", size=int(sk.prop("font_size", "lg", 14))))
     layout.addWidget(msg)
 
     close_btn = QPushButton(tr("dialog.close"))

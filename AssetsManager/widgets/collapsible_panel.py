@@ -59,13 +59,19 @@ class CollapsiblePanel(QWidget):
     def _apply_header_style(self):
         t = themes.get()
         bg = alpha(t["accent"], 0.19) if self._expanded else "transparent"
-        hover_bg = alpha(t["accent"], 0.13)
+        hover_bg = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
+        pressed_bg = alpha(t["accent"], 0.18)
         hairline = t.get("border_subtle", alpha(t["border"], 0.5))
+        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
+        spacing_sm = scaled_px(int(themes.prop("spacing", "sm")))
+        spacing_md = scaled_px(int(themes.prop("spacing", "md")))
+        font_sm = scaled_pt(int(themes.prop("font_size", "sm")))
         self._header_btn.setStyleSheet(
-            f"QPushButton {{ text-align: left; font-weight: bold; font-size: {scaled_pt(12)}px; "
+            f"QPushButton {{ text-align: left; font-weight: bold; font-size: {font_sm}px; "
             f"color: {t['heading']}; background: {bg}; border: 1px solid {hairline}; "
-            f"border-radius: {scaled_px(8)}px; padding: {scaled_px(6)}px {scaled_px(10)}px; }}"
-            f"QPushButton:hover {{ background: {hover_bg}; }}")
+            f"border-radius: {radius_sm}px; padding: {spacing_sm}px {spacing_md}px; }}"
+            f"QPushButton:hover {{ background: {hover_bg}; }}"
+            f"QPushButton:pressed {{ background: {pressed_bg}; }}")
 
     def _on_toggle(self, checked):
         self._expanded = checked
