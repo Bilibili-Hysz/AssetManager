@@ -37,7 +37,9 @@ class FileListHost(Protocol):
     _history: list[str]
     _forward_list: list[str]
     _view_memory: dict[str, str]
-    _view_mode: str
+
+    @property
+    def _view_mode(self) -> str: ...
     _view_combo: QComboBox
     _bc_layout: QHBoxLayout
     folder_entered: Any

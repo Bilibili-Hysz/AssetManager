@@ -79,6 +79,8 @@
 - `gallery_service.py` 拆 `_projection_builder/_persistence/_incremental`；`sharing_settings_dialog.py` 按 tab 拆面板；`shop.py` 拆 `routes/shop/{catalog,cart,orders,delivery,seller}` 子包（保留兼容 re-export）。
 - 验收：`grep 'AppSettings.instance()' application` == 1；shop 子模块 ≤ ~350 行；139 路由数不变。
 
+**状态：已完成** —— application 的 `AppSettings.instance()` 仅存于 `bootstrap.py` 并安装 provider seam；`get_library()` 经 `tag_canonicalizer` seam 注入；三个 God-file 已拆分（shop 实际为 `_common/catalog/cart/orders/delivery`，seller 装配归 `_common`），兼容 re-export 保持测试 monkeypatch 面不变。
+
 ---
 
 ## 2. 桌面 UI 架构

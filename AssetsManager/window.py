@@ -863,6 +863,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
             tr("import.choose_sources"),
             str(Path.home()),
         )
+        sources = cast(list[str | Path], sources)
         if not sources:
             return
         destination = QFileDialog.getExistingDirectory(

@@ -776,6 +776,42 @@ def test_g3_application_has_no_get_library_access() -> None:
         assert "get_library(" not in source, path
 
 
+def test_g3_gallery_service_is_split_into_focused_mixins() -> None:
+    facade = (SRC / "application" / "gallery_service.py").read_text(encoding="utf-8")
+    assert "_GalleryPersistenceMixin" in facade
+    assert "_GalleryProjectionMixin" in facade
+    assert "_GalleryIncrementalMixin" in facade
+    for name in ("_persistence.py", "_projection_builder.py", "_incremental.py"):
+        assert (SRC / "application" / "gallery" / name).is_file(), name
+
+
+def test_g3_sharing_settings_dialog_uses_tab_mixins() -> None:
+    source = (SRC / "dialogs" / "sharing_settings_dialog.py").read_text(encoding="utf-8")
+    for mixin in (
+        "SharedUiMixin",
+        "EndpointPageMixin",
+        "LinksPageMixin",
+        "AccessPageMixin",
+        "ConfigurationPageMixin",
+    ):
+        assert mixin in source
+    for name in (
+        "_ui.py",
+        "_endpoint_page.py",
+        "_links_page.py",
+        "_access_page.py",
+        "_configuration_page.py",
+    ):
+        assert (SRC / "dialogs" / "sharing_settings" / name).is_file(), name
+
+
+def test_g3_shop_route_modules_stay_within_line_budget() -> None:
+    package = SRC / "lan" / "routes" / "shop"
+    for name in ("_common.py", "catalog.py", "cart.py", "orders.py", "delivery.py"):
+        source = (package / name).read_text(encoding="utf-8")
+        assert len(source.splitlines()) <= 350, name
+
+
 def test_file_operation_service_delegates_deleted_projection_cleanup() -> None:
     source = (SRC / "application" / "file_operation_service.py").read_text(encoding="utf-8")
     start = source.index("    def _clear_deleted_projection(self, path: Path) -> None:")

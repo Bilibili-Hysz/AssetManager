@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from AssetsManager.application.app_settings_provider import get_app_settings
+from AssetsManager.core.settings import AppSettings as AppSettings  # compat monkeypatch target
 from AssetsManager.domain.errors import OperationNotPermitted, ValidationError
 
 AUTHORIZED_ROOTS_SETTING = "lan_shop_authorized_roots"
