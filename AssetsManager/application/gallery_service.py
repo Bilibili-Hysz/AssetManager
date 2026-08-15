@@ -16,8 +16,9 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from stat import S_ISREG
 from time import monotonic
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.application.tag_service import TagService
@@ -602,18 +603,33 @@ class GalleryService:
         except (OSError, sqlite3.Error):
             _log.debug("Gallery home persisted projection write failed", exc_info=True)
 
-    def prewarm_home(self, library_root: str | Path) -> None:
+    def prewarm_home(
+        self,
+        library_root: str | Path,
+        *,
+        pre_wait: Callable[[], None] | None = None,
+    ) -> None:
         """Kick off a background home projection build (idempotent).
 
         Called after the LAN server starts so the first /gallery visit
-        finds a warm cache instead of a building state. Never blocks.
+        finds a warm cache instead of a building state. ``pre_wait`` (if
+        given) runs on the build thread before the walk — used to wait out
+        the LAN scanner so the two full-library traversals do not compete
+        for disk I/O. Never blocks the caller.
         """
         try:
-            self._ensure_home_building(str(Path(library_root).resolve()))
+            self._ensure_home_building(
+                str(Path(library_root).resolve()), pre_wait=pre_wait
+            )
         except Exception:
             _log.debug("Gallery home prewarm skipped", exc_info=True)
 
-    def _ensure_home_building(self, root_key: str) -> None:
+    def _ensure_home_building(
+        self,
+        root_key: str,
+        *,
+        pre_wait: Callable[[], None] | None = None,
+    ) -> None:
         """Start a background home build for *root_key* unless one is
         already running, the service is closed, or a recent failure is
         still backing off (in which case a retry timer is re-armed).
@@ -635,7 +651,10 @@ class GalleryService:
                     return
             self._building.add(root_key)
         thread = threading.Thread(
-            target=self._build_home_background, args=(root_key,), daemon=True
+            target=self._build_home_background,
+            args=(root_key,),
+            kwargs={"pre_wait": pre_wait},
+            daemon=True,
         )
         thread.start()
 
@@ -653,12 +672,16 @@ class GalleryService:
         self._refresh_timer.daemon = True
         self._refresh_timer.start()
 
-    def _build_home_background(self, root_key: str) -> None:
+    def _build_home_background(
+        self, root_key: str, *, pre_wait: Callable[[], None] | None = None
+    ) -> None:
         """Compute the projection off the request path; failures leave the
         cache empty, stamp the failure timestamp (retries then back off
         instead of re-walking on every poll), and let the next request
         retry after the backoff."""
         try:
+            if pre_wait is not None:
+                pre_wait()
             self._compute_home(root_key)
         except Exception:
             _log.exception("Background gallery home build failed for %s", root_key)
@@ -719,13 +742,19 @@ class GalleryService:
         target = (root / relative_path).resolve()
         try:
             target.relative_to(root)
+            if target.suffix.lower() not in _SAFE_GALLERY_IMAGE_EXTS:
+                return None
+            if stat_result is None:
+                stat_result = target.stat()
+            # One stat serves both the file check and the reparse-point
+            # check; the resolved target's chain was already vetted by the
+            # caller (walk filter or _resolve_existing).
             if (
-                not target.is_file()
-                or target.suffix.lower() not in _SAFE_GALLERY_IMAGE_EXTS
-                or cls._path_contains_reparse_point(root, target)
+                not S_ISREG(int(stat_result.st_mode))
+                or int(getattr(stat_result, "st_file_attributes", 0))
+                & _FILE_ATTRIBUTE_REPARSE_POINT
             ):
                 return None
-            stat_result = stat_result or target.stat()
         except (OSError, ValueError):
             return None
         width = height = aspect_ratio = None
@@ -747,33 +776,14 @@ class GalleryService:
             extension=target.suffix.lower(),
         ).to_dict()
 
-    @staticmethod
-    def _entry_is_reparse_point(
-        entry: os.DirEntry[str], stat_result: os.stat_result | None = None
-    ) -> bool:
-        """Return whether *entry* is a link, junction, or reparse point.
-
-        ``stat_result`` is the pre-fetched ``entry.stat(follow_symlinks=False)``
-        from the scan loop; passing it avoids a second stat per entry.
-        """
-        try:
-            if entry.is_symlink():
-                return True
-            is_junction = getattr(entry, "is_junction", None)
-            if callable(is_junction) and is_junction():
-                return True
-            if stat_result is None:
-                stat_result = entry.stat(follow_symlinks=False)
-        except OSError:
-            return True
-        return bool(
-            int(getattr(stat_result, "st_file_attributes", 0))
-            & _FILE_ATTRIBUTE_REPARSE_POINT
-        )
-
     @classmethod
     def _path_contains_reparse_point(cls, root: Path, target: Path) -> bool:
-        """Check every component between root and target without following it."""
+        """Check every component between root and target without following it.
+
+        Only called for public entry paths (resolve_existing, build entry);
+        the recursive walk skips it because every child entry already
+        passed the scandir-level reparse filter.
+        """
         try:
             relative = target.relative_to(root)
         except ValueError:
@@ -836,9 +846,14 @@ class GalleryService:
         """Materialize only entries which have already consumed traversal
         budget.
 
-        Each kept entry carries the ``stat(follow_symlinks=False)`` result
-        fetched here so ``_build_node`` reuses it for file aggregation
-        instead of issuing a second stat per file.
+        The reparse filter runs before any stat: symlink/junction come from
+        the scandir entry attributes (no syscall), and only files pay the
+        single ``stat(follow_symlinks=False)`` that ``_build_node`` reuses
+        for size/mtime aggregation — that same call also surfaces the
+        reparse-point attribute so exotic reparse files (OneDrive
+        placeholders, ...) are skipped. Directories never stat: the
+        symlink/junction checks above cover every reparse class that can
+        escape the library tree.
         """
         visible: list[tuple[os.DirEntry[str], os.stat_result | None]] = []
         try:
@@ -846,10 +861,14 @@ class GalleryService:
                 for entry in iterator:
                     budget.check_time()
                     try:
-                        stat_result = entry.stat(follow_symlinks=False)
+                        is_symlink = entry.is_symlink()
+                        is_junction = False
+                        is_junction_fn = getattr(entry, "is_junction", None)
+                        if callable(is_junction_fn):
+                            is_junction = is_junction_fn()
                     except OSError:
-                        stat_result = None
-                    if self._entry_is_reparse_point(entry, stat_result):
+                        is_symlink = is_junction = False
+                    if is_symlink or is_junction:
                         budget.visit_entry(depth + 1, is_file=False)
                         continue
                     try:
@@ -857,8 +876,24 @@ class GalleryService:
                     except OSError:
                         is_file = False
                     budget.visit_entry(depth + 1, is_file=is_file)
-                    if not entry.name.startswith("."):
-                        visible.append((entry, stat_result))
+                    if entry.name.startswith("."):
+                        continue
+                    if not is_file:
+                        # Directory: no stat (see docstring); _build_node
+                        # recurses into it with stat_result=None.
+                        visible.append((entry, None))
+                        continue
+                    try:
+                        stat_result = entry.stat(follow_symlinks=False)
+                    except OSError:
+                        stat_result = None
+                    if (
+                        stat_result is not None
+                        and int(getattr(stat_result, "st_file_attributes", 0))
+                        & _FILE_ATTRIBUTE_REPARSE_POINT
+                    ):
+                        continue
+                    visible.append((entry, stat_result))
         except OSError:
             return visible
         budget.check_time()
@@ -879,15 +914,20 @@ class GalleryService:
         node_counts: dict[str, int] | None = None,
         state_nodes: dict[str, _StateNode] | None = None,
         known_files: dict[str, tuple[int, int]] | None = None,
+        skip_reparse_check: bool = False,
     ) -> dict[str, Any] | None:
-        try:
-            if self._path_contains_reparse_point(root, target):
+        if not skip_reparse_check:
+            # Public entry points resolve and re-check the chain once. The
+            # recursion passes skip_reparse_check=True: every child already
+            # passed the scandir-level reparse filter in _visible_entries,
+            # and re-walking the component chain per directory costs tens of
+            # thousands of lstat syscalls on large libraries.
+            try:
+                target = assert_under_root(target.resolve(), root)
+                if self._path_contains_reparse_point(root, target):
+                    return None
+            except (OSError, PathEscapeError, ValueError):
                 return None
-            target = assert_under_root(target.resolve(), root)
-            if self._path_contains_reparse_point(root, target):
-                return None
-        except (OSError, PathEscapeError, ValueError):
-            return None
         budget.enter_directory(depth)
         child_nodes: list[dict[str, Any]] = []
         direct_images: list[tuple[str, os.stat_result]] = []
@@ -917,6 +957,7 @@ class GalleryService:
                     node_counts=node_counts,
                     state_nodes=state_nodes,
                     known_files=known_files,
+                    skip_reparse_check=True,
                 )
                 if child_node is None:
                     continue

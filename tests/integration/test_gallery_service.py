@@ -612,3 +612,37 @@ def test_failed_background_build_backs_off_before_retry(tmp_path, schema_db, mon
         assert root_key not in service._build_failures
     finally:
         service.close()
+
+
+def test_prewarm_wait_hook_runs_on_build_thread_before_walk(tmp_path, schema_db):
+    """prewarm_home runs its pre_wait hook on the build thread before the
+    walk, so the LAN server can serialize the gallery build behind its
+    scanner — concurrent full-library traversals with per-file stats fight
+    for disk I/O on Windows and push each other past the time budget."""
+    import threading
+    import time
+
+    _image(tmp_path / "set" / "one.png")
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    root_key = str(tmp_path.resolve())
+    hook_called = threading.Event()
+
+    def wait_hook():
+        # Runs on the build thread: the root is already marked as building
+        # (so polls stay no-ops), and the walk has not started yet.
+        assert root_key in service._building
+        hook_called.set()
+
+    service.prewarm_home(tmp_path, pre_wait=wait_hook)
+    try:
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and not hook_called.is_set():
+            time.sleep(0.05)
+        assert hook_called.is_set()
+        # The build then completes and fills the cache.
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and service.get_home_cached(tmp_path) is None:
+            time.sleep(0.05)
+        assert service.get_home_cached(tmp_path) is not None
+    finally:
+        service.close()

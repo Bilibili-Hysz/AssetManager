@@ -1227,14 +1227,31 @@ class _LanServerImpl:
         right after the LAN server starts means the first /gallery visit
         finds a warm cache instead of a building state. Runs on a daemon
         thread and never delays startup or shutdown.
+
+        The build waits out the background scanner first: both traverse the
+        same library with per-file stats, and running them concurrently
+        halves their effective disk throughput on Windows (Defender hooks
+        every file open), which alone can push the walk past its budget.
         """
         services = getattr(self, "services", None)
         gallery = getattr(services, "gallery_service", None)
         root = getattr(self, "_library_root", None)
         if gallery is None or root is None:
             return
+        scanner = getattr(self, "_scanner", None)
+
+        def wait_for_scanner() -> None:
+            if scanner is None:
+                return
+            deadline = time.monotonic() + 300.0
+            while time.monotonic() < deadline:
+                if not scanner.is_scanning():
+                    return
+                time.sleep(1.0)
+
         thread = threading.Thread(
-            target=lambda: gallery.prewarm_home(root), daemon=True
+            target=lambda: gallery.prewarm_home(root, pre_wait=wait_for_scanner),
+            daemon=True,
         )
         thread.start()
 
