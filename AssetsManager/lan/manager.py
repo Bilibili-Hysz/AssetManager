@@ -13,8 +13,9 @@ Usage:
 """
 import inspect
 import logging
-from typing import Callable, Protocol, cast
+from typing import Any, Callable, Protocol, cast
 
+from AssetsManager.lan.ports import build_lan_server
 from AssetsManager.lan.tunnel import TunnelManager, is_available as is_tunnel_available
 
 _log = logging.getLogger(__name__)
@@ -37,7 +38,8 @@ class _TunnelHandle(Protocol):
 class ShareManager:
     """Unified sharing state manager."""
 
-    def __init__(self):
+    def __init__(self, server_factory: Callable[..., Any] | None = None):
+        self._server_factory = server_factory
         self._server = None  # LanServer instance
         self._tunnel: _TunnelHandle | None = None
         self._state: dict = {
@@ -114,7 +116,10 @@ class ShareManager:
         if snapshot.share_state != "local_active":
             return self.status()
 
-        server = lan.LanServer(
+        server_factory = self._server_factory
+        if server_factory is None:
+            server_factory = build_lan_server
+        server = server_factory(
             runtime=runtime,
             preflight=preflight,
             share_name=share_name,

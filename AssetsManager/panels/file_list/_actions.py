@@ -86,13 +86,11 @@ class ActionsMixin:
     def _add_plugin_context_items(self, menu, file_path: str):
         """Add plugin-contributed context menu items to the menu."""
         try:
-            from AssetsManager.application.plugin_service import PluginService
-            from AssetsManager.core.plugins.manager import PluginManagerService
-            svc = PluginService(PluginManagerService.get())
-            host = getattr(svc, "_manager", None)
-            if host is None:
+            scoped = getattr(self, "_scoped_services", None)
+            svc = getattr(scoped, "plugin_service", None)
+            if svc is None:
                 return
-            ctx = getattr(host, "_host_context", None)
+            ctx = getattr(svc, "host_context", None)
             if ctx is None:
                 return
             items = ctx.context_menu_items(file_path)
@@ -104,18 +102,21 @@ class ActionsMixin:
             pass
 
     def _run_plugin_command(self, command_id: str, file_path: str):
-        """Execute a plugin-contributed command."""
+        """Execute a plugin-contributed command via the scoped plugin service."""
         try:
-            app = QApplication.instance()
-            if app:
-                plugin_ctx = app.property("plugin_host_context")
-                if plugin_ctx:
-                    for cmd in plugin_ctx.commands():
-                        if getattr(cmd, 'id', None) == command_id:
-                            handler = getattr(cmd, 'handler', None)
-                            if handler and callable(handler):
-                                handler(file_path)
-                                return
+            scoped = getattr(self, "_scoped_services", None)
+            svc = getattr(scoped, "plugin_service", None)
+            if svc is None:
+                return
+            get_commands = getattr(svc, "get_commands", None)
+            if not callable(get_commands):
+                return
+            for cmd in get_commands():
+                if getattr(cmd, 'id', None) == command_id:
+                    handler = getattr(cmd, 'handler', None)
+                    if handler and callable(handler):
+                        handler(file_path)
+                        return
             _log.info("Plugin command '%s' triggered for %s (no handler found)", command_id, file_path)
         except Exception:
             _log.warning("Failed to execute plugin command '%s'", command_id, exc_info=True)

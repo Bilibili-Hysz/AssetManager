@@ -16,7 +16,7 @@ Usage (runtime check):
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -62,6 +62,107 @@ class TagsViewPort(Protocol):
     def save(self) -> None:
         """Persist pending changes."""
         ...
+
+
+@runtime_checkable
+class ShareSettingsPort(Protocol):
+    """LAN utility surface used by the sharing-settings dialog.
+
+    Implemented by ``AssetsManager.lan.ports.LanDesktopAdapter`` and
+    injected by the desktop composition root, so dialog code never imports
+    the ``lan`` package directly.
+    """
+
+    def tunnel_is_available(self) -> bool:
+        """Return True when cloudflared can be used without downloading."""
+        ...
+
+    def ensure_tunnel_available(self) -> str | None:
+        """Make cloudflared available, downloading it when possible."""
+        ...
+
+    def local_ip(self) -> str:
+        """Return the best reachable LAN IP for share-link URLs."""
+        ...
+
+    def auth_headers(self, token_secret: str) -> dict[str, str]:
+        """Return Authorization headers for local API polling."""
+        ...
+
+
+@runtime_checkable
+class LanControlPort(Protocol):
+    """Narrow lifecycle surface desktop widgets use on a running LAN server.
+
+    ``AssetsManager.lan.LanServer`` satisfies this protocol.  The
+    ``_port``/``_bind``/``_impl`` members are transitional facade details
+    still used by the sharing mixin; new call sites should prefer the
+    documented methods.
+    """
+
+    def start(self, port: int = 8080, bind: str = "0.0.0.0", *,
+              preflight: Any = None) -> dict[str, Any] | None: ...
+
+    def stop(self) -> None: ...
+
+    def is_running(self) -> bool: ...
+
+    def status(self) -> dict[str, Any]: ...
+
+    def reload_settings(self, settings: dict[str, Any]) -> None: ...
+
+    def auth_status(self) -> tuple[bool, str]: ...
+
+    def start_tunnel(self, timeout: int = 30) -> str | None: ...
+
+    def stop_tunnel(self) -> None: ...
+
+    def is_tunnel_running(self) -> bool: ...
+
+    @property
+    def tunnel_start_block_reason(self) -> str | None: ...
+
+    @property
+    def token_secret(self) -> str: ...
+
+    @property
+    def tunnel(self) -> Any: ...
+
+    @property
+    def _port(self) -> int: ...
+
+    @property
+    def _bind(self) -> str: ...
+
+    _impl: Any
+
+
+class LanServerFactory(Protocol):
+    """Constructor boundary for LAN server instances."""
+
+    def __call__(self, runtime: Any, *, preflight: Any = None,
+                 **options: Any) -> LanControlPort: ...
+
+
+class FallbackShareSettingsPort:
+    """Dependency-free ShareSettingsPort defaults for unattached dialogs.
+
+    Production windows inject the real LAN adapter; these defaults keep
+    standalone dialog construction safe (no tunnel card, loopback URLs,
+    and no fabricated Authorization headers).
+    """
+
+    def tunnel_is_available(self) -> bool:
+        return False
+
+    def ensure_tunnel_available(self) -> str | None:
+        return None
+
+    def local_ip(self) -> str:
+        return "127.0.0.1"
+
+    def auth_headers(self, token_secret: str) -> dict[str, str]:
+        return {}
 
 
 @runtime_checkable

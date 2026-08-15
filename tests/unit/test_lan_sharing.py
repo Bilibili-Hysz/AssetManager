@@ -170,6 +170,7 @@ def test_toggle_sharing_uses_injected_library_session(monkeypatch, tmp_path):
     class _Host(LanSharingMixin):
         def __init__(self):
             self._lan_server = None
+            self._lan_server_factory = lambda **kwargs: lan.LanServer(**kwargs)
             self._library_session = _Session()
             self._bootstrap = Mock()
             self._bootstrap.runtime_for.return_value = object()
@@ -212,6 +213,10 @@ def test_toggle_sharing_injects_bootstrap_runtime(monkeypatch, tmp_path):
         _bootstrap = bootstrap
         _lan_server = None
 
+        @staticmethod
+        def _lan_server_factory(**kwargs):
+            return lan.LanServer(**kwargs)
+
         def _update_share_status(self, running, port=8080):
             pass
 
@@ -235,7 +240,6 @@ def test_open_share_link_dialog_uses_runtime_service_without_starting_lan(
 
     from AssetsManager.core.settings import AppSettings
     from AssetsManager.dialogs import share_link_dialog
-    from AssetsManager.lan import server as server_module
 
     share_service = object()
     runtime = SimpleNamespace(
@@ -264,10 +268,15 @@ def test_open_share_link_dialog_uses_runtime_service_without_starting_lan(
             captured["executed"] = True
             return 0
 
+    class _Port:
+        def local_ip(self):
+            return "192.0.2.10"
+
     class _Host(LanSharingMixin):
         _lan_server = None
         _library_session = session
         _bootstrap = bootstrap
+        _sharing_port = _Port()
 
         def _dialog_parent(self):
             return None
@@ -275,7 +284,6 @@ def test_open_share_link_dialog_uses_runtime_service_without_starting_lan(
     question = Mock(return_value=QMessageBox.StandardButton.No)
     monkeypatch.setattr(QMessageBox, "question", question)
     monkeypatch.setattr(AppSettings, "instance", classmethod(lambda cls: _Settings()))
-    monkeypatch.setattr(server_module, "get_local_ip", lambda: "192.0.2.10")
     monkeypatch.setattr(share_link_dialog, "ShareLinkDialog", _Dialog)
 
     _Host()._open_share_link_dialog(paths=["asset.txt"])
@@ -749,6 +757,10 @@ def test_desktop_preflight_uses_runtime_active_user_auth(monkeypatch):
         _library_session = session
         _bootstrap = bootstrap
 
+        @staticmethod
+        def _lan_server_factory(**kwargs):
+            return lan.LanServer(**kwargs)
+
         def _dialog_parent(self):
             return None
 
@@ -797,6 +809,10 @@ def test_desktop_retains_server_reference_when_start_rollback_failed(monkeypatch
         _library_session = session
         _bootstrap = bootstrap
 
+        @staticmethod
+        def _lan_server_factory(**kwargs):
+            return lan.LanServer(**kwargs)
+
         def _dialog_parent(self):
             return None
 
@@ -836,7 +852,7 @@ def test_security_confirmation_persists_authenticated_decision_after_explicit_ye
         auth_status=(True, "password"),
     )
     monkeypatch.setattr(
-        "AssetsManager.widgets.lan_sharing.QMessageBox.question",
+        "AssetsManager.widgets.sharing_contracts.QMessageBox.question",
         lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
     )
 
@@ -873,7 +889,7 @@ def test_security_confirmation_cancel_does_not_persist_or_start(monkeypatch):
         auth_status=(False, "none"),
     )
     monkeypatch.setattr(
-        "AssetsManager.widgets.lan_sharing.QMessageBox.question",
+        "AssetsManager.widgets.sharing_contracts.QMessageBox.question",
         lambda *args, **kwargs: QMessageBox.StandardButton.No,
     )
 
@@ -905,11 +921,11 @@ def test_security_confirmation_commit_failure_is_fail_closed(monkeypatch):
 
     warning = Mock()
     monkeypatch.setattr(
-        "AssetsManager.widgets.lan_sharing.QMessageBox.question",
+        "AssetsManager.widgets.sharing_contracts.QMessageBox.question",
         lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
     )
     monkeypatch.setattr(
-        "AssetsManager.widgets.lan_sharing.QMessageBox.warning",
+        "AssetsManager.widgets.sharing_contracts.QMessageBox.warning",
         warning,
     )
 

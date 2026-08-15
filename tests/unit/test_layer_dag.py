@@ -38,6 +38,32 @@ def test_transitional_exception_registry_shrinks() -> None:
             )
         ), f"G1 exception should be gone: {source} -> {imported} ({batch})"
 
+    # G2 promised to remove presentation -> LAN edges via desktop ports.
+    assert not any(
+        batch == "G2"
+        for _source, _imported, batch in check_layers.ALLOWED_EXCEPTIONS
+    ), "G2 presentation -> LAN exceptions should be gone"
+
+
+def test_g2_sharing_presentation_has_no_lan_imports() -> None:
+    for relative in (
+        "widgets/lan_sharing.py",
+        "dialogs/sharing_settings_dialog.py",
+    ):
+        source = (ROOT / "AssetsManager" / relative).read_text(encoding="utf-8")
+        assert "AssetsManager.lan" not in source, relative
+        assert "from AssetsManager import lan" not in source, relative
+
+
+def test_g2_lan_server_has_single_production_assembly_point() -> None:
+    ports = (ROOT / "AssetsManager" / "lan" / "ports.py").read_text(encoding="utf-8")
+    assert "\n    return lan.LanServer(" in ports
+
+    for relative in ("lan/manager.py", "widgets/lan_sharing.py"):
+        source = (ROOT / "AssetsManager" / relative).read_text(encoding="utf-8")
+        assert "lan.LanServer(" not in source, relative
+        assert "LanServer(" not in source, relative
+
 
 def test_layer_checker_has_no_core_to_repository_edge() -> None:
     violations = check_layers.collect_violations()

@@ -71,6 +71,8 @@
 - `_actions.py` 插件菜单经 scoped `plugin_service` 注入，不再用 `QApplication.property("plugin_host_context")` 与就地 `PluginService(...)`。
 - 验收：`widgets/dialogs` 内 `from AssetsManager.lan` 为零；SCC 环消失。
 
+**状态：已完成** —— `lan/ports.py` 为唯一 `LanServer(` 装配点并由 `window.py` 组合根注入；共享设置契约移至 `widgets/sharing_contracts.py`，双向环已消除；`_actions.py` 改走 `_scoped_services.plugin_service`。
+
 **批次 G3 — 服务配置注入 + God-file 拆分（可与 G2 并行）**
 
 - application 层 `AppSettings.instance()` 仅保留 bootstrap 1 处；`get_library()` 在 application 层清零；服务构造注入 settings/tag-library provider。

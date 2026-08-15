@@ -64,6 +64,10 @@ def test_toggle_sharing_start_failure_but_running_keeps_status_and_tray(monkeypa
         _bootstrap = bootstrap
         _tray_manager = _Tray()
 
+        @staticmethod
+        def _lan_server_factory(**kwargs):
+            return lan.LanServer(**kwargs)
+
         def _dialog_parent(self):
             return None
 
@@ -119,6 +123,10 @@ def test_toggle_sharing_start_failure_not_running_keeps_status_off(monkeypatch):
         _library_session = session
         _bootstrap = bootstrap
 
+        @staticmethod
+        def _lan_server_factory(**kwargs):
+            return lan.LanServer(**kwargs)
+
         def _dialog_parent(self):
             return None
 
@@ -169,6 +177,10 @@ def test_toggle_sharing_start_value_error_shows_warning(monkeypatch):
         _library_session = session
         _bootstrap = bootstrap
 
+        @staticmethod
+        def _lan_server_factory(**kwargs):
+            return lan.LanServer(**kwargs)
+
         def _dialog_parent(self):
             return None
 
@@ -215,6 +227,10 @@ def test_toggle_sharing_start_type_error_shows_warning(monkeypatch):
         _lan_server = None
         _library_session = session
         _bootstrap = bootstrap
+
+        @staticmethod
+        def _lan_server_factory(**kwargs):
+            return lan.LanServer(**kwargs)
 
         def _dialog_parent(self):
             return None

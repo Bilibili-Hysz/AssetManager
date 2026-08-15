@@ -9,151 +9,45 @@ Contains:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, cast
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, cast
 
 from PySide6.QtCore import QSize
 from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QWidget
 from AssetsManager import i18n
 from AssetsManager.core import icons
-from AssetsManager.core.constants import DEFAULT_LAN_THEME_COLOR
 from AssetsManager.core.ui_scale import scaled_px
+from AssetsManager.widgets.sharing_contracts import (
+    HOT_SHARING_DEFAULTS,
+    HOT_SHARING_SETTINGS,
+    RESTART_SHARING_SETTINGS as RESTART_SHARING_SETTINGS,
+    _CONFIRMABLE_SECURITY_REASONS,
+    _security_blocked_message,
+    confirm_security_preflight,
+)
 
 if TYPE_CHECKING:
     from AssetsManager.application.context import LibrarySession
-    from AssetsManager.lan import LanServer
-    from AssetsManager.lan.routes._helpers import LanScopedServices
+    from AssetsManager.application.desktop_ports import LanControlPort, ShareSettingsPort
     from AssetsManager.widgets.tray import SystemTrayManager
 
 tr = i18n.tr
 
 _log = logging.getLogger(__name__)
 
-# These settings are passed through to LanServer.reload_settings without a
-# server restart. Configuration presentation imports this declaration so its
-# impact summary cannot drift from the lifecycle owner.
-HOT_SHARING_SETTINGS = {
-    "lan_share_name": "share_name",
-    "lan_blur_tags": "blur_tags",
-    "lan_theme_color": "theme_color",
-    "lan_welcome_msg": "welcome_msg",
-    "lan_footer_text": "footer_text",
-    "lan_show_hidden": "show_hidden",
-    "lan_max_depth": "max_depth",
-    "lan_include_types": "include_types",
-    "lan_exclude_patterns": "exclude_patterns",
-}
-HOT_SHARING_DEFAULTS = {
-    "lan_share_name": "AssetManager", "lan_blur_tags": [], "lan_theme_color": DEFAULT_LAN_THEME_COLOR,
-    "lan_welcome_msg": "", "lan_footer_text": "", "lan_show_hidden": False,
-    "lan_max_depth": 0, "lan_include_types": None, "lan_exclude_patterns": None,
-}
-RESTART_SHARING_SETTINGS = frozenset({
-    "lan_port", "lan_bind", "lan_auth_mode", "lan_password", "lan_access_key",
-    "lan_rate_limit", "lan_blocked_ips", "lan_ip_whitelist", "lan_ssl_cert", "lan_ssl_key",
-})
-_CONFIRMABLE_SECURITY_REASONS = frozenset({
-    "share_safety_ack_required",
-    "bind_scope_expanded",
-    "authentication_removed",
-    "trusted_network_confirmation_required",
-})
-_SECURITY_REASON_KEYS = {
-    "share_safety_ack_required": "sharing.security.reason_ack_required",
-    "bind_scope_expanded": "sharing.security.reason_bind_scope_expanded",
-    "authentication_removed": "sharing.security.reason_authentication_removed",
-    "trusted_network_confirmation_required": "sharing.security.reason_trusted_required",
-}
-
-
-def _security_blocked_message(reason: str) -> str:
-    reason_key = _SECURITY_REASON_KEYS.get(reason)
-    reason_text = tr(reason_key) if reason_key else tr("sharing.security.reason_generic")
-    return tr("sharing.security.blocked_message", reason=reason_text)
-
-
-def confirm_security_preflight(
-    parent: QWidget | None,
-    *,
-    settings,
-    preflight,
-    snapshot,
-    bind: str | None,
-    auth_status,
-) -> bool:
-    """Ask for an explicit user decision and atomically persist it.
-
-    This is deliberately the only UI-facing confirmation helper.  It never
-    starts a server; callers must re-run the pure preflight snapshot after a
-    successful commit and only then enter the lifecycle path.
-    """
-    from AssetsManager.application.security_preflight import effective_auth, is_lan_bind
-
-    reason = getattr(snapshot, "failure_reason", None)
-    if reason not in _CONFIRMABLE_SECURITY_REASONS:
-        return False
-
-    auth = effective_auth(auth_status)
-    if is_lan_bind(bind) and not auth["enabled"]:
-        title_key = "sharing.security.confirm_trusted_title"
-        message_key = "sharing.security.confirm_trusted_message"
-        confirm_decision = preflight.confirm_trusted_lan
-    elif is_lan_bind(bind):
-        title_key = "sharing.security.confirm_authenticated_title"
-        message_key = "sharing.security.confirm_authenticated_message"
-        confirm_decision = preflight.confirm_authenticated_lan
-    else:
-        title_key = "sharing.security.confirm_local_title"
-        message_key = "sharing.security.confirm_local_message"
-        confirm_decision = preflight.confirm_authenticated_lan
-
-    # Do not mutate confirmation state until the user explicitly accepts.
-    decision = QMessageBox.question(
-        parent,
-        tr(title_key),
-        tr(message_key),
-        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        QMessageBox.StandardButton.No,
-    )
-    if decision != QMessageBox.StandardButton.Yes:
-        preflight.cancel()
-        return False
-
-    confirm_decision()
-    committer = getattr(settings, "commit_share_safety_confirmation", None)
-    persisted = False
-    if callable(committer):
-        try:
-            persisted = bool(
-                committer(
-                    preflight.ack_version,
-                    preflight.trusted_network_confirmed,
-                )
-            )
-        except Exception:
-            _log.exception("Unable to persist LAN security confirmation")
-            persisted = False
-
-    if not persisted:
-        preflight.cancel()
-        QMessageBox.warning(
-            parent,
-            tr("sharing.security.persist_failed_title"),
-            tr("sharing.security.persist_failed_message"),
-        )
-        return False
-    return True
-
 
 class LanSharingMixin:
     """Mixin for LAN sharing functionality. Must be used with QMainWindow."""
 
     # Supplied by the QMainWindow host. Annotations preserve the mixin's MRO.
-    _lan_server: LanServer | None
+    _lan_server: LanControlPort | None
     # Compatibility-only bundle injected by pre-runtime hosts. The mixin must
     # never assemble LAN/application services from legacy connection inputs.
-    _lan_services: LanScopedServices | None
+    _lan_services: Any | None
     _library_session: LibrarySession | None
     _tray_manager: SystemTrayManager | None
+    _sharing_port: ShareSettingsPort | None
+    _lan_server_factory: Callable[..., Any] | None
     _share_status_label: QLabel
     _share_toggle_btn: QPushButton
 
@@ -168,9 +62,11 @@ class LanSharingMixin:
                 url = status.get("url")
                 if isinstance(url, str) and url:
                     return url
-        from AssetsManager.lan.server import get_local_ip
-
-        return f"http://{get_local_ip()}:{port}"
+        sharing_port = getattr(self, "_sharing_port", None)
+        local_ip = getattr(sharing_port, "local_ip", None)
+        if callable(local_ip):
+            return f"http://{local_ip()}:{port}"
+        return f"http://127.0.0.1:{port}"
 
     @staticmethod
     def _runtime_auth_status(runtime, *, password, access_key, auth_mode):
@@ -195,7 +91,6 @@ class LanSharingMixin:
 
     def _toggle_sharing(self):
         """Start or stop LAN sharing."""
-        from AssetsManager import lan
         if self._lan_server and self._lan_server.is_running():
             self._lan_server.stop()
             # Drop the stopped server handle and the now-stale security
@@ -293,7 +188,16 @@ class LanSharingMixin:
                 ssl_cert=settings.get("lan_ssl_cert"),
                 ssl_key=settings.get("lan_ssl_key"),
             )
-            server = lan.LanServer(
+            server_factory = getattr(self, "_lan_server_factory", None)
+            if not callable(server_factory):
+                _log.error("No LAN server factory is injected into the sharing host")
+                QMessageBox.warning(
+                    self._dialog_parent(),
+                    tr("dialog.error"),
+                    tr("sharing.error_open", error="LAN server factory is not available"),
+                )
+                return
+            server = cast(Callable[..., Any], server_factory)(
                 runtime=runtime,
                 preflight=preflight,
                 **options,
@@ -395,7 +299,12 @@ class LanSharingMixin:
         try:
             from AssetsManager.dialogs.sharing_settings_dialog import SharingSettingsDialog
             status = self._lan_server.status() if self._lan_server else {}
-            dlg = SharingSettingsDialog(self._dialog_parent(), server_status=status, server=self._lan_server)
+            dlg = SharingSettingsDialog(
+                self._dialog_parent(),
+                server_status=status,
+                server=self._lan_server,
+                desktop_port=getattr(self, "_sharing_port", None),
+            )
             dlg.settings_changed.connect(self._apply_sharing_settings)
             dlg.exec()
         except Exception as e:

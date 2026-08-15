@@ -19,6 +19,7 @@ from AssetsManager.dialogs.startup import StartupWindow
 from AssetsManager.core.database import clean_orphan_dirs
 from AssetsManager.widgets.workspace_bar import WorkspaceSection
 from AssetsManager.widgets.lan_sharing import LanSharingMixin
+from AssetsManager.lan.ports import LanDesktopAdapter, build_lan_server
 
 _log = logging.getLogger(__name__)
 tr = i18n.tr
@@ -80,7 +81,10 @@ def _restore_window_geometry(window: QWidget) -> None:
 
 
 class MainWindow(LanSharingMixin, QMainWindow):
-    def __init__(self, bootstrap, library_session=None):
+    def __init__(
+        self, bootstrap, library_session=None, *,
+        lan_server_factory=None, sharing_port=None,
+    ):
         super().__init__()
         from AssetsManager.window_coordinator import WindowCoordinator
         from AssetsManager.window_lifecycle_coordinator import WindowLifecycleCoordinator
@@ -106,6 +110,14 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._startup_anim_done = False
         self._force_quit = False
         self._lan_server = None
+        # G2: the window is the composition root for presentation LAN ports.
+        # Widgets/dialogs only see these injected boundaries, never lan.*.
+        self._lan_server_factory = (
+            lan_server_factory if lan_server_factory is not None else build_lan_server
+        )
+        self._sharing_port = (
+            sharing_port if sharing_port is not None else LanDesktopAdapter()
+        )
 
     def _library_service(self):
         return self._bootstrap.library_service

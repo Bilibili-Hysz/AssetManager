@@ -167,6 +167,10 @@ def test_desktop_lan_sharing_mixin_cannot_bypass_missing_confirmation(monkeypatc
         _library_session = SimpleNamespace(is_closed=False)
         _bootstrap = SimpleNamespace(runtime_for=lambda session: _runtime())
 
+        @staticmethod
+        def _lan_server_factory(**kwargs):
+            return lan.LanServer(**kwargs)
+
         def _dialog_parent(self):
             return None
 

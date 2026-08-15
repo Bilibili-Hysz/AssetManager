@@ -754,6 +754,13 @@ def test_production_lan_entrypoints_have_no_legacy_factory_path() -> None:
         assert "_legacy" not in source, relative
 
 
+def test_file_list_plugin_actions_use_scoped_plugin_service() -> None:
+    source = (SRC / "panels" / "file_list" / "_actions.py").read_text(encoding="utf-8")
+    assert "PluginService(" not in source
+    assert '"plugin_host_context"' not in source
+    assert 'getattr(scoped, "plugin_service", None)' in source
+
+
 def test_file_operation_service_delegates_deleted_projection_cleanup() -> None:
     source = (SRC / "application" / "file_operation_service.py").read_text(encoding="utf-8")
     start = source.index("    def _clear_deleted_projection(self, path: Path) -> None:")

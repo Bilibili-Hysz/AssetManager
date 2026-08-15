@@ -74,12 +74,18 @@ def test_endpoint_public_primary_action_stops_tunnel_only():
 
 
 def test_endpoint_public_state_prefers_tunnel_url(monkeypatch):
-    monkeypatch.setattr("AssetsManager.lan.tunnel.is_available", lambda: True)
+    class _Port:
+        def tunnel_is_available(self):
+            return True
+
     monkeypatch.setattr(
         "AssetsManager.dialogs.sharing_settings_dialog.AppSettings.instance",
         classmethod(lambda _cls: type("_Settings", (), {"get": lambda _self, _key, default=None: default})()),
     )
-    dialog = SharingSettingsDialog(server_status={"running": True, "url": "http://192.168.1.10:8080"})
+    dialog = SharingSettingsDialog(
+        server_status={"running": True, "url": "http://192.168.1.10:8080"},
+        desktop_port=_Port(),
+    )
     dialog._server = type("_Server", (), {"is_tunnel_running": lambda _self: True})()
     dialog._tunnel_url_label.setText("https://share.example.test")
 
@@ -308,12 +314,15 @@ def test_password_mode_keeps_existing_password_when_field_empty(monkeypatch):
 
 
 def test_tunnel_failure_maps_auth_required_reason(monkeypatch):
-    monkeypatch.setattr("AssetsManager.lan.tunnel.is_available", lambda: True)
+    class _Port:
+        def tunnel_is_available(self):
+            return True
+
     monkeypatch.setattr(
         "AssetsManager.dialogs.sharing_settings_dialog.AppSettings.instance",
         classmethod(lambda _cls: type("_Settings", (), {"get": lambda _self, _key, default=None: default})()),
     )
-    dialog = SharingSettingsDialog()
+    dialog = SharingSettingsDialog(desktop_port=_Port())
     dialog._server = type(
         "_Server", (), {"tunnel_start_block_reason": "authentication_required"}
     )()

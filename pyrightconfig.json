@@ -44,6 +44,7 @@
     "AssetsManager/widgets/collapsible_panel.py",
     "AssetsManager/widgets/hsv_wheel.py",
     "AssetsManager/widgets/lan_sharing.py",
+    "AssetsManager/widgets/sharing_contracts.py",
     "AssetsManager/widgets/tab_container.py",
     "AssetsManager/widgets/tag_chip.py",
     "AssetsManager/widgets/theme_preview.py",

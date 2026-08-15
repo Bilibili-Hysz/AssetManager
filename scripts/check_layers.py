@@ -71,19 +71,14 @@ ALLOWED_EDGES: dict[str, set[str]] = {
 }
 
 # Transitional exceptions: (source module, imported module, owner batch).
-# Batch G1 removes the core -> application/repositories edges.  Batch G2
-# removes presentation -> LAN via narrow application ports.  Batch G4 will
+# Batch G1 removed the core -> application/repositories edges; batch G2
+# removed presentation -> LAN via injected desktop ports.  Batch G4 will
 # address core -> domain and controller -> panel edges.
 ALLOWED_EXCEPTIONS: set[tuple[str, str, str]] = {
     ("AssetsManager.core.constants", "AssetsManager.domain.asset", "G4"),
     ("AssetsManager.core.plugins.host_context", "AssetsManager.domain.event_bus", "G4"),
     ("AssetsManager.core.plugins.host_context", "AssetsManager.domain.events", "G4"),
     ("AssetsManager.controllers.info_controller", "AssetsManager.panels.file_list._common", "G4"),
-    ("AssetsManager.widgets.lan_sharing", "AssetsManager.lan", "G2"),
-    ("AssetsManager.dialogs.sharing_settings_dialog", "AssetsManager.lan", "G2"),
-    ("AssetsManager.window", "AssetsManager.lan", "G2"),
-    ("AssetsManager.window_lifecycle_coordinator", "AssetsManager.lan", "G2"),
-    ("AssetsManager.dock_factory", "AssetsManager.lan", "G2"),
 }
 
 TOP_LEVEL_LAYER = "presentation_top"

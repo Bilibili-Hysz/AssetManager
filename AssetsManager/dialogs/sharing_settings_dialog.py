@@ -15,6 +15,12 @@ from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.constants import DEFAULT_LAN_THEME_COLOR
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.settings import AppSettings
+from AssetsManager.application.desktop_ports import (
+    FallbackShareSettingsPort,
+    LanControlPort,
+    ShareSettingsPort,
+)
+from AssetsManager.domain.auth import hash_password
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager.dialogs._share_api import ShareApiTask
 from AssetsManager.dialogs._sharing_helpers import (
@@ -26,7 +32,7 @@ from AssetsManager.dialogs._sharing_helpers import (
 from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager.widgets.toast import Toast
 from AssetsManager import i18n
-from AssetsManager.widgets.lan_sharing import (
+from AssetsManager.widgets.sharing_contracts import (
     HOT_SHARING_SETTINGS,
     RESTART_SHARING_SETTINGS,
     confirm_security_preflight,
@@ -49,7 +55,7 @@ _PLANNED_ONLY_SETTINGS = frozenset({
 
 # Feature switches read per-request by LAN routes (quota.py, commerce_policy.py,
 # shop_authorization.py), so they take effect as soon as settings are persisted.
-# They are not listed in lan_sharing.HOT_SHARING_SETTINGS (server
+# They are not listed in sharing_contracts.HOT_SHARING_SETTINGS (server
 # reload_settings), so the dialog adds them to its live bucket itself.
 _DIALOG_LIVE_SETTINGS = frozenset({
     "lan_commerce_enabled",
@@ -69,12 +75,17 @@ class SharingSettingsDialog(TabbedDialog):
     _data_changed = Signal()
 
     def __init__(
-        self, parent=None, server_status: dict | None = None, server=None, initial_page: int | str = 0,
+        self, parent=None, server_status: dict | None = None,
+        server: LanControlPort | None = None, initial_page: int | str = 0,
+        desktop_port: ShareSettingsPort | None = None,
     ):
         self._settings = AppSettings.instance()
         self._host = parent
         self._server_status = server_status or {}
         self._server = server
+        self._sharing_port = (
+            desktop_port if desktop_port is not None else FallbackShareSettingsPort()
+        )
         self._shares = []
         self._invite_codes = []
         self._online_users = []
@@ -382,8 +393,7 @@ class SharingSettingsDialog(TabbedDialog):
         layout.addWidget(self._status_frame)
 
         # Tunnel remains an independent exposure control; it never stops local sharing.
-        from AssetsManager.lan.tunnel import is_available as is_tunnel_available
-        if is_tunnel_available():
+        if self._sharing_port.tunnel_is_available():
             tunnel_card, tunnel_cl = self._make_card(tr("sharing.card_tunnel"))
             self._tunnel_status = self.make_muted(tr("sharing.tunnel_not_connected"))
             tunnel_cl.addWidget(self._tunnel_status)
@@ -909,8 +919,7 @@ class SharingSettingsDialog(TabbedDialog):
         cl.addStretch()
 
         # Internet access is omitted when the tunnel dependency is unavailable.
-        from AssetsManager.lan.tunnel import is_available as is_tunnel_available
-        if is_tunnel_available():
+        if self._sharing_port.tunnel_is_available():
             tl = section("internet_access")
 
             self._settings_tunnel_status = self.make_muted(tr("sharing.tunnel_not_connected"))
@@ -1229,8 +1238,7 @@ class SharingSettingsDialog(TabbedDialog):
         url = f"http://127.0.0.1:{port}/api/stats"
         headers = {}
         if hasattr(self._server, 'token_secret'):
-            from AssetsManager.lan.utils import get_auth_headers
-            headers.update(get_auth_headers(self._server.token_secret))
+            headers.update(self._sharing_port.auth_headers(self._server.token_secret))
 
         class _PollSignals(QObject):
             finished = Signal(bool, object)
@@ -1424,8 +1432,7 @@ class SharingSettingsDialog(TabbedDialog):
     def _get_auth_headers(self):
         headers = {}
         if self._server and hasattr(self._server, 'token_secret'):
-            from AssetsManager.lan.utils import get_auth_headers
-            headers.update(get_auth_headers(self._server.token_secret))
+            headers.update(self._sharing_port.auth_headers(self._server.token_secret))
         return headers
 
     def _get_api_base(self):
@@ -1578,8 +1585,7 @@ class SharingSettingsDialog(TabbedDialog):
         if not share_id:
             return
         port = server._port
-        from AssetsManager.lan.server import get_local_ip
-        ip = get_local_ip()
+        ip = self._sharing_port.local_ip()
         url = f"http://{ip}:{port}/s/{share_id}"
         QApplication.clipboard().setText(url)
         Toast.instance(self, tr("sharing.toast.copied"), level="success")
@@ -1892,9 +1898,10 @@ class SharingSettingsDialog(TabbedDialog):
                 finished = QSignal(str)
                 status = QSignal(str)
 
-                def __init__(self, server):
+                def __init__(self, server, settings_port):
                     super().__init__()
                     self._server = server
+                    self._settings_port = settings_port
                     self._cancelled = False
 
                 def cancel(self):
@@ -1903,12 +1910,11 @@ class SharingSettingsDialog(TabbedDialog):
 
                 def run(self):
                     # Ensure cloudflared is available (download if needed)
-                    from AssetsManager.lan.tunnel import ensure_available, is_available
                     if self._cancelled:
                         return
-                    if not is_available():
+                    if not self._settings_port.tunnel_is_available():
                         self.status.emit(tr("sharing.tunnel_downloading"))
-                        if not ensure_available():
+                        if not self._settings_port.ensure_tunnel_available():
                             self.finished.emit("")
                             return
                     if self._cancelled:
@@ -1926,7 +1932,7 @@ class SharingSettingsDialog(TabbedDialog):
                             url = ""
                     self.finished.emit(url or "")
 
-            self._tunnel_worker = TunnelWorker(self._server)
+            self._tunnel_worker = TunnelWorker(self._server, self._sharing_port)
             self._tunnel_worker.status.connect(lambda msg: self._tunnel_status.setText(msg))
             self._tunnel_worker.finished.connect(self._on_tunnel_result)
             self._tunnel_worker.start()
@@ -2149,7 +2155,6 @@ class SharingSettingsDialog(TabbedDialog):
             return False
         s.set("lan_auth_mode", auth_mode)
         if pw:
-            from AssetsManager.lan.auth import hash_password
             s.set("lan_password", hash_password(pw))
         elif auth_mode == "password" and self._has_existing_password:
             pass
