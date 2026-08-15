@@ -379,3 +379,37 @@ def test_incremental_telemetry_counts_applied_and_fallbacks(tmp_path, schema_db,
         assert service.incremental_stats[1] >= 1
     finally:
         service.close()
+
+
+def test_incremental_project_created_at_floor_matches_full_rebuild(tmp_path, schema_db, monkeypatch):
+    """A directory created exactly at the project floor aggregates its whole
+    subtree incrementally (regression for the H-G1 deep review finding: the
+    created side used to drop nested content and project a truncated node)."""
+    import os
+
+    base = time.time()
+    _image(tmp_path / "branch" / "proj" / "one.png", (20, 20))
+    os.utime(tmp_path / "branch" / "proj" / "one.png", (base - 7200, base - 7200))
+    service = _make_service(schema_db, monkeypatch)
+    try:
+        assert _settle(service, tmp_path) is not None
+
+        # Create a new project at the floor with nested content (directory
+        # event arrives after the files exist on disk).
+        _image(tmp_path / "branch" / "newproj" / "inner" / "a.png", (16, 16))
+        _image(tmp_path / "branch" / "newproj" / "cover.png", (40, 40))
+        (tmp_path / "branch" / "newproj" / "readme.txt").write_text("x")
+        _publish(tmp_path, "created", [tmp_path / "branch" / "newproj"])
+
+        _wait_artworks(service, tmp_path, 3)
+        incremental = service.get_home_cached(tmp_path)
+        oracle = _oracle(service, tmp_path)
+        assert incremental is not None and incremental.to_response() == oracle.to_response()
+        # The new project is a leaf node aggregating its whole subtree.
+        state = service._home_states[_root_key(tmp_path)]
+        newproj = state.nodes["branch/newproj"]
+        assert newproj.summary["artwork_count"] == 2
+        assert newproj.summary["file_count"] == 3
+        assert newproj.children == []
+    finally:
+        service.close()
