@@ -7,7 +7,7 @@ import tempfile
 import threading
 from typing import Callable, cast
 
-from AssetsManager.core.database import SHARED_DIR
+from AssetsManager.core.path_resolver import SHARED_DIR
 from AssetsManager.core.singleton import ThreadSafeSingleton
 
 _log = logging.getLogger(__name__)

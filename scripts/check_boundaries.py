@@ -20,6 +20,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from check_layers import collect_violations  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 APPLICATION = ROOT / "AssetsManager" / "application"
 PANELS = ROOT / "AssetsManager" / "panels"
@@ -78,13 +81,16 @@ def main() -> int:
             for span in _scan(directory, needle):
                 problems.append(f"gate {gate} ({description}): {span}")
 
+    for violation in collect_violations():
+        problems.append(f"layer DAG: {violation.describe()}")
+
     if problems:
         print("boundary violations detected:", file=sys.stderr)
         for line in problems:
             print(f"  {line}", file=sys.stderr)
         return 1
 
-    print("boundary checks passed (gates 1/2/3/5)")
+    print("boundary checks passed (gates 1/2/3/5 + layer DAG)")
     return 0
 
 

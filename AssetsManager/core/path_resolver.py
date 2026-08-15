@@ -130,6 +130,9 @@ def shared_dir() -> Path:
     return d
 
 
+SHARED_DIR = shared_dir()
+
+
 def library_data_dir(library_root: str | Path | RootIdentity) -> Path:
     """Return the data directory for a specific library."""
     name = library_data_name(library_root)

@@ -18,7 +18,7 @@ import subprocess
 import sys
 import tempfile
 
-from AssetsManager.core.database import SHARED_DIR
+from AssetsManager.core.path_resolver import SHARED_DIR
 
 _log = logging.getLogger(__name__)
 

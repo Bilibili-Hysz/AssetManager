@@ -14,11 +14,20 @@ from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.library_lock import LibraryLock
 from AssetsManager.core.path_resolver import RootIdentity, library_lock_path, root_identity
 from AssetsManager.core.project_data import ProjectData
-from AssetsManager.core.tag_store import TagStore
+from AssetsManager.core.tag_store import TagStore, install_repository_factory
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import LibraryOpened
+from AssetsManager.repositories.tag_repository import TagRepository
 
 _log = logging.getLogger(__name__)
+
+
+def _tag_repository_factory(conn, *, library_root=None, session=None):
+    """Application-layer seam that injects TagRepository into core TagStore."""
+    return TagRepository(conn, library_root=library_root, session=session)
+
+
+install_repository_factory(_tag_repository_factory)
 
 
 @dataclass

@@ -5,7 +5,7 @@ import logging
 import sys
 import threading
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 from AssetsManager.core.plugins.descriptor import (
     PLUGIN_STATE_ACTIVE, PLUGIN_STATE_DISABLED, PLUGIN_STATE_ERROR,
@@ -17,6 +17,27 @@ from AssetsManager.core.plugins.host_context import PluginHostContext
 from AssetsManager.core.plugins.loader import PluginLoader
 
 _log = logging.getLogger(__name__)
+
+# Category registries live in the application layer (asset_filters +
+# format_utils); the plugin core receives them through this seam so core
+# never imports application modules.  Installed by application.plugin_service.
+_CategoryRegistryProvider = Callable[
+    [], tuple[dict[str, set[str] | frozenset[str]], dict[str, str]] | None
+]
+_category_registry_provider: _CategoryRegistryProvider | None = None
+
+
+def set_category_registry_provider(provider: _CategoryRegistryProvider) -> None:
+    """Install the application-layer category registry provider."""
+    global _category_registry_provider
+    _category_registry_provider = provider
+
+
+def _category_registries() -> tuple[dict[str, set[str] | frozenset[str]], dict[str, str]] | None:
+    provider = _category_registry_provider
+    if provider is None:
+        return None
+    return provider()
 
 
 class PluginManagerService:
@@ -47,8 +68,7 @@ class PluginManagerService:
 
     def default_search_paths(self) -> list[Path]:
         """Default plugin search paths: RuntimeData/Shared/plugins/ and Plugins/Addons/."""
-        from AssetsManager.core.database import SHARED_DIR
-        from AssetsManager.core.path_resolver import addons_dir
+        from AssetsManager.core.path_resolver import SHARED_DIR, addons_dir
         return [SHARED_DIR / "plugins", addons_dir()]
 
     def discover_plugins(self, search_paths: Iterable[str | Path] | None = None) -> list[PluginDescriptor]:
@@ -290,35 +310,43 @@ class PluginManagerService:
     def apply_registered_categories(self) -> None:
         """Apply categories registered via PluginHostContext.register_category().
 
-        This updates the global FILTER_CATEGORY_EXTS and CATEGORY_MAP
-        so the new categories are available in filter dropdowns and search.
-        Tracks which plugin registered each category for cleanup on unload.
+        The mutation targets are provided by the application composition
+        root through :func:`set_category_registry_provider`, so core keeps no
+        static dependency on application filter modules.
         """
         if self._host_context is None:
             return
-        from AssetsManager.application.asset_filters import FILTER_CATEGORY_EXTS
-        from AssetsManager.core.format_utils import CATEGORY_MAP
+        registries = _category_registries()
+        if registries is None:
+            _log.warning(
+                "Category registry provider is not installed; plugin categories "
+                "were not applied"
+            )
+            return
+        filter_category_exts, category_map = registries
 
         for cat in self._host_context.categories():
-            if cat.key in FILTER_CATEGORY_EXTS and cat.key not in self._plugin_categories.get(cat.plugin_id, set()):
+            if cat.key in filter_category_exts and cat.key not in self._plugin_categories.get(cat.plugin_id, set()):
                 continue
-            FILTER_CATEGORY_EXTS[cat.key] = set(cat.extensions)
+            filter_category_exts[cat.key] = set(cat.extensions)
             for ext in cat.extensions:
-                CATEGORY_MAP[ext] = cat.key
+                category_map[ext] = cat.key
             self._plugin_categories.setdefault(cat.plugin_id, set()).add(cat.key)
             _log.info("Registered category '%s' with extensions %s (plugin: %s)", cat.key, cat.extensions, cat.plugin_id)
 
     def remove_registered_categories(self, plugin_id: str) -> None:
         """Remove global category registrations owned by a plugin."""
-        from AssetsManager.application.asset_filters import FILTER_CATEGORY_EXTS
-        from AssetsManager.core.format_utils import CATEGORY_MAP
+        registries = _category_registries()
+        if registries is None:
+            return
+        filter_category_exts, category_map = registries
 
         keys = self._plugin_categories.pop(plugin_id, set())
         for key in keys:
-            cats = FILTER_CATEGORY_EXTS.pop(key, None)
+            cats = filter_category_exts.pop(key, None)
             if cats:
                 for ext in cats:
-                    CATEGORY_MAP.pop(ext, None)
+                    category_map.pop(ext, None)
             _log.info("Removed category '%s' registered by plugin '%s'", key, plugin_id)
 
     def apply_registered_theme_tokens(self) -> None:

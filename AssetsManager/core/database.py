@@ -21,7 +21,7 @@ from pathlib import Path
 
 from AssetsManager.core.performance import PerformanceRecorder
 from AssetsManager.core.path_resolver import (
-    runtime_root, shared_dir, library_data_dir, library_data_name,
+    runtime_root, library_data_dir, library_data_name,
     library_data_identity_path, legacy_library_data_dir, thumb_dir,
     db_path, RootIdentity, root_identity, remap_path_subtree, sql_like_descendant_pattern,
 )
@@ -31,7 +31,6 @@ from AssetsManager.core.db_migrations import (
 )
 
 RUNTIME_ROOT = runtime_root()
-SHARED_DIR = shared_dir()
 _ORPHANED_DIR_NAME = "_orphaned"
 _LEGACY_MIGRATION_RESERVED_NAMES = frozenset({"shared", "_orphaned"})
 

@@ -312,14 +312,9 @@ def test_core_does_not_grow_upper_layer_dependencies() -> None:
             "AssetsManager.dialogs",
             "AssetsManager.lan",
             "AssetsManager.panels",
+            "AssetsManager.repositories",
             "AssetsManager.widgets",
         ),
-        allowed={
-            (
-                "AssetsManager.core.plugins.manager",
-                "AssetsManager.application.asset_filters",
-            ),
-        },
     )
 
 

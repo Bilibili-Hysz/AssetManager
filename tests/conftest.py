@@ -34,6 +34,20 @@ def _cleanup_dead_symlinks_tolerant(root) -> None:
 _pytest_tmpdir_plugin.cleanup_dead_symlinks = _cleanup_dead_symlinks_tolerant
 
 
+@pytest.fixture(autouse=True)
+def _tag_store_repository_factory_installed():
+    """Install the application-layer seam used by core TagStore tests."""
+    from AssetsManager.core.tag_store import install_repository_factory
+    from AssetsManager.repositories.tag_repository import TagRepository
+
+    install_repository_factory(
+        lambda conn, *, library_root=None, session=None: TagRepository(
+            conn, library_root=library_root, session=session
+        )
+    )
+    yield
+
+
 # ── Test-session runtime-data protection ──────────────────────────
 # Tests create per-library SQLite databases and identity markers under
 # RuntimeData/.  A full suite can leave tens of thousands of artifact
@@ -123,7 +137,7 @@ def _db_library_root(db_path: Path) -> str | None:
 
 def _preserve_shared_config() -> None:
     """Snapshot user config files so tests cannot permanently modify them."""
-    from AssetsManager.core.database import SHARED_DIR
+    from AssetsManager.core.path_resolver import SHARED_DIR
 
     for name in _PROTECTED_SHARED_FILES:
         path = Path(SHARED_DIR) / name
@@ -159,7 +173,7 @@ def _cleanup_test_runtime_data() -> None:
     """
     if _KEEP_RUNTIME_DATA:
         return
-    from AssetsManager.core.database import SHARED_DIR
+    from AssetsManager.core.path_resolver import SHARED_DIR
 
     runtime_root = Path(SHARED_DIR).parent  # RuntimeData/
     shared = Path(SHARED_DIR)

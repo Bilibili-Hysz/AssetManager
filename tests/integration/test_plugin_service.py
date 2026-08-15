@@ -315,6 +315,7 @@ def test_register_category():
 
 
 def test_apply_registered_categories(tmp_path):
+    from AssetsManager.application.plugin_service import PluginService  # noqa: F401  (installs registry provider)
     from AssetsManager.core.plugins.host_context import PluginHostContext
     from AssetsManager.application.asset_filters import FILTER_CATEGORY_EXTS
     from AssetsManager.core.format_utils import CATEGORY_MAP
@@ -607,6 +608,7 @@ def test_unload_cleans_tool_windows():
 
 def test_unload_cleans_global_category_mutations(tmp_path):
     """Verify that disabling a plugin removes its global category registrations."""
+    from AssetsManager.application.plugin_service import PluginService  # noqa: F401  (installs registry provider)
     from AssetsManager.core.plugins.host_context import PluginHostContext
     from AssetsManager.application.asset_filters import FILTER_CATEGORY_EXTS
     from AssetsManager.core.format_utils import CATEGORY_MAP

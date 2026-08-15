@@ -20,10 +20,41 @@ from sqlite3 import Connection
 
 from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.tag_library import get_library
-from AssetsManager.repositories.tag_repository import TagRepository
 
 
 _T = TypeVar("_T")
+
+# The repository factory is installed by the application composition root
+# (library_service) and by the test session (tests/conftest.py).  Core must
+# not import repositories, so SQL wiring crosses the layer boundary through
+# this explicit seam instead of a static import.
+_RepositoryFactory = Callable[..., Any]
+_default_repository_factory: _RepositoryFactory | None = None
+
+
+def install_repository_factory(factory: _RepositoryFactory) -> None:
+    """Install the application-layer TagRepository factory.
+
+    ``factory(conn, *, library_root, session)`` must return an object with
+    the TagRepository surface used by :class:`TagStore`.
+    """
+    global _default_repository_factory
+    _default_repository_factory = factory
+
+
+def _build_repository(
+    library_root: str,
+    db_conn: Connection,
+    session: Any | None,
+) -> Any:
+    factory = _default_repository_factory
+    if factory is None:
+        raise RuntimeError(
+            "TagStore repository factory is not installed; import "
+            "AssetsManager.application.library_service (production) or let "
+            "tests/conftest.py register one before constructing TagStore"
+        )
+    return factory(db_conn, library_root=library_root, session=session)
 
 
 def _tag_store_operation(method: Callable[..., _T]) -> Callable[..., _T]:
@@ -46,6 +77,7 @@ class TagStore:
         db_conn: Connection | None = None,
         *,
         session=None,
+        repository: Any | None = None,
     ):
         self._root = str(Path(library_root).resolve())
         self._liveness = None
@@ -59,10 +91,8 @@ class TagStore:
             self._db = DatabaseManager.validate_connection_owner(
                 self._root, db_conn, allow_unmanaged=True
             )
-        self._repo = TagRepository(
-            self._db,
-            library_root=self._root,
-            session=session,
+        self._repo = repository or _build_repository(
+            self._root, self._db, session
         )
         self._resolve_cache: dict[str, str] = {}
         from threading import Lock

@@ -16,7 +16,7 @@ from collections import deque
 from datetime import datetime
 from time import time
 
-from AssetsManager.core.database import SHARED_DIR
+from AssetsManager.core.path_resolver import SHARED_DIR
 
 CRASH_LOG = SHARED_DIR / "crash.log"
 MAX_SIZE = 512 * 1024  # 512 KB

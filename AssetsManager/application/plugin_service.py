@@ -4,12 +4,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from AssetsManager.application.asset_filters import FILTER_CATEGORY_EXTS
+from AssetsManager.core.format_utils import CATEGORY_MAP
 from AssetsManager.core.plugins import (
     PluginDescriptor,
     PluginHostContext,
     PluginLoadResult,
     PluginManagerService,
 )
+from AssetsManager.core.plugins.manager import set_category_registry_provider
+
+# Core plugin machinery must not import application filter modules, so the
+# application composition root injects the mutable registries through this
+# provider seam.
+set_category_registry_provider(lambda: (FILTER_CATEGORY_EXTS, CATEGORY_MAP))
 
 
 class PluginService:
