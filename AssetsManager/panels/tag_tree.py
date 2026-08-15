@@ -66,6 +66,7 @@ class TagTreePanel(PanelContent):
         add_btn.setToolTip(tr("tagtree.new_tag"))
         add_btn.clicked.connect(self._add_tag)
         add_btn.setMaximumWidth(scaled_px(72))
+        themes.set_button_variant(add_btn, "secondary")
         bar.addWidget(add_btn)
         self._add_btn = add_btn
         self._apply_tree_style()
@@ -79,21 +80,30 @@ class TagTreePanel(PanelContent):
     def _apply_tree_style(self):
         """Apply the compact tree presentation shared by the desktop panels."""
         t = themes.get()
+        font_size = scaled_pt(int(themes.prop("font_size", "sm")))
+        padding_xs = scaled_px(int(themes.prop("spacing", "xs")))
+        padding_sm = scaled_px(int(themes.prop("spacing", "sm")))
+        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
+        hover = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
+        selected = alpha(t["selected_overlay"], 0.28)
         self._tree.setIconSize(QSize(scaled_px(18), scaled_px(18)))
         self._tree.setStyleSheet(
             f"QTreeWidget {{"
             f"  background: transparent; color: {t['body']}; border: none; outline: none; "
-            f"  font-size: {scaled_pt(11)}px; "
+            f"  font-size: {font_size}px; "
             f"}}"
             f"QTreeWidget::item {{"
-            f"  padding: {scaled_px(4)}px {scaled_px(6)}px; "
-            f"  border: none; border-radius: {scaled_px(5)}px; "
+            f"  padding: {padding_xs}px {padding_sm}px; "
+            f"  border: none; border-radius: {radius_sm}px; "
             f"}}"
             f"QTreeWidget::item:hover {{"
-            f"  background: {alpha(t['accent'], 0.12)}; "
+            f"  background: {hover}; "
             f"}}"
             f"QTreeWidget::item:selected {{"
-            f"  background: {alpha(t['accent'], 0.28)}; color: {t['heading']}; "
+            f"  background: {selected}; color: {t['heading']}; "
+            f"}}"
+            f"QTreeWidget::item:selected:focus {{"
+            f"  background: {selected}; color: {t['heading']}; "
             f"}}"
             f"QTreeWidget::item:disabled {{ color: {t['muted']}; }}")
         self._add_btn.setIcon(icons.icon("tag", color="icon_secondary", size=scaled_px(16)))

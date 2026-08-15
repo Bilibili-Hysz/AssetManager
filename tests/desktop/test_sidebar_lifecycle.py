@@ -7,6 +7,7 @@ from unittest.mock import Mock
 from PySide6.QtWidgets import QApplication, QTreeWidgetItem
 
 from AssetsManager.i18n import tr
+from AssetsManager.core import themes
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.panels import sidebar as sidebar_module
 from AssetsManager.panels.sidebar import SidebarPanel
@@ -331,5 +332,23 @@ def test_sidebar_clone_shares_data_sources_and_layout_state(monkeypatch, tmp_pat
         if cloned is not None:
             cloned.shutdown()
             cloned.deleteLater()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_sidebar_modern_styles_use_theme_tokens_and_hover_state():
+    app = QApplication.instance() or QApplication([])
+    panel = SidebarPanel()
+    try:
+        btn_qss = panel._expand_btn.styleSheet()
+        assert "QPushButton:hover" in btn_qss
+        assert "QPushButton:pressed" in btn_qss
+        assert themes.get()["border_subtle"] in btn_qss
+
+        tree_qss = panel._tree.styleSheet()
+        assert "QTreeWidget::item:hover" in tree_qss
+        assert "QTreeWidget::item:selected:focus" in tree_qss
+    finally:
+        panel.shutdown()
         panel.deleteLater()
         app.processEvents()

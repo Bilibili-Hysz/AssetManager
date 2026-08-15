@@ -510,7 +510,7 @@ def stylesheet() -> str:
         font-size: {f_sm}px; font-weight: bold;
     }}
     QMenuBar {{ background: {menubar_bg}; color: {t['heading']}; border-bottom: 1px solid {hairline}; }}
-    QMenuBar::item:selected {{ background: {t['hover_overlay']}; }}
+    QMenuBar::item:selected {{ background: {hov}; }}
     QMenu {{ background: {t['panel']}; color: {t['heading']}; border: 1px solid {hairline}; border-radius: {r_md}px; padding: {s_xs}px; }}
     QMenu::item {{ padding: {s_sm}px {s_lg}px; border-radius: {r_sm}px; }}
     QMenu::item:selected {{ background: {t['accent']}; color: {t['on_accent']}; }}
@@ -526,6 +526,9 @@ def stylesheet() -> str:
     QTabBar::tab:hover:!selected {{ background: {hov}; }}
     QTabBar::tab:selected {{ background: {t['panel']}; color: {t['heading']}; border-color: {hairline}; }}
     QListWidget::item, QTreeWidget::item {{ padding: {s_sm}px {s_md}px; border-radius: {r_sm}px; }}
+    QListWidget::item:hover, QTreeWidget::item:hover {{
+        background: {hov}; border-radius: {r_sm}px;
+    }}
     QListWidget::item:selected, QTreeWidget::item:selected {{
         background: {t['accent']}; border-radius: {r_sm}px; color: {t['on_accent']};
     }}
@@ -554,7 +557,7 @@ def stylesheet() -> str:
     }}
     QPushButton:hover {{ background: {alpha(t['accent'], 0.88)}; }}
     QPushButton:pressed {{ background: {alpha(t['accent'], 0.72)}; }}
-    QPushButton:focus {{ border: 1px solid {t['border_focus']}; }}
+    QPushButton:focus {{ border: 1px solid {t['border_focus']}; padding: {s_sm}px {s_lg}px; }}
     QPushButton[buttonVariant="primary"] {{
         background: {t['accent']}; color: {t['on_accent']};
     }}
@@ -595,7 +598,7 @@ def stylesheet() -> str:
         background: transparent; width: {scaled_px(6)}px;
     }}
     QScrollBar::handle:vertical {{
-        background: {t['scrollbar_thumb']}; border-radius: {scaled_px(3)}px; min-height: {scaled_px(24)}px;
+        background: {t['scrollbar_thumb']}; border-radius: {r_sm}px; min-height: {scaled_px(24)}px;
     }}
     QScrollBar::handle:vertical:hover {{
         background: {t['scrollbar_thumb_hover']};
@@ -605,7 +608,7 @@ def stylesheet() -> str:
         background: transparent; height: {scaled_px(6)}px;
     }}
     QScrollBar::handle:horizontal {{
-        background: {t['scrollbar_thumb']}; border-radius: {scaled_px(3)}px; min-width: {scaled_px(24)}px;
+        background: {t['scrollbar_thumb']}; border-radius: {r_sm}px; min-width: {scaled_px(24)}px;
     }}
     QScrollBar::handle:horizontal:hover {{
         background: {t['scrollbar_thumb_hover']};
@@ -616,7 +619,7 @@ def stylesheet() -> str:
         background: {t['panel']};
     }}
     QSplitter::handle {{
-        background: {hairline};
+        background: {hairline}; border-radius: {r_sm}px;
     }}
     QSplitter::handle:hover {{
         background: {t['accent']};

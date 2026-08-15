@@ -349,9 +349,13 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             f"background: transparent; "
             f"border-top: 1px solid {t['border_subtle']};")
         self._status.setStyleSheet(
-            f"color: {t['muted']}; font-size: {scaled_pt(11)}px; background: transparent;")
+            f"color: {t['muted']}; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
+            f"background: transparent; "
+            f"padding: {scaled_px(int(themes.prop('spacing', 'xs')))}px 0;")
         self._operation_feedback.setStyleSheet(
-            f"color: {t['muted']}; font-size: {scaled_pt(11)}px; background: transparent;")
+            f"color: {t['muted']}; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
+            f"background: transparent; "
+            f"padding: {scaled_px(int(themes.prop('spacing', 'xs')))}px 0;")
 
     def set_scoped_services(self, services):
         """Bind library-scoped services resolved by MainWindow."""
@@ -478,15 +482,18 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
     @staticmethod
     def _header_css(t: dict) -> str:
         return (
-            f"background: {themes.header_for_dock()}; border: 1px solid {t['border']}; "
-            f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; "
+            f"background: {themes.header_for_dock()}; border: 1px solid {t['border_subtle']}; "
+            f"border-top-left-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; "
+            f"border-top-right-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; "
         )
 
     @staticmethod
     def _header_title_css(t: dict) -> str:
         return (
-            f"color: {t['heading']}; font-size: {scaled_pt(12)}px; font-weight: bold; "
-            f"background: transparent; border: none; padding: {scaled_px(2)}px {scaled_px(4)}px;"
+            f"color: {t['heading']}; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
+            f"font-weight: bold; "
+            f"background: transparent; border: none; "
+            f"padding: {scaled_px(int(themes.prop('spacing', 'xs')))}px {scaled_px(int(themes.prop('spacing', 'sm')))}px;"
         )
 
     @staticmethod
@@ -494,7 +501,11 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         return (
             f"QPushButton {{ background: transparent; color: {t['body']}; "
             f"border: none; padding: 0; min-width: {scaled_px(26)}px; }} "
-            f"QPushButton:hover {{ background: {alpha(t['panel'], 0.50)}; border-radius: {scaled_px(3)}px; "
+            f"QPushButton:hover {{ background: {alpha(t['hover_overlay'], themes.prop('opacity', 'hover'))}; "
+            f"border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; "
+            f"color: {t['heading']}; }}"
+            f"QPushButton:pressed {{ background: {alpha(t['hover_overlay'], themes.prop('opacity', 'hover'))}; "
+            f"border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; "
             f"color: {t['heading']}; }}"
         )
 
@@ -1297,14 +1308,14 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             f"QHeaderView::section {{"
             f"  background: {t['header']}; color: {t['heading']}; "
             f"  border: none; border-right: 1px solid {alpha(t['border'], 0.25)}; "
-            f"  padding: {scaled_px(5)}px {scaled_px(8)}px; "
-            f"  font-size: {scaled_pt(12)}px; font-weight: bold; "
+            f"  padding: {scaled_px(int(themes.prop('spacing', 'xs')))}px {scaled_px(int(themes.prop('spacing', 'sm')))}px; "
+            f"  font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; font-weight: bold; "
             f"}}"
             f"QHeaderView::down-arrow, QHeaderView::up-arrow {{ "
             f"  width: {scaled_px(10)}px; height: {scaled_px(10)}px; "
             f"}}"
             f"QHeaderView::section:hover {{"
-            f"  background: {alpha(t['accent'], 0.12)}; "
+            f"  background: {alpha(t['hover_overlay'], themes.prop('opacity', 'hover'))}; "
             f"}}")
         self._detail_view.setStyleSheet(
             f"QTreeView {{"
@@ -1312,17 +1323,17 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             f"  alternate-background-color: {alpha(t['header'], 0.24)}; "
             f"  selection-background-color: {alpha(t['accent'], 0.28)}; "
             f"  selection-color: {t['heading']}; "
-            f"  border: none; outline: none; font-size: {scaled_pt(12)}px; "
+            f"  border: none; outline: none; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
             f"}}"
             f"QTreeView::item {{"
-            f"  padding: {scaled_px(4)}px {scaled_px(8)}px; "
-            f"  border: none; border-bottom: 1px solid {alpha(t['border'], 0.18)}; "
+            f"  padding: {scaled_px(int(themes.prop('spacing', 'xs')))}px {scaled_px(int(themes.prop('spacing', 'sm')))}px; "
+            f"  border: none; border-bottom: 1px solid {t['border_subtle']}; "
             f"}}"
             f"QTreeView::item:alternate {{"
             f"  background: {alpha(t['header'], 0.24)}; "
             f"}}"
             f"QTreeView::item:hover {{"
-            f"  background: {alpha(t['accent'], 0.12)}; "
+            f"  background: {alpha(t['hover_overlay'], themes.prop('opacity', 'hover'))}; "
             f"}}"
             f"QTreeView::item:selected {{"
             f"  background: {alpha(t['accent'], 0.28)}; color: {t['heading']}; "

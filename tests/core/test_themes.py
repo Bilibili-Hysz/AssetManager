@@ -221,3 +221,19 @@ def test_background_numeric_settings_fall_back_when_invalid(monkeypatch):
     assert themes.bg_header_opacity() == 1.0
     assert themes.bg_overall_opacity() == 0.75
     assert themes.bg_effect_intensity() == 20
+
+
+def test_stylesheet_has_modern_item_hover_states():
+    from AssetsManager.core.color_utils import alpha
+
+    qss = themes.stylesheet()
+
+    assert "QListWidget::item:hover" in qss
+    assert "QTreeWidget::item:hover" in qss
+    # Menu-bar hover uses the translucent overlay instead of the raw
+    # hover_overlay color (white in dark themes would be a hard flash).
+    hov = alpha(
+        themes.get()["hover_overlay"],
+        themes.get()["properties"]["opacity"]["hover"],
+    )
+    assert hov in qss

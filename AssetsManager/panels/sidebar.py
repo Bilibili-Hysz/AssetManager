@@ -148,7 +148,6 @@ class SidebarPanel(PanelContent):
         self._drag_highlight_item: QTreeWidgetItem | None = None
         self._tree_generation = 0
 
-        t = themes.get()
         bar = QHBoxLayout()
         bar.setContentsMargins(scaled_px(4), scaled_px(4), scaled_px(4), scaled_px(2))
         bar.addWidget(self._search)
@@ -167,12 +166,9 @@ class SidebarPanel(PanelContent):
         for btn in (self._expand_btn, self._collapse_btn):
             btn.setFixedSize(scaled_px(26), scaled_px(26))
             btn.setFlat(True)
-            btn.setStyleSheet(
-                f"color: {t['body']}; padding: 0; font-size: {scaled_pt(14)}px; font-weight: bold; "
-                f"background: transparent; border-radius: {scaled_px(6)}px; "
-                f"border: 1px solid {alpha(t['border'], 0.375)};")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             bar.addWidget(btn)
+        self._apply_nav_btn_style()
         self._apply_tree_style()
         self.content_layout.addLayout(bar)
 
@@ -1025,21 +1021,30 @@ class SidebarPanel(PanelContent):
     def _apply_tree_style(self):
         """Apply compact, theme-aware tree styling without rebuilding items."""
         t = themes.get()
+        font_size = scaled_pt(int(themes.prop("font_size", "sm")))
+        padding_xs = scaled_px(int(themes.prop("spacing", "xs")))
+        padding_sm = scaled_px(int(themes.prop("spacing", "sm")))
+        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
+        hover = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
+        selected = alpha(t["selected_overlay"], 0.28)
         self._tree.setIconSize(QSize(scaled_px(18), scaled_px(18)))
         self._tree.setStyleSheet(
             f"QTreeWidget {{"
             f"  background: transparent; color: {t['body']}; border: none; outline: none; "
-            f"  font-size: {scaled_pt(11)}px; "
+            f"  font-size: {font_size}px; "
             f"}}"
             f"QTreeWidget::item {{"
-            f"  padding: {scaled_px(4)}px {scaled_px(6)}px; "
-            f"  border: none; border-radius: {scaled_px(5)}px; "
+            f"  padding: {padding_xs}px {padding_sm}px; "
+            f"  border: none; border-radius: {radius_sm}px; "
             f"}}"
             f"QTreeWidget::item:hover {{"
-            f"  background: {alpha(t['accent'], 0.12)}; "
+            f"  background: {hover}; "
             f"}}"
             f"QTreeWidget::item:selected {{"
-            f"  background: {alpha(t['accent'], 0.28)}; color: {t['heading']}; "
+            f"  background: {selected}; color: {t['heading']}; "
+            f"}}"
+            f"QTreeWidget::item:selected:focus {{"
+            f"  background: {selected}; color: {t['heading']}; "
             f"}}"
             f"QTreeWidget::item:disabled {{ color: {t['muted']}; }}")
 
@@ -1063,11 +1068,12 @@ class SidebarPanel(PanelContent):
 
     def _apply_status_style(self):
         t = themes.get()
+        font_size = scaled_pt(int(themes.prop("font_size", "sm")))
         self._status_bar.setStyleSheet(
             f"background: transparent; "
-            f"border-top: 1px solid {t['border']};")
+            f"border-top: 1px solid {t['border_subtle']};")
         self._status.setStyleSheet(
-            f"color: {t['muted']}; font-size: {scaled_pt(11)}px; background: transparent;")
+            f"color: {t['muted']}; font-size: {font_size}px; background: transparent;")
 
     def _refresh_empty_state(self):
         """Re-tint the empty-state icon/text after theme/language changes."""
@@ -1079,12 +1085,17 @@ class SidebarPanel(PanelContent):
             icons.icon("folder", color="icon_muted", size=icon_size).pixmap(
                 QSize(icon_size, icon_size)))
         self._empty_text.setText(tr("sidebar.status_empty"))
-        self._empty_text.setStyleSheet(sk.muted_css(12))
+        self._empty_text.setStyleSheet(sk.muted_css(int(themes.prop("font_size", "md"))))
         self._empty_hint.setText(tr("sidebar.empty_hint"))
-        self._empty_hint.setStyleSheet(sk.muted_css(11))
+        self._empty_hint.setStyleSheet(sk.muted_css(int(themes.prop("font_size", "sm"))))
 
     def _apply_nav_btn_style(self):
         t = themes.get()
+        hover = alpha(
+            t["hover_overlay"], themes.prop("opacity", "hover"))
+        selected = alpha(t["selected_overlay"], 0.28)
+        radius = scaled_px(int(themes.prop("border_radius", "sm")))
+        font_size = scaled_pt(int(themes.prop("font_size", "lg")))
         for btn, icon_name in (
             (self._expand_btn, "arrow_down"),
             (self._collapse_btn, "arrow_up"),
@@ -1092,9 +1103,12 @@ class SidebarPanel(PanelContent):
             btn.setIcon(icons.icon(icon_name, color="icon_secondary", size=scaled_px(16)))
             btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
             btn.setStyleSheet(
-                f"color: {t['body']}; padding: 0; font-size: {scaled_pt(14)}px; font-weight: bold; "
-                f"background: transparent; border-radius: {scaled_px(6)}px; "
-                f"border: 1px solid {alpha(t['border'], 0.375)};")
+                f"QPushButton {{ color: {t['body']}; padding: 0; "
+                f"font-size: {font_size}px; font-weight: bold; "
+                f"background: transparent; border-radius: {radius}px; "
+                f"border: 1px solid {t['border_subtle']}; }}"
+                f"QPushButton:hover {{ background: {hover}; }}"
+                f"QPushButton:pressed {{ background: {selected}; }}")
 
     def navigate_to(self, path: str):
         self._library_root = path

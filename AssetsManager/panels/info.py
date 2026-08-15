@@ -25,6 +25,7 @@ from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core import themes, icons
+from AssetsManager.core.color_utils import alpha, darken, lighten
 from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager.widgets.tag_chip import create_tag_chip, tag_color_from
 from AssetsManager.panels._info_parts import (
@@ -198,8 +199,13 @@ class InfoPanel(PanelContent):
         self._add_tag_btn.setAccessibleName(tr("info.add_tag"))
         self._add_tag_btn.clicked.connect(self._add_tag)
         self._add_tag_btn.setStyleSheet(
-            f"background: transparent; color: {sk.token('muted')}; border: 1px dashed {sk.token('border')}; "
-            f"border-radius: {sk.px(6)}px; padding: {sk.px(2)}px {sk.px(10)}px; font-size: {sk.pt(11)}px;")
+            f"QPushButton {{ background: transparent; color: {sk.token('muted')}; "
+            f"border: 1px dashed {sk.token('border')}; "
+            f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
+            f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
+            f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"
+            f"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}"
+            f"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}")
         self._add_tag_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_row.addWidget(self._add_tag_btn)
         self._manage_btn = QPushButton(tr("info.manage_tags"))
@@ -208,8 +214,13 @@ class InfoPanel(PanelContent):
         self._manage_btn.setAccessibleName(tr("info.manage_tags"))
         self._manage_btn.clicked.connect(self._open_tag_editor)
         self._manage_btn.setStyleSheet(
-            f"background: transparent; color: {sk.token('muted')}; border: 1px solid {sk.token('border')}; "
-            f"border-radius: {sk.px(6)}px; padding: {sk.px(2)}px {sk.px(10)}px; font-size: {sk.pt(11)}px;")
+            f"QPushButton {{ background: transparent; color: {sk.token('muted')}; "
+            f"border: 1px solid {sk.token('border')}; "
+            f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
+            f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
+            f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"
+            f"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}"
+            f"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}")
         self._manage_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_row.addWidget(self._manage_btn)
         self._browse_btn = QPushButton(tr("info.browse_tags"))
@@ -219,8 +230,13 @@ class InfoPanel(PanelContent):
         self._browse_btn.setToolTip(tr("info.browse_tags_tooltip"))
         self._browse_btn.clicked.connect(self._open_tag_browser)
         self._browse_btn.setStyleSheet(
-            f"background: transparent; color: {sk.token('muted')}; border: 1px solid {sk.token('border')}; "
-            f"border-radius: {sk.px(6)}px; padding: {sk.px(2)}px {sk.px(10)}px; font-size: {sk.pt(11)}px;")
+            f"QPushButton {{ background: transparent; color: {sk.token('muted')}; "
+            f"border: 1px solid {sk.token('border')}; "
+            f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
+            f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
+            f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"
+            f"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}"
+            f"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}")
         self._browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_row.addWidget(self._browse_btn)
         add_row.addStretch()
@@ -259,9 +275,13 @@ class InfoPanel(PanelContent):
         self._open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._open_btn.setToolTip(tr("info.open_tooltip"))
         self._open_btn.setStyleSheet(
-            f"background: {sk.token('accent')}; color: {sk.token('heading')}; "
-            f"border: 1px solid {sk.token('accent')}; border-radius: {sk.px(4)}px; "
-            f"padding: {sk.px(2)}px {sk.px(12)}px; font-size: {sk.pt(12)}px;")
+            f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('heading')}; "
+            f"border: 1px solid {sk.token('accent')}; "
+            f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
+            f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
+            f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"
+            f"QPushButton:hover {{ background: {lighten(sk.token('accent'), 1.1)}; }}"
+            f"QPushButton:pressed {{ background: {darken(sk.token('accent'), 0.87)}; }}")
         self._open_btn.clicked.connect(lambda: self.open_requested.emit(self._current_path))
         self._copy_btn = QPushButton(tr("info.copy_path"))
         self._copy_btn.setIcon(icons.icon("file", color="icon_secondary", size=scaled_px(15)))
@@ -270,9 +290,13 @@ class InfoPanel(PanelContent):
         self._copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._copy_btn.setToolTip(tr("info.copy_tooltip"))
         self._copy_btn.setStyleSheet(
-            f"background: transparent; color: {sk.token('body')}; "
-            f"border: 1px solid {sk.token('border')}; border-radius: {sk.px(4)}px; "
-            f"padding: {sk.px(2)}px {sk.px(10)}px; font-size: {sk.pt(12)}px;")
+            f"QPushButton {{ background: transparent; color: {sk.token('body')}; "
+            f"border: 1px solid {sk.token('border')}; "
+            f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
+            f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
+            f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"
+            f"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}"
+            f"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}")
         self._copy_btn.clicked.connect(lambda: self.copy_path_requested.emit(self._current_path))
         act_layout.addWidget(self._open_btn)
         act_layout.addWidget(self._copy_btn)
@@ -323,8 +347,12 @@ class InfoPanel(PanelContent):
         """
         return (
             f"QGroupBox {{ color: {sk.token('heading')}; border: 1px solid {sk.token('border_subtle')}; "
-            f"border-radius: {sk.px(6)}px; margin-top: {sk.px(8)}px; padding-top: {sk.px(12)}px; }}"
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: {sk.px(10)}px; padding: 0 {sk.px(5)}px; }}"
+            f"border-radius: {sk.px(int(themes.prop('border_radius', 'md')))}px; "
+            f"margin-top: {sk.px(int(themes.prop('spacing', 'md')))}px; "
+            f"padding-top: {sk.px(int(themes.prop('spacing', 'md')))}px; }}"
+            f"QGroupBox::title {{ subcontrol-origin: margin; "
+            f"left: {sk.px(int(themes.prop('spacing', 'md')))}px; "
+            f"padding: 0 {sk.px(int(themes.prop('spacing', 'xs')))}px; }}"
         )
 
     def refresh_scaled_geometry(self, _scale: float | None = None):
@@ -352,28 +380,43 @@ class InfoPanel(PanelContent):
             self._details_scroll.viewport().setStyleSheet(            "background: transparent;")
         for grp in (self._meta_grp, self._tags_grp, self._notes_grp):
             grp.setStyleSheet(self._group_css(sk))
-        for btn, color, icon_name in [
-            (self._add_tag_btn, "icon_muted", "tag"),
-            (self._manage_btn, "icon_muted", "settings"),
-            (self._browse_btn, "icon_muted", "tag"),
+        for btn, color, icon_name, dashed in [
+            (self._add_tag_btn, "icon_muted", "tag", True),
+            (self._manage_btn, "icon_muted", "settings", False),
+            (self._browse_btn, "icon_muted", "tag", False),
         ]:
             btn.setIcon(icons.icon(icon_name, color=color, size=scaled_px(14)))
             btn.setIconSize(QSize(scaled_px(14), scaled_px(14)))
+            border_style = "dashed" if dashed else "solid"
             btn.setStyleSheet(
-                f"background: transparent; color: {t['muted']}; font-size: {sk.pt(12)}px; "
-                f"border: 1px solid {sk.token('border')}; border-radius: {sk.px(4)}px; padding: {sk.px(2)}px {sk.px(10)}px;")
+                f"QPushButton {{ background: transparent; color: {t['muted']}; "
+                f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; "
+                f"border: 1px {border_style} {sk.token('border')}; "
+                f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
+                f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; }}"
+                f"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}"
+                f"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}")
         self._act_bar.setStyleSheet(
             f"background: transparent; border-top: 1px solid {sk.token('border')}; "
             f"padding: {sk.px(4)}px {sk.px(8)}px;")
         self._open_btn.setIcon(icons.icon("folder", color="icon_primary", size=scaled_px(15)))
         self._open_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         self._open_btn.setStyleSheet(
-            f"background: {sk.token('accent')}; color: {sk.token('heading')}; font-size: {sk.pt(13)}px; "
-            f"border: 1px solid {sk.token('accent')}; border-radius: {sk.px(4)}px; padding: {sk.px(2)}px {sk.px(12)}px;")
+            f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('heading')}; "
+            f"font-size: {sk.pt(int(themes.prop('font_size', 'md')))}px; "
+            f"border: 1px solid {sk.token('accent')}; "
+            f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
+            f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; }}"
+            f"QPushButton:hover {{ background: {lighten(sk.token('accent'), 1.1)}; }}"
+            f"QPushButton:pressed {{ background: {darken(sk.token('accent'), 0.87)}; }}")
         self._copy_btn.setStyleSheet(
-            f"background: transparent; color: {sk.token('body')}; "
-            f"border: 1px solid {sk.token('border')}; border-radius: {sk.px(4)}px; "
-            f"padding: {sk.px(2)}px {sk.px(10)}px; font-size: {sk.pt(12)}px;")
+            f"QPushButton {{ background: transparent; color: {sk.token('body')}; "
+            f"border: 1px solid {sk.token('border')}; "
+            f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
+            f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
+            f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"
+            f"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}"
+            f"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}")
         self._copy_btn.setIcon(icons.icon("file", color="icon_secondary", size=scaled_px(15)))
         self._copy_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         self._refresh_empty_preview_state()
@@ -607,7 +650,8 @@ class InfoPanel(PanelContent):
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(
             f"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(11)}px; padding: 0; "
-            f"background: transparent; border: none; border-radius: {sk.px(3)}px; }}"
+            f"background: transparent; border: none; "
+            f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; }}"
             f"QPushButton:hover {{ color: {sk.token('heading')}; background: {sk.token('accent')}; }}")
         btn.clicked.connect(callback)
         return btn
@@ -618,7 +662,8 @@ class InfoPanel(PanelContent):
         for btn in (self._link_rm_btn, self._link_add_btn, self._link_scan_btn):
             btn.setStyleSheet(
                 f"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(11)}px; padding: 0; "
-                f"background: transparent; border: none; border-radius: {sk.px(3)}px; }}"
+                f"background: transparent; border: none; "
+                f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; }}"
                 f"QPushButton:hover {{ color: {sk.token('heading')}; background: {sk.token('accent')}; }}")
 
     def _set_link_field(self, url: str):
@@ -847,7 +892,7 @@ class InfoPanel(PanelContent):
                 QSize(icon_size, icon_size)))
         self._empty_preview_label.setText(tr("info.no_file_selected"))
         self._empty_preview_label.setStyleSheet(
-            sk.muted_css(12) + " QLabel { border: none; }")
+            sk.muted_css(int(themes.prop('font_size', 'sm'))) + " QLabel { border: none; }")
 
     # ── Preview loader ─────────────────────────────────────────
 

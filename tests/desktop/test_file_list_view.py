@@ -13,6 +13,7 @@ from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
 from AssetsManager.application.bootstrap import ApplicationBootstrap
+from AssetsManager.core import themes
 from AssetsManager.i18n import tr
 from AssetsManager.panels.file_list._base import FileListPanel
 from AssetsManager.panels.file_list._shortcuts import handle_key
@@ -3068,3 +3069,13 @@ def test_scroll_animation_object_is_reused_across_wheel_events():
         panel._zoom_anim = None
         panel._scroll_anim = None
         app.processEvents()
+
+
+def test_file_list_chrome_styles_use_theme_tokens_and_states():
+    t = themes.get()
+    header_css = FileListPanel._header_css(t)
+    assert t["border_subtle"] in header_css
+
+    nav_css = FileListPanel._nav_button_css(t)
+    assert "QPushButton:hover" in nav_css
+    assert "QPushButton:pressed" in nav_css

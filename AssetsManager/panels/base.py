@@ -107,7 +107,7 @@ class PanelContent(QWidget):
         themes.set_button_variant(gear, "ghost")
         gear.setStyleSheet(
             f"color: {t['heading']}; padding: 0; background: transparent; border: none; "
-            f"border-radius: {scaled_px(3)}px;")
+            f"border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px;")
         gear.setCursor(Qt.CursorShape.PointingHandCursor)
         gear.clicked.connect(lambda: generic_settings_dialog(self))
         return [gear]

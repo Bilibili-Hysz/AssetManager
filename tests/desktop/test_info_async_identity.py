@@ -5,6 +5,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QPushButton, QTreeWidgetItem
 
 from AssetsManager.controllers.info_controller import FileInfo, PluginField
+from AssetsManager.core import themes
 from AssetsManager.panels import info as info_module
 from AssetsManager.panels.info import InfoPanel
 from AssetsManager.panels.tag_tree import TagTreePanel
@@ -501,6 +502,32 @@ def test_info_tag_chip_pool_evicts_lru_hidden_chips(monkeypatch):
         panel._render_tags(["f"])
         assert "d" not in panel._tag_chip_pool
         assert set(panel._tag_chip_pool) == {"c", "e", "f"}
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+
+
+def test_info_modern_styles_use_theme_tokens_and_states():
+    panel = InfoPanel()
+    try:
+        group_qss = panel._meta_grp.styleSheet()
+        assert themes.get()["border_subtle"] in group_qss
+
+        open_qss = panel._open_btn.styleSheet()
+        assert "QPushButton:hover" in open_qss
+        assert "QPushButton:pressed" in open_qss
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+
+
+def test_tag_tree_add_button_uses_secondary_button_variant():
+    panel = TagTreePanel()
+    try:
+        assert panel._add_btn.property("buttonVariant") == "secondary"
+        tree_qss = panel._tree.styleSheet()
+        assert "QTreeWidget::item:hover" in tree_qss
+        assert "QTreeWidget::item:selected:focus" in tree_qss
     finally:
         panel.shutdown()
         panel.deleteLater()

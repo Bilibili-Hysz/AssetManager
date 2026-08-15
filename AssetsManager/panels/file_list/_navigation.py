@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QMessageBox, QPush
 
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core import themes
+from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.panels.file_list._loader import ThumbnailLoader
 from AssetsManager.panels.file_list._model import FileSystemModel
@@ -304,10 +305,11 @@ class NavigationMixin:
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             current = i == len(show) - 1
             btn.setStyleSheet(
-                f"color: {sk.token('heading') if current else sk.token('muted')}; "
+                f"QPushButton {{ color: {sk.token('heading') if current else sk.token('muted')}; "
                 f"font-size: {sk.pt(12)}px; font-weight: {'bold' if current else 'normal'}; "
                 f"padding: {sk.px(2)}px {sk.px(4)}px; background: transparent; "
-                f"border: none; border-radius: {sk.px(3)}px;")
+                f"border: none; border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; }}"
+                f"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}")
             btn.setToolTip(str(anc))
             btn.setAccessibleName(name)
             bpath = str(anc)

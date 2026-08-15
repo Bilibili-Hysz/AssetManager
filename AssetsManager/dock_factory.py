@@ -22,6 +22,7 @@ from AssetsManager.panels.sidebar import SidebarPanel
 from AssetsManager.panels.info import InfoPanel
 from AssetsManager.panels.empty import EmptyPanel
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+from AssetsManager.core.color_utils import alpha
 from AssetsManager.panels.tag_tree import TagTreePanel
 from AssetsManager.panels.image_viewer import ImageViewer
 from AssetsManager.widgets.tab_container import TabContainer
@@ -101,21 +102,26 @@ def _attach_footer(widget: QWidget):
 def _build_title_bar(dock_title: str, dock: QDockWidget,
                      extra_buttons: list[QWidget]) -> QWidget:
     t = themes.get()
+    bar_radius = scaled_px(int(themes.prop("border_radius", "md")))
+    spacing_xs = scaled_px(int(themes.prop("spacing", "xs")))
+    spacing_md = scaled_px(int(themes.prop("spacing", "md")))
     bar = QWidget()
     bar.setProperty("is_custom_title", True)
     bar.setStyleSheet(
         f"background: {themes.header_for_dock()}; "
-        f"border: 1px solid {t['border']}; "
-        f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
+        f"border: 1px solid {themes.color('border_subtle')}; "
+        f"border-top-left-radius: {bar_radius}px; border-top-right-radius: {bar_radius}px; ")
 
     layout = QHBoxLayout(bar)
-    layout.setContentsMargins(scaled_px(10), scaled_px(3), scaled_px(6), scaled_px(3))
+    layout.setContentsMargins(spacing_md, spacing_xs, spacing_md, spacing_xs)
     layout.setSpacing(scaled_px(4))
 
     title_label = QLabel(f"  {dock_title}")
     title_label.setStyleSheet(
-        f"color: {t['heading']}; font-size: {scaled_pt(12)}px; font-weight: bold; "
-        f"background: transparent; border: none; padding: {scaled_px(2)}px {scaled_px(4)}px;")
+        f"color: {t['heading']}; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
+        f"font-weight: bold; "
+        f"background: transparent; border: none; "
+        f"padding: {spacing_xs}px {scaled_px(4)}px;")
     layout.addWidget(title_label)
 
     # ── Panel extension slot ─────────────────────────────────
@@ -126,9 +132,14 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
         if isinstance(ext, QWidget):
             layout.addWidget(ext, 1)
 
+    btn_radius = scaled_px(int(themes.prop("border_radius", "sm")))
+    btn_hover = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
     btn_style = (
         f"color: {t['heading']}; font-size: {scaled_pt(14)}px; font-weight: bold; "
-        f"padding: 0; background: transparent; border: none; border-radius: {scaled_px(3)}px;")
+        f"padding: 0; background: transparent; border: none; border-radius: {btn_radius}px;")
+    btn_style += (
+        f" QPushButton:hover {{ background: {btn_hover}; }} "
+        f"QPushButton:pressed {{ background: {alpha(t['accent'], 0.18)}; }}")
 
     # Extra panel buttons (e.g. settings gears) share the dock's title-bar
     # presentation so theme and UI-scale refresh always rebuild them coherently.
