@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
 from AssetsManager.core import themes
-from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.constants import DEFAULT_LAN_THEME_COLOR
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.settings import AppSettings
@@ -30,7 +29,6 @@ from AssetsManager.dialogs.sharing_settings import (
 from AssetsManager.dialogs._share_api import ShareApiTask
 from AssetsManager.dialogs._sharing_helpers import (
     _msg,
-    _t,
     _endpoint_state,
     _endpoint_primary_action,
 )
@@ -223,23 +221,8 @@ class SharingSettingsDialog(
         self._top_nav.setVisible(compact)
 
     def _apply_shell_theme(self):
-        t = _t()
-        radius = scaled_px(int(themes.prop("border_radius", "sm")))
-        pad_y = scaled_px(int(themes.prop("spacing", "sm")))
-        pad_x = scaled_px(int(themes.prop("spacing", "md")))
-        hover_bg = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
-        focus_color = t.get("border_focus", t["accent"])
-        pressed_bg = alpha(t["accent"], 0.18)
-        nav_style = (
-            f"QFrame {{ background: {t['base']}; border: 1px solid {t['border_subtle']}; "
-            f"border-radius: {radius}px; }}"
-            f"QPushButton {{ text-align: left; background: transparent; color: {t['body']}; border: none; "
-            f"border-radius: {radius}px; padding: {pad_y}px {pad_x}px; }}"
-            f"QPushButton:hover {{ background: {hover_bg}; }}"
-            f"QPushButton:pressed {{ background: {pressed_bg}; }}"
-            f"QPushButton:focus {{ background: {hover_bg}; border: 1px solid {focus_color}; }}"
-            f"QPushButton:checked {{ background: {t['accent']}; color: {t['on_accent']}; font-weight: bold; }}"
-        )
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        nav_style = sk.nav_css()
         self._nav_rail.setStyleSheet(nav_style)
         self._top_nav.setStyleSheet(nav_style)
 

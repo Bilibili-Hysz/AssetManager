@@ -95,10 +95,11 @@ class WorkspaceBar(QTabBar):
         spacing_sm = scaled_px(int(themes.prop("spacing", "sm")))
         hover = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
         pressed = alpha(t["accent"], 0.18)
+        font_caption = scaled_pt(themes.font_size("caption"))
         self._renamer_style = (
             f"QLineEdit {{ background: {t['panel']}; color: {t['heading']}; "
             f"border: 1px solid {alpha(t['accent'], 0.627)}; border-radius: {radius_sm}px; "
-            f"padding: {scaled_px(2)}px {scaled_px(6)}px; font-size: {scaled_pt(11)}px; selection-background-color: {alpha(t['accent'], 0.50)}; }}"
+            f"padding: {scaled_px(2)}px {scaled_px(6)}px; font-size: {font_caption}px; selection-background-color: {alpha(t['accent'], 0.50)}; }}"
         )
         self.setStyleSheet(
             f"QTabBar {{ background: transparent; }}"
@@ -107,7 +108,7 @@ class WorkspaceBar(QTabBar):
             f"  border: 1px solid transparent; "
             f"  border-top-left-radius: {radius_md}px; border-top-right-radius: {radius_md}px; "
             f"  padding: {scaled_px(2)}px {spacing_sm}px; margin-right: {scaled_px(1)}px; "
-            f"  font-size: {scaled_pt(11)}px; min-width: {scaled_px(22)}px; max-width: {scaled_px(140)}px;"
+            f"  font-size: {font_caption}px; min-width: {scaled_px(22)}px; max-width: {scaled_px(140)}px;"
             f"}} "
             f"QTabBar::tab:selected {{ "
             f"  color: {t['heading']}; "

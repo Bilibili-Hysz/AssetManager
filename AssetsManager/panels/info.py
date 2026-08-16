@@ -657,7 +657,7 @@ class InfoPanel(PanelContent):
         btn.setFlat(True)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(
-            f"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(11)}px; padding: 0; "
+            f"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(sk.font_size('caption'))}px; padding: 0; "
             f"background: transparent; border: none; "
             f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; }}"
             f"QPushButton:hover {{ color: {sk.token('heading')}; background: {sk.token('accent')}; }}")
@@ -669,7 +669,7 @@ class InfoPanel(PanelContent):
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         for btn in (self._link_rm_btn, self._link_add_btn, self._link_scan_btn):
             btn.setStyleSheet(
-                f"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(11)}px; padding: 0; "
+                f"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(sk.font_size('caption'))}px; padding: 0; "
                 f"background: transparent; border: none; "
                 f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; }}"
                 f"QPushButton:hover {{ color: {sk.token('heading')}; background: {sk.token('accent')}; }}")

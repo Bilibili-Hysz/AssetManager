@@ -93,7 +93,7 @@ def create_tag_chip(tag: str, on_remove=None, parent=None, color: str | None = N
     name = QLabel(tag)
     name.setObjectName("TagChipLabel")
     name.setStyleSheet(
-        f"color: {label_color}; font-size: {scaled_pt(11)}px; "
+        f"color: {label_color}; font-size: {scaled_pt(themes.font_size('caption'))}px; "
         "background: transparent;")
     layout.addWidget(name)
 

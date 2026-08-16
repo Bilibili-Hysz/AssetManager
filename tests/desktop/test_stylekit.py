@@ -320,6 +320,45 @@ def test_slider_margin_preserves_negative_sign_with_clamping_scaler():
     assert "margin: -10px 0" in css
 
 
+def test_font_size_resolves_theme_token_then_builtin_fallback():
+    sk = _make_sk()
+    assert sk.font_size("sm") == 12
+    assert sk.font_size("caption") == 11
+    themed = StyleKit(theme={
+        "properties": {"font_size": {"caption": 15, "xxl": 26}},
+    })
+    assert themed.font_size("caption") == 15
+    assert themed.font_size("xxl") == 26
+    assert themed.font_size("missing", default=14) == 14
+
+
+def test_button_css_variants_are_token_backed():
+    sk = _make_sk()
+    primary = sk.button_css("primary", font_size_key="md")
+    assert _SAMPLE_THEME["accent"] in primary
+    assert "font-size: 13px" in primary
+    assert "QPushButton:disabled" in primary
+    ghost = sk.button_css("ghost", font_size_key="caption",
+                          padding_y=0, padding_x=0)
+    assert _SAMPLE_THEME["muted"] in ghost
+    assert "font-size: 11px" in ghost
+    assert "padding: 0px 0px" in ghost
+
+
+def test_switch_nav_and_status_bar_generators():
+    sk = _make_sk()
+    switch = sk.switch_css()
+    assert "QToolButton:checked" in switch
+    assert _SAMPLE_THEME["accent"] in switch
+    nav = sk.nav_css()
+    assert "QFrame" in nav
+    assert "QPushButton:checked" in nav
+    status = sk.status_bar_css()
+    assert "QStatusBar" in status
+    assert _SAMPLE_THEME["header"] in status
+    assert "font-size: 11px" in status
+
+
 # ── Animation helpers ─────────────────────────────────────────
 
 

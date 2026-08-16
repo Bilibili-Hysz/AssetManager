@@ -50,10 +50,14 @@
       "xl": 24
     },
     "font_size": {
+      "xxs": 9,
+      "xs": 10,
+      "caption": 11,
       "sm": 12,
       "md": 13,
       "lg": 14,
-      "xl": 16
+      "xl": 16,
+      "xxl": 22
     },
     "animation": {
       "duration_ms": 200

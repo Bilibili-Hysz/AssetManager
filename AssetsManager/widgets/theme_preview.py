@@ -486,6 +486,7 @@ class ThemePreviewRenderer:
 
         pt_body = scaled_pt(fs.get("body", 11))
         pt_heading = scaled_pt(fs.get("heading", 13))
+        pt_progress = scaled_pt(fs.get("progress", 9))
 
         qss = f"""
         /* ── Preview Container ────────────────── */
@@ -700,7 +701,7 @@ class ThemePreviewRenderer:
             border-radius: {r_sm}px;
             height: {scaled_px(12)}px;
             text-align: center;
-            font-size: {scaled_pt(9)}px;
+            font-size: {pt_progress}px;
         }}
         QProgressBar::chunk {{
             background: {accent};

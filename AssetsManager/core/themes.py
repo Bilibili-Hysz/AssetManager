@@ -291,6 +291,38 @@ _loader.themes_changed.connect(reload_themes)
 _loader.watch_changes()
 
 
+# ── Font size tokens ─────────────────────────────────────
+# Semantic font-size steps. Shipped themes carry these keys in their
+# ``properties.font_size`` block (see Assets/Themes/*.json); the fallback map
+# keeps custom/user themes that predate the extended keys safe.
+_FONT_SIZE_FALLBACKS: dict[str, int] = {
+    "xxs": 9,
+    "xs": 10,
+    "caption": 11,
+    "sm": 12,
+    "md": 13,
+    "lg": 14,
+    "xl": 16,
+    "xxl": 22,
+}
+
+
+def font_size(key: str, default: int = 12) -> int:
+    """Return a semantic font-size token in unscaled points.
+
+    Unlike :func:`prop`, a missing key falls back to the built-in semantic
+    map instead of ``0`` so QSS never collapses to an unreadable 0px font
+    when a custom theme predates the extended font_size keys.
+    """
+    value = prop("font_size", key)
+    if value:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            pass
+    return _FONT_SIZE_FALLBACKS.get(key, default)
+
+
 def dark_themes() -> list[str]:
     """Return dark-mode theme names only."""
     return [n for n in names() if _THEMES.get(n, {}).get("dark", True)]

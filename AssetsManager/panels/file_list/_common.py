@@ -23,7 +23,7 @@ for _cat, _exts in FILTER_CATEGORY_EXTS.items():
 # ── Category badge colors ────────────────────────────────────────
 # Badge colors resolve through semantic category_* theme tokens (see
 # themes._EXTENDED_FALLBACKS) so themes can adapt category identity colors
-# to their palette. The fallback hexes preserve the historical fixed palette.
+# to their palette. Merged themes always carry these tokens.
 _CATEGORY_TOKEN_BY_BADGE: dict[str, str] = {
     "blend_library": "category_blend",
     "model_pack": "category_model",
@@ -31,15 +31,6 @@ _CATEGORY_TOKEN_BY_BADGE: dict[str, str] = {
     "archive_pack": "category_archive",
     "bundled_assets": "category_bundled",
     "default": "category_default",
-}
-
-_CATEGORY_FALLBACK_COLORS: dict[str, str] = {
-    "blend_library": "#2f7aa3",
-    "model_pack": "#3f8c69",
-    "texture_pack": "#8a6d3b",
-    "archive_pack": "#6f5a92",
-    "bundled_assets": "#7c6a39",
-    "default": "#49555d",
 }
 
 # Extension → badge category mapping
@@ -56,8 +47,7 @@ def badge_color_for_extension(ext: str) -> QColor:
     """Return the theme-aware category badge color for a file extension."""
     cat = _EXT_BADGE_MAP.get(ext.lower(), "default")
     token = _CATEGORY_TOKEN_BY_BADGE[cat]
-    value = themes.get().get(token) or _CATEGORY_FALLBACK_COLORS[cat]
-    return QColor(value)
+    return QColor(themes.color(token))
 
 
 def badge_label_for_extension(ext: str) -> str:

@@ -29,6 +29,8 @@ jobs:
         run: python scripts/gen_ts_types.py --check
       - name: Verify front/back separation boundary gates
         run: python scripts/check_boundaries.py
+      - name: Verify local QSS sources colors/font sizes from theme tokens
+        run: python scripts/check_style_sources.py
 
   hygiene:
     name: Git Hygiene

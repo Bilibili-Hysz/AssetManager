@@ -68,6 +68,21 @@ _STATES = {
     "retry": ("refresh", "warning"),
 }
 
+# Semantic font-size steps. Kept in sync with
+# ``AssetsManager.core.themes._FONT_SIZE_FALLBACKS`` (locked by
+# tests/unit/test_style_sources.py) so custom themes that predate the
+# extended font_size keys still resolve a readable size.
+_FONT_SIZE_FALLBACKS = {
+    "xxs": 9,
+    "xs": 10,
+    "caption": 11,
+    "sm": 12,
+    "md": 13,
+    "lg": 14,
+    "xl": 16,
+    "xxl": 22,
+}
+
 
 class StyleKit:
     """Centralized styling toolkit for PySide6 applications.
@@ -111,6 +126,20 @@ class StyleKit:
     def prop(self, category: str, key: str, default: int | float = 0) -> int | float:
         """Resolve a property value (e.g. prop('border_radius', 'md'))."""
         return self.t.get("properties", {}).get(category, {}).get(key, default)
+
+    def font_size(self, key: str, default: int = 12) -> int:
+        """Resolve a semantic font-size token in unscaled points.
+
+        Falls back to the built-in semantic map when a theme predates the
+        extended ``font_size`` keys instead of collapsing to 0px.
+        """
+        value = self.prop("font_size", key)
+        if value:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                pass
+        return _FONT_SIZE_FALLBACKS.get(key, default)
 
     # ── Scaling shortcuts ─────────────────────────────────────
 
@@ -414,6 +443,100 @@ class StyleKit:
             f"border-bottom-color: {t.get('panel', t.get('base', ''))}; }}"
             f"QTabBar::tab:hover:!selected {{ "
             f"background: {self._alpha('hover_overlay', self.prop('opacity', 'hover', 0.15))}; color: {t.get('body', t.get('base', ''))}; }}"
+        )
+
+    # ── QSS: reusable widget generators ──────────────────────
+
+    def button_css(self, variant: str = "primary", *,
+                   font_size_key: str = "sm",
+                   padding_y: int | None = None,
+                   padding_x: int | None = None) -> str:
+        """Token-driven QPushButton QSS shared by dialogs and shell windows.
+
+        Variants mirror the ``buttonVariant`` property vocabulary. Padding
+        defaults to spacing tokens; callers may pass scaled pixel values
+        (including ``0``) for compact icon-only layouts.
+        """
+        radius = self.px(int(self.prop("border_radius", "sm", 8)))
+        pad_y = self.px(int(self.prop("spacing", "sm", 8))) if padding_y is None else padding_y
+        pad_x = self.px(int(self.prop("spacing", "lg", 16))) if padding_x is None else padding_x
+        size = self.pt(self.font_size(font_size_key))
+        hover = self._alpha("hover_overlay", self.prop("opacity", "hover", 0.15))
+        pressed = self._alpha("accent", 0.18)
+        normalized = str(variant).strip().lower()
+        if normalized == "ghost":
+            base = (
+                f"background: transparent; color: {self.token('muted', self.token('body'))}; "
+                f"border: 1px solid transparent;")
+            hover_rule = f"background: {hover}; color: {self.token('body', self.token('heading'))};"
+        elif normalized == "secondary":
+            base = (
+                f"background: {self.token('panel', self.token('base'))}; "
+                f"color: {self.token('heading', self.token('body'))}; "
+                f"border: 1px solid {self.token('border_subtle', self.token('border'))};")
+            hover_rule = f"background: {hover};"
+        else:
+            base = (
+                f"background: {self.token('accent', self.token('base'))}; "
+                f"color: {self.token('on_accent', self.token('heading'))}; border: none;")
+            hover_rule = f"background: {hover};"
+        return (
+            f"QPushButton {{ {base} border-radius: {radius}px; "
+            f"padding: {pad_y}px {pad_x}px; font-size: {size}px; font-weight: bold; }}"
+            f"QPushButton:hover {{ {hover_rule} }}"
+            f"QPushButton:pressed {{ background: {pressed}; }}"
+            f"QPushButton:disabled {{ background: {self._alpha('muted', 0.25)}; "
+            f"color: {self.token('muted', self.token('body'))}; }}"
+        )
+
+    def switch_css(self) -> str:
+        """QToolButton toggle-switch QSS for on/off settings rows."""
+        accent = self.token("accent", self.token("body"))
+        muted = self.token("muted", self.token("body"))
+        hover = self._alpha("hover_overlay", self.prop("opacity", "hover", 0.15))
+        radius = self.px(12)
+        return (
+            f"QToolButton {{ background: {muted}; border-radius: {radius}px; "
+            f"border: 1px solid {self.token('border_subtle', self.token('border'))}; }}"
+            f"QToolButton:hover {{ background: {hover}; border-color: {accent}; }}"
+            f"QToolButton:checked {{ background: {accent}; border-color: {accent}; }}"
+            f"QToolButton:checked:hover {{ background: {self._alpha(accent, 0.85)}; }}"
+            f"QToolButton:pressed {{ background: {self._alpha(accent, 0.18)}; }}"
+            f"QToolButton:focus {{ border: 2px solid {self.token('border_focus', accent)}; }}"
+        )
+
+    def nav_css(self) -> str:
+        """QFrame + QPushButton navigation-rail QSS for settings shells."""
+        radius = self.px(int(self.prop("border_radius", "sm", 8)))
+        pad_y = self.px(int(self.prop("spacing", "sm", 8)))
+        pad_x = self.px(int(self.prop("spacing", "md", 12)))
+        hover = self._alpha("hover_overlay", self.prop("opacity", "hover", 0.15))
+        pressed = self._alpha("accent", 0.18)
+        focus = self.token("border_focus", self.token("accent", self.token("body")))
+        accent = self.token("accent", self.token("body"))
+        on_accent = self.token("on_accent", self.token("heading", self.token("body")))
+        body = self.token("body", self.token("heading", ""))
+        return (
+            f"QFrame {{ background: {self.token('base', self.token('panel', ''))}; "
+            f"border: 1px solid {self.token('border_subtle', self.token('border', ''))}; "
+            f"border-radius: {radius}px; }}"
+            f"QPushButton {{ text-align: left; background: transparent; color: {body}; "
+            f"border: none; border-radius: {radius}px; padding: {pad_y}px {pad_x}px; }}"
+            f"QPushButton:hover {{ background: {hover}; }}"
+            f"QPushButton:pressed {{ background: {pressed}; }}"
+            f"QPushButton:focus {{ background: {hover}; border: 1px solid {focus}; }}"
+            f"QPushButton:checked {{ background: {accent}; color: {on_accent}; font-weight: bold; }}"
+        )
+
+    def status_bar_css(self) -> str:
+        """QStatusBar chrome QSS shared by shell windows."""
+        size = self.pt(self.font_size("caption"))
+        return (
+            f"QStatusBar {{ background: {self.token('header', self.token('panel', ''))}; "
+            f"color: {self.token('body', self.token('heading', ''))}; "
+            f"border-top: 1px solid {self.token('border', self.token('border_subtle', ''))}; "
+            f"font-size: {size}px; }}"
+            f"QStatusBar::item {{ border: none; }}"
         )
 
     # ── Widget factories ──────────────────────────────────────

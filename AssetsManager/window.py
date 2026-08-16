@@ -19,6 +19,7 @@ from AssetsManager.dialogs.startup import StartupWindow
 from AssetsManager.core.database import clean_orphan_dirs
 from AssetsManager.widgets.workspace_bar import WorkspaceSection
 from AssetsManager.widgets.lan_sharing import LanSharingMixin
+from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager.lan.ports import LanDesktopAdapter, build_lan_server
 
 _log = logging.getLogger(__name__)
@@ -456,20 +457,14 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._share_status_timer.timeout.connect(self._reset_share_status_tooltip)
 
         # Apply theme
-        status_bar.setStyleSheet(
-            f"QStatusBar {{ background: {t['header']}; color: {t['body']}; "
-            f"border-top: 1px solid {t['border']}; font-size: {scaled_pt(11)}px; }}"
-            f"QStatusBar::item {{ border: none; }}"
-        )
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        status_bar.setStyleSheet(sk.status_bar_css())
 
     def _apply_status_bar_theme(self):
         t = themes.get()
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         self._share_status_label.setStyleSheet(f"color: {t['muted']}; padding: 0 {scaled_px(8)}px;")
-        self.statusBar().setStyleSheet(
-            f"QStatusBar {{ background: {t['header']}; color: {t['body']}; "
-            f"border-top: 1px solid {t['border']}; font-size: {scaled_pt(11)}px; }}"
-            f"QStatusBar::item {{ border: none; }}"
-        )
+        self.statusBar().setStyleSheet(sk.status_bar_css())
 
     def _on_share_status_clicked(self, event):
         """Handle click on share status indicator."""

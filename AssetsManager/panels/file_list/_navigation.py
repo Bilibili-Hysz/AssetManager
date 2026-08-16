@@ -290,7 +290,7 @@ class NavigationMixin:
             dot.setFlat(True)
             dot.setCursor(Qt.CursorShape.PointingHandCursor)
             dot.setStyleSheet(
-                f"color: {sk.token('muted')}; font-size: {sk.pt(12)}px; "
+                f"color: {sk.token('muted')}; font-size: {sk.pt(sk.font_size('sm'))}px; "
                 f"background: transparent; border: none;")
             hidden = ancestors[:-5]
             dot.setToolTip("\n".join(str(a) for a in hidden))
@@ -308,7 +308,7 @@ class NavigationMixin:
             current = i == len(show) - 1
             btn.setStyleSheet(
                 f"QPushButton {{ color: {sk.token('heading') if current else sk.token('muted')}; "
-                f"font-size: {sk.pt(12)}px; font-weight: {'bold' if current else 'normal'}; "
+                f"font-size: {sk.pt(sk.font_size('sm'))}px; font-weight: {'bold' if current else 'normal'}; "
                 f"padding: {sk.px(2)}px {sk.px(4)}px; background: transparent; "
                 f"border: none; border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; }}"
                 f"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}")

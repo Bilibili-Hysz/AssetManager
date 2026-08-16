@@ -16,6 +16,7 @@ from AssetsManager.core import themes
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.ui_scale import scaled_pt, scaled_px
+from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager import i18n
 
 _log = logging.getLogger(__name__)
@@ -57,12 +58,9 @@ class WindowCoordinator:
     def apply_status_bar_theme(self) -> None:
         t = themes.get()
         w = self._window
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         w._share_status_label.setStyleSheet(f"color: {t['muted']}; padding: 0 {scaled_px(8)}px;")
-        w.statusBar().setStyleSheet(
-            f"QStatusBar {{ background: {t['header']}; color: {t['body']}; "
-            f"border-top: 1px solid {t['border']}; font-size: {scaled_pt(11)}px; }}"
-            f"QStatusBar::item {{ border: none; }}"
-        )
+        w.statusBar().setStyleSheet(sk.status_bar_css())
 
     def on_theme_refresh(self) -> None:
         """Smooth theme transition animation."""

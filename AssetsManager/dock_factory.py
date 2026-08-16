@@ -23,6 +23,7 @@ from AssetsManager.panels.info import InfoPanel
 from AssetsManager.panels.empty import EmptyPanel
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.color_utils import alpha
+from AssetsManager.core.timers import TimerHandle
 from AssetsManager.panels.tag_tree import TagTreePanel
 from AssetsManager.panels.image_viewer import ImageViewer
 from AssetsManager.widgets.tab_container import TabContainer
@@ -43,6 +44,14 @@ PANELS = {
 }
 
 _DOCK_TITLES: dict[QDockWidget, tuple[str, str, list]] = {}  # dock -> (i18n_key, title, extra_buttons)
+
+# D4: theme/language/scale changes all rebuild the same dock chrome. The
+# three bus signals are wired to one coalescing slot and the rebuild runs
+# once per event-loop frame (zero-interval TimerHandle), so a settings apply
+# that emits all three signals still triggers exactly one full rebuild.
+_dock_refresh_pending = False
+_dock_refresh_handle: TimerHandle | None = None
+_dock_refresh_handlers_installed = False
 
 
 class _DockPanel(Protocol):
@@ -135,7 +144,7 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
     btn_radius = scaled_px(int(themes.prop("border_radius", "sm")))
     btn_hover = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
     btn_style = (
-        f"color: {t['heading']}; font-size: {scaled_pt(14)}px; font-weight: bold; "
+        f"color: {t['heading']}; font-size: {scaled_pt(themes.font_size('lg'))}px; font-weight: bold; "
         f"padding: 0; background: transparent; border: none; border-radius: {btn_radius}px;")
     btn_style += (
         f" QPushButton:hover {{ background: {btn_hover}; }} "
@@ -233,18 +242,15 @@ def _close(dock, window):
     _close_dock(dock, window)
 
 
-def _refresh_docks_on_theme(_name: str = ""):
-    """Rebuild all dock title bars when theme changes."""
-    for d, (i18n_key, title, btns) in list(_DOCK_TITLES.items()):
-        try:
-            if d.widget() is not None:
-                d.setTitleBarWidget(_build_title_bar(title, d, btns))
-        except RuntimeError:
-            _DOCK_TITLES.pop(d, None)
+def _run_dock_refresh():
+    """Rebuild every dock title bar once for the current theme/language/scale.
 
-
-def _refresh_docks_on_language(_code: str = ""):
-    """Update dock titles when language changes."""
+    Language is re-resolved on every rebuild so a single frame covers the
+    language_changed signal without a dedicated handler.
+    """
+    global _dock_refresh_pending, _dock_refresh_handle
+    _dock_refresh_pending = False
+    _dock_refresh_handle = None
     for d, (i18n_key, _old_title, btns) in list(_DOCK_TITLES.items()):
         try:
             if d.widget() is not None:
@@ -255,21 +261,26 @@ def _refresh_docks_on_language(_code: str = ""):
             _DOCK_TITLES.pop(d, None)
 
 
-def _refresh_docks_on_scale(_scale: float):
-    """Rebuild dock title bars when the UI scale changes."""
-    for d, (i18n_key, title, btns) in list(_DOCK_TITLES.items()):
-        try:
-            if d.widget() is not None:
-                d.setTitleBarWidget(_build_title_bar(title, d, btns))
-        except RuntimeError:
-            _DOCK_TITLES.pop(d, None)
+def _schedule_dock_refresh(*_args):
+    """Coalesce theme/language/scale changes into one next-frame rebuild."""
+    global _dock_refresh_pending, _dock_refresh_handle
+    if _dock_refresh_pending:
+        return
+    _dock_refresh_pending = True
+    _dock_refresh_handle = TimerHandle.schedule(None, 0, _run_dock_refresh)
 
 
 def install_dock_refresh_handlers():
-    """Install theme/language/scale refresh handlers on the signal bus.
+    """Install the coalesced dock refresh slot on the signal bus.
 
-    Must be called once during application startup before any dock is created.
+    Must be called once during application startup before any dock is
+    created. Re-invocation is a no-op so bootstrap and tests can call it
+    defensively.
     """
-    bus().theme_changed.connect(_refresh_docks_on_theme)
-    bus().language_changed.connect(_refresh_docks_on_language)
-    bus().ui_scale_changed.connect(_refresh_docks_on_scale)
+    global _dock_refresh_handlers_installed
+    if _dock_refresh_handlers_installed:
+        return
+    bus().theme_changed.connect(_schedule_dock_refresh)
+    bus().language_changed.connect(_schedule_dock_refresh)
+    bus().ui_scale_changed.connect(_schedule_dock_refresh)
+    _dock_refresh_handlers_installed = True

@@ -115,34 +115,22 @@ class PluginCard(QFrame):
     def _update_dot(self):
         t = themes.get()
         if self._state == PLUGIN_STATE_ERROR:
-            color = t.get("danger", "#e74c3c")
+            color = t["danger"]
         elif self._state in (PLUGIN_STATE_ACTIVE, PLUGIN_STATE_LOADED):
-            color = t.get("success", "#2ecc71")
+            color = t["success"]
         elif self._state == PLUGIN_STATE_LOADABLE:
             # Loadable but enabled: treated as running, so use the green
             # indicator; otherwise fall back to the neutral muted dot.
-            color = t.get("success", "#2ecc71") if self._enabled else t.get("muted", "#666666")
-        elif self._state == PLUGIN_STATE_DISABLED:
-            color = t.get("muted", "#666666")
+            color = t["success"] if self._enabled else t["muted"]
         else:
-            color = t.get("muted", "#999999")
+            color = t["muted"]
         self._status_dot.setStyleSheet(
             f"background: {color}; border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; border: none;"
         )
 
-    def _update_toggle_style(self, t):
-        accent = t.get("accent", "#4a60b0")
-        muted = t.get("muted", "#666666")
-        hover_bg = alpha(t.get("hover_overlay", "#ffffff"), themes.prop("opacity", "hover"))
-        self._toggle.setStyleSheet(
-            f"QToolButton {{ background: {muted}; border-radius: {scaled_px(12)}px; "
-            f"border: 1px solid {t['border_subtle']}; }}"
-            f"QToolButton:hover {{ background: {hover_bg}; border-color: {accent}; }}"
-            f"QToolButton:checked {{ background: {accent}; border-color: {accent}; }}"
-            f"QToolButton:checked:hover {{ background: {alpha(accent, 0.85)}; }}"
-            f"QToolButton:pressed {{ background: {alpha(accent, 0.18)}; }}"
-            f"QToolButton:focus {{ border: 2px solid {t['border_focus']}; }}"
-        )
+    def _update_toggle_style(self, _t):
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        self._toggle.setStyleSheet(sk.switch_css())
         self._toggle.setAccessibleName(
             f"{self._name} — {tr('plugins.disable' if self._toggle.isChecked() else 'plugins.enable', default='Toggle Enabled')}"
         )
@@ -150,7 +138,7 @@ class PluginCard(QFrame):
     def _update_style(self, t):
         br_md = scaled_px(int(themes.prop("border_radius", "md")))
         border_subtle = t.get("border_subtle", alpha(t["border"], 0.5))
-        hover_bg = alpha(t.get("hover_overlay", "#ffffff"), themes.prop("opacity", "hover"))
+        hover_bg = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
         if self._selected:
             self.setStyleSheet(
                 f"PluginCard {{ background: {alpha(t['accent'], 0.13)}; border: 1px solid {t['accent']}; "
@@ -257,7 +245,6 @@ class PluginDetailPanel(QWidget):
         br_sm = scaled_px(int(themes.prop("border_radius", "sm")))
         sp_sm = scaled_px(int(themes.prop("spacing", "sm")))
         sp_lg = scaled_px(int(themes.prop("spacing", "lg")))
-        fs_sm = scaled_pt(int(themes.prop("font_size", "sm")))
         self._layout.setContentsMargins(sp_lg, sp_lg, sp_lg, sp_lg)
         self._layout.setSpacing(scaled_px(int(themes.prop("spacing", "md"))))
         self._fields_layout.setSpacing(scaled_px(6))
@@ -265,16 +252,13 @@ class PluginDetailPanel(QWidget):
         self._name_label.setStyleSheet(sk.label_css("heading", size=18, bold=True))
         self._separator.setStyleSheet(f"color: {sk.token('border_subtle')};")
         self._desc_label.setStyleSheet(sk.label_css("body", size=12))
-        danger = t.get("danger", "#e74c3c")
+        danger = t["danger"]
         self._diag_label.setStyleSheet(
             f"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; color: {danger}; background: {alpha(danger, 0.08)}; "
             f"border: 1px solid {alpha(danger, 0.19)}; border-radius: {br_sm}px; padding: {sp_sm}px;")
         self._toggle_btn.setStyleSheet(
-            f"QPushButton {{ background: {t['accent']}; color: {t.get('on_accent', 'white')}; border: none; "
-            f"padding: {sp_sm}px {sp_lg}px; border-radius: {br_sm}px; "
-            f"font-size: {fs_sm}px; font-weight: bold; }}"
-            f"QPushButton:hover {{ background: {alpha(t.get('hover_overlay', '#ffffff'), themes.prop('opacity', 'hover'))}; }}"
-            f"QPushButton:pressed {{ background: {alpha(t['accent'], 0.18)}; }}")
+            sk.button_css("primary", font_size_key="sm",
+                          padding_y=sp_sm, padding_x=sp_lg))
         self._update_toggle_text()
 
     def show_plugin(self, plugin_id: str, record):
@@ -291,22 +275,22 @@ class PluginDetailPanel(QWidget):
         state = record.state
         if state == PLUGIN_STATE_ERROR:
             badge_text = tr("plugins.state.error", default="Error")
-            badge_color = t.get("danger", "#e74c3c")
+            badge_color = t["danger"]
         elif state in (PLUGIN_STATE_ACTIVE, PLUGIN_STATE_LOADED):
             badge_text = tr("plugins.state.active", default="Active")
-            badge_color = t.get("success", "#2ecc71")
+            badge_color = t["success"]
         elif state == PLUGIN_STATE_DISABLED:
             badge_text = tr("plugins.state.disabled", default="Disabled")
-            badge_color = t.get("muted", "#666666")
+            badge_color = t["muted"]
         else:
             badge_text = state
-            badge_color = t.get("muted", "#999999")
+            badge_color = t["muted"]
 
         self._status_badge.setText(badge_text)
         br_sm = scaled_px(int(themes.prop("border_radius", "sm")))
         sp_xs = scaled_px(int(themes.prop("spacing", "xs")))
         self._status_badge.setStyleSheet(
-            f"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; font-weight: bold; color: white; "
+            f"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; font-weight: bold; color: {t['on_accent']}; "
             f"background: {badge_color}; border-radius: {br_sm}px; "
             f"padding: {sp_xs}px {scaled_px(int(themes.prop('spacing', 'sm')))}px;"
         )

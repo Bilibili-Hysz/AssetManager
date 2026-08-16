@@ -156,7 +156,7 @@ class LinksPageMixin:
             copy_btn.setStyleSheet(
                 f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('on_accent')}; "
                 f"border: none; border-radius: {sk.px(int(sk.prop('border_radius', 'sm')))}px; "
-                f"font-size: {sk.pt(10)}px; "
+                f"font-size: {sk.pt(sk.font_size('xs'))}px; "
                 f"padding: {sk.px(int(sk.prop('spacing', 'xs')))}px {sk.px(int(sk.prop('spacing', 'sm')))}px; }}"
                 f"QPushButton:hover {{ background: {alpha(sk.token('accent'), 0.87)}; }}"
                 f"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.18)}; }}"
@@ -170,7 +170,7 @@ class LinksPageMixin:
             delete_btn.setStyleSheet(
                 f"QPushButton {{ background: {sk.token('danger')}; color: {sk.token('on_accent')}; "
                 f"border: none; border-radius: {sk.px(int(sk.prop('border_radius', 'sm')))}px; "
-                f"font-size: {sk.pt(10)}px; "
+                f"font-size: {sk.pt(sk.font_size('xs'))}px; "
                 f"padding: {sk.px(int(sk.prop('spacing', 'xs')))}px {sk.px(int(sk.prop('spacing', 'sm')))}px; }}"
                 f"QPushButton:hover {{ background: {alpha(sk.token('danger'), 0.87)}; }}"
                 f"QPushButton:pressed {{ background: {alpha(sk.token('danger'), 0.18)}; }}"

@@ -133,6 +133,8 @@
 - 静态门禁禁止局部 QSS 字面颜色/字号；重复对话框 QSS 抽 StyleKit 生成器；dock 三 handler 合并单帧刷新。
 - 验收：新增 `scripts/check_style_sources.py` 可挂 CI。
 
+**状态：已完成** —— 新增 `scripts/check_style_sources.py`（AST 级检查 75 个 UI 文件，禁止局部 QSS 的 `#hex`/具名颜色/`font-size` 数字字面量及 token 查找旁的 hex fallback，已挂 `.github/workflows/ci.yml` lint job）；`themes.font_size(key)` 语义字号令牌（24 套主题 JSON 扩展 xxs/xs/caption/xxl）+ `StyleKit.font_size()`；重复 QSS 抽取为 StyleKit 生成器（`button_css`/`switch_css`/`nav_css`/`status_bar_css`），startup 按钮、插件开关/主按钮、共享设置导航、窗口状态栏全部迁移；`dock_factory` 三个 theme/language/scale handler 合并为 `_schedule_dock_refresh` + `_run_dock_refresh` 单帧刷新（`TimerHandle` 0ms 合并）；`tests/unit/test_style_sources.py`、`tests/desktop/test_dock_factory.py` 锁定门禁与合并语义。
+
 ---
 
 ## 3. LAN 服务与会话生命周期

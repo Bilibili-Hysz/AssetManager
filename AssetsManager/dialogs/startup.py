@@ -44,6 +44,11 @@ def _interpolate_color(hex_color: str, factor: float) -> str:
     return f"#{max(0, min(255, r)):02x}{max(0, min(255, g)):02x}{max(0, min(255, b)):02x}"
 
 
+def _font(key: str) -> int:
+    """Scaled semantic font size resolved from theme tokens."""
+    return scaled_pt(themes.font_size(key))
+
+
 # ── Detail panel (left column) ────────────────────────────────
 
 class _DetailPanel(QFrame):
@@ -64,7 +69,7 @@ class _DetailPanel(QFrame):
 
         self._header = QLabel(tr("startup.selected_header"))
         self._header.setStyleSheet(
-            f"font-size: {scaled_pt(9)}px; font-weight: bold; color: {self._t['muted']}; "
+            f"font-size: {_font('xxs')}px; font-weight: bold; color: {self._t['muted']}; "
             f"letter-spacing: 1px; padding: 0; background: transparent; border: none;")
         self._header.hide()
         layout.addWidget(self._header)
@@ -72,7 +77,7 @@ class _DetailPanel(QFrame):
         self._name = QLabel()
         self._name.setWordWrap(True)
         self._name.setStyleSheet(
-            f"font-size: {scaled_pt(16)}px; font-weight: bold; color: {self._t['heading']}; "
+            f"font-size: {_font('xl')}px; font-weight: bold; color: {self._t['heading']}; "
             f"padding: 0; line-height: 1.3; background: transparent; border: none;")
         self._name.hide()
         layout.addWidget(self._name)
@@ -80,7 +85,7 @@ class _DetailPanel(QFrame):
         self._path = QLabel()
         self._path.setWordWrap(True)
         self._path.setStyleSheet(
-            f"font-size: {scaled_pt(10)}px; color: {self._t['muted']}; "
+            f"font-size: {_font('xs')}px; color: {self._t['muted']}; "
             f"padding: 0; background: transparent; border: none;")
         self._path.hide()
         layout.addWidget(self._path)
@@ -127,13 +132,13 @@ class _DetailPanel(QFrame):
         t = themes.get()
         self.setStyleSheet(self._card_qss("detailPanel"))
         self._header.setStyleSheet(
-            f"font-size: {scaled_pt(9)}px; font-weight: bold; color: {t['muted']}; "
+            f"font-size: {_font('xxs')}px; font-weight: bold; color: {t['muted']}; "
             f"letter-spacing: 1px; padding: 0; background: transparent; border: none;")
         self._name.setStyleSheet(
-            f"font-size: {scaled_pt(16)}px; font-weight: bold; color: {t['heading']}; "
+            f"font-size: {_font('xl')}px; font-weight: bold; color: {t['heading']}; "
             f"padding: 0; line-height: 1.3; background: transparent; border: none;")
         self._path.setStyleSheet(
-            f"font-size: {scaled_pt(10)}px; color: {t['muted']}; "
+            f"font-size: {_font('xs')}px; color: {t['muted']}; "
             f"padding: 0; background: transparent; border: none;")
         self._refresh_button_icons()
         self._open_btn.setStyleSheet(self._primary_btn_qss())
@@ -155,13 +160,13 @@ class _DetailPanel(QFrame):
         if exists:
             self._status.setText(tr("startup.ready"))
             self._status.setStyleSheet(
-                f"font-size: {scaled_pt(11)}px; font-weight: bold; padding: 2px 8px; "
+                f"font-size: {_font('caption')}px; font-weight: bold; padding: 2px 8px; "
                 f"border-radius: {radius_sm}px; color: {t['success']}; "
                 f"background: {_interpolate_color(t['success'], -0.75)};")
         else:
             self._status.setText(tr("startup.missing"))
             self._status.setStyleSheet(
-                f"font-size: {scaled_pt(11)}px; font-weight: bold; padding: 2px 8px; "
+                f"font-size: {_font('caption')}px; font-weight: bold; padding: 2px 8px; "
                 f"border-radius: {radius_sm}px; color: {t['danger']}; "
                 f"background: {_interpolate_color(t['danger'], -0.75)};")
         self._status.show()
@@ -203,30 +208,14 @@ class _DetailPanel(QFrame):
             f"}}")
 
     def _primary_btn_qss(self) -> str:
-        t = themes.get()
-        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
-        hover_bg = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
-        return (
-            f"QPushButton {{"
-            f"  background: {t['accent']}; color: {t['heading']}; "
-            f"  border: none; border-radius: {radius_sm}px; "
-            f"  padding: 9px 0; font-size: {scaled_pt(13)}px; font-weight: bold; "
-            f"}}"
-            f"QPushButton:hover {{ background: {hover_bg}; }}"
-            f"QPushButton:pressed {{ background: {alpha(t['accent'], 0.18)}; }}"
-            f"QPushButton:disabled {{ background: {alpha(t['muted'], 0.25)}; color: {t['muted']}; }}")
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        return sk.button_css("primary", font_size_key="md",
+                             padding_y=scaled_px(9), padding_x=0)
 
     def _ghost_btn_qss(self) -> str:
-        t = themes.get()
-        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
-        hover_bg = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
-        return (
-            f"QPushButton {{"
-            f"  background: transparent; color: {t['muted']}; "
-            f"  border: none; border-radius: {radius_sm}px; "
-            f"  padding: 6px 0; font-size: {scaled_pt(11)}px; "
-            f"}}"
-            f"QPushButton:hover {{ color: {t['body']}; background: {hover_bg}; }}")
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        return sk.button_css("ghost", font_size_key="caption",
+                             padding_y=scaled_px(6), padding_x=0)
 
 
 # ── Library card row (right column list item) ──────────────────
@@ -288,10 +277,10 @@ class _LibraryCard(QFrame):
             f"border-radius: {radius_sm}px; padding: 0;")
         # Name and path labels
         self._name_label.setStyleSheet(
-            f"font-size: {scaled_pt(13)}px; font-weight: bold; color: {t['heading']}; "
+            f"font-size: {_font('md')}px; font-weight: bold; color: {t['heading']}; "
             f"background: transparent; border: none;")
         self._path_label.setStyleSheet(
-            f"font-size: {scaled_pt(10)}px; color: {t['muted']}; "
+            f"font-size: {_font('xs')}px; color: {t['muted']}; "
             f"background: transparent; border: none;")
         # Card background
         if self._selected:
@@ -401,20 +390,20 @@ class StartupWindow(QMainWindow):
 
         self._hero_title = QLabel(tr("startup.hero_title"))
         self._hero_title.setStyleSheet(
-            f"font-size: {scaled_pt(22)}px; font-weight: bold; color: {t['heading']}; "
+            f"font-size: {_font('xxl')}px; font-weight: bold; color: {t['heading']}; "
             f"background: transparent; border: none;")
         hero_layout.addWidget(self._hero_title)
 
         self._hero_sub = QLabel(tr("startup.hero_sub"))
         self._hero_sub.setStyleSheet(
-            f"font-size: {scaled_pt(12)}px; color: {t['muted']}; "
+            f"font-size: {_font('sm')}px; color: {t['muted']}; "
             f"background: transparent; border: none;")
         hero_layout.addWidget(self._hero_sub)
 
         hero_layout.addSpacing(scaled_px(6))
         self._hero_count = QLabel()
         self._hero_count.setStyleSheet(
-            f"font-size: {scaled_pt(11)}px; color: {_interpolate_color(t['muted'], 0.4)}; "
+            f"font-size: {_font('caption')}px; color: {_interpolate_color(t['muted'], 0.4)}; "
             f"background: transparent; border: none;")
         hero_layout.addWidget(self._hero_count)
 
@@ -445,7 +434,7 @@ class StartupWindow(QMainWindow):
 
         self._list_header = QLabel(tr("startup.recent_header"))
         self._list_header.setStyleSheet(
-            f"font-size: {scaled_pt(9)}px; font-weight: bold; color: {t['muted']}; "
+            f"font-size: {_font('xxs')}px; font-weight: bold; color: {t['muted']}; "
             f"letter-spacing: 1px; padding: 10px 0 4px 12px; "
             f"background: transparent; border: none;")
         right_layout.addWidget(self._list_header)
@@ -473,7 +462,7 @@ class StartupWindow(QMainWindow):
             f"  background: transparent; color: {t['body']}; "
             f"  border: 1px solid {alpha(t['border'], 0.375)}; "
             f"  border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; "
-            f"  padding: 6px 14px; font-size: {scaled_pt(12)}px; "
+            f"  padding: 6px 14px; font-size: {_font('sm')}px; "
             f"}}"
             f"QPushButton:hover {{ background: {alpha(t['hover_overlay'], themes.prop('opacity', 'hover'))}; }}")
         self._browse_btn.setIcon(icons.icon("folder", color="icon_secondary", size=scaled_px(15)))
@@ -519,7 +508,7 @@ class StartupWindow(QMainWindow):
         self._menu_bar.setStyleSheet(
             f"QMenuBar {{ background: {t['header']}; color: {t['heading']}; "
             f"border-bottom: 1px solid {alpha(t['border'], 0.25)}; "
-            f"padding: 2px 0; font-size: {scaled_pt(12)}px; }}"
+            f"padding: 2px 0; font-size: {_font('sm')}px; }}"
             f"QMenuBar::item {{ padding: 4px 10px; border-radius: {radius_sm}px; }}"
             f"QMenuBar::item:selected {{ background: {alpha(t['accent'], 0.313)}; }}"
             f"QMenu {{ background: {t['panel']}; color: {t['heading']}; "
@@ -574,7 +563,7 @@ class StartupWindow(QMainWindow):
             t = themes.get()
             indicator = QLabel(tr("startup.hero_truncated", shown=30, total=len(recent)))
             indicator.setStyleSheet(
-                f"font-size: {scaled_pt(10)}px; color: {t['muted']}; "
+                f"font-size: {_font('xs')}px; color: {t['muted']}; "
                 f"padding: {scaled_px(4)}px {scaled_px(12)}px; background: transparent; border: none;")
             self._truncation_indicator = indicator
             self._card_layout.insertWidget(len(self._cards), indicator)
@@ -661,16 +650,16 @@ class StartupWindow(QMainWindow):
 
         # Hero text
         self._hero_title.setStyleSheet(
-            f"font-size: {scaled_pt(22)}px; font-weight: bold; color: {t['heading']}; "
+            f"font-size: {_font('xxl')}px; font-weight: bold; color: {t['heading']}; "
             f"background: transparent; border: none;")
         self._hero_sub.setStyleSheet(
-            f"font-size: {scaled_pt(12)}px; color: {t['muted']}; "
+            f"font-size: {_font('sm')}px; color: {t['muted']}; "
             f"background: transparent; border: none;")
         self._hero_count.setStyleSheet(
-            f"font-size: {scaled_pt(11)}px; color: {_interpolate_color(t['muted'], 0.4)}; "
+            f"font-size: {_font('caption')}px; color: {_interpolate_color(t['muted'], 0.4)}; "
             f"background: transparent; border: none;")
         self._list_header.setStyleSheet(
-            f"font-size: {scaled_pt(9)}px; font-weight: bold; color: {t['muted']}; "
+            f"font-size: {_font('xxs')}px; font-weight: bold; color: {t['muted']}; "
             f"letter-spacing: 1px; padding: 10px 0 4px 12px; "
             f"background: transparent; border: none;")
 
@@ -680,7 +669,7 @@ class StartupWindow(QMainWindow):
             f"  background: transparent; color: {t['body']}; "
             f"  border: 1px solid {alpha(t['border'], 0.375)}; "
             f"  border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; "
-            f"  padding: 6px 14px; font-size: {scaled_pt(12)}px; "
+            f"  padding: 6px 14px; font-size: {_font('sm')}px; "
             f"}}"
             f"QPushButton:hover {{ background: {alpha(t['hover_overlay'], themes.prop('opacity', 'hover'))}; }}")
 

@@ -128,6 +128,19 @@ def test_category_tokens_are_merged_with_historical_defaults():
         assert palette["category_default"] == "#49555d"
 
 
+def test_font_size_tokens_exist_in_every_shipped_theme_and_fallback():
+    for name in themes.names():
+        palette = themes.get(name)
+        font_sizes = palette["properties"]["font_size"]
+        assert font_sizes["xxs"] == 9
+        assert font_sizes["xs"] == 10
+        assert font_sizes["caption"] == 11
+        assert font_sizes["xxl"] == 22
+    assert themes.font_size("sm") == 12
+    assert themes.font_size("caption") == 11
+    assert themes.font_size("missing", default=13) == 13
+
+
 def test_badge_color_resolves_through_category_theme_token():
     from AssetsManager.panels.file_list._common import badge_color_for_extension
 
