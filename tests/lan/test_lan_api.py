@@ -133,9 +133,9 @@ def test_task4_info_public_bypass_preserves_authenticated_principal():
     setup_routes(app)
     policy = lookup(app, "GET", "/api/info")
     assert policy.auth == "public_optional"
-    # H-L2 (2026-08-15): /api/info got the general rate limit back so an
-    # unauthenticated client cannot drive the project-count walk freely.
-    assert policy.rate_limit == "general"
+    # L2 (2026-08-16): /api/info moved to the browse tier so the public
+    # landing page stays usable while sharing a dedicated 600/min/IP budget.
+    assert policy.rate_limit == "browse"
 
 
 @pytest.mark.anyio

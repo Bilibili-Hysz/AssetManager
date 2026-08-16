@@ -94,6 +94,10 @@ class _LanServerImpl:
         self._blocked_ips = list(blocked_ips or [])
         self._ip_whitelist = list(ip_whitelist or [])
         self._rate_limiter = RateLimiter(max_requests=rate_limit)
+        # L2: heavy public browsing surfaces get a generous dedicated budget
+        # (600/min/IP) instead of sharing the tight general budget or being
+        # skip-open like thumbnail/media polling.
+        self._browse_rate_limiter = RateLimiter(max_requests=600, window_seconds=60)
         self._auth_rate_limiter = AuthRateLimiter(max_attempts=10, window_seconds=300)
         self._ip_blacklist = IPBlacklist()
         if blocked_ips:
@@ -289,6 +293,7 @@ class _LanServerImpl:
             self._rate_limiter,
             self._ip_blacklist,
             self._auth_rate_limiter,
+            browse_rate_limiter=self._browse_rate_limiter,
             ip_whitelist=self._ip_whitelist,
             tunnel_active=self._tunnel_active,
         )
@@ -1459,7 +1464,7 @@ class _LanServerImpl:
             if get_request_principal(request) is None:
                 set_request_principal(request, principal_for_request("guest"))
 
-        def try_optional_principal() -> bool:
+        async def try_optional_principal() -> bool:
             """Resolve an optional LAN credential without blocking public Commerce."""
             if getattr(self, "_auth_mode", None) == "none":
                 return False
@@ -1471,7 +1476,9 @@ class _LanServerImpl:
             if not token:
                 return False
             access_key_hash = getattr(self, "_access_key_hash", None)
-            if access_key_hash is not None and verify_key(token, access_key_hash):
+            if access_key_hash is not None and await asyncio.to_thread(
+                verify_key, token, access_key_hash
+            ):
                 set_request_principal(request, principal_for_request("access_key"))
                 return True
             try:
@@ -1513,7 +1520,7 @@ class _LanServerImpl:
             if self._auth_mode == "none":
                 ensure_guest()
                 return await proceed()
-            try_optional_principal()
+            await try_optional_principal()
             ensure_guest()
             return await proceed()
         if policy.auth == "public":
@@ -1536,9 +1543,9 @@ class _LanServerImpl:
         if token and self.is_auth_token_revoked(token):
             token = ""
 
-        # Try access key auth
+        # Try access key auth (PBKDF2 off the event loop: L2/M-A2)
         if has_key and token and self._access_key_hash is not None:
-            if verify_key(token, self._access_key_hash):
+            if await asyncio.to_thread(verify_key, token, self._access_key_hash):
                 set_request_principal(request, principal_for_request("access_key"))
                 return await proceed()
 

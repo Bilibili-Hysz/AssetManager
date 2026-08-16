@@ -21,21 +21,26 @@ from aiohttp import web
 from AssetsManager.lan.api import setup_routes
 from AssetsManager.lan.route_policy import DEFAULT_POLICY, POLICY_KEY, lookup
 
-# ── Frozen historical logic (pre-declaration lists) ────────────────
-
-_OLD_SKIP = frozenset({"/ws", "/api/projects", "/api/tags", "/api/tunnel/status"})
-# /api/info left the skip set on 2026-08-15 (H-L2): it serves the public
-# landing page, so an unauthenticated client could force the full-library
-# project count walk per request; it now gets the general rate limit.
-_OLD_SKIP_PREFIX = (
-    "/assets", "/api/thumbnails", "/api/gallery", "/api/favorites",
-    "/api/quicksearch", "/api/stats", "/api/metadata", "/api/notes",
+# ── Frozen reference logic (L2 2026-08-16) ─────────────────────
+# L2 introduced the browse tier: heavy public browsing surfaces get their
+# own generous budget; only media/status polling stays skip-open.
+_OLD_BROWSE = frozenset({
+    "/api/projects", "/api/tags", "/api/tunnel/status",
+})
+_OLD_BROWSE_PREFIX = (
+    "/api/gallery", "/api/favorites", "/api/quicksearch", "/api/notes",
     "/api/tree",
 )
-_OLD_SKIP_EXACT = frozenset({
+_OLD_BROWSE_EXACT = frozenset({
     "/api/home", "/api/search", "/api/quota", "/api/activity",
-    "/api/revision", "/api/files/summaries",
+    "/api/info", "/api/files/summaries",
 })
+_OLD_SKIP = frozenset({
+    "/ws", "/api/image", "/api/stats", "/api/revision",
+})
+_OLD_SKIP_PREFIX = (
+    "/assets", "/api/thumbnails",
+)
 _OLD_AUTH_ENDPOINTS = frozenset({
     "/api/auth/login", "/api/auth/register", "/api/auth/verify_key",
     "/api/auth/seller-login", "/api/shop/auth/login",
@@ -59,10 +64,15 @@ def _old_rate_limit(method: str, path: str) -> str:
     ):
         return "auth_strict"
     if (
+        any(_matches_prefix(path, p) for p in _OLD_BROWSE_PREFIX)
+        or path in _OLD_BROWSE
+        or path in _OLD_BROWSE_EXACT
+        or (method == "GET" and path == "/api/files")
+    ):
+        return "browse"
+    if (
         any(_matches_prefix(path, p) for p in _OLD_SKIP_PREFIX)
         or path in _OLD_SKIP
-        or path in _OLD_SKIP_EXACT
-        or (method == "GET" and path == "/api/files")
     ):
         return "skip"
     return "general"

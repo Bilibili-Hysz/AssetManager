@@ -163,6 +163,8 @@
 **状态：已完成** —— `RoutePolicy` 新增 `capabilities` 字段并在声明期校验能力词汇表（未知能力 fail-closed）；新增 `lan/authorization.py`，`_auth_middleware` 在进入 handler 前执行 `enforce_capabilities`（principal 能力 / `require_user_write` / `require_admin` / seller 会话，seller 特性关闭时保持历史 404 `feature_disabled` 契约）；55 个写路由全部显式声明能力（principal 型 `browse/preview/download/manage_links`、helper 型 `write_notes/write_tags/admin_tags/admin_users`、commerce 型 `seller/buyer_cart/buyer_wishlist/buyer_orders/buyer_claim`、匿名引导型 `public_auth/public_signal/share_verify`）；`_add` 改为“首注册播种 pattern 级 fallback + 每方法独立声明”，同路径多方法策略不再互相覆盖；新增 `scripts/check_route_capabilities.py`（纯 AST、无 aiohttp 依赖，词汇表直接解析自 `route_policy.KNOWN_CAPABILITIES`）挂 CI；`tests/lan/test_route_capabilities.py` 锁定门禁、单元执行语义与“中间件先于 handler 拒绝 seller 写”的集成行为。
 
 - **批次 L2 — 限流/输入/CPU 出循环**：新增 `browse` 档（如 600/min/IP），仅 image/thumbnails/stats 等可 skip；`q` ≤ 256；`verify_key` `asyncio.to_thread` 或短 TTL。
+
+**状态：已完成** —— `RoutePolicy` 新增 `browse` 限流档并在 security 中间件接入独立 `browse_rate_limiter`（600/min/IP），gallery/search/tree/home/favorites/files/projects/tags/quicksearch/info/notes/activity/quota/tunnel-status 从 skip 迁入 browse，skip 只保留 image/thumbnails/stats/revision/ws/assets；`_helpers.oversized_query`（`q`≤256）接入 `/api/search` 与 `/api/quicksearch`，超限 400 `bad_request`；access-key PBKDF2 全部经 `asyncio.to_thread` 出事件循环（`_auth_middleware` 双路径 + `/api/auth/verify_key`）；`test_l2_rate_input_cpu.py` 锁定 browse 预算隔离、q 边界与 to_thread 接线，route policy 契约测试冻结新分级。
 - **批次 L3 — 线程资源对称关闭**：prewarm thread 注册 + join；gallery 构建循环检查 `_closed`；zip executor 改实例持有并 shutdown。
 - **批次 L4 — shop.py 子域拆分 + 表驱动注册**：`routes/shop/` 五个子模块，api.py 用 `(method, path, handler, policy)` 表声明，与 L1 同批落地。
 

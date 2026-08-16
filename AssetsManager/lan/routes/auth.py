@@ -1,4 +1,6 @@
 """Auth routes: /api/auth/*."""
+import asyncio
+
 from aiohttp import web
 
 from AssetsManager.lan.dto import UserResponse
@@ -87,7 +89,9 @@ async def handle_verify_key(request):
         return error_response("No key configured", status=400, code="bad_request")
 
     auth_service = get_auth_service(request)
-    if auth_service.verify_key(key, lan.access_key_hash):
+    # L2: the access-key PBKDF2 comparison runs in a worker thread instead of
+    # blocking the event loop for ~50ms per attempt.
+    if await asyncio.to_thread(auth_service.verify_key, key, lan.access_key_hash):
         token = generate_auth_token(lan.local_ui_auth_secret)
         response = web.json_response({"ok": True})
         set_auth_cookie(response, token, secure=lan.ssl_active)

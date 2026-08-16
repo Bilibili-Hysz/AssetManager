@@ -144,19 +144,25 @@ def create_security_middleware(
     ip_blacklist: IPBlacklist,
     auth_rate_limiter: "AuthRateLimiter | None" = None,
     *,
+    browse_rate_limiter: "RateLimiter | None" = None,
     ip_whitelist: list[str] | None = None,
     tunnel_active: "Callable[[], bool] | None" = None,
 ):
     """Create aiohttp middleware for security checks."""
     allowed_ips = {_normalize_ip(ip) for ip in (ip_whitelist or []) if ip}
+    browse_limiter = browse_rate_limiter or rate_limiter
 
     @web.middleware
     async def security_middleware(request: web.Request, handler):
         path = request.path
         policy = _request_policy(request)
 
-        # Skip rate limiting for routes declared as browsing surfaces
-        # (thumbnail batches, gallery views, stats polling, ...).
+        # L2 tiering:
+        #   auth_strict — tight login budget
+        #   browse      — generous budget for heavy public browsing surfaces
+        #   general     — everything else
+        #   skip        — only media/status polling (image/thumbnails/stats,
+        #                 revision cursor, websocket, static assets)
         skip_rate = policy.rate_limit == "skip"
 
         # Reject requests without a remote address rather than pooling them
@@ -191,14 +197,30 @@ def create_security_middleware(
                 _log.warning("Blocked request from non-whitelisted IP: %s", ip)
                 return error_response("Forbidden", status=403, code="forbidden")
 
+        # The limiter whose remaining budget is reported on the response.
+        active_limiter = rate_limiter
+
         # Auth endpoint rate limiting (stricter, declared per route)
         if auth_rate_limiter and policy.rate_limit == "auth_strict":
+            active_limiter = auth_rate_limiter
             if not auth_rate_limiter.is_allowed(ip):
                 retry_after = auth_rate_limiter.retry_after(ip)
                 _log.warning("Auth rate limit exceeded for IP: %s", ip)
                 return web.json_response(
                     {"error": "Too many login attempts. Please try again later.",
                      "retry_after": retry_after},
+                    status=429,
+                    headers={"Retry-After": str(retry_after)}
+                )
+
+        # Browse rate limit (generous budget for heavy public surfaces)
+        elif policy.rate_limit == "browse":
+            active_limiter = browse_limiter
+            if not browse_limiter.is_allowed(ip):
+                retry_after = browse_limiter.retry_after(ip)
+                _log.warning("Browse rate limit exceeded for IP: %s", ip)
+                return web.json_response(
+                    {"error": "Browse rate limit exceeded", "retry_after": retry_after},
                     status=429,
                     headers={"Retry-After": str(retry_after)}
                 )
@@ -217,7 +239,7 @@ def create_security_middleware(
         # Add rate limit headers
         response = await handler(request)
         if isinstance(response, web.Response):
-            remaining = rate_limiter.get_remaining(ip)
+            remaining = active_limiter.get_remaining(ip)
             response.headers["X-RateLimit-Remaining"] = str(remaining)
         return response
 

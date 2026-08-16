@@ -20,7 +20,10 @@ from aiohttp import web
 POLICY_KEY = web.AppKey("route_policy", dict[tuple[str, str], "RoutePolicy"])
 
 AuthMode = Literal["required", "public", "public_optional"]
-RateLimitClass = Literal["general", "skip", "auth_strict"]
+# L2: ``browse`` sits between the tight general budget and ``skip``. It
+# throttles heavy public browsing surfaces (gallery/search/tree/info) at a
+# generous 600/min/IP while leaving only true media/status polling on skip.
+RateLimitClass = Literal["general", "skip", "auth_strict", "browse"]
 
 # Declarative authorization capabilities (L1). Each write route names the
 # ability it requires instead of relying on a handler remembering to check.
@@ -62,7 +65,7 @@ class RoutePolicy:
     def __post_init__(self) -> None:
         if self.auth not in ("required", "public", "public_optional"):
             raise ValueError(f"unknown auth mode: {self.auth!r}")
-        if self.rate_limit not in ("general", "skip", "auth_strict"):
+        if self.rate_limit not in ("general", "skip", "auth_strict", "browse"):
             raise ValueError(f"unknown rate_limit class: {self.rate_limit!r}")
         unknown = [c for c in self.capabilities if c not in KNOWN_CAPABILITIES]
         if unknown:

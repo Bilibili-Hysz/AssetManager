@@ -13,7 +13,8 @@ from AssetsManager.lan.dto import TreeItemResponse
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
     get_lan, validate_path, get_metadata_service, get_project_service,
-    get_search_service, require_permission, require_user_write, validated_existing_key,
+    get_search_service, oversized_query, require_permission, require_user_write,
+    validated_existing_key,
 )
 from AssetsManager.lan.routes._resource_urls import (
     project_detail_response, project_home_response, project_listing_response,
@@ -109,6 +110,10 @@ async def handle_search(request):
         if not require_permission(request, "browse"):
             status = 403
             return error_response("Browse access required", status=status, code="forbidden")
+        query_error = oversized_query(request)
+        if query_error is not None:
+            status = 400
+            return error_response(query_error, status=400, code="bad_request")
         query = request.query.get("q", "").lower()
         tags_param = request.query.get("tags", "")
         category = request.query.get("category", "all")

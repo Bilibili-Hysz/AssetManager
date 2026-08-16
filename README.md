@@ -4,7 +4,7 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库（元数据、标签、缩略图），也可以通过局域网内的浏览器远程浏览和下载资产。
 
-<!-- stats: app_services=44 core=32 dialogs=18 domain_events=15 e2e_specs=6 hooks=14 i18n_en=827 i18n_ja=827 i18n_zh=827 icons=56 pages=26 python_test_files=242 repos=17 routes=140 routes_modules=23 schema_version=29 stores=4 themes=24 ts=115 webui_test_files=103 widgets=14 -->
+<!-- stats: app_services=44 core=32 dialogs=18 domain_events=15 e2e_specs=6 hooks=14 i18n_en=827 i18n_ja=827 i18n_zh=827 icons=56 pages=26 python_test_files=243 repos=17 routes=140 routes_modules=23 schema_version=29 stores=4 themes=24 ts=115 webui_test_files=103 widgets=14 -->
 > 当前审查证据（2026-08-13，本机 Windows / Python 3.14.3，DSH 沙箱环境）：最近一次 Python 全量运行结果为 **3447 passed, 7 skipped**（沙箱下以 `-n 0` 单进程运行；4 个 multiprocessing 命名管道测试 + 1 个沙箱偶发被阻断，CI 环境不受影响）；`ruff check AssetsManager tests scripts run.py` **全绿**；compileall 通过；**pyright 0 errors / 0 warnings**（CI "Type Check (pyright hard gate)" 固定 1.1.410）。WebUI 单测/typecheck/build/E2E 在上一次会话实测为 683/通过/51 passed 2 skipped（本机沙箱禁止 Node 子进程管道，未复跑；以 CI 为准）。CI Python 3.12/3.13/3.14 矩阵为硬门禁（3.14 已从 continue-on-error 转正，待首次 CI 实跑确认）；clean checkout/Windows package smoke 和真实后端 Commerce 验收仍需分别看待。完整审查文档集见 `docs/full-review/`（含模块地图、数据流、事件系统、审查结果与验证基线）。
 
 

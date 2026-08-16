@@ -10,6 +10,7 @@ from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
     get_lan,
     get_search_service,
+    oversized_query,
     require_permission,
     validate_path,
 )
@@ -63,6 +64,10 @@ async def handle_quicksearch(request):
         limit = _parse_limit(request)
     except ValueError as exc:
         return error_response(str(exc), status=400, code="bad_request")
+
+    query_error = oversized_query(request)
+    if query_error is not None:
+        return error_response(query_error, status=400, code="bad_request")
 
     query = request.query.get("q", "")
     if not query.strip():

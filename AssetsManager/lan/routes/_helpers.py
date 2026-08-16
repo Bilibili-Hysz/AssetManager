@@ -216,6 +216,8 @@ __all__ = [
     "get_tag_service",
     "get_thumbnail_service",
     "matches_exclude",
+    "MAX_QUERY_LENGTH",
+    "oversized_query",
     "require_admin",
     "require_permission",
     "require_role",
@@ -300,6 +302,20 @@ def require_permission(request, permission: str) -> bool:
     if principal is not None:
         return bool(getattr(principal.capabilities, permission, False))
     return False
+
+
+# L2 input budget: search query strings are capped before they reach the
+# scanner/index so a hostile client cannot force unbounded memory/cpu work
+# through the public /api/search and /api/quicksearch endpoints.
+MAX_QUERY_LENGTH = 256
+
+
+def oversized_query(request, field: str = "q") -> str | None:
+    """Return the 400 message when a query parameter exceeds its budget."""
+    value = request.query.get(field, "")
+    if len(value) > MAX_QUERY_LENGTH:
+        return f"{field} must be at most {MAX_QUERY_LENGTH} characters"
+    return None
 
 
 def get_services(request) -> LanScopedServices:
