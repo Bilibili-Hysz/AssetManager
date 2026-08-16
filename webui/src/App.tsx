@@ -104,11 +104,23 @@ function App() {
       setPaletteOpen(previous => !previous);
     }
   }, []);
+  const { serverInfo } = useAuthContext();
 
   useEffect(() => {
     document.addEventListener('keydown', handlePaletteShortcut);
     return () => document.removeEventListener('keydown', handlePaletteShortcut);
   }, [handlePaletteShortcut]);
+
+  // S4: the server is the live accent authority. Once /api/info is known,
+  // override the generated palette accent so LAN branding and desktop share
+  // the same accent color.
+  useEffect(() => {
+    const accent = serverInfo?.theme_color;
+    if (!accent) return;
+    const root = document.documentElement;
+    root.style.setProperty('--color-accent', accent);
+    root.style.setProperty('--color-accent-hover', accent);
+  }, [serverInfo?.theme_color]);
 
   return (
     <BrowserRouter>

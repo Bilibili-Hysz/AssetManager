@@ -1,3 +1,5 @@
+@import './tokens/themes.generated.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -23,44 +25,6 @@ img {
 @layer base {
   /* ── Dark theme (default) ── */
   :root {
-    /* Surfaces */
-    --color-bg: #020617;          /* page body background */
-    --color-surface: #0f172a;     /* card, sidebar, header */
-    --color-surface-hover: #1e293b;
-    --color-elevated: #1e293b;    /* dropdown, popover, elevated panels */
-    --color-overlay: rgba(0, 0, 0, 0.6);
-
-    /* Borders */
-    --color-border: #1e293b;
-    --color-border-strong: #334155;
-    --color-border-focus: #6366f1;
-
-    /* Text */
-    --color-text: #f1f5f9;
-    --color-text-secondary: #94a3b8;
-    /* Muted must hold >= 4.5:1 on the surface (#0f172a); #64748b is ~3.7:1. */
-    --color-text-muted: #8492a5;
-    --color-text-inverse: #0f172a;
-
-    /* Accent */
-    --color-accent: #6366f1;
-    --color-accent-hover: #818cf8;
-    --color-accent-subtle: rgba(99, 102, 241, 0.1);
-    --color-accent-border: rgba(99, 102, 241, 0.3);
-
-    /* Semantic */
-    --color-success: #22c55e;
-    --color-success-subtle: rgba(34, 197, 94, 0.1);
-    --color-success-text: #4ade80;
-    --color-warning: #f59e0b;
-    --color-warning-subtle: rgba(245, 158, 11, 0.1);
-    --color-warning-text: #fbbf24;
-    --color-danger: #ef4444;
-    --color-danger-subtle: rgba(239, 68, 68, 0.1);
-    --color-danger-text: #f87171;
-    --color-danger-border: rgba(239, 68, 68, 0.3);
-    --color-info: #3b82f6;
-
     /* Spacing scale */
     --space-1: 4px;
     --space-2: 8px;
@@ -89,18 +53,6 @@ img {
     --transition-base: 180ms ease;
     --transition-slow: 280ms ease;
 
-    /* Scrollbar */
-    --scrollbar-track: transparent;
-    --scrollbar-thumb: rgba(100, 116, 139, 0.5);
-    --scrollbar-thumb-hover: rgba(100, 116, 139, 0.7);
-
-    /* Skeleton */
-    --skeleton-bg: rgba(30, 41, 59, 0.5);
-
-    /* Input */
-    --input-bg: rgba(30, 41, 59, 0.5);
-    --input-border: rgba(51, 65, 85, 0.5);
-    --input-focus-border: rgba(99, 102, 241, 0.5);
     /* Z-index scale (semantic layering).
        Drawers sit above their scrim but below modals; the progress bar is the
        top-most element. Note: Modal/Toast/ContextMenu hardcode z-50 and
@@ -117,59 +69,16 @@ img {
 
   /* ── Light theme ── */
   html.light {
-    --color-bg: #f8fafc;
-    --color-surface: #ffffff;
-    --color-surface-hover: #f1f5f9;
-    --color-elevated: #f1f5f9;
-    --color-overlay: rgba(0, 0, 0, 0.4);
-
-    --color-border: #e2e8f0;
-    --color-border-strong: #cbd5e1;
-    --color-border-focus: #6366f1;
-
-    --color-text: #0f172a;
-    --color-text-secondary: #475569;
-    /* Muted must hold >= 4.5:1 on white; #94a3b8 is ~2.6:1. */
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-pulse, .animate-spin { animation: none; }
-}
-    --color-text-muted: #64748b;
-    --color-text-inverse: #f8fafc;
-
-    --color-accent: #4f46e5;
-    /* Hover/text accent must clear 4.5:1 on light surfaces (indigo-500 is ~4.1:1). */
-    --color-accent-hover: #4338ca;
-    --color-accent-subtle: rgba(79, 70, 229, 0.08);
-    --color-accent-border: rgba(79, 70, 229, 0.25);
-
-    --color-success: #16a34a;
-    --color-success-subtle: rgba(22, 163, 74, 0.08);
-    --color-success-text: #16a34a;
-    --color-warning: #d97706;
-    --color-warning-subtle: rgba(217, 119, 6, 0.08);
-    --color-warning-text: #d97706;
-    --color-danger: #dc2626;
-    --color-danger-subtle: rgba(220, 38, 38, 0.08);
-    --color-danger-text: #dc2626;
-    --color-danger-border: rgba(220, 38, 38, 0.35);
-    --color-info: #2563eb;
-
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
     --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
     --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
 
-    --scrollbar-thumb: rgba(148, 163, 184, 0.4);
-    --scrollbar-thumb-hover: rgba(148, 163, 184, 0.6);
-
-    --skeleton-bg: rgba(226, 232, 240, 0.6);
-
-    --input-bg: #ffffff;
-    --input-border: #e2e8f0;
-    --input-focus-border: rgba(99, 102, 241, 0.5);
-
     color-scheme: light;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-pulse, .animate-spin { animation: none; }
   }
 
   * {
