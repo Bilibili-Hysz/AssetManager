@@ -116,9 +116,10 @@ export default function DetailPage({ onOpenPalette }: DetailPageProps) {
       if (pathRef.current !== requestedPath) return;
       showToast(t('info.notes_save_failed'), 'error');
     } finally {
-      // Only clear the flag if this is still the page that owns the request;
-      // otherwise leave it for the new path's render cycle to handle.
-      if (pathRef.current === requestedPath) setNotesSaving(false);
+      // Always release the saving lock: DetailPage stays mounted across query
+      // path changes, so a save that outlived its target path must not wedge
+      // the new path's notes editor forever.
+      setNotesSaving(false);
     }
   }, [notesApi, notesDraft, notesSaving, path, showToast, t]);
 
