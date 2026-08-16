@@ -13,6 +13,20 @@ from AssetsManager.core.workers import (
 )
 
 
+def test_timer_handle_is_cancellable():
+    from PySide6.QtCore import QObject
+
+    from AssetsManager.core.timers import TimerHandle
+
+    owner = QObject()
+    calls = []
+    handle = TimerHandle.schedule(owner, 0, lambda: calls.append(1))
+    handle.cancel()
+    assert not handle.is_active()
+    handle._timer.timeout.emit()  # cancel cleared the callback before queuing
+    assert calls == []
+
+
 class _SleepTask(CancellableRunnable):
     def __init__(self, seconds: float, token: CancellationToken):
         super().__init__(cancel_token=token)

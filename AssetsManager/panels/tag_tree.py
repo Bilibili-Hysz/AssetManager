@@ -6,7 +6,7 @@ sharded per library — no cross-library tag mixing.
 """
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QTimer, QSize
+from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QLineEdit, QPushButton, QHBoxLayout,
     QMenu, QInputDialog, QMessageBox,
@@ -154,7 +154,7 @@ class TagTreePanel(PanelContent):
         if getattr(self, "_tree_update_restore_pending", False):
             return
         self._tree_update_restore_pending = True
-        QTimer.singleShot(0, self._finish_tree_update_batch)
+        self._schedule_once(0, self._finish_tree_update_batch)
 
     def _finish_tree_update_batch(self):
         self._tree_update_restore_pending = False
@@ -364,6 +364,8 @@ class TagTreePanel(PanelContent):
         self._scoped_services = None
         self._tags_port = None
         self._active_tag_filter = None
+        self._tree_update_restore_pending = False
+        self._clear_pending_timers()
         self._tree.clear()
 
     def shutdown(self) -> None:

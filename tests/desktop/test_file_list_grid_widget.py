@@ -251,7 +251,12 @@ def test_grid_frame_scheduler_coalesces_row_invalidations(monkeypatch):
     widget.update_layout(4, 400)
     widget._cancel_frame()
     scheduled = []
-    monkeypatch.setattr(_grid_widget.QTimer, "singleShot", lambda _delay, callback: scheduled.append(callback))
+    monkeypatch.setattr(
+        _grid_widget.TimerHandle,
+        "schedule",
+        lambda parent, delay, callback: scheduled.append(callback)
+        or type("_Handle", (), {"is_active": lambda self: True, "cancel": lambda self: None})(),
+    )
     update = Mock()
     widget.update = update
 
@@ -274,7 +279,12 @@ def test_grid_shutdown_discards_queued_frame_repaint(monkeypatch):
     widget.update_layout(1, 400)
     widget._cancel_frame()
     scheduled = []
-    monkeypatch.setattr(_grid_widget.QTimer, "singleShot", lambda _delay, callback: scheduled.append(callback))
+    monkeypatch.setattr(
+        _grid_widget.TimerHandle,
+        "schedule",
+        lambda parent, delay, callback: scheduled.append(callback)
+        or type("_Handle", (), {"is_active": lambda self: True, "cancel": lambda self: None})(),
+    )
     update = Mock()
     widget.update = update
 
@@ -290,7 +300,12 @@ def test_grid_shutdown_discards_queued_full_rebuild_update(monkeypatch):
 
     widget = FileListGridWidget()
     scheduled = []
-    monkeypatch.setattr(_grid_widget.QTimer, "singleShot", lambda _delay, callback: scheduled.append(callback))
+    monkeypatch.setattr(
+        _grid_widget.TimerHandle,
+        "schedule",
+        lambda parent, delay, callback: scheduled.append(callback)
+        or type("_Handle", (), {"is_active": lambda self: True, "cancel": lambda self: None})(),
+    )
     request_frame = Mock()
     widget._request_frame = request_frame
     widget._full_rebuild_pending = True
@@ -308,7 +323,12 @@ def test_grid_deferred_frame_does_not_access_deleted_widget(monkeypatch):
     app = QApplication.instance() or QApplication([])
     widget = FileListGridWidget()
     scheduled = []
-    monkeypatch.setattr(_grid_widget.QTimer, "singleShot", lambda _delay, callback: scheduled.append(callback))
+    monkeypatch.setattr(
+        _grid_widget.TimerHandle,
+        "schedule",
+        lambda parent, delay, callback: scheduled.append(callback)
+        or type("_Handle", (), {"is_active": lambda self: True, "cancel": lambda self: None})(),
+    )
 
     widget._request_frame(full=True)
     widget.deleteLater()
@@ -327,7 +347,12 @@ def test_grid_frame_scheduler_records_pathless_coalescing(monkeypatch):
     recorder = PerformanceRecorder(enabled=True)
     widget.set_performance_context(recorder, "session-a", 7)
     scheduled = []
-    monkeypatch.setattr(_grid_widget.QTimer, "singleShot", lambda _delay, callback: scheduled.append(callback))
+    monkeypatch.setattr(
+        _grid_widget.TimerHandle,
+        "schedule",
+        lambda parent, delay, callback: scheduled.append(callback)
+        or type("_Handle", (), {"is_active": lambda self: True, "cancel": lambda self: None})(),
+    )
     widget.update = Mock()
 
     widget._request_frame([0])
@@ -397,7 +422,12 @@ def test_grid_model_reset_discards_prior_staged_rebuild_callback(monkeypatch):
     widget = FileListGridWidget()
     widget._full_rebuild_pending = True
     scheduled = []
-    monkeypatch.setattr(_grid_widget.QTimer, "singleShot", lambda _delay, callback: scheduled.append(callback))
+    monkeypatch.setattr(
+        _grid_widget.TimerHandle,
+        "schedule",
+        lambda parent, delay, callback: scheduled.append(callback)
+        or type("_Handle", (), {"is_active": lambda self: True, "cancel": lambda self: None})(),
+    )
     update = Mock()
     widget.update = update
 
@@ -416,7 +446,12 @@ def test_grid_stale_rebuild_callback_releases_scheduler_latch(monkeypatch):
     widget = FileListGridWidget()
     widget._full_rebuild_pending = True
     scheduled = []
-    monkeypatch.setattr(_grid_widget.QTimer, "singleShot", lambda _delay, callback: scheduled.append(callback))
+    monkeypatch.setattr(
+        _grid_widget.TimerHandle,
+        "schedule",
+        lambda parent, delay, callback: scheduled.append(callback)
+        or type("_Handle", (), {"is_active": lambda self: True, "cancel": lambda self: None})(),
+    )
 
     widget._queue_full_rebuild_update()
     stale_callback = scheduled.pop()
@@ -1366,7 +1401,12 @@ def test_scroll_discards_queued_full_rebuild_repaint(monkeypatch):
     widget = FileListGridWidget()
     widget._full_rebuild_pending = True
     scheduled = []
-    monkeypatch.setattr(_grid_widget.QTimer, "singleShot", lambda _delay, callback: scheduled.append(callback))
+    monkeypatch.setattr(
+        _grid_widget.TimerHandle,
+        "schedule",
+        lambda parent, delay, callback: scheduled.append(callback)
+        or type("_Handle", (), {"is_active": lambda self: True, "cancel": lambda self: None})(),
+    )
     update = Mock()
     widget.update = update
 

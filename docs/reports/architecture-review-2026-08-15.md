@@ -126,6 +126,8 @@
 - 动画回调统一 `try/except RuntimeError + shiboken6.isValid` 守卫。
 - 验收：四个面板 init→start→immediate shutdown 用例无 RuntimeError/pending singleShot。
 
+**状态：已完成** —— 新增 `core/timers.py`（`TimerHandle` 可取消一次性句柄）；panels 内 15 处 `QTimer.singleShot` 全部替换为 owner 持有的句柄（含 GridWidget/ImageViewer）；`PanelContent.shutdown` 与各面板 `prepare_library_switch` 统一清空挂起句柄及 `_expand_frontier`；FileList 缩放/滚动动画回调加 RuntimeError 停动画守卫；`tests/unit/test_panel_lifecycle.py` 锁定四面板 init→show→立即 shutdown。
+
 **批次 D4 — 样式单入口**
 
 - 静态门禁禁止局部 QSS 字面颜色/字号；重复对话框 QSS 抽 StyleKit 生成器；dock 三 handler 合并单帧刷新。

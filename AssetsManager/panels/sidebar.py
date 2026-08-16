@@ -124,7 +124,6 @@ class SidebarPanel(PanelContent):
         self._search.installEventFilter(self)
         self.setFocusProxy(self._search)
 
-        from PySide6.QtCore import QTimer
         self._search_timer = QTimer(self)
         self._search_timer.setSingleShot(True)
         self._search_timer.setInterval(200)
@@ -261,6 +260,9 @@ class SidebarPanel(PanelContent):
         self._preload_pool.drain(3_000)
         if self._search_timer is not None:
             self._search_timer.stop()
+        self._expand_frontier = []
+        self._tree_update_restore_pending = False
+        self._clear_pending_timers()
 
     def shutdown(self) -> None:
         self.prepare_library_switch()
@@ -324,7 +326,7 @@ class SidebarPanel(PanelContent):
         if getattr(self, "_tree_update_restore_pending", False):
             return
         self._tree_update_restore_pending = True
-        QTimer.singleShot(0, self._finish_tree_update_batch)
+        self._schedule_once(0, self._finish_tree_update_batch)
 
     def _finish_tree_update_batch(self):
         self._tree_update_restore_pending = False
@@ -880,10 +882,10 @@ class SidebarPanel(PanelContent):
             budget -= 1
         if self._expand_frontier:
             # Still more directories in the current level — continue next tick.
-            QTimer.singleShot(0, self._process_expand_frontier)
+            self._schedule_once(0, self._process_expand_frontier)
         elif next_frontier:
             self._expand_frontier = next_frontier
-            QTimer.singleShot(0, self._process_expand_frontier)
+            self._schedule_once(0, self._process_expand_frontier)
 
     def _filter_item(self, item, text):
         if not text:
@@ -928,9 +930,8 @@ class SidebarPanel(PanelContent):
                 flash = QColor(t["accent"])
                 flash.setAlphaF(0.19)
                 item.setBackground(0, QBrush(flash))
-                from PySide6.QtCore import QTimer
                 generation = self._tree_generation
-                QTimer.singleShot(500, lambda: self._clear_highlight_background(item, generation))
+                self._schedule_once(500, lambda: self._clear_highlight_background(item, generation))
         else:
             # Ancestor of match: muted accent
             item.setForeground(0, QBrush(QColor(t["muted"])))

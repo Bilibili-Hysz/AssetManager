@@ -48,6 +48,8 @@ class NavigationMixin:
         def _clear_selection_for_navigation(self) -> None: ...
         def _update_status(self) -> None: ...
         def _load_visible(self) -> None: ...
+        def _schedule_once(self, interval_ms: int, callback: Callable[[], None]) -> Any: ...
+        def _clear_pending_timers(self) -> None: ...
         def _run_in_background(self, func: Callable[[], None]) -> None: ...
 
     # ── FS watcher ────────────────────────────────────────────────
@@ -157,9 +159,9 @@ class NavigationMixin:
         self.folder_entered.emit(str(p))
         bus().directory_changed.emit(str(p))
         self._watch_current_dir()
-        QTimer.singleShot(80, self._load_visible)
+        self._schedule_once(80, self._load_visible)
         if set_root:
-            QTimer.singleShot(120, lambda: self._schedule_library_stats_update(str(p)))
+            self._schedule_once(120, lambda: self._schedule_library_stats_update(str(p)))
 
     def _schedule_library_stats_update(self, lib_root: str):
         """Refresh the opened library's aggregate size without blocking the UI."""

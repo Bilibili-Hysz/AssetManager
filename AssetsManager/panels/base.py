@@ -35,6 +35,7 @@ class PanelContent(QWidget):
         self._bus_connections: list[tuple[Any, Any]] = []
         self._domain_subscriptions = []
         self._show_anim = None
+        self._pending_timers: list = []
 
     def showEvent(self, event):
         """Override to add show animation."""
@@ -75,8 +76,24 @@ class PanelContent(QWidget):
     def prepare_library_switch(self) -> None:
         """Release work tied to the current library before session close."""
 
+    def _schedule_once(self, interval_ms: int, callback) -> Any:
+        """Schedule one owned one-shot timer; cancelable via shutdown."""
+        from AssetsManager.core.timers import TimerHandle
+
+        self._pending_timers = [h for h in self._pending_timers if h.is_active()]
+        handle = TimerHandle.schedule(self, interval_ms, callback)
+        self._pending_timers.append(handle)
+        return handle
+
+    def _clear_pending_timers(self) -> None:
+        """Cancel every owner-managed one-shot timer."""
+        for handle in self._pending_timers:
+            handle.cancel()
+        self._pending_timers.clear()
+
     def shutdown(self):
         """Disconnect all tracked bus signals before panel destruction."""
+        self._clear_pending_timers()
         if self._show_anim is not None:
             self._show_anim.stop()
         for sub in self._domain_subscriptions:

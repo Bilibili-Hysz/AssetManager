@@ -5,10 +5,11 @@ _TEXT_TOP_GAP=5, _TEXT_LINE_GAP=1, font 9pt bold + 8pt sub.
 """
 from time import perf_counter
 import weakref
-from PySide6.QtCore import Qt, QSize, QRect, QPoint, QTimer, Signal, QEvent
+from PySide6.QtCore import Qt, QSize, QRect, QPoint, Signal, QEvent
 from PySide6.QtGui import QPainter, QPixmap, QColor, QPen, QFont, QFontMetrics
 from PySide6.QtWidgets import QWidget, QScrollBar, QSizePolicy
 from AssetsManager.core import icons
+from AssetsManager.core.timers import TimerHandle
 from shiboken6 import Shiboken
 from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
@@ -97,6 +98,7 @@ class FileListGridWidget(QWidget):
         self._hover_row: int = -1
         self._selection: set[int] = set()
         self._last_click_row: int = -1
+        self._single_shot_handles: list = []
         self._last_click_pos: QPoint | None = None
         self._rubber_band_active = False
         self._rubber_band_origin: QPoint | None = None
@@ -606,10 +608,24 @@ class FileListGridWidget(QWidget):
                 line_y,
             )
 
+    def _schedule_once(self, interval_ms: int, callback):
+        """Schedule an owned one-shot timer, cancelable on shutdown."""
+        self._single_shot_handles = [
+            handle for handle in self._single_shot_handles if handle.is_active()
+        ]
+        handle = TimerHandle.schedule(self, interval_ms, callback)
+        self._single_shot_handles.append(handle)
+        return handle
+
+    def cancel_pending_timers(self) -> None:
+        for handle in self._single_shot_handles:
+            handle.cancel()
+        self._single_shot_handles.clear()
+
     def showEvent(self, event):
         super().showEvent(event)
         if self._animator.has_pending_presentation():
-            QTimer.singleShot(0, self._animator.present_pending)
+            self._schedule_once(0, self._animator.present_pending)
 
     def paintEvent(self, _evt):
         if not self._model or not self.isVisible():
@@ -901,7 +917,7 @@ class FileListGridWidget(QWidget):
             if widget is not None and Shiboken.isValid(widget):
                 widget._flush_frame(epoch)
 
-        QTimer.singleShot(0, flush)
+        self._schedule_once(0, flush)
 
     def _flush_frame(self, epoch: int) -> None:
         if epoch != self._frame_epoch:
@@ -960,6 +976,7 @@ class FileListGridWidget(QWidget):
         self._cancel_frame()
         self._full_rebuild_epoch += 1
         self._full_rebuild_update_queued = False
+        self.cancel_pending_timers()
 
     def discard_pending_presentation(self, generation: int) -> None:
         """Discard a hidden presentation superseded by an empty newer commit."""
@@ -1274,7 +1291,7 @@ class FileListGridWidget(QWidget):
             if widget._full_rebuild_pending:
                 widget._request_frame(full=True)
 
-        QTimer.singleShot(0, update)
+        self._schedule_once(0, update)
 
     def _draw_interaction_overlay(self, p: QPainter, row: int, item_rect: QRect, opacity: float):
         """Paint selection, hover, and keyboard focus without rebuilding the cache."""

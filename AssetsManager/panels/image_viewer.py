@@ -115,6 +115,7 @@ class ImageViewerOverlay(QFrame):
         self._slideshow_timer = QTimer(self)
         self._slideshow_timer.setInterval(3000)
         self._slideshow_timer.timeout.connect(lambda: self._nav(1))
+        self._fit_timers: list = []
         # Directory scan cache: parent dir -> (dir mtime, sorted image list).
         # Keyed by directory so paging through a folder rescans at most once
         # per change instead of once per image. Capacity is capped (simple
@@ -183,7 +184,7 @@ class ImageViewerOverlay(QFrame):
         self.show()
         self.raise_()
         self.activateWindow()
-        QTimer.singleShot(10, self._view.fit_in_view)
+        self._schedule_fit()
         if self._host_window:
             try:
                 self._host_window.installEventFilter(self)
@@ -297,7 +298,7 @@ class ImageViewerOverlay(QFrame):
         target = self._image_list[self._image_idx]
         if target != self._current_path:
             self.load_image(target)
-            QTimer.singleShot(10, self._view.fit_in_view)
+            self._schedule_fit()
 
     def _toggle_slideshow(self):
         """Start/stop auto-advance through the directory image list."""
@@ -648,7 +649,7 @@ class ImageViewerOverlay(QFrame):
                     self._image_idx = idx
                     target = self._image_list[idx]
                     self.load_image(target)
-                    QTimer.singleShot(10, self._view.fit_in_view)
+                    self._schedule_fit()
                     return
         super().mousePressEvent(event)
 
@@ -691,7 +692,23 @@ class ImageViewerOverlay(QFrame):
 
     # ── Cleanup ─────────────────────────────────────────────────
 
+    def _schedule_fit(self, interval_ms: int = 10) -> None:
+        """Schedule a cancellable fit-in-view pass after layout settles."""
+        from AssetsManager.core.timers import TimerHandle
+
+        self._fit_timers = [timer for timer in self._fit_timers if timer.is_active()]
+        self._fit_timers.append(
+            TimerHandle.schedule(self, interval_ms, self._view.fit_in_view)
+        )
+
+    def _cancel_fit_timers(self) -> None:
+        for timer in self._fit_timers:
+            timer.cancel()
+        self._fit_timers.clear()
+
     def closeEvent(self, event):
+        self._slideshow_timer.stop()
+        self._cancel_fit_timers()
         if self._host_window is not None:
             try:
                 self._host_window.removeEventFilter(self)

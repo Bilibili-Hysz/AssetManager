@@ -745,25 +745,35 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         anim.start()
 
     def _on_zoom_frame(self, size: int):
-        if getattr(self._model, "is_shutdown", False):
-            return
-        self._thumb_size = size
-        self._grid_widget.set_zoom_thumb_size(size)
+        try:
+            if getattr(self._model, "is_shutdown", False):
+                return
+            self._thumb_size = size
+            self._grid_widget.set_zoom_thumb_size(size)
+        except RuntimeError:
+            animation = getattr(self, "_zoom_anim", None)
+            if animation is not None:
+                animation.stop()
 
     def _on_zoom_done(self, generation: int | None = None, target_size: int | None = None):
-        if getattr(self._model, "is_shutdown", False):
-            return
-        if generation is not None and generation != getattr(self, "_zoom_generation", 0):
-            return
-        if target_size is not None:
-            self._thumb_size = target_size
-        self._loader.set_size(self._thumb_size)
-        self._grid_widget.set_thumb_size(self._thumb_size)
-        self._grid_widget.update_layout(self._model.rowCount(), self._grid_widget.width())
-        # finish_zoom commits the target-size textures pre-rendered during the
-        # animation and marks any remaining stale rows dirty for the paced rebuild.
-        self._grid_widget.finish_zoom()
-        self._load_visible()
+        try:
+            if getattr(self._model, "is_shutdown", False):
+                return
+            if generation is not None and generation != getattr(self, "_zoom_generation", 0):
+                return
+            if target_size is not None:
+                self._thumb_size = target_size
+            self._loader.set_size(self._thumb_size)
+            self._grid_widget.set_thumb_size(self._thumb_size)
+            self._grid_widget.update_layout(self._model.rowCount(), self._grid_widget.width())
+            # finish_zoom commits the target-size textures pre-rendered during the
+            # animation and marks any remaining stale rows dirty for the paced rebuild.
+            self._grid_widget.finish_zoom()
+            self._load_visible()
+        except RuntimeError:
+            animation = getattr(self, "_zoom_anim", None)
+            if animation is not None:
+                animation.stop()
 
     def _wheel_zoom_evt(self, event, source=None):
         if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
@@ -1076,6 +1086,10 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         self._scroll_animation_setting_value = True
         try:
             scrollbar.setValue(int(value))
+        except RuntimeError:
+            animation = getattr(self, "_scroll_anim", None)
+            if animation is not None:
+                animation.stop()
         finally:
             self._scroll_animation_setting_value = False
 
@@ -1224,6 +1238,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def prepare_library_switch(self):
         """Drain all session-bound background work before its session closes."""
+        clear_timers = getattr(self, "_clear_pending_timers", None)
+        if callable(clear_timers):
+            clear_timers()
         fs_refresh_timer = getattr(self, "_fs_refresh_timer", None)
         if fs_refresh_timer is not None:
             fs_refresh_timer.stop()
@@ -1283,6 +1300,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
     def shutdown(self):
         """Clean up bus connections and worker threads."""
         self._operation_feedback_generation += 1
+        clear_timers = getattr(self, "_clear_pending_timers", None)
+        if callable(clear_timers):
+            clear_timers()
         for timer_name in ("_search_timer", "_scroll_debounce", "_file_op_timer", "_operation_feedback_timer", "_fs_refresh_timer"):
             timer = getattr(self, timer_name, None)
             if timer is not None:
@@ -1299,6 +1319,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
             delivery.clear()
         grid = getattr(self, "_grid_widget", None)
         if grid is not None:
+            cancel_timers = getattr(grid, "cancel_pending_timers", None)
+            if callable(cancel_timers):
+                cancel_timers()
             grid.stop_animations()
         for animation_name in ("_zoom_anim", "_scroll_anim"):
             animation = getattr(self, animation_name, None)
@@ -1676,13 +1699,18 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
         if self._view_mode == "Details":
             self._populate_details()
         else:
-            QTimer.singleShot(80, self._load_visible_if_active)
+            self._schedule_once(80, self._load_visible_if_active)
         if result_paths:
             self._restore_operation_selection(result_paths)
     def _on_scan_started(self, generation: int):
         self._pending_scan_generation = generation
     def _on_smooth_scroll_finished(self):
-        self._finish_smooth_scroll(getattr(self, "_scroll_anim_generation", 0))
+        try:
+            self._finish_smooth_scroll(getattr(self, "_scroll_anim_generation", 0))
+        except RuntimeError:
+            animation = getattr(self, "_scroll_anim", None)
+            if animation is not None:
+                animation.stop()
     def _on_ui_scale_changed(self, _scale: float) -> None:
         """Re-measure canvas text and Details chrome after a live scale change."""
         self._apply_chrome_style()

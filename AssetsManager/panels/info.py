@@ -1139,9 +1139,8 @@ class InfoPanel(PanelContent):
             chip.setWindowOpacity(1.0)
             return
         chip.setWindowOpacity(0.0)
-        from PySide6.QtCore import QTimer
         generation = self._tag_render_generation
-        QTimer.singleShot(delay, lambda: self._do_fade_in(chip, generation))
+        self._schedule_once(delay, lambda: self._do_fade_in(chip, generation))
 
     def _do_fade_in(self, chip, generation):
         if generation != self._tag_render_generation:
@@ -1594,6 +1593,7 @@ class InfoPanel(PanelContent):
         self.flush_pending_changes()
         if self._notes_timer:
             self._notes_timer.stop()
+        self._clear_pending_timers()
         self._invalidate_async_requests()
         # Do not retain a controller/repository backed by the old session while
         # the library is closing or a replacement session is being assembled.
