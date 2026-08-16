@@ -8,7 +8,7 @@ import type { SellerPageProps, StorefrontProduct } from '../components/storefron
 import { useI18n } from '../hooks/useI18n';
 import { useCommerceCatalog } from '../hooks/useCommerce';
 import { useAuth } from '../hooks/useAuth';
-import { createShopApi } from '../api/shop';
+import { useShopApi } from '../hooks/usePageApis';
 import { useToast } from '../components/ui/Toast';
 import type { ShopItem } from '../types/api';
 
@@ -21,7 +21,7 @@ export default function SellerProductsPage({ seller, products = [] }: SellerPage
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams<{ id?: string }>();
-  const shopApi = useMemo(() => createShopApi(api), [api]);
+  const shopApi = useShopApi();
   const catalog = useCommerceCatalog(true);
   const visibleProducts = products.length > 0 ? products : catalog.products;
   const [query, setQuery] = useState('');

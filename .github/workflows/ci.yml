@@ -33,6 +33,8 @@ jobs:
         run: python scripts/check_style_sources.py
       - name: Verify LAN write routes declare their authorization capability
         run: python scripts/check_route_capabilities.py
+      - name: Verify pages use the shared data layer (no direct api factories)
+        run: python scripts/check_frontend_data_fetch.py
 
   hygiene:
     name: Git Hygiene

@@ -1,11 +1,10 @@
 import { useParams } from 'react-router-dom';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Download, Lock, Folder, Eye } from 'lucide-react';
-import { createApiClient } from '../api/client';
-import { createSharesApi } from '../api/shares';
 import { ApiError } from '../api/errors';
 import { useI18n } from '../hooks/useI18n';
 import { useTheme } from '../hooks/useTheme';
+import { usePublicShareApi } from '../hooks/usePageApis';
 import { useToast } from '../components/ui/Toast';
 import type { ShareInfoResponse } from '../types/api';
 
@@ -14,9 +13,9 @@ export default function ShareReceivePage() {
   // Dedicated client on purpose: share verification answers 401 for a wrong
   // password or a revoked link. The global AuthContext client would treat
   // that as a session expiry and reset the visitor's identity, so this page
-  // owns a client without an onUnauthorized handler.
-  const api = useMemo(() => createApiClient(), []);
-  const sharesApi = useMemo(() => createSharesApi(api), [api]);
+  // uses a client without an onUnauthorized handler (usePublicShareApi owns
+  // that dedicated client).
+  const sharesApi = usePublicShareApi();
   const { t } = useI18n();
   useTheme();
   const { showToast } = useToast();

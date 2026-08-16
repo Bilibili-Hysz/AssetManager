@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { shouldInvalidate } from '../cache/invalidation';
 import { useQueryCache } from '../cache/QueryCacheContext';
 import type { QueryKey } from '../cache/queryCache';
-import type { ProjectionDomain } from '../stores/RealtimeContext';
+import type { ProjectionDomain } from '../types/contracts';
 import { useInvalidation } from './useInvalidation';
 
 export interface UseCachedQueryOptions<T> {

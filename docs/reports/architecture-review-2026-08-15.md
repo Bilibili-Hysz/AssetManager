@@ -200,7 +200,12 @@
 ### 4.3 建议
 
 - **批次 S1 — 契约与投影域单源**：`gen_ts_types.py` 直接解析 `ProjectionDomain` 枚举；删前端 `stats` 死注册；DTO 迁移到后端 DTO 模块并扩展生成；前端 `RealtimeContext` 改为 `import type` contracts 单点。
+
+**状态：已完成** —— `gen_ts_types.py` 从 `runtime_events.py` 的 `ProjectionDomain(StrEnum)` 直接解析字面量（删除生成器内硬编码列表），`contracts.ts` 随后端枚举同步（移除前端虚构的 `stats` 域）；`RealtimeContext.tsx` 删除手写 `ProjectionDomain/InvalidationEvent/RuntimeCursor`，改为 `import type` + re-export `types/contracts.ts`，`cache/invalidation`、`useCachedQuery`、`useInvalidation` 全部改从 contracts 导入；StatusBar 删除 `stats` 无效 invalidation 注册（10s 轮询保留）。
+
 - **批次 S2 — 数据获取完成迁移 + 分层门禁**：页面统一 `useCachedQuery`/领域 hooks；`pages/**` 禁止直接 import api 工厂（静态 grep）；顺带修 H-F1/H-F2、M-F3。
+
+**状态：已完成** —— 新增 `hooks/usePageApis.ts`（useFilesApi/useGalleryApi/useMetadataApi/useNotesApi/useQuicksearchApi/useSharesApi/useShopApi/useSellerShopApi/useSystemApi/useTagsApi/useUsersApi/usePublicShareApi），18 个页面全部停止直接 import `api/*` 工厂（ShareReceivePage 的“无全局 401 复位”专用 client 迁移到 `usePublicShareApi`，SellerSettings 保留 seller 专用 client）；新增 `scripts/check_frontend_data_fetch.py`（pages 禁止 api 工厂 import/调用与直接 `fetch`，挂 CI）；H-F1 DetailPage `saveNotes` 增加 pathRef 守卫（旧路径响应不再提交状态/toast）；H-F2 `listBuyerOrders` 支持 AbortSignal，BuyerOrders 页 loadMore 用 generation+abort+状态过滤拒绝旧响应；M-F3 结账幂等键改按 cart id 持久化到 sessionStorage；webui `tsc --noEmit`/vitest 687 例/vite build 全绿。
 - **批次 S3 — 重试/退避统一**：client 幂等 GET 指数退避 + `Retry-After`；recover 复用 client；退避策略单模块供 WS/client 共用。
 - **批次 S4 — 设计令牌单源**：`assets/Themes/*.json` 同时产出 CSS `:root` 与 PySide 属性；`/api/theme` 或 `ServerInfo.theme_color` 下发 accent；Web 与桌面视觉同源。
 - **批次 S5 — 清理与文档**：删除孤儿测试或补源；`useCachedQuery` key 规范文档化；CSS z-index 注释对齐。

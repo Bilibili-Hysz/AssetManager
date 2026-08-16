@@ -42,7 +42,26 @@ export default function StorefrontCartPage() {
   const [buyerEmail, setBuyerEmail] = useState('');
   const [checkingOut, setCheckingOut] = useState(false);
   const [priceConflict, setPriceConflict] = useState(false);
-  const [idempotencyKey] = useState(createIdempotencyKey);
+  // The checkout idempotency key must survive a remount of this page for the
+  // same cart (e.g. a navigation bounce), so it is persisted per cart id in
+  // sessionStorage instead of being regenerated on every mount. A new cart id
+  // naturally gets a fresh key; successful checkout does not clear it.
+  const idempotencyKey = useMemo(() => {
+    const cartId = cart?.id;
+    if (cartId == null) return null;
+    const storageKey = `shop_cart_checkout_key:${cartId}`;
+    try {
+      const stored = sessionStorage.getItem(storageKey);
+      if (stored) return stored;
+      const generated = createIdempotencyKey();
+      sessionStorage.setItem(storageKey, generated);
+      return generated;
+    } catch {
+      // sessionStorage is optional; fall back to a non-persisted key so
+      // checkout can still proceed.
+      return createIdempotencyKey();
+    }
+  }, [cart?.id]);
   // Per-line in-flight lock: while a quantity update for a line is pending,
   // that row's +/- buttons and input stay disabled so the versioned backend
   // update cannot be raced by rapid clicks. lastRequestedRef remembers the
@@ -89,6 +108,10 @@ export default function StorefrontCartPage() {
 
   const submitCheckout = async (acceptPriceChanges = false) => {
     if (!cart || cart.items.length === 0 || checkingOut) return;
+    // The key is generated once the cart identity is known; a submit before
+    // the cart loads cannot happen because the checkout button stays hidden
+    // until items exist, but keep the guard for safety.
+    if (idempotencyKey == null) return;
     setCheckingOut(true);
     try {
       const result = await checkout({

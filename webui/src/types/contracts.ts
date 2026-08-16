@@ -81,7 +81,6 @@ export type ProjectionDomain =
   | 'users'
   | 'activity'
   | 'online_users'
-  | 'stats'
   | 'shop'
   | 'orders'
   | 'quota';

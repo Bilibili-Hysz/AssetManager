@@ -1,14 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowRight, RefreshCw, Wrench } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { createGalleryApi } from '../api/gallery';
 import { GalleryCard } from '../components/gallery/GalleryCard';
 import { GalleryEmptyState } from '../components/gallery/GalleryEmptyState';
 import { GalleryLayout } from '../components/gallery/GalleryLayout';
 import { GallerySection } from '../components/gallery/GallerySection';
 import { GalleryTiledGrid } from '../components/gallery/GalleryTiledGrid';
 import { GalleryViewControls, galleryMediaMode, type GalleryViewMode } from '../components/gallery/GalleryViewControls';
-import { useAuth } from '../hooks/useAuth';
+import { useGalleryApi } from '../hooks/usePageApis';
 import { useCachedQuery } from '../hooks/useCachedQuery';
 import { useFavorites } from '../hooks/useFavorites';
 import { useI18n } from '../hooks/useI18n';
@@ -41,9 +40,8 @@ interface GalleryHomePageProps {
 }
 
 export default function GalleryHomePage({ onOpenPalette }: GalleryHomePageProps) {
-  const { api } = useAuth();
   const { isFavorite, toggleFavorite } = useFavorites();
-  const galleryApi = useMemo(() => createGalleryApi(api), [api]);
+  const galleryApi = useGalleryApi();
   const { t } = useI18n();
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<GalleryViewMode>(() => readHomeLatestView());

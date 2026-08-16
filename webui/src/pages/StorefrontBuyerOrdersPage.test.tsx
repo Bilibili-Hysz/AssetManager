@@ -66,7 +66,7 @@ describe('StorefrontBuyerOrdersPage', () => {
     expect(screen.getAllByText('Delivered').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole('link', { name: /View order/i }).getAttribute('href')).toBe('/storefront/checkout/42');
     expect(screen.queryByText(/buyer_email|item_path|metadata|delivery_token/i)).toBeNull();
-    expect(listBuyerOrders).toHaveBeenCalledWith(undefined, 50);
+    expect(listBuyerOrders).toHaveBeenCalledWith(undefined, 50, undefined, expect.any(AbortSignal));
   });
 
   it('can restore a lost receipt cookie from buyer order history', async () => {
@@ -85,7 +85,7 @@ describe('StorefrontBuyerOrdersPage', () => {
     await screen.findByText('No purchases yet');
 
     fireEvent.change(screen.getByLabelText('Filter by status'), { target: { value: 'pending' } });
-    await waitFor(() => expect(listBuyerOrders).toHaveBeenLastCalledWith('pending', 50));
+    await waitFor(() => expect(listBuyerOrders).toHaveBeenLastCalledWith('pending', 50, undefined, expect.any(AbortSignal)));
   });
 
   it('shows empty and error states', async () => {

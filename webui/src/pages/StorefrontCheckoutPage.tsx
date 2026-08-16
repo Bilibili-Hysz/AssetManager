@@ -1,11 +1,10 @@
 import { ArrowLeft, CheckCircle2, Clock3, PackageCheck, RefreshCw } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { StorefrontShell } from '../components/storefront/StorefrontShell';
 import { BuyerDeliveryDownloadButton } from '../components/storefront/BuyerDeliveryDownloadButton';
 import { formatMoney } from '../components/storefront/types';
-import { createShopApi } from '../api/shop';
-import { useAuth } from '../hooks/useAuth';
+import { useShopApi } from '../hooks/usePageApis';
 import { useI18n } from '../hooks/useI18n';
 import { useToast } from '../components/ui/Toast';
 import type { ShopBuyerOrder } from '../types/api';
@@ -14,11 +13,10 @@ const INITIAL_POLL_DELAY_MS = 1_000;
 const MAX_POLL_DELAY_MS = 8_000;
 
 export default function StorefrontCheckoutPage() {
-  const { api } = useAuth();
   const { t } = useI18n();
   const { showToast } = useToast();
   const { orderId } = useParams<{ orderId: string }>();
-  const shopApi = useMemo(() => createShopApi(api), [api]);
+  const shopApi = useShopApi();
   const [order, setOrder] = useState<ShopBuyerOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);

@@ -112,12 +112,15 @@ export function createShopApi(api: ApiClient) {
 
     listOrders: (status?: string, signal?: AbortSignal) =>
       api.get<ShopOrdersResponse>('shop/orders', status ? { status } : undefined, signal),
-    listBuyerOrders: (status?: string, limit = 50, cursor?: string) =>
-      api.get<ShopBuyerOrdersResponse>('shop/buyer/orders', {
+    listBuyerOrders: (status?: string, limit = 50, cursor?: string, signal?: AbortSignal) => {
+      const params = {
         ...(status ? { status } : {}),
         limit,
         ...(cursor ? { cursor } : {}),
-      }),
+      };
+      return signal ? api.get<ShopBuyerOrdersResponse>('shop/buyer/orders', params, signal)
+        : api.get<ShopBuyerOrdersResponse>('shop/buyer/orders', params);
+    },
     createOrder: (itemId: string | number) =>
       api.post<{ order: ShopBuyerOrder }>('shop/order', { item_id: itemId }),
     getOrder: (id: string | number) =>

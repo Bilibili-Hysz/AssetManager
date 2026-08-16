@@ -4,9 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StorefrontShell } from '../components/storefront/StorefrontShell';
 import { BuyerDeliveryDownloadButton } from '../components/storefront/BuyerDeliveryDownloadButton';
 import { formatMoney } from '../components/storefront/types';
-import { useAuth } from '../hooks/useAuth';
+import { useShopApi } from '../hooks/usePageApis';
 import { useI18n } from '../hooks/useI18n';
-import { createShopApi } from '../api/shop';
 import type { ShopCheckoutGroupOrder, ShopCheckoutGroupResponse, ShopOrderStatus } from '../types/api';
 
 const INITIAL_POLL_DELAY_MS = 1_000;
@@ -32,10 +31,9 @@ function hasActiveOrders(checkout: ShopCheckoutGroupResponse | null): boolean {
 
 export default function StorefrontCheckoutGroupPage() {
   const { t } = useI18n();
-  const { api } = useAuth();
   const [searchParams] = useSearchParams();
   const group = searchParams.get('group')?.trim() ?? '';
-  const shop = useMemo(() => createShopApi(api), [api]);
+  const shop = useShopApi();
   const [checkout, setCheckout] = useState<ShopCheckoutGroupResponse | null>(null);
   const [loading, setLoading] = useState(Boolean(group));
   const [refreshing, setRefreshing] = useState(false);

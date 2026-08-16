@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ExternalLink, FileText, Image as ImageIcon, ShoppingCart } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { createMetadataApi } from '../api/metadata';
-import { createShopApi } from '../api/shop';
-import { useAuth } from '../hooks/useAuth';
+import { useMetadataApi, useShopApi } from '../hooks/usePageApis';
 import { useI18n } from '../hooks/useI18n';
 import type { ProjectDetail, ShopItem } from '../types/api';
 import { StorefrontShell } from '../components/storefront/StorefrontShell';
@@ -22,13 +20,12 @@ function safeExternalUrl(value: string): boolean {
 }
 
 export default function LegacyStorefrontItemPage() {
-  const { api } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
   const params = useParams();
   const path = decodeRouteValue(params['*'] ?? '');
-  const metadataApi = useMemo(() => createMetadataApi(api), [api]);
-  const shopApi = useMemo(() => createShopApi(api), [api]);
+  const metadataApi = useMetadataApi();
+  const shopApi = useShopApi();
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [shopItem, setShopItem] = useState<ShopItem | null>(null);
   const [loading, setLoading] = useState(true);

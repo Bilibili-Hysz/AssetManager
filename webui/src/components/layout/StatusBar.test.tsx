@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { StatusBar } from './StatusBar';
 import { setLang } from '../../i18n';
@@ -45,43 +45,26 @@ describe('StatusBar', () => {
     setLang('en');
   });
 
-  it('registers stats invalidation and reloads stats when triggered', () => {
+  it('does not register a projection invalidation domain for stats', () => {
     render(<StatusBar sidebarOpen={false} infoOpen={false} />);
 
-    expect(useInvalidationMock.mock.calls[0]?.[0]).toEqual(['stats']);
-
-    getStats.mockClear();
-    act(() => useInvalidationMock.mock.calls[0]![1]!());
-
-    expect(getStats).toHaveBeenCalledTimes(1);
+    // The backend has no "stats" ProjectionDomain; stats refresh comes from
+    // the 10s polling interval, not from the realtime invalidation fan-out.
+    expect(useInvalidationMock).not.toHaveBeenCalled();
   });
 
-  it('does not let an older stats response overwrite a newer response', async () => {
-    let resolveFirst!: (value: { connections: number; requests: number; bytes_transferred_fmt: string; uptime: number }) => void;
-    let resolveSecond!: (value: { connections: number; requests: number; bytes_transferred_fmt: string; uptime: number }) => void;
-    const firstResponse = new Promise(resolve => { resolveFirst = resolve; });
-    const secondResponse = new Promise(resolve => { resolveSecond = resolve; });
-    getStats.mockReset();
-    getStats
-      .mockImplementationOnce(() => firstResponse)
-      .mockImplementationOnce(() => secondResponse);
+  it('polls stats again when the polling interval fires', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<StatusBar sidebarOpen={false} infoOpen={false} />);
+      await act(async () => { await Promise.resolve(); });
+      expect(getStats).toHaveBeenCalledTimes(1);
 
-    render(<StatusBar sidebarOpen={false} infoOpen={false} />);
-    await waitFor(() => expect(getStats).toHaveBeenCalledTimes(1));
-    act(() => useInvalidationMock.mock.calls[0]![1]!());
-    await waitFor(() => expect(getStats).toHaveBeenCalledTimes(2));
-
-    await act(async () => {
-      resolveSecond({ connections: 20, requests: 30, bytes_transferred_fmt: '2 MB', uptime: 0 });
-      await secondResponse;
-    });
-    expect(screen.getByText('20 connections')).toBeDefined();
-
-    await act(async () => {
-      resolveFirst({ connections: 1, requests: 2, bytes_transferred_fmt: '1 KB', uptime: 0 });
-    });
-    expect(screen.getByText('20 connections')).toBeDefined();
-    expect(screen.queryByText('1 connection')).toBeNull();
+      await act(async () => { vi.advanceTimersByTime(10_000); });
+      expect(getStats).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('rerenders status text when the language changes', async () => {

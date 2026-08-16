@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { useRealtimeContext, type InvalidationEvent, type ProjectionDomain } from '../stores/RealtimeContext';
+import { useRealtimeContext } from '../stores/RealtimeContext';
+import type { InvalidationEvent, ProjectionDomain } from '../types/contracts';
 
 export function useInvalidation(
   domains: readonly ProjectionDomain[],

@@ -1,10 +1,9 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { AppHeader } from '../components/layout/AppHeader';
 import { ArrowLeft, Download, Tag, FileText, Link as LinkIcon, File } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import { createMetadataApi } from '../api/metadata';
-import { createNotesApi } from '../api/notes';
+import { useMetadataApi, useNotesApi } from '../hooks/usePageApis';
 import { ApiError } from '../api/errors';
 import type { ProjectDetail } from '../types/api';
 import { ImageViewer } from '../components/viewer/ImageViewer';
@@ -27,8 +26,8 @@ export default function DetailPage({ onOpenPalette }: DetailPageProps) {
   const from = searchParams.get('from');
   const context = searchParams.get('context') || '';
   const { api, identityGeneration, capabilities } = useAuth();
-  const metaApi = useMemo(() => createMetadataApi(api), [api]);
-  const notesApi = useMemo(() => createNotesApi(api), [api]);
+  const metaApi = useMetadataApi();
+  const notesApi = useNotesApi();
   const { t } = useI18n();
   const { showToast } = useToast();
   const { guardDownload, refresh: refreshQuota } = useQuota();
@@ -45,6 +44,10 @@ export default function DetailPage({ onOpenPalette }: DetailPageProps) {
   const detailGeneration = useRef(0);
   const detailAbort = useRef<AbortController | null>(null);
   const identityGenerationRef = useRef(identityGeneration);
+  // Tracks the path the page is currently rendering so an in-flight notes save
+  // for a previous path cannot commit state (data/toast/spinner) onto this one.
+  const pathRef = useRef(path);
+  pathRef.current = path;
 
   const refreshDetail = useCallback(() => {
     const generation = ++detailGeneration.current;
@@ -99,16 +102,23 @@ export default function DetailPage({ onOpenPalette }: DetailPageProps) {
   const saveNotes = useCallback(async (next?: string) => {
     const value = next ?? notesDraft;
     if (!path || notesSaving) return;
+    // Capture the path this save targets; a route change while the request is
+    // in flight must not let the response commit onto the new path's state.
+    const requestedPath = path;
     setNotesSaving(true);
     try {
-      const saved = await notesApi.save(path, value);
+      const saved = await notesApi.save(requestedPath, value);
+      if (pathRef.current !== requestedPath) return;
       setData(prev => prev ? { ...prev, notes: saved.notes } : prev);
       setNotesEditing(false);
       showToast(t('info.notes_saved'), 'success');
     } catch {
+      if (pathRef.current !== requestedPath) return;
       showToast(t('info.notes_save_failed'), 'error');
     } finally {
-      setNotesSaving(false);
+      // Only clear the flag if this is still the page that owns the request;
+      // otherwise leave it for the new path's render cycle to handle.
+      if (pathRef.current === requestedPath) setNotesSaving(false);
     }
   }, [notesApi, notesDraft, notesSaving, path, showToast, t]);
 

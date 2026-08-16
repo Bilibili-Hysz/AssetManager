@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
-import { useInvalidation } from '../../hooks/useInvalidation';
 import { useRealtimeContext } from '../../stores/RealtimeContext';
 import { useI18n } from '../../hooks/useI18n';
 import { useQuota } from '../../hooks/useQuota';
@@ -26,8 +25,8 @@ export function StatusBar(_props: StatusBarProps) {
     }).catch(() => {});
   }, [systemApi]);
 
-  useInvalidation(['stats'], load);
-
+  // Stats are polled on a 10s timer below; the backend has no "stats"
+  // projection domain, so there is no invalidation registration to add here.
   useEffect(() => {
     mountedRef.current = true;
     load();

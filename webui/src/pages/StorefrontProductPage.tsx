@@ -1,6 +1,6 @@
 import { ArrowLeft, Check, Download, Heart, ImageIcon, ShieldCheck, ShoppingCart, Sparkles } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ImageViewer } from '../components/viewer/ImageViewer';
 import { Modal } from '../components/ui/Modal';
 import { useToast } from '../components/ui/Toast';
@@ -10,7 +10,7 @@ import { formatMoney, type StorefrontProduct } from '../components/storefront/ty
 import { canonicalizeShopPath, toStorefrontProduct, useCommerceCatalog } from '../hooks/useCommerce';
 import { isApiError } from '../api/errors';
 import { useAuth } from '../hooks/useAuth';
-import { createShopApi } from '../api/shop';
+import { useShopApi } from '../hooks/usePageApis';
 import { useShopBuyer } from '../stores/ShopBuyerContext';
 
 export interface StorefrontProductPageProps { product?: StorefrontProduct; }
@@ -19,7 +19,7 @@ export default function StorefrontProductPage({ product }: StorefrontProductPage
   const { t } = useI18n();
   const { showToast } = useToast();
   const { api } = useAuth();
-  const shopApi = useMemo(() => createShopApi(api), [api]);
+  const shopApi = useShopApi();
   const { id, '*': wildcardPath } = useParams<{ id?: string; '*': string }>();
   const navigate = useNavigate();
   const catalog = useCommerceCatalog();

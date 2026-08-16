@@ -1,21 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Search } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
-import { createMetadataApi } from '../api/metadata';
-import { useAuth } from '../hooks/useAuth';
+import { useMetadataApi } from '../hooks/usePageApis';
 import { useI18n } from '../hooks/useI18n';
 import type { SearchResult } from '../types/api';
 import { StorefrontShell } from '../components/storefront/StorefrontShell';
 import LegacyAssetCard from '../components/storefront/LegacyAssetCard';
 
 export default function LegacyStorefrontGalleryPage() {
-  const { api } = useAuth();
   const { t } = useI18n();
   const { tag: rawTag = '' } = useParams<{ tag: string }>();
   const tag = useMemo(() => {
     try { return decodeURIComponent(rawTag); } catch { return rawTag; }
   }, [rawTag]);
-  const metadataApi = useMemo(() => createMetadataApi(api), [api]);
+  const metadataApi = useMetadataApi();
   const [assets, setAssets] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);

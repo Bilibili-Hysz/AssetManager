@@ -7,7 +7,7 @@
  * paths) one of those paths matches the filter. A null event (reconnect /
  * recovery) invalidates everything, mirroring useInvalidation semantics.
  */
-import type { InvalidationEvent, ProjectionDomain } from '../stores/RealtimeContext';
+import type { InvalidationEvent, ProjectionDomain } from '../types/contracts';
 
 /** Path matches when it equals the tracked path or either is a prefix of the other. */
 export function pathRelated(trackedPath: string, eventPath: string): boolean {

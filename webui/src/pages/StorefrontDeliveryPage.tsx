@@ -1,24 +1,22 @@
 import { ArrowLeft, Clock3, Download, FileArchive, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BuyerDeliveryDownloadButton } from '../components/storefront/BuyerDeliveryDownloadButton';
 import { StorefrontShell } from '../components/storefront/StorefrontShell';
-import { createShopApi } from '../api/shop';
-import { useAuth } from '../hooks/useAuth';
+import { useShopApi } from '../hooks/usePageApis';
 import { useI18n } from '../hooks/useI18n';
 
 import type { DeliveryInfo, ShopBuyerOrder } from '../types/api';
 
 
 export default function StorefrontDeliveryPage() {
-  const { api } = useAuth();
   const { t } = useI18n();
   const { token } = useParams<{ token: string }>();
   const [searchParams] = useSearchParams();
   // The route parameter is named `:token` but carries the order id in the new
   // share-claim link format; the mode is chosen by the presence of `?claim=`.
   const claim = searchParams.get('claim');
-  const shopApi = useMemo(() => createShopApi(api), [api]);
+  const shopApi = useShopApi();
   const [delivery, setDelivery] = useState<DeliveryInfo | null>(null);
   const [claimOrder, setClaimOrder] = useState<ShopBuyerOrder | null>(null);
   const [loading, setLoading] = useState(true);

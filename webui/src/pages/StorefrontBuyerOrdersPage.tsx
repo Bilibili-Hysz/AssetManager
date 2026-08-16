@@ -1,10 +1,9 @@
 import { AlertCircle, ArrowLeft, ExternalLink, KeyRound, PackageSearch } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StorefrontShell } from '../components/storefront/StorefrontShell';
 import { formatMoney } from '../components/storefront/types';
-import { createShopApi } from '../api/shop';
-import { useAuth } from '../hooks/useAuth';
+import { useShopApi } from '../hooks/usePageApis';
 import { useI18n } from '../hooks/useI18n';
 import type { ShopBuyerOrder, ShopOrderStatus } from '../types/api';
 
@@ -26,8 +25,7 @@ function formatOrderDate(timestamp: number): string {
 
 export default function StorefrontBuyerOrdersPage() {
   const { t } = useI18n();
-  const { api } = useAuth();
-  const shop = useMemo(() => createShopApi(api), [api]);
+  const shop = useShopApi();
   const [status, setStatus] = useState<ShopOrderStatus | ''>('');
   const [orders, setOrders] = useState<ShopBuyerOrder[]>([]);
   const [total, setTotal] = useState<number | undefined>();
@@ -40,48 +38,84 @@ export default function StorefrontBuyerOrdersPage() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+  // Each status change (or retry trigger) invalidates in-flight listing
+  // requests: the generation counter identifies the logical request and the
+  // controller aborts the underlying fetch.
+  const loadGenerationRef = useRef(0);
+  const loadAbortRef = useRef<AbortController | null>(null);
+  // Last-committed filter; reads current status at response time so a stale
+  // response for a superseded filter cannot commit state.
+  const statusRef = useRef(status);
+  statusRef.current = status;
 
   useEffect(() => {
-    let cancelled = false;
+    const generation = ++loadGenerationRef.current;
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
+    const requestedStatus = status;
     setLoading(true);
     setLoadFailed(false);
+    setLoadingMore(false);
+    setLoadMoreFailed(false);
     // Pagination note: the backend supports keyset pagination on
     // shop/buyer/orders via the cursor query parameter and returns a
     // next_cursor when more rows exist. It does not return a total count,
     // so the counter falls back to the fetched page size.
-    void shop.listBuyerOrders(status || undefined, ORDER_LIMIT)
+    void shop.listBuyerOrders(requestedStatus || undefined, ORDER_LIMIT, undefined, controller.signal)
       .then(response => {
-        if (cancelled) return;
+        // Commit only if this exact request is still the latest for the same
+        // filter and was not aborted.
+        if (controller.signal.aborted) return;
+        if (generation !== loadGenerationRef.current) return;
+        if (requestedStatus !== statusRef.current) return;
         setOrders(response.orders ?? []);
         setTotal(response.total ?? response.orders?.length);
         setNextCursor(response.next_cursor ?? null);
         setLoadMoreFailed(false);
       })
       .catch(() => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
+        if (generation !== loadGenerationRef.current) return;
+        if (requestedStatus !== statusRef.current) return;
         setOrders([]);
         setTotal(undefined);
         setNextCursor(null);
         setLoadFailed(true);
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (controller.signal.aborted) return;
+        if (generation !== loadGenerationRef.current) return;
+        if (requestedStatus === statusRef.current) setLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => controller.abort();
   }, [loadRetryToken, shop, status]);
 
   const loadMore = async () => {
     if (!nextCursor || loadingMore) return;
+    const generation = loadGenerationRef.current;
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
+    const requestedStatus = status;
     setLoadingMore(true);
     setLoadMoreFailed(false);
     try {
-      const response = await shop.listBuyerOrders(status || undefined, ORDER_LIMIT, nextCursor);
+      const response = await shop.listBuyerOrders(requestedStatus || undefined, ORDER_LIMIT, nextCursor, controller.signal);
+      if (controller.signal.aborted) return;
+      if (generation !== loadGenerationRef.current) return;
+      if (requestedStatus !== statusRef.current) return;
       setOrders(prev => [...prev, ...(response.orders ?? [])]);
       setNextCursor(response.next_cursor ?? null);
     } catch {
+      if (controller.signal.aborted) return;
+      if (generation !== loadGenerationRef.current) return;
+      if (requestedStatus !== statusRef.current) return;
       setLoadMoreFailed(true);
     } finally {
-      setLoadingMore(false);
+      if (!controller.signal.aborted && generation === loadGenerationRef.current && requestedStatus === statusRef.current) {
+        setLoadingMore(false);
+      }
     }
   };
 

@@ -4,8 +4,7 @@ import { formatMoney, type SellerPageProps } from '../components/storefront/type
 import { useI18n } from '../hooks/useI18n';
 import { useCommerceOrders } from '../hooks/useCommerce';
 import { useMemo, useState } from 'react';
-import { createShopApi } from '../api/shop';
-import { useAuth } from '../hooks/useAuth';
+import { useShopApi } from '../hooks/usePageApis';
 import { useToast } from '../components/ui/Toast';
 import type { FulfillOrderResponse } from '../types/api';
 
@@ -28,11 +27,10 @@ function buildShareDeliveryUrl(result: FulfillOrderResponse, fallbackOrderId: st
 
 export default function SellerOrdersPage({ seller, orders = [] }: SellerPageProps) {
   const { t } = useI18n();
-  const { api } = useAuth();
   const { showToast } = useToast();
   const commerceOrders = useCommerceOrders();
   const visibleOrders = orders.length > 0 ? orders : commerceOrders.orders;
-  const shopApi = useMemo(() => createShopApi(api), [api]);
+  const shopApi = useShopApi();
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('all');
   const [pendingId, setPendingId] = useState<string | null>(null);

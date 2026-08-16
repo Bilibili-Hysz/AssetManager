@@ -1,10 +1,9 @@
 import { Check, Save, ShieldCheck, XCircle } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { StorefrontShell } from '../components/storefront/StorefrontShell';
 import type { SellerPageProps } from '../components/storefront/types';
-import { createShopApi } from '../api/shop';
+import { useSellerShopApi } from '../hooks/usePageApis';
 import { useI18n } from '../hooks/useI18n';
-import { useSellerAuth } from '../stores/SellerAuthContext';
 import { useToast } from '../components/ui/Toast';
 import type { ShopSellerProfile } from '../types/api';
 
@@ -18,9 +17,8 @@ const EMPTY_PROFILE: ShopSellerProfile = {
 
 export default function SellerSettingsPage({ seller }: SellerPageProps) {
   const { t } = useI18n();
-  const { sellerApi } = useSellerAuth();
   const { showToast } = useToast();
-  const shopApi = useMemo(() => createShopApi(sellerApi), [sellerApi]);
+  const shopApi = useSellerShopApi();
   const [profile, setProfile] = useState<ShopSellerProfile>(EMPTY_PROFILE);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

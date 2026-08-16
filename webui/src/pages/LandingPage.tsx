@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ArrowRight, Moon, RefreshCw, SlidersHorizontal, Sun, X } from 'lucide-react';
 import { Link, Navigate } from 'react-router-dom';
-import { createMetadataApi } from '../api/metadata';
+import { useMetadataApi } from '../hooks/usePageApis';
 import { LayeredPreview } from '../components/files/LayeredPreview';
 import { useAuth } from '../hooks/useAuth';
 import { useCachedQuery } from '../hooks/useCachedQuery';
@@ -136,9 +136,9 @@ function useReducedMotion(): boolean {
 }
 
 export default function LandingPage() {
-  const { serverInfo, isLoading, isAuthenticated, role, api, serviceUnavailable, retryConnect } = useAuth();
+  const { serverInfo, isLoading, isAuthenticated, role, serviceUnavailable, retryConnect } = useAuth();
   const { t } = useI18n();
-  const metadataApi = useMemo(() => createMetadataApi(api), [api]);
+  const metadataApi = useMetadataApi();
   const { theme, toggleTheme: toggleSharedTheme } = useTheme();
   const isProtected = Boolean(serverInfo?.auth_enabled && (!isAuthenticated || role === 'guest'));
   const [previewPool, setPreviewPool] = useState<PreviewPoolItem[]>([]);

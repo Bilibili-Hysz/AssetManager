@@ -1,18 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAuthContext } from './AuthContext';
 import { WebSocketTransportHost, type WebSocketStatus } from '../hooks/useWebSocket';
+import type { InvalidationEvent, ProjectionDomain, RuntimeCursor } from '../types/contracts';
 
-export type ProjectionDomain =
-  | 'files' | 'tree' | 'home' | 'project_detail' | 'metadata' | 'favorites'
-  | 'tags' | 'shares' | 'users' | 'activity' | 'online_users' | 'stats'
-  | 'shop' | 'orders' | 'quota';
-
-export interface RuntimeCursor { epoch: string; revision: number }
-export interface InvalidationEvent extends RuntimeCursor {
-  type: 'projection_invalidated';
-  domains: ProjectionDomain[];
-  paths: string[];
-}
+// Single-source re-exports: the runtime cursor / invalidation contract lives
+// in the generated types/contracts.ts (backend DTO), not in this store.
+export type { InvalidationEvent, ProjectionDomain, RuntimeCursor } from '../types/contracts';
 
 export interface RealtimeContextValue extends RuntimeCursor {
   status: WebSocketStatus;
@@ -38,7 +31,7 @@ type RecoveryIntent = {
 /** Upper bound for a single recovery fetch; a hung request must not pin recoveryRef forever. */
 const RECOVERY_TIMEOUT_MS = 10_000;
 const projectionDomains = new Set<ProjectionDomain>([
-  'files', 'tree', 'home', 'project_detail', 'metadata', 'favorites', 'tags', 'shares', 'users', 'activity', 'online_users', 'stats', 'shop', 'orders', 'quota',
+  'files', 'tree', 'home', 'project_detail', 'metadata', 'favorites', 'tags', 'shares', 'users', 'activity', 'online_users', 'shop', 'orders', 'quota',
 ]);
 
 function isCursor(value: unknown): value is RuntimeCursor {

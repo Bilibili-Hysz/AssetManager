@@ -27,8 +27,10 @@ constants so reviewers can audit the contract at a glance:
 Two dataclasses are rendered specially rather than mechanically: ``TreeItem``
 recurses into itself, and ``ProjectionInvalidationResponse`` is exposed to the
 webui as ``InvalidationEvent`` (an extension of ``RuntimeCursor`` carrying an
-extra ``type`` discriminant).  ``ProjectionDomain`` is a literal union emitted
-at the end of the file.
+extra ``type`` discriminant).  ``ProjectionDomain`` is parsed directly from
+the backend ``ProjectionDomain`` StrEnum in
+``AssetsManager/application/runtime_events.py`` — the generator never holds
+its own copy of the domain list.
 """
 from __future__ import annotations
 
@@ -40,6 +42,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DTO_PATH = ROOT / "AssetsManager" / "lan" / "dto.py"
+RUNTIME_EVENTS_PATH = ROOT / "AssetsManager" / "application" / "runtime_events.py"
 CONTRACTS_PATH = ROOT / "webui" / "src" / "types" / "contracts.ts"
 
 HEADER = (
@@ -80,13 +83,9 @@ FIELD_TYPE_OVERRIDE: dict[tuple[str, str], str] = {
     ("ProjectionInvalidationResponse", "paths"): "string[]",
 }
 
-# ProjectionDomain literal union; ``domains`` on the invalidation response is
-# widened to ``ProjectionDomain[]`` via FIELD_TYPE_OVERRIDE.
-PROJECTION_DOMAIN_LITERALS = (
-    "files", "tree", "home", "project_detail", "metadata", "favorites",
-    "tags", "shares", "users", "activity", "online_users", "stats",
-    "shop", "orders", "quota",
-)
+# ProjectionDomain is parsed from the backend enum; see
+# ``_parse_projection_domains`` below. ``domains`` on the invalidation
+# response is widened to ``ProjectionDomain[]`` via FIELD_TYPE_OVERRIDE.
 
 _SCALAR_MAP: dict[str, str] = {
     "str": "string",
@@ -255,9 +254,29 @@ def _render_special(cls_name: str) -> str:
     raise AssertionError(f"not a special render: {cls_name}")
 
 
-def _render_projection_domain() -> str:
-    literals = "\n  | ".join(f"'{literal}'" for literal in PROJECTION_DOMAIN_LITERALS)
-    return "export type ProjectionDomain =\n  | " + literals + ";\n"
+def _parse_projection_domains(source: str) -> tuple[str, ...]:
+    """Extract the ``ProjectionDomain`` StrEnum values from runtime_events.py."""
+    module = ast.parse(source)
+    for node in module.body:
+        if not isinstance(node, ast.ClassDef) or node.name != "ProjectionDomain":
+            continue
+        domains: list[str] = []
+        for statement in node.body:
+            if isinstance(statement, ast.Assign):
+                for target in statement.targets:
+                    if isinstance(target, ast.Name) and isinstance(
+                        statement.value, ast.Constant
+                    ) and isinstance(statement.value.value, str):
+                        domains.append(statement.value.value)
+        if domains:
+            return tuple(domains)
+        break
+    raise RuntimeError("ProjectionDomain enum not found in runtime_events.py")
+
+
+def _render_projection_domain(literals: tuple[str, ...]) -> str:
+    values = "\n  | ".join(f"'{literal}'" for literal in literals)
+    return "export type ProjectionDomain =\n  | " + values + ";\n"
 
 
 def generate_contracts_ts() -> str:
@@ -270,6 +289,9 @@ def generate_contracts_ts() -> str:
     source = DTO_PATH.read_text(encoding="utf-8")
     classes = _parse_dataclasses(source)
     renderer = _TypeRenderer()
+    projection_domains = _parse_projection_domains(
+        RUNTIME_EVENTS_PATH.read_text(encoding="utf-8")
+    )
 
     blocks: dict[str, str] = {}
     for cls_name, fields in classes:
@@ -285,7 +307,7 @@ def generate_contracts_ts() -> str:
         if name == "RuntimeCursor":
             continue
         parts.append(blocks[name] + "\n")
-    parts.append(_render_projection_domain())
+    parts.append(_render_projection_domain(projection_domains))
     return "\n".join(parts)
 
 

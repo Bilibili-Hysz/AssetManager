@@ -2,7 +2,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useInvalidation } from './useInvalidation';
-import type { InvalidationEvent, ProjectionDomain } from '../stores/RealtimeContext';
+import type { InvalidationEvent, ProjectionDomain } from '../types/contracts';
 
 const mockRegister = vi.fn();
 const mockRealtime = {

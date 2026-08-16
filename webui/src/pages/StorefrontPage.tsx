@@ -8,8 +8,7 @@ import { StorefrontShell } from '../components/storefront/StorefrontShell';
 import type { StorefrontData, StorefrontProduct } from '../components/storefront/types';
 import type { ShopPublicSellerProfile } from '../types/api';
 import { useCommerceCatalog } from '../hooks/useCommerce';
-import { useAuth } from '../hooks/useAuth';
-import { createShopApi } from '../api/shop';
+import { useShopApi } from '../hooks/usePageApis';
 
 export interface StorefrontPageProps {
   storefront?: StorefrontData;
@@ -17,8 +16,7 @@ export interface StorefrontPageProps {
 
 export default function StorefrontPage({ storefront }: StorefrontPageProps) {
   const { t } = useI18n();
-  const { api } = useAuth();
-  const shopApi = useMemo(() => createShopApi(api), [api]);
+  const shopApi = useShopApi();
   const [preview, setPreview] = useState<StorefrontProduct | null>(null);
   const [publicProfile, setPublicProfile] = useState<ShopPublicSellerProfile | null>(null);
   const catalog = useCommerceCatalog();
