@@ -26,11 +26,10 @@ from AssetsManager.lan.path_guard import MissingPathError, PathEscapeError, Path
 
 _log = logging.getLogger(__name__)
 
-_zip_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
-
 LAN_APP_KEY = web.AppKey("lan", object)
 AUTH_SERVICE_APP_KEY = web.AppKey("auth_service", object)
 PRINCIPAL_REQUEST_KEY = web.RequestKey("principal", object)
+ZIP_EXECUTOR_APP_KEY = web.AppKey("zip_executor", object)
 
 _format_size = format_size
 
@@ -228,6 +227,7 @@ __all__ = [
     "set_share_cookie",
     "validate_path",
     "validated_existing_key",
+    "ZIP_EXECUTOR_APP_KEY",
 ]
 
 
@@ -494,6 +494,37 @@ def build_zip_sync(target_paths: list[tuple[Path, str | None]], zip_path: str) -
         return None
 
 
-async def build_zip_async(targets: list[tuple[Path, str | None]], zip_path: str) -> str | None:
+def _zip_executor_for(request: web.Request | None) -> concurrent.futures.Executor | None:
+    """Resolve the LAN-owned ZIP executor for a request.
+
+    L3: the executor is owned by the LAN server instance (published on the
+    application key) so shutdown can close it symmetrically. Legacy test
+    apps and request-less call paths return None and fall back to the
+    loop's default executor.
+    """
+    if request is None:
+        return None
+    app = request.app
+    executor = app.get(ZIP_EXECUTOR_APP_KEY) if isinstance(app, web.Application) else None
+    if isinstance(executor, concurrent.futures.Executor):
+        return executor
+    try:
+        executor = getattr(get_lan(request), "_zip_executor", None)
+    except Exception:
+        return None
+    if isinstance(executor, concurrent.futures.Executor):
+        return executor
+    return None
+
+
+async def build_zip_async(
+    request: web.Request | None,
+    targets: list[tuple[Path, str | None]],
+    zip_path: str,
+) -> str | None:
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(_zip_executor, build_zip_sync, targets, zip_path)
+    executor = _zip_executor_for(request)
+    if executor is None:
+        # Legacy test/mocked app without a server-provided executor.
+        return await loop.run_in_executor(None, build_zip_sync, targets, zip_path)
+    return await loop.run_in_executor(executor, build_zip_sync, targets, zip_path)

@@ -347,7 +347,7 @@ def test_delivery_request_key_is_forwarded_and_prepare_failure_is_recorded(
 
     _install_services(monkeypatch, tmp_path, Orders())
 
-    async def fail_zip(_entries, _destination):
+    async def fail_zip(*_args):
         return None
 
     from AssetsManager.lan.routes import _helpers
@@ -373,7 +373,7 @@ def test_delivery_zip_failure_does_not_consume_quota(monkeypatch, tmp_path):
     target.mkdir()
     calls = []
 
-    async def fail_zip(_entries, _destination):
+    async def fail_zip(*_args):
         return None
 
     from AssetsManager.lan.routes import _helpers

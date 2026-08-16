@@ -230,7 +230,7 @@ async def _delivery_file_response(
     fd, zip_path = tempfile.mkstemp(suffix=".zip")
     os.close(fd)
     try:
-        result = await build_zip_async([(target, None)], zip_path)
+        result = await build_zip_async(request, [(target, None)], zip_path)
     except Exception:
         mark_failed()
         try:

@@ -166,7 +166,12 @@
 
 **状态：已完成** —— `RoutePolicy` 新增 `browse` 限流档并在 security 中间件接入独立 `browse_rate_limiter`（600/min/IP），gallery/search/tree/home/favorites/files/projects/tags/quicksearch/info/notes/activity/quota/tunnel-status 从 skip 迁入 browse，skip 只保留 image/thumbnails/stats/revision/ws/assets；`_helpers.oversized_query`（`q`≤256）接入 `/api/search` 与 `/api/quicksearch`，超限 400 `bad_request`；access-key PBKDF2 全部经 `asyncio.to_thread` 出事件循环（`_auth_middleware` 双路径 + `/api/auth/verify_key`）；`test_l2_rate_input_cpu.py` 锁定 browse 预算隔离、q 边界与 to_thread 接线，route policy 契约测试冻结新分级。
 - **批次 L3 — 线程资源对称关闭**：prewarm thread 注册 + join；gallery 构建循环检查 `_closed`；zip executor 改实例持有并 shutdown。
+
+**状态：已完成** —— `_zip_executor` 移除模块级全局，改为 LAN server 实例持有（`thread_name_prefix="lan-zip"`，经 `ZIP_EXECUTOR_APP_KEY` 发布给路由），`_shutdown` 执行 `shutdown(wait=False, cancel_futures=True)`；`build_zip_async` 改经 request 解析实例 executor（legacy 测试 app 回退 loop 默认执行器）；server 跟踪 `_gallery_prewarm_thread` 并在关闭 gallery service 后 `_join_gallery_prewarm`（10s 有界 join）；`_build_home_background` 在 pre_wait 后检查 `_closed`，与既有 `_visible_entries/_aggregate_project` 逐目录取消检查一起保证关闭后不再发起最后一次全库遍历；`tests/lan/test_l3_thread_resources.py` 锁定所有权与 join 语义。
+
 - **批次 L4 — shop.py 子域拆分 + 表驱动注册**：`routes/shop/` 五个子模块，api.py 用 `(method, path, handler, policy)` 表声明，与 L1 同批落地。
+
+**状态：已完成（G3 提前落地）** —— `routes/shop/` 已拆为五个子模块，`api.py` 表驱动注册与 L1 的能力声明同批闭环。
 
 ---
 

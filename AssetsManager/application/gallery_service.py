@@ -250,6 +250,10 @@ class GalleryService(_GalleryPersistenceMixin, _GalleryProjectionMixin, _Gallery
         try:
             if pre_wait is not None:
                 pre_wait()
+            if self._closed:
+                # The service was closed while the prewarm waited out the
+                # scanner; do not start one last full-library walk.
+                return
             self._compute_home(root_key)
         except Exception:
             _log.exception("Background gallery home build failed for %s", root_key)

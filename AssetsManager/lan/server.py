@@ -15,7 +15,7 @@ from AssetsManager.lan.api import setup_routes, stop_runtime_realtime
 from AssetsManager.lan.auth import hash_key, hash_password, is_password_hash, verify_key, verify_token, verify_auth_token
 from AssetsManager.lan.guarded_tunnel import _GuardedTunnel
 from AssetsManager.lan.routes._errors import error_response
-from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY, LAN_APP_KEY, ActivityLog, OnlineUsers, LanScopedServices
+from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY, LAN_APP_KEY, ZIP_EXECUTOR_APP_KEY, ActivityLog, OnlineUsers, LanScopedServices
 from AssetsManager.lan.runtime_validation import (
     _MISSING,
     _derive_local_ui_auth_secret,
@@ -88,6 +88,13 @@ class _LanServerImpl:
         self._tunnel = TunnelManager()
         self._tunnel_start_block_reason: str | None = None
         self._blur_tags = set(blur_tags or [])
+        # L3: ZIP builds run on a server-owned bounded executor (published on
+        # the app in _build_app) so shutdown can cancel/close it; the gallery
+        # prewarm thread is tracked so shutdown can join it.
+        self._zip_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="lan-zip"
+        )
+        self._gallery_prewarm_thread: threading.Thread | None = None
 
         # Security
         self._rate_limit_value = rate_limit
@@ -300,6 +307,7 @@ class _LanServerImpl:
         app = web.Application(middlewares=[security_mw, self._metrics_middleware, self._auth_middleware])
         self._app = app
         app[LAN_APP_KEY] = self
+        app[ZIP_EXECUTOR_APP_KEY] = self._zip_executor
         setup_routes(app)
 
     def _tunnel_active(self) -> bool:
@@ -1259,8 +1267,32 @@ class _LanServerImpl:
         thread = threading.Thread(
             target=lambda: gallery.prewarm_home(root, pre_wait=wait_for_scanner),
             daemon=True,
+            name="lan-gallery-prewarm",
         )
+        self._gallery_prewarm_thread = thread
         thread.start()
+
+    def _join_gallery_prewarm(self, timeout: float = 10.0) -> None:
+        """Join the tracked gallery prewarm thread after closing the service.
+
+        gallery.close() sets ``_closed``, which the build loop checks on every
+        directory visit; the join therefore normally returns quickly. The
+        bounded timeout keeps shutdown responsive if a pathological walk is
+        stuck inside a single syscall.
+        """
+        thread = getattr(self, "_gallery_prewarm_thread", None)
+        if thread is None:
+            return
+        if thread is threading.current_thread():
+            return
+        thread.join(timeout)
+        if thread.is_alive():
+            _log.warning(
+                "Gallery prewarm thread did not stop within %.1fs during shutdown",
+                timeout,
+            )
+            return
+        self._gallery_prewarm_thread = None
 
     def _revoke_seller_sessions(self) -> None:
         """Revoke every already-assembled Seller service before shutdown.
@@ -1324,6 +1356,19 @@ class _LanServerImpl:
                 gallery.close()
             except Exception:
                 _log.exception("Failed to stop gallery service during LAN shutdown")
+        # L3: after closing the gallery service (which signals its build
+        # loops), join the server-tracked prewarm thread so shutdown never
+        # leaves a daemon traversal running past the request teardown.
+        self._join_gallery_prewarm()
+        zip_executor = getattr(self, "_zip_executor", None)
+        if zip_executor is not None:
+            try:
+                # wait=False keeps the event loop responsive; in-flight ZIP
+                # work observes the same request teardown as every other
+                # route resource and is cancelled via cancel_futures.
+                zip_executor.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                _log.exception("Failed to shutdown LAN zip executor")
         self._revoke_seller_sessions()
         try:
             stop_runtime_realtime(self)

@@ -184,7 +184,7 @@ async def handle_download(request):
             import tempfile
             tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip")
             os.close(tmp_fd)
-            result = await build_zip_async([(target, None)], tmp_path)
+            result = await build_zip_async(request, [(target, None)], tmp_path)
             if result is None:
                 try:
                     os.unlink(tmp_path)
@@ -286,7 +286,7 @@ async def handle_batch_download(request):
         import tempfile
         tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip")
         os.close(tmp_fd)
-        result = await build_zip_async([(target, None) for _, target in targets], tmp_path)
+        result = await build_zip_async(request, [(target, None) for _, target in targets], tmp_path)
         if result is None:
             try:
                 os.unlink(tmp_path)
