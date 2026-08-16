@@ -22,6 +22,32 @@ POLICY_KEY = web.AppKey("route_policy", dict[tuple[str, str], "RoutePolicy"])
 AuthMode = Literal["required", "public", "public_optional"]
 RateLimitClass = Literal["general", "skip", "auth_strict"]
 
+# Declarative authorization capabilities (L1). Each write route names the
+# ability it requires instead of relying on a handler remembering to check.
+# Principal-backed names mirror ``principal.Capabilities`` fields; the rest
+# are checked by ``lan/authorization.py`` (some against seller/buyer state).
+KNOWN_CAPABILITIES = frozenset({
+    # Principal capabilities (checked against principal.capabilities).
+    "browse", "preview", "download", "manage_links", "manage_users",
+    "settings", "realtime",
+    # Helper-backed write gates.
+    "write_notes", "write_tags", "admin_tags", "admin_users",
+    # Commerce gates (seller session / guest buyer tokens).
+    "seller", "buyer_cart", "buyer_wishlist", "buyer_orders", "buyer_claim",
+    # Intentional anonymous entry points: identity bootstrap, share-password
+    # verification, and public analytics signals.
+    "public_auth", "public_signal", "share_verify",
+})
+
+# These capabilities are satisfied by any resolved principal (including
+# guests). They still must be declared so the static gate cannot miss a
+# public write; their safety comes from handler-owned state (buyer tokens,
+# receipts, invite codes, rate-limited login attempts).
+GUEST_ALLOWED_CAPABILITIES = frozenset({
+    "buyer_cart", "buyer_wishlist", "buyer_orders", "buyer_claim",
+    "public_auth", "public_signal", "share_verify",
+})
+
 # aiohttp normalizes "{name:regex}" to "{name}" in a resource's canonical
 # pattern; declarations are normalized the same way so lookups always hit.
 _FORMAT_RE = re.compile(r"\{([^{}]*):[^}]*\}")
@@ -31,6 +57,18 @@ _FORMAT_RE = re.compile(r"\{([^{}]*):[^}]*\}")
 class RoutePolicy:
     auth: AuthMode = "required"
     rate_limit: RateLimitClass = "general"
+    capabilities: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.auth not in ("required", "public", "public_optional"):
+            raise ValueError(f"unknown auth mode: {self.auth!r}")
+        if self.rate_limit not in ("general", "skip", "auth_strict"):
+            raise ValueError(f"unknown rate_limit class: {self.rate_limit!r}")
+        unknown = [c for c in self.capabilities if c not in KNOWN_CAPABILITIES]
+        if unknown:
+            raise ValueError(
+                f"unknown route capabilities: {', '.join(sorted(unknown))}"
+            )
 
 
 DEFAULT_POLICY = RoutePolicy()

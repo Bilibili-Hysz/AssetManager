@@ -159,6 +159,9 @@
 ### 3.3 建议
 
 - **批次 L1 — 声明式授权中间件**：扩展 `RoutePolicy` 增加 `capabilities`；写路由显式声明；新静态门禁拒绝“public/public_optional 的 POST/PUT/PATCH/DELETE 未声明 capability”。
+
+**状态：已完成** —— `RoutePolicy` 新增 `capabilities` 字段并在声明期校验能力词汇表（未知能力 fail-closed）；新增 `lan/authorization.py`，`_auth_middleware` 在进入 handler 前执行 `enforce_capabilities`（principal 能力 / `require_user_write` / `require_admin` / seller 会话，seller 特性关闭时保持历史 404 `feature_disabled` 契约）；55 个写路由全部显式声明能力（principal 型 `browse/preview/download/manage_links`、helper 型 `write_notes/write_tags/admin_tags/admin_users`、commerce 型 `seller/buyer_cart/buyer_wishlist/buyer_orders/buyer_claim`、匿名引导型 `public_auth/public_signal/share_verify`）；`_add` 改为“首注册播种 pattern 级 fallback + 每方法独立声明”，同路径多方法策略不再互相覆盖；新增 `scripts/check_route_capabilities.py`（纯 AST、无 aiohttp 依赖，词汇表直接解析自 `route_policy.KNOWN_CAPABILITIES`）挂 CI；`tests/lan/test_route_capabilities.py` 锁定门禁、单元执行语义与“中间件先于 handler 拒绝 seller 写”的集成行为。
+
 - **批次 L2 — 限流/输入/CPU 出循环**：新增 `browse` 档（如 600/min/IP），仅 image/thumbnails/stats 等可 skip；`q` ≤ 256；`verify_key` `asyncio.to_thread` 或短 TTL。
 - **批次 L3 — 线程资源对称关闭**：prewarm thread 注册 + join；gallery 构建循环检查 `_closed`；zip executor 改实例持有并 shutdown。
 - **批次 L4 — shop.py 子域拆分 + 表驱动注册**：`routes/shop/` 五个子模块，api.py 用 `(method, path, handler, policy)` 表声明，与 L1 同批落地。

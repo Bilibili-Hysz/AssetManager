@@ -1497,18 +1497,28 @@ class _LanServerImpl:
             return False
 
         policy = request_policy(request)
+
+        async def proceed():
+            """Enforce declared capabilities, then dispatch to the handler."""
+            from AssetsManager.lan.authorization import enforce_capabilities
+
+            denied = await enforce_capabilities(request, policy)
+            if denied is not None:
+                return denied
+            return await handler(request)
+
         if policy.auth == "public_optional":
             # Publicly readable, but reflect a valid credential in its
             # normalized identity when one is supplied (/api/info, commerce).
             if self._auth_mode == "none":
                 ensure_guest()
-                return await handler(request)
+                return await proceed()
             try_optional_principal()
             ensure_guest()
-            return await handler(request)
+            return await proceed()
         if policy.auth == "public":
             ensure_guest()
-            return await handler(request)
+            return await proceed()
 
         # Check if any auth is configured
         has_key = self._access_key_hash is not None
@@ -1518,7 +1528,7 @@ class _LanServerImpl:
         # No auth required if nothing configured
         if not has_key and not has_password and not has_users:
             set_request_principal(request, principal_for_request("guest"))
-            return await handler(request)
+            return await proceed()
 
         # Get token from cookie or Authorization header
         from AssetsManager.lan.routes._helpers import get_auth_token
@@ -1530,26 +1540,26 @@ class _LanServerImpl:
         if has_key and token and self._access_key_hash is not None:
             if verify_key(token, self._access_key_hash):
                 set_request_principal(request, principal_for_request("access_key"))
-                return await handler(request)
+                return await proceed()
 
         # Try local UI API token (signed with the auth-config-bound secret)
         local_ui_auth_secret = self.local_ui_auth_secret
         if local_ui_auth_secret and token:
             if verify_auth_token(token, local_ui_auth_secret):
                 set_request_principal(request, principal_for_request("local_ui"))
-                return await handler(request)
+                return await proceed()
 
         # Try user-based token
         if token:
             user = self._auth_service.verify_user_token(token)
             if user:
                 set_request_principal(request, principal_for_request("user", user=user))
-                return await handler(request)
+                return await proceed()
 
         # Try simple password token
         if has_password and token and self._password_hash is not None:
             if verify_token(token, self._password_hash):
                 set_request_principal(request, principal_for_request("password"))
-                return await handler(request)
+                return await proceed()
 
         return error_response("Unauthorized", status=401, code="unauthorized")
