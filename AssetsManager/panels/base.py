@@ -19,6 +19,10 @@ class PanelContent(QWidget):
     directory_selected = Signal(str)
     file_double_clicked = Signal(str)
 
+    # D2: panels override this key; save_state/restore_state then persist
+    # through PanelState instead of touching AppSettings directly.
+    panel_state_key: str = ""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("PanelContent")
@@ -130,13 +134,32 @@ class PanelContent(QWidget):
     # ── Clone / State ─────────────────────────────────────────
 
     def clone(self):
-        return self.__class__()
+        new = self.__class__()
+        new.restore_state(self.save_state())
+        return new
 
     def save_state(self) -> dict:
         return {}
 
     def restore_state(self, state: dict):
         pass
+
+    def panel_state(self):
+        """Return the PanelState binding for this panel's AppSettings key."""
+        from AssetsManager.panels.panel_state import PanelState
+
+        return PanelState(self.panel_state_key)
+
+    def persist_panel_state(self) -> None:
+        """Persist this panel's save_state snapshot under panel_state_key."""
+        if self.panel_state_key:
+            self.panel_state().persist(self)
+
+    def restore_panel_state(self) -> bool:
+        """Restore this panel from panel_state_key; no-op without a key."""
+        if not self.panel_state_key:
+            return False
+        return self.panel_state().load(self)
 
     # ── Header ───────────────────────────────────────────────
 

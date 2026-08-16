@@ -162,21 +162,29 @@ class TabContainer(PanelContent):
 
     def clone(self):
         new = TabContainer()
-        fl = self.current_file_list()
-        if fl:
-            new._add_tab(fl.current_path)
+        new.restore_state(self.save_state())
         return new
 
     def save_state(self) -> dict:
         paths = []
+        panels = []
         for i in range(self._tabs.count()):
             panel = self._tabs_to_filelists.get(i)
             if panel:
                 paths.append(panel.current_path)
-        return {"tabs": paths, "active": self._tabs.currentIndex()}
+                panels.append(panel.save_state())
+            else:
+                paths.append("")
+                panels.append({})
+        return {
+            "tabs": paths,
+            "active": self._tabs.currentIndex(),
+            "panels": panels,
+        }
 
     def restore_state(self, state: dict):
         paths = state.get("tabs", [])
+        panels = state.get("panels", [])
         active = state.get("active", 0)
         if not paths:
             return
@@ -197,6 +205,16 @@ class TabContainer(PanelContent):
         fl = self.current_file_list()
         if fl and paths:
             fl.navigate_to(paths[0], set_root=True)
+            for path in paths[1:]:
+                if path:
+                    self._add_tab(path)
+        for index, panel_state in enumerate(panels):
+            panel = self._tabs_to_filelists.get(index)
+            if panel is not None and isinstance(panel_state, dict):
+                panel.restore_state(panel_state)
+        active = int(active) if isinstance(active, (int, float)) else 0
+        if 0 <= active < self._tabs.count():
+            self._tabs.setCurrentIndex(active)
         for p in paths[1:]:
             self._add_tab(p)
         if active < self._tabs.count():

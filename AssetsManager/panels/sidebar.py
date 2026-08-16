@@ -92,6 +92,7 @@ class SidebarPanel(PanelContent):
 
     ROOTS = [str(Path.home()), str(Path.home() / "Documents"),
              str(Path.home() / "Downloads"), str(Path.home() / "Pictures")]
+    panel_state_key = "sidebar_depth_cfg"
 
     def __init__(self, parent=None, *, _shared_sources: dict | None = None, _populate: bool = True):
         super().__init__(parent)
@@ -230,16 +231,10 @@ class SidebarPanel(PanelContent):
         self._connect_bus(bus().ui_scale_changed, self._on_theme_changed)
 
     def _restore_depth_cfg(self):
-        from AssetsManager.core.settings import AppSettings
         try:
-            cfg = AppSettings.instance().get("sidebar_depth_cfg")
-            if isinstance(cfg, dict):
-                self._depth = cfg.get("depth", 2)
-                self._branch_depths = cfg.get("branch_depths", {}) or {}
-                self._show_favs = cfg.get("show_favs", True)
-                self._show_recs = cfg.get("show_recs", True)
-                self._show_filter = cfg.get("show_filter", True)
-                bus().sidebar_depth_changed.emit(self._depth, dict(self._branch_depths))
+            state = self.panel_state().read()
+            if state is not None:
+                self.restore_state(state, populate=False)
         except Exception as exc:
             _log.warning("Failed to restore sidebar depth config: %s", exc)
 
@@ -1185,16 +1180,7 @@ class SidebarPanel(PanelContent):
             self._depth = r["global_depth"]
             self._branch_depths = r["branch_depths"]
             bus().sidebar_depth_changed.emit(self._depth, dict(self._branch_depths))
-            from AssetsManager.core.settings import AppSettings
-            cfg = {
-                "depth": self._depth,
-                "branch_depths": self._branch_depths,
-                "show_favs": self._show_favs,
-                "show_recs": self._show_recs,
-                "show_filter": self._show_filter,
-            }
-            AppSettings.instance().set("sidebar_depth_cfg", cfg)
-            AppSettings.instance().save()
+            self.persist_panel_state()
             self._populate()
 
     # ── Clone / State ───────────────────────────────────────────────
@@ -1228,7 +1214,7 @@ class SidebarPanel(PanelContent):
             "rec_expanded": self._rec_expanded,
         }
 
-    def restore_state(self, state: dict):
+    def restore_state(self, state: dict, *, populate: bool = True):
         """Apply a saved layout snapshot and rebuild the tree to match."""
         if not isinstance(state, dict):
             return
@@ -1257,5 +1243,6 @@ class SidebarPanel(PanelContent):
             if isinstance(value, bool) or value is None:
                 setattr(self, f"_{key}", value)
         self._search.setVisible(self._show_filter)
-        self._populate()
+        if populate:
+            self._populate()
         bus().sidebar_depth_changed.emit(self._depth, dict(self._branch_depths))

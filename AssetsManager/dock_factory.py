@@ -58,7 +58,7 @@ class _DockPanel(Protocol):
 
 
 def create(title: str = "Panel", parent: QMainWindow | None = None, area=Qt.DockWidgetArea.RightDockWidgetArea,
-           panel_type: str = "empty"):
+           panel_type: str = "empty", widget: QWidget | None = None):
     panel_info = PANELS.get(panel_type)
     if panel_info:
         i18n_key, panel_cls = panel_info
@@ -66,7 +66,7 @@ def create(title: str = "Panel", parent: QMainWindow | None = None, area=Qt.Dock
     else:
         i18n_key = "dock.empty"
         panel_cls = EmptyPanel
-    widget = panel_cls()
+    widget = widget if widget is not None else panel_cls()
 
     dock = QDockWidget(title, parent)
     dock.setWidget(widget)
@@ -218,7 +218,14 @@ def _close_dock(dock, window=None):
 def _split(dock, window, orientation):
     if window is None:
         return
-    new_dock = create(tr("dock.new"), window, window.dockWidgetArea(dock))
+    source = dock.widget()
+    clone = getattr(source, "clone", None)
+    cloned = clone() if callable(clone) else None
+    if isinstance(cloned, QWidget):
+        new_dock = create(tr("dock.new"), window, window.dockWidgetArea(dock),
+                          widget=cloned)
+    else:
+        new_dock = create(tr("dock.new"), window, window.dockWidgetArea(dock))
     window.splitDockWidget(dock, new_dock, orientation)
 
 

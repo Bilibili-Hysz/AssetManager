@@ -394,6 +394,21 @@ class WorkspaceSection(QWidget):
         return self._tabs.tab_paths()
 
     def restore_tabs(self, paths: list[str]):
+        # Legacy callers restore tabs sequentially and expect the last added
+        # tab to stay active; -1 keeps the current index instead of forcing 0.
+        self.restore_state({"tabs": paths, "active": -1})
+
+    def save_state(self) -> dict:
+        """Snapshot workspace tabs and the active library index."""
+        return {
+            "tabs": self.tab_paths(),
+            "active": self._tabs.currentIndex(),
+        }
+
+    def restore_state(self, state: dict) -> None:
+        """Restore workspace tabs, tolerating malformed persisted state."""
+        paths = state.get("tabs", [])
+        active = state.get("active", 0)
         for path in paths:
             # Hand-edited settings may contain non-string entries; skip them
             # instead of letting a TypeError abort the whole restore.
@@ -413,6 +428,9 @@ class WorkspaceSection(QWidget):
                 except Exception:
                     pass
                 _log.exception("Failed to restore workspace tab: %s", path)
+        active = int(active) if isinstance(active, (int, float)) else 0
+        if 0 <= active < self._tabs.count():
+            self._tabs.setCurrentIndex(active)
 
     def current_library(self) -> str | None:
         return self._tabs.current_library()

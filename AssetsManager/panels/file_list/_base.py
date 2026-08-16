@@ -77,6 +77,8 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
     file_double_clicked = Signal(str)
     folder_entered = Signal(str)
 
+    panel_state_key = "file_list_view_state"
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.content_layout.setContentsMargins(1, 0, 1, 1)
@@ -1233,8 +1235,46 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def clone(self):
         new = FileListPanel()
-        new.navigate_to(str(self._current))
+        new.restore_state(self.save_state())
         return new
+
+    def save_state(self) -> dict:
+        """Snapshot view mode, sort/filter, and per-directory view memory."""
+        return {
+            "current": str(self._current),
+            "view": self._view_mode,
+            "sort": self._model._sort_key,
+            "ascending": self._model.sort_ascending,
+            "filter": self._model._filter_text,
+            "category": self._model._filter_cat,
+            "hidden": self._model.show_hidden,
+            "view_memory": dict(self._view_memory),
+        }
+
+    def restore_state(self, state: dict) -> None:
+        """Apply a saved view snapshot without re-opening a library root."""
+        if not isinstance(state, dict):
+            return
+        view = state.get("view")
+        if isinstance(view, str):
+            index = self._view_combo.findData(view)
+            if index >= 0:
+                self._view_combo.setCurrentIndex(index)
+        self._model.set_sort(
+            str(state.get("sort", "name")),
+            bool(state.get("ascending", True)),
+        )
+        self._model.set_filter(
+            str(state.get("filter", "")),
+            str(state.get("category", "All")),
+        )
+        self._model.set_show_hidden(bool(state.get("hidden", False)))
+        memory = state.get("view_memory")
+        if isinstance(memory, dict):
+            self._view_memory = {str(k): str(v) for k, v in memory.items()}
+        current = state.get("current")
+        if isinstance(current, str) and current and os.path.isdir(current):
+            self.navigate_to(current, set_root=False)
 
     @staticmethod
     def _schedule_library_stats_update(_lib_root: str):

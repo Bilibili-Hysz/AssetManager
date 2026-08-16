@@ -371,6 +371,7 @@ def _install_fake_app_settings(monkeypatch, initial=None):
 
     fake_cls = _FakeAppSettings
     monkeypatch.setattr(info_module, "AppSettings", fake_cls)
+    monkeypatch.setattr("AssetsManager.core.settings.AppSettings", fake_cls)
     return state, fake_cls.instance()
 
 

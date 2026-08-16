@@ -812,6 +812,42 @@ def test_g3_shop_route_modules_stay_within_line_budget() -> None:
         assert len(source.splitlines()) <= 350, name
 
 
+def test_d2_ui_state_persistence_flows_through_panel_state() -> None:
+    ui_keys = ("info_panel_layout", "sidebar_depth_cfg", "dock_widths",
+               "workspace_tabs", "file_list_view_state")
+    for key in ui_keys:
+        assert key in (SRC / "panels" / "panel_state.py").read_text(encoding="utf-8") or any(
+            key in (SRC / relative).read_text(encoding="utf-8")
+            for relative in (
+                "panels/info.py",
+                "panels/sidebar.py",
+                "panels/file_list/_base.py",
+                "window.py",
+            )
+        ), key
+    for relative in ("panels/info.py", "panels/file_list/_base.py", "window.py"):
+        source = (SRC / relative).read_text(encoding="utf-8")
+        assert 'AppSettings.instance().set("info_panel_layout"' not in source, relative
+        assert 'AppSettings.instance().set("workspace_tabs"' not in source, relative
+        assert 'AppSettings.instance().set("dock_widths"' not in source, relative
+
+
+def test_d2_clone_calls_are_wired_to_state_restore() -> None:
+    for relative in (
+        "panels/base.py",
+        "panels/info.py",
+        "panels/sidebar.py",
+        "panels/file_list/_base.py",
+        "widgets/tab_container.py",
+        "dock_factory.py",
+    ):
+        source = (SRC / relative).read_text(encoding="utf-8")
+        assert "clone" in source, relative
+    factory = (SRC / "dock_factory.py").read_text(encoding="utf-8")
+    assert 'clone = getattr(source, "clone", None)' in factory
+    assert "cloned" in factory
+
+
 def test_file_operation_service_delegates_deleted_projection_cleanup() -> None:
     source = (SRC / "application" / "file_operation_service.py").read_text(encoding="utf-8")
     start = source.index("    def _clear_deleted_projection(self, path: Path) -> None:")

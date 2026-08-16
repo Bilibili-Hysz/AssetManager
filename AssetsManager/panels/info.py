@@ -58,6 +58,8 @@ class InfoPanel(PanelContent):
     view_fullscreen = Signal(str)  # request viewer panel
     navigate_requested = Signal(str)  # request file-list navigation
 
+    panel_state_key = "info_panel_layout"
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._library_root = ""
@@ -758,19 +760,29 @@ class InfoPanel(PanelContent):
 
     def _restore_layout_state(self) -> None:
         """Restore saved section visibility and splitter sizes."""
-        try:
-            data = AppSettings.instance().get("info_panel_layout")
-        except Exception:
+        self.restore_panel_state()
+
+    def save_state(self) -> dict:
+        """Snapshot section visibility and splitter sizes for PanelState."""
+        return {
+            # isHidden() reflects the explicit per-section preference even
+            # before the panel itself has been shown (isVisible() would
+            # report False for every section in that case).
+            "sections": {key: not widget.isHidden() for key, widget in self._section_widgets()},
+            "splitter": list(self._splitter.sizes()),
+        }
+
+    def restore_state(self, state: dict) -> None:
+        """Apply a saved layout snapshot."""
+        if not isinstance(state, dict):
             return
-        if not isinstance(data, dict):
-            return
-        sections = data.get("sections")
+        sections = state.get("sections")
         if isinstance(sections, dict):
             for key, widget in self._section_widgets():
                 saved = sections.get(key)
                 if isinstance(saved, bool):
                     widget.setVisible(saved)
-        sizes = data.get("splitter")
+        sizes = state.get("splitter")
         if isinstance(sizes, (list, tuple)) and len(sizes) == 2:
             try:
                 width, height = int(sizes[0]), int(sizes[1])
@@ -780,18 +792,9 @@ class InfoPanel(PanelContent):
                 pass
 
     def _save_layout_state(self) -> None:
-        """Persist section visibility and splitter sizes."""
+        """Persist section visibility and splitter sizes via PanelState."""
         try:
-            data = {
-                # isHidden() reflects the explicit per-section preference even
-                # before the panel itself has been shown (isVisible() would
-                # report False for every section in that case).
-                "sections": {key: not widget.isHidden() for key, widget in self._section_widgets()},
-                "splitter": list(self._splitter.sizes()),
-            }
-            settings = AppSettings.instance()
-            settings.set("info_panel_layout", data)
-            settings.save()
+            self.persist_panel_state()
         except Exception:
             _log.exception("Failed to save InfoPanel layout state")
 
@@ -1577,7 +1580,9 @@ class InfoPanel(PanelContent):
             self._plugin_fields_widget.update()
 
     def clone(self):
-        return InfoPanel()
+        new = InfoPanel()
+        new.restore_state(self.save_state())
+        return new
 
     def flush_pending_changes(self):
         """Persist pending notes before switching libraries or opening a viewer."""

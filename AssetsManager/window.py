@@ -647,32 +647,23 @@ class MainWindow(LanSharingMixin, QMainWindow):
             self._share_toggle_btn.setToolTip(tr("sharing.toggle_tooltip"))
             self._share_toggle_btn.setAccessibleName(tr("sharing.toggle_tooltip"))
 
-    def _save_dock_layout(self):
-        """Save dock sizes to AppSettings for session restore."""
+    @staticmethod
+    def _dock_widths_state(ctx) -> dict:
+        """Snapshot sidebar/info dock widths for PanelState."""
         sizes = []
-        for d in (self.sidebar_dock, self.info_dock):
+        for d in (ctx.sidebar_dock, ctx.info_dock):
             if _alive(d):
                 panel = d.widget()
                 if _alive(panel):
                     sizes.append(panel.width())
-        AppSettings.instance().set("dock_widths", sizes)
-        AppSettings.instance().save()
+        return {"sizes": sizes}
 
-    def _save_workspace_tabs(self):
-        paths = self._workspace.tab_paths()
-        AppSettings.instance().set("workspace_tabs", paths)
-        AppSettings.instance().save()
-
-    def _restore_workspace_tabs(self):
-        paths = AppSettings.instance().get("workspace_tabs")
-        if isinstance(paths, list):
-            self._workspace.restore_tabs(paths)
-
-    def _restore_dock_layout(self):
-        """Restore dock sizes from previous session."""
-        sizes = AppSettings.instance().get("dock_widths")
+    @staticmethod
+    def _restore_dock_widths(ctx, state: dict) -> None:
+        """Apply persisted dock widths."""
+        sizes = state.get("sizes") if isinstance(state, dict) else None
         if isinstance(sizes, list) and len(sizes) == 2:
-            docks = [self.sidebar_dock, self.info_dock]
+            docks = [ctx.sidebar_dock, ctx.info_dock]
             for d, w in zip(docks, sizes):
                 panel = d.widget() if _alive(d) else None
                 if not isinstance(panel, QWidget) or not _alive(panel):
@@ -683,6 +674,39 @@ class MainWindow(LanSharingMixin, QMainWindow):
                 qpanel = cast(QWidget, panel)
                 qpanel.setMinimumWidth(scaled_px(120))
                 qpanel.resize(w, qpanel.height())
+
+    def _save_dock_layout(self):
+        """Save dock sizes and panel view state for session restore."""
+        from AssetsManager.panels.panel_state import PanelState
+
+        PanelState("dock_widths", save=self._dock_widths_state,
+                   restore=self._restore_dock_widths).persist(self)
+        persist = getattr(self.file_list, "persist_panel_state", None)
+        if callable(persist):
+            persist()
+        persist_sidebar = getattr(self.sidebar, "persist_panel_state", None)
+        if callable(persist_sidebar):
+            persist_sidebar()
+
+    def _save_workspace_tabs(self):
+        from AssetsManager.panels.panel_state import PanelState
+
+        PanelState("workspace_tabs").persist(self._workspace)
+
+    def _restore_workspace_tabs(self):
+        from AssetsManager.panels.panel_state import PanelState
+
+        PanelState("workspace_tabs").load(self._workspace)
+
+    def _restore_dock_layout(self):
+        """Restore dock sizes and panel view state from previous session."""
+        from AssetsManager.panels.panel_state import PanelState
+
+        PanelState("dock_widths", save=self._dock_widths_state,
+                   restore=self._restore_dock_widths).load(self)
+        restore = getattr(self.file_list, "restore_panel_state", None)
+        if callable(restore):
+            restore()
 
     def _on_dir_selected(self, path):
         self.setWindowTitle(f"{tr('app.name')} — {path}")

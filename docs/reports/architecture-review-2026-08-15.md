@@ -118,6 +118,8 @@
 - 明确 `clone()` 语义并接线 dock split；或删除未接线契约并更新 base.py 注释。
 - 验收：AppSettings 中 UI 状态 key 全经 PanelState；grep `.clone()` 非测试即已接线。
 
+**状态：已完成** —— 新增 `panels/panel_state.py`（key + save/restore + persist/load）；InfoPanel 布局、Sidebar 配置、FileList 视图、WorkspaceSection 活动标签、dock 宽度全部经 PanelState；`TabContainer.save_state/restore_state` 携带每面板状态并恢复活动标签；dock split 改为 `clone()` 克隆源面板；架构测试锁定 UI state key 流转。
+
 **批次 D3 — 定时器/动画收口**
 
 - 引入可取消 timer 句柄，替换散落的 `QTimer.singleShot`；shutdown 统一停成员定时器并清 `_expand_frontier` 等。
