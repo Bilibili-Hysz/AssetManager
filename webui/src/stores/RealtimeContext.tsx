@@ -91,10 +91,13 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     if (pending?.generation === generation) return pending.promise;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), RECOVERY_TIMEOUT_MS);
-    const recovery = fetch(api.buildUrl('revision'), { credentials: 'same-origin', signal: controller.signal })
-      .then(response => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json() as Promise<unknown>;
+    // Recovery goes through the shared API client so the S3 retry/backoff
+    // policy applies to the idempotent GET revision probe; the timer still
+    // bounds a hung/retrying recovery to RECOVERY_TIMEOUT_MS.
+    const recovery = api.get<unknown>('revision', undefined, controller.signal)
+      .then(value => {
+        if (!isCursor(value)) throw new Error('Invalid runtime cursor');
+        return value;
       })
       .then(value => {
         if (!isCursor(value)) throw new Error('Invalid runtime cursor');

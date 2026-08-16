@@ -1,4 +1,10 @@
 import { UnauthorizedError, ForbiddenError, ServiceUnavailableError, ApiError, NetworkError } from './errors';
+import {
+  backoffDelay,
+  DEFAULT_MAX_RETRIES,
+  retryAfterSeconds,
+  sleep,
+} from '../utils/backoff';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -31,6 +37,19 @@ function isAbortError(error: unknown): boolean {
 
 function isTimeoutError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'TimeoutError';
+}
+
+/** Read a Retry-After value stored on an ApiError body (rate limit helper). */
+function retryAfterFromError(error: unknown): number | null {
+  if (!(error instanceof ApiError)) return null;
+  const body = error.body as { headers?: Record<string, string> } | undefined;
+  return retryAfterSeconds(body?.headers?.['Retry-After']);
+}
+
+/** Idempotent GET requests may retry network/503/429 failures (S3). */
+function isRetryableError(error: unknown): boolean {
+  if (error instanceof NetworkError || error instanceof ServiceUnavailableError) return true;
+  return error instanceof ApiError && (error.status === 429 || error.status === 503);
 }
 
 function toNetworkError(error: unknown): never {
@@ -168,41 +187,63 @@ export function createApiClient(options: ApiClientOptions = {}) {
     params?: Record<string, string | number | boolean | undefined | null>,
     signal?: AbortSignal,
   ): Promise<T> {
-    const url = new URL(`${normalizedBaseUrl}/api/${path}`, window.location.origin);
+    // Only idempotent GET requests are retried (S3). Writes may have side
+    // effects and must surface their first failure immediately.
+    const maxAttempts = method === 'GET' ? 1 + DEFAULT_MAX_RETRIES : 1;
 
-    if (params) {
-      Object.entries(params).forEach(([k, v]) => {
-        if (v != null && v !== '') {
-          url.searchParams.set(k, String(v));
-        }
-      });
-    }
+    for (let attempt = 0; ; attempt += 1) {
+      const url = new URL(`${normalizedBaseUrl}/api/${path}`, window.location.origin);
 
-    const headers: Record<string, string> = {};
-
-    if (body !== undefined) {
-      headers['Content-Type'] = 'application/json';
-    }
-
-    const timeout = withTimeout(signal, DEFAULT_TIMEOUT_MS);
-    try {
-      const response = await fetch(url.toString(), {
-        method,
-        headers,
-        body: body !== undefined ? JSON.stringify(body) : undefined,
-        signal: timeout.signal,
-        credentials: 'same-origin',
-      });
-
-      if (!response.ok) {
-        await throwForErrorStatus(response, path, onUnauthorized);
+      if (params) {
+        Object.entries(params).forEach(([k, v]) => {
+          if (v != null && v !== '') {
+            url.searchParams.set(k, String(v));
+          }
+        });
       }
 
-      return await parseJsonBody<T>(response);
-    } catch (error) {
-      toNetworkError(error);
-    } finally {
-      timeout.dispose();
+      const headers: Record<string, string> = {};
+
+      if (body !== undefined) {
+        headers['Content-Type'] = 'application/json';
+      }
+
+      const timeout = withTimeout(signal, DEFAULT_TIMEOUT_MS);
+      try {
+        const response = await fetch(url.toString(), {
+          method,
+          headers,
+          body: body !== undefined ? JSON.stringify(body) : undefined,
+          signal: timeout.signal,
+          credentials: 'same-origin',
+        });
+
+        if (!response.ok) {
+          await throwForErrorStatus(response, path, onUnauthorized);
+        }
+
+        return await parseJsonBody<T>(response);
+      } catch (error) {
+        if (isAbortError(error) || isTimeoutError(error)) throw error;
+
+        let classified: unknown = error;
+        try {
+          toNetworkError(error);
+        } catch (converted) {
+          classified = converted;
+        }
+
+        if (attempt + 1 >= maxAttempts) throw classified;
+        if (!isRetryableError(classified)) throw classified;
+
+        const retryAfter = retryAfterFromError(classified);
+        const waitMs = retryAfter != null
+          ? retryAfter * 1000
+          : backoffDelay(attempt);
+        await sleep(waitMs, signal);
+      } finally {
+        timeout.dispose();
+      }
     }
   }
 

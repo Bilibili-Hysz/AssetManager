@@ -207,6 +207,8 @@
 
 **状态：已完成** —— 新增 `hooks/usePageApis.ts`（useFilesApi/useGalleryApi/useMetadataApi/useNotesApi/useQuicksearchApi/useSharesApi/useShopApi/useSellerShopApi/useSystemApi/useTagsApi/useUsersApi/usePublicShareApi），18 个页面全部停止直接 import `api/*` 工厂（ShareReceivePage 的“无全局 401 复位”专用 client 迁移到 `usePublicShareApi`，SellerSettings 保留 seller 专用 client）；新增 `scripts/check_frontend_data_fetch.py`（pages 禁止 api 工厂 import/调用与直接 `fetch`，挂 CI）；H-F1 DetailPage `saveNotes` 增加 pathRef 守卫（旧路径响应不再提交状态/toast）；H-F2 `listBuyerOrders` 支持 AbortSignal，BuyerOrders 页 loadMore 用 generation+abort+状态过滤拒绝旧响应；M-F3 结账幂等键改按 cart id 持久化到 sessionStorage；webui `tsc --noEmit`/vitest 687 例/vite build 全绿。
 - **批次 S3 — 重试/退避统一**：client 幂等 GET 指数退避 + `Retry-After`；recover 复用 client；退避策略单模块供 WS/client 共用。
+
+**状态：已完成** —— 新增 `webui/src/utils/backoff.ts`（`sleep` 支持 AbortSignal、`retryAfterSeconds` 解析 delta-seconds/HTTP-date、`backoffDelay` 指数封顶），API client 对幂等 GET 自动重试网络错误/429/503，尊重 `Retry-After`，非 GET 不重试；Realtime recovery 从手写 `fetch` 改为 `api.get('revision')` 复用同一 client 与退避策略（10s 恢复超时保留）；新增 `backoff.test.ts` 与 client 重试/Retry-After 测试，webui 104 files / 695 tests 全绿。
 - **批次 S4 — 设计令牌单源**：`assets/Themes/*.json` 同时产出 CSS `:root` 与 PySide 属性；`/api/theme` 或 `ServerInfo.theme_color` 下发 accent；Web 与桌面视觉同源。
 - **批次 S5 — 清理与文档**：删除孤儿测试或补源；`useCachedQuery` key 规范文档化；CSS z-index 注释对齐。
 

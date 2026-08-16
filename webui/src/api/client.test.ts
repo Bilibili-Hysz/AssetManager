@@ -39,6 +39,56 @@ describe('ApiClient request contracts', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abortError));
     await expect(createApiClient().get('info', undefined, new AbortController().signal)).rejects.toBe(abortError);
   });
+
+  it('retries idempotent GET on network errors with exponential backoff', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('fail-1'))
+      .mockRejectedValueOnce(new TypeError('fail-2'))
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ ok: true }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers();
+    try {
+      const promise = createApiClient().get('info');
+      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(1000);
+      await expect(promise).resolves.toEqual({ ok: true });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not retry non-GET requests', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('fail'));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(createApiClient().post('auth/login', {})).rejects.toBeInstanceOf(NetworkError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('respects Retry-After when retrying a 429 GET', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ error: 'Rate limited' }),
+        { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': '2' } },
+      ))
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ ok: true }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers();
+    try {
+      const promise = createApiClient().get('info');
+      await vi.advanceTimersByTimeAsync(2000);
+      await expect(promise).resolves.toEqual({ ok: true });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('ApiClient blob download progress', () => {

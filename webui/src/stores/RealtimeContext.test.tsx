@@ -5,7 +5,11 @@ import { useEffect, type ReactNode } from 'react';
 import { RealtimeProvider, useRealtimeContext } from './RealtimeContext';
 
 const authState = {
-  api: { buildUrl: (path: string) => `/api/${path}`, buildWebSocketUrl: (path: string) => `ws://localhost:3000/library/${path}` },
+  api: {
+    buildUrl: (path: string) => `/api/${path}`,
+    buildWebSocketUrl: (path: string) => `ws://localhost:3000/library/${path}`,
+    get: vi.fn(async () => ({ epoch: 'a', revision: 3 })),
+  },
   capabilities: { realtime: true },
   identityGeneration: 0,
   principal: { kind: 'user', authenticated: true, role: 'user', display_name: 'alice', user_profile: { id: 1, username: 'alice' } },
@@ -60,7 +64,7 @@ describe('RealtimeProvider', () => {
     transport.enabled = false;
     transport.url = undefined;
     transport.close.mockClear();
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ epoch: 'a', revision: 3 }) })));
+    authState.api.get = vi.fn(async () => ({ epoch: 'a', revision: 3 }));
   });
 
   afterEach(() => vi.unstubAllGlobals());
@@ -125,10 +129,7 @@ describe('RealtimeProvider', () => {
 
   it('recovers and fans out when a newer runtime_ready advances the same epoch', async () => {
     const callback = vi.fn();
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ epoch: 'a', revision: 4 }),
-    })));
+    authState.api.get = vi.fn(async () => ({ epoch: 'a', revision: 4 }));
     const { result } = renderHook(() => useRealtimeContext(), { wrapper });
     act(() => result.current.registerInvalidation(['files'], callback));
 
@@ -136,7 +137,7 @@ describe('RealtimeProvider', () => {
     emit({ type: 'runtime_ready', epoch: 'a', revision: 4 });
 
     await waitFor(() => expect(callback).toHaveBeenCalledOnce());
-    expect(fetch).toHaveBeenCalledOnce();
+    expect(authState.api.get).toHaveBeenCalledOnce();
     expect(callback.mock.calls[0]?.[0]).toBeNull();
     expect(result.current.epoch).toBe('a');
     expect(result.current.revision).toBe(4);
@@ -169,7 +170,7 @@ describe('RealtimeProvider', () => {
     act(() => result.current.registerInvalidation(['files'], callback));
     emit({ type: 'runtime_ready', epoch: 'new-epoch', revision: 0 });
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    await waitFor(() => expect(authState.api.get).toHaveBeenCalledOnce());
     expect(callback).toHaveBeenCalledOnce();
     expect(callback.mock.calls[0]?.[0]).toBeNull();
   });
@@ -184,7 +185,7 @@ describe('RealtimeProvider', () => {
     rerender();
 
     emit({ type: 'runtime_ready', epoch: 'new-epoch', revision: 0 });
-    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    await waitFor(() => expect(authState.api.get).toHaveBeenCalledOnce());
     emit({ type: 'projection_invalidated', epoch: 'new-epoch', revision: 1, domains: ['files'], paths: ['stale.txt'] });
 
     expect(callback).not.toHaveBeenCalled();
@@ -204,17 +205,14 @@ describe('RealtimeProvider', () => {
     await waitFor(() => expect(files).toHaveBeenCalledOnce());
     expect(tree).toHaveBeenCalledOnce();
     expect(files.mock.calls[0]?.[0]).toBeNull();
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(authState.api.get).toHaveBeenCalledTimes(1);
   });
 
   it('retries once for a same-epoch stale recovery response without regressing or notifying', async () => {
     const callback = vi.fn();
     let resolveRecovery!: (value: unknown) => void;
     const recoveryResponse = new Promise<unknown>(resolve => { resolveRecovery = resolve; });
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true,
-      json: async () => recoveryResponse,
-    })));
+    authState.api.get = vi.fn(async () => recoveryResponse);
 
     const { result } = renderHook(() => useRealtimeContext(), { wrapper });
     act(() => result.current.registerInvalidation(['files'], callback));
@@ -222,13 +220,13 @@ describe('RealtimeProvider', () => {
     emit({ type: 'projection_invalidated', epoch: 'a', revision: 12, domains: ['files'], paths: [] });
 
     resolveRecovery({ epoch: 'a', revision: 9 });
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(authState.api.get).toHaveBeenCalledTimes(2));
     await act(async () => { await Promise.resolve(); });
 
     expect(result.current.epoch).toBe('a');
     expect(result.current.revision).toBe(10);
     expect(callback).not.toHaveBeenCalled();
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(authState.api.get).toHaveBeenCalledTimes(2);
   });
 
   it('isolates callback failures during recovery fan-out', async () => {
@@ -273,15 +271,12 @@ describe('RealtimeProvider', () => {
 
     await waitFor(() => expect(callback).toHaveBeenCalledOnce());
     expect(callback.mock.calls[0]?.[0]).toBeNull();
-    expect(fetch).toHaveBeenCalledOnce();
+    expect(authState.api.get).toHaveBeenCalledOnce();
   });
 
   it('fans out once when a new epoch keeps the same revision after equal recovery', async () => {
     const callback = vi.fn();
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ epoch: 'b', revision: 4 }),
-    })));
+    authState.api.get = vi.fn(async () => ({ epoch: 'b', revision: 4 }));
     const { result } = renderHook(() => useRealtimeContext(), { wrapper });
     act(() => result.current.registerInvalidation(['files'], callback));
 
@@ -292,7 +287,7 @@ describe('RealtimeProvider', () => {
     expect(callback.mock.calls[0]?.[0]).toBeNull();
     expect(result.current.epoch).toBe('b');
     expect(result.current.revision).toBe(4);
-    expect(fetch).toHaveBeenCalledOnce();
+    expect(authState.api.get).toHaveBeenCalledOnce();
   });
 
   it('drops a stale recovery response and allows recovery for the new epoch', async () => {
@@ -301,9 +296,9 @@ describe('RealtimeProvider', () => {
     let resolveSecond!: (value: unknown) => void;
     const firstResponse = new Promise<unknown>(resolve => { resolveFirst = resolve; });
     const secondResponse = new Promise<unknown>(resolve => { resolveSecond = resolve; });
-    vi.stubGlobal('fetch', vi.fn()
-      .mockImplementationOnce(async () => ({ ok: true, json: async () => firstResponse }))
-      .mockImplementationOnce(async () => ({ ok: true, json: async () => secondResponse })));
+    authState.api.get = vi.fn()
+      .mockImplementationOnce(async () => firstResponse)
+      .mockImplementationOnce(async () => secondResponse);
 
     const { result } = renderHook(() => useRealtimeContext(), { wrapper });
     act(() => result.current.registerInvalidation(['files'], callback));
@@ -317,7 +312,7 @@ describe('RealtimeProvider', () => {
     expect(result.current.revision).toBe(2);
     expect(callback).not.toHaveBeenCalled();
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(authState.api.get).toHaveBeenCalledTimes(2));
     resolveSecond({ epoch: 'b', revision: 3 });
     await waitFor(() => expect(callback).toHaveBeenCalledOnce());
     expect(result.current.epoch).toBe('b');
@@ -331,9 +326,9 @@ describe('RealtimeProvider', () => {
     let resolveSecond!: (value: unknown) => void;
     const firstResponse = new Promise<unknown>(resolve => { resolveFirst = resolve; });
     const secondResponse = new Promise<unknown>(resolve => { resolveSecond = resolve; });
-    vi.stubGlobal('fetch', vi.fn()
-      .mockImplementationOnce(async () => ({ ok: true, json: async () => firstResponse }))
-      .mockImplementationOnce(async () => ({ ok: true, json: async () => secondResponse })));
+    authState.api.get = vi.fn()
+      .mockImplementationOnce(async () => firstResponse)
+      .mockImplementationOnce(async () => secondResponse);
 
     const { result } = renderHook(() => useRealtimeContext(), { wrapper });
     act(() => result.current.registerInvalidation(['files'], callback));
@@ -342,7 +337,7 @@ describe('RealtimeProvider', () => {
     emit({ type: 'projection_invalidated', epoch: 'a', revision: 2, domains: ['files'], paths: [] });
 
     resolveFirst({ epoch: 'a', revision: 5 });
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(authState.api.get).toHaveBeenCalledTimes(2));
     expect(result.current.epoch).toBe('a');
     expect(result.current.revision).toBe(2);
     expect(callback).toHaveBeenCalledOnce();
@@ -360,9 +355,9 @@ describe('RealtimeProvider', () => {
     let resolveSecond!: (value: unknown) => void;
     const firstResponse = new Promise<unknown>(resolve => { resolveFirst = resolve; });
     const secondResponse = new Promise<unknown>(resolve => { resolveSecond = resolve; });
-    vi.stubGlobal('fetch', vi.fn()
-      .mockImplementationOnce(async () => ({ ok: true, json: async () => firstResponse }))
-      .mockImplementationOnce(async () => ({ ok: true, json: async () => secondResponse })));
+    authState.api.get = vi.fn()
+      .mockImplementationOnce(async () => firstResponse)
+      .mockImplementationOnce(async () => secondResponse);
 
     const { result } = renderHook(() => useRealtimeContext(), { wrapper });
     act(() => result.current.registerInvalidation(['files'], callback));
@@ -371,7 +366,7 @@ describe('RealtimeProvider', () => {
     emit({ type: 'projection_invalidated', epoch: 'a', revision: 2, domains: ['files'], paths: [] });
 
     resolveFirst({ epoch: 'a', revision: 2 });
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(authState.api.get).toHaveBeenCalledTimes(2));
     expect(result.current.epoch).toBe('a');
     expect(result.current.revision).toBe(2);
     expect(callback).toHaveBeenCalledOnce();
@@ -381,7 +376,7 @@ describe('RealtimeProvider', () => {
     await waitFor(() => expect(callback).toHaveBeenCalledTimes(2));
     expect(result.current.revision).toBe(4);
     expect(callback.mock.calls[1]?.[0]).toBeNull();
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(authState.api.get).toHaveBeenCalledTimes(2);
   });
 
   it('retries a stale response when the gap cursor has not advanced yet', async () => {
@@ -390,9 +385,9 @@ describe('RealtimeProvider', () => {
     let resolveSecond!: (value: unknown) => void;
     const firstResponse = new Promise<unknown>(resolve => { resolveFirst = resolve; });
     const secondResponse = new Promise<unknown>(resolve => { resolveSecond = resolve; });
-    vi.stubGlobal('fetch', vi.fn()
-      .mockImplementationOnce(async () => ({ ok: true, json: async () => firstResponse }))
-      .mockImplementationOnce(async () => ({ ok: true, json: async () => secondResponse })));
+    authState.api.get = vi.fn()
+      .mockImplementationOnce(async () => firstResponse)
+      .mockImplementationOnce(async () => secondResponse);
 
     const { result } = renderHook(() => useRealtimeContext(), { wrapper });
     act(() => result.current.registerInvalidation(['files'], callback));
@@ -400,7 +395,7 @@ describe('RealtimeProvider', () => {
     emit({ type: 'projection_invalidated', epoch: 'a', revision: 4, domains: ['files'], paths: [] });
 
     resolveFirst({ epoch: 'a', revision: 1 });
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(authState.api.get).toHaveBeenCalledTimes(2));
 
     resolveSecond({ epoch: 'a', revision: 4 });
     await waitFor(() => expect(callback).toHaveBeenCalledOnce());
