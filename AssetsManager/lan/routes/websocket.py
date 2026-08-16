@@ -1,4 +1,6 @@
 """WebSocket route."""
+import asyncio
+
 from aiohttp import WSMsgType, web
 
 from AssetsManager.lan.auth import verify_auth_token, verify_key, verify_token
@@ -54,10 +56,14 @@ def _authorization_validator(request, lan, principal):
 
         return validate_user
     if principal.kind == "access_key":
-        return lambda: bool(
-            token and getattr(lan, "access_key_hash", None)
-            and verify_key(token, lan.access_key_hash)
-        )
+        async def validate_access_key():
+            if not token or not getattr(lan, "access_key_hash", None):
+                return False
+            # L2/Q1: PBKDF2 is CPU-heavy (~50k rounds) and must not run on the
+            # event loop during socket admission / periodic re-authorization.
+            return await asyncio.to_thread(verify_key, token, lan.access_key_hash)
+
+        return validate_access_key
     if principal.kind == "password":
         return lambda: bool(
             token and getattr(lan, "password_hash", None)

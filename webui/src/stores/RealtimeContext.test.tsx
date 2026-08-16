@@ -2,6 +2,7 @@
 import { act, render, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEffect, type ReactNode } from 'react';
+import { UnauthorizedError } from '../api/errors';
 import { RealtimeProvider, useRealtimeContext } from './RealtimeContext';
 
 const authState = {
@@ -402,6 +403,16 @@ describe('RealtimeProvider', () => {
     expect(result.current.epoch).toBe('a');
     expect(result.current.revision).toBe(4);
     expect(callback.mock.calls[0]?.[0]).toBeNull();
+  });
+
+  it('marks recovery failed when the shared client rejects with UnauthorizedError', async () => {
+    authState.api.get = vi.fn().mockRejectedValue(new UnauthorizedError());
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => result.current.registerInvalidation(['files'], vi.fn()));
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 1 });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 4, domains: ['files'], paths: [] });
+
+    await waitFor(() => expect(result.current.recoveryFailed).toBe(true));
   });
 
   it('ignores malformed and unrelated messages safely', () => {
