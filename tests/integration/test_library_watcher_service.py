@@ -9,6 +9,7 @@ is called directly; ``start``/``stop`` are only exercised for the thread loop).
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -131,6 +132,35 @@ def test_scan_once_on_closed_session_returns_empty(tmp_path, monkeypatch):
     assert events == []
 
 
+def _mutate_until_mtime_differs(
+    path: Path, mutate, baseline_ns: int, timeout: float = 5.0
+) -> None:
+    """Apply ``mutate`` until ``path``'s mtime differs from ``baseline_ns``.
+
+    The watcher reports a directory only when its mtime differs from the
+    recorded snapshot, so a test must guarantee an *observably different*
+    timestamp rather than merely a later one.  Windows directory timestamps
+    advance in coarse ticks: a mutation landing in the same tick as the
+    baseline scan leaves the mtime byte-identical, and the change is invisible
+    no matter how long the test then waits.  Under a parallel suite that
+    same-tick collision is routine.  Re-mutating is what moves the clock
+    forward; production polls seconds apart and never sees the window.
+    """
+    deadline = time.monotonic() + timeout
+    counter = 0
+    while True:
+        mutate(counter)
+        if os.stat(path).st_mtime_ns != baseline_ns:
+            return
+        if time.monotonic() >= deadline:
+            raise AssertionError(
+                f"{path} mtime stayed at {baseline_ns} for {timeout}s across "
+                f"{counter + 1} mutations"
+            )
+        counter += 1
+        time.sleep(0.01)
+
+
 def test_dot_entries_and_files_are_ignored(tmp_path, monkeypatch):
     """Hidden entries and plain files do not create directory snapshots."""
     _subscribe(monkeypatch)
@@ -138,11 +168,18 @@ def test_dot_entries_and_files_are_ignored(tmp_path, monkeypatch):
     (tmp_path / "file.txt").write_text("content")
     watcher = LibraryWatcherService(_FakeSession(tmp_path))
     assert watcher.scan_once() == []
+    # The value the watcher will compare against, not a separate stat of our
+    # own: a tick could elapse between the two, which is the race this guards.
+    baseline_ns = watcher._snapshot[str(tmp_path)]
 
     # Creating a new file changes the parent (root) directory mtime, so the
     # root is reported while neither the hidden dir nor the new file becomes a
     # snapshotted directory.
-    (tmp_path / "second.txt").write_text("content")
+    _mutate_until_mtime_differs(
+        tmp_path,
+        lambda n: (tmp_path / f"second{'' if n == 0 else n}.txt").write_text("content"),
+        baseline_ns,
+    )
     changed = watcher.scan_once()
     assert str(tmp_path) in changed
     assert all("/.hidden" not in p for p in changed)

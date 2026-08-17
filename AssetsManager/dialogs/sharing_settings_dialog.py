@@ -517,7 +517,7 @@ class SharingSettingsDialog(
         if self._poll_counter % 3 == 0:  # Every 6 seconds (3 * 2s interval)
             self._refresh_all_tabs()
 
-    def _format_bytes(self, size: int | float | None) -> str:
+    def _format_bytes(self, size: float | None) -> str:
         if not size:
             return "0 B"
         units = ["B", "KB", "MB", "GB", "TB"]

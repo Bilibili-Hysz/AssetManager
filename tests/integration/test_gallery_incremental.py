@@ -21,6 +21,16 @@ from AssetsManager.domain.events import FileSystemChanged
 def _image(path: Path, size: tuple[int, int] = (32, 16), color: tuple[int, int, int] = (20, 80, 180)) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", size, color).save(path)
+    # Flush to disk so concurrent gallery background threads never read a
+    # partial write (which surfaces as UnicodeDecodeError 0xb4 under -n auto
+    # when Image.open() hits RGB data before the PNG header is committed).
+    try:
+        with open(path, "rb") as f:
+            f.flush()
+            import os
+            os.fsync(f.fileno())
+    except (OSError, AttributeError):
+        pass
 
 
 def _root_key(root: Path) -> str:
@@ -88,16 +98,31 @@ def test_incremental_created_files_match_full_rebuild(tmp_path, schema_db, monke
         incremental = service.get_home_cached(tmp_path)
         oracle = _oracle(service, tmp_path)
         assert incremental is not None and incremental.to_response() == oracle.to_response()
+        # Telemetry: the two-path created batch applied as one incremental
+        # event (a silent full-rebuild fallback would match the oracle too).
+        applied, fallbacks = service.incremental_stats
+        assert applied == 1 and fallbacks == 0
     finally:
         service.close()
 
 
-def _wait_state(service: GalleryService, root: Path, predicate, deadline: float = 10.0):
-    """Poll until the incremental state satisfies *predicate*."""
+def _wait_state(service: GalleryService, root: Path, before, predicate, deadline: float = 10.0):
+    """Poll until the incremental apply commits and *predicate* holds.
+
+    The apply mutates the private snapshot before it atomically publishes
+    the rebuilt home to the cache; observing the snapshot mutation alone is
+    not a commit signal — the cache still holds the pre-event home at that
+    point, and comparing it against a fresh oracle would race the commit.
+    ``before`` is the cached home response captured immediately before the
+    event was published; the wait only ends once the cached response has
+    moved past it *and* the predicate holds on the snapshot.
+    """
     end = time.monotonic() + deadline
     while time.monotonic() < end:
         state = service._home_states.get(_root_key(root))
-        if state is not None and predicate(state):
+        home = service.get_home_cached(root)
+        committed = home is not None and home.to_response() != before
+        if state is not None and committed and predicate(state):
             return state
         time.sleep(0.05)
     raise AssertionError("incremental state never satisfied the condition")
@@ -120,19 +145,26 @@ def test_incremental_delete_of_cover_and_plain_file(tmp_path, schema_db, monkeyp
     try:
         assert _settle(service, tmp_path) is not None
         (tmp_path / "a" / "note.txt").unlink()
+        before = service.get_home_cached(tmp_path).to_response()
         _publish(tmp_path, "deleted", [tmp_path / "a" / "note.txt"])
-        _wait_state(service, tmp_path, lambda state: "a/note.txt" not in state.files)
+        _wait_state(service, tmp_path, before, lambda state: "a/note.txt" not in state.files)
         incremental = service.get_home_cached(tmp_path)
         oracle = _oracle(service, tmp_path)
         assert incremental is not None and incremental.to_response() == oracle.to_response()
 
         # Deleting the cover recomputes it from the remaining direct images.
         (tmp_path / "a" / "one.png").unlink()
+        before = service.get_home_cached(tmp_path).to_response()
         _publish(tmp_path, "deleted", [tmp_path / "a" / "one.png"])
-        _wait_state(service, tmp_path, lambda state: "a/one.png" not in state.files)
+        _wait_state(service, tmp_path, before, lambda state: "a/one.png" not in state.files)
         incremental = service.get_home_cached(tmp_path)
         oracle = _oracle(service, tmp_path)
         assert incremental is not None and incremental.to_response() == oracle.to_response()
+        # Telemetry: both deletions applied incrementally (the mtime setup
+        # keeps each deleted file off the parent's max, so neither needs a
+        # fallback rebuild).
+        applied, fallbacks = service.incremental_stats
+        assert applied == 2 and fallbacks == 0
     finally:
         service.close()
 
@@ -154,22 +186,29 @@ def test_incremental_rename_and_cross_parent_move(tmp_path, schema_db, monkeypat
         assert _settle(service, tmp_path) is not None
         renamed = tmp_path / "a" / "renamed.png"
         (tmp_path / "a" / "one.png").rename(renamed)
+        before = service.get_home_cached(tmp_path).to_response()
         _publish(tmp_path, "moved", [renamed], [tmp_path / "a" / "one.png"])
-        _wait_state(service, tmp_path, lambda state: "a/renamed.png" in state.files)
+        _wait_state(service, tmp_path, before, lambda state: "a/renamed.png" in state.files)
         incremental = service.get_home_cached(tmp_path)
         oracle = _oracle(service, tmp_path)
         assert incremental is not None and incremental.to_response() == oracle.to_response()
 
         moved = tmp_path / "a" / "moved.png"
         (tmp_path / "b" / "other.png").rename(moved)
+        before = service.get_home_cached(tmp_path).to_response()
         _publish(tmp_path, "moved", [moved], [tmp_path / "b" / "other.png"])
         _wait_state(
-            service, tmp_path,
+            service, tmp_path, before,
             lambda state: "a/moved.png" in state.files and "b/other.png" not in state.files,
         )
         incremental = service.get_home_cached(tmp_path)
         oracle = _oracle(service, tmp_path)
         assert incremental is not None and incremental.to_response() == oracle.to_response()
+        # Telemetry: both moves (same-parent rename and cross-parent move)
+        # applied incrementally; the extra newer files in each source parent
+        # keep the moved files off the max mtime so no fallback is needed.
+        applied, fallbacks = service.incremental_stats
+        assert applied == 2 and fallbacks == 0
     finally:
         service.close()
 
@@ -182,11 +221,14 @@ def test_incremental_apply_is_idempotent_for_replayed_events(tmp_path, schema_db
         _image(tmp_path / "a" / "two.png", (20, 20))
         _publish(tmp_path, "created", [tmp_path / "a" / "two.png"])
         _publish(tmp_path, "created", [tmp_path / "a" / "two.png"])  # replay
-        time.sleep(0.5)
-        home = service.get_home_cached(tmp_path)
-        assert home is not None and home.stats["artworks"] == 2
+        home = _wait_artworks(service, tmp_path, 2)
         oracle = _oracle(service, tmp_path)
         assert home.to_response() == oracle.to_response()
+        # Telemetry: the replay was consumed by the incremental path's
+        # idempotent guard (it counts as an applied event) instead of
+        # falling back to a full rebuild.
+        applied, fallbacks = service.incremental_stats
+        assert applied == 2 and fallbacks == 0
     finally:
         service.close()
 
@@ -199,11 +241,15 @@ def test_incremental_directory_created_matches_full_rebuild(tmp_path, schema_db,
         new_dir = tmp_path / "newdir"
         new_dir.mkdir()
         _image(new_dir / "art.png", (15, 15))
+        before = service.get_home_cached(tmp_path).to_response()
         _publish(tmp_path, "created", [new_dir])
-        _wait_state(service, tmp_path, lambda state: "newdir" in state.nodes)
+        _wait_state(service, tmp_path, before, lambda state: "newdir" in state.nodes)
         incremental = service.get_home_cached(tmp_path)
         oracle = _oracle(service, tmp_path)
         assert incremental is not None and incremental.to_response() == oracle.to_response()
+        # Telemetry: the directory creation sub-walked incrementally.
+        applied, fallbacks = service.incremental_stats
+        assert applied == 1 and fallbacks == 0
     finally:
         service.close()
 
@@ -223,6 +269,10 @@ def test_empty_directory_created_is_a_noop(tmp_path, schema_db, monkeypatch):
         cached = service.get_home_cached(tmp_path)
         oracle = _oracle(service, tmp_path)
         assert cached is not None and cached.to_response() == oracle.to_response()
+        # Telemetry: the empty directory was handled by the incremental
+        # path as a pruned no-op, not by a fallback rebuild.
+        applied, fallbacks = service.incremental_stats
+        assert applied == 1 and fallbacks == 0
     finally:
         service.close()
 
@@ -243,11 +293,16 @@ def test_incremental_directory_deleted_prunes_and_matches_full_rebuild(tmp_path,
     try:
         assert _settle(service, tmp_path) is not None
         shutil.rmtree(tmp_path / "b")
+        before = service.get_home_cached(tmp_path).to_response()
         _publish(tmp_path, "deleted", [tmp_path / "b"])
-        _wait_state(service, tmp_path, lambda state: "b" not in state.nodes)
+        _wait_state(service, tmp_path, before, lambda state: "b" not in state.nodes)
         incremental = service.get_home_cached(tmp_path)
         oracle = _oracle(service, tmp_path)
         assert incremental is not None and incremental.to_response() == oracle.to_response()
+        # Telemetry: the subtree deletion pruned incrementally (the deleted
+        # subtree does not carry the root's max mtime).
+        applied, fallbacks = service.incremental_stats
+        assert applied == 1 and fallbacks == 0
     finally:
         service.close()
 
@@ -259,11 +314,15 @@ def test_incremental_directory_rename_matches_full_rebuild(tmp_path, schema_db, 
         assert _settle(service, tmp_path) is not None
         renamed = tmp_path / "a" / "renamed-sub"
         (tmp_path / "a" / "sub").rename(renamed)
+        before = service.get_home_cached(tmp_path).to_response()
         _publish(tmp_path, "moved", [renamed], [tmp_path / "a" / "sub"])
-        _wait_state(service, tmp_path, lambda state: "a/renamed-sub" in state.nodes)
+        _wait_state(service, tmp_path, before, lambda state: "a/renamed-sub" in state.nodes)
         incremental = service.get_home_cached(tmp_path)
         oracle = _oracle(service, tmp_path)
         assert incremental is not None and incremental.to_response() == oracle.to_response()
+        # Telemetry: the same-parent directory rename applied incrementally.
+        applied, fallbacks = service.incremental_stats
+        assert applied == 1 and fallbacks == 0
     finally:
         service.close()
 
@@ -283,11 +342,16 @@ def test_incremental_directory_cross_parent_move_matches_full_rebuild(tmp_path, 
         assert _settle(service, tmp_path) is not None
         moved = tmp_path / "a" / "sub"
         (tmp_path / "b" / "sub").rename(moved)
+        before = service.get_home_cached(tmp_path).to_response()
         _publish(tmp_path, "moved", [moved], [tmp_path / "b" / "sub"])
-        _wait_state(service, tmp_path, lambda state: "a/sub" in state.nodes)
+        _wait_state(service, tmp_path, before, lambda state: "a/sub" in state.nodes)
         incremental = service.get_home_cached(tmp_path)
         oracle = _oracle(service, tmp_path)
         assert incremental is not None and incremental.to_response() == oracle.to_response()
+        # Telemetry: the cross-parent directory move applied as one
+        # incremental event (delete + sub-walk internally, no fallback).
+        applied, fallbacks = service.incremental_stats
+        assert applied == 1 and fallbacks == 0
     finally:
         service.close()
 
@@ -306,6 +370,18 @@ def test_unknown_parent_created_falls_back_to_full_rebuild(tmp_path, schema_db, 
         oracle = _oracle(service, tmp_path)
         cached = service.get_home_cached(tmp_path)
         assert cached is not None and cached.to_response() == oracle.to_response()
+        # Telemetry: this event can never be applied incrementally — the
+        # snapshot has no "fresh" node to attach the new file to (its parent
+        # directory was created empty and pruned). Two legitimate rebuild
+        # routes exist and both keep applied == 0:
+        #   * the apply raises "unknown parent" and counts a fallback, or
+        #   * the shortened cache TTL (0.05s) triggers a stale-cache full
+        #     rebuild first, which advances the generation and silently
+        #     supersedes the queued event (no fallback counted).
+        # fallbacks is therefore intentionally not pinned; the eventual
+        # oracle match above is the correctness signal for this scenario.
+        applied, _fallbacks = service.incremental_stats
+        assert applied == 0
     finally:
         service.close()
 
@@ -355,6 +431,10 @@ def test_create_then_delete_in_one_burst_is_a_net_noop(tmp_path, schema_db, monk
         cached = service.get_home_cached(tmp_path)
         oracle = _oracle(service, tmp_path)
         assert cached is not None and cached.to_response() == oracle.to_response()
+        # Telemetry: the opposing events cancelled out inside the debounce
+        # window — zero events applied, zero fallbacks, snapshot intact.
+        applied, fallbacks = service.incremental_stats
+        assert applied == 0 and fallbacks == 0
     finally:
         service.close()
 
@@ -366,8 +446,9 @@ def test_incremental_telemetry_counts_applied_and_fallbacks(tmp_path, schema_db,
     try:
         assert _settle(service, tmp_path) is not None
         _image(tmp_path / "a" / "two.png", (20, 20))
+        before = service.get_home_cached(tmp_path).to_response()
         _publish(tmp_path, "created", [tmp_path / "a" / "two.png"])
-        _wait_state(service, tmp_path, lambda state: "a/two.png" in state.files)
+        _wait_state(service, tmp_path, before, lambda state: "a/two.png" in state.files)
         applied, fallbacks = service.incremental_stats
         assert applied == 1 and fallbacks == 0
 
@@ -411,5 +492,9 @@ def test_incremental_project_created_at_floor_matches_full_rebuild(tmp_path, sch
         assert newproj.summary["artwork_count"] == 2
         assert newproj.summary["file_count"] == 3
         assert newproj.children == []
+        # Telemetry: the floor-level directory event aggregated its subtree
+        # incrementally (a full-rebuild fallback would match the oracle too).
+        applied, fallbacks = service.incremental_stats
+        assert applied == 1 and fallbacks == 0
     finally:
         service.close()

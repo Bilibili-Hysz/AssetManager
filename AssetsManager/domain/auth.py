@@ -21,10 +21,17 @@ def generate_access_key() -> str:
     return os.urandom(16).hex()
 
 
+# Cost for access-key hashing.  Unlike password hashes the stored key hash
+# carries no cost field, so this module-scope constant is the single replay
+# source; it is read at call time (never bound at import) so the test suite
+# can override it with a low-cost value.
+KEY_ITERATIONS = 50_000
+
+
 def hash_key(key: str) -> str:
     """Hash an access key for storage."""
     salt = os.urandom(16)
-    h = hashlib.pbkdf2_hmac("sha256", key.encode(), salt, 50_000)
+    h = hashlib.pbkdf2_hmac("sha256", key.encode(), salt, KEY_ITERATIONS)
     return salt.hex() + ":" + h.hex()
 
 
@@ -34,7 +41,7 @@ def verify_key(key: str, stored_hash: str) -> bool:
         salt_hex, h_hex = stored_hash.split(":", 1)
         salt = bytes.fromhex(salt_hex)
         expected = bytes.fromhex(h_hex)
-        actual = hashlib.pbkdf2_hmac("sha256", key.encode(), salt, 50_000)
+        actual = hashlib.pbkdf2_hmac("sha256", key.encode(), salt, KEY_ITERATIONS)
         return hmac.compare_digest(actual, expected)
     except Exception:
         return False
@@ -42,39 +49,96 @@ def verify_key(key: str, stored_hash: str) -> bool:
 
 # ── Password hashing ──────────────────────────────────────────
 
+# OWASP Password Storage Cheat Sheet (2023) for PBKDF2-HMAC-SHA256.
+# Read at call time (never bound at import) so the test suite can override
+# the cost; verify_password replays the cost embedded in each stored hash.
+PASSWORD_ITERATIONS = 600_000
+# Cost of the legacy bare "salt:key" format, which carries no cost field.
+LEGACY_PASSWORD_ITERATIONS = 100_000
+_PBKDF2_PREFIX = "pbkdf2_sha256"
+
+
 def hash_password(password: str) -> str:
-    """Hash a password with PBKDF2-SHA256. Returns 'salt_hex:key_hex'."""
+    """Hash a password with PBKDF2-SHA256.
+
+    Returns the self-describing format ``pbkdf2_sha256$iterations$salt$key``.
+    Embedding the cost is what makes raising it later a migration instead of
+    a lockout: :func:`verify_password` replays whatever cost the stored hash
+    was written with, and :func:`needs_password_rehash` reports when a
+    successful login should be re-stamped at the current cost.
+    """
     salt = os.urandom(32)
-    key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100_000)
-    return salt.hex() + ":" + key.hex()
+    key = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt, PASSWORD_ITERATIONS
+    )
+    return f"{_PBKDF2_PREFIX}${PASSWORD_ITERATIONS}${salt.hex()}${key.hex()}"
+
+
+def _parse_password_hash(stored_hash: str) -> tuple[bytes, bytes, int] | None:
+    """Return (salt, expected_key, iterations) for either supported format."""
+    if stored_hash.startswith(_PBKDF2_PREFIX + "$"):
+        parts = stored_hash.split("$")
+        if len(parts) != 4:
+            return None
+        _, iterations_str, salt_hex, key_hex = parts
+        try:
+            iterations = int(iterations_str)
+        except ValueError:
+            return None
+        if iterations <= 0:
+            return None
+    else:
+        # Legacy bare "salt_hex:key_hex" at the historical fixed cost.
+        parts = stored_hash.split(":")
+        if len(parts) != 2:
+            return None
+        salt_hex, key_hex = parts
+        if len(salt_hex) != 64 or len(key_hex) != 64:
+            return None
+        iterations = LEGACY_PASSWORD_ITERATIONS
+    try:
+        return bytes.fromhex(salt_hex), bytes.fromhex(key_hex), iterations
+    except ValueError:
+        return None
 
 
 def is_password_hash(value: str) -> bool:
-    """Return True if *value* looks like a PBKDF2 hash (hex_salt:hex_key)."""
-    parts = value.split(":")
-    if len(parts) != 2:
-        return False
-    salt_hex, key_hex = parts
-    if len(salt_hex) != 64 or len(key_hex) != 64:
-        return False
-    try:
-        bytes.fromhex(salt_hex)
-        bytes.fromhex(key_hex)
-        return True
-    except ValueError:
-        return False
+    """Return True if *value* looks like a stored PBKDF2 password hash.
+
+    Accepts the current ``pbkdf2_sha256$...`` format and the legacy bare
+    ``hex_salt:hex_key`` form (32-byte salt), so a stored hash is never
+    mistaken for a plaintext password and re-hashed.
+    """
+    return _parse_password_hash(value) is not None
 
 
 def verify_password(password: str, stored_hash: str) -> bool:
-    """Verify a password against a stored hash."""
+    """Verify a password against a stored hash of either supported format."""
     try:
-        salt_hex, key_hex = stored_hash.split(":", 1)
-        salt = bytes.fromhex(salt_hex)
-        expected = bytes.fromhex(key_hex)
-        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100_000)
+        parsed = _parse_password_hash(stored_hash)
+        if parsed is None:
+            return False
+        salt, expected, iterations = parsed
+        actual = hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), salt, iterations
+        )
         return hmac.compare_digest(actual, expected)
     except Exception:
         return False
+
+
+def needs_password_rehash(stored_hash: str) -> bool:
+    """Return True if *stored_hash* was written below the current cost.
+
+    Callers re-stamp the hash right after a *successful* verification, which
+    is the only moment the plaintext is available.  An unparseable hash
+    returns False: it cannot be verified either, so there is nothing to
+    migrate.
+    """
+    parsed = _parse_password_hash(stored_hash)
+    if parsed is None:
+        return False
+    return parsed[2] < PASSWORD_ITERATIONS
 
 
 # ── Simple token (for single-password mode) ───────────────────

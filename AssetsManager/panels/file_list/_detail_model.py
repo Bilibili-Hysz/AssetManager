@@ -7,6 +7,7 @@ import logging
 import os
 import datetime
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import Qt, QAbstractItemModel, QFileInfo, QModelIndex, Signal
 from PySide6.QtGui import QIcon
@@ -131,7 +132,10 @@ class DetailModel(QAbstractItemModel):
             base |= Qt.ItemFlag.ItemIsEditable
         return base
 
-    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+    def data(self, index, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
+        # Qt's role-based accessor is heterogeneous by contract: each role
+        # returns its own type, so the signature stays ``Any`` like the
+        # ``QAbstractItemModel.data`` it overrides.
         if not index.isValid() or not self._fs_model:
             return None
         row = index.row()
@@ -299,7 +303,8 @@ class DetailModel(QAbstractItemModel):
             try:
                 st = fs_model.cached_stat(entry)
                 if st.st_mtime > 0:
-                    return datetime.datetime.fromtimestamp(st.st_mtime).strftime('%Y-%m-%d')
+                    # Local time, matching the OS file manager's own column.
+                    return datetime.datetime.fromtimestamp(st.st_mtime).strftime('%Y-%m-%d')  # noqa: DTZ006
             except (OSError, AttributeError, ValueError, OverflowError):
                 pass
             return "—"

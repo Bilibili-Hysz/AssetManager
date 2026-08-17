@@ -393,7 +393,7 @@ class InfoController:
                                         break
                             except OSError:
                                 _log.debug("URL parse failed: %s", entry.path)
-                        elif name.endswith('.html') or name.endswith('.htm'):
+                        elif name.endswith(('.html', '.htm')):
                             try:
                                 with open(entry.path, 'r', encoding='utf-8', errors='ignore') as f:
                                     content = f.read()
@@ -439,7 +439,7 @@ class InfoController:
                                         break
                         except OSError:
                             _log.warning("URL file read failed: %s", entry.path, exc_info=True)
-                    elif name.endswith('.html') or name.endswith('.htm'):
+                    elif name.endswith(('.html', '.htm')):
                         try:
                             with open(entry.path, 'r', encoding='utf-8', errors='ignore') as f:
                                 content = f.read()

@@ -567,7 +567,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def _retranslate_controls(self):
         self._header_title.setText(tr("filelist.header"))
-        for button, key in zip(self._nav_buttons, self._nav_tooltip_keys):
+        for button, key in zip(self._nav_buttons, self._nav_tooltip_keys, strict=True):
             button.setToolTip(tr(key))
         self._sort_btn.setToolTip(tr("filelist.sort_dir"))
         self._hidden_btn.setToolTip(tr("filelist.hidden"))
@@ -919,7 +919,6 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
     def _start_fade_timer(self):
         """Start fade-in animation timer. Override in subclass."""
-        pass
 
     @staticmethod
     def _first_image_in(dir_path: str) -> str | None:
@@ -1873,8 +1872,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, PanelContent):
 
 
 if TYPE_CHECKING:
-    from AssetsManager.panels.file_list._host import FileListHost
+    from AssetsManager.panels.file_list._host import FileListActionsHost, FileListHost
 
-    # Lock the mixin host contract: FileListPanel must provide the surface
-    # NavigationMixin relies on (see _host.FileListHost).
+    # Lock the mixin host contracts: FileListPanel must provide the surfaces
+    # NavigationMixin and ActionsMixin rely on (see _host.py).
     _host_contract: FileListHost = FileListPanel()
+    _actions_host_contract: FileListActionsHost = FileListPanel()

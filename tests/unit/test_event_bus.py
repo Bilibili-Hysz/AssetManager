@@ -149,6 +149,6 @@ def test_event_is_frozen():
     event = FileSystemChanged(kind="moved", paths=("/new",), old_paths=("/old",))
     try:
         event.kind = "changed"
-        assert False, "Should have raised"
+        raise AssertionError("Should have raised")
     except AttributeError:
         pass

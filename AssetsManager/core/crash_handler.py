@@ -92,7 +92,9 @@ def _write_report(exc_type, exc_value, exc_tb) -> None:
     SHARED_DIR.mkdir(parents=True, exist_ok=True)
     lines = [
         f"{'=' * 60}",
-        f"CRASH: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        # Local time: this line is read by whoever is sitting at the machine
+        # that crashed, alongside the OS's own local-time logs.
+        f"CRASH: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",  # noqa: DTZ005
         f"Type: {exc_type.__name__ if exc_type else 'Unknown'}",
         f"Message: {_redact(str(exc_value))}",
     ]

@@ -63,6 +63,34 @@ class PluginService:
         """Return the host context used during plugin loading."""
         return self._manager._host_context
 
+    def command_available(
+        self,
+        command_id: str,
+        extra_paths: list[str] | tuple[str, ...] | None = None,
+    ) -> bool:
+        ctx = self._manager._host_context
+        if ctx is None:
+            return False
+        available = getattr(ctx, "command_available", None)
+        if not callable(available):
+            return True
+        return bool(available(command_id, extra_paths=tuple(extra_paths or ())))
+
+    def execute_command(
+        self,
+        command_id: str,
+        extra_paths: list[str] | tuple[str, ...] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> bool:
+        """Run a plugin command through the host's single execute path."""
+        ctx = self._manager._host_context
+        if ctx is None:
+            return False
+        execute = getattr(ctx, "execute_command", None)
+        if not callable(execute):
+            return False
+        return bool(execute(command_id, extra_paths=tuple(extra_paths or ()), params=params))
+
     def get_commands(self) -> list[Any]:
         """Return all command contributions from the host context."""
         ctx = self._manager._host_context

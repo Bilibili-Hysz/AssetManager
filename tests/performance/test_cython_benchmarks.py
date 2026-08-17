@@ -22,11 +22,11 @@ def test_cython_lrucache():
 def test_cython_color_utils():
     from AssetsManager.core.color_utils import _hex_to_rgb, _rgb_to_hex
     start = time.perf_counter()
-    for i in range(N):
+    for _ in range(N):
         _hex_to_rgb('#FF0000')
     h2r = N / (time.perf_counter() - start)
     start = time.perf_counter()
-    for i in range(N):
+    for _ in range(N):
         _rgb_to_hex(255, 0, 0)
     r2h = N / (time.perf_counter() - start)
     print(f'\ncolor_utils: hex_to_rgb={h2r:,.0f} rgb_to_hex={r2h:,.0f} ops/s')
@@ -46,11 +46,11 @@ def test_cython_format_size():
 def test_cython_asset_filters():
     from AssetsManager.application.asset_filters import matches_search, is_hidden
     start = time.perf_counter()
-    for i in range(N):
+    for _ in range(N):
         matches_search('test_file.txt', 'test')
     ms = N / (time.perf_counter() - start)
     start = time.perf_counter()
-    for i in range(N):
+    for _ in range(N):
         is_hidden('.hidden')
     ih = N / (time.perf_counter() - start)
     print(f'\nasset_filters: matches_search={ms:,.0f} is_hidden={ih:,.0f} ops/s')

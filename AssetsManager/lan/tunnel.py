@@ -203,6 +203,13 @@ class TunnelManager:
                     stderr=subprocess.PIPE,
                     stdout=subprocess.DEVNULL,
                     text=True,
+                    # cloudflared writes UTF-8; text mode would otherwise decode
+                    # through the locale codepage (GBK on a zh-CN host), where a
+                    # non-ASCII log line raises inside the reader thread below --
+                    # whose bare except would swallow it and leave the tunnel
+                    # permanently un-ready with no public URL and no error.
+                    encoding="utf-8",
+                    errors="replace",
                     bufsize=1,
                 )
                 process = self._process
@@ -234,7 +241,13 @@ class TunnelManager:
                         self._ready.set()
                         _log.info("Cloudflare tunnel ready: %s", self._public_url)
             except Exception:
-                pass
+                # Best-effort reader: a dead pipe must not kill the thread
+                # silently.  Without this log the only symptom is the generic
+                # "timed out" warning below, which cannot distinguish "no URL
+                # yet" from "the reader stopped reading".
+                _log.warning(
+                    "Cloudflare tunnel stderr reader stopped early", exc_info=True
+                )
 
         t = threading.Thread(target=_reader, args=(process,), daemon=True)
         t.start()

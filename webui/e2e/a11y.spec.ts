@@ -66,6 +66,25 @@ async function mockApis(page: Page, options: { authEnabled?: boolean } = {}) {
   await page.route('**/api/shop/orders**', route => route.fulfill(json({ orders: [] })));
   await page.route('**/api/auth/seller-status', route => route.fulfill(json({ enabled: true, authenticated: true })));
   await page.route('**/api/shop/analytics/**', route => route.fulfill(json({ ok: true })));
+  // API coverage that drifted from the workspace pages (proxy would otherwise
+  // hit the real LAN server at 127.0.0.1:8080 and fail the scans).
+  await page.route('**/api/auth/me', route => route.fulfill(json({
+    principal: {
+      kind: 'guest', authenticated: false, role: 'guest', display_name: 'Guest',
+      capabilities: { browse: true, preview: true, download: true, upload: false,
+        manage_links: false, manage_users: false, settings: false, realtime: false },
+    },
+    user: null,
+  })));
+  await page.route('**/api/gallery/collection**', route => route.fulfill(json({
+    items: [], total: 0, page: 1, page_size: 24,
+  })));
+  await page.route('**/api/shop/cart', route => route.fulfill(json({ items: [], total_cents: 0 })));
+  await page.route('**/api/shop/wishlist', route => route.fulfill(json({ items: [] })));
+  await page.route('**/api/stats', route => route.fulfill(json({})));
+  await page.route('**/api/tree**', route => route.fulfill(json({
+    tree: [], depth_config: { global: 3, branches: {} },
+  })));
 }
 
 const ROUTES = [

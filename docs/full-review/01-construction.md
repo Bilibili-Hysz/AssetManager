@@ -153,6 +153,6 @@ run.py/main.py → app.main()
 2. **"WebSocket 只是失效提示"**：前端断线恢复用 HTTP `/api/revision` 权威游标；广播帧 >1MB 截断 paths（不静默丢）。
 3. **rotate 语义 = 轮换作废**：投递令牌 rotate 同事务作废旧令牌，总配额守恒（见 03 §B5）。
 4. **guest 默认不可下载**（`lan_guest_download` 默认 False）；下载经免费配额（20 次/日，匿名身份=签名 cookie）。
-5. **插件权限是 advisory**（check_permission 仅告警不强制）。
+5. **插件权限门禁是诚实/意图边界**：`host.services`、`settings.write` 等 token 在主机 API 上有强制拦截（缺权限拒绝/返回 None），但插件同解释器运行无沙箱，任何门禁都可用标准库直通绕过，不构成安全边界。
 6. **隐藏文件不索引**（展示口径统一）；目录 mtime 相等判定不可靠（M6a-18 回退，需迁移支持）。
 7. **测试夹具时钟坑**：mock clock（1000.0）与数据库默认时间戳基准不同——令牌"最新"判定用 rowid 排序（免疫时钟）。

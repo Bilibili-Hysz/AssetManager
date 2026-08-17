@@ -108,10 +108,12 @@ def _decode_order_cursor(cursor: str | None) -> tuple[float, int] | None:
         created_at_s, id_s = raw.split("|", 1)
         return float(created_at_s), int(id_s)
     except (ValueError, TypeError, UnicodeError, binascii.Error):
-        raise ValidationError("cursor", "invalid pagination cursor")
+        # The decode failure itself is not actionable; only the translated
+        # validation error should reach the caller.
+        raise ValidationError("cursor", "invalid pagination cursor") from None
 
 
-def _encode_order_cursor(created_at: float | int, order_id: int) -> str:
+def _encode_order_cursor(created_at: float, order_id: int) -> str:
     import base64
     raw = f"{float(created_at)}|{int(order_id)}"
     return base64.urlsafe_b64encode(raw.encode("ascii")).decode("ascii")

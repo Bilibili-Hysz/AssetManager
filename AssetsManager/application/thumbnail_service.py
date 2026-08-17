@@ -247,6 +247,23 @@ class ThumbnailService:
 
         return ThumbnailResult()
 
+    @session_operation
+    def check_blur(
+        self,
+        target: Path,
+        blur_tags: set[str] | None = None,
+        db_conn: sqlite3.Connection | None = None,
+        library_root: str | Path | None = None,
+    ) -> bool:
+        """Blur-policy decision independent of the thumbnail pipeline.
+
+        ``resolve`` computes the decision but discards it for formats its
+        pipeline cannot handle (``.ktx2`` has no Pillow decoder, ``.tga`` is
+        outside IMAGE_EXTS); LAN routes still deliver those bytes and must
+        apply the same policy before doing so.
+        """
+        return self._check_blur(target, blur_tags, db_conn, library_root)
+
     @staticmethod
     def _extract_video_frame(source_path: Path, destination: Path) -> bool:
         """Extract the first frame of a video into *destination* via ffmpeg."""

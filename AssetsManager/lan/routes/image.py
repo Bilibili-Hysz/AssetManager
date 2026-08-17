@@ -10,9 +10,14 @@ from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.lan.path_guard import PathGuardError, assert_under_root
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
+    BLURRED_PREVIEW_SIZE,
+    PRIVATE_PREVIEW_HEADERS,
+    PUBLIC_PREVIEW_HEADERS,
     get_lan,
     get_thumbnail_service,
     require_permission,
+    serve_blur_gated_raster,
+    should_blur_target,
     validate_path,
 )
 
@@ -27,17 +32,6 @@ _IMAGE_CONTENT_TYPES = {
     "WEBP": "image/webp",
     "TIFF": "image/tiff",
     "ICO": "image/x-icon",
-}
-# Keep blurred previews bounded like the existing high-resolution thumbnail
-# route.  Unblurred assets are delivered as a streamed FileResponse instead.
-_BLURRED_PREVIEW_SIZE = 1920
-_PRIVATE_PREVIEW_HEADERS = {
-    "Cache-Control": "private, no-store",
-    "X-Content-Type-Options": "nosniff",
-}
-_PUBLIC_PREVIEW_HEADERS = {
-    "Cache-Control": "public, max-age=3600",
-    "X-Content-Type-Options": "nosniff",
 }
 
 
@@ -97,23 +91,16 @@ async def serve_verified_image(
     if not resolved.found or resolved.source_path is None:
         return _not_found()
 
-    headers = _PUBLIC_PREVIEW_HEADERS if public else _PRIVATE_PREVIEW_HEADERS
     if resolved.should_blur:
-        processed = await asyncio.to_thread(svc.process_image, target, max_size, True)
-        if processed is None:
-            return error_response(
-                "Failed to process image",
-                status=500,
-                code="internal_error",
-                headers=_PRIVATE_PREVIEW_HEADERS,
-            )
-        body, processed_content_type = processed
-        return web.Response(
-            body=body,
-            content_type=processed_content_type,
-            headers=_PRIVATE_PREVIEW_HEADERS,
+        return await serve_blur_gated_raster(
+            request,
+            target,
+            should_blur=True,
+            content_type=content_type,
+            max_size=max_size,
         )
 
+    headers = PUBLIC_PREVIEW_HEADERS if public else PRIVATE_PREVIEW_HEADERS
     if max_size < 256 or resolved.cache_hit:
         processed = await asyncio.to_thread(svc.process_image, target, max_size, False)
         if processed is not None:
@@ -149,47 +136,13 @@ async def handle_image(request: web.Request) -> web.StreamResponse:
     if content_type is None:
         return _not_found()
 
-    svc = get_thumbnail_service(request)
-    resolved = await asyncio.to_thread(
-        svc.resolve,
+    return await serve_blur_gated_raster(
+        request,
         target,
-        lan.thumbnail_dir,
-        max_size=_BLURRED_PREVIEW_SIZE,
-        blur_tags=lan.blur_tags,
-        library_root=lan.library_root,
+        should_blur=await should_blur_target(request, target),
+        content_type=content_type,
+        max_size=BLURRED_PREVIEW_SIZE,
     )
-    if not resolved.found or resolved.source_path is None:
-        return _not_found()
-
-    if resolved.should_blur:
-        # Never fall back to the original when processing a private asset
-        # fails: that would turn an operational error into a privacy leak.
-        processed = await asyncio.to_thread(
-            svc.process_image,
-            target,
-            _BLURRED_PREVIEW_SIZE,
-            True,
-        )
-        if processed is None:
-            return error_response(
-                "Failed to process image",
-                status=500,
-                code="internal_error",
-                headers=_PRIVATE_PREVIEW_HEADERS,
-            )
-        body, processed_content_type = processed
-        return web.Response(
-            body=body,
-            content_type=processed_content_type,
-            headers=_PRIVATE_PREVIEW_HEADERS,
-        )
-
-    # FileResponse streams the original and does not read it into memory.
-    response = web.FileResponse(target, headers=_PRIVATE_PREVIEW_HEADERS)
-    # FileResponse guesses from the suffix; use the verified image format so a
-    # mismatched extension cannot produce an incorrect Content-Type.
-    response.headers["Content-Type"] = content_type
-    return response
 
 
 __all__ = ["handle_image", "serve_verified_image"]

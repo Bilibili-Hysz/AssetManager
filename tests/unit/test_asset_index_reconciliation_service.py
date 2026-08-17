@@ -340,20 +340,40 @@ def test_reconciliation_worker_renews_long_running_claim(tmp_path):
 
     worker = threading.Thread(
         target=lambda: outcome_holder.append(
-            service.process_once(lease_seconds=0.1)
+            service.process_once(lease_seconds=0.5)
         ),
         daemon=True,
     )
     worker.start()
     assert started.wait(1.0)
-    time.sleep(0.18)
 
+    # A fixed sleep is load-dependent: under CPU contention the heartbeat
+    # thread can be starved for longer than any chosen wall-clock window.
+    # Poll for the observable renewal instead — the stored lease deadline
+    # advancing — which is exactly what this test needs to prove.
     current = queue.get(task.task_id)
     assert current is not None
+    assert current.lease_expires_at is not None
+    initial_lease_expires_at = current.lease_expires_at
+
+    deadline = time.monotonic() + 5.0
+    while True:
+        current = queue.get(task.task_id)
+        assert current is not None
+        assert current.lease_expires_at is not None
+        if current.lease_expires_at > initial_lease_expires_at:
+            break
+        if time.monotonic() >= deadline:
+            pytest.fail(
+                "worker did not renew the running claim within 5.0s: "
+                f"lease_expires_at stayed at {current.lease_expires_at!r}"
+            )
+        time.sleep(0.01)
+
     assert current.state is ReconciliationState.RUNNING
     assert current.lease_token is not None
     assert current.lease_expires_at is not None
-    assert current.lease_expires_at > time.monotonic()
+    assert current.lease_expires_at > initial_lease_expires_at
 
     release.set()
     worker.join(2.0)

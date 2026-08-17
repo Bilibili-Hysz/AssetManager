@@ -509,7 +509,7 @@ class DatabaseManager:
             except FileExistsError:
                 actual = read_marker(marker, label="formal")
                 if actual != expected:
-                    raise collision(marker)
+                    raise collision(marker) from None
                 if created_directories:
                     try:
                         _flush_directory_chain_durable(marker.parent, created_directories)
@@ -598,10 +598,10 @@ class DatabaseManager:
                             if not stat.S_ISREG(pending_info.st_mode):
                                 raise RuntimeError(
                                     f"Invalid pending RuntimeData identity marker: {pending}"
-                                )
+                                ) from None
                             pending_owner = read_marker(pending, label="pending")
                             if pending_owner != expected:
-                                raise collision(pending)
+                                raise collision(pending) from None
 
                             # A matching fixed pending marker is a recoverable
                             # prior claim. Publish a fresh copy so the formal
@@ -616,7 +616,7 @@ class DatabaseManager:
                         ) from exc
 
                     if actual != expected:
-                        raise collision(marker)
+                        raise collision(marker) from None
                     return False
             except (OSError, UnicodeError) as exc:
                 raise RuntimeError(

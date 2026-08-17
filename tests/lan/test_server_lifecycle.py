@@ -667,6 +667,12 @@ def test_startup_registration_does_not_hold_server_lifecycle_lock(
 
     def register(adapter):
         assert adapter is server
+        # The event only proves the lock was free once the waiter thread has
+        # been *scheduled*; under CPU contention that can lag a 1s wait even
+        # with the lock unheld.  The timeout exists only to bound a hang, so
+        # keep it generous and report the observable fact (no acquisition
+        # within the window) rather than asserting the lock was held.
+        lock_wait_timeout = 10
 
         def acquire_lock():
             try:
@@ -678,9 +684,12 @@ def test_startup_registration_does_not_hold_server_lifecycle_lock(
         waiter = threading.Thread(target=acquire_lock)
         waiter.start()
         try:
-            assert lock_acquired.wait(1), "registration called while lifecycle lock was held"
+            assert lock_acquired.wait(lock_wait_timeout), (
+                f"lifecycle lock not acquired within {lock_wait_timeout}s "
+                "during startup registration"
+            )
         finally:
-            waiter.join(2)
+            waiter.join(lock_wait_timeout)
         server._cleanup_complete = True
         registration_finished.set()
         return True

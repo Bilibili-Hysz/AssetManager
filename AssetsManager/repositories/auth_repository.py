@@ -366,6 +366,22 @@ class AuthRepository:
             self._conn.commit()
             return cur.rowcount > 0
 
+    @_repository_operation
+    def set_user_password_hash(self, user_id: int, password_hash: str) -> bool:
+        """Replace a user's stored password hash. Returns True if updated.
+
+        Used by the cost-migration path after a successful login, so an
+        existing account moves to the current PBKDF2 cost without asking the
+        user to change their password.
+        """
+        with db_write_lock(self._conn):
+            cur = self._conn.execute(
+                "UPDATE users SET password=? WHERE id=?",
+                (password_hash, user_id),
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
+
     # ── Invite codes ─────────────────────────────────────────────
 
     @_repository_operation

@@ -295,6 +295,95 @@ class TestShareService:
         assert svc.verify_password(share.id, "secret123") is True
         assert svc.verify_password(share.id, "wrong") is False
 
+    def test_verify_password_migrates_legacy_hash(self, tmp_path, memory_db):
+        """A legacy-cost share hash is re-stamped after a successful verify."""
+        import hashlib
+
+        from AssetsManager.domain.auth import (
+            LEGACY_PASSWORD_ITERATIONS,
+            PASSWORD_ITERATIONS,
+            verify_password,
+        )
+
+        conn = _make_db(memory_db)
+        svc = ShareService(conn, "test-secret")
+        share = svc.create_share(paths=["a"], password="secret123")
+        assert share is not None
+
+        salt = b"\x44" * 32
+        key = hashlib.pbkdf2_hmac(
+            "sha256", b"secret123", salt, LEGACY_PASSWORD_ITERATIONS
+        )
+        legacy = f"{salt.hex()}:{key.hex()}"
+        conn.execute(
+            "UPDATE share_links SET password_hash=? WHERE id=?", (legacy, share.id)
+        )
+        conn.commit()
+
+        assert svc.verify_password(share.id, "secret123") is True
+
+        stored = conn.execute(
+            "SELECT password_hash FROM share_links WHERE id=?", (share.id,)
+        ).fetchone()[0]
+        assert stored.startswith(f"pbkdf2_sha256${PASSWORD_ITERATIONS}$")
+        assert verify_password("secret123", stored) is True
+
+    def test_failed_verify_does_not_migrate(self, tmp_path, memory_db):
+        import hashlib
+
+        from AssetsManager.domain.auth import LEGACY_PASSWORD_ITERATIONS
+
+        conn = _make_db(memory_db)
+        svc = ShareService(conn, "test-secret")
+        share = svc.create_share(paths=["a"], password="secret123")
+        assert share is not None
+
+        salt = b"\x55" * 32
+        key = hashlib.pbkdf2_hmac(
+            "sha256", b"secret123", salt, LEGACY_PASSWORD_ITERATIONS
+        )
+        legacy = f"{salt.hex()}:{key.hex()}"
+        conn.execute(
+            "UPDATE share_links SET password_hash=? WHERE id=?", (legacy, share.id)
+        )
+        conn.commit()
+
+        assert svc.verify_password(share.id, "wrong") is False
+        stored = conn.execute(
+            "SELECT password_hash FROM share_links WHERE id=?", (share.id,)
+        ).fetchone()[0]
+        assert stored == legacy
+
+    def test_verify_password_survives_a_failed_migration(
+        self, tmp_path, memory_db, monkeypatch
+    ):
+        import hashlib
+
+        from AssetsManager.domain.auth import LEGACY_PASSWORD_ITERATIONS
+
+        conn = _make_db(memory_db)
+        svc = ShareService(conn, "test-secret")
+        share = svc.create_share(paths=["a"], password="secret123")
+        assert share is not None
+
+        salt = b"\x66" * 32
+        key = hashlib.pbkdf2_hmac(
+            "sha256", b"secret123", salt, LEGACY_PASSWORD_ITERATIONS
+        )
+        legacy = f"{salt.hex()}:{key.hex()}"
+        conn.execute(
+            "UPDATE share_links SET password_hash=? WHERE id=?", (legacy, share.id)
+        )
+        conn.commit()
+
+        def boom(_share_id, _password_hash):
+            raise RuntimeError("disk on fire")
+
+        monkeypatch.setattr(svc._repo, "set_password_hash", boom)
+
+        # Access still granted; the migration retries on the next attempt.
+        assert svc.verify_password(share.id, "secret123") is True
+
     def test_generate_and_verify_token(self, tmp_path, memory_db):
         conn = _make_db(memory_db)
         svc = ShareService(conn, "test-secret")

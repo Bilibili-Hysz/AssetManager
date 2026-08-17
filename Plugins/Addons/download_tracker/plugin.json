@@ -1,14 +1,31 @@
 {
   "name": "Download Tracker",
   "id": "download_tracker",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "author": "",
-  "description": "Track download history for files and folders (placeholder)",
+  "description": "Track import/copy history and expose last-download metadata",
   "enabled": false,
-  "entry": "tracker.py",
-  "provides": ["info.fields", "file.metadata"],
+  "entry": "tracker.py:Plugin",
+  "kind": "tool_window",
+  "permissions": [
+    "settings.read",
+    "settings.write",
+    "filesystem.read"
+  ],
+  "provides": [
+    "info.fields",
+    "file.metadata"
+  ],
   "display_fields": [
-    {"key": "last_downloaded", "label_key": "info.field_last_downloaded", "type": "text"},
-    {"key": "download_count", "label_key": "info.field_download_count", "type": "number"}
+    {
+      "key": "last_downloaded",
+      "label_key": "info.field_last_downloaded",
+      "type": "text"
+    },
+    {
+      "key": "download_count",
+      "label_key": "info.field_download_count",
+      "type": "number"
+    }
   ]
 }

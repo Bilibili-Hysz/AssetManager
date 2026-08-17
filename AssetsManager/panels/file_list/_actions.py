@@ -3,13 +3,21 @@ import os
 import logging
 from contextlib import nullcontext
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
 
-from PySide6.QtCore import Qt, QUrl, QMimeData, QFileInfo, QObject
+from PySide6.QtCore import Qt, QUrl, QMimeData, QFileInfo, QRunnable
 from PySide6.QtWidgets import (
-    QApplication, QInputDialog, QMessageBox,
+    QApplication, QInputDialog, QMessageBox, QWidget,
 )
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager import i18n
+
+if TYPE_CHECKING:
+    from PySide6.QtCore import QModelIndex
+
+    from AssetsManager.application.undo_service import UndoService
+    from AssetsManager.panels.file_list._detail_model import DetailModel
+    from AssetsManager.panels.file_list._model import FileSystemModel
 
 tr = i18n.tr
 _log = logging.getLogger(__name__)
@@ -18,12 +26,50 @@ _log = logging.getLogger(__name__)
 class ActionsMixin:
     """Provides context menu, file operations, undo stack, and tag dialogs."""
 
+    # The host surface below is the canonical contract, mirrored by
+    # `FileListActionsHost` in `_host.py` (which `_base.py` asserts
+    # `FileListPanel` satisfies).  Keep the two in sync.
+    if TYPE_CHECKING:
+        _model: FileSystemModel
+        _detail_model: DetailModel
+        _detail_view: Any
+        _current: Path
+        _tags_port: Any
+        file_selected: Any
+        file_double_clicked: Any
+
+        @property
+        def _lib_root(self) -> str | None: ...
+        @property
+        def _view_mode(self) -> str: ...
+
+        def navigate_to(self, path, *, set_root: bool = False) -> None: ...
+        def _post_refresh(self) -> None: ...
+        def _view_selected_rows(self) -> list[QModelIndex]: ...
+        def _view_edit_index(self, idx: QModelIndex) -> bool: ...
+        def _get_scoped_services(self) -> Any: ...
+        def _get_file_operation_service(self) -> Any: ...
+        def _get_tag_service(self) -> Any: ...
+        def _is_current_operation_session(self, session) -> bool: ...
+        def _request_operation_selection(self, session, paths) -> None: ...
+        def _deletion_selection_candidates(self, paths) -> tuple[str, ...]: ...
+        def _show_operation_feedback(
+            self,
+            session,
+            operation: str,
+            *,
+            changed_count: int = 0,
+            errors: tuple[str, ...] = (),
+            warnings: tuple[object, ...] = (),
+            running: bool = False,
+        ) -> None: ...
+
     def _init_actions(self):
         """Call from FileListPanel.__init__ to set up action state."""
         self._clipboard_source: list[str] = []
         self._clipboard_cut = False
-        self._undo_svc = None
-        self._background_ops: list[QObject] = []
+        self._undo_svc: UndoService | None = None
+        self._background_ops: list[QRunnable] = []
 
     @staticmethod
     def _consume_refresh_warnings(service) -> tuple[object, ...]:
@@ -31,12 +77,16 @@ class ActionsMixin:
         operation_id = getattr(service, "last_operation_id", None)
         drain = getattr(service, "drain_refresh_diagnostics", None)
         if callable(drain):
+            # ``callable()`` narrows the duck-typed drain to a return of
+            # ``object``, which is not iterable; the service yields
+            # ``(operation_id, warnings)`` pairs.
+            drained: Any
             try:
-                diagnostics = drain(operation_id)
+                drained = drain(operation_id)
             except TypeError:
-                diagnostics = drain()
+                drained = drain()
             try:
-                diagnostics = tuple(diagnostics)
+                diagnostics = tuple(drained)
             except TypeError:
                 diagnostics = ()
             warnings = []
@@ -81,7 +131,10 @@ class ActionsMixin:
         if os.path.isdir(path):
             self.navigate_to(path)
         else:
-            self._open_in_explorer(path)
+            # Files go through the host's double-click handler, so right-click
+            # "Open" behaves exactly like double-click / Enter (model files
+            # route to the embedded previewer there).
+            self.file_double_clicked.emit(path)
 
     def _add_plugin_context_items(self, menu, file_path: str):
         """Add plugin-contributed context menu items to the menu."""
@@ -97,7 +150,13 @@ class ActionsMixin:
             if items:
                 plugin_menu = menu.addMenu(tr("filelist.menu.plugins"))
                 for item in items:
-                    plugin_menu.addAction(item.label, lambda cmd=item.command_id: self._run_plugin_command(cmd, file_path))
+                    action = plugin_menu.addAction(
+                        item.label,
+                        lambda cmd=item.command_id: self._run_plugin_command(cmd, file_path),
+                    )
+                    available = getattr(ctx, "command_available", None)
+                    if callable(available):
+                        action.setEnabled(bool(available(item.command_id, extra_paths=(file_path,))))
         except Exception:
             pass
 
@@ -108,10 +167,24 @@ class ActionsMixin:
             svc = getattr(scoped, "plugin_service", None)
             if svc is None:
                 return
+            execute = getattr(svc, "execute_command", None)
+            if callable(execute):
+                # Return unconditionally: a False result means the command
+                # declined (poll failed, or the user cancelled its parameter
+                # dialog), not that it went unhandled.  A v2 operator is
+                # registered in both the operator table and the legacy command
+                # table, so falling through would re-invoke it through its
+                # synthetic handler and prompt a second time.
+                execute(command_id, extra_paths=[file_path])
+                return
+            # Only reachable against a host predating execute_command.
             get_commands = getattr(svc, "get_commands", None)
             if not callable(get_commands):
                 return
-            for cmd in get_commands():
+            # ``callable()`` narrows the duck-typed accessor to a return of
+            # ``object``, which is not iterable; the service returns a sequence.
+            commands: Any = get_commands() or ()
+            for cmd in commands:
                 if getattr(cmd, 'id', None) == command_id:
                     handler = getattr(cmd, 'handler', None)
                     if handler and callable(handler):
@@ -167,11 +240,14 @@ class ActionsMixin:
                         result = service.move_to_directory(sources, dest, library_root=lib_root)
                         pairs = tuple(getattr(result, "moved_pairs", ()) or ())
                         if not pairs:
+                            # changed_paths may be shorter than sources on a
+                            # partial move, so truncate rather than raise.
                             pairs = tuple(
-                                zip(sources, getattr(result, "changed_paths", ()))
+                                zip(sources, getattr(result, "changed_paths", ()), strict=False)
                             ) if result.ok else ()
-                        for source, destination in pairs:
-                            undo_service.record_rename(str(source), str(destination))
+                        if undo_service is not None:
+                            for source, destination in pairs:
+                                undo_service.record_rename(str(source), str(destination))
                     else:
                         result = service.copy_to_directory(sources, dest)
                 except ValueError as error:
@@ -204,7 +280,7 @@ class ActionsMixin:
                     self._clipboard_cut = True
             self._post_refresh()
             if result_holder and not result_holder[0].ok:
-                QMessageBox.warning(self, tr("filelist.dialog.paste_error"), "\n".join(result_holder[0].errors))
+                QMessageBox.warning(cast(QWidget, self), tr("filelist.dialog.paste_error"), "\n".join(result_holder[0].errors))
 
         self._run_in_background(_do_paste, on_done=_on_paste_done)
 
@@ -246,7 +322,7 @@ class ActionsMixin:
 
     def _rename(self, path):
         old = Path(path).name
-        name, ok = QInputDialog.getText(self, tr("filelist.dialog.rename"), tr("filelist.dialog.rename_label"), text=old)
+        name, ok = QInputDialog.getText(cast(QWidget, self), tr("filelist.dialog.rename"), tr("filelist.dialog.rename_label"), text=old)
         if ok and name.strip() and name.strip() != old:
             session = getattr(self._get_scoped_services(), "session", None)
             self._show_operation_feedback(session, "rename", running=True)
@@ -264,7 +340,7 @@ class ActionsMixin:
                 self._post_refresh()
             except OSError as e:
                 self._show_operation_feedback(session, "rename", errors=(str(e),))
-                QMessageBox.warning(self, tr("dialog.error"), str(e))
+                QMessageBox.warning(cast(QWidget, self), tr("dialog.error"), str(e))
 
     def _rename_file_path(self, old_path: str, new_name: str, *, add_undo: bool = True) -> str:
         return self._rename_absolute(
@@ -285,7 +361,7 @@ class ActionsMixin:
         except Exception:
             _log.exception("Rename failed: %s -> %s", old, new)
             raise
-        if add_undo:
+        if add_undo and self._undo_svc is not None:
             self._undo_svc.record_rename(old, new)
         return new
 
@@ -296,7 +372,7 @@ class ActionsMixin:
         names = "\n".join(f"  {Path(p).name}" for p in paths[:10])
         if len(paths) > 10:
             names += f"\n  ... and {len(paths) - 10} more"
-        if QMessageBox.question(self, tr("filelist.dialog.move_trash"), f"Move to Recycle Bin?\n\n{names}",
+        if QMessageBox.question(cast(QWidget, self), tr("filelist.dialog.move_trash"), f"Move to Recycle Bin?\n\n{names}",
                                  QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
         session, service, _undo_service, lib_root = mutation
@@ -339,13 +415,22 @@ class ActionsMixin:
         names = "\n".join(f"  {Path(p).name}" for p in paths[:10])
         if len(paths) > 10:
             names += f"\n  ... and {len(paths) - 10} more"
-        r = QMessageBox.warning(self, tr("filelist.dialog.delete_permanent"),
+        r = QMessageBox.warning(cast(QWidget, self), tr("filelist.dialog.delete_permanent"),
             f"Permanently delete?\n\n{names}\n\nYou can undo this deletion.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel)
         if r != QMessageBox.StandardButton.Yes:
             return
         session, service, undo_service, lib_root = mutation
+        if undo_service is None:
+            # The confirmation promises the deletion is undoable; without the
+            # undo service that guarantee cannot be honoured, so refuse rather
+            # than delete irreversibly.
+            _log.error("Permanent delete refused: undo service unavailable")
+            self._show_operation_feedback(
+                session, "permanent_delete", errors=(tr("dialog.error"),)
+            )
+            return
         path_list = [str(Path(path).resolve()) for path in paths]
         result_holder: list = []
         self._show_operation_feedback(session, "permanent_delete", running=True)
@@ -360,7 +445,7 @@ class ActionsMixin:
                         undo_service.discard_delete(entry)
                     raise
                 changed_paths = {Path(path).resolve() for path in result.changed_paths}
-                for path, entry in zip(path_list, entries):
+                for path, entry in zip(path_list, entries, strict=True):
                     if Path(path).resolve() in changed_paths:
                         if entry is not None:
                             undo_service.commit_delete(entry)
@@ -394,7 +479,7 @@ class ActionsMixin:
     def _new_folder(self):
         if self._get_scoped_services() is None:
             return
-        name, ok = QInputDialog.getText(self, tr("filelist.dialog.new_folder"), tr("filelist.dialog.new_folder_label"), text="New Folder")
+        name, ok = QInputDialog.getText(cast(QWidget, self), tr("filelist.dialog.new_folder"), tr("filelist.dialog.new_folder_label"), text="New Folder")
         if ok and name.strip():
             session = getattr(self._get_scoped_services(), "session", None)
             self._show_operation_feedback(session, "new_folder", running=True)
@@ -412,7 +497,7 @@ class ActionsMixin:
                 self._post_refresh()
             except OSError as e:
                 self._show_operation_feedback(session, "new_folder", errors=(str(e),))
-                QMessageBox.warning(self, tr("dialog.error"), str(e))
+                QMessageBox.warning(cast(QWidget, self), tr("dialog.error"), str(e))
 
     def _duplicate_selected(self):
         mutation = self._capture_mutation_context()
@@ -455,7 +540,7 @@ class ActionsMixin:
         if mutation is None:
             return
         session, service, undo_service, lib_root = mutation
-        if not undo_service.can_undo():
+        if undo_service is None or not undo_service.can_undo():
             return
         entry = undo_service.peek_undo()
         target = self._history_selection_target(entry, undo=True)
@@ -489,13 +574,13 @@ class ActionsMixin:
         if mutation is None:
             return
         session, service, undo_service, lib_root = mutation
-        if not undo_service.can_redo():
+        if undo_service is None or not undo_service.can_redo():
             return
         entry = undo_service.peek_redo()
         target = self._history_selection_target(entry, undo=False)
         deletion_candidates = (
             self._deletion_selection_candidates([entry.path])
-            if getattr(entry, "type", None) == "delete"
+            if entry is not None and getattr(entry, "type", None) == "delete"
             else ()
         )
         result_holder: list[bool] = []
@@ -550,7 +635,7 @@ class ActionsMixin:
         if not callable(skip):
             return
         if QMessageBox.question(
-            self,
+            cast(QWidget, self),
             "Undo Failed",
             "The previous operation could not be completed.\n\n"
             "Skip this history entry? Skipping discards it permanently.",
@@ -561,13 +646,17 @@ class ActionsMixin:
 
     # ── Selection helpers ────────────────────────────────────────
 
-    def _selected_paths(self):
+    def _selected_paths(self) -> list[str]:
         if self._view_mode == "Details":
             sel = self._detail_view.selectionModel().selectedRows()
             return [self._detail_model.data(i, Qt.ItemDataRole.UserRole)
                     for i in sel if i.isValid()]
         idxs = self._view_selected_rows()
-        return [self._model.path_at(i.row()) for i in idxs if i.isValid()]
+        return [
+            path
+            for path in (self._model.path_at(i.row()) for i in idxs if i.isValid())
+            if path
+        ]
 
     def _open_selected(self):
         paths = self._selected_paths()
@@ -605,6 +694,7 @@ class ActionsMixin:
         dialog = BatchRenameDialog(paths, self)
         if dialog.exec() != dialog.DialogCode.Accepted or dialog.plan is None:
             return
+        plan = dialog.plan
         mutation = self._capture_mutation_context()
         if mutation is None:
             return
@@ -616,7 +706,7 @@ class ActionsMixin:
 
         def _do_batch_rename():
             with self._session_operation(session):
-                for entry in dialog.plan.changed_entries:
+                for entry in plan.changed_entries:
                     old = str(Path(entry.source).resolve())
                     new = str(Path(entry.target).resolve())
                     if old == new:
@@ -624,7 +714,8 @@ class ActionsMixin:
                         continue
                     try:
                         service.move(old, new, library_root=lib_root or None)
-                        undo_service.record_rename(old, new)
+                        if undo_service is not None:
+                            undo_service.record_rename(old, new)
                         renamed.append(new)
                         warnings.extend(self._consume_refresh_warnings(service))
                     except (OSError, ValueError) as error:
@@ -654,7 +745,7 @@ class ActionsMixin:
         svc = self._get_tag_service()
         tags = svc.get_all_tags(self._lib_root)
         tag, ok = QInputDialog.getItem(
-            self, tr("filelist.dialog.apply_tag"), tr("filelist.dialog.tag_label"), tags, 0, True,
+            cast(QWidget, self), tr("filelist.dialog.apply_tag"), tr("filelist.dialog.tag_label"), tags, 0, True,
         )
         if ok and tag.strip():
             for p in paths:
@@ -664,7 +755,7 @@ class ActionsMixin:
     def _remove_tag_dialog(self, paths):
         if not self._lib_root:
             return
-        tag, ok = QInputDialog.getText(self, tr("filelist.dialog.remove_tag"), tr("filelist.dialog.tag_label"))
+        tag, ok = QInputDialog.getText(cast(QWidget, self), tr("filelist.dialog.remove_tag"), tr("filelist.dialog.tag_label"))
         if ok and tag.strip():
             svc = self._get_tag_service()
             for p in paths:
@@ -698,7 +789,7 @@ class ActionsMixin:
             f"{tr('filelist.prop_modified')}: {fi.lastModified().toString('yyyy-MM-dd HH:mm:ss')}\n"
             f"{tr('filelist.prop_path')}: {fi.absolutePath()}"
         )
-        QMessageBox.information(self, tr("filelist.properties"), info)
+        QMessageBox.information(cast(QWidget, self), tr("filelist.properties"), info)
 
     # ── Background ops ───────────────────────────────────────────
 

@@ -27,6 +27,8 @@ def test_check_reports_up_to_date() -> None:
         cwd=str(ROOT),
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0, result.stderr
 

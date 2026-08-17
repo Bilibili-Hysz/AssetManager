@@ -14,7 +14,8 @@ Example plugin.json:
 }
 
 The entry object must expose register(host_context) and optionally
-unregister(host_context).
+unregister(host_context).  New plugins should import from
+``AssetsManager.plugin_api`` and call ``host.register_class(...)``.
 """
 from AssetsManager.core.plugins.descriptor import (
     PluginDescriptor, PluginRecord, PluginDiagnostic, PluginLoadResult,

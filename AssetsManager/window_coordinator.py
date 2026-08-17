@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QPropertyAnimation, QEasingCurve
-from PySide6.QtWidgets import QApplication, QMainWindow
+from typing import Any, Protocol, cast
+
+from PySide6.QtCore import QObject, QPropertyAnimation, QEasingCurve
+from PySide6.QtWidgets import QApplication, QMenu, QStatusBar
 from pathlib import Path
 
 from AssetsManager.core import themes
@@ -23,12 +25,48 @@ _log = logging.getLogger(__name__)
 tr = i18n.tr
 
 
+class CoordinatedWindow(Protocol):
+    """The window surface ``WindowCoordinator`` drives.
+
+    Naming it here keeps the coordinator decoupled from ``window.py`` (which
+    imports this module) while still type-checking the attributes it reaches.
+    ``MainWindow`` satisfies this protocol structurally; the ``QMainWindow``
+    methods it inherits are redeclared below because a Protocol cannot derive
+    from a concrete Qt class.
+    """
+
+    _menu_widget: Any
+    _menu_bar: Any
+    _menu_lib: QMenu
+    _menu_act_open: Any
+    _menu_act_refresh: Any
+    _menu_act_settings: Any
+    _menu_tools: QMenu
+    _recent_menu: QMenu
+    _share_status_label: Any
+    _share_toggle_btn: Any
+    _workspace: Any
+    file_list: Any
+
+    def refresh_bg(self) -> None: ...
+    def _open_path(self, path: str) -> None: ...
+
+    # Inherited from QMainWindow/QWidget.
+    def setWindowTitle(self, title: str, /) -> None: ...
+    def setWindowOpacity(self, level: float, /) -> None: ...
+    def statusBar(self) -> QStatusBar: ...
+
+
 class WindowCoordinator:
     """Theme, language, and menu coordination for MainWindow."""
 
-    def __init__(self, window: QMainWindow):
+    def __init__(self, window: CoordinatedWindow):
         self._window = window
         self._theme_generation = 0
+        # The coordinator owns the fade animations it creates; holding the
+        # references here keeps them alive without writing onto the window.
+        self._theme_anim_in: QPropertyAnimation | None = None
+        self._theme_anim_out: QPropertyAnimation | None = None
 
     # ── Theme ─────────────────────────────────────────────────────
 
@@ -72,8 +110,9 @@ class WindowCoordinator:
         self._animate_theme_transition(self._theme_generation)
 
     def _stop_theme_animations(self) -> None:
-        for name in ("_startup_anim", "_theme_anim_out", "_theme_anim_in"):
-            animation = getattr(self._window, name, None)
+        # The startup fade belongs to the window; the theme fades are ours.
+        startup = getattr(self._window, "_startup_anim", None)
+        for animation in (startup, self._theme_anim_out, self._theme_anim_in):
             if animation is not None:
                 animation.stop()
         self._window.setWindowOpacity(1.0)
@@ -96,7 +135,10 @@ class WindowCoordinator:
 
     def _animate_theme_transition(self, generation: int) -> None:
         w = self._window
-        anim_out = QPropertyAnimation(w, b"windowOpacity")
+        # QPropertyAnimation needs the concrete QObject; the protocol only
+        # describes the surface this coordinator reads.
+        w_obj = cast(QObject, w)
+        anim_out = QPropertyAnimation(w_obj, b"windowOpacity")
         anim_out.setDuration(100)
         anim_out.setStartValue(1.0)
         anim_out.setEndValue(0.7)
@@ -106,18 +148,18 @@ class WindowCoordinator:
             if generation != self._theme_generation:
                 return
             self._apply_theme()
-            anim_in = QPropertyAnimation(w, b"windowOpacity")
+            anim_in = QPropertyAnimation(w_obj, b"windowOpacity")
             anim_in.setDuration(200)
             anim_in.setStartValue(0.7)
             anim_in.setEndValue(1.0)
             anim_in.setEasingCurve(QEasingCurve.Type.OutCubic)
             anim_in.finished.connect(lambda: w.setWindowOpacity(1.0))
             anim_in.start()
-            w._theme_anim_in = anim_in
+            self._theme_anim_in = anim_in
 
         anim_out.finished.connect(on_fade_out_done)
         anim_out.start()
-        w._theme_anim_out = anim_out
+        self._theme_anim_out = anim_out
 
     # ── Language ───────────────────────────────────────────────────
 

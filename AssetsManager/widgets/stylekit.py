@@ -123,7 +123,7 @@ class StyleKit:
         """Resolve a single color token."""
         return self.t.get(name, default)
 
-    def prop(self, category: str, key: str, default: int | float = 0) -> int | float:
+    def prop(self, category: str, key: str, default: float = 0) -> int | float:
         """Resolve a property value (e.g. prop('border_radius', 'md'))."""
         return self.t.get("properties", {}).get(category, {}).get(key, default)
 

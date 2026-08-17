@@ -33,8 +33,7 @@ def test_transitional_exception_registry_shrinks() -> None:
         assert not (
             source.startswith("AssetsManager.core.")
             and (
-                imported.startswith("AssetsManager.application")
-                or imported.startswith("AssetsManager.repositories")
+                imported.startswith(("AssetsManager.application", "AssetsManager.repositories"))
             )
         ), f"G1 exception should be gone: {source} -> {imported} ({batch})"
 

@@ -82,7 +82,7 @@ def test_maintenance_tab_renders_and_buttons_call_adapter(tmp_path):
         dialog.show()
         app.processEvents()
 
-        assert dialog._tabs.count() == 5
+        assert dialog._tabs.count() == 6
         assert dialog._tabs.tabText(3) == "Maintenance"
         assert dialog._run_checkpoint_btn.text() == "Run WAL Checkpoint"
         assert dialog._read_size_btn.text() == "Read Database Size"
@@ -186,7 +186,7 @@ def test_maintenance_tab_renders_without_adapter(tmp_path):
         i18n.set_language("en")
         app = QApplication.instance() or QApplication([])
         dialog = SettingsDialog()
-        assert dialog._tabs.count() == 5
+        assert dialog._tabs.count() == 6
         assert not dialog._run_checkpoint_btn.isEnabled()
         assert not dialog._read_size_btn.isEnabled()
         assert dialog._maintenance_status.text() == "No library is open."

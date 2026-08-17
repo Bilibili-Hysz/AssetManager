@@ -27,15 +27,15 @@ def _is_fake_ip_or_benchmark(ip: str) -> bool:
     through it. Such an address is never a reachable LAN address, so it
     must not be reported as the share URL host or the local IP.
     """
-    return ip.startswith("198.18.") or ip.startswith("198.19.")
+    return ip.startswith(("198.18.", "198.19."))
 
 
 def _is_private_ipv4(ip: str) -> bool:
-    if ip.startswith("127.") or ip.startswith("169.254.") or ip.startswith("0."):
+    if ip.startswith(("127.", "169.254.", "0.")):
         return False
     if _is_fake_ip_or_benchmark(ip):
         return False
-    if ip.startswith("10.") or ip.startswith("192.168."):
+    if ip.startswith(("10.", "192.168.")):
         return True
     if ip.startswith("172."):
         parts = ip.split(".")

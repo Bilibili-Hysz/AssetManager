@@ -1,8 +1,12 @@
 """Tests for domain/auth.py — pure crypto functions."""
 import hashlib
 import hmac
+import os
 import time
 
+import pytest
+
+from AssetsManager.domain import auth as auth_module
 from AssetsManager.domain.auth import (
     generate_access_key,
     generate_share_token,
@@ -11,6 +15,7 @@ from AssetsManager.domain.auth import (
     hash_key,
     hash_password,
     is_password_hash,
+    needs_password_rehash,
     validate_password_strength,
     verify_auth_token,
     verify_key,
@@ -21,14 +26,28 @@ from AssetsManager.domain.auth import (
 )
 
 
+def _legacy_hash(password: str) -> str:
+    """Build a hash in the pre-versioning bare ``salt:key`` format."""
+    salt = b"\x11" * 32
+    key = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        auth_module.LEGACY_PASSWORD_ITERATIONS,
+    )
+    return f"{salt.hex()}:{key.hex()}"
+
+
 class TestPasswordHashing:
 
-    def test_hash_password_returns_salt_key_format(self):
+    def test_hash_password_returns_versioned_format(self):
         h = hash_password("test123")
-        parts = h.split(":")
-        assert len(parts) == 2
-        assert len(parts[0]) == 64  # 32-byte salt = 64 hex chars
-        assert len(parts[1]) == 64  # 32-byte key = 64 hex chars
+        parts = h.split("$")
+        assert len(parts) == 4
+        assert parts[0] == "pbkdf2_sha256"
+        assert int(parts[1]) == auth_module.PASSWORD_ITERATIONS
+        assert len(parts[2]) == 64  # 32-byte salt = 64 hex chars
+        assert len(parts[3]) == 64  # 32-byte key = 64 hex chars
 
     def test_hash_password_different_each_time(self):
         h1 = hash_password("test")
@@ -46,6 +65,99 @@ class TestPasswordHashing:
     def test_verify_password_malformed_hash(self):
         assert verify_password("test", "not_a_hash") is False
         assert verify_password("test", "") is False
+
+    def test_verify_password_rejects_non_numeric_iterations(self):
+        h = hash_password("mypassword")
+        _, _, salt, key = h.split("$")
+        assert verify_password("mypassword", f"pbkdf2_sha256$abc${salt}${key}") is False
+
+    def test_verify_password_rejects_zero_iterations(self):
+        h = hash_password("mypassword")
+        _, _, salt, key = h.split("$")
+        assert verify_password("mypassword", f"pbkdf2_sha256$0${salt}${key}") is False
+
+
+class TestProductionCosts:
+    """Guard the shipped PBKDF2 costs against accidental downgrades.
+
+    These tests opt out of the suite-wide fast-PBKDF2 override via the
+    ``real_pbkdf2_cost`` marker, so they assert the production values
+    themselves.  Any deliberate cost change must therefore be edited here
+    explicitly instead of silently passing the rest of the suite.
+    """
+
+    @pytest.mark.real_pbkdf2_cost
+    def test_password_iterations(self):
+        assert auth_module.PASSWORD_ITERATIONS == 600_000
+
+    @pytest.mark.real_pbkdf2_cost
+    def test_legacy_iterations(self):
+        assert auth_module.LEGACY_PASSWORD_ITERATIONS == 100_000
+
+    @pytest.mark.real_pbkdf2_cost
+    def test_key_iterations(self):
+        assert auth_module.KEY_ITERATIONS == 50_000
+
+    @pytest.mark.real_pbkdf2_cost
+    def test_production_legacy_hash_still_verifies(self):
+        # The bare legacy format carries no cost field, so it must keep
+        # verifying while the module constant holds the production value.
+        salt = b"\x77" * 32
+        key = hashlib.pbkdf2_hmac(
+            "sha256", b"legacy-pw", salt, auth_module.LEGACY_PASSWORD_ITERATIONS
+        )
+        stored = f"{salt.hex()}:{key.hex()}"
+        assert verify_password("legacy-pw", stored) is True
+
+
+class TestCrossCostVerification:
+    """Hashes minted at any cost must verify regardless of the current one."""
+
+    def test_production_cost_hash_verifies_under_test_cost(self):
+        # The versioned format embeds its cost, so verification replays the
+        # stored cost even though the fixture downgraded the module constant.
+        cheap = hash_password("cross")
+        salt = os.urandom(32)
+        key = hashlib.pbkdf2_hmac("sha256", b"cross", salt, 600_000)
+        prod = f"pbkdf2_sha256$600000${salt.hex()}${key.hex()}"
+        assert verify_password("cross", cheap) is True
+        assert verify_password("cross", prod) is True
+        assert verify_password("wrong", prod) is False
+
+
+class TestLegacyPasswordHashes:
+    """Hashes written before the versioned format must keep working."""
+
+    def test_legacy_hash_still_verifies(self):
+        h = _legacy_hash("mypassword")
+        assert verify_password("mypassword", h) is True
+
+    def test_legacy_hash_rejects_wrong_password(self):
+        h = _legacy_hash("mypassword")
+        assert verify_password("wrong", h) is False
+
+    def test_legacy_hash_is_recognized_as_password_hash(self):
+        assert is_password_hash(_legacy_hash("mypassword")) is True
+
+
+class TestNeedsPasswordRehash:
+
+    def test_current_hash_needs_no_rehash(self):
+        assert needs_password_rehash(hash_password("test")) is False
+
+    def test_legacy_hash_needs_rehash(self):
+        assert needs_password_rehash(_legacy_hash("test")) is True
+
+    def test_lower_cost_versioned_hash_needs_rehash(self):
+        h = hash_password("test")
+        _, _, salt, key = h.split("$")
+        low = f"pbkdf2_sha256${auth_module.PASSWORD_ITERATIONS - 1}${salt}${key}"
+        assert needs_password_rehash(low) is True
+
+    def test_unparseable_hash_needs_no_rehash(self):
+        # It cannot be verified either, so there is nothing to migrate.
+        assert needs_password_rehash("not_a_hash") is False
+        assert needs_password_rehash("") is False
 
 
 class TestKeyHashing:

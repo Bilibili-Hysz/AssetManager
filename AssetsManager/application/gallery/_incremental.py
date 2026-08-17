@@ -52,6 +52,7 @@ class _GalleryIncrementalMixin:
     _pending_lock: threading.Lock
     _pending_events: dict[str, list[_QueuedChange]]
     _build_lock: threading.Lock
+    _worker_threads: set[threading.Thread]
     _refresh_timer: threading.Timer | None
     _home_cache_ttl: float
     _inc_timer: threading.Timer | None
@@ -200,7 +201,24 @@ class _GalleryIncrementalMixin:
 
     def _apply_pending_home(self, root_key: str) -> None:
         """Apply queued changes incrementally; fall back to a full rebuild
-        on any inconsistency, budget overrun, or concurrent full build."""
+        on any inconsistency, budget overrun, or concurrent full build.
+
+        The timer thread registers itself as an in-flight worker before
+        touching anything so ``GalleryService.close()`` can join it and
+        guarantee the shared sqlite connection is never used after the
+        owning session closed it.
+        """
+        with self._build_lock:
+            if self._closed:
+                return
+            self._worker_threads.add(threading.current_thread())
+        try:
+            self._apply_pending_home_impl(root_key)
+        finally:
+            with self._build_lock:
+                self._worker_threads.discard(threading.current_thread())
+
+    def _apply_pending_home_impl(self, root_key: str) -> None:
         if self._closed:
             return
         with self._pending_lock:
@@ -333,7 +351,9 @@ class _GalleryIncrementalMixin:
                 else:
                     home = self._apply_file_event(root, state, home, path, None, "deleted")
         elif change.kind == "moved":
-            for new_path, old_path in zip(change.paths, change.old_paths):
+            # A move event may carry paths without a matching old_path for each
+            # (and this runs inside the event loop), so truncate silently.
+            for new_path, old_path in zip(change.paths, change.old_paths, strict=False):
                 try:
                     is_dir = Path(new_path).is_dir()
                 except OSError:

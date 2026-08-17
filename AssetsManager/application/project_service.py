@@ -348,7 +348,7 @@ class ProjectService:
 
         # Compute counts for uncached directories
         to_write: dict[str, int] = {}
-        for entry, path in zip(entries, paths):
+        for entry, path in zip(entries, paths, strict=True):
             if path in cached:
                 continue
             try:
@@ -455,7 +455,7 @@ class ProjectService:
                 validate_cache(root)
             cached_entries = cache.get_batch(paths)
             attached_paths: set[str] = set()
-            for project, path in zip(projects, paths):
+            for project, path in zip(projects, paths, strict=True):
                 try:
                     cached = cached_entries.get(path)
                     if not cached or cached.mtime != project["mtime"] or not cached.preview_path:
@@ -532,7 +532,7 @@ class ProjectService:
             except (OSError, TypeError, ValueError):
                 continue
 
-        for project, project_path in zip(projects, project_paths):
+        for project, project_path in zip(projects, project_paths, strict=True):
             if project_path in attached_paths:
                 continue
             candidate = candidates.get(project_path)

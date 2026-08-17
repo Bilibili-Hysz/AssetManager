@@ -160,6 +160,12 @@ _ANCHORS: dict[str, tuple[re.Pattern[str], str, str]] = {
     "dialogs": (re.compile(r"Qt 对话框（\d+ 个）"), "Qt 对话框（{v} 个）", "dialogs"),
     "domain_events": (re.compile(r"\d+ 个领域事件"), "{v} 个领域事件", "domain_events"),
     "icons": (re.compile(r"（\d+ 图标"), "（{v} 图标", "icons"),
+    "e2e_specs": (re.compile(r"\d+ 个 spec"), "{v} 个 spec", "e2e_specs"),
+    "routes_modules_tree": (re.compile(r"routes/ \d+ 模块"), "routes/ {v} 模块", "routes_modules"),
+    "ts_tree": (re.compile(r"\d+ ts/tsx 生产源码"), "{v} ts/tsx 生产源码", "ts"),
+    "hooks_tree": (re.compile(r"hooks\(\d+\)"), "hooks({v})", "hooks"),
+    "pages_tree": (re.compile(r"pages\(\d+\)"), "pages({v})", "pages"),
+    "stores_tree": (re.compile(r"stores\((\d+) Context\)"), "stores({v} Context)", "stores"),
 }
 _I18N_ANCHOR = re.compile(r"en \d+ / zh \d+ / ja \d+ keys")
 

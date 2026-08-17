@@ -366,7 +366,9 @@ class DatabaseIntegrityService:
             return "; ".join(values) or "error"
         except sqlite3.OperationalError:
             if self._cancel_event.is_set():
-                raise _IntegrityCheckCancelled
+                # Cancellation is a deliberate alternate outcome, not a bug
+                # caused by the lock, so drop the OperationalError chain.
+                raise _IntegrityCheckCancelled from None
             raise
         finally:
             with self._connection_lock:

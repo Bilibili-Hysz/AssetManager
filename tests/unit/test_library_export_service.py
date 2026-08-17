@@ -1292,6 +1292,12 @@ def test_iter_backup_files_rejects_real_windows_junction(tmp_path):
         ["cmd", "/c", "mklink", "/J", str(junction), str(outside)],
         capture_output=True,
         text=True,
+        # cmd.exe emits OEM-codepage text (e.g. GBK on a Chinese locale);
+        # decoding it strictly as UTF-8 can raise UnicodeDecodeError in
+        # subprocess's reader thread. The output is only used for a skip
+        # message, so replace undecodable bytes instead of failing.
+        encoding="utf-8",
+        errors="replace",
     )
     if result.returncode != 0:
         pytest.skip(f"directory junctions unavailable: {result.stderr or result.stdout}")

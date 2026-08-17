@@ -69,7 +69,9 @@ class FreeDownloadQuotaService:
 
     @staticmethod
     def period_start(now: float, period: str) -> int:
-        local = datetime.fromtimestamp(float(now))
+        # Quota windows deliberately follow the host's local calendar, so a
+        # daily quota resets at the operator's midnight rather than UTC's.
+        local = datetime.fromtimestamp(float(now))  # noqa: DTZ006
         day = local.replace(hour=0, minute=0, second=0, microsecond=0)
         if str(period).lower() == "weekly":
             day -= timedelta(days=day.weekday())
@@ -79,7 +81,8 @@ class FreeDownloadQuotaService:
     def reset_at(cls, now: float, period: str) -> int:
         start = cls.period_start(now, period)
         length = timedelta(days=7 if str(period).lower() == "weekly" else 1)
-        return int((datetime.fromtimestamp(start) + length).timestamp())
+        # Local calendar again, matching period_start.
+        return int((datetime.fromtimestamp(start) + length).timestamp())  # noqa: DTZ006
 
     @staticmethod
     def _identity(identity_key: str) -> str:

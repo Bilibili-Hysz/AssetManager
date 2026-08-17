@@ -47,6 +47,8 @@ def test_checker_accepts_spa_only_bundle_without_legacy_static_index(tmp_path):
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode == 0, result.stderr
@@ -63,6 +65,8 @@ def test_checker_rejects_bundle_without_spa_index(tmp_path):
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode != 0
@@ -79,6 +83,8 @@ def test_checker_rejects_bundle_with_empty_spa_assets(tmp_path):
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode != 0
@@ -97,6 +103,8 @@ def test_checker_rejects_bundle_missing_asset_referenced_by_spa_index(tmp_path):
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode != 0
@@ -130,6 +138,8 @@ def test_checker_rejects_bundle_missing_stable_resource(
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode != 0
@@ -145,6 +155,8 @@ def test_checker_does_not_require_runtime_data_directory(tmp_path):
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode == 0, result.stderr
@@ -163,6 +175,8 @@ def test_checker_rejects_bundle_missing_required_qt_module(tmp_path, module_name
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode != 0
@@ -182,6 +196,8 @@ def test_checker_rejects_bundle_missing_required_qt_runtime_library(
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode != 0
@@ -202,6 +218,8 @@ def test_checker_rejects_bundle_with_empty_stable_directory(tmp_path, relative_p
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode != 0
@@ -230,6 +248,8 @@ def test_checker_rejects_file_resource_replaced_by_directory(tmp_path, relative_
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode != 0
@@ -249,6 +269,8 @@ def test_checker_rejects_directory_resource_replaced_by_file(tmp_path, relative_
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode != 0
@@ -267,6 +289,8 @@ def test_checker_rejects_qt_module_stub_without_binary_suffix(tmp_path, module_n
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode != 0

@@ -241,7 +241,7 @@ async def _wait_all_ws_closed(ws_list, timeout=5.0):
 
     ws_objs = [ws for _, ws in ws_list]
     results = await asyncio.gather(*(observe(ws) for ws in ws_objs))
-    for (_, ws), res in zip(ws_list, results):
+    for (_, ws), res in zip(ws_list, results, strict=True):
         received[id(ws)] = res
     return received
 
@@ -437,8 +437,10 @@ def test_shutdown_stress_no_deadlock_no_leak(tmp_path):
                 f"[stress] round {r + 1}/{DEFAULT_ROUNDS} "
                 f"(stage marks: open/start/connect/requests/switch/shutdown/assert)"
             )
-            async def run_round():
-                return await _round(r, Path(tmp_path))
+            # Bind `r` as a default so the closure captures its value, not the
+            # loop variable; asyncio.run() completes before the next iteration.
+            async def run_round(current_round: int = r):
+                return await _round(current_round, Path(tmp_path))
 
             failure = asyncio.run(run_round())
             if failure is not None:

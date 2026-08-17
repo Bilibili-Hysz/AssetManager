@@ -64,6 +64,44 @@ def _application_provider_seams_installed():
     yield
 
 
+# ── Fast PBKDF2 for the test suite ──────────────────────────────
+# The shipped PBKDF2 costs (600k / 100k / 50k iterations) are deliberate
+# security knobs, but replaying them on thousands of tests spends the bulk
+# of a full run inside hashlib.  Everything under test — hash format,
+# verification, rehash signalling — behaves identically at any cost, so the
+# suite swaps in small values.  The versioned password format embeds its
+# cost, which is what keeps a cheap test hash verifiable against a
+# production-cost hash; tests marked ``real_pbkdf2_cost`` opt out and
+# observe the real values.  LEGACY must stay below PASSWORD so the
+# "legacy hash needs rehash" contract survives the downgrade.
+_TEST_PBKDF2_COSTS = {
+    "PASSWORD_ITERATIONS": 1_000,
+    "LEGACY_PASSWORD_ITERATIONS": 600,
+    "KEY_ITERATIONS": 1_000,
+}
+
+
+@pytest.fixture(autouse=True)
+def _fast_pbkdf2(request):
+    """Override the domain/auth PBKDF2 cost constants for one test."""
+    if request.node.get_closest_marker("real_pbkdf2_cost"):
+        yield
+        return
+    if os.environ.get("AM_REAL_PBKDF2") == "1":  # escape hatch for cost baselines
+        yield
+        return
+    from AssetsManager.domain import auth
+
+    originals = {name: getattr(auth, name) for name in _TEST_PBKDF2_COSTS}
+    for name, value in _TEST_PBKDF2_COSTS.items():
+        setattr(auth, name, value)
+    try:
+        yield
+    finally:
+        for name, value in originals.items():
+            setattr(auth, name, value)
+
+
 # ── Test-session runtime-data protection ──────────────────────────
 # Tests create per-library SQLite databases and identity markers under
 # RuntimeData/.  A full suite can leave tens of thousands of artifact
@@ -118,6 +156,20 @@ def _remove_dir_retry(path: Path, attempts: int = 2, delay: float = 0.5) -> None
         if not path.exists():
             return
         time.sleep(delay)
+
+
+def _unlink_best_effort(path: Path) -> None:
+    """Delete a marker file, tolerating a lock held elsewhere.
+
+    Same contract as :func:`_remove_dir_retry`: cleanup runs from
+    ``pytest_sessionfinish``, so an OSError raised here would abort the hook
+    and take the test report with it.  A marker left behind is harmless --
+    the next session (fresh process, no stale handles) removes it.
+    """
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _db_library_root(db_path: Path) -> str | None:
@@ -213,8 +265,8 @@ def _cleanup_test_runtime_data() -> None:
                 # released handles) can retry the pair.
                 continue
             identity = shared / f"{entry.name}.identity"
-            identity.unlink(missing_ok=True)
-            Path(str(identity) + ".pending.lock").unlink(missing_ok=True)
+            _unlink_best_effort(identity)
+            _unlink_best_effort(Path(str(identity) + ".pending.lock"))
 
     # 1b. Identity-less orphan dirs.  Pure thumbnail-cache dirs are always
     #     test artifacts; bare-db dirs are inspected through
@@ -353,8 +405,8 @@ _SANDBOX_TEMP = "dsh-" in tempfile.gettempdir().lower()
 _SANDBOX_TMP_PATHS: list[Path] = []
 
 
-def _sandbox_mkdtemp(suffix=None, prefix=None, dir=None) -> str:
-    base = Path(dir) if dir is not None else _TMP_PATHS_ROOT
+def _sandbox_mkdtemp(suffix=None, prefix=None, base_dir=None) -> str:
+    base = Path(base_dir) if base_dir is not None else _TMP_PATHS_ROOT
     base.mkdir(exist_ok=True)
     name = f"{prefix or 'tmp'}{suffix or ''}{next(_TMP_PATHS_COUNTER)}-{os.getpid()}"
     path = base / name
@@ -365,6 +417,11 @@ def _sandbox_mkdtemp(suffix=None, prefix=None, dir=None) -> str:
 def pytest_configure(config):
     if _SANDBOX_TEMP:
         tempfile.mkdtemp = _sandbox_mkdtemp
+    config.addinivalue_line(
+        "markers",
+        "real_pbkdf2_cost: observe production PBKDF2 cost constants "
+        "(skip the fast-PBKDF2 override)",
+    )
 
 
 @pytest.fixture

@@ -17,6 +17,7 @@ This module is optional. If aiohttp is not installed, is_available()
 returns False and all other functions raise RuntimeError.
 """
 import logging
+from pathlib import Path
 from typing import Protocol, cast
 
 _log = logging.getLogger(__name__)
@@ -255,6 +256,11 @@ class LanServer:
         return self._impl.current_settings
 
     @property
+    def library_root(self) -> Path:
+        """Return the shared library root path."""
+        return self._impl.library_root
+
+    @property
     def _port(self) -> int:
         """Return the server port."""
         return self._impl._port
@@ -286,6 +292,24 @@ class LanServer:
     def local_ui_auth_secret(self) -> str:
         """Return the auth-config-bound secret for local UI access-key tokens."""
         return self._impl.local_ui_auth_secret
+
+    def local_ui_token(self) -> str | None:
+        """Mint a signed local-UI credential, only while LAN auth is active.
+
+        The server accepts this token as the ``local_ui`` principal (full
+        capabilities, unaffected by guest-facing preview restrictions).
+        Returns None when authentication is off (no credential needed) or
+        the signing secret is unavailable.
+        """
+        enabled, _mode = self.auth_status()
+        if not enabled:
+            return None
+        secret = getattr(self._impl, "local_ui_auth_secret", None)
+        if not secret:
+            return None
+        from AssetsManager.lan.utils import generate_auth_token
+
+        return generate_auth_token(secret)
 
     @property
     def ssl_active(self) -> bool:

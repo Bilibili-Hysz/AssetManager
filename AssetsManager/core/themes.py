@@ -12,13 +12,15 @@ Performance:
   - Theme changes trigger save to AppSettings and broadcast via signal_bus.
   - stylesheet() result cached (invalidated on theme change).
 """
+import logging
 import re
-import sys
 import threading
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.theme_loader import ThemeLoader
+
+_log = logging.getLogger(__name__)
 
 # ── Internal state ────────────────────────────────────────
 
@@ -134,7 +136,7 @@ def _load_all_themes():
             _THEME_NAMES.append(name)
 
     if not _THEMES:
-        print("[themes] ERROR: no valid themes found", file=sys.stderr)
+        _log.error("No valid themes found")
 
 
 def _merge_theme(data: dict) -> dict | None:
@@ -242,7 +244,7 @@ def set_theme(name: str):
     migrated = _MIGRATION_MAP.get(name.lower(), name) if name else name
     with _themes_lock:
         if migrated not in _THEMES:
-            print(f"[themes] WARNING: theme '{name}' not found", file=sys.stderr)
+            _log.warning("Theme %r not found", name)
             return
         _current = migrated
         _cached_stylesheet = None

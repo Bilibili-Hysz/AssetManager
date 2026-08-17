@@ -319,7 +319,30 @@ class ShareService:
         pw_hash = self._repo.get_password_hash(share_id)
         if pw_hash is None:
             return True  # No password required
-        return auth_crypto.verify_password(password, pw_hash)
+        if not auth_crypto.verify_password(password, pw_hash):
+            return False
+        self._migrate_password_cost(share_id, password, pw_hash)
+        return True
+
+    def _migrate_password_cost(
+        self, share_id: str, password: str, stored_hash: str
+    ) -> None:
+        """Re-stamp a legacy/low-cost share hash at the current PBKDF2 cost.
+
+        Runs only after a successful verification, the one moment the
+        plaintext is available.  A failure here must not fail the
+        verification: the visitor is already authorized and the old hash
+        still verifies, so the migration retries on the next attempt.
+        """
+        if not auth_crypto.needs_password_rehash(stored_hash):
+            return
+        try:
+            self._repo.set_password_hash(share_id, auth_crypto.hash_password(password))
+        except Exception:
+            _log.warning(
+                "Share password cost migration failed for %s; access stands",
+                share_id, exc_info=True,
+            )
 
     # ── Brute-force protection ──────────────────────────────────
 

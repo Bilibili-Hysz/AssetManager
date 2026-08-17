@@ -46,7 +46,6 @@ Thumbs.db
 # Local agent session and test artifacts.
 /.zcode/
 /tmp/
-/.pytest-tmp/
 /new-session---*.json
 
 # React/Vite local dependencies and generated metadata.
@@ -87,15 +86,24 @@ AssetsManager/core/format_utils.c
 /webui/test-results/
 /webui/playwright-report/
 
+# The previewer build (webui/previewer-dist/) is vendored on purpose: it is
+# produced in a separate workspace, so a fresh clone has no way to rebuild it
+# and GET /previewer/* would 503 without these files.  Only the runtime payload
+# is tracked -- source maps of third-party minified bundles are 6 MB of no
+# diagnostic value here, and the demo models are another 3.5 MB the app never
+# requests.  Both stay on disk locally; this only keeps them out of history.
+/webui/previewer-dist/**/*.map
+/webui/previewer-dist/samples/
+
 # Local bare mirror (backup of this repo's git history).
 /mirror/
 
 
 # Local pytest basetemp (system temp is locked by a privileged process).
-/.pytest-basetemp*/
-/.pytest-bt-*/
+# One glob rather than a per-run name: each session picks a fresh basetemp
+# because a crashed run leaves its old directory locked by a stale handle.
+/.pytest-*/
 /.bt-*/
-/.pytest-tmp-paths/
 /pytest-run.log
 /pytest-full*.log
 
@@ -108,3 +116,9 @@ AssetsManager/core/format_utils.c
 # Local agent tooling config (user-provided .zcode/.agents definitions).
 /.agents/
 
+
+# Ad-hoc inventory/probe listings produced while auditing the tree.
+# Root-anchored, so the many legitimately underscore-prefixed module files in
+# package subdirectories stay tracked.
+/*_files.txt
+/_*

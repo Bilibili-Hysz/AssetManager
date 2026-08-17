@@ -256,10 +256,8 @@ class WindowLifecycleCoordinator:
         try:
             session = window._open_library_session(path)
         except Exception as exc:
-            if window_error is None:
-                window_error = exc
             _rollback_open_failure(window, old_session, path, exc)
-            raise window_error
+            raise
 
         window._apply_scoped_services(session)
         sidebar = getattr(window, "sidebar", None)

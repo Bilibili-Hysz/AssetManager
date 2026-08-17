@@ -239,7 +239,9 @@ class _FileInfoTask(CancellableRunnable):
         try:
             from datetime import datetime
             mtime = os.path.getmtime(path)
-            modified_display = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+            # Shown next to the file in the OS file manager, which also
+            # displays local time.
+            modified_display = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")  # noqa: DTZ006
         except OSError:
             modified_display = "—"
 

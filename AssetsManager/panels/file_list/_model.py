@@ -8,7 +8,7 @@ import logging
 from time import perf_counter
 import os
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 import weakref
 from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QObject, QRunnable, Signal
 from PySide6.QtGui import QIcon
@@ -384,7 +384,10 @@ class FileSystemModel(QAbstractListModel):
     def rowCount(self, parent=QModelIndex()):
         return len(self._entries)
 
-    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+    def data(self, index, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
+        # Qt's role-based accessor is heterogeneous by contract: each role
+        # returns its own type, so the signature stays ``Any`` like the
+        # ``QAbstractItemModel.data`` it overrides.
         if not index.isValid():
             return None
         entry = self._entries[index.row()]
@@ -399,7 +402,8 @@ class FileSystemModel(QAbstractListModel):
         if role == Qt.ItemDataRole.ToolTipRole:
             st = self._cached_stat(entry)
             modified = (
-                datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")
+                # Local time, matching the OS file manager's own column.
+                datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")  # noqa: DTZ006
                 if st.st_mtime else ""
             )
             return f"{entry.path}\n{st.st_size:,} bytes\nModified: {modified}"

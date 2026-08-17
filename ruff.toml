@@ -1,7 +1,51 @@
 extend-exclude = [
-    ".Cython&Noikta",
+    ".cython-nuitka",
     ".pytest-.*",
     ".pytest_cache",
     ".ruff_cache",
     "tmp(?:-.*)?",
 ]
+
+[lint]
+# Correctness-oriented families only.  Style/formatting families (D, ANN, COM,
+# EM, Q, ...) are deliberately left off: they would report tens of thousands of
+# findings across this tree without catching bugs, and pyright already covers
+# typing.  Each family below was measured to a finite, reviewed set of findings.
+select = [
+    "E4", "E7", "E9", "F",  # ruff defaults: syntax, imports, obvious errors
+    "B",    # flake8-bugbear: real runtime traps
+    "LOG",  # logging misuse
+    "G",    # logging call-format misuse
+    "DTZ",  # naive datetime construction
+    "PIE",  # unnecessary/duplicated code with behavioural risk
+    "PYI",  # stub/annotation correctness
+    "A",    # builtin shadowing
+    "T20",  # stray print/pprint in production code
+    "FLY", "SLOT", "YTT", "EXE", "INT", "NPY", "ISC", "ICN", "TID", "FA", "PGH",
+]
+
+ignore = [
+    # getattr/setattr with a constant attribute name is used here to attach
+    # ad-hoc attributes to BaseException and to reach platform-only ctypes
+    # symbols.  Rewriting them as plain attribute access is exactly what the
+    # rule asks for and it breaks the pyright gate ("Attribute is unknown"),
+    # so the stronger gate wins.
+    "B009",
+    "B010",
+    # Qt overrides must repeat the framework's own default argument, e.g.
+    # `def index(self, row, column, parent=QModelIndex())`.  The call in the
+    # default is required by the signature being overridden.
+    "B008",
+]
+
+[lint.per-file-ignores]
+# Tests intentionally probe side-effecting properties inside pytest.raises,
+# which reads as a "useless expression", and they may assert on broad
+# exception types when the point is that *something* fails.
+"tests/**" = ["B018", "B017", "T201"]
+# Developer scripts, the packaging helpers and the console entry points print
+# as their output channel; a logger would be the wrong tool there.
+"scripts/**" = ["T201"]
+"setup_cython.py" = ["T201"]
+"build.py" = ["T201"]
+"run.py" = ["T201"]

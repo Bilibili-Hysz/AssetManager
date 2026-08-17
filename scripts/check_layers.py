@@ -19,13 +19,14 @@ SRC = ROOT / "AssetsManager"
 # presentation layer in the graph (they are allowed to reuse each other),
 # while application/domain/repositories must not reach presentation.
 ALLOWED_EDGES: dict[str, set[str]] = {
-    "core": {"core"},
-    "di": {"core", "di"},
+    "plugin_api": {"plugin_api"},
+    "core": {"core", "plugin_api"},
+    "di": {"core", "di", "plugin_api"},
     "domain": {"core", "domain"},
     "repositories": {"core", "domain", "repositories"},
-    "application": {"core", "di", "domain", "repositories", "application"},
-    "controllers": {"core", "application", "domain", "repositories", "controllers"},
-    "lan": {"core", "di", "domain", "repositories", "application", "lan"},
+    "application": {"core", "di", "domain", "repositories", "application", "plugin_api"},
+    "controllers": {"core", "application", "domain", "repositories", "controllers", "plugin_api"},
+    "lan": {"core", "di", "domain", "repositories", "application", "lan", "plugin_api"},
     "panels": {
         "core",
         "application",
@@ -35,6 +36,7 @@ ALLOWED_EDGES: dict[str, set[str]] = {
         "panels",
         "widgets",
         "dialogs",
+        "plugin_api",
     },
     "widgets": {
         "core",
@@ -44,6 +46,7 @@ ALLOWED_EDGES: dict[str, set[str]] = {
         "panels",
         "widgets",
         "dialogs",
+        "plugin_api",
     },
     "dialogs": {
         "core",
@@ -54,6 +57,7 @@ ALLOWED_EDGES: dict[str, set[str]] = {
         "panels",
         "widgets",
         "dialogs",
+        "plugin_api",
     },
     "i18n": {"core", "i18n"},
     "presentation_top": {
@@ -66,6 +70,7 @@ ALLOWED_EDGES: dict[str, set[str]] = {
         "panels",
         "widgets",
         "dialogs",
+        "plugin_api",
         "presentation_top",
     },
 }

@@ -45,7 +45,7 @@ async def _request_path(request) -> str:
         try:
             body = await request.json()
         except Exception:
-            raise web.HTTPBadRequest(reason="Invalid request")
+            raise web.HTTPBadRequest(reason="Invalid request") from None
         if not isinstance(body, dict):
             raise web.HTTPBadRequest(reason="Invalid request")
         value = body.get("path", "")

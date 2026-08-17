@@ -18,6 +18,7 @@ from AssetsManager.domain.auth import (  # noqa: F401
     hash_key,
     hash_password,
     is_password_hash,
+    needs_password_rehash,
     validate_password_strength,
     verify_auth_token,
     verify_key,

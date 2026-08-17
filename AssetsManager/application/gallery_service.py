@@ -94,6 +94,12 @@ class GalleryService(_GalleryPersistenceMixin, _GalleryProjectionMixin, _Gallery
         # daemon thread computes the projection and fills the cache.
         self._building: set[str] = set()
         self._build_lock = threading.Lock()
+        # In-flight worker threads (background home builds and incremental
+        # applies). close() joins them so they never touch the library
+        # sqlite connection after the owning session has closed it (a
+        # use-after-close that surfaces as a native access violation on
+        # Windows sqlite3).
+        self._worker_threads: set[threading.Thread] = set()
         # Failed builds back off before retrying: without this, a library
         # that cannot finish within the budget would be re-walked on every
         # polling request (a 30-60s full traversal each time, pinning the
@@ -116,24 +122,103 @@ class GalleryService(_GalleryPersistenceMixin, _GalleryProjectionMixin, _Gallery
         self._incremental_applied = 0
         self._incremental_fallbacks = 0
         self._closed = False
+        # Cancellation signal observed by worker entry checks and by
+        # pre_wait hooks (the LAN scanner wait). Set once by close() and
+        # never cleared: the service is rebuilt on the next start rather
+        # than reopened.
+        self._cancel_event = threading.Event()
+        # Default overall close deadline for the bounded worker joins.
+        self._close_timeout = 5.0
         self._fs_subscription = get_event_bus().subscribe_weak(
             FileSystemChanged, self._on_file_system_changed
         )
 
-    def close(self) -> None:
-        """Stop background work; called when the owning session closes."""
-        self._closed = True
+    def close(self, timeout: float | None = None) -> bool:
+        """Stop background work; called when the owning session closes.
+
+        Returns True when every tracked worker has exited before the
+        deadline, False when at least one is still running (a straggler).
+        Stragglers keep their handles in ``_worker_threads`` (each removes
+        itself when it finally exits) and a warning is logged; a later
+        ``close()`` call can join them again.
+
+        The join is a *responsiveness* wait, not a resource guarantee: a
+        worker stuck inside one long syscall can outlive any timeout. The
+        hard safety boundary is the DatabaseManager gated close — gallery
+        worker SQL goes through ``db_write_lock`` / ``locked_read`` /
+        ``validate_connection_owner``, so closing the library connection
+        either drains or rejects in-flight writers instead of crashing on a
+        use-after-close. Any future gallery worker SQL must keep using that
+        gated path. Within that boundary the bounded join keeps shutdown
+        responsive: healthy workers observe ``cancel_event`` / ``_closed``
+        between directory entries and exit well before the default deadline.
+
+        Idempotent and safe to call concurrently (LAN ``_shutdown`` and
+        runtime teardown may both close the same service): the cancel event
+        and the timer cancels tolerate repeated calls, the subscription
+        close is guarded, and the join skips the calling thread (joining
+        self deadlocks) and threads that were registered but never started
+        (``Thread.join`` raises RuntimeError on them; they have touched no
+        resource and abort on ``_closed`` the moment they start).
+        """
+        deadline = monotonic() + (self._close_timeout if timeout is None else timeout)
         with self._build_lock:
+            if not self._closed:
+                self._closed = True
+                self._cancel_event.set()
             if self._refresh_timer is not None:
                 self._refresh_timer.cancel()
                 self._refresh_timer = None
             if self._inc_timer is not None:
                 self._inc_timer.cancel()
                 self._inc_timer = None
+            workers = list(self._worker_threads)
         try:
             self._fs_subscription.close()
         except Exception:
             pass
+        return self._join_workers(workers, deadline)
+
+    def _join_workers(self, workers: list[threading.Thread], deadline: float) -> bool:
+        """Bounded-join the tracked workers and report survivors.
+
+        Live threads keep their ``_worker_threads`` handles (they discard
+        themselves on exit) so a later close() can join them again.
+        """
+        current = threading.current_thread()
+        stragglers: list[threading.Thread] = []
+        for worker in workers:
+            if worker is current or worker.ident is None:
+                continue
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                if worker.is_alive():
+                    stragglers.append(worker)
+                continue
+            worker.join(remaining)
+            if worker.is_alive():
+                stragglers.append(worker)
+        if stragglers:
+            _log.warning(
+                "Gallery close timed out with %d worker(s) still running: %s",
+                len(stragglers),
+                ", ".join(
+                    f"{worker.name}(tid={worker.ident})" for worker in stragglers
+                ),
+            )
+            return False
+        return True
+
+    @property
+    def cancel_event(self) -> threading.Event:
+        """Read-only cancel signal set by ``close()``.
+
+        ``pre_wait`` hooks (the LAN scanner wait) poll this event so they
+        exit promptly once the service closes instead of waiting out their
+        full deadline; the worker then observes ``_closed`` and never
+        starts the walk.
+        """
+        return self._cancel_event
 
     def stop(self) -> None:
         """Lifecycle-adapter alias so runtime teardown can close this service."""
@@ -224,6 +309,14 @@ class GalleryService(_GalleryPersistenceMixin, _GalleryProjectionMixin, _Gallery
             kwargs={"pre_wait": pre_wait},
             daemon=True,
         )
+        with self._build_lock:
+            if self._closed:
+                # close() ran between the entry checks and the registration:
+                # the walk would abort at its first directory anyway, so do
+                # not start a thread that is already cancelled.
+                self._building.discard(root_key)
+                return
+            self._worker_threads.add(thread)
         thread.start()
 
     def _schedule_retry(self, root_key: str, delay: float) -> None:
@@ -248,11 +341,16 @@ class GalleryService(_GalleryPersistenceMixin, _GalleryProjectionMixin, _Gallery
         instead of re-walking on every poll), and let the next request
         retry after the backoff."""
         try:
+            if self._closed:
+                # The service was closed before this worker could start
+                # (its pre_wait would wait on a cancelled service).
+                return
             if pre_wait is not None:
                 pre_wait()
             if self._closed:
                 # The service was closed while the prewarm waited out the
-                # scanner; do not start one last full-library walk.
+                # scanner (the cancel event makes that wait exit promptly);
+                # do not start one last full-library walk.
                 return
             self._compute_home(root_key)
         except Exception:
@@ -265,6 +363,7 @@ class GalleryService(_GalleryPersistenceMixin, _GalleryProjectionMixin, _Gallery
         finally:
             with self._build_lock:
                 self._building.discard(root_key)
+                self._worker_threads.discard(threading.current_thread())
 
     @session_operation
     def get_home(

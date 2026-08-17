@@ -120,6 +120,7 @@ class SettingsDialog(TabbedDialog):
         self._build_thumbnails_tab()
         self._build_maintenance_tab()
         self._build_backup_tab()
+        self._build_plugins_tab()
 
     # ── Tab 1: Appearance (Theme + Background) ────────────
 
@@ -791,6 +792,26 @@ class SettingsDialog(TabbedDialog):
         else:
             lines = [f"{entry.name or entry.path} — {entry.modified_at}" for entry in entries[:10]]
             self._quarantine_status.setText("\n".join(lines))
+
+    # ── Tab 6: Plugins ─────────────────────────────────────────
+
+    def _build_plugins_tab(self):
+        from AssetsManager.dialogs._plugin_manager_widget import PluginManagerWidget
+        
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
+        layout.setSpacing(scaled_px(int(themes.prop("spacing", "md"))))
+
+        self._plugin_widget = PluginManagerWidget()
+        layout.addWidget(self._plugin_widget, 1)
+
+        self._add_tab(tab, tr("settings.plugins_title", default="Plugins"), 
+                      scrollable=False, label_key="settings.plugins_title")
 
     def _on_run_checkpoint(self):
         adapter = self.library_settings_adapter

@@ -337,7 +337,7 @@ class MetadataService:
         """Canonicalize query keys and retain their caller-facing spellings."""
         canonical_paths = [cls._canonical_path_key(path) for path in paths]
         caller_keys: dict[str, list[str]] = {}
-        for canonical, caller in zip(canonical_paths, (str(path) for path in caller_paths)):
+        for canonical, caller in zip(canonical_paths, (str(path) for path in caller_paths), strict=True):
             caller_keys.setdefault(canonical, []).append(caller)
         return canonical_paths, caller_keys
 
@@ -402,6 +402,6 @@ class MetadataService:
         root, targets = self._resolve_many_under_root(library_root, list(entries))
         canonical_entries = {
             str(target): count
-            for target, count in zip(targets, entries.values())
+            for target, count in zip(targets, entries.values(), strict=True)
         }
         self._repo(root).batch_set_cached_file_counts(canonical_entries)

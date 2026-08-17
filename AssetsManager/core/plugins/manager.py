@@ -166,24 +166,74 @@ class PluginManagerService:
             if not record.enabled or record.state == PLUGIN_STATE_DISABLED:
                 return PluginLoadResult(False, record.plugin_id, PLUGIN_STATE_DISABLED, tuple(record.diagnostics))
 
+        if host_context is not None:
+            if self._host_context is not None and self._host_context is not host_context:
+                # One manager instance serves exactly one host context. The
+                # global registries read by parse_file() / categories / theme
+                # tokens resolve through self._host_context, so accepting a
+                # second host would leave already-loaded records pointing at
+                # the previous one while lookups went to the new one.
+                _log.warning(
+                    "Plugin '%s' load refused: manager is already bound to a "
+                    "different host context",
+                    record.plugin_id,
+                )
+                return PluginLoadResult(
+                    False, record.plugin_id, record.state,
+                    (PluginDiagnostic(
+                        "error", "plugin.host_context_conflict",
+                        "Manager is already bound to a different host context.",
+                    ),),
+                )
+            self._host_context = host_context
+            host_context.set_apply_hooks(
+                apply_categories=self.apply_registered_categories,
+                apply_theme_tokens=self.apply_registered_theme_tokens,
+            )
+
+        # No host passed: fall back to the bound context rather than storing
+        # None on the record, which would strip the plugin's registration
+        # path while the manager kept dispatching through the bound host.
+        effective_host = host_context if host_context is not None else self._host_context
+
         try:
             loaded = self.loader.load(record.plugin_id, record.root_dir, record.descriptor.entry)
             with self._records_lock:
                 record.module = loaded.module
                 record.plugin_instance = loaded.plugin_instance
-                record.host_context = host_context
+                record.host_context = effective_host
                 record.state = PLUGIN_STATE_LOADED
-                if host_context is not None and hasattr(record.plugin_instance, "register"):
-                    register = getattr(record.plugin_instance, "register")
-                    with host_context.plugin_registration(record.plugin_id):
-                        register(host_context)
-                    record.state = PLUGIN_STATE_ACTIVE
+                if effective_host is not None:
+                    # Granting is a host action — manifest permissions are
+                    # host-controlled input — so the load path declares
+                    # explicit host identity before granting.  The
+                    # register() call below runs under the plugin's own
+                    # identity instead; the grant identity (host) and the
+                    # registration identity (plugin) must not be conflated.
+                    with effective_host._host_identity():
+                        effective_host.grant_permissions(
+                            record.plugin_id, record.descriptor.permissions
+                        )
+                    if hasattr(record.plugin_instance, "register"):
+                        register = getattr(record.plugin_instance, "register")
+                        # Host-side dispatch uses the private identity scope:
+                        # the public plugin_registration() refuses to switch
+                        # identity while another plugin subject is active, and
+                        # loading can be triggered from inside a plugin frame.
+                        with effective_host._host_identity_scope(
+                            effective_host._registering_plugin_var, record.plugin_id
+                        ):
+                            register(effective_host)
+                        record.state = PLUGIN_STATE_ACTIVE
                 _log.info("Plugin '%s' loaded (%s)", record.plugin_id, record.state)
             return PluginLoadResult(True, record.plugin_id, record.state, tuple(record.diagnostics))
         except Exception as exc:
             _log.exception("Failed to load plugin '%s'", record.plugin_id)
-            if host_context is not None:
-                host_context.unregister_plugin(record.plugin_id)
+            if effective_host is not None:
+                # Load-failure cleanup is host-side: unregister_plugin
+                # requires the explicit host identity marker.
+                with effective_host._host_identity():
+                    effective_host.unregister_plugin(record.plugin_id)
             with self._records_lock:
                 record.diagnostics.append(PluginDiagnostic(
                     "error", "plugin.load_failed", f"Load failed: {exc}",
@@ -207,7 +257,16 @@ class PluginManagerService:
         if instance is not None and ctx is not None and hasattr(instance, "unregister"):
             try:
                 unregister = getattr(instance, "unregister")
-                unregister(ctx)
+                # Run the plugin's own unregister under its identity, like
+                # register(): otherwise the callback would execute as the
+                # host (empty subject) and could bypass the identity gates
+                # in PluginHostContext (e.g. unregister_plugin).  Uses the
+                # private scope because the public wrapper refuses identity
+                # switches from inside another plugin's frame.
+                with ctx._host_identity_scope(
+                    ctx._registering_plugin_var, plugin_id
+                ):
+                    unregister(ctx)
             except Exception as exc:
                 _log.exception("Failed to unload plugin '%s'", record.plugin_id)
                 with self._records_lock:
@@ -220,7 +279,11 @@ class PluginManagerService:
         # Always clean up host context contributions, even if plugin has no unregister()
         if ctx is not None:
             try:
-                ctx.unregister_plugin(plugin_id)
+                # Host-side cleanup of another plugin's contributions:
+                # unregister_plugin requires the explicit host identity
+                # marker for calls with no plugin subject.
+                with ctx._host_identity():
+                    ctx.unregister_plugin(plugin_id)
             except Exception:
                 # A faulty subscription cleanup must not retain global plugin state.
                 _log.exception("Failed to clean host contributions for plugin '%s'", record.plugin_id)
@@ -238,11 +301,45 @@ class PluginManagerService:
             record.state = PLUGIN_STATE_ERROR if unregister_failed else (
                 PLUGIN_STATE_LOADABLE if record.enabled else PLUGIN_STATE_DISABLED
             )
+            # Release the host binding once nothing is loaded through it, so a
+            # later session can bind a fresh context instead of hitting the
+            # conflict guard in load_plugin().
+            if not any(r.plugin_instance is not None for r in self._records.values()):
+                self._host_context = None
         return not unregister_failed
 
+    def unload_all(self) -> bool:
+        """Unload every loaded plugin; returns True when all succeeded.
+
+        Iterates a snapshot because ``unload_plugin`` mutates record state
+        (and clears the host binding once the last plugin is gone).
+        """
+        loaded = [
+            record.plugin_id
+            for record in list(self._records.values())
+            if record.plugin_instance is not None
+        ]
+        return all(self.unload_plugin(plugin_id) for plugin_id in loaded)
+
     def load_all_enabled(self, host_context: PluginHostContext | None = None) -> list[PluginLoadResult]:
-        """Load all enabled plugins. Returns results for each."""
-        self._host_context = host_context
+        """Load all enabled plugins. Returns results for each.
+
+        Rebinding to a different host context is refused per plugin by
+        ``load_plugin``; assigning it here first would leave the manager
+        pointing at the new host while the refused records still reference
+        the old one.
+        """
+        if host_context is not None and (
+            self._host_context is None or self._host_context is host_context
+        ):
+            self._host_context = host_context
+        elif host_context is None:
+            self._host_context = None
+        if host_context is not None:
+            host_context.set_apply_hooks(
+                apply_categories=self.apply_registered_categories,
+                apply_theme_tokens=self.apply_registered_theme_tokens,
+            )
         results = []
         for record in self._records.values():
             if record.enabled and record.state == PLUGIN_STATE_LOADABLE:
@@ -262,9 +359,26 @@ class PluginManagerService:
         """
         results: dict[str, dict[str, str]] = {}
 
-        # 1. Check plugin instances with match/parse
+        # Instance match/parse and host-registered handlers used to run as two
+        # independent paths, so a plugin that did both was invoked twice.
+        # Prefer the host registry; fall back to the instance only when that
+        # plugin has not already registered a handler.
+        registered_ids: set[str] = set()
+        if self._host_context is not None:
+            for handler in self._host_context.file_handlers():
+                registered_ids.add(handler.plugin_id)
+                try:
+                    if handler.match(file_path):
+                        parsed = handler.parse(file_path)
+                        if isinstance(parsed, dict) and parsed:
+                            results[handler.plugin_id] = parsed
+                except Exception:
+                    _log.warning("File handler '%s' failed to parse '%s'", handler.plugin_id, file_path, exc_info=True)
+
         for record in self._records.values():
             if not record.enabled or record.plugin_instance is None:
+                continue
+            if record.plugin_id in registered_ids:
                 continue
             instance = record.plugin_instance
             match_fn = getattr(instance, "match", None)
@@ -278,17 +392,6 @@ class PluginManagerService:
                         results[record.plugin_id] = parsed
             except Exception:
                 _log.warning("Plugin '%s' failed to parse '%s'", record.plugin_id, file_path, exc_info=True)
-
-        # 2. Check file handlers registered via host context
-        if self._host_context is not None:
-            for handler in self._host_context.file_handlers():
-                try:
-                    if handler.match(file_path):
-                        parsed = handler.parse(file_path)
-                        if isinstance(parsed, dict) and parsed:
-                            results[handler.plugin_id] = parsed
-                except Exception:
-                    _log.warning("File handler '%s' failed to parse '%s'", handler.plugin_id, file_path, exc_info=True)
 
         return results
 

@@ -1009,7 +1009,7 @@ class ThumbnailLoader(QObject):
                     try:
                         files = [
                             f for f in os.listdir(runtime.cache_dir)
-                            if f.endswith('.webp') or f.endswith('.webp.tmp')
+                            if f.endswith(('.webp', '.webp.tmp'))
                         ]
                     except OSError:
                         pass
@@ -1048,7 +1048,7 @@ class ThumbnailLoader(QObject):
             def run(self):
                 images = []
                 try:
-                    for root, dirs, files in os.walk(lib_root):
+                    for root, _dirs, files in os.walk(lib_root):
                         if not loader._is_active_runtime(runtime):
                             return
                         for f in files:

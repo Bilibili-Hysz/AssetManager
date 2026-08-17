@@ -1,7 +1,7 @@
 """Main window — QDockWidget-based docking layout with workspace tab bar."""
 import logging
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QTimer, QSize
 from PySide6.QtGui import QPixmap, QPainter
@@ -107,6 +107,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         # Must be set before UI setup because workspace restore can switch libraries.
         self._library_session = library_session
         self._setup_ui()
+        self._bind_plugin_host()
         self._connect_bus()
         self._startup_anim_done = False
         self._force_quit = False
@@ -253,7 +254,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
             themes.apply_to(app)
         self._apply_menu_theme()
         from AssetsManager import dock_factory as dk
-        for dock_widget, (i18n_key, title, extra_buttons) in dk._DOCK_TITLES.items():
+        for dock_widget, (_i18n_key, _title, _extra_buttons) in dk._DOCK_TITLES.items():
             try:
                 bar = dock_widget.titleBarWidget()
                 if bar and bar.property("is_custom_title"):
@@ -334,6 +335,9 @@ class MainWindow(LanSharingMixin, QMainWindow):
                             action = tools_menu.addAction(title,
                                 lambda checked, cid=cmd_id: self._run_plugin_command(cid))
                             action.setIcon(icons.icon("puzzle", color="icon_primary", size=scaled_px(16)))
+                            available = getattr(plugin_ctx, "command_available", None)
+                            if callable(available):
+                                action.setEnabled(bool(available(cmd_id)))
                             self._tools_menu_icon_specs.append((action, "puzzle", "puzzle"))
 
         # LAN Sharing
@@ -659,7 +663,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         sizes = state.get("sizes") if isinstance(state, dict) else None
         if isinstance(sizes, list) and len(sizes) == 2:
             docks = [ctx.sidebar_dock, ctx.info_dock]
-            for d, w in zip(docks, sizes):
+            for d, w in zip(docks, sizes, strict=True):
                 panel = d.widget() if _alive(d) else None
                 if not isinstance(panel, QWidget) or not _alive(panel):
                     continue
@@ -994,8 +998,86 @@ class MainWindow(LanSharingMixin, QMainWindow):
         font.setPointSize(scaled_pt(base_pt))
         app.setFont(font)
 
+    def _plugin_host(self):
+        app = QApplication.instance()
+        host = None
+        if isinstance(app, QApplication):
+            host = app.property("plugin_host_context")
+        if host is None:
+            host = getattr(self._bootstrap, "plugin_host_context", None)
+        return host
+
+    def _bind_plugin_host(self) -> None:
+        """Point the process-wide plugin host at this live window."""
+        host = self._plugin_host()
+        binder = getattr(host, "bind_window", None)
+        if callable(binder):
+            binder(self)
+        setter = getattr(host, "set_param_prompt", None)
+        if callable(setter):
+            setter(self._prompt_plugin_params)
+        self._mount_plugin_docks()
+
+    def _prompt_plugin_params(self, operator_cls, defaults):
+        from AssetsManager.dialogs.plugin_operator_dialog import prompt_operator_params
+
+        return prompt_operator_params(operator_cls, defaults, parent=self)
+
+    def _mount_plugin_docks(self) -> None:
+        """Create docks for registered PanelContributor / tool_windows()."""
+        host = self._plugin_host()
+        if host is None:
+            return
+        windows = getattr(host, "tool_windows", None)
+        if not callable(windows):
+            return
+        mounted = getattr(self, "_plugin_docks", None)
+        if mounted is None:
+            mounted = {}
+            self._plugin_docks = mounted
+        areas = {
+            "left": Qt.DockWidgetArea.LeftDockWidgetArea,
+            "right": Qt.DockWidgetArea.RightDockWidgetArea,
+            "top": Qt.DockWidgetArea.TopDockWidgetArea,
+            "bottom": Qt.DockWidgetArea.BottomDockWidgetArea,
+        }
+        seen: set[str] = set()
+        # ``callable()`` narrows the duck-typed accessor to a return of
+        # ``object``, which is not iterable; the host returns a sequence.
+        contributions: Any = windows() or []
+        for contrib in contributions:
+            cid = str(getattr(contrib, "id", "") or "").strip()
+            if not cid:
+                continue
+            seen.add(cid)
+            if cid in mounted:
+                continue
+            factory = getattr(contrib, "factory", None)
+            if not callable(factory):
+                continue
+            try:
+                widget = factory()
+            except Exception:
+                _log.exception("Plugin tool window '%s' failed to build", cid)
+                continue
+            if not isinstance(widget, QWidget):
+                _log.warning("Plugin tool window '%s' did not return a QWidget", cid)
+                continue
+            title = str(getattr(contrib, "title", "") or cid)
+            area_name = str(getattr(contrib, "area", "right") or "right").lower()
+            area = areas.get(area_name, Qt.DockWidgetArea.RightDockWidgetArea)
+            mounted[cid] = dock.create(title, self, area, widget=widget)
+        for cid in list(mounted):
+            if cid not in seen:
+                leftover = mounted.pop(cid)
+                try:
+                    self.removeDockWidget(leftover)
+                    leftover.deleteLater()
+                except RuntimeError:
+                    pass
+
     def _run_plugin_command(self, command_id: str):
-        """Execute a plugin command by ID."""
+        """Execute a plugin command by ID through the shared host path."""
         import logging
         _log = logging.getLogger(__name__)
         app = QApplication.instance()
@@ -1004,17 +1086,19 @@ class MainWindow(LanSharingMixin, QMainWindow):
         plugin_ctx = app.property("plugin_host_context")
         if not plugin_ctx:
             return
-        for cmd in plugin_ctx.commands():
-            if getattr(cmd, 'id', None) == command_id:
-                plugin_id = getattr(cmd, 'plugin_id', 'unknown')
-                _log.info("Running plugin command: %s (plugin: %s)", command_id, plugin_id)
-                try:
+        execute = getattr(plugin_ctx, "execute_command", None)
+        try:
+            if callable(execute):
+                execute(command_id)
+                return
+            for cmd in plugin_ctx.commands():
+                if getattr(cmd, 'id', None) == command_id:
                     handler = getattr(cmd, 'handler', None)
                     if handler and callable(handler):
                         handler()
-                except Exception:
-                    _log.exception("Plugin command failed: %s (plugin: %s)", command_id, plugin_id)
-                return
+                    return
+        except Exception:
+            _log.exception("Plugin command failed: %s", command_id)
 
     # ── Close ───────────────────────────────────────────────────
 

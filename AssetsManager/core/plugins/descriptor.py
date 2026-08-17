@@ -20,6 +20,40 @@ PLUGIN_STATE_ERROR = "error"
 REQUIRED_MANIFEST_FIELDS = ("id", "name", "version")
 
 # ── Plugin permission constants ──────────────────────────────────
+#
+# The host gates its own APIs on these tokens (resolved per plugin id by
+# PluginHostContext).  What each token gates, and what a gate can and
+# cannot do:
+#
+#   host.services  current_services() / current_session() /
+#                  current_window().  Enforced boundary: the service
+#                  bundle and the library session are reachable only
+#                  through the host API.  The session reaches the
+#                  database, so database access is bundled into this
+#                  token.
+#   settings.write register_category() / register_theme_token().
+#                  Enforced boundary: these mutate global host
+#                  registries reachable only through the host API.
+#   filesystem.read  register_file_handler() / register_search_provider()
+#                  / open_path().  Advisory: a plugin can read any file
+#                  with the standard library, so the gate documents
+#                  intent and catches honest mistakes; it does not
+#                  contain filesystem access.
+#   settings.read / settings.write  preferences() (the plugin's own bag,
+#                  either token suffices).  Advisory for the same reason:
+#                  a plugin can import the preferences module directly.
+#
+# Declared-only tokens — no host code checks them because the host
+# exposes no API for the capability: filesystem.write, network.request,
+# clipboard.read, clipboard.write.  The host performs no filesystem
+# writes, network requests or clipboard access on a plugin's behalf, so
+# there is nothing to gate; a plugin reaches those capabilities with the
+# standard library directly.
+#
+# Fundamental caveat: plugins run in the same interpreter, unsandboxed.
+# Every gate above — including host.services — can be bypassed by
+# importing stdlib or host modules directly.  The gates are honesty and
+# intent boundaries, not a security sandbox.
 
 PERMISSION_FILESYSTEM_READ = "filesystem.read"
 PERMISSION_FILESYSTEM_WRITE = "filesystem.write"
@@ -30,6 +64,7 @@ PERMISSION_SETTINGS_READ = "settings.read"
 PERMISSION_SETTINGS_WRITE = "settings.write"
 PERMISSION_CLIPBOARD_READ = "clipboard.read"
 PERMISSION_CLIPBOARD_WRITE = "clipboard.write"
+PERMISSION_HOST_SERVICES = "host.services"
 
 ALL_PERMISSIONS = frozenset({
     PERMISSION_FILESYSTEM_READ,
@@ -41,6 +76,7 @@ ALL_PERMISSIONS = frozenset({
     PERMISSION_SETTINGS_WRITE,
     PERMISSION_CLIPBOARD_READ,
     PERMISSION_CLIPBOARD_WRITE,
+    PERMISSION_HOST_SERVICES,
 })
 
 

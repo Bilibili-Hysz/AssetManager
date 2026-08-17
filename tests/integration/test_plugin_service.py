@@ -199,14 +199,20 @@ def test_register_file_handler_and_parse(tmp_path):
     manager = PluginManagerService(search_paths=[tmp_path])
     ctx = PluginHostContext()
 
-    # Register a file handler via host context
     def match(path: str) -> bool:
         return path.endswith(".fbx")
 
     def parse(path: str) -> dict:
         return {"format": "fbx", "vertices": "1000"}
 
-    ctx.register_file_handler("model_analyzer", match, parse)
+    # Register a file handler via host context.  This test plays the
+    # host management path: grant the permission under explicit host
+    # identity and enter the private identity scope, as the manager does
+    # before invoking register().
+    with ctx._host_identity():
+        ctx.grant_permissions("model_analyzer", {"filesystem.read"})
+    with ctx._host_identity_scope(ctx._registering_plugin_var, "model_analyzer"):
+        ctx.register_file_handler("model_analyzer", match, parse)
 
     # Load plugins (empty directory) with host context
     manager.load_all_enabled(ctx)
@@ -263,7 +269,9 @@ def test_unregister_plugin_keeps_shared_handler_owned_by_another_plugin():
 
     ctx.hook(FileSystemChanged, on_created, plugin_id="plugin_a")
     ctx.hook(FileSystemChanged, on_created, plugin_id="plugin_b")
-    ctx.unregister_plugin("plugin_a")
+    # Host-side unregister: enter explicit host identity.
+    with ctx._host_identity():
+        ctx.unregister_plugin("plugin_a")
 
     get_event_bus().publish(FileSystemChanged(kind="created", paths=("/asset.txt",)))
     assert len(calls) == 1
@@ -305,7 +313,11 @@ def test_register_category():
     from AssetsManager.core.plugins.host_context import PluginHostContext
 
     ctx = PluginHostContext()
-    ctx.register_category("cad_plugin", "cad", "CAD Files", {".dwg", ".dxf"})
+    # Host management path: grant the permission and declare the identity.
+    with ctx._host_identity():
+        ctx.grant_permissions("cad_plugin", {"settings.write"})
+    with ctx._host_identity_scope(ctx._registering_plugin_var, "cad_plugin"):
+        ctx.register_category("cad_plugin", "cad", "CAD Files", {".dwg", ".dxf"})
 
     cats = ctx.categories()
     assert len(cats) == 1
@@ -324,7 +336,10 @@ def test_apply_registered_categories(tmp_path):
     manager = PluginManagerService(search_paths=[tmp_path])
     ctx = PluginHostContext()
 
-    ctx.register_category("cad_plugin", "test_cad_cat", "Test CAD", {".testext"})
+    with ctx._host_identity():
+        ctx.grant_permissions("cad_plugin", {"settings.write"})
+    with ctx._host_identity_scope(ctx._registering_plugin_var, "cad_plugin"):
+        ctx.register_category("cad_plugin", "test_cad_cat", "Test CAD", {".testext"})
     manager.load_all_enabled(ctx)
     manager.apply_registered_categories()
 
@@ -364,7 +379,11 @@ def test_register_search_provider():
         return [{"name": f"result_{query}", "path": "/fake"}]
 
     ctx = PluginHostContext()
-    ctx.register_search_provider("search_plugin", "fulltext", "Full Text", search)
+    # Host management path: grant the permission and declare the identity.
+    with ctx._host_identity():
+        ctx.grant_permissions("search_plugin", {"filesystem.read"})
+    with ctx._host_identity_scope(ctx._registering_plugin_var, "search_plugin"):
+        ctx.register_search_provider("search_plugin", "fulltext", "Full Text", search)
 
     providers = ctx.search_providers()
     assert len(providers) == 1
@@ -386,7 +405,11 @@ def test_register_theme_token():
     from AssetsManager.core.plugins.host_context import PluginHostContext
 
     ctx = PluginHostContext()
-    ctx.register_theme_token("theme_plugin", "plugin.accent", "#ff00ff")
+    # Host management path: grant the permission and declare the identity.
+    with ctx._host_identity():
+        ctx.grant_permissions("theme_plugin", {"settings.write"})
+    with ctx._host_identity_scope(ctx._registering_plugin_var, "theme_plugin"):
+        ctx.register_theme_token("theme_plugin", "plugin.accent", "#ff00ff")
 
     tokens = ctx.theme_tokens()
     assert len(tokens) == 1
@@ -402,7 +425,10 @@ def test_apply_registered_theme_tokens(tmp_path):
     manager = PluginManagerService(search_paths=[tmp_path])
     ctx = PluginHostContext()
 
-    ctx.register_theme_token("theme_plugin", "test_custom_token", "#abc123")
+    with ctx._host_identity():
+        ctx.grant_permissions("theme_plugin", {"settings.write"})
+    with ctx._host_identity_scope(ctx._registering_plugin_var, "theme_plugin"):
+        ctx.register_theme_token("theme_plugin", "test_custom_token", "#abc123")
     manager.load_all_enabled(ctx)
     manager.apply_registered_theme_tokens()
 
@@ -449,20 +475,17 @@ def test_check_permission_default_none():
     assert ctx.check_permission(PERMISSION_FILESYSTEM_READ) is False
 
 
-def test_check_permission_warns_but_never_blocks(caplog):
-    """Permissions are advisory: registration succeeds even without them."""
+def test_registration_blocked_without_permission(caplog):
+    """Plugin-context registration is refused (not just warned) without permission."""
     import logging
     from AssetsManager.core.plugins.host_context import PluginHostContext
-    from AssetsManager.core.plugins.descriptor import PERMISSION_FILESYSTEM_READ
 
     ctx = PluginHostContext()
-    assert ctx.check_permission(PERMISSION_FILESYSTEM_READ) is False
-
     with caplog.at_level(logging.WARNING):
+        with ctx.plugin_registration("test_pid"):
+            ctx.register_category("test_pid", "test_cat", "Test", {".test"})
         assert len(ctx.categories()) == 0
-        ctx.register_category("test_pid", "test_cat", "Test", {".test"})
-        assert len(ctx.categories()) == 1  # registered despite no permission
-        assert "without permission" in caplog.text
+    assert "without permission" in caplog.text
 
 
 def test_unload_cleans_host_contributions(tmp_path):
@@ -473,13 +496,18 @@ def test_unload_cleans_host_contributions(tmp_path):
     PluginManagerService(search_paths=[tmp_path])
     ctx = PluginHostContext()
 
-    # Register contributions for a plugin
+    # Register contributions for a plugin.  The permission-gated ones run
+    # under an explicit host-side identity with the grants, as the manager
+    # does before invoking register().
     ctx.register_command({"id": "cmd1", "title": "Test"}, plugin_id="test_plugin")
     ctx.register_context_menu_item("test_plugin", "item1", "Label", "cmd1")
-    ctx.register_category("test_plugin", "test_cat", "Test", {".test"})
+    with ctx._host_identity():
+        ctx.grant_permissions("test_plugin", {"filesystem.read", "settings.write"})
+    with ctx._host_identity_scope(ctx._registering_plugin_var, "test_plugin"):
+        ctx.register_category("test_plugin", "test_cat", "Test", {".test"})
+        ctx.register_search_provider("test_plugin", "sp1", "SP", lambda q, r: [])
+        ctx.register_theme_token("test_plugin", "tok", "#fff")
     ctx.register_column("test_plugin", "col1", "Col")
-    ctx.register_search_provider("test_plugin", "sp1", "SP", lambda q, r: [])
-    ctx.register_theme_token("test_plugin", "tok", "#fff")
 
     assert len(ctx.commands()) == 1
     assert len(ctx.context_menu_items()) == 1
@@ -488,8 +516,9 @@ def test_unload_cleans_host_contributions(tmp_path):
     assert len(ctx.search_providers()) == 1
     assert len(ctx.theme_tokens()) == 1
 
-    # Unregister should remove all
-    ctx.unregister_plugin("test_plugin")
+    # Unregister should remove all (host-side: explicit host identity).
+    with ctx._host_identity():
+        ctx.unregister_plugin("test_plugin")
 
     assert len(ctx.commands()) == 0
     assert len(ctx.context_menu_items()) == 0
@@ -510,7 +539,8 @@ def test_unload_preserves_other_plugins(tmp_path):
     ctx.register_context_menu_item("plugin_a", "item_a", "A Item", "cmd_a")
     ctx.register_context_menu_item("plugin_b", "item_b", "B Item", "cmd_b")
 
-    ctx.unregister_plugin("plugin_a")
+    with ctx._host_identity():
+        ctx.unregister_plugin("plugin_a")
 
     assert len(ctx.commands()) == 1
     assert ctx.commands()[0].id == "cmd_b"
@@ -538,7 +568,8 @@ def test_unload_cleans_event_hooks():
     hooks = ctx.event_hooks()
     assert len(hooks[FileSystemChanged]) == 2
 
-    ctx.unregister_plugin("plugin_a")
+    with ctx._host_identity():
+        ctx.unregister_plugin("plugin_a")
 
     hooks = ctx.event_hooks()
     assert len(hooks[FileSystemChanged]) == 1
@@ -561,7 +592,8 @@ def test_unload_keeps_shared_handler_owned_by_other_plugin():
 
     ctx.hook(FileSystemChanged, handler, plugin_id="plugin_a")
     ctx.hook(FileSystemChanged, handler, plugin_id="plugin_b")
-    ctx.unregister_plugin("plugin_a")
+    with ctx._host_identity():
+        ctx.unregister_plugin("plugin_a")
 
     get_event_bus().publish(FileSystemChanged(kind="created", paths=("/asset.txt",)))
 
@@ -600,7 +632,8 @@ def test_unload_cleans_tool_windows():
 
     assert len(ctx.tool_windows()) == 2
 
-    ctx.unregister_plugin("plugin_a")
+    with ctx._host_identity():
+        ctx.unregister_plugin("plugin_a")
 
     assert len(ctx.tool_windows()) == 1
     assert ctx.tool_windows()[0].id == "tw_b"
@@ -618,16 +651,20 @@ def test_unload_cleans_global_category_mutations(tmp_path):
     ctx = PluginHostContext()
     pm._host_context = ctx
 
-    # Register a category
-    ctx.register_category("test_plugin", "test_cat", "Test", {".test_ext"})
+    # Register a category (host management path: grant + explicit identity)
+    with ctx._host_identity():
+        ctx.grant_permissions("test_plugin", {"settings.write"})
+    with ctx._host_identity_scope(ctx._registering_plugin_var, "test_plugin"):
+        ctx.register_category("test_plugin", "test_cat", "Test", {".test_ext"})
     pm.apply_registered_categories()
 
     assert "test_cat" in FILTER_CATEGORY_EXTS
     assert ".test_ext" in CATEGORY_MAP
     assert CATEGORY_MAP[".test_ext"] == "test_cat"
 
-    # Unregister should clean global mutations
-    ctx.unregister_plugin("test_plugin")
+    # Unregister should clean global mutations (host-side identity)
+    with ctx._host_identity():
+        ctx.unregister_plugin("test_plugin")
     pm.remove_registered_categories("test_plugin")
 
     assert "test_cat" not in FILTER_CATEGORY_EXTS
@@ -644,14 +681,18 @@ def test_unload_cleans_global_theme_token_mutations():
     ctx = PluginHostContext()
     pm._host_context = ctx
 
-    # Register a theme token
-    ctx.register_theme_token("test_plugin", "test_token", "#abc")
+    # Register a theme token (host management path: grant + explicit identity)
+    with ctx._host_identity():
+        ctx.grant_permissions("test_plugin", {"settings.write"})
+    with ctx._host_identity_scope(ctx._registering_plugin_var, "test_plugin"):
+        ctx.register_theme_token("test_plugin", "test_token", "#abc")
     pm.apply_registered_theme_tokens()
 
     assert "test_token" in _EXTENDED_FALLBACKS
 
-    # Unregister should clean global mutations
-    ctx.unregister_plugin("test_plugin")
+    # Unregister should clean global mutations (host-side identity)
+    with ctx._host_identity():
+        ctx.unregister_plugin("test_plugin")
     pm.remove_registered_theme_tokens("test_plugin")
 
     assert "test_token" not in _EXTENDED_FALLBACKS

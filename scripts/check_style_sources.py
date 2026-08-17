@@ -190,7 +190,7 @@ def _check_token_lookup_lines(source_lines: list[str], relative: str,
             (TOKEN_LOOKUP_HEX_RE, "hex-fallback-in-theme-lookup"),
             (THEMES_LOOKUP_HEX_RE, "hex-fallback-in-theme-lookup"),
         ):
-            for match in pattern.finditer(line):
+            for _match in pattern.finditer(line):
                 violations.append(Violation(
                     relative, index, rule, line.strip()[:160]))
 

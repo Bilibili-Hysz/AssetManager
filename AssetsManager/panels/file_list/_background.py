@@ -21,7 +21,7 @@ def run_in_background(
     func: Callable,
     *args,
     on_done: Callable[[], None] | None = None,
-    background_ops: list[QObject] | None = None,
+    background_ops: list[QRunnable] | None = None,
 ) -> None:
     """Run ``func(*args)`` on a worker thread.
 
@@ -34,20 +34,20 @@ def run_in_background(
         done = Signal()
 
     class _Op(QRunnable):
-        def __init__(s, fn, args, sig):
+        def __init__(self, fn, fn_args, fn_sig):
             super().__init__()
-            s._fn = fn
-            s._a = args
-            s._sig = sig
+            self._fn = fn
+            self._a = fn_args
+            self._sig = fn_sig
 
-        def run(s):
-            sig = s._sig
+        def run(self):
+            op_sig = self._sig
             try:
-                s._fn(*s._a)
+                self._fn(*self._a)
             except Exception:
                 _log.exception("Background task failed")
-            if sig is not None:
-                sig.done.emit()
+            if op_sig is not None:
+                op_sig.done.emit()
 
     sig = _Sig()
     op = _Op(func, args, sig)

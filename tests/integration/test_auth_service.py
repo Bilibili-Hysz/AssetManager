@@ -65,6 +65,99 @@ def test_register_and_authenticate_user(schema_db):
     assert err != ""
 
 
+def test_authenticate_migrates_legacy_password_hash(schema_db):
+    """A legacy-cost hash is re-stamped at the current cost after a login."""
+    import hashlib
+
+    from AssetsManager.application.auth_service import AuthService
+    from AssetsManager.domain.auth import (
+        LEGACY_PASSWORD_ITERATIONS,
+        PASSWORD_ITERATIONS,
+        verify_password,
+    )
+
+    conn = schema_db
+    svc = AuthService(conn, "test-secret")
+    svc.init_tables()
+
+    user_id, err = svc.register_user("legacyuser", "Test@1234")
+    assert user_id is not None and err == ""
+
+    salt = b"\x22" * 32
+    key = hashlib.pbkdf2_hmac(
+        "sha256", b"Test@1234", salt, LEGACY_PASSWORD_ITERATIONS
+    )
+    legacy = f"{salt.hex()}:{key.hex()}"
+    conn.execute("UPDATE users SET password=? WHERE id=?", (legacy, user_id))
+    conn.commit()
+
+    user, err = svc.authenticate_user("legacyuser", "Test@1234")
+    assert user is not None and err == ""
+
+    stored = conn.execute(
+        "SELECT password FROM users WHERE id=?", (user_id,)
+    ).fetchone()[0]
+    assert stored != legacy
+    assert stored.startswith(f"pbkdf2_sha256${PASSWORD_ITERATIONS}$")
+    assert verify_password("Test@1234", stored) is True
+    # The in-memory record the caller holds reflects the new hash too.
+    assert user["password_hash"] == stored
+
+
+def test_authenticate_leaves_current_cost_hash_untouched(schema_db):
+    from AssetsManager.application.auth_service import AuthService
+
+    conn = schema_db
+    svc = AuthService(conn, "test-secret")
+    svc.init_tables()
+    user_id, _ = svc.register_user("currentuser", "Test@1234")
+    before = conn.execute(
+        "SELECT password FROM users WHERE id=?", (user_id,)
+    ).fetchone()[0]
+
+    user, _ = svc.authenticate_user("currentuser", "Test@1234")
+    assert user is not None
+
+    after = conn.execute(
+        "SELECT password FROM users WHERE id=?", (user_id,)
+    ).fetchone()[0]
+    assert after == before
+
+
+def test_authenticate_survives_a_failed_cost_migration(schema_db, monkeypatch):
+    """A write failure during migration must not fail an otherwise valid login."""
+    import hashlib
+
+    from AssetsManager.application.auth_service import AuthService
+    from AssetsManager.domain.auth import LEGACY_PASSWORD_ITERATIONS
+
+    conn = schema_db
+    svc = AuthService(conn, "test-secret")
+    svc.init_tables()
+    user_id, _ = svc.register_user("flakyuser", "Test@1234")
+
+    salt = b"\x33" * 32
+    key = hashlib.pbkdf2_hmac(
+        "sha256", b"Test@1234", salt, LEGACY_PASSWORD_ITERATIONS
+    )
+    legacy = f"{salt.hex()}:{key.hex()}"
+    conn.execute("UPDATE users SET password=? WHERE id=?", (legacy, user_id))
+    conn.commit()
+
+    def boom(_user_id, _password_hash):
+        raise RuntimeError("disk on fire")
+
+    monkeypatch.setattr(svc._repo, "set_user_password_hash", boom)
+
+    user, err = svc.authenticate_user("flakyuser", "Test@1234")
+    assert user is not None and err == ""
+    # The old hash stands, so the next login retries the migration.
+    stored = conn.execute(
+        "SELECT password FROM users WHERE id=?", (user_id,)
+    ).fetchone()[0]
+    assert stored == legacy
+
+
 def test_user_activate_deactivate(schema_db):
     from AssetsManager.application.auth_service import AuthService
 

@@ -465,7 +465,7 @@ class InfoPanel(PanelContent):
         self._copy_btn.setAccessibleName(tr("info.copy_path"))
         self._copy_btn.setToolTip(tr("info.copy_tooltip"))
         labels = ("info.field_type", "info.field_size", "info.field_contains", "info.field_modified", "info.field_path")
-        for key, label_key in zip(("type", "size", "summary", "date", "path"), labels):
+        for key, label_key in zip(("type", "size", "summary", "date", "path"), labels, strict=True):
             field = self._fields[key]
             layout = field.layout()
             item = layout.itemAt(0) if layout is not None else None

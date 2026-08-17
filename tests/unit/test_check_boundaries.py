@@ -16,6 +16,8 @@ def test_check_boundaries_passes_on_current_tree():
         cwd=str(ROOT),
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0, result.stderr
     assert "boundary checks passed" in result.stdout

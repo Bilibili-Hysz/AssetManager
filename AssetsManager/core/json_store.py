@@ -44,7 +44,6 @@ class JsonStore:
 
     def _on_loaded(self, data: Any) -> None:
         """Called after data is loaded from disk. Override to populate internal state."""
-        pass
 
     def _on_before_save(self) -> Any:
         """Called before saving. Override to prepare data for serialization.

@@ -50,3 +50,18 @@ def test_schedule_dock_refresh_coalesces_three_signals_into_one_frame(monkeypatc
         dock_factory._dock_refresh_handle = None
         dock.deleteLater()
         app.processEvents()
+
+
+def test_custom_widget_dock_keeps_title_on_refresh():
+    app = _app()
+    widget = QWidget()
+    dock = dock_factory.create("Downloads", None, widget=widget)
+    try:
+        assert dock_factory._DOCK_TITLES[dock][0] == ""
+        assert dock_factory._DOCK_TITLES[dock][1] == "Downloads"
+        dock_factory._run_dock_refresh()
+        assert dock_factory._DOCK_TITLES[dock][1] == "Downloads"
+    finally:
+        dock_factory._DOCK_TITLES.pop(dock, None)
+        dock.deleteLater()
+        app.processEvents()

@@ -69,13 +69,17 @@ class _DockPanel(Protocol):
 def create(title: str = "Panel", parent: QMainWindow | None = None, area=Qt.DockWidgetArea.RightDockWidgetArea,
            panel_type: str = "empty", widget: QWidget | None = None):
     panel_info = PANELS.get(panel_type)
-    if panel_info:
-        i18n_key, panel_cls = panel_info
-        title = tr(i18n_key)
+    if widget is None:
+        if panel_info:
+            i18n_key, panel_cls = panel_info
+            title = tr(i18n_key)
+        else:
+            i18n_key = "dock.empty"
+            panel_cls = EmptyPanel
+        widget = panel_cls()
     else:
-        i18n_key = "dock.empty"
-        panel_cls = EmptyPanel
-    widget = widget if widget is not None else panel_cls()
+        # Caller-supplied widgets keep the given title across theme refresh.
+        i18n_key = ""
 
     dock = QDockWidget(title, parent)
     dock.setWidget(widget)
@@ -254,7 +258,7 @@ def _run_dock_refresh():
     for d, (i18n_key, _old_title, btns) in list(_DOCK_TITLES.items()):
         try:
             if d.widget() is not None:
-                new_title = tr(i18n_key)
+                new_title = tr(i18n_key) if i18n_key else _old_title
                 _DOCK_TITLES[d] = (i18n_key, new_title, btns)
                 d.setTitleBarWidget(_build_title_bar(new_title, d, btns))
         except RuntimeError:

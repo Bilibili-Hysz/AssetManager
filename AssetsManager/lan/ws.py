@@ -542,7 +542,7 @@ class WebSocketManager:
         )
         dead = {
             ws
-            for ws, result in zip(clients, results)
+            for ws, result in zip(clients, results, strict=True)
             if isinstance(result, BaseException) or result is not None
         }
         if dead:
@@ -671,7 +671,7 @@ class WebSocketManager:
             return_exceptions=True,
         )
         dead = [
-            ws for (ws, _lease), result in zip(clients, results)
+            ws for (ws, _lease), result in zip(clients, results, strict=True)
             if isinstance(result, BaseException) or result is not None
         ]
 

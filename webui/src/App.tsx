@@ -95,6 +95,23 @@ function decodeRouteValue(value: string): string {
   }
 }
 
+/**
+ * Applies the server-declared accent color once /api/info is known.
+ * Lives *inside* AuthProvider (App itself is outside it and must not call
+ * useAuthContext — createContext(null) would throw).
+ */
+function AppAccentSync() {
+  const { serverInfo } = useAuthContext();
+  useEffect(() => {
+    const accent = serverInfo?.theme_color;
+    if (!accent) return;
+    const root = document.documentElement;
+    root.style.setProperty('--color-accent', accent);
+    root.style.setProperty('--color-accent-hover', accent);
+  }, [serverInfo?.theme_color]);
+  return null;
+}
+
 function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const openPalette = useCallback(() => setPaletteOpen(true), []);
@@ -104,27 +121,16 @@ function App() {
       setPaletteOpen(previous => !previous);
     }
   }, []);
-  const { serverInfo } = useAuthContext();
 
   useEffect(() => {
     document.addEventListener('keydown', handlePaletteShortcut);
     return () => document.removeEventListener('keydown', handlePaletteShortcut);
   }, [handlePaletteShortcut]);
 
-  // S4: the server is the live accent authority. Once /api/info is known,
-  // override the generated palette accent so LAN branding and desktop share
-  // the same accent color.
-  useEffect(() => {
-    const accent = serverInfo?.theme_color;
-    if (!accent) return;
-    const root = document.documentElement;
-    root.style.setProperty('--color-accent', accent);
-    root.style.setProperty('--color-accent-hover', accent);
-  }, [serverInfo?.theme_color]);
-
   return (
     <BrowserRouter>
       <AuthProvider>
+        <AppAccentSync />
         <RealtimeProvider>
           <QueryCacheProvider>
           <ToastProvider>

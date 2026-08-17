@@ -36,7 +36,10 @@ class PanelState:
         saver = getattr(ctx, "save_state", None)
         if not callable(saver):
             return {}
-        return saver()
+        # ``callable()`` narrows the duck-typed saver to a return of ``object``;
+        # the owner contract is a state dict.
+        saved: Any = saver()
+        return saved
 
     def restore(self, ctx: Any, state: dict) -> None:
         """Apply *state*, falling back to ``ctx.restore_state``."""

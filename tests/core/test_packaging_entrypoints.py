@@ -5,14 +5,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 ENTRYPOINTS = (
     ROOT / "AssetManager.spec",
-    ROOT / ".Cython&Noikta" / "build_nuitka.py",
-    ROOT / ".Cython&Noikta" / "build_nuitka_simple.py",
-    ROOT / ".Cython&Noikta" / "build_nuitka_standalone.py",
+    ROOT / ".cython-nuitka" / "build_nuitka.py",
+    ROOT / ".cython-nuitka" / "build_nuitka_simple.py",
+    ROOT / ".cython-nuitka" / "build_nuitka_standalone.py",
 )
 
 
 def test_packaging_entrypoints_use_react_dist_and_not_legacy_static():
     for entrypoint in ENTRYPOINTS:
+        # Named explicitly: a moved or renamed entrypoint should report itself
+        # rather than surface as a bare FileNotFoundError traceback.
+        assert entrypoint.is_file(), f"packaging entrypoint missing: {entrypoint}"
         source = entrypoint.read_text(encoding="utf-8")
         assert "AssetsManager/lan/static" not in source, entrypoint
         assert "AssetsManager' / 'lan' / 'static" not in source, entrypoint

@@ -23,6 +23,7 @@ from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import ActivityChanged, PresenceChanged
 from AssetsManager.lan.path_guard import MissingPathError, PathEscapeError, PathGuard, PathGuardError, assert_under_root
+from AssetsManager.lan.routes._errors import error_response
 
 _log = logging.getLogger(__name__)
 
@@ -38,6 +39,24 @@ ROLE_USER = "user"
 ROLE_GUEST = "guest"
 
 _SANITIZE_RE = re.compile(r'[\x00-\x1f\x7f"\\/]')
+
+# Preview response headers shared by the raster-serving routes.  Blurred
+# output always uses the private variant: an asset can become sensitive
+# again when blur_tags change, so blurred bytes must never be publicly
+# cached.  Unblurred originals may be public (gallery media) or private.
+PRIVATE_PREVIEW_HEADERS = {
+    "Cache-Control": "private, no-store",
+    "X-Content-Type-Options": "nosniff",
+}
+PUBLIC_PREVIEW_HEADERS = {
+    "Cache-Control": "public, max-age=3600",
+    "X-Content-Type-Options": "nosniff",
+}
+
+# Blurred output is resized to this bound (like the high-resolution
+# thumbnail route) so a hostile multi-GB raster cannot force unbounded
+# memory/CPU work; unblurred originals are streamed by FileResponse.
+BLURRED_PREVIEW_SIZE = 1920
 
 
 class ActivityLog:
@@ -187,10 +206,13 @@ def sanitize_filename(name: str) -> str:
 __all__ = [
     "ActivityLog",
     "OnlineUsers",
+    "BLURRED_PREVIEW_SIZE",
     "CATEGORY_MAP",
     "IMAGE_EXTS",
     "AUTH_SERVICE_APP_KEY",
     "PRINCIPAL_REQUEST_KEY",
+    "PRIVATE_PREVIEW_HEADERS",
+    "PUBLIC_PREVIEW_HEADERS",
     "LAN_APP_KEY",
     "LanScopedServices",
     "ROLE_ADMIN",
@@ -222,6 +244,8 @@ __all__ = [
     "require_role",
     "require_user_write",
     "sanitize_filename",
+    "serve_blur_gated_raster",
+    "should_blur_target",
     "set_request_principal",
     "set_auth_cookie",
     "set_share_cookie",
@@ -370,22 +394,22 @@ def validate_path(lan, rel_path: str) -> Path:
     try:
         return PathGuard(lan.library_root).resolve(rel_path)
     except PathEscapeError:
-        raise web.HTTPBadRequest(reason="Path escape detected")
+        raise web.HTTPBadRequest(reason="Path escape detected") from None
     except PathGuardError:
         # Invalid characters (NUL / control chars, Windows ADS separators)
         # are a client error, not a server fault — return 400 like escapes.
-        raise web.HTTPBadRequest(reason="Invalid path")
+        raise web.HTTPBadRequest(reason="Invalid path") from None
 
 
 def validated_existing_key(lan, rel_path: str) -> str:
     try:
         return PathGuard(lan.library_root).existing_key(rel_path)
     except PathEscapeError:
-        raise web.HTTPBadRequest(reason="Path escape detected")
+        raise web.HTTPBadRequest(reason="Path escape detected") from None
     except MissingPathError:
-        raise web.HTTPNotFound(reason="File not found")
+        raise web.HTTPNotFound(reason="File not found") from None
     except PathGuardError:
-        raise web.HTTPBadRequest(reason="Invalid path")
+        raise web.HTTPBadRequest(reason="Invalid path") from None
 
 
 def set_auth_cookie(response: web.Response, token: str, *, secure: bool = False):
@@ -450,6 +474,59 @@ def find_first_image(dir_path: Path) -> str | None:
         return best_entry.path if best_entry is not None else None
     except OSError:
         return None
+
+
+async def should_blur_target(request: web.Request, target: Path) -> bool:
+    """Blur-policy decision for a file a route is about to deliver.
+
+    Uses the thumbnail service's tag check directly rather than
+    ``resolve()``: the decision must apply to every raster byte a route
+    serves, including formats the thumbnail pipeline cannot handle
+    (``.tga`` sits outside IMAGE_EXTS, ``.ktx2`` has no Pillow decoder).
+    """
+    lan = get_lan(request)
+    svc = get_thumbnail_service(request)
+    return await asyncio.to_thread(
+        svc.check_blur, target, lan.blur_tags, None, lan.library_root
+    )
+
+
+async def serve_blur_gated_raster(
+    request: web.Request,
+    target: Path,
+    *,
+    should_blur: bool,
+    content_type: str,
+    max_size: int,
+) -> web.StreamResponse:
+    """Deliver a raster after the shared blur-policy decision.
+
+    The invariant lives here and only here: a ``should_blur`` asset is
+    always returned as the processed WEBP, and a processing failure is a
+    500 — the original is never served for a blurred asset, otherwise an
+    operational error would become a privacy leak.
+    """
+    if should_blur:
+        svc = get_thumbnail_service(request)
+        processed = await asyncio.to_thread(svc.process_image, target, max_size, True)
+        if processed is None:
+            return error_response(
+                "Failed to process image",
+                status=500,
+                code="internal_error",
+                headers=PRIVATE_PREVIEW_HEADERS,
+            )
+        body, processed_content_type = processed
+        return web.Response(
+            body=body,
+            content_type=processed_content_type,
+            headers=PRIVATE_PREVIEW_HEADERS,
+        )
+    response = web.FileResponse(target, headers=PRIVATE_PREVIEW_HEADERS)
+    # FileResponse guesses from the suffix; use the verified/whitelisted
+    # format so a mismatched extension cannot produce a wrong Content-Type.
+    response.headers["Content-Type"] = content_type
+    return response
 
 
 def _zip_entry_allowed(root: Path, entry: str) -> bool:

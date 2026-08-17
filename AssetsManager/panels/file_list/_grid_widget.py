@@ -58,9 +58,9 @@ class FileListGridWidget(QWidget):
         super().__init__(parent)
         t = themes.get()
 
-        self._model = None
+        self._model: FileSystemModel | None = None
         self._model_rows = 0
-        self._layout = None
+        self._layout: GridLayout | None = None
         self._thumb_size = scaled_px(96)
 
         self._scroll_y = 0
@@ -173,14 +173,14 @@ class FileListGridWidget(QWidget):
         self._update_item_hint()
     # ── Public API ──────────────────────────────────────────
 
-    def set_model(self, model):
+    def set_model(self, model: FileSystemModel):
         self._model = model
         model.modelReset.connect(self._on_model_reset)
         model.modelAboutToBeReset.connect(self._cache.capture_path_textures)
         model.scan_started.connect(self._on_scan_started)
         model.dataChanged.connect(self._on_data_changed)
 
-    def set_layout_ref(self, layout):
+    def set_layout_ref(self, layout: GridLayout):
         self._layout = layout
 
     def set_performance_context(self, recorder, session_token: str | None, generation: int | None) -> None:
@@ -1075,6 +1075,9 @@ class FileListGridWidget(QWidget):
 
     def _render_item(self, row: int, item_rect: QRect) -> QPixmap | None:
         """Render static item content to an offscreen QPixmap."""
+        model = self._model
+        if model is None:
+            return None
         dpr = max(1.0, float(self.devicePixelRatioF() or 1.0))
         tex = QPixmap(int(item_rect.width() * dpr), int(item_rect.height() * dpr))
         tex.setDevicePixelRatio(dpr)
@@ -1083,10 +1086,10 @@ class FileListGridWidget(QWidget):
         tp.setRenderHint(QPainter.RenderHint.Antialiasing)
         tp.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
-        is_dir = self._model.data(self._model.index(row, 0), FileSystemModel.IS_DIR_ROLE)
-        pixmap = self._model.data(self._model.index(row, 0), FileSystemModel.RAW_PIXMAP_ROLE)
-        name = self._model.data(self._model.index(row, 0), Qt.ItemDataRole.DisplayRole)
-        subtitle = self._model.data(self._model.index(row, 0), FileSystemModel.SUBTITLE_ROLE)
+        is_dir = model.data(model.index(row, 0), FileSystemModel.IS_DIR_ROLE)
+        pixmap = model.data(model.index(row, 0), FileSystemModel.RAW_PIXMAP_ROLE)
+        name = model.data(model.index(row, 0), Qt.ItemDataRole.DisplayRole)
+        subtitle = model.data(model.index(row, 0), FileSystemModel.SUBTITLE_ROLE)
         card = self._card_rect_in_item(QRect(0, 0, item_rect.width(), item_rect.height()))
 
         # Interaction states are painted later so mouse movement and selection
@@ -1178,7 +1181,7 @@ class FileListGridWidget(QWidget):
             self._model.index(row, 0), FileSystemModel.SUBTITLE_ROLE
         )
         size = tex.deviceIndependentSize()
-        item_rect = QRect(0, 0, size.width(), size.height())
+        item_rect = QRect(0, 0, int(size.width()), int(size.height()))
         band = self._subtitle_rect_for(item_rect)
         painter = QPainter(tex)
         try:
@@ -1354,7 +1357,7 @@ class FileListGridWidget(QWidget):
             int(accent.blue() * 0.4 + 0x96 * 0.6))
         return body, front
 
-    def _draw_folder(self, p: QPainter, rect: QRect, pixmap):
+    def _draw_folder(self, p: QPainter, rect: QRect, pixmap: QPixmap | None):
         body_c, front_c = self._folder_colors()
         icon_w = rect.width()
         icon_h = int(rect.height() * 0.85)
@@ -1380,7 +1383,7 @@ class FileListGridWidget(QWidget):
         p.drawRoundedRect(tab_rect, 4, 4)
         p.drawRoundedRect(folder, 5, 5)
 
-        if has_image:
+        if has_image and pixmap is not None:
             img_rect = folder.adjusted(6, -15, -6, -8)
             scaled = pixmap.scaled(img_rect.size(), Qt.AspectRatioMode.KeepAspectRatio,
                                    Qt.TransformationMode.SmoothTransformation)
@@ -1469,7 +1472,7 @@ class FileListGridWidget(QWidget):
         self._scrollbar.setStyleSheet(
             f"QScrollBar:vertical {{ background: transparent; width:{scaled_px(6)}px; }}"
             f"QScrollBar::handle:vertical {{ background: {t['scrollbar_thumb']}; "
-            f"border-radius:{scaled_px(themes.prop('border_radius', 'sm'))}px; min-height:{scaled_px(24)}px; }}"
+            f"border-radius:{scaled_px(int(themes.prop('border_radius', 'sm')))}px; min-height:{scaled_px(24)}px; }}"
             f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}")
 
     def refresh_theme(self):
@@ -1769,7 +1772,7 @@ class FileListGridWidget(QWidget):
 
     def _start_rename(self, row: int):
         from PySide6.QtWidgets import QLineEdit
-        if not self._layout:
+        if not self._layout or self._model is None:
             return
         rect = self._layout.rect_at(row)
         if rect is None:

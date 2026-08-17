@@ -158,7 +158,6 @@ class AuthService:
 
     def invalidate_user_cache(self) -> None:
         """No-op placeholder for server-level cache invalidation."""
-        pass
 
     @session_operation
     def has_active_users(self, *, raise_on_error: bool = True) -> bool:
@@ -200,9 +199,37 @@ class AuthService:
             return None, "Invalid username or password"
         if not user.get("is_active"):
             return None, "Invalid username or password"
-        if not auth_crypto.verify_password(password, user.get("password_hash", "")):
+        stored_hash = user.get("password_hash", "")
+        if not auth_crypto.verify_password(password, stored_hash):
             return None, "Invalid username or password"
+        self._migrate_password_cost(user, password, stored_hash)
         return user, ""
+
+    def _migrate_password_cost(
+        self, user: dict, password: str, stored_hash: str
+    ) -> None:
+        """Re-stamp a legacy/low-cost hash at the current PBKDF2 cost.
+
+        Runs only after a successful verification, the one moment the
+        plaintext is available.  A failure here must not fail the login: the
+        user is already authenticated and the old hash still verifies, so the
+        migration simply retries on their next login.
+        """
+        if not auth_crypto.needs_password_rehash(stored_hash):
+            return
+        user_id = user.get("id")
+        if user_id is None:
+            return
+        try:
+            new_hash = auth_crypto.hash_password(password)
+            if self._repo.set_user_password_hash(int(user_id), new_hash):
+                user["password_hash"] = new_hash
+                self._invalidate_user_cache()
+        except Exception:
+            _log.warning(
+                "Password cost migration failed for user id=%s; login stands",
+                user_id, exc_info=True,
+            )
 
     @session_operation
     def get_user_by_id(self, user_id: int) -> dict | None:

@@ -184,6 +184,13 @@ def test_gallery_skips_windows_junction_or_reparse_directory(tmp_path, schema_db
             ["cmd", "/c", "mklink", "/J", str(junction), str(outside)],
             capture_output=True,
             text=True,
+            # cmd.exe emits OEM-codepage text (e.g. GBK on a Chinese
+            # locale); decoding it strictly as UTF-8 can raise
+            # UnicodeDecodeError in subprocess's reader thread. The output
+            # is only used for a skip message, so replace undecodable
+            # bytes instead of failing the probe.
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
         if result.returncode != 0:
@@ -322,14 +329,27 @@ def test_home_projection_persists_to_database_and_survives_restart(tmp_path, sch
 
     first = GalleryService(connection_provider=lambda _root: schema_db)
     try:
+        # The persisted database row is the only reliable commit signal here:
+        # the builder publishes the memory cache before it writes the row, so
+        # a cache hit does not imply the row exists yet. Under parallel-test
+        # CPU contention the two moments separate and a cache-based assertion
+        # races the commit. Poll the row (with a generous deadline) instead;
+        # each get_home_cached miss arms the background build.
         deadline = time.monotonic() + 10.0
-        while time.monotonic() < deadline and first.get_home_cached(tmp_path) is None:
+        while time.monotonic() < deadline:
+            first.get_home_cached(tmp_path)
+            row = schema_db.execute(
+                "SELECT saved_at, projection FROM gallery_home WHERE id = 1"
+            ).fetchone()
+            if row is not None and row[1]:
+                break
             time.sleep(0.05)
+        else:
+            pytest.fail(
+                "home projection was not persisted to gallery_home within "
+                "10.0s: the background build never committed a non-empty row"
+            )
         assert first.get_home_cached(tmp_path) is not None
-        row = schema_db.execute(
-            "SELECT saved_at, projection FROM gallery_home WHERE id = 1"
-        ).fetchone()
-        assert row is not None and row[1]
     finally:
         first.close()
 
@@ -767,3 +787,129 @@ def test_file_change_inside_project_updates_incrementally(tmp_path, schema_db, m
         assert after is not None and after.stats["artworks"] == 2
     finally:
         service.close()
+
+
+# ── Bounded close / cancel-event contract ──────────────────────────
+
+
+def test_close_bounded_by_timeout_keeps_straggler_handle(tmp_path, schema_db, caplog):
+    """A worker stuck past the deadline makes close() return False quickly:
+    the handle is retained, a warning is logged, and the thread is not
+    force-killed (the database gated close is the hard safety boundary)."""
+    import threading
+    import time
+
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    release = threading.Event()
+    worker = threading.Thread(target=release.wait, name="gallery-stuck")
+    worker.start()
+    with service._build_lock:
+        service._worker_threads.add(worker)
+    try:
+        started = time.monotonic()
+        drained = service.close(timeout=0.2)
+        elapsed = time.monotonic() - started
+        assert drained is False
+        assert elapsed < 2.0  # bounded: nowhere near an unbounded join
+        assert worker.is_alive()
+        with service._build_lock:
+            assert worker in service._worker_threads  # handle retained
+        assert any(
+            "still running" in record.getMessage() for record in caplog.records
+        )
+    finally:
+        release.set()
+        worker.join(timeout=5.0)
+
+
+def test_close_joins_normal_worker_then_is_idempotent(tmp_path, schema_db):
+    """close() drains a finishing worker (True) and later calls on the
+    already-closed service stay True and harmless."""
+    import threading
+    import time
+
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    worker = threading.Thread(target=lambda: time.sleep(0.1))
+    worker.start()
+    with service._build_lock:
+        service._worker_threads.add(worker)
+    assert service.close(timeout=5.0) is True
+    assert not worker.is_alive()
+    # A real worker removes its own handle on exit; an injected one stays in
+    # the set, but a second close (and a default-deadline close) drain
+    # cleanly instead of raising.
+    assert service.close(timeout=5.0) is True
+    assert service.close() is True
+
+
+def test_concurrent_double_close_is_safe(tmp_path, schema_db):
+    """Two threads closing the same service concurrently both drain the
+    worker without raising or deadlocking (LAN _shutdown + runtime teardown
+    may overlap)."""
+    import threading
+    import time
+
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    worker = threading.Thread(target=lambda: time.sleep(0.2))
+    worker.start()
+    with service._build_lock:
+        service._worker_threads.add(worker)
+    results: list[bool] = []
+    errors: list[Exception] = []
+
+    def do_close() -> None:
+        try:
+            results.append(service.close(timeout=5.0))
+        except Exception as exc:
+            errors.append(exc)
+
+    first = threading.Thread(target=do_close)
+    second = threading.Thread(target=do_close)
+    first.start()
+    second.start()
+    first.join(timeout=10.0)
+    second.join(timeout=10.0)
+    assert errors == []
+    assert results == [True, True]
+    assert not worker.is_alive()
+
+
+def test_prewarm_pre_wait_observes_cancel_event_and_skips_compute(tmp_path, schema_db, monkeypatch):
+    """close() sets the read-only cancel event: a pre_wait hook waiting on
+    it returns promptly and the worker never enters the compute path."""
+    import threading
+
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    entered = threading.Event()
+    computed: list[str] = []
+    monkeypatch.setattr(service, "_compute_home", lambda root_key: computed.append(root_key))
+
+    def pre_wait() -> None:
+        entered.set()
+        service.cancel_event.wait(timeout=10.0)
+
+    service.prewarm_home(tmp_path, pre_wait=pre_wait)
+    try:
+        assert entered.wait(timeout=5.0)
+        # close() returns True only after joining the worker, and the worker
+        # returns right after its pre_wait observes the cancel event.
+        assert service.close(timeout=2.0) is True
+        assert computed == []
+    finally:
+        service.close()
+
+
+def test_close_skips_self_and_unstarted_workers(tmp_path, schema_db):
+    """close() never joins the calling thread (self-join deadlocks) and
+    never joins a registered-but-unstarted thread (Thread.join raises
+    RuntimeError there); both count as already safe."""
+    import threading
+
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    current = threading.current_thread()
+    unstarted = threading.Thread(target=lambda: None, name="never-started")
+    with service._build_lock:
+        service._worker_threads.add(current)
+        service._worker_threads.add(unstarted)
+    assert service.close(timeout=1.0) is True
+    assert unstarted.ident is None  # never started, never joined

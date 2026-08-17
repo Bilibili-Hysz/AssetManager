@@ -397,6 +397,22 @@ class ShareRepository:
         ).fetchone()
         return row[0] if row else None
 
+    @_repository_operation
+    def set_password_hash(self, share_id: str, password_hash: str) -> bool:
+        """Replace a share link's password hash. Returns True if updated.
+
+        Used by the cost-migration path after a successful verification so an
+        existing share moves to the current PBKDF2 cost without the owner
+        having to reset its password.
+        """
+        with db_write_lock(self._conn):
+            cur = self._conn.execute(
+                "UPDATE share_links SET password_hash=? WHERE id=?",
+                (password_hash, share_id),
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
+
     def _row_to_dict(self, row) -> dict | None:
         """Convert a DB row to a dict, checking active/expired/limit."""
         sid, paths_json, pw_hash, expires_at, max_dl, dl_count, allow_prev, created_by, created_at, is_active = row

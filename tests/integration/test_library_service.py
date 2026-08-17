@@ -22,6 +22,8 @@ def _probe_library_lock_in_child(lock_path: Path) -> subprocess.CompletedProcess
         [sys.executable, "-c", script, str(lock_path)],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
 

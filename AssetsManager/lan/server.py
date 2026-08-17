@@ -1254,13 +1254,18 @@ class _LanServerImpl:
         if gallery is None or root is None:
             return
         scanner = getattr(self, "_scanner", None)
+        cancel_event = getattr(gallery, "cancel_event", None)
 
         def wait_for_scanner() -> None:
             if scanner is None:
                 return
             deadline = time.monotonic() + 300.0
             while time.monotonic() < deadline:
-                if getattr(self, "_cleanup_complete", False) or not scanner.is_scanning():
+                if (
+                    getattr(self, "_cleanup_complete", False)
+                    or (cancel_event is not None and cancel_event.is_set())
+                    or not scanner.is_scanning()
+                ):
                     return
                 time.sleep(1.0)
 
@@ -1353,9 +1358,20 @@ class _LanServerImpl:
         gallery = getattr(services, "gallery_service", None)
         if gallery is not None and callable(getattr(gallery, "close", None)):
             try:
-                gallery.close()
+                drained = gallery.close()
             except Exception:
                 _log.exception("Failed to stop gallery service during LAN shutdown")
+            else:
+                if drained is False:
+                    # The bounded join timed out with live workers. Their
+                    # handles stay tracked and the database gated close is
+                    # the hard safety boundary; the pending state is
+                    # recorded for shutdown observability.
+                    _log.warning(
+                        "Gallery service close left background workers running "
+                        "after the bounded join; the database gated close "
+                        "remains the hard safety boundary"
+                    )
         # L3: after closing the gallery service (which signals its build
         # loops), join the server-tracked prewarm thread so shutdown never
         # leaves a daemon traversal running past the request teardown.

@@ -530,7 +530,8 @@ class PluginManagerDialog(TabbedDialog):
 
         # If the filter hid the selected card, switch to the first visible one
         # so the detail panel never shows a plugin that is no longer listed.
-        selected = self._cards.get(self._selected_plugin_id)
+        selected_id = self._selected_plugin_id
+        selected = self._cards.get(selected_id) if selected_id else None
         if selected is not None and selected.isHidden():
             first_visible = next(
                 (card for card in self._cards.values() if not card.isHidden()),

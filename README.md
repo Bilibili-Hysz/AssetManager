@@ -4,8 +4,8 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库（元数据、标签、缩略图），也可以通过局域网内的浏览器远程浏览和下载资产。
 
-<!-- stats: app_services=44 core=32 dialogs=18 domain_events=15 e2e_specs=6 hooks=15 i18n_en=827 i18n_ja=827 i18n_zh=827 icons=56 pages=26 python_test_files=247 repos=17 routes=140 routes_modules=23 schema_version=29 stores=4 themes=24 ts=117 webui_test_files=103 widgets=14 -->
-> 当前审查证据（2026-08-13，本机 Windows / Python 3.14.3，DSH 沙箱环境）：最近一次 Python 全量运行结果为 **3447 passed, 7 skipped**（沙箱下以 `-n 0` 单进程运行；4 个 multiprocessing 命名管道测试 + 1 个沙箱偶发被阻断，CI 环境不受影响）；`ruff check AssetsManager tests scripts run.py` **全绿**；compileall 通过；**pyright 0 errors / 0 warnings**（CI "Type Check (pyright hard gate)" 固定 1.1.410）。WebUI 单测/typecheck/build/E2E 在上一次会话实测为 683/通过/51 passed 2 skipped（本机沙箱禁止 Node 子进程管道，未复跑；以 CI 为准）。CI Python 3.12/3.13/3.14 矩阵为硬门禁（3.14 已从 continue-on-error 转正，待首次 CI 实跑确认）；clean checkout/Windows package smoke 和真实后端 Commerce 验收仍需分别看待。完整审查文档集见 `docs/full-review/`（含模块地图、数据流、事件系统、审查结果与验证基线）。
+<!-- stats: app_services=44 core=32 dialogs=20 domain_events=15 e2e_specs=6 hooks=15 i18n_en=835 i18n_ja=835 i18n_zh=835 icons=56 pages=26 python_test_files=257 repos=17 routes=140 routes_modules=23 schema_version=29 stores=4 themes=24 ts=117 webui_test_files=103 widgets=14 -->
+> 当前审查证据（2026-08-17，本机 Windows / Python 3.14.3）：最近一次 Python 全量运行结果为 **3748 passed, 7 skipped, 0 failed**（`-n auto` 并行；e2e/perf 标记的 16 个测试由 `pytest.ini` 的 `-m "not e2e and not perf"` 默认排除；7 个 skip 为 Windows symlink 权限与 multiprocessing Queue 终止限制）；`ruff check .` **全绿**（correctness 规则族，见 `ruff.toml`）；compileall 通过；**pyright 0 errors / 0 warnings**（CI "Type Check (pyright hard gate)" 固定 1.1.410）。WebUI 本机实测 **103 文件 / 705 单测全通过**，typecheck 与 build 均通过；浏览器 E2E 为上一次会话实测 51 passed 2 skipped（本轮未复跑，以 CI 为准）。CI Python 3.12/3.13/3.14 矩阵为硬门禁（3.14 已从 continue-on-error 转正，待首次 CI 实跑确认）；clean checkout/Windows package smoke 和真实后端 Commerce 验收仍需分别看待。完整审查文档集见 `docs/full-review/`（含模块地图、数据流、事件系统、审查结果与验证基线）。
 
 
 > **2026-08-11 更新**：完成 UI/SVG 修复轮（13 项审计 + SVG 化 + 语义色体系 + 菜单栏）、P0 高危轮（15+4）、中危轮（D1/D2/E/F/G1/G2）与 P1 轮（M6a/M9/M6c，42 项清单）——含分享密码强度与爆破防护、投递令牌 rotate 配额守恒与撤销、匿名配额 cookie 身份、备份上限与并发检测、令牌 nonce 等。所有改动处于工作区**未提交**状态（529 条变更），未执行 stage、commit、reset 或 clean。
@@ -162,7 +162,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 │  session_contract  performance  crash_handler  bg_effects  │
 └────────────────────────────────────────────────────────────┘
         LAN 层（aiohttp：server/manager/ws/security/tunnel/
-        path_guard/principal/dto + routes/ 24 模块 140 条路由）
+        path_guard/principal/dto + routes/ 23 模块 140 条路由）
 ```
 
 ### 架构原则
@@ -263,7 +263,7 @@ AssetsManager_old-bak/
 │   │   ├── sidebar.py / info.py / tag_tree.py / image_viewer.py
 │   │   ├── empty.py / base.py / _event_bridge.py
 │   │
-│   ├── dialogs/                # Qt 对话框（18 个）
+│   ├── dialogs/                # Qt 对话框（20 个）
 │   │   ├── startup/settings/tabbed_dialog/sharing_settings(2212 行)
 │   │   ├── share_link/share_qr/_share_api/theme_preview
 │   │   ├── sidebar_favorites/sidebar_recent/sidebar_settings
@@ -277,15 +277,15 @@ AssetsManager_old-bak/
 │   │   │   command_palette/file_picker/pager_overlay/theme_gallery/status_bar/title_bar）
 │   │
 │   ├── di/                     # 依赖注入容器
-│   └── i18n/                   # 国际化（en 827 / zh 827 / ja 827 keys）
+│   └── i18n/                   # 国际化（en 835 / zh 835 / ja 835 keys）
 │
-├── webui/                      # React 18 + Vite + TS SPA（217 ts/tsx）
-│   ├── src/                    # api(15 工厂)/stores(4 Context)/hooks(14)
+├── webui/                      # React 18 + Vite + TS SPA（117 ts/tsx 生产源码）
+│   ├── src/                    # api(15 工厂)/stores(4 Context)/hooks(15)
 │   │                           # pages(26)/components(10 域)/types/i18n
-│   ├── e2e/                    # Playwright 6 spec（53 用例，默认 51 passed、2 skipped）
+│   ├── e2e/                    # Playwright 6 个 spec（默认 51 passed、2 skipped）
 │   └── dist/                   # 构建产物（打进 PyInstaller bundle）
 │
-├── tests/                      # 本机复核基线（Windows：3450 passed, 7 skipped）
+├── tests/                      # 本机复核基线（Windows：3737 passed, 7 skipped）
 │   ├── core/ unit/ integration/ desktop/ lan/
 │   ├── performance/ perf/ e2e/ contracts/ fixtures/
 │
@@ -363,7 +363,7 @@ python -m compileall -q AssetsManager tests
 python -m pytest -q -p no:cacheprovider
 ```
 
-本机复核状态（2026-08-13，Windows / Python 3.14.3）：**Python 全量回归 3450 passed, 7 skipped, 0 failed**；**`ruff check AssetsManager tests scripts run.py` 全绿**；**compileall 通过**。默认浏览器 E2E 共 53 个测试（6 个 spec，含 23 个 axe-core 双主题无障碍扫描），当前本机 **51 passed、2 skipped**；其中 Mock/Shell 子集为 12 passed，真实后端用例在未配置环境变量时跳过。7 个 Python skip 包括 Windows symlink 权限限制与历史 multiprocessing Queue 终止 draft。Pyright 在本机 Python 3.14 + pyright 1.1.410 下 **0 errors / 0 warnings**（CI "Type Check (pyright hard gate)" 已固定同版本）。远程 CI 的 Python 3.12/3.13/3.14 矩阵仍是独立门禁；本轮 WebUI 单测 `683 passed`、`typecheck` 与 `build` 通过。
+本机复核状态（2026-08-17，Windows / Python 3.14.3）：**Python 全量回归 3737 passed, 7 skipped, 0 failed**；**`ruff check .` 全绿**；**compileall 通过**。默认浏览器 E2E 共 53 个测试（6 个 spec，含 23 个 axe-core 双主题无障碍扫描），当前本机 **51 passed、2 skipped**；其中 Mock/Shell 子集为 12 passed，真实后端用例在未配置环境变量时跳过。7 个 Python skip 包括 Windows symlink 权限限制与历史 multiprocessing Queue 终止 draft。Pyright 在本机 Python 3.14 + pyright 1.1.410 下 **0 errors / 0 warnings**（CI "Type Check (pyright hard gate)" 已固定同版本）。远程 CI 的 Python 3.12/3.13/3.14 矩阵仍是独立门禁；本轮 WebUI 单测 `103 文件 / 705 passed`、`typecheck` 与 `build` 通过。
 > **G17 边界：** Reconciliation queue 当前支持单 library、单 application owner 下的 stop-the-world cutover、lease recovery 与 stale-worker protection；不支持旧版/新版应用同时持有同一 library 的 rolling upgrade。详细证据见 `docs/compose/reports/g17-stop-the-world-cutover-release-ownership-checklist-2026-08-08.md`。
 
 ### Cython 编译加速
@@ -565,16 +565,19 @@ Plugins/Addons/my_plugin/
 
 ### 插件能力
 
-- 注册自定义文件分类
-- 添加菜单项和工具栏按钮
-- 注册文件解析器
-- 注册搜索提供者
-- 注册主题令牌
-- 注册事件钩子
+当前可用：
+- 注册自定义文件分类（`register_category()`）
+- 注册菜单项与右键菜单动作（`register_menu_contribution()` / `register_context_menu_item()`，即 `file.actions` 已落地）
+- 注册文件解析器（`register_file_handler()`）
+- 注册主题令牌（`register_theme_token()`）
+- 注册事件钩子（`hook()`）
+- 注册命令与工具面板（`CommandOperator` / `PanelContributor`）
+
+未接线（Future——注册 API 已存在，但暂无 UI 消费方，当前不作为可用能力）：自定义搜索结果提供者（`register_search_provider()`）、自定义文件列表列（`register_column()`）。完整扩展点状态见 `Plugins/Docs/PLUGIN_SYSTEM.md` §10。
 
 ### 权限系统
 
-插件权限是建议性的（advisory），不强制执行。插件运行在完整的 Python 解释器中，拥有完全的系统访问权限。
+`plugin.json` 的 `permissions` 声明插件意图使用的宿主能力，**只有部分宿主 API 有强制门**：未声明 `host.services` 的插件在 `services()/session/window` 上得到 `None`；未声明 `settings.write` 的插件无法 `register_category()/register_theme_token()`。其余为 advisory 门（如 `filesystem.read` 门控 `register_file_handler()/register_search_provider()/open_path()`），只记录意图并拦截诚实错误。插件与主机运行在**同一 Python 解释器**，可直接 `import` 标准库或主机模块绕过任何门禁（如用 `open()`/`pathlib` 直接读文件），因此整个权限体系**不能视为沙箱**；只应从可信来源安装插件。
 
 ---
 
@@ -623,7 +626,7 @@ tests/
 ### 运行测试
 
 ```bash
-# 全部测试（基线 3450 passed, 7 skipped）
+# 全部测试（基线 3737 passed, 7 skipped）
 python -m pytest -q -p no:cacheprovider
 
 # 特定目录
@@ -635,7 +638,7 @@ python -m pytest tests/performance/ -v
 
 # 前端（webui/ 下）
 npm test && npm run typecheck && npm run build
-npm run test:e2e   # Playwright 30 用例（28 passed/2 skipped）
+npm run test:e2e   # 历史批次口径（已过时）：曾为 Playwright 30 用例（28 passed/2 skipped）；当前 E2E 为 6 个 spec，见上方“测试结构/本机复核状态”
 ```
 
 ### 测试 fixture

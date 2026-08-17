@@ -18,6 +18,11 @@ AssetManager's plugin system allows external Python scripts to provide **file me
 | **Full trust** | Plugins are loaded as local Python modules with `importlib` and have full Python interpreter access (filesystem, network, subprocess, etc.). Plugins are NOT sandboxed. Only install plugins from trusted sources. |
 | **Transparent** | Plugin metadata merges into InfoPanel with the same label/value layout as built-in fields |
 
+### API 代际边界（legacy v1 / v2）
+
+本手册主体描述 **legacy v1**（`plugin.json` + 顶层 `match()`/`parse()` 元数据解析器）。**v2 是当前推荐入口**：插件在 `register(host)` 中调用 `host.register_class(cls)` 注册贡献类（`CommandOperator` / `FileParser` / `ContextMenuItem` / `MenuContributor` / `PanelContributor` / `EventHook` / `CategoryContributor` / `ThemeTokenContributor` / `Preferences`，均定义于 `AssetsManager.plugin_api`），并在回调中通过 getter 风格的 `PluginContext` 访问宿主。两组 API 并存：旧插件（v1）不经修改继续可用（兼容层），新插件只应使用 v2。
+
+
 ---
 
 ## 2. Directory Layout
@@ -75,7 +80,7 @@ Project/
 | `enabled` | bool | ❌ | Default `true`. Disabled plugins are skipped at discovery. |
 | `entry` | string | ❌ | Entry module filename (default `parser.py`) |
 | `provides` | list[string] | ❌ | Capability tags for future extension points |
-| `permissions` | list[string] | ❌ | Advisory permission declarations (see §12). Does NOT restrict plugin code. |
+| `permissions` | list[string] | ❌ | Capability tokens gating the host's own APIs (see §12). Cannot restrict plugin code. |
 | `display_fields` | list[DisplayField] | ❌ | Fields to render in InfoPanel |
 | `config_schema` | dict | ❌ | Future: plugin settings UI schema |
 
@@ -148,18 +153,20 @@ User selects file in File List
 
 ---
 
-## 6. `core/plugin_manager.py` — PluginManager
+## 6. 插件管理器（legacy v1 路径）
+
+> ⚠️ `AssetsManager.core.plugin_manager` 模块**已不存在**，请勿再引用。legacy `match`/`parse` 解析器仍被兼容层支持，但运行时位于 `AssetsManager/core/plugins/`（`PluginManagerService` + `PluginHostContext`），对外公开 SDK 在 `AssetsManager.plugin_api`。
 
 ### Singleton access
 
 ```python
-from AssetsManager.core.plugin_manager import get_plugin_manager
-pm = get_plugin_manager()  # discover() called on first access
+from AssetsManager.core.plugins.manager import PluginManagerService
+pm = PluginManagerService.get()  # 默认扫描 RuntimeData/Shared/plugins/ 与 Plugins/Addons/
 ```
 
-### discover()
+### discover_plugins()（legacy 语义）
 
-Scans `Plugins/Addons/`, loads all folders with valid `plugin.json` where `enabled: true`.
+Scans `Plugins/Addons/` (plus `RuntimeData/Shared/plugins/`), loads all folders with valid `plugin.json` where `enabled: true`.
 
 For each valid plugin:
 - Imports `entry` module via `importlib.util`
@@ -295,18 +302,22 @@ def parse(file_path: str) -> dict:
 
 ---
 
-## 10. Extension Points (Future)
+## 10. Extension Points（消费状态一览）
 
-The plugin system currently supports one extension point:
+> 本表描述**扩展点的实际消费状态**（注册 API 是否被宿主 UI 调用/渲染）。「注册 API 存在」表示 `PluginHostContext` 已提供对应 `register_*` 或 v2 贡献类（含 §12 的权限门）；「未接线」表示当前没有 UI 消费方，贡献不会被展示——即不视为当前可用能力。
 
 | Extension | Status | Description |
 |-----------|--------|-------------|
-| `info.fields` | ✅ Active | Display metadata fields in InfoPanel |
-| `file.actions` | ❌ Not implemented | Context menu actions |
-| `file.columns` | ❌ Not implemented | Custom columns in file list |
-| `search.providers` | ❌ Not implemented | Custom search result providers |
+| `info.fields` | ✅ 已接线 | Display metadata fields in InfoPanel（legacy `display_fields` + v2 `FileParser`） |
+| 右键菜单动作（`file.actions`） | ✅ 已接线 | `register_context_menu_item()` / `ContextMenuItem`，文件右键菜单 UI 已消费 |
+| 菜单与工具面板 | ✅ 已接线 | `register_menu_contribution()` / `register_tool_window()`（`MenuContributor`/`PanelContributor`），窗口菜单与 dock 已消费 |
+| 主题令牌 / 事件钩子 / 自定义分类 | ✅ 已接线 | `register_theme_token()` / `hook()` / `register_category()`，主题 fallback、事件总线、过滤器下拉已消费 |
+| `file.columns` | ⚠️ 注册 API 存在、无 UI 消费（Future） | `register_column()` 可登记列，但文件列表 UI 未渲染它 |
+| `search.providers` | ⚠️ 注册 API 存在（`filesystem.read` 门）、无 UI 消费（Future） | `register_search_provider()` 可登记搜索提供者，但搜索 UI 未调用它 |
 
-To add a new extension point:
+> 与 §12 的关系：§12 的权限表中 `register_search_provider()` / `register_file_handler()` / `open_path()` 的 `filesystem.read` 门是真实的宿主 API 门禁；"未接线"仅指这些注册项目前没有 UI 消费方，二者不矛盾。
+
+To wire up a new extension point:
 1. Define the interface (e.g., `file.actions` requires `menu_items(path) -> list`)
 2. Call `plugin_manager.get_extension("file.actions", path)` in the relevant UI code
 3. Document the contract in `API.md`
@@ -333,29 +344,43 @@ AssetManager plugins are **not sandboxed**. They run as normal Python code with 
 
 **Only install plugins from sources you trust.** A malicious plugin can compromise your system.
 
-### Permissions are advisory, not enforced
+### Permissions gate host APIs — they are not a sandbox
 
 The `permissions` field in `plugin.json` declares what capabilities the plugin intends to use:
 
 ```json
 {
-  "permissions": ["filesystem.read", "network.request", "settings.write"]
+  "permissions": ["filesystem.read", "settings.write", "host.services"]
 }
 ```
 
-These declarations serve as **documentation for users and developers** — they signal the plugin's intended behavior but do NOT constrain what the plugin can actually do. The host logs a warning when a plugin registers contributions that require undeclared permissions, but never blocks the action.
+The host checks these tokens on its own APIs: a call made without the declared permission is refused and a warning is logged (read-style APIs return `None`, registrations are dropped). What each token gates:
 
-Declared permissions do not create a security boundary because plugin code already has unrestricted Python access.
+| Token | Host enforcement point | Nature |
+|-------|------------------------|--------|
+| `host.services` | `ctx.services()` / `ctx.session` / `ctx.window` return `None` without it | Real boundary — the only route to the service bundle and library session |
+| `settings.write` | `register_category()` / `register_theme_token()` refused without it | Real boundary — global host registries reachable only through the host API |
+| `filesystem.read` | `register_file_handler()` / `register_search_provider()` / `open_path()` refused without it | Advisory — a plugin can read any file with `open()`/`pathlib` directly |
+| `settings.read` / `settings.write` | `ctx.preferences()` returns `None` without either | Advisory — a plugin can import the preferences module directly |
+| `database.read` / `database.write` | no separate check — database access is bundled into `host.services` (the library session) | Intent declaration only |
+| `filesystem.write` / `network.request` / `clipboard.read` / `clipboard.write` | no host API exists for these capabilities — nothing to gate | Intent declaration only |
 
-Available permission tokens:
-| Token | Meaning |
-|-------|---------|
-| `filesystem.read` | Plugin reads files from disk |
-| `filesystem.write` | Plugin writes files to disk |
-| `network.request` | Plugin makes HTTP/network requests |
-| `database.read` | Plugin reads from the AssetManager database |
-| `database.write` | Plugin writes to the AssetManager database |
-| `settings.read` | Plugin reads application settings |
-| `settings.write` | Plugin writes application settings or registers extensions |
-| `clipboard.read` | Plugin reads from the system clipboard |
-| `clipboard.write` | Plugin writes to the system clipboard |
+**These gates are honesty/intent boundaries, not security.** Plugin code runs in the same Python interpreter with full stdlib access: every gate above (including `host.services`) can be bypassed with a direct `import` (e.g. `pathlib`, `urllib.request`, `QApplication.clipboard()`, or the host's own modules). A hostile plugin needs no permission tokens at all. Declaring permissions is what makes the host's own APIs usable; the checks catch honest mistakes and document intent. Only subprocess isolation or a sandbox could turn them into a real boundary.
+
+### 身份门（subject/owner 限定）与宿主方法
+
+除按权限 token 门控外，部分宿主方法还按“插件身份（subject）”门控，防止一个插件冒用另一插件或主机的身份：
+
+| 方法 | 门 | 语义 |
+|------|----|------|
+| `execute_command(cid)` | 身份门 | 插件 subject 只能执行自己的命令（v2 owner 取自 `_class_owners`，legacy 取自贡献的 `plugin_id`）；主机（无 subject）可执行任意命令。越权拒绝并告警 |
+| `undo_last_command()` | 身份门 | 只能撤销自己的 `undoable` v2 算子；撤销栈仅覆盖 v2 `CommandOperator`，legacy handler 的操作不入栈。当前无 UI 入口，仅测试在调用 |
+| `unregister_plugin(pid)` | 身份门 | 插件只能注销自己；主机可注销任意插件（manager 卸载 / 加载失败清理 / 管理对话框） |
+| `grant_permissions(pid, ...)` | 身份门 | 仅在无活动插件 subject（主机加载路径）时可调用；任何插件（含自授权）都被拒绝 |
+| `preferences(pid)` | advisory（`settings.read`/`settings.write`，二者任一） | owner 由调用 subject 解析，跨插件 id 被忽略并告警 |
+| `open_path(path)` | advisory（`filesystem.read`） | 同解释器中可被 `os.startfile`/`subprocess` 直接绕过 |
+| `services()/session/window` | 强制（`host.services`） | 缺权限返回 `None`，服务束/库会话/主窗口没有第二条路径 |
+
+**已关闭**：`plugin_execution()` / `plugin_registration()` 现在拒绝身份切换 —— 当已有插件 subject 活动时，传入其他 id（或空串洗白成主机）会记 WARNING 并保持原身份不变，`with` 块照常执行。主机自身的嵌套派发（hook、`when` 判定、operator handler、加载/卸载）走私有 `_host_identity_scope`，因为这类切换是合法的。卸载时的 undo 记录与通知也已按 owner 清理。
+
+**仍不是安全边界**：subject 由 `ContextVar` 承载，未标记的新线程（Python 3.14 起 `Thread` 默认不继承调用方 context）subject 为空，而权限助手当前把空 subject 视为主机放行；插件仍可直接调用 `_host_identity_scope` 或改写 `_executing_plugin_var` / `_permissions_by_plugin` 等私有状态绕过上述门。同解释器内无法防御，详见交接文档 `docs/full-review/11-plugin-api-v2-handover.md`。
