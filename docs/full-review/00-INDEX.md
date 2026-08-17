@@ -38,6 +38,8 @@
 | [06-audit-results.md](06-audit-results.md) | 审查结果：本轮发现、文档过时清单（逐条差异）、已知风险、技术债、工程红线 | 审查结果 |
 | [07-verification.md](07-verification.md) | 验证基线：测试体系、实测结果、CI、构建打包、质量门 | 验证 |
 | [08-webui-architecture-dataflow.md](08-webui-architecture-dataflow.md) | WebUI 数据流与设计架构专项：请求管线、状态模型、实时失效链路、契约一致性、问题清单（2026-08-12 补充） | 前端架构/数据流 |
+| [09-deep-audit-2026-08-15.md](09-deep-audit-2026-08-15.md) | 深度审查轮（2026-08-15）：4 域并行只读审查（Gallery/数据层、LAN 并发安全、桌面线程生命周期、前端状态清理）——5 HIGH / 19 MEDIUM / 22 LOW，含已验证安全清单与修复批次建议 | 深度审查 |
+| [10-native-acceleration-atlas.md](10-native-acceleration-atlas.md) | 可固定加速图谱（2026-08-17）：按任务拆墙钟/CPU，T0–T3 准入函数清单，禁止把 `core/` 整层 C 化 | 原生加速合同 |
 
 ## 4. 与既有文档的关系
 

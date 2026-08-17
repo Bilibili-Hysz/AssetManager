@@ -54,16 +54,15 @@ img {
     --transition-slow: 280ms ease;
 
     /* Z-index scale (semantic layering).
-       Drawers sit above their scrim but below modals; the progress bar is the
-       top-most element. Note: Modal/Toast/ContextMenu hardcode z-50 and
-       DownloadProgress hardcodes z-[60] — treat those as the reference values
-       and keep this scale consistent with them. */
+       Reference values used by components: Modal/Toast/ContextMenu/ImageViewer
+       hardcode z-50, DownloadProgress hardcodes z-[60]; overlay/drawer consume
+       --z-overlay/--z-drawer. Keep this scale consistent with those references. */
     --z-overlay: 40;   /* full-screen scrims */
     --z-drawer: 40;    /* side/bottom drawers (below modal) */
     --z-modal: 50;     /* modals and popovers */
-    --z-context: 60;   /* context menus */
-    --z-toast: 70;     /* toasts */
-    --z-progress: 80;  /* global progress bar (intended top layer) */
+    --z-context: 50;   /* context menus (same layer as modals) */
+    --z-toast: 50;     /* toasts (reference components use z-50) */
+    --z-progress: 60;  /* global progress bar (top-most hardcoded layer) */
     color-scheme: dark;
   }
 

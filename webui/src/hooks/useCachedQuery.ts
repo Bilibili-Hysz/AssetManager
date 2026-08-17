@@ -8,6 +8,15 @@
  * - invalidation flows from projection domains (WebSocket) and from the
  *   identityGeneration cache clear (login/logout/401);
  * - staleTime = 0 keeps the historical fetch-on-mount behavior.
+ *
+ * Query key contract (S5):
+ * - Keys are JSON.stringify'd for identity; use a stable serializable tuple
+ *   like `['project-detail', path]` or `['search', { q, tags, category }]`.
+ * - Object-valued keys must keep property insertion order stable (callers
+ *   construct them with a fixed literal shape).
+ * - Never put functions, class instances, or DOM nodes in a key.
+ * - Identity changes clear the whole cache, so keys do not need an explicit
+ *   identityGeneration component.
  */
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { shouldInvalidate } from '../cache/invalidation';

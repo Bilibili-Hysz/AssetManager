@@ -25,7 +25,7 @@ Five separation rules govern new code (from the front/back separation plan; a vi
 4. Business validation belongs only in the service layer.
 5. Each end assembles only the services it consumes.
 
-Static gates are enforced by `scripts/check_boundaries.py` (gates 1/2/3/5) and `scripts/gen_ts_types.py --check` (gate 6), both run in the CI `lint` job.
+Static gates are enforced by `scripts/check_boundaries.py` (gates 1/2/3/5), `scripts/gen_ts_types.py --check` (gate 6), `scripts/check_style_sources.py` (D4 local QSS token gate), `scripts/check_route_capabilities.py` (L1 LAN write capability gate), `scripts/check_frontend_data_fetch.py` (S2 page data-layer gate), and `scripts/gen_web_tokens.py --check` (S4 theme-token single source); all run in the CI `lint` job.
 
 ## Application Services
 
@@ -64,7 +64,7 @@ Static gates are enforced by `scripts/check_boundaries.py` (gates 1/2/3/5) and `
 
 ## LAN Route Structure
 
-LAN API routes are split into focused modules under `AssetsManager/lan/routes/` (24 files, 139 registered routes — page 30 / core API 51 / commerce-seller 55 / auth+WS 3):
+LAN API routes are split into focused modules under `AssetsManager/lan/routes/` (23 modules, 140 registered routes — page 30 / core API 51 / commerce-seller 55 / auth+WS 4):
 
 | Module | Routes | Application Service |
 |---|---|---|

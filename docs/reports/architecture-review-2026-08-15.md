@@ -212,7 +212,9 @@
 - **批次 S4 — 设计令牌单源**：`assets/Themes/*.json` 同时产出 CSS `:root` 与 PySide 属性；`/api/theme` 或 `ServerInfo.theme_color` 下发 accent；Web 与桌面视觉同源。
 
 **状态：已完成** —— 新增 `scripts/gen_web_tokens.py`：以 `Assets/Themes/D_Navy.json`（暗）与 `L_Dawn.json`（亮）为唯一色板来源生成 `webui/src/tokens/themes.generated.css`（颜色/滚动条/骨架/输入焦点等全部 Web 颜色令牌），`index.css` 移除手写颜色变量并 `@import` 生成文件（PySide 侧继续由同一批 JSON 经 `core/themes.py` 消费）；`App.tsx` 在拿到 `ServerInfo` 后把 `theme_color` 写入 `--color-accent`/`--color-accent-hover`，服务端成为实时 accent 权威；`gen_web_tokens.py --check` 挂 CI，`tests/unit/test_gen_web_tokens.py` 锁定生成文件与 JSON 同源。
-- **批次 S5 — 清理与文档**：删除孤儿测试或补源；`useCachedQuery` key 规范文档化；CSS z-index 注释对齐。
+- **批次 S5 — 清理与文档**：删除孤儿测试或补源；`useCachedQuery` key 规范文档化；CSS z-index 注释对齐；更新 ADR 与 `docs/architecture.md` 的过时表格；把 `docs/full-review` 纳入版本控制，避免后续会话继续以过时基线工作。
+
+**状态：已完成** —— 删除孤儿测试 `webui/src/components/admin/AdminManagement.test.tsx`（对应源码不存在，子组件各有独立测试）；`useCachedQuery` 增加 Query key 契约文档（JSON.stringify 身份、稳定插入序、禁用函数/DOM、身份切换自动清缓存）；`index.css` z-index 注释与真实硬编码值对齐（modal/toast/context=50、progress=60）；`docs/architecture.md` 更新静态门禁清单与 LAN 路由模块/数量（23 modules / 140 routes）；`docs/full-review/00-INDEX.md` 与 `09-deep-audit-2026-08-15.md` 纳入版本控制；webui 103 files / 686 tests 全绿。
 
 ---
 
