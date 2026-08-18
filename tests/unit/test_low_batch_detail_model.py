@@ -29,6 +29,10 @@ def _entry(name: str, is_dir: bool):
     return SimpleNamespace(name=name, path=f"/synthetic/{name}", is_dir=lambda: is_dir)
 
 
+def _path_entry(path: str, is_dir: bool = False):
+    return SimpleNamespace(name="entry", path=path, is_dir=lambda: is_dir)
+
+
 def _make_model(entries, fs=None):
     model = DetailModel()
     model._fs_model = fs  # None → sort value helpers fall back to 0
@@ -165,3 +169,74 @@ def test_sort_remaps_persistent_indexes_to_same_entries():
     assert all(index.isValid() for index in persistent)
     # Model rows are actually sorted (dirs on top, natural order inside).
     assert [entry.name for entry in model._entries] == ["dir_mid", "alpha.txt", "zeta.txt"]
+
+
+# ── P0-5: _rebuild_tags_cache reuses the store's resolve cache ──
+
+def test_rebuild_tags_cache_reuses_store_resolver(tmp_path):
+    """DetailModel must look up keys via store.get_resolved_path when offered.
+
+    The store returns tags keyed by an artificial "resolved" form that only
+    its own resolver can produce, so a populated _tags_cache proves the model
+    called get_resolved_path instead of Path.resolve().
+    """
+    alias = str(tmp_path / "sub" / ".." / "a.txt")
+
+    class ResolvingStore:
+        def __init__(self):
+            self.resolver_calls = []
+
+        @staticmethod
+        def _key(fp):
+            return f"resolved:{fp}"
+
+        def get_tags_for_files(self, filepaths):
+            return {self._key(fp): ["important"] for fp in filepaths}
+
+        def get_resolved_path(self, filepath):
+            self.resolver_calls.append(filepath)
+            return self._key(filepath)
+
+    store = ResolvingStore()
+    model = _make_model([_path_entry(alias)])
+    model._store = store
+    model._rebuild_tags_cache()
+
+    assert model._tags_cache.get(alias) == "important"
+    assert store.resolver_calls == [alias]
+
+
+def test_rebuild_tags_cache_falls_back_without_resolver(tmp_path):
+    """Stores without get_resolved_path keep working via Path.resolve()."""
+    from tests.mocks import MockTagStore
+
+    alias = str(tmp_path / "sub" / ".." / "a.txt")
+    store = MockTagStore()
+    store.add_tag(alias, "hero")
+
+    model = _make_model([_path_entry(alias)])
+    model._store = store
+    model._rebuild_tags_cache()
+
+    assert model._tags_cache.get(alias) == "hero"
+
+
+def test_rebuild_tags_cache_falls_back_when_resolver_raises(tmp_path):
+    """A root-containment ValueError from the resolver must not blank tags."""
+    from pathlib import Path as _Path
+
+    alias = str(tmp_path / "sub" / ".." / "a.txt")
+
+    class RaisingResolverStore:
+        def get_tags_for_files(self, filepaths):
+            return {str(_Path(fp).resolve()): ["hero"] for fp in filepaths}
+
+        def get_resolved_path(self, filepath):
+            raise ValueError("outside root")
+
+    store = RaisingResolverStore()
+    model = _make_model([_path_entry(alias)])
+    model._store = store
+    model._rebuild_tags_cache()
+
+    assert model._tags_cache.get(alias) == "hero"

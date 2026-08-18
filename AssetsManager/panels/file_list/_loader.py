@@ -16,13 +16,39 @@ from typing import Any
 from PySide6.QtCore import Qt, QSize, Signal, QObject, QRunnable, QThreadPool, QMutex
 from PySide6.QtGui import QImage, QImageReader
 
-from AssetsManager.application.thumbnail_service import thumbnail_cache_key
+from AssetsManager.application.thumbnail_service import (
+    ThumbnailService,
+    thumbnail_cache_key,
+)
 from AssetsManager.core.performance import PerformanceRecorder
 from AssetsManager.panels.file_list._common import IMAGE_EXTS, VIDEO_EXTS
 
 _log = logging.getLogger(__name__)
 
 _stderr_redirect_lock = threading.Lock()
+
+# ── Dedicated ffmpeg pool ─────────────────────────────────────────
+# ffmpeg video-frame extraction can take from hundreds of milliseconds to
+# seconds. Running those subprocesses on the loader's own worker threads would
+# let a slow video starve concurrent image thumbnails, so all ffmpeg work is
+# dispatched onto this dedicated, capacity-bounded pool instead.  It lives in
+# the presentation layer on purpose: the architecture boundary forbids Qt
+# imports from non-presentation packages (application/domain/repositories).
+ffmpeg_pool = QThreadPool()
+ffmpeg_pool.setMaxThreadCount(2)  # cap concurrent ffmpeg processes
+_FFMPEG_POOL_DRAIN_TIMEOUT_MS = 10_000
+
+# Sentinel returned by ``_load_video_frame`` when the frame extraction has been
+# dispatched to the dedicated ``ffmpeg_pool``: the calling load task must not
+# treat the request as failed — delivery arrives from the ffmpeg worker once
+# the frame lands on disk.
+
+
+class _VideoFramePending:
+    """Marker returned when video frame extraction is running on the ffmpeg pool."""
+
+
+_VIDEO_FRAME_DEFERRED = _VideoFramePending()
 
 
 @dataclass(frozen=True)
@@ -108,6 +134,10 @@ class _LoadTask(QRunnable):
         started = perf_counter() if self._runtime.recorder is not None else None
         try:
             pix = self._loader._load_image(self._path, self._runtime)
+            if pix is _VIDEO_FRAME_DEFERRED:
+                # Video frame extraction is running on the dedicated ffmpeg
+                # pool; the frame is delivered from that worker when ready.
+                return
             if pix is not None:
                 self._loader._on_image_loaded(
                     self._row, self._path, self._item_path, pix, self._runtime, started)
@@ -116,6 +146,36 @@ class _LoadTask(QRunnable):
         except Exception:
             _log.exception("Thumbnail load failed: %s", self._path)
             self._loader._mark_failed(self._path, self._runtime, started)
+
+
+class _ExtractVideoFrameTask(QRunnable):
+    """Runs ffmpeg first-frame extraction on the dedicated ffmpeg pool.
+
+    The subprocess never blocks one of the loader's own worker threads, so a
+    slow video can not starve concurrent image thumbnails.
+    """
+
+    def __init__(self, loader, source_path: str, frame_path: str, runtime: _Runtime):
+        super().__init__()
+        self._loader = loader
+        self._source_path = source_path
+        self._frame_path = frame_path
+        self._runtime = runtime
+
+    def run(self):
+        try:
+            ok = ThumbnailService._extract_video_frame(
+                Path(self._source_path), Path(self._frame_path)
+            )
+        except Exception:
+            _log.exception("Video frame extraction failed: %s", self._source_path)
+            ok = False
+        if ok:
+            self._loader._on_video_frame_extracted(
+                self._source_path, self._frame_path, self._runtime
+            )
+        else:
+            self._loader._mark_failed(self._source_path, self._runtime)
 
 
 class _BakeTask(QRunnable):
@@ -749,11 +809,20 @@ class ThumbnailLoader(QObject):
         self._mutex.unlock()
         generation = self.invalidate_tasks()
         self.wait_for_runtime(generation)
+        # Drain the dedicated ffmpeg pool (bounded) so in-flight video frame
+        # extraction cannot outlive the panel / process shutdown.
+        ffmpeg_pool.waitForDone(int(_FFMPEG_POOL_DRAIN_TIMEOUT_MS))
 
     # ── Loading (worker thread) ──────────────────────────────────
 
-    def _load_image(self, path: str, runtime: _Runtime | None = None) -> QImage | None:
-        """Load image in worker thread — returns QImage (thread-safe)."""
+    def _load_image(
+        self, path: str, runtime: _Runtime | None = None
+    ) -> QImage | _VideoFramePending | None:
+        """Load image in worker thread — returns QImage (thread-safe).
+
+        For videos whose first frame has not been extracted yet, returns
+        ``_VIDEO_FRAME_DEFERRED`` (extraction runs on the dedicated pool).
+        """
         if not os.path.isfile(path):
             return None
         ext = Path(path).suffix.lower()
@@ -775,28 +844,50 @@ class ThumbnailLoader(QObject):
                 self._record("thumbnail.cache", runtime=runtime, path=path, attributes={"tier": "disk", "outcome": "miss"})
         return self._read_with_qimagereader(path, runtime)
 
-    def _load_video_frame(self, path: str, runtime: _Runtime) -> QImage | None:
-        """Extract and load a video's first frame as a thumbnail.
+    def _load_video_frame(
+        self, path: str, runtime: _Runtime
+    ) -> QImage | _VideoFramePending | None:
+        """Load a video thumbnail from its cached first frame.
 
-        Delegates extraction to the thumbnail service (ffmpeg first frame),
-        which caches the ``.jpg`` frame under the cache directory keyed by the
-        same disk key used for image thumbnails.
+        If the frame already exists on disk it is read directly (matches the
+        ``{cache_key}.jpg`` filename written by the thumbnail service).  When
+        the frame is missing, extraction is dispatched to the dedicated
+        ``ffmpeg_pool`` and ``_VIDEO_FRAME_DEFERRED`` is returned — the frame
+        is delivered from the ffmpeg worker once it lands on disk, so ffmpeg
+        duration never holds a loader worker thread.
         """
         service = runtime.thumbnail_service
         if service is None or not runtime.cache_dir:
             return None
-        try:
-            result = service.resolve(
-                Path(path), Path(runtime.cache_dir), max_size=512,
-            )
-        except Exception:
-            _log.exception("Video thumbnail resolve failed: %s", path)
-            return None
-        if not result.found or result.source_path is None:
-            return None
         if not self._is_current_generation(runtime.generation):
             return None
-        return self._read_with_qimagereader(str(result.source_path), runtime, bake=False)
+        key = self._disk_key(path)
+        frame = os.path.join(runtime.cache_dir, f"{key}.jpg")
+        if os.path.isfile(frame):
+            return self._read_with_qimagereader(frame, runtime, bake=False)
+        self._start_video_frame_extraction(path, frame, runtime)
+        return _VIDEO_FRAME_DEFERRED
+
+    def _start_video_frame_extraction(
+        self, source_path: str, frame_path: str, runtime: _Runtime
+    ) -> None:
+        """Queue one ffmpeg extraction on the dedicated pool (bounded to 2)."""
+        task = _ExtractVideoFrameTask(self, source_path, frame_path, runtime)
+        ffmpeg_pool.start(task)
+
+    def _on_video_frame_extracted(
+        self, source_path: str, frame_path: str, runtime: _Runtime
+    ) -> None:
+        """Deliver a video thumbnail once its frame has been extracted.
+
+        Runs on a dedicated ffmpeg pool worker thread; the normal
+        cross-thread delivery path applies.
+        """
+        img = self._read_with_qimagereader(frame_path, runtime, bake=False)
+        if img is None:
+            self._mark_failed(source_path, runtime)
+            return
+        self._on_image_loaded(0, source_path, source_path, img, runtime)
 
     def _record(
         self,

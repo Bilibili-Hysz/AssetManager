@@ -11,6 +11,7 @@ from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core import themes
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+from AssetsManager.core.workers import CancellationToken
 from AssetsManager.panels.file_list._loader import ThumbnailLoader
 from AssetsManager.panels.file_list._model import FileSystemModel
 from AssetsManager.widgets.stylekit import StyleKit
@@ -182,15 +183,42 @@ class NavigationMixin:
             )
             return
 
+        # Single-flight with cooperative cancellation: a new root supersedes
+        # an in-flight walk, and library switch/shutdown cancels it via
+        # _cancel_library_stats_update so the worker drops the session lease
+        # within milliseconds instead of walking the whole library.
+        previous = getattr(self, "_stats_token", None)
+        if previous is not None:
+            previous.cancel()
+        token = CancellationToken()
+        self._stats_token = token
+
         def _update() -> None:
+            if token.is_cancelled():
+                return
             try:
                 with session.operation():
-                    total_size, _ = metadata_service.get_dir_size(root, root, force=True)
+                    if token.is_cancelled():
+                        return
+                    total_size, _ = metadata_service.get_dir_size(
+                        root, root, force=True, cancel_token=token.is_cancelled,
+                    )
+                    if token.is_cancelled():
+                        # The walk was cancelled mid-flight and returned a
+                        # partial total; never publish it as the library size.
+                        return
                     metadata_service.set_library_total_size(root, total_size)
             except Exception:
-                _log.exception("Failed to update library stats for %s", root)
+                if not token.is_cancelled():
+                    _log.exception("Failed to update library stats for %s", root)
 
         self._run_in_background(_update)
+
+    def _cancel_library_stats_update(self):
+        """Cancel the in-flight whole-library stats walk, if any."""
+        token = getattr(self, "_stats_token", None)
+        if token is not None:
+            token.cancel()
 
     def _go_back(self):
         if self._history:

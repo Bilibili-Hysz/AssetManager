@@ -115,10 +115,10 @@ class PluginCard(QFrame):
             f"background: {color}; border-radius: {dot_size // 2}px;")
 
         # Card styling
-        bg = t["surface_2"] if self._selected else t["surface_1"]
+        bg = t["header"] if self._selected else t["panel"]
         self.setStyleSheet(
             f"PluginCard {{ background: {bg}; border: 1px solid {t['border']}; border-radius: {br_sm}px; }}"
-            f"PluginCard:hover {{ background: {t['surface_2']}; }}"
+            f"PluginCard:hover {{ background: {t['header']}; }}"
         )
 
         # Name + description

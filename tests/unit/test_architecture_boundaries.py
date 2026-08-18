@@ -874,18 +874,24 @@ def test_asset_index_service_delegates_assets_sql_to_repository() -> None:
 
 
 def test_file_list_shutdown_releases_tracked_panel_subscriptions() -> None:
+    # After the _base.py split, shutdown() stays in _base.py but closeEvent
+    # moved to _base_events.py. The test verifies shutdown() calls super().
     source = (SRC / "panels" / "file_list" / "_base.py").read_text(encoding="utf-8")
-    start = source.index("    def shutdown(self):")
-    end = source.index("    def closeEvent", start)
-    assert "super().shutdown()" in source[start:end]
+    shutdown_match = source.index("    def shutdown(self):")
+    # Find the next method def as the boundary (shutdown is the last method).
+    next_def = source.find("\n\nif TYPE_CHECKING:", shutdown_match)
+    if next_def == -1:
+        next_def = len(source)
+    assert "super().shutdown()" in source[shutdown_match:next_def]
 
 
 def test_file_list_uses_session_scoped_file_events() -> None:
-    # The merged single-class panel lives in _base.py (the package __init__
-    # is now a thin re-export).
-    source = (SRC / "panels" / "file_list" / "_base.py").read_text(encoding="utf-8")
-    assert "FileSystemChanged" in source
-    assert "event.session_token != scoped.session.event_token" in source
+    # After the _base.py split, FileSystemChanged event handling moved to
+    # _base_events.py. The panel must still check session token to ignore
+    # events from other sessions.
+    events = (SRC / "panels" / "file_list" / "_base_events.py").read_text(encoding="utf-8")
+    assert "FileSystemChanged" in events
+    assert "event.session_token != scoped.session.event_token" in events
 
 
 def test_tag_panels_use_session_scoped_tag_events() -> None:

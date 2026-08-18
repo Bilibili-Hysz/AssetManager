@@ -7,6 +7,7 @@ import time
 import warnings
 from pathlib import Path
 from sqlite3 import Connection
+from typing import Callable
 
 from AssetsManager.core.database import DatabaseManager, db_write_lock
 from AssetsManager.core.path_resolver import sql_like_descendant_pattern
@@ -167,11 +168,33 @@ class ProjectData:
 
     # ── Directory size cache ─────────────────────────────────────
 
+    # Cooperative cancellation is polled once per this many entries so the
+    # check itself stays negligible while a cancelled walk still exits within
+    # milliseconds on typical directories.
+    _SIZE_CANCEL_CHECK_INTERVAL = 100
+
     @staticmethod
-    def compute_dir_size(dir_path: str, _depth: int = 0) -> int:
+    def compute_dir_size(
+        dir_path: str,
+        _depth: int = 0,
+        cancel_token: Callable[[], bool] | None = None,
+    ) -> int:
+        """Walk ``dir_path`` summing file sizes, with cooperative cancellation.
+
+        When *cancel_token* starts returning True the walk stops and the
+        accumulated partial total is returned.  Callers that write the result
+        into a cache must re-check the token first — a partial total must
+        never be persisted as an authoritative size.
+        """
         total = 0
         try:
-            for entry in os.scandir(dir_path):
+            for index, entry in enumerate(os.scandir(dir_path)):
+                if (
+                    cancel_token is not None
+                    and index % ProjectData._SIZE_CANCEL_CHECK_INTERVAL == 0
+                    and cancel_token()
+                ):
+                    return total
                 try:
                     if entry.is_file(follow_symlinks=False):
                         total += entry.stat(follow_symlinks=False).st_size
@@ -181,14 +204,21 @@ class ProjectData:
                         # on pathologically deep trees). Sizes beyond the
                         # budget are omitted, not double-counted.
                         if _depth < _MAX_SIZE_DEPTH:
-                            total += ProjectData.compute_dir_size(entry.path, _depth + 1)
+                            total += ProjectData.compute_dir_size(
+                                entry.path, _depth + 1, cancel_token=cancel_token
+                            )
                 except OSError:
                     pass
         except OSError:
             pass
         return total
 
-    def get_dir_size(self, dir_path: str, force: bool = False) -> tuple[int, bool]:
+    def get_dir_size(
+        self,
+        dir_path: str,
+        force: bool = False,
+        cancel_token: Callable[[], bool] | None = None,
+    ) -> tuple[int, bool]:
         self._ensure_live()
         if not os.path.isdir(dir_path):
             return (0, False)
@@ -215,7 +245,11 @@ class ProjectData:
                 # (accepted, bounded by _SIZE_CACHE_TTL_SECONDS).
                 if row[1] == current_mtime and ttl_fresh:
                     return (row[0], True)
-        size = self.compute_dir_size(dir_path)
+        size = self.compute_dir_size(dir_path, cancel_token=cancel_token)
+        if cancel_token is not None and cancel_token():
+            # A cancelled walk returned a partial total; persisting it would
+            # poison the cache with an undercount until the TTL expires.
+            return (size, False)
         self._set_cached_size(dir_path, size)
         return (size, False)
 

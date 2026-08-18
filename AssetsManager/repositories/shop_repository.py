@@ -80,8 +80,12 @@ def _json_dump(value: dict[str, Any] | None) -> str:
 def _json_load(value: object) -> dict[str, Any]:
     if not value:
         return {}
+    text = str(value)
+    # Fast path: the common empty-metadata row skips a JSON parse entirely.
+    if text == "{}":
+        return {}
     try:
-        decoded = json.loads(str(value))
+        decoded = json.loads(text)
     except (TypeError, ValueError, json.JSONDecodeError):
         return {}
     return decoded if isinstance(decoded, dict) else {}

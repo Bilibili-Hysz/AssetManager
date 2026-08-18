@@ -14,6 +14,14 @@ from AssetsManager.core.workers import CancellationToken, CancellableRunnable
 
 VTYPE_FS = "fs"
 
+# Cancellation is polled once per this many visited entries instead of once
+# per entry.  The token check takes a lock; a whole-library walk otherwise
+# pays one lock acquire per file/directory, which measurably slows the hot
+# path on large trees.  A cancelled task notices within roughly one scandir
+# worth of work (≤ _WALK_POLL_EVERY extra entries), which keeps superseded
+# preloads from hogging their worker slot.
+_WALK_POLL_EVERY = 64
+
 
 def _fs_level(item: QTreeWidgetItem) -> int:
     """Return how many FS levels deep this item is (1 = top-level FS item)."""
@@ -47,7 +55,19 @@ class _PreloadTask(CancellableRunnable):
         self._gen = gen
         self._root = root
         self._max_depth = max_depth
+        self._walk_checks = 0
         self.signals = _PreloadSignals()
+
+    def cancel(self) -> None:
+        """Cooperatively cancel this preload before a newer search replaces it."""
+        self.cancel_token.cancel()
+
+    def _poll_cancelled(self) -> bool:
+        """Sample the cancellation token every ``_WALK_POLL_EVERY`` entries."""
+        self._walk_checks += 1
+        if self._walk_checks % _WALK_POLL_EVERY:
+            return False
+        return self.is_cancelled()
 
     def run(self):
         results = []
@@ -64,12 +84,15 @@ class _PreloadTask(CancellableRunnable):
         try:
             entries = sorted(os.scandir(path),
                              key=lambda e: (not e.is_dir(), e.name.lower()))
-            if self.is_cancelled():
-                return
-            results.append((path, [(e.name, e.path, e.is_dir()) for e in entries
-                                   if not e.name.startswith(".")]))
+            row = []
             for entry in entries:
-                if self.is_cancelled():
+                if not entry.name.startswith("."):
+                    row.append((entry.name, entry.path, entry.is_dir()))
+                if self._poll_cancelled():
+                    return
+            results.append((path, row))
+            for entry in entries:
+                if self._poll_cancelled():
                     return
                 if entry.is_dir() and not entry.name.startswith("."):
                     self._scan_recursive(entry.path, depth + 1, results)

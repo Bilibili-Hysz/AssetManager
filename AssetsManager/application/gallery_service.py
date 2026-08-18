@@ -448,6 +448,7 @@ class GalleryService(_GalleryPersistenceMixin, _GalleryProjectionMixin, _Gallery
                 node=node,
                 nodes=state_nodes,
                 refs=refs,
+                image_paths={ref.path for ref in refs},
                 files=known_files,
                 generation=generation,
             )

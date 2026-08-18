@@ -474,11 +474,10 @@ class ShopBuyerService:
                 )
                 if stored_fingerprint and stored_fingerprint != request_fingerprint and not minimal_replay:
                     raise IdempotencyKeyReusedError()
-                resolved = []
-                for order_id in found["order_ids"]:
-                    order = orders.get_order(order_id)
-                    if order is not None:
-                        resolved.append(self._buyer_order(order))
+                resolved = [
+                    self._buyer_order(order)
+                    for order in orders.get_orders_by_ids(found["order_ids"])
+                ]
                 return {
                     "checkout_group_id": found["checkout_group_id"],
                     "orders": resolved,
@@ -552,19 +551,17 @@ class ShopBuyerService:
         # otherwise a later line failure could expose a rolled-back order.
         order_service.publish_order_events(order_ids)
         cart_after = cart_repo.get(owner_type=kind, owner_key=key, user_id=uid)
+        # One batch lookup replaces the two per-order get_order loops this
+        # response used to issue (orders list plus checkout-group status).
+        resolved_orders = [
+            self._buyer_order(order)
+            for order in orders.get_orders_by_ids(order_ids)
+        ]
         return {
-            "orders": [
-                self._buyer_order(order)
-                for order_id in order_ids
-                if (order := orders.get_order(order_id)) is not None
-            ],
+            "orders": resolved_orders,
             "idempotent": False,
             "checkout_group_id": group,
-            "status": self._checkout_group_status([
-                self._buyer_order(order)
-                for order_id in order_ids
-                if (order := orders.get_order(order_id)) is not None
-            ]),
+            "status": self._checkout_group_status(resolved_orders),
             "cart": self._buyer_cart(cart_after),
             "receipt_tokens": receipt_tokens,
         }
@@ -596,11 +593,10 @@ class ShopBuyerService:
         if checkout is None:
             raise NotFoundError("checkout group", group_id)
         cart = cart_repo.get(owner_type=kind, owner_key=key, user_id=uid)
-        resolved = []
-        for order_id in checkout["order_ids"]:
-            order = orders.get_order(order_id)
-            if order is not None:
-                resolved.append(self._buyer_order(order))
+        resolved = [
+            self._buyer_order(order)
+            for order in orders.get_orders_by_ids(checkout["order_ids"])
+        ]
         return {
             "checkout_group_id": checkout["checkout_group_id"],
             "orders": resolved,

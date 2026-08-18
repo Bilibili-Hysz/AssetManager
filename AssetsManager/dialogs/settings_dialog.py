@@ -467,8 +467,20 @@ class SettingsDialog(TabbedDialog):
 
     def _on_bg_setting_changed(self, *_):
         s = AppSettings.instance()
-        s.set("bg_enabled", self._bg_enabled_cb.isChecked())
-        s.set("bg_image", self._bg_path_edit.text())
+        bg_enabled = self._bg_enabled_cb.isChecked()
+        bg_path = self._bg_path_edit.text().strip()
+        
+        # If background is enabled but no valid path is set, disable it
+        # to prevent black background on next startup
+        if bg_enabled and not bg_path:
+            bg_enabled = False
+            # Block signals to prevent recursion
+            from PySide6.QtCore import QSignalBlocker
+            with QSignalBlocker(self._bg_enabled_cb):
+                self._bg_enabled_cb.setChecked(False)
+        
+        s.set("bg_enabled", bg_enabled)
+        s.set("bg_image", bg_path)
         s.set("bg_panel_opacity", self._bg_panel_slider.value() / 100.0)
         s.set("bg_header_opacity", self._bg_header_slider.value() / 100.0)
         s.set("bg_effect", self._current_effect)

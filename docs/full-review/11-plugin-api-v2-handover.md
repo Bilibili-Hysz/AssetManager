@@ -11,8 +11,9 @@
 ✅ PanelContributor 挂到 MainWindow dock  
 ✅ download_tracker 迁到 v2 示例（Preferences + EventHook + FileParser + 面板）  
 ✅ 插件定向测试 205 passed（权限隔离 + 线程洗白修复后）  
-✅ 全量测试 3748 passed, 7 skipped（环境限制）  
-✅ ruff + 分层门禁 + pyright 252 files 0/0 通过  
+✅ Phase 2A/2B: undo owner 过滤、legacy API owner 统一、whitespace key 规范化、身份模型三态闸门（+11 tests）  
+✅ 全量测试 3773 passed, 7 skipped（环境限制）  
+✅ ruff + 分层门禁 + pyright 263 files 0/0 通过  
 
 ---
 
@@ -39,6 +40,12 @@
 2. **线程洗白提权**（已修复，+6 测试）：插件在新线程里调 `grant_permissions('self', {'host.services'})` 能自授权（实测复现），拿到 `host.services` = 拿到整个服务束。`unregister_plugin` 同样可洗白。修复：引入**显式宿主身份标记**（`_host_identity_var: ContextVar[bool]` + `_host_identity()` 上下文管理器），让「宿主」不再等同于「没设过 ContextVar」；`grant_permissions` / `unregister_plugin` 改为三态闸门（有插件 subject 拒绝、无 subject 无宿主标记拒绝、无 subject + 宿主标记放行）；`manager.py` 三处调用点包上 `_host_identity()`。51 处现有测试调用按角色包身份，未改任何断言值。
 
 3. **跨插件枚举信息泄露**（已修复，同上）：`granted_permissions(plugin_id)` 接受任意 id。修复：插件 subject 只能读自己的，传他人 id 记 WARNING 并返回自己的集合；无插件 subject 时可查任意插件（plugin_manager_dialog 需要，且仅信息泄露无能力增益）。
+
+4. **卸载后 undo 残留**（Phase 2A 已修复，+4 测试）：`unregister_plugin()` 未清理撤销栈，卸载后 `undo_last_command()` 仍会执行已卸载插件的算子。修复：撤销栈改用 `(plugin_id, record)` 双元组，`unregister_plugin` 时过滤该插件的所有 undo 记录。
+
+5. **legacy API owner 解析不统一**（Phase 2A 已修复）：`register_command` / `register_tool_window` / `register_file_handler` / `register_search_provider` 四个 legacy API 使用不一致的 owner 解析（有的用 `plugin_id` 参数、有的读 `_registering_plugin_var`）。修复：统一为「优先 `_registering_plugin_var`，无活动插件时取显式 `plugin_id` 参数」，防止插件伪造其他插件 owner。
+
+6. **whitespace key 清理不完整**（Phase 2A 已修复，+1 测试）：`unregister_plugin()` 清理 `_whitespace_tool_windows` 时使用原始 key 而非规范化后的 target，导致带空格的 id 无法清理。修复：使用 `_normalize_tool_window_id(target)` 作为字典 key。
 
 **早期轮次已完成**：
 - 权限从 warn 改为强制拦截，按 `plugin_id` 隔离记账（此前所有插件共享一个集合）

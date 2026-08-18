@@ -141,6 +141,16 @@ class TagStore:
             self._resolve_cache[filepath] = resolved
             return resolved
 
+    def get_resolved_path(self, filepath: str) -> str:
+        """Return the resolved storage key for ``filepath`` via the shared resolve cache.
+
+        Public access point for consumers (e.g. the Details view) that need a
+        lookup key consistent with :meth:`get_tags_for_files` results without
+        paying a second ``Path.resolve()`` syscall per file on the UI thread.
+        Thread-safe; the bounded cache is cleared by :meth:`clear_cache`.
+        """
+        return self._resolve(filepath)
+
     @_tag_store_operation
     def get_tags(self, filepath: str) -> list[str]:
         key = self._resolve(filepath)

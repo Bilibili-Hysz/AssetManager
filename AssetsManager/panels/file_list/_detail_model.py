@@ -78,14 +78,17 @@ class DetailModel(QAbstractItemModel):
             file_entries = [entry for entry in self._entries if not entry.is_dir()]
             try:
                 tags_by_path = self._store.get_tags_for_files([entry.path for entry in file_entries])
+                # A3: the store (TagStore._resolve / TagService) normalizes
+                # keys with Path.resolve(), so the lookup key must match
+                # exactly — os.path.abspath() would silently miss symlinked
+                # paths.
+                # P0-5: reuse the store's resolve cache through
+                # get_resolved_path() when offered — a per-file
+                # Path.resolve() here is a main-thread syscall and was the
+                # dominant cost for 10k+ file refreshes.
+                resolver = getattr(self._store, "get_resolved_path", None)
                 for entry in file_entries:
-                    # A3: the store (TagStore._resolve) normalizes keys with
-                    # Path.resolve(), so the lookup key must match exactly —
-                    # os.path.abspath() would silently miss symlinked paths.
-                    # Per-file resolve() is a syscall on the main thread and
-                    # is the dominant cost for 10k+ file refreshes; kept for
-                    # key consistency with the store.
-                    tags = tags_by_path.get(str(Path(entry.path).resolve()), [])[:3]
+                    tags = tags_by_path.get(self._resolve_entry_path(entry.path, resolver), [])[:3]
                     if tags:
                         self._tags_cache[entry.path] = ", ".join(tags)
                 return
@@ -105,6 +108,19 @@ class DetailModel(QAbstractItemModel):
                         _log.debug("tag fetch failed for %s: %s", entry.path, exc)
         except Exception:
             _log.exception("Failed to rebuild tags cache")
+
+    @staticmethod
+    def _resolve_entry_path(path: str, resolver) -> str:
+        """Resolve one entry path, reusing the store's resolve cache when offered."""
+        if resolver is None:
+            return str(Path(path).resolve())
+        try:
+            return resolver(path)
+        except Exception:
+            # A resolver may enforce root containment (TagService raises
+            # ValueError for out-of-root paths) — fall back to a plain
+            # resolve for paths it rejects so tags still display.
+            return str(Path(path).resolve())
 
     # ── QAbstractItemModel interface ────────────────────────────
 

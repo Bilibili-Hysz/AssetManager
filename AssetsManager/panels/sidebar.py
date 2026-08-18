@@ -40,6 +40,19 @@ tr = i18n.tr
 
 _log = logging.getLogger(__name__)
 
+
+def _cancel_task(task):
+    """Cooperatively cancel *task* if it supports cancellation.
+
+    Defensive like ``_drain_worker_pool``: test doubles or legacy pseudo-tasks
+    without a ``cancel`` method must not break shutdown.  Real tasks all derive
+    from ``CancellableRunnable``; the shared pool's ``cancel_all`` remains the
+    guaranteed fallback.
+    """
+    cancel = getattr(task, "cancel", None)
+    if callable(cancel):
+        cancel()
+
 ICONS = ["star", "folder", "folder_open", "tag", "home", "file", "image",
          "video", "archive", "cube", "clock", "heart", "monitor", "save",
          "grid", "search"]
@@ -253,6 +266,8 @@ class SidebarPanel(PanelContent):
         """Invalidate pending searches before replacing the library bundle."""
         self._tree_generation += 1
         self._controller.next_search_gen()
+        # Single-flight: supersede the in-flight preload before draining.
+        _cancel_task(self._preload_task)
         self._preload_task = None
         self._preload_token.cancel()
         self._preload_token = CancellationToken()
@@ -701,6 +716,8 @@ class SidebarPanel(PanelContent):
         # Bump the search generation even when clearing so in-flight preload
         # results from a previous query are invalidated.
         gen = self._controller.next_search_gen()
+        # Single-flight: cancel the in-flight walk before starting the new one.
+        _cancel_task(self._preload_task)
         self._preload_token.cancel()
         self._preload_token = CancellationToken()
         self._preload_task = None

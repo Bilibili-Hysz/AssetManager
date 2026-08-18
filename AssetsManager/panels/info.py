@@ -320,6 +320,13 @@ class InfoPanel(PanelContent):
         self._preview_rescale_timer.setInterval(150)
         self._preview_rescale_timer.timeout.connect(self._apply_scaled_preview)
         self._splitter.splitterMoved.connect(lambda *_args: self._preview_rescale_timer.start())
+        # Epoch dedupe for _apply_scaled_preview: remember the last (target
+        # size, source pixmap) actually rendered so duplicate triggers — the
+        # panel resizeEvent plus the preview label's own Resize event from
+        # layout propagation, and re-armed timer fires — skip the expensive
+        # SmoothTransformation rescale instead of running it again.
+        self._last_scaled_size: tuple[int, int] = (0, 0)
+        self._last_scaled_pixmap: QPixmap | None = None
         self._show_empty_state()
         self._restore_layout_state()
         # Debounce splitter drags for persistence too. Connected AFTER restore
@@ -821,8 +828,22 @@ class InfoPanel(PanelContent):
     def _apply_scaled_preview(self):
         if self._preview_pixmap is None or self._preview_pixmap.isNull():
             return
-        pw = self._preview.width()
-        ph = self._preview.height()
+        size = self._preview.size()
+        current_size = (size.width(), size.height())
+
+        # DE-DUPLICATE: skip when neither the target size nor the source
+        # pixmap changed. Both resize paths land here debounced, and without
+        # this guard every resize of the identical geometry would re-run the
+        # SmoothTransformation scale + fade-in animation for no visible gain.
+        if (
+            current_size == self._last_scaled_size
+            and self._preview_pixmap is self._last_scaled_pixmap
+        ):
+            return
+        self._last_scaled_size = current_size
+        self._last_scaled_pixmap = self._preview_pixmap
+
+        pw, ph = current_size
         if pw < 40 or ph < 40:
             return
         scaled = self._preview_pixmap.scaled(
@@ -852,11 +873,24 @@ class InfoPanel(PanelContent):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._apply_scaled_preview()
+        # Reuse the splitter-drag debounce timer for panel resizes too: a
+        # single-shot restart per Resize collapses a resize storm (dock
+        # dragging) into exactly one rescale 150ms after it settles, instead
+        # of a 5-15ms SmoothTransformation scale on every event.
+        timer = getattr(self, "_preview_rescale_timer", None)
+        if timer is not None:
+            timer.start()
 
     def eventFilter(self, obj, event):
         if hasattr(self, '_preview') and obj is self._preview and event.type() == event.Type.Resize:
-            self._apply_scaled_preview()
+            # Layout propagation of a panel resize fires a second Resize on the
+            # preview label; feed it through the same debounce timer so both
+            # triggers collapse into a single rescale per 150ms (the
+            # pre-resize value of _last_scaled_pixmap also dedupes re-arms at
+            # the settled size), instead of scaling twice per event.
+            timer = getattr(self, "_preview_rescale_timer", None)
+            if timer is not None:
+                timer.start()
         if obj is self._preview_host and event.type() == event.Type.MouseButtonDblClick:
             _log.debug("Preview host double-click: path=%s", self._current_path)
             if self._current_path and os.path.exists(self._current_path):
@@ -995,7 +1029,8 @@ class InfoPanel(PanelContent):
                             if self.is_cancelled():
                                 return
                             sz, _ = metadata_port.get_dir_size(
-                                scoped.session.root, dir_path
+                                scoped.session.root, dir_path,
+                                cancel_token=cancel_token.is_cancelled,
                             )
                     else:
                         return

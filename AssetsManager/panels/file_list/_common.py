@@ -30,6 +30,7 @@ _CATEGORY_TOKEN_BY_BADGE: dict[str, str] = {
     "texture_pack": "category_texture",
     "archive_pack": "category_archive",
     "bundled_assets": "category_bundled",
+    "video": "category_video",
     "default": "category_default",
 }
 
@@ -39,6 +40,8 @@ for _ext in FILTER_CATEGORY_EXTS.get("images", set()):
     _EXT_BADGE_MAP[_ext] = "texture_pack"
 for _ext in FILTER_CATEGORY_EXTS.get("models", set()):
     _EXT_BADGE_MAP[_ext] = "model_pack"
+for _ext in FILTER_CATEGORY_EXTS.get("videos", set()):
+    _EXT_BADGE_MAP[_ext] = "video"
 for _ext in FILTER_CATEGORY_EXTS.get("archives", set()):
     _EXT_BADGE_MAP[_ext] = "archive_pack"
 
@@ -59,6 +62,7 @@ def badge_label_for_extension(ext: str) -> str:
         "texture_pack": "TEX",
         "archive_pack": "ZIP",
         "bundled_assets": "ASSET",
+        "video": "VID",
         "default": "FILE",
     }
     return labels.get(cat, "FILE")

@@ -166,3 +166,38 @@ def test_tag_store_requires_installed_repository_factory(monkeypatch, schema_db)
 
     with pytest.raises(RuntimeError, match="repository factory"):
         TagStore("/test/library", db_conn=schema_db)
+
+
+def test_get_resolved_path_reuses_shared_resolve_cache(schema_db, monkeypatch):
+    """P0-5: get_resolved_path exposes the cached resolve for reuse.
+
+    A cache hit must cost zero additional Path.resolve() syscalls, and
+    clear_cache() must drop the mapping so the next call resolves again.
+    """
+    import AssetsManager.core.tag_store as tag_store_module
+
+    s = TagStore("/test/library", db_conn=schema_db)
+    alias = "/test/library/nested/../nested/asset.png"
+
+    resolve_inputs = []
+    original = tag_store_module.Path.resolve
+
+    def counting_resolve(self_path, *args, **kwargs):
+        resolve_inputs.append(self_path)
+        return original(self_path, *args, **kwargs)
+
+    monkeypatch.setattr(tag_store_module.Path, "resolve", counting_resolve)
+
+    expected = str(original(tag_store_module.Path(alias)))
+    first = s.get_resolved_path(alias)
+    assert first == expected
+    assert resolve_inputs.count(tag_store_module.Path(alias)) == 1
+
+    second = s.get_resolved_path(alias)
+    assert second == first
+    assert resolve_inputs.count(tag_store_module.Path(alias)) == 1  # cache hit
+
+    s.clear_cache()
+    third = s.get_resolved_path(alias)
+    assert third == first
+    assert resolve_inputs.count(tag_store_module.Path(alias)) == 2  # cache dropped

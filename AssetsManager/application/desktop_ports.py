@@ -16,7 +16,7 @@ Usage (runtime check):
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Callable, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -174,8 +174,14 @@ class MetadataViewPort(Protocol):
     """
 
     def get_dir_size(self, library_root: str | Path, dir_path: str | Path,
-                     force: bool = False) -> tuple[int, bool]:
-        """Return (size, was_cached) for a directory under ``library_root``."""
+                     force: bool = False,
+                     cancel_token: Callable[[], bool] | None = None,
+                     ) -> tuple[int, bool]:
+        """Return (size, was_cached) for a directory under ``library_root``.
+
+        *cancel_token* cooperatively aborts the filesystem walk; a partial
+        total is returned and is never persisted to the size cache.
+        """
         ...
 
 
@@ -249,6 +255,10 @@ class RootBoundTagService:
 
     def get_tags_for_files(self, filepaths: list[str]) -> dict[str, list[str]]:
         return self._svc.get_tags_for_files(self._root, filepaths)
+
+    def get_resolved_path(self, filepath: str) -> str:
+        """Return the resolved storage key for ``filepath`` via the shared resolve cache."""
+        return self._svc.get_resolved_path(self._root, filepath)
 
     def add_tag(self, filepath: str, tag: str) -> None:
         self._svc.add_tag(self._root, filepath, tag)

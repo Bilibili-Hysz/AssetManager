@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from contextlib import contextmanager
 from functools import wraps
+import logging
 from pathlib import Path
 from sqlite3 import Connection
 import threading
@@ -18,8 +19,15 @@ if TYPE_CHECKING:
     from AssetsManager.core.project_data import ProjectData
 
 
+_log = logging.getLogger(__name__)
+
 ConnectionProvider = Callable[[str | Path], Connection]
 R = TypeVar("R")
+
+# Upper bound on draining outstanding operation leases during close.  Workers
+# are cancelled cooperatively before close starts, so this is a backstop for
+# stuck tasks; exceeding it must not block the UI thread indefinitely.
+_FINISH_CLOSE_TIMEOUT_SECONDS = 30.0
 
 
 class _SessionLiveness:
@@ -277,14 +285,32 @@ class LibrarySession:
         self.context._invalidate()
 
     def _finish_close(self) -> None:
-        """Drain existing leases and clear owned caches once."""
+        """Drain existing leases and clear owned caches once.
+
+        The drain is bounded (``_FINISH_CLOSE_TIMEOUT_SECONDS``) so a stuck
+        worker — one that ignores its cancellation token — cannot freeze the
+        UI thread indefinitely.  On timeout the session still closes: liveness
+        is invalidated right after, so any lease holder that later touches
+        session resources gets ``RuntimeError`` instead of a closed SQLite
+        connection.
+        """
         if self.has_current_thread_operation:
             raise RuntimeError("Cannot close a LibrarySession from an active operation")
+        drained = False
         with self._operation_condition:
-            self._operation_condition.wait_for(lambda: self._active_operations == 0)
+            drained = self._operation_condition.wait_for(
+                lambda: self._active_operations == 0,
+                timeout=_FINISH_CLOSE_TIMEOUT_SECONDS,
+            )
             if self._cache_cleared:
                 return
             object.__setattr__(self, "_cache_cleared", True)
+            active_remaining = self._active_operations
+        if not drained:
+            _log.warning(
+                "Session close timed out with %d operation(s) still active",
+                active_remaining,
+            )
         tag_store = object.__getattribute__(self.context, "tag_store")
         if hasattr(tag_store, "clear_cache"):
             tag_store.clear_cache()

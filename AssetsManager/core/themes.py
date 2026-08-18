@@ -98,6 +98,7 @@ _EXTENDED_FALLBACKS = {
     "category_texture":    lambda t: "#8a6d3b",
     "category_archive":    lambda t: "#6f5a92",
     "category_bundled":    lambda t: "#7c6a39",
+    "category_video":      lambda t: "#c480d4",
     "category_default":    lambda t: "#49555d",
     # Low-contrast "hairline" border for container/panel separation. Kept
     # distinct from ``border`` (input outlines) so surfaces read as layered

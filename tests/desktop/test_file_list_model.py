@@ -2,13 +2,14 @@
 import os
 import tempfile
 import threading
+import time
 from unittest.mock import Mock
 import pytest
 
 # Set QT_QPA_PLATFORM before any Qt imports
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThreadPool
 from PySide6.QtWidgets import QApplication
 from AssetsManager.panels.file_list._model import FileSystemModel
 from AssetsManager.application.bootstrap import ApplicationBootstrap
@@ -651,6 +652,125 @@ class TestFileSystemModel:
         assert size2 == 3
         assert cached2 is True
         conn.close()
+
+    def test_scan_runs_on_dedicated_pool_isolated_from_global_pool(self, model, tmp_path):
+        """Directory scans must not share the global thread pool (H-D2).
+
+        A flood of unrelated global work (sidebar preloads, info tasks) must be
+        unable to starve the grid/detail scan, and the scan pool is sized for
+        real parallelism rather than a single worker.
+        """
+        assert model._scan_pool.max_thread_count >= 2
+        assert model._scan_pool._pool is not QThreadPool.globalInstance()
+
+        (tmp_path / "asset.txt").write_text("x")
+        model.set_directory(str(tmp_path))
+        tried = time.monotonic()
+        while (
+            model._scan_pool.active_thread_count() < 1
+            and time.monotonic() - tried < 3
+        ):
+            _app.processEvents()
+            time.sleep(0.005)
+        # While the scan occupies its private worker, the global pool stays idle.
+        assert QThreadPool.globalInstance().activeThreadCount() == 0
+        model._wait_for_scan()
+        assert model.rowCount() == 1
+
+    def test_shutdown_cancels_inflight_scan_within_budget(self, model, tmp_path, monkeypatch):
+        """Cancelled scan tasks must exit within the drain budget on shutdown."""
+        from AssetsManager.panels.file_list import _model as _model_mod
+
+        (tmp_path / "asset.txt").write_text("x")
+        entered = threading.Event()
+        real_run = _model_mod._ScanTask.run
+
+        def slow_run(self):
+            entered.set()
+            deadline = time.monotonic() + 10
+            # Stand in for a long directory walk: keep running until the owner
+            # cancels us, then let the real (cancellation-aware) loop finish.
+            while not self.is_cancelled() and time.monotonic() < deadline:
+                time.sleep(0.005)
+            real_run(self)
+
+        monkeypatch.setattr(_model_mod._ScanTask, "run", slow_run)
+        model.set_directory(str(tmp_path))
+        assert entered.wait(5), "scan worker should have started before shutdown"
+
+        started = time.monotonic()
+        model.shutdown()
+        elapsed = time.monotonic() - started
+
+        assert elapsed < 5.0, "shutdown blocked behind the cancelled scan"
+        assert model._scan_pool.drain(2000) is True
+        assert model._scan_pool.active_thread_count() == 0
+
+
+class TestRawPixmapByteCache:
+    """_raw_pixmaps is bounded by total bytes first, then by item count."""
+
+    _BIG = 512 * 512 * 4  # 512×512 ARGB32 pixmap
+
+    def _fresh_model(self):
+        """A model whose cache obeys the module-level budget as-is."""
+        return FileSystemModel()
+
+    def test_insert_accumulates_bytes(self, model):
+        from PySide6.QtGui import QPixmap
+        model.set_raw_pixmap("/a", QPixmap(512, 512))
+        assert model.raw_pixmap_cache_bytes == self._BIG
+        model.set_raw_pixmap("/b", QPixmap(512, 512))
+        assert model.raw_pixmap_cache_bytes == 2 * self._BIG
+
+    def test_byte_excess_evicts_least_recent(self, monkeypatch):
+        from PySide6.QtGui import QPixmap
+        # Budget fits only a single 512×512 ARGB32 pixmap.
+        monkeypatch.setattr(
+            "AssetsManager.panels.file_list._model._MAX_CACHE_BYTES", self._BIG
+        )
+        model = self._fresh_model()
+        try:
+            model.set_raw_pixmap("/a", QPixmap(512, 512))
+            assert model.raw_pixmap("/a") is not None
+            model.set_raw_pixmap("/b", QPixmap(512, 512))
+            # "/a" is evicted on the second insert (LRU), "/b" stays.
+            assert model.raw_pixmap("/a") is None
+            assert model.raw_pixmap("/b") is not None
+            assert model.raw_pixmap_cache_bytes == self._BIG
+        finally:
+            model.shutdown()
+
+    def test_oversized_single_pixmap_is_not_cached(self, monkeypatch):
+        from PySide6.QtGui import QPixmap
+        monkeypatch.setattr(
+            "AssetsManager.panels.file_list._model._MAX_CACHE_BYTES", 1024
+        )
+        model = self._fresh_model()
+        try:
+            model.set_raw_pixmap("/huge", QPixmap(512, 512))
+            assert model.raw_pixmap("/huge") is None
+            assert model.raw_pixmap_cache_bytes == 0
+        finally:
+            model.shutdown()
+
+    def test_item_limit_still_evicts_tiny_thumbnails(self, monkeypatch):
+        from PySide6.QtGui import QPixmap
+        # 16 B per pixmap, so bytes never bind; the item cap does.
+        monkeypatch.setattr(
+            "AssetsManager.panels.file_list._model._MAX_CACHE_ITEMS", 2
+        )
+        model = self._fresh_model()
+        try:
+            model.set_raw_pixmap("/t1", QPixmap(2, 2))
+            model.set_raw_pixmap("/t2", QPixmap(2, 2))
+            model.set_raw_pixmap("/t3", QPixmap(2, 2))
+            assert model.raw_pixmap("/t1") is None
+            assert model.raw_pixmap("/t2") is not None
+            assert model.raw_pixmap("/t3") is not None
+            assert len(model._raw_pixmaps) == 2
+        finally:
+            model.shutdown()
 
 
 class TestFilterAccepts:

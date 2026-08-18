@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Iterable
 from typing import Any
 
 from AssetsManager.domain.errors import (
@@ -31,6 +32,17 @@ ALLOWED_TRANSITIONS = {
     "fulfilled": frozenset(),
     "revoked": frozenset(),
 }
+
+# Column list shared by the batch read APIs; must stay in sync with the
+# single-order SELECT in _select_order.
+_ORDER_COLUMNS = (
+    "id, item_id, item_path, item_title, buyer_name, buyer_email, "
+    "buyer_owner_type, buyer_owner_key, amount_cents, currency, status, metadata, created_at, updated_at"
+)
+
+# One batch statement never carries more than this many placeholders, keeping
+# well below SQLite's variable limit while bounding per-statement working set.
+_BATCH_CHUNK_SIZE = 500
 
 
 class OrderRepository(_CommerceRepository):
@@ -84,6 +96,53 @@ class OrderRepository(_CommerceRepository):
             "payload": _json_load(row[6]),
             "created_at": float(row[7]),
         }
+
+    @staticmethod
+    def _in_placeholders(count: int) -> str:
+        """Build a parenthesized ``?, ?, ...`` IN-clause body for ``count`` values."""
+        return "(" + ", ".join("?" for _ in range(count)) + ")"
+
+    @staticmethod
+    def _normalize_order_ids(values: Iterable[Any]) -> list[int]:
+        """Validate and de-duplicate order ids, preserving first occurrence order."""
+        normalized: list[int] = []
+        seen: set[int] = set()
+        for value in values:
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError("order ids must be positive integers")
+            if value not in seen:
+                seen.add(value)
+                normalized.append(value)
+        return normalized
+
+    @staticmethod
+    def _normalize_status_updates(
+        updates: Iterable[tuple[int, str]],
+    ) -> list[tuple[int, str]]:
+        """Validate status updates; a repeated order id keeps its last status."""
+        by_id: dict[int, str] = {}
+        for order_id, new_status in updates:
+            if isinstance(order_id, bool) or not isinstance(order_id, int) or order_id <= 0:
+                raise ValueError("order ids must be positive integers")
+            status = str(new_status).strip()
+            if not status or status not in ORDER_STATUSES:
+                raise ValueError(f"new_status must be one of {sorted(ORDER_STATUSES)}")
+            by_id[order_id] = status
+        return list(by_id.items())
+
+    def _select_statuses(self, order_ids: list[int]) -> dict[int, str]:
+        """Load current statuses in chunks; only called inside a write transaction."""
+        statuses: dict[int, str] = {}
+        for start in range(0, len(order_ids), _BATCH_CHUNK_SIZE):
+            chunk = order_ids[start : start + _BATCH_CHUNK_SIZE]
+            rows = self._conn.execute(
+                "SELECT id, status FROM shop_orders WHERE id IN "
+                + self._in_placeholders(len(chunk)),
+                tuple(chunk),
+            ).fetchall()
+            for row in rows:
+                statuses[int(row[0])] = str(row[1])
+        return statuses
 
     @locked_read
     def _select_order(self, order_id: int | str) -> tuple[Any, ...] | None:
@@ -236,10 +295,35 @@ class OrderRepository(_CommerceRepository):
             assert row is not None
             return self._row_to_dict(row)
 
+    # Prefer batch API for multiple items: get_orders_by_ids issues one
+    # query per chunk of ids instead of one round trip per order.
     @_repository_operation
     def get_order(self, order_id: int | str) -> dict[str, Any] | None:
         row = self._select_order(order_id)
         return None if row is None else self._row_to_dict(row)
+
+    @_repository_operation
+    @locked_read
+    def get_orders_by_ids(self, order_ids: list[int]) -> list[dict[str, Any]]:
+        """Load many orders with one ``WHERE id IN (...)`` query per chunk.
+
+        The result preserves the input order and skips ids that do not
+        exist, so it can replace a loop of ``get_order`` calls directly.
+        """
+        normalized = self._normalize_order_ids(order_ids)
+        if not normalized:
+            return []
+        rows_by_id: dict[int, tuple[Any, ...]] = {}
+        for start in range(0, len(normalized), _BATCH_CHUNK_SIZE):
+            chunk = normalized[start : start + _BATCH_CHUNK_SIZE]
+            chunk_rows = self._conn.execute(
+                "SELECT " + _ORDER_COLUMNS + " FROM shop_orders WHERE id IN "
+                + self._in_placeholders(len(chunk)),
+                tuple(chunk),
+            ).fetchall()
+            for row in chunk_rows:
+                rows_by_id[int(row[0])] = row
+        return [self._row_to_dict(rows_by_id[oid]) for oid in normalized if oid in rows_by_id]
 
     @_repository_operation
     @locked_read
@@ -285,6 +369,38 @@ class OrderRepository(_CommerceRepository):
         ).fetchall()
         return [self._row_to_dict(row) for row in rows]
 
+    @_repository_operation
+    @locked_read
+    def get_orders_by_buyer_ids(
+        self, buyer_ids: list[int], *, owner_type: str = "user"
+    ) -> dict[int, list[dict[str, Any]]]:
+        """Group orders by integer buyer id with one query per chunk.
+
+        Integer buyer ids map to ``buyer_owner_type='user'`` rows whose
+        ``buyer_owner_key`` is the stringified user id (anonymous buyers are
+        keyed by token hash, not an integer id).  Buyers without orders are
+        omitted, and each group is ordered by ``created_at DESC, id DESC``
+        like ``list_orders_by_owner``.
+        """
+        normalized = self._normalize_order_ids(buyer_ids)
+        if not normalized:
+            return {}
+        owner_type = str(owner_type).strip()
+        grouped: dict[int, list[dict[str, Any]]] = {}
+        for start in range(0, len(normalized), _BATCH_CHUNK_SIZE):
+            chunk = normalized[start : start + _BATCH_CHUNK_SIZE]
+            rows = self._conn.execute(
+                "SELECT " + _ORDER_COLUMNS + " FROM shop_orders WHERE buyer_owner_type=? "
+                "AND buyer_owner_key IN " + self._in_placeholders(len(chunk))
+                + " ORDER BY created_at DESC, id DESC",
+                (owner_type, *(str(oid) for oid in chunk)),
+            ).fetchall()
+            for row in rows:
+                grouped.setdefault(int(row[7]), []).append(self._row_to_dict(row))
+        return grouped
+
+    # Prefer batch API for multiple items: update_order_status_batch applies
+    # many updates in one transaction; keep this for per-order CAS needs.
     @_repository_operation
     def transition_status(
         self,
@@ -332,6 +448,63 @@ class OrderRepository(_CommerceRepository):
             )
             row = self._select_order(resolved_id)
             return None if row is None else self._row_to_dict(row)
+
+    @_repository_operation
+    def update_order_status_batch(self, updates: list[tuple[int, str]]) -> int:
+        """Atomically apply many status updates; returns the number of orders
+        whose stored status actually changed.
+
+        Every changed order receives one ``status_changed`` audit event, and
+        orders moved to ``revoked`` also have their receipts and receipt
+        recoveries revoked in the same transaction.  Unlike
+        ``transition_status`` this bulk API does not compare-and-swap against
+        an expected status; callers needing per-order CAS must keep using the
+        single-order API.  Unknown order ids and updates that leave a status
+        unchanged are no-ops and are not counted.
+        """
+        normalized = self._normalize_status_updates(updates)
+        if not normalized:
+            return 0
+        timestamp = time.time()
+        with _transaction(self._conn, "shop_order_status_batch"):
+            current = self._select_statuses([order_id for order_id, _ in normalized])
+            changed = [
+                (order_id, current[order_id], new_status)
+                for order_id, new_status in normalized
+                if current.get(order_id) is not None and current[order_id] != new_status
+            ]
+            if not changed:
+                return 0
+            self._conn.executemany(
+                "UPDATE shop_orders SET status=?, updated_at=? WHERE id=?",
+                [(new_status, timestamp, order_id) for order_id, _old, new_status in changed],
+            )
+            revoked_ids = [
+                order_id for order_id, _old, new_status in changed if new_status == "revoked"
+            ]
+            for start in range(0, len(revoked_ids), _BATCH_CHUNK_SIZE):
+                chunk = revoked_ids[start : start + _BATCH_CHUNK_SIZE]
+                placeholders = self._in_placeholders(len(chunk))
+                self._conn.execute(
+                    "UPDATE shop_order_receipts SET revoked_at=? WHERE order_id IN "
+                    + placeholders + " AND revoked_at IS NULL",
+                    (timestamp, *chunk),
+                )
+                self._conn.execute(
+                    "UPDATE shop_order_receipt_recoveries SET revoked_at=? WHERE order_id IN "
+                    + placeholders + " AND revoked_at IS NULL",
+                    (timestamp, *chunk),
+                )
+            self._conn.executemany(
+                "INSERT INTO shop_order_events "
+                "(order_id, event_type, from_status, to_status, actor_key, payload, created_at) "
+                "VALUES (?, 'status_changed', ?, ?, NULL, ?, ?)",
+                [
+                    (order_id, old_status, new_status, _json_dump(None), timestamp)
+                    for order_id, old_status, new_status in changed
+                ],
+            )
+            return len(changed)
 
     @_repository_operation
     def transition_status_by_receipt(

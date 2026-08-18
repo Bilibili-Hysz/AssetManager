@@ -17,7 +17,10 @@ import stat
 import tempfile
 import threading
 import time
+import traceback
 from pathlib import Path
+from types import TracebackType
+from typing import Any, Callable, Self
 
 from AssetsManager.core.performance import PerformanceRecorder
 from AssetsManager.core.path_resolver import (
@@ -40,6 +43,218 @@ _ORPHANED_DIR_NAME = "_orphaned"
 _LEGACY_MIGRATION_RESERVED_NAMES = frozenset({"shared", "_orphaned"})
 
 _log = logging.getLogger(__name__)
+
+# ── SQL slow-query instrumentation ──────────────────────────────────
+# SQLite exposes no statement timing of its own and repositories reach the
+# database through ``sqlite3.Connection.execute`` / ``executemany`` on the raw
+# connection, so slow-query telemetry is layered on the connection object
+# rather than on a Database wrapper class.  Wrapping a connection in
+# :class:`SlowQueryConnection` (see :func:`slow_query_wrapper`) intercepts
+# exactly those two statement entry points with zero changes to repository
+# call sites.
+
+# Default slow-query threshold in milliseconds.  The SLOW_QUERY_THRESHOLD_MS
+# environment variable is honored at call time (see :func:`slow_query_threshold_ms`).
+SLOW_QUERY_THRESHOLD_MS = 100.0
+
+# Directory segments that identify a legitimate application-layer caller for
+# slow-query attribution.
+_SLOW_QUERY_CALLER_MARKERS = ("/repositories/", "/application/")
+
+_OWN_FILE = os.path.normcase(os.path.abspath(os.fspath(__file__)))
+
+
+def slow_query_threshold_ms(override: float | None = None) -> float:
+    """Resolve the slow-query threshold in milliseconds.
+
+    Precedence: an explicit ``override`` argument, then the
+    ``SLOW_QUERY_THRESHOLD_MS`` environment variable, then the module default
+    :data:`SLOW_QUERY_THRESHOLD_MS`.  A malformed environment value falls back
+    to the default instead of surfacing on a hot database path.
+    """
+    if override is not None:
+        return float(override)
+    raw = os.environ.get("SLOW_QUERY_THRESHOLD_MS")
+    if raw is not None:
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            _log.warning(
+                "Invalid SLOW_QUERY_THRESHOLD_MS=%r; falling back to %.1fms",
+                raw,
+                SLOW_QUERY_THRESHOLD_MS,
+            )
+    return SLOW_QUERY_THRESHOLD_MS
+
+
+def _slow_query_caller() -> tuple[str, int] | None:
+    """Attribute a slow statement to the nearest application-layer caller.
+
+    Walks the current stack innermost-first, skipping frames from this module,
+    and prefers the first frame under a ``repositories/`` or ``application/``
+    directory; falls back to the nearest frame that is not this module (e.g. a
+    service issuing a raw statement).  Returns ``(basename, lineno)`` ready for
+    a ``caller: file.py:lineno`` label.
+    """
+    try:
+        frames = traceback.extract_stack(limit=5)
+    except Exception:
+        return None
+    immediate: tuple[str, int] | None = None
+    for frame in reversed(frames):  # innermost frame first
+        raw_filename = frame.filename or ""
+        filename = os.path.normcase(os.path.abspath(raw_filename))
+        if filename == _OWN_FILE:
+            continue
+        label = (
+            raw_filename.replace("\\", "/").rsplit("/", 1)[-1] or "?",
+            frame.lineno or 0,
+        )
+        if immediate is None:
+            immediate = label
+        if any(
+            marker in filename.replace("\\", "/")
+            for marker in _SLOW_QUERY_CALLER_MARKERS
+        ):
+            return label
+    return immediate
+
+
+def _format_query_parameters(parameters: object) -> str:
+    """Render bound parameters for a slow-query log line (truncated)."""
+    if parameters is None or parameters is ...:
+        return ""
+    try:
+        text = repr(parameters)
+    except Exception:
+        text = "<unprintable>"
+    if len(text) > 200:
+        text = f"{text[:197]}..."
+    return f" | params: {text}"
+
+
+def _report_slow_query(sql: str, parameters: object, elapsed_ms: float) -> None:
+    """Emit one slow-query WARNING in the canonical ``[SLOW QUERY]`` format."""
+    caller = _slow_query_caller()
+    caller_label = f"{caller[0]}:{caller[1]}" if caller else "unknown"
+    _log.warning(
+        "[SLOW QUERY] %.1fms: %s%s | caller: %s",
+        elapsed_ms,
+        " ".join(str(sql).split()),
+        _format_query_parameters(parameters),
+        caller_label,
+    )
+
+
+def _timed_call(
+    run: Callable[[], Any],
+    sql: str,
+    parameters: object,
+    threshold_ms: float | None,
+) -> Any:
+    """Run one statement and warn when its wall time exceeds the threshold."""
+    started = time.perf_counter()
+    try:
+        return run()
+    finally:
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        if elapsed_ms >= slow_query_threshold_ms(threshold_ms):
+            _report_slow_query(sql, parameters, elapsed_ms)
+
+
+def execute(conn: Any, sql: str, parameters: object = ...) -> Any:
+    """Execute ``sql`` on ``conn`` with slow-query instrumentation.
+
+    Equivalent to ``conn.execute(sql, parameters)`` plus timing.  This is the
+    statement-level interceptor mirroring a ``Database.execute`` API; code
+    that already calls ``conn.execute`` directly can instead wrap the
+    connection with :func:`slow_query_wrapper`.
+    """
+
+    def run() -> Any:
+        if parameters is ...:
+            return conn.execute(sql)
+        return conn.execute(sql, parameters)
+
+    return _timed_call(run, sql, parameters, None)
+
+
+def executemany(conn: Any, sql: str, seq_of_parameters: object) -> Any:
+    """Execute ``executemany`` on ``conn`` with slow-query instrumentation."""
+
+    def run() -> Any:
+        return conn.executemany(sql, seq_of_parameters)
+
+    return _timed_call(run, sql, seq_of_parameters, None)
+
+
+class SlowQueryConnection:
+    """Connection middleware that times statements against a slow threshold.
+
+    Wrapping an object exposing ``execute`` / ``executemany`` (normally a
+    :class:`sqlite3.Connection`) in this proxy times each statement and
+    reports statements that exceed the threshold through the ``database``
+    logger at WARNING level (see :func:`slow_query_threshold_ms`).  All other
+    attributes delegate to the wrapped connection, so a wrapped connection is
+    usable anywhere the raw one was.
+
+    Note: this proxy deliberately is not a ``sqlite3.Connection`` subclass, so
+    code that dispatches on ``isinstance(conn, sqlite3.Connection)`` (e.g. the
+    ``locked_read`` decorator) treats it like a stub connection and skips lock
+    acquisition.  Wrap a connection only when the caller already serializes
+    access to that connection.
+    """
+
+    __slots__ = ("_conn", "_threshold_ms")
+
+    def __init__(self, conn: Any, threshold_ms: float | None = None) -> None:
+        self._conn = conn
+        self._threshold_ms = threshold_ms
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._conn, name)
+
+    def __enter__(self) -> Self:
+        self._conn.__enter__()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        # sqlite3.Connection.__exit__ commits/rolls back and returns None.
+        return self._conn.__exit__(exc_type, exc_value, exc_tb)
+
+    def execute(self, sql: str, parameters: object = ...) -> Any:
+        """Delegate to ``conn.execute`` with slow-query instrumentation."""
+
+        def run() -> Any:
+            if parameters is ...:
+                return self._conn.execute(sql)
+            return self._conn.execute(sql, parameters)
+
+        return _timed_call(run, sql, parameters, self._threshold_ms)
+
+    def executemany(self, sql: str, seq_of_parameters: object) -> Any:
+        """Delegate to ``conn.executemany`` with slow-query instrumentation."""
+
+        def run() -> Any:
+            return self._conn.executemany(sql, seq_of_parameters)
+
+        return _timed_call(run, sql, seq_of_parameters, self._threshold_ms)
+
+
+def slow_query_wrapper(conn: Any, threshold_ms: float | None = None) -> Any:
+    """Wrap ``conn`` in slow-query middleware, idempotently.
+
+    Returns ``conn`` unchanged when it is already a :class:`SlowQueryConnection`.
+    """
+    if isinstance(conn, SlowQueryConnection):
+        return conn
+    return SlowQueryConnection(conn, threshold_ms)
+
 
 # One-shot guard: compatibility helpers warn at most once per process about
 # routing through the ThreadSafeSingleton DatabaseManager instead of DI.

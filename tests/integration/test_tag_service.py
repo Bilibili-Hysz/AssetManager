@@ -266,3 +266,49 @@ def test_tag_service_propagates_missing_schema_error(tmp_path, operation):
                 service.set_tag_metadata(library, "hero")
     finally:
         conn.close()
+
+
+def test_tag_service_resolve_cache_reused_across_batch_calls(tmp_path, monkeypatch):
+    """P0-5: batch tag reads resolve each file path exactly once.
+
+    After the first get_tags_for_files() the resolve cache must serve the
+    second batch and get_resolved_path() with zero new Path.resolve()
+    syscalls for the same paths.
+    """
+    from AssetsManager.application.tag_service import TagService
+    import AssetsManager.application.tag_service as tag_service_module
+
+    library = tmp_path / "library"
+    library.mkdir()
+    asset = library / "nested" / "asset.txt"
+    asset.parent.mkdir()
+    asset.write_text("asset", encoding="utf-8")
+    alias = str(library / "nested" / ".." / "nested" / "asset.txt")
+
+    conn = _memory_conn()
+    try:
+        service = TagService(connection_provider=lambda _root: conn)
+        service.add_tag(library, asset, "hero")
+
+        resolve_inputs = []
+        original = tag_service_module.Path.resolve
+
+        def counting_resolve(self_path, *args, **kwargs):
+            resolve_inputs.append(str(self_path))
+            return original(self_path, *args, **kwargs)
+
+        monkeypatch.setattr(tag_service_module.Path, "resolve", counting_resolve)
+
+        expected_key = str(original(tag_service_module.Path(alias)))
+        first = service.get_tags_for_files(library, [alias])
+        assert first == {expected_key: ["hero"]}
+        assert resolve_inputs.count(alias) == 1  # cold miss: one syscall
+
+        second = service.get_tags_for_files(library, [alias])
+        assert second == {expected_key: ["hero"]}
+        assert resolve_inputs.count(alias) == 1  # cache hit: none
+
+        assert service.get_resolved_path(library, alias) == expected_key
+        assert resolve_inputs.count(alias) == 1
+    finally:
+        conn.close()

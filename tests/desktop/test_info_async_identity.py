@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
+import threading
+import time
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QPushButton, QTreeWidgetItem
@@ -532,3 +534,121 @@ def test_tag_tree_add_button_uses_secondary_button_variant():
     finally:
         panel.shutdown()
         panel.deleteLater()
+
+
+def _info_session_and_panel(tmp_path):
+    """Open a real session and bind an InfoPanel (H-D1 integration tests)."""
+    from AssetsManager.application.library_service import LibraryService
+
+    library = tmp_path / "library"
+    service = LibraryService()
+    session = service.open_session(library)
+    panel = InfoPanel()
+    return service, session, panel, library
+
+
+def _spin_until(predicate, timeout=5.0, interval=0.005):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(interval)
+    return predicate()
+
+
+def test_library_switch_releases_inflight_size_walk_lease_quickly(tmp_path):
+    """H-D1: switching libraries must not wait for a size walk to finish.
+
+    An in-flight directory-size task holds the session operation lease; a
+    library switch cancels the walk cooperatively so the lease drops within
+    the pool drain bound instead of after a minutes-long traversal.
+    """
+    service, session, panel, library = _info_session_and_panel(tmp_path)
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_get_dir_size(root, path, force=False, cancel_token=None):
+        # Simulate a long walk: hold the lease until cancellation is observed.
+        started.set()
+        while not release.is_set():
+            if cancel_token is not None and cancel_token():
+                return (0, False)  # partial total, never published
+            time.sleep(0.005)
+        return (1234, False)
+
+    metadata_service = Mock()
+    metadata_service._session = session
+    metadata_service.get_dir_size.side_effect = blocking_get_dir_size
+    try:
+        panel.set_scoped_services(SimpleNamespace(
+            session=session,
+            metadata_service=metadata_service,
+            tag_service=Mock(),
+        ))
+        panel._current_path = str(library)
+        request = panel._new_async_request(str(library))
+        panel._start_async_dir_size(request)
+
+        assert _spin_until(started.is_set), "size worker did not start"
+        with session._operation_condition:
+            assert session._active_operations >= 1
+
+        t0 = time.monotonic()
+        panel.prepare_library_switch()
+        elapsed = time.monotonic() - t0
+
+        # In-flight worker drops its session lease promptly on switch.
+        assert elapsed < 3.0, f"switch blocked for {elapsed:.2f}s"
+        with session._operation_condition:
+            assert session._active_operations == 0
+    finally:
+        release.set()
+        panel.shutdown()
+        panel.deleteLater()
+        if not session.is_closed:
+            service.close_session(session)
+
+
+def test_panel_shutdown_times_out_inflight_size_task_without_hang(tmp_path):
+    """H-D1: panel shutdown cancels and drains its private pool, never hanging."""
+    service, session, panel, library = _info_session_and_panel(tmp_path)
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_get_dir_size(root, path, force=False, cancel_token=None):
+        started.set()
+        while not release.is_set():
+            if cancel_token is not None and cancel_token():
+                return (0, False)
+            time.sleep(0.005)
+        return (0, False)
+
+    metadata_service = Mock()
+    metadata_service._session = session
+    metadata_service.get_dir_size.side_effect = blocking_get_dir_size
+    try:
+        panel.set_scoped_services(SimpleNamespace(
+            session=session,
+            metadata_service=metadata_service,
+            tag_service=Mock(),
+        ))
+        panel._current_path = str(library)
+        request = panel._new_async_request(str(library))
+        panel._start_async_dir_size(request)
+
+        assert _spin_until(started.is_set), "size worker did not start"
+        with session._operation_condition:
+            assert session._active_operations >= 1
+
+        t0 = time.monotonic()
+        panel.shutdown()
+        elapsed = time.monotonic() - t0
+
+        assert elapsed < 3.0, f"shutdown blocked for {elapsed:.2f}s"
+        with session._operation_condition:
+            assert session._active_operations == 0
+    finally:
+        release.set()
+        panel.deleteLater()
+        if not session.is_closed:
+            service.close_session(session)

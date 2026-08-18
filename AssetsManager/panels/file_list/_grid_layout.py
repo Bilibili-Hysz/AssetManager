@@ -99,5 +99,13 @@ class GridLayout:
         return self._cols
 
     @property
+    def count(self) -> int:
+        return self._item_count
+
+    @property
     def item_hint(self) -> QSize:
         return QSize(self._item_w, self._item_h)
+
+    @property
+    def item_size(self) -> int:
+        return self._item_size

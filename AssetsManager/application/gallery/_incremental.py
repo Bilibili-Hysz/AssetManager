@@ -492,6 +492,7 @@ class _GalleryIncrementalMixin:
                 if not path.startswith(prefix)
             }
             state.refs = [ref for ref in state.refs if not ref.path.startswith(prefix)]
+            state.image_paths = {path for path in state.image_paths if not path.startswith(prefix)}
             parent.children.remove(rel)
             if not parent.direct_images:
                 # The cover came from the children: recompute it so a
@@ -565,6 +566,8 @@ class _GalleryIncrementalMixin:
                     else ref
                     for ref in state.refs
                 ]
+                # Rebuild image_paths set from updated refs
+                state.image_paths = {ref.path for ref in state.refs}
                 parent_key = self._parent_rel(rel_old) or "/"
                 parent = state.nodes.get(parent_key)
                 if parent is None:
@@ -716,9 +719,10 @@ class _GalleryIncrementalMixin:
                 # parent's only content the parent is pruned instead, so the
                 # maximum is irrelevant.)
                 raise _IncrementalFallback("deleted file carried the max mtime")
-            is_image = any(ref.path == rel for ref in state.refs)
+            is_image = rel in state.image_paths
             if is_image:
                 state.refs = [ref for ref in state.refs if ref.path != rel]
+                state.image_paths.discard(rel)
                 if rel in parent.direct_images:
                     parent.direct_images.remove(rel)
                 if parent.summary.get("cover_path") == rel:
@@ -762,12 +766,14 @@ class _GalleryIncrementalMixin:
                 raise _IncrementalFallback("cannot stat moved target") from exc
             size, old_mtime = state.files.pop(rel_old)
             state.files[rel_new] = (int(st.st_size), int(st.st_mtime))
-            is_image = any(ref.path == rel_old for ref in state.refs)
+            is_image = rel_old in state.image_paths
             if is_image:
                 state.refs = [
                     ref if ref.path != rel_old else _ImageRef(rel_new, ref.modified)
                     for ref in state.refs
                 ]
+                state.image_paths.discard(rel_old)
+                state.image_paths.add(rel_new)
             old_parent_key = self._parent_rel(rel_old) or "/"
             new_parent_key = self._parent_rel(rel_new) or "/"
             old_parent = state.nodes.get(old_parent_key)

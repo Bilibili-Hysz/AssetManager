@@ -303,6 +303,7 @@ def test_home_cache_updates_incrementally_on_file_system_changes(tmp_path, schem
         before = service.get_home_cached(tmp_path)
         assert before is not None and before.stats["artworks"] == 1
 
+        applied_before, fallbacks_before = service.incremental_stats
         _image(tmp_path / "set" / "two.png")
         get_event_bus().publish(FileSystemChanged(
             library_root=str(tmp_path), session_token="test", kind="created",
@@ -316,6 +317,10 @@ def test_home_cache_updates_incrementally_on_file_system_changes(tmp_path, schem
                 break
             time.sleep(0.05)
         assert after is not None and after.stats["artworks"] == 2
+        # Verify incremental application: exactly 1 event applied, 0 fallbacks.
+        applied_after, fallbacks_after = service.incremental_stats
+        assert applied_after == applied_before + 1
+        assert fallbacks_after == fallbacks_before
     finally:
         service.close()
 
@@ -384,6 +389,7 @@ def test_file_system_change_rewrites_persisted_projection(tmp_path, schema_db, m
             "SELECT 1 FROM gallery_home WHERE id = 1"
         ).fetchone() is not None
 
+        applied_before, fallbacks_before = service.incremental_stats
         _image(tmp_path / "set" / "two.png")
         get_event_bus().publish(FileSystemChanged(
             library_root=str(tmp_path), session_token="test", kind="created",
@@ -400,6 +406,10 @@ def test_file_system_change_rewrites_persisted_projection(tmp_path, schema_db, m
         while time.monotonic() < deadline and not persisted_reflects_two():
             time.sleep(0.05)
         assert persisted_reflects_two()
+        # Verify incremental application succeeded, no fallback.
+        applied_after, fallbacks_after = service.incremental_stats
+        assert applied_after == applied_before + 1
+        assert fallbacks_after == fallbacks_before
 
         # Unsupported kinds fall back: the persisted row is deleted (the
         # full rebuild is scheduled separately).
@@ -913,3 +923,135 @@ def test_close_skips_self_and_unstarted_workers(tmp_path, schema_db):
         service._worker_threads.add(unstarted)
     assert service.close(timeout=1.0) is True
     assert unstarted.ident is None  # never started, never joined
+
+
+def test_incremental_delete_updates_artwork_count(tmp_path, schema_db, monkeypatch):
+    """A delete event removes the artwork from the cached home incrementally
+    rather than falling back to a full rebuild."""
+    import os
+    import time
+
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileSystemChanged
+
+    one = tmp_path / "set" / "one.png"
+    two = tmp_path / "set" / "two.png"
+    _image(one)
+    time.sleep(0.01)  # Ensure different mtimes
+    _image(two)
+    # Make 'two.png' newer so deleting 'one.png' doesn't carry the max mtime
+    now = time.time()
+    os.utime(one, (now - 10, now - 10))
+    os.utime(two, (now, now))
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    monkeypatch.setattr(service, "_incremental_debounce", 0.05)
+    try:
+        # Wait for cache to be populated
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and service.get_home_cached(tmp_path) is None:
+            time.sleep(0.05)
+        before = service.get_home_cached(tmp_path)
+        assert before is not None and before.stats["artworks"] == 2
+        
+        # Wait for background build to complete (required for incremental to work)
+        root_key = str(tmp_path.resolve())
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            with service._build_lock:
+                building = root_key in service._building
+            with service._home_cache_lock:
+                has_state = root_key in service._home_states
+            # Build must be complete (not in _building) AND state must be populated
+            if not building and has_state:
+                break
+            time.sleep(0.05)
+        assert root_key not in service._building, "Background build did not complete"
+        assert root_key in service._home_states, "Background build did not populate state"
+
+        applied_before, fallbacks_before = service.incremental_stats
+        one.unlink()
+        get_event_bus().publish(FileSystemChanged(
+            library_root=str(tmp_path), session_token="test", kind="deleted",
+            paths=(str(one),),
+        ))
+        deadline = time.monotonic() + 10.0
+        after = None
+        while time.monotonic() < deadline:
+            after = service.get_home_cached(tmp_path)
+            applied_after, fallbacks_after = service.incremental_stats
+            if after is not None and after.stats["artworks"] == 1 and applied_after > applied_before:
+                break
+            time.sleep(0.05)
+        assert after is not None and after.stats["artworks"] == 1
+        # Verify incremental: exactly 1 applied, 0 fallbacks.
+        applied_after, fallbacks_after = service.incremental_stats
+        assert applied_after == applied_before + 1
+        assert fallbacks_after == fallbacks_before
+    finally:
+        service.close()
+
+
+def test_incremental_move_preserves_artwork_count(tmp_path, schema_db, monkeypatch):
+    """A move event within the same directory updates the cached home without
+    changing artwork count or triggering a fallback."""
+    import os
+    import time
+
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileSystemChanged
+
+    old_path = tmp_path / "set" / "one.png"
+    new_path = tmp_path / "set" / "renamed.png"
+    other = tmp_path / "set" / "other.png"
+    _image(old_path)
+    _image(other)  # Need at least 2 files for "set" to be a collection node
+    # Make 'other.png' newer so moving 'one.png' doesn't carry the max mtime
+    now = time.time()
+    os.utime(old_path, (now - 10, now - 10))
+    os.utime(other, (now, now))
+    service = GalleryService(connection_provider=lambda _root: schema_db)
+    monkeypatch.setattr(service, "_incremental_debounce", 0.05)
+    try:
+        # Wait for cache to be populated
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and service.get_home_cached(tmp_path) is None:
+            time.sleep(0.05)
+        before = service.get_home_cached(tmp_path)
+        assert before is not None and before.stats["artworks"] == 2
+        
+        # Wait for background build to complete (required for incremental to work)
+        root_key = str(tmp_path.resolve())
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            with service._build_lock:
+                building = root_key in service._building
+            with service._home_cache_lock:
+                has_state = root_key in service._home_states
+            # Build must be complete (not in _building) AND state must be populated
+            if not building and has_state:
+                break
+            time.sleep(0.05)
+        assert root_key not in service._building, "Background build did not complete"
+        assert root_key in service._home_states, "Background build did not populate state"
+
+        applied_before, fallbacks_before = service.incremental_stats
+        old_path.rename(new_path)
+        get_event_bus().publish(FileSystemChanged(
+            library_root=str(tmp_path), session_token="test", kind="moved",
+            paths=(str(new_path),), old_paths=(str(old_path),),
+        ))
+        # Wait for incremental apply (debounce + processing).
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            applied_after, _ = service.incremental_stats
+            if applied_after > applied_before:
+                break
+            time.sleep(0.05)
+        after = service.get_home_cached(tmp_path)
+        assert after is not None and after.stats["artworks"] == 2
+        # Verify incremental: exactly 1 applied, 0 fallbacks.
+        applied_after, fallbacks_after = service.incremental_stats
+        assert applied_after == applied_before + 1
+        assert fallbacks_after == fallbacks_before
+    finally:
+        service.close()

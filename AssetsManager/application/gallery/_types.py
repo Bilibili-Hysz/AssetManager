@@ -227,15 +227,18 @@ class _HomeState:
 
     ``nodes`` is the full state tree keyed by normalized relative path
     ("/" for the root), ``refs`` every library image with its mtime,
-    ``files`` every file (idempotency registry), and ``generation`` the
-    per-service monotonic counter stamped at build/apply time. The
-    incremental applier only trusts events newer than this generation;
-    any inconsistency falls back to a full rebuild.
+    ``image_paths`` a parallel set for O(1) membership checks (avoids
+    O(refs) scans on delete/move), ``files`` every file (idempotency
+    registry), and ``generation`` the per-service monotonic counter
+    stamped at build/apply time. The incremental applier only trusts
+    events newer than this generation; any inconsistency falls back to
+    a full rebuild.
     """
 
     node: dict[str, Any] | None
     nodes: dict[str, _StateNode]
     refs: list[_ImageRef]
+    image_paths: set[str]  # rel path → O(1) membership check for refs
     files: dict[str, tuple[int, int]]  # rel path -> (size, mtime)
     generation: int
 

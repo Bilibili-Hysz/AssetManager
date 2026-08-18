@@ -5,7 +5,7 @@ import logging
 import os
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from sqlite3 import Connection
@@ -262,7 +262,9 @@ class MetadataService:
 
     @session_operation
     def get_dir_size(self, library_root: str | Path, dir_path: str | Path,
-                     force: bool = False) -> tuple[int, bool]:
+                     force: bool = False,
+                     cancel_token: Callable[[], bool] | None = None,
+                     ) -> tuple[int, bool]:
         root_path, target_path = self._resolve_under_root(library_root, dir_path)
         root = str(root_path)
         target = str(target_path)
@@ -287,7 +289,10 @@ class MetadataService:
                 # value is additionally trusted only inside the TTL window.
                 if cached[1] >= current_mtime and self._size_cache_fresh(target):
                     return (cached[0], True)
-        size = ProjectData.compute_dir_size(target)
+        size = ProjectData.compute_dir_size(target, cancel_token=cancel_token)
+        if cancel_token is not None and cancel_token():
+            # A cancelled walk returned a partial total; never persist it.
+            return (size, False)
         try:
             mtime = os.path.getmtime(target)
         except OSError:

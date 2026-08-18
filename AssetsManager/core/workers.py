@@ -83,9 +83,17 @@ class BoundedPool:
         self._pool.start(runnable)
 
     def cancel_all(self) -> None:
-        """Cancel every tracked token without waiting for completion."""
+        """Cancel every tracked token without waiting for completion.
+
+        Tracked tokens are dropped after cancellation so a long-lived pool
+        does not accumulate one entry per historical task submission.
+        Submissions made after ``cancel_all`` re-register their own tokens
+        and are unaffected; a submission racing with this call either lands
+        in the cancelled batch or starts under the owner's fresh token.
+        """
         with self._tokens_lock:
             tokens = list(self._tokens)
+            self._tokens.clear()
         for token in tokens:
             token.cancel()
 

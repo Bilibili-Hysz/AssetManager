@@ -142,9 +142,9 @@ def test_metadata_service_dir_size_ttl_prevents_recompute_inside_window(tmp_path
     calls = {"n": 0}
     real_compute = ProjectData.compute_dir_size
 
-    def counting_compute(path):
+    def counting_compute(path, _depth=0, cancel_token=None):
         calls["n"] += 1
-        return real_compute(path)
+        return real_compute(path, _depth, cancel_token=cancel_token)
 
     monkeypatch.setattr(ProjectData, "compute_dir_size", staticmethod(counting_compute))
 
@@ -175,9 +175,9 @@ def test_metadata_service_dir_size_recomputes_after_ttl_expiry(tmp_path, monkeyp
     calls = {"n": 0}
     real_compute = ProjectData.compute_dir_size
 
-    def counting_compute(path):
+    def counting_compute(path, _depth=0, cancel_token=None):
         calls["n"] += 1
-        return real_compute(path)
+        return real_compute(path, _depth, cancel_token=cancel_token)
 
     monkeypatch.setattr(ProjectData, "compute_dir_size", staticmethod(counting_compute))
 
@@ -207,9 +207,9 @@ def test_metadata_service_library_total_size_served_within_ttl(tmp_path, monkeyp
     calls = {"n": 0}
     real_compute = ProjectData.compute_dir_size
 
-    def counting_compute(path):
+    def counting_compute(path, _depth=0, cancel_token=None):
         calls["n"] += 1
-        return real_compute(path)
+        return real_compute(path, _depth, cancel_token=cancel_token)
 
     monkeypatch.setattr(ProjectData, "compute_dir_size", staticmethod(counting_compute))
 

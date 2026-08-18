@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Any, cast
 import weakref
-from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QObject, QRunnable, Signal
+from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QObject, QRunnable, QThread, Signal
 from PySide6.QtGui import QIcon
 from shiboken6 import Shiboken
 from AssetsManager.application.asset_filters import (
@@ -20,10 +20,26 @@ from AssetsManager.application.asset_filters import (
     sort_key_for_entry,
 )
 from AssetsManager.application.context import LibrarySession
-from AssetsManager.core.cache import LRUCache
+from AssetsManager.core.cache import ByteLRUCache, LRUCache
 from AssetsManager.core.workers import BoundedPool, CancellationToken, CancellableRunnable
 
 _log = logging.getLogger(__name__)
+
+# ── Raw pixmap cache budget ─────────────────────────────────────────
+# Primary bound is total resident bytes: a single huge raw image (e.g. a 4K
+# texture at 4096×2160×4 B ≈ 35 MB) would otherwise count no more than a
+# 100 KB thumbnail when the cache is limited by entry count alone.  The item
+# cap only guards against the overhead/scan cost of huge thumbnail counts.
+_MAX_CACHE_BYTES = 256 * 1024 * 1024  # 256 MiB
+_MAX_CACHE_ITEMS = 2000
+
+
+def _pixmap_bytes(value) -> int:
+    """Memory weight of a cached pixmap (ARGB32 ≈ 4 B per pixel)."""
+    if value is None or value.isNull():
+        return 0
+    return int(value.width()) * int(value.height()) * 4
+
 
 class _ScanSignals(QObject):
     scan_done = Signal(list, dict, object)  # (entries, stat_cache, error)
@@ -89,8 +105,19 @@ class FileSystemModel(QAbstractListModel):
         self._filter_text: str = ""
         self._filter_cat: str = "all"
         self._show_hidden: bool = False
-        self._icons: dict[str, QIcon] = {}  # path → icon
-        self._raw_pixmaps = LRUCache(800)   # path → pixmap
+        # Count-bounded LRU (QIcon wraps a pixmap, so byte accounting is
+        # indirect): a 10k-entry directory scrolled in details view used to
+        # accumulate one QIcon per row, peaking around 400 MB (96px × 10k).
+        # 800 entries keep the peak near 32 MB; evicted rows re-request
+        # thumbnails on scroll-back.
+        self._icons = LRUCache(800)  # path → icon
+        # Path → pixmap, bounded by total resident bytes first (LRU) with an
+        # item-count cap as a secondary limit; see module constants above.
+        self._raw_pixmaps = ByteLRUCache(
+            max_items=_MAX_CACHE_ITEMS,
+            max_bytes=_MAX_CACHE_BYTES,
+            size_of=_pixmap_bytes,
+        )
         self._dir_size_cache: dict[str, str] = {}
         self._subtitle_cache: dict[str, str] = {}
         self._stat_cache: dict[str, os.stat_result] = {}
@@ -99,7 +126,14 @@ class FileSystemModel(QAbstractListModel):
         self._metadata_service = None
         self._session: LibrarySession | None = None
         self._size_pool: BoundedPool | None = None
-        self._scan_pool: BoundedPool = BoundedPool(1)
+        # Dedicated scan pool: directory scans never compete with the shared
+        # global thread pool (sidebar preloads, info tasks, thumbnails), so a
+        # flood of unrelated work cannot starve grid/detail scanning.  Sized to
+        # half the cores (min 2) so rapid directory switches overlap instead of
+        # serializing on a single worker; H-D2).
+        self._scan_pool: BoundedPool = BoundedPool(
+            max(2, QThread.idealThreadCount() // 2)
+        )
         self._scan_token = CancellationToken()
         self._pending_dir_sizes: set[str] = set()
         self._dir_size_queue: deque[str] = deque()
@@ -754,6 +788,11 @@ class FileSystemModel(QAbstractListModel):
 
     def set_raw_pixmap(self, path: str, pixmap) -> None:
         self._raw_pixmaps[path] = pixmap
+
+    @property
+    def raw_pixmap_cache_bytes(self) -> int:
+        """Current total byte weight cached in ``_raw_pixmaps`` (0 when empty)."""
+        return self._raw_pixmaps.cache_bytes
 
     def subtitle_for(self, path: str) -> str | None:
         return self._subtitle_cache.get(path)

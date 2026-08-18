@@ -1,15 +1,16 @@
 import os
 import threading
 import time
-from pathlib import Path
 from unittest.mock import Mock
 
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
-from AssetsManager.application.thumbnail_service import ThumbnailResult
 from AssetsManager.core.performance import PerformanceRecorder
-from AssetsManager.panels.file_list._loader import ThumbnailLoader
+from AssetsManager.panels.file_list._loader import (
+    ThumbnailLoader,
+    _VIDEO_FRAME_DEFERRED,
+)
 
 
 def test_thumbnail_loader_emits_item_path_for_cached_preview(tmp_path):
@@ -788,21 +789,22 @@ def test_thumbnail_loader_visible_request_displaces_deferred_prefetch_at_capacit
     loader._pool.waitForDone(5000)
 
 
-def test_thumbnail_loader_video_resolves_first_frame_via_service(tmp_path):
+def test_thumbnail_loader_video_reads_existing_cached_frame(tmp_path):
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"not a real video")
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
 
-    frame = tmp_path / "frame.png"
+    frame = tmp_path / "frame.jpg"
     frame_img = QImage(16, 12, QImage.Format.Format_RGB32)
     frame_img.fill(0xFF336699)
-    assert frame_img.save(str(frame), "PNG")
-
-    service = Mock()
-    service.resolve.return_value = ThumbnailResult(source_path=frame)
+    assert frame_img.save(str(frame), "JPG")
 
     loader = ThumbnailLoader()
+    cache_key = loader._disk_key(str(video))
+    (cache_dir / f"{cache_key}.jpg").write_bytes(frame.read_bytes())
+
+    service = Mock()
     loader.bind_runtime(service, str(cache_dir), str(tmp_path))
     runtime = loader._runtime()
 
@@ -810,7 +812,8 @@ def test_thumbnail_loader_video_resolves_first_frame_via_service(tmp_path):
 
     assert img is not None and not img.isNull()
     assert (img.size().width(), img.size().height()) == (16, 12)
-    service.resolve.assert_called_once_with(Path(video), Path(cache_dir), max_size=512)
+    # The cached frame is served directly; ffmpeg extraction is never needed.
+    service.resolve.assert_not_called()
 
 
 def test_thumbnail_loader_video_returns_none_when_service_missing(tmp_path):
@@ -821,3 +824,70 @@ def test_thumbnail_loader_video_returns_none_when_service_missing(tmp_path):
     runtime = loader._runtime()
 
     assert loader._load_image(str(video), runtime) is None
+
+
+def test_video_extraction_runs_on_dedicated_ffmpeg_pool_and_does_not_block_images(
+    tmp_path, monkeypatch
+):
+    from AssetsManager.application.thumbnail_service import ThumbnailService
+    from AssetsManager.panels.file_list._loader import ffmpeg_pool
+
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"not a real video")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def fake_extract(source_path, destination):
+        started.set()
+        assert release.wait(5)
+        frame_img = QImage(16, 12, QImage.Format.Format_RGB32)
+        frame_img.fill(0xFF336699)
+        assert frame_img.save(str(destination), "JPG")
+        return True
+
+    monkeypatch.setattr(
+        ThumbnailService, "_extract_video_frame", staticmethod(fake_extract)
+    )
+
+    loader = ThumbnailLoader()
+    loader.bind_runtime(Mock(), str(cache_dir), str(tmp_path))
+    app = QApplication.instance()
+
+    def wait_for(event, timeout=5.0):
+        deadline = time.monotonic() + timeout
+        while not event.is_set() and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.01)
+        return event.is_set()
+
+    # A missing video frame defers immediately and runs on the dedicated pool.
+    runtime = loader._runtime()
+    video_ready = threading.Event()
+    loader.thumbnail_ready.connect(
+        lambda _row, path, _img: video_ready.set() if path == str(video) else None
+    )
+    assert loader._load_image(str(video), runtime) is _VIDEO_FRAME_DEFERRED
+    assert started.wait(5)
+    assert ffmpeg_pool.activeThreadCount() >= 1
+
+    # While ffmpeg is blocked, a concurrent image thumbnail is still serviced
+    # by the loader pool — the slow video cannot starve image loading.
+    image = tmp_path / "photo.png"
+    image_pix = QImage(8, 8, QImage.Format.Format_RGB32)
+    image_pix.fill(0xFF00FF00)
+    assert image_pix.save(str(image), "PNG")
+    image_ready = threading.Event()
+    loader.thumbnail_ready.connect(
+        lambda _row, path, _img: image_ready.set() if path == str(image) else None
+    )
+    loader.request(2, str(image))
+    assert wait_for(image_ready)
+
+    # Release extraction: the frame is picked up and delivered async.
+    release.set()
+    assert wait_for(video_ready)
+    loader._pool.waitForDone(5000)
+    ffmpeg_pool.waitForDone(5000)

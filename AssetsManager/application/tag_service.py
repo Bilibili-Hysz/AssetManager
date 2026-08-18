@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from sqlite3 import Connection
+from threading import Lock
 from typing import Callable
 
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
@@ -32,21 +34,10 @@ def _validated_tag_name(value: str, *, field: str) -> str:
     return clean
 
 
-def _resolve_under_root(library_root: str | Path, path: str | Path) -> str:
-    """Resolve a path and reject values outside the requested library root."""
-    root = Path(library_root).resolve()
-    target = Path(path).resolve()
-    if not target.is_relative_to(root):
-        raise ValueError(
-            f"path must be under library_root: {target} (root {root})"
-        )
-    return str(target)
-
-
-def _resolve_many_under_root(
-    library_root: str | Path, paths: list[str | Path]
-) -> list[str]:
-    return [_resolve_under_root(library_root, path) for path in paths]
+# Path resolution moved onto the TagService instance (cached methods
+# ``_resolve_under_root`` / ``_resolve_many_under_root``) so batch tag reads
+# for large directories reuse one bounded resolve cache instead of paying a
+# ``Path.resolve()`` syscall per file per refresh.  See ``get_resolved_path``.
 
 
 def _resolve_connection(
@@ -79,6 +70,14 @@ class TagService:
     TagLibrary for canonical name resolution.
     """
 
+    # Bounded resolve caches mirror TagStore._resolve_cache semantics: capped
+    # size, cleared wholesale on overflow, lock-protected.  A resolved file
+    # path is independent of the library root, so path entries are keyed by
+    # the raw path string; the root-containment check still runs on every
+    # call and uses its own (much smaller) root cache.
+    _RESOLVE_CACHE_MAX = 10000
+    _ROOT_RESOLVE_CACHE_MAX = 64
+
     def __init__(self, connection_provider: ConnectionProvider | None = None,
                  session: LibrarySession | None = None,
                  canonicalize: Callable[[str], str] | None = None):
@@ -106,6 +105,9 @@ class TagService:
         else:
             # Provider-only fake sessions remain on the raw compatibility path.
             self._connection_provider = connection_provider
+        self._resolve_cache: dict[str, str] = {}
+        self._root_resolve_cache: dict[str, str] = {}
+        self._resolve_lock = Lock()
 
     @classmethod
     def for_session(cls, session: LibrarySession) -> "TagService":
@@ -113,6 +115,72 @@ class TagService:
         if not isinstance(session, LibrarySession):
             raise TypeError("TagService.for_session requires a real LibrarySession")
         return cls(connection_provider=session.connection_for, session=session)
+
+    def _resolve_root(self, library_root: str | Path) -> str:
+        """Cached Path.resolve() for library roots."""
+        key = os.fspath(library_root)
+        if not isinstance(key, str):
+            key = os.fsdecode(key)
+        with self._resolve_lock:
+            cached = self._root_resolve_cache.get(key)
+            if cached is not None:
+                return cached
+            if len(self._root_resolve_cache) >= self._ROOT_RESOLVE_CACHE_MAX:
+                self._root_resolve_cache.clear()
+            resolved = str(Path(library_root).resolve())
+            self._root_resolve_cache[key] = resolved
+            return resolved
+
+    def _resolve_path(self, path: str | Path) -> str:
+        """Cached Path.resolve() for file paths."""
+        key = os.fspath(path)
+        if not isinstance(key, str):
+            key = os.fsdecode(key)
+        with self._resolve_lock:
+            cached = self._resolve_cache.get(key)
+            if cached is not None:
+                return cached
+            if len(self._resolve_cache) >= self._RESOLVE_CACHE_MAX:
+                self._resolve_cache.clear()
+            resolved = str(Path(path).resolve())
+            self._resolve_cache[key] = resolved
+            return resolved
+
+    def _resolve_under_root(self, library_root: str | Path, path: str | Path) -> str:
+        """Resolve a path and reject values outside the requested library root."""
+        root = self._resolve_root(library_root)
+        target = self._resolve_path(path)
+        if not Path(target).is_relative_to(Path(root)):
+            raise ValueError(
+                f"path must be under library_root: {target} (root {root})"
+            )
+        return target
+
+    def _resolve_many_under_root(
+        self, library_root: str | Path, paths: list[str | Path]
+    ) -> list[str]:
+        """Resolve many paths, resolving the root exactly once per batch."""
+        root = self._resolve_root(library_root)
+        keys = []
+        for path in paths:
+            target = self._resolve_path(path)
+            if not Path(target).is_relative_to(Path(root)):
+                raise ValueError(
+                    f"path must be under library_root: {target} (root {root})"
+                )
+            keys.append(target)
+        return keys
+
+    def get_resolved_path(self, library_root: str | Path, path: str | Path) -> str:
+        """Return the resolved storage key for ``path`` via the shared resolve cache.
+
+        Consumers like the Details view reuse this instead of paying a second
+        ``Path.resolve()`` syscall per file on the UI thread; the result is
+        identical to the keys produced by :meth:`get_tags_for_files`.
+        Deliberately not decorated with :func:`session_operation` — pure path
+        computation touches no database.
+        """
+        return self._resolve_under_root(library_root, path)
 
     def _repo(
         self,
@@ -180,7 +248,7 @@ class TagService:
     def get_tags(self, library_root: str | Path, path: str | Path,
                  db_conn: Connection | None = None) -> list[str]:
         """Return tags for a file."""
-        key = _resolve_under_root(library_root, path)
+        key = self._resolve_under_root(library_root, path)
         repo = self._repo(db_conn, library_root)
         return repo.get_tags(key)
 
@@ -188,7 +256,7 @@ class TagService:
     def get_tags_for_files(self, library_root: str | Path, paths: list[str | Path],
                            db_conn: Connection | None = None) -> dict[str, list[str]]:
         """Return tags keyed by resolved path for many files at once."""
-        keys = _resolve_many_under_root(library_root, paths)
+        keys = self._resolve_many_under_root(library_root, paths)
         repo = self._repo(db_conn, library_root)
         return repo.get_tags_for_files(keys)
 
@@ -198,7 +266,7 @@ class TagService:
         """Add a tag to a file, resolving to canonical form."""
         tag = self.validate_tag_name(tag)
         canonical = self._canonicalize(tag)
-        key = _resolve_under_root(library_root, path)
+        key = self._resolve_under_root(library_root, path)
         repo = self._repo(db_conn, library_root)
         self._require_event_safe_transaction(repo)
         existing = {t.lower() for t in repo.get_tags(key)}
@@ -212,7 +280,7 @@ class TagService:
     def remove_tag(self, library_root: str | Path, path: str | Path, tag: str,
                    db_conn: Connection | None = None) -> None:
         """Remove a tag from a file (case-insensitive match)."""
-        key = _resolve_under_root(library_root, path)
+        key = self._resolve_under_root(library_root, path)
         repo = self._repo(db_conn, library_root)
         self._require_event_safe_transaction(repo)
         existing = repo.get_tags(key)
@@ -226,7 +294,7 @@ class TagService:
     def remove_file(self, library_root: str | Path, path: str | Path,
                     db_conn: Connection | None = None) -> None:
         """Remove all tags for a resolved file path and publish its empty state."""
-        key = _resolve_under_root(library_root, path)
+        key = self._resolve_under_root(library_root, path)
         repo = self._repo(db_conn, library_root)
         self._require_event_safe_transaction(repo)
         removed = repo.remove_file(key, require_clean_transaction=True)
@@ -266,7 +334,7 @@ class TagService:
     def get_tags_for_tree(self, library_root: str | Path, dir_path: str | Path,
                           db_conn: Connection | None = None) -> list[str]:
         """Return all distinct tags for a directory and its descendants."""
-        key = _resolve_under_root(library_root, dir_path)
+        key = self._resolve_under_root(library_root, dir_path)
         repo = self._repo(db_conn, library_root)
         return repo.get_tags_for_tree(key)
 

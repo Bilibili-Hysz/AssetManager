@@ -4,8 +4,8 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库（元数据、标签、缩略图），也可以通过局域网内的浏览器远程浏览和下载资产。
 
-<!-- stats: app_services=44 core=32 dialogs=20 domain_events=15 e2e_specs=6 hooks=15 i18n_en=835 i18n_ja=835 i18n_zh=835 icons=56 pages=26 python_test_files=257 repos=17 routes=140 routes_modules=23 schema_version=29 stores=4 themes=24 ts=117 webui_test_files=103 widgets=14 -->
-> 当前审查证据（2026-08-17，本机 Windows / Python 3.14.3）：最近一次 Python 全量运行结果为 **3748 passed, 7 skipped, 0 failed**（`-n auto` 并行；e2e/perf 标记的 16 个测试由 `pytest.ini` 的 `-m "not e2e and not perf"` 默认排除；7 个 skip 为 Windows symlink 权限与 multiprocessing Queue 终止限制）；`ruff check .` **全绿**（correctness 规则族，见 `ruff.toml`）；compileall 通过；**pyright 0 errors / 0 warnings**（CI "Type Check (pyright hard gate)" 固定 1.1.410）。WebUI 本机实测 **103 文件 / 705 单测全通过**，typecheck 与 build 均通过；浏览器 E2E 为上一次会话实测 51 passed 2 skipped（本轮未复跑，以 CI 为准）。CI Python 3.12/3.13/3.14 矩阵为硬门禁（3.14 已从 continue-on-error 转正，待首次 CI 实跑确认）；clean checkout/Windows package smoke 和真实后端 Commerce 验收仍需分别看待。完整审查文档集见 `docs/full-review/`（含模块地图、数据流、事件系统、审查结果与验证基线）。
+<!-- stats: app_services=48 core=32 dialogs=20 domain_events=15 e2e_specs=6 hooks=15 i18n_en=835 i18n_ja=835 i18n_zh=835 icons=56 pages=26 python_test_files=259 repos=17 routes=140 routes_modules=23 schema_version=29 stores=4 themes=24 ts=117 webui_test_files=103 widgets=14 -->
+> 当前审查证据（2026-08-17，本机 Windows / Python 3.14.3）：最近一次 Python 全量运行结果为 **3778 passed, 7 skipped, 0 failed**（`-n auto` 并行；e2e/perf 标记的 16 个测试由 `pytest.ini` 的 `-m "not e2e and not perf"` 默认排除；7 个 skip 为 Windows symlink 权限与 multiprocessing Queue 终止限制）；`ruff check .` **全绿**（correctness 规则族，见 `ruff.toml`）；compileall 通过；**pyright 0 errors / 0 warnings**（CI "Type Check (pyright hard gate)" 固定 1.1.410）。WebUI 本机实测 **103 文件 / 705 单测全通过**，typecheck 与 build 均通过；浏览器 E2E 为上一次会话实测 51 passed 2 skipped（本轮未复跑，以 CI 为准）。CI Python 3.12/3.13/3.14 矩阵为硬门禁（3.14 已从 continue-on-error 转正，待首次 CI 实跑确认）；clean checkout/Windows package smoke 和真实后端 Commerce 验收仍需分别看待。完整审查文档集见 `docs/full-review/`（含模块地图、数据流、事件系统、审查结果与验证基线）。
 
 
 > **2026-08-11 更新**：完成 UI/SVG 修复轮（13 项审计 + SVG 化 + 语义色体系 + 菜单栏）、P0 高危轮（15+4）、中危轮（D1/D2/E/F/G1/G2）与 P1 轮（M6a/M9/M6c，42 项清单）——含分享密码强度与爆破防护、投递令牌 rotate 配额守恒与撤销、匿名配额 cookie 身份、备份上限与并发检测、令牌 nonce 等。所有改动处于工作区**未提交**状态（529 条变更），未执行 stage、commit、reset 或 clean。
@@ -147,7 +147,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 │  │FileListController│ │InfoController│ │TagTreeController│ │
 │  └────────┬────────┘ └─────┬──────┘ └────────┬─────────┘ │
 ├───────────┼────────────────┼──────────────────┼───────────┤
-│                  Application Layer（44 模块）              │
+│                  Application Layer（48 模块）              │
 │  LibraryService  Runtime/LibrarySession  RuntimeEventRouter│
 │  AssetIndex/Reconciliation/Undo/FileOperation/Export       │
 │  Metadata/Tag/Thumbnail/Search/Project/Gallery/Favorite    │
@@ -188,7 +188,7 @@ AssetsManager_old-bak/
 │   ├── window_lifecycle_coordinator.py  # 库切换与退出编排
 │   ├── dock_factory.py         # QDockWidget 工厂
 │   │
-│   ├── application/            # 应用服务层（44 模块，20k 行）
+│   ├── application/            # 应用服务层（48 模块，20k 行）
 │   │   ├── bootstrap.py        # DI 装配（LibraryScopedServices/LanRuntimeServices）
 │   │   ├── runtime.py          # LibraryRuntime（服务快照/事件路由/生命周期）
 │   │   ├── context.py          # LibrarySession/LibraryContext（operation 租约）
