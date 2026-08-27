@@ -282,6 +282,9 @@ class MainWindow(LanSharingMixin, QMainWindow):
         elif effect == "mosaic" and intensity > 1:
             from AssetsManager.core.bg_effects import apply_mosaic
             result = apply_mosaic(result, intensity)
+        elif effect == "kuwahara" and intensity >= 1:
+            from AssetsManager.core.bg_effects import apply_kuwahara
+            result = apply_kuwahara(result, intensity)
         return result
 
     def resizeEvent(self, event):

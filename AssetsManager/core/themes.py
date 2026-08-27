@@ -504,7 +504,7 @@ def bg_type() -> str:
 
 
 def bg_effect() -> str:
-    """Active image effect: 'none', 'blur', or 'mosaic'."""
+    """Active image effect: 'none', 'blur', 'mosaic', or 'kuwahara'."""
     return str(_bg_setting("effect", "none"))
 
 

@@ -5,7 +5,7 @@ Inherits TabbedDialog for consistent dark theme and widget factories.
 from typing import Protocol, cast, runtime_checkable
 
 from shiboken6 import Shiboken
-from PySide6.QtCore import Qt, Signal, QObject, QSignalBlocker, QSize
+from PySide6.QtCore import Qt, Signal, QObject, QSignalBlocker, QSize, QTimer
 from PySide6.QtWidgets import (
     QMessageBox, QProgressBar, QVBoxLayout, QHBoxLayout, QWidget,
     QRadioButton, QFrame, QPushButton, QFileDialog, QSlider,
@@ -187,7 +187,7 @@ class SettingsDialog(TabbedDialog):
         self._effects_layout = btn_row
         btn_row.setSpacing(scaled_px(int(themes.prop("spacing", "sm"))))
         current_effect = themes.bg_effect()
-        effect_label = {"none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"), "mosaic": tr("settings.bg_mosaic")}.get(current_effect, tr("settings.bg_effect_none"))
+        effect_label = {"none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"), "mosaic": tr("settings.bg_mosaic"), "kuwahara": tr("settings.bg_kuwahara")}.get(current_effect, tr("settings.bg_effect_none"))
         self._effect_btn = QPushButton()
         self._set_menu_button_presentation(self._effect_btn, effect_label)
         self._effect_btn.setMinimumWidth(scaled_px(120))
@@ -199,7 +199,14 @@ class SettingsDialog(TabbedDialog):
         self._effect_intensity.setValue(themes.bg_effect_intensity())
         self._effect_intensity.setTickPosition(QSlider.TickPosition.TicksBelow)
         self._effect_intensity.setTickInterval(5)
-        self._effect_intensity.valueChanged.connect(self._on_bg_setting_changed)
+        # Debounce: each drag tick would otherwise trigger a settings save plus
+        # a full synchronous re-application of the (potentially expensive)
+        # background effect inside the next paintEvent.
+        self._effect_intensity_timer = QTimer(self)
+        self._effect_intensity_timer.setSingleShot(True)
+        self._effect_intensity_timer.setInterval(150)
+        self._effect_intensity_timer.timeout.connect(self._on_bg_setting_changed)
+        self._effect_intensity.valueChanged.connect(self._effect_intensity_timer.start)
         btn_row.addWidget(self._effect_intensity, 1)
         layout.addLayout(btn_row)
         self._current_effect = current_effect
@@ -500,6 +507,7 @@ class SettingsDialog(TabbedDialog):
         none_action = menu.addAction(tr("settings.bg_effect_none"))
         blur_action = menu.addAction(tr("settings.bg_blur"))
         mosaic_action = menu.addAction(tr("settings.bg_mosaic"))
+        kuwahara_action = menu.addAction(tr("settings.bg_kuwahara"))
         chosen = menu.exec(self._effect_btn.mapToGlobal(self._effect_btn.rect().bottomLeft()))
         if chosen == none_action:
             self._current_effect = "none"
@@ -507,9 +515,11 @@ class SettingsDialog(TabbedDialog):
             self._current_effect = "blur"
         elif chosen == mosaic_action:
             self._current_effect = "mosaic"
+        elif chosen == kuwahara_action:
+            self._current_effect = "kuwahara"
         else:
             return
-        label = {"none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"), "mosaic": tr("settings.bg_mosaic")}.get(self._current_effect, tr("settings.bg_effect_none"))
+        label = {"none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"), "mosaic": tr("settings.bg_mosaic"), "kuwahara": tr("settings.bg_kuwahara")}.get(self._current_effect, tr("settings.bg_effect_none"))
         self._set_menu_button_presentation(self._effect_btn, label)
         self._on_bg_setting_changed()
 
@@ -995,7 +1005,7 @@ class SettingsDialog(TabbedDialog):
         self._set_menu_button_presentation(self._mode_btn, mode_label)
         effect_label = {
             "none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"),
-            "mosaic": tr("settings.bg_mosaic"),
+            "mosaic": tr("settings.bg_mosaic"), "kuwahara": tr("settings.bg_kuwahara"),
         }.get(self._current_effect, tr("settings.bg_effect_none"))
         self._set_menu_button_presentation(self._effect_btn, effect_label)
         quality_keys = ("fast", "default", "high", "original")

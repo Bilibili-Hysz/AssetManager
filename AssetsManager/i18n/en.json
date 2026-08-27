@@ -350,6 +350,7 @@
   "settings.bg_blur_intensity": "Blur intensity",
   "settings.bg_mosaic": "Mosaic",
   "settings.bg_mosaic_intensity": "Mosaic intensity",
+  "settings.bg_kuwahara": "Kuwahara",
   "settings.bg_browse_title": "Select Background Image",
   "settings.general": "General",
   "settings.thumbnails": "Thumbnails",

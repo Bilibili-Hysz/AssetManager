@@ -339,6 +339,7 @@
   "settings.bg_blur_intensity": "ぼかし強度",
   "settings.bg_mosaic": "モザイク",
   "settings.bg_mosaic_intensity": "モザイク強度",
+  "settings.bg_kuwahara": "桑原フィルタ",
   "settings.bg_browse_title": "背景画像を選択",
   "settings.general": "一般",
   "settings.thumbnails": "サムネイル",
