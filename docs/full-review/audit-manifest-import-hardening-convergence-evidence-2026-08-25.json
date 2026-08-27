@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "report_id": "import-hardening-convergence-evidence-2026-08-25",
+  "captured_at": "2026-08-25T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "9830c568db7d31138c4458bff2b36fbfa76c990726bfe5e6dc5ff9a6defb5ad0",
+    "diff_sha256": "5c272f4d94e0387f4a54925fa6fbaf16c82af8ba54315134300081d004c13a8e",
+    "tracked_change_count": 143,
+    "untracked_change_count": 127
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/integration/test_import_service.py",
+          "tests/integration/test_import_subprocess_termination.py",
+          "tests/unit/test_import_manifest_store.py",
+          "tests/integration/test_import_manifest_recovery_claim_process.py",
+          "tests/integration/test_reconciliation_queue_sqlite_runtime.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Convergence gate: import service, subprocess termination, manifest CAS/recovery and queue runtime matrix across all five hardened workstreams",
+        "sample_count": 57,
+        "pass_criterion": "exit_code == 0; platform-gated symlink skips recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/import-hardening-convergence/focused.stdout.log",
+            "sha256": "3722b4dfb1fe1e5d380764b4ee8e78f771624652a2bae4103132befe4f26d30d"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/import-hardening-convergence/focused.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index non-self-referential static governance after convergence report and manifest",
+        "sample_count": 9,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/import-hardening-convergence/static-post-index.stdout.log",
+            "sha256": "cd0bfa8fd867bd821dbb2285bb364681e91a49b915884928a4116f4e570ccba2"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/import-hardening-convergence/static-post-index.stderr.log",
+            "sha256": "aa40b795a7b8af061b6804bb2fab436fcc0b0b9e6e474385701ca0afa432f7ec"
+          }
+        ]
+      }
+    ],
+    "note": "Focused convergence matrix: 55 passed, 2 skipped (Windows symlink privilege). Static governance chain (doc stats, boundaries, style sources, route capabilities, frontend data fetch, layers, full Ruff, compileall, git diff --check) archived at artifacts/evidence/2026-08-25/import-hardening-convergence/static-post-index.stdout.log with each command exiting 0; the audit manifest validator is executed separately to avoid self-referential artifact hashing. Latest full serial Python suite remains the same-day green 28-D run: 4033 passed, 16 skipped, 20 deselected, 2 warnings, exit 0. README statistics independently re-verified against actual measurements with no drift. This snapshot registers partial supersession relations only; no finding status is promoted."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/import-hardening-convergence-evidence-2026-08-25.md",
+      "sha256": "a5b308e484e5920971440c0a5ab199a492cd7f56cba217157037c99be5e13f02"
+    },
+    {
+      "path": "docs/full-review/import-no-overwrite-atomic-copy-evidence-2026-08-23.md",
+      "sha256": "d2a67f5630ac016b282facc239321bad544ac96658d9dff6ba6974b12e3483fc"
+    },
+    {
+      "path": "docs/full-review/batch-move-transaction-boundary-evidence-2026-08-23.md",
+      "sha256": "0af0efc069cf0cad934ebc57168fc4fc4930b97044ff0e76df64d5864e0ddb1b"
+    },
+    {
+      "path": "docs/full-review/import-ancestor-link-admission-evidence-2026-08-23.md",
+      "sha256": "7bc676463fd677b5ae08d5e1d4ca34ca35ba177a066e35bb69223ae3af401921"
+    },
+    {
+      "path": "docs/full-review/import-copy-replay-idempotency-evidence-2026-08-25.md",
+      "sha256": "cb13f360746f73b0baa26eadd87c4d223a9226ba27a28a5b32009670f366b2a0"
+    },
+    {
+      "path": "docs/full-review/import-filesystem-db-queue-consistency-evidence-2026-08-25.md",
+      "sha256": "066d5c8f32a6d6ac1060e9c3789cc65893b09ea690b826b9079faa98b9defeb7"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/import-hardening-convergence-evidence-2026-08-25.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "IMPORT-HARDENING-CONVERGENCE-33-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "IMPORT-COPY-NO-OVERWRITE-28A-01",
+        "BATCH-MOVE-TRANSACTION-BOUNDARY-29-01",
+        "IMPORT-ANCESTOR-LINK-ADMISSION-28B-01",
+        "IMPORT-COPY-REPLAY-IDEMPOTENCY-28C-01",
+        "IMPORT-FSQ-COMPENSATION-28D-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/import_service.py:28",
+        "AssetsManager/application/import_service.py:181",
+        "AssetsManager/application/import_service.py:528",
+        "AssetsManager/application/import_service.py:652",
+        "tests/integration/test_import_service.py:205"
+      ],
+      "surface": "Converged import hardening surface: exclusive-create no-overwrite copy, destination ancestor link admission, explicit fingerprint-bound replay, and cancellation/replay compensation across filesystem/SQLite/queue failures",
+      "next_action": "Keep as separate bounded work: cross-system atomicity, power-loss safety, exactly-once execution, Windows reparse replacement races, POSIX dirfd/openat traversal, recover() mid-phase process-kill windows, fingerprint-to-copy TOCTOU, completed-with-pending-items bookkeeping semantics, restore_backup admission, E2E/LAN/CVE/performance/release verification",
+      "dynamic_verification": "Convergence focused matrix passed 55 tests with two Windows symlink capability skips; static governance chain passed in full; latest full serial suite remains the same-day green 28-D run (4033 passed). Two partial supersession relations registered (28B->28A ancestor-link admission window; 28D->28C replay compensation gaps) without status promotions."
+    }
+  ],
+  "supersession_relations": [
+    {
+      "superseder": "IMPORT-ANCESTOR-LINK-ADMISSION-28B-01",
+      "superseded": "IMPORT-COPY-NO-OVERWRITE-28A-01",
+      "scope": "partial: pre-existing destination/parent symlink/junction/reparse admission closes the nested pre-existing-link escape documented by 28-A; post-open replacement races remain owned by 28-A's unverified boundary"
+    },
+    {
+      "superseder": "IMPORT-FSQ-COMPENSATION-28D-01",
+      "superseded": "IMPORT-COPY-REPLAY-IDEMPOTENCY-28C-01",
+      "scope": "partial: 28-D implemented replay robustness gaps that 28-C deferred (per-item update exceptions, finish failure compensation, claim-race determinism, replay index synchronization); exactly-once execution and power-loss safety stay open in both"
+    }
+  ]
+}

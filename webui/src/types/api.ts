@@ -9,6 +9,7 @@ export interface ServerInfo {
   version: string;
   share_name: string;
   library_root: string;
+  thumbnail_cache_namespace?: string | null;
   auth_enabled: boolean;
   auth_mode: 'none' | 'password' | 'key' | 'user';
   theme_color: string;
@@ -123,7 +124,11 @@ export interface GalleryEntry {
   tags?: string[];
 }
 
-export interface GalleryHomeResponse {
+export interface GalleryHomeBuildingResponse {
+  building: true;
+}
+
+export interface GalleryHomeReadyResponse {
   featured: GalleryEntry | null;
   collections: GalleryEntry[];
   projects: GalleryEntry[];
@@ -135,6 +140,8 @@ export interface GalleryHomeResponse {
     total_size_fmt: string;
   };
 }
+
+export type GalleryHomeResponse = GalleryHomeBuildingResponse | GalleryHomeReadyResponse;
 
 export interface GalleryCollectionResponse {
   collection: GalleryEntry;
@@ -374,7 +381,7 @@ export interface ActivityLog {
   action: string;
   details: string;
   ip: string;
-  timestamp: string;
+  timestamp: number; // Unix epoch seconds
 }
 
 export interface ActivityResponse {
@@ -393,6 +400,10 @@ export interface OnlineUsersResponse {
 // ============ Common ============
 export interface ErrorResponse {
   error: string;
+  code: string;
+  details: Record<string, unknown>;
+  field?: string;
+  [key: string]: unknown;
 }
 
 export interface OkResponse {
@@ -556,6 +567,7 @@ export interface ShopItemPayload {
   status?: ShopItemStatus;
   cover_path?: string;
   gallery_paths?: string[];
+  metadata?: Record<string, unknown>;
 }
 
 export interface ShopSellerProfile {

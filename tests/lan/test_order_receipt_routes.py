@@ -322,7 +322,8 @@ def test_receipt_delivery_uses_cookie_only_and_consumes_once(monkeypatch, tmp_pa
     delivered = asyncio.run(shop_routes.handle_order_delivery(
         _request("GET", "/api/shop/order/7/delivery", cookies={cookie_name: receipt})
     ))
-    assert isinstance(delivered, web.FileResponse)
+    assert isinstance(delivered, web.Response)
+    assert delivered.body == b"asset"
     assert delivered.headers["Cache-Control"] == "private, no-store"
     assert calls[-1] == (Path(tmp_path), "7", receipt, True)
 

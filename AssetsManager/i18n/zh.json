@@ -250,6 +250,8 @@
   "tagstyle.cancel": "取消",
   "tagstyle.clear": "清除",
   "tagstyle.clear_color": "清除颜色",
+  "viewer.loading": "加载中…",
+  "viewer.load_failed": "无法加载图像",
   "viewer.no_image": "无图像",
   "viewer.footer": "滚轮缩放 · 拖拽平移 · ←/→ 浏览 · 空格播放 · R 旋转 · C 复制 · S 保存 · I 信息 · T 缩略图 · Esc 关闭",
   "viewer.save_title": "保存图像",
@@ -837,5 +839,7 @@
   "import.choose_destination": "选择目标文件夹",
   "import.in_progress": "正在导入…",
   "import.success": "导入完成：\n已复制 {copied} 个，跳过 {skipped} 个，失败 {failed} 个",
+  "import.partial": "导入完成但存在警告：\n已复制 {copied} 个，跳过 {skipped} 个，失败 {failed} 个",
+  "import.cancelled": "导入已取消：\n已复制 {copied} 个，跳过 {skipped} 个，失败 {failed} 个",
   "import.failed": "导入失败：\n{error}"
 }

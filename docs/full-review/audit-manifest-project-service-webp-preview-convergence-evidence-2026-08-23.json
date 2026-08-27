@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "report_id": "project-service-webp-preview-convergence-evidence-2026-08-23",
+  "captured_at": "2026-08-23T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "dc2ded78a38b67f1dd310e9d38483818988ca8b54214a61237e1ecc27f1ad751",
+    "diff_sha256": "266256a671128f9e77a828713e554e7a044945ebd49988a3a7aa930a197a37f9",
+    "tracked_change_count": 143,
+    "untracked_change_count": 98
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python", "-W", "error::RuntimeWarning", "-m", "pytest", "-n", "0",
+          "--basetemp=.zcode/pytest-batch25i-focused-evidence", "-q",
+          "tests/integration/test_project_service.py", "tests/integration/test_project_service_containment.py",
+          "tests/integration/test_thumbnail_service.py", "tests/desktop/test_thumbnail_loader.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "ProjectService WebP profile/identity/key validation, deterministic selection and adjacent thumbnail regressions",
+        "sample_count": 148,
+        "pass_criterion": "exit_code == 0; RuntimeWarning treated as error; platform skips recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/project-service-webp-preview-convergence/focused.stdout.log", "sha256": "ee768ea951f94273eba890b61f1c93fe72d3458133aca4a408231a0dd55906b6"},
+          {"path": "artifacts/evidence/2026-08-23/project-service-webp-preview-convergence/focused.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": [
+          "python", "-W", "error::RuntimeWarning", "-m", "pytest",
+          "--basetemp=.zcode/pytest-batch25i-full", "-n", "0", "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python suite after ProjectService WebP preview convergence",
+        "sample_count": 4024,
+        "pass_criterion": "exit_code == 0; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/project-service-webp-preview-convergence/full.stdout.log", "sha256": "5feb725c67613173916bd4da0056383b1d8db82f20a97903db9d575a140fd907"},
+          {"path": "artifacts/evidence/2026-08-23/project-service-webp-preview-convergence/full.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": [
+          "python", "scripts/check_audit_reports.py", "&&",
+          "python", "scripts/check_doc_stats.py", "&&",
+          "python", "scripts/check_boundaries.py", "&&",
+          "python", "scripts/check_style_sources.py", "&&",
+          "python", "scripts/check_route_capabilities.py", "&&",
+          "python", "scripts/check_frontend_data_fetch.py", "&&",
+          "python", "scripts/check_layers.py", "&&",
+          "python", "-m", "ruff", "check", "AssetsManager", "tests", "scripts", "run.py", "&&",
+          "python", "-m", "compileall", "AssetsManager", "-q", "&&",
+          "git", "diff", "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Pre-index governance gates before 25-I report and manifest indexing; all 36 prior manifests",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/project-service-webp-preview-convergence/static.stdout.log", "sha256": "fd8e65aad2dad588ff41bad22128ed9e5fc7bad467b035d4a350816a9138dafb"},
+          {"path": "artifacts/evidence/2026-08-23/project-service-webp-preview-convergence/static.stderr.log", "sha256": "af1cbe7332cca945e3b4ca037c7553a1be82d1c06146b8ec622cc3cc05e2dde2"}
+        ]
+      },
+      {
+        "argv": [
+          "python", "scripts/check_audit_reports.py", "&&",
+          "python", "scripts/check_doc_stats.py", "&&",
+          "python", "scripts/check_boundaries.py", "&&",
+          "python", "scripts/check_style_sources.py", "&&",
+          "python", "scripts/check_route_capabilities.py", "&&",
+          "python", "scripts/check_frontend_data_fetch.py", "&&",
+          "python", "scripts/check_layers.py", "&&",
+          "python", "-m", "ruff", "check", "AssetsManager", "tests", "scripts", "run.py", "&&",
+          "python", "-m", "compileall", "AssetsManager", "-q", "&&",
+          "git", "diff", "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index governance validation after 25-I report and manifest; all 37 manifests",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/project-service-webp-preview-convergence/static-post-index.stdout.log", "sha256": "56ed461601ddb402b01006e971734fc692510cab6caf794de02ba1fd550081ed"},
+          {"path": "artifacts/evidence/2026-08-23/project-service-webp-preview-convergence/static-post-index.stderr.log", "sha256": "af1cbe7332cca945e3b4ca037c7553a1be82d1c06146b8ec622cc3cc05e2dde2"}
+        ]
+      }
+    ],
+    "note": "Focused: 145 passed, 3 skipped. Full Python: 3993 passed, 14 skipped, 17 deselected, 2 warnings. Pre-index and post-index governance gates passed; the post-index run validated all 37 manifests. WebP byte admission remains in ThumbnailService; cross-platform race, power-loss, browser E2E, mutation atomicity, package/release, CVE/dependency, performance and clean-checkout claims remain unverified."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/audit-manifest-thumbnail-video-jpg-legacy-dual-read-evidence-2026-08-23.json",
+      "sha256": "ca9fc24704289597a2ffa2347b5b5c2af5084262f292ddb9fe5efba0bed828b3"
+    },
+    {
+      "path": "docs/full-review/thumbnail-video-jpg-legacy-dual-read-evidence-2026-08-23.md",
+      "sha256": "ae092886672cbf44de4b4aac195b0073182e91aa20fa540628a6eb25de9dd80c"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/thumbnail-video-jpg-legacy-dual-read-evidence-2026-08-23.md",
+    "docs/full-review/project-service-webp-preview-convergence-evidence-2026-08-23.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "PROJECT-SERVICE-WEBP-PREVIEW-CONVERGENCE-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": ["THUMBNAIL-VIDEO-JPG-LEGACY-DUAL-READ-01"],
+      "anchors": [
+        "AssetsManager/application/project_service.py:674",
+        "AssetsManager/application/project_service.py:703",
+        "AssetsManager/application/project_service.py:737",
+        "tests/integration/test_project_service.py:445"
+      ],
+      "surface": "Home ProjectService baked WebP preview projection across profile metadata, source identity and safe artifact-key selection",
+      "next_action": "Add independent WebP byte-admission/browser/intermediary and filesystem race verification if ProjectService begins owning decoded artifact validation; otherwise preserve ThumbnailService as the admission owner",
+      "dynamic_verification": "145 focused tests and 3993 full Python tests passed on Windows; profile mismatch, unknown profile, stale source identity, invalid nested key and JPG exclusion regressions pass. WebP byte admission remains delegated to ThumbnailService and cross-platform proof is not run."
+    }
+  ]
+}

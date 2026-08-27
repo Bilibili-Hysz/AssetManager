@@ -92,6 +92,52 @@ def test_migrate_records_baseline_schema_version(memory_db):
     assert row8 == ("commerce_schema",)
 
 
+def test_import_manifest_recovery_lease_migrates_v33_database_and_is_idempotent(memory_db, monkeypatch):
+    from AssetsManager.core import database, db_migrations
+
+    memory_db.executescript(database._SCHEMA)
+    original_version = db_migrations.CURRENT_SCHEMA_VERSION
+    try:
+        monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 33)
+        assert db_migrations.migrate(memory_db) == 33
+        before = {row[1] for row in memory_db.execute("PRAGMA table_info('import_manifests')")}
+        assert "recovery_claim_token" not in before
+        memory_db.execute(
+            "INSERT INTO import_manifests (operation_id, library_root, destination, state, payload, "
+            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("legacy-import", "/library", "/library/dest", "running", "{}", 1.0, 1.0),
+        )
+        memory_db.commit()
+    finally:
+        monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", original_version)
+
+    assert db_migrations.migrate(memory_db) == 34
+    columns = {row[1] for row in memory_db.execute("PRAGMA table_info('import_manifests')")}
+    assert {"recovery_claim_token", "recovery_lease_expires_at"} <= columns
+    indexes = {row[1] for row in memory_db.execute("PRAGMA index_list('import_manifests')")}
+    assert "idx_import_manifests_recovery_lease" in indexes
+    assert memory_db.execute(
+        "SELECT payload FROM import_manifests WHERE operation_id='legacy-import'"
+    ).fetchone() == ("{}",)
+    assert db_migrations.migrate(memory_db) == 34
+
+
+def test_thumbnail_cache_lifecycle_schema_is_present_after_migration(memory_db):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import CURRENT_SCHEMA_VERSION, migrate
+
+    memory_db.executescript(database._SCHEMA)
+    assert migrate(memory_db) == CURRENT_SCHEMA_VERSION
+    columns = {
+        row[1] for row in memory_db.execute("PRAGMA table_info('thumbnail_cache')")
+    }
+    assert {"source_mtime_ns", "artifact_kind"} <= columns
+    indexes = {
+        row[1] for row in memory_db.execute("PRAGMA index_list('thumbnail_cache')")
+    }
+    assert "idx_thumb_last_access" in indexes
+
+
 def test_migrate_is_idempotent(memory_db):
     from AssetsManager.core import database
     from AssetsManager.core.db_migrations import CURRENT_SCHEMA_VERSION, migrate

@@ -710,6 +710,37 @@ async def test_credential_revocation_wins_after_validation_before_send(
 
 
 @pytest.mark.anyio
+async def test_logout_revokes_only_the_matching_websocket_token():
+    manager = WebSocketManager()
+
+    class Socket:
+        def __init__(self):
+            self.closed = False
+
+        async def close(self, **_kwargs):
+            self.closed = True
+
+    first = Socket()
+    second = Socket()
+    assert await manager.add(
+        first, authorize=lambda: True, authority=("access_key",),
+        auth_token="token-a",
+    )
+    assert await manager.add(
+        second, authorize=lambda: True, authority=("access_key",),
+        auth_token="token-b",
+    )
+
+    assert await manager.revoke_auth_token("token-a") == 1
+    assert first.closed is True
+    assert second.closed is False
+    assert first not in manager._clients
+    assert second in manager._clients
+
+    await manager.evict(second)
+
+
+@pytest.mark.anyio
 async def test_revision_and_realtime_reject_guest_capability():
     app, _runtime, _lan = _app(guest=True)
     client = await _client(app)
@@ -1413,7 +1444,10 @@ async def test_real_library_close_session_stops_lan_server_and_websocket(
             "epoch": runtime.epoch,
             "revision": initial_revision,
         }
-        assert len(server._ws_manager._clients) == 1
+        admission_deadline = asyncio.get_running_loop().time() + 2
+        while len(server._ws_manager._clients) != 1:
+            assert asyncio.get_running_loop().time() < admission_deadline
+            await asyncio.sleep(0.01)
         assert server._runtime_subscription is not None
         assert server in runtime._lifecycle_adapters
 

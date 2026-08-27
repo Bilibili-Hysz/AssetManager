@@ -146,6 +146,8 @@ async def _scenario(tmp_path):
     bootstrap = ApplicationBootstrap()
     old_root = tmp_path / "old"
     new_root = tmp_path / "new"
+    old_root.mkdir(parents=True, exist_ok=True)
+    new_root.mkdir(parents=True, exist_ok=True)
     session = bootstrap.library_service.open_session(old_root)
     runtime = bootstrap.runtime_for(session)
     server = _LanServerImpl(runtime=runtime, password="window-test-password")
@@ -168,7 +170,10 @@ async def _scenario(tmp_path):
                 headers={"Cookie": f"lan_token={token}"},
             )
             assert (await ws.receive()).type == WSMsgType.TEXT
-            assert server._ws_manager._clients
+            deadline = asyncio.get_running_loop().time() + 2
+            while not server._ws_manager._clients:
+                assert asyncio.get_running_loop().time() < deadline
+                await asyncio.sleep(0.01)
 
             async def fail_once_then_shutdown():
                 shutdown_attempts.append(threading.get_ident())
@@ -264,7 +269,9 @@ async def _exit_scenario(tmp_path):
     UndoService._startup_cleanup_done = True
     app = QApplication.instance() or QApplication([])
     bootstrap = ApplicationBootstrap()
-    session = bootstrap.library_service.open_session(tmp_path / "exit")
+    exit_root = tmp_path / "exit"
+    exit_root.mkdir(parents=True, exist_ok=True)
+    session = bootstrap.library_service.open_session(exit_root)
     runtime = bootstrap.runtime_for(session)
     server = _LanServerImpl(runtime=runtime, password="window-test-password")
     preflight = SecurityPreflight()
@@ -283,7 +290,10 @@ async def _exit_scenario(tmp_path):
                 headers={"Cookie": f"lan_token={token}"},
             )
             assert (await ws.receive()).type == WSMsgType.TEXT
-            assert server._ws_manager._clients
+            deadline = asyncio.get_running_loop().time() + 2
+            while not server._ws_manager._clients:
+                assert asyncio.get_running_loop().time() < deadline
+                await asyncio.sleep(0.01)
 
             async def fail_once_then_shutdown():
                 attempts.append(threading.get_ident())

@@ -79,6 +79,32 @@ def test_favorite_service_hides_stale_rows_but_allows_removal(tmp_path, schema_d
     assert service.remove(tmp_path, "user:1", "stale.png") == ("stale.png", False)
 
 
+def test_bound_favorite_service_rejects_foreign_root_and_connection(tmp_path):
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+
+    library_a = tmp_path / "library-a"
+    library_b = tmp_path / "library-b"
+    target_a = library_a / "collection"
+    target_b = library_b / "collection"
+    target_a.mkdir(parents=True)
+    target_b.mkdir(parents=True)
+    bootstrap = ApplicationBootstrap()
+    session_a = bootstrap.library_service.open_session(library_a)
+    session_b = bootstrap.library_service.open_session(library_b)
+    runtime = bootstrap.runtime_for(session_a)
+    service = runtime.services.lan_services.favorite_service
+    assert service is not None
+    try:
+        foreign_conn = session_b.connection_for(library_b)
+        with pytest.raises(ValueError, match="bound LibrarySession"):
+            service.add(library_b, "user:7", target_b, db_conn=foreign_conn)
+        with pytest.raises(ValueError, match="bound LibrarySession"):
+            service.add(library_a, "user:7", target_a, db_conn=foreign_conn)
+    finally:
+        runtime.close()
+        bootstrap.library_service.close()
+
+
 def test_bound_favorite_service_publishes_session_scoped_changes(tmp_path):
     from AssetsManager.application.bootstrap import ApplicationBootstrap
     from AssetsManager.domain.event_bus import get_event_bus

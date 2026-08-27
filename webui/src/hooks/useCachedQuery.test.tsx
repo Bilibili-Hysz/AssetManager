@@ -202,6 +202,30 @@ describe('useCachedQuery', () => {
     expect(onFetchStart).toHaveBeenCalledTimes(1);
   });
 
+  it('does not publish an old response into a new key after rerender', async () => {
+    let resolveOld!: (value: string) => void;
+    let resolveNew!: (value: string) => void;
+    const queryFn = vi.fn(() => {
+      if (queryFn.mock.calls.length === 1) {
+        return new Promise<string>(resolve => { resolveOld = resolve; });
+      }
+      return new Promise<string>(resolve => { resolveNew = resolve; });
+    });
+    const { wrapper } = makeWrapper();
+    const { result, rerender } = renderHook(
+      ({ key }: { key: string }) => useCachedQuery({ key: ['search', key], queryFn }),
+      { initialProps: { key: 'old' }, wrapper },
+    );
+    await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(1));
+    rerender({ key: 'new' });
+    await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(2));
+
+    await act(async () => { resolveOld('stale'); });
+    expect(result.current.data).not.toBe('stale');
+    await act(async () => { resolveNew('fresh'); });
+    await waitFor(() => expect(result.current.data).toBe('fresh'));
+  });
+
   it('an aborted refresh settling does not clear the newer in-flight request', async () => {
     let resolveFirst!: (value: string) => void;
     let resolveSecond!: (value: string) => void;

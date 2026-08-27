@@ -523,6 +523,23 @@ class TestPasswordBruteForceGuard:
         time.sleep(0.06)
         assert svc.password_attempt_blocked(share.id) == 0
 
+    def test_record_failure_sweeps_expired_other_shares(self, memory_db):
+        import time as time_module
+
+        svc = self._service(memory_db)
+        share = svc.create_share(paths=["a"], password="secret123")
+        assert share is not None
+
+        stale_share = "stale-share-id"
+        svc._password_failures[stale_share] = [
+            time_module.time() - 2 * svc.PASSWORD_COOLDOWN_SECONDS
+        ]
+
+        svc.record_password_failure(share.id)
+
+        assert stale_share not in svc._password_failures
+        assert share.id in svc._password_failures
+
     def test_verify_password_still_works_after_guard(self, memory_db):
         svc = self._service(memory_db)
         share = svc.create_share(paths=["a"], password="secret123")

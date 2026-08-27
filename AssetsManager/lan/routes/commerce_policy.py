@@ -14,14 +14,17 @@ from typing import Any, Callable, cast
 from aiohttp import web
 
 from AssetsManager.core.settings import AppSettings
+from AssetsManager.lan.routes._errors import error_response
 
 COMMERCE_DISABLED_BODY = {
     "error": "Commerce is disabled",
     "code": "feature_disabled",
+    "details": {},
 }
 SELLER_DISABLED_BODY = {
     "error": "Seller is disabled",
     "code": "feature_disabled",
+    "details": {},
 }
 SELLER_COOKIE = "seller_session"
 
@@ -55,11 +58,19 @@ def seller_is_enabled() -> bool:
 
 
 def commerce_disabled_response() -> web.Response:
-    return web.json_response(COMMERCE_DISABLED_BODY, status=404)
+    return error_response(
+        COMMERCE_DISABLED_BODY["error"],
+        status=404,
+        code=COMMERCE_DISABLED_BODY["code"],
+    )
 
 
 def seller_disabled_response() -> web.Response:
-    return web.json_response(SELLER_DISABLED_BODY, status=404)
+    return error_response(
+        SELLER_DISABLED_BODY["error"],
+        status=404,
+        code=SELLER_DISABLED_BODY["code"],
+    )
 
 
 def _cached_seller_auths(request: web.Request) -> tuple[Any, ...]:

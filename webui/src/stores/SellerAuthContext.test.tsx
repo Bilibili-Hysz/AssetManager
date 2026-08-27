@@ -52,6 +52,28 @@ describe('SellerAuthContext', () => {
     expect(result.current.authenticated).toBe(false);
   });
 
+  it('does not let a stale status probe overwrite a completed login', async () => {
+    let resolveStatus!: (value: { enabled: boolean; authenticated: boolean }) => void;
+    mocks.get.mockReturnValueOnce(new Promise(resolve => { resolveStatus = resolve; }));
+    const { result } = renderHook(() => useSellerAuth(), { wrapper });
+
+    await act(async () => { await result.current.login('seller-secret'); });
+    expect(result.current.authenticated).toBe(true);
+    await act(async () => { resolveStatus({ enabled: true, authenticated: false }); });
+    expect(result.current.authenticated).toBe(true);
+  });
+
+  it('invalidates stale status probes when logout starts', async () => {
+    let resolveStatus!: (value: { enabled: boolean; authenticated: boolean }) => void;
+    mocks.get.mockReturnValueOnce(new Promise(resolve => { resolveStatus = resolve; }));
+    const { result } = renderHook(() => useSellerAuth(), { wrapper });
+
+    await act(async () => { await result.current.login('seller-secret'); });
+    await act(async () => { await result.current.logout(); });
+    await act(async () => { resolveStatus({ enabled: true, authenticated: true }); });
+    expect(result.current.authenticated).toBe(false);
+  });
+
   it('clears the query cache when the seller identity flips', async () => {
     const cache = createQueryCache();
     const wrapperWithCache = ({ children }: { children: React.ReactNode }) => (

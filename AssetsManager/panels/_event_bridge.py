@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal, Qt
 
+from AssetsManager.application.asset_filters import subscribe_category_registry_changed
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import DomainEvent
 
@@ -32,6 +33,31 @@ class DomainEventSubscription(QObject):
         self._subscription.close()
         try:
             self.event_received.disconnect()
+        except (RuntimeError, TypeError):
+            pass
+
+
+class CategoryRegistrySubscription(QObject):
+    """Forward category publications through a queued Qt signal."""
+
+    changed = Signal()
+
+    def __init__(self, slot, parent: QObject | None = None):
+        super().__init__(parent)
+        self._closed = False
+        self.changed.connect(slot, Qt.ConnectionType.QueuedConnection)
+        self._subscription = subscribe_category_registry_changed(self._on_changed)
+
+    def _on_changed(self) -> None:
+        self.changed.emit()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._subscription.close()
+        try:
+            self.changed.disconnect()
         except (RuntimeError, TypeError):
             pass
 

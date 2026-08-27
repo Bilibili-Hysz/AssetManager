@@ -5,7 +5,7 @@ import { useThumbnailCache } from './useThumbnailCache';
 
 const batch = vi.fn(() => Promise.resolve({ thumbnails: { 'cover.jpg': 'encoded' } }));
 const api = {};
-const authState = { api, identityGeneration: 0 };
+const authState = { api, identityGeneration: 0, thumbnailCacheNamespace: 'server-a|library-a|user-a' };
 
 vi.mock('./useAuth', () => ({
   useAuth: () => authState,
@@ -20,6 +20,7 @@ describe('useThumbnailCache', () => {
     batch.mockClear();
     sessionStorage.clear();
     authState.identityGeneration = 0;
+    authState.thumbnailCacheNamespace = 'server-a|library-a|user-a';
   });
 
   it('keeps the thumbnail loader stable after cache updates', async () => {
@@ -58,7 +59,24 @@ describe('useThumbnailCache', () => {
     expect(result.current.getThumbnail('private.jpg')).toBeUndefined();
   });
 
-  it('does not commit a thumbnail response from the previous identity', async () => {
+  it('isolates persisted thumbnails by namespace', async () => {
+    sessionStorage.setItem(
+      'lan_thumb_cache:server-a%7Clibrary-a%7Cuser-a',
+      JSON.stringify({ 'cover.jpg': 'server-a' }),
+    );
+    sessionStorage.setItem(
+      'lan_thumb_cache:server-b%7Clibrary-a%7Cuser-a',
+      JSON.stringify({ 'cover.jpg': 'server-b' }),
+    );
+    const { result, rerender } = renderHook(() => useThumbnailCache());
+    await waitFor(() => expect(result.current.getThumbnail('cover.jpg')).toBe('server-a'));
+
+    authState.thumbnailCacheNamespace = 'server-b|library-a|user-a';
+    rerender();
+    await waitFor(() => expect(result.current.getThumbnail('cover.jpg')).toBe('server-b'));
+  });
+
+  it('does not commit a thumbnail response from a previous namespace', async () => {
     let resolveBatch!: (value: { thumbnails: { 'cover.jpg': string } }) => void;
     batch.mockReturnValueOnce(new Promise(resolve => { resolveBatch = resolve; }));
     const { result, rerender } = renderHook(() => useThumbnailCache());

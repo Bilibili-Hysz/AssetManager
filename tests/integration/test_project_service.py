@@ -5,6 +5,12 @@ import pytest
 from AssetsManager.application.project_service import ProjectDepthConfig, ProjectService
 
 
+def _write_webp(path, size=(256, 128)):
+    from PIL import Image
+
+    Image.new("RGB", size, color="green").save(path, format="WEBP")
+
+
 def test_list_projects_marks_projects_at_global_depth(tmp_path, schema_db):
     library = tmp_path / "library"
     library.mkdir()
@@ -322,7 +328,7 @@ def test_get_home_uses_baked_thumbnail_cache_when_directory_cache_has_no_preview
     cache_key = thumbnail_cache_key(source)
     baked = thumb_dir(str(library)) / f"{cache_key}.webp"
     baked.parent.mkdir(parents=True)
-    baked.write_bytes(b"webp")
+    _write_webp(baked)
     schema_db.execute(
         """
         INSERT INTO thumbnail_cache
@@ -370,7 +376,7 @@ def test_get_home_ignores_baked_thumbnail_source_outside_library_via_symlink(
     cache_key = thumbnail_cache_key(source)
     baked = thumb_dir(str(library)) / f"{cache_key}.webp"
     baked.parent.mkdir(parents=True)
-    baked.write_bytes(b"webp")
+    _write_webp(baked)
     schema_db.execute(
         """
         INSERT INTO thumbnail_cache
@@ -396,6 +402,295 @@ def test_get_home_ignores_baked_thumbnail_source_outside_library_via_symlink(
     assert "thumbnail_path" not in home["recent_projects"][0]
 
 
+def _insert_webp_thumbnail_row(
+    conn,
+    *,
+    key,
+    source,
+    baked,
+    baked_size=256,
+    render_profile=None,
+    source_size=None,
+    source_mtime_ns=None,
+):
+    stat = source.stat()
+    conn.execute(
+        """
+        INSERT INTO thumbnail_cache
+        (cache_key, source_path, source_mtime, source_size, baked_size,
+         cache_size, source_mtime_ns, artifact_kind, render_profile)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'webp', ?)
+        """,
+        (
+            key,
+            str(source.resolve()),
+            stat.st_mtime,
+            stat.st_size if source_size is None else source_size,
+            baked_size,
+            baked.stat().st_size,
+            stat.st_mtime_ns if source_mtime_ns is None else source_mtime_ns,
+            render_profile,
+        ),
+    )
+    conn.commit()
+
+
+def test_get_home_ignores_profile_mismatch_but_keeps_valid_legacy_row(
+    tmp_path, schema_db,
+):
+    from AssetsManager.application.thumbnail_service import thumbnail_cache_key
+    from AssetsManager.core.path_resolver import thumb_dir
+
+    library = tmp_path / "library"
+    project = library / "alpha"
+    project.mkdir(parents=True)
+    source = project / "cover.png"
+    source.write_bytes(b"png")
+    baked_root = thumb_dir(str(library))
+    baked_root.mkdir(parents=True)
+    legacy_key = thumbnail_cache_key(source)
+    legacy_baked = baked_root / f"{legacy_key}.webp"
+    _write_webp(legacy_baked)
+    _insert_webp_thumbnail_row(
+        schema_db, key=legacy_key, source=source, baked=legacy_baked,
+    )
+    bad_key = "bad-profile-key"
+    bad_baked = baked_root / f"{bad_key}.webp"
+    bad_baked.write_bytes(b"bad")
+    _insert_webp_thumbnail_row(
+        schema_db,
+        key=bad_key,
+        source=source,
+        baked=bad_baked,
+        baked_size=512,
+        render_profile="desktop-webp-256-v1",
+    )
+
+    home = ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
+    ).to_response()
+
+    assert home["recent_projects"][0]["thumbnail_path"] == "alpha/cover.png"
+
+
+def test_get_home_rejects_unknown_profile_and_stale_source_identity(tmp_path, schema_db):
+    from AssetsManager.application.thumbnail_service import thumbnail_cache_key
+    from AssetsManager.core.path_resolver import thumb_dir
+
+    library = tmp_path / "library"
+    project = library / "alpha"
+    project.mkdir(parents=True)
+    source = project / "cover.png"
+    source.write_bytes(b"png")
+    baked_root = thumb_dir(str(library))
+    baked_root.mkdir(parents=True)
+
+    unknown_key = "unknown-profile-key"
+    unknown_baked = baked_root / f"{unknown_key}.webp"
+    unknown_baked.write_bytes(b"unknown")
+    _insert_webp_thumbnail_row(
+        schema_db,
+        key=unknown_key,
+        source=source,
+        baked=unknown_baked,
+        baked_size=512,
+        render_profile="desktop-webp-unknown-v1",
+    )
+    stale_key = thumbnail_cache_key(source)
+    stale_baked = baked_root / f"{stale_key}.webp"
+    stale_baked.write_bytes(b"stale")
+    _insert_webp_thumbnail_row(
+        schema_db,
+        key=stale_key,
+        source=source,
+        baked=stale_baked,
+        source_size=source.stat().st_size + 1,
+    )
+
+    home = ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
+    ).to_response()
+
+    assert "thumbnail_path" not in home["recent_projects"][0]
+
+
+def test_get_home_ignores_nested_thumbnail_cache_key(tmp_path, schema_db):
+    from AssetsManager.core.path_resolver import thumb_dir
+
+    library = tmp_path / "library"
+    project = library / "alpha"
+    project.mkdir(parents=True)
+    source = project / "cover.png"
+    source.write_bytes(b"png")
+    baked_root = thumb_dir(str(library))
+    nested = baked_root / "nested"
+    nested.mkdir(parents=True)
+    nested_baked = nested / "key.webp"
+    nested_baked.write_bytes(b"nested")
+    _insert_webp_thumbnail_row(
+        schema_db,
+        key="nested/key",
+        source=source,
+        baked=nested_baked,
+    )
+
+    home = ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
+    ).to_response()
+
+    assert "thumbnail_path" not in home["recent_projects"][0]
+
+
+def test_get_home_skips_malformed_or_undersized_baked_webp(tmp_path, schema_db):
+    from AssetsManager.application.thumbnail_service import thumbnail_cache_key
+    from AssetsManager.core.path_resolver import thumb_dir
+
+    library = tmp_path / "library"
+    project = library / "alpha"
+    project.mkdir(parents=True)
+    source = project / "cover.png"
+    source.write_bytes(b"png")
+    baked_root = thumb_dir(str(library))
+    baked_root.mkdir(parents=True)
+
+    malformed_key = thumbnail_cache_key(source)
+    malformed = baked_root / f"{malformed_key}.webp"
+    malformed.write_bytes(b"not-webp")
+    _insert_webp_thumbnail_row(
+        schema_db, key=malformed_key, source=source, baked=malformed,
+    )
+
+    undersized_source = project / "small.png"
+    undersized_source.write_bytes(b"small")
+    undersized_key = thumbnail_cache_key(undersized_source)
+    undersized = baked_root / f"{undersized_key}.webp"
+    _write_webp(undersized, (128, 64))
+    _insert_webp_thumbnail_row(
+        schema_db,
+        key=undersized_key,
+        source=undersized_source,
+        baked=undersized,
+        render_profile="desktop-webp-256-v1",
+    )
+
+    home = ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
+    ).to_response()
+
+    assert "thumbnail_path" not in home["recent_projects"][0]
+    assert malformed.exists()
+    assert undersized.exists()
+
+
+def test_get_home_selects_valid_lower_profile_when_higher_profile_is_malformed(
+    tmp_path, schema_db,
+):
+    from AssetsManager.application.thumbnail_service import profiled_thumbnail_cache_key_v3
+    from AssetsManager.core.path_resolver import thumb_dir
+
+    library = tmp_path / "library"
+    project = library / "alpha"
+    project.mkdir(parents=True)
+    source = project / "cover.png"
+    source.write_bytes(b"png")
+    baked_root = thumb_dir(str(library))
+    baked_root.mkdir(parents=True)
+
+    low_key = profiled_thumbnail_cache_key_v3(source, "desktop-webp-256-v1")
+    low = baked_root / f"{low_key}.webp"
+    _write_webp(low, (256, 128))
+    _insert_webp_thumbnail_row(
+        schema_db,
+        key=low_key,
+        source=source,
+        baked=low,
+        render_profile="desktop-webp-256-v1",
+    )
+    high_key = profiled_thumbnail_cache_key_v3(source, "desktop-webp-512-v1")
+    high = baked_root / f"{high_key}.webp"
+    high.write_bytes(b"malformed")
+    _insert_webp_thumbnail_row(
+        schema_db,
+        key=high_key,
+        source=source,
+        baked=high,
+        baked_size=512,
+        render_profile="desktop-webp-512-v1",
+    )
+
+    home = ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
+    ).to_response()
+
+    assert home["recent_projects"][0]["thumbnail_path"] == "alpha/cover.png"
+
+
+def test_get_home_skips_artifact_when_shared_admission_rejects(
+    tmp_path, schema_db, monkeypatch,
+):
+    from AssetsManager.application.thumbnail_service import thumbnail_cache_key
+    from AssetsManager.core.path_resolver import thumb_dir
+
+    library = tmp_path / "library"
+    project = library / "alpha"
+    project.mkdir(parents=True)
+    source = project / "cover.png"
+    source.write_bytes(b"png")
+    baked_root = thumb_dir(str(library))
+    baked_root.mkdir(parents=True)
+    key = thumbnail_cache_key(source)
+    baked = baked_root / f"{key}.webp"
+    _write_webp(baked)
+    _insert_webp_thumbnail_row(
+        schema_db, key=key, source=source, baked=baked,
+    )
+    monkeypatch.setattr(
+        "AssetsManager.application.project_service.admit_thumbnail_cache_artifact",
+        lambda *_args, **_kwargs: None,
+    )
+
+    home = ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
+    ).to_response()
+
+    assert "thumbnail_path" not in home["recent_projects"][0]
+    assert baked.exists()
+
+
+def test_get_home_excludes_jpg_thumbnail_rows(tmp_path, schema_db):
+    from AssetsManager.application.thumbnail_service import thumbnail_cache_key
+    from AssetsManager.core.path_resolver import thumb_dir
+
+    library = tmp_path / "library"
+    project = library / "alpha"
+    project.mkdir(parents=True)
+    source = project / "clip.mp4"
+    source.write_bytes(b"video")
+    baked_root = thumb_dir(str(library))
+    baked_root.mkdir(parents=True)
+    key = thumbnail_cache_key(source)
+    baked = baked_root / f"{key}.jpg"
+    baked.write_bytes(b"jpg")
+    stat = source.stat()
+    schema_db.execute(
+        """
+        INSERT INTO thumbnail_cache
+        (cache_key, source_path, source_mtime, source_size, baked_size,
+         cache_size, source_mtime_ns, artifact_kind)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'jpg')
+        """,
+        (key, str(source.resolve()), stat.st_mtime, stat.st_size, 512,
+         baked.stat().st_size, stat.st_mtime_ns),
+    )
+    schema_db.commit()
+
+    home = ProjectService(connection_provider=lambda _root: schema_db).get_home(
+        library, depth_config=ProjectDepthConfig(global_depth=1), db_conn=schema_db,
+    ).to_response()
+
+    assert "thumbnail_path" not in home["recent_projects"][0]
+
+
 def test_get_home_baked_thumbnail_matching_ignores_unrelated_cache_rows(
     tmp_path, schema_db,
 ):
@@ -417,12 +712,12 @@ def test_get_home_baked_thumbnail_matching_ignores_unrelated_cache_rows(
         key = thumbnail_cache_key(other)
         baked = thumb_dir(str(library)) / f"{key}.webp"
         baked.parent.mkdir(parents=True, exist_ok=True)
-        baked.write_bytes(b"webp")
+        _write_webp(baked)
         rows.append((key, str(other.resolve()), other.stat().st_mtime, other.stat().st_size, 256, baked.stat().st_size))
 
     key = thumbnail_cache_key(source)
     baked = thumb_dir(str(library)) / f"{key}.webp"
-    baked.write_bytes(b"webp")
+    _write_webp(baked)
     rows.append((key, str(source.resolve()), source.stat().st_mtime, source.stat().st_size, 256, baked.stat().st_size))
     schema_db.executemany(
         """
@@ -461,7 +756,7 @@ def test_get_home_baked_thumbnail_matching_does_not_scan_projects_per_cache_row(
         key = thumbnail_cache_key(source)
         baked = thumb_dir(str(library)) / f"{key}.webp"
         baked.parent.mkdir(parents=True, exist_ok=True)
-        baked.write_bytes(b"webp")
+        _write_webp(baked)
         rows.append((key, str(source.resolve()), source.stat().st_mtime, source.stat().st_size, 256, baked.stat().st_size))
     schema_db.executemany(
         """
@@ -600,13 +895,13 @@ def test_get_home_preview_pool_covers_all_valid_cached_thumbnails(tmp_path, sche
     baked_key = thumbnail_cache_key(baked_source)
     baked_preview = thumb_dir(str(library)) / f"{baked_key}.webp"
     baked_preview.parent.mkdir(parents=True)
-    baked_preview.write_bytes(b"webp")
+    _write_webp(baked_preview)
 
     stale_source = projects[2] / "stale-cover.png"
     stale_source.write_bytes(b"png")
     stale_key = thumbnail_cache_key(stale_source)
     stale_preview = thumb_dir(str(library)) / f"{stale_key}.webp"
-    stale_preview.write_bytes(b"webp")
+    _write_webp(stale_preview)
     schema_db.executemany(
         """
         INSERT INTO thumbnail_cache

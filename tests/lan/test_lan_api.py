@@ -21,6 +21,12 @@ def set_request_auth_context(request, kind, user=None):
     )
 
 
+def _write_valid_png(path):
+    from PIL import Image
+
+    Image.new("RGB", (2, 2), color="white").save(path, format="PNG")
+
+
 def test_task4_principal_serialization_matrix_and_permissions(monkeypatch):
 
     class Settings:
@@ -3179,6 +3185,10 @@ async def test_anonymous_quota_cookie_session_keeps_one_bucket_per_browser(tmp_p
         assert (await client.get("/api/download/asset.txt")).status == 200
         denied = await client.get("/api/download/asset.txt")
         assert denied.status == 429
+        denied_body = await denied.json()
+        assert denied_body["code"] == "download_quota_exhausted"
+        assert denied_body["details"]["quota"]["remaining"] == 0
+        assert denied_body["quota"]["remaining"] == 0
         assert denied.headers["X-Quota-Remaining"] == "0"
     finally:
         await client.close()
@@ -4335,7 +4345,7 @@ class TestShareSecurity:
     @pytest.mark.anyio
     async def test_share_verify_api_client_header_returns_usable_bearer_token(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
-        (library / "image.png").write_bytes(b"\x89PNG")
+        _write_valid_png(library / "image.png")
 
         client = await _make_client(app)
         try:
@@ -4376,7 +4386,7 @@ class TestShareSecurity:
     @pytest.mark.anyio
     async def test_share_preview_requires_token_when_password_protected(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
-        (library / "image.png").write_bytes(b"\x89PNG")
+        _write_valid_png(library / "image.png")
 
         client = await _make_client(app)
         try:
@@ -5295,7 +5305,7 @@ class TestP0ShareCookieAuthentication:
     @pytest.mark.anyio
     async def test_password_share_cookie_is_scoped_and_share_bound(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
-        (library / "image.png").write_bytes(b"\x89PNG")
+        _write_valid_png(library / "image.png")
 
         client = await _make_client(app)
         try:
@@ -5445,7 +5455,7 @@ class TestP0ShareCookieAuthentication:
         import time
 
         app, library, conn = _make_lan_app(tmp_path)
-        (library / "image.png").write_bytes(b"\x89PNG")
+        _write_valid_png(library / "image.png")
 
         client = await _make_client(app)
         try:
@@ -5852,7 +5862,7 @@ class TestSearchEndpoint:
     async def test_search_by_tags_returns_matching_files(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
         target = library / "hero.png"
-        target.write_bytes(b"\x89PNG")
+        _write_valid_png(target)
         conn.execute(
             "INSERT INTO file_tags(file_path, tag) VALUES (?, ?)",
             (str(target.resolve()), "hero"),
@@ -5909,6 +5919,10 @@ class TestInfoEndpoint:
             assert resp.status == 200
             data = await resp.json()
             assert "library_root" in data or "share_name" in data
+            assert "thumbnail_cache_namespace" in data
+            assert data["thumbnail_cache_namespace"] is None or isinstance(
+                data["thumbnail_cache_namespace"], str
+            )
         finally:
             await client.close()
 
@@ -5972,6 +5986,8 @@ def test_activity_log_and_online_users_expose_normalized_records():
     activity.add("alice", "login", "signed in", ip="10.0.0.4")
     record = activity.recent(1)[0]
     assert set(record) == {"id", "username", "action", "details", "ip", "timestamp"}
+    assert isinstance(record["timestamp"], (int, float))
+    assert record["timestamp"] > 1_000_000_000
     assert record["username"] == "alice"
     assert record["details"] == "signed in"
     assert record["ip"] == "10.0.0.4"

@@ -4,11 +4,11 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库（元数据、标签、缩略图），也可以通过局域网内的浏览器远程浏览和下载资产。
 
-<!-- stats: app_services=48 core=32 dialogs=20 domain_events=15 e2e_specs=6 hooks=15 i18n_en=835 i18n_ja=835 i18n_zh=835 icons=56 pages=26 python_test_files=259 repos=17 routes=140 routes_modules=23 schema_version=29 stores=4 themes=24 ts=117 webui_test_files=103 widgets=14 -->
-> 当前审查证据（2026-08-17，本机 Windows / Python 3.14.3）：最近一次 Python 全量运行结果为 **3778 passed, 7 skipped, 0 failed**（`-n auto` 并行；e2e/perf 标记的 16 个测试由 `pytest.ini` 的 `-m "not e2e and not perf"` 默认排除；7 个 skip 为 Windows symlink 权限与 multiprocessing Queue 终止限制）；`ruff check .` **全绿**（correctness 规则族，见 `ruff.toml`）；compileall 通过；**pyright 0 errors / 0 warnings**（CI "Type Check (pyright hard gate)" 固定 1.1.410）。WebUI 本机实测 **103 文件 / 705 单测全通过**，typecheck 与 build 均通过；浏览器 E2E 为上一次会话实测 51 passed 2 skipped（本轮未复跑，以 CI 为准）。CI Python 3.12/3.13/3.14 矩阵为硬门禁（3.14 已从 continue-on-error 转正，待首次 CI 实跑确认）；clean checkout/Windows package smoke 和真实后端 Commerce 验收仍需分别看待。完整审查文档集见 `docs/full-review/`（含模块地图、数据流、事件系统、审查结果与验证基线）。
+<!-- stats: app_services=51 core=34 dialogs=20 domain_events=15 e2e_specs=6 hooks=15 i18n_en=839 i18n_ja=839 i18n_zh=839 icons=56 pages=26 python_test_files=283 repos=17 routes=140 routes_modules=23 schema_version=34 stores=4 themes=24 ts=117 webui_test_files=103 widgets=14 -->
+> **验证边界（2026-08-21）**：README 的结构统计由 `scripts/check_doc_stats.py` 从当前工作树测量；测试、构建、浏览器、真实 LAN、依赖和发布结果只在带 commit、精确命令、平台、工具版本与 artifact digest 的日期化证据中成立。历史全量数字（包括 2026-08-17 的 3778/7 和此前 WebUI/E2E 数字）保留在 dated 文档中，不作为当前 release 或 `verified-fixed` 声明。当前 C6-C10 收敛与剩余限制见 [`docs/full-review/c6-c10-convergence-2026-08-21.md`](docs/full-review/c6-c10-convergence-2026-08-21.md)。
 
 
-> **2026-08-11 更新**：完成 UI/SVG 修复轮（13 项审计 + SVG 化 + 语义色体系 + 菜单栏）、P0 高危轮（15+4）、中危轮（D1/D2/E/F/G1/G2）与 P1 轮（M6a/M9/M6c，42 项清单）——含分享密码强度与爆破防护、投递令牌 rotate 配额守恒与撤销、匿名配额 cookie 身份、备份上限与并发检测、令牌 nonce 等。所有改动处于工作区**未提交**状态（529 条变更），未执行 stage、commit、reset 或 clean。
+> **历史快照说明**：2026-08-11 的修复轮与当时的 529 条未提交变更仅适用于对应 dated worktree snapshot；当前工作树状态以 Git 和 `docs/full-review/` 中带 baseline 指纹的最新证据为准。
 >
 > **2026-08-09 深审增量**：本轮完成 identity marker no-clobber、parent-directory durable flush（含新建祖先目录链）、Seller early-stop/startup-failure 撤销、LAN cleanup attempt 状态协议与普通 stop 失败单次重试、v8/v16/v19 历史 DDL 冻结校正，以及 PyInstaller 稳定资源合同修复。`RuntimeData/Shared` 不再被打进 bundle；icon source 使用已跟踪的 `Assets/icons`，发布目标仍为 `assets/icons`。
 
@@ -77,7 +77,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 | Python | 3.12/3.13/3.14 | 主语言（CI 矩阵；本机 3.14） |
 | PySide6 | >=6.6,<7 | 桌面 UI 框架 (Qt 6) |
 | aiohttp | >=3.9 | 异步 HTTP 服务器（可选依赖） |
-| SQLite3 | 内置 | 数据库 (WAL 模式，迁移 v1-v29) |
+| SQLite3 | 内置 | 数据库 (WAL 模式，迁移 v1-v34) |
 | Pillow | >=10.0 | 图片处理（缩略图/EXIF/模糊） |
 | segno | >=1.6 | QR 码生成 |
 | send2trash / requests | — | 回收站删除 / HTTP 工具 |
@@ -111,7 +111,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 | 组件 | 说明 |
 |------|------|
 | DatabaseManager | 每库独立连接 + 身份标记 + 读写门（_WriteGate）+ 归属校验 |
-| db_migrations | 版本化迁移 v1-v29（SAVEPOINT 原子 + 契约回溯校验） |
+| db_migrations | 版本化迁移 v1-v34（SAVEPOINT 原子 + 契约回溯校验） |
 | schema_defs | 表 DDL 契约（SchemaObjectContract 校验器，fail-closed） |
 | repositories/ | **17 个 SQL 仓库**（tag/metadata/thumbnail/favorite/share/auth/asset_index/plugin_metadata/shop/order/quota/free_download_quota/seller_profile/storefront_analytics/shop_buyer/gallery_home/revoked_token）——统一 for_session 绑定 + SAVEPOINT 事务 + CAS |
 | LibraryLock | 跨进程库锁（QLockFile 引用计数，staleLockTime(0)） |
@@ -147,7 +147,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用，内置 a
 │  │FileListController│ │InfoController│ │TagTreeController│ │
 │  └────────┬────────┘ └─────┬──────┘ └────────┬─────────┘ │
 ├───────────┼────────────────┼──────────────────┼───────────┤
-│                  Application Layer（48 模块）              │
+│                  Application Layer（51 模块）              │
 │  LibraryService  Runtime/LibrarySession  RuntimeEventRouter│
 │  AssetIndex/Reconciliation/Undo/FileOperation/Export       │
 │  Metadata/Tag/Thumbnail/Search/Project/Gallery/Favorite    │
@@ -188,7 +188,7 @@ AssetsManager_old-bak/
 │   ├── window_lifecycle_coordinator.py  # 库切换与退出编排
 │   ├── dock_factory.py         # QDockWidget 工厂
 │   │
-│   ├── application/            # 应用服务层（48 模块，20k 行）
+│   ├── application/            # 应用服务层（51 模块，20k 行）
 │   │   ├── bootstrap.py        # DI 装配（LibraryScopedServices/LanRuntimeServices）
 │   │   ├── runtime.py          # LibraryRuntime（服务快照/事件路由/生命周期）
 │   │   ├── context.py          # LibrarySession/LibraryContext（operation 租约）
@@ -214,9 +214,9 @@ AssetsManager_old-bak/
 │   │   ├── sidebar_controller.py
 │   │   └── tag_tree_controller.py
 │   │
-│   ├── core/                   # 基础设施层（32 模块 + plugins/4）
+│   ├── core/                   # 基础设施层（34 模块 + plugins/4）
 │   │   ├── database.py         # DatabaseManager（连接/身份标记/读写门）
-│   │   ├── db_migrations.py    # 数据库迁移 v1-v29
+│   │   ├── db_migrations.py    # 数据库迁移 v1-v34
 │   │   ├── schema_defs.py      # 表 DDL 契约 + 校验器
 │   │   ├── settings.py / config_migrator.py / json_store.py
 │   │   ├── themes.py / theme_loader.py / icons.py / bg_effects.py
@@ -246,7 +246,7 @@ AssetsManager_old-bak/
 │   ├── lan/                    # LAN 服务器（aiohttp）
 │   │   ├── server.py           # _LanServerImpl（认证中间件/撤销表/负缓存）
 │   │   ├── manager.py          # ShareManager 状态机
-│   │   ├── api.py              # 路由注册（139 条）+ realtime 桥
+│   │   ├── api.py              # 路由注册（140 条）+ realtime 桥
 │   │   ├── auth.py / principal.py / dto.py / utils.py
 │   │   ├── path_guard.py / security.py / scanner.py
 │   │   ├── tunnel.py           # Cloudflare 隧道
@@ -277,7 +277,7 @@ AssetsManager_old-bak/
 │   │   │   command_palette/file_picker/pager_overlay/theme_gallery/status_bar/title_bar）
 │   │
 │   ├── di/                     # 依赖注入容器
-│   └── i18n/                   # 国际化（en 835 / zh 835 / ja 835 keys）
+│   └── i18n/                   # 国际化（en 839 / zh 839 / ja 839 keys）
 │
 ├── webui/                      # React 18 + Vite + TS SPA（117 ts/tsx 生产源码）
 │   ├── src/                    # api(15 工厂)/stores(4 Context)/hooks(15)
@@ -285,7 +285,7 @@ AssetsManager_old-bak/
 │   ├── e2e/                    # Playwright 6 个 spec（默认 51 passed、2 skipped）
 │   └── dist/                   # 构建产物（打进 PyInstaller bundle）
 │
-├── tests/                      # 本机复核基线（Windows：3737 passed, 7 skipped）
+├── tests/                      # 测试目录；运行结果以日期化 command/artifact 证据为准
 │   ├── core/ unit/ integration/ desktop/ lan/
 │   ├── performance/ perf/ e2e/ contracts/ fixtures/
 │
@@ -363,7 +363,7 @@ python -m compileall -q AssetsManager tests
 python -m pytest -q -p no:cacheprovider
 ```
 
-本机复核状态（2026-08-17，Windows / Python 3.14.3）：**Python 全量回归 3737 passed, 7 skipped, 0 failed**；**`ruff check .` 全绿**；**compileall 通过**。默认浏览器 E2E 共 53 个测试（6 个 spec，含 23 个 axe-core 双主题无障碍扫描），当前本机 **51 passed、2 skipped**；其中 Mock/Shell 子集为 12 passed，真实后端用例在未配置环境变量时跳过。7 个 Python skip 包括 Windows symlink 权限限制与历史 multiprocessing Queue 终止 draft。Pyright 在本机 Python 3.14 + pyright 1.1.410 下 **0 errors / 0 warnings**（CI "Type Check (pyright hard gate)" 已固定同版本）。远程 CI 的 Python 3.12/3.13/3.14 矩阵仍是独立门禁；本轮 WebUI 单测 `103 文件 / 705 passed`、`typecheck` 与 `build` 通过。
+2026-08-17 的本机复核结果（Python 3737 passed、7 skipped；WebUI/E2E 与静态门禁数字）是历史 worktree snapshot，不是当前运行结果。当前验证必须引用 `docs/full-review/` 中对应的 dated report/manifest 和 command/artifact；本批没有执行全量 Python、浏览器 E2E、真实后端 LAN 或 release validation。
 > **G17 边界：** Reconciliation queue 当前支持单 library、单 application owner 下的 stop-the-world cutover、lease recovery 与 stale-worker protection；不支持旧版/新版应用同时持有同一 library 的 rolling upgrade。详细证据见 `docs/compose/reports/g17-stop-the-world-cutover-release-ownership-checklist-2026-08-08.md`。
 
 ### Cython 编译加速
@@ -626,7 +626,7 @@ tests/
 ### 运行测试
 
 ```bash
-# 全部测试（基线 3737 passed, 7 skipped）
+# 全部测试（历史基线；当前结果须附日期化 command/artifact）
 python -m pytest -q -p no:cacheprovider
 
 # 特定目录

@@ -166,5 +166,5 @@ SettingsDialog → themes.set_theme(name)
 | `panels/` | 22 | 11,400 | current working-tree Python files |
 | `widgets/` | 20 | 4,600 | current working-tree Python files |
 | `webui/` | 196 ts/tsx | 20,000+ | 90 Vitest + 5 Playwright spec |
-| `tests/` | 205+ | — | **2952 passed, 7 skipped**（2026-08-11 实测） |
+| `tests/` | 205+ | — | **2952 passed, 7 skipped**（2026-08-11 historical snapshot; current results require dated command/artifact） |
 | **Total** | — | — | **2026-08-11 dirty-worktree snapshot; not a release manifest** |

@@ -378,6 +378,17 @@ class ShareService:
             ]
             stamps.append(now)
             self._password_failures[share_id] = stamps
+            # Opportunistic global sweep: shares whose newest failure left
+            # the cooldown window can never block again, so drop those keys
+            # instead of retaining one entry per share ever probed.
+            expired = [
+                other_id
+                for other_id, other_stamps in self._password_failures.items()
+                if not other_stamps
+                or now - max(other_stamps) >= self.PASSWORD_COOLDOWN_SECONDS
+            ]
+            for other_id in expired:
+                self._password_failures.pop(other_id, None)
 
     def reset_password_failures(self, share_id: str) -> None:
         """Clear the failure counter after a successful verification."""

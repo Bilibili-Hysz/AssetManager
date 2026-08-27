@@ -254,6 +254,8 @@
   "tagstyle.cancel": "Cancel",
   "tagstyle.clear": "Clear",
   "tagstyle.clear_color": "Clear color",
+  "viewer.loading": "Loading…",
+  "viewer.load_failed": "Could not load image",
   "viewer.no_image": "No image",
   "viewer.footer": "Scroll zoom · Drag pan · ←/→ browse · Space play · R rotate · C copy · S save · I info · T thumbs · Esc close",
   "viewer.save_title": "Save image",
@@ -837,5 +839,7 @@
   "import.choose_destination": "Choose destination folder",
   "import.in_progress": "Importing…",
   "import.success": "Import complete:\n{copied} copied, {skipped} skipped, {failed} failed",
+  "import.partial": "Import completed with warnings:\n{copied} copied, {skipped} skipped, {failed} failed",
+  "import.cancelled": "Import cancelled:\n{copied} copied, {skipped} skipped, {failed} failed",
   "import.failed": "Import failed:\n{error}"
 }

@@ -26,13 +26,20 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from contextlib import nullcontext
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import FileSystemChanged
 
 if TYPE_CHECKING:
     from AssetsManager.application.context import LibrarySession
+    from AssetsManager.application.reconciliation_queue import ReconciliationQueue
+
+
+class LibraryWatcherStopTimeout(RuntimeError):
+    """Raised when the watcher thread does not stop within its bound."""
 
 _log = logging.getLogger(__name__)
 
@@ -61,10 +68,14 @@ class LibraryWatcherService:
         *,
         interval_seconds: float = 120.0,
         max_directories: int = MAX_DIRECTORIES,
+        reconciliation_queue: "ReconciliationQueue | None" = None,
+        stop_timeout: float = 2.0,
     ) -> None:
         self._session = session
         self._interval = interval_seconds
         self._max_directories = max_directories
+        self._reconciliation_queue = reconciliation_queue
+        self._stop_timeout = stop_timeout
         # Directory path (str) -> st_mtime_ns snapshot built by the last round.
         self._snapshot: dict[str, int] = {}
         # BFS cursor for a partially completed round: directories still to
@@ -74,36 +85,69 @@ class LibraryWatcherService:
         self._stop_event = threading.Event()
         self._started = False
         self._thread: threading.Thread | None = None
+        self._run_stop_event: threading.Event | None = None
+        self._run_wakeup: threading.Event | None = None
         self._lock = threading.Lock()
 
     # ── Lifecycle ────────────────────────────────────────────────
 
-    def start(self) -> None:
-        """Start the polling thread.  Idempotent."""
+    def start(self) -> bool:
+        """Start one polling thread, refusing overlap with a live prior run."""
         with self._lock:
-            if self._started:
-                return
+            if self._thread is not None and self._thread.is_alive():
+                return False
+            stop_event = threading.Event()
+            wakeup = threading.Event()
+            self._stop_event = stop_event
+            self._wakeup = wakeup
+            self._run_stop_event = stop_event
+            self._run_wakeup = wakeup
             self._started = True
-            self._stop_event.clear()
             self._thread = threading.Thread(
-                target=self._run, name="library-watcher", daemon=True
+                target=self._run,
+                args=(stop_event, wakeup),
+                name="library-watcher",
+                daemon=True,
             )
             self._thread.start()
+            return True
 
-    def stop(self) -> None:
-        """Stop the polling thread.  Idempotent and repeatable."""
+    def stop(self) -> bool:
+        """Stop and bounded-join the polling thread."""
         with self._lock:
-            self._stop_event.set()
-            self._wakeup.set()
-            self._started = False
+            thread = self._thread
+            stop_event = self._stop_event
+            wakeup = self._wakeup
+            stop_event.set()
+            wakeup.set()
+        if thread is None or thread is threading.current_thread():
+            with self._lock:
+                self._started = False
+                if thread is not threading.current_thread():
+                    self._thread = None
+            return True
+        thread.join(timeout=self._stop_timeout)
+        if thread.is_alive():
+            raise LibraryWatcherStopTimeout(
+                f"Library watcher did not stop within {self._stop_timeout:.3f}s"
+            )
+        with self._lock:
+            if self._thread is thread:
+                self._thread = None
+                self._run_stop_event = None
+                self._run_wakeup = None
+                self._started = False
+        return True
 
     # ── Polling loop ─────────────────────────────────────────────
 
-    def _run(self) -> None:
-        while not self._stop_event.is_set():
-            if self._wakeup.wait(self._interval):
-                # ``stop()`` set the wakeup event; break out on the next check.
-                if self._stop_event.is_set():
+    def _run(
+        self, stop_event: threading.Event, wakeup: threading.Event
+    ) -> None:
+        while not stop_event.is_set():
+            if wakeup.wait(self._interval):
+                wakeup.clear()
+                if stop_event.is_set():
                     break
             if self._session.is_closed:
                 _log.info("Library watcher stopping: session closed for %s", self._session.root_str)
@@ -115,6 +159,24 @@ class LibraryWatcherService:
                 # on the next interval.
                 _log.exception("Library watcher scan failed for %s", self._session.root_str)
                 continue
+
+    def _enqueue_rescan(self) -> None:
+        if self._reconciliation_queue is None or self._session.is_closed:
+            return
+        try:
+            operation = getattr(self._session, "operation", None)
+            scope = operation() if callable(operation) else nullcontext()
+            with scope:
+                self._reconciliation_queue.enqueue_or_merge(
+                    path=self._session.root,
+                    reason="external_watch",
+                    operation_id=f"watch-{uuid4().hex}",
+                )
+        except Exception:
+            _log.exception(
+                "Failed to enqueue external watcher rescan for %s",
+                self._session.root_str,
+            )
 
     # ── Scanning ─────────────────────────────────────────────────
 
@@ -197,6 +259,7 @@ class LibraryWatcherService:
             )
 
         if changed and not baseline:
+            self._enqueue_rescan()
             get_event_bus().publish(FileSystemChanged(
                 library_root=self._session.root_str,
                 session_token=self._session.event_token,

@@ -87,7 +87,7 @@ LAN API routes are split into focused modules under `AssetsManager/lan/routes/` 
 | `websocket.py` | `/ws` | `WebSocketManager` |
 | `_helpers.py` / `_resource_urls.py` | Shared: `validate_path`, `get_auth_token`, `LanScopedServices`, `build_zip_async`, URL projection | — |
 
-`AssetsManager/lan/api.py` (360 lines) imports all handlers from `routes/` and registers them in `setup_routes()` (139 routes) plus the runtime realtime bridge (`on_invalidation` → `ws_manager.broadcast`). A2 business rules belong to application services: `TagService` owns tag-name validation, `ShareService` owns password/expiry/download-limit validation, and `AssetService` owns bounded directory-summary validation. LAN routes retain permission, JSON, `PathGuard`, and transport-normalization responsibilities, translate `ValidationError`/`DuplicateError` to HTTP 400/409 contracts, and preserve unrelated failures as 500. Desktop creates shares through `ShareCreationTask` → Runtime `ShareService` directly; LAN retains `/api/shares/*` management and `/s/{id}` remote links.
+`AssetsManager/lan/api.py` (360 lines) imports all handlers from `routes/` and registers them in `setup_routes()` (140 routes) plus the runtime realtime bridge (`on_invalidation` → `ws_manager.broadcast`). A2 business rules belong to application services: `TagService` owns tag-name validation, `ShareService` owns password/expiry/download-limit validation, and `AssetService` owns bounded directory-summary validation. LAN routes retain permission, JSON, `PathGuard`, and transport-normalization responsibilities, translate `ValidationError`/`DuplicateError` to HTTP 400/409 contracts, and preserve unrelated failures as 500. Desktop creates shares through `ShareCreationTask` → Runtime `ShareService` directly; LAN retains `/api/shares/*` management and `/s/{id}` remote links.
 
 > 完整路由表（方法+路径+权限+handler+服务）见 `docs/full-review/02-module-map.md` §7 与 LAN 审查素材。
 
@@ -114,7 +114,7 @@ Undo/redo stack management delegates to `UndoService` (`application/undo_service
 
 ## Database Migrations
 
-Per-library SQLite databases are migration-aware through `AssetsManager.core.db_migrations` (`CURRENT_SCHEMA_VERSION = 23`).
+Per-library SQLite databases are migration-aware through `AssetsManager.core.db_migrations` (`CURRENT_SCHEMA_VERSION = 31`). The executable migration list is authoritative; dated implementation and residual evidence is indexed by [`docs/full-review/00-INDEX.md`](full-review/00-INDEX.md).
 
 | Version | Name | Description |
 |---|---|---|

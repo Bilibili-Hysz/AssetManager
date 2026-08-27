@@ -6,6 +6,7 @@ from pathlib import Path
 
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.core.database import DatabaseManager
+from AssetsManager.core.path_resolver import root_identity
 from AssetsManager.domain.asset import IMAGE_EXTS, assert_under_root
 from AssetsManager.domain.errors import MissingPathError, PathEscapeError, ValidationError
 from AssetsManager.domain.event_bus import get_event_bus
@@ -24,8 +25,26 @@ class FavoriteService:
         connection_provider: ConnectionProvider | None = None,
         session: LibrarySession | None = None,
     ) -> None:
-        self._connection_provider = connection_provider
         self._session = session
+        self._root_identity = None
+        if isinstance(session, LibrarySession):
+            expected_provider = session.connection_for
+            provider = connection_provider or expected_provider
+            provider_self = getattr(provider, "__self__", None)
+            provider_func = getattr(provider, "__func__", None)
+            expected_func = getattr(expected_provider, "__func__", None)
+            if not (
+                provider == expected_provider
+                or (provider_self is session and provider_func is expected_func)
+            ):
+                raise ValueError(
+                    "FavoriteService connection provider does not belong to "
+                    "the LibrarySession"
+                )
+            self._connection_provider = expected_provider
+            self._root_identity = session.context.root_identity
+        else:
+            self._connection_provider = connection_provider
 
     @staticmethod
     def normalize_owner_key(owner_key: str) -> str:
@@ -46,6 +65,19 @@ class FavoriteService:
         db_conn: sqlite3.Connection | None,
     ) -> sqlite3.Connection:
         root = Path(library_root).resolve()
+        if isinstance(self._session, LibrarySession):
+            requested = root_identity(root, strict=False)
+            captured = self._root_identity
+            if captured is None or requested.map_key != captured.map_key:
+                raise ValueError(
+                    "FavoriteService library_root does not match the bound LibrarySession"
+                )
+            expected = self._session.connection_for(captured)
+            if db_conn is not None and db_conn is not expected:
+                raise ValueError(
+                    "FavoriteService connection does not belong to the bound LibrarySession"
+                )
+            return expected
         if db_conn is not None:
             return DatabaseManager.validate_connection_owner(
                 root, db_conn, allow_unmanaged=True

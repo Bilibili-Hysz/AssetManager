@@ -207,6 +207,10 @@ def test_finish_close_times_out_with_stuck_operation(monkeypatch, tmp_path, capl
     assert session.is_closed
     assert "timed out" in caplog.text
 
+    # The low-level close path preserves liveness while exposing timeout to
+    # the canonical owner teardown through the explicit return value.
+    assert session._finish_close() is False
+
     # Once fully closed, new operation leases are rejected.
     with pytest.raises(RuntimeError):
         with session.operation():

@@ -606,6 +606,7 @@ def test_public_shop_catalog_route_returns_unified_disabled_response_without_res
     assert json.loads(response.body) == {
         "error": "Commerce is disabled",
         "code": "feature_disabled",
+        "details": {},
     }
 
 

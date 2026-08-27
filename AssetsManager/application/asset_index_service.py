@@ -111,6 +111,8 @@ class AssetIndexPublishResult:
 _BUSY_RETRY_LIMIT = 2
 _BUSY_RETRY_BASE_DELAY = 0.01
 
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x0400
+
 
 def _is_busy_error(exc: OperationalError) -> bool:
     message = str(exc).lower()
@@ -128,7 +130,21 @@ def _is_link_or_reparse(entry: object) -> bool:
         if callable(is_symlink) and is_symlink():
             return True
         is_junction = getattr(entry, "is_junction", None)
-        return bool(callable(is_junction) and is_junction())
+        if callable(is_junction) and is_junction():
+            return True
+        if os.name == "nt":
+            # os.DirEntry has no is_junction, so junctions/mount points must
+            # be caught through their reparse attribute; they never set the
+            # symlink tag that is_symlink() reports.
+            stat_method = getattr(entry, "stat", None)
+            if callable(stat_method):
+                info = stat_method(follow_symlinks=False)
+                if (
+                    int(getattr(info, "st_file_attributes", 0))
+                    & _FILE_ATTRIBUTE_REPARSE_POINT
+                ):
+                    return True
+        return False
     except OSError:
         return True
 

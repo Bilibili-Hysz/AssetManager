@@ -1,6 +1,8 @@
 """L3 tests — symmetric shutdown for LAN-owned threads and executors."""
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import threading
 import time
 from pathlib import Path
@@ -73,6 +75,59 @@ async def test_build_zip_async_falls_back_for_legacy_apps_without_executor(tmp_p
     result = await build_zip_async(request, [], zip_path)
     assert result == zip_path
     assert Path(zip_path).exists()
+
+
+@pytest.mark.anyio
+async def test_build_zip_async_cleans_path_after_cancellation(tmp_path, monkeypatch):
+    from AssetsManager.lan.routes import _helpers
+
+    app = web.Application()
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    app[ZIP_EXECUTOR_APP_KEY] = executor
+    request = make_mocked_request("POST", "/", app=app)
+    zip_path = str(tmp_path / "cancelled.zip")
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+
+    def blocking_build(_targets, path):
+        started.set()
+        assert release.wait(5)
+        Path(path).write_bytes(b"zip")
+        finished.set()
+        return path
+
+    monkeypatch.setattr(_helpers, "build_zip_sync", blocking_build)
+    task = asyncio.create_task(build_zip_async(request, [], zip_path))
+    try:
+        assert await asyncio.to_thread(started.wait, 5)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        release.set()
+        assert await asyncio.to_thread(finished.wait, 5)
+        executor.shutdown(wait=True)
+        await asyncio.sleep(0)
+        assert not Path(zip_path).exists()
+    finally:
+        release.set()
+        executor.shutdown(wait=True, cancel_futures=True)
+
+
+@pytest.mark.anyio
+async def test_build_zip_async_cleans_path_when_executor_rejects(tmp_path):
+    app = web.Application()
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    app[ZIP_EXECUTOR_APP_KEY] = executor
+    request = make_mocked_request("POST", "/", app=app)
+    zip_path = tmp_path / "rejected.zip"
+    zip_path.write_bytes(b"temporary")
+    executor.shutdown(wait=True)
+
+    with pytest.raises(RuntimeError):
+        await build_zip_async(request, [], str(zip_path))
+
+    assert not zip_path.exists()
 
 
 # ── Gallery build loop honors _closed after pre_wait ────────────────

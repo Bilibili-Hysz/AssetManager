@@ -284,15 +284,14 @@ class LibrarySession:
     def _invalidate_resources(self) -> None:
         self.context._invalidate()
 
-    def _finish_close(self) -> None:
+    def _finish_close(self) -> bool:
         """Drain existing leases and clear owned caches once.
 
         The drain is bounded (``_FINISH_CLOSE_TIMEOUT_SECONDS``) so a stuck
         worker — one that ignores its cancellation token — cannot freeze the
-        UI thread indefinitely.  On timeout the session still closes: liveness
-        is invalidated right after, so any lease holder that later touches
-        session resources gets ``RuntimeError`` instead of a closed SQLite
-        connection.
+        UI thread indefinitely.  The return value distinguishes a drained
+        session from a timeout so the owning lifecycle service can refuse to
+        close the database and root lock prematurely.
         """
         if self.has_current_thread_operation:
             raise RuntimeError("Cannot close a LibrarySession from an active operation")
@@ -303,7 +302,7 @@ class LibrarySession:
                 timeout=_FINISH_CLOSE_TIMEOUT_SECONDS,
             )
             if self._cache_cleared:
-                return
+                return drained
             object.__setattr__(self, "_cache_cleared", True)
             active_remaining = self._active_operations
         if not drained:
@@ -314,6 +313,7 @@ class LibrarySession:
         tag_store = object.__getattribute__(self.context, "tag_store")
         if hasattr(tag_store, "clear_cache"):
             tag_store.clear_cache()
+        return drained
 
     def _close_direct(self) -> None:
         """Reject new operations and drain existing ones without service locks."""

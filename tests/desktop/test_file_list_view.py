@@ -1083,7 +1083,10 @@ def test_directory_size_result_skips_redundant_subtitle_emission():
     model.dataChanged.emit.assert_not_called()
 
 
-def test_external_drop_uses_scoped_file_operation_service(tmp_path, monkeypatch):
+def test_external_drop_defers_copy_to_background_worker(tmp_path, monkeypatch):
+    """A drop must classify sources on the UI thread, then submit the copy to
+    the existing background operation mode instead of running it synchronously
+    inside the drop handler."""
     from unittest.mock import Mock
 
     from AssetsManager.panels.file_list._base import FileListPanel
@@ -1096,17 +1099,16 @@ def test_external_drop_uses_scoped_file_operation_service(tmp_path, monkeypatch)
     bootstrap = ApplicationBootstrap()
     app.setProperty("bootstrap", bootstrap)
     panel = FileListPanel()
+    queued = []
     try:
         scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
         panel.set_scoped_services(scoped)
         panel.navigate_to(str(library), set_root=True)
         panel._post_refresh = Mock()
         panel._load_visible = Mock()
+        panel._run_in_background = lambda func, *args, on_done=None: queued.append((func, on_done))
 
         class DropEvent:
-            def __init__(self, *paths):
-                self.paths = paths
-
             def mimeData(self):
                 class MimeData:
                     def urls(self):
@@ -1116,19 +1118,24 @@ def test_external_drop_uses_scoped_file_operation_service(tmp_path, monkeypatch)
                         return [Url()]
                 return MimeData()
 
-        copied = Mock(return_value=type("Result", (), {"errors": ()})())
+        copied = Mock(
+            return_value=type("Result", (), {"errors": (), "changed_paths": (), "warnings": ()})()
+        )
         monkeypatch.setattr(scoped.file_operation_service, "copy_to_directory", copied)
 
         assert panel._on_drop(DropEvent()) is True
-        copied.assert_called_once_with(
-            [str(external)], str(library), library_root=str(library),
-        )
+        # The copy must be deferred to the background pool — the drop handler
+        # returns before any service call runs on the UI thread.
+        copied.assert_not_called()
+        assert queued
 
-        copied.reset_mock()
-        assert FileListPanel._on_drop(panel, DropEvent()) is True
+        func, on_done = queued.pop()
+        func()
         copied.assert_called_once_with(
             [str(external)], str(library), library_root=str(library),
         )
+        on_done()
+        panel._post_refresh.assert_called_once()
     finally:
         panel.shutdown()
         app.setProperty("bootstrap", None)
@@ -1136,6 +1143,9 @@ def test_external_drop_uses_scoped_file_operation_service(tmp_path, monkeypatch)
 
 
 def test_in_library_drop_moves_and_records_only_successful_undo_entries(tmp_path, monkeypatch):
+    """In-library drop runs its move/undo work through the background mode:
+    successful moves are recorded for undo, per-item failures surface through
+    the operation feedback after the worker completes."""
     from unittest.mock import Mock
 
     from AssetsManager.application.file_operation_service import (
@@ -1164,6 +1174,7 @@ def test_in_library_drop_moves_and_records_only_successful_undo_entries(tmp_path
         panel._post_refresh = Mock()
         panel._load_visible = Mock()
         panel._undo_svc = Mock()
+        panel._run_in_background = lambda func, *args, on_done=None: (func(), on_done and on_done())
 
         class DropEvent:
             def __init__(self, *paths):
@@ -2806,6 +2817,7 @@ def test_same_directory_drop_is_filtered_before_any_service_call(tmp_path, monke
         panel.set_scoped_services(scoped)
         panel.navigate_to(str(library), set_root=True)
         panel._post_refresh = Mock()
+        panel._run_in_background = Mock()
         move = Mock()
         copy = Mock()
         monkeypatch.setattr(scoped.file_operation_service, "move_to_directory", move)
@@ -2826,6 +2838,7 @@ def test_same_directory_drop_is_filtered_before_any_service_call(tmp_path, monke
         assert panel._on_drop(DropEvent()) is False
         move.assert_not_called()
         copy.assert_not_called()
+        panel._run_in_background.assert_not_called()
     finally:
         panel.shutdown()
         app.setProperty("bootstrap", None)
@@ -2850,12 +2863,14 @@ def test_drop_classifies_library_and_external_sources_by_resolved_path(tmp_path,
     bootstrap = ApplicationBootstrap()
     app.setProperty("bootstrap", bootstrap)
     panel = FileListPanel()
+    queued = []
     try:
         scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
         panel.set_scoped_services(scoped)
         panel.navigate_to(str(library), set_root=True)
         panel._post_refresh = Mock()
         panel._load_visible = Mock()
+        panel._run_in_background = lambda func, *args, on_done=None: queued.append((func, on_done))
         move = Mock(return_value=FileOperationResult(()))
         copy = Mock(return_value=FileOperationResult(()))
         monkeypatch.setattr(scoped.file_operation_service, "move_to_directory", move)
@@ -2877,12 +2892,21 @@ def test_drop_classifies_library_and_external_sources_by_resolved_path(tmp_path,
                 return MimeData()
 
         assert panel._on_drop(DropEvent()) is True
+        # Classification happened on the UI thread: the worker is queued but
+        # neither service call may run synchronously during the drop.
+        assert queued
+        move.assert_not_called()
+        copy.assert_not_called()
+
+        func, on_done = queued.pop()
+        func()
         assert move.call_args_list == [
             (([str(asset)], str(library)), {"library_root": str(library)}),
         ]
         assert copy.call_args_list == [
             (([str(external)], str(library)), {"library_root": str(library)}),
         ]
+        on_done()
     finally:
         panel.shutdown()
         app.setProperty("bootstrap", None)
@@ -2909,6 +2933,7 @@ def test_drop_service_value_error_is_reported_through_feedback(tmp_path, monkeyp
         panel.navigate_to(str(library), set_root=True)
         panel._post_refresh = Mock()
         panel._load_visible = Mock()
+        panel._run_in_background = lambda func, *args, on_done=None: (func(), on_done and on_done())
         move = Mock(side_effect=ValueError("Path is outside library root"))
         monkeypatch.setattr(scoped.file_operation_service, "move_to_directory", move)
 
@@ -2924,6 +2949,173 @@ def test_drop_service_value_error_is_reported_through_feedback(tmp_path, monkeyp
 
         assert panel._on_drop(DropEvent()) is True
         assert "failed" in panel._operation_feedback.text().lower()
+    finally:
+        panel.shutdown()
+        app.setProperty("bootstrap", None)
+        app.processEvents()
+
+
+def test_drop_unexpected_service_error_reports_failed_feedback(tmp_path, monkeypatch):
+    library = tmp_path / "library"
+    source_dir = library / "source"
+    source_dir.mkdir(parents=True)
+    source = source_dir / "asset.txt"
+    source.write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    panel = FileListPanel()
+    queued = []
+    try:
+        scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
+        panel.set_scoped_services(scoped)
+        panel.navigate_to(str(library), set_root=True)
+        panel._post_refresh = Mock()
+        panel._load_visible = Mock()
+        panel._request_operation_selection = Mock()
+        panel._run_in_background = lambda func, *args, on_done=None: queued.append((func, on_done))
+        move = Mock(side_effect=RuntimeError("drop service failed"))
+        monkeypatch.setattr(scoped.file_operation_service, "move_to_directory", move)
+
+        class DropEvent:
+            def mimeData(self):
+                class MimeData:
+                    def urls(self):
+                        class Url:
+                            def toLocalFile(self):
+                                return str(source)
+                        return [Url()]
+                return MimeData()
+
+        assert panel._on_drop(DropEvent()) is True
+        func, on_done = queued.pop()
+        func()
+        on_done()
+
+        move.assert_called_once()
+        assert "failed" in panel._operation_feedback.text().lower()
+        panel._request_operation_selection.assert_not_called()
+        panel._post_refresh.assert_called_once()
+        panel._load_visible.assert_called_once()
+    finally:
+        panel.shutdown()
+        app.setProperty("bootstrap", None)
+        app.processEvents()
+
+
+def test_drop_closed_session_before_worker_start_is_not_zero_success(tmp_path, monkeypatch):
+    library = tmp_path / "library"
+    source_dir = library / "source"
+    source_dir.mkdir(parents=True)
+    source = source_dir / "asset.txt"
+    source.write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    panel = FileListPanel()
+    queued = []
+    try:
+        session = bootstrap.library_service.open_session(library)
+        scoped = bootstrap.runtime_for(session).services
+        panel.set_scoped_services(scoped)
+        panel.navigate_to(str(library), set_root=True)
+        panel._post_refresh = Mock()
+        panel._load_visible = Mock()
+        panel._request_operation_selection = Mock()
+        panel._show_operation_feedback = Mock()
+        panel._run_in_background = lambda func, *args, on_done=None: queued.append((func, on_done))
+        move = Mock()
+        monkeypatch.setattr(scoped.file_operation_service, "move_to_directory", move)
+
+        class DropEvent:
+            def mimeData(self):
+                class MimeData:
+                    def urls(self):
+                        class Url:
+                            def toLocalFile(self):
+                                return str(source)
+                        return [Url()]
+                return MimeData()
+
+        assert panel._on_drop(DropEvent()) is True
+        func, on_done = queued.pop()
+        session.close()
+        func()
+        on_done()
+
+        move.assert_not_called()
+        panel._post_refresh.assert_not_called()
+        panel._load_visible.assert_not_called()
+        panel._request_operation_selection.assert_not_called()
+        assert panel._show_operation_feedback.call_count == 1
+    finally:
+        panel.shutdown()
+        app.setProperty("bootstrap", None)
+        app.processEvents()
+
+
+def test_drop_worker_done_skips_feedback_and_refresh_after_library_switch(tmp_path, monkeypatch):
+    """A queued drop worker keeps its originating service, and its completion
+    callback must not refresh or report feedback once the panel has switched
+    to another library session (same cancellation contract as paste/delete)."""
+    from unittest.mock import Mock
+
+    from AssetsManager.application.file_operation_service import FileOperationResult
+
+    library_a = tmp_path / "library-a"
+    library_b = tmp_path / "library-b"
+    library_a.mkdir()
+    library_b.mkdir()
+    source_dir = library_a / "source"
+    source_dir.mkdir()
+    source = source_dir / "asset.txt"
+    source.write_text("asset")
+    app = QApplication.instance() or QApplication([])
+    bootstrap = ApplicationBootstrap()
+    app.setProperty("bootstrap", bootstrap)
+    panel = FileListPanel()
+    queued = []
+    try:
+        scoped_a = bootstrap.runtime_for(bootstrap.library_service.open_session(library_a)).services
+        scoped_b = bootstrap.runtime_for(bootstrap.library_service.open_session(library_b)).services
+        moved = library_a / "moved.txt"
+        move_a = Mock(return_value=FileOperationResult((moved,)))
+        monkeypatch.setattr(scoped_a.file_operation_service, "move_to_directory", move_a)
+        panel.set_scoped_services(scoped_a)
+        panel.navigate_to(str(library_a), set_root=True)
+        panel._post_refresh = Mock()
+        panel._load_visible = Mock()
+        panel._operation_feedback.clear()
+        panel._operation_feedback.hide()
+        panel._run_in_background = lambda func, *args, on_done=None: queued.append((func, on_done))
+
+        class DropEvent:
+            def mimeData(self):
+                class MimeData:
+                    def urls(self):
+                        class Url:
+                            def toLocalFile(self):
+                                return str(source)
+                        return [Url()]
+                return MimeData()
+
+        assert panel._on_drop(DropEvent()) is True
+        func, on_done = queued.pop()
+
+        # Switch the panel to another library before the worker completes, as
+        # `prepare_library_switch` / navigation would.
+        panel.set_scoped_services(scoped_b)
+        func()
+        on_done()
+
+        # The move still ran against the captured originating service, but the
+        # completion callback must not touch the (now foreign) panel state.
+        move_a.assert_called_once_with(
+            [str(source)], str(library_a.resolve()),
+            library_root=str(library_a),
+        )
+        panel._post_refresh.assert_not_called()
+        assert not panel._operation_feedback.isVisible()
     finally:
         panel.shutdown()
         app.setProperty("bootstrap", None)
@@ -3079,3 +3271,357 @@ def test_file_list_chrome_styles_use_theme_tokens_and_states():
     nav_css = FileListPanel._nav_button_css(t)
     assert "QPushButton:hover" in nav_css
     assert "QPushButton:pressed" in nav_css
+
+
+# ── Folder cover scanning (P0-3): async, generation-guarded, bounded ──────
+
+
+def _make_png_file(path):
+    img = QImage(8, 8, QImage.Format.Format_ARGB32)
+    img.fill(0xFF0000FF)
+    assert img.save(str(path), "PNG")
+
+
+def _wait_for_cover_cache(panel, dir_path, timeout=5.0):
+    """Pump the event loop until the async cover result lands in the cache."""
+    app = QApplication.instance() or QApplication([])
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        app.processEvents()
+        if dir_path in panel._first_image_cache:
+            return True
+        time.sleep(0.005)
+    app.processEvents()
+    return dir_path in panel._first_image_cache
+
+
+def test_folder_cover_cache_hit_does_not_submit_a_scan(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    panel = FileListPanel()
+    try:
+        cover = tmp_path / "cover.png"
+        _make_png_file(cover)
+        panel._first_image_cache[str(tmp_path)] = str(cover)
+
+        result = panel._first_image_cached(str(tmp_path))
+
+        # Cache hits keep the synchronous fast path and never queue a worker.
+        assert result == str(cover)
+        assert panel._pending_cover_scans == set()
+        assert panel._active_cover_tasks == {}
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_folder_cover_result_is_delivered_on_the_gui_thread(tmp_path):
+    import threading
+
+    class TrackingPanel(FileListPanel):
+        def __init__(self):
+            super().__init__()
+            self.completion_threads: list[int] = []
+
+        def _on_cover_scan_result(self, *args):
+            self.completion_threads.append(threading.get_ident())
+            super()._on_cover_scan_result(*args)
+
+    app = QApplication.instance() or QApplication([])
+    panel = TrackingPanel()
+    entered = threading.Event()
+    release = threading.Event()
+    worker_threads: list[int] = []
+
+    def blocked_scan(_dir_path):
+        worker_threads.append(threading.get_ident())
+        entered.set()
+        release.wait(5)
+        return str(tmp_path / "cover.png")
+
+    from AssetsManager.panels.file_list import _base_logic as _bl
+    original = _bl._first_image_in
+    _bl._first_image_in = blocked_scan
+    try:
+        cover = tmp_path / "cover.png"
+        _make_png_file(cover)
+        gui_thread = threading.get_ident()
+
+        assert panel._first_image_cached(str(tmp_path)) is None
+        assert entered.wait(5), "worker should start the cover scan"
+        assert worker_threads == [worker_threads[0]]
+        assert worker_threads[0] != gui_thread
+
+        release.set()
+        assert _wait_for_cover_cache(panel, str(tmp_path))
+        assert panel.completion_threads == [gui_thread]
+    finally:
+        release.set()
+        _bl._first_image_in = original
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_folder_cover_miss_schedules_async_scan_and_returns_immediately(tmp_path):
+    import threading
+
+    app = QApplication.instance() or QApplication([])
+    panel = FileListPanel()
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocked_scan(_dir_path):
+        entered.set()
+        release.wait(5)
+        return str(tmp_path / "cover.png")
+
+    from AssetsManager.panels.file_list import _base_logic as _bl
+    original = _bl._first_image_in
+    _bl._first_image_in = blocked_scan
+    try:
+        cover = tmp_path / "cover.png"
+        _make_png_file(cover)
+
+        started = time.monotonic()
+        result = panel._first_image_cached(str(tmp_path))
+        elapsed = time.monotonic() - started
+
+        # The miss must not scan on the UI thread: the worker is still blocked,
+        # yet the call already returned and the request was queued.
+        assert result is None
+        assert str(tmp_path) in panel._pending_cover_scans
+        assert elapsed < 0.5
+
+        assert entered.wait(5), "worker should start the scan in the background"
+        release.set()
+        assert _wait_for_cover_cache(panel, str(tmp_path))
+        assert panel._first_image_cache[str(tmp_path)] == str(cover)
+        assert str(tmp_path) not in panel._pending_cover_scans
+    finally:
+        release.set()
+        _bl._first_image_in = original
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_folder_cover_miss_without_images_caches_none(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    panel = FileListPanel()
+    try:
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        (empty / "readme.txt").write_text("x")
+
+        result = panel._first_image_cached(str(empty))
+
+        assert result is None
+        assert _wait_for_cover_cache(panel, str(empty))
+        assert panel._first_image_cache[str(empty)] is None
+        # Second read is served from cache and no new scan is queued.
+        assert panel._first_image_cached(str(empty)) is None
+        assert panel._pending_cover_scans == set()
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_stale_cover_result_after_switch_is_discarded(tmp_path):
+    import threading
+
+    app = QApplication.instance() or QApplication([])
+    panel = FileListPanel()
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocked_scan(_dir_path):
+        entered.set()
+        release.wait(5)
+        return str(tmp_path / "cover.png")
+
+    from AssetsManager.panels.file_list import _base_logic as _bl
+    original = _bl._first_image_in
+    _bl._first_image_in = blocked_scan
+    try:
+        _make_png_file(tmp_path / "cover.png")
+        panel._first_image_cached(str(tmp_path))
+        assert entered.wait(5), "worker should be mid-scan before the switch"
+        assert str(tmp_path) in panel._pending_cover_scans
+
+        # Simulate a quick navigation / library switch before the scan lands.
+        panel._invalidate_cover_scans()
+        assert panel._pending_cover_scans == set()
+
+        release.set()
+        panel._drain_cover_scan_pool()
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.005)
+        app.processEvents()
+
+        # The stale result must never reach the cache or trigger a refresh.
+        assert str(tmp_path) not in panel._first_image_cache
+        assert panel._active_cover_tasks == {}
+    finally:
+        release.set()
+        _bl._first_image_in = original
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_folder_cover_pending_set_is_bounded(tmp_path):
+    import threading
+
+    app = QApplication.instance() or QApplication([])
+    panel = FileListPanel()
+    entered = threading.Event()
+    hold = threading.Event()
+
+    def blocked_scan(_dir_path):
+        entered.set()
+        hold.wait(5)
+        return None
+
+    from AssetsManager.panels.file_list import _base_logic as _bl
+    original = _bl._first_image_in
+    _bl._first_image_in = blocked_scan
+    try:
+        limit = _bl._COVER_SCAN_QUEUE_LIMIT
+        for i in range(limit + 10):
+            d = tmp_path / f"d{i}"
+            d.mkdir()
+            panel._first_image_cached(str(d))
+
+        # Requests are deduplicated and the pending set stays bounded.
+        assert len(panel._pending_cover_scans) <= limit
+        panel._first_image_cached(str(tmp_path / "d0"))
+        assert len(panel._pending_cover_scans) <= limit
+    finally:
+        hold.set()
+        _bl._first_image_in = original
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_folder_cover_cancel_and_drain_are_bounded(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    panel = FileListPanel()
+    try:
+        dirs = []
+        for i in range(6):
+            d = tmp_path / f"d{i}"
+            d.mkdir()
+            _make_png_file(d / "cover.png")
+            dirs.append(d)
+        for d in dirs:
+            panel._first_image_cached(str(d))
+        assert len(panel._pending_cover_scans) == 6
+
+        pool = panel._cover_scan_pool
+        assert pool is not None
+        assert pool.max_thread_count == 1  # low-concurrency dedicated pool
+
+        started = time.monotonic()
+        panel.shutdown()  # must cancel + bound-drain without hanging the UI thread
+        elapsed = time.monotonic() - started
+
+        assert elapsed < 5.0
+        assert pool.active_thread_count() == 0
+        assert panel._pending_cover_scans == set()
+        # A shutdown panel never queues new cover work.
+        panel._first_image_cached(str(tmp_path))
+        assert panel._pending_cover_scans == set()
+    finally:
+        app.processEvents()
+
+
+def test_folder_cover_shutdown_reaps_a_timed_out_pool(tmp_path, monkeypatch):
+    import threading
+
+    from AssetsManager.core.workers import retained_pool_count
+    from AssetsManager.panels.file_list import _base_logic as _bl
+
+    app = QApplication.instance() or QApplication([])
+    panel = FileListPanel()
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocking_scan(_dir_path):
+        entered.set()
+        release.wait(10)
+        return None
+
+    monkeypatch.setattr(_bl, "_first_image_in", blocking_scan)
+    original_close = panel._close_cover_scan_pool
+    monkeypatch.setattr(panel, "_close_cover_scan_pool", lambda: original_close(100))
+    try:
+        panel._first_image_cached(str(tmp_path))
+        assert entered.wait(5), "cover scan should reach the worker"
+
+        initial_retained = retained_pool_count()
+        started = time.monotonic()
+        panel.shutdown()
+        assert time.monotonic() - started < 1.0
+        assert panel._cover_scan_pool is None
+        assert retained_pool_count() == initial_retained + 1
+
+        release.set()
+        assert _wait_for_cover_cache(panel, str(tmp_path), timeout=0.1) is False
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and retained_pool_count() != initial_retained:
+            app.processEvents()
+            time.sleep(0.005)
+        assert retained_pool_count() == initial_retained
+    finally:
+        release.set()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_cover_result_requests_only_its_visible_directory_row():
+    panel = type("_Panel", (), {})()
+    panel._model = Mock()
+    panel._model.is_shutdown = False
+    panel._view_mode = "Grid"
+    panel._grid_widget = type("_Grid", (), {"height": lambda _self: 300, "_scroll_y": 0})()
+    panel._grid_layout = type("_Layout", (), {
+        "visible_rows": lambda _self, _scroll, _height: [1],
+        "columns": 2,
+    })()
+    panel._loader = Mock()
+    panel._model.rowCount = Mock(return_value=3)
+    panel._model.row_for_path = Mock(return_value=1)
+    entry = Mock()
+    entry.is_dir.return_value = True
+    panel._model.entry_at = Mock(return_value=entry)
+
+    FileListPanel._request_cover_thumbnail(
+        panel, "/library/folder-a", "/library/folder-a/cover.png",
+    )
+    panel._loader.request.assert_called_once_with(
+        1, "/library/folder-a/cover.png", priority=0, item_path="/library/folder-a",
+    )
+
+
+def test_cover_result_ignores_directory_no_longer_in_model():
+    panel = type("_Panel", (), {})()
+    panel._model = Mock()
+    panel._model.is_shutdown = False
+    panel._view_mode = "Grid"
+    panel._grid_widget = type("_Grid", (), {"height": lambda _self: 300, "_scroll_y": 0})()
+    panel._grid_layout = type("_Layout", (), {
+        "visible_rows": lambda _self, _scroll, _height: [1],
+        "columns": 2,
+    })()
+    panel._loader = Mock()
+    panel._model.rowCount = Mock(return_value=3)
+    panel._model.row_for_path = Mock(return_value=-1)
+
+    FileListPanel._request_cover_thumbnail(panel, "/library/gone", "/library/gone/cover.png")
+
+    panel._loader.request.assert_not_called()

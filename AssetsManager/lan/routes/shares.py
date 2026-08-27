@@ -14,7 +14,9 @@ from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.lan.path_guard import PathGuardError, assert_under_root, reject_path_text
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import LAN_APP_KEY, get_lan, get_share_service, get_request_principal, get_share_token, require_permission, sanitize_filename, set_share_cookie, set_request_principal, validate_path
+from AssetsManager.lan.routes.image import BLURRED_PREVIEW_SIZE, serve_verified_image
 from AssetsManager.lan.principal import principal_for_request
+from AssetsManager.lan.safe_open import SafeOpenError, read_safe_file
 from AssetsManager.lan.utils import get_local_ip
 
 _log = logging.getLogger(__name__)
@@ -148,7 +150,15 @@ async def handle_create_share(request):
     services = getattr(lan, "services", None)
     activity_log = getattr(services, "activity_log", None)
     if activity_log is not None:
-        activity_log.add(principal.display_name if principal else None, "share", "created share link", ip=request.remote or "unknown")
+        # Persist the share activity off the event loop; ordering and
+        # swallow-on-error semantics live inside ActivityLog.add itself.
+        await asyncio.to_thread(
+            activity_log.add,
+            principal.display_name if principal else None,
+            "share",
+            "created share link",
+            ip=request.remote or "unknown",
+        )
 
     return web.json_response(result)
 
@@ -241,7 +251,10 @@ async def handle_verify_share_password(request):
                 extra={"retry_after": retry_after},
                 headers={"Retry-After": str(retry_after)},
             )
-        if not share_svc.verify_password(share_id, password):
+        # L2: both failure and success paths run a full PBKDF2 verification,
+        # so it belongs in a worker thread; the cheap lockout accounting on
+        # either side stays ordered on the event loop.
+        if not await asyncio.to_thread(share_svc.verify_password, share_id, password):
             share_svc.record_password_failure(share_id)
             return error_response("Invalid password", status=401, code="unauthorized")
         share_svc.reset_password_failures(share_id)
@@ -301,13 +314,20 @@ async def handle_share_download(request):
             status = 400
             return error_response("Not a file", status=status, code="bad_request")
 
+        try:
+            body, _identity = await asyncio.to_thread(
+                read_safe_file, lan.library_root, target,
+            )
+        except (SafeOpenError, OSError, ValueError):
+            status = 404
+            return error_response("Share not found", status=status, code="not_found")
         set_request_principal(request, principal_for_request("share"))
-        response = web.FileResponse(
-            target,
+        response = web.Response(
+            body=body,
             headers={"Content-Disposition": _content_disposition_filename(target.name)},
         )
 
-        # M2: count the download only after the response is fully prepared
+        # M2: count the download only after the response bytes are prepared
         # (FileResponse construction verifies the file is readable), so a
         # client that aborts mid-transfer still consumes quota but a failed
         # response never does.  The DB increment is atomic against
@@ -378,12 +398,14 @@ async def handle_share_preview(request):
         return error_response("File not found in share", status=404, code="not_found")
 
     if target.suffix.lower() not in _SAFE_IMAGE_EXTS:
-        return error_response("Not an image", status=400, code="bad_request")
+        return web.Response(status=404)
 
     set_request_principal(request, principal_for_request("share"))
-    return web.FileResponse(
+    return await serve_verified_image(
+        request,
         target,
-        headers={"X-Content-Type-Options": "nosniff"},
+        max_size=BLURRED_PREVIEW_SIZE,
+        public=False,
     )
 
 

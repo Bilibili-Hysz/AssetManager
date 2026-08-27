@@ -6,6 +6,7 @@ eliminating main-thread format conversion. Bake depth limited by sidebar cfg.
 import logging
 import os
 import contextlib
+import secrets
 import threading
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
@@ -13,12 +14,26 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
-from PySide6.QtCore import Qt, QSize, Signal, QObject, QRunnable, QThreadPool, QMutex
+from PySide6.QtCore import (
+    Qt, Signal, QObject, QRunnable, QThreadPool, QMutex,
+    QByteArray, QBuffer, QIODevice,
+)
 from PySide6.QtGui import QImage, QImageReader
 
 from AssetsManager.application.thumbnail_service import (
+    MAX_THUMBNAIL_SOURCE_BYTES,
     ThumbnailService,
     thumbnail_cache_key,
+)
+from AssetsManager.core.file_snapshot import FileIdentity, read_snapshot
+from AssetsManager.core.thumbnail_key import (
+    WEBP_RENDER_PROFILES,
+    legacy_thumbnail_cache_key,
+    profiled_thumbnail_cache_key_v3,
+)
+from AssetsManager.application.thumbnail_cache_lifecycle import (
+    cache_owner_lock,
+    remove_artifacts,
 )
 from AssetsManager.core.performance import PerformanceRecorder
 from AssetsManager.panels.file_list._common import IMAGE_EXTS, VIDEO_EXTS
@@ -99,6 +114,30 @@ def _bake_max_depth(lib_root: str) -> int:
         return 2
 
 
+def _read_qimage_bytes(body: bytes, max_size: int) -> QImage | None:
+    """Decode one captured image body without reopening its source path."""
+    data = QByteArray(body)
+    buffer = QBuffer()
+    buffer.setData(data)
+    if not buffer.open(QIODevice.OpenModeFlag.ReadOnly):
+        return None
+    try:
+        reader = QImageReader(buffer)
+        reader.setAutoTransform(True)
+        size = reader.size()
+        if not size.isValid():
+            return None
+        if max_size >= 0 and (size.width() > max_size or size.height() > max_size):
+            reader.setScaledSize(size.scaled(
+                max_size, max_size, Qt.AspectRatioMode.KeepAspectRatio
+            ))
+        with _suppress_libpng_warnings():
+            image = reader.read()
+        return None if image.isNull() else image
+    finally:
+        buffer.close()
+
+
 @contextlib.contextmanager
 def _suppress_libpng_warnings():
     # Process-wide stderr (fd 2) redirection: QImageReader's libpng warnings
@@ -149,58 +188,78 @@ class _LoadTask(QRunnable):
 
 
 class _ExtractVideoFrameTask(QRunnable):
-    """Runs ffmpeg first-frame extraction on the dedicated ffmpeg pool.
+    """Runs ffmpeg first-frame extraction on the dedicated ffmpeg pool."""
 
-    The subprocess never blocks one of the loader's own worker threads, so a
-    slow video can not starve concurrent image thumbnails.
-    """
-
-    def __init__(self, loader, source_path: str, frame_path: str, runtime: _Runtime):
+    def __init__(self, loader, source_path: str, body: bytes, frame_path: str, runtime: _Runtime):
         super().__init__()
         self._loader = loader
         self._source_path = source_path
+        self._body = body
         self._frame_path = frame_path
         self._runtime = runtime
 
     def run(self):
+        frame = Path(self._frame_path)
+        ok = False
         try:
-            ok = ThumbnailService._extract_video_frame(
-                Path(self._source_path), Path(self._frame_path)
-            )
+            if not self._loader._is_current_cache_epoch(self._runtime):
+                return
+            with cache_owner_lock(frame.parent):
+                if not self._loader._is_current_cache_epoch(self._runtime):
+                    return
+                ok = ThumbnailService._extract_video_frame_from_bytes(
+                    self._body, Path(self._source_path).suffix, frame
+                )
+                if ok and not self._loader._is_current_cache_epoch(self._runtime):
+                    try:
+                        frame.unlink()
+                    except OSError:
+                        pass
+                    return
         except Exception:
             _log.exception("Video frame extraction failed: %s", self._source_path)
             ok = False
-        if ok:
+        if ok and self._loader._is_current_cache_epoch(self._runtime):
             self._loader._on_video_frame_extracted(
                 self._source_path, self._frame_path, self._runtime
             )
+        elif ok:
+            return
         else:
             self._loader._mark_failed(self._source_path, self._runtime)
 
 
 class _BakeTask(QRunnable):
-    def __init__(self, loader, key, source_path, bake_size, runtime):
+    def __init__(
+        self, loader, key, source_path, bake_size, runtime, *,
+        body: bytes | None = None, source_identity: FileIdentity | None = None,
+    ):
         super().__init__()
         self._loader = loader
         self._key = key
         self._source_path = source_path
+        self._body = body
         self._bake_size = bake_size
         self._runtime = runtime
+        self._source_identity = source_identity
 
     def run(self):
         try:
-            reader = QImageReader(self._source_path)
-            reader.setAutoTransform(True)
-            sz = reader.size()
-            if sz.isValid() and (sz.width() > self._bake_size or sz.height() > self._bake_size):
-                reader.setScaledSize(sz.scaled(QSize(self._bake_size, self._bake_size),
-                                                Qt.AspectRatioMode.KeepAspectRatio))
-            with _suppress_libpng_warnings():
-                img = reader.read()
-            if img.isNull():
+            body = self._body
+            identity = self._source_identity
+            if body is None:
+                snapshot = self._loader._snapshot_source(self._source_path, self._runtime)
+                if snapshot is None:
+                    return
+                body, identity = snapshot
+            img = _read_qimage_bytes(body, self._bake_size)
+            if img is None:
                 return
+            key = self._loader._disk_key(self._source_path, identity)
             self._loader._store_baked_image(
-                self._key, self._source_path, self._bake_size, img, self._runtime)
+                key, self._source_path, self._bake_size, img,
+                self._runtime, source_identity=identity,
+            )
         except Exception:
             _log.exception("Bake task failed: %s", self._source_path)
 
@@ -241,6 +300,7 @@ class ThumbnailLoader(QObject):
         self._deferred_loads: OrderedDict[str, tuple[_LoadTask, _Runtime, int]] = OrderedDict()
         self._pending_items: dict[str, list[tuple[int, str]]] = defaultdict(list)
         self._cache: OrderedDict[str, _MemoryCacheEntry | tuple[QImage, float]] = OrderedDict()
+        self._source_identities: dict[str, FileIdentity] = {}
         self._cache_bytes = 0
         self._max_cache_bytes = max_cache_bytes
         self._max_admitted_tasks = max_admitted_tasks
@@ -296,6 +356,7 @@ class ThumbnailLoader(QObject):
             self._runtime_generation += 1
             self._task_condition.notify_all()
         self._cache.clear()
+        self._source_identities.clear()
         self._cache_bytes = 0
         self._failed_paths.clear()
         self._queued_keys.clear()
@@ -569,13 +630,17 @@ class ThumbnailLoader(QObject):
 
     def _remove_cached_locked(self, path: str) -> _MemoryCacheEntry | None:
         value = self._cache.pop(path, None)
+        self._source_identities.pop(path, None)
         if value is None:
             return None
         entry = self._cache_entry(value)
         self._cache_bytes = max(0, self._cache_bytes - entry.byte_size)
         return entry
 
-    def _store_cached_locked(self, path: str, image: QImage, source_mtime: float) -> tuple[bool, int, int]:
+    def _store_cached_locked(
+        self, path: str, image: QImage, source_mtime: float,
+        source_identity: FileIdentity | None = None,
+    ) -> tuple[bool, int, int]:
         self._remove_cached_locked(path)
         image_bytes = max(0, int(image.sizeInBytes()))
         if image_bytes > self._max_cache_bytes:
@@ -589,6 +654,8 @@ class ThumbnailLoader(QObject):
             evicted_entries += 1
             evicted_bytes += entry.byte_size
         self._cache[path] = _MemoryCacheEntry(image, source_mtime, image_bytes)
+        if source_identity is not None:
+            self._source_identities[path] = source_identity
         self._cache_bytes += image_bytes
         return True, evicted_entries, evicted_bytes
 
@@ -611,7 +678,23 @@ class ThumbnailLoader(QObject):
                 self._remove_cached_locked(file_path)
                 self._mutex.unlock()
                 return
-            if abs(mtime - current_mtime) < 0.001:
+            source_identity = self._source_identities.get(file_path)
+            current_identity = None
+            if source_identity is not None:
+                try:
+                    current_stat = os.stat(file_path)
+                    current_identity = FileIdentity.from_stat(current_stat)
+                except OSError:
+                    self._remove_cached_locked(file_path)
+                    self._mutex.unlock()
+                    return
+            if (
+                source_identity is not None
+                and current_identity == source_identity
+            ) or (
+                source_identity is None
+                and abs(mtime - current_mtime) < 0.001
+            ):
                 self._cache.move_to_end(file_path)
                 self._mutex.unlock()
                 if runtime.recorder is not None:
@@ -710,10 +793,17 @@ class ThumbnailLoader(QObject):
                 self._record("thumbnail.load", runtime=runtime, path=path, started=started, attributes={"outcome": "stale_discard"})
             return
         self._mutex.unlock()
+        self._mutex.lock()
         try:
-            mtime = os.path.getmtime(path)
-        except OSError:
-            mtime = 0.0
+            identity = self._source_identities.get(path)
+        finally:
+            self._mutex.unlock()
+        mtime = identity.mtime_ns / 1_000_000_000 if identity is not None else 0.0
+        if identity is None:
+            try:
+                mtime = os.path.getmtime(path)
+            except OSError:
+                mtime = 0.0
         self._mutex.lock()
         if self._stopped or (generation is not None and not self._is_current_generation_locked(generation)):
             self._mutex.unlock()
@@ -723,7 +813,10 @@ class ThumbnailLoader(QObject):
         self._queued_keys.discard(path)
         self._queued_generations.pop(path, None)
         pending = self._pending_items.pop(path, [])
-        stored, evicted_entries, evicted_bytes = self._store_cached_locked(path, img, mtime)
+        source_identity = self._source_identities.get(path)
+        stored, evicted_entries, evicted_bytes = self._store_cached_locked(
+            path, img, mtime, source_identity,
+        )
         cache_bytes = self._cache_bytes
         self._mutex.unlock()
         if runtime is not None and runtime.recorder is not None:
@@ -795,6 +888,7 @@ class ThumbnailLoader(QObject):
     def clear_cache(self):
         self._mutex.lock()
         self._cache.clear()
+        self._source_identities.clear()
         self._cache_bytes = 0
         self._failed_paths.clear()
         self._queued_keys.clear()
@@ -815,34 +909,75 @@ class ThumbnailLoader(QObject):
 
     # ── Loading (worker thread) ──────────────────────────────────
 
+    def _snapshot_source(
+        self, path: str, runtime: _Runtime,
+    ) -> tuple[bytes, FileIdentity] | None:
+        """Capture one bounded source snapshot for desktop decoding."""
+        source = Path(path)
+        root = Path(runtime.lib_root) if runtime.lib_root else source.parent
+        try:
+            return read_snapshot(
+                root,
+                source,
+                max_bytes=MAX_THUMBNAIL_SOURCE_BYTES,
+            )
+        except (OSError, ValueError):
+            _log.debug("Desktop source snapshot failed: %s", path, exc_info=True)
+            return None
+
     def _load_image(
         self, path: str, runtime: _Runtime | None = None
     ) -> QImage | _VideoFramePending | None:
-        """Load image in worker thread — returns QImage (thread-safe).
-
-        For videos whose first frame has not been extracted yet, returns
-        ``_VIDEO_FRAME_DEFERRED`` (extraction runs on the dedicated pool).
-        """
-        if not os.path.isfile(path):
-            return None
-        ext = Path(path).suffix.lower()
+        """Load one image from a bounded final-open source snapshot."""
         runtime = runtime or self._runtime()
         if not self._is_current_generation(runtime.generation):
             return None
+        ext = Path(path).suffix.lower()
         if ext in VIDEO_EXTS:
             return self._load_video_frame(path, runtime)
         if ext not in IMAGE_EXTS:
             return None
         key = self._disk_key(path)
-        if get_bake_size() >= 0:
-            cached = self._try_load_cached(key, path, runtime)
+        bake_size = get_bake_size()
+        if bake_size >= 0:
+            cached = None
+            for profile in self._webp_profiles_for_size(bake_size):
+                v3_key = self._disk_profile_key(path, profile)
+                cached = self._try_load_cached(
+                    v3_key, path, runtime, bake_size=bake_size,
+                    render_profile=profile,
+                )
+                if cached is not None:
+                    break
+            if cached is None:
+                cached = self._try_load_cached(
+                    key, path, runtime, bake_size=bake_size,
+                )
+            if cached is None:
+                legacy_key = legacy_thumbnail_cache_key(path)
+                if legacy_key != key:
+                    cached = self._try_load_cached(
+                        legacy_key, path, runtime, bake_size=bake_size,
+                    )
             if cached is not None:
                 if runtime.recorder is not None:
                     self._record("thumbnail.cache", runtime=runtime, path=path, attributes={"tier": "disk", "outcome": "hit"})
                 return cached
             if runtime.recorder is not None:
                 self._record("thumbnail.cache", runtime=runtime, path=path, attributes={"tier": "disk", "outcome": "miss"})
-        return self._read_with_qimagereader(path, runtime)
+        snapshot = self._snapshot_source(path, runtime)
+        if snapshot is None:
+            return None
+        body, identity = snapshot
+        self._mutex.lock()
+        try:
+            if self._is_current_generation_locked(runtime.generation):
+                self._source_identities[path] = identity
+        finally:
+            self._mutex.unlock()
+        return self._read_with_qimagereader(
+            path, runtime, body=body, source_identity=identity,
+        )
 
     def _load_video_frame(
         self, path: str, runtime: _Runtime
@@ -864,15 +999,37 @@ class ThumbnailLoader(QObject):
         key = self._disk_key(path)
         frame = os.path.join(runtime.cache_dir, f"{key}.jpg")
         if os.path.isfile(frame):
+            self._register_video_frame_metadata(
+                path, frame, runtime, cache_key=key,
+            )
             return self._read_with_qimagereader(frame, runtime, bake=False)
-        self._start_video_frame_extraction(path, frame, runtime)
+        legacy_key = legacy_thumbnail_cache_key(path)
+        legacy_frame = os.path.join(runtime.cache_dir, f"{legacy_key}.jpg")
+        if legacy_key != key and os.path.isfile(legacy_frame):
+            self._register_video_frame_metadata(
+                path, legacy_frame, runtime, cache_key=legacy_key,
+            )
+            return self._read_with_qimagereader(legacy_frame, runtime, bake=False)
+        snapshot = self._snapshot_source(path, runtime)
+        if snapshot is None:
+            return None
+        body, identity = snapshot
+        self._mutex.lock()
+        try:
+            if self._is_current_generation_locked(runtime.generation):
+                self._source_identities[path] = identity
+        finally:
+            self._mutex.unlock()
+        key = self._disk_key(path, identity)
+        frame = os.path.join(runtime.cache_dir, f"{key}.jpg")
+        self._start_video_frame_extraction(path, body, frame, runtime)
         return _VIDEO_FRAME_DEFERRED
 
     def _start_video_frame_extraction(
-        self, source_path: str, frame_path: str, runtime: _Runtime
+        self, source_path: str, body: bytes, frame_path: str, runtime: _Runtime
     ) -> None:
-        """Queue one ffmpeg extraction on the dedicated pool (bounded to 2)."""
-        task = _ExtractVideoFrameTask(self, source_path, frame_path, runtime)
+        """Queue one ffmpeg extraction from a captured source body."""
+        task = _ExtractVideoFrameTask(self, source_path, body, frame_path, runtime)
         ffmpeg_pool.start(task)
 
     def _on_video_frame_extracted(
@@ -887,7 +1044,55 @@ class ThumbnailLoader(QObject):
         if img is None:
             self._mark_failed(source_path, runtime)
             return
+        source_identity = self._source_identities.get(source_path)
+        self._register_video_frame_metadata(
+            source_path,
+            frame_path,
+            runtime,
+            source_identity=source_identity,
+            cache_key=self._disk_key(source_path, source_identity),
+        )
         self._on_image_loaded(0, source_path, source_path, img, runtime)
+
+    @staticmethod
+    def _register_video_frame_metadata(
+        source_path: str,
+        frame_path: str,
+        runtime: _Runtime,
+        *,
+        source_identity: FileIdentity | None = None,
+        cache_key: str | None = None,
+    ) -> None:
+        service = runtime.thumbnail_service
+        if service is None:
+            return
+        register = getattr(service, "register_video_frame_metadata", None)
+        try:
+            if callable(register):
+                register(
+                    runtime.lib_root,
+                    source_path,
+                    frame_path,
+                    source_identity,
+                    cache_key=cache_key,
+                )
+                return
+            if source_identity is None:
+                return
+            frame_size = os.path.getsize(frame_path)
+            service.upsert_cache_metadata(
+                runtime.lib_root,
+                cache_key or ThumbnailService._cache_key(source_path, source_identity),
+                source_path,
+                source_identity.mtime_ns / 1_000_000_000,
+                source_identity.size,
+                512,
+                frame_size,
+                source_mtime_ns=source_identity.mtime_ns,
+                artifact_kind="jpg",
+            )
+        except Exception:
+            _log.exception("Video frame metadata insert failed: %s", frame_path)
 
     def _record(
         self,
@@ -916,31 +1121,33 @@ class ThumbnailLoader(QObject):
             pass
 
     def _read_with_qimagereader(
-        self, path: str, runtime: _Runtime | None = None, bake: bool = True,
+        self,
+        path: str,
+        runtime: _Runtime | None = None,
+        bake: bool = True,
+        *,
+        body: bytes | None = None,
+        source_identity: FileIdentity | None = None,
     ) -> QImage | None:
-        """Thread-safe image loading via QImageReader. Returns unscaled QImage.
-
-        ``bake=False`` skips the native webp bake step — used for already-cached
-        video frames, which should not be re-baked into a second cache entry.
-        """
+        """Decode a captured image body, retaining the legacy path seam."""
         runtime = runtime or self._runtime()
         try:
-            reader = QImageReader(path)
-            reader.setAutoTransform(True)
-            orig = reader.size()
-            if not orig.isValid():
-                return None
-            if orig.width() > self._size or orig.height() > self._size:
-                reader.setScaledSize(orig.scaled(self._size, self._size,
-                                                  Qt.AspectRatioMode.KeepAspectRatio))
-            with _suppress_libpng_warnings():
-                img = reader.read()
-            if img.isNull() or not self._is_current_generation(runtime.generation):
+            if body is None:
+                snapshot = self._snapshot_source(path, runtime)
+                if snapshot is None:
+                    return None
+                body, source_identity = snapshot
+            img = _read_qimage_bytes(body, self._size)
+            if img is None or not self._is_current_generation(runtime.generation):
                 return None
             if bake:
                 key = self._disk_key(path)
                 if runtime.cache_dir and get_bake_size() >= 0 and self._should_bake(path, runtime.lib_root):
-                    self._queue_bake_native(key, path, runtime)
+                    profile = self._webp_profile(get_bake_size())
+                    key = self._disk_profile_key(path, profile, source_identity)
+                    self._queue_bake_native(
+                        key, path, body, source_identity, runtime,
+                    )
             return img
         except Exception:
             _log.exception("QImageReader failed: %s", path)
@@ -959,45 +1166,91 @@ class ThumbnailLoader(QObject):
         except (ValueError, OSError):
             return True
 
-    def _try_load_cached(self, key: str, source_path: str, runtime: _Runtime) -> QImage | None:
+    def _try_load_cached(
+        self,
+        key: str,
+        source_path: str,
+        runtime: _Runtime,
+        *,
+        bake_size: int | None = None,
+        render_profile: str | None = None,
+    ) -> QImage | None:
         """Try disk cache — returns QImage (thread-safe)."""
         if not runtime.cache_dir:
             return None
         cached_file = os.path.join(runtime.cache_dir, f"{key}.webp")
         if not os.path.isfile(cached_file) or not self._is_current_generation(runtime.generation):
             return None
+        effective_bake_size = get_bake_size() if bake_size is None else bake_size
+        required_size = max(self._size, effective_bake_size, 0)
         service = runtime.thumbnail_service
+        metadata = None
         if service is not None:
             try:
-                cached_mtime = service.get_cached_source_mtime(runtime.lib_root, key)
-                if cached_mtime is not None:
-                    try:
-                        current_mtime = os.path.getmtime(source_path)
-                    except OSError:
-                        current_mtime = 0
-                    if abs(cached_mtime - current_mtime) > 0.001:
-                        try:
-                            os.remove(cached_file)
-                        except OSError:
-                            pass
-                        if self._is_current_generation(runtime.generation):
-                            service.delete_cache_metadata(runtime.lib_root, key)
+                get_metadata = getattr(service, "get_cache_metadata", None)
+                if callable(get_metadata):
+                    metadata = get_metadata(runtime.lib_root, key)
+                    source_mtime = getattr(metadata, "source_mtime", None)
+                    if metadata is not None and not isinstance(source_mtime, (int, float)):
+                        metadata = None
+                if metadata is None:
+                    cached_mtime = service.get_cached_source_mtime(runtime.lib_root, key)
+                    if isinstance(cached_mtime, (int, float)):
+                        metadata = type("LegacyMetadata", (), {
+                            "source_mtime": cached_mtime,
+                            "source_mtime_ns": None,
+                            "source_size": 0,
+                            "baked_size": 0,
+                            "artifact_kind": "webp",
+                        })()
+                if metadata is not None:
+                    if getattr(metadata, "artifact_kind", "webp") != "webp":
                         return None
-                    if self._is_current_generation(runtime.generation):
-                        self._touch_cache_metadata(service, runtime.lib_root, key)
+                    if render_profile is not None:
+                        stored_profile = getattr(metadata, "render_profile", None)
+                        if stored_profile not in (None, render_profile):
+                            return None
+                    cached_mtime = getattr(metadata, "source_mtime", None)
+                    if cached_mtime is not None:
+                        try:
+                            current_mtime = os.path.getmtime(source_path)
+                        except OSError:
+                            current_mtime = 0
+                        if abs(cached_mtime - current_mtime) > 0.001:
+                            try:
+                                with cache_owner_lock(runtime.cache_dir):
+                                    if os.path.isfile(cached_file):
+                                        os.remove(cached_file)
+                                    if self._is_current_generation(runtime.generation):
+                                        service.delete_cache_metadata(runtime.lib_root, key)
+                            except (OSError, TimeoutError):
+                                _log.warning("Failed to invalidate stale thumbnail: %s", cached_file)
+                            return None
+                    baked_size = getattr(metadata, "baked_size", 0) or 0
+                    if baked_size > 0 and baked_size < required_size:
+                        return None
             except Exception:
                 _log.exception("Cache metadata query failed")
+                metadata = None
         if not os.path.isfile(cached_file):
             return None
         reader = QImageReader(cached_file)
         reader.setAutoTransform(True)
-        if self._size < reader.size().width():
-            reader.setScaledSize(reader.size().scaled(
+        image_size = reader.size()
+        if not image_size.isValid():
+            return None
+        if (metadata is None or not (getattr(metadata, "baked_size", 0) or 0)) and required_size:
+            if max(image_size.width(), image_size.height()) < required_size:
+                return None
+        if self._size > 0 and max(image_size.width(), image_size.height()) > self._size:
+            reader.setScaledSize(image_size.scaled(
                 self._size, self._size, Qt.AspectRatioMode.KeepAspectRatio))
         with _suppress_libpng_warnings():
             img = reader.read()
         if img is None or img.isNull():
             return None
+        if service is not None and metadata is not None and self._is_current_generation(runtime.generation):
+            self._touch_cache_metadata(service, runtime.lib_root, key)
         return img
 
     def _touch_cache_metadata(self, service, lib_root: str, key: str) -> None:
@@ -1020,38 +1273,57 @@ class ThumbnailLoader(QObject):
             self._mutex.unlock()
         service.touch_cache_metadata(lib_root, key)
 
-    def _queue_bake_native(self, key, source_path, runtime: _Runtime | None = None):
+    def _queue_bake_native(
+        self, key, source_path, body: bytes | None = None,
+        source_identity: FileIdentity | None = None,
+        runtime: _Runtime | None = None,
+    ):
         bs = get_bake_size()
         if bs < 0:
             return False
-        task = _BakeTask(self, key, source_path, bs, runtime or self._runtime())
+        runtime = runtime or self._runtime()
+        task = _BakeTask(
+            self, key, source_path, bs, runtime,
+            body=body, source_identity=source_identity,
+        )
         return self._start_task(task, task._runtime.generation, runtime=task._runtime)
 
-    def _store_baked_image(self, key, source_path, bake_size, img, runtime: _Runtime):
+    def _store_baked_image(
+        self, key, source_path, bake_size, img, runtime: _Runtime,
+        *, source_identity: FileIdentity | None = None,
+    ):
         tmp = os.path.join(
             runtime.cache_dir,
-            f"{key}.{runtime.generation}.{runtime.cache_epoch}.webp.tmp",
+            f"{key}.{runtime.generation}.{runtime.cache_epoch}."
+            f"{os.getpid()}.{secrets.token_hex(8)}.webp.tmp",
         )
         final = os.path.join(runtime.cache_dir, f"{key}.webp")
         try:
             with self._cache_io_lock:
-                if not self._is_current_cache_epoch(runtime):
-                    return
-                os.makedirs(runtime.cache_dir, exist_ok=True)
-                img.save(tmp, "WEBP", quality=85)
-                if not self._is_current_cache_epoch(runtime):
-                    return
-                # Both the epoch re-check above and the replace below run
-                # inside _cache_io_lock, so a concurrent clear_thumb_cache /
-                # runtime switch (which bumps cache_epoch under the same lock)
-                # cannot let an old generation overwrite a newer bake.
-                os.replace(tmp, final)
-                service = runtime.thumbnail_service
-                if service is not None and self._is_current_cache_epoch(runtime):
-                    service.upsert_cache_metadata(
-                        runtime.lib_root, key, source_path, os.path.getmtime(source_path),
-                        os.path.getsize(source_path), bake_size, os.path.getsize(final),
-                    )
+                with cache_owner_lock(runtime.cache_dir):
+                    if not self._is_current_cache_epoch(runtime):
+                        return
+                    os.makedirs(runtime.cache_dir, exist_ok=True)
+                    img.save(tmp, "WEBP", quality=85)
+                    if not self._is_current_cache_epoch(runtime):
+                        return
+                    os.replace(tmp, final)
+                    service = runtime.thumbnail_service
+                    if service is not None and self._is_current_cache_epoch(runtime):
+                        identity = source_identity
+                        if identity is None:
+                            snapshot = self._snapshot_source(source_path, runtime)
+                            if snapshot is None:
+                                return
+                            _body, identity = snapshot
+                        service.upsert_cache_metadata(
+                            runtime.lib_root, key, source_path,
+                            identity.mtime_ns / 1_000_000_000,
+                            identity.size, bake_size, os.path.getsize(final),
+                            source_mtime_ns=identity.mtime_ns,
+                            artifact_kind="webp",
+                            render_profile=self._webp_profile(bake_size),
+                        )
         except Exception:
             _log.exception("Bake cache metadata insert failed")
         finally:
@@ -1064,8 +1336,35 @@ class ThumbnailLoader(QObject):
     # ── Utility ──────────────────────────────────────────────────
 
     @staticmethod
-    def _disk_key(path: str) -> str:
-        return thumbnail_cache_key(path)
+    def _webp_profiles_for_size(bake_size: int) -> list[str]:
+        return [
+            profile
+            for profile, size in sorted(WEBP_RENDER_PROFILES.items(), key=lambda item: item[1])
+            if size >= max(bake_size, 0)
+        ]
+
+    @staticmethod
+    def _webp_profile(bake_size: int) -> str:
+        candidates = sorted(WEBP_RENDER_PROFILES.items(), key=lambda item: item[1])
+        for profile, size in candidates:
+            if size >= bake_size:
+                return profile
+        return candidates[-1][0]
+
+    @staticmethod
+    def _disk_profile_key(
+        path: str,
+        profile: str,
+        identity: FileIdentity | tuple[int, int, int, int] | None = None,
+    ) -> str:
+        return profiled_thumbnail_cache_key_v3(path, profile, identity)
+
+    @staticmethod
+    def _disk_key(
+        path: str,
+        identity: FileIdentity | tuple[int, int, int, int] | None = None,
+    ) -> str:
+        return thumbnail_cache_key(path, identity)
 
     def orphan_cleanup(self):
         runtime = self._runtime()
@@ -1079,11 +1378,12 @@ class ThumbnailLoader(QObject):
                     return
                 if not os.path.isfile(source_path):
                     try:
-                        os.remove(os.path.join(runtime.cache_dir, f"{cache_key}.webp"))
-                    except OSError:
-                        pass
-                    if self._is_current_generation(runtime.generation):
-                        service.delete_cache_metadata(runtime.lib_root, cache_key)
+                        with cache_owner_lock(runtime.cache_dir):
+                            remove_artifacts(runtime.cache_dir, cache_key)
+                            if self._is_current_generation(runtime.generation):
+                                service.delete_cache_metadata(runtime.lib_root, cache_key)
+                    except TimeoutError:
+                        _log.warning("Thumbnail cache owner busy during orphan cleanup")
         except Exception:
             _log.exception("Thumbnail orphan cleanup failed")
 
@@ -1096,33 +1396,39 @@ class ThumbnailLoader(QObject):
             try:
                 self._cache_epoch += 1
                 runtime = self._runtime_locked()
-                if runtime.cache_dir and os.path.isdir(runtime.cache_dir):
-                    try:
-                        files = [
-                            f for f in os.listdir(runtime.cache_dir)
-                            if f.endswith(('.webp', '.webp.tmp'))
-                        ]
-                    except OSError:
-                        pass
-                if (
-                    runtime.thumbnail_service is not None
-                    and self._is_current_generation_locked(runtime.generation)
-                ):
-                    try:
-                        runtime.thumbnail_service.clear_cache_metadata(runtime.lib_root)
-                    except Exception:
-                        _log.exception("Thumbnail metadata clear failed")
             finally:
                 self._mutex.unlock()
-            # Delete outside the _mutex lock (still under _cache_io_lock so a
-            # concurrent bake cannot replace a file mid-deletion): os.remove
-            # can block on slow volumes and must not stall the main thread.
-            for f in files:
-                try:
-                    os.remove(os.path.join(runtime.cache_dir, f))
-                    count += 1
-                except OSError:
-                    _log.warning("Failed to remove stale thumbnail cache file: %s", f)
+            try:
+                with cache_owner_lock(runtime.cache_dir):
+                    self._mutex.lock()
+                    try:
+                        if runtime.cache_dir and os.path.isdir(runtime.cache_dir):
+                            try:
+                                files = [
+                                    f for f in os.listdir(runtime.cache_dir)
+                                    if f.endswith(('.webp', '.jpg', '.webp.tmp', '.jpg.tmp'))
+                                ]
+                            except OSError:
+                                pass
+                        clear_metadata = (
+                            runtime.thumbnail_service is not None
+                            and self._is_current_generation_locked(runtime.generation)
+                        )
+                    finally:
+                        self._mutex.unlock()
+                    if clear_metadata:
+                        try:
+                            runtime.thumbnail_service.clear_cache_metadata(runtime.lib_root)
+                        except Exception:
+                            _log.exception("Thumbnail metadata clear failed")
+                    for f in files:
+                        try:
+                            os.remove(os.path.join(runtime.cache_dir, f))
+                            count += 1
+                        except OSError:
+                            _log.warning("Failed to remove stale thumbnail cache file: %s", f)
+            except TimeoutError:
+                _log.warning("Thumbnail cache owner busy during clear")
         return count
 
     def regenerate_all(self, lib_root: str, on_progress=None, on_complete=None) -> bool:
@@ -1163,7 +1469,7 @@ class ThumbnailLoader(QObject):
                                 if loader._max_admitted_tasks == 1:
                                     _BakeTask(loader, key, path, bake_size, runtime).run()
                                     continue
-                                while not loader._queue_bake_native(key, path, runtime):
+                                while not loader._queue_bake_native(key, path, runtime=runtime):
                                     if not loader._wait_for_task_capacity(runtime):
                                         return
                         except Exception:

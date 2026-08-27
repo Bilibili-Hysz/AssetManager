@@ -20,12 +20,15 @@ describe('ApiClient request contracts', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('builds native API URLs with the configured base path', () => {
-    expect(createApiClient({ baseUrl: '/library' }).buildUrl('download/asset.txt')).toBe('/library/api/download/asset.txt');
+    const client = createApiClient({ baseUrl: '/library' });
+    expect(client.scope).toBe('/library');
+    expect(client.buildUrl('download/asset.txt')).toBe('/library/api/download/asset.txt');
   });
 
   it('normalizes a trailing base slash and builds the matching WebSocket URL', () => {
     const client = createApiClient({ baseUrl: '/library/' });
 
+    expect(client.scope).toBe('/library');
     expect(client.buildUrl('revision')).toBe('/library/api/revision');
     expect(client.buildWebSocketUrl('/ws')).toBe('ws://localhost:3000/library/ws');
   });
@@ -61,6 +64,29 @@ describe('ApiClient request contracts', () => {
     }
   });
 
+  it('retains canonical bodies for auth and rate-limit errors', async () => {
+    const body = { error: 'Forbidden', code: 'forbidden', details: { reason: 'guest' } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response(
+      JSON.stringify(body),
+      { status: 403, headers: { 'Content-Type': 'application/json' } },
+    )));
+
+    await expect(createApiClient().post('files')).rejects.toMatchObject({
+      status: 403,
+      body,
+      message: 'Forbidden',
+    });
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response(
+      JSON.stringify({ error: 'Rate limited', code: 'rate_limited', details: { retry_after: 4 } }),
+      { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': '4' } },
+    )));
+    await expect(createApiClient().post('files')).rejects.toMatchObject({
+      status: 429,
+      body: expect.objectContaining({ code: 'rate_limited', headers: { 'Retry-After': '4' } }),
+    });
+  });
+
   it('does not retry non-GET requests', async () => {
     const fetchMock = vi.fn().mockRejectedValue(new TypeError('fail'));
     vi.stubGlobal('fetch', fetchMock);
@@ -88,6 +114,58 @@ describe('ApiClient request contracts', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('retries a 503 GET then throws ServiceUnavailableError with the body attached', async () => {
+    const body = { error: 'Quota unavailable', code: 'service_unavailable', details: {} };
+    // A Response body can be read once, so each attempt needs a fresh one.
+    const fetchMock = vi.fn().mockImplementation(() => new Response(
+      JSON.stringify(body),
+      { status: 503, headers: { 'Content-Type': 'application/json' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers();
+    try {
+      const captured: unknown[] = [];
+      const promise = createApiClient()
+        .get('quota')
+        .catch((error) => {
+          captured.push(error);
+          throw error;
+        })
+        .catch((error) => {
+          expect(error).toMatchObject({
+            name: 'ServiceUnavailableError',
+            status: 503,
+            body,
+            message: 'Quota unavailable',
+          });
+          return { recovered: true };
+        });
+      // Advance enough for both backoff sleeps (500ms + 1000ms) to elapse.
+      await vi.advanceTimersByTimeAsync(5000);
+      await expect(promise).resolves.toEqual({ recovered: true });
+      // One initial attempt plus DEFAULT_MAX_RETRIES (2) retries.  Only the
+      // terminal rejection surfaces to the outer promise; the first two
+      // failures are consumed by the retry loop.
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(captured).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not retry non-GET requests on 503 and throws ServiceUnavailableError once', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ error: 'Service unavailable' }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(createApiClient().post('shop/order')).rejects.toMatchObject({
+      name: 'ServiceUnavailableError',
+      status: 503,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

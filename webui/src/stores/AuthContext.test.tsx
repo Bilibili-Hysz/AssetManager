@@ -186,7 +186,7 @@ describe('AuthProvider', () => {
       kind: 'user', authenticated: true, role: 'user', display_name: 'stale-user',
       capabilities: { browse: true, preview: true, download: true, upload: false, manage_links: false, manage_users: false, settings: false, realtime: true },
     } });
-    await expect(staleRefresh).resolves.toBe(true);
+    await expect(staleRefresh).resolves.toBe(false);
     expect(result.current.principal.display_name).toBe('new-user');
   });
 

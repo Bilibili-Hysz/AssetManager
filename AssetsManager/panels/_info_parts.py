@@ -186,11 +186,11 @@ class _FileInfoTask(CancellableRunnable):
         if is_dir:
             img_path = InfoPanel._first_image_in_dir(path)
             if img_path:
-                return InfoPanel._load_preview_pixmap(img_path)
+                return InfoPanel._load_preview_pixmap(img_path, self._library_root)
             return None
         suffix = Path(path).suffix.lower()
         if suffix in IMAGE_EXTS:
-            return InfoPanel._load_preview_pixmap(path)
+            return InfoPanel._load_preview_pixmap(path, self._library_root)
         return None
 
     def run(self):

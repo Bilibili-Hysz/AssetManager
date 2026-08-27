@@ -30,6 +30,7 @@ from AssetsManager.application.shop_authorization import (
 )
 from AssetsManager.domain.errors import (
     DeliveryPreparationError,
+    IdempotencyKeyReusedError,
     MissingPathError,
     NotFoundError,
     OperationNotPermitted,
@@ -193,6 +194,9 @@ def _mapped(
         payload["code"] = "wishlist_limit"
         payload["field"] = "items"
         payload["limit"] = exc.limit
+        status = 409
+    elif isinstance(exc, IdempotencyKeyReusedError):
+        payload["code"] = exc.code
         status = 409
     elif isinstance(exc, OperationNotPermitted):
         message = str(exc)

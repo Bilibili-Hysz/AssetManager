@@ -26,6 +26,7 @@ def test_info_reports_effective_commerce_and_seller_flags(monkeypatch, tmp_path)
         share_name="Library",
         library_root=Path(tmp_path),
         auth_status=lambda: (False, "none"),
+        runtime=SimpleNamespace(epoch="runtime-test-epoch"),
     )
 
     monkeypatch.setattr(system_routes, "AppSettings", SimpleNamespace(instance=lambda: settings))
@@ -41,7 +42,9 @@ def test_info_reports_effective_commerce_and_seller_flags(monkeypatch, tmp_path)
     request = make_mocked_request("GET", "/api/info")
     response = asyncio.run(system_routes.handle_info(request))
     assert response.status == 200
-    assert __import__("json").loads(response.text)["feature_flags"] == {
+    info = __import__("json").loads(response.text)
+    assert info["thumbnail_cache_namespace"] == "runtime-test-epoch"
+    assert info["feature_flags"] == {
         "commerce": False,
         "seller": False,
         "quota": False,

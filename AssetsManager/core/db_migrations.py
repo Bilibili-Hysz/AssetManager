@@ -17,6 +17,7 @@ from AssetsManager.core.schema_defs import (
     ASSET_INDEX_STATE_SCHEMA,
     RECONCILIATION_QUEUE_STATE_SCHEMA,
     RECONCILIATION_TASKS_SCHEMA,
+    IMPORT_MANIFESTS_SCHEMA_V31,
     COMMERCE_SCHEMAS,
     COMMERCE_SCHEMAS_V8,
     FREE_DOWNLOAD_QUOTA_SCHEMA,
@@ -43,7 +44,7 @@ from AssetsManager.core.schema_defs import (
 )
 
 
-CURRENT_SCHEMA_VERSION = 29
+CURRENT_SCHEMA_VERSION = 34
 _BASELINE_SCHEMA_CONTRACT = {
     "file_tags": {
         "columns": ("file_path", "tag"),
@@ -163,18 +164,25 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
     )
 
 
-def _reconciliation_tasks_contract(*, include_lease_token: bool) -> SchemaObjectContract:
+def _reconciliation_tasks_contract(
+    *, include_lease_token: bool, include_payload: bool = True
+) -> SchemaObjectContract:
     """Return the schema contract appropriate for a migration boundary."""
     contract = cast(SchemaObjectContract, dict(SCHEMA_OBJECT_CONTRACT["reconciliation_tasks"]))
-    if include_lease_token:
+    remove_columns: set[str] = set()
+    if not include_lease_token:
+        remove_columns.add("lease_token")
+    if not include_payload:
+        remove_columns.add("payload")
+    if not remove_columns:
         return contract
     contract["columns"] = tuple(
-        column for column in contract["columns"] if column != "lease_token"
+        column for column in contract["columns"] if column not in remove_columns
     )
     contract["column_contracts"] = {
         column: definition
         for column, definition in contract.get("column_contracts", {}).items()
-        if column != "lease_token"
+        if column not in remove_columns
     }
     return contract
 
@@ -189,7 +197,10 @@ def _versioned_schema_contract(table: str, version: int) -> SchemaObjectContract
         )
 
     if table == "reconciliation_tasks" and version < 17:
-        return _reconciliation_tasks_contract(include_lease_token=False)
+        return _reconciliation_tasks_contract(
+            include_lease_token=False,
+            include_payload=version >= 30,
+        )
 
     if table == "shop_orders" and version < 18:
         contract["columns"] = tuple(
@@ -231,6 +242,22 @@ def _versioned_schema_contract(table: str, version: int) -> SchemaObjectContract
             for check in contract.get("checks", ())
             if check != "checkout_generation >= 1"
         )
+
+    if table == "import_manifests" and version < 34:
+        contract["columns"] = tuple(
+            column
+            for column in contract["columns"]
+            if column not in {"recovery_claim_token", "recovery_lease_expires_at"}
+        )
+        column_contracts = dict(cast(dict[str, Any], contract.get("column_contracts", {})))
+        column_contracts.pop("recovery_claim_token", None)
+        column_contracts.pop("recovery_lease_expires_at", None)
+        contract["column_contracts"] = column_contracts
+        contract["indexes"] = {
+            name: columns
+            for name, columns in contract.get("indexes", {}).items()
+            if name != "idx_import_manifests_recovery_lease"
+        }
 
     if table == "shop_cart_checkouts":
         if version < 19:
@@ -937,6 +964,120 @@ def _add_activity_log_schema_v29(conn: sqlite3.Connection) -> None:
         if sql := statement.strip():
             conn.execute(sql)
 
+def _add_filesystem_projection_repair_schema_v30(conn: sqlite3.Connection) -> None:
+    """Add payload storage and the filesystem repair task kind."""
+    table = "reconciliation_tasks"
+    columns = {
+        str(row[1]) for row in conn.execute(f"PRAGMA table_info('{table}')")
+    }
+    if "payload" in columns:
+        validate_schema_objects(conn, (table,))
+        return
+    conn.execute("ALTER TABLE reconciliation_tasks RENAME TO reconciliation_tasks_v29")
+    conn.execute(
+        """
+        CREATE TABLE reconciliation_tasks (
+            task_id TEXT PRIMARY KEY NOT NULL,
+            library_root TEXT NOT NULL,
+            path TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN (
+                'asset_index_root_rescan', 'filesystem_projection_repair'
+            )),
+            reason TEXT NOT NULL,
+            state TEXT NOT NULL CHECK (state IN (
+                'pending', 'running', 'retryable', 'succeeded', 'terminal', 'cancelled'
+            )),
+            attempts INTEGER NOT NULL CHECK (attempts >= 0),
+            next_attempt_at_wallclock REAL NOT NULL,
+            operation_ids TEXT NOT NULL DEFAULT '[]',
+            last_error_type TEXT,
+            last_error TEXT,
+            expected_revision INTEGER,
+            observed_revision INTEGER,
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL,
+            lease_expires_at_wallclock REAL,
+            lease_token TEXT,
+            max_attempts INTEGER NOT NULL CHECK (max_attempts >= 1),
+            payload TEXT NOT NULL DEFAULT '{}',
+            UNIQUE (library_root, path, kind)
+        )
+        """
+    )
+    old_columns = (
+        "task_id, library_root, path, kind, reason, state, attempts, "
+        "next_attempt_at_wallclock, operation_ids, last_error_type, last_error, "
+        "expected_revision, observed_revision, created_at, updated_at, "
+        "lease_expires_at_wallclock, lease_token, max_attempts"
+    )
+    conn.execute(
+        "INSERT INTO reconciliation_tasks (" + old_columns + ", payload) "
+        "SELECT " + old_columns + ", '{}' FROM reconciliation_tasks_v29"
+    )
+    conn.execute("DROP TABLE reconciliation_tasks_v29")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reconciliation_tasks_due "
+        "ON reconciliation_tasks(library_root, state, next_attempt_at_wallclock)"
+    )
+    validate_schema_objects(conn, (table,))
+
+
+def _add_import_manifests_schema_v31(conn: sqlite3.Connection) -> None:
+    """Create durable import intents used for restart-time index recovery."""
+    table = "import_manifests"
+    if _table_exists(conn, table):
+        validate_schema_object(conn, table, _versioned_schema_contract(table, 31))
+        return
+    for statement in IMPORT_MANIFESTS_SCHEMA_V31.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    validate_schema_object(conn, table, _versioned_schema_contract(table, 31))
+
+
+def _add_import_manifest_recovery_lease_schema_v34(conn: sqlite3.Connection) -> None:
+    """Add nullable recovery ownership fields without rewriting v31 history."""
+    table = "import_manifests"
+    columns = {str(row[1]) for row in conn.execute(f"PRAGMA table_info('{table}')")}
+    if "recovery_claim_token" not in columns:
+        conn.execute(
+            "ALTER TABLE import_manifests ADD COLUMN recovery_claim_token TEXT"
+        )
+    if "recovery_lease_expires_at" not in columns:
+        conn.execute(
+            "ALTER TABLE import_manifests ADD COLUMN recovery_lease_expires_at REAL"
+        )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_import_manifests_recovery_lease "
+        "ON import_manifests(library_root, state, recovery_lease_expires_at, updated_at)"
+    )
+    validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
+
+
+def _add_thumbnail_cache_lifecycle_schema_v32(conn: sqlite3.Connection) -> None:
+    """Persist precise source timing and artifact kind for cache lifecycle work."""
+    table = "thumbnail_cache"
+    columns = {str(row[1]) for row in conn.execute(f"PRAGMA table_info('{table}')")}
+    if "source_mtime_ns" not in columns:
+        conn.execute("ALTER TABLE thumbnail_cache ADD COLUMN source_mtime_ns INTEGER")
+    if "artifact_kind" not in columns:
+        conn.execute(
+            "ALTER TABLE thumbnail_cache ADD COLUMN artifact_kind TEXT NOT NULL DEFAULT 'webp'"
+        )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_thumb_last_access "
+        "ON thumbnail_cache(last_access ASC, created_at ASC, cache_key ASC)"
+    )
+
+
+def _add_thumbnail_render_profile_schema_v33(conn: sqlite3.Connection) -> None:
+    """Add nullable profile identity for non-destructive v3 cache writes."""
+    table = "thumbnail_cache"
+    columns = {str(row[1]) for row in conn.execute(f"PRAGMA table_info('{table}')")}
+    if "render_profile" not in columns:
+        conn.execute("ALTER TABLE thumbnail_cache ADD COLUMN render_profile TEXT")
+    validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
+
+
 def _add_reconciliation_lease_token_schema_v17(conn: sqlite3.Connection) -> None:
     """Add the nullable durable lease identity used by the next queue phase."""
     table = "reconciliation_tasks"
@@ -984,6 +1125,11 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(27, "revoked_tokens", _add_revoked_tokens_schema_v27),
     Migration(28, "user_can_write", _add_user_can_write_schema_v28),
     Migration(29, "activity_log", _add_activity_log_schema_v29),
+    Migration(30, "filesystem_projection_repair", _add_filesystem_projection_repair_schema_v30),
+    Migration(31, "import_manifests", _add_import_manifests_schema_v31),
+    Migration(32, "thumbnail_cache_lifecycle", _add_thumbnail_cache_lifecycle_schema_v32),
+    Migration(33, "thumbnail_render_profile", _add_thumbnail_render_profile_schema_v33),
+    Migration(34, "import_manifest_recovery_lease", _add_import_manifest_recovery_lease_schema_v34),
 )
 
 
@@ -1060,6 +1206,8 @@ def _migrate_once(conn: sqlite3.Connection) -> int:
             required_objects += ("reconciliation_queue_state",)
         if version >= 16:
             required_objects += ("shop_carts", "shop_cart_items", "shop_cart_checkouts", "shop_wishlist_owners", "shop_wishlist_items")
+        if version >= 31:
+            required_objects += ("import_manifests",)
         if version < 17 and "reconciliation_tasks" in required_objects:
             required_objects = tuple(
                 table for table in required_objects if table != "reconciliation_tasks"

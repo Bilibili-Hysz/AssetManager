@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "report_id": "c6-c10-security-boundary-hardening-2026-08-21",
+  "captured_at": "2026-08-21T15:00:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "a366734cd67a4d9d76d93470e41191cdb6cc702a1cd79a50ae4e6dc7f2d3e247",
+    "diff_sha256": "20df394ee7dbdb988da2db71a9f9711e106fdb32f8de94a412e6ea9b52874e70",
+    "tracked_change_count": 103,
+    "untracked_change_count": 47
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "agent_execution_summaries": [
+      {"scope": "project containment", "command": "python -m pytest --basetemp=.zcode/pytest-final-focused tests/integration/test_project_service.py tests/integration/test_project_service_containment.py tests/integration/test_project_service_session_binding.py", "exit_code": 0, "collected": 45, "passed": 42, "failed": 0, "skipped": 3, "duration_seconds": 105.49, "skip_reason": "Windows link/reparse capability unavailable"},
+      {"scope": "thumbnail admission", "command": "python -m pytest --basetemp=.zcode/pytest-final-focused tests/lan/test_thumbnail_admission.py tests/integration/test_thumbnail_service.py", "exit_code": 0, "collected": 43, "passed": 43, "failed": 0, "skipped": 0, "duration_seconds": 152.27},
+      {"scope": "POSIX lock recovery", "command": "python -m pytest --basetemp=.zcode/pytest-final-focused tests/integration/test_library_lock_posix_recovery.py tests/unit/test_db_lock_low_batch.py", "exit_code": 0, "collected": 16, "passed": 13, "failed": 0, "skipped": 3, "duration_seconds": 249.48, "skip_reason": "POSIX flock unavailable on Windows"},
+      {"scope": "packaging entrypoints", "command": "python -m pytest --basetemp=.zcode/pytest-final-focused tests/core/test_packaging_entrypoints.py", "exit_code": 0, "collected": 20, "passed": 20, "failed": 0, "skipped": 0, "duration_seconds": 11.31},
+      {"scope": "full Python suite", "command": "python -m pytest --basetemp=.zcode/pytest-final-full -n 0", "exit_code": 0, "collected": 3922, "deselected": 17, "selected": 3905, "passed": 3893, "failed": 0, "skipped": 12, "warnings": 2, "duration_seconds": 574.40, "skip_reason": "Windows symlink/reparse, POSIX flock, and nondeterministic process termination limitations"}
+    ],
+    "commands": [
+      {"argv": ["python", "scripts/check_audit_reports.py"], "platform": "Windows 10.0.26220 x64", "runtime": {"python": "3.14.3"}, "fixture": "18 dated manifests and indexed reports", "sample_count": 18, "pass_criterion": "exit_code == 0 and all manifest/index/hash checks pass", "exit_code": 0, "artifacts": [{"path": "artifacts/evidence/2026-08-21/c6-c10-security-boundary-hardening-final/audit.stdout.log", "sha256": "63f3e43e80ea2d673e5d4535a711932c34e029c62f3654ef5bac89f334c34bf2"}, {"path": "artifacts/evidence/2026-08-21/c6-c10-security-boundary-hardening-final/audit.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]},
+      {"argv": ["python", "scripts/check_doc_stats.py"], "platform": "Windows 10.0.26220 x64", "runtime": {"python": "3.14.3"}, "fixture": "README structural statistics", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0, "artifacts": [{"path": "artifacts/evidence/2026-08-21/c6-c10-security-boundary-hardening-final/docstats.stdout.log", "sha256": "a4b6572918322dbdf8c2e481da73be49ddec5fc3149de8845e159015b83e1c20"}, {"path": "artifacts/evidence/2026-08-21/c6-c10-security-boundary-hardening-final/docstats.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]},
+      {"argv": ["python", "-m", "ruff", "check", "AssetsManager", "tests", "scripts", "run.py"], "platform": "Windows 10.0.26220 x64", "runtime": {"python": "3.14.3", "ruff": "0.15.16"}, "fixture": "full Python source tree", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0, "artifacts": [{"path": "artifacts/evidence/2026-08-21/c6-c10-security-boundary-hardening-final/ruff.stdout.log", "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"}, {"path": "artifacts/evidence/2026-08-21/c6-c10-security-boundary-hardening-final/ruff.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]}
+    ],
+    "note": "Agent pytest results are exact execution summaries, not local raw stdout artifacts. Final static logs are stored under artifacts/evidence/2026-08-21/c6-c10-security-boundary-hardening-final/. Release workflow assertions passed locally; GitHub runner behavior remains unverified."
+  },
+  "inputs": [
+    {"path": "docs/full-review/evidence-convergence-2026-08-20.md", "sha256": "4ff90174788b8cc08a3843c87bcee03dc6b507ff8efd025c0ba0264bed45fa8d"},
+    {"path": "docs/full-review/c6-c10-convergence-2026-08-21.md", "sha256": "9a7f43185aaa2199de40ee778ad00dd55704e0ebe92c9c90826da1d9d1f793b9"},
+    {"path": "docs/full-review/c6-c10-regression-evidence-2026-08-21.md", "sha256": "a862fe0827f24ac712024bb845f6c8589bf57494c0c922d024474bed720afb31"},
+    {"path": "docs/full-review/c6-c10-hardening-evidence-2026-08-21.md", "sha256": "11d37226e39e510b2bda9e53115d344fd6ae61b64c7942bcf3ab39f0e59d7a53"},
+    {"path": "docs/full-review/c6-c10-security-boundary-hardening-2026-08-21.md", "sha256": "b904b3a18e0dd87ec2b260f35e318caaebf4c74c490c28a7d17cbf2001c1bc59"},
+    {"path": "docs/full-review/c6-min-durable-filesystem-projection-repair-evidence-2026-08-21.md", "sha256": "bafff58b3e99da555961afb14076e21df93c40170a8d9657438ddb7ac245c4ae"},
+    {"path": "docs/full-review/c6-b-restore-projection-repair-evidence-2026-08-21.md", "sha256": "6585143a06c13a48880dde46e75012da8527ae9033ac18b2ea20d6714e8208e1"},
+    {"path": "docs/full-review/c7-min-watcher-durable-rescan-evidence-2026-08-21.md", "sha256": "d0b487b61ffd6780cccaccbf64454c63a2e483f5b13727921154ae1bf6857aee"},
+    {"path": "docs/full-review/c8-min-import-partial-contract-evidence-2026-08-21.md", "sha256": "97a85efef31684a70b481c908107b1d8e463dee072379184fbec7378cdea4b84"},
+    {"path": "docs/full-review/c9-min-import-ui-cancel-pool-lifecycle-evidence-2026-08-21.md", "sha256": "a191422b5796e1edb14b6077cb891724d80883764c45723b59acca36a60fcaf1"},
+    {"path": "docs/full-review/c10-min-import-durable-intent-recovery-evidence-2026-08-21.md", "sha256": "793887536d2756906e6ea36beac191509602a502e2125f538236e999a4bed5dd"}
+  ],
+  "indexed_reports": [
+    "docs/full-review/evidence-convergence-2026-08-20.md",
+    "docs/full-review/c6-c10-convergence-2026-08-21.md",
+    "docs/full-review/c6-c10-regression-evidence-2026-08-21.md",
+    "docs/full-review/c6-c10-hardening-evidence-2026-08-21.md",
+    "docs/full-review/c6-c10-security-boundary-hardening-2026-08-21.md"
+  ],
+  "findings": [
+    {"canonical_id": "C6-SBH-01", "severity": "P1", "status": "fixed-unverified", "source_ids": ["XFS-01", "EVID-06"], "anchors": ["AssetsManager/application/filesystem_projection_repair_service.py:30", "AssetsManager/application/project_service.py:324"], "surface": "Filesystem and project containment hardening", "next_action": "Independent Windows reparse and clean-checkout proof", "dynamic_verification": "Focused project and full Python suites passed; platform links skipped"},
+    {"canonical_id": "C7-SBH-01", "severity": "P1", "status": "fixed-unverified", "source_ids": ["XFS-03", "EVID-06"], "anchors": ["AssetsManager/application/library_watcher_service.py:94", "AssetsManager/core/library_lock.py:68"], "surface": "Watcher and POSIX recovery boundary hardening", "next_action": "POSIX multi-process and independent Windows lifecycle validation", "dynamic_verification": "Lock focused suite passed with three Windows POSIX skips"},
+    {"canonical_id": "C8-SBH-01", "severity": "P1", "status": "fixed-unverified", "source_ids": ["XFS-10", "EVID-06"], "anchors": ["AssetsManager/application/thumbnail_service.py:32", "AssetsManager/lan/routes/thumbnails.py:157"], "surface": "Thumbnail admission and batch budget hardening", "next_action": "Descriptor-based final-open design and real media stress evidence", "dynamic_verification": "Thumbnail focused suite passed 43/43"},
+    {"canonical_id": "C9-SBH-01", "severity": "P1", "status": "fixed-unverified", "source_ids": ["C8-01", "EVID-06"], "anchors": ["AssetsManager/window.py:161", ".github/workflows/release.yml:47"], "surface": "Lifecycle and release publication boundary hardening", "next_action": "GitHub runner and Windows package publication validation", "dynamic_verification": "Packaging tests and local release policy assertions passed"},
+    {"canonical_id": "C10-SBH-01", "severity": "P1", "status": "fixed-unverified", "source_ids": ["XFS-10", "EVID-06"], "anchors": ["AssetsManager/application/import_manifest_store.py:62", "tests/integration/test_import_service.py:1"], "surface": "C10 durable import behavior under expanded regression", "next_action": "Subprocess termination, stale-process CAS and copy replay evidence", "dynamic_verification": "Full Python suite passed with no failures"}
+  ]
+}

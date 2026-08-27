@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "report_id": "import-manifest-recovery-claim-lease-evidence-2026-08-23",
+  "captured_at": "2026-08-23T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "c9e21e0370a135e9afa3d978e003eb92886bdd7d2889a0d45ad31a645eb44629",
+    "diff_sha256": "ac68b6038e01e9f2060eb4913944c74c1a8067f15e9e5a01e8381e177b63558c",
+    "tracked_change_count": 143,
+    "untracked_change_count": 115
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python", "-m", "pytest", "-n", "0", "-q",
+          "tests/core/test_db_migrations.py",
+          "tests/unit/test_db_lock_low_batch.py",
+          "tests/unit/test_import_manifest_store.py",
+          "tests/integration/test_import_service.py",
+          "tests/integration/test_import_subprocess_termination.py",
+          "tests/integration/test_import_manifest_recovery_claim_process.py",
+          "tests/integration/test_reconciliation_queue_sqlite_runtime.py",
+          "tests/integration/test_reconciliation_queue_fault_injection.py",
+          "tests/integration/test_reconciliation_queue_external_lock.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "v34 migration, import recovery claim/lease, stale token takeover, dual-process claim race and existing recovery matrix",
+        "sample_count": 113,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/import-manifest-recovery-claim-lease/focused.stdout.log", "sha256": "f61390c59a2a5679665e99dd821e2c8ded35cd987587d5353776b859c9cf0176"},
+          {"path": "artifacts/evidence/2026-08-23/import-manifest-recovery-claim-lease/focused.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": [
+          "python", "-W", "error::RuntimeWarning", "-m", "pytest",
+          "--basetemp=.zcode/pytest-batch27b-full", "-n", "0", "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python suite after v34 import recovery claim/lease changes",
+        "sample_count": 4036,
+        "pass_criterion": "exit_code == 0; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/import-manifest-recovery-claim-lease/full.stdout.log", "sha256": "c3b8a3a336306c7fd76387b6d10fffbc9342dc7d63ceea6aa430e3788f249920"},
+          {"path": "artifacts/evidence/2026-08-23/import-manifest-recovery-claim-lease/full.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": ["python", "-m", "ruff", "check", "AssetsManager/core/schema_defs.py", "AssetsManager/core/db_migrations.py", "AssetsManager/application/import_manifest_store.py", "tests/core/test_db_migrations.py", "tests/unit/test_db_lock_low_batch.py", "tests/unit/test_import_manifest_store.py", "tests/integration/test_import_manifest_recovery_claim_process.py"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted Ruff check for v34 and claim/lease files",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/import-manifest-recovery-claim-lease/ruff.stdout.log", "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"},
+          {"path": "artifacts/evidence/2026-08-23/import-manifest-recovery-claim-lease/ruff.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": ["python", "-m", "compileall", "AssetsManager/core/schema_defs.py", "AssetsManager/core/db_migrations.py", "AssetsManager/application/import_manifest_store.py", "tests/core/test_db_migrations.py", "tests/unit/test_import_manifest_store.py", "tests/integration/test_import_manifest_recovery_claim_process.py", "-q"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted compile check for v34 and claim/lease files",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/import-manifest-recovery-claim-lease/compile.stdout.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+          {"path": "artifacts/evidence/2026-08-23/import-manifest-recovery-claim-lease/compile.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": ["git", "diff", "--check"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted whitespace check for v34 and claim/lease changes",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/import-manifest-recovery-claim-lease/diffcheck.stdout.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+          {"path": "artifacts/evidence/2026-08-23/import-manifest-recovery-claim-lease/diffcheck.stderr.log", "sha256": "af1cbe7332cca945e3b4ca037c7553a1be82d1c06146b8ec622cc3cc05e2dde2"}
+        ]
+      },
+      {
+        "argv": [
+          "python", "scripts/check_doc_stats.py", "&&", "python", "scripts/check_boundaries.py", "&&",
+          "python", "scripts/check_style_sources.py", "&&", "python", "scripts/check_route_capabilities.py", "&&",
+          "python", "scripts/check_frontend_data_fetch.py", "&&", "python", "scripts/check_layers.py", "&&",
+          "python", "-m", "ruff", "check", "AssetsManager", "tests", "scripts", "run.py", "&&",
+          "python", "-m", "compileall", "AssetsManager", "-q", "&&", "git", "diff", "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index non-self-referential governance after 27-B report and manifest",
+        "sample_count": 9,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/import-manifest-recovery-claim-lease/static-post-index.stdout.log", "sha256": "cd0bfa8fd867bd821dbb2285bb364681e91a49b915884928a4116f4e570ccba2"},
+          {"path": "artifacts/evidence/2026-08-23/import-manifest-recovery-claim-lease/static-post-index.stderr.log", "sha256": "af1cbe7332cca945e3b4ca037c7553a1be82d1c06146b8ec622cc3cc05e2dde2"}
+        ]
+      }
+    ],
+    "note": "Focused: 113 passed. Full Python: 4012 passed, 14 skipped, 20 deselected, 2 warnings. v33-to-v34 additive migration, claim CAS, lease takeover, stale-token rejection and dual-process winner contract passed. README statistics were corrected from 276 to 277 after adding the dual-process test. Post-index non-self-referential governance passed; audit manifest validation is run separately to avoid self-referential artifact hashing. Filesystem atomicity, power-loss, exactly-once queue execution and cross-system atomicity remain unverified."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/audit-manifest-import-manifest-recovery-robustness-evidence-2026-08-23.json",
+      "sha256": "6a591d5ad4f770c30a8e5f52eafeeacf6ca335a09c8f1efa24d3faaed69e5269"
+    },
+    {
+      "path": "docs/full-review/import-manifest-recovery-robustness-evidence-2026-08-23.md",
+      "sha256": "b0707bbd94c2ef938890a4a8783f9759b9f15eff67ed2890e20d3405366d93ae"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/import-manifest-recovery-claim-lease-evidence-2026-08-23.md",
+    "docs/full-review/import-manifest-recovery-robustness-evidence-2026-08-23.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "IMPORT-MANIFEST-RECOVERY-CLAIM-LEASE-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": ["IMPORT-MANIFEST-RECOVERY-ROBUSTNESS-01"],
+      "anchors": [
+        "AssetsManager/core/db_migrations.py:1037",
+        "AssetsManager/application/import_manifest_store.py:204",
+        "AssetsManager/application/import_manifest_store.py:331",
+        "AssetsManager/application/import_manifest_store.py:500",
+        "tests/integration/test_import_manifest_recovery_claim_process.py:160",
+        "tests/core/test_db_migrations.py:95"
+      ],
+      "surface": "Import manifest v34 recovery claim/lease ownership, token-bound finish/failure CAS and cross-process recovery winner",
+      "next_action": "Keep filesystem no-overwrite races, power-loss, cross-system atomicity, exactly-once queue execution and copy idempotency as separate unverified batches",
+      "dynamic_verification": "113 focused tests and 4012 full Python tests passed on Windows. v33-to-v34 upgrade is additive/idempotent, one claim winner is observed across two independent processes, expired lease takeover works, stale tokens cannot finish, and recovery claims before enqueue. Strict exactly-once queue execution and filesystem atomicity remain unverified."
+    }
+  ]
+}

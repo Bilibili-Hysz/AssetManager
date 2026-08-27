@@ -17,6 +17,7 @@ from typing import Any
 from aiohttp import web
 
 from AssetsManager.application.asset_filters import matches_exclude
+from AssetsManager.application.thumbnail_service import process_image_snapshot
 from AssetsManager.core.database import db_write_lock
 from AssetsManager.core.format_utils import CATEGORY_MAP, format_size
 from AssetsManager.domain.asset import IMAGE_EXTS
@@ -24,6 +25,7 @@ from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import ActivityChanged, PresenceChanged
 from AssetsManager.lan.path_guard import MissingPathError, PathEscapeError, PathGuard, PathGuardError, assert_under_root
 from AssetsManager.lan.routes._errors import error_response
+from AssetsManager.lan.safe_open import SafeOpenError, read_safe_file
 
 _log = logging.getLogger(__name__)
 
@@ -508,7 +510,20 @@ async def serve_blur_gated_raster(
     """
     if should_blur:
         svc = get_thumbnail_service(request)
-        processed = await asyncio.to_thread(svc.process_image, target, max_size, True)
+        try:
+            body, _identity = await asyncio.to_thread(
+                read_safe_file, get_lan(request).library_root, target,
+            )
+        except (SafeOpenError, OSError, ValueError):
+            return error_response(
+                "Failed to process image",
+                status=500,
+                code="internal_error",
+                headers=PRIVATE_PREVIEW_HEADERS,
+            )
+        processed = await asyncio.to_thread(
+            process_image_snapshot, svc, target, body, max_size, True,
+        )
         if processed is None:
             return error_response(
                 "Failed to process image",
@@ -522,11 +537,24 @@ async def serve_blur_gated_raster(
             content_type=processed_content_type,
             headers=PRIVATE_PREVIEW_HEADERS,
         )
-    response = web.FileResponse(target, headers=PRIVATE_PREVIEW_HEADERS)
-    # FileResponse guesses from the suffix; use the verified/whitelisted
-    # format so a mismatched extension cannot produce a wrong Content-Type.
-    response.headers["Content-Type"] = content_type
-    return response
+    try:
+        body, _identity = await asyncio.to_thread(
+            read_safe_file,
+            get_lan(request).library_root,
+            target,
+        )
+    except (SafeOpenError, OSError, ValueError):
+        return error_response(
+            "File not found",
+            status=404,
+            code="not_found",
+            headers=PRIVATE_PREVIEW_HEADERS,
+        )
+    return web.Response(
+        body=body,
+        content_type=content_type,
+        headers=PRIVATE_PREVIEW_HEADERS,
+    )
 
 
 def _zip_entry_allowed(root: Path, entry: str) -> bool:
@@ -546,11 +574,19 @@ def build_zip_sync(target_paths: list[tuple[Path, str | None]], zip_path: str) -
                 if arc_name is None:
                     arc_name = target.name
                 if target.is_file():
-                    zf.write(str(target), arc_name)
+                    try:
+                        body, _identity = read_safe_file(target.parent, target)
+                    except (SafeOpenError, OSError, ValueError):
+                        _log.warning("Failed to add file to ZIP: %s", target)
+                        continue
+                    zf.writestr(arc_name, body)
                 elif target.is_dir():
                     root = target.resolve()
                     for dirpath, dirnames, filenames in os.walk(target):
-                        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+                        dirnames[:] = [
+                            d for d in dirnames
+                            if not d.startswith(".") and not os.path.islink(os.path.join(dirpath, d))
+                        ]
                         for fname in filenames:
                             if fname.startswith("."):
                                 continue
@@ -562,8 +598,9 @@ def build_zip_sync(target_paths: list[tuple[Path, str | None]], zip_path: str) -
                                         "Skipping ZIP entry outside archive root: %s", fp
                                     )
                                     continue
-                                zf.write(fp, arc)
-                            except OSError:
+                                body, _identity = read_safe_file(root, fp)
+                                zf.writestr(arc, body)
+                            except (SafeOpenError, OSError, ValueError):
                                 _log.warning("Failed to add file to ZIP: %s", fp)
         return zip_path
     except Exception:
@@ -601,7 +638,25 @@ async def build_zip_async(
 ) -> str | None:
     loop = asyncio.get_running_loop()
     executor = _zip_executor_for(request)
-    if executor is None:
-        # Legacy test/mocked app without a server-provided executor.
-        return await loop.run_in_executor(None, build_zip_sync, targets, zip_path)
-    return await loop.run_in_executor(executor, build_zip_sync, targets, zip_path)
+
+    def cleanup() -> None:
+        try:
+            os.unlink(zip_path)
+        except OSError:
+            pass
+
+    try:
+        if executor is None:
+            # Legacy test/mocked app without a server-provided executor.
+            work = loop.run_in_executor(None, build_zip_sync, targets, zip_path)
+        else:
+            work = loop.run_in_executor(executor, build_zip_sync, targets, zip_path)
+    except BaseException:
+        cleanup()
+        raise
+
+    try:
+        return await asyncio.shield(work)
+    except asyncio.CancelledError:
+        work.add_done_callback(lambda _finished: cleanup())
+        raise

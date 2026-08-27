@@ -83,6 +83,7 @@ class MenuContribution:
     title: str | None = None
     order: int = 100
     enabled: bool = True
+    plugin_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -541,6 +542,7 @@ class PluginHostContext:
                     "command_id": cls.command_id,
                     "title": cls.title,
                     "order": cls.order,
+                    "plugin_id": owner,
                 }
             )
         if issubclass(cls, PanelContributor):
@@ -588,10 +590,11 @@ class PluginHostContext:
             return False
         if self._resolve_contribution_owner(owner, "register_command") is None:
             return False
-        self._v2_commands[command_id] = cls
-        self._class_owners[command_id] = owner
+        if command_id in self._v2_commands or command_id in self._v2_parsers:
+            _log.warning("Contribution id conflict: '%s' is already registered", command_id)
+            return False
         handler = self._operator_handler(cls)
-        registered = self.register_command(
+        if not self.register_command(
             {
                 "id": command_id,
                 "title": title,
@@ -600,17 +603,28 @@ class PluginHostContext:
             },
             handler,
             plugin_id=owner,
-        )
+        ):
+            return False
+        menu_ids = []
         for menu_path in cls.menu_paths:
-            self.register_menu_contribution(
+            menu_id = f"{command_id}:{menu_path}"
+            if not self.register_menu_contribution(
                 {
-                    "id": f"{command_id}:{menu_path}",
+                    "id": menu_id,
                     "menu_path": menu_path,
                     "command_id": command_id,
                     "title": title,
+                    "plugin_id": owner,
                 }
-            )
-        return registered
+            ):
+                self._commands.pop(command_id, None)
+                for registered_id in menu_ids:
+                    self._menu_contributions.pop(registered_id, None)
+                return False
+            menu_ids.append(menu_id)
+        self._v2_commands[command_id] = cls
+        self._class_owners[command_id] = owner
+        return True
 
     def _register_parser_class(self, cls: type[FileParser], owner: str) -> bool:
         parser_id = str(cls.id or owner or "").strip()
@@ -618,9 +632,9 @@ class PluginHostContext:
             return False
         if self._resolve_contribution_owner(owner or parser_id, "register_file_handler") is None:
             return False
-        self._v2_parsers[parser_id] = cls
-        self._class_owners[parser_id] = owner
-
+        if parser_id in self._v2_commands or parser_id in self._v2_parsers:
+            _log.warning("Contribution id conflict: '%s' is already registered", parser_id)
+            return False
         def match(file_path: str, parser=cls, owner=owner) -> bool:
             with self._host_identity_scope(self._executing_plugin_var, owner):
                 return bool(parser.match(self.plugin_context(), file_path))
@@ -630,7 +644,10 @@ class PluginHostContext:
                 parsed = parser().parse(self.plugin_context(), file_path)
                 return parsed if isinstance(parsed, dict) else {}
 
-        self.register_file_handler(owner or parser_id, match, parse)
+        if not self.register_file_handler(owner or parser_id, match, parse):
+            return False
+        self._v2_parsers[parser_id] = cls
+        self._class_owners[parser_id] = owner
         return True
 
     def _register_context_menu_class(self, cls: type[ContextMenuItem], owner: str) -> bool:
@@ -841,6 +858,9 @@ class PluginHostContext:
         title = str(descriptor.get("title") or cid).strip()
         if not cid or not title:
             return False
+        if cid in self._commands:
+            _log.warning("Contribution id conflict: '%s' is already registered", cid)
+            return False
         shortcut = _opt_str(descriptor.get("shortcut"))
         if shortcut:
             existing = next(
@@ -870,16 +890,25 @@ class PluginHostContext:
         return True
 
     def register_menu_contribution(self, descriptor: dict[str, object]) -> bool:
+        owner = self._resolve_contribution_owner(
+            str(descriptor.get("plugin_id") or ""), "register_menu_contribution"
+        )
+        if owner is None:
+            return False
         cid = str(descriptor.get("id") or "").strip()
         menu_path = str(descriptor.get("menu_path") or "").strip()
         command_id = str(descriptor.get("command_id") or "").strip()
         if not cid or menu_path not in {"tools", "plugins", "context"} or not command_id:
+            return False
+        if cid in self._menu_contributions:
+            _log.warning("Contribution id conflict: '%s' is already registered", cid)
             return False
         self._menu_contributions[cid] = MenuContribution(
             id=cid, menu_path=menu_path, command_id=command_id,
             title=_opt_str(descriptor.get("title")),
             order=_to_int(descriptor.get("order")),
             enabled=bool(descriptor.get("enabled", True)),
+            plugin_id=owner,
         )
         return True
 
@@ -890,6 +919,9 @@ class PluginHostContext:
         cid = str(descriptor.get("id") or "").strip()
         title = str(descriptor.get("title") or cid).strip()
         if not cid or not callable(factory):
+            return False
+        if cid in self._tool_windows:
+            _log.warning("Contribution id conflict: '%s' is already registered", cid)
             return False
         area = str(descriptor.get("area") or "right").strip().lower() or "right"
         self._tool_windows[cid] = ToolWindowContribution(
@@ -912,7 +944,7 @@ class PluginHostContext:
         plugin_id: str,
         match: Callable[[str], bool],
         parse: Callable[[str], dict],
-    ) -> None:
+    ) -> bool:
         """Register a file handler with match/parse logic.
 
         This is the Blender-style registration for file metadata parsers.
@@ -921,15 +953,16 @@ class PluginHostContext:
         """
         owner = self._resolve_contribution_owner(plugin_id, "register_file_handler")
         if owner is None:
-            return
+            return False
         if not callable(match) or not callable(parse):
             _log.warning("register_file_handler: match and parse must be callables")
-            return
+            return False
         if not self._check_permission_warn("filesystem.read", "register_file_handler", owner):
-            return
+            return False
         self._file_handlers.append(
             FileHandlerContribution(plugin_id=owner, match=match, parse=parse)
         )
+        return True
 
     def register_context_menu_item(
         self,
@@ -994,12 +1027,18 @@ class PluginHostContext:
             return
         if not self._check_permission_warn("settings.write", "register_category", owner):
             return
+        normalized_extensions = frozenset(
+            str(extension).strip().lower() for extension in extensions if str(extension).strip()
+        )
+        if not normalized_extensions:
+            _log.warning("register_category: extensions must contain usable values")
+            return
         self._categories.append(
             CategoryContribution(
                 plugin_id=owner,
                 key=key,
                 label=label,
-                extensions=frozenset(extensions),
+                extensions=normalized_extensions,
             )
         )
         apply = self._apply_categories
@@ -1475,7 +1514,7 @@ class PluginHostContext:
         }
         self._menu_contributions = {
             cid: mc for cid, mc in self._menu_contributions.items()
-            if mc.command_id in self._commands
+            if mc.plugin_id != target
         }
         self._tool_windows = {
             cid: tw for cid, tw in self._tool_windows.items()

@@ -56,6 +56,7 @@ class AuthService:
         # Persistent token revocation lives in the library DB so revoked
         # simple-password tokens cannot resurrect after an app restart.
         self._revoked_repo: RevokedTokenRepository | None = None
+        self._revocation_repo_lock = threading.Lock()
         if session is not None:
             self._bind_session(session)
 
@@ -300,24 +301,32 @@ class AuthService:
 
     def _revocation_repo(self) -> RevokedTokenRepository:
         """Lazily build the persistent revocation repository."""
-        if self._revoked_repo is None:
-            self._revoked_repo = RevokedTokenRepository(self._conn)
-        return self._revoked_repo
+        repository = self._revoked_repo
+        if repository is not None:
+            return repository
+        with self._revocation_repo_lock:
+            if self._revoked_repo is None:
+                self._revoked_repo = RevokedTokenRepository(self._conn)
+            return self._revoked_repo
 
+    @session_operation
     def revoke_token(self, token: str, *, ttl: float = 86400.0) -> None:
         """Persist a token revocation (SHA256 digest, default TTL 24h)."""
         digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
         self._revocation_repo().add(digest, expires_at=time.time() + ttl)
 
+    @session_operation
     def is_token_revoked(self, token: str) -> bool:
         """Return True when an unexpired revocation row exists."""
         digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
         return self._revocation_repo().is_revoked(digest)
 
+    @session_operation
     def load_active_revocations(self) -> dict[str, float]:
         """Return {digest: expires_at} for all unexpired revocation rows."""
         return self._revocation_repo().load_active()
 
+    @session_operation
     def prune_revocations(self) -> None:
         """Delete expired revocation rows (best-effort hygiene)."""
         self._revocation_repo().prune_expired()

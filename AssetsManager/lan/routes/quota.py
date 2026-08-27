@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import logging
 import math
 import secrets
 import time
@@ -22,6 +23,12 @@ from AssetsManager.lan.routes._helpers import (
     get_request_principal,
 )
 from AssetsManager.lan.routes.shop import get_commerce_services, require_seller
+
+_log = logging.getLogger(__name__)
+
+
+class QuotaUnavailableError(RuntimeError):
+    """Raised when the quota store cannot safely decide a download."""
 
 
 def _as_bool(value: object, default: bool = False) -> bool:
@@ -67,25 +74,16 @@ _QUOTA_IDENTITY_REQUEST_KEY = web.RequestKey("_quota_identity_resolved", object)
 
 
 def _quota_cookie_signing_secret(lan: object) -> bytes:
-    """Use the server secret when available, otherwise a per-LAN key.
+    """Resolve the signing key through the shared tunnel_identity source.
 
-    Mirrors the storefront analytics visitor cookie so both anonymous
-    identities share the same secret sourcing (``local_ui_auth_secret``
-    preferred, then ``token_secret``).
+    Same precedence as the tunnel limiter and the storefront analytics
+    visitor cookie (``local_ui_auth_secret`` preferred, then ``token_secret``),
+    with the per-lan random fallback cached on ``_quota_cookie_secret`` so
+    every module on one lan object derives keys from one place.
     """
-    configured = getattr(lan, "local_ui_auth_secret", None) or getattr(
-        lan, "token_secret", None
-    )
-    if isinstance(configured, bytes) and configured:
-        return configured
-    if isinstance(configured, str) and configured:
-        return configured.encode("utf-8")
+    from AssetsManager.lan import tunnel_identity
 
-    cached = getattr(lan, "_quota_cookie_secret", None)
-    if not isinstance(cached, bytes) or not cached:
-        cached = secrets.token_bytes(32)
-        setattr(lan, "_quota_cookie_secret", cached)
-    return cached
+    return tunnel_identity.signing_secret(lan)
 
 
 def _new_quota_cookie_token(secret: bytes) -> str:
@@ -217,6 +215,7 @@ def get_free_download_quota_service(request: web.Request) -> FreeDownloadQuotaSe
     lan = get_lan(request)
     existing = getattr(lan, "free_download_quota_service", None)
     if existing is not None:
+        maintain_free_download_quota_service(existing, get_free_download_quota_config())
         return existing
     scoped = getattr(lan, "services", None)
     provider = getattr(lan, "connection_for", None)
@@ -230,7 +229,22 @@ def get_free_download_quota_service(request: web.Request) -> FreeDownloadQuotaSe
         session=session,
     )
     lan.free_download_quota_service = service
+    maintain_free_download_quota_service(service, get_free_download_quota_config())
     return service
+
+
+def maintain_free_download_quota_service(
+    service: FreeDownloadQuotaService,
+    config: FreeDownloadQuotaConfig,
+) -> None:
+    """Run due maintenance without making the quota decision fail open."""
+    try:
+        removed = service.maybe_prune_stale_windows(config)
+    except Exception as exc:
+        _log.warning("Free-download quota window prune failed; will retry: %s", exc)
+        return
+    if removed:
+        _log.info("Pruned %d expired free-download quota windows", removed)
 
 
 def get_free_download_quota_info(request: web.Request) -> dict[str, Any]:
@@ -246,9 +260,12 @@ def consume_free_download_quota(request: web.Request) -> dict[str, Any]:
     config = get_free_download_quota_config()
     if not config.enabled:
         return {"allowed": True, "reason": None, "info": _disabled_info(config), "retry_after_seconds": 0}
-    return get_free_download_quota_service(request).consume(
-        free_download_quota_identity(request), config
-    )
+    try:
+        return get_free_download_quota_service(request).consume(
+            free_download_quota_identity(request), config
+        )
+    except Exception as exc:
+        raise QuotaUnavailableError("Free download quota store is unavailable") from exc
 
 
 def apply_free_quota_headers(headers: dict[str, str], info: dict[str, Any]) -> None:

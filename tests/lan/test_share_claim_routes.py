@@ -174,17 +174,89 @@ def test_share_claim_route_throttles_failed_attempts_per_ip(monkeypatch):
     assert throttled.status == 429
 
 
-def test_share_claim_limiter_counts_failures_within_window():
+def test_share_claim_limiter_counts_reserved_attempts_within_window():
     window = shop_routes._CLAIM_WINDOW_SECONDS
     now = 1_000.0
     remote = "203.0.113.99"
     shop_routes._claim_failures.pop(remote, None)
     try:
         for _ in range(shop_routes._CLAIM_MAX_FAILURES):
-            assert shop_routes._claim_brute_force_allowed(remote, now) is True
-            shop_routes._record_claim_failure(remote, now)
-        assert shop_routes._claim_brute_force_allowed(remote, now) is False
-        # Failures leave the window and the IP recovers.
-        assert shop_routes._claim_brute_force_allowed(remote, now + window) is True
+            assert shop_routes._reserve_claim_attempt(remote, now) is True
+        assert shop_routes._reserve_claim_attempt(remote, now) is False
+        # The window fully elapses and the identity recovers.
+        assert shop_routes._claim_retry_after(remote, now + window + 1) == window
+        assert shop_routes._reserve_claim_attempt(remote, now + window + 1) is True
     finally:
         shop_routes._claim_failures.pop(remote, None)
+
+
+def test_claim_reservation_sweeps_expired_other_identity_buckets():
+    from AssetsManager.lan.routes.shop.delivery import (
+        _CLAIM_WINDOW_SECONDS,
+        _claim_failures,
+        _reserve_claim_attempt,
+    )
+
+    now = 1_000_000.0
+    stale_ip = "9.9.9.9"
+    active_ip = "8.8.8.8"
+    _claim_failures[stale_ip] = [now - _CLAIM_WINDOW_SECONDS - 1]
+    try:
+        assert _reserve_claim_attempt(active_ip, now) is True
+
+        assert stale_ip not in _claim_failures
+        assert _claim_failures[active_ip] == [now]
+        # The swept identity is immediately allowed again: nothing can
+        # accumulate toward a lockout once its window has fully elapsed.
+        assert _reserve_claim_attempt(stale_ip, now) is True
+    finally:
+        _claim_failures.pop(active_ip, None)
+        _claim_failures.pop(stale_ip, None)
+
+
+def test_claim_hard_cap_bounds_active_identities(monkeypatch):
+    from AssetsManager.lan.routes.shop import delivery as delivery_mod
+
+    monkeypatch.setattr(delivery_mod, "_CLAIM_MAX_ACTIVE_KEYS", 50)
+    now = 2_000_000.0
+    recent_identity = f"recent-{'x' * 64}"
+    try:
+        assert delivery_mod._reserve_claim_attempt(recent_identity, now) is True
+        for index in range(120):
+            assert (
+                delivery_mod._reserve_claim_attempt(f"flood-{index}", now + 1 + index / 1000)
+                is True
+            )
+        assert len(delivery_mod._claim_failures) <= 50
+        # Capacity eviction follows insertion order: the earliest identities
+        # (including the pre-flood one) are dropped while the most recently
+        # reserved identity survives.
+        assert recent_identity not in delivery_mod._claim_failures
+        assert delivery_mod._claim_failures.get("flood-0") is None
+        assert delivery_mod._claim_failures.get("flood-119") == [2000001.119]
+    finally:
+        delivery_mod._claim_failures.clear()
+
+
+def test_claim_active_identity_refresh_is_lru_preserved(monkeypatch):
+    """A refreshed identity survives capacity eviction over idle ones."""
+    from AssetsManager.lan.routes.shop import delivery as delivery_mod
+
+    monkeypatch.setattr(delivery_mod, "_CLAIM_MAX_ACTIVE_KEYS", 3)
+    now = 3_000_000.0
+    ids = [f"id-{index}" for index in range(4)]
+    try:
+        for index in range(3):
+            assert delivery_mod._reserve_claim_attempt(ids[index], now + index) is True
+        # Refresh id-0 so it becomes the most recently active identity.
+        assert delivery_mod._reserve_claim_attempt(ids[0], now + 10) is True
+        # New identity forces eviction of the longest-idle one (id-1).
+        assert delivery_mod._reserve_claim_attempt(ids[3], now + 11) is True
+
+        assert ids[0] in delivery_mod._claim_failures, "refreshed identity kept"
+        assert ids[2] in delivery_mod._claim_failures
+        assert ids[3] in delivery_mod._claim_failures
+        assert ids[1] not in delivery_mod._claim_failures, "idle identity evicted first"
+        assert len(delivery_mod._claim_failures) <= 3
+    finally:
+        delivery_mod._claim_failures.clear()

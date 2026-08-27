@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "report_id": "quota-consume-busy-retry-evidence-2026-08-27",
+  "captured_at": "2026-08-27T00:30:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "4fdf3ed790f75552b0a344b04c71ea419d3a5032371dbbf90758cd4a30f812d6",
+    "diff_sha256": "b33c58a60ca451479286bbefaa70b2a18874d50b83f4f9c951e62bae06a7fe8f",
+    "tracked_change_count": 168,
+    "untracked_change_count": 169
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/unit/test_free_download_quota.py",
+          "tests/lan/test_free_download_quota.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Proxy-injected busy error on the first consume SAVEPOINT resolves on retry; caller-BEGIN replay refusal; existing CAS/thread-pool single-slot contract",
+        "sample_count": 24,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/consume-retry/focused.stdout.log",
+            "sha256": "aa735fc38bd03d2c131336147ddb2ba5ef44b2ac3200005cb6d3bcedea37f563"
+          }
+        ]
+      }
+    ],
+    "note": "Retry covers SQLite locked/busy only; route-level 503 fail-closed for other storage failures is unchanged. No exactly-once or power-loss claims. Final serial suite green at 4097 passed."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/quota-consume-busy-retry-evidence-2026-08-27.md",
+      "sha256": "d7d26f72bd7c7a8e61fdc3f12aeeaeb206a9ad08ce477af09d03ba9fef21eb85"
+    },
+    {
+      "path": "AssetsManager/repositories/free_download_quota_repository.py",
+      "sha256": "ebaf78ddecdec02b739c7ee8bd2453a16040aec1f2ecf742c8ed6756ae6988f9"
+    },
+    {
+      "path": "tests/unit/test_free_download_quota.py",
+      "sha256": "6ab80ddd85ccf75a4e7d4fbcecae978121ac656f14db93434686e33c61344f99"
+    },
+    {
+      "path": "AssetsManager/lan/routes/quota.py",
+      "sha256": "24070835d52f2260dfcb00ea5c3f165f6c89a8464698ff0b51e3f409f8bf645b"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/quota-consume-busy-retry-evidence-2026-08-27.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "QUOTA-CONSUME-BUSY-RETRY-47-01",
+      "severity": "P2",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "QUOTA-CONSUME-BUSY-RETRY-47-01"
+      ],
+      "anchors": [
+        "AssetsManager/repositories/free_download_quota_repository.py:77",
+        "tests/unit/test_free_download_quota.py:227"
+      ],
+      "surface": "Transient SQLite lock contention surfaced as quota-store 503 because consume() had no bounded busy retry while prune_windows already did",
+      "next_action": "Retain the mirrored retry; consider WAL/checkpoint stall behavior only with fresh evidence",
+      "dynamic_verification": "Quota focused matrix passed 24 tests including both new proxy regressions; full serial suite passed 4097 tests with recorded skips and warnings"
+    }
+  ]
+}

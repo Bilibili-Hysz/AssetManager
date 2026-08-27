@@ -16,6 +16,7 @@ from AssetsManager.application.asset_index_service import (
 from AssetsManager.application.reconciliation_queue import (
     ReconciliationQueue,
     ReconciliationQueuePersistenceConflict,
+    ReconciliationKind,
     ReconciliationQueuePersistenceError,
     ReconciliationState,
     ReconciliationTask,
@@ -66,6 +67,7 @@ class AssetIndexReconciliationService:
         session: LibrarySession,
         asset_index_service: AssetIndexService,
         reconciliation_queue: ReconciliationQueue,
+        projection_repair_service=None,
         clock: Callable[[], float] = monotonic,
         max_consecutive_errors: int = 3,
         max_worker_restarts: int = 0,
@@ -79,6 +81,7 @@ class AssetIndexReconciliationService:
         self.session = session
         self.asset_index_service = asset_index_service
         self.reconciliation_queue = reconciliation_queue
+        self.projection_repair_service = projection_repair_service
         if (
             not isinstance(max_consecutive_errors, int)
             or isinstance(max_consecutive_errors, bool)
@@ -459,14 +462,24 @@ class AssetIndexReconciliationService:
         operation_reason: str | None = None
         operation_is_terminal = False
         result: AssetIndexPublishResult | None = None
+        is_projection_repair = (
+            task.kind is ReconciliationKind.FILESYSTEM_PROJECTION_REPAIR
+        )
         try:
             with self.session.operation():
-                conn = self.session.connection_for(self.session.root)
-                result = self.asset_index_service.index_directory_tree_result(
-                    conn,
-                    self.session.root,
-                    Path(task.path),
-                )
+                if is_projection_repair:
+                    if self.projection_repair_service is None:
+                        raise RuntimeError(
+                            "filesystem projection repair service is not configured"
+                        )
+                    self.projection_repair_service.repair(task)
+                else:
+                    conn = self.session.connection_for(self.session.root)
+                    result = self.asset_index_service.index_directory_tree_result(
+                        conn,
+                        self.session.root,
+                        Path(task.path),
+                    )
         except AssetIndexRevisionConflict as exc:
             operation_error = exc
             operation_reason = "stale"
@@ -493,8 +506,11 @@ class AssetIndexReconciliationService:
             and result.committed is True
         )
         if completion_timestamp >= renew_until:
-            assert result is not None  # guarded by result.published above
-            if durably_committed and self._publish_revision_is_current(result):
+            if (
+                result is not None
+                and durably_committed
+                and self._publish_revision_is_current(result)
+            ):
                 # M6a-9: a durably committed tree publish is authoritative even
                 # when the worker exceeded its operation age budget.  The tree
                 # was published in one transaction and the committed revision
@@ -538,6 +554,9 @@ class AssetIndexReconciliationService:
                 return self._terminal(task, operation_error, completion_timestamp)
             assert operation_reason is not None
             return self._retry(task, operation_reason, operation_error, completion_timestamp)
+
+        if is_projection_repair:
+            return self._apply_repair_success(task, completion_timestamp)
 
         assert result is not None
         return self._apply_publish_result(task, result, completion_timestamp)
@@ -741,6 +760,26 @@ class AssetIndexReconciliationService:
                 break
             results.append(result)
         return tuple(results)
+
+    def _apply_repair_success(
+        self,
+        task: ReconciliationTask,
+        timestamp: float,
+    ) -> ReconciliationAttemptResult:
+        try:
+            completed = self.reconciliation_queue.mark_succeeded(
+                task.task_id,
+                expected_attempts=task.attempts,
+                lease_token=task.lease_token,
+                revision=None,
+                now=timestamp,
+            )
+        except ReconciliationQueuePersistenceConflict as conflict:
+            stale = self._stale_completion_noop(task, conflict, now=timestamp)
+            if stale is not None:
+                return stale
+            raise
+        return ReconciliationAttemptResult(task=completed, state=completed.state)
 
     def _apply_publish_result(
         self,

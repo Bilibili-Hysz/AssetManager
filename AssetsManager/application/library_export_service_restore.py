@@ -21,9 +21,11 @@ from typing import TYPE_CHECKING, BinaryIO
 
 from AssetsManager.application.library_export_io import (
     assert_real_staging_tree,
+    clear_restore_intent,
     quick_check_database_file,
     restore_quarantine_path,
     safe_restore_quarantine_root,
+    write_restore_intent,
 )
 from AssetsManager.application.library_export_service_types import (
     LibraryRestoreResult,
@@ -299,6 +301,15 @@ class RestoreMixin:
                 previous = self._restore_quarantine_path(data_dir)
                 self._assert_real_contained(data_dir.parent, data_dir, kind="RuntimeData directory")
                 self._assert_real_contained(data_dir.parent, previous.parent, kind="Restore quarantine directory")
+                # Durable crash evidence must exist before the first replace:
+                # a process death between the two replaces otherwise leaves no
+                # on-disk trace and the next open silently builds an empty DB.
+                write_restore_intent(
+                    data_dir,
+                    map_key=root_identity(root).map_key,
+                    quarantine_entry=previous,
+                    staging=staging,
+                )
                 data_dir.replace(previous)
                 moved_existing = True
             mutation_phase = "install"
@@ -309,6 +320,7 @@ class RestoreMixin:
             mutation_phase = "installed quick_check"
             self._assert_real_contained(data_dir.parent, data_dir, kind="RuntimeData directory")
             self._quick_check_database_file(data_dir / "assetmanager.db")
+            clear_restore_intent(data_dir)
             return LibraryRestoreResult(
                 library_root=root,
                 data_dir=data_dir,
@@ -359,6 +371,16 @@ class RestoreMixin:
                     self._add_restore_secondary_error(
                         primary_error, "previous RuntimeData rollback", rollback_error
                     )
+            try:
+                if data_dir.exists() or data_dir.is_symlink():
+                    # Consistent final state (installed or rolled back): the
+                    # marker served its purpose.  A still-absent data_dir
+                    # keeps the marker so the next open retries recovery.
+                    clear_restore_intent(data_dir)
+            except BaseException as intent_error:
+                self._add_restore_secondary_error(
+                    primary_error, "restore intent cleanup", intent_error
+                )
             raise
 
     @classmethod

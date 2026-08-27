@@ -70,7 +70,7 @@ Prohibited:
 
 | Document | Purpose |
 |----------|---------|
-| `docs/full-review/` | **完整审查文档集（工作区实况权威索引）**：构造详情/模块地图/数据流/事件系统/前端/审查结果/验证基线 |
+| `docs/full-review/` | 带日期、commit 和 manifest 的审计快照；不是当前工作区权威。当前事实以代码、测试和 CI 配置为准。 |
 | `docs/architecture.md` | Current architecture facts |
 | `docs/architecture-diagram.md` | Architecture diagrams |
 | `docs/workspace.md` | Current flattened workspace layout and backup policy |

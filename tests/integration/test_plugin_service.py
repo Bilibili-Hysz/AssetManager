@@ -8,6 +8,9 @@ from AssetsManager.application.plugin_service import PluginService
 from AssetsManager.core.plugins import PluginManagerService
 
 
+pytestmark = pytest.mark.usefixtures("isolated_plugin_settings")
+
+
 def _make_plugin(tmp_path, plugin_id="test.plugin", enabled=True):
     plugin_dir = tmp_path / plugin_id
     plugin_dir.mkdir(parents=True, exist_ok=True)

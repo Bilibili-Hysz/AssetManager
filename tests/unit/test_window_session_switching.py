@@ -581,6 +581,45 @@ def test_main_window_delegates_library_switch_to_lifecycle_coordinator():
     coordinator.switch_library.assert_called_once_with("new-root")
 
 
+def test_shutdown_resources_uses_window_import_cleanup_boundary():
+    global events
+    events = []
+
+    class _Window:
+        _lan_server = None
+        info = None
+        sidebar = None
+        tag_tree = None
+        file_list = None
+
+        def _cleanup_import(self):
+            events.append("import.cleanup")
+
+        def _save_dock_layout(self):
+            events.append("dock.save")
+
+        def _save_workspace_tabs(self):
+            events.append("workspace.save")
+
+    WindowLifecycleCoordinator(_Window(), lambda widget: widget is not None).shutdown_resources()
+
+    assert events == ["import.cleanup", "dock.save", "workspace.save"]
+
+
+def test_switch_library_uses_window_import_cleanup_boundary():
+    global events
+    events = []
+
+    class _CleanupWindow(_Window):
+        def _cleanup_import(self):
+            events.append("import.cleanup")
+
+    window = _CleanupWindow()
+    WindowLifecycleCoordinator(window, lambda widget: widget is not None).switch_library("new-root")
+
+    assert events.index("import.cleanup") == 1
+
+
 def test_shutdown_resources_stops_public_panel_lifecycles_in_order():
     global events
     events = []

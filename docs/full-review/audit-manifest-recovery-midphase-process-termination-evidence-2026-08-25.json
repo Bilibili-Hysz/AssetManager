@@ -1,0 +1,241 @@
+{
+  "schema_version": 1,
+  "report_id": "recovery-midphase-process-termination-evidence-2026-08-25",
+  "captured_at": "2026-08-25T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "cb69a3077cac6965709d98b617d08a54a707bbcb551f42df54294bba5e8e15c5",
+    "diff_sha256": "d70a0792415850d84744c7ac9e27fe7caec5cb6bbe8a1b887c7a9557b98590da",
+    "tracked_change_count": 143,
+    "untracked_change_count": 131
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/integration/test_import_manifest_recovery_claim_process.py",
+          "tests/integration/test_import_subprocess_termination.py",
+          "tests/unit/test_import_manifest_store.py",
+          "tests/integration/test_import_service.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Real subprocess kill checkpoints inside recover() (after claim / after enqueue), lease-gated takeover convergence and single-task queue stability",
+        "sample_count": 60,
+        "pass_criterion": "exit_code == 0; platform-gated symlink skips recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/recovery-midphase-process-termination/focused.stdout.log",
+            "sha256": "e750cf6dac0b9d6aba1f9fc82acb460d47a984e820c1df31e66a5f788345c2a2"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/recovery-midphase-process-termination/focused.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python suite after recovery mid-phase process termination verification",
+        "sample_count": 4053,
+        "pass_criterion": "exit_code == 0; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/recovery-midphase-process-termination/full.stdout.log",
+            "sha256": "cb26e683f4f0521d7913ba9ec81fb35940e6bfa34e486ee6727d684b09336297"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests/integration/test_import_manifest_recovery_claim_process.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted Ruff check for new checkpoint tests",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/recovery-midphase-process-termination/ruff.stdout.log",
+            "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/recovery-midphase-process-termination/ruff.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "compileall",
+          "tests/integration/test_import_manifest_recovery_claim_process.py",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted Python compile check",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/recovery-midphase-process-termination/compile.stdout.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/recovery-midphase-process-termination/compile.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Whitespace check for current dirty worktree",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/recovery-midphase-process-termination/diffcheck.stdout.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/recovery-midphase-process-termination/diffcheck.stderr.log",
+            "sha256": "aa40b795a7b8af061b6804bb2fab436fcc0b0b9e6e474385701ca0afa432f7ec"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index non-self-referential static governance after 29-C report and manifest",
+        "sample_count": 9,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/recovery-midphase-process-termination/static-post-index.stdout.log",
+            "sha256": "cd0bfa8fd867bd821dbb2285bb364681e91a49b915884928a4116f4e570ccba2"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/recovery-midphase-process-termination/static-post-index.stderr.log",
+            "sha256": "aa40b795a7b8af061b6804bb2fab436fcc0b0b9e6e474385701ca0afa432f7ec"
+          }
+        ]
+      }
+    ],
+    "note": "Focused matrix: 58 passed, 2 skipped. Full serial Python suite: 4037 passed, 16 skipped, 20 deselected, 2 warnings. Real child recovery workers were terminated after the claim commit (empty queue, live lease blocks immediate takeover, expiry takeover converges completed/generation==3/attempts==1) and after the enqueue commit (queue row survives with stable task_id across pre-kill/immediate/post-takeover observations; operation_ids.count(op)==1 throughout; a further restart pass is a no-op). One cold-start barrier flake was observed during development and fixed by raising _WAIT_TIMEOUT to 30s; recorded honestly. Wall-clock leases remain compensation, not exactly-once."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/recovery-midphase-process-termination-evidence-2026-08-25.md",
+      "sha256": "3597273147768e348ce1bdd161fa827df533127ab34bad4064dd37b4098897b7"
+    },
+    {
+      "path": "tests/integration/test_import_manifest_recovery_claim_process.py",
+      "sha256": "d5067dcaf4941d9604bd85005bfd7e2ee6d1d10a097f4f8d70948aec20728006"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/recovery-midphase-process-termination-evidence-2026-08-25.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "RECOVERY-MIDPHASE-KILL-29C-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "RECOVERY-MIDPHASE-KILL-29C-01"
+      ],
+      "anchors": [
+        "tests/integration/test_import_manifest_recovery_claim_process.py:107",
+        "tests/integration/test_import_manifest_recovery_claim_process.py:383",
+        "tests/integration/test_import_manifest_recovery_claim_process.py:494",
+        "AssetsManager/application/import_manifest_store.py:214",
+        "AssetsManager/application/import_manifest_store.py:500"
+      ],
+      "surface": "Real subprocess termination windows inside ImportManifestRecoveryService.recover() between claim/enqueue/finish phases",
+      "next_action": "Keep as separate bounded work: power-loss durability, cross-platform process semantics, production lease tuning, exactly-once execution and completed-with-pending-items bookkeeping semantics",
+      "dynamic_verification": "Focused matrix passed 58 tests with two symlink capability skips; full serial suite passed 4037 tests. A child killed after its claim leaves a live lease that blocks immediate parent takeover until expiry, then converges with exactly one queue row; a child killed after enqueue leaves a surviving task whose task_id stays stable across immediate and post-expiry takeover passes with operation-id dedupe count of one throughout."
+    }
+  ]
+}

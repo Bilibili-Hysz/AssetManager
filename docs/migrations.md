@@ -1,6 +1,6 @@
 # Database Migrations
 
-AssetManager Next uses versioned SQLite migrations for per-library databases. **当前版本：`CURRENT_SCHEMA_VERSION = 23`**（2026-08-11 工作区实况）。
+AssetManager Next uses versioned SQLite migrations for per-library databases. **当前版本：`CURRENT_SCHEMA_VERSION = 34`**，以 [`AssetsManager/core/db_migrations.py`](../AssetsManager/core/db_migrations.py) 为执行事实源。历史运行结果和批次证据见 [`docs/full-review/`](full-review/)。
 
 ## Current State
 
@@ -165,6 +165,50 @@ Adds `shop_delivery_attempts`（credential_kind/hash 64、request_key_hash 64、
 ### Version 23 — Shop Catalog Ordering Index
 
 `CREATE INDEX idx_shop_items_enabled_created ON shop_items(enabled, created_at DESC, id DESC)` + shop_items 全契约校验。
+
+### Version 24 — Asset Directory Mtime Snapshot
+
+Adds the asset-directory mtime snapshot fields used by bounded incremental index refreshes and validates their schema contract.
+
+### Version 25 — Shop Share Claims
+
+Adds the durable shop-share claim table and indexes used to enforce single-use claim ownership.
+
+### Version 26 — Gallery Home Projection
+
+Adds the gallery home projection tables and indexes used by the LAN gallery home contract.
+
+### Version 27 — Revoked Tokens
+
+Adds the revoked-token persistence used to invalidate previously issued LAN credentials.
+
+### Version 28 — User Write Capability
+
+Adds the persisted user write-capability field used by the LAN authorization boundary.
+
+### Version 29 — Activity Log
+
+Adds the activity log table and indexes used by the activity projection.
+
+### Version 30 — Filesystem Projection Repair
+
+Adds the durable reconciliation payload/state needed to repair filesystem projections after move, delete, and restore failures.
+
+### Version 31 — Import Manifests
+
+Adds the library-scoped `import_manifests` table and recovery index used to persist import intent before filesystem mutation and enqueue restart-time root rescans. The payload and generation fields are validated by `ImportManifestStore`; see [`C6-C10 convergence evidence`](full-review/c6-c10-convergence-2026-08-21.md).
+
+### Version 32 — Thumbnail Cache Lifecycle
+
+Adds precise thumbnail source timing and artifact-kind metadata used by cache lifecycle validation.
+
+### Version 33 — Thumbnail Render Profile
+
+Adds nullable render-profile metadata for non-destructive profile-aware thumbnail cache writes.
+
+### Version 34 — Import Manifest Recovery Lease
+
+Adds nullable `recovery_claim_token` and `recovery_lease_expires_at` columns plus a recovery lease index. Recovery workers atomically claim unresolved manifests before enqueueing root rescans; completion and failure updates require the claim token and generation/state CAS. Existing v31-v33 rows remain valid and are upgraded additively without replaying filesystem copies.
 
 ## Migration Runner Boundaries
 

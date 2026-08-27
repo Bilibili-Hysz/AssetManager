@@ -26,6 +26,53 @@ def _close_bootstrap(bootstrap: ApplicationBootstrap) -> None:
             pass
 
 
+def test_library_owner_handoff_keeps_db_and_lock_on_session_lease_timeout(
+    tmp_path, monkeypatch
+):
+    import threading
+
+    from AssetsManager.application import context as context_module
+
+    library = tmp_path / "library"
+    library.mkdir()
+    monkeypatch.setattr(context_module, "_FINISH_CLOSE_TIMEOUT_SECONDS", 0.1)
+    old_bootstrap = ApplicationBootstrap()
+    contender = ApplicationBootstrap()
+    old_session = old_bootstrap.library_service.open_session(library)
+    old_bootstrap.runtime_for(old_session)
+    release = threading.Event()
+    started = threading.Event()
+
+    def hold_lease():
+        with old_session.operation():
+            started.set()
+            release.wait(5)
+
+    holder = threading.Thread(target=hold_lease, daemon=True)
+    holder.start()
+    assert started.wait(2)
+    try:
+        with pytest.raises(TimeoutError, match="active operations"):
+            old_bootstrap.library_service.close_session(old_session)
+
+        connection = old_session.context.db_conn
+        assert connection.execute("SELECT 1").fetchone() == (1,)
+        with pytest.raises(RuntimeError, match="owned by another LibraryService|closing"):
+            contender.library_service.open_session(library)
+        assert old_session.context.root_key in old_bootstrap.library_service._closing_sessions
+
+        release.set()
+        holder.join(timeout=2)
+        old_bootstrap.library_service.close_session(old_session)
+        new_session = contender.library_service.open_session(library)
+        assert new_session.root == library.resolve()
+    finally:
+        release.set()
+        holder.join(timeout=2)
+        _close_bootstrap(contender)
+        _close_bootstrap(old_bootstrap)
+
+
 def test_library_owner_handoff_observes_stop_the_world_order(tmp_path, monkeypatch):
     """A new bootstrap acquires the root only after old runtime teardown commits."""
     library = tmp_path / "library"

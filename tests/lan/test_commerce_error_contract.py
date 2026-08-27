@@ -6,6 +6,7 @@ from AssetsManager.application.gallery_service import GalleryTraversalLimitError
 from AssetsManager.application.shop_authorization import ShopAuthorizationConfigError
 from AssetsManager.domain.errors import (
     DeliveryPreparationError,
+    IdempotencyKeyReusedError,
     NotFoundError,
     OperationNotPermitted,
     PriceChangedError,
@@ -39,6 +40,12 @@ def test_known_commerce_not_found_and_conflict_errors_are_structured():
     assert changed.status == 409
     assert payload(changed)["code"] == "price_changed"
     assert payload(changed)["item_id"] == 42
+
+
+def test_idempotency_reuse_preserves_declared_machine_code():
+    response = error_response(IdempotencyKeyReusedError())
+    assert response.status == 409
+    assert payload(response)["code"] == "idempotency_key_reused"
 
 
 def test_expired_receipt_and_delivery_quota_use_terminal_statuses():

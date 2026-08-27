@@ -51,6 +51,11 @@ _EXPECTED_HISTORY = (
     (27, "revoked_tokens"),
     (28, "user_can_write"),
     (29, "activity_log"),
+    (30, "filesystem_projection_repair"),
+    (31, "import_manifests"),
+    (32, "thumbnail_cache_lifecycle"),
+    (33, "thumbnail_render_profile"),
+    (34, "import_manifest_recovery_lease"),
 )
 
 
@@ -276,3 +281,73 @@ def test_library_lock_does_not_recover_live_lock(tmp_path):
 
     with pytest.raises(LibraryAlreadyOpenError):
         LibraryLock(lock_file)
+
+
+def test_posix_recovery_fails_closed_without_usable_flock(monkeypatch, tmp_path):
+    """Missing POSIX recovery capability retains the failed lock state."""
+    from contextlib import contextmanager
+
+    from AssetsManager.core import library_lock
+
+    class FailedLock:
+        pass
+
+    failed_lock = FailedLock()
+
+    @contextmanager
+    def unavailable_guard(_path):
+        raise library_lock._PosixRecoveryUnavailable("flock unavailable")
+        yield
+
+    monkeypatch.setattr(
+        library_lock, "_posix_stale_recovery_guard", unavailable_guard
+    )
+    lock, acquired = library_lock._recover_posix_stale_lock(
+        tmp_path / "live.lock", failed_lock
+    )
+
+    assert lock is failed_lock
+    assert acquired is False
+
+
+def test_posix_recovery_rechecks_after_guard(monkeypatch, tmp_path):
+    """The recovery seam observes a marker that became live while waiting."""
+    from contextlib import contextmanager
+
+    from AssetsManager.core import library_lock
+
+    lock_file = tmp_path / "recheck.lock"
+    guard_paths = []
+    unlink_attempts = []
+
+    class LiveMarker:
+        def tryLock(self, _timeout):
+            return False
+
+        def error(self):
+            return library_lock.QLockFile.LockError.LockFailedError
+
+        def getLockInfo(self):
+            return os.getpid(), "HOST", "python"
+
+    @contextmanager
+    def recovery_guard(path):
+        guard_paths.append(path)
+        # The competing recovery owner is represented by a live PID when the
+        # guarded recheck runs.
+        yield
+
+    monkeypatch.setattr(library_lock, "_posix_stale_recovery_guard", recovery_guard)
+    monkeypatch.setattr(library_lock, "_new_lock", lambda _path: LiveMarker())
+    monkeypatch.setattr(
+        library_lock.Path,
+        "unlink",
+        lambda self, **_kwargs: unlink_attempts.append(self),
+    )
+
+    lock, acquired = library_lock._recover_posix_stale_lock(lock_file)
+
+    assert isinstance(lock, LiveMarker)
+    assert acquired is False
+    assert guard_paths == [lock_file]
+    assert unlink_attempts == []

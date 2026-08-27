@@ -255,6 +255,7 @@ class MetadataService:
         root = str(root_path)
         key = str(target)
         repo = self._repo(root)
+        self._require_event_safe_transaction(repo)
         urls = repo.remove_url(key, url)
         if urls is not None:
             result = tuple(urls)
@@ -327,8 +328,19 @@ class MetadataService:
 
     def _mark_size_cached(self, key: str) -> None:
         """Record that the persisted size for ``key`` was just (re)computed."""
+        now = time.time()
         with self._size_cache_lock:
-            self._size_cache_ts[key] = time.time()
+            self._size_cache_ts[key] = now
+            # Opportunistic sweep: entries past the TTL can never satisfy
+            # _size_cache_fresh again, so drop them instead of growing the
+            # map with every directory ever probed this session.
+            expired = [
+                cached_key
+                for cached_key, computed_at in self._size_cache_ts.items()
+                if now - computed_at >= _SIZE_CACHE_TTL_SECONDS
+            ]
+            for cached_key in expired:
+                del self._size_cache_ts[cached_key]
 
     @staticmethod
     def _canonical_path_key(path: str | Path) -> str:

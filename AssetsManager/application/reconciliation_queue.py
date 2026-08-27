@@ -18,7 +18,7 @@ from pathlib import Path
 import tempfile
 import threading
 import time
-from typing import Callable, Protocol
+from typing import Callable, Mapping, Protocol
 from uuid import uuid4
 
 _log = logging.getLogger(__name__)
@@ -28,6 +28,116 @@ class ReconciliationKind(str, Enum):
     """Repair action represented by a reconciliation task."""
 
     ASSET_INDEX_ROOT_RESCAN = "asset_index_root_rescan"
+    FILESYSTEM_PROJECTION_REPAIR = "filesystem_projection_repair"
+
+
+_FILESYSTEM_REPAIR_PROJECTION_SET = (
+    "asset_index",
+    "tags",
+    "metadata",
+    "favorites",
+    "thumbnail_rows",
+    "thumbnail_bytes",
+)
+_RESTORE_REPAIR_PROJECTION_SET = ("asset_index", "tags", "metadata", "favorites")
+_RESTORE_SNAPSHOT_MAX_BYTES = 256 * 1024
+_RESTORE_SNAPSHOT_MAX_ROWS = 10_000
+
+
+def _validate_restore_snapshot(snapshot: object, *, root: Path) -> dict[str, object]:
+    if not isinstance(snapshot, Mapping):
+        raise ValueError("restore snapshot must be an object")
+    data = dict(snapshot)
+    if data.get("format") != "assetsmanager.undo-projection" or data.get("version") != 1:
+        raise ValueError("restore snapshot format/version is invalid")
+    base = data.get("base")
+    if not isinstance(base, str) or not base:
+        raise ValueError("restore snapshot base is required")
+    base_path = Path(base).resolve()
+    if not base_path.is_relative_to(root):
+        raise ValueError("restore snapshot base escapes library root")
+    for field, width in (("file_tags", 2), ("file_meta", 6), ("library_favorites", 3)):
+        rows = data.get(field, [])
+        if not isinstance(rows, list) or len(rows) > _RESTORE_SNAPSHOT_MAX_ROWS:
+            raise ValueError(f"restore snapshot {field} is invalid")
+        for row in rows:
+            if not isinstance(row, list | tuple) or len(row) != width:
+                raise ValueError(f"restore snapshot {field} row is invalid")
+            if not all(value is None or isinstance(value, (str, int, float, bool)) for value in row):
+                raise ValueError(f"restore snapshot {field} scalar is invalid")
+    encoded = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    if len(encoded.encode("utf-8")) > _RESTORE_SNAPSHOT_MAX_BYTES:
+        raise ValueError("restore snapshot is too large")
+    return data
+
+
+def normalize_reconciliation_payload(
+    kind: ReconciliationKind,
+    payload: Mapping[str, object] | None,
+    *,
+    library_root: str | Path,
+) -> str:
+    """Validate and canonicalize a durable task payload."""
+    if kind is ReconciliationKind.ASSET_INDEX_ROOT_RESCAN:
+        return "{}"
+    if kind is not ReconciliationKind.FILESYSTEM_PROJECTION_REPAIR:
+        raise ValueError(f"unsupported reconciliation kind: {kind.value}")
+    if not isinstance(payload, Mapping):
+        raise ValueError("filesystem repair payload must be an object")
+    data = dict(payload)
+    if data.get("payload_version") != 1:
+        raise ValueError("unsupported filesystem repair payload version")
+    operation_kind = data.get("operation_kind")
+    if operation_kind not in {"move", "delete", "restore"}:
+        raise ValueError("filesystem repair operation_kind must be move, delete, or restore")
+    operation_id = data.get("operation_id")
+    if not isinstance(operation_id, str) or not operation_id:
+        raise ValueError("filesystem repair operation_id is required")
+    projection_set = data.get("projection_set")
+    expected_projection_set = (
+        list(_RESTORE_REPAIR_PROJECTION_SET)
+        if operation_kind == "restore"
+        else list(_FILESYSTEM_REPAIR_PROJECTION_SET)
+    )
+    if projection_set != expected_projection_set:
+        raise ValueError("filesystem repair projection_set is invalid")
+    root = Path(library_root).resolve()
+
+    def canonical_path(value: object, field: str) -> str:
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"filesystem repair {field} is required")
+        path = Path(value).resolve()
+        if not path.is_relative_to(root):
+            raise ValueError(f"filesystem repair {field} escapes library root")
+        return str(path)
+
+    data["scope_path"] = canonical_path(data.get("scope_path"), "scope_path")
+    if operation_kind == "move":
+        data["source_path"] = canonical_path(data.get("source_path"), "source_path")
+        data["destination_path"] = canonical_path(
+            data.get("destination_path"), "destination_path"
+        )
+        if not isinstance(data.get("is_directory"), bool):
+            raise ValueError("filesystem repair is_directory must be boolean")
+        if data.get("expected_state") != {
+            "source_absent": True,
+            "destination_present": True,
+        }:
+            raise ValueError("filesystem repair move expected_state is invalid")
+    elif operation_kind == "delete":
+        data["target_path"] = canonical_path(data.get("target_path"), "target_path")
+        if data.get("delete_mode") not in {"permanent", "trash"}:
+            raise ValueError("filesystem repair delete_mode is invalid")
+        if data.get("expected_state") != {"target_absent": True}:
+            raise ValueError("filesystem repair delete expected_state is invalid")
+    else:
+        data["target_path"] = canonical_path(data.get("target_path"), "target_path")
+        if not isinstance(data.get("is_directory"), bool):
+            raise ValueError("filesystem repair restore is_directory must be boolean")
+        if data.get("expected_state") != {"target_present": True}:
+            raise ValueError("filesystem repair restore expected_state is invalid")
+        data["snapshot"] = _validate_restore_snapshot(data.get("snapshot"), root=root)
+    return json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 class ReconciliationState(str, Enum):
@@ -124,6 +234,7 @@ class ReconciliationTask:
     lease_expires_at: float | None = None
     lease_token: str | None = None
     max_attempts: int = 5
+    payload: str = "{}"
 
     @property
     def repair_key(self) -> tuple[str, str, ReconciliationKind]:
@@ -202,6 +313,8 @@ class ReconciliationQueueStore(Protocol):
         operation_id: str | None,
         expected_revision: int | None,
         observed_revision: int | None,
+        kind: ReconciliationKind = ReconciliationKind.ASSET_INDEX_ROOT_RESCAN,
+        payload: Mapping[str, object] | None = None,
         max_tasks: int,
         max_attempts: int,
         now: float,
@@ -520,6 +633,8 @@ class ReconciliationQueue:
         operation_id: str | None = None,
         expected_revision: int | None = None,
         observed_revision: int | None = None,
+        kind: ReconciliationKind = ReconciliationKind.ASSET_INDEX_ROOT_RESCAN,
+        payload: Mapping[str, object] | None = None,
         now: float | None = None,
     ) -> ReconciliationTask:
         """Add a task or merge a new warning into its active task.
@@ -530,7 +645,10 @@ class ReconciliationQueue:
         """
         timestamp = self._now(now)
         path_value = _canonical_path(path)
-        key = (self.library_root, path_value, ReconciliationKind.ASSET_INDEX_ROOT_RESCAN)
+        normalized_payload = normalize_reconciliation_payload(
+            kind, payload, library_root=self.library_root
+        )
+        key = (self.library_root, path_value, kind)
         if self._store is not None:
             with self._lock:
                 try:
@@ -540,6 +658,8 @@ class ReconciliationQueue:
                         operation_id=operation_id,
                         expected_revision=expected_revision,
                         observed_revision=observed_revision,
+                        kind=kind,
+                        payload=json.loads(normalized_payload),
                         max_tasks=self.max_tasks,
                         max_attempts=self.max_attempts,
                         now=timestamp,
@@ -576,6 +696,7 @@ class ReconciliationQueue:
                         if observed_revision is not None
                         else existing.observed_revision
                     ),
+                    payload=normalized_payload,
                     updated_at=timestamp,
                 )
                 self._tasks[key] = merged
@@ -589,7 +710,7 @@ class ReconciliationQueue:
                 task_id=f"recon-{uuid4().hex}",
                 library_root=self.library_root,
                 path=path_value,
-                kind=ReconciliationKind.ASSET_INDEX_ROOT_RESCAN,
+                kind=kind,
                 reason=reason,
                 operation_ids=_merge_operation_ids((), operation_id),
                 next_attempt_at=timestamp,
@@ -598,6 +719,7 @@ class ReconciliationQueue:
                 max_attempts=self.max_attempts,
                 expected_revision=expected_revision,
                 observed_revision=observed_revision,
+                payload=normalized_payload,
             )
             self._tasks[key] = task
             self._persist_and_notify_unlocked()
@@ -1520,6 +1642,15 @@ def _task_from_json(
                 else None
             ),
             max_attempts=max_attempts,
+            payload=(
+                normalize_reconciliation_payload(
+                    kind,
+                    json.loads(str(item.get("payload", "{}"))),
+                    library_root=str(item["library_root"]),
+                )
+                if kind is ReconciliationKind.FILESYSTEM_PROJECTION_REPAIR
+                else "{}"
+            ),
         )
-    except (KeyError, TypeError, ValueError, OverflowError) as exc:
+    except (KeyError, TypeError, ValueError, OverflowError, json.JSONDecodeError) as exc:
         raise ValueError("invalid reconciliation queue task") from exc

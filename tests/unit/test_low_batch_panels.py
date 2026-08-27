@@ -32,6 +32,18 @@ def _make_png(path, w, h):
     return path
 
 
+def _wait_for_state(app, viewer, state, timeout=5.0):
+    """Pump the event loop until the viewer reaches *state* (async decode)."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        app.processEvents()
+        if viewer._state == state:
+            return True
+        time.sleep(0.005)
+    app.processEvents()
+    return viewer._state == state
+
+
 # ── tag_tree: _populate refresh after mutations (A1) ───────────────
 
 def test_tag_tree_populate_is_idempotent():
@@ -196,12 +208,13 @@ def test_tag_tree_set_library_root_without_services(tmp_path):
 # ── image_viewer: downsampling (C1), dir cache (C2), zoom clamp (C3) ─
 
 def test_viewer_downsamples_large_images(tmp_path):
-    _app()
+    app = _app()
     png = _make_png(tmp_path / "big.png", 3000, 2000)
     host = QWidget()
     viewer = ImageViewerOverlay(host)
     try:
         viewer.load_image(str(png))
+        assert _wait_for_state(app, viewer, "ready")
         assert viewer._pixmap is not None
         w, h = viewer._pixmap.width(), viewer._pixmap.height()
         assert w <= MAX_DIM and h <= MAX_DIM

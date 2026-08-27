@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "report_id": "c6-c10-regression-evidence-2026-08-21",
+  "captured_at": "2026-08-21T14:08:34+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "b6edf006c887fd3c7da05d4916ec613b024225e71d1721e458038fc20a168e22",
+    "diff_sha256": "4600b5c9f3eca1b08b894cf514bb728bcdb915c8d777049cb26859fc609e34b9",
+    "tracked_change_count": 97,
+    "untracked_change_count": 40
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "agent_execution_summaries": [
+      {
+        "scope": "C10 durable import intent/recovery and migration/queue",
+        "command": "python -m pytest --basetemp=.zcode/pytest-agent-c10 -n 0 tests/unit/test_import_manifest_store.py tests/integration/test_import_service.py tests/unit/test_db_lock_low_batch.py tests/unit/test_reconciliation_queue_migration.py tests/unit/test_reconciliation_queue_sqlite_store.py tests/unit/test_reconciliation_low_batch.py",
+        "exit_code": 0,
+        "duration_seconds": 10.94,
+        "collected": 66,
+        "passed": 66,
+        "failed": 0,
+        "skipped": 0,
+        "source": "parallel execution agent summary"
+      },
+      {
+        "scope": "C6-C9 neighboring reconciliation/watcher/import/desktop regressions",
+        "commands": 4,
+        "exit_code": 0,
+        "passed": 288,
+        "failed": 0,
+        "skipped": 0,
+        "durations_seconds": [25.82, 87.31, 143.20, 248.81],
+        "source": "parallel execution agent summary"
+      },
+      {
+        "scope": "default Python suite after fixes",
+        "command": "python -m pytest --basetemp=.zcode/pytest-agent-full-fixed -n 0",
+        "exit_code": 0,
+        "wall_clock_seconds": 695.826,
+        "pytest_seconds": 688.18,
+        "collected": 3903,
+        "deselected": 17,
+        "selected": 3886,
+        "passed": 3879,
+        "failed": 0,
+        "skipped": 7,
+        "warnings": 2,
+        "skip_reason": "six Windows symlink privilege/support skips (WinError 1314) and one nondeterministic abrupt process termination/queue finalization skip",
+        "source": "parallel execution agent summary"
+      }
+    ],
+    "commands": [
+      {
+        "argv": ["python", "scripts/check_audit_reports.py"],
+        "platform": "Windows 10.0.26220 x64",
+        "runtime": {"python": "3.14.3"},
+        "fixture": "all dated reports and manifests after regression report indexing",
+        "sample_count": 16,
+        "pass_criterion": "exit_code == 0 and every manifest/index/report check passes",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/audit.stdout.log", "sha256": "0e96f2d4c0631a4ba4ea6cf2447e5a3dd03fb4cbfcefea178a10e9bd9d388e47"},
+          {"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/audit.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": ["python", "scripts/check_doc_stats.py"], "platform": "Windows 10.0.26220 x64", "runtime": {"python": "3.14.3"}, "fixture": "README structural stats", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0,
+        "artifacts": [{"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/docstats.stdout.log", "sha256": "a4b6572918322dbdf8c2e481da73be49ddec5fc3149de8845e159015b83e1c20"}, {"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/docstats.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]
+      },
+      {
+        "argv": ["python", "scripts/check_boundaries.py"], "platform": "Windows 10.0.26220 x64", "runtime": {"python": "3.14.3"}, "fixture": "boundary scan", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0,
+        "artifacts": [{"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/boundaries.stdout.log", "sha256": "46b6dbc5844a19f0af73f3ba09808f7078f845e1984f1b94b8c27fecac637288"}, {"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/boundaries.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]
+      },
+      {
+        "argv": ["python", "scripts/check_style_sources.py"], "platform": "Windows 10.0.26220 x64", "runtime": {"python": "3.14.3"}, "fixture": "style source scan", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0,
+        "artifacts": [{"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/style.stdout.log", "sha256": "c0fd8fc56a33747a9917446f896bcc4021268055baa5b9e1ff3b4b558577e5f4"}, {"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/style.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]
+      },
+      {
+        "argv": ["python", "scripts/check_route_capabilities.py"], "platform": "Windows 10.0.26220 x64", "runtime": {"python": "3.14.3"}, "fixture": "LAN route capability scan", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0,
+        "artifacts": [{"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/routes.stdout.log", "sha256": "962081edbe95bc229342455eda40489e52042b508114f81ef9918cd4f2abd5b2"}, {"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/routes.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]
+      },
+      {
+        "argv": ["python", "scripts/check_frontend_data_fetch.py"], "platform": "Windows 10.0.26220 x64", "runtime": {"python": "3.14.3"}, "fixture": "WebUI data-fetch scan", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0,
+        "artifacts": [{"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/frontend.stdout.log", "sha256": "d1c0f9ea4b614e6af26d025f4d9336b4aa3d4654965c47f28d64ead0364c9992"}, {"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/frontend.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]
+      },
+      {
+        "argv": ["python", "scripts/check_layers.py"], "platform": "Windows 10.0.26220 x64", "runtime": {"python": "3.14.3"}, "fixture": "layer DAG scan", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0,
+        "artifacts": [{"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/layers.stdout.log", "sha256": "10e7830d844503aa810df458a9aadc8a8818f2ad3466f11a3c980e71a28053c8"}, {"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/layers.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]
+      },
+      {
+        "argv": ["python", "-m", "compileall", "-q", "AssetsManager", "tests", "scripts"], "platform": "Windows 10.0.26220 x64", "runtime": {"python": "3.14.3"}, "fixture": "full Python source tree", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0,
+        "artifacts": [{"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/compile.stdout.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}, {"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/compile.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]
+      },
+      {
+        "argv": ["python", "-m", "ruff", "check", "AssetsManager", "tests", "scripts", "run.py"], "platform": "Windows 10.0.26220 x64", "runtime": {"python": "3.14.3", "ruff": "0.15.16"}, "fixture": "full Python source tree", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0,
+        "artifacts": [{"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/ruff.stdout.log", "sha256": "3a511611f6840ad347255eb791d2c4903982071888bec62ad2fa719debe599a7"}, {"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/ruff.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]
+      },
+      {
+        "argv": ["git", "diff", "--check"], "platform": "Windows 10.0.26220 x64", "runtime": {"git": "local executable"}, "fixture": "current dirty worktree diff", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0,
+        "artifacts": [{"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/diffcheck.stdout.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}, {"path": "artifacts/evidence/2026-08-21/c6-c10-regression-final/diffcheck.stderr.log", "sha256": "9844fac75fa6fa78905aa1e0b1f5264c9e7dfac8950bf0b57678cbccb81c8e8d"}]
+      }
+    ],
+    "note": "Static gate outputs are local raw logs. Focused/full pytest outcomes from parallel agents are recorded as execution summaries with exact commands and counts; no agent stdout was fabricated as a local artifact."
+  },
+  "inputs": [
+    {"path": "docs/full-review/evidence-convergence-2026-08-20.md", "sha256": "4ff90174788b8cc08a3843c87bcee03dc6b507ff8efd025c0ba0264bed45fa8d"},
+    {"path": "docs/full-review/c6-c10-convergence-2026-08-21.md", "sha256": "9a7f43185aaa2199de40ee778ad00dd55704e0ebe92c9c90826da1d9d1f793b9"},
+    {"path": "docs/full-review/c6-c10-regression-evidence-2026-08-21.md", "sha256": "a862fe0827f24ac712024bb845f6c8589bf57494c0c922d024474bed720afb31"},
+    {"path": "docs/full-review/c6-min-durable-filesystem-projection-repair-evidence-2026-08-21.md", "sha256": "bafff58b3e99da555961afb14076e21df93c40170a8d9657438ddb7ac245c4ae"},
+    {"path": "docs/full-review/c6-b-restore-projection-repair-evidence-2026-08-21.md", "sha256": "6585143a06c13a48880dde46e75012da8527ae9033ac18b2ea20d6714e8208e1"},
+    {"path": "docs/full-review/c7-min-watcher-durable-rescan-evidence-2026-08-21.md", "sha256": "d0b487b61ffd6780cccaccbf64454c63a2e483f5b13727921154ae1bf6857aee"},
+    {"path": "docs/full-review/c8-min-import-partial-contract-evidence-2026-08-21.md", "sha256": "97a85efef31684a70b481c908107b1d8e463dee072379184fbec7378cdea4b84"},
+    {"path": "docs/full-review/c9-min-import-ui-cancel-pool-lifecycle-evidence-2026-08-21.md", "sha256": "a191422b5796e1edb14b6077cb891724d80883764c45723b59acca36a60fcaf1"},
+    {"path": "docs/full-review/c10-min-import-durable-intent-recovery-evidence-2026-08-21.md", "sha256": "793887536d2756906e6ea36beac191509602a502e2125f538236e999a4bed5dd"}
+  ],
+  "indexed_reports": [
+    "docs/full-review/evidence-convergence-2026-08-20.md",
+    "docs/full-review/c6-c10-convergence-2026-08-21.md",
+    "docs/full-review/c6-c10-regression-evidence-2026-08-21.md"
+  ],
+  "findings": [
+    {"canonical_id": "C6-REG-01", "severity": "P1", "status": "fixed-unverified", "source_ids": ["XFS-01", "EVID-06"], "anchors": ["AssetsManager/application/filesystem_projection_repair_service.py:30", "tests/unit/test_asset_index_reconciliation_service.py:1"], "surface": "C6 filesystem projection repair regression coverage", "next_action": "Independent multi-process and clean-checkout validation", "dynamic_verification": "C6 neighboring focused regression and full Python suite passed locally"},
+    {"canonical_id": "C7-REG-01", "severity": "P1", "status": "fixed-unverified", "source_ids": ["XFS-03", "EVID-06"], "anchors": ["AssetsManager/application/library_watcher_service.py:94", "tests/integration/test_library_watcher_service.py:1"], "surface": "C7 watcher durable rescan and lifecycle regression coverage", "next_action": "Independent Windows lifecycle and durable cursor validation", "dynamic_verification": "Watcher/reconciliation focused regression passed locally"},
+    {"canonical_id": "C8-REG-01", "severity": "P1", "status": "fixed-unverified", "source_ids": ["XFS-10", "EVID-06"], "anchors": ["AssetsManager/application/import_service.py:131", "tests/integration/test_import_service.py:1"], "surface": "C8 import partial contract regression coverage", "next_action": "Independent import crash/replay and real desktop validation", "dynamic_verification": "Import and session focused regressions passed locally"},
+    {"canonical_id": "C9-REG-01", "severity": "P1", "status": "fixed-unverified", "source_ids": ["C8-01", "EVID-06"], "anchors": ["AssetsManager/window.py:161", "tests/unit/test_window_session_switching.py:1"], "surface": "C9 import UI/pool/lifecycle regression coverage", "next_action": "Independent Windows lifecycle CI", "dynamic_verification": "Desktop/window focused regressions and full suite passed locally"},
+    {"canonical_id": "C10-REG-01", "severity": "P1", "status": "fixed-unverified", "source_ids": ["XFS-10", "EVID-06"], "anchors": ["AssetsManager/application/import_manifest_store.py:62", "tests/unit/test_import_manifest_store.py:1"], "surface": "C10 durable import intent/recovery regression coverage", "next_action": "Subprocess termination, stale-process CAS, and old-library migration evidence", "dynamic_verification": "C10 focused suite passed 66/66 and full Python suite passed 3879/3886 selected"}
+  ]
+}

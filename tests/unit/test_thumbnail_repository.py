@@ -104,8 +104,65 @@ class TestThumbnailRepository:
         # touch_access should not raise
         repo.touch_access("key1")
 
+    def test_touch_access_commit_false_preserves_outer_transaction(self, repo, conn):
+        repo.upsert_entry("key1", "/a.png", 1.0, 100, 80, 50)
+        conn.execute("BEGIN")
+        repo.touch_access("key1", commit=False)
+        assert conn.in_transaction
+        conn.rollback()
+        assert repo.get_entry("key1") is not None
+
     def test_upsert_overwrites(self, repo, conn):
         repo.upsert_entry("key1", "/a.png", 1.0, 100, 80, 50)
         repo.upsert_entry("key1", "/a.png", 2.0, 200, 160, 100)
         mtime = repo.get_source_mtime("key1")
         assert mtime == 2.0
+
+    def test_metadata_round_trip_and_kind(self, repo):
+        repo.upsert_entry(
+            "video-key", "/video.mp4", 12.5, 1200, 512, 99,
+            source_mtime_ns=12500000001, artifact_kind="jpg",
+        )
+        entry = repo.get_entry("video-key")
+        assert entry is not None
+        assert entry.source_mtime_ns == 12500000001
+        assert entry.artifact_kind == "jpg"
+        assert entry.cache_size == 99
+
+    def test_upsert_preserves_created_at(self, repo):
+        repo.upsert_entry("key", "/a.png", 1.0, 1, 1, 1)
+        created = repo.get_entry("key").created_at
+        repo.upsert_entry("key", "/a.png", 2.0, 2, 2, 2)
+        assert repo.get_entry("key").created_at == created
+
+    def test_eviction_candidates_are_stable_and_batch_delete(self, repo):
+        repo.upsert_entry("b", "/b.png", 1.0, 1, 1, 20)
+        repo.upsert_entry("a", "/a.png", 1.0, 1, 1, 20)
+        repo.upsert_entry("c", "/c.png", 1.0, 1, 1, 20)
+        candidates = repo.list_eviction_candidates()
+        assert [item.cache_key for item in candidates] == ["a", "b", "c"]
+        assert repo.delete_entries(["a", "c"]) == 2
+        assert [item.cache_key for item in repo.list_metadata()] == ["b"]
+
+    def test_delete_entries_commit_false_preserves_outer_transaction(self, repo, conn):
+        repo.upsert_entry("key", "/a.png", 1.0, 1, 1, 1)
+        conn.execute("BEGIN")
+        assert repo.delete_entries(["key"], commit=False) == 1
+        assert conn.in_transaction
+        conn.rollback()
+        assert repo.get_entry("key") is not None
+
+    def test_upsert_commit_false_preserves_outer_transaction(self, repo, conn):
+        conn.execute("BEGIN")
+        repo.upsert_entry("key", "/a.png", 1.0, 1, 1, 1, commit=False)
+        assert conn.in_transaction
+        conn.rollback()
+        assert repo.get_entry("key") is None
+
+    def test_delete_if_matches_preserves_newer_row(self, repo):
+        repo.upsert_entry("key", "/a.png", 1.0, 1, 1, 1)
+        observed = repo.get_entry("key")
+        repo.upsert_entry("key", "/a.png", 2.0, 2, 1, 2)
+        assert observed is not None
+        assert repo.delete_if_matches(observed) is False
+        assert repo.get_entry("key").source_mtime == 2.0

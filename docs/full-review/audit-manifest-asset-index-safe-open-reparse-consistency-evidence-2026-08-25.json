@@ -1,0 +1,260 @@
+{
+  "schema_version": 1,
+  "report_id": "asset-index-safe-open-reparse-consistency-evidence-2026-08-25",
+  "captured_at": "2026-08-25T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "75ceb75f7df10da73c1702f30b15135879607d541231f8657156d86e3bfb901a",
+    "diff_sha256": "b94164cb85ae12274cdafb8b33707d6f586905876dbb37a790dd30e7d5529c04",
+    "tracked_change_count": 143,
+    "untracked_change_count": 133
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/lan/test_safe_open.py",
+          "tests/integration/test_asset_index_service.py",
+          "tests/integration/test_project_service_containment.py",
+          "tests/desktop/test_thumbnail_loader.py",
+          "tests/integration/test_import_manifest_recovery_claim_process.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Reparse detection alignment: fake-entry classification, real NTFS junction exclusion in both scan paths, broken-junction rejection, fail-closed ancestor inspection and hardened recovery checkpoints",
+        "sample_count": 127,
+        "pass_criterion": "exit_code == 0; platform-gated symlink skips recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/reparse-consistency/focused.stdout.log",
+            "sha256": "a3d3c82224df6ed00707e3a6832d56268332854dcbbf9f346a13d650e82c189f"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/reparse-consistency/focused.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python suite after reparse detection consistency hardening",
+        "sample_count": 4059,
+        "pass_criterion": "exit_code == 0; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/reparse-consistency/full.stdout.log",
+            "sha256": "a6d03578348dc72596fd9734e02fd0cc5c8ff1d2a7a340886f24155440811b4a"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager/application/asset_index_service.py",
+          "AssetsManager/core/file_snapshot.py",
+          "tests/integration/test_asset_index_service.py",
+          "tests/lan/test_safe_open.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted Ruff check for reparse consistency changes",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/reparse-consistency/ruff.stdout.log",
+            "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/reparse-consistency/ruff.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager/application/asset_index_service.py",
+          "AssetsManager/core/file_snapshot.py",
+          "tests/integration/test_asset_index_service.py",
+          "tests/lan/test_safe_open.py",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted Python compile check",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/reparse-consistency/compile.stdout.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/reparse-consistency/compile.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Whitespace check for current dirty worktree",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/reparse-consistency/diffcheck.stdout.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/reparse-consistency/diffcheck.stderr.log",
+            "sha256": "aa40b795a7b8af061b6804bb2fab436fcc0b0b9e6e474385701ca0afa432f7ec"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index non-self-referential static governance after 30-C report and manifest",
+        "sample_count": 9,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/reparse-consistency/static-post-index.stdout.log",
+            "sha256": "cd0bfa8fd867bd821dbb2285bb364681e91a49b915884928a4116f4e570ccba2"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/reparse-consistency/static-post-index.stderr.log",
+            "sha256": "aa40b795a7b8af061b6804bb2fab436fcc0b0b9e6e474385701ca0afa432f7ec"
+          }
+        ]
+      }
+    ],
+    "note": "Focused matrix: 122 passed, 5 skipped (platform-gated). Full serial Python suite final run: 4043 passed, 16 skipped, 20 deselected, 2 warnings. Two earlier full-suite runs failed on test-infrastructure timing (cold child-start barrier at 30s; WinError 5 during the dual-race atomic JSON handshake) and were fixed by a 90s barrier ceiling with stderr diagnostics plus a bounded PermissionError retry in the child status writes; both fixes are test-only and recorded honestly. AssetIndex junction exclusion is proven through real mklink /J integration in single-directory and tree scans; safe_open ancestor inspection now fails closed via PathEscapeError. POSIX behavior unchanged."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/asset-index-safe-open-reparse-consistency-evidence-2026-08-25.md",
+      "sha256": "6f33775f261bfd93752e12a26dfba5b1ddb161df01e9fc4b4e59916243bbe415"
+    },
+    {
+      "path": "AssetsManager/application/asset_index_service.py",
+      "sha256": "c9e9fa08729317141703881a601e7f507269780bf1b27d2993418159f70d1049"
+    },
+    {
+      "path": "AssetsManager/core/file_snapshot.py",
+      "sha256": "7c6c8bc2e6aaba08abed48f144876526740d313f7afa3f763831850e1833e28d"
+    },
+    {
+      "path": "tests/integration/test_asset_index_service.py",
+      "sha256": "0fada717f9186af30322bb8d2abf45696d951665eb05195e5af5d352b1a2c54e"
+    },
+    {
+      "path": "tests/lan/test_safe_open.py",
+      "sha256": "8765247900d87ab9f53e62cde29a47641151edef245fbb8cfc6395f7d54bcf2a"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/asset-index-safe-open-reparse-consistency-evidence-2026-08-25.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "REPARSE-DETECTION-CONSISTENCY-30C-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "REPARSE-DETECTION-CONSISTENCY-30C-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/asset_index_service.py:124",
+        "AssetsManager/core/file_snapshot.py:77",
+        "AssetsManager/core/file_snapshot.py:92",
+        "tests/integration/test_asset_index_service.py:203",
+        "tests/integration/test_asset_index_service.py:243",
+        "tests/lan/test_safe_open.py:66"
+      ],
+      "surface": "Cross-service link/reparse admission alignment: AssetIndex DirEntry junction coverage and final-open fail-closed ancestor inspection",
+      "next_action": "Keep as separate bounded work: between-checks replacement races on all platforms, mount-point policy, Windows scan performance benchmarking, power-loss, exactly-once and E2E/LAN/CVE/release verification",
+      "dynamic_verification": "Focused matrix passed 122 tests with five platform-gated skips; full serial suite passed 4043 tests after two honestly-recorded infrastructure flakes were fixed. Real NTFS junctions are excluded by both asset-index scan paths including the previously uncovered os.DirEntry route; broken junctions and uninspectable ancestors now fail closed through the safe-open adapter; POSIX behavior remains byte-identical."
+    }
+  ]
+}

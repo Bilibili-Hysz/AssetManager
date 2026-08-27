@@ -1,4 +1,5 @@
 import pytest
+from pathlib import Path
 
 
 @pytest.fixture
@@ -199,6 +200,184 @@ def test_rename_migrates_metadata(tmp_path):
 
     assert new.name == "new.txt"
     assert store.get_tags(str(new)) == ["hero"]
+
+
+def test_move_metadata_failure_is_degraded_and_queues_existing_directory(
+    file_ops, monkeypatch
+):
+    from AssetsManager.domain.event_bus import EventBus
+    from AssetsManager.domain.events import FileSystemChanged
+    import AssetsManager.domain.event_bus as event_bus_module
+
+    service, library = file_ops
+    old = library / "old.txt"
+    new = library / "new.txt"
+    old.write_text("asset", encoding="utf-8")
+    bus = EventBus()
+    events = []
+    bus.subscribe(FileSystemChanged, events.append)
+    monkeypatch.setattr(event_bus_module, "_instance", bus)
+    monkeypatch.setattr(
+        service,
+        "_migrate_metadata",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("metadata failed")),
+    )
+
+    result = service.move(old, new)
+
+    assert result == new.resolve()
+    assert not old.exists()
+    assert new.exists()
+    warning = service.last_refresh_warnings[-1]
+    assert warning.code == "metadata_migration_failed"
+    assert warning.phase == "metadata"
+    assert warning.failure_type == "RuntimeError"
+    tasks = service._reconciliation_queue.snapshot()
+    assert tasks
+    assert Path(tasks[-1].path).resolve() == library.resolve()
+    assert len(events) == 1
+    assert events[0].kind == "moved"
+
+
+def test_batch_move_rejects_caller_outer_transaction_before_filesystem_io(
+    tmp_path,
+):
+    from AssetsManager.application import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    source_dir = library / "source"
+    destination_dir = library / "destination"
+    source_dir.mkdir(parents=True)
+    destination_dir.mkdir()
+    source = source_dir / "asset.txt"
+    second_source = source_dir / "second.txt"
+    source.write_text("asset", encoding="utf-8")
+    second_source.write_text("second", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    try:
+        runtime = bootstrap.runtime_for(session)
+        runtime.services.reconciliation_service.stop()
+        service = runtime.services.file_operation_service
+        conn = session.connection_for(library)
+        conn.execute("CREATE TABLE caller_batch_sentinel (value TEXT NOT NULL)")
+        conn.commit()
+        conn.execute("BEGIN")
+        conn.execute("INSERT INTO caller_batch_sentinel VALUES ('keep')")
+
+        with pytest.raises(RuntimeError, match="clean transaction boundary"):
+            service.move_to_directory([source], destination_dir)
+
+        assert source.exists()
+        assert second_source.exists()
+        assert not (destination_dir / source.name).exists()
+        assert not (destination_dir / second_source.name).exists()
+        assert conn.in_transaction is True
+        assert conn.execute("SELECT * FROM caller_batch_sentinel").fetchall() == [
+            ("keep",)
+        ]
+        conn.rollback()
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_batch_move_clean_transaction_admission_moves_all_sources(file_ops):
+    service, library = file_ops
+    source_dir = library / "source"
+    destination_dir = library / "destination"
+    source_dir.mkdir()
+    destination_dir.mkdir()
+    first = source_dir / "first.txt"
+    second = source_dir / "second.txt"
+    first.write_text("first", encoding="utf-8")
+    second.write_text("second", encoding="utf-8")
+
+    result = service.move_to_directory([first, second], destination_dir)
+
+    assert result.ok
+    assert result.moved_pairs == (
+        (first, destination_dir / "first.txt"),
+        (second, destination_dir / "second.txt"),
+    )
+    assert not first.exists()
+    assert not second.exists()
+    assert (destination_dir / "first.txt").read_text(encoding="utf-8") == "first"
+    assert (destination_dir / "second.txt").read_text(encoding="utf-8") == "second"
+
+
+def test_batch_move_metadata_failure_returns_degraded_result(file_ops, monkeypatch):
+    service, library = file_ops
+    source_dir = library / "source"
+    destination_dir = library / "destination"
+    source_dir.mkdir()
+    destination_dir.mkdir()
+    source = source_dir / "asset.txt"
+    source.write_text("asset", encoding="utf-8")
+    monkeypatch.setattr(
+        service,
+        "_migrate_metadata",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("metadata failed")),
+    )
+
+    result = service.move_to_directory([source], destination_dir)
+
+    assert result.ok
+    assert result.degraded
+    assert result.moved_pairs == ((source, destination_dir / "asset.txt"),)
+    assert any(
+        warning.code == "metadata_migration_failed"
+        for warning in result.warnings
+    )
+    from AssetsManager.application.reconciliation_queue import ReconciliationKind
+    repair_tasks = [
+        task
+        for task in service._reconciliation_queue.snapshot()
+        if task.kind is ReconciliationKind.FILESYSTEM_PROJECTION_REPAIR
+    ]
+    assert len(repair_tasks) == 1
+    assert Path(repair_tasks[0].path).resolve() == destination_dir.resolve()
+    assert '"operation_kind":"move"' in repair_tasks[0].payload
+
+
+def test_move_metadata_repair_worker_reconciles_projection(tmp_path, monkeypatch):
+    from AssetsManager.application import ApplicationBootstrap, ReconciliationKind
+    from AssetsManager.core.tag_store import TagStore
+
+    library = tmp_path / "library"
+    library.mkdir()
+    old = library / "old.txt"
+    new = library / "new.txt"
+    old.write_text("asset", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    try:
+        scoped = bootstrap.runtime_for(session).services
+        store = TagStore(str(library), db_conn=session.connection_for(library))
+        store.add_tag(str(old), "hero")
+        original = scoped.file_operation_service._migrate_metadata
+        monkeypatch.setattr(
+            scoped.file_operation_service,
+            "_migrate_metadata",
+            lambda *_args: (_ for _ in ()).throw(RuntimeError("injected")),
+        )
+        scoped.file_operation_service.move(old, new)
+        monkeypatch.setattr(scoped.file_operation_service, "_migrate_metadata", original)
+        scoped.reconciliation_service.stop()
+        connection = session.connection_for(library)
+        if connection.in_transaction:
+            connection.commit()
+        scoped.reconciliation_service.process_available(limit=4)
+
+        repair_tasks = [
+            task
+            for task in scoped.reconciliation_queue.snapshot()
+            if task.kind is ReconciliationKind.FILESYSTEM_PROJECTION_REPAIR
+        ]
+        assert repair_tasks[0].state.value == "succeeded"
+        assert store.get_tags(str(new)) == ["hero"]
+        assert store.get_tags(str(old)) == []
+    finally:
+        bootstrap.library_service.close()
 
 
 def test_rename_with_library_root_migrates_metadata(file_ops):
@@ -758,6 +937,269 @@ def test_projection_cleanup_rolls_back_all_db_projections_on_late_failure(
         assert ThumbnailRepository(conn).list_all() == [("thumb", key)]
         assert scoped.asset_index_service.get_entry(conn, child) is not None
         assert conn.in_transaction is False
+    finally:
+        bootstrap.library_service.close()
+
+
+@pytest.mark.parametrize("operation", ["delete_permanent", "delete_to_trash"])
+def test_delete_projection_failure_returns_degraded_warning_and_existing_scope(
+    tmp_path, monkeypatch, operation
+):
+    import sqlite3
+
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.repositories.favorite_repository import FavoriteRepository
+
+    library = tmp_path / "library"
+    target = library / "asset.txt"
+    library.mkdir()
+    target.write_text("asset", encoding="utf-8")
+    if operation == "delete_to_trash":
+        monkeypatch.setattr(
+            "send2trash.send2trash",
+            lambda path: Path(path).rename(library / "trashed"),
+        )
+
+    def fail_favorite_delete(self, file_path, *, commit=True):
+        raise sqlite3.OperationalError("injected projection cleanup failure")
+
+    monkeypatch.setattr(FavoriteRepository, "delete_path", fail_favorite_delete)
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    try:
+        scoped = bootstrap.runtime_for(session).services
+        scoped.reconciliation_service.stop()
+        result = getattr(scoped.file_operation_service, operation)([target])
+
+        assert result.ok
+        assert result.degraded
+        assert result.changed_paths == (target.resolve(),)
+        warning = result.warnings[-1]
+        assert warning.code == "projection_cleanup_failed"
+        assert warning.phase == "projection_cleanup"
+        assert warning.status == "failed"
+        assert warning.path == str(target.resolve())
+        assert warning.failure_type == "OperationalError"
+        from AssetsManager.application.reconciliation_queue import ReconciliationKind
+        tasks = scoped.reconciliation_queue.snapshot()
+        repair_tasks = [
+            task
+            for task in tasks
+            if task.kind is ReconciliationKind.FILESYSTEM_PROJECTION_REPAIR
+        ]
+        assert len(repair_tasks) == 1
+        assert Path(repair_tasks[0].path).resolve() == library.resolve()
+        assert Path(repair_tasks[0].path).exists()
+        assert '"operation_kind":"delete"' in repair_tasks[0].payload
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_delete_projection_repair_worker_cleans_stale_projection(tmp_path, monkeypatch):
+    import sqlite3
+
+    from AssetsManager.application import ApplicationBootstrap, ReconciliationKind
+    from AssetsManager.repositories.favorite_repository import FavoriteRepository
+
+    library = tmp_path / "library"
+    target = library / "asset.txt"
+    library.mkdir()
+    target.write_text("asset", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    try:
+        scoped = bootstrap.runtime_for(session).services
+        original = FavoriteRepository.delete_path
+
+        def fail_once(self, file_path, *, commit=True):
+            raise sqlite3.OperationalError("injected projection cleanup failure")
+
+        monkeypatch.setattr(FavoriteRepository, "delete_path", fail_once)
+        scoped.file_operation_service.delete_permanent([target])
+        monkeypatch.setattr(FavoriteRepository, "delete_path", original)
+        scoped.reconciliation_service.stop()
+        connection = session.connection_for(library)
+        if connection.in_transaction:
+            connection.commit()
+        scoped.reconciliation_service.process_available(limit=4)
+
+        repair_tasks = [
+            task
+            for task in scoped.reconciliation_queue.snapshot()
+            if task.kind is ReconciliationKind.FILESYSTEM_PROJECTION_REPAIR
+        ]
+        assert repair_tasks[0].state.value == "succeeded"
+        assert connection.execute(
+            "SELECT 1 FROM file_tags WHERE file_path=?", (str(target.resolve()),)
+        ).fetchone() is None
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_restore_failure_creates_replayable_projection_repair(tmp_path, monkeypatch):
+    import json
+
+    from AssetsManager.application import ApplicationBootstrap, ReconciliationKind
+    from AssetsManager.core.tag_store import TagStore
+
+    library = tmp_path / "library"
+    library.mkdir()
+    backup = tmp_path / "backup.txt"
+    backup.write_text("restored", encoding="utf-8")
+    target = library / "restored.txt"
+    old = library / "old.txt"
+    snapshot = Path(str(backup) + ".projection.json")
+    snapshot.write_text(
+        json.dumps({
+            "format": "assetsmanager.undo-projection",
+            "version": 1,
+            "base": str(old.resolve()),
+            "file_tags": [[str(old.resolve()), "hero"]],
+            "file_meta": [[str(old.resolve()), "note", None, None, None, "[]"]],
+            "library_favorites": [],
+        }),
+        encoding="utf-8",
+    )
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    try:
+        scoped = bootstrap.runtime_for(session).services
+        monkeypatch.setattr(
+            scoped.file_operation_service,
+            "_restore_projection_snapshot",
+            lambda *_args: False,
+        )
+        scoped.file_operation_service.restore_backup(backup, target)
+        repair_tasks = [
+            task
+            for task in scoped.reconciliation_queue.snapshot()
+            if task.kind is ReconciliationKind.FILESYSTEM_PROJECTION_REPAIR
+        ]
+        assert len(repair_tasks) == 1
+        assert '"operation_kind":"restore"' in repair_tasks[0].payload
+        scoped.reconciliation_service.stop()
+        connection = session.connection_for(library)
+        if connection.in_transaction:
+            connection.commit()
+        scoped.reconciliation_service.process_available(limit=4)
+        store = TagStore(str(library), db_conn=connection)
+        assert store.get_tags(str(target)) == ["hero"]
+        assert repair_tasks[0].task_id in {
+            task.task_id for task in scoped.reconciliation_queue.snapshot()
+        }
+        assert next(
+            task for task in scoped.reconciliation_queue.snapshot()
+            if task.task_id == repair_tasks[0].task_id
+        ).state.value == "succeeded"
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_restore_backup_rejects_existing_file_without_event(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileSystemChanged
+
+    library = tmp_path / "library"
+    library.mkdir()
+    backup = tmp_path / "backup.txt"
+    backup.write_text("restored", encoding="utf-8")
+    target = library / "restored.txt"
+    target.write_text("user-data", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    restored_events = []
+    subscription = get_event_bus().subscribe(
+        FileSystemChanged,
+        lambda event: (
+            restored_events.append(event)
+            if event.kind == "restored"
+            else None
+        ),
+    )
+    try:
+        with pytest.raises(
+            FileExistsError, match="refusing to overwrite"
+        ):
+            bootstrap.runtime_for(session).services.file_operation_service.restore_backup(
+                backup, target
+            )
+
+        assert target.read_text(encoding="utf-8") == "user-data"
+        assert restored_events == []
+    finally:
+        subscription.close()
+        bootstrap.library_service.close()
+
+
+def test_restore_backup_rejects_existing_directory_without_cleanup(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import FileSystemChanged
+
+    library = tmp_path / "library"
+    library.mkdir()
+    backup = tmp_path / "backup"
+    (backup / "nested").mkdir(parents=True)
+    (backup / "nested" / "asset.txt").write_text("restored", encoding="utf-8")
+    target = library / "restored"
+    (target / "nested").mkdir(parents=True)
+    sentinel = target / "sentinel.txt"
+    sentinel.write_text("user-data", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    restored_events = []
+    subscription = get_event_bus().subscribe(
+        FileSystemChanged,
+        lambda event: (
+            restored_events.append(event)
+            if event.kind == "restored"
+            else None
+        ),
+    )
+    try:
+        with pytest.raises(
+            FileExistsError, match="refusing to overwrite"
+        ):
+            bootstrap.runtime_for(session).services.file_operation_service.restore_backup(
+                backup, target
+            )
+
+        assert target.is_dir()
+        assert sentinel.read_text(encoding="utf-8") == "user-data"
+        assert not (target / "nested" / "asset.txt").exists()
+        assert restored_events == []
+    finally:
+        subscription.close()
+        bootstrap.library_service.close()
+
+
+def test_restore_projection_snapshot_failure_returns_degraded_warning(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    library.mkdir()
+    backup = tmp_path / "backup.txt"
+    backup.write_text("restored", encoding="utf-8")
+    snapshot = Path(str(backup) + ".projection.json")
+    snapshot.write_text("not-json", encoding="utf-8")
+    target = library / "restored.txt"
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    try:
+        scoped = bootstrap.runtime_for(session).services
+        scoped.reconciliation_service.stop()
+        result = scoped.file_operation_service.restore_backup(backup, target)
+
+        assert result == target.resolve()
+        assert target.read_text(encoding="utf-8") == "restored"
+        warning = scoped.file_operation_service.last_refresh_warnings[-1]
+        assert warning.code == "projection_restore_failed"
+        assert warning.phase == "projection_restore"
+        assert warning.status == "failed"
+        tasks = scoped.reconciliation_queue.snapshot()
+        assert len(tasks) == 1
+        assert Path(tasks[0].path).resolve() == library.resolve()
     finally:
         bootstrap.library_service.close()
 

@@ -24,10 +24,13 @@ from collections.abc import Callable
 
 from aiohttp import web
 
+from AssetsManager.lan import tunnel_identity
 from AssetsManager.lan.route_policy import RoutePolicy, request_policy
 from AssetsManager.lan.routes._errors import error_response
 
 _log = logging.getLogger(__name__)
+
+SECURITY_BUCKET_KEY = web.RequestKey("_security_bucket_key", str)
 
 
 def _request_policy(request: web.Request) -> RoutePolicy:
@@ -147,8 +150,25 @@ def create_security_middleware(
     browse_rate_limiter: "RateLimiter | None" = None,
     ip_whitelist: list[str] | None = None,
     tunnel_active: "Callable[[], bool] | None" = None,
+    tunnel_identity_resolver: "Callable[[web.Request], str | None] | None" = None,
+    tunnel_identity_minter: "Callable[[], tuple[str, str] | None] | None" = None,
 ):
-    """Create aiohttp middleware for security checks."""
+    """Create aiohttp middleware for security checks.
+
+    ``tunnel_identity_resolver`` returns the validated visitor-cookie client
+    id for a request (or None); ``tunnel_identity_minter`` returns a fresh
+    ``(client_id, cookie_token)`` pair (or None).  Both are consulted only
+    while the cloudflared tunnel is active and the peer is loopback: such
+    requests key their limiter buckets on ``tunnel:<client_id>`` so one
+    visitor's failures cannot lock out every tunneled user.  A request with
+    no valid cookie stays in the shared loopback bucket — minting a fresh id
+    must never buy an immediate isolated bucket, or attackers could rotate
+    identities per request to evade limiting — and the minted cookie is
+    attached to successful responses so the *next* request isolates.
+    Rejection answers produced by this middleware itself (blacklist/whitelist
+    403, rate-limit 429) deliberately omit the freshly minted cookie so a
+    denied client cannot farm identities from failed attempts.
+    """
     allowed_ips = {_normalize_ip(ip) for ip in (ip_whitelist or []) if ip}
     browse_limiter = browse_rate_limiter or rate_limiter
 
@@ -172,7 +192,76 @@ def create_security_middleware(
             return error_response("Bad Request", status=400, code="bad_request")
         ip = _normalize_ip(request.remote)
 
-        # IP blacklist check (always applies)
+        # Tunnel traffic always arrives from loopback; detect it once so both
+        # the whitelist bypass and per-client limiter keys share one gate.
+        tunnel_source = False
+        if callable(tunnel_active):
+            try:
+                tunnel_on = bool(tunnel_active())
+            except Exception:
+                tunnel_on = False
+            try:
+                loopback = bool(ipaddress.ip_address(ip).is_loopback)
+            except ValueError:
+                loopback = False
+            tunnel_source = tunnel_on and loopback
+
+        bucket_key = ip
+        identified_client: str | None = None
+        if tunnel_source and callable(tunnel_identity_resolver):
+            try:
+                resolved_client = tunnel_identity_resolver(request)
+            except Exception:
+                resolved_client = None
+            if isinstance(resolved_client, str) and resolved_client:
+                identified_client = resolved_client
+        if identified_client is not None:
+            bucket_key = f"tunnel:{identified_client}"
+
+        request[SECURITY_BUCKET_KEY] = bucket_key
+
+        # Minting is deferred to the successful attach point: rejected
+        # requests never consume a fresh identity (see contract above), and
+        # the token is minted at most once per request.
+        minted_token: list[str | None] = [None]
+
+        def _attach_visitor_cookie(response: web.StreamResponse) -> web.StreamResponse:
+            if (
+                not tunnel_source
+                or identified_client is not None
+                or not isinstance(response, web.Response)
+            ):
+                return response
+            # Never clobber an identity the route itself already issued.
+            if tunnel_identity.COOKIE_NAME in getattr(response, "cookies", {}):
+                return response
+            if minted_token[0] is None and callable(tunnel_identity_minter):
+                try:
+                    candidate = tunnel_identity_minter()
+                except Exception:
+                    candidate = None
+                if (
+                    isinstance(candidate, tuple)
+                    and len(candidate) == 2
+                    and isinstance(candidate[0], str)
+                    and candidate[0]
+                    and isinstance(candidate[1], str)
+                    and candidate[1]
+                ):
+                    minted_token[0] = candidate[1]
+            token = minted_token[0]
+            if not token:
+                return response
+            try:
+                tunnel_identity.apply_visitor_cookie(
+                    response, token, secure=bool(getattr(request, "secure", False))
+                )
+            except Exception:
+                _log.exception("Failed to attach tunnel identity cookie")
+            return response
+
+        # IP blacklist check (always applies).  Security-produced rejections
+        # never carry a minted visitor cookie (identity-farming guard).
         if ip_blacklist.is_blocked(ip):
             _log.warning("Blocked request from blacklisted IP: %s", ip)
             return error_response("Forbidden", status=403, code="forbidden")
@@ -182,17 +271,6 @@ def create_security_middleware(
             # loopback source address.  While the tunnel is running, let
             # loopback sources through so LAN-subnet whitelists only
             # constrain direct connections.
-            tunnel_source = False
-            if callable(tunnel_active):
-                try:
-                    tunnel_on = bool(tunnel_active())
-                except Exception:
-                    tunnel_on = False
-                try:
-                    loopback = bool(ipaddress.ip_address(ip).is_loopback)
-                except ValueError:
-                    loopback = False
-                tunnel_source = tunnel_on and loopback
             if not tunnel_source:
                 _log.warning("Blocked request from non-whitelisted IP: %s", ip)
                 return error_response("Forbidden", status=403, code="forbidden")
@@ -203,44 +281,52 @@ def create_security_middleware(
         # Auth endpoint rate limiting (stricter, declared per route)
         if auth_rate_limiter and policy.rate_limit == "auth_strict":
             active_limiter = auth_rate_limiter
-            if not auth_rate_limiter.is_allowed(ip):
-                retry_after = auth_rate_limiter.retry_after(ip)
-                _log.warning("Auth rate limit exceeded for IP: %s", ip)
-                return web.json_response(
-                    {"error": "Too many login attempts. Please try again later.",
-                     "retry_after": retry_after},
+            if not auth_rate_limiter.is_allowed(bucket_key):
+                retry_after = auth_rate_limiter.retry_after(bucket_key)
+                _log.warning("Auth rate limit exceeded for IP: %s", bucket_key)
+                return error_response(
+                    "Too many login attempts. Please try again later.",
                     status=429,
-                    headers={"Retry-After": str(retry_after)}
+                    code="auth_rate_limited",
+                    details={"retry_after": retry_after},
+                    extra={"retry_after": retry_after},
+                    headers={"Retry-After": str(retry_after)},
                 )
 
         # Browse rate limit (generous budget for heavy public surfaces)
         elif policy.rate_limit == "browse":
             active_limiter = browse_limiter
-            if not browse_limiter.is_allowed(ip):
-                retry_after = browse_limiter.retry_after(ip)
-                _log.warning("Browse rate limit exceeded for IP: %s", ip)
-                return web.json_response(
-                    {"error": "Browse rate limit exceeded", "retry_after": retry_after},
+            if not browse_limiter.is_allowed(bucket_key):
+                retry_after = browse_limiter.retry_after(bucket_key)
+                _log.warning("Browse rate limit exceeded for IP: %s", bucket_key)
+                return error_response(
+                    "Browse rate limit exceeded",
                     status=429,
-                    headers={"Retry-After": str(retry_after)}
+                    code="browse_rate_limited",
+                    details={"retry_after": retry_after},
+                    extra={"retry_after": retry_after},
+                    headers={"Retry-After": str(retry_after)},
                 )
 
         # General rate limit check (only for non-browsing paths)
         elif not skip_rate:
-            if not rate_limiter.is_allowed(ip):
-                retry_after = rate_limiter.retry_after(ip)
-                _log.warning("Rate limit exceeded for IP: %s", ip)
-                return web.json_response(
-                    {"error": "Rate limit exceeded", "retry_after": retry_after},
+            if not rate_limiter.is_allowed(bucket_key):
+                retry_after = rate_limiter.retry_after(bucket_key)
+                _log.warning("Rate limit exceeded for IP: %s", bucket_key)
+                return error_response(
+                    "Rate limit exceeded",
                     status=429,
-                    headers={"Retry-After": str(retry_after)}
+                    code="rate_limited",
+                    details={"retry_after": retry_after},
+                    extra={"retry_after": retry_after},
+                    headers={"Retry-After": str(retry_after)},
                 )
 
         # Add rate limit headers
         response = await handler(request)
         if isinstance(response, web.Response):
-            remaining = active_limiter.get_remaining(ip)
+            remaining = active_limiter.get_remaining(bucket_key)
             response.headers["X-RateLimit-Remaining"] = str(remaining)
-        return response
+        return _attach_visitor_cookie(response)
 
     return security_middleware

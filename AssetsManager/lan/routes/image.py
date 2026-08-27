@@ -9,6 +9,8 @@ from aiohttp import web
 from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.lan.path_guard import PathGuardError, assert_under_root
 from AssetsManager.lan.routes._errors import error_response
+from AssetsManager.lan.safe_open import SafeOpenError, read_safe_file
+from AssetsManager.application.thumbnail_service import process_image_snapshot
 from AssetsManager.lan.routes._helpers import (
     BLURRED_PREVIEW_SIZE,
     PRIVATE_PREVIEW_HEADERS,
@@ -33,6 +35,18 @@ _IMAGE_CONTENT_TYPES = {
     "TIFF": "image/tiff",
     "ICO": "image/x-icon",
 }
+
+
+def _inspect_image_bytes(body: bytes) -> str | None:
+    try:
+        from io import BytesIO
+        from PIL import Image
+        with BytesIO(body) as stream:
+            with Image.open(stream) as image:
+                image.verify()
+                return _IMAGE_CONTENT_TYPES.get(str(image.format).upper())
+    except Exception:
+        return None
 
 
 def _inspect_image(path: Path) -> str | None:
@@ -75,7 +89,13 @@ async def serve_verified_image(
         target = assert_under_root(lan.library_root, target)
     except PathGuardError:
         return _not_found()
-    content_type = await asyncio.to_thread(_inspect_image, target)
+    try:
+        source_body, _source_identity = await asyncio.to_thread(
+            read_safe_file, lan.library_root, target,
+        )
+    except (SafeOpenError, OSError, ValueError):
+        return _not_found()
+    content_type = await asyncio.to_thread(_inspect_image_bytes, source_body)
     if content_type is None:
         return _not_found()
 
@@ -92,24 +112,31 @@ async def serve_verified_image(
         return _not_found()
 
     if resolved.should_blur:
-        return await serve_blur_gated_raster(
-            request,
-            target,
-            should_blur=True,
-            content_type=content_type,
-            max_size=max_size,
+        processed = await asyncio.to_thread(
+            process_image_snapshot, svc, target, source_body, max_size, True,
+        )
+        if processed is None:
+            return error_response(
+                "Failed to process image", status=500, code="internal_error",
+                headers=PRIVATE_PREVIEW_HEADERS,
+            )
+        body, processed_content_type = processed
+        return web.Response(
+            body=body,
+            content_type=processed_content_type,
+            headers=PRIVATE_PREVIEW_HEADERS,
         )
 
     headers = PUBLIC_PREVIEW_HEADERS if public else PRIVATE_PREVIEW_HEADERS
     if max_size < 256 or resolved.cache_hit:
-        processed = await asyncio.to_thread(svc.process_image, target, max_size, False)
+        processed = await asyncio.to_thread(
+            process_image_snapshot, svc, target, source_body, max_size, False,
+        )
         if processed is not None:
             body, processed_content_type = processed
             return web.Response(body=body, content_type=processed_content_type, headers=headers)
 
-    response = web.FileResponse(target, headers=headers)
-    response.headers["Content-Type"] = content_type
-    return response
+    return web.Response(body=source_body, content_type=content_type, headers=headers)
 
 
 async def handle_image(request: web.Request) -> web.StreamResponse:

@@ -1,0 +1,255 @@
+{
+  "schema_version": 1,
+  "report_id": "import-source-consistency-toctou-evidence-2026-08-25",
+  "captured_at": "2026-08-25T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "e0b807ba9cf8e78952cb4cf7bed8251eaca991cc99c3e211aab4c8bf24452e34",
+    "diff_sha256": "f9139203d489a582e9fb1cf64e5d3655126412eaa3b3ef38aa0dcaabcb984873",
+    "tracked_change_count": 143,
+    "untracked_change_count": 129
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/integration/test_import_service.py",
+          "tests/integration/test_import_subprocess_termination.py",
+          "tests/unit/test_import_manifest_store.py",
+          "tests/integration/test_import_manifest_recovery_claim_process.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Source-drift guard, stale-fingerprint rejection, mid-stream mutation detection, subprocess termination checkpoints and manifest CAS matrix",
+        "sample_count": 58,
+        "pass_criterion": "exit_code == 0; platform-gated symlink skips recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/import-source-consistency-toctou/focused.stdout.log",
+            "sha256": "b558041a686da27a22485651afa4c14acb2754e135e4ebb0c9cf4b4bd2995ae5"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/import-source-consistency-toctou/focused.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python suite after source consistency TOCTOU narrowing",
+        "sample_count": 4051,
+        "pass_criterion": "exit_code == 0; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/import-source-consistency-toctou/full.stdout.log",
+            "sha256": "2bb3f267610c2eb12f84e7f5182841d2b01d14e89d2264719d0d8c2fa9fe0467"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager/application/import_service.py",
+          "tests/integration/test_import_service.py",
+          "tests/integration/test_import_subprocess_termination.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted Ruff check for 28-E implementation and tests",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/import-source-consistency-toctou/ruff.stdout.log",
+            "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/import-source-consistency-toctou/ruff.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager/application/import_service.py",
+          "tests/integration/test_import_service.py",
+          "tests/integration/test_import_subprocess_termination.py",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted Python compile check",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/import-source-consistency-toctou/compile.stdout.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/import-source-consistency-toctou/compile.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Whitespace check for current dirty worktree",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/import-source-consistency-toctou/diffcheck.stdout.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/import-source-consistency-toctou/diffcheck.stderr.log",
+            "sha256": "aa40b795a7b8af061b6804bb2fab436fcc0b0b9e6e474385701ca0afa432f7ec"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index non-self-referential static governance after 28-E report and manifest",
+        "sample_count": 9,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/import-source-consistency-toctou/static-post-index.stdout.log",
+            "sha256": "cd0bfa8fd867bd821dbb2285bb364681e91a49b915884928a4116f4e570ccba2"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/import-source-consistency-toctou/static-post-index.stderr.log",
+            "sha256": "aa40b795a7b8af061b6804bb2fab436fcc0b0b9e6e474385701ca0afa432f7ec"
+          }
+        ]
+      }
+    ],
+    "note": "Focused matrix: 56 passed, 2 skipped (Windows symlink privilege). Full serial Python suite: 4035 passed, 16 skipped, 20 deselected, 2 warnings. Post-index non-self-referential static governance passed. Stale-fingerprint rejection before target creation and same-handle mid-stream mutation detection are deterministically proven; partial targets are cleaned through the existing ownership path. Handle-level only: in-place same-size rewrites within mtime granularity stay undetectable during copy, with byte-exact proof deferred to replay-time SHA-256 adoption; Windows replacement races and cross-platform zero-race claims remain unverified."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/import-source-consistency-toctou-evidence-2026-08-25.md",
+      "sha256": "948de32877ee89af55e664b624b35c2ee3e2deb4e3d0d038ed97f0013ae5191f"
+    },
+    {
+      "path": "AssetsManager/application/import_service.py",
+      "sha256": "7ceab7ea44c250f5fc38e3710f0533fac0f7f7093aa28dfaec86b77b806f5c44"
+    },
+    {
+      "path": "tests/integration/test_import_service.py",
+      "sha256": "d257ab4949022f50a8b1ac248340d010c2ce30ed0b298e53e1940b9456b70ced"
+    },
+    {
+      "path": "tests/integration/test_import_subprocess_termination.py",
+      "sha256": "2dc168ee36c92e83d625c16b27bf49cb2fddcffa82e4c654ab3a7accb6c2a775"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/import-source-consistency-toctou-evidence-2026-08-25.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "IMPORT-SOURCE-CONSISTENCY-28E-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "IMPORT-SOURCE-CONSISTENCY-28E-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/import_service.py:225",
+        "AssetsManager/application/import_service.py:271",
+        "AssetsManager/application/import_service.py:295",
+        "AssetsManager/application/import_service.py:489",
+        "AssetsManager/application/import_service.py:585",
+        "AssetsManager/application/import_service.py:712",
+        "tests/integration/test_import_service.py:347",
+        "tests/integration/test_import_service.py:377"
+      ],
+      "surface": "Handle-level source consistency between manifest fingerprint capture and streaming copy inside ImportService._copy_one",
+      "next_action": "Keep as separate bounded work: incremental streaming hash, POSIX dirfd/openat traversal, Windows reparse replacement races, power-loss windows, cross-system atomicity, exactly-once semantics and restore_backup admission",
+      "dynamic_verification": "Focused import/subprocess/manifest/recovery matrix passed 56 tests with two Windows symlink capability skips; full serial Python suite passed 4035 tests with 16 skips, 20 deselections and two warnings. Stale-fingerprint copies fail closed before target materialization, mid-stream source mutation is detected by the same-handle post-check with owned cleanup, and v1 fallback plus all previously pinned recovery contracts remain green."
+    }
+  ]
+}

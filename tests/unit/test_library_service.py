@@ -10,6 +10,11 @@ import AssetsManager.application.library_service as library_service_module
 import AssetsManager.core.database as database_module
 from AssetsManager.application.bootstrap import ApplicationBootstrap
 from AssetsManager.application.library_service import LibraryService
+from AssetsManager.application.library_export_io import (
+    restore_intent_path,
+    write_restore_intent,
+)
+from AssetsManager.core.path_resolver import library_data_dir
 
 
 def test_stale_restore_coordinator_rejects_live_owner_from_another_bootstrap(tmp_path):
@@ -509,6 +514,72 @@ def test_marked_restore_failure_poisons_after_reservation_finalizer(tmp_path):
     service.acknowledge_restore_failure(root, state.token)
 
 
+def test_restore_intent_status_reports_corrupt_marker_without_opening(tmp_path):
+    root = tmp_path / "library"
+    data_dir = library_data_dir(root)
+    data_dir.mkdir(parents=True)
+    marker = restore_intent_path(data_dir)
+    marker.write_text("not-json", encoding="utf-8")
+
+    service = LibraryService()
+    try:
+        status = service.restore_intent_status(root)
+        assert status["status"] == "corrupt"
+        assert status["token"] is None
+        reopened = service.open_session(root)
+        assert reopened.data_dir == data_dir
+        service.close_session(reopened)
+        assert marker.exists() is False
+    finally:
+        service.close()
+
+
+def test_restore_intent_manual_ack_requires_token_and_verified_data_dir(tmp_path):
+    root = tmp_path / "library"
+    data_dir = library_data_dir(root)
+    data_dir.mkdir(parents=True)
+    token = write_restore_intent(
+        data_dir,
+        map_key=str(root.resolve()).casefold(),
+        quarantine_entry=data_dir.parent / "missing-previous",
+        staging=data_dir.parent / ".staging",
+    )
+    service = LibraryService()
+    try:
+        with pytest.raises(RuntimeError, match="stale or unknown token"):
+            service.acknowledge_restore_intent(root, "wrong")
+        service.acknowledge_restore_intent(root, token)
+        assert restore_intent_path(data_dir).exists() is False
+        assert service.restore_intent_status(root) is None
+    finally:
+        service.close()
+
+
+def test_retry_interrupted_restore_recovers_quarantined_previous(tmp_path):
+    root = tmp_path / "library"
+    service = LibraryService()
+    session = service.open_session(root)
+    data_dir = session.data_dir
+    service.close_session(session)
+    quarantine = data_dir.parent / "_orphaned" / "restore-backups" / "manual"
+    quarantine.parent.mkdir(parents=True, exist_ok=True)
+    (data_dir / "sentinel.txt").write_text("keep", encoding="utf-8")
+    data_dir.replace(quarantine)
+    write_restore_intent(
+        data_dir,
+        map_key=session.context.root_key,
+        quarantine_entry=quarantine,
+        staging=data_dir.parent / ".staging",
+    )
+    try:
+        assert service.restore_intent_status(root)["status"] == "recoverable"
+        assert service.retry_interrupted_restore(root) is None
+        assert (data_dir / "sentinel.txt").read_text(encoding="utf-8") == "keep"
+        assert restore_intent_path(data_dir).exists() is False
+    finally:
+        service.close()
+
+
 def test_compatibility_root_map_never_recanonicalizes_captured_keys(monkeypatch, tmp_path):
     import AssetsManager.application.library_service as library_service_module
     from AssetsManager.application.library_service import _CanonicalRootMap
@@ -528,4 +599,136 @@ def test_compatibility_root_map_never_recanonicalizes_captured_keys(monkeypatch,
     assert mapping[str(root_a)] == "session-a"
     assert mapping.pop(str(root_a)) == "session-a"
     assert mapping.get(str(root_b)) == "session-b"
+
+
+def test_sweep_archives_orphan_staging_and_tmp_but_keeps_marker(tmp_path):
+    import os
+
+    from AssetsManager.core.path_resolver import root_identity
+
+    root = tmp_path / "library"
+    service = LibraryService()
+    session = service.open_session(root)
+    data_dir = session.data_dir
+    identity = root_identity(root)
+    service.close_session(session)
+
+    runtime = data_dir.parent
+    stale_dir = runtime / f".{data_dir.name}.restore-{'a' * 32}"
+    stale_dir.mkdir()
+    fresh_dir = runtime / f".{data_dir.name}.restore-{'b' * 32}"
+    fresh_dir.mkdir()
+    marker = restore_intent_path(data_dir)
+    marker.write_text("{}", encoding="utf-8")
+    stale_tmp = runtime / f".{data_dir.name}.restore-intent-deadbeef.tmp"
+    stale_tmp.write_text("x", encoding="utf-8")
+    old = 1_000_000.0
+    os.utime(stale_dir, (old, old))
+    os.utime(stale_tmp, (old, old))
+
+    foreign = runtime / f".other-slot.restore-{'c' * 32}"
+    foreign.mkdir()
+    os.utime(foreign, (old, old))
+
+    service._sweep_orphan_restore_residue(identity, now=old + 9 * 86400)
+
+    assert not stale_dir.exists(), "week-old staging must be archived away"
+    backups_root = runtime / "_orphaned" / "restore-backups"
+    # The archived copy inherits the source's stale mtime, so the same pass
+    # folds it under `_expired`: either location proves successful archival,
+    # exactly one entry must exist across the two levels.
+    staged = list(backups_root.glob(f".{data_dir.name}.restore-*")) + list(
+        (backups_root / "_expired").glob(f".{data_dir.name}.restore-*")
+    )
+    assert len(staged) == 1
+    assert fresh_dir.exists(), "recent staging must be left alone"
+    assert not stale_tmp.exists()
+    assert marker.exists(), "intent marker is protected crash evidence"
+    assert foreign.exists(), "other slots' namespaces are out of bounds"
+
+
+def test_open_session_runs_sweep_and_survives_scan(tmp_path):
+    import os
+
+    root = tmp_path / "library"
+    service = LibraryService()
+    first = service.open_session(root)
+    data_dir = first.data_dir
+    service.close_session(first)
+
+    stale = data_dir.parent / f".{data_dir.name}.restore-intent-old.tmp"
+    stale.write_text("x", encoding="utf-8")
+    os.utime(stale, (1_000_000.0, 1_000_000.0))
+
+    reopened = service.open_session(root)
+    try:
+        assert reopened.data_dir == data_dir
+        assert not stale.exists()
+    finally:
+        service.close_session(reopened)
+
+
+def test_sweep_preserves_link_flagged_candidates(tmp_path, monkeypatch):
+    import os
+
+    root = tmp_path / "library"
+    service = LibraryService()
+    session = service.open_session(root)
+    data_dir = session.data_dir
+    from AssetsManager.core.path_resolver import root_identity
+
+    identity = root_identity(root)
+    service.close_session(session)
+
+    stale = data_dir.parent / f".{data_dir.name}.restore-{'d' * 32}"
+    stale.mkdir()
+    os.utime(stale, (1_000_000.0, 1_000_000.0))
+    monkeypatch.setattr(
+        "AssetsManager.application.library_service._path_is_link_or_reparse",
+        lambda _path: True,
+    )
+
+    from AssetsManager.application.library_export_io import (
+        safe_restore_quarantine_root,
+    )
+
+    quarantine_before = safe_restore_quarantine_root(data_dir, create_missing=False)
+    listing_before = set(quarantine_before.iterdir()) if quarantine_before else set()
+
+    service._sweep_orphan_restore_residue(identity, now=1_000_000.0 + 9 * 86400)
+
+    assert stale.exists(), "refused link/reparse candidates must be preserved"
+    quarantine_after = safe_restore_quarantine_root(data_dir, create_missing=False)
+    listing_after = set(quarantine_after.iterdir()) if quarantine_after else set()
+    # Nothing staging-shaped was added under this slot's name.
+    assert not {p for p in listing_after - listing_before if p.name.startswith(f".{data_dir.name}")}
+
+
+def test_archive_expired_quarantine_entries_folds_old_backups(tmp_path):
+    import os
+
+    from AssetsManager.application.library_export_io import (
+        safe_restore_quarantine_root,
+    )
+
+    root = tmp_path / "library"
+    service = LibraryService()
+    session = service.open_session(root)
+    data_dir = session.data_dir
+    service.close_session(session)
+
+    q_root = safe_restore_quarantine_root(data_dir)
+    old_entry = q_root / f"{data_dir.name}_20200101T000000Z_deadbeef"
+    old_entry.mkdir()
+    (old_entry / "assetmanager.db").write_bytes(b"db")
+    fresh_entry = q_root / f"{data_dir.name}_20990101T000000Z_livebeef"
+    fresh_entry.mkdir()
+    os.utime(old_entry, (1_000_000.0, 1_000_000.0))
+
+    LibraryService._archive_expired_quarantine_entries(q_root, 1_000_000.0 + 9 * 86400)
+
+    expired = q_root / "_expired" / old_entry.name
+    assert expired.is_dir()
+    assert (expired / "assetmanager.db").exists()
+    assert fresh_entry.exists(), "fresh quarantine entries stay in place"
 

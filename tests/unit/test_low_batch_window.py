@@ -9,7 +9,9 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QMainWindow
+from types import SimpleNamespace
+
+from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton
 
 import AssetsManager.window as window_module
 from AssetsManager.widgets.workspace_bar import WorkspaceSection
@@ -152,3 +154,59 @@ def test_restore_window_geometry_ignores_non_string_geometry(monkeypatch):
     window_module._restore_window_geometry(win)  # must not raise
     win.deleteLater()
     _app().processEvents()
+
+
+def test_import_progress_dialog_cancel_and_window_close_signals():
+    app = _app()
+    dialog = window_module._ImportProgressDialog("working", "cancel", 0, 0)
+    cancelled = []
+    dialog.canceled.connect(lambda: cancelled.append(True))
+    assert isinstance(dialog.findChild(QPushButton), QPushButton)
+    dialog.findChild(QPushButton).click()
+    assert cancelled == [True]
+    dialog.deleteLater()
+
+    dismissed = []
+    dialog = window_module._ImportProgressDialog("working", "cancel", 0, 0)
+    dialog.user_closed.connect(lambda: dismissed.append(True))
+    dialog.close()
+    app.processEvents()
+    assert dismissed == [True]
+    dialog.deleteLater()
+    app.processEvents()
+
+
+def test_main_window_import_cleanup_closes_pool_and_is_idempotent():
+    class _Token:
+        def __init__(self):
+            self.cancelled = False
+
+        def cancel(self):
+            self.cancelled = True
+
+    class _Pool:
+        def __init__(self):
+            self.calls = []
+
+        def close(self, timeout_ms, *, owner_label):
+            self.calls.append((timeout_ms, owner_label))
+            return True
+
+    token = _Token()
+    pool = _Pool()
+    window = SimpleNamespace(
+        _import_generation=4,
+        _import_token=token,
+        _import_pool=pool,
+        _import_task=object(),
+        _import_dialog=None,
+    )
+    window.cleanup = window_module.MainWindow._cleanup_import.__get__(window)
+
+    assert window.cleanup() is True
+    assert token.cancelled is True
+    assert pool.calls == [(3_000, "MainWindow import")]
+    assert window._import_token is None
+    assert window._import_pool is None
+    assert window._import_task is None
+    assert window.cleanup(4) is False

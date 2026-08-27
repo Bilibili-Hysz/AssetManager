@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "report_id": "c6-b-restore-projection-repair-2026-08-21",
+  "captured_at": "2026-08-21T00:00:00+00:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "d7e469cc2e1747ade01a0bc5f9cdf27f926adc22db65883442b4ea75f4206a05",
+    "diff_sha256": "e86ef516f673a4c1f02850d8a26d715593e5fe8ebe0c1c6667b77d8ebf8f47fd",
+    "tracked_change_count": 81,
+    "untracked_change_count": 25
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "note": "C6-B restore payload, queue, worker, file-operation, undo and migration-related tests, Python compile, Ruff, documentation, audit-manifest, boundary, style, route-capability, frontend-fetch, layer and diff gates passed. Full Python, browser, real-backend LAN, package, release, dependency, vulnerability, performance, and independent Windows lifecycle validation were not run."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/evidence-convergence-2026-08-20.md",
+      "sha256": "4ff90174788b8cc08a3843c87bcee03dc6b507ff8efd025c0ba0264bed45fa8d"
+    },
+    {
+      "path": "docs/full-review/c6-min-durable-filesystem-projection-repair-evidence-2026-08-21.md",
+      "sha256": "bafff58b3e99da555961afb14076e21df93c40170a8d9657438ddb7ac245c4ae"
+    },
+    {
+      "path": "docs/full-review/c6-b-restore-projection-repair-evidence-2026-08-21.md",
+      "sha256": "6585143a06c13a48880dde46e75012da8527ae9033ac18b2ea20d6714e8208e1"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/evidence-convergence-2026-08-20.md",
+    "docs/full-review/c6-min-durable-filesystem-projection-repair-evidence-2026-08-21.md",
+    "docs/full-review/c6-b-restore-projection-repair-evidence-2026-08-21.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "C6-B-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "confidence": "high",
+      "source_ids": ["XFS-01", "EVID-06"],
+      "anchors": [
+        "AssetsManager/application/reconciliation_queue.py:44",
+        "AssetsManager/application/reconciliation_queue.py:114",
+        "AssetsManager/application/file_operation_service.py:831",
+        "AssetsManager/application/file_operation_service.py:1008",
+        "tests/unit/test_asset_index_reconciliation_service.py:52"
+      ],
+      "surface": "Validated embedded restore projection snapshot durable payload",
+      "next_action": "Add downgrade/rolling-version compatibility policy and snapshot schema evolution tests",
+      "dynamic_verification": "Valid restore payloads round-trip; root-escaping snapshot bases, malformed rows and unsupported shapes fail closed"
+    },
+    {
+      "canonical_id": "C6-B-02",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "confidence": "high",
+      "source_ids": ["XFS-01", "EVID-06"],
+      "anchors": [
+        "AssetsManager/application/filesystem_projection_repair_service.py:48",
+        "AssetsManager/application/filesystem_projection_repair_service.py:95",
+        "AssetsManager/application/file_operation_service.py:833",
+        "tests/integration/test_file_operation_service.py:310"
+      ],
+      "surface": "Restore projection durable replay for tags, metadata, favorites and asset index",
+      "next_action": "Extend snapshot design for thumbnail rows/bytes and validate multi-process retry/restart behavior",
+      "dynamic_verification": "Injected restore projection failure creates a replayable restore task; worker rehydrates new target tags/metadata without a duplicate filesystem event"
+    },
+    {
+      "canonical_id": "C6-B-03",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "confidence": "high",
+      "source_ids": ["XFS-01", "EVID-06"],
+      "anchors": [
+        "AssetsManager/application/asset_index_reconciliation_service.py:502",
+        "AssetsManager/application/reconciliation_queue_migration.py:266",
+        "AssetsManager/application/file_operation_service.py:364"
+      ],
+      "surface": "Projection repair age-budget and durable marker intent safety",
+      "next_action": "Add explicit late restore repair lease-recovery and downgrade marker tests",
+      "dynamic_verification": "Projection repairs no longer require a non-null asset-index result in age-budget handling; marker equivalence includes payload; generic rescan fallback survives repair enqueue failure"
+    }
+  ]
+}

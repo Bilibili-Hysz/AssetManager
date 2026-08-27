@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import ctypes
 import hashlib
+import json
 import os
 import sqlite3
 import stat
 import struct
 import sys
+import tempfile
 import unicodedata
 import uuid
 import zipfile
@@ -480,6 +482,78 @@ def restore_quarantine_path(data_dir: Path) -> Path:
         f"{data_dir.name}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}_"
         f"{uuid.uuid4().hex[:8]}"
     )
+
+
+# ── Interrupted-restore intent marker ────────────────────────────
+#
+# The two-step swap (quarantine previous, install staging) has a crash
+# window between the replaces where the live data_dir slot is absent and
+# the previous copy sits in quarantine.  Without durable evidence on disk
+# the next open silently materializes an empty database.  The intent
+# marker is written after the quarantine entry path is known and before
+# the first replace; it lives as a sibling of data_dir so it survives
+# data_dir being moved away.
+
+
+def restore_intent_path(data_dir: Path) -> Path:
+    return data_dir.parent / f".{data_dir.name}.restore-intent.json"
+
+
+def write_restore_intent(
+    data_dir: Path,
+    *,
+    map_key: str,
+    quarantine_entry: Path,
+    staging: Path,
+) -> str:
+    """Atomically persist restore intent; returns the intent token."""
+    token = uuid.uuid4().hex
+    payload = {
+        "version": 1,
+        "token": token,
+        "map_key": map_key,
+        "data_dir_name": data_dir.name,
+        "quarantine_entry": str(quarantine_entry),
+        "staging": str(staging),
+        "started_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    path = restore_intent_path(data_dir)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".restore-intent-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return token
+
+
+def read_restore_intent(data_dir: Path) -> dict[str, Any] | None:
+    """Return parsed intent payload, or None when absent/unreadable/corrupt.
+
+    A corrupt file deliberately reads as None while the bytes stay on disk:
+    callers distinguish "no marker" from "marker present but unusable" via
+    :func:`restore_intent_path` existence before trusting this result.
+    """
+    try:
+        text = restore_intent_path(data_dir).read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        return None
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def clear_restore_intent(data_dir: Path) -> None:
+    restore_intent_path(data_dir).unlink(missing_ok=True)
 
 
 def compression_type_for_bytes(data: bytes, *, max_compression_ratio: int) -> int:

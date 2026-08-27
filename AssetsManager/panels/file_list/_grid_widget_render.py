@@ -37,9 +37,6 @@ if TYPE_CHECKING:
 
 tr = i18n.tr
 
-# Category key → display label (e.g. "models" → "3D Models")
-_CATEGORY_LABELS: dict[str, str] = dict(FILTER_CATEGORY_LABELS)
-
 # Card drawing constants — matching GridDelegate exactly (scaled for DPI)
 _CORNER_R = scaled_px(10)
 _PREVIEW_R = scaled_px(8)
@@ -661,7 +658,8 @@ class RenderMixin:
             p.setFont(self._font_sub)
             p.setPen(self._clr_muted)
             cat = EXT_TO_CATEGORY.get(ext, "Other")
-            label = _CATEGORY_LABELS.get(cat, cat)
+            labels = dict(FILTER_CATEGORY_LABELS)
+            label = labels.get(cat, cat)
             p.drawText(rect, Qt.AlignmentFlag.AlignCenter,
                        self._fm_sub.elidedText(label, Qt.TextElideMode.ElideRight, rect.width()))
 

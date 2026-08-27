@@ -9,9 +9,32 @@ behind a directory walk.
 """
 from __future__ import annotations
 
+import logging
 import threading
 
 from PySide6.QtCore import QRunnable, QThreadPool
+
+
+_log = logging.getLogger(__name__)
+_retained_pools: dict[int, QThreadPool] = {}
+_retained_pools_lock = threading.Lock()
+
+
+def _reap_pool(pool: QThreadPool, owner_label: str) -> None:
+    """Release a timed-out private pool away from the GUI teardown thread."""
+    try:
+        pool.waitForDone()
+    except Exception:
+        _log.exception("Timed-out worker pool reaper failed for %s", owner_label)
+    finally:
+        with _retained_pools_lock:
+            _retained_pools.pop(id(pool), None)
+
+
+def retained_pool_count() -> int:
+    """Return private pools awaiting background reaping for lifecycle tests."""
+    with _retained_pools_lock:
+        return len(_retained_pools)
 
 
 class CancellationToken:
@@ -67,20 +90,29 @@ class BoundedPool:
     """
 
     def __init__(self, max_thread_count: int = 1) -> None:
-        self._pool = QThreadPool()
+        self._pool: QThreadPool | None = QThreadPool()
         self._pool.setMaxThreadCount(max(1, int(max_thread_count)))
         self._tokens: list[CancellationToken] = []
         self._tokens_lock = threading.Lock()
+        self._closed = False
+
+    def _require_pool(self) -> QThreadPool:
+        pool = self._pool
+        if pool is None:
+            raise RuntimeError("BoundedPool is closed")
+        return pool
 
     @property
     def max_thread_count(self) -> int:
-        return self._pool.maxThreadCount()
+        return self._require_pool().maxThreadCount()
 
     def start(self, runnable: CancellableRunnable) -> None:
         """Queue *runnable* and track its cancellation token."""
         with self._tokens_lock:
+            if self._closed:
+                raise RuntimeError("BoundedPool is closed")
             self._tokens.append(runnable.cancel_token)
-        self._pool.start(runnable)
+            self._require_pool().start(runnable)
 
     def cancel_all(self) -> None:
         """Cancel every tracked token without waiting for completion.
@@ -99,10 +131,47 @@ class BoundedPool:
 
     def drain(self, timeout_ms: int = 5000) -> bool:
         """Wait at most *timeout_ms* for queued/running tasks to finish."""
-        return bool(self._pool.waitForDone(int(timeout_ms)))
+        return bool(self._require_pool().waitForDone(int(timeout_ms)))
+
+    def close(self, timeout_ms: int = 5000, *, owner_label: str = "BoundedPool") -> bool:
+        """Cancel work and release the private pool without blocking GUI teardown.
+
+        A timed-out native pool is retained by a daemon reaper until its workers
+        finish, so dropping the owner's wrapper cannot invoke a blocking pool
+        destructor on the caller thread.
+        """
+        with self._tokens_lock:
+            if self._closed:
+                return self._pool is None
+            self._closed = True
+            tokens = list(self._tokens)
+            self._tokens.clear()
+            pool = self._require_pool()
+        for token in tokens:
+            token.cancel()
+        if pool.waitForDone(int(timeout_ms)):
+            self._pool = None
+            return True
+        with _retained_pools_lock:
+            _retained_pools[id(pool)] = pool
+        self._pool = None
+        _log.warning(
+            "Worker pool close timed out for %s after %sms (%s active thread(s)); reaping in background",
+            owner_label,
+            timeout_ms,
+            pool.activeThreadCount(),
+        )
+        threading.Thread(
+            target=_reap_pool,
+            args=(pool, owner_label),
+            name=f"{owner_label}-pool-reaper",
+            daemon=True,
+        ).start()
+        return False
 
     def active_thread_count(self) -> int:
-        return self._pool.activeThreadCount()
+        pool = self._pool
+        return 0 if pool is None else pool.activeThreadCount()
 
 
 def should_continue(token: CancellationToken | None) -> bool:

@@ -14,10 +14,12 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from PySide6.QtCore import Qt, QTimer, QModelIndex, QPoint, QItemSelectionModel
+from PySide6.QtCore import Qt, QTimer, QModelIndex, QPoint, QItemSelectionModel, QObject, Signal
 from PySide6.QtWidgets import QApplication, QWidget
+from shiboken6 import Shiboken
 
 from AssetsManager.core.ui_scale import scaled_px
+from AssetsManager.core.workers import BoundedPool, CancellationToken, CancellableRunnable
 from AssetsManager import i18n
 
 from AssetsManager.panels.file_list._model import FileSystemModel
@@ -40,6 +42,63 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 tr = i18n.tr
+
+# Bound on the number of in-flight folder cover scans.  The viewport exposes
+# at most a handful of directories at a time, so 64 is generous while keeping
+# memory and queue depth finite even under rapid scrolling.
+_COVER_SCAN_QUEUE_LIMIT = 64
+
+
+class _CoverScanSignals(QObject):
+    """Completion signal bridge for one folder cover scan."""
+
+    done = Signal(str, object, int, object)  # (dir_path, result, generation, task)
+
+
+class _CoverScanTask(CancellableRunnable):
+    """Scan one directory for its first image on a worker thread.
+
+    The worker touches only the filesystem (``find_first_image``) and returns
+    ``str | None``; it never creates QPixmap/QWidget.  The panel connects this
+    completion signal to its bound slot with an explicit queued connection.
+    """
+
+    def __init__(self, dir_path: str, generation: int, cancel_token: CancellationToken) -> None:
+        super().__init__(generation=generation, cancel_token=cancel_token)
+        self._dir_path = dir_path
+        self.signals = _CoverScanSignals()
+
+    def run(self) -> None:
+        signals = self.signals
+        if self.is_cancelled():
+            return
+        try:
+            result = _first_image_in(self._dir_path)
+        except Exception:
+            _log.exception("Folder cover scan failed: %s", self._dir_path)
+            result = None
+        if not self.is_cancelled():
+            signals.done.emit(self._dir_path, result, self.generation, self)
+
+
+def _cover_view_window(panel: Any) -> tuple[int, int]:
+    """Visible + prefetch row window used to gate preview requests.
+
+    Module-level so fake panels used in unit tests (plain ``type()`` shells with
+    no LogicMixin methods) can drive ``_load_visible`` / preview logic.
+    """
+    total = panel._model.rowCount()
+    if total == 0:
+        return 0, -1
+    vh = panel._grid_widget.height()
+    sy = panel._grid_widget._scroll_y
+    visible = panel._grid_layout.visible_rows(sy, vh)
+    visible_rows = [row for row in visible if 0 <= row < total]
+    cols = panel._grid_layout.columns
+    extra = max(2, cols) * 3
+    first = max(0, min(visible_rows[0] if visible_rows else 0, total - 1) - extra)
+    last = min(total - 1, max(visible_rows[-1] if visible_rows else 0, 0) + extra)
+    return first, last
 
 
 class LogicMixin:
@@ -83,6 +142,8 @@ class LogicMixin:
         def _open_in_explorer(self, path: str) -> None: ...
         def _paste(self) -> None: ...
         def _new_folder(self) -> None: ...
+        def _run_in_background(self, func: Any, *args: Any, on_done: Any = None) -> None: ...
+        def _session_operation(self, session: Any) -> Any: ...
 
     def _init_state(self) -> None:
         """Initialize per-instance view state, model and thumbnail loader."""
@@ -95,6 +156,12 @@ class LogicMixin:
         self._view_memory: dict[str, str] = {}
         self._first_image_cache: dict[str, str | None] = {}
         self._first_image_cache_max = 5000
+        # Folder cover scanning runs on a dedicated low-concurrency pool so a
+        # cache miss never performs a synchronous scandir on the UI thread.
+        self._cover_scan_generation = 0
+        self._pending_cover_scans: set[str] = set()
+        self._active_cover_tasks: dict[str, _CoverScanTask] = {}
+        self._cover_scan_pool: BoundedPool | None = None
         self._last_click_row: int = -1
         self._last_tree_item: QModelIndex | None = None
         self._drag_origin_pos = None
@@ -337,6 +404,7 @@ class LogicMixin:
         )
 
     def _do_refresh(self):
+        self._invalidate_cover_scans()
         self._loader.clear_queue()
         self._loader.clear_cache()
         self._post_refresh()
@@ -357,10 +425,7 @@ class LogicMixin:
         sy = self._grid_widget._scroll_y
         visible = self._grid_layout.visible_rows(sy, vh)
         visible_rows = [row for row in visible if 0 <= row < total]
-        cols = self._grid_layout.columns
-        extra = max(2, cols) * 3
-        first = max(0, min(visible_rows[0] if visible_rows else 0, total - 1) - extra)
-        last = min(total - 1, max(visible_rows[-1] if visible_rows else 0, 0) + extra)
+        first, last = _cover_view_window(self)
         visible_set = set(visible_rows)
         prefetch_rows = [row for row in range(first, last + 1) if row not in visible_set]
         candidates = []
@@ -395,16 +460,139 @@ class LogicMixin:
 
     @staticmethod
     def _first_image_in(dir_path: str) -> str | None:
+        # Delegates to the shared application helper (capped scan).  Called from
+        # the cover-scan worker thread, never from the UI thread.
         return _first_image_in(dir_path)
 
     def _first_image_cached(self, dir_path: str) -> str | None:
+        """Return the cached folder cover, scheduling a background scan on miss.
+
+        Cache hits stay fully synchronous.  On a miss the directory is queued
+        on the dedicated cover-scan pool and ``None`` is returned immediately:
+        the UI thread never blocks behind a ``scandir``.  The result lands in
+        the cache and refreshes only the matching visible row when ready.
+        """
         if dir_path in self._first_image_cache:
             return self._first_image_cache[dir_path]
-        result = self._first_image_in(dir_path)
+        self._request_cover_scan(dir_path)
+        return None
+
+    def _ensure_cover_scan_pool(self) -> BoundedPool:
+        pool = self._cover_scan_pool
+        if pool is None:
+            pool = BoundedPool(1)
+            self._cover_scan_pool = pool
+        return pool
+
+    def _invalidate_cover_scans(self) -> None:
+        """Cancel in-flight cover scans and drop their pending registrations.
+
+        Called on navigation, refresh and lifecycle shutdown so a stale worker
+        result can never update the cache or refresh a row after the listing
+        or session that requested it is gone.  Runs on the UI thread only.
+        """
+        self._cover_scan_generation += 1
+        self._pending_cover_scans.clear()
+        for task in self._active_cover_tasks.values():
+            # A task may already have finished on the pool: with autoDelete the
+            # C++ QRunnable is gone and only the Python wrapper remains.
+            if Shiboken.isValid(task):
+                try:
+                    task.signals.done.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
+        self._active_cover_tasks.clear()
+        pool = self._cover_scan_pool
+        if pool is not None:
+            pool.cancel_all()
+
+    def _drain_cover_scan_pool(self, timeout_ms: int = 2000) -> None:
+        """Bound-wait for queued/running cover scans to finish."""
+        pool = self._cover_scan_pool
+        if pool is not None:
+            if not pool.drain(timeout_ms):
+                _log.warning("Folder cover scan pool drain timed out after %sms", timeout_ms)
+
+    def _close_cover_scan_pool(self, timeout_ms: int = 2000) -> None:
+        """Release the terminal cover pool without blocking panel destruction."""
+        pool = self._cover_scan_pool
+        if pool is not None:
+            pool.close(timeout_ms, owner_label="FileList cover scan")
+            self._cover_scan_pool = None
+
+    def _request_cover_scan(self, dir_path: str) -> None:
+        """Submit one deduplicated folder cover scan to the dedicated pool."""
+        model = self._model
+        if getattr(model, "is_shutdown", False):
+            return
+        if dir_path in self._first_image_cache or dir_path in self._pending_cover_scans:
+            return
+        if len(self._pending_cover_scans) >= _COVER_SCAN_QUEUE_LIMIT:
+            return
+        generation = self._cover_scan_generation
+        task = _CoverScanTask(dir_path, generation, CancellationToken())
+        self._pending_cover_scans.add(dir_path)
+        self._active_cover_tasks[dir_path] = task
+        task.signals.done.connect(
+            self._on_cover_scan_result,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        try:
+            self._ensure_cover_scan_pool().start(task)
+        except Exception:
+            self._pending_cover_scans.discard(dir_path)
+            self._active_cover_tasks.pop(dir_path, None)
+            raise
+
+    def _on_cover_scan_result(self, dir_path: str, result: str | None, generation: int, task: Any) -> None:
+        """Adopt a completed cover scan on the main thread.
+
+        Old results (generation mismatch after navigation/refresh/shutdown,
+        closed session, row no longer present) are discarded without touching
+        the cache or the visible rows.
+        """
+        model = self._model
+        if getattr(model, "is_shutdown", False):
+            return
+        if generation != self._cover_scan_generation:
+            return
+        self._pending_cover_scans.discard(dir_path)
+        if self._active_cover_tasks.get(dir_path) is task:
+            self._active_cover_tasks.pop(dir_path, None)
+        scoped = self._scoped_services
+        session = getattr(scoped, "session", None) if scoped is not None else None
+        if session is not None and getattr(session, "is_closed", False):
+            return
         if len(self._first_image_cache) >= self._first_image_cache_max:
             self._first_image_cache.clear()
         self._first_image_cache[dir_path] = result
-        return result
+        if result:
+            self._request_cover_thumbnail(dir_path, result)
+
+    def _request_cover_thumbnail(self, dir_path: str, preview: str) -> None:
+        """Request the preview thumbnail for exactly one visible directory row.
+
+        Goes through the existing thumbnail pipeline so delivery paints only
+        that row — no model rebuild and no full-viewport invalidation.
+        """
+        model = self._model
+        if getattr(model, "is_shutdown", False) or self._view_mode != "Grid":
+            return
+        row = model.row_for_path(dir_path)
+        if row < 0:
+            return
+        entry = model.entry_at(row)
+        if entry is None:
+            return
+        try:
+            if not entry.is_dir():
+                return
+        except OSError:
+            return
+        first, last = _cover_view_window(self)
+        if row < first or row > last:
+            return
+        self._loader.request(row, preview, priority=0, item_path=dir_path)
 
     def _on_dir_size_ready(self, dir_path: str, size_str: str, gen: int = 0):
         """Handle async directory size result — update subtitle and refresh affected row."""
@@ -469,55 +657,86 @@ class LogicMixin:
         in_library = [p for p in sources if p.is_relative_to(root)]
         external = [p for p in sources if p not in in_library]
 
+        session = scoped.session
         service = self._get_file_operation_service()
-        changed_paths = []
-        errors = []
-        warnings = []
-        try:
-            for source in in_library:
-                result = service.move_to_directory(
-                    [str(source)], str(destination), library_root=root_path,
+        undo_svc = self._undo_svc
+        from AssetsManager.application.file_operation_service import FileOperationResult
+        result_holder: list[FileOperationResult] = []
+        # The move/copy work runs on the shared background pool (same mode as
+        # paste/delete/duplicate); only validation-classification stays on the
+        # UI thread so the drop event returns immediately.
+        self._show_operation_feedback(session, "drop", running=True)
+
+        def _do_drop() -> None:
+            changed_paths: list[Path] = []
+            errors: list[str] = []
+            warnings: list[Any] = []
+            try:
+                with self._session_operation(session):
+                    for source in in_library:
+                        result = service.move_to_directory(
+                            [str(source)], str(destination), library_root=root_path,
+                        )
+                        for changed_path in result.changed_paths:
+                            changed_paths.append(changed_path)
+                            if undo_svc is not None:
+                                undo_svc.record_rename(str(source), str(changed_path))
+                        for error in result.errors:
+                            _log.error("Drag-drop move failed: %s", error)
+                            errors.append(error)
+                        warnings.extend(getattr(result, "warnings", ()))
+                    if external:
+                        result = service.copy_to_directory(
+                            [str(p) for p in external], str(destination), library_root=root_path,
+                        )
+                        changed_paths.extend(getattr(result, "changed_paths", ()))
+                        for error in result.errors:
+                            _log.error("Drag-drop copy failed: %s", error)
+                            errors.append(error)
+                        warnings.extend(getattr(result, "warnings", ()))
+            except Exception as exc:
+                _log.exception("Drag-drop worker failed")
+                changed_paths.clear()
+                warnings.clear()
+                errors = [str(exc) or exc.__class__.__name__]
+            result_holder.append(
+                FileOperationResult(
+                    tuple(changed_paths),
+                    tuple(errors),
+                    tuple(warnings),
                 )
-                for changed_path in result.changed_paths:
-                    changed_paths.append(changed_path)
-                    if self._undo_svc is not None:
-                        self._undo_svc.record_rename(str(source), str(changed_path))
-                for error in result.errors:
-                    _log.error("Drag-drop move failed: %s", error)
-                    errors.append(error)
-                warnings.extend(getattr(result, "warnings", ()))
-            if external:
-                result = service.copy_to_directory(
-                    [str(p) for p in external], str(destination), library_root=root_path,
-                )
-                changed_paths.extend(getattr(result, "changed_paths", ()))
-                for error in result.errors:
-                    _log.error("Drag-drop copy failed: %s", error)
-                    errors.append(error)
-                warnings.extend(getattr(result, "warnings", ()))
-        except (ValueError, OSError) as exc:
-            # The service only collects OSError per item; root-scope violations
-            # surface as ValueError and must not escape the drop handler.
-            _log.error("Drag-drop failed: %s", exc)
-            errors.append(str(exc))
-        for warning in warnings:
-            _log.warning(
-                "Drag-drop projection refresh degraded (%s): %s",
-                getattr(warning, "code", "unknown"),
-                getattr(warning, "path", destination),
             )
-        self._show_operation_feedback(
-            scoped.session,
-            "drop",
-            changed_count=len(changed_paths),
-            errors=tuple(errors),
-            warnings=tuple(warnings),
-        )
-        self._request_operation_selection(scoped.session, changed_paths)
-        self._post_refresh()
-        if self._view_mode == "Details":
-            self._populate_details()
-        self._load_visible()
+
+        def _on_drop_done() -> None:
+            if not self._is_current_operation_session(session):
+                return
+            result = result_holder[0] if result_holder else FileOperationResult(
+                (), ("Drag-drop worker completed without a result",),
+            )
+            changed_paths = result.changed_paths
+            errors = result.errors
+            warnings = result.warnings
+            for warning in warnings:
+                _log.warning(
+                    "Drag-drop projection refresh degraded (%s): %s",
+                    getattr(warning, "code", "unknown"),
+                    getattr(warning, "path", destination),
+                )
+            self._show_operation_feedback(
+                session,
+                "drop",
+                changed_count=len(changed_paths),
+                errors=tuple(errors),
+                warnings=tuple(warnings),
+            )
+            if changed_paths:
+                self._request_operation_selection(session, changed_paths)
+            self._post_refresh()
+            if self._view_mode == "Details":
+                self._populate_details()
+            self._load_visible()
+
+        self._run_in_background(_do_drop, on_done=_on_drop_done)
         return True
 
     def _capture_detail_selection(self):

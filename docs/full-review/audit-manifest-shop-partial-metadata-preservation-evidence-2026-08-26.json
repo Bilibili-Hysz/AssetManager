@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "report_id": "shop-partial-metadata-preservation-evidence-2026-08-26",
+  "captured_at": "2026-08-26T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "21a02c322b14610ecc5f0e02e804625451268025e54bdd83932b33d6301be7d7",
+    "diff_sha256": "50287335149b02f72ee4f5d5eefdaa5bf8790528a3717b83c1272aa1c2735fba",
+    "tracked_change_count": 160,
+    "untracked_change_count": 146
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": ["python", "-m", "pytest", "-n", "0", "-q", "tests/unit/test_commerce_services.py", "tests/unit/test_commerce_repositories.py", "tests/lan/test_commerce_routes.py", "tests/lan/test_order_receipt_routes.py"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Shop partial-update metadata preservation, gallery authorization, repository, and commerce route regressions",
+        "sample_count": 67,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/focused.stdout.log", "sha256": "7db4f733ab86dbacc49a4635b597c3646ae6b07a545c97eb648c73e8de56480a"},
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/focused.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": ["python", "-m", "pytest", "-n", "0", "-q"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full serial Python suite after Shop metadata preservation fix",
+        "sample_count": 4074,
+        "pass_criterion": "exit_code == 0; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/full.stdout.log", "sha256": "4ea3e921686fed8e92b19d26f1f7ca8b78e4f341664886e2fb5dbc5fd7cd92a8"}
+        ]
+      },
+      {
+        "argv": ["python", "-m", "ruff", "check", "AssetsManager/application/shop_service.py", "tests/unit/test_commerce_services.py"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted Ruff check for Shop metadata preservation",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/ruff.stdout.log", "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"},
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/ruff.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": ["python", "-m", "ruff", "check", "AssetsManager", "tests", "scripts", "run.py"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Ruff governance check",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/ruff-full.stdout.log", "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"},
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/ruff-full.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": ["python", "-m", "compileall", "AssetsManager/application/shop_service.py", "tests/unit/test_commerce_services.py", "-q"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted Python compilation check",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/compile.stdout.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/compile.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": ["python", "-m", "compileall", "AssetsManager", "-q"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python compilation check",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/compile-full.stdout.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/compile-full.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": ["python", "scripts/check_doc_stats.py", "&&", "python", "scripts/check_boundaries.py", "&&", "python", "scripts/check_style_sources.py", "&&", "python", "scripts/check_route_capabilities.py", "&&", "python", "scripts/check_frontend_data_fetch.py", "&&", "python", "scripts/check_layers.py"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Repository governance script chain",
+        "sample_count": 6,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/governance.stdout.log", "sha256": "33943d53c23540f71d431364272bb577eb551df627850ecc146549653ccfbc91"},
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/governance.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": ["git", "diff", "--check"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Whitespace check for current dirty worktree",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/diffcheck.stdout.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/diffcheck.stderr.log", "sha256": "a7fedbd38632d90d29a4c5b041b018f70295c33b545a3422810290d0cba8a0f0"}
+        ]
+      },
+      {
+        "argv": ["python", "scripts/check_doc_stats.py", "&&", "python", "scripts/check_boundaries.py", "&&", "python", "scripts/check_style_sources.py", "&&", "python", "scripts/check_route_capabilities.py", "&&", "python", "scripts/check_frontend_data_fetch.py", "&&", "python", "scripts/check_layers.py", "&&", "python", "-m", "ruff", "check", "AssetsManager", "tests", "scripts", "run.py", "&&", "python", "-m", "compileall", "AssetsManager", "-q", "&&", "git", "diff", "--check"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index non-self-referential static checks after Shop preservation report and manifest",
+        "sample_count": 9,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/static-post-index.stdout.log", "sha256": "cd0bfa8fd867bd821dbb2285bb364681e91a49b915884928a4116f4e570ccba2"},
+          {"path": "artifacts/evidence/2026-08-26/shop-metadata-preservation/static-post-index.stderr.log", "sha256": "a7fedbd38632d90d29a4c5b041b018f70295c33b545a3422810290d0cba8a0f0"}
+        ]
+      }
+    ],
+    "note": "Focused commerce matrix: 67 passed (three new preservation regressions). Full serial suite: 4058 passed, 16 skipped, 20 deselected, 2 warnings. Repository remains a full-metadata-value persistence contract; merge is shallow with no concurrency/CAS guarantee. No production E2E, power-loss, exactly-once, cross-system atomicity, dependency/CVE, release, or clean-checkout claim is made."
+  },
+  "inputs": [
+    {"path": "docs/full-review/shop-partial-metadata-preservation-evidence-2026-08-26.md", "sha256": "3db3005c0b373e8495297d382aab8776649de34c2c2b4dc2a1791f39eb46d913"},
+    {"path": "AssetsManager/application/shop_service.py", "sha256": "7b47c64145aa875203220598fc12558aec407f6272194a9cfcd77da022101413"},
+    {"path": "tests/unit/test_commerce_services.py", "sha256": "7d8177e2705aa1ffa38c841bfa7af40586e6be212ceee64cd225c43741dc69f0"},
+    {"path": "docs/deep-weakness-audit-2026-08-22/03-app-domain-services.md", "sha256": "1b1032abe41a8377b57474441db88f2ccd046a99c8b149ef7f805a75442f0315"},
+    {"path": "scripts/check_audit_reports.py", "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"}
+  ],
+  "indexed_reports": [
+    "docs/full-review/shop-partial-metadata-preservation-evidence-2026-08-26.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "SHOP-PARTIAL-METADATA-PRESERVATION-34-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": ["SHOP-PARTIAL-METADATA-PRESERVATION-34-01"],
+      "anchors": ["AssetsManager/application/shop_service.py:443", "AssetsManager/application/shop_service.py:467", "tests/unit/test_commerce_services.py:198", "tests/unit/test_commerce_services.py:229", "tests/unit/test_commerce_services.py:259"],
+      "surface": "ShopService partial updates rebuilt metadata from the payload alone, erasing arbitrary metadata and stored galleries on status-only or metadata-only updates and mis-ordering combined payloads",
+      "next_action": "Retain persisted-base shallow merge; separately decide concurrency-safe patch semantics, create-time image_paths overwrite policy, and frontend payload typing before stronger commerce guarantees",
+      "dynamic_verification": "Focused commerce matrix passed 67 tests including three new preservation regressions reloaded through get_item; full serial suite passed 4058 tests. No concurrent-seller race, production E2E, or cross-version runtime verification was executed"
+    }
+  ]
+}

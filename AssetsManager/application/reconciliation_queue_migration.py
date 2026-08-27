@@ -284,6 +284,7 @@ def _same_snapshot(
             task.created_at,
             task.updated_at,
             task.max_attempts,
+            task.payload,
         )
 
     left_sorted = tuple(sorted(left, key=key))

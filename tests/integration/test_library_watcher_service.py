@@ -64,6 +64,47 @@ def test_first_round_establishes_baseline_without_publishing(tmp_path, monkeypat
     assert events == []
 
 
+def test_changed_directory_enqueues_root_rescan(tmp_path, monkeypatch):
+    from AssetsManager.application import ReconciliationQueue
+
+    events = _subscribe(monkeypatch)
+    queue = ReconciliationQueue(library_root=tmp_path, clock=lambda: 0.0)
+    watcher = LibraryWatcherService(
+        _FakeSession(tmp_path),
+        interval_seconds=5.0,
+        reconciliation_queue=queue,
+    )
+    assert watcher.scan_once() == []
+    (tmp_path / "changed").mkdir()
+
+    changed = watcher.scan_once()
+
+    assert str(tmp_path / "changed") in changed
+    tasks = queue.snapshot()
+    assert len(tasks) == 1
+    assert tasks[0].path == str(tmp_path.resolve()).lower()
+    assert tasks[0].reason == "external_watch"
+    assert len(events) == 1
+
+
+def test_watcher_queue_failure_does_not_block_event(tmp_path, monkeypatch):
+    events = _subscribe(monkeypatch)
+
+    class FailingQueue:
+        def enqueue_or_merge(self, **_kwargs):
+            raise RuntimeError("queue unavailable")
+
+    watcher = LibraryWatcherService(
+        _FakeSession(tmp_path),
+        reconciliation_queue=FailingQueue(),
+    )
+    watcher.scan_once()
+    (tmp_path / "changed").mkdir()
+
+    assert watcher.scan_once()
+    assert len(events) == 1
+
+
 def test_added_directory_reports_and_publishes_once(tmp_path, monkeypatch):
     """A directory added after the baseline is reported and published once."""
     events = _subscribe(monkeypatch)
@@ -115,6 +156,15 @@ def test_stop_prevents_further_scanning(tmp_path, monkeypatch):
     # contract is that the *loop* stops, so we assert the thread flag is set.
     assert watcher._stop_event.is_set()
     assert count_after_stop == 0
+
+
+def test_stop_joins_thread_and_prevents_overlapping_restart(tmp_path, monkeypatch):
+    watcher = LibraryWatcherService(_FakeSession(tmp_path), interval_seconds=0.01)
+    assert watcher.start() is True
+    watcher.stop()
+    assert watcher._thread is None
+    assert watcher.start() is True
+    watcher.stop()
 
 
 def test_scan_once_on_closed_session_returns_empty(tmp_path, monkeypatch):

@@ -456,7 +456,9 @@ def test_database_does_not_restore_removed_update_library_stats_helper() -> None
 def test_production_path_metadata_migration_uses_explicit_resources() -> None:
     path = SRC / "application" / "file_operation_service.py"
     source = path.read_text(encoding="utf-8")
-    assert "migrate_path_metadata(\n            self._connection(), self.session.thumb_dir" in source
+    assert "from AssetsManager.application.thumbnail_cache_lifecycle import cache_owner_lock" in source
+    assert "with cache_owner_lock(self.session.thumb_dir):" in source
+    assert "migrate_path_metadata(\n                self._connection(), self.session.thumb_dir" in source
 
 
 def test_project_service_delegates_file_meta_cache_to_repository() -> None:
@@ -850,7 +852,7 @@ def test_d2_clone_calls_are_wired_to_state_restore() -> None:
 
 def test_file_operation_service_delegates_deleted_projection_cleanup() -> None:
     source = (SRC / "application" / "file_operation_service.py").read_text(encoding="utf-8")
-    start = source.index("    def _clear_deleted_projection(self, path: Path) -> None:")
+    start = source.index("    def _clear_deleted_projection(")
     end = source.index("\n\ndef unique_destination", start)
     cleanup = source[start:end]
 

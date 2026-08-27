@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "report_id": "settings-future-version-write-guard-evidence-2026-08-26",
+  "captured_at": "2026-08-26T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "1b1f6ede3eb0307afa575afe9e50b37ebab103ede3be01ff5b70d0e8bc975572",
+    "diff_sha256": "0bbcd5ab96fe65ec8586a1743a84eb37806bbe0c47471f9de47023febffedf8f",
+    "tracked_change_count": 158,
+    "untracked_change_count": 144
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": ["python", "-m", "pytest", "-n", "0", "-q", "tests/core/test_settings.py", "tests/unit/test_settings_low_batch.py"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Future-version settings rejection, preservation, mutation blocking, and atexit regressions",
+        "sample_count": 45,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/settings-future-version/focused.stdout.log", "sha256": "61e787920c65f4138860f3e42b7faee79b4c3f3dea2a459c3e9b5c81e1669459"}
+        ]
+      },
+      {
+        "argv": ["python", "-m", "pytest", "-n", "0", "-q", "tests/core/test_settings.py", "tests/unit/test_settings_low_batch.py", "tests/unit/test_library_settings_adapter.py", "tests/unit/test_project_data.py"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Expanded settings and core persistence regression matrix",
+        "sample_count": 70,
+        "pass_criterion": "exit_code == 0; resource warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/settings-future-version/expanded.stdout.log", "sha256": "1e62115e6bfa44634ea13b7ea9ec4b2f3d64a85b2a955deac8ff0d5603f80a86"}
+        ]
+      },
+      {
+        "argv": ["python", "-m", "pytest", "-n", "0", "-q"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full serial Python suite after future-version settings guard",
+        "sample_count": 4071,
+        "pass_criterion": "exit_code == 0; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/settings-future-version/full.stdout.log", "sha256": "590a78d01e5a239f5035f06b57de5a9f4153c5efd040fa3576cead5ccebb735b"},
+          {"path": "artifacts/evidence/2026-08-26/settings-future-version/full.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": ["python", "-m", "ruff", "check", "AssetsManager/core/config_migrator.py", "AssetsManager/core/settings.py", "AssetsManager/core/library_manager.py", "tests/core/test_settings.py", "tests/unit/test_settings_low_batch.py"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted Ruff check for settings future-version guard",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/settings-future-version/ruff-full.stdout.log", "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"},
+          {"path": "artifacts/evidence/2026-08-26/settings-future-version/ruff-full.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": ["python", "-m", "ruff", "check", "AssetsManager", "tests", "scripts", "run.py"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Ruff governance check",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/settings-future-version/ruff-full.stdout.log", "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"},
+          {"path": "artifacts/evidence/2026-08-26/settings-future-version/ruff-full.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": ["python", "-m", "compileall", "AssetsManager", "-q"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python compilation check",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/settings-future-version/compile-full.stdout.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+          {"path": "artifacts/evidence/2026-08-26/settings-future-version/compile-full.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": ["python", "scripts/check_doc_stats.py", "&&", "python", "scripts/check_boundaries.py", "&&", "python", "scripts/check_style_sources.py", "&&", "python", "scripts/check_route_capabilities.py", "&&", "python", "scripts/check_frontend_data_fetch.py", "&&", "python", "scripts/check_layers.py"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Repository governance script chain",
+        "sample_count": 6,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/settings-future-version/governance.stdout.log", "sha256": "33943d53c23540f71d431364272bb577eb551df627850ecc146549653ccfbc91"},
+          {"path": "artifacts/evidence/2026-08-26/settings-future-version/governance.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": ["git", "diff", "--check"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Whitespace check for current dirty worktree",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/settings-future-version/diffcheck.stdout.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+          {"path": "artifacts/evidence/2026-08-26/settings-future-version/diffcheck.stderr.log", "sha256": "a7fedbd38632d90d29a4c5b041b018f70295c33b545a3422810290d0cba8a0f0"}
+        ]
+      },
+      {
+        "argv": ["python", "scripts/check_doc_stats.py", "&&", "python", "scripts/check_boundaries.py", "&&", "python", "scripts/check_style_sources.py", "&&", "python", "scripts/check_route_capabilities.py", "&&", "python", "scripts/check_frontend_data_fetch.py", "&&", "python", "scripts/check_layers.py", "&&", "python", "-m", "ruff", "check", "AssetsManager", "tests", "scripts", "run.py", "&&", "python", "-m", "compileall", "AssetsManager", "-q", "&&", "git", "diff", "--check"],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index non-self-referential static checks after settings guard report and manifest",
+        "sample_count": 9,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-26/settings-future-version/static-post-index.stdout.log", "sha256": "cd0bfa8fd867bd821dbb2285bb364681e91a49b915884928a4116f4e570ccba2"},
+          {"path": "artifacts/evidence/2026-08-26/settings-future-version/static-post-index.stderr.log", "sha256": "a7fedbd38632d90d29a4c5b041b018f70295c33b545a3422810290d0cba8a0f0"}
+        ]
+      }
+    ],
+    "note": "Focused settings matrix: 45 passed. Expanded core matrix: 70 passed with pre-existing unclosed SQLite ResourceWarning lines. Full serial suite: 4055 passed, 16 skipped, 20 deselected, 2 warnings. No multi-process settings race, cross-version runtime compatibility, power-loss, exactly-once, cross-system atomicity, production E2E, dependency/CVE, release, or clean-checkout claim is made."
+  },
+  "inputs": [
+    {"path": "docs/full-review/settings-future-version-write-guard-evidence-2026-08-26.md", "sha256": "6671ff04b5c9bdad0097d6f3ac4c3d37c3e90ac41aa2e05255621565cf60409f"},
+    {"path": "AssetsManager/core/config_migrator.py", "sha256": "49c95b67670d1d0f68a171f3503ef882231e6b95d81f991ce07c8a18b23776b0"},
+    {"path": "AssetsManager/core/settings.py", "sha256": "9aba0ae8f0c994a79446cf59ba6b43192d9b0762287af39e0d9e347e4809045b"},
+    {"path": "AssetsManager/core/library_manager.py", "sha256": "1efb070e6bb67e872e6b8676d224955e7e77b514c5a447bfad00126850c91b1a"},
+    {"path": "tests/core/test_settings.py", "sha256": "ecb9adb70f07dc4fe3aeffa62afbc863a085e65adfb0679941adccd8ecb746da"},
+    {"path": "tests/unit/test_settings_low_batch.py", "sha256": "ea6ac80bb131e5967f5da34a24c0e114d325489f82317a558fcaf780c43b8f49"},
+    {"path": "docs/deep-weakness-audit-2026-08-22/04-core-infrastructure-plugins.md", "sha256": "3c14684ec7050728fea3e8ad36b935122cd77eb86c62a6ded3eeb956fac68262"},
+    {"path": "scripts/check_audit_reports.py", "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"}
+  ],
+  "indexed_reports": [
+    "docs/full-review/settings-future-version-write-guard-evidence-2026-08-26.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "SETTINGS-FUTURE-VERSION-GUARD-33-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": ["SETTINGS-FUTURE-VERSION-GUARD-33-01"],
+      "anchors": ["AssetsManager/core/config_migrator.py:13", "AssetsManager/core/settings.py:118", "AssetsManager/core/settings.py:159", "AssetsManager/core/library_manager.py:31", "tests/core/test_settings.py:38"],
+      "surface": "An older application could overwrite a newer settings file after migration rejection through later settings or library-manager writes",
+      "next_action": "Retain fail-closed read-only state; separately validate cross-version operational behavior and multi-process settings ownership before stronger compatibility claims",
+      "dynamic_verification": "Focused settings matrix passed 45 tests, expanded core matrix passed 70 tests, and full serial suite passed 4055 tests; no multi-process or cross-version runtime verification was executed"
+    }
+  ]
+}

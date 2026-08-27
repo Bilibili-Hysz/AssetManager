@@ -24,6 +24,7 @@ CREATE TABLE reconciliation_tasks (
     lease_expires_at_wallclock REAL,
     lease_token TEXT,
     max_attempts INTEGER NOT NULL CHECK (max_attempts >= 1),
+    payload TEXT NOT NULL DEFAULT '{}',
     UNIQUE (library_root, path, kind)
 );
 CREATE INDEX idx_reconciliation_tasks_due

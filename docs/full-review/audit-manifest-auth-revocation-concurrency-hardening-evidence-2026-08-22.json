@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "report_id": "auth-revocation-concurrency-hardening-evidence-2026-08-22",
+  "captured_at": "2026-08-22T19:30:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "3cbe4c5aea26f5329838203a32fec8da5f1ef15d8a0b4bd0145c5d401b7075cf",
+    "diff_sha256": "67d25a237ddb87dcd3efc3dd3ae31560f793a1d967af9f5f73ce751b61155732",
+    "tracked_change_count": 119,
+    "untracked_change_count": 54
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {"platform": "Windows 10.0.26220 x64", "python": "3.14.3", "pytest": "9.0.2", "ruff": "0.15.16"},
+    "commands": [
+      {"argv": ["python", "-m", "pytest", "-n", "0", "--basetemp=.zcode/pytest-auth-revocation-focused", "-q", "tests/lan/test_token_revocations.py", "tests/unit/test_revoked_token_repository.py", "tests/unit/test_auth_service_revocations.py", "tests/lan/test_l2_rate_input_cpu.py", "tests/lan/test_public_commerce_auth.py", "tests/lan/test_runtime_realtime.py", "tests/lan/test_websocket_auth_offload.py", "tests/lan/test_lan_api.py", "-k", "auth or logout or share or websocket or revocation"], "platform": "Windows 10.0.26220 x64", "fixture": "revocation concurrency, legacy middleware, logout cookie, WebSocket and LAN auth focused suites", "sample_count": 316, "pass_criterion": "exit_code == 0 and all selected tests pass", "exit_code": 0, "artifacts": [{"path": "artifacts/evidence/2026-08-22/auth-revocation-concurrency-final/focused.stdout.log", "sha256": "34a65268230100816c7ecd171567d0b7c2aee17cc17c31965b934beb278ce62b"}]},
+      {"argv": ["python", "-m", "pytest", "--basetemp=.zcode/pytest-revocation-full", "-n", "0", "-q"], "platform": "Windows 10.0.26220 x64", "fixture": "full Python test tree", "sample_count": 3941, "pass_criterion": "exit_code == 0; no failed tests; platform skips recorded", "exit_code": 0, "artifacts": [{"path": "artifacts/evidence/2026-08-22/auth-revocation-concurrency-final/full.stdout.log", "sha256": "bb7ca45bfd0b92e4acf19543626bc3c52694e9a62e83a33bb4b17442ad777aa0"}]},
+      {"argv": ["python", "scripts/check_audit_reports.py"], "platform": "Windows 10.0.26220 x64", "fixture": "19 existing manifests before this report is indexed", "sample_count": 19, "pass_criterion": "exit_code == 0", "exit_code": 0, "artifacts": [{"path": "artifacts/evidence/2026-08-22/auth-revocation-concurrency-final/audit.stdout.log", "sha256": "fe8022fb2f2859a412555e50f91e0c4e3c6db3f6a4b669a86979750fdc315806"}, {"path": "artifacts/evidence/2026-08-22/auth-revocation-concurrency-final/audit.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]},
+      {"argv": ["python", "-m", "ruff", "check", "AssetsManager", "tests", "scripts", "run.py"], "platform": "Windows 10.0.26220 x64", "fixture": "full Python source tree", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0, "artifacts": [{"path": "artifacts/evidence/2026-08-22/auth-revocation-concurrency-final/ruff.stdout.log", "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"}, {"path": "artifacts/evidence/2026-08-22/auth-revocation-concurrency-final/ruff.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]},
+      {"argv": ["python", "-m", "compileall", "AssetsManager", "-q"], "platform": "Windows 10.0.26220 x64", "fixture": "full AssetsManager package", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0, "artifacts": [{"path": "artifacts/evidence/2026-08-22/auth-revocation-concurrency-final/compileall.stdout.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}, {"path": "artifacts/evidence/2026-08-22/auth-revocation-concurrency-final/compileall.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]},
+      {"argv": ["git", "diff", "--check"], "platform": "Windows 10.0.26220 x64", "fixture": "current dirty worktree", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0, "artifacts": [{"path": "artifacts/evidence/2026-08-22/auth-revocation-concurrency-final/diff-check.stdout.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}, {"path": "artifacts/evidence/2026-08-22/auth-revocation-concurrency-final/diff-check.stderr.log", "sha256": "a5d069610592af7df3d1ef6354bcc5b3eccdfee757f12d906b82c237a5e5104e"}]}
+    ],
+    "note": "Full suite: 3912 passed, 12 skipped, 17 deselected, 2 warnings, 0 failed. Independent POSIX/Windows and real LAN/browser validation remain unverified."
+  },
+  "inputs": [
+    {"path": "docs/full-review/evidence-convergence-2026-08-20.md", "sha256": "4ff90174788b8cc08a3843c87bcee03dc6b507ff8efd025c0ba0264bed45fa8d"},
+    {"path": "docs/full-review/cross-module-flow-api-audit-2026-08-20.md", "sha256": "b3d4c1d0d0589b3d1e7853688328138286f6c1fedbf3e39bb29c7fc16c1c2ba9"},
+    {"path": "docs/full-review/auth-plugin-websocket-implementation-evidence-2026-08-22.md", "sha256": "e220fdb7d087700c7963aaec4f488ffd64e5ac6339541e420c6ca3e458610765"},
+    {"path": "docs/full-review/auth-revocation-concurrency-hardening-evidence-2026-08-22.md", "sha256": "2468f756664966e3f308f59e9ef73d6c6a09bcf9ecb5365feeafd763e65b3a0d"}
+  ],
+  "indexed_reports": [
+    "docs/full-review/evidence-convergence-2026-08-20.md",
+    "docs/full-review/auth-plugin-websocket-implementation-evidence-2026-08-22.md",
+    "docs/full-review/auth-revocation-concurrency-hardening-evidence-2026-08-22.md"
+  ],
+  "findings": [
+    {"canonical_id": "AUTH-REV-CONC-01", "severity": "P1", "status": "fixed-unverified", "source_ids": ["P1-10", "EVID-02"], "anchors": ["AssetsManager/lan/token_revocations.py:38", "AssetsManager/lan/server.py:1542", "tests/lan/test_token_revocations.py:70"], "surface": "Concurrent registry load and cross-process durable miss consistency", "next_action": "Independent multi-process SQLite and power-loss proof", "dynamic_verification": "Focused concurrency/legacy middleware tests and full Python suite passed on Windows; independent process/platform proof not run"},
+    {"canonical_id": "AUTH-REV-TXN-01", "severity": "P1", "status": "fixed-unverified", "source_ids": ["P1-10", "EVID-02"], "anchors": ["AssetsManager/repositories/revoked_token_repository.py:25", "AssetsManager/repositories/revoked_token_repository.py:108", "tests/unit/test_revoked_token_repository.py:1"], "surface": "Revocation schema initialization and caller-owned SQLite transactions", "next_action": "Crash/power-loss and concurrent writer transaction proof", "dynamic_verification": "Repository/auth focused suites passed; crash and independent writer proof not run"},
+    {"canonical_id": "AUTH-REV-LOGOUT-01", "severity": "P1", "status": "fixed-unverified", "source_ids": ["XAUTH-01", "EVID-02"], "anchors": ["AssetsManager/lan/routes/auth.py:104", "tests/lan/test_token_revocations.py:43"], "surface": "Logout persistence failure, cookie deletion and existing WebSocket eviction", "next_action": "Real browser/session retry and backend failure-injection proof", "dynamic_verification": "Focused LAN auth/WebSocket suites passed; browser and real-backend validation not run"}
+  ]
+}

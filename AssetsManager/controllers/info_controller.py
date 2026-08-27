@@ -494,7 +494,10 @@ class InfoController:
             # Fall through and rescan the changed directory.
         if len(self._classify_mtimes) >= self._classify_cache_max * 2:
             self._classify_mtimes.clear()
-        from AssetsManager.application.asset_filters import FILTER_CATEGORIES
+        from AssetsManager.application.asset_filters import (
+            FILTER_CATEGORY_EXTS,
+            FILTER_CATEGORY_LABELS,
+        )
         result = ""
         try:
             counts: dict[str, int] = {}
@@ -505,13 +508,16 @@ class InfoController:
                     if not entry.is_file():
                         continue
                     ext = Path(entry.name).suffix.lower()
-                    for cat, exts in FILTER_CATEGORIES.items():
+                    for category, exts in FILTER_CATEGORY_EXTS.items():
+                        if category == "all":
+                            continue
                         if ext in exts:
-                            counts[cat] = counts.get(cat, 0) + 1
+                            counts[category] = counts.get(category, 0) + 1
                             break
+            labels = dict(FILTER_CATEGORY_LABELS)
             if counts:
                 result = "  ".join(
-                    f"{category} {count}"
+                    f"{labels.get(category, category)} {count}"
                     for category, count in sorted(counts.items(), key=lambda x: -x[1])
                 )
         except OSError:

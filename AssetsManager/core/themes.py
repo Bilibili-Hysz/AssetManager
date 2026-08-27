@@ -76,7 +76,7 @@ _REQUIRED_TOKENS = [
 ]
 
 # Extended tokens with fallback sources
-_EXTENDED_FALLBACKS = {
+_BUILTIN_EXTENDED_FALLBACKS = {
     "on_accent":           lambda t: "#ffffff",
     "hover_overlay":       lambda t: "#ffffff" if t.get("dark", True) else "#000000",
     "selected_overlay":    lambda t: t.get("accent", "#4a60b0"),
@@ -114,6 +114,42 @@ _EXTENDED_FALLBACKS = {
     "icon_disabled":       lambda t: t.get("disabled_text", "#666666"),
 }
 
+# Active fallback functions. Plugin registrations are rebuilt on top of this
+# immutable-in-practice built-in baseline so unloading one owner restores the
+# built-in or remaining-plugin fallback.
+_EXTENDED_FALLBACKS = dict(_BUILTIN_EXTENDED_FALLBACKS)
+_THEME_EXPLICIT_TOKENS: dict[str, set[str]] = {}
+_PLUGIN_TOKEN_NAMES: set[str] = set()
+
+
+def set_plugin_token_fallbacks(contributions) -> None:
+    """Apply plugin token fallbacks to loaded themes without replacing them."""
+    previous_plugin_names = set(_PLUGIN_TOKEN_NAMES)
+    _PLUGIN_TOKEN_NAMES.clear()
+    _EXTENDED_FALLBACKS.clear()
+    _EXTENDED_FALLBACKS.update(_BUILTIN_EXTENDED_FALLBACKS)
+    for contribution in contributions:
+        token = str(contribution.token or "").strip()
+        fallback = str(contribution.fallback or "").strip()
+        if token and fallback:
+            _PLUGIN_TOKEN_NAMES.add(token)
+            _EXTENDED_FALLBACKS[token] = lambda _theme, _fallback=fallback: _fallback
+
+    for name, theme in _THEMES.items():
+        explicit = _THEME_EXPLICIT_TOKENS.get(name, set())
+        for token in previous_plugin_names - _PLUGIN_TOKEN_NAMES:
+            if token in explicit:
+                continue
+            builtin = _BUILTIN_EXTENDED_FALLBACKS.get(token)
+            if builtin is None:
+                theme.pop(token, None)
+            else:
+                theme[token] = builtin(theme)
+        for token, fallback_fn in _EXTENDED_FALLBACKS.items():
+            if token not in explicit:
+                theme[token] = fallback_fn(theme)
+    invalidate_cache()
+
 
 # ── Path resolution ───────────────────────────────────────
 
@@ -127,6 +163,7 @@ def _load_all_themes():
     global _THEMES, _THEME_NAMES
     _THEMES.clear()
     _THEME_NAMES.clear()
+    _THEME_EXPLICIT_TOKENS.clear()
 
     _loader.scan_directory()
 
@@ -163,6 +200,7 @@ def _merge_theme(data: dict) -> dict | None:
     merged["description"] = data.get("description", "")
     properties = data.get("properties")
     merged["properties"] = properties if isinstance(properties, dict) else {}
+    _THEME_EXPLICIT_TOKENS[data["name"]] = set(colors)
 
     for token, fallback_fn in _EXTENDED_FALLBACKS.items():
         if token not in merged:

@@ -1,9 +1,11 @@
 """Commerce delivery, share-claim redemption, and delivery-rotation routes."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 from pathlib import Path
+import threading
 import time
 from typing import Any, Callable
 
@@ -66,66 +68,87 @@ async def handle_order_delivery_rotate(request: web.Request) -> web.Response:
         return _error_response(exc)
 
 
-# ── Share-claim delivery redemption ────────────────────────────
-# The claim POST is bearer-free (the code itself is the credential), so it
-# gets the same stricter per-IP failure throttling the security middleware
-# applies to auth endpoints (10 failures / 5 minutes -> 429).  State is
-# in-process only, matching the LAN middleware's memory-scoped limiters.
+# ── Share-claim: reserved-slot POST throttling under `_claim_lock`; success
+# clears the bucket. ─────────────────────────────────────────────────────────
 _CLAIM_MAX_FAILURES = 10
 _CLAIM_WINDOW_SECONDS = 300
+_CLAIM_MAX_ACTIVE_KEYS = 5000
 
+_claim_lock = threading.Lock()
 _claim_failures: dict[str, list[float]] = {}
 
 
 def _claim_request_remote(request: web.Request) -> str:
-    """Resolve the per-IP key used for share-claim brute-force limiting."""
-    return str(getattr(request, "remote", "") or "")
+    """Resolve the security middleware's scoped claim-failure bucket."""
+    from AssetsManager.lan.security import SECURITY_BUCKET_KEY
+
+    try:
+        bucket_key = request.get(SECURITY_BUCKET_KEY)
+    except Exception:
+        bucket_key = None
+    return str(bucket_key or getattr(request, "remote", "") or "")
 
 
-def _claim_failures_for(remote: str, now: float) -> list[float]:
-    """Return the recent failed-claim timestamps for one IP (pruning stale)."""
-    recent = [
-        ts for ts in _claim_failures.get(remote, []) if now - ts < _CLAIM_WINDOW_SECONDS
-    ]
-    if recent:
-        _claim_failures[remote] = recent
-    else:
-        _claim_failures.pop(remote, None)
-    return recent
+def _prune_claim_state_locked(remote: str, now: float) -> None:
+    stamps = _claim_failures.get(remote)
+    if stamps is not None:
+        recent = [ts for ts in stamps if now - ts < _CLAIM_WINDOW_SECONDS]
+        if recent:
+            _claim_failures[remote] = recent
+        else:
+            _claim_failures.pop(remote, None)
+    for key in [
+        k for k, v in _claim_failures.items()
+        if not v or now - max(v) >= _CLAIM_WINDOW_SECONDS
+    ]:
+        _claim_failures.pop(key, None)
 
 
-def _claim_brute_force_allowed(remote: str, now: float) -> bool:
-    return len(_claim_failures_for(remote, now)) < _CLAIM_MAX_FAILURES
+def _reserve_claim_attempt(remote: str, now: float | None = None) -> bool:
+    """Claim one slot (False when over budget); reinsert = LRU refresh."""
+    timestamp = time.time() if now is None else float(now)
+    remote = str(remote or "")
+    with _claim_lock:
+        _prune_claim_state_locked(remote, timestamp)
+        bucket = _claim_failures.pop(remote, None)
+        if bucket is None and len(_claim_failures) >= _CLAIM_MAX_ACTIVE_KEYS:
+            _claim_failures.pop(next(iter(_claim_failures)), None)
+        if bucket is None:
+            bucket = []
+        if len(bucket) >= _CLAIM_MAX_FAILURES:
+            _claim_failures[remote] = bucket
+            return False
+        bucket.append(timestamp)
+        _claim_failures[remote] = bucket
+        return True
 
 
-def _claim_retry_after(remote: str, now: float) -> int:
-    """Seconds until the oldest failure leaves the window (min 1)."""
-    failures = _claim_failures_for(remote, now)
-    if not failures:
-        return _CLAIM_WINDOW_SECONDS
-    return max(1, int(math.ceil(_CLAIM_WINDOW_SECONDS - (now - min(failures)))))
+def _clear_claim_failures(remote: str) -> None:
+    with _claim_lock:
+        _claim_failures.pop(str(remote or ""), None)
 
 
-def _record_claim_failure(remote: str, now: float) -> None:
-    _claim_failures_for(remote, now)  # prune stale entries first
-    _claim_failures.setdefault(remote, []).append(now)
+def _claim_retry_after(remote: str, now: float | None = None) -> int:
+    timestamp = time.time() if now is None else float(now)
+    with _claim_lock:
+        _prune_claim_state_locked(str(remote or ""), timestamp)
+        bucket = _claim_failures.get(str(remote or ""))
+        if not bucket:
+            return _CLAIM_WINDOW_SECONDS
+        return max(1, int(math.ceil(_CLAIM_WINDOW_SECONDS - (timestamp - min(bucket)))))
 
 
 @commerce_required
 async def handle_shop_claim_delivery(request: web.Request) -> web.Response:
     """Redeem a one-time share claim and bind the buyer receipt cookie.
-
-    The claim is delivered over the credential-less delivery link
-    (``delivery_url`` in the fulfill/rotate responses).  Every failure —
-    unknown, already-used, revoked, or expired claim — answers a uniform 404
-    so attackers cannot tell them apart; the redeemable credential itself
-    only ever reaches the HttpOnly receipt cookie.
+    Every failure (unknown/used/revoked/expired) answers a uniform 404; the
+    claim code reaches only the HttpOnly receipt cookie.
     """
     order_id = request.match_info["order_id"]
     remote = _package_function("_claim_request_remote")(request)
-    now = time.time()
-    if not _claim_brute_force_allowed(remote, now):
-        retry_after = _claim_retry_after(remote, now)
+    # Reserve up front: even an empty claim spends one window slot.
+    if not _reserve_claim_attempt(remote):
+        retry_after = _claim_retry_after(remote)
         return _error_response(
             "Too many claim attempts. Please try again later.",
             status=429,
@@ -142,9 +165,8 @@ async def handle_shop_claim_delivery(request: web.Request) -> web.Response:
             _package_function("get_lan")(request).library_root, order_id, claim
         )
         if result is None:
-            _record_claim_failure(remote, time.time())
             raise NotFoundError("delivery", "claim")
-        _claim_failures.pop(remote, None)
+        _clear_claim_failures(remote)
         _order, receipt = result
         response = _buyer_response({"ok": True}, request=request)
         _set_order_receipt_cookie(response, request, order_id, receipt)
@@ -203,6 +225,7 @@ async def _delivery_file_response(
 
     from AssetsManager.lan.routes._helpers import build_zip_async, sanitize_filename
     from AssetsManager.lan.routes.downloads import _file_response_with_cleanup
+    from AssetsManager.lan.safe_open import SafeOpenError, read_safe_file
 
     def mark_failed() -> None:
         if fail is None:
@@ -214,14 +237,19 @@ async def _delivery_file_response(
 
     if target.is_file():
         try:
-            response = web.FileResponse(
+            body, _identity = await asyncio.to_thread(
+                read_safe_file,
+                target.parent,
                 target,
+            )
+            response = web.Response(
+                body=body,
                 headers={
                     "Content-Disposition": f'attachment; filename="{sanitize_filename(target.name)}"',
                     "Cache-Control": "private, no-store",
                 },
             )
-        except Exception:
+        except (SafeOpenError, OSError, ValueError):
             mark_failed()
             return _error_response(DeliveryPreparationError())
         if consume is not None:

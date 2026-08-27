@@ -9,7 +9,10 @@ import os
 from pathlib import Path
 from typing import cast
 
-from PySide6.QtCore import Qt, Signal, QSize, QPropertyAnimation, QEasingCurve, QObject, QTimer
+from PySide6.QtCore import (
+    Qt, Signal, QSize, QPropertyAnimation, QEasingCurve, QObject, QTimer,
+    QByteArray, QBuffer, QIODevice,
+)
 from PySide6.QtWidgets import (
     QLabel, QPushButton, QHBoxLayout, QVBoxLayout, QTextEdit,
     QGroupBox, QWidget, QInputDialog, QSplitter, QScrollArea, QFrame,
@@ -19,8 +22,10 @@ from PySide6.QtGui import QPixmap
 
 from AssetsManager.panels.base import PanelContent
 from AssetsManager.application.desktop_ports import TagsViewPort
+from AssetsManager.application.thumbnail_service import MAX_THUMBNAIL_SOURCE_BYTES
 from AssetsManager.core.cache import LRUCache
 from AssetsManager.core.constants import IMAGE_EXTS
+from AssetsManager.core.file_snapshot import read_snapshot
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
@@ -1051,24 +1056,36 @@ class InfoPanel(PanelContent):
 
 
     @staticmethod
-    def _load_preview_pixmap(path: str) -> QPixmap | None:
+    def _load_preview_pixmap(path: str, library_root: str | None = None) -> QPixmap | None:
         try:
-            if not os.path.isfile(path):
-                return None
+            source = Path(path)
+            root = Path(library_root) if library_root else source.parent
+            body, _identity = read_snapshot(
+                root, source, max_bytes=MAX_THUMBNAIL_SOURCE_BYTES,
+            )
             from PySide6.QtGui import QImageReader
-            reader = QImageReader(path)
-            reader.setAutoTransform(True)
-            orig = reader.size()
-            if orig.width() > PREVIEW_LOAD_MAX or orig.height() > PREVIEW_LOAD_MAX:
-                reader.setScaledSize(orig.scaled(
-                    PREVIEW_LOAD_MAX, PREVIEW_LOAD_MAX,
-                    Qt.AspectRatioMode.KeepAspectRatio))
-            img = reader.read()
-            if img.isNull():
+            buffer = QBuffer()
+            buffer.setData(QByteArray(body))
+            if not buffer.open(QIODevice.OpenModeFlag.ReadOnly):
                 return None
-            return QPixmap.fromImage(img)
+            try:
+                reader = QImageReader(buffer)
+                reader.setAutoTransform(True)
+                orig = reader.size()
+                if not orig.isValid():
+                    return None
+                if orig.width() > PREVIEW_LOAD_MAX or orig.height() > PREVIEW_LOAD_MAX:
+                    reader.setScaledSize(orig.scaled(
+                        PREVIEW_LOAD_MAX, PREVIEW_LOAD_MAX,
+                        Qt.AspectRatioMode.KeepAspectRatio))
+                img = reader.read()
+                if img.isNull():
+                    return None
+                return QPixmap.fromImage(img)
+            finally:
+                buffer.close()
         except Exception:
-            _log.exception("Preview image load failed")
+            _log.debug("Preview image snapshot failed: %s", path, exc_info=True)
             return None
 
     # ── Tags ───────────────────────────────────────────────────

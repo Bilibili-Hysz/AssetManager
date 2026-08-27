@@ -108,8 +108,10 @@ def test_plugin_cannot_write_another_plugins_bag(tmp_path):
         assert host._preferences_for("beta").get("api_key") == "beta-secret"
         assert host._preferences_for("alpha").get("api_key") == "alpha-forged"
 
-        # Only the two legitimate bag files exist on disk.
-        names = sorted(p.name for p in (tmp_path / "prefs").iterdir())
+        # Only the two legitimate bag JSON files exist on disk; the retained
+        # *.preflock sidecars are advisory-lock artifacts, not preference
+        # data (same keep-marker convention as library locks).
+        names = sorted(p.name for p in (tmp_path / "prefs").iterdir() if p.suffix == ".json")
         assert names == ["alpha.json", "beta.json"]
     finally:
         set_prefs_root(None)
@@ -337,3 +339,96 @@ def test_host_can_read_any_plugins_permissions():
     assert host.granted_permissions("alpha") == frozenset({"settings.read"})
     assert host.granted_permissions("beta") == frozenset({PERMISSION_HOST_SERVICES})
 
+
+
+def test_same_path_bags_preserve_concurrent_distinct_keys(tmp_path):
+    """Two bags over one prefs file must not overwrite each other's keys."""
+    import json
+    import threading
+
+    from AssetsManager.core.plugins.preferences import PluginPreferenceBag
+
+    set_prefs_root(tmp_path / "prefs")
+    try:
+        workers_count = 4
+        rounds = 25
+        bags = [PluginPreferenceBag("shared.plugin") for _ in range(workers_count)]
+        errors: list[BaseException] = []
+        barrier = threading.Barrier(workers_count)
+
+        def worker(index: int) -> None:
+            bag = bags[index]
+            try:
+                barrier.wait()
+                for round_index in range(rounds):
+                    bag.set(f"key-{index}-{round_index}", index * 1000 + round_index)
+            except BaseException as exc:  # noqa: BLE001 - collected below
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(workers_count)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert errors == []
+        stored = json.loads(
+            (tmp_path / "prefs" / "shared.plugin.json").read_text(encoding="utf-8")
+        )
+        expected = {
+            f"key-{index}-{round_index}": index * 1000 + round_index
+            for index in range(workers_count)
+            for round_index in range(rounds)
+        }
+        assert all(stored.get(key) == value for key, value in expected.items())
+    finally:
+        set_prefs_root(None)
+
+
+_CROSS_PROCESS_CHILD = '''
+import json
+import sys
+import time
+
+from AssetsManager.core.plugins.preferences import PluginPreferenceBag, set_prefs_root
+
+root, key, value = sys.argv[1], sys.argv[2], sys.argv[3]
+set_prefs_root(root)
+bag = PluginPreferenceBag("shared.plugin")
+time.sleep(0.25)  # widen the read-modify-write window on purpose
+bag.set(key, value)
+with open(root + "child.done", "w", encoding="utf-8") as fh:
+    fh.write(json.dumps({"key": key, "value": value}))
+'''
+
+
+def test_cross_process_bags_preserve_both_writers(tmp_path):
+    """Two independent processes writing one prefs file keep both keys."""
+    import json
+    import subprocess
+    import sys
+
+    root = tmp_path / "prefs"
+    child = tmp_path / "prefs_child.py"
+    child.write_text(_CROSS_PROCESS_CHILD, encoding="utf-8")
+
+    repo_root = __import__("pathlib").Path(__file__).resolve().parents[2]
+    env = dict(__import__("os").environ)
+    env["PYTHONPATH"] = str(repo_root) + __import__("os").pathsep + env.get("PYTHONPATH", "")
+
+    procs = [
+        subprocess.Popen(
+            [sys.executable, str(child), str(root), "left", "L"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+        ),
+        subprocess.Popen(
+            [sys.executable, str(child), str(root), "right", "R"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+        ),
+    ]
+    for proc in procs:
+        _out, err = proc.communicate(timeout=60)
+        assert proc.returncode == 0, err.decode()
+    final = json.loads((root / "shared.plugin.json").read_text(encoding="utf-8"))
+    assert final.get("left") == "L"
+    assert final.get("right") == "R"

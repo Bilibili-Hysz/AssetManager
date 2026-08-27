@@ -25,6 +25,24 @@ def test_close_library_is_selective_and_idempotent(tmp_path):
     manager.close()
 
 
+def test_database_manager_sets_sqlite_busy_policy(tmp_path):
+    from AssetsManager.core.database import (
+        DatabaseManager,
+        SQLITE_BUSY_TIMEOUT_MS,
+    )
+
+    library = tmp_path / "library"
+    library.mkdir()
+    manager = DatabaseManager()
+    try:
+        conn = manager.connection_for(library)
+        assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+        assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == SQLITE_BUSY_TIMEOUT_MS
+    finally:
+        manager.close()
+
+
 def test_database_manager_uses_only_explicit_library_resources(tmp_path):
     from AssetsManager.core.database import DatabaseManager
 
@@ -197,6 +215,174 @@ def test_migrate_path_metadata_preserves_caller_outer_transaction(tmp_path):
         conn.rollback()
         assert conn.execute("SELECT tag FROM file_tags WHERE file_path=?", (old_key,)).fetchone() == ("hero",)
         assert conn.execute("SELECT tag FROM file_tags WHERE file_path=?", (new_key,)).fetchone() is None
+    finally:
+        manager.close()
+
+
+def test_migrate_path_metadata_rolls_back_partial_projection_failure(
+    tmp_path, monkeypatch
+):
+    from AssetsManager.core import database
+
+    library = tmp_path / "library"
+    library.mkdir()
+    old = library / "old.png"
+    new = library / "new.png"
+    old.write_bytes(b"old")
+    new.write_bytes(b"new")
+    manager = database.DatabaseManager()
+    try:
+        conn = manager.connection_for(library)
+        old_path = str(old.resolve())
+        new_path = str(new.resolve())
+        conn.execute(
+            "INSERT INTO file_tags (file_path, tag) VALUES (?, ?)",
+            (old_path, "hero"),
+        )
+        conn.execute(
+            "INSERT INTO file_meta (file_path, notes) VALUES (?, ?)",
+            (old_path, "note"),
+        )
+        old_key = database._thumbnail_cache_key(old_path)
+        conn.execute(
+            "INSERT INTO thumbnail_cache (cache_key, source_path, source_mtime) "
+            "VALUES (?, ?, ?)",
+            (old_key, old_path, 1.0),
+        )
+        conn.commit()
+
+        original_key = database._thumbnail_cache_key
+        calls = 0
+
+        def fail_during_thumbnail_key(path):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise sqlite3.OperationalError("injected migration failure")
+            return original_key(path)
+
+        monkeypatch.setattr(database, "_thumbnail_cache_key", fail_during_thumbnail_key)
+        with pytest.raises(sqlite3.OperationalError, match="injected"):
+            database.migrate_path_metadata(
+                conn, manager.thumb_dir_for(library), old, new
+            )
+
+        assert conn.in_transaction is False
+        assert conn.execute(
+            "SELECT tag FROM file_tags WHERE file_path=?", (old_path,)
+        ).fetchone() == ("hero",)
+        assert conn.execute(
+            "SELECT 1 FROM file_tags WHERE file_path=?", (new_path,)
+        ).fetchone() is None
+        assert conn.execute(
+            "SELECT notes FROM file_meta WHERE file_path=?", (old_path,)
+        ).fetchone() == ("note",)
+        assert conn.execute(
+            "SELECT 1 FROM file_meta WHERE file_path=?", (new_path,)
+        ).fetchone() is None
+        assert conn.execute(
+            "SELECT source_path FROM thumbnail_cache WHERE cache_key=?", (old_key,)
+        ).fetchone() == (old_path,)
+    finally:
+        manager.close()
+
+
+def test_migrate_path_metadata_failure_preserves_caller_transaction(
+    tmp_path, monkeypatch
+):
+    from AssetsManager.core import database
+
+    library = tmp_path / "library"
+    library.mkdir()
+    old = library / "old.txt"
+    new = library / "new.txt"
+    old.write_text("old", encoding="utf-8")
+    new.write_text("new", encoding="utf-8")
+    manager = database.DatabaseManager()
+    try:
+        conn = manager.connection_for(library)
+        old_path = str(old.resolve())
+        new_path = str(new.resolve())
+        conn.execute(
+            "INSERT INTO file_tags (file_path, tag) VALUES (?, ?)",
+            (old_path, "hero"),
+        )
+        old_key = database._thumbnail_cache_key(old_path)
+        conn.execute(
+            "INSERT INTO thumbnail_cache (cache_key, source_path, source_mtime) "
+            "VALUES (?, ?, ?)",
+            (old_key, old_path, 1.0),
+        )
+        conn.execute("CREATE TABLE caller_sentinel (value TEXT NOT NULL)")
+        conn.commit()
+        conn.execute("BEGIN")
+        conn.execute("INSERT INTO caller_sentinel VALUES ('keep')")
+
+        def fail_migration_key(_path):
+            raise sqlite3.OperationalError("injected outer failure")
+
+        monkeypatch.setattr(database, "_thumbnail_cache_key", fail_migration_key)
+        with pytest.raises(sqlite3.OperationalError, match="injected outer"):
+            database.migrate_path_metadata(
+                conn, manager.thumb_dir_for(library), old, new
+            )
+
+        assert conn.in_transaction is True
+        assert conn.execute("SELECT * FROM caller_sentinel").fetchall() == [
+            ("keep",)
+        ]
+        assert conn.execute(
+            "SELECT tag FROM file_tags WHERE file_path=?", (old_path,)
+        ).fetchone() == ("hero",)
+        assert conn.execute(
+            "SELECT 1 FROM file_tags WHERE file_path=?", (new_path,)
+        ).fetchone() is None
+        conn.rollback()
+    finally:
+        manager.close()
+
+
+def test_migrate_path_metadata_thumbnail_replace_failure_rolls_back_row(
+    tmp_path, monkeypatch
+):
+    from AssetsManager.core import database
+
+    library = tmp_path / "library"
+    library.mkdir()
+    old = library / "old.png"
+    new = library / "new.png"
+    old.write_bytes(b"old")
+    new.write_bytes(b"new")
+    manager = database.DatabaseManager()
+    try:
+        conn = manager.connection_for(library)
+        old_path = str(old.resolve())
+        thumb_dir = manager.thumb_dir_for(library)
+        thumb_dir.mkdir(parents=True, exist_ok=True)
+        old_key = database._thumbnail_cache_key(old_path)
+        old_thumb = thumb_dir / f"{old_key}.webp"
+        old_thumb.write_bytes(b"thumb")
+        conn.execute(
+            "INSERT INTO thumbnail_cache (cache_key, source_path, source_mtime) "
+            "VALUES (?, ?, ?)",
+            (old_key, old_path, 1.0),
+        )
+        conn.commit()
+        original_replace = type(old_thumb).replace
+
+        def fail_replace(self, target):
+            if self == old_thumb:
+                raise OSError("injected thumbnail rename failure")
+            return original_replace(self, target)
+
+        monkeypatch.setattr(type(old_thumb), "replace", fail_replace)
+        with pytest.raises(OSError, match="injected thumbnail"):
+            database.migrate_path_metadata(conn, thumb_dir, old, new)
+
+        assert conn.execute(
+            "SELECT source_path FROM thumbnail_cache WHERE cache_key=?", (old_key,)
+        ).fetchone() == (old_path,)
+        assert old_thumb.read_bytes() == b"thumb"
     finally:
         manager.close()
 

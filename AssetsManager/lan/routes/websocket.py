@@ -3,7 +3,7 @@ import asyncio
 
 from aiohttp import WSMsgType, web
 
-from AssetsManager.lan.auth import verify_auth_token, verify_key, verify_token
+from AssetsManager.lan.auth import verify_auth_token, verify_key, verify_token_async
 from AssetsManager.lan.principal import principal_for_request
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
@@ -23,6 +23,26 @@ async def _close_quietly(ws, **kwargs):
 def _authorization_validator(request, lan, principal):
     """Bind the socket to canonical identity and credential authority."""
     token = get_auth_token(request)
+
+    async def token_is_revoked() -> bool:
+        if not token:
+            return False
+        checker = getattr(lan, "is_auth_token_revoked_async", None)
+        if callable(checker):
+            try:
+                return bool(await checker(token))
+            except Exception:
+                return True
+        checker = getattr(lan, "is_auth_token_revoked", None)
+        if not callable(checker):
+            return False
+        try:
+            return bool(await asyncio.to_thread(checker, token))
+        except Exception:
+            # An unavailable durable revocation source must not keep an
+            # existing socket authorized.
+            return True
+
     if principal.kind == "user":
         expected = principal.user_profile or {}
         expected_id = int(expected.get("id", 0))
@@ -33,7 +53,9 @@ def _authorization_validator(request, lan, principal):
         if auth_service is None:
             auth_service = getattr(lan, "_auth_service", None)
 
-        def validate_user():
+        async def validate_user():
+            if await token_is_revoked():
+                return False
             if auth_service is None:
                 return False
             if token:
@@ -57,7 +79,7 @@ def _authorization_validator(request, lan, principal):
         return validate_user
     if principal.kind == "access_key":
         async def validate_access_key():
-            if not token or not getattr(lan, "access_key_hash", None):
+            if await token_is_revoked() or not token or not getattr(lan, "access_key_hash", None):
                 return False
             # L2/Q1: PBKDF2 is CPU-heavy (~50k rounds) and must not run on the
             # event loop during socket admission / periodic re-authorization.
@@ -65,16 +87,26 @@ def _authorization_validator(request, lan, principal):
 
         return validate_access_key
     if principal.kind == "password":
-        return lambda: bool(
-            token and getattr(lan, "password_hash", None)
-            and verify_token(token, lan.password_hash)
-        )
+        async def validate_password():
+            password_hash = getattr(lan, "password_hash", None)
+            if await token_is_revoked() or not token or not password_hash:
+                return False
+            return await verify_token_async(token, password_hash)
+
+        return validate_password
     if principal.kind == "local_ui" and token:
         secret = (
             getattr(lan, "local_ui_auth_secret", None)
             or getattr(lan, "token_secret", None)
         )
-        return lambda: bool(secret and verify_auth_token(token, secret))
+        async def validate_local_ui():
+            return bool(
+                not await token_is_revoked()
+                and secret
+                and verify_auth_token(token, secret)
+            )
+
+        return validate_local_ui
     # Tokenless local middleware contexts have no external credential to
     # expire; they remain explicitly identified and can still be manager-closed.
     return lambda: principal.capabilities.realtime
@@ -102,6 +134,7 @@ async def handle_websocket(request):
     # Authentication is verified once by the application middleware, including
     # HttpOnly-cookie sessions used by browser WebSocket handshakes.
     principal = get_request_principal(request)
+    token = get_auth_token(request) if hasattr(request, "headers") else ""
     if ("token" in request.query or "key" in request.query
             or principal is None
             or not principal.capabilities.realtime):
@@ -154,7 +187,7 @@ async def handle_websocket(request):
     authority = _authorization_authority(principal)
     if not await lan.ws_manager.add(
             ws, authorize=authorize, on_admission=publish_presence,
-            on_remove=cleanup_presence, authority=authority,
+            on_remove=cleanup_presence, authority=authority, auth_token=token,
             admission_pending=True):
         cleanup_presence()
         return ws

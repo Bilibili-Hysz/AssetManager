@@ -1,0 +1,269 @@
+{
+  "schema_version": 1,
+  "report_id": "thumbnail-batch-response-privacy-evidence-2026-08-23",
+  "captured_at": "2026-08-23T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "017f7de51fc802cf618c0a107fa803dc0d9af5b9962d3b6ec1f0db9608823836",
+    "diff_sha256": "9ac20cfa9e8a90a93ced97bcb262a4da295b87ae8a3f861161fdc7cac124590f",
+    "tracked_change_count": 137,
+    "untracked_change_count": 90
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16",
+      "vitest": "3.2.6"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "--basetemp=.zcode/pytest-batch25e-batch-focused-evidence",
+          "-q",
+          "tests/lan/test_thumbnail_admission.py",
+          "tests/lan/test_lan_api.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "LAN thumbnail batch privacy and existing batch telemetry/security regressions",
+        "sample_count": 246,
+        "pass_criterion": "exit_code == 0; RuntimeWarning treated as error",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-batch-response-privacy/focused.stdout.log",
+            "sha256": "bbc9dd5ab22a18ff2395b28708c19b3e5ddf70c757a2f76338e0eb0b4562c957"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-batch-response-privacy/focused.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "cd",
+          "webui",
+          "&&",
+          "npm",
+          "test",
+          "--",
+          "--run",
+          "src/api/thumbnails.contract.test.ts",
+          "src/hooks/useThumbnailCache.test.tsx"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "WebUI batch API contract and application thumbnail cache behavior",
+        "sample_count": 6,
+        "pass_criterion": "exit_code == 0; both focused test files pass",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-batch-response-privacy/frontend.stdout.log",
+            "sha256": "08cac3fa5dcab266afbfdfb0869e691aecc8d7fa9c287a3f048b4ed64d200bd4"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-batch-response-privacy/frontend.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "--basetemp=.zcode/pytest-batch25e-batch-full",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python suite after batch response privacy header",
+        "sample_count": 4013,
+        "pass_criterion": "exit_code == 0; no failed tests; platform skips and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-batch-response-privacy/full.stdout.log",
+            "sha256": "26c920f7203e94ea459fc83bf64025ca9f0de18b74db317ee9ec71d120f5cdbe"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-batch-response-privacy/full.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py",
+          "&&",
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Static governance gates before post-index batch report validation",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-batch-response-privacy/static.stdout.log",
+            "sha256": "c62688924c8292b0ff2d39347e7ed4b95bf94f5e613780b873772009d9683ad4"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-batch-response-privacy/static.stderr.log",
+            "sha256": "1d3ca222e60538e69c0e47309d51cd312bb9191cf7c5404ab96d7d84ba4fa9b8"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py",
+          "&&",
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index static governance validation after batch response report and manifest; all 33 manifests",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-batch-response-privacy/static-post-index.stdout.log",
+            "sha256": "5e6113b51955573b97bf1772686283542afeb6c619305a93b8e9e0ce5f63b076"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-batch-response-privacy/static-post-index.stderr.log",
+            "sha256": "1d3ca222e60538e69c0e47309d51cd312bb9191cf7c5404ab96d7d84ba4fa9b8"
+          }
+        ]
+      }
+    ],
+    "note": "Focused backend: 246 passed. Frontend: 6 tests passed. Full suite: 3985 passed, 14 skipped, 17 deselected, 2 warnings, 0 failed. Post-index governance validation: all 33 manifests and static gates passed. Batch success responses are private/no-store; complete error-response cache policy, WebUI namespace and v3/profile work remain deferred."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/audit-manifest-thumbnail-cross-process-ownership-evidence-2026-08-22.json",
+      "sha256": "dd8aa060f71f6d20dece3f7ae19fc21eae7e2e02129a8b7c75d934f776c0b1ee"
+    },
+    {
+      "path": "docs/full-review/thumbnail-cross-process-ownership-evidence-2026-08-22.md",
+      "sha256": "196f1333bd867e8910384076dbaa2c582f6b3071474b3e910e79c433719046c2"
+    },
+    {
+      "path": "docs/full-review/thumbnail-blur-cache-privacy-evidence-2026-08-23.md",
+      "sha256": "93c032fb3c9ac11d7ab548a6b7390d1f4bb1defe76b0d2370b56a06c26fc8792"
+    },
+    {
+      "path": "docs/full-review/audit-manifest-thumbnail-blur-cache-privacy-evidence-2026-08-23.json",
+      "sha256": "41fb10839aaba9d8940bf159ee97a8e87d4083d6ecc76d0acd7264de52137721"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/thumbnail-batch-response-privacy-evidence-2026-08-23.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "THUMBNAIL-BATCH-RESPONSE-PRIVACY-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "THUMBNAIL-BLUR-CACHE-PRIVACY-01"
+      ],
+      "anchors": [
+        "AssetsManager/lan/routes/thumbnails.py:327",
+        "tests/lan/test_thumbnail_admission.py:119"
+      ],
+      "surface": "LAN batch thumbnail base64 response HTTP cache policy",
+      "next_action": "Evaluate complete error-response cache headers, WebUI/sessionStorage namespace isolation, persistent blur provenance and v3/profile-aware key design as separate batches",
+      "dynamic_verification": "246 backend-focused and 3985 full Python tests passed on Windows; 6 WebUI contract/cache tests passed; static governance gates passed; browser/intermediary cache and cross-platform filesystem proof not run"
+    }
+  ]
+}

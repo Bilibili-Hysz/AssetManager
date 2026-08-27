@@ -3,9 +3,17 @@ import logging
 from pathlib import Path
 from typing import Any, cast
 
-from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QTimer, QSize
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QTimer, QSize, Signal
 from PySide6.QtGui import QPixmap, QPainter
-from PySide6.QtWidgets import QMainWindow, QWidget, QApplication, QLabel, QPushButton, QStatusBar
+from PySide6.QtWidgets import (
+    QMainWindow,
+    QWidget,
+    QApplication,
+    QLabel,
+    QPushButton,
+    QStatusBar,
+    QProgressDialog,
+)
 
 from AssetsManager import dock_factory as dock
 from AssetsManager.core import themes
@@ -64,6 +72,19 @@ def _save_window_geometry(window: QWidget) -> None:
         _log.exception("Failed to save window geometry")
 
 
+class _ImportProgressDialog(QProgressDialog):
+    """Progress dialog that treats window dismissal as import cancellation."""
+
+    user_closed = Signal()
+
+    def closeEvent(self, event):
+        if not self.property("import_finished") and not self.property(
+            "import_cancel_requested"
+        ):
+            self.user_closed.emit()
+        super().closeEvent(event)
+
+
 def _restore_window_geometry(window: QWidget) -> None:
     """Restore window geometry and maximized state saved last session.
 
@@ -104,6 +125,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
         themes.apply_to(self)
         self._bootstrap = bootstrap
         self._lifecycle_coordinator = WindowLifecycleCoordinator(self, _alive)
+        self._import_generation = 0
+        self._import_token = None
+        self._import_pool = None
+        self._import_task = None
+        self._import_dialog = None
         # Must be set before UI setup because workspace restore can switch libraries.
         self._library_session = library_session
         self._setup_ui()
@@ -131,6 +157,33 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
     def _scoped_services_for_session(self, session):
         return self._bootstrap.runtime_for(session).services
+
+    def _cleanup_import(self, generation=None, *, close_dialog=True, timeout_ms=3_000):
+        """Cancel and terminally release the current import worker resources."""
+        current_generation = self._import_generation
+        if generation is not None and generation != current_generation:
+            return False
+        self._import_generation = current_generation + 1
+        token = self._import_token
+        pool = self._import_pool
+        dialog = self._import_dialog
+        self._import_token = None
+        self._import_pool = None
+        self._import_task = None
+        self._import_dialog = None
+        if token is not None:
+            token.cancel()
+        if pool is not None:
+            try:
+                pool.close(timeout_ms, owner_label="MainWindow import")
+            except Exception:
+                _log.exception("Failed to close import worker pool")
+        if close_dialog and _alive(dialog):
+            try:
+                dialog.close()
+            except RuntimeError:
+                pass
+        return True
 
     def _apply_scoped_services(self, session):
         runtime = self._bootstrap.runtime_for(session)
@@ -733,7 +786,9 @@ class MainWindow(LanSharingMixin, QMainWindow):
         flush_pending = getattr(self.info, "flush_pending_changes", None)
         if _alive(self.info) and callable(flush_pending):
             flush_pending()
-        open_image_viewer(self, path)
+        session = getattr(self, "_library_session", None)
+        library_root = getattr(session, "root_str", None) if session is not None else None
+        open_image_viewer(self, path, library_root=library_root)
 
     def _refresh_all(self):
         populate = getattr(self.sidebar, "_populate", None)
@@ -869,7 +924,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
     def _import_assets(self):
         """Import files/folders into the current library via a background task."""
         from PySide6.QtCore import QObject, Signal
-        from PySide6.QtWidgets import QFileDialog, QMessageBox, QProgressDialog
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
 
         session = getattr(self, "_library_session", None)
         if session is None:
@@ -899,14 +954,17 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
         from AssetsManager.application.import_service import ImportCancelled, ImportService
         from AssetsManager.core.workers import BoundedPool, CancellationToken, CancellableRunnable
+        if self._import_pool is not None or self._import_token is not None:
+            self._cleanup_import()
         service = ImportService(session, file_operations)
         import_token = CancellationToken()
+        self._import_generation += 1
+        generation = self._import_generation
         self._import_token = import_token
         self._import_pool = BoundedPool(1)
 
-        # Cancellation semantics: each file copy is non-interruptible
-        # (shutil.copy2), so the Cancel button stops scheduling new copies
-        # while already-copied files are retained.
+        # Cancellation is cooperative: an active copy2 call finishes, then no
+        # additional files are scheduled and copied files remain on disk.
         class _ImportDone(QObject):
             finished = Signal(object)
             progress = Signal(int, int)
@@ -924,8 +982,8 @@ class MainWindow(LanSharingMixin, QMainWindow):
                         progress=self._done.progress.emit,
                         should_cancel=import_token.is_cancelled,
                     )
-                except ImportCancelled:
-                    self._done.finished.emit(("cancelled", None))
+                except ImportCancelled as exc:
+                    self._done.finished.emit(("cancelled", exc.partial_result))
                     return
                 except Exception as exc:
                     self._done.finished.emit(("error", exc))
@@ -934,8 +992,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
         done = _ImportDone()
         task = _ImportTask(done)
-
-        progress_dialog = QProgressDialog(
+        progress_dialog = _ImportProgressDialog(
             tr("import.in_progress"),
             tr("dialog.cancel"),
             0,
@@ -945,19 +1002,47 @@ class MainWindow(LanSharingMixin, QMainWindow):
         progress_dialog.setWindowTitle(tr("import.title"))
         progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         progress_dialog.setMinimumDuration(500)
-        # A single large file cannot be interrupted mid-copy; disable cancel
-        # rather than imply a prompt stop that will not happen.
-        progress_dialog.setCancelButton(None)
+        self._import_dialog = progress_dialog
+
+        def _request_cancel():
+            progress_dialog.setProperty("import_cancel_requested", True)
+            import_token.cancel()
+
+        def _on_dialog_closed():
+            progress_dialog.setProperty("import_dismissed", True)
+            import_token.cancel()
+            self._cleanup_import(generation, close_dialog=False)
 
         def _on_progress(done_count, total):
+            if generation != self._import_generation or progress_dialog.property(
+                "import_dismissed"
+            ):
+                return
             if total > 0:
                 progress_dialog.setRange(0, total)
                 progress_dialog.setValue(done_count)
 
         def _on_finished(payload):
+            if generation != self._import_generation:
+                return
+            dismissed = bool(progress_dialog.property("import_dismissed"))
+            progress_dialog.setProperty("import_finished", True)
+            self._cleanup_import(generation, close_dialog=True)
+            if dismissed:
+                return
             progress_dialog.close()
             status, value = payload
             if status == "cancelled":
+                if value is not None:
+                    QMessageBox.information(
+                        self,
+                        tr("import.title"),
+                        tr("import.cancelled").format(
+                            copied=value.copied,
+                            skipped=value.skipped,
+                            failed=len(value.failed),
+                        ),
+                    )
                 return
             if status == "error":
                 QMessageBox.critical(
@@ -965,22 +1050,32 @@ class MainWindow(LanSharingMixin, QMainWindow):
                 )
                 return
             result = value
+            message_key = "import.partial" if result.degraded else "import.success"
             QMessageBox.information(
                 self,
                 tr("import.title"),
-                tr("import.success").format(
+                tr(message_key).format(
                     copied=result.copied,
                     skipped=result.skipped,
                     failed=len(result.failed),
                 ),
             )
 
+        progress_dialog.canceled.connect(_request_cancel)
+        progress_dialog.user_closed.connect(_on_dialog_closed)
         done.finished.connect(_on_finished)
         done.progress.connect(_on_progress)
         self._import_task = task
-        self._import_pool.start(task)
+        try:
+            self._import_pool.start(task)
+        except Exception:
+            self._cleanup_import(generation, close_dialog=True)
+            raise
         progress_dialog.exec()
-        self._import_task = None
+        if generation == self._import_generation and not progress_dialog.property(
+            "import_cancel_requested"
+        ) and not progress_dialog.property("import_finished"):
+            _on_dialog_closed()
 
     def _on_ui_scale_changed(self, scale: float):
         """Re-apply stylesheet and update font when UI scale changes."""

@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
-from AssetsManager.lan.routes._helpers import find_first_image, sanitize_filename, get_auth_token
+from AssetsManager.lan.routes._helpers import build_zip_sync, find_first_image, sanitize_filename, get_auth_token
 
 
 class _OSWithScandir:
@@ -23,6 +23,35 @@ class _OSWithScandir:
 
     def scandir(self, path):
         return self._scandir(path)
+
+
+def test_build_zip_sync_reads_source_bytes_without_path_reopen(tmp_path):
+    import zipfile
+
+    source = tmp_path / "source.txt"
+    source.write_text("payload", encoding="utf-8")
+    archive = tmp_path / "out.zip"
+    assert build_zip_sync([(source, "asset.txt")], str(archive)) == str(archive)
+    with zipfile.ZipFile(archive) as result:
+        assert result.read("asset.txt") == b"payload"
+
+
+def test_build_zip_sync_skips_symlink_members_when_supported(tmp_path):
+    import zipfile
+
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "inside.txt").write_text("inside", encoding="utf-8")
+    link = root / "outside.txt"
+    try:
+        link.symlink_to(tmp_path / "missing.txt")
+    except (OSError, NotImplementedError) as exc:
+        import pytest
+        pytest.skip(f"symlink creation unavailable: {exc}")
+    archive = tmp_path / "out.zip"
+    assert build_zip_sync([(root, "root")], str(archive)) == str(archive)
+    with zipfile.ZipFile(archive) as result:
+        assert result.namelist() == ["root/inside.txt"]
 
 
 def test_sanitize_filename_normal():

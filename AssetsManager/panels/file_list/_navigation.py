@@ -49,6 +49,7 @@ class NavigationMixin:
         def _clear_selection_for_navigation(self) -> None: ...
         def _update_status(self) -> None: ...
         def _load_visible(self) -> None: ...
+        def _invalidate_cover_scans(self) -> None: ...
         def _schedule_once(self, interval_ms: int, callback: Callable[[], None]) -> Any: ...
         def _clear_pending_timers(self) -> None: ...
         def _run_in_background(self, func: Callable[[], None]) -> None: ...
@@ -109,6 +110,7 @@ class NavigationMixin:
             return
 
         self._first_image_cache.pop(str(self._current), None)
+        self._invalidate_cover_scans()
         if hasattr(self, "_loader"):
             self._loader.clear_queue()
         self._post_refresh()
@@ -151,6 +153,7 @@ class NavigationMixin:
         self._model.set_directory(str(p))
         if hasattr(self, '_first_image_cache'):
             self._first_image_cache.clear()
+        self._invalidate_cover_scans()
         if not self._restore_view_mode(str(p)) and self._view_mode == "Details":
             self._populate_details()
         self._render_bc()

@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Heart, Menu, ReceiptText, Search, ShoppingBag, ShoppingCart, Store, X } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuthContext } from '../../stores/AuthContext';
+import { useOptionalSellerAuth } from '../../stores/SellerAuthContext';
 import { useI18n } from '../../hooks/useI18n';
 import './Storefront.css';
 import { useShopBuyer } from '../../stores/ShopBuyerContext';
@@ -16,7 +17,8 @@ interface StorefrontShellProps {
 
 export function StorefrontShell({ children, sellerMode = false, storeName = 'AssetMarket', onSearch, searchValue }: StorefrontShellProps) {
   const { t } = useI18n();
-  const { isAuthenticated, user, logout } = useAuthContext();
+  const { isAuthenticated, user } = useAuthContext();
+  const sellerAuth = useOptionalSellerAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -113,7 +115,7 @@ export function StorefrontShell({ children, sellerMode = false, storeName = 'Ass
             ) : (
               <Link className="storefront-button storefront-button-ghost" to="/login">{t('commerce.sign_in')}</Link>
             )}
-            {sellerMode && isAuthenticated && <button type="button" className="storefront-button storefront-button-ghost storefront-logout" onClick={logout}>{t('header.logout')}</button>}
+            {sellerMode && sellerAuth?.authenticated && <button type="button" className="storefront-button storefront-button-ghost storefront-logout" onClick={() => void sellerAuth.logout()}>{t('header.logout')}</button>}
           </div>
         </div>
       </header>

@@ -5,7 +5,20 @@ import { createSystemApi, type SystemApi } from '../api/system';
 import { isServiceUnavailableError, isNetworkError } from '../api/errors';
 import type { Capabilities, ServerInfo, SessionPrincipal } from '../types/api';
 
-const THUMBNAIL_CACHE_STORAGE_KEY = 'lan_thumb_cache';
+const THUMBNAIL_CACHE_STORAGE_PREFIX = 'lan_thumb_cache:';
+const LEGACY_THUMBNAIL_CACHE_STORAGE_KEY = 'lan_thumb_cache';
+
+function clearThumbnailCacheStorage(): void {
+  try {
+    const keys: string[] = [];
+    for (let index = 0; index < sessionStorage.length; index += 1) {
+      const key = sessionStorage.key(index);
+      if (key?.startsWith(THUMBNAIL_CACHE_STORAGE_PREFIX)) keys.push(key);
+    }
+    for (const key of keys) sessionStorage.removeItem(key);
+    sessionStorage.removeItem(LEGACY_THUMBNAIL_CACHE_STORAGE_KEY);
+  } catch { /* ignore storage failures */ }
+}
 
 /**
  * A failed login/registration attempt answers 401 through the same client as
@@ -40,6 +53,17 @@ function principalIdentity(principal: SessionPrincipal): string {
   return `${principal.kind}:${principal.authenticated}:${principal.user_profile?.id ?? ''}:${principal.user_profile?.username ?? principal.display_name}`;
 }
 
+function thumbnailNamespace(
+  api: ApiClient,
+  serverInfo: ServerInfo | null,
+  principal: SessionPrincipal,
+  fallbackNamespace: string,
+): string {
+  const origin = typeof window === 'undefined' ? '' : window.location.origin;
+  const server = serverInfo?.thumbnail_cache_namespace || fallbackNamespace;
+  return [origin, api.scope, server, principalIdentity(principal)].join('|');
+}
+
 export interface AuthState {
   user: SessionPrincipal['user_profile'] | null;
   role: 'admin' | 'user' | 'guest' | null;
@@ -63,6 +87,7 @@ export interface AuthContextValue extends AuthState {
   logout: () => void;
   refreshMe: () => Promise<boolean>;
   retryConnect: () => Promise<boolean>;
+  thumbnailCacheNamespace: string;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -77,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const generationRef = useRef(0);
   const [identityGeneration, setIdentityGeneration] = useState(0);
   const principalRef = useRef(guestPrincipal);
+  const fallbackNamespaceRef = useRef(`page-${Math.random().toString(36).slice(2)}`);
   const inFlightMeRef = useRef<{ generation: number; promise: Promise<boolean> } | null>(null);
 
   const applyPrincipal = useCallback((nextPrincipal: SessionPrincipal, forceGeneration = false) => {
@@ -94,9 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [applyPrincipal]);
 
   const clearIdentityStorage = useCallback(() => {
-    try {
-      sessionStorage.removeItem(THUMBNAIL_CACHE_STORAGE_KEY);
-    } catch { /* ignore storage failures */ }
+    clearThumbnailCacheStorage();
   }, []);
 
   const handleUnauthorized = useCallback((path: string) => {
@@ -119,7 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (current?.generation === generation) return current.promise;
 
     const promise = authApi.me().then(res => {
-      if (generation !== generationRef.current) return true;
+      if (generation !== generationRef.current) return false;
       const nextPrincipal = res.principal ?? (res.user ? {
         kind: 'user' as const, authenticated: true, role: res.user.role,
         display_name: res.user.username, capabilities: emptyCapabilities,
@@ -208,6 +232,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     init();
   }, [connect]);
 
+  const thumbnailCacheNamespace = useMemo(
+    () => thumbnailNamespace(api, serverInfo, principal, fallbackNamespaceRef.current),
+    [api, serverInfo, principal],
+  );
+
   const value: AuthContextValue = useMemo(
     () => ({
       user: principal.user_profile ?? null,
@@ -227,12 +256,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       refreshMe,
       retryConnect,
+      thumbnailCacheNamespace,
     }),
     // B5: previously the value object was rebuilt every render, churning every
     // consumer. All callbacks below are useCallback-stable (api/authApi/systemApi
     // are useMemo'd), so the memo recomputes only on real state changes.
     [role, principal, identityGeneration, isLoading, serviceUnavailable, authMode, serverInfo,
-      api, authApi, systemApi, logout, refreshMe, retryConnect],
+      api, authApi, systemApi, logout, refreshMe, retryConnect, thumbnailCacheNamespace],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

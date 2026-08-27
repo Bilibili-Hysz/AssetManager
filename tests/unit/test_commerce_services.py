@@ -195,6 +195,107 @@ def test_shop_service_duplicate_path_is_a_business_error(schema_db, tmp_path):
     assert shop.get_item(root, second["id"])["path"] == "second.txt"
 
 
+def test_shop_service_status_only_update_preserves_metadata_and_gallery(schema_db, tmp_path):
+    root, _shops, _orders, _quotas, shop, _orders_service, _quota = _services(schema_db, tmp_path)
+    (root / "shop").mkdir()
+    (root / "shop" / "asset.txt").write_text("asset", encoding="utf-8")
+    (root / "shop" / "cover.png").write_bytes(b"cover")
+    item = shop.create_item(
+        root,
+        {
+            "path": "shop/asset.txt",
+            "title": "Asset",
+            "price_cents": 1,
+            "metadata": {"license": "standard", "region": "cn"},
+            "gallery_paths": ["shop/cover.png"],
+        },
+    )
+
+    updated = shop.update_item(root, item["id"], {"status": "draft"})
+
+    assert updated["status"] == "draft"
+    assert updated["enabled"] is False
+    assert updated["metadata"]["license"] == "standard"
+    assert updated["metadata"]["region"] == "cn"
+    assert updated["metadata"]["status"] == "draft"
+    assert updated["gallery_paths"] == ["shop/cover.png"]
+
+    persisted = shop.get_item(root, item["id"])
+    assert persisted["status"] == "draft"
+    assert persisted["metadata"]["license"] == "standard"
+    assert persisted["gallery_paths"] == ["shop/cover.png"]
+
+
+def test_shop_service_metadata_only_update_shallow_merges_current_metadata(schema_db, tmp_path):
+    root, _shops, _orders, _quotas, shop, _orders_service, _quota = _services(schema_db, tmp_path)
+    (root / "shop").mkdir()
+    (root / "shop" / "asset.txt").write_text("asset", encoding="utf-8")
+    (root / "shop" / "cover.png").write_bytes(b"cover")
+    item = shop.create_item(
+        root,
+        {
+            "path": "shop/asset.txt",
+            "title": "Asset",
+            "price_cents": 1,
+            "metadata": {"license": "standard", "region": "cn"},
+            "gallery_paths": ["shop/cover.png"],
+        },
+    )
+
+    updated = shop.update_item(root, item["id"], {"metadata": {"license": "extended"}})
+
+    assert updated["metadata"]["license"] == "extended"
+    assert updated["metadata"]["region"] == "cn"
+    # No status was supplied: no status key is invented by a metadata merge.
+    assert updated["metadata"].get("status") is None
+    assert updated["status"] == "active"
+    assert updated["gallery_paths"] == ["shop/cover.png"]
+
+    persisted = shop.get_item(root, item["id"])
+    assert persisted["metadata"]["license"] == "extended"
+    assert persisted["metadata"]["region"] == "cn"
+
+
+def test_shop_service_combined_update_merges_status_metadata_and_gallery(schema_db, tmp_path):
+    root, _shops, _orders, _quotas, shop, _orders_service, _quota = _services(schema_db, tmp_path)
+    (root / "shop").mkdir()
+    (root / "shop" / "asset.txt").write_text("asset", encoding="utf-8")
+    (root / "shop" / "old.png").write_bytes(b"old")
+    (root / "shop" / "new.png").write_bytes(b"new")
+    item = shop.create_item(
+        root,
+        {
+            "path": "shop/asset.txt",
+            "title": "Asset",
+            "price_cents": 1,
+            "metadata": {"license": "standard", "region": "cn"},
+            "gallery_paths": ["shop/old.png"],
+        },
+    )
+
+    updated = shop.update_item(
+        root,
+        item["id"],
+        {
+            "status": "archived",
+            "metadata": {"license": "extended"},
+            "gallery_paths": ["shop/new.png"],
+        },
+    )
+
+    assert updated["status"] == "archived"
+    assert updated["enabled"] is False
+    assert updated["metadata"]["license"] == "extended"
+    assert updated["metadata"]["region"] == "cn"
+    assert updated["metadata"]["status"] == "archived"
+    assert updated["gallery_paths"] == ["shop/new.png"]
+
+    persisted = shop.get_item(root, item["id"])
+    assert persisted["status"] == "archived"
+    assert persisted["metadata"]["region"] == "cn"
+    assert persisted["gallery_paths"] == ["shop/new.png"]
+
+
 def test_shop_service_list_catalog_validates_and_returns_public_page(schema_db, tmp_path, monkeypatch):
     root, shops, _orders, _quotas, shop, _orders_service, _quota = _services(schema_db, tmp_path)
     (root / "shop").mkdir()
@@ -306,6 +407,43 @@ def test_shop_media_paths_respect_authorized_roots_and_allow_legacy_unconfigured
     )
     assert legacy["cover_path"] == "shop/other/cover.png"
     assert legacy["gallery_paths"] == ["shop/other/gallery.jpg"]
+
+def test_shop_create_ignores_internal_image_paths_and_uses_normalized_gallery(schema_db, tmp_path):
+    root, shops, _orders, _quotas, shop, _orders_service, _quota = _services(schema_db, tmp_path)
+    (root / "shop").mkdir(exist_ok=True)
+    (root / "shop" / "asset.txt").write_text("asset", encoding="utf-8")
+    (root / "shop" / "gallery.png").write_bytes(b"gallery")
+
+    item = shop.create_item(
+        root,
+        {
+            "path": "shop/asset.txt",
+            "title": "Asset",
+            "price_cents": 1,
+            "metadata": {
+                "license": "standard",
+                "image_paths": ["../../outside.png"],
+            },
+            "gallery_paths": ["shop/gallery.png"],
+        },
+    )
+
+    assert item["metadata"] == {"license": "standard"}
+    assert item["gallery_paths"] == ["shop/gallery.png"]
+    persisted = shop.get_item(root, item["id"])
+    assert persisted["metadata"] == {"license": "standard"}
+    assert persisted["gallery_paths"] == ["shop/gallery.png"]
+
+
+def test_shop_create_rejects_non_mapping_metadata(schema_db, tmp_path):
+    root, _shops, _orders, _quotas, shop, _orders_service, _quota = _services(schema_db, tmp_path)
+    (root / "asset.txt").write_text("asset", encoding="utf-8")
+    item = shop.create_item(
+        root,
+        {"path": "asset.txt", "title": "Asset", "price_cents": 1, "metadata": "ignored"},
+    )
+    assert item["metadata"] == {}
+
 
 def test_public_shop_item_detail_by_path_normalizes_and_hides_non_public_items(schema_db, tmp_path, monkeypatch):
     root, shops, _orders, _quotas, shop, _orders_service, _quota = _services(schema_db, tmp_path)

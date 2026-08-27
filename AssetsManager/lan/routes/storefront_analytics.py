@@ -24,18 +24,16 @@ _COOKIE_SIGNATURE_BYTES = 32
 
 
 def _cookie_signing_secret(lan: object) -> bytes:
-    """Use the server secret when available, otherwise a process-lifetime key."""
-    configured = getattr(lan, "local_ui_auth_secret", None) or getattr(lan, "token_secret", None)
-    if isinstance(configured, bytes) and configured:
-        return configured
-    if isinstance(configured, str) and configured:
-        return configured.encode("utf-8")
+    """Delegate to the shared tunnel/quota secret sourcing.
 
-    cached = getattr(lan, "_storefront_analytics_cookie_secret", None)
-    if not isinstance(cached, bytes) or not cached:
-        cached = secrets.token_bytes(32)
-        setattr(lan, "_storefront_analytics_cookie_secret", cached)
-    return cached
+    Same precedence (``local_ui_auth_secret`` -> ``token_secret`` -> per-lan
+    random fallback cached on ``_quota_cookie_secret``), so every visitor
+    identity module on one lan object derives keys from one place.  The
+    cookie itself keeps its own name/format/lifetime.
+    """
+    from AssetsManager.lan import tunnel_identity
+
+    return tunnel_identity.signing_secret(lan)
 
 
 def _new_cookie_token(secret: bytes) -> str:

@@ -1,6 +1,5 @@
 """Download routes: /api/download/{path}, /api/download/batch."""
 import asyncio
-import json
 import os
 from pathlib import Path
 from time import perf_counter
@@ -10,36 +9,69 @@ from aiohttp import web
 
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import build_zip_async, get_lan, require_permission, sanitize_filename, validate_path
+from AssetsManager.lan.safe_open import SafeOpenError, read_safe_file
 from AssetsManager.lan.routes.quota import (
     apply_free_quota_headers,
     apply_free_quota_identity_cookie,
     consume_free_download_quota,
+    get_free_download_quota_info,
     quota_retry_after_seconds,
+    QuotaUnavailableError,
 )
 
 MAX_BATCH_DOWNLOAD_PATHS = 100
 MAX_BATCH_DOWNLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
 
 
+def _preflight_exhausted_response(request) -> web.Response | None:
+    """Fast-deny an already-exhausted identity before expensive preparation.
+
+    Read-only preflight: any store failure, a disabled quota, or a non-zero
+    remaining budget returns ``None`` and the request follows the legacy
+    flow (whose authoritative consume stays the single source of truth).
+    Only the exact exhausted case is short-circuited so batch/directory
+    downloads stop paying for size estimation plus ZIP creation they could
+    never receive; interval rate-limiting is deliberately not predicted.
+    """
+    try:
+        info = get_free_download_quota_info(request)
+    except Exception:
+        return None
+    if not info.get("enabled") or info.get("remaining") != 0:
+        return None
+    result = {"allowed": False, "reason": "exhausted", "retry_after_seconds": 0, "info": info}
+    headers: dict[str, str] = {}
+    apply_free_quota_headers(headers, info)
+    response = _quota_denied_response(result, headers)
+    apply_free_quota_identity_cookie(response, request)
+    return response
+
+
+def _quota_unavailable_response() -> web.Response:
+    return error_response(
+        "Quota unavailable",
+        status=503,
+        code="service_unavailable",
+    )
+
+
 def _quota_denied_response(
     quota_result: dict, quota_headers: dict[str, str]
-) -> web.HTTPTooManyRequests:
-    """Build the 429 response for a denied download; the caller owns cleanup."""
+) -> web.Response:
+    """Build the canonical 429 response for a denied download."""
     retry_after = quota_retry_after_seconds(quota_result["info"], quota_result)
     if retry_after > 0:
         quota_headers["Retry-After"] = str(retry_after)
-    return web.HTTPTooManyRequests(
-        text=json.dumps(
-            {
-                "error": (
-                    "Free download quota exhausted"
-                    if quota_result["reason"] == "exhausted"
-                    else "Please wait before downloading again"
-                ),
-                "quota": quota_result["info"],
-            }
+    return error_response(
+        (
+            "Free download quota exhausted"
+            if quota_result["reason"] == "exhausted"
+            else "Please wait before downloading again"
         ),
-        content_type="application/json",
+        status=429,
+        code="download_quota_exhausted" if quota_result["reason"] == "exhausted" else "download_rate_limited",
+        details={"quota": quota_result["info"], "retry_after": retry_after},
+        extra={"quota": quota_result["info"]},
         headers=quota_headers,
     )
 
@@ -138,28 +170,38 @@ async def handle_download(request):
 
         if target.is_file():
             try:
-                response = web.FileResponse(
-                    target,
-                    headers={
-                        "Content-Disposition": _content_disposition_filename(target.name),
-                    },
+                body, _identity = await asyncio.to_thread(
+                    read_safe_file, getattr(lan, "library_root", target.parent), target,
                 )
-            except Exception:
-                # Existence is guaranteed by validate_path; a construction
-                # failure means the file disappeared or is unreadable.
+            except (SafeOpenError, OSError, ValueError):
                 status = 404
                 return error_response("File not found", status=status, code="not_found")
 
-            quota_result = consume_free_download_quota(request)
+            preflight = _preflight_exhausted_response(request)
+            if preflight is not None:
+                status = 429
+                return preflight
+
+            response = web.Response(
+                body=body,
+                headers={
+                    "Content-Disposition": _content_disposition_filename(target.name),
+                },
+            )
+            try:
+                quota_result = consume_free_download_quota(request)
+            except QuotaUnavailableError:
+                status = 503
+                return _quota_unavailable_response()
             quota_headers: dict[str, str] = {}
             apply_free_quota_headers(quota_headers, quota_result["info"])
             if not quota_result["allowed"]:
                 # The FileResponse is constructed but never sent, so nothing
                 # needs closing before rejecting the download.
                 status = 429
-                exc = _quota_denied_response(quota_result, quota_headers)
-                apply_free_quota_identity_cookie(exc, request)
-                raise exc
+                response = _quota_denied_response(quota_result, quota_headers)
+                apply_free_quota_identity_cookie(response, request)
+                return response
             apply_free_quota_identity_cookie(response, request)
             status = 200
             outcome = "response_ready"
@@ -181,6 +223,11 @@ async def handle_download(request):
                     extra={"total_bytes": total_bytes, "limit_bytes": MAX_BATCH_DOWNLOAD_BYTES},
                 )
 
+            preflight = _preflight_exhausted_response(request)
+            if preflight is not None:
+                status = 429
+                return preflight
+
             import tempfile
             tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip")
             os.close(tmp_fd)
@@ -192,7 +239,15 @@ async def handle_download(request):
                     pass
                 return error_response("Failed to create ZIP", status=status, code="internal_error")
 
-            quota_result = consume_free_download_quota(request)
+            try:
+                quota_result = consume_free_download_quota(request)
+            except QuotaUnavailableError:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                status = 503
+                return _quota_unavailable_response()
             quota_headers = {}
             apply_free_quota_headers(quota_headers, quota_result["info"])
             if not quota_result["allowed"]:
@@ -201,9 +256,9 @@ async def handle_download(request):
                 except OSError:
                     pass
                 status = 429
-                exc = _quota_denied_response(quota_result, quota_headers)
-                apply_free_quota_identity_cookie(exc, request)
-                raise exc
+                response = _quota_denied_response(quota_result, quota_headers)
+                apply_free_quota_identity_cookie(response, request)
+                return response
             status = 200
             outcome = "response_ready"
             kind = "directory_zip"
@@ -219,7 +274,7 @@ async def handle_download(request):
         status = exc.status
         raise
     finally:
-        _record_download_route(lan, started, response_path, outcome, status, kind)
+        await _record_download_route(lan, started, response_path, outcome, status, kind)
 
 
 async def handle_batch_download(request):
@@ -283,6 +338,11 @@ async def handle_batch_download(request):
                 extra={"total_bytes": total_bytes, "limit_bytes": MAX_BATCH_DOWNLOAD_BYTES},
             )
 
+        preflight = _preflight_exhausted_response(request)
+        if preflight is not None:
+            status = 429
+            return preflight
+
         import tempfile
         tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip")
         os.close(tmp_fd)
@@ -294,7 +354,15 @@ async def handle_batch_download(request):
                 pass
             return error_response("Failed to create ZIP", status=status, code="internal_error")
 
-        quota_result = consume_free_download_quota(request)
+        try:
+            quota_result = consume_free_download_quota(request)
+        except QuotaUnavailableError:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            status = 503
+            return _quota_unavailable_response()
         quota_headers: dict[str, str] = {}
         apply_free_quota_headers(quota_headers, quota_result["info"])
         if not quota_result["allowed"]:
@@ -303,9 +371,9 @@ async def handle_batch_download(request):
             except OSError:
                 pass
             status = 429
-            exc = _quota_denied_response(quota_result, quota_headers)
-            apply_free_quota_identity_cookie(exc, request)
-            raise exc
+            response = _quota_denied_response(quota_result, quota_headers)
+            apply_free_quota_identity_cookie(response, request)
+            return response
 
         if len(targets) == 1:
             zip_name = f"{targets[0][1].name}.zip"
@@ -323,11 +391,17 @@ async def handle_batch_download(request):
         _record_batch_download_route(lan, started, outcome, status, target_count)
 
 
-def _record_download_route(lan, started: float, response_path, outcome: str, status: int, kind: str) -> None:
+async def _record_download_route(lan, started: float, response_path, outcome: str, status: int, kind: str) -> None:
     services = getattr(lan, "services", None)
     activity_log = getattr(services, "activity_log", None)
     if activity_log is not None and outcome == "response_ready":
-        activity_log.add(None, "download", str(response_path or kind), ip="unknown")
+        await asyncio.to_thread(
+            activity_log.add,
+            None,
+            "download",
+            str(response_path or kind),
+            ip="unknown",
+        )
     recorder = getattr(lan, "performance_recorder", None)
     if recorder is None or not recorder.enabled:
         return

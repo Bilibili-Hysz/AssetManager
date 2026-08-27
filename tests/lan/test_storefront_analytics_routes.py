@@ -90,3 +90,46 @@ def test_storefront_view_respects_the_commerce_feature_gate(monkeypatch):
     assert asyncio.run(
         routes.handle_storefront_view(make_mocked_request("POST", "/api/shop/analytics/store-view"))
     ) is expected
+
+
+def test_storefront_cookie_morsel_attributes_and_error_path(monkeypatch):
+    service = AnalyticsService()
+    lan = _lan()
+    monkeypatch.setattr(routes, "commerce_gate", lambda: None)
+    monkeypatch.setattr(routes, "get_lan", lambda request: lan)
+    monkeypatch.setattr(routes, "get_storefront_analytics_service", lambda request: service)
+
+    response = asyncio.run(
+        routes.handle_storefront_view(make_mocked_request("POST", "/api/shop/analytics/store-view"))
+    )
+    morsel = response.cookies[routes._STORE_VISIT_COOKIE]
+    assert morsel["httponly"]
+    assert morsel["samesite"] == "Lax"
+    assert morsel["path"] == "/api/shop"
+    assert morsel["max-age"] == str(24 * 60 * 60)
+
+    # Service failure keeps the bare 202 contract: no cookie, no record.
+    class FailingService:
+        def record_visit(self, *_args, **_kwargs):
+            raise RuntimeError("store down")
+
+    monkeypatch.setattr(
+        routes, "get_storefront_analytics_service", lambda request: FailingService()
+    )
+    failed = asyncio.run(
+        routes.handle_storefront_view(make_mocked_request("POST", "/api/shop/analytics/store-view"))
+    )
+    assert failed.status == 202
+    assert routes._STORE_VISIT_COOKIE not in failed.cookies
+
+
+def test_storefront_secret_shares_lan_fallback_with_quota_tunnel(monkeypatch):
+    from AssetsManager.lan.routes import quota as quota_routes
+
+    class BareLan:
+        token_secret = None
+
+    lan = BareLan()
+    shared = routes._cookie_signing_secret(lan)
+    assert getattr(lan, "_quota_cookie_secret") == shared
+    assert quota_routes._quota_cookie_signing_secret(lan) == shared

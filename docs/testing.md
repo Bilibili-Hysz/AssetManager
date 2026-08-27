@@ -1,6 +1,6 @@
 # Testing Strategy
 
-Baseline evolution：`90 passed`（重构早期）→ `603 passed`（架构重构阶段）→ `1590`（2026-08-01）→ `2790`（2026-08-09）→ **`2952 passed, 7 skipped, 0 failed`**（2026-08-11 实测，Windows / Python 3.13，304s）。完整验证基线见 `docs/full-review/07-verification.md`。
+Historical baseline evolution：`90 passed`（重构早期）→ `603 passed`（架构重构阶段）→ `1590`（2026-08-01）→ `2790`（2026-08-09）→ **`2952 passed, 7 skipped, 0 failed`**（2026-08-11 Windows / Python 3.13 snapshot）。这些数字只描述当时的快照；当前运行结果必须附日期化 command/artifact 证据。完整历史基线见 `docs/full-review/07-verification.md`，C6-C10 当前收敛见 `docs/full-review/c6-c10-convergence-2026-08-21.md`。
 
 ## Required Checks
 
@@ -17,7 +17,7 @@ Baseline evolution：`90 passed`（重构早期）→ `603 passed`（架构重�
 
 | Check | Status | Notes |
 |---|---|---|
-| `pytest` | **2952 passed, 7 skipped** | 2026-08-11 实测；skip 均为 Windows symlink 特权/进程终止非确定性 |
+| `pytest` | **2952 passed, 7 skipped** | 2026-08-11 historical snapshot only; current results require a dated command/artifact |
 | `ruff check .` | All checks passed | Full-repository clean |
 | `ruff check .` | All checks passed | Full-repository clean |
 | `pyright` | 0 errors, 0 warnings, 0 informations | Scoped by `pyrightconfig.json` |

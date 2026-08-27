@@ -35,7 +35,7 @@ export function ActivityLogView() {
                 <p className="text-xs text-slate-500">{activity.details}</p>
               </div>
               <span className="text-xs text-slate-600 whitespace-nowrap">
-                {new Date(activity.timestamp).toLocaleString()}
+                {new Date(activity.timestamp * 1000).toLocaleString()}
               </span>
             </div>
           ))}

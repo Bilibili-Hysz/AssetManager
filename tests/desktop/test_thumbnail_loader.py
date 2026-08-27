@@ -1,6 +1,7 @@
 import os
 import threading
 import time
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 from PySide6.QtGui import QImage
@@ -8,6 +9,7 @@ from PySide6.QtWidgets import QApplication
 
 from AssetsManager.core.performance import PerformanceRecorder
 from AssetsManager.panels.file_list._loader import (
+    FileIdentity,
     ThumbnailLoader,
     _VIDEO_FRAME_DEFERRED,
 )
@@ -379,16 +381,19 @@ def test_thumbnail_loader_clear_thumb_cache_uses_service_and_disk_runtime(tmp_pa
     cache_dir.mkdir()
     webp = cache_dir / "one.webp"
     temp = cache_dir / "two.webp.tmp"
+    jpg = cache_dir / "three.jpg"
     keep = cache_dir / "keep.txt"
     webp.write_bytes(b"one")
     temp.write_bytes(b"two")
+    jpg.write_bytes(b"three")
     keep.write_text("keep", encoding="utf-8")
 
     loader.bind_runtime(service, str(cache_dir), str(tmp_path))
-    assert loader.clear_thumb_cache() == 2
+    assert loader.clear_thumb_cache() == 3
 
     assert not webp.exists()
     assert not temp.exists()
+    assert not jpg.exists()
     assert keep.exists()
     service.clear_cache_metadata.assert_called_once_with(str(tmp_path.resolve()))
 
@@ -789,6 +794,174 @@ def test_thumbnail_loader_visible_request_displaces_deferred_prefetch_at_capacit
     loader._pool.waitForDone(5000)
 
 
+def test_thumbnail_loader_image_decodes_captured_body_without_reopening_source(tmp_path, monkeypatch):
+    source = tmp_path / "photo.png"
+    image = QImage(24, 12, QImage.Format.Format_RGB32)
+    image.fill(0xFF336699)
+    assert image.save(str(source), "PNG")
+    loader = ThumbnailLoader()
+    runtime = loader._runtime()
+    original = source.read_bytes()
+
+    def capture_snapshot(_path, _runtime):
+        identity = FileIdentity.from_stat(source.stat())
+        source.unlink()
+        return original, identity
+
+    monkeypatch.setattr(loader, "_snapshot_source", capture_snapshot)
+    decoded = loader._load_image(str(source), runtime)
+    assert decoded is not None and not decoded.isNull()
+    assert (decoded.width(), decoded.height()) == (24, 12)
+
+
+def test_thumbnail_loader_cache_completion_uses_snapshot_identity(tmp_path):
+    source = tmp_path / "photo.png"
+    source.write_bytes(b"captured")
+    loader = ThumbnailLoader()
+    runtime = loader._runtime()
+    identity = FileIdentity.from_stat(source.stat())
+    image = QImage(2, 2, QImage.Format.Format_RGB32)
+    loader._source_identities[str(source)] = identity
+    loader._on_image_loaded(1, str(source), str(source), image, runtime)
+    assert loader._source_identities[str(source)] == identity
+
+
+def test_thumbnail_loader_reads_legacy_webp_cache_after_key_versioning(tmp_path):
+    from AssetsManager.core.thumbnail_key import legacy_thumbnail_cache_key
+
+    source = tmp_path / "photo.png"
+    image = QImage(16, 8, QImage.Format.Format_RGB32)
+    image.fill(0xFF336699)
+    assert image.save(str(source), "PNG")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    cached = cache_dir / f"{legacy_thumbnail_cache_key(source)}.webp"
+    assert image.save(str(cached), "WEBP")
+
+    loader = ThumbnailLoader()
+    loader.bind_runtime(Mock(), str(cache_dir), str(tmp_path))
+
+    loaded = loader._load_image(str(source), loader._runtime())
+
+    assert loaded is not None and not loaded.isNull()
+
+
+def test_thumbnail_loader_rejects_profile_insufficient_cache(tmp_path, monkeypatch):
+    source = tmp_path / "photo.png"
+    image = QImage(256, 128, QImage.Format.Format_RGB32)
+    image.fill(0xFF336699)
+    assert image.save(str(source), "PNG")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    loader = ThumbnailLoader(size=96)
+    key = loader._disk_key(str(source))
+    cached = cache_dir / f"{key}.webp"
+    assert image.save(str(cached), "WEBP")
+    service = Mock()
+    service.get_cache_metadata.return_value = SimpleNamespace(
+        source_mtime=os.path.getmtime(source),
+        source_mtime_ns=None,
+        source_size=source.stat().st_size,
+        baked_size=256,
+        artifact_kind="webp",
+    )
+    loader.bind_runtime(service, str(cache_dir), str(tmp_path))
+    monkeypatch.setattr("AssetsManager.panels.file_list._loader.get_bake_size", lambda: 512)
+
+    assert loader._try_load_cached(key, str(source), loader._runtime(), bake_size=512) is None
+    assert cached.exists()
+    service.delete_cache_metadata.assert_not_called()
+
+
+def test_thumbnail_loader_admission_uses_loader_size(tmp_path, monkeypatch):
+    source = tmp_path / "photo.png"
+    image = QImage(512, 256, QImage.Format.Format_RGB32)
+    image.fill(0xFF336699)
+    assert image.save(str(source), "PNG")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    loader = ThumbnailLoader(size=512)
+    key = loader._disk_key(str(source))
+    cached = cache_dir / f"{key}.webp"
+    assert image.save(str(cached), "WEBP")
+    service = Mock()
+    service.get_cache_metadata.return_value = SimpleNamespace(
+        source_mtime=os.path.getmtime(source), source_mtime_ns=None,
+        source_size=source.stat().st_size, baked_size=256, artifact_kind="webp",
+    )
+    loader.bind_runtime(service, str(cache_dir), str(tmp_path))
+    monkeypatch.setattr("AssetsManager.panels.file_list._loader.get_bake_size", lambda: 256)
+
+    assert loader._try_load_cached(key, str(source), loader._runtime(), bake_size=256) is None
+    assert cached.exists()
+
+
+def test_thumbnail_loader_compatible_profile_cache_hits(tmp_path, monkeypatch):
+    source = tmp_path / "photo.png"
+    image = QImage(512, 256, QImage.Format.Format_RGB32)
+    image.fill(0xFF336699)
+    assert image.save(str(source), "PNG")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    loader = ThumbnailLoader(size=96)
+    key = loader._disk_key(str(source))
+    cached = cache_dir / f"{key}.webp"
+    assert image.save(str(cached), "WEBP")
+    service = Mock()
+    service.get_cache_metadata.return_value = SimpleNamespace(
+        source_mtime=os.path.getmtime(source), source_mtime_ns=None,
+        source_size=source.stat().st_size, baked_size=512, artifact_kind="webp",
+    )
+    loader.bind_runtime(service, str(cache_dir), str(tmp_path))
+    monkeypatch.setattr("AssetsManager.panels.file_list._loader.get_bake_size", lambda: 256)
+
+    loaded = loader._try_load_cached(key, str(source), loader._runtime(), bake_size=256)
+    assert loaded is not None and not loaded.isNull()
+
+
+def test_thumbnail_loader_missing_metadata_uses_artifact_dimensions(tmp_path, monkeypatch):
+    source = tmp_path / "photo.png"
+    image = QImage(512, 256, QImage.Format.Format_RGB32)
+    image.fill(0xFF336699)
+    assert image.save(str(source), "PNG")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    loader = ThumbnailLoader(size=96)
+    key = loader._disk_key(str(source))
+    cached = cache_dir / f"{key}.webp"
+    assert image.save(str(cached), "WEBP")
+    service = Mock()
+    service.get_cache_metadata.return_value = None
+    loader.bind_runtime(service, str(cache_dir), str(tmp_path))
+    monkeypatch.setattr("AssetsManager.panels.file_list._loader.get_bake_size", lambda: 512)
+
+    assert loader._try_load_cached(key, str(source), loader._runtime(), bake_size=512) is not None
+    service.upsert_cache_metadata.assert_not_called()
+
+
+def test_thumbnail_loader_wrong_artifact_kind_is_cache_miss(tmp_path, monkeypatch):
+    source = tmp_path / "photo.png"
+    image = QImage(512, 256, QImage.Format.Format_RGB32)
+    image.fill(0xFF336699)
+    assert image.save(str(source), "PNG")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    loader = ThumbnailLoader(size=96)
+    key = loader._disk_key(str(source))
+    cached = cache_dir / f"{key}.webp"
+    assert image.save(str(cached), "WEBP")
+    service = Mock()
+    service.get_cache_metadata.return_value = SimpleNamespace(
+        source_mtime=os.path.getmtime(source), source_mtime_ns=None,
+        source_size=source.stat().st_size, baked_size=512, artifact_kind="jpg",
+    )
+    loader.bind_runtime(service, str(cache_dir), str(tmp_path))
+    monkeypatch.setattr("AssetsManager.panels.file_list._loader.get_bake_size", lambda: 512)
+
+    assert loader._try_load_cached(key, str(source), loader._runtime(), bake_size=512) is None
+    assert cached.exists()
+
+
 def test_thumbnail_loader_video_reads_existing_cached_frame(tmp_path):
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"not a real video")
@@ -840,16 +1013,18 @@ def test_video_extraction_runs_on_dedicated_ffmpeg_pool_and_does_not_block_image
     started = threading.Event()
     release = threading.Event()
 
-    def fake_extract(source_path, destination):
+    def fake_extract(body, suffix, destination):
+        assert body == b"not a real video"
+        assert suffix == ".mp4"
         started.set()
         assert release.wait(5)
         frame_img = QImage(16, 12, QImage.Format.Format_RGB32)
         frame_img.fill(0xFF336699)
-        assert frame_img.save(str(destination), "JPG")
+        frame_img.save(str(destination), "JPG")
         return True
 
     monkeypatch.setattr(
-        ThumbnailService, "_extract_video_frame", staticmethod(fake_extract)
+        ThumbnailService, "_extract_video_frame_from_bytes", staticmethod(fake_extract)
     )
 
     loader = ThumbnailLoader()

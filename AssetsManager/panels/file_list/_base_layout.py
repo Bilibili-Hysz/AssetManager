@@ -26,10 +26,8 @@ from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager import i18n
 
-from AssetsManager.panels.file_list._common import (
-    FILTER_CATEGORY_LABELS,
-    ZOOM_PRESETS,
-)
+from AssetsManager.application.asset_filters import category_labels
+from AssetsManager.panels.file_list._common import ZOOM_PRESETS
 from AssetsManager.panels.file_list._grid_layout import GridLayout
 from AssetsManager.panels.file_list._grid_widget import FileListGridWidget
 from AssetsManager.panels.file_list._thumbnail_delivery import ThumbnailDeliveryCoordinator
@@ -140,8 +138,7 @@ class LayoutMixin:
         tb.addWidget(self._sort_btn)
 
         self._filter_combo = QComboBox()
-        for key, _label in FILTER_CATEGORY_LABELS:
-            self._filter_combo.addItem(tr(f"filelist.filter.{key}"), key)
+        self._populate_filter_combo()
         self._filter_combo.setToolTip(tr("filelist.filter_tooltip"))
         self._filter_combo.setAccessibleName(tr("filelist.filter_tooltip"))
         tb.addWidget(self._filter_combo)
@@ -338,6 +335,48 @@ class LayoutMixin:
     def _sync_selection_anim(self):
         pass
 
+    @staticmethod
+    def _filter_category_text(key: str, label: str) -> str:
+        if key in {"all", "images", "models", "videos", "documents", "archives"}:
+            return tr(f"filelist.filter.{key}")
+        return label
+
+    def _populate_filter_combo(self, selected_key: str | None = None) -> str:
+        """Rebuild category choices and return the surviving canonical key."""
+        categories = category_labels()
+        available_keys = {key for key, _label in categories}
+        key = selected_key if selected_key in available_keys else "all"
+        self._filter_combo.blockSignals(True)
+        try:
+            self._filter_combo.clear()
+            for category_key, label in categories:
+                self._filter_combo.addItem(
+                    self._filter_category_text(category_key, label), category_key,
+                )
+            self._filter_combo.setCurrentIndex(
+                max(0, self._filter_combo.findData(key))
+            )
+        finally:
+            self._filter_combo.blockSignals(False)
+        return key
+
+    def _on_category_registry_changed(self) -> None:
+        """Refresh an open panel after plugin categories are rebuilt."""
+        if getattr(self, "_category_registry_disconnected", False) or self._model.is_shutdown:
+            return
+        selected_key = self._filter_combo.currentData()
+        surviving_key = self._populate_filter_combo(selected_key)
+        # A surviving key may have a different extension set after a plugin
+        # update, so every registry generation must reapply the model filter.
+        self._model.set_filter(
+            text=self._search.text().lower(), category=surviving_key,
+        )
+        self._refresh_state_icons()
+        self._update_status()
+        if self._view_mode == "Details":
+            self._populate_details()
+        self._load_visible()
+
     def _retranslate_controls(self):
         self._header_title.setText(tr("filelist.header"))
         for button, key in zip(self._nav_buttons, self._nav_tooltip_keys, strict=True):
@@ -357,12 +396,7 @@ class LayoutMixin:
         self._sort_combo.blockSignals(False)
 
         filter_key = self._filter_combo.currentData()
-        self._filter_combo.blockSignals(True)
-        self._filter_combo.clear()
-        for key, _label in FILTER_CATEGORY_LABELS:
-            self._filter_combo.addItem(tr(f"filelist.filter.{key}"), key)
-        self._filter_combo.setCurrentIndex(max(0, self._filter_combo.findData(filter_key)))
-        self._filter_combo.blockSignals(False)
+        self._populate_filter_combo(filter_key)
 
         view_mode = self._view_combo.currentData()
         self._view_combo.blockSignals(True)

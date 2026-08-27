@@ -70,6 +70,30 @@ describe('shop API contract', () => {
     expect(api.get).toHaveBeenCalledWith('shop/items/by-path', { path: 'packs/hero pack.zip' });
   });
 
+  it('accepts seller metadata alongside gallery paths in create and update payloads', () => {
+    const { shop, api } = setup();
+    shop.create({
+      path: 'packs/asset.zip',
+      title: 'Asset',
+      price_cents: 100,
+      metadata: { license: 'standard' },
+      gallery_paths: ['packs/gallery.png'],
+    });
+    shop.update(7, { metadata: { license: 'extended' }, gallery_paths: [] });
+
+    expect(api.post).toHaveBeenCalledWith('shop/items', {
+      path: 'packs/asset.zip',
+      title: 'Asset',
+      price_cents: 100,
+      metadata: { license: 'standard' },
+      gallery_paths: ['packs/gallery.png'],
+    });
+    expect(api.put).toHaveBeenCalledWith('shop/items/7', {
+      metadata: { license: 'extended' },
+      gallery_paths: [],
+    });
+  });
+
   it('encodes item, order, and delivery identifiers', () => {
     const { shop, api } = setup();
     shop.update('item/a', { title: 'Updated' });

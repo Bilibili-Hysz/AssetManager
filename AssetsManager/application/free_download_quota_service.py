@@ -6,6 +6,7 @@ batch counterpart.
 """
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -44,9 +45,22 @@ class FreeDownloadQuotaConfig:
 
 
 class FreeDownloadQuotaService:
-    def __init__(self, repository: FreeDownloadQuotaRepository, *, clock=time.time) -> None:
+    MAINTENANCE_INTERVAL_SECONDS = 60 * 60
+    MAINTENANCE_FAILURE_RETRY_SECONDS = 30
+
+    def __init__(
+        self,
+        repository: FreeDownloadQuotaRepository,
+        *,
+        clock=time.time,
+        monotonic_clock=time.monotonic,
+    ) -> None:
         self.repository = repository
         self.clock = clock
+        self.monotonic_clock = monotonic_clock
+        self._maintenance_lock = threading.RLock()
+        self._maintenance_last_success: float | None = None
+        self._maintenance_next_attempt = 0.0
 
     @classmethod
     def for_connection(
@@ -146,3 +160,59 @@ class FreeDownloadQuotaService:
             "info": info,
             "retry_after_seconds": int(result.get("retry_after_seconds", 0)),
         }
+
+    def prune_stale_windows(
+        self,
+        config: FreeDownloadQuotaConfig,
+        *,
+        now: float | None = None,
+        periods_to_keep: int = 2,
+    ) -> int:
+        """Opportunistically delete windows older than the kept periods.
+
+        The cutoff walks back from the current period boundary, so a clock
+        fault shorter than ``periods_to_keep`` periods cannot reach an
+        active bucket and a rolled-back clock only shrinks (never widens)
+        the deleted range.  Intended as opportunistic maintenance outside
+        the consume hot path.
+        """
+        if periods_to_keep < 1:
+            raise ValueError("periods_to_keep must be >= 1")
+        cfg = config.normalized()
+        timestamp = float(self.clock()) if now is None else float(now)
+        period_days = 7 if str(cfg.period).lower() == "weekly" else 1
+        cutoff_base = timestamp - periods_to_keep * period_days * 86_400
+        before = self.period_start(cutoff_base, cfg.period)
+        return self.repository.prune_windows(before)
+
+    def maybe_prune_stale_windows(
+        self,
+        config: FreeDownloadQuotaConfig,
+        *,
+        now: float | None = None,
+    ) -> int | None:
+        """Run bounded opportunistic maintenance when its gate is due.
+
+        The gate is process-local and advisory: concurrent LAN processes may
+        each perform the same idempotent prune, while a transient failure gets
+        a short retry window instead of suppressing maintenance for the rest of
+        the service lifetime.
+        """
+        if not config.normalized().enabled:
+            return None
+        monotonic_now = float(self.monotonic_clock())
+        with self._maintenance_lock:
+            if monotonic_now < self._maintenance_next_attempt:
+                return None
+            try:
+                removed = self.prune_stale_windows(config, now=now)
+            except Exception:
+                self._maintenance_next_attempt = (
+                    monotonic_now + self.MAINTENANCE_FAILURE_RETRY_SECONDS
+                )
+                raise
+            self._maintenance_last_success = monotonic_now
+            self._maintenance_next_attempt = (
+                monotonic_now + self.MAINTENANCE_INTERVAL_SECONDS
+            )
+            return removed

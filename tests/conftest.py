@@ -439,6 +439,30 @@ def tmp_path(request) -> Path:
 
 
 @pytest.fixture
+def isolated_plugin_settings(monkeypatch):
+    """Keep plugin durable-state tests out of the shared user settings file."""
+    from AssetsManager.core.settings import AppSettings
+
+    class _Settings:
+        def __init__(self):
+            self.data = {}
+            self.save_calls = 0
+
+        def get(self, key, default=None):
+            return self.data.get(key, default)
+
+        def set(self, key, value):
+            self.data[key] = value
+
+        def save(self):
+            self.save_calls += 1
+
+    settings = _Settings()
+    monkeypatch.setattr(AppSettings, "instance", classmethod(lambda cls: settings))
+    return settings
+
+
+@pytest.fixture
 def temp_dir():
     with tempfile.TemporaryDirectory() as d:
         yield Path(d)

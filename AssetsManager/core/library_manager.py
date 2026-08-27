@@ -22,12 +22,16 @@ def _all() -> dict:
 
 def _save(data: dict) -> None:
     s = AppSettings.instance()
+    if s.is_write_blocked:
+        return
     s.set(_KEY, data)
     s.save()
 
 
 def record_visit(path_str: str) -> str:
     """Create or update a library record. Returns UID."""
+    if AppSettings.instance().is_write_blocked:
+        return ""
     data = _all()
     resolved = str(Path(path_str).resolve())
     name = Path(resolved).name or resolved
@@ -57,6 +61,8 @@ def record_visit(path_str: str) -> str:
 
 
 def remove(uid: str) -> None:
+    if AppSettings.instance().is_write_blocked:
+        return
     data = _all()
     data.pop(uid, None)
     _save(data)

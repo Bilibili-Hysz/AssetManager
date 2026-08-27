@@ -434,6 +434,42 @@ def test_download_tracker_v2_example(tmp_path):
         PluginManagerService._instance = None
 
 
+def test_v2_command_collision_does_not_leave_orphan_registry_entry():
+    class Operator(CommandOperator):
+        id = "shared.command"
+        title = "Operator"
+
+        def execute(self, ctx, params=None):
+            return None
+
+    host = PluginHostContext()
+    assert host.register_command(
+        {"id": "shared.command", "title": "Legacy"}, lambda: None, "legacy"
+    ) is True
+    with host.plugin_registration("plugin"):
+        assert host.register_class(Operator) is False
+    assert "shared.command" not in host._v2_commands
+    assert host.execute_command("shared.command") is True
+
+
+def test_v2_parser_permission_failure_is_atomic():
+    class Parser(FileParser):
+        id = "blocked.parser"
+
+        @classmethod
+        def match(cls, ctx, file_path):
+            return True
+
+        def parse(self, ctx, file_path):
+            return {"ok": "yes"}
+
+    host = PluginHostContext()
+    with host.plugin_registration("blocked"):
+        assert host.register_class(Parser) is False
+    assert "blocked.parser" not in host._v2_parsers
+    assert host.file_handlers() == []
+
+
 def test_permissions_are_isolated_per_plugin():
     host = PluginHostContext()
     with host._host_identity():

@@ -7,6 +7,7 @@ import tempfile
 import threading
 from typing import Callable, cast
 
+from AssetsManager.core.config_migrator import FutureConfigVersionError
 from AssetsManager.core.path_resolver import SHARED_DIR
 from AssetsManager.core.singleton import ThreadSafeSingleton
 
@@ -68,6 +69,7 @@ class AppSettings:
         self._data: dict = {}
         self._dirty = False
         self._loaded = False
+        self._future_config_version: int | None = None
         self._path = SHARED_DIR / "settings.json"
         self._lock = threading.RLock()
         # Register the exit-time flush at most once per process, and never
@@ -107,11 +109,18 @@ class AppSettings:
         return lock
 
     def _atexit_save(self):
+        if self.is_write_blocked:
+            return
         if self._dirty:
             self.save()
 
+    @property
+    def is_write_blocked(self) -> bool:
+        return getattr(self, "_future_config_version", None) is not None
+
     def load(self):
         with self._get_lock():
+            self._future_config_version = None
             try:
                 if self._path.exists():
                     data = json.loads(self._path.read_text(encoding="utf-8"))
@@ -147,6 +156,16 @@ class AppSettings:
                 # migration rejects.
                 _log.exception("Failed to decode settings from %s", self._path)
                 self._quarantine_corrupt_settings()
+            except FutureConfigVersionError as exc:
+                self._data.clear()
+                self._future_config_version = exc.version
+                self._dirty = False
+                _log.error(
+                    "Settings version %s is newer than this application; "
+                    "preserving %s as read-only",
+                    exc.version,
+                    self._path,
+                )
             except (ValueError, TypeError):
                 _log.exception("Settings rejected by migration at %s", self._path)
             except Exception:
@@ -194,6 +213,8 @@ class AppSettings:
 
     def save(self) -> bool:
         with self._get_lock():
+            if self.is_write_blocked:
+                return False
             if not self._dirty:
                 return True
             tmp = None
@@ -231,8 +252,13 @@ class AppSettings:
             return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
     def set(self, key, value):
+        with self._get_lock():
+            if self.is_write_blocked:
+                return
         _validate_setting(key, value)
         with self._get_lock():
+            if self.is_write_blocked:
+                return
             was_enabled = _seller_feature_enabled(self._data)
             self._data[key] = value
             if key in _SELLER_FEATURE_KEYS and was_enabled != _seller_feature_enabled(self._data):
@@ -271,6 +297,8 @@ class AppSettings:
 
     def commit_share_safety_confirmation(self, ack_version: int, trusted: bool) -> bool:
         """Persist the share-safety confirmation only if saving succeeds."""
+        if self.is_write_blocked:
+            return False
         _validate_setting(SHARE_SAFETY_ACK_VERSION_KEY, ack_version)
         _validate_setting(TRUSTED_NETWORK_CONFIRMED_KEY, trusted)
         with self._get_lock():
@@ -312,6 +340,8 @@ class AppSettings:
 
     def set_share_security_history(self, bind: str, auth_status: dict[str, object]) -> None:
         """Persist only a bind string and the effective auth posture."""
+        if self.is_write_blocked:
+            return
         _validate_setting(SHARE_LAST_SUCCESSFUL_BIND_KEY, bind)
         _validate_setting(SHARE_LAST_SUCCESSFUL_AUTH_KEY, auth_status)
         with self._get_lock():
@@ -321,6 +351,8 @@ class AppSettings:
 
     def commit_share_security_history(self, bind: str, auth_status: dict[str, object]) -> bool:
         """Persist LAN security history only if the settings save succeeds."""
+        if self.is_write_blocked:
+            return False
         _validate_setting(SHARE_LAST_SUCCESSFUL_BIND_KEY, bind)
         _validate_setting(SHARE_LAST_SUCCESSFUL_AUTH_KEY, auth_status)
         with self._get_lock():
@@ -352,6 +384,8 @@ class AppSettings:
 
     def set_list(self, key, values, max_items=None):
         with self._get_lock():
+            if self.is_write_blocked:
+                return
             result = list(values)
             if max_items is not None and len(result) > max_items:
                 result = result[:max_items]
@@ -366,6 +400,8 @@ class AppSettings:
         and lose an update.
         """
         with self._get_lock():
+            if self.is_write_blocked:
+                return
             items = self._data.get(key)
             items = list(items) if isinstance(items, list) else []
             if value in items:
@@ -379,6 +415,8 @@ class AppSettings:
     def remove_from_list(self, key, value):
         """Atomically remove ``value`` from the list at ``key`` if present."""
         with self._get_lock():
+            if self.is_write_blocked:
+                return
             items = self._data.get(key)
             if isinstance(items, list) and value in items:
                 items = list(items)

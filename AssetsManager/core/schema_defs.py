@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS reconciliation_tasks (
     library_root               TEXT NOT NULL,
     path                       TEXT NOT NULL,
     kind                       TEXT NOT NULL
-                               CHECK (kind IN ('asset_index_root_rescan')),
+                               CHECK (kind IN ('asset_index_root_rescan', 'filesystem_projection_repair')),
     reason                     TEXT NOT NULL,
     state                      TEXT NOT NULL
                                CHECK (state IN ('pending', 'running', 'retryable', 'succeeded', 'terminal', 'cancelled')),
@@ -146,6 +146,7 @@ CREATE TABLE IF NOT EXISTS reconciliation_tasks (
     updated_at                 REAL NOT NULL,
     lease_expires_at_wallclock REAL,
     max_attempts               INTEGER NOT NULL CHECK (max_attempts >= 1),
+    payload                    TEXT NOT NULL DEFAULT '{}',
     UNIQUE (library_root, path, kind)
 );
 CREATE INDEX IF NOT EXISTS idx_reconciliation_tasks_due
@@ -158,6 +159,52 @@ CREATE TABLE IF NOT EXISTS reconciliation_queue_state (
     generation   INTEGER NOT NULL DEFAULT 0 CHECK (generation >= 0),
     updated_at   REAL NOT NULL
 );
+"""
+
+IMPORT_MANIFESTS_SCHEMA_V31 = """
+CREATE TABLE IF NOT EXISTS import_manifests (
+    operation_id TEXT PRIMARY KEY NOT NULL,
+    library_root TEXT NOT NULL,
+    destination  TEXT NOT NULL,
+    state        TEXT NOT NULL CHECK (state IN (
+        'prepared', 'running', 'completed', 'degraded', 'cancelled',
+        'recovery_pending'
+    )),
+    payload      TEXT NOT NULL,
+    generation   INTEGER NOT NULL DEFAULT 0 CHECK (generation >= 0),
+    attempts     INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    last_error_type TEXT,
+    last_error   TEXT,
+    created_at   REAL NOT NULL,
+    updated_at   REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_import_manifests_recovery
+    ON import_manifests(library_root, state, updated_at);
+"""
+
+IMPORT_MANIFESTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS import_manifests (
+    operation_id TEXT PRIMARY KEY NOT NULL,
+    library_root TEXT NOT NULL,
+    destination  TEXT NOT NULL,
+    state        TEXT NOT NULL CHECK (state IN (
+        'prepared', 'running', 'completed', 'degraded', 'cancelled',
+        'recovery_pending'
+    )),
+    payload      TEXT NOT NULL,
+    generation   INTEGER NOT NULL DEFAULT 0 CHECK (generation >= 0),
+    attempts     INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    last_error_type TEXT,
+    last_error   TEXT,
+    created_at   REAL NOT NULL,
+    updated_at   REAL NOT NULL,
+    recovery_claim_token TEXT,
+    recovery_lease_expires_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_import_manifests_recovery
+    ON import_manifests(library_root, state, updated_at);
+CREATE INDEX IF NOT EXISTS idx_import_manifests_recovery_lease
+    ON import_manifests(library_root, state, recovery_lease_expires_at, updated_at);
 """
 
 # Ordinary/free-download quota state is deliberately separate from the
@@ -648,6 +695,32 @@ AUTH_SHARE_SCHEMA_CONTRACT: dict[str, SchemaObjectContract] = {
 # Small, shared object manifest used by migration and repository compatibility
 # paths. Contracts describe required shape only; additive columns remain valid.
 SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
+    "thumbnail_cache": {
+        "columns": (
+            "cache_key", "source_path", "source_mtime", "source_size",
+            "baked_size", "cache_size", "created_at", "last_access",
+            "source_mtime_ns", "artifact_kind", "render_profile",
+        ),
+        "primary_key": ("cache_key",),
+        "unique_constraints": (),
+        "indexes": {
+            "idx_thumb_source": ("source_path",),
+            "idx_thumb_last_access": ("last_access", "created_at", "cache_key"),
+        },
+        "column_contracts": {
+            "cache_key": {"type": "TEXT", "not_null": False},
+            "source_path": {"type": "TEXT", "not_null": True},
+            "source_mtime": {"type": "REAL", "not_null": False},
+            "source_size": {"type": "INTEGER", "not_null": False},
+            "baked_size": {"type": "INTEGER", "not_null": False},
+            "cache_size": {"type": "INTEGER", "not_null": False},
+            "created_at": {"type": "REAL", "not_null": False},
+            "last_access": {"type": "REAL", "not_null": False},
+            "source_mtime_ns": {"type": "INTEGER", "not_null": False},
+            "artifact_kind": {"type": "TEXT", "not_null": True},
+            "render_profile": {"type": "TEXT", "not_null": False},
+        },
+    },
     "activity_log": {
         "columns": ("id", "username", "action", "details", "ip", "timestamp"),
         "primary_key": ("id",),
@@ -682,6 +755,7 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
             "last_error_type", "last_error", "expected_revision",
             "observed_revision", "created_at", "updated_at",
             "lease_expires_at_wallclock", "lease_token", "max_attempts",
+            "payload",
         ),
         "primary_key": ("task_id",),
         "unique_constraints": (("library_root", "path", "kind"),),
@@ -704,9 +778,10 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
             "updated_at": {"type": "REAL", "not_null": True},
             "lease_token": {"type": "TEXT", "not_null": False},
             "max_attempts": {"type": "INTEGER", "not_null": True},
+            "payload": {"type": "TEXT", "not_null": True},
         },
         "checks": (
-            "kind IN ('asset_index_root_rescan')",
+            "kind IN ('asset_index_root_rescan', 'filesystem_projection_repair')",
             "state IN ('pending', 'running', 'retryable', 'succeeded', 'terminal', 'cancelled')",
             "attempts >= 0",
             "max_attempts >= 1",
@@ -722,6 +797,40 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
             "updated_at": {"type": "REAL", "not_null": True},
         },
         "checks": ("generation >= 0",),
+    },
+    "import_manifests": {
+        "columns": (
+            "operation_id", "library_root", "destination", "state", "payload",
+            "generation", "attempts", "last_error_type", "last_error",
+            "created_at", "updated_at", "recovery_claim_token",
+            "recovery_lease_expires_at",
+        ),
+        "primary_key": ("operation_id",),
+        "unique_constraints": (),
+        "indexes": {
+            "idx_import_manifests_recovery": ("library_root", "state", "updated_at"),
+            "idx_import_manifests_recovery_lease": (
+                "library_root", "state", "recovery_lease_expires_at", "updated_at"
+            ),
+        },
+        "column_contracts": {
+            "operation_id": {"type": "TEXT", "not_null": True},
+            "library_root": {"type": "TEXT", "not_null": True},
+            "destination": {"type": "TEXT", "not_null": True},
+            "state": {"type": "TEXT", "not_null": True},
+            "payload": {"type": "TEXT", "not_null": True},
+            "generation": {"type": "INTEGER", "not_null": True},
+            "attempts": {"type": "INTEGER", "not_null": True},
+            "created_at": {"type": "REAL", "not_null": True},
+            "updated_at": {"type": "REAL", "not_null": True},
+            "recovery_claim_token": {"type": "TEXT", "not_null": False},
+            "recovery_lease_expires_at": {"type": "REAL", "not_null": False},
+        },
+        "checks": (
+            "state IN ('prepared', 'running', 'completed', 'degraded', 'cancelled', 'recovery_pending')",
+            "generation >= 0",
+            "attempts >= 0",
+        ),
     },
     "free_download_quota_windows": {
         "columns": (

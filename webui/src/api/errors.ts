@@ -1,9 +1,27 @@
+import type { ErrorResponse } from '../types/api';
+
+export type ApiErrorBody =
+  | ErrorResponse
+  | { error: string; [key: string]: unknown }
+  | { body: string }
+  | { headers: Record<string, string> }
+  | Record<string, unknown>;
+
+export function isErrorResponse(value: unknown): value is ErrorResponse {
+  return typeof value === 'object'
+    && value !== null
+    && typeof (value as { error?: unknown }).error === 'string'
+    && typeof (value as { code?: unknown }).code === 'string'
+    && typeof (value as { details?: unknown }).details === 'object'
+    && (value as { details?: unknown }).details !== null;
+}
+
 /** Structured API error with HTTP status and category. */
 export class ApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
-    public readonly body?: unknown,
+    public readonly body?: ApiErrorBody,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -11,21 +29,21 @@ export class ApiError extends Error {
 }
 
 export class UnauthorizedError extends ApiError {
-  constructor(message = 'Unauthorized', body?: unknown) {
+  constructor(message = 'Unauthorized', body?: ApiErrorBody) {
     super(message, 401, body);
     this.name = 'UnauthorizedError';
   }
 }
 
 export class ForbiddenError extends ApiError {
-  constructor(message = 'Forbidden', body?: unknown) {
+  constructor(message = 'Forbidden', body?: ApiErrorBody) {
     super(message, 403, body);
     this.name = 'ForbiddenError';
   }
 }
 
 export class ServiceUnavailableError extends ApiError {
-  constructor(message = 'Service unavailable', body?: unknown) {
+  constructor(message = 'Service unavailable', body?: ApiErrorBody) {
     super(message, 503, body);
     this.name = 'ServiceUnavailableError';
   }

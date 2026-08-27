@@ -96,7 +96,8 @@ export function useCachedQuery<T>({
 
   const startFetch = useCallback(() => {
     if (!enabledRef.current) return;
-    const current = cache.getEntry<T>(keyRef.current);
+    const requestKey = keyRef.current;
+    const current = cache.getEntry<T>(requestKey);
     if (current.inFlight) return; // shared in-flight request
     onFetchStartRef.current?.();
     const controller = new AbortController();
@@ -107,7 +108,7 @@ export function useCachedQuery<T>({
       error: undefined,
       fetchedAt: previous.fetchedAt,
     };
-    cache.publish(keyRef.current, current.snapshot);
+    cache.publish(requestKey, current.snapshot);
     // The handlers only touch the entry's in-flight slot when it is still
     // theirs: a refresh() aborts this request and starts a newer one, and
     // settling the aborted promise must not clear the newer request's slot.
@@ -122,7 +123,7 @@ export function useCachedQuery<T>({
           error: undefined,
           fetchedAt: Date.now(),
         };
-        cache.publish(keyRef.current, current.snapshot);
+        cache.publish(requestKey, current.snapshot);
       },
       (error: unknown) => {
         if (current.inFlight === inFlight) current.inFlight = null;
@@ -136,7 +137,7 @@ export function useCachedQuery<T>({
           error,
           fetchedAt: Date.now(),
         };
-        cache.publish(keyRef.current, current.snapshot);
+        cache.publish(requestKey, current.snapshot);
       },
     );
     inFlight = { promise, abort: () => controller.abort() };

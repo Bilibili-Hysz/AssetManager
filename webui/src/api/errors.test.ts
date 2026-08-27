@@ -10,6 +10,7 @@ import {
   isUnauthorizedError,
   isServiceUnavailableError,
   isNetworkError,
+  isErrorResponse,
 } from './errors';
 
 describe('API error types', () => {
@@ -20,6 +21,12 @@ describe('API error types', () => {
     expect(err.status).toBe(404);
     expect(err.body).toEqual({ detail: 'missing' });
     expect(err.name).toBe('ApiError');
+  });
+
+  it('recognizes the canonical error envelope', () => {
+    const body = { error: 'Forbidden', code: 'forbidden', details: {}, field: 'path' };
+    expect(isErrorResponse(body)).toBe(true);
+    expect(isErrorResponse({ error: 'Forbidden' })).toBe(false);
   });
 
   it('UnauthorizedError has status 401', () => {

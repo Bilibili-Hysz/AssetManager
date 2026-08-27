@@ -30,6 +30,10 @@ from AssetsManager.application.favorite_service import FavoriteService
 from AssetsManager.application.gallery_service import GalleryService
 from AssetsManager.application.library_export_service import LibraryExportService
 from AssetsManager.application.library_watcher_service import LibraryWatcherService
+from AssetsManager.application.import_manifest_store import (
+    ImportManifestRecoveryService,
+    ImportManifestStore,
+)
 from AssetsManager.application.library_service import LibraryService
 from AssetsManager.application.metadata_service import MetadataService
 from AssetsManager.application.plugin_service import PluginService
@@ -237,6 +241,8 @@ class LibraryScopedServices:
     performance_recorder: PerformanceRecorder | None = None
     reconciliation_queue: ReconciliationQueue | None = None
     reconciliation_service: AssetIndexReconciliationService | None = None
+    import_manifest_store: ImportManifestStore | None = None
+    import_manifest_recovery: ImportManifestRecoveryService | None = None
 
     @property
     def lan_services(self) -> LanRuntimeServices:
@@ -512,7 +518,11 @@ class ApplicationBootstrap:
         )
         if not isinstance(interval, (int, float)) or isinstance(interval, bool) or interval <= 0:
             return
-        watcher = LibraryWatcherService(session, interval_seconds=float(interval))
+        watcher = LibraryWatcherService(
+            session,
+            interval_seconds=float(interval),
+            reconciliation_queue=getattr(runtime.services, "reconciliation_queue", None),
+        )
         runtime.register_lifecycle_adapter(watcher)
         watcher.start()
 
@@ -570,6 +580,10 @@ class ApplicationBootstrap:
                 library_root=session.root,
                 store=reconciliation_store,
             )
+            import_manifest_store = ImportManifestStore(
+                connection=connection,
+                library_root=session.root,
+            )
             reconciliation_queue = ReconciliationQueue(
                 library_root=session.root_str,
                 persistence_store=reconciliation_store,
@@ -577,10 +591,31 @@ class ApplicationBootstrap:
                 # fallback; Condition remains the same-process fast path.
                 cross_process_poll_interval=0.5,
             )
+            file_operation_service = FileOperationService(
+                session=session,
+                asset_index_service=asset_index_service,
+                performance_recorder=self._performance_recorder,
+                reconciliation_queue=reconciliation_queue,
+                import_manifest_store=import_manifest_store,
+            )
+            from AssetsManager.application.filesystem_projection_repair_service import (
+                FilesystemProjectionRepairService,
+            )
+            projection_repair_service = FilesystemProjectionRepairService(
+                session=session,
+                asset_index_service=asset_index_service,
+                file_operation_service=file_operation_service,
+            )
+            import_manifest_recovery = ImportManifestRecoveryService(
+                store=import_manifest_store,
+                reconciliation_queue=reconciliation_queue,
+            )
+            import_manifest_recovery.recover()
             reconciliation_service = AssetIndexReconciliationService(
                 session=session,
                 asset_index_service=asset_index_service,
                 reconciliation_queue=reconciliation_queue,
+                projection_repair_service=projection_repair_service,
                 # A runtime worker may recover from a bounded burst of
                 # unexpected infrastructure failures, but it must still
                 # become visibly faulted instead of retrying forever.
@@ -622,12 +657,7 @@ class ApplicationBootstrap:
                 thumbnail_service=ThumbnailService(
                     connection_provider=provider, session=session
                 ),
-                file_operation_service=FileOperationService(
-                    session=session,
-                    asset_index_service=asset_index_service,
-                    performance_recorder=self._performance_recorder,
-                    reconciliation_queue=reconciliation_queue,
-                ),
+                file_operation_service=file_operation_service,
                 undo_service=UndoService(
                     library_root=session.root_str,
                     session=session,
@@ -642,6 +672,8 @@ class ApplicationBootstrap:
                 performance_recorder=self._performance_recorder,
                 reconciliation_queue=reconciliation_queue,
                 reconciliation_service=reconciliation_service,
+                import_manifest_store=import_manifest_store,
+                import_manifest_recovery=import_manifest_recovery,
             )
 
     def _build_lan_services(

@@ -1,0 +1,353 @@
+{
+  "schema_version": 1,
+  "report_id": "tunnel-limiter-identity-isolation-evidence-2026-08-26",
+  "captured_at": "2026-08-26T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "7df18e0e7435d8672845d8a0f16d485c1bc6f43f9b8b01b3a5fd8325acb1b494",
+    "diff_sha256": "0f6cfe7154ea2978b8d14e6ea7165b80a23fa7d1689ccbcc02e710b85adcb2d3",
+    "tracked_change_count": 160,
+    "untracked_change_count": 150
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/lan/test_tunnel_rate_limit_isolation.py",
+          "tests/lan/test_low_batch_security.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Tunnel limiter identity isolation and existing whitelist/tunnel-bypass regressions",
+        "sample_count": 21,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/focused-isolation.stdout.log",
+            "sha256": "6802cb3960947c44094a1266bc5947ad2e5f03d717c4012d2aee29a8e3475b27"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/focused-isolation.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/lan/test_tunnel_rate_limit_isolation.py",
+          "tests/lan/test_low_batch_security.py",
+          "tests/lan/test_l2_rate_input_cpu.py",
+          "tests/lan/test_route_policy_contract.py",
+          "tests/lan/test_free_download_quota.py",
+          "tests/lan/test_tunnel_security.py",
+          "tests/lan/test_tunnel_unit.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Focused LAN security, rate-tier, route-policy, quota-identity, and tunnel matrices",
+        "sample_count": 76,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/focused.stdout.log",
+            "sha256": "711cc0798b3761ae3ebf90adc1e5e2e206f4ed4f114f2bcf1937d7b90064fc91"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full serial Python suite on final tunnel isolation state (second run; first run archived after cosmetic test-helper cleanup)",
+        "sample_count": 4099,
+        "pass_criterion": "exit_code == 0; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/full.stdout.log",
+            "sha256": "b4b40914f8266ca1684f0a50fdb246cccf6d56177b7220d2ed215c19c7b979f5"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/full-first-run.stdout.log",
+            "sha256": "1182806c96e3d341734efc780a2e0a674a2c3db8644579b58458f862f717bf57"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager/lan/tunnel_identity.py",
+          "AssetsManager/lan/security.py",
+          "AssetsManager/lan/server.py",
+          "tests/lan/test_tunnel_rate_limit_isolation.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted Ruff check for tunnel identity isolation",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/ruff.stdout.log",
+            "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/ruff.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Ruff governance check",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/ruff-full.stdout.log",
+            "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/ruff-full.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python compilation check",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/compile-full.stdout.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/compile-full.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Repository governance script chain (after README python_test_files 277->278 update)",
+        "sample_count": 6,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/governance.stdout.log",
+            "sha256": "81bfd648b89eb03b0a96d8a7c3935548aad9f49c656eb24143bb31846aa72135"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/governance.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Whitespace check for current dirty worktree",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/diffcheck.stdout.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/diffcheck.stderr.log",
+            "sha256": "a7fedbd38632d90d29a4c5b041b018f70295c33b545a3422810290d0cba8a0f0"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index non-self-referential static checks after tunnel isolation report and manifest",
+        "sample_count": 9,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/static-post-index.stdout.log",
+            "sha256": "cd0bfa8fd867bd821dbb2285bb364681e91a49b915884928a4116f4e570ccba2"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/tunnel-limiter-isolation/static-post-index.stderr.log",
+            "sha256": "a7fedbd38632d90d29a4c5b041b018f70295c33b545a3422810290d0cba8a0f0"
+          }
+        ]
+      }
+    ],
+    "note": "Focused matrices: 21 and 76 passed. Final full serial suite: 4063 passed, 16 skipped, 20 deselected, 2 warnings (first run also green at 4063 before a cosmetic unused-variable cleanup in the new test). No forwarded headers are trusted; cookieless tunnel clients intentionally share the loopback bucket; delivery claim-failure map collapse remains out of scope. No production cloudflared E2E, distributed-brute-force resistance, multi-process limiting, power-loss, exactly-once, cross-system atomicity, dependency/CVE, release, or clean-checkout claim is made."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/tunnel-limiter-identity-isolation-evidence-2026-08-26.md",
+      "sha256": "69d9811d59977046910687f63521f73064bbe65feeccceaf1399690e838f5aa7"
+    },
+    {
+      "path": "AssetsManager/lan/tunnel_identity.py",
+      "sha256": "f4bfdb21ec1f46fccaa8db5fdffeab0ae2686b454d34f9e2cb2a725b3df77bbc"
+    },
+    {
+      "path": "AssetsManager/lan/security.py",
+      "sha256": "14bc11d4ca0e2e7155befea51619dab150ca7b1549bb2088ddae15d125ad1cf4"
+    },
+    {
+      "path": "AssetsManager/lan/server.py",
+      "sha256": "689696224cc8a2b2d7036615873accf0d7e4102c2dcf6304e142bdff12c39e48"
+    },
+    {
+      "path": "tests/lan/test_tunnel_rate_limit_isolation.py",
+      "sha256": "b01ce9c410ef1a8fbcb26af714a637dc15a4ca924e914e0ec8a473dfc43b1908"
+    },
+    {
+      "path": "docs/deep-weakness-audit-2026-08-22/06-lan-server-security.md",
+      "sha256": "5f4ed866c517b2b739cd4811b286781f1af2f0f7a8fe52b13e337ed2396c00b2"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/tunnel-limiter-identity-isolation-evidence-2026-08-26.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "TUNNEL-LIMITER-IDENTITY-ISOLATION-35-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "TUNNEL-LIMITER-IDENTITY-ISOLATION-35-01"
+      ],
+      "anchors": [
+        "AssetsManager/lan/security.py:143",
+        "AssetsManager/lan/security.py:204",
+        "AssetsManager/lan/server.py:316",
+        "tests/lan/test_tunnel_rate_limit_isolation.py:104",
+        "tests/lan/test_tunnel_rate_limit_isolation.py:127",
+        "tests/lan/test_tunnel_rate_limit_isolation.py:177"
+      ],
+      "surface": "All cloudflared tunnel visitors shared one loopback rate-limit bucket, letting ten failed logins lock out every tunneled user for five minutes",
+      "next_action": "Retain signed-cookie isolation with shared-bucket degradation; separately evaluate delivery claim-map collapse, cookieless UX, and any future trusted forwarded-header policy",
+      "dynamic_verification": "Focused matrices passed 21 and 76 tests including bucket isolation, mint-on-first-contact degradation, tampered-cookie fallback, direct-mode invariance, and per-identity auth_strict lockout; final full serial suite passed 4063 tests. No production cloudflared E2E verification was executed"
+    }
+  ]
+}

@@ -7,7 +7,7 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
-from AssetsManager.application.asset_filters import IMAGE_EXTS, find_first_image
+from AssetsManager.application.asset_filters import IMAGE_EXTS
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.application.metadata_service import MetadataService
 from AssetsManager.application.tag_service import TagService
@@ -15,6 +15,9 @@ from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.format_utils import CATEGORY_MAP, format_size
 from AssetsManager.core.directory_cache import DirectoryCache
 from AssetsManager.core.path_resolver import root_identity, thumb_dir
+from AssetsManager.core.thumbnail_key import WEBP_RENDER_PROFILES, normalize_webp_render_profile
+from AssetsManager.application.thumbnail_cache_lifecycle import artifact_path
+from AssetsManager.application.thumbnail_service import admit_thumbnail_cache_artifact
 from AssetsManager.repositories.metadata_repository import MetadataRepository
 from AssetsManager.repositories.asset_index_repository import AssetIndexRepository
 from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
@@ -24,6 +27,60 @@ _log = logging.getLogger(__name__)
 _DEPTH_MIN = 1
 _DEPTH_MAX = 32
 _DEPTH_DEFAULT = 2
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x0400
+
+
+def _is_link_or_reparse(entry: os.DirEntry) -> bool:
+    """Return True for symlinks, junctions, or other reparse entries."""
+    try:
+        if entry.is_symlink():
+            return True
+        is_junction = getattr(entry, "is_junction", None)
+        if callable(is_junction) and is_junction():
+            return True
+        stat_result = entry.stat(follow_symlinks=False)
+        return bool(
+            int(getattr(stat_result, "st_file_attributes", 0))
+            & _FILE_ATTRIBUTE_REPARSE_POINT
+        )
+    except OSError:
+        return True
+
+
+@dataclass(frozen=True)
+class _SafeDirEntry:
+    """Snapshot a directory entry before its no-follow directory handle closes."""
+
+    name: str
+    path: str
+    _stat_result: os.stat_result
+    _is_dir: bool
+    _is_file: bool
+    _is_symlink: bool
+
+    @classmethod
+    def from_entry(cls, parent: Path, entry: os.DirEntry) -> "_SafeDirEntry":
+        stat_result = entry.stat(follow_symlinks=False)
+        return cls(
+            name=entry.name,
+            path=str(parent / entry.name),
+            _stat_result=stat_result,
+            _is_dir=entry.is_dir(follow_symlinks=False),
+            _is_file=entry.is_file(follow_symlinks=False),
+            _is_symlink=entry.is_symlink(),
+        )
+
+    def is_dir(self, *, follow_symlinks: bool = True) -> bool:
+        return self._is_dir
+
+    def is_file(self, *, follow_symlinks: bool = True) -> bool:
+        return self._is_file
+
+    def is_symlink(self) -> bool:
+        return self._is_symlink
+
+    def stat(self, *, follow_symlinks: bool = True) -> os.stat_result:
+        return self._stat_result
 
 
 def _clamp_depth(value: object, default: int = _DEPTH_DEFAULT) -> int:
@@ -240,6 +297,143 @@ class ProjectService:
             connection_provider=self._connection_provider, session=session
         )
 
+    @staticmethod
+    def _path_contains_link_or_reparse(root: Path, target: Path) -> bool:
+        """Return True when a path component below root is a link/reparse point."""
+        try:
+            relative = target.relative_to(root)
+        except ValueError:
+            return True
+        current = root
+        for part in relative.parts:
+            current /= part
+            try:
+                if current.is_symlink():
+                    return True
+                is_junction = getattr(current, "is_junction", None)
+                if callable(is_junction) and is_junction():
+                    return True
+                stat_result = current.lstat()
+            except OSError:
+                return True
+            if bool(
+                int(getattr(stat_result, "st_file_attributes", 0))
+                & _FILE_ATTRIBUTE_REPARSE_POINT
+            ):
+                return True
+        return False
+
+    @classmethod
+    def _admit_public_target(
+        cls, root: Path, target: str | Path
+    ) -> tuple[Path, Path]:
+        """Return the lexical and resolved target after containment checks."""
+        target_input = Path(target)
+        lexical_target = (
+            target_input if target_input.is_absolute() else Path.cwd() / target_input
+        )
+        target_path = lexical_target.resolve()
+        if not target_path.is_relative_to(root):
+            raise ValueError("target must be under library_root")
+        if (
+            cls._path_contains_link_or_reparse(root, lexical_target)
+            or cls._path_contains_link_or_reparse(root, target_path)
+        ):
+            raise ValueError("target must not pass through a link or reparse point")
+        return lexical_target, target_path
+
+    @classmethod
+    def _revalidate_public_target(
+        cls, root: Path, lexical_target: Path, target_path: Path
+    ) -> None:
+        """Reject a target replaced while a public operation was scanning it."""
+        _lexical_target, current_target = cls._admit_public_target(
+            root, lexical_target
+        )
+        if current_target != target_path:
+            raise ValueError("target changed during project operation")
+
+    @staticmethod
+    def _open_directory_no_follow(path: Path) -> int:
+        """Open every POSIX path component with no-follow semantics."""
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | os.O_NOFOLLOW
+        current_fd = os.open(path.anchor or os.sep, flags)
+        try:
+            for part in path.parts:
+                if part in ("", path.anchor):
+                    continue
+                next_fd = os.open(part, flags, dir_fd=current_fd)
+                os.close(current_fd)
+                current_fd = next_fd
+            return current_fd
+        except OSError:
+            os.close(current_fd)
+            raise
+
+    @staticmethod
+    def _directory_entry_snapshot(path: Path) -> list[_SafeDirEntry]:
+        """Snapshot entries without following a replaced directory component."""
+        directory_fd: int | None = None
+        try:
+            if os.name == "posix" and hasattr(os, "O_NOFOLLOW"):
+                directory_fd = ProjectService._open_directory_no_follow(path)
+                iterator = os.scandir(directory_fd)
+            else:
+                if ProjectService._path_contains_link_or_reparse(path.parent, path):
+                    return []
+                iterator = os.scandir(path)
+            with iterator as entries:
+                snapshot = [_SafeDirEntry.from_entry(path, entry) for entry in entries]
+            if os.name != "posix" and ProjectService._path_contains_link_or_reparse(
+                path.parent, path
+            ):
+                return []
+            return snapshot
+        except OSError:
+            return []
+        finally:
+            if directory_fd is not None:
+                os.close(directory_fd)
+
+    @staticmethod
+    def _safe_directory_entries(path: Path) -> list[_SafeDirEntry]:
+        """Return visible, non-link directories without following them."""
+        return [
+            entry
+            for entry in ProjectService._directory_entry_snapshot(path)
+            if not entry.name.startswith(".")
+            and not _is_link_or_reparse(entry)
+            and entry.is_dir(follow_symlinks=False)
+        ]
+
+    @staticmethod
+    def _safe_file_entries(path: Path) -> list[_SafeDirEntry]:
+        """Return visible, non-link files without following them."""
+        return [
+            entry
+            for entry in ProjectService._directory_entry_snapshot(path)
+            if not entry.name.startswith(".")
+            and not _is_link_or_reparse(entry)
+            and entry.is_file(follow_symlinks=False)
+        ]
+
+    @classmethod
+    def _first_image(cls, path: Path) -> Path | None:
+        for entry in cls._safe_file_entries(path):
+            if Path(entry.name).suffix.lower() in IMAGE_EXTS:
+                return Path(entry.path)
+        return None
+
+    @staticmethod
+    def _safe_file_path(root: Path, path: Path) -> bool:
+        """Return True only for a regular file with no linked path component."""
+        try:
+            if ProjectService._path_contains_link_or_reparse(root, path):
+                return False
+            return path.is_file() and not path.is_symlink()
+        except OSError:
+            return False
+
     def _connection(
         self, library_root: str | Path, db_conn: sqlite3.Connection | None
     ) -> sqlite3.Connection:
@@ -278,9 +472,7 @@ class ProjectService:
         limit: int = 0,
     ) -> ProjectListing:
         root = Path(library_root).resolve()
-        target_path = Path(target).resolve()
-        if not target_path.is_relative_to(root):
-            raise ValueError("target must be under library_root")
+        lexical_target, target_path = self._admit_public_target(root, target)
         db_conn = self._connection(root, db_conn)
         depth_config = depth_config or ProjectDepthConfig()
         rel_path = rel_path.replace("\\", "/").strip("/")
@@ -289,12 +481,11 @@ class ProjectService:
 
         # Collect candidate directories
         candidates: list[os.DirEntry] = []
-        for entry in os.scandir(target_path):
-            if not entry.is_dir() or entry.name.startswith("."):
-                continue
+        for entry in self._safe_directory_entries(target_path):
             if search and search not in entry.name.lower():
                 continue
             candidates.append(entry)
+        self._revalidate_public_target(root, lexical_target, target_path)
 
         # Batch-warm file_count cache for all candidates
         if db_conn is not None:
@@ -302,7 +493,9 @@ class ProjectService:
 
         items: list[ProjectListItem] = []
         for entry in candidates:
+            self._revalidate_public_target(root, lexical_target, target_path)
             items.append(self._entry_to_item(root, entry, current_depth, depth_config, db_conn))
+        self._revalidate_public_target(root, lexical_target, target_path)
 
         self._sort(items, sort_by, order)
 
@@ -352,7 +545,7 @@ class ProjectService:
             if path in cached:
                 continue
             try:
-                count = sum(1 for f in os.scandir(entry.path) if f.is_file() and not f.name.startswith("."))
+                count = len(self._safe_file_entries(Path(entry.path)))
             except OSError:
                 count = 0
             to_write[path] = count
@@ -409,7 +602,7 @@ class ProjectService:
         projects: list[dict] = []
         try:
             entries = sorted(
-                [e for e in os.scandir(current) if e.is_dir() and not e.name.startswith(".")],
+                self._safe_directory_entries(current),
                 key=lambda e: e.name.lower(),
             )
         except OSError:
@@ -421,7 +614,7 @@ class ProjectService:
             effective_depth = depth_config.branches.get(child_branch, depth_config.global_depth)
             if (depth + 1) >= effective_depth:
                 try:
-                    mtime = entry.stat().st_mtime
+                    mtime = entry.stat(follow_symlinks=False).st_mtime
                 except OSError:
                     _log.warning("project mtime lookup failed: %s", entry.path, exc_info=True)
                     mtime = 0
@@ -461,9 +654,12 @@ class ProjectService:
                     if not cached or cached.mtime != project["mtime"] or not cached.preview_path:
                         continue
                     project_path = (root / project["path"]).resolve()
-                    preview = Path(cached.preview_path).resolve()
+                    preview_input = Path(cached.preview_path)
+                    preview = preview_input.resolve()
                     preview.relative_to(root)
                     preview.relative_to(project_path)
+                    if self._path_contains_link_or_reparse(root, preview_input):
+                        continue
                     if not preview.is_file():
                         continue
                     rel_preview = os.path.relpath(preview, root).replace("\\", "/")
@@ -491,7 +687,7 @@ class ProjectService:
         if len(attached_paths) == len(project_paths):
             return
         try:
-            rows = ThumbnailRepository(db_conn).list_all_with_metadata()
+            rows = ThumbnailRepository(db_conn).list_metadata()
         except sqlite3.ProgrammingError:
             raise
         except sqlite3.Error:
@@ -504,27 +700,66 @@ class ProjectService:
             for project_path in project_paths
             if project_path not in attached_paths
         }
-        candidates: dict[str, tuple[Path, str]] = {}
+        candidates: dict[str, tuple[Path, str, int, tuple[int, int, str, str]]] = {}
         for row in rows:
             try:
-                cache_key, source_path, source_mtime = row
-                source = Path(source_path).resolve()
-                source.relative_to(library_root)
-                source_stat = source.stat()
-                if source_stat.st_mtime != source_mtime or not source.is_file():
+                if row.artifact_kind != "webp":
                     continue
-                baked = (baked_root / f"{cache_key}.webp").resolve()
-                baked.relative_to(baked_root)
+                cache_key = str(row.cache_key)
+                profile = row.render_profile
+                if profile is None:
+                    profile_token = ""
+                    profile_known = 0
+                else:
+                    profile_token = normalize_webp_render_profile(str(profile))
+                    profile_known = 1
+                profile_size = int(row.baked_size)
+                if profile_size <= 0:
+                    continue
+                if profile_known and profile_size != WEBP_RENDER_PROFILES[profile_token]:
+                    continue
+                source_input = Path(row.source_path)
+                if source_input.suffix.lower() not in IMAGE_EXTS:
+                    continue
+                source = source_input.resolve()
+                source.relative_to(library_root)
+                if ProjectService._path_contains_link_or_reparse(
+                    library_root, source_input
+                ):
+                    continue
+                source_stat = source.stat()
+                if not source.is_file() or source_stat.st_size != int(row.source_size):
+                    continue
+                if row.source_mtime_ns is not None:
+                    if source_stat.st_mtime_ns != int(row.source_mtime_ns):
+                        continue
+                elif source_stat.st_mtime != row.source_mtime:
+                    continue
+                baked_candidate = baked_root / f"{cache_key}.webp"
+                baked_input = artifact_path(baked_root, cache_key, "webp")
+                if baked_input is None:
+                    continue
+                if ProjectService._path_contains_link_or_reparse(
+                    baked_root, baked_candidate
+                ):
+                    continue
+                baked = baked_input
                 baked_stat = baked.stat()
                 if not baked.is_file() or baked_stat.st_mtime <= 0:
+                    continue
+                if admit_thumbnail_cache_artifact(baked, profile_size) is None:
                     continue
                 project_path = source.parent
                 while project_path != library_root.parent:
                     project_key = project_by_path.get(project_path)
                     if project_key is not None:
                         source.relative_to(project_path)
-                        if project_key not in candidates:
-                            candidates[project_key] = (source, cache_key)
+                        rank = (profile_size, profile_known, profile_token, cache_key)
+                        current = candidates.get(project_key)
+                        if current is None or rank > current[3]:
+                            candidates[project_key] = (
+                                source, cache_key, profile_size, rank,
+                            )
                         break
                     if project_path == library_root:
                         break
@@ -538,7 +773,7 @@ class ProjectService:
             candidate = candidates.get(project_path)
             if candidate is None:
                 continue
-            source, _cache_key = candidate
+            source, _cache_key, _profile_size, _rank = candidate
             rel_source = os.path.relpath(source, library_root).replace("\\", "/")
             project["thumbnail_path"] = rel_source
 
@@ -564,7 +799,7 @@ class ProjectService:
         count = 0
         try:
             entries = sorted(
-                [e for e in os.scandir(current) if e.is_dir() and not e.name.startswith(".")],
+                self._safe_directory_entries(current),
                 key=lambda e: e.name.lower(),
             )
         except OSError:
@@ -609,18 +844,20 @@ class ProjectService:
         db_conn: sqlite3.Connection | None = None,
     ) -> ProjectDetail:
         root = Path(library_root).resolve()
-        target_path = Path(target).resolve()
-        if not target_path.is_relative_to(root):
-            raise ValueError("target must be under library_root")
+        lexical_target, target_path = self._admit_public_target(root, target)
         db_conn = self._connection(root, db_conn)
         rel_path = rel_path.replace("\\", "/").strip("/")
         notes, urls = self._notes_and_urls(root, target_path)
+        self._revalidate_public_target(root, lexical_target, target_path)
         files, images = self._project_files(root, target_path)
-        preview = find_first_image(target_path)
+        self._revalidate_public_target(root, lexical_target, target_path)
+        preview = self._first_image(target_path)
+        self._revalidate_public_target(root, lexical_target, target_path)
         thumb_path = None
         if preview:
             rel_preview = os.path.relpath(preview, root).replace("\\", "/")
             thumb_path = rel_preview
+        self._revalidate_public_target(root, lexical_target, target_path)
         try:
             modified = target_path.stat().st_mtime
         except OSError:
@@ -663,7 +900,7 @@ class ProjectService:
         nodes: list[dict] = []
         try:
             entries = sorted(
-                [e for e in os.scandir(current) if e.is_dir() and not e.name.startswith(".")],
+                self._safe_directory_entries(current),
                 key=lambda e: e.name.lower(),
             )
         except OSError:
@@ -698,7 +935,7 @@ class ProjectService:
         effective_depth = depth_config.branches.get(branch_name, depth_config.global_depth)
         is_project = child_depth >= effective_depth
 
-        preview = find_first_image(entry_path)
+        preview = self._first_image(entry_path)
         thumb_path = None
         if preview:
             rel_preview = os.path.relpath(preview, root).replace("\\", "/")
@@ -709,7 +946,7 @@ class ProjectService:
         tags = self._tags(root, entry_path, db_conn) if is_project else []
         notes = self._notes(root, entry_path) if is_project else ""
         try:
-            modified = entry.stat().st_mtime
+            modified = entry.stat(follow_symlinks=False).st_mtime
         except OSError:
             _log.warning("project mtime lookup failed: %s", entry.path, exc_info=True)
             modified = 0
@@ -730,18 +967,15 @@ class ProjectService:
     def _project_files(root: Path, target: Path) -> tuple[list[dict], list[dict]]:
         files: list[dict] = []
         images: list[dict] = []
-        try:
-            entries = sorted(os.scandir(target), key=lambda e: e.name.lower())
-        except OSError:
-            _log.warning("project file scan failed: %s", target, exc_info=True)
-            return files, images
+        entries = sorted(
+            ProjectService._safe_file_entries(target),
+            key=lambda e: e.name.lower(),
+        )
         for entry in entries:
-            if not entry.is_file() or entry.name.startswith("."):
-                continue
             ext = Path(entry.name).suffix.lower()
             category = CATEGORY_MAP.get(ext, "other")
             try:
-                size = entry.stat().st_size
+                size = entry.stat(follow_symlinks=False).st_size
             except OSError:
                 _log.warning("project file size lookup failed: %s", entry.path, exc_info=True)
                 size = 0
@@ -786,15 +1020,18 @@ class ProjectService:
             _log.warning("directory size query failed", exc_info=True)
             return 0
 
-    @staticmethod
-    def _file_count(root: Path, path: Path, db_conn: sqlite3.Connection | None) -> int:
+    def _file_count(self, root: Path, path: Path, db_conn: sqlite3.Connection | None) -> int:
         if db_conn is not None:
             try:
                 indexed = AssetIndexRepository(db_conn).query_by_parent(
                     str(root.resolve()), str(path.resolve()),
                 )
                 if indexed:
-                    return len(indexed)
+                    return sum(
+                        1
+                        for indexed_entry in indexed
+                        if self._safe_file_path(root, Path(indexed_entry.file_path))
+                    )
                 cached_count = MetadataRepository(db_conn).get_cached_file_count(
                     str(path.resolve())
                 )
@@ -806,7 +1043,7 @@ class ProjectService:
                 _log.warning("file count cache query failed", exc_info=True)
 
         try:
-            file_count = sum(1 for f in os.scandir(path) if f.is_file() and not f.name.startswith("."))
+            file_count = len(ProjectService._safe_file_entries(path))
         except OSError:
             _log.warning("file count scan failed: %s", path, exc_info=True)
             return 0

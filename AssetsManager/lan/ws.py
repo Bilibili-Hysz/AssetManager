@@ -1,6 +1,7 @@
 """WebSocket manager for real-time client updates."""
 import asyncio
 import contextvars
+import hashlib
 import inspect
 import json
 import logging
@@ -75,6 +76,7 @@ class WebSocketManager:
         self._heartbeat_task: asyncio.Task | None = None
         self._pong_waiters: dict[web.WebSocketResponse, tuple[bytes, asyncio.Event]] = {}
         self._authorizers = {}
+        self._auth_token_digests = {}
         self._leases = {}
         self._authority_locks = {}
         self._authority_transitions: dict[object, _AuthorityTransition] = {}
@@ -102,7 +104,7 @@ class WebSocketManager:
 
     async def add(self, ws: web.WebSocketResponse, *, authorize=None,
                   on_admission=None, on_remove=None, authority=None,
-                  admission_pending=False) -> bool:
+                  auth_token=None, admission_pending=False) -> bool:
         """Revalidate and register a client under its canonical authority lock."""
         async with self._lock:
             if authority is None:
@@ -158,6 +160,10 @@ class WebSocketManager:
                                 self._clients.add(ws)
                                 if authorize is not None:
                                     self._authorizers[ws] = authorize
+                                if auth_token:
+                                    self._auth_token_digests[ws] = hashlib.sha256(
+                                        str(auth_token).encode("utf-8")
+                                    ).hexdigest()
                                 if on_remove is not None:
                                     self._on_remove[ws] = on_remove
                                 count = len(self._clients)
@@ -314,6 +320,7 @@ class WebSocketManager:
                 self._clients.discard(ws)
                 self._pong_waiters.pop(ws, None)
                 self._authorizers.pop(ws, None)
+                self._auth_token_digests.pop(ws, None)
                 self._leases.pop(ws, None)
                 on_remove = self._on_remove.pop(ws, None)
                 _log.debug("WebSocket client disconnected (%d total)", len(self._clients))
@@ -456,6 +463,20 @@ class WebSocketManager:
         """Idempotently remove a socket, then close the transport."""
         if await self.remove(ws):
             await self._close(ws, code=code, message=message)
+
+    async def revoke_auth_token(self, token: str) -> int:
+        """Evict connected sockets authenticated by one token."""
+        if not token:
+            return 0
+        digest = hashlib.sha256(str(token).encode("utf-8")).hexdigest()
+        async with self._lock:
+            clients = [
+                ws for ws, candidate in self._auth_token_digests.items()
+                if candidate == digest and ws in self._clients
+            ]
+        if clients:
+            await asyncio.gather(*(self.evict(ws) for ws in clients))
+        return len(clients)
 
     async def _evict(self, ws: web.WebSocketResponse, *, code=1008,
                      message=b"Authorization revoked") -> None:
@@ -746,6 +767,7 @@ class WebSocketManager:
                     self._clients.clear()
                     self._pong_waiters.clear()
                     self._authorizers.clear()
+                    self._auth_token_digests.clear()
                     self._leases.clear()
                     self._authority_locks.clear()
                     # W6: keep teardown symmetric — the transition registry

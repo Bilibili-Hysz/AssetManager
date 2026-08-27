@@ -41,6 +41,8 @@ jobs:
         run: python scripts/check_layers.py
       - name: Verify README structural counts match the source tree
         run: python scripts/check_doc_stats.py
+      - name: Verify audit evidence manifests and source anchors
+        run: python scripts/check_audit_reports.py
 
   hygiene:
     name: Git Hygiene
@@ -226,6 +228,7 @@ jobs:
         run: >-
           python -m pytest -q --tb=short -m e2e
           tests/e2e/test_webui_realtime_acceptance.py
+          tests/e2e/test_webui_thumbnail_privacy_acceptance.py
 
   test:
     name: Test (Python ${{ matrix.python-version }})

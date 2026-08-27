@@ -250,6 +250,8 @@
   "tagstyle.cancel": "キャンセル",
   "tagstyle.clear": "クリア",
   "tagstyle.clear_color": "色をクリア",
+  "viewer.loading": "読み込み中…",
+  "viewer.load_failed": "画像を読み込めません",
   "viewer.no_image": "画像がありません",
   "viewer.footer": "スクロールで拡大縮小 · ドラッグで移動 · ←/→ 前後 · スペース再生 · R 回転 · C コピー · S 保存 · I 情報 · T サムネイル · Esc で閉じる",
   "viewer.save_title": "画像を保存",
@@ -837,5 +839,7 @@
   "import.choose_destination": "インポート先フォルダを選択",
   "import.in_progress": "インポート中…",
   "import.success": "インポートが完了しました：\nコピー {copied} 件、スキップ {skipped} 件、失敗 {failed} 件",
+  "import.partial": "警告付きでインポートが完了しました：\nコピー {copied} 件、スキップ {skipped} 件、失敗 {failed} 件",
+  "import.cancelled": "インポートをキャンセルしました：\nコピー {copied} 件、スキップ {skipped} 件、失敗 {failed} 件",
   "import.failed": "インポートに失敗しました：\n{error}"
 }

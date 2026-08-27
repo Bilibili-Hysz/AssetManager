@@ -1,6 +1,7 @@
 """D1 unified worker framework tests."""
 from __future__ import annotations
 
+import threading
 import time
 
 import pytest
@@ -10,6 +11,7 @@ from AssetsManager.core.workers import (
     CancellationToken,
     CancellableRunnable,
     TaskCancelled,
+    retained_pool_count,
 )
 
 
@@ -70,6 +72,39 @@ def test_bounded_pool_cancel_all_stops_loop_bodies():
     pool.cancel_all()
     assert pool.drain(5_000) is True
     assert task.finished is False
+
+
+class _BlockingTask(CancellableRunnable):
+    def __init__(self, entered: threading.Event, release: threading.Event):
+        super().__init__()
+        self._entered = entered
+        self._release = release
+
+    def run(self):
+        self._entered.set()
+        self._release.wait(10)
+
+
+def test_bounded_pool_close_reaps_a_timed_out_pool_without_blocking():
+    entered = threading.Event()
+    release = threading.Event()
+    pool = BoundedPool(1)
+    pool.start(_BlockingTask(entered, release))
+    assert entered.wait(5), "blocking task should start"
+
+    initial_retained = retained_pool_count()
+    started = time.monotonic()
+    assert pool.close(100, owner_label="worker-test") is False
+    assert time.monotonic() - started < 1.0
+    assert retained_pool_count() == initial_retained + 1
+
+    release.set()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and retained_pool_count() != initial_retained:
+        time.sleep(0.01)
+    assert retained_pool_count() == initial_retained
+    with pytest.raises(RuntimeError, match="closed"):
+        pool.drain(1)
 
 
 def test_preload_task_stops_when_token_cancelled(tmp_path):

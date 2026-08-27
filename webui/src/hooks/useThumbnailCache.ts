@@ -3,10 +3,16 @@ import { useAuth } from './useAuth';
 import { createThumbnailsApi } from '../api/thumbnails';
 
 const MAX_CACHE = 300;
-export const THUMBNAIL_CACHE_STORAGE_KEY = 'lan_thumb_cache';
+const THUMBNAIL_CACHE_STORAGE_PREFIX = 'lan_thumb_cache:';
+const LEGACY_THUMBNAIL_CACHE_STORAGE_KEY = 'lan_thumb_cache';
+export const THUMBNAIL_CACHE_STORAGE_KEY = LEGACY_THUMBNAIL_CACHE_STORAGE_KEY;
 
 interface ThumbnailCache {
   [path: string]: string; // base64 data
+}
+
+export function thumbnailCacheStorageKey(namespace: string): string {
+  return `${THUMBNAIL_CACHE_STORAGE_PREFIX}${encodeURIComponent(namespace || 'legacy')}`;
 }
 
 /**
@@ -21,47 +27,54 @@ function trimCache(cache: Map<string, string>): Map<string, string> {
 }
 
 export function useThumbnailCache() {
-  const { api, identityGeneration } = useAuth();
+  const { api, identityGeneration, thumbnailCacheNamespace } = useAuth();
+  const namespace = thumbnailCacheNamespace || 'legacy';
+  const storageKey = useMemo(() => thumbnailCacheStorageKey(namespace), [namespace]);
   const thumbApi = useMemo(() => createThumbnailsApi(api), [api]);
   const [cache, setCache] = useState<ThumbnailCache>({});
   const cacheRef = useRef<Map<string, string>>(new Map());
   const pendingRef = useRef(new Set<string>());
+  const namespaceRef = useRef(namespace);
   const identityGenerationRef = useRef(identityGeneration);
+  const previousIdentityGenerationRef = useRef(identityGeneration);
+  namespaceRef.current = namespace;
   identityGenerationRef.current = identityGeneration;
 
   useEffect(() => {
+    const generationChanged = previousIdentityGenerationRef.current !== identityGeneration;
+    previousIdentityGenerationRef.current = identityGeneration;
     cacheRef.current = new Map();
     pendingRef.current.clear();
     setCache({});
     try {
-      sessionStorage.removeItem(THUMBNAIL_CACHE_STORAGE_KEY);
-    } catch { /* ignore storage failures */ }
-  }, [identityGeneration]);
-
-  useEffect(() => {
-    try {
-      const stored = window.sessionStorage.getItem(THUMBNAIL_CACHE_STORAGE_KEY);
+      window.sessionStorage.removeItem(LEGACY_THUMBNAIL_CACHE_STORAGE_KEY);
+      if (generationChanged) {
+        window.sessionStorage.removeItem(storageKey);
+        return;
+      }
+      const stored = window.sessionStorage.getItem(storageKey);
       if (stored) {
         const restoredCache = JSON.parse(stored) as ThumbnailCache;
-        const restoredMap = trimCache(new Map(Object.entries(restoredCache)));
-        cacheRef.current = restoredMap;
-        setCache(Object.fromEntries(restoredMap));
+        if (restoredCache && typeof restoredCache === 'object' && !Array.isArray(restoredCache)) {
+          const restoredMap = trimCache(new Map(Object.entries(restoredCache)));
+          cacheRef.current = restoredMap;
+          setCache(Object.fromEntries(restoredMap));
+        }
       }
     } catch { /* ignore */ }
-  }, []);
+  }, [identityGeneration, namespace, storageKey]);
 
   const persist = useCallback((nextCache: Map<string, string>) => {
-    // Trim regardless of whether storage succeeds so a full quota failure
-    // cannot leave an unbounded memory cache behind.
     const retained = trimCache(nextCache);
     try {
-      sessionStorage.setItem(THUMBNAIL_CACHE_STORAGE_KEY, JSON.stringify(Object.fromEntries(retained)));
+      sessionStorage.setItem(storageKey, JSON.stringify(Object.fromEntries(retained)));
     } catch { /* quota exceeded */ }
     return retained;
-  }, []);
+  }, [storageKey]);
 
   const loadThumbnails = useCallback(async (paths: string[]) => {
     const generation = identityGeneration;
+    const requestNamespace = namespace;
     const pending = pendingRef.current;
     const uncached = paths.filter(path => path && !cacheRef.current.has(path) && !pending.has(path));
     if (uncached.length === 0) return;
@@ -69,10 +82,10 @@ export function useThumbnailCache() {
 
     try {
       const res = await thumbApi.batch(uncached, 256);
-      if (generation !== identityGenerationRef.current) return;
+      if (generation !== identityGenerationRef.current || requestNamespace !== namespaceRef.current) return;
       const nextCache = new Map(cacheRef.current);
       for (const [path, encoded] of Object.entries(res.thumbnails)) {
-        nextCache.delete(path); // refresh access order
+        nextCache.delete(path);
         nextCache.set(path, encoded);
       }
       const retainedCache = persist(nextCache);
@@ -81,13 +94,12 @@ export function useThumbnailCache() {
     } catch { /* ignore */ } finally {
       for (const path of uncached) pending.delete(path);
     }
-  }, [identityGeneration, persist, thumbApi]);
+  }, [identityGeneration, namespace, persist, thumbApi]);
 
   const getThumbnail = useCallback((path: string): string | undefined => {
     const current = cacheRef.current;
     if (!current.has(path)) return undefined;
     const encoded = current.get(path) as string;
-    // Move the key to the end so insertion order doubles as LRU access order.
     current.delete(path);
     current.set(path, encoded);
     return encoded;

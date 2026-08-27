@@ -1,5 +1,7 @@
 """Tests for AssetIndexService."""
 import os
+import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -8,6 +10,7 @@ from AssetsManager.application.asset_index_service import (
     AssetIndexPublishStatus,
     AssetIndexService,
     _BUSY_RETRY_LIMIT,
+    _is_link_or_reparse,
 )
 from AssetsManager.repositories.asset_index_repository import (
     AssetIndexRepository,
@@ -198,6 +201,91 @@ def test_index_directory_skips_symlink_and_junction_entries(tmp_path, schema_db)
     assert {item.name for item in indexed} == {"regular.txt", "regular_dir"}
     assert svc.get_entry(schema_db, lib / "linked.txt") is None
     assert svc.get_entry(schema_db, lib / "linked_dir") is None
+
+
+class _FakeStat:
+    def __init__(self, attributes: int):
+        self.st_file_attributes = attributes
+
+
+class _FakeEntry:
+    """DirEntry-like double: no is_junction, stat keyword-controlled."""
+
+    def __init__(self, *, attributes: int | None = None, error: OSError | None = None):
+        self._attributes = attributes
+        self._error = error
+
+    def is_symlink(self):
+        return False
+
+    def stat(self, *, follow_symlinks=True):
+        if self._error is not None:
+            raise self._error
+        return _FakeStat(self._attributes if self._attributes is not None else 0)
+
+
+def test_link_detection_flags_windows_reparse_attribute_without_is_junction():
+    if os.name != "nt":
+        pytest.skip("reparse attribute leg is Windows-only")
+    entry = _FakeEntry(attributes=0x400)
+    assert _is_link_or_reparse(entry) is True
+
+
+def test_link_detection_accepts_plain_entry_without_attributes():
+    assert _is_link_or_reparse(_FakeEntry(attributes=0)) is False
+    # On POSIX the attribute leg is inactive by design.
+    plain = _FakeEntry(attributes=0x400)
+    if os.name != "nt":
+        assert _is_link_or_reparse(plain) is False
+
+
+def test_link_detection_fails_closed_on_stat_error():
+    entry = _FakeEntry(error=OSError("stat failed"))
+    assert _is_link_or_reparse(entry) is True
+
+
+def _create_junction(link: Path, target: Path) -> bool:
+    result = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def test_index_directory_skips_real_junction_entries(tmp_path, schema_db):
+    if os.name != "nt":
+        pytest.skip("Windows junction test")
+    lib = tmp_path / "lib"
+    outside = tmp_path / "junction-outside"
+    lib.mkdir()
+    outside.mkdir()
+    (lib / "regular.txt").write_text("regular")
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_text("outside")
+    junction = lib / "junction_dir"
+    if not _create_junction(junction, outside):
+        pytest.skip("junction creation unavailable")
+
+    try:
+        svc = AssetIndexService()
+        assert svc.index_directory(schema_db, lib, lib) == 1
+        indexed = svc.query_by_parent(schema_db, lib, lib)
+        assert {item.name for item in indexed} == {"regular.txt"}
+        assert svc.get_entry(schema_db, junction) is None
+        assert svc.get_entry(schema_db, junction / "sentinel.txt") is None
+
+        # The tree-scan prune path must exclude the junction as well.
+        svc.index_directory_tree(schema_db, lib, lib)
+        assert svc.get_entry(schema_db, junction / "sentinel.txt") is None
+        assert svc.get_entry(schema_db, junction) is None
+    finally:
+        import shutil
+
+        shutil.rmtree(junction, ignore_errors=True)
 
 
 def test_asset_index_upsert_refreshes_scope_on_file_path_conflict(schema_db):

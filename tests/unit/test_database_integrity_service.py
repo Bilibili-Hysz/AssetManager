@@ -45,6 +45,8 @@ def test_integrity_check_runs_quick_check_and_prunes_orphans(tmp_path):
 
         orphan_baked = Path(session.thumb_dir_str) / "deadbeef.webp"
         orphan_baked.write_bytes(b"thumbnail")
+        orphan_frame = Path(session.thumb_dir_str) / "deadbeef.jpg"
+        orphan_frame.write_bytes(b"frame")
 
         service = DatabaseIntegrityService(
             connection_provider=session.connection_for,
@@ -56,8 +58,9 @@ def test_integrity_check_runs_quick_check_and_prunes_orphans(tmp_path):
         assert report.quick_check == "ok"
         assert report.metadata_removed == 1
         assert report.thumbnail_metadata_removed == 1
-        assert report.thumbnail_files_removed == 1
+        assert report.thumbnail_files_removed == 2
         assert not orphan_baked.exists()
+        assert not orphan_frame.exists()
         assert conn.execute(
             "SELECT notes FROM file_meta WHERE file_path=?", (str(existing),)
         ).fetchone() == ("keep",)

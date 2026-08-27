@@ -39,6 +39,7 @@ export function SellerAuthProvider({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [serviceUnavailable, setServiceUnavailable] = useState(false);
+  const operationRef = useRef(0);
 
   // Seller identity is a scope of its own (the seller cookie can flip while
   // the main session stays put), so a login/logout must clear the shared
@@ -54,12 +55,15 @@ export function SellerAuthProvider({ children }: { children: ReactNode }) {
   }, [authenticated, cache]);
 
   const refresh = useCallback(async () => {
+    const operation = ++operationRef.current;
     try {
       const status = await sellerApi.get<SellerStatusResponse>('auth/seller-status');
+      if (operation !== operationRef.current) return;
       setServiceUnavailable(false);
       setEnabled(status.enabled);
       setAuthenticated(status.authenticated);
     } catch (err) {
+      if (operation !== operationRef.current) return;
       // 503 / network failures must not be conflated with "seller feature not
       // enabled": the server may still have the feature, we just could not
       // reach it. enabled=false semantics are preserved for safety.
@@ -72,7 +76,7 @@ export function SellerAuthProvider({ children }: { children: ReactNode }) {
         console.error('Seller status check failed:', err);
       }
     } finally {
-      setLoading(false);
+      if (operation === operationRef.current) setLoading(false);
     }
   }, [sellerApi]);
 
@@ -81,21 +85,23 @@ export function SellerAuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const login = useCallback(async (password: string, username?: string) => {
+    const operation = ++operationRef.current;
     const body = username ? { username, password } : { password };
     const result = await sellerApi.post<{ ok: boolean }>('auth/seller-login', body);
-    if (result.ok) {
+    if (operation === operationRef.current && result.ok) {
       setEnabled(true);
       setAuthenticated(true);
     }
   }, [sellerApi]);
 
   const logout = useCallback(async () => {
+    ++operationRef.current;
+    setAuthenticated(false);
     try {
       await sellerApi.post('auth/seller-logout', {});
     } catch {
       // The seller cookie may already be gone; clear local seller state anyway.
     }
-    setAuthenticated(false);
   }, [sellerApi]);
 
   const value = useMemo(
@@ -106,8 +112,12 @@ export function SellerAuthProvider({ children }: { children: ReactNode }) {
   return <SellerAuthContext.Provider value={value}>{children}</SellerAuthContext.Provider>;
 }
 
+export function useOptionalSellerAuth(): SellerAuthState | null {
+  return useContext(SellerAuthContext);
+}
+
 export function useSellerAuth(): SellerAuthState {
-  const ctx = useContext(SellerAuthContext);
+  const ctx = useOptionalSellerAuth();
   if (!ctx) throw new Error('useSellerAuth must be used within SellerAuthProvider');
   return ctx;
 }

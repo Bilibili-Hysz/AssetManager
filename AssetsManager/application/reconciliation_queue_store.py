@@ -24,6 +24,7 @@ from AssetsManager.application.reconciliation_queue import (
     ReconciliationState,
     reconciliation_backoff,
     ReconciliationTask,
+    normalize_reconciliation_payload,
 )
 from AssetsManager.core.database import DatabaseManager, db_write_lock
 
@@ -82,6 +83,7 @@ _COLUMNS = (
     "lease_expires_at_wallclock",
     "lease_token",
     "max_attempts",
+    "payload",
 )
 
 
@@ -243,6 +245,8 @@ class SQLiteReconciliationQueueStore:
         operation_id: str | None,
         expected_revision: int | None,
         observed_revision: int | None,
+        kind: ReconciliationKind = ReconciliationKind.ASSET_INDEX_ROOT_RESCAN,
+        payload: dict[str, object] | None = None,
         max_tasks: int,
         max_attempts: int,
         now: float,
@@ -251,7 +255,10 @@ class SQLiteReconciliationQueueStore:
         if max_tasks < 1 or max_attempts < 1:
             raise ValueError("queue bounds must be positive")
         path_value = _canonical_path(path)
-        kind = ReconciliationKind.ASSET_INDEX_ROOT_RESCAN.value
+        kind_value = kind.value
+        normalized_payload = normalize_reconciliation_payload(
+            kind, payload, library_root=self.library_root
+        )
         now_wallclock = self._wall_clock()
         try:
             with db_write_lock(self.connection):
@@ -262,7 +269,7 @@ class SQLiteReconciliationQueueStore:
                         + ", ".join(_COLUMNS)
                         + " FROM reconciliation_tasks WHERE library_root=? "
                         "AND path=? AND kind=?",
-                        (self.library_root, path_value, kind),
+                        (self.library_root, path_value, kind_value),
                     ).fetchone()
                     existing = (
                         None
@@ -284,7 +291,7 @@ class SQLiteReconciliationQueueStore:
                         updated = self.connection.execute(
                             "UPDATE reconciliation_tasks SET reason=?, "
                             "operation_ids=?, expected_revision=COALESCE(?, expected_revision), "
-                            "observed_revision=COALESCE(?, observed_revision), updated_at=? "
+                            "observed_revision=COALESCE(?, observed_revision), payload=?, updated_at=? "
                             "WHERE task_id=? AND library_root=? AND path=? AND kind=? "
                             "AND state IN ('pending', 'running', 'retryable')",
                             (
@@ -292,11 +299,12 @@ class SQLiteReconciliationQueueStore:
                                 json.dumps(operation_ids, ensure_ascii=False),
                                 expected_revision,
                                 observed_revision,
+                                normalized_payload,
                                 now,
                                 existing.task_id,
                                 self.library_root,
                                 path_value,
-                                kind,
+                                kind_value,
                             ),
                         ).rowcount
                         if updated != 1:
@@ -315,7 +323,7 @@ class SQLiteReconciliationQueueStore:
                                     existing.task_id,
                                     self.library_root,
                                     path_value,
-                                    kind,
+                                    kind_value,
                                 ),
                             ).rowcount
                             if deleted != 1:
@@ -350,12 +358,12 @@ class SQLiteReconciliationQueueStore:
                         self.connection.execute(
                             "INSERT INTO reconciliation_tasks ("
                             + ", ".join(_COLUMNS)
-                            + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                             (
                                 task_id,
                                 self.library_root,
                                 path_value,
-                                kind,
+                                kind_value,
                                 reason,
                                 ReconciliationState.PENDING.value,
                                 0,
@@ -370,6 +378,7 @@ class SQLiteReconciliationQueueStore:
                                 None,
                                 None,
                                 max_attempts,
+                                normalized_payload,
                             ),
                         )
                     return self._mutation_result_unlocked(
@@ -1155,6 +1164,7 @@ class SQLiteReconciliationQueueStore:
             lease_expires_at_wallclock,
             task.lease_token,
             task.max_attempts,
+            task.payload,
         )
 
     @staticmethod
@@ -1171,6 +1181,16 @@ class SQLiteReconciliationQueueStore:
             raise ValueError("operation_ids must be a list")
         max_attempts = int(str(row[17]))
         attempts = int(str(row[6]))
+        payload = str(row[18]) if row[18] is not None else "{}"
+        try:
+            parsed_payload = json.loads(payload)
+            normalized_payload = normalize_reconciliation_payload(
+                ReconciliationKind(str(row[3])),
+                parsed_payload,
+                library_root=str(row[1]),
+            )
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            raise ValueError("invalid reconciliation task payload") from exc
         if max_attempts < 1 or attempts < 0:
             raise ValueError("invalid reconciliation attempt bounds")
         return ReconciliationTask(
@@ -1204,4 +1224,5 @@ class SQLiteReconciliationQueueStore:
             ),
             lease_token=str(row[16]) if row[16] is not None else None,
             max_attempts=max_attempts,
+            payload=normalized_payload,
         )

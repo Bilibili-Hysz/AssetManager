@@ -101,6 +101,13 @@ export default function LoginPage() {
     if (!urlKey) return;
     autoLoginAttempted.current = true;
     setAccessKey(urlKey);
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('key');
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`,
+    );
     void handleKeyLogin(urlKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authMode, isLoading]);

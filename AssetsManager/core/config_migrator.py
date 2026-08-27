@@ -10,6 +10,17 @@ _log = logging.getLogger(__name__)
 CURRENT_VERSION = 2
 
 
+class FutureConfigVersionError(ValueError):
+    """Raised when settings were written by a newer application version."""
+
+    def __init__(self, version: int):
+        self.version = version
+        super().__init__(
+            f"Settings version {version} is newer than supported version "
+            f"{CURRENT_VERSION}; refusing to downgrade configuration"
+        )
+
+
 def _migrate_v0_to_v1(data: dict) -> dict:
     """Remove dead workspace keys leftover from earlier builds."""
     for dead in ("workspace_libraries", "workspace_active"):
@@ -36,10 +47,7 @@ def migrate(settings_data: dict) -> dict:
     if not isinstance(ver, int) or isinstance(ver, bool):
         raise ValueError(f"Invalid settings version: {ver!r}")
     if ver > CURRENT_VERSION:
-        raise ValueError(
-            f"Settings version {ver} is newer than supported version {CURRENT_VERSION}; "
-            "refusing to downgrade configuration"
-        )
+        raise FutureConfigVersionError(ver)
     while ver < CURRENT_VERSION:
         ver += 1
         if ver in MIGRATIONS:

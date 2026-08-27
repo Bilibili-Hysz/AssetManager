@@ -5,14 +5,27 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 import logging
 import os
+import re
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
 from AssetsManager.application.context import LibraryContext, LibrarySession
+from AssetsManager.application.library_export_io import (
+    clear_restore_intent,
+    read_restore_intent,
+    restore_intent_path,
+    safe_restore_quarantine_root,
+)
 from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.library_lock import LibraryLock
-from AssetsManager.core.path_resolver import RootIdentity, library_lock_path, root_identity
+from AssetsManager.core.path_resolver import (
+    RootIdentity,
+    library_data_dir,
+    library_lock_path,
+    root_identity,
+)
 from AssetsManager.core.project_data import ProjectData
 from AssetsManager.core.tag_store import TagStore, install_repository_factory
 from AssetsManager.domain.event_bus import get_event_bus
@@ -21,6 +34,13 @@ from AssetsManager.repositories.tag_repository import TagRepository
 
 _log = logging.getLogger(__name__)
 
+# Crash leftovers of the two-step restore swap are only reclaimable once
+# clearly abandoned: staging dirs/intent tmp files older than a week move to
+# quarantine (never deleted), matching clean_orphan_dirs' age convention.
+_RESTORE_RESIDUE_STALE_SECONDS = 7 * 86400
+_RESTORE_STAGING_RE_CACHE: dict[str, re.Pattern[str]] = {}
+
+
 
 def _tag_repository_factory(conn, *, library_root=None, session=None):
     """Application-layer seam that injects TagRepository into core TagStore."""
@@ -28,6 +48,22 @@ def _tag_repository_factory(conn, *, library_root=None, session=None):
 
 
 install_repository_factory(_tag_repository_factory)
+
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x0400
+
+
+def _path_is_link_or_reparse(path: Path) -> bool:
+    """Best-effort link/junction/reparse refusal for recovery-path moves."""
+    if path.is_symlink() or os.path.islink(path):
+        return True
+    if os.name == "nt":
+        try:
+            attributes = os.lstat(path).st_file_attributes
+        except OSError:
+            return True
+        if int(attributes) & _FILE_ATTRIBUTE_REPARSE_POINT:
+            return True
+    return False
 
 
 @dataclass
@@ -334,11 +370,248 @@ class LibraryService:
         if state is not None:
             raise self._restore_blocked_error(key, state)
 
+    def _recover_interrupted_library_restore(self, identity, key: str) -> None:
+        """Resolve a crash-interrupted backup restore before the DB opens.
+
+        Called under the cross-process library lock and before any
+        ``connection_for`` call, so an empty database cannot be materialized
+        while a restore-intent marker describes an interrupted two-step
+        swap.  Failures here deliberately do NOT write canonical restore
+        poison: admission blocking would leave the failure unacknowledgeable
+        (no session can open to reach the ACK surface).  The durable marker
+        itself keeps failing every open until the operator remediates.
+        """
+        data_dir = library_data_dir(identity)
+        if not restore_intent_path(data_dir).exists():
+            return
+        payload = read_restore_intent(data_dir)
+        if data_dir.exists() or data_dir.is_symlink():
+            # Crash after the install replace completed: keep the installed
+            # data and drop the stale evidence.
+            clear_restore_intent(data_dir)
+            _log.warning(
+                "Consumed restore-intent marker for completed install: %s",
+                data_dir,
+            )
+            return
+        previous_raw = (
+            payload.get("quarantine_entry") if isinstance(payload, dict) else None
+        )
+        previous = Path(previous_raw) if isinstance(previous_raw, str) and previous_raw else None
+        recorded_key = payload.get("map_key") if isinstance(payload, dict) else None
+        usable = (
+            previous is not None
+            and previous.is_dir()
+            and not _path_is_link_or_reparse(previous)
+            and (recorded_key in (None, key))
+        )
+        if usable:
+            try:
+                previous.resolve().relative_to(data_dir.parent.resolve())
+            except (ValueError, OSError):
+                usable = False
+        if not usable:
+            raise RuntimeError(
+                "Interrupted library restore detected, but the quarantined "
+                f"previous RuntimeData entry is missing or unusable ({key}). "
+                "Refusing to open: opening now would create an empty library "
+                "over the lost data. Restore the copy listed under the "
+                "restore quarantine manually, then remove the marker file "
+                f"({restore_intent_path(data_dir).name}) after remediation."
+            )
+        try:
+            os.replace(previous, data_dir)
+        except OSError as exc:
+            raise RuntimeError(
+                f"Failed to roll back the interrupted library restore ({key}): {exc}"
+            ) from exc
+        clear_restore_intent(data_dir)
+        _log.warning(
+            "Rolled back an interrupted library restore (%s): previous "
+            "RuntimeData restored from quarantine to %s",
+            payload.get("token") if isinstance(payload, dict) else "?",
+            data_dir,
+        )
+
     def restore_failure_state(self, library_root: str | Path) -> _RestoreRecoveryState | None:
         return self.restore_state_provider(library_root)
 
+    def _sweep_orphan_restore_residue(self, identity: RootIdentity, *, now: float | None = None) -> None:
+        """Archive crash leftovers of THIS library slot (caller holds its lock).
+
+        Handles only this slot's namespace inside the RuntimeData root so a
+        concurrent restore of another library can never be raced.  Anything
+        older than ``_RESTORE_RESIDUE_STALE_SECONDS`` moves into the restore
+        quarantine (never deleted in place); every candidate is refused if it
+        looks like a link/junction/reparse and any OSError is logged and
+        skipped — sweeping must never turn a healthy open into a failure.
+        """
+        timestamp = time.time() if now is None else float(now)
+        cutoff = timestamp - _RESTORE_RESIDUE_STALE_SECONDS
+        data_dir = library_data_dir(identity)
+        data_name = data_dir.name
+        pattern = _RESTORE_STAGING_RE_CACHE.get(data_name)
+        if pattern is None:
+            pattern = re.compile(rf"^\.{re.escape(data_name)}\.restore-[0-9a-f]{{32}}$")
+            _RESTORE_STAGING_RE_CACHE[data_name] = pattern
+
+        try:
+            candidates = list(data_dir.parent.iterdir())
+        except OSError as exc:
+            _log.warning("Restore residue scan skipped for %s: %s", data_name, exc)
+            return
+
+        intent_marker_name = restore_intent_path(data_dir).name
+        # The quarantine tree is created lazily: a healthy library must be
+        # able to open without gaining an empty _orphaned hierarchy.
+        stale_dirs: list[Path] = []
+        for entry in candidates:
+            name = entry.name
+            if name == intent_marker_name:
+                continue  # live crash evidence for fail-closed open recovery
+            has_intent_prefix = name.startswith(f".{data_name}.restore-intent")
+            staging_match = bool(pattern.match(name))
+            if not staging_match and not has_intent_prefix:
+                continue
+            try:
+                os.lstat(entry)
+                if _path_is_link_or_reparse(entry):
+                    continue
+                if entry.stat().st_mtime > cutoff:
+                    continue
+                if staging_match and entry.is_dir():
+                    stale_dirs.append(entry)
+                elif not entry.is_dir() and name.endswith(".tmp"):
+                    entry.unlink()
+                    _log.warning("Removed orphan restore-intent temp file: %s", entry)
+            except OSError as exc:
+                _log.warning("Restore residue cleanup skipped %s: %s", entry, exc)
+
+        if stale_dirs:
+            self._archive_orphan_staging_dirs(data_dir, stale_dirs, timestamp)
+
+        try:
+            quarantine_ready = safe_restore_quarantine_root(data_dir, create_missing=False)
+        except OSError:
+            return
+        self._archive_expired_quarantine_entries(quarantine_ready, cutoff)
+
+    @staticmethod
+    def _archive_orphan_staging_dirs(
+        data_dir: Path, stale_dirs: list[Path], timestamp: float
+    ) -> None:
+        """Move week-old staging copies into the slot's restore quarantine."""
+        try:
+            quarantine_ready = safe_restore_quarantine_root(data_dir)
+        except OSError as exc:
+            _log.warning("Restore residue quarantine unavailable for %s: %s", data_dir, exc)
+            return
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(timestamp))
+        for entry in stale_dirs:
+            try:
+                target = quarantine_ready / f"{entry.name}_{stamp}"
+                counter = 1
+                while target.exists() or target.is_symlink():
+                    target = quarantine_ready / f"{entry.name}_{stamp}_{counter}"
+                    counter += 1
+                entry.replace(target)
+                _log.warning("Archived orphan restore staging: %s -> %s", entry, target)
+            except OSError as exc:
+                _log.warning("Restore residue cleanup skipped %s: %s", entry, exc)
+
+    @staticmethod
+    def _archive_expired_quarantine_entries(quarantine_root: Path | None, cutoff: float) -> None:
+        """Fold week-old quarantine entries under an ``_expired`` subfolder."""
+        if quarantine_root is None or not quarantine_root.is_dir():
+            return
+        expired_root = quarantine_root / "_expired"
+        for entry in list(quarantine_root.iterdir()):
+            if entry == expired_root or entry.name == "_expired":
+                continue
+            try:
+                if entry.is_symlink() or not entry.is_dir():
+                    continue
+                if entry.stat().st_mtime > cutoff:
+                    continue
+                expired_root.mkdir(exist_ok=True)
+                target = expired_root / entry.name
+                counter = 1
+                while target.exists() or target.is_symlink():
+                    target = expired_root / f"{entry.name}_{counter}"
+                    counter += 1
+                entry.replace(target)
+            except OSError as exc:
+                _log.warning("Quarantine archive skipped %s: %s", entry, exc)
+
     def acknowledge_restore_failure(self, library_root: str | Path, token: str | None = None):
         return self.restore_acknowledger(library_root, token)
+
+    def restore_intent_status(self, library_root: str | Path) -> dict[str, Any] | None:
+        """Describe a pending on-disk restore intent without opening its DB."""
+        identity = root_identity(library_root)
+        data_dir = library_data_dir(identity)
+        marker = restore_intent_path(data_dir)
+        if not marker.exists():
+            return None
+        payload = read_restore_intent(data_dir)
+        if not isinstance(payload, dict):
+            return {
+                "marker": str(marker),
+                "status": "corrupt",
+                "quarantine_entry": None,
+                "token": None,
+            }
+        previous_raw = payload.get("quarantine_entry")
+        previous = Path(previous_raw) if isinstance(previous_raw, str) else None
+        return {
+            "marker": str(marker),
+            "status": "recoverable" if previous is not None and previous.is_dir() else "unrecoverable",
+            "quarantine_entry": str(previous) if previous is not None else None,
+            "token": payload.get("token") if isinstance(payload.get("token"), str) else None,
+            "map_key": payload.get("map_key"),
+        }
+
+    def retry_interrupted_restore(self, library_root: str | Path) -> dict[str, Any] | None:
+        """Retry marker recovery through a fresh library lock, without DB open."""
+        identity = root_identity(library_root)
+        key = identity.map_key
+        with self._lifecycle:
+            with _root_ownership_guard:
+                if key in _root_ownership or key in self._restore_reservations:
+                    raise RuntimeError("Cannot recover restore intent while library is active")
+            lock = LibraryLock(library_lock_path(identity))
+            try:
+                self._recover_interrupted_library_restore(identity, key)
+            finally:
+                if not lock.release():
+                    raise RuntimeError(f"Failed to release restore recovery lock: {lock.path}")
+        return self.restore_intent_status(identity.display_path)
+
+    def acknowledge_restore_intent(
+        self, library_root: str | Path, token: str
+    ) -> None:
+        """Clear a marker only after explicit token-confirmed manual remediation."""
+        if not isinstance(token, str) or not token:
+            raise RuntimeError("Restore intent acknowledgement requires its token")
+        identity = root_identity(library_root)
+        data_dir = library_data_dir(identity)
+        with self._lifecycle:
+            with _root_ownership_guard:
+                key = identity.map_key
+                if key in _root_ownership or key in self._restore_reservations:
+                    raise RuntimeError("Cannot acknowledge restore intent while library is active")
+            lock = LibraryLock(library_lock_path(identity))
+            try:
+                payload = read_restore_intent(data_dir)
+                actual = payload.get("token") if isinstance(payload, dict) else None
+                if actual != token:
+                    raise RuntimeError("Restore intent acknowledgement rejected: stale or unknown token")
+                if not data_dir.is_dir() or _path_is_link_or_reparse(data_dir):
+                    raise RuntimeError("Restore intent acknowledgement requires a verified RuntimeData directory")
+                clear_restore_intent(data_dir)
+            finally:
+                if not lock.release():
+                    raise RuntimeError(f"Failed to release restore acknowledgement lock: {lock.path}")
 
     def _record_restore_failure(
         self, key: str, generation: int, error: BaseException, phase: str
@@ -497,6 +770,8 @@ class LibraryService:
                 try:
                     lock = self._acquire_library_lock(key)
                     opening.lock = lock
+                    self._recover_interrupted_library_restore(identity, key)
+                    self._sweep_orphan_restore_residue(identity)
                     conn = mgr.connection_for(identity)
                     context = LibraryContext(
                         root=root,
@@ -649,12 +924,18 @@ class LibraryService:
         finish_error: BaseException | None = None
         if not progress.session_finished:
             try:
-                session._finish_close()
+                drained = session._finish_close()
             except BaseException as exc:
                 self._reset_failed_session_finish(session)
                 finish_error = exc
             else:
-                progress.session_finished = True
+                if drained is False:
+                    self._reset_failed_session_finish(session)
+                    finish_error = TimeoutError(
+                        "LibrarySession close timed out with active operations"
+                    )
+                else:
+                    progress.session_finished = True
         self._notify_listener_stage(session, progress, closing=False)
         if finish_error is not None:
             raise finish_error

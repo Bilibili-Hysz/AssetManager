@@ -1212,6 +1212,225 @@ def test_restore_rejects_unsafe_staging_descendant_before_install(
         bootstrap.library_service.close()
 
 
+def _intent_payload_bytes(data_dir):
+    return export_io_module.restore_intent_path(data_dir).read_text(encoding="utf-8")
+
+
+def test_restore_writes_intent_marker_around_both_replaces_and_clears_on_success(
+    tmp_path, monkeypatch
+):
+    bootstrap, session = _open_session(tmp_path)
+    try:
+        conn = session.connection_for()
+        conn.execute(
+            "INSERT INTO file_meta (file_path, notes) VALUES (?, ?)",
+            (str(session.root / "from-backup.txt"), "restored"),
+        )
+        conn.commit()
+        archive = tmp_path / "intent.assetbackup.zip"
+        service = bootstrap.runtime_for(session).services.export_service
+        service.create_backup(session.root, archive)
+        (session.data_dir / "old-only.txt").write_text("old", encoding="utf-8")
+        bootstrap.library_service.close_session(session)
+
+        observed: list[tuple[str, str | None]] = []
+        staging_path: Path | None = None
+        previous_target: Path | None = None
+        original_replace = Path.replace
+
+        def record_replace(path: Path, target: Path):
+            nonlocal previous_target
+            if path == session.data_dir:
+                previous_target = target
+                observed.append((
+                    "quarantine",
+                    json.loads(_intent_payload_bytes(session.data_dir))[
+                        "quarantine_entry"
+                    ],
+                ))
+            if staging_path is not None and path == staging_path:
+                observed.append(("install", None))
+            return original_replace(path, target)
+
+        monkeypatch.setattr(Path, "replace", record_replace)
+        original_extract = service._extract_validated_backup
+
+        def extract_and_note(archive_file, destination, entries):
+            nonlocal staging_path
+            original_extract(archive_file, destination, entries)
+            staging_path = destination
+
+        monkeypatch.setattr(service, "_extract_validated_backup", extract_and_note)
+
+        result = service.restore_backup(archive, session.root, overwrite_existing=True)
+
+        # Marker existed across both replaces and named the live quarantine
+        # entry before the first replace fired.
+        assert [phase for phase, _ in observed] == ["quarantine", "install"]
+        assert observed[0][1] == str(previous_target)
+        assert not export_io_module.restore_intent_path(result.data_dir).exists()
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_restore_rollback_failure_path_clears_intent_marker(tmp_path, monkeypatch):
+    bootstrap, session = _open_session(tmp_path)
+    try:
+        marker_file = session.data_dir / "old-only.txt"
+        marker_file.write_text("old", encoding="utf-8")
+        archive = tmp_path / "rollback-intent.assetbackup.zip"
+        service = bootstrap.runtime_for(session).services.export_service
+        service.create_backup(session.root, archive)
+        bootstrap.library_service.close_session(session)
+
+        check_calls = 0
+
+        def fail_installed_check(_database_file):
+            nonlocal check_calls
+            check_calls += 1
+            if check_calls == 2:
+                raise RuntimeError("simulated restore check failure")
+
+        monkeypatch.setattr(service, "_quick_check_database_file", fail_installed_check)
+        with pytest.raises(RuntimeError, match="simulated restore"):
+            service.restore_backup(archive, session.root, overwrite_existing=True)
+
+        # In-process rollback restored a consistent data_dir, so the crash
+        # evidence must be consumed rather than left for open-time recovery.
+        assert marker_file.read_text(encoding="utf-8") == "old"
+        assert not export_io_module.restore_intent_path(session.data_dir).exists()
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_open_after_crash_between_replaces_restores_previous_from_quarantine(
+    tmp_path,
+):
+    bootstrap, session = _open_session(tmp_path)
+    root = session.root
+    try:
+        conn = session.connection_for()
+        conn.execute(
+            "INSERT INTO file_meta (file_path, notes) VALUES (?, ?)",
+            (str(root / "kept.txt"), "sentinel"),
+        )
+        conn.commit()
+        archive = tmp_path / "crash.assetbackup.zip"
+        service = bootstrap.runtime_for(session).services.export_service
+        service.create_backup(root, archive)
+        (session.data_dir / "new-only.txt").write_text("new", encoding="utf-8")
+        bootstrap.library_service.close_session(session)
+
+        # Simulate process death between the two replaces: previous copy in
+        # quarantine, live slot absent, intent marker on disk.
+        quarantine_root = export_io_module.safe_restore_quarantine_root(
+            session.data_dir
+        )
+        entry = quarantine_root / f"{session.data_dir.name}_manualcrash"
+        session.data_dir.replace(entry)
+        export_io_module.write_restore_intent(
+            session.data_dir,
+            map_key=path_resolver.root_identity(root).map_key,
+            quarantine_entry=entry,
+            staging=session.data_dir.parent / ".unused-staging",
+        )
+        assert not session.data_dir.exists()
+
+        recovered = bootstrap.library_service.open_session(root)
+
+        assert recovered.data_dir == session.data_dir
+        # The rolled-back copy is exactly the live directory as it stood at
+        # crash time: the post-backup extra file is present, proving this is
+        # the quarantined previous copy rather than a freshly created DB.
+        assert (session.data_dir / "new-only.txt").is_file()
+        row = recovered.connection_for().execute(
+            "SELECT notes FROM file_meta WHERE file_path=?",
+            (str(root / "kept.txt"),),
+        ).fetchone()
+        assert row == ("sentinel",)
+        assert not entry.exists()  # moved back, not copied
+        assert not export_io_module.restore_intent_path(session.data_dir).exists()
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_open_fail_closed_when_quarantine_entry_is_missing(tmp_path):
+    bootstrap, session = _open_session(tmp_path)
+    root = session.root
+    try:
+        archive = tmp_path / "lost.assetbackup.zip"
+        service = bootstrap.runtime_for(session).services.export_service
+        service.create_backup(root, archive)
+        bootstrap.library_service.close_session(session)
+
+        import shutil
+
+        shutil.rmtree(session.data_dir)
+        export_io_module.write_restore_intent(
+            session.data_dir,
+            map_key=path_resolver.root_identity(root).map_key,
+            quarantine_entry=session.data_dir.parent / "_orphaned" / "missing-entry",
+            staging=session.data_dir.parent / ".unused-staging",
+        )
+
+        with pytest.raises(RuntimeError, match="Interrupted library restore"):
+            bootstrap.library_service.open_session(root)
+
+        # Fail closed: no silent empty schema over the lost data.
+        assert not (session.data_dir / "assetmanager.db").exists()
+        # The durable marker persists so every later open keeps failing shut.
+        assert export_io_module.restore_intent_path(session.data_dir).exists()
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_open_consumes_intent_marker_after_completed_install_or_corruption(
+    tmp_path,
+):
+    bootstrap, session = _open_session(tmp_path)
+    root = session.root
+    try:
+        archive = tmp_path / "post-install.assetbackup.zip"
+        service = bootstrap.runtime_for(session).services.export_service
+        service.create_backup(root, archive)
+        bootstrap.library_service.close_session(session)
+
+        # Crash after the install replace: data_dir present, marker stale.
+        export_io_module.write_restore_intent(
+            session.data_dir,
+            map_key=path_resolver.root_identity(root).map_key,
+            quarantine_entry=session.data_dir.parent / "_orphaned" / "some-entry",
+            staging=session.data_dir.parent / ".unused-staging",
+        )
+        reopened = bootstrap.library_service.open_session(root)
+        assert reopened.data_dir == session.data_dir
+        assert (session.data_dir / "assetmanager.db").is_file()
+        assert not export_io_module.restore_intent_path(session.data_dir).exists()
+        bootstrap.library_service.close_session(reopened)
+
+        # Corrupt marker with data_dir present is stale by definition: drop it.
+        export_io_module.restore_intent_path(session.data_dir).write_bytes(
+            b"{not-json"
+        )
+        second = bootstrap.library_service.open_session(root)
+        assert second.data_dir == session.data_dir
+        assert not export_io_module.restore_intent_path(session.data_dir).exists()
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_open_without_intent_marker_keeps_plain_empty_creation(tmp_path):
+    bootstrap, _session = _open_session(tmp_path)
+    try:
+        fresh_root = tmp_path / "fresh-library"
+        fresh_root.mkdir()
+        session = bootstrap.library_service.open_session(fresh_root)
+        assert (session.data_dir / "assetmanager.db").is_file()
+        assert not export_io_module.restore_intent_path(session.data_dir).exists()
+    finally:
+        bootstrap.library_service.close()
+
+
 
 def test_restore_rechecks_failure_state_after_queued_coordinator_admission(tmp_path):
     bootstrap, session = _open_session(tmp_path)

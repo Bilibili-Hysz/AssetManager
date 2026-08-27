@@ -13,12 +13,6 @@ import { useFavorites } from '../hooks/useFavorites';
 import { useI18n } from '../hooks/useI18n';
 import type { GalleryEntry, GalleryHomeResponse } from '../types/api';
 
-/**
- * The backend reports `building` on the home projection while it assembles
- * the response for very large libraries; it is not part of the public type.
- */
-type GalleryHomeQueryResponse = GalleryHomeResponse & { building?: boolean };
-
 const homeSkeletonKeys = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'];
 const homeLatestViewStorageKey = 'am_gallery_home_latest_view';
 
@@ -47,13 +41,14 @@ export default function GalleryHomePage({ onOpenPalette }: GalleryHomePageProps)
   const [viewMode, setViewMode] = useState<GalleryViewMode>(() => readHomeLatestView());
   const [failedFeaturedImageUrl, setFailedFeaturedImageUrl] = useState<string | null>(null);
 
-  const { data, error, isLoading, refresh } = useCachedQuery<GalleryHomeQueryResponse>({
+  const { data, error, isLoading, refresh } = useCachedQuery<GalleryHomeResponse>({
     key: ['gallery-home'],
-    queryFn: signal => galleryApi.home(signal) as Promise<GalleryHomeQueryResponse>,
+    queryFn: signal => galleryApi.home(signal),
     domains: ['files', 'home', 'metadata', 'tags'],
   });
 
-  const building = data?.building ?? false;
+  const building = data != null && 'building' in data && data.building === true;
+  const ready = data != null && !('building' in data) ? data : undefined;
   const loadFailed = error != null;
   const errorMessage = error instanceof Error ? error.message : t('gallery.load_failed');
 
@@ -69,13 +64,13 @@ export default function GalleryHomePage({ onOpenPalette }: GalleryHomePageProps)
 
   // A fresh response may reference a new cover; retry the failed image.
   useEffect(() => {
-    if (data && !data.building) setFailedFeaturedImageUrl(null);
+    if (ready) setFailedFeaturedImageUrl(null);
   }, [data]);
 
-  const featured = data?.featured;
-  const collections = data?.collections ?? [];
-  const projects = data?.projects ?? [];
-  const recent = data?.recent ?? [];
+  const featured = ready?.featured;
+  const collections = ready?.collections ?? [];
+  const projects = ready?.projects ?? [];
+  const recent = ready?.recent ?? [];
   const featuredLabel = featured?.kind === 'project' ? t('gallery.latest_project') : t('gallery.latest_collection');
   const featuredAction = featured?.kind === 'project' ? t('gallery.open_project') : t('gallery.open_collection');
 
@@ -155,7 +150,7 @@ export default function GalleryHomePage({ onOpenPalette }: GalleryHomePageProps)
                 action={<Link to="/gallery/collection" className="gallery-section-link">{t('gallery.view_all')} <ArrowRight size={14} /></Link>}
               >
                 <div className="gallery-card-grid gallery-collection-grid">
-                  {collections.map(entry => (
+                  {collections.map((entry: GalleryEntry) => (
                     <GalleryCard
                       key={entry.path}
                       entry={entry}
@@ -171,7 +166,7 @@ export default function GalleryHomePage({ onOpenPalette }: GalleryHomePageProps)
             {projects.length > 0 && (
               <GallerySection title={t('gallery.projects')}>
                 <div className="gallery-card-grid gallery-collection-grid">
-                  {projects.map(entry => (
+                  {projects.map((entry: GalleryEntry) => (
                     <GalleryCard
                       key={entry.path}
                       entry={entry}
@@ -188,7 +183,7 @@ export default function GalleryHomePage({ onOpenPalette }: GalleryHomePageProps)
               title={t('gallery.latest_works')}
               action={
                 <div className="gallery-section-tools">
-                  <span className="gallery-section-meta">{t('gallery.total_works', data?.stats.artworks ?? 0)}</span>
+                  <span className="gallery-section-meta">{t('gallery.total_works', ready?.stats.artworks ?? 0)}</span>
                   <GalleryViewControls value={viewMode} onChange={changeViewMode} />
                 </div>
               }
@@ -209,7 +204,7 @@ export default function GalleryHomePage({ onOpenPalette }: GalleryHomePageProps)
                   </GalleryTiledGrid>
                 ) : (
                   <div className={`gallery-work-grid gallery-view-${viewMode}`}>
-                    {recent.map(entry => (
+                    {recent.map((entry: GalleryEntry) => (
                       <GalleryCard
                         key={entry.path}
                         entry={entry}

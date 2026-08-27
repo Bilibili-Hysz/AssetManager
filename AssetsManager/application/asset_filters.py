@@ -1,34 +1,205 @@
 """Shared sort/filter/category rules for desktop and LAN browsing."""
 
+import logging
 import os
 import re
 from collections.abc import Sequence
 from pathlib import Path
+from threading import RLock
 from typing import Callable
 
 from AssetsManager.domain.asset import IMAGE_EXTS, category_for_extension
 
+
+_log = logging.getLogger(__name__)
+_category_registry_lock = RLock()
+_category_registry_handlers: list[Callable[[], None]] = []
+
+
+class CategoryRegistrySubscription:
+    """Idempotent handle for category-registry change notifications."""
+
+    def __init__(self, handler: Callable[[], None]):
+        self._handler = handler
+        self._closed = False
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        with _category_registry_lock:
+            if self._handler in _category_registry_handlers:
+                _category_registry_handlers.remove(self._handler)
+
+
+def subscribe_category_registry_changed(
+    handler: Callable[[], None],
+) -> CategoryRegistrySubscription:
+    """Subscribe to complete category-registry publications."""
+    with _category_registry_lock:
+        _category_registry_handlers.append(handler)
+    return CategoryRegistrySubscription(handler)
+
+
+def _publish_category_registry_changed() -> None:
+    with _category_registry_lock:
+        handlers = tuple(_category_registry_handlers)
+    for handler in handlers:
+        try:
+            handler()
+        except Exception:
+            _log.exception("Category registry change handler failed")
+
+
+class CategoryLabelRegistry(list[tuple[str, str]]):
+    """List-compatible labels with snapshot iteration during registry rebuilds."""
+
+    def __iter__(self):
+        with _category_registry_lock:
+            return iter(tuple(super().__iter__()))
+
+    def snapshot(self) -> tuple[tuple[str, str], ...]:
+        with _category_registry_lock:
+            return tuple(super().__iter__())
+
+
 # ── Category extension sets ───────────────────────────────────────
 
-FILTER_CATEGORY_EXTS: dict[str, set[str] | frozenset[str]] = {
-    "all":         set(),
-    "images":      IMAGE_EXTS,
-    "models":      {".blend", ".fbx", ".obj", ".gltf", ".glb", ".max", ".ma", ".mb", ".3ds", ".stl"},
-    "videos":      {".mp4", ".mov", ".avi", ".mkv", ".webm", ".wmv"},
-    "documents":   {".txt", ".pdf", ".docx", ".xlsx", ".pptx", ".md", ".json", ".py", ".xml"},
-    "archives":    {".zip", ".rar", ".7z", ".tar", ".gz", ".bz2"},
-}
+class CategoryExtensionRegistry(dict[str, frozenset[str]]):
+    """Mutable category registry whose built-in entries can be restored."""
 
-FILTER_CATEGORY_LABELS: list[tuple[str, str]] = [
-    ("all", "All"),
-    ("images", "Images"),
-    ("models", "3D Models"),
-    ("videos", "Videos"),
-    ("documents", "Documents"),
-    ("archives", "Archives"),
-]
+    def __init__(self, categories: dict[str, set[str] | frozenset[str]], labels):
+        super().__init__({key: frozenset(extensions) for key, extensions in categories.items()})
+        self._builtin_categories = {
+            key: frozenset(extensions) for key, extensions in categories.items()
+        }
+        self._builtin_labels = list(labels)
 
-FILTER_CATEGORIES: dict[str, set[str] | frozenset[str]] = {
+    def __contains__(self, key):
+        with _category_registry_lock:
+            return super().__contains__(key)
+
+    def __getitem__(self, key):
+        with _category_registry_lock:
+            return super().__getitem__(key)
+
+    def __iter__(self):
+        with _category_registry_lock:
+            return iter(tuple(super().__iter__()))
+
+    def get(self, key, default=None):
+        with _category_registry_lock:
+            return super().get(key, default)
+
+    def items(self):
+        with _category_registry_lock:
+            return tuple(super().items())
+
+    def keys(self):
+        with _category_registry_lock:
+            return tuple(super().keys())
+
+    def values(self):
+        with _category_registry_lock:
+            return tuple(super().values())
+
+    def snapshot(self) -> dict[str, frozenset[str]]:
+        with _category_registry_lock:
+            return dict(super().items())
+
+    def rebuild(self, contributions, category_map: dict[str, str], base_map=None) -> None:
+        """Atomically replace plugin state while preserving public identities."""
+        with _category_registry_lock:
+            next_categories = dict(self._builtin_categories)
+            next_category_map = dict(base_map if base_map is not None else _BUILTIN_CATEGORY_MAP)
+            labels = list(self._builtin_labels)
+            occupied_extensions = set(next_category_map)
+            builtin_keys = set(self._builtin_categories)
+            latest_by_key: dict[str, tuple[str, str, frozenset[str], str]] = {}
+            for key, label, extensions, owner in contributions:
+                normalized_key = str(key or "").strip()
+                normalized_extensions = frozenset(
+                    str(extension).strip().lower()
+                    for extension in extensions
+                    if str(extension).strip()
+                )
+                if normalized_key and normalized_key not in builtin_keys and normalized_extensions:
+                    # Keep the latest contribution for a plugin-owned key. The
+                    # contribution list remains the ownership stack, so removing
+                    # that plugin exposes the previous entry on the next rebuild.
+                    latest_by_key[normalized_key] = (
+                        normalized_key, str(label), normalized_extensions, str(owner),
+                    )
+
+            used_labels = {label for _key, label in labels}
+            for key, label, extensions, _owner in latest_by_key.values():
+                # Built-in extensions remain authoritative. Plugin labels must
+                # remain unique so legacy display-label callers cannot resolve
+                # a built-in or another plugin category incorrectly.
+                if label in used_labels:
+                    continue
+                available = extensions - occupied_extensions
+                if not available:
+                    continue
+                next_categories[key] = frozenset(available)
+                next_category_map.update({extension: key for extension in available})
+                occupied_extensions.update(available)
+                labels.append((key, label))
+                used_labels.add(label)
+
+            # Publish each public registry only after all next-state structures
+            # are complete. LiveCategoryMap preserves its imported dict identity
+            # while swapping an immutable read snapshot in one operation.
+            self.clear()
+            self.update(next_categories)
+            publish = getattr(category_map, "publish", None)
+            if callable(publish):
+                publish(next_category_map)
+            else:
+                # Compatibility for test/application providers that expose a
+                # plain dict. The application CATEGORY_MAP uses publish().
+                category_map.clear()
+                category_map.update(next_category_map)
+            FILTER_CATEGORY_LABELS[:] = labels
+            FILTER_CATEGORIES.clear()
+            for key, label in labels:
+                FILTER_CATEGORIES[label] = self[key]
+        _publish_category_registry_changed()
+
+
+_BUILTIN_CATEGORY_MAP: dict[str, str] = {}
+for _key, _extensions in {
+    "images": IMAGE_EXTS,
+    "models": {".blend", ".fbx", ".obj", ".gltf", ".glb", ".max", ".ma", ".mb", ".3ds", ".stl"},
+    "videos": {".mp4", ".mov", ".avi", ".mkv", ".webm", ".wmv"},
+    "documents": {".txt", ".pdf", ".docx", ".xlsx", ".pptx", ".md", ".json", ".py", ".xml"},
+    "archives": {".zip", ".rar", ".7z", ".tar", ".gz", ".bz2"},
+}.items():
+    _BUILTIN_CATEGORY_MAP.update({extension: _key for extension in _extensions})
+
+FILTER_CATEGORY_EXTS: CategoryExtensionRegistry = CategoryExtensionRegistry(
+    {
+        "all": set(),
+        "images": IMAGE_EXTS,
+        "models": {".blend", ".fbx", ".obj", ".gltf", ".glb", ".max", ".ma", ".mb", ".3ds", ".stl"},
+        "videos": {".mp4", ".mov", ".avi", ".mkv", ".webm", ".wmv"},
+        "documents": {".txt", ".pdf", ".docx", ".xlsx", ".pptx", ".md", ".json", ".py", ".xml"},
+        "archives": {".zip", ".rar", ".7z", ".tar", ".gz", ".bz2"},
+    },
+    [
+        ("all", "All"),
+        ("images", "Images"),
+        ("models", "3D Models"),
+        ("videos", "Videos"),
+        ("documents", "Documents"),
+        ("archives", "Archives"),
+    ],
+)
+
+FILTER_CATEGORY_LABELS: CategoryLabelRegistry = CategoryLabelRegistry(
+    FILTER_CATEGORY_EXTS._builtin_labels,
+)
+FILTER_CATEGORIES: dict[str, frozenset[str]] = {
     label: FILTER_CATEGORY_EXTS[key] for key, label in FILTER_CATEGORY_LABELS
 }
 
@@ -61,14 +232,35 @@ _CATEGORY_MAP: dict[str, str] = {
 }
 
 
+def category_registry_snapshot() -> tuple[dict[str, frozenset[str]], tuple[tuple[str, str], ...]]:
+    """Return categories and labels from one registry generation."""
+    with _category_registry_lock:
+        return FILTER_CATEGORY_EXTS.snapshot(), FILTER_CATEGORY_LABELS.snapshot()
+
+
+def category_labels() -> list[tuple[str, str]]:
+    """Return a consistent snapshot of current filter categories."""
+    return list(category_registry_snapshot()[1])
+
+
 def normalize_sort_key(key: str) -> str:
     """Normalize sort key from display name to canonical form."""
     return _SORT_KEY_MAP.get(key, key or "name")
 
 
 def normalize_filter_category(category: str) -> str:
-    """Normalize filter category from display name to canonical form."""
-    return _CATEGORY_MAP.get(category, category or "all")
+    """Normalize canonical and uniquely registered display category names."""
+    value = str(category or "").strip()
+    if not value:
+        return "all"
+    with _category_registry_lock:
+        if value in FILTER_CATEGORY_EXTS:
+            return value
+        builtin = _CATEGORY_MAP.get(value)
+        if builtin is not None:
+            return builtin
+        matching_keys = [key for key, label in FILTER_CATEGORY_LABELS if label == value]
+    return matching_keys[0] if len(matching_keys) == 1 else value
 
 
 # ── Category matching ─────────────────────────────────────────────
@@ -80,7 +272,7 @@ def extension_matches_category(ext: str, category: str) -> bool:
     if cat == "all":
         return True
     exts = FILTER_CATEGORY_EXTS.get(cat, set())
-    return ext in exts
+    return ext.lower() in exts
 
 
 # ── File helpers ─────────────────────────────────────────────────

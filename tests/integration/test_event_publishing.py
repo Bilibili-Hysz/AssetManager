@@ -1,6 +1,8 @@
 """Tests verifying that application services publish correct domain events."""
 import os
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
@@ -215,6 +217,61 @@ def test_metadata_service_publishes_urls_changed(tmp_path, monkeypatch):
         assert len(events) == 1
         assert events[0].file_path == file_path
         assert "https://example.com" in events[0].new_urls
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_metadata_remove_url_rejects_caller_transaction_before_publishing(tmp_path, monkeypatch):
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+    from AssetsManager.domain.event_bus import EventBus
+    from AssetsManager.domain.events import AssetUrlsChanged
+
+    bus = EventBus()
+    events = []
+    bus.subscribe(AssetUrlsChanged, events.append)
+    import AssetsManager.domain.event_bus as eb
+    monkeypatch.setattr(eb, "_instance", bus)
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    service = bootstrap.runtime_for(session).services.metadata_service
+    asset = session.root / "file.txt"
+    try:
+        service.add_url(session.root, asset, "https://example.com")
+        events.clear()
+        conn = session.connection_for(session.root)
+        conn.execute("BEGIN")
+        with pytest.raises(RuntimeError, match="clean transaction boundary"):
+            service.remove_url(session.root, asset, "https://example.com")
+        assert events == []
+        assert service.get_urls(session.root, asset) == ["https://example.com"]
+        conn.rollback()
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_metadata_remove_url_publishes_after_clean_mutation(tmp_path, monkeypatch):
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+    from AssetsManager.domain.event_bus import EventBus
+    from AssetsManager.domain.events import AssetUrlsChanged
+
+    bus = EventBus()
+    events = []
+    bus.subscribe(AssetUrlsChanged, events.append)
+    import AssetsManager.domain.event_bus as eb
+    monkeypatch.setattr(eb, "_instance", bus)
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    service = bootstrap.runtime_for(session).services.metadata_service
+    asset = session.root / "file.txt"
+    try:
+        service.add_url(session.root, asset, "https://example.com")
+        events.clear()
+        service.remove_url(session.root, asset, "https://example.com")
+        assert service.get_urls(session.root, asset) == []
+        assert len(events) == 1
+        assert events[0].new_urls == ()
     finally:
         bootstrap.library_service.close()
 

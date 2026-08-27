@@ -25,8 +25,9 @@ from typing import TYPE_CHECKING
 
 # QVariantAnimation stays in this module's namespace: _base_events resolves it
 # lazily through _base so tests can monkeypatch the panel's animation class.
-from PySide6.QtCore import Signal, QVariantAnimation  # noqa: F401
+from PySide6.QtCore import Qt, Signal, QVariantAnimation  # noqa: F401
 
+from AssetsManager.panels._event_bridge import CategoryRegistrySubscription
 from AssetsManager.panels.base import PanelContent
 from AssetsManager.panels.file_list._navigation import NavigationMixin
 from AssetsManager.panels.file_list._actions import ActionsMixin
@@ -54,6 +55,11 @@ class FileListPanel(NavigationMixin, ActionsMixin, LayoutMixin, LogicMixin, Even
         self._init_state()
         self._build_ui()
         self._connect_signals()
+        self._category_registry_disconnected = False
+        self._category_registry_subscription = CategoryRegistrySubscription(
+            self._on_category_registry_changed,
+            self,
+        )
 
     def clone(self):
         new = FileListPanel()
@@ -117,13 +123,30 @@ class FileListPanel(NavigationMixin, ActionsMixin, LayoutMixin, LogicMixin, Even
             fs_refresh_timer.stop()
         if hasattr(self, "_pending_fs_changed_path"):
             self._pending_fs_changed_path = None
+        invalidate_covers = getattr(self, "_invalidate_cover_scans", None)
+        if callable(invalidate_covers):
+            invalidate_covers()
+        drain_covers = getattr(self, "_drain_cover_scan_pool", None)
+        if callable(drain_covers):
+            drain_covers()
         generation = self._loader.invalidate_tasks()
         self._loader.wait_for_runtime(generation)
         self._model.prepare_library_switch()
 
     def shutdown(self):
         """Clean up bus connections and worker threads."""
+        self._category_registry_disconnected = True
+        subscription = self._category_registry_subscription
+        if subscription is not None:
+            subscription.close()
+            self._category_registry_subscription = None
         self._operation_feedback_generation += 1
+        invalidate_covers = getattr(self, "_invalidate_cover_scans", None)
+        if callable(invalidate_covers):
+            invalidate_covers()
+        close_covers = getattr(self, "_close_cover_scan_pool", None)
+        if callable(close_covers):
+            close_covers()
         clear_timers = getattr(self, "_clear_pending_timers", None)
         if callable(clear_timers):
             clear_timers()

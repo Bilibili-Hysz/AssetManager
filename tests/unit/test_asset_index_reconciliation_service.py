@@ -49,6 +49,152 @@ def _service(tmp_path, results, **service_kwargs):
     return service, queue, index
 
 
+def test_reconciliation_worker_completes_filesystem_projection_repair(tmp_path):
+    from AssetsManager.application import ReconciliationKind, ReconciliationState
+
+    class RepairService:
+        def __init__(self):
+            self.tasks = []
+
+        def repair(self, task):
+            self.tasks.append(task)
+
+    repair = RepairService()
+    service, queue, _index = _service(
+        tmp_path,
+        [],
+        projection_repair_service=repair,
+    )
+    library = tmp_path / "library"
+    library.mkdir()
+    payload = {
+        "payload_version": 1,
+        "operation_kind": "delete",
+        "operation_id": "repair-1",
+        "projection_set": [
+            "asset_index", "tags", "metadata", "favorites",
+            "thumbnail_rows", "thumbnail_bytes",
+        ],
+        "scope_path": str(library),
+        "target_path": str(library / "gone.txt"),
+        "delete_mode": "permanent",
+        "expected_state": {"target_absent": True},
+    }
+    task = queue.enqueue_or_merge(
+        path=library,
+        reason="projection_cleanup_failed",
+        kind=ReconciliationKind.FILESYSTEM_PROJECTION_REPAIR,
+        payload=payload,
+        now=0.0,
+    )
+
+    outcome = service.process_once(now=0.0)
+
+    assert outcome is not None
+    assert outcome.state is ReconciliationState.SUCCEEDED
+    assert len(repair.tasks) == 1
+    assert repair.tasks[0].task_id == task.task_id
+
+
+def test_reconciliation_worker_terminals_invalid_filesystem_repair(tmp_path):
+    from AssetsManager.application import ReconciliationKind
+
+    service, queue, _index = _service(tmp_path, [])
+    library = tmp_path / "library"
+    library.mkdir()
+    payload = {
+        "payload_version": 1,
+        "operation_kind": "delete",
+        "operation_id": "repair-2",
+        "projection_set": [
+            "asset_index", "tags", "metadata", "favorites",
+            "thumbnail_rows", "thumbnail_bytes",
+        ],
+        "scope_path": str(library),
+        "target_path": str(tmp_path / "outside.txt"),
+        "delete_mode": "permanent",
+        "expected_state": {"target_absent": True},
+    }
+    with pytest.raises(ValueError, match="escapes library root"):
+        queue.enqueue_or_merge(
+            path=library,
+            reason="projection_cleanup_failed",
+            kind=ReconciliationKind.FILESYSTEM_PROJECTION_REPAIR,
+            payload=payload,
+            now=0.0,
+        )
+
+
+def test_restore_payload_is_accepted_and_canonicalized(tmp_path):
+    from AssetsManager.application import ReconciliationKind, ReconciliationQueue
+
+    library = tmp_path / "library"
+    library.mkdir()
+    target = library / "restored.txt"
+    payload = {
+        "payload_version": 1,
+        "operation_kind": "restore",
+        "operation_id": "restore-1",
+        "projection_set": ["asset_index", "tags", "metadata", "favorites"],
+        "scope_path": str(library),
+        "target_path": str(target),
+        "is_directory": False,
+        "expected_state": {"target_present": True},
+        "snapshot": {
+            "format": "assetsmanager.undo-projection",
+            "version": 1,
+            "base": str(library / "old.txt"),
+            "file_tags": [[str(library / "old.txt"), "hero"]],
+            "file_meta": [],
+            "library_favorites": [],
+        },
+    }
+    queue = ReconciliationQueue(library_root=library, clock=lambda: 0.0)
+    task = queue.enqueue_or_merge(
+        path=library,
+        reason="projection_restore_failed",
+        kind=ReconciliationKind.FILESYSTEM_PROJECTION_REPAIR,
+        payload=payload,
+        now=0.0,
+    )
+    assert '"operation_kind":"restore"' in task.payload
+    assert '"file_tags"' in task.payload
+
+
+def test_restore_payload_rejects_snapshot_outside_root(tmp_path):
+    from AssetsManager.application import ReconciliationKind, ReconciliationQueue
+
+    library = tmp_path / "library"
+    library.mkdir()
+    payload = {
+        "payload_version": 1,
+        "operation_kind": "restore",
+        "operation_id": "restore-2",
+        "projection_set": ["asset_index", "tags", "metadata", "favorites"],
+        "scope_path": str(library),
+        "target_path": str(library / "restored.txt"),
+        "is_directory": False,
+        "expected_state": {"target_present": True},
+        "snapshot": {
+            "format": "assetsmanager.undo-projection",
+            "version": 1,
+            "base": str(tmp_path / "outside.txt"),
+            "file_tags": [],
+            "file_meta": [],
+            "library_favorites": [],
+        },
+    }
+    queue = ReconciliationQueue(library_root=library, clock=lambda: 0.0)
+    with pytest.raises(ValueError, match="base escapes"):
+        queue.enqueue_or_merge(
+            path=library,
+            reason="projection_restore_failed",
+            kind=ReconciliationKind.FILESYSTEM_PROJECTION_REPAIR,
+            payload=payload,
+            now=0.0,
+        )
+
+
 def test_reconciliation_worker_requires_durable_publish(tmp_path):
     from AssetsManager.application import (
         AssetIndexPublishResult,

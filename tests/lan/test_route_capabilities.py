@@ -143,7 +143,7 @@ async def test_seller_capability_preserves_feature_disabled_response(monkeypatch
     from AssetsManager.lan.routes import commerce_policy
 
     disabled = web.json_response(
-        {"error": "Seller is disabled", "code": "feature_disabled"}, status=404)
+        {"error": "Seller is disabled", "code": "feature_disabled", "details": {}}, status=404)
     monkeypatch.setattr(commerce_policy, "seller_gate", lambda: disabled)
     calls: list[int] = []
 

@@ -10,6 +10,10 @@ import threading
 import time
 
 from AssetsManager.application.context import ConnectionProvider, LibrarySession
+from AssetsManager.application.thumbnail_cache_lifecycle import (
+    artifact_path,
+    cache_owner_lock,
+)
 from AssetsManager.core.database import DatabaseManager, db_write_lock
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import ActivityChanged
@@ -446,57 +450,66 @@ class DatabaseIntegrityService:
         self._check_cancelled()
         metadata_removed = 0
         files_removed = 0
-        with self._session.operation():
-            conn = self._connection()
-            if confirmed:
-                with db_write_lock(conn):
-                    try:
-                        for start in range(0, len(confirmed), _DELETE_BATCH_SIZE):
-                            batch = confirmed[start : start + _DELETE_BATCH_SIZE]
+        try:
+            with cache_owner_lock(thumb_dir):
+                with self._session.operation():
+                    conn = self._connection()
+                    if confirmed:
+                        with db_write_lock(conn):
+                            try:
+                                for start in range(0, len(confirmed), _DELETE_BATCH_SIZE):
+                                    batch = confirmed[start : start + _DELETE_BATCH_SIZE]
+                                    self._check_cancelled()
+                                    placeholders = ", ".join("(?, ?)" for _ in batch)
+                                    cursor = conn.execute(
+                                        "DELETE FROM thumbnail_cache WHERE "
+                                        f"(cache_key, source_path) IN ({placeholders})",
+                                        tuple(item for pair in batch for item in pair),
+                                    )
+                                    metadata_removed += max(cursor.rowcount, 0)
+                                self._commit_while_live(conn)
+                            except BaseException:
+                                conn.rollback()
+                                raise
+                    known_artifacts = {
+                        (str(row[0]), str(row[1] or "webp"))
+                        for row in conn.execute(
+                            "SELECT cache_key, artifact_kind FROM thumbnail_cache"
+                        ).fetchall()
+                    }
+                    if thumb_dir.is_dir():
+                        try:
+                            baked_files = tuple(thumb_dir.iterdir())
+                        except OSError:
+                            baked_files = ()
+                        for baked_path in sorted(
+                            baked_files, key=lambda path: path.name.casefold()
+                        ):
                             self._check_cancelled()
-                            placeholders = ", ".join("(?, ?)" for _ in batch)
-                            cursor = conn.execute(
-                                "DELETE FROM thumbnail_cache WHERE "
-                                f"(cache_key, source_path) IN ({placeholders})",
-                                tuple(item for pair in batch for item in pair),
-                            )
-                            metadata_removed += max(cursor.rowcount, 0)
-                        self._commit_while_live(conn)
-                    except BaseException:
-                        conn.rollback()
-                        raise
-            known_keys = {
-                str(row[0])
-                for row in conn.execute(
-                    "SELECT cache_key FROM thumbnail_cache"
-                ).fetchall()
-            }
-            if thumb_dir.is_dir():
-                try:
-                    baked_files = tuple(thumb_dir.iterdir())
-                except OSError:
-                    baked_files = ()
-                for baked_path in sorted(
-                    baked_files, key=lambda path: path.name.casefold()
-                ):
-                    self._check_cancelled()
-                    if not baked_path.is_file() or not baked_path.name.endswith(".webp"):
-                        continue
-                    if baked_path.name[: -len(".webp")] in known_keys:
-                        continue
-                    try:
-                        baked_path.unlink()
-                        files_removed += 1
-                    except (OSError, ValueError):
-                        _log.warning("Failed to remove orphan thumbnail: %s", baked_path)
-                        issues = self._run_issues
-                        if issues is not None:
-                            message = (
-                                f"Failed to remove orphan thumbnail file; "
-                                f"retry next pass: {baked_path}"
-                            )
-                            if message not in issues:
-                                issues.append(message)
+                            suffix = baked_path.suffix.lower().lstrip(".")
+                            if suffix not in {"webp", "jpg"} or not baked_path.is_file():
+                                continue
+                            key = baked_path.stem
+                            if (key, suffix) in known_artifacts:
+                                continue
+                            safe_path = artifact_path(thumb_dir, key, suffix)
+                            if safe_path is None:
+                                continue
+                            try:
+                                safe_path.unlink()
+                                files_removed += 1
+                            except (OSError, ValueError):
+                                _log.warning("Failed to remove orphan thumbnail: %s", safe_path)
+                                issues = self._run_issues
+                                if issues is not None:
+                                    message = (
+                                        f"Failed to remove orphan thumbnail file; "
+                                        f"retry next pass: {safe_path}"
+                                    )
+                                    if message not in issues:
+                                        issues.append(message)
+        except TimeoutError:
+            _log.warning("Thumbnail cache owner busy during integrity scan")
         return metadata_removed, files_removed
 
     @staticmethod

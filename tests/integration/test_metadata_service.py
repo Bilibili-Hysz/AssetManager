@@ -196,6 +196,34 @@ def test_metadata_service_dir_size_recomputes_after_ttl_expiry(tmp_path, monkeyp
         conn.close()
 
 
+def test_metadata_service_size_cache_sweeps_expired_entries(tmp_path):
+    from AssetsManager.application import MetadataService
+    from AssetsManager.core.project_data import _SIZE_CACHE_TTL_SECONDS
+
+    library = tmp_path / "library"
+    folder = library / "folder"
+    folder.mkdir(parents=True)
+    (folder / "asset.bin").write_bytes(b"1234")
+
+    conn = _memory_conn()
+    try:
+        service = MetadataService(connection_provider=lambda _root: conn)
+        stale_key = str((library / "vanished").resolve())
+        service._size_cache_ts[stale_key] = (
+            time.time() - 2 * _SIZE_CACHE_TTL_SECONDS
+        )
+        fresh_key = str(folder.resolve())
+        service._size_cache_ts[fresh_key] = time.time()
+
+        # Any write through _mark_size_cached triggers the opportunistic
+        # sweep; the fresh entry must survive while the stale one is gone.
+        assert service.get_dir_size(library, folder) == (4, False)
+        assert stale_key not in service._size_cache_ts
+        assert fresh_key in service._size_cache_ts
+    finally:
+        conn.close()
+
+
 def test_metadata_service_library_total_size_served_within_ttl(tmp_path, monkeypatch):
     from AssetsManager.application import MetadataService
     from AssetsManager.core.project_data import ProjectData

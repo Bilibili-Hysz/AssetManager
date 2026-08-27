@@ -1,16 +1,40 @@
 """Thumbnail routes: /api/thumbnails/{path}, /api/thumbnails/batch."""
 import asyncio
 import base64
+import mimetypes
+import os
+from pathlib import Path
 from time import perf_counter
 
 from aiohttp import web
 
-from AssetsManager.domain.asset import IMAGE_EXTS
+from AssetsManager.application.thumbnail_service import (
+    MAX_THUMBNAIL_BATCH_BYTES,
+    ThumbnailAdmissionError,
+    ThumbnailSourceChangedError,
+    admit_thumbnail_source,
+    process_image_snapshot,
+    validate_thumbnail_source,
+)
+from AssetsManager.domain.asset import IMAGE_EXTS, VIDEO_EXTS
 from AssetsManager.lan.routes._errors import error_response
-from AssetsManager.lan.routes._helpers import get_lan, require_permission, validate_path, get_thumbnail_service
+from AssetsManager.lan.routes._helpers import (
+    PRIVATE_PREVIEW_HEADERS,
+    PUBLIC_PREVIEW_HEADERS,
+    get_lan,
+    get_thumbnail_service,
+    require_permission,
+    validate_path,
+)
+from AssetsManager.lan.safe_open import SafeOpenError, read_safe_file
 
 _SAFE_IMAGE_EXTS = IMAGE_EXTS - {".svg"}
 _NOSNIFF_HEADERS = {"X-Content-Type-Options": "nosniff"}
+
+
+def _thumbnail_target_key(target: Path) -> str:
+    """Normalize aliases using the host filesystem's case semantics."""
+    return os.path.normcase(str(target.resolve(strict=False)))
 
 
 async def handle_thumbnail(request):
@@ -52,14 +76,52 @@ async def handle_thumbnail(request):
             status = 404
             return web.Response(status=status)
 
+        # Re-check immediately before either FileResponse or processing. This
+        # narrows the admission/consumption gap but cannot make a path open
+        # atomic against replacement between this check and the consumer.
+        validate_thumbnail_source(source_path, result.source_identity)
+
         if not result.should_blur and max_size >= 256 and not result.cache_hit:
             outcome = "success"
             status = 200
             delivery = "original"
-            return web.FileResponse(source_path, headers=_NOSNIFF_HEADERS)
+            try:
+                body, _identity = await asyncio.to_thread(
+                    read_safe_file, lan.library_root, source_path,
+                    expected_identity=result.source_identity,
+                )
+            except (SafeOpenError, OSError, ValueError):
+                raise ThumbnailSourceChangedError(source_path) from None
+            return web.Response(
+                body=body,
+                content_type=mimetypes.guess_type(source_path.name)[0] or "application/octet-stream",
+                headers=_NOSNIFF_HEADERS,
+            )
+
+        source_root = lan.library_root
+        try:
+            source_path.relative_to(source_root)
+        except ValueError:
+            source_root = source_path.parent
+        try:
+            source_body, _source_identity = await asyncio.to_thread(
+                read_safe_file,
+                source_root,
+                source_path,
+                expected_identity=result.source_identity,
+            )
+        except (SafeOpenError, OSError, ValueError):
+            raise ThumbnailSourceChangedError(source_path) from None
 
         def _process():
-            return svc.process_image(source_path, max_size, result.should_blur)
+            return process_image_snapshot(
+                svc,
+                source_path,
+                source_body,
+                max_size,
+                result.should_blur,
+                result.source_identity,
+            )
 
         processed = await asyncio.to_thread(_process)
         outcome = "success"
@@ -75,16 +137,37 @@ async def handle_thumbnail(request):
                     headers=_NOSNIFF_HEADERS,
                 )
             delivery = "original"
-            return web.FileResponse(source_path, headers=_NOSNIFF_HEADERS)
+            return web.Response(
+                body=source_body,
+                content_type=mimetypes.guess_type(source_path.name)[0] or "application/octet-stream",
+                headers=_NOSNIFF_HEADERS,
+            )
 
         body, content_type = processed
         delivery = "processed"
         return web.Response(
-            body=body, content_type=content_type,
-            headers={
-                "Cache-Control": "public, max-age=3600",
-                "X-Content-Type-Options": "nosniff",
-            },
+            body=body,
+            content_type=content_type,
+            headers=(
+                PRIVATE_PREVIEW_HEADERS
+                if result.should_blur
+                else PUBLIC_PREVIEW_HEADERS
+            ),
+        )
+    except ThumbnailAdmissionError as exc:
+        status = 413
+        return error_response(
+            "Thumbnail source exceeds size limit",
+            status=status,
+            code="payload_too_large",
+            extra={"source_bytes": exc.size, "limit_bytes": exc.limit},
+        )
+    except ThumbnailSourceChangedError:
+        status = 409
+        return error_response(
+            "Thumbnail source changed during request",
+            status=status,
+            code="source_changed",
         )
     except web.HTTPException as exc:
         status = exc.status
@@ -143,14 +226,58 @@ async def handle_thumbnail_batch(request):
             return error_response("Provide 1-100 paths", status=status, code="bad_request")
         requested_count = len(paths)
 
+        # Validate and budget unique sources before entering the worker. This
+        # prevents duplicate paths from multiplying decode work and ensures a
+        # batch cannot admit more source bytes than its fixed budget.
+        unique_paths: list[tuple[list[str], Path]] = []
+        seen_targets: dict[str, list[str]] = {}
+        total_bytes = 0
+        try:
+            for rel_path in paths:
+                if not isinstance(rel_path, str):
+                    continue
+                target = validate_path(lan, rel_path)
+                target_key = _thumbnail_target_key(target)
+                aliases = seen_targets.get(target_key)
+                if aliases is not None:
+                    aliases.append(rel_path)
+                    continue
+                if target.suffix.lower() not in IMAGE_EXTS | VIDEO_EXTS or not target.is_file():
+                    continue
+                source_bytes = admit_thumbnail_source(target)
+                if source_bytes is None:
+                    continue
+                total_bytes += source_bytes
+                if total_bytes > MAX_THUMBNAIL_BATCH_BYTES:
+                    status = 413
+                    return error_response(
+                        "Thumbnail batch exceeds size limit",
+                        status=status,
+                        code="payload_too_large",
+                        extra={
+                            "total_bytes": total_bytes,
+                            "limit_bytes": MAX_THUMBNAIL_BATCH_BYTES,
+                        },
+                    )
+                aliases = [rel_path]
+                seen_targets[target_key] = aliases
+                unique_paths.append((aliases, target))
+        except ThumbnailAdmissionError as exc:
+            status = 413
+            return error_response(
+                "Thumbnail source exceeds size limit",
+                status=status,
+                code="payload_too_large",
+                extra={"source_bytes": exc.size, "limit_bytes": exc.limit},
+            )
+
         svc = get_thumbnail_service(request)
 
         def _batch_resolve():
             result = {}
             failed = 0
-            for rel_path in paths:
+            for aliases, target in unique_paths:
                 try:
-                    target = validate_path(lan, rel_path)
                     resolved = svc.resolve(
                         target, lan.thumbnail_dir, max_size=max_size,
                         blur_tags=lan.blur_tags, library_root=lan.library_root,
@@ -160,13 +287,33 @@ async def handle_thumbnail_batch(request):
                     source_path = resolved.source_path
                     if source_path is None:
                         continue
-
-                    processed = svc.process_image(source_path, max_size, resolved.should_blur)
+                    validate_thumbnail_source(source_path, resolved.source_identity)
+                    source_root = lan.library_root
+                    try:
+                        source_path.relative_to(source_root)
+                    except ValueError:
+                        source_root = source_path.parent
+                    source_body, _source_identity = read_safe_file(
+                        source_root,
+                        source_path,
+                        expected_identity=resolved.source_identity,
+                    )
+                    processed = process_image_snapshot(
+                        svc,
+                        source_path,
+                        source_body,
+                        max_size,
+                        resolved.should_blur,
+                        resolved.source_identity,
+                    )
                     if processed is None:
                         continue
 
                     body_bytes, _ = processed
-                    result[rel_path] = base64.b64encode(body_bytes).decode("ascii")
+                    encoded = base64.b64encode(body_bytes).decode("ascii")
+                    result.update({alias: encoded for alias in aliases})
+                except (ThumbnailAdmissionError, ThumbnailSourceChangedError):
+                    failed += 1
                 except web.HTTPException:
                     raise
                 except Exception:
@@ -177,7 +324,10 @@ async def handle_thumbnail_batch(request):
         result_count = len(result)
         outcome = "partial" if failed_count else "success"
         status = 200
-        return web.json_response({"thumbnails": result})
+        return web.json_response(
+            {"thumbnails": result},
+            headers={"Cache-Control": "private, no-store"},
+        )
     except web.HTTPException as exc:
         status = exc.status
         raise

@@ -170,6 +170,10 @@ class WindowLifecycleCoordinator:
                     lan_stopped = True
 
         def stop_import() -> None:
+            cleanup = getattr(window, "_cleanup_import", None)
+            if callable(cleanup):
+                cleanup()
+                return
             token = getattr(window, "_import_token", None)
             if token is not None:
                 token.cancel()
@@ -288,6 +292,10 @@ class WindowLifecycleCoordinator:
                 lan_server.stop()
 
         def cleanup_import() -> None:
+            cleanup = getattr(window, "_cleanup_import", None)
+            if callable(cleanup):
+                cleanup()
+                return
             token = getattr(window, "_import_token", None)
             if token is not None:
                 token.cancel()

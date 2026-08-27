@@ -41,10 +41,18 @@ from AssetsManager.application.database_maintenance_service import (
     VacuumResult,
     WalCheckpointResult,
 )
+from AssetsManager.application.library_watcher_service import (
+    LibraryWatcherService,
+    LibraryWatcherStopTimeout,
+)
 from AssetsManager.application.file_operation_service import (
     FileOperationResult,
     FileOperationService,
     FileOperationWarning,
+)
+from AssetsManager.application.filesystem_projection_repair_service import (
+    FilesystemProjectionRepairService,
+    FilesystemProjectionRepairTerminalError,
 )
 from AssetsManager.application.reconciliation_queue_store import (
     SQLiteReconciliationQueueStore,
@@ -113,6 +121,7 @@ from AssetsManager.application.security_preflight import (
 )
 from AssetsManager.application.tag_service import TagService
 from AssetsManager.application.thumbnail_service import ThumbnailResult, ThumbnailService, clear_thumbnail_cache_keys, thumbnail_cache_key
+from AssetsManager.core.thumbnail_key import ThumbnailSourceFingerprint, legacy_thumbnail_cache_key
 from AssetsManager.application.undo_service import UndoEntry, UndoService
 from AssetsManager.application.bootstrap import ApplicationBootstrap, LanRuntimeServices, LibraryScopedServices, RuntimeSharingServices
 from AssetsManager.application.runtime import LibraryRuntime
@@ -142,9 +151,13 @@ __all__ = [
     "DatabaseMaintenanceService",
     "DatabaseSizeResult",
     "DirectoryListOptions",
+    "LibraryWatcherService",
+    "LibraryWatcherStopTimeout",
     "FileOperationResult",
     "FileOperationService",
     "FileOperationWarning",
+    "FilesystemProjectionRepairService",
+    "FilesystemProjectionRepairTerminalError",
     "ReconciliationKind",
     "ReconciliationQueue",
     "ReconciliationQueueFull",
@@ -222,4 +235,6 @@ __all__ = [
     "normalize_sort_key",
     "sort_key_for_entry",
     "thumbnail_cache_key",
+    "ThumbnailSourceFingerprint",
+    "legacy_thumbnail_cache_key",
 ]

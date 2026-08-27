@@ -1,0 +1,258 @@
+{
+  "schema_version": 1,
+  "report_id": "evidence-register-v2-evidence-2026-08-25",
+  "captured_at": "2026-08-25T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "e3260f5172f464d7910347496d398a1c73dd968ef65496689b821a7eced0a1a6",
+    "diff_sha256": "5887d69622b6115fa89530f06226dd0783f539b81c0b3b19c09def44b6fcc7f0",
+    "tracked_change_count": 145,
+    "untracked_change_count": 135
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/integration/test_import_service.py",
+          "tests/integration/test_import_subprocess_termination.py",
+          "tests/unit/test_import_manifest_store.py",
+          "tests/integration/test_import_manifest_recovery_claim_process.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Register snapshot gate: the promoted import/recovery chain contracts re-run green at promotion time",
+        "sample_count": 60,
+        "pass_criterion": "exit_code == 0; platform-gated symlink skips recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/evidence-register-v2/focused.stdout.log",
+            "sha256": "50493f5d50a65af138c27bcbbc4434473cf588bf7bc7b5c64ea9e50fb8c7b1de"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/evidence-register-v2/focused.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      }
+    ],
+    "note": "Global register refresh: 109 unique IDs across 53 manifests censused; seven recent-chain findings promoted to verified-fixed under the Canonical Register rule (focused + full-suite exit-0 artifacts in later manifests; 28-A via documented fact-chain exemption because its own full-suite red was the unrelated transaction-boundary failure that batch 29 later fixed and verified). EVID dual-status takeovers registered explicitly (six IDs: later fixed-unverified status is authoritative; EVID-03..06/11/12 confirmed and EVID-13 conditional remain open). Errata pointers recorded append-only for stale open-claims superseded by batches 29/28-E/29-C/30-C. Housekeeping census: four of nine explicit TODO items already resolved in code, one half, two low-risk valid, two decision items; empty gitignored .pytest-tmp removed locally. No historical bytes modified."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/evidence-register-v2-evidence-2026-08-25.md",
+      "sha256": "5c26ca82c5055b6777944a36bb9e1362fbe72fc9abf62c9b98b1ffd17cfbcd5e"
+    },
+    {
+      "path": "docs/full-review/audit-manifest-import-no-overwrite-atomic-copy-evidence-2026-08-23.json",
+      "sha256": "781b58b8d725b1482d023c1698171f6e6580930ba9386fc1113ac12895b49f1b"
+    },
+    {
+      "path": "docs/full-review/audit-manifest-import-ancestor-link-admission-evidence-2026-08-23.json",
+      "sha256": "8b94a63ee30960fae7be27d61dfa7eccc0f6f912a08c7844158e38b4336b277e"
+    },
+    {
+      "path": "docs/full-review/audit-manifest-import-copy-replay-idempotency-evidence-2026-08-25.json",
+      "sha256": "acd9688e0f3db116cfaf053537fed3791b5ae1c9f4f4f911b793efccd190cab5"
+    },
+    {
+      "path": "docs/full-review/audit-manifest-import-filesystem-db-queue-consistency-evidence-2026-08-25.json",
+      "sha256": "cf7807d5e498516a19f70a7279fbf7ce1845e732fffa45fbb03788fa4eb08df2"
+    },
+    {
+      "path": "docs/full-review/audit-manifest-import-source-consistency-toctou-evidence-2026-08-25.json",
+      "sha256": "e86d7ca9530a5d0e736f0b1ec29811ad6e206d842786745d3fce33826775c730"
+    },
+    {
+      "path": "docs/full-review/audit-manifest-recovery-midphase-process-termination-evidence-2026-08-25.json",
+      "sha256": "ae1c8f996bc0802f7a250f0c18fef3a5049100d8ebc2fb08f307c9646554285f"
+    },
+    {
+      "path": "docs/full-review/audit-manifest-asset-index-safe-open-reparse-consistency-evidence-2026-08-25.json",
+      "sha256": "f6a7cd206155fb16c3129ffcf6ad2c7911fd9e387285aba81f5a5ad7770fbc74"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/evidence-register-v2-evidence-2026-08-25.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "IMPORT-COPY-NO-OVERWRITE-28A-01",
+      "severity": "P1",
+      "status": "verified-fixed",
+      "source_ids": [
+        "IMPORT-COPY-NO-OVERWRITE-28A-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/import_service.py:225",
+        "AssetsManager/application/import_service.py:249",
+        "AssetsManager/application/import_service.py:273",
+        "AssetsManager/application/import_service.py:290",
+        "AssetsManager/application/import_service.py:305",
+        "tests/integration/test_import_service.py:218",
+        "tests/integration/test_import_service.py:249",
+        "tests/integration/test_import_service.py:269"
+      ],
+      "surface": "ImportService destination materialization: exclusive create, existing-entry rejection and ownership-aware cleanup",
+      "next_action": "Windows reparse-point replacement races and ancestor-directory swap windows remain separate bounded verification work; POSIX symlink execution stays capability-gated; power-loss and cross-system atomicity remain global non-goals",
+      "dynamic_verification": "Promoted per Canonical Register rule: focused matrix exit 0 at capture plus full serial suite green in six later manifests (4021/4027/4033/4035/4037/4043 passed) including this contract's tests; capture-time full-suite red was solely the unrelated transaction-boundary failure later fixed and verified by batch 29. Rival insertion preserved sentinel content; explicit existing targets failed closed; partial and identity-drift cleanup preserved ownership boundaries."
+    },
+    {
+      "canonical_id": "IMPORT-ANCESTOR-LINK-ADMISSION-28B-01",
+      "severity": "P1",
+      "status": "verified-fixed",
+      "source_ids": [
+        "IMPORT-ANCESTOR-LINK-ADMISSION-28B-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/import_service.py:28",
+        "AssetsManager/application/import_service.py:302",
+        "AssetsManager/application/import_service.py:181",
+        "AssetsManager/application/import_service.py:184",
+        "tests/integration/test_import_service.py:347",
+        "tests/integration/test_import_service.py:377",
+        "tests/integration/test_import_service.py:396"
+      ],
+      "surface": "ImportService destination and relative-parent symlink/junction/mount/reparse admission before and around directory creation",
+      "next_action": "POSIX dirfd/openat traversal, Windows native reparse-safe handles and root-replacement policy remain separate bounded work; power-loss and cross-system atomicity remain global non-goals",
+      "dynamic_verification": "Promoted per Canonical Register rule: focused matrix exit 0 and full serial suite exit 0 recorded at capture (4021 passed), reconfirmed green through every later full-suite run including the promotion-time gate (58 passed, 2 capability skips). Nested link/junction destinations rejected before external writes; simulated inspection failures fail closed."
+    },
+    {
+      "canonical_id": "IMPORT-COPY-REPLAY-IDEMPOTENCY-28C-01",
+      "severity": "P1",
+      "status": "verified-fixed",
+      "source_ids": [
+        "IMPORT-COPY-REPLAY-IDEMPOTENCY-28C-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/import_manifest_store.py:17",
+        "AssetsManager/application/import_manifest_store.py:51",
+        "AssetsManager/application/import_manifest_store.py:358",
+        "AssetsManager/application/import_service.py:161",
+        "AssetsManager/application/import_service.py:621",
+        "tests/integration/test_import_service.py:58",
+        "tests/integration/test_import_service.py:111",
+        "tests/integration/test_import_service.py:136"
+      ],
+      "surface": "Explicit same-operation/item import replay with stable copy identity, source fingerprint and safe target adoption",
+      "next_action": "Exactly-once execution, transactional copy ledger/outbox, power-loss, cross-system atomicity and global same-content deduplication remain declared non-goals of this contract",
+      "dynamic_verification": "Promoted per Canonical Register rule: focused matrix exit 0 and full serial suite exit 0 recorded at capture (4027 passed), reconfirmed green through later full-suite runs including the promotion-time gate. Matching-target adoption without physical copy, missing-target recreation at the original exclusive target, source-change rejection, conflict preservation, legacy v1 no-op and ordinary repeated-import rename contracts all pass."
+    },
+    {
+      "canonical_id": "IMPORT-FSQ-COMPENSATION-28D-01",
+      "severity": "P1",
+      "status": "verified-fixed",
+      "source_ids": [
+        "IMPORT-FSQ-COMPENSATION-28D-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/import_service.py:528",
+        "AssetsManager/application/import_service.py:571",
+        "AssetsManager/application/import_service.py:652",
+        "AssetsManager/application/import_service.py:700",
+        "tests/integration/test_import_service.py:205",
+        "tests/integration/test_import_service.py:280",
+        "tests/integration/test_import_service.py:341"
+      ],
+      "surface": "Import cancellation and replay compensation across filesystem copy, manifest CAS and reconciliation queue enqueue failures",
+      "next_action": "Cross-system atomicity, power-loss safety and exactly-once execution remain declared non-goals; completed-with-pending-items bookkeeping semantics remain a documented choice",
+      "dynamic_verification": "Promoted per Canonical Register rule: focused matrix exit 0 and full serial suite exit 0 recorded at capture (4033 passed), reconfirmed green through later full-suite runs including the promotion-time gate. Cancelled intents with broken queues stay recoverable and converge on restart with one root-rescan task; double-fault combinations preserve copies without duplicates; replay survives update exceptions and compensates finish failures."
+    },
+    {
+      "canonical_id": "IMPORT-SOURCE-CONSISTENCY-28E-01",
+      "severity": "P1",
+      "status": "verified-fixed",
+      "source_ids": [
+        "IMPORT-SOURCE-CONSISTENCY-28E-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/import_service.py:225",
+        "AssetsManager/application/import_service.py:271",
+        "AssetsManager/application/import_service.py:295",
+        "AssetsManager/application/import_service.py:489",
+        "AssetsManager/application/import_service.py:585",
+        "AssetsManager/application/import_service.py:712",
+        "tests/integration/test_import_service.py:347",
+        "tests/integration/test_import_service.py:377"
+      ],
+      "surface": "Handle-level source consistency between manifest fingerprint capture and streaming copy inside ImportService._copy_one",
+      "next_action": "Incremental streaming hash, POSIX dirfd/openat traversal, Windows reparse replacement races and same-size mtime-granularity in-place rewrites remain bounded residual boundaries; power-loss and cross-system atomicity remain global non-goals",
+      "dynamic_verification": "Promoted per Canonical Register rule: focused matrix exit 0 and full serial suite exit 0 recorded at capture (4035 passed), reconfirmed green through later full-suite runs including the promotion-time gate. Stale-fingerprint copies fail closed before target materialization; mid-stream mutation is detected by the same-handle post-check with owned cleanup; v1 fallback and all pinned recovery contracts stay green."
+    },
+    {
+      "canonical_id": "RECOVERY-MIDPHASE-KILL-29C-01",
+      "severity": "P1",
+      "status": "verified-fixed",
+      "source_ids": [
+        "RECOVERY-MIDPHASE-KILL-29C-01"
+      ],
+      "anchors": [
+        "tests/integration/test_import_manifest_recovery_claim_process.py:107",
+        "tests/integration/test_import_manifest_recovery_claim_process.py:383",
+        "tests/integration/test_import_manifest_recovery_claim_process.py:494",
+        "AssetsManager/application/import_manifest_store.py:214",
+        "AssetsManager/application/import_manifest_store.py:500"
+      ],
+      "surface": "Real subprocess termination windows inside ImportManifestRecoveryService.recover() between claim/enqueue/finish phases",
+      "next_action": "Cross-platform process semantics, production lease tuning, exactly-once execution, power-loss durability and completed-with-pending-items bookkeeping semantics remain declared non-goals or separate work",
+      "dynamic_verification": "Promoted per Canonical Register rule: focused matrix exit 0 and full serial suite exit 0 recorded at capture (4037 passed), reconfirmed green in the promotion-time gate. A child killed after claim leaves a live lease blocking immediate takeover until expiry then converges with exactly one queue row; a child killed after enqueue leaves one stable-task_id row with operation-id dedupe count of one throughout."
+    },
+    {
+      "canonical_id": "REPARSE-DETECTION-CONSISTENCY-30C-01",
+      "severity": "P1",
+      "status": "verified-fixed",
+      "source_ids": [
+        "REPARSE-DETECTION-CONSISTENCY-30C-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/asset_index_service.py:124",
+        "AssetsManager/core/file_snapshot.py:77",
+        "AssetsManager/core/file_snapshot.py:92",
+        "tests/integration/test_asset_index_service.py:203",
+        "tests/integration/test_asset_index_service.py:243",
+        "tests/lan/test_safe_open.py:66"
+      ],
+      "surface": "Cross-service link/reparse admission alignment: AssetIndex DirEntry junction coverage and final-open fail-closed ancestor inspection",
+      "next_action": "Between-checks replacement races on all platforms, mount-point policy and Windows scan performance benchmarking remain separate bounded work; power-loss/E2E/LAN/CVE/release claims remain out of scope",
+      "dynamic_verification": "Promoted per Canonical Register rule: focused matrix exit 0 and full serial suite exit 0 recorded at capture (4043 passed), reconfirmed green in the promotion-time gate. Real NTFS junctions are excluded by both asset-index scan paths including the previously uncovered os.DirEntry route; broken junctions and uninspectable ancestors fail closed through the safe-open adapter; POSIX behavior is byte-identical."
+    }
+  ],
+  "supersession_relations": [
+    {
+      "superseder": "IMPORT-ANCESTOR-LINK-ADMISSION-28B-01",
+      "superseded": "IMPORT-COPY-NO-OVERWRITE-28A-01",
+      "scope": "partial: pre-existing destination/parent link admission closes the nested pre-existing-link escape documented by 28-A; post-open replacement races remain owned by 28-A"
+    },
+    {
+      "superseder": "IMPORT-FSQ-COMPENSATION-28D-01",
+      "superseded": "IMPORT-COPY-REPLAY-IDEMPOTENCY-28C-01",
+      "scope": "partial: 28-D implemented replay robustness gaps that 28-C deferred (per-item update exceptions, finish failure compensation, claim-race determinism, replay index synchronization); exactly-once and power-loss stay open in both"
+    },
+    {
+      "superseder": "IMPORT-SOURCE-CONSISTENCY-28E-01",
+      "superseded": "IMPORT-FSQ-COMPENSATION-28D-01",
+      "scope": "partial: closes the fingerprint-to-copy TOCTOU window that 28-D recorded as unchanged and unverified; same-size in-place rewrites within mtime granularity and cross-platform zero-race proof remain"
+    },
+    {
+      "superseder": "RECOVERY-MIDPHASE-KILL-29C-01",
+      "superseded": "IMPORT-FSQ-COMPENSATION-28D-01",
+      "scope": "partial: elevates recover() mid-phase kill windows from monkeypatch-level injection to real subprocess termination evidence; single-platform scope remains"
+    }
+  ]
+}

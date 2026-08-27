@@ -4,13 +4,17 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { StorefrontShell } from './StorefrontShell';
 
-const { refreshCart, refreshWishlist } = vi.hoisted(() => ({
+const { refreshCart, refreshWishlist, sellerLogout } = vi.hoisted(() => ({
   refreshCart: vi.fn().mockResolvedValue(undefined),
   refreshWishlist: vi.fn().mockResolvedValue(undefined),
+  sellerLogout: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../stores/AuthContext', () => ({
-  useAuthContext: () => ({ isAuthenticated: false, user: null, logout: vi.fn() }),
+  useAuthContext: () => ({ isAuthenticated: false, user: null }),
+}));
+vi.mock('../../stores/SellerAuthContext', () => ({
+  useOptionalSellerAuth: () => ({ authenticated: true, logout: sellerLogout }),
 }));
 vi.mock('../../stores/ShopBuyerContext', () => ({
   useShopBuyer: () => ({ cart: null, wishlist: [], refreshCart, refreshWishlist }),
@@ -25,7 +29,21 @@ function LocationProbe() {
 }
 
 describe('StorefrontShell search', () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    sellerLogout.mockClear();
+  });
+
+  it('uses seller logout for an authenticated seller shell', async () => {
+    render(
+      <MemoryRouter initialEntries={['/seller']}>
+        <StorefrontShell sellerMode><LocationProbe /></StorefrontShell>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'header.logout' }));
+    expect(sellerLogout).toHaveBeenCalledTimes(1);
+  });
   it('navigates to the products search when no custom handler is provided', () => {
     render(
       <MemoryRouter initialEntries={['/storefront']}>

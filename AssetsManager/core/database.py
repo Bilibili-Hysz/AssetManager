@@ -8,7 +8,6 @@ Provides:
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 import functools
-import hashlib
 import logging
 import os
 import shutil
@@ -23,6 +22,11 @@ from types import TracebackType
 from typing import Any, Callable, Self
 
 from AssetsManager.core.performance import PerformanceRecorder
+from AssetsManager.core.thumbnail_key import (
+    normalize_webp_render_profile,
+    profiled_thumbnail_cache_key_v3,
+    thumbnail_cache_key,
+)
 from AssetsManager.core.path_resolver import (
     runtime_root, SHARED_DIR as _PATH_SHARED_DIR, library_data_dir,
     library_data_name, library_data_identity_path, legacy_library_data_dir,
@@ -62,6 +66,23 @@ SLOW_QUERY_THRESHOLD_MS = 100.0
 _SLOW_QUERY_CALLER_MARKERS = ("/repositories/", "/application/")
 
 _OWN_FILE = os.path.normcase(os.path.abspath(os.fspath(__file__)))
+
+SQLITE_BUSY_TIMEOUT_MS = 30_000
+SQLITE_BUSY_RETRY_ATTEMPTS = 3
+SQLITE_BUSY_RETRY_BASE_DELAY = 0.01
+
+
+def is_sqlite_busy_error(error: BaseException) -> bool:
+    """Return whether an SQLite error is retryable lock contention."""
+    if not isinstance(error, sqlite3.OperationalError):
+        return False
+    message = str(error).lower()
+    return "database is locked" in message or "database is busy" in message
+
+
+def sqlite_busy_retry_delay(attempt: int) -> float:
+    """Return bounded exponential backoff for one retry attempt."""
+    return min(0.25, SQLITE_BUSY_RETRY_BASE_DELAY * (2 ** max(0, attempt)))
 
 
 def slow_query_threshold_ms(override: float | None = None) -> float:
@@ -402,7 +423,10 @@ CREATE TABLE IF NOT EXISTS thumbnail_cache (
     baked_size   INTEGER DEFAULT 256,
     cache_size   INTEGER DEFAULT 0,
     created_at   REAL DEFAULT (strftime('%s','now')),
-    last_access  REAL DEFAULT (strftime('%s','now'))
+    last_access  REAL DEFAULT (strftime('%s','now')),
+    source_mtime_ns INTEGER,
+    artifact_kind TEXT NOT NULL DEFAULT 'webp',
+    render_profile TEXT
 );
 
 CREATE TABLE IF NOT EXISTS gallery_home (
@@ -889,7 +913,12 @@ class DatabaseManager:
 
             if key not in self._connections:
                 path = db_path(identity)
-                conn = sqlite3.connect(str(path), check_same_thread=False, timeout=30)
+                conn = sqlite3.connect(
+                    str(path),
+                    check_same_thread=False,
+                    timeout=SQLITE_BUSY_TIMEOUT_MS / 1000,
+                )
+                conn.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
                 state = _ConnectionWriteState(
                     threading.RLock(),
                     library_root=str(identity.display_path),
@@ -1295,8 +1324,8 @@ def _record_write_lock(
         pass
 
 
-def migrate_path_metadata(conn: sqlite3.Connection, thumb_dir: Path,
-                          old_path: str | Path, new_path: str | Path):
+def _migrate_path_metadata_impl(conn: sqlite3.Connection, thumb_dir: Path,
+                                old_path: str | Path, new_path: str):
     """Move metadata between paths using explicit library-owned resources."""
     old = str(Path(old_path).resolve())
     new = str(Path(new_path).resolve())
@@ -1308,10 +1337,6 @@ def migrate_path_metadata(conn: sqlite3.Connection, thumb_dir: Path,
         return remap_path_subtree(old, new, path)
 
     with db_write_lock(conn):
-        # A caller-owned outer transaction must never be committed by this
-        # cross-projection migration helper. Session-bound file operations
-        # reject such a transaction before moving the filesystem path.
-        outer_transaction = conn.in_transaction
         # Case semantics: the SELECT below matches with ``=`` (case-sensitive)
         # or LIKE (case-insensitive for ASCII), while ``remap_path_subtree``
         # is a case-sensitive prefix remap.  A row the LIKE arm selected but
@@ -1394,48 +1419,100 @@ def migrate_path_metadata(conn: sqlite3.Connection, thumb_dir: Path,
                 )
 
         thumb_rows = conn.execute(
-            "SELECT cache_key, source_path FROM thumbnail_cache "
-            "WHERE source_path=? OR source_path LIKE ? ESCAPE '\\'",
+            "SELECT cache_key, source_path, artifact_kind, render_profile "
+            "FROM thumbnail_cache WHERE source_path=? OR source_path LIKE ? ESCAPE '\\'",
             (old, descendant_pattern),
         ).fetchall()
-        for old_key, source_path in thumb_rows:
+        for old_key, source_path, artifact_kind, render_profile in thumb_rows:
             mapped = remap(source_path)
-            new_key = _thumbnail_cache_key(mapped)
-            old_file = thumb_dir / f"{old_key}.webp"
-            new_file = thumb_dir / f"{new_key}.webp"
+            extension = "jpg" if artifact_kind == "jpg" else "webp"
+            if render_profile and artifact_kind == "webp":
+                try:
+                    new_key = profiled_thumbnail_cache_key_v3(mapped, normalize_webp_render_profile(render_profile))
+                except ValueError:
+                    _log.warning("Unknown thumbnail render profile during path migration: %s", render_profile)
+                    new_key = _thumbnail_cache_key(mapped)
+            else:
+                new_key = _thumbnail_cache_key(mapped)
+            old_file = thumb_dir / f"{old_key}.{extension}"
+            new_file = thumb_dir / f"{new_key}.{extension}"
             if old_file.exists() and old_key != new_key:
                 try:
                     if new_file.exists():
-                        # The destination thumbnail already exists. Do not
-                        # silently delete the old file: its cache row is
-                        # repointed to the destination key below, and the old
-                        # file is either regenerated from the new path or
-                        # cleaned up manually. Deleting it here would discard
-                        # a valid thumbnail without regenerating anything.
                         _log.warning(
-                            "Thumbnail migration collision: %s already exists "
-                            "for %s; keeping %s",
+                            "Thumbnail migration collision: %s already exists for %s; keeping %s",
                             new_file, mapped, old_file,
                         )
                     else:
                         old_file.replace(new_file)
                 except OSError:
-                    pass
+                    _log.exception("Thumbnail migration failed: %s -> %s", old_file, new_file)
+                    raise
+            destination_row = conn.execute(
+                "SELECT 1 FROM thumbnail_cache WHERE cache_key=?",
+                (new_key,),
+            ).fetchone() if new_key != old_key else None
+            if destination_row is not None:
+                conn.execute(
+                    "UPDATE thumbnail_cache SET source_path=? WHERE cache_key=?",
+                    (mapped, old_key),
+                )
+                continue
             conn.execute(
-                "UPDATE OR REPLACE thumbnail_cache SET cache_key=?, source_path=? "
-                "WHERE cache_key=?",
+                "UPDATE thumbnail_cache SET cache_key=?, source_path=? WHERE cache_key=?",
                 (new_key, mapped, old_key),
             )
-        if not outer_transaction:
-            conn.commit()
+
+
+def migrate_path_metadata(conn: sqlite3.Connection, thumb_dir: Path,
+                          old_path: str | Path, new_path: str | Path):
+    """Atomically move path projections within the caller's transaction boundary.
+
+    The SQLite savepoint rolls back all database projections on failure while
+    preserving any caller-owned outer transaction. Thumbnail file renames are
+    external side effects and cannot be rolled back by SQLite.
+    """
+    old = str(Path(old_path).resolve())
+    new = str(Path(new_path).resolve())
+    if old == new:
+        return
+
+    savepoint = "path_metadata_migration"
+    with db_write_lock(conn):
+        outer_transaction = conn.in_transaction
+        conn.execute(f"SAVEPOINT {savepoint}")
+        try:
+            _migrate_path_metadata_impl(conn, thumb_dir, old, new)
+            conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            if not outer_transaction:
+                conn.commit()
+        except BaseException as exc:
+            cleanup_error = None
+            try:
+                conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            except BaseException as cleanup_exc:
+                cleanup_error = cleanup_exc
+            if not outer_transaction and conn.in_transaction:
+                try:
+                    conn.rollback()
+                except BaseException as rollback_exc:
+                    if cleanup_error is None:
+                        cleanup_error = rollback_exc
+            if cleanup_error is not None:
+                try:
+                    exc.add_note(
+                        "path metadata migration transaction cleanup failed: "
+                        f"{type(cleanup_error).__name__}: {cleanup_error}"
+                    )
+                except Exception:
+                    pass
+            raise
 
 
 def _thumbnail_cache_key(path: str) -> str:
-    try:
-        mtime = str(os.path.getmtime(path))
-    except OSError:
-        mtime = ""
-    return hashlib.sha256(f"{path}|{mtime}".encode()).hexdigest()[:16]
+    """Compatibility wrapper for the shared versioned thumbnail key."""
+    return thumbnail_cache_key(path)
 
 
 def clean_orphan_dirs(known_roots: list[str]):

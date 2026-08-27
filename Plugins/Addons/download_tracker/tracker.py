@@ -6,6 +6,7 @@ small history dock.  Preferences persist under plugin_prefs.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import threading
 from typing import Any
 
 from AssetsManager.domain.events import FileSystemChanged
@@ -20,42 +21,46 @@ from AssetsManager.plugin_api import (
 
 _TRACKED_KINDS = frozenset({"import", "copied"})
 _history: dict[str, dict[str, Any]] = {}
+_history_lock = threading.RLock()
 
 
 def _load_history(ctx: PluginContext) -> None:
-    bag = ctx.preferences("download_tracker")
-    if bag is None:
-        return
-    raw = bag.get("history") or {}
-    if isinstance(raw, dict):
-        _history.clear()
-        _history.update(raw)
+    with _history_lock:
+        bag = ctx.preferences("download_tracker")
+        if bag is None:
+            return
+        raw = bag.get("history") or {}
+        if isinstance(raw, dict):
+            _history.clear()
+            _history.update(raw)
 
 
 def _save_history(ctx: PluginContext) -> None:
-    bag = ctx.preferences("download_tracker")
-    if bag is None:
-        return
-    bag.set("history", dict(_history))
+    with _history_lock:
+        bag = ctx.preferences("download_tracker")
+        if bag is None:
+            return
+        bag.set("history", dict(_history))
 
 
 def _prune(keep_days: int) -> None:
     if keep_days <= 0:
         return
-    cutoff = datetime.now(timezone.utc) - timedelta(days=keep_days)
-    stale: list[str] = []
-    for path, rec in _history.items():
-        stamp = str((rec or {}).get("last") or "")
-        try:
-            when = datetime.fromisoformat(stamp)
-        except ValueError:
-            continue
-        if when.tzinfo is None:
-            when = when.replace(tzinfo=timezone.utc)
-        if when < cutoff:
-            stale.append(path)
-    for path in stale:
-        _history.pop(path, None)
+    with _history_lock:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=keep_days)
+        stale: list[str] = []
+        for path, rec in _history.items():
+            stamp = str((rec or {}).get("last") or "")
+            try:
+                when = datetime.fromisoformat(stamp)
+            except ValueError:
+                continue
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=timezone.utc)
+            if when < cutoff:
+                stale.append(path)
+        for path in stale:
+            _history.pop(path, None)
 
 
 class TrackerPrefs(Preferences):
@@ -69,10 +74,12 @@ class DownloadParser(FileParser):
 
     @classmethod
     def match(cls, ctx: PluginContext, file_path: str) -> bool:
-        return str(file_path) in _history
+        with _history_lock:
+            return str(file_path) in _history
 
     def parse(self, ctx: PluginContext, file_path: str) -> dict[str, Any]:
-        rec = _history.get(str(file_path)) or {}
+        with _history_lock:
+            rec = dict(_history.get(str(file_path)) or {})
         count = rec.get("count", 0)
         return {
             "last_downloaded": str(rec.get("last") or ""),
@@ -86,28 +93,29 @@ class ImportHook(EventHook):
     def handle(self, ctx: PluginContext, event: Any) -> None:
         if getattr(event, "kind", "") not in _TRACKED_KINDS:
             return
-        bag = ctx.preferences("download_tracker")
-        keep_days = 30
-        if bag is not None:
-            try:
-                keep_days = int(bag.get("keep_days", 30) or 30)
-            except (TypeError, ValueError):
-                keep_days = 30
-        now = datetime.now(timezone.utc).isoformat()
-        changed = False
-        for raw in getattr(event, "paths", ()) or ():
-            path = str(raw or "").strip()
-            if not path:
-                continue
-            rec = dict(_history.get(path) or {})
-            rec["count"] = int(rec.get("count") or 0) + 1
-            rec["last"] = now
-            _history[path] = rec
-            changed = True
-        if not changed:
-            return
-        _prune(keep_days)
-        _save_history(ctx)
+        with _history_lock:
+            bag = ctx.preferences("download_tracker")
+            keep_days = 30
+            if bag is not None:
+                try:
+                    keep_days = int(bag.get("keep_days", 30) or 30)
+                except (TypeError, ValueError):
+                    keep_days = 30
+            now = datetime.now(timezone.utc).isoformat()
+            changed = False
+            for raw in getattr(event, "paths", ()) or ():
+                path = str(raw or "").strip()
+                if not path:
+                    continue
+                rec = dict(_history.get(path) or {})
+                rec["count"] = int(rec.get("count") or 0) + 1
+                rec["last"] = now
+                _history[path] = rec
+                changed = True
+            if not changed:
+                return
+            _prune(keep_days)
+            _save_history(ctx)
 
 
 class ClearHistory(CommandOperator):
@@ -122,17 +130,19 @@ class ClearHistory(CommandOperator):
     def execute(self, ctx: PluginContext, params: dict[str, Any] | None = None) -> Any:
         if not (params or {}).get("confirm"):
             return False
-        previous = dict(_history)
-        _history.clear()
-        _save_history(ctx)
+        with _history_lock:
+            previous = {path: dict(record) for path, record in _history.items()}
+            _history.clear()
+            _save_history(ctx)
         return {"previous": previous}
 
     def undo(self, ctx: PluginContext, record: dict[str, Any]) -> None:
         previous = record.get("previous") if isinstance(record, dict) else None
-        _history.clear()
-        if isinstance(previous, dict):
-            _history.update(previous)
-        _save_history(ctx)
+        with _history_lock:
+            _history.clear()
+            if isinstance(previous, dict):
+                _history.update(previous)
+            _save_history(ctx)
 
 
 class HistoryPanel(PanelContributor):
@@ -145,11 +155,12 @@ class HistoryPanel(PanelContributor):
 
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        items = sorted(
-            _history.items(),
-            key=lambda item: str((item[1] or {}).get("last") or ""),
-            reverse=True,
-        )[:20]
+        with _history_lock:
+            items = sorted(
+                ((path, dict(record or {})) for path, record in _history.items()),
+                key=lambda item: str((item[1] or {}).get("last") or ""),
+                reverse=True,
+            )[:20]
         if not items:
             layout.addWidget(QLabel("No recorded downloads yet."))
         for path, rec in items:
@@ -169,4 +180,5 @@ class Plugin:
         host.register_class(HistoryPanel)
 
     def unregister(self, host):
-        _history.clear()
+        with _history_lock:
+            _history.clear()

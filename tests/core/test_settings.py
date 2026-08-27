@@ -4,6 +4,11 @@ import json
 import pytest
 
 import AssetsManager.core.settings as settings_module
+from AssetsManager.core.config_migrator import (
+    CURRENT_VERSION,
+    FutureConfigVersionError,
+    migrate,
+)
 from AssetsManager.core.settings import (
     SHARE_LAST_SUCCESSFUL_AUTH_KEY,
     SHARE_LAST_SUCCESSFUL_BIND_KEY,
@@ -17,6 +22,67 @@ def test_singleton():
     a = AppSettings.instance()
     b = AppSettings.instance()
     assert a is b
+
+
+def test_future_config_version_rejected_without_mutating_payload():
+    payload = {
+        "_cfg_version": CURRENT_VERSION + 1,
+        "future_setting": {"enabled": True},
+    }
+    original = dict(payload)
+
+    with pytest.raises(FutureConfigVersionError) as exc_info:
+        migrate(payload)
+
+    assert exc_info.value.version == CURRENT_VERSION + 1
+    assert payload == original
+
+
+def test_future_settings_are_preserved_and_write_blocked(tmp_path, monkeypatch):
+    import AssetsManager.core.library_manager as library_manager
+
+    legacy_path = tmp_path / ".assetmanager" / "settings.json"
+    legacy_path.parent.mkdir()
+    legacy_path.write_text('{"legacy_only": true}', encoding="utf-8")
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    path = tmp_path / "settings.json"
+    original_bytes = b'{"_cfg_version": 3, "future_setting": {"x": 1}}\n'
+    path.write_bytes(original_bytes)
+    settings = _settings_at(path, data={"stale": "memory"}, dirty=True)
+    settings.load()
+
+    assert settings.is_write_blocked is True
+    assert settings._future_config_version == CURRENT_VERSION + 1
+    assert settings._data == {}
+    assert settings._dirty is False
+    assert path.read_bytes() == original_bytes
+    assert settings.get("legacy_only") is None
+
+    settings.set("ordinary", "value")
+    settings.set_list("items", [1, 2])
+    settings.prepend_list("items", 0)
+    settings.remove_from_list("items", 1)
+    settings.set_share_security_history(
+        "127.0.0.1", {"enabled": True, "mode": "password"}
+    )
+    assert settings.commit_share_security_history(
+        "127.0.0.1", {"enabled": True, "mode": "password"}
+    ) is False
+    assert settings.commit_share_safety_confirmation(3, True) is False
+    assert settings.save() is False
+    monkeypatch.setattr(settings, "save", lambda: pytest.fail("blocked atexit save"))
+    settings._atexit_save()
+
+    assert settings._data == {}
+    assert settings._dirty is False
+    assert path.read_bytes() == original_bytes
+
+    monkeypatch.setattr(library_manager.AppSettings, "instance", lambda: settings)
+    assert library_manager.record_visit(str(tmp_path / "library")) == ""
+    library_manager.remove("missing")
+    assert settings._data == {}
+    assert path.read_bytes() == original_bytes
 
 
 def test_set_get():

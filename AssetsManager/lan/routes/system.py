@@ -86,6 +86,8 @@ async def handle_info(request):
     total_size = get_metadata_service(request).get_library_total_size(lan.library_root)
 
     principal = get_request_principal(request)
+    runtime = getattr(lan, "runtime", None)
+    thumbnail_cache_namespace = getattr(runtime, "epoch", None)
     # Seller is an effective sub-feature of Commerce. Reporting an impossible
     # raw persisted combination here would let clients surface a Seller entry
     # that the server correctly denies.
@@ -95,6 +97,7 @@ async def handle_info(request):
         "version": "1.0",
         "share_name": lan.share_name,
         "library_root": lan.library_root.name,
+        "thumbnail_cache_namespace": thumbnail_cache_namespace,
         "auth_enabled": auth_enabled,
         "auth_mode": auth_mode,
         "theme_color": s.get("lan_theme_color", DEFAULT_LAN_THEME_COLOR),

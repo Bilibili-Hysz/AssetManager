@@ -1,4 +1,11 @@
-import { UnauthorizedError, ForbiddenError, ServiceUnavailableError, ApiError, NetworkError } from './errors';
+import {
+  UnauthorizedError,
+  ForbiddenError,
+  ServiceUnavailableError,
+  ApiError,
+  NetworkError,
+  type ApiErrorBody,
+} from './errors';
 import {
   backoffDelay,
   DEFAULT_MAX_RETRIES,
@@ -42,8 +49,11 @@ function isTimeoutError(error: unknown): boolean {
 /** Read a Retry-After value stored on an ApiError body (rate limit helper). */
 function retryAfterFromError(error: unknown): number | null {
   if (!(error instanceof ApiError)) return null;
-  const body = error.body as { headers?: Record<string, string> } | undefined;
-  return retryAfterSeconds(body?.headers?.['Retry-After']);
+  const body = error.body as { headers?: Record<string, string>; details?: { retry_after?: unknown } } | undefined;
+  const header = body?.headers?.['Retry-After'] ?? body?.headers?.['retry-after'];
+  if (header) return retryAfterSeconds(header);
+  const detail = body?.details?.retry_after;
+  return typeof detail === 'number' ? detail : null;
 }
 
 /** Idempotent GET requests may retry network/503/429 failures (S3). */
@@ -100,18 +110,35 @@ function withTimeout(signal: AbortSignal | undefined, timeoutMs: number): Timeou
 }
 
 /** Build the 429 ApiError, forwarding Retry-After and X-RateLimit-* headers when present. */
-function rateLimitErrorFrom(response: Response): ApiError {
+async function parseErrorBody(response: Response): Promise<ApiErrorBody | undefined> {
+  const raw = await response.text().catch(() => '');
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as ApiErrorBody;
+  } catch {
+    return { body: raw.slice(0, 1000) };
+  }
+}
+
+function errorMessage(body: ApiErrorBody | undefined): string | undefined {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return undefined;
+  const message = (body as { error?: unknown }).error;
+  return typeof message === 'string' ? message : undefined;
+}
+
+function rateLimitErrorFrom(response: Response, body?: ApiErrorBody): ApiError {
   const info: Record<string, string> = {};
   const retryAfter = response.headers.get('Retry-After');
   if (retryAfter) info['Retry-After'] = retryAfter;
   response.headers.forEach((value, key) => {
     if (/^x-ratelimit-/i.test(key)) info[key] = value;
   });
-  return new ApiError(
-    'Rate limited',
-    429,
-    Object.keys(info).length > 0 ? { headers: info } : undefined,
-  );
+  const headers = Object.keys(info).length > 0 ? { headers: info } : undefined;
+  const mergedBody = body && typeof body === 'object' && !Array.isArray(body)
+    ? { ...body, ...(headers ?? {}) }
+    : headers;
+  const message = errorMessage(body) ?? 'Rate limited';
+  return new ApiError(message, 429, mergedBody);
 }
 
 /**
@@ -155,26 +182,31 @@ export function createApiClient(options: ApiClientOptions = {}) {
     path: string,
     onUnauthorized?: (path: string) => void,
   ): Promise<never> {
+    const errBody = await parseErrorBody(response);
     if (response.status === 401) {
       onUnauthorized?.(path);
-      throw new UnauthorizedError();
-    }
-    if (response.status === 403) {
-      throw new ForbiddenError();
-    }
-    if (response.status === 429) {
-      throw rateLimitErrorFrom(response);
-    }
-    if (response.status === 503) {
-      const errBody = await response.json().catch(() => ({}));
-      throw new ServiceUnavailableError(
-        (errBody as { error?: string }).error ?? 'Service unavailable',
+      throw new UnauthorizedError(
+        errorMessage(errBody) ?? undefined,
         errBody,
       );
     }
-    const errBody = await response.json().catch(() => ({}));
+    if (response.status === 403) {
+      throw new ForbiddenError(
+        errorMessage(errBody) ?? undefined,
+        errBody,
+      );
+    }
+    if (response.status === 429) {
+      throw rateLimitErrorFrom(response, errBody);
+    }
+    if (response.status === 503) {
+      throw new ServiceUnavailableError(
+        errorMessage(errBody) ?? 'Service unavailable',
+        errBody,
+      );
+    }
     throw new ApiError(
-      (errBody as { error?: string }).error ?? `HTTP ${response.status}`,
+      errorMessage(errBody) ?? `HTTP ${response.status}`,
       response.status,
       errBody,
     );
@@ -374,6 +406,8 @@ export function createApiClient(options: ApiClientOptions = {}) {
   }
 
   return {
+    /** Normalized API base path used to scope client-side caches. */
+    scope: normalizedBaseUrl,
     /** Build an API URL honoring the configured baseUrl (useful for native links). */
     buildUrl: (path: string) => `${normalizedBaseUrl}/api/${path}`,
     /** Build a WebSocket URL that uses the same configured base path. */

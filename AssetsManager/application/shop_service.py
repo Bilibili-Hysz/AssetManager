@@ -195,6 +195,9 @@ class ShopService:
         if not partial or "metadata" in payload or "status" in payload:
             raw_metadata = payload.get("metadata", {})
             metadata = dict(raw_metadata) if isinstance(raw_metadata, Mapping) else {}
+            # ``image_paths`` is the serialized gallery slot, not a public
+            # metadata input. Gallery paths are normalized separately below.
+            metadata.pop("image_paths", None)
             if "status" in payload and payload.get("status") is not None:
                 metadata["status"] = str(payload["status"]).strip().lower()
             fields["metadata"] = metadata
@@ -460,8 +463,25 @@ class ShopService:
         if "cover_path" in payload:
             cover = payload.get("cover_path")
             fields["cover_path"] = self._path(root, cover)[1] if cover else None
+        # A partial update must not erase metadata the caller omitted. Start
+        # from the persisted mapping and shallow-overlay only what the
+        # payload explicitly supplies (metadata/status), then let a supplied
+        # gallery replace only the reserved image_paths slot.
+        current_metadata = (
+            dict(current.get("metadata") or {})
+            if isinstance(current.get("metadata"), Mapping)
+            else {}
+        )
+        if "metadata" in fields:
+            incoming = payload.get("metadata")
+            merged_metadata = dict(current_metadata)
+            if isinstance(incoming, Mapping):
+                merged_metadata.update(dict(incoming))
+            if payload.get("status") is not None:
+                merged_metadata["status"] = str(payload["status"]).strip().lower()
+            fields["metadata"] = merged_metadata
         if "gallery_paths" in payload:
-            metadata = dict(current.get("metadata") or {}) if isinstance(current.get("metadata"), Mapping) else {}
+            metadata = dict(fields.get("metadata", current_metadata))
             metadata["image_paths"] = self._gallery(root, payload.get("gallery_paths"))
             fields["metadata"] = metadata
         if not fields:

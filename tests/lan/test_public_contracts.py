@@ -297,8 +297,11 @@ async def test_info_route_exposes_serverinfo_shape(tmp_path):
         assert set(payload.keys()) == {
             "version", "share_name", "library_root", "auth_enabled", "auth_mode",
             "theme_color", "welcome_msg", "footer_text", "feature_flags",
-            "library_stats", "principal", "capabilities",
+            "library_stats", "principal", "capabilities", "thumbnail_cache_namespace",
         }
+        assert payload["thumbnail_cache_namespace"] is None or isinstance(
+            payload["thumbnail_cache_namespace"], str
+        )
         assert set(payload["library_stats"].keys()) == {
             "total_projects", "total_size", "total_size_fmt",
         }

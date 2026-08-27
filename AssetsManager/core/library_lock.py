@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import os
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from PySide6.QtCore import QLockFile
@@ -10,6 +12,10 @@ from PySide6.QtCore import QLockFile
 
 class LibraryAlreadyOpenError(RuntimeError):
     """The requested library is already owned by another process."""
+
+
+class _PosixRecoveryUnavailable(RuntimeError):
+    """The platform cannot provide the synchronization recovery requires."""
 
 
 _registry_guard = threading.Lock()
@@ -49,6 +55,131 @@ def _pid_is_alive(pid: int) -> bool:
     return True
 
 
+def _new_lock(path: Path) -> QLockFile:
+    """Create a long-lived QLockFile for *path*."""
+    lock = QLockFile(str(path))
+    # A zero timeout disables Qt's time-based stale recovery. Recovery below
+    # is based only on a recorded PID that is provably no longer alive.
+    lock.setStaleLockTime(0)
+    return lock
+
+
+@contextmanager
+def _posix_stale_recovery_guard(path: Path) -> Iterator[None]:
+    """Serialize stale-marker recovery and clean up its transient marker.
+
+    The parent directory is the stable mutex. Holding it for the complete
+    context means no process can open the recovery marker while another
+    process is removing it, so a removed marker cannot strand waiters on an
+    unlinked inode while a new waiter starts on a replacement inode.
+    """
+    if os.name == "nt":
+        raise _PosixRecoveryUnavailable("POSIX stale recovery is unavailable")
+    try:
+        import fcntl
+    except ImportError as error:
+        raise _PosixRecoveryUnavailable(
+            "fcntl.flock is unavailable on this platform"
+        ) from error
+
+    flock = getattr(fcntl, "flock", None)
+    lock_ex = getattr(fcntl, "LOCK_EX", None)
+    lock_un = getattr(fcntl, "LOCK_UN", None)
+    if not callable(flock) or lock_ex is None or lock_un is None:
+        raise _PosixRecoveryUnavailable(
+            "fcntl.flock is unavailable on this platform"
+        )
+
+    guard_path = path.with_name(path.name + ".recovery")
+    directory_fd: int | None = None
+    directory_locked = False
+    marker_created = False
+    try:
+        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        directory_fd = os.open(os.fspath(path.parent), directory_flags)
+        try:
+            flock(directory_fd, lock_ex)
+            directory_locked = True
+        except OSError as error:
+            raise _PosixRecoveryUnavailable(
+                "fcntl.flock cannot lock the library directory"
+            ) from error
+
+        try:
+            # A previous process may have been terminated while holding the
+            # directory lock. Remove only that stale marker while admission is
+            # still serialized, then publish this recovery window atomically.
+            try:
+                os.unlink(os.fspath(guard_path))
+            except FileNotFoundError:
+                pass
+            marker_fd = os.open(
+                os.fspath(guard_path),
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                0o600,
+            )
+            marker_created = True
+            os.close(marker_fd)
+        except OSError as error:
+            raise _PosixRecoveryUnavailable(
+                "the POSIX recovery marker cannot be created"
+            ) from error
+
+        try:
+            yield
+        finally:
+            try:
+                os.unlink(os.fspath(guard_path))
+            except FileNotFoundError:
+                pass
+            except OSError:
+                # A failed cleanup is harmless to ownership: the next
+                # serialized recovery attempt removes the stale marker.
+                pass
+            marker_created = False
+    finally:
+        if marker_created:
+            try:
+                os.unlink(os.fspath(guard_path))
+            except (FileNotFoundError, OSError):
+                pass
+        if directory_locked and directory_fd is not None:
+            try:
+                flock(directory_fd, lock_un)
+            except OSError:
+                pass
+        if directory_fd is not None:
+            os.close(directory_fd)
+
+
+def _recover_posix_stale_lock(
+    path: Path, initial_lock: QLockFile | None = None
+) -> tuple[QLockFile, bool]:
+    """Recover a dead POSIX marker while preventing competing unlinkers."""
+    lock = initial_lock or _new_lock(path)
+    try:
+        with _posix_stale_recovery_guard(path):
+            # A contender may have recovered the marker while this process
+            # waited for the guard. Recheck before deciding that it is stale.
+            lock = _new_lock(path)
+            acquired = lock.tryLock(0)
+            if not acquired and lock.error() == QLockFile.LockError.LockFailedError:
+                pid, _host, _app = lock.getLockInfo()
+                if pid > 0 and not _pid_is_alive(pid):
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                    else:
+                        lock = _new_lock(path)
+                        acquired = lock.tryLock(0)
+            return lock, acquired
+    except _PosixRecoveryUnavailable:
+        # Recovery capability is optional. Keeping the original marker
+        # decision makes the caller fail closed as LibraryAlreadyOpenError.
+        return lock, False
+
+
 class LibraryLock:
     """Small infrastructure wrapper that keeps Qt out of application code.
 
@@ -73,24 +204,21 @@ class LibraryLock:
                 return
 
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            lock = QLockFile(str(self.path))
-            # Never infer liveness from the PID marker or delete it ourselves
-            # blindly. Qt's long-lived-resource mode uses a zero stale timeout
-            # and reports a live lock to the caller instead; recover only when
-            # the recorded PID is provably gone (crashed / force-killed).
-            lock.setStaleLockTime(0)
+            lock = _new_lock(self.path)
             acquired = lock.tryLock(0)
             if not acquired and lock.error() == QLockFile.LockError.LockFailedError:
-                pid, _host, _app = lock.getLockInfo()
-                if pid > 0 and not _pid_is_alive(pid):
-                    try:
-                        self.path.unlink(missing_ok=True)
-                    except OSError:
-                        pass
-                    else:
-                        lock = QLockFile(str(self.path))
-                        lock.setStaleLockTime(0)
-                        acquired = lock.tryLock(0)
+                if os.name == "nt":
+                    pid, _host, _app = lock.getLockInfo()
+                    if pid > 0 and not _pid_is_alive(pid):
+                        try:
+                            self.path.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                        else:
+                            lock = _new_lock(self.path)
+                            acquired = lock.tryLock(0)
+                else:
+                    lock, acquired = _recover_posix_stale_lock(self.path, lock)
 
             if acquired:
                 self._lock = lock

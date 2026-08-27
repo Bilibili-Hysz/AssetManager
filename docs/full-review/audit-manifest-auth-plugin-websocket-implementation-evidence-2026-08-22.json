@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "report_id": "auth-plugin-websocket-implementation-evidence-2026-08-22",
+  "captured_at": "2026-08-22T16:30:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "89b8b29c6c2f878b3c37566229e38eab080d0ebe899bfb3a0a7fc2cbf1e6be61",
+    "diff_sha256": "965f6046aa0913856d5381164e36644abc5d32306ac22b976347a5b1119812f8",
+    "tracked_change_count": 118,
+    "untracked_change_count": 52
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {"platform": "Windows 10.0.26220 x64", "python": "3.14.3", "pytest": "9.0.2", "ruff": "0.15.16"},
+    "commands": [
+      {"argv": ["python", "-m", "pytest", "-n", "0", "--basetemp=.zcode/pytest-auth-plugin-focused", "-q", "tests/lan/test_l2_rate_input_cpu.py", "tests/lan/test_public_commerce_auth.py", "tests/lan/test_runtime_realtime.py", "tests/lan/test_websocket_auth_offload.py", "tests/lan/test_token_revocations.py", "tests/unit/test_revoked_token_repository.py", "tests/unit/test_auth_service_revocations.py", "tests/plugins", "tests/core/test_plugins.py", "tests/integration/test_plugin_service.py", "tests/unit/test_asset_filters.py", "tests/unit/test_info_controller.py"], "platform": "Windows 10.0.26220 x64", "fixture": "auth, revocation, WebSocket, plugin, category and info-controller focused suites", "sample_count": 284, "pass_criterion": "exit_code == 0 and all selected tests pass", "exit_code": 0, "artifacts": [{"path": "artifacts/evidence/2026-08-22/auth-plugin-websocket-final/focused-tests.stdout.log", "sha256": "3165f5d26c1fb42c0a11a35211d3101a560e939565ff32869f8afb7000c4c458"}]},
+      {"argv": ["python", "-m", "pytest", "--basetemp=.zcode/pytest-auth-plugin-full-2", "-n", "0", "-q"], "platform": "Windows 10.0.26220 x64", "fixture": "full Python test tree", "sample_count": 3936, "pass_criterion": "exit_code == 0; no failed tests; platform skips recorded", "exit_code": 0, "artifacts": [{"path": "artifacts/evidence/2026-08-22/auth-plugin-websocket-final/full-python-suite.stdout.log", "sha256": "a7a593e4905f7e7d2758457142a8d9929cc35a3f4f162cb0bc3ecaeb408b12d3"}]},
+      {"argv": ["python", "scripts/check_audit_reports.py"], "platform": "Windows 10.0.26220 x64", "fixture": "18 pre-existing manifests before this report is indexed", "sample_count": 18, "pass_criterion": "exit_code == 0", "exit_code": 0, "artifacts": [{"path": "artifacts/evidence/2026-08-22/auth-plugin-websocket-final/audit.stdout.log", "sha256": "63f3e43e80ea2d673e5d4535a711932c34e029c62f3654ef5bac89f334c34bf2"}, {"path": "artifacts/evidence/2026-08-22/auth-plugin-websocket-final/audit.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]},
+      {"argv": ["python", "scripts/check_doc_stats.py"], "platform": "Windows 10.0.26220 x64", "fixture": "README structural statistics", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0, "artifacts": [{"path": "artifacts/evidence/2026-08-22/auth-plugin-websocket-final/docstats.stdout.log", "sha256": "a4b6572918322dbdf8c2e481da73be49ddec5fc3149de8845e159015b83e1c20"}, {"path": "artifacts/evidence/2026-08-22/auth-plugin-websocket-final/docstats.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]},
+      {"argv": ["python", "-m", "ruff", "check", "AssetsManager", "tests", "scripts", "run.py"], "platform": "Windows 10.0.26220 x64", "fixture": "full Python source tree", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0, "artifacts": [{"path": "artifacts/evidence/2026-08-22/auth-plugin-websocket-final/ruff.stdout.log", "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"}, {"path": "artifacts/evidence/2026-08-22/auth-plugin-websocket-final/ruff.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]},
+      {"argv": ["python", "-m", "compileall", "AssetsManager", "-q"], "platform": "Windows 10.0.26220 x64", "fixture": "full AssetsManager package", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0, "artifacts": [{"path": "artifacts/evidence/2026-08-22/auth-plugin-websocket-final/compileall.stdout.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}, {"path": "artifacts/evidence/2026-08-22/auth-plugin-websocket-final/compileall.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]},
+      {"argv": ["git", "diff", "--check"], "platform": "Windows 10.0.26220 x64", "fixture": "current dirty worktree", "sample_count": 1, "pass_criterion": "exit_code == 0", "exit_code": 0, "artifacts": [{"path": "artifacts/evidence/2026-08-22/auth-plugin-websocket-final/diff-check.stdout.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}, {"path": "artifacts/evidence/2026-08-22/auth-plugin-websocket-final/diff-check.stderr.log", "sha256": "5c296b542248f7874126d1d645793a5d9baee52d49dacbe87e8872d23d6624c5"}]}
+    ],
+    "note": "Full suite: 3907 passed, 12 skipped, 17 deselected, 2 warnings, 0 failed. Windows-only and independent-platform limitations remain explicitly unverified."
+  },
+  "inputs": [
+    {"path": "docs/full-review/evidence-convergence-2026-08-20.md", "sha256": "4ff90174788b8cc08a3843c87bcee03dc6b507ff8efd025c0ba0264bed45fa8d"},
+    {"path": "docs/full-review/full-scan-2026-08-20.md", "sha256": "21b2a845f38467b6a806257f3a6977f93db757f82d4d216acf3a413b0723fd37"},
+    {"path": "docs/full-review/cross-module-flow-api-audit-2026-08-20.md", "sha256": "b3d4c1d0d0589b3d1e7853688328138286f6c1fedbf3e39bb29c7fc16c1c2ba9"},
+    {"path": "docs/full-review/s1-s5-s2-min-implementation-evidence-2026-08-21.md", "sha256": "fb239dc5341096cadad6dad09f7e680a4419b6443c6e50f55b24ad6856c9e9a3"},
+    {"path": "docs/full-review/11-plugin-api-v2-handover.md", "sha256": "0fe64fff0431d2e89637826d1719c8f6a6acfd445a969d5baf9c1808d7b4ffa9"},
+    {"path": "docs/full-review/auth-plugin-websocket-implementation-evidence-2026-08-22.md", "sha256": "e220fdb7d087700c7963aaec4f488ffd64e5ac6339541e420c6ca3e458610765"}
+  ],
+  "indexed_reports": [
+    "docs/full-review/evidence-convergence-2026-08-20.md",
+    "docs/full-review/auth-plugin-websocket-implementation-evidence-2026-08-22.md"
+  ],
+  "findings": [
+    {"canonical_id": "AUTH-REV-01", "severity": "P1", "status": "fixed-unverified", "source_ids": ["P1-10", "EVID-02"], "anchors": ["AssetsManager/lan/token_revocations.py:37", "AssetsManager/application/auth_service.py:307", "tests/lan/test_token_revocations.py:39"], "surface": "Durable token revocation, session lease and logout failure contract", "next_action": "Independent multi-process persistence and power-loss/restart proof", "dynamic_verification": "Focused auth/revocation suites and full Python suite passed on Windows; independent platform proof not run"},
+    {"canonical_id": "PLUGIN-OWN-01", "severity": "P1", "status": "fixed-unverified", "source_ids": ["EVID-02", "PLUGIN-V2"], "anchors": ["AssetsManager/core/plugins/host_context.py:586", "AssetsManager/core/plugins/manager.py:125", "tests/plugins/test_plugin_api_v2.py:437"], "surface": "Plugin contribution ownership, collision handling and lifecycle", "next_action": "Concurrent discovery/load and external plugin ecosystem compatibility proof", "dynamic_verification": "Plugin/category/info focused suites and full Python suite passed; UI refresh and concurrency not independently proven"},
+    {"canonical_id": "WS-REV-01", "severity": "P1", "status": "fixed-unverified", "source_ids": ["XAUTH-01", "EVID-02"], "anchors": ["AssetsManager/lan/routes/websocket.py:23", "AssetsManager/lan/ws.py:467", "tests/lan/test_runtime_realtime.py:713"], "surface": "Existing WebSocket revocation, token-specific eviction and auth offload", "next_action": "Real-backend/browser session lifecycle and cross-process revocation propagation", "dynamic_verification": "WebSocket/auth focused suites and full Python suite passed on Windows; real LAN/browser validation not run"}
+  ]
+}

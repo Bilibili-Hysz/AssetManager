@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "report_id": "thumbnail-path-migration-concurrency-evidence-2026-08-23",
+  "captured_at": "2026-08-23T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "560db764521c9d3078ca1984b79241a19c58675a63027f745fcdc4a1919df5db",
+    "diff_sha256": "1ee32773da473ecb7aec6460aed54438a56a9e8c5a17472241fd24b7dc011ace",
+    "tracked_change_count": 143,
+    "untracked_change_count": 102
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python", "-W", "error::RuntimeWarning", "-m", "pytest", "-n", "0",
+          "--basetemp=.zcode/pytest-batch25k-focused-evidence", "-q",
+          "tests/core/test_database_metadata.py", "tests/unit/test_core_db_low_batch.py",
+          "tests/integration/test_file_operation_service.py", "tests/integration/test_thumbnail_service.py",
+          "tests/unit/test_database_integrity_service.py", "tests/unit/test_integrity_low_batch.py",
+          "tests/unit/test_thumbnail_repository.py", "tests/unit/test_architecture_boundaries.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Thumbnail path migration owner-lock order, collision/savepoint behavior, eviction/integrity/file-operation consistency",
+        "sample_count": 260,
+        "pass_criterion": "exit_code == 0; RuntimeWarning treated as error",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/thumbnail-path-migration-concurrency/focused.stdout.log", "sha256": "15f61de09995a3a31259c6f1a060f2be6c58eadfaaf862f7111187695da23a43"},
+          {"path": "artifacts/evidence/2026-08-23/thumbnail-path-migration-concurrency/focused.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": [
+          "python", "-W", "error::RuntimeWarning", "-m", "pytest",
+          "--basetemp=.zcode/pytest-batch25k-full", "-n", "0", "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python suite after application-layer thumbnail migration lock-order convergence",
+        "sample_count": 4027,
+        "pass_criterion": "exit_code == 0; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/thumbnail-path-migration-concurrency/full.stdout.log", "sha256": "e69c3c66863442343a3727d9b5da2ccfdf2b07f30a6921e66bafc74637de11e3"},
+          {"path": "artifacts/evidence/2026-08-23/thumbnail-path-migration-concurrency/full.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": [
+          "python", "scripts/check_audit_reports.py", "&&",
+          "python", "scripts/check_doc_stats.py", "&&",
+          "python", "scripts/check_boundaries.py", "&&",
+          "python", "scripts/check_style_sources.py", "&&",
+          "python", "scripts/check_route_capabilities.py", "&&",
+          "python", "scripts/check_frontend_data_fetch.py", "&&",
+          "python", "scripts/check_layers.py", "&&",
+          "python", "-m", "ruff", "check", "AssetsManager", "tests", "scripts", "run.py", "&&",
+          "python", "-m", "compileall", "AssetsManager", "-q", "&&",
+          "git", "diff", "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Pre-index governance gates before 25-K report and manifest indexing; all 38 prior manifests",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/thumbnail-path-migration-concurrency/static.stdout.log", "sha256": "62954e265c5b7c011dd441e0c0502637214045ca7271055fe9c6d26b1e98da76"},
+          {"path": "artifacts/evidence/2026-08-23/thumbnail-path-migration-concurrency/static.stderr.log", "sha256": "af1cbe7332cca945e3b4ca037c7553a1be82d1c06146b8ec622cc3cc05e2dde2"}
+        ]
+      },
+      {
+        "argv": [
+          "python", "scripts/check_audit_reports.py", "&&",
+          "python", "scripts/check_doc_stats.py", "&&",
+          "python", "scripts/check_boundaries.py", "&&",
+          "python", "scripts/check_style_sources.py", "&&",
+          "python", "scripts/check_route_capabilities.py", "&&",
+          "python", "scripts/check_frontend_data_fetch.py", "&&",
+          "python", "scripts/check_layers.py", "&&",
+          "python", "-m", "ruff", "check", "AssetsManager", "tests", "scripts", "run.py", "&&",
+          "python", "-m", "compileall", "AssetsManager", "-q", "&&",
+          "git", "diff", "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index governance validation after 25-K report and manifest; all 39 manifests",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/thumbnail-path-migration-concurrency/static-post-index.stdout.log", "sha256": "c7ff4e625efeb417e399c4d9a456b3b719b605b230d344395b08538313c48456"},
+          {"path": "artifacts/evidence/2026-08-23/thumbnail-path-migration-concurrency/static-post-index.stderr.log", "sha256": "af1cbe7332cca945e3b4ca037c7553a1be82d1c06146b8ec622cc3cc05e2dde2"}
+        ]
+      }
+    ],
+    "note": "Focused: 260 passed. Full Python: 3996 passed, 14 skipped, 17 deselected, 2 warnings. Pre-index and post-index governance gates passed; the post-index run validated all 39 manifests. Production move/repair callers now acquire the thumbnail cache owner before core metadata migration; direct low-level core callers remain deliberately unowned. Filesystem rename/savepoint crash atomicity and independent cross-platform race claims remain unverified."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/audit-manifest-project-service-webp-artifact-admission-evidence-2026-08-23.json",
+      "sha256": "e65664796b38c6635b51bb0e41ee0e2ab72d526173fc3b58e26d1252b5323ea1"
+    },
+    {
+      "path": "docs/full-review/project-service-webp-artifact-admission-evidence-2026-08-23.md",
+      "sha256": "f429b8b64560760804aa1db2b8bd19a00610fe617d63b1948b7f986eb0f4a8c6"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/project-service-webp-artifact-admission-evidence-2026-08-23.md",
+    "docs/full-review/thumbnail-path-migration-concurrency-evidence-2026-08-23.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "THUMBNAIL-PATH-MIGRATION-CONCURRENCY-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": ["PROJECT-SERVICE-WEBP-ARTIFACT-ADMISSION-01"],
+      "anchors": [
+        "AssetsManager/application/file_operation_service.py:909",
+        "AssetsManager/application/filesystem_projection_repair_service.py:61",
+        "AssetsManager/core/database.py:1467",
+        "tests/unit/test_architecture_boundaries.py:456"
+      ],
+      "surface": "Production thumbnail path migration lock ordering across file operations, durable repair, cache owner and SQLite projection",
+      "next_action": "Add independent subprocess migration-versus-eviction/integrity race and filesystem fault-injection verification without claiming power-loss or filesystem crash atomicity",
+      "dynamic_verification": "260 focused tests and 3996 full Python tests passed on Windows; production move and repair callers now wrap core migration with cache_owner_lock. Existing collision/savepoint/eviction/integrity contracts pass; cross-process race and filesystem rename atomicity remain unverified."
+    }
+  ]
+}

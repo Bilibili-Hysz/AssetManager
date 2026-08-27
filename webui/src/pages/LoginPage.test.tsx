@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -34,6 +34,18 @@ describe('LoginPage registration policy', () => {
     cleanup();
     vi.clearAllMocks();
     authLoading = false;
+    window.history.replaceState({}, '', '/login');
+  });
+
+  it('removes an auto-login key from the URL while preserving other location data', async () => {
+    window.history.replaceState({}, '', '/login?key=secret&next=1#frag');
+    authMode = 'key';
+    authApi.verifyKey.mockResolvedValue({ ok: true });
+    refreshMe.mockResolvedValue(false);
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitFor(() => expect(authApi.verifyKey).toHaveBeenCalledWith('secret'));
+    expect(`${window.location.pathname}${window.location.search}${window.location.hash}`).toBe('/login?next=1#frag');
   });
 
   it('exposes the auth-loading spinner as a status region', () => {

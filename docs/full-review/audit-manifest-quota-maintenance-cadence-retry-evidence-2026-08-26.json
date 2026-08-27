@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "report_id": "quota-maintenance-cadence-retry-evidence-2026-08-26",
+  "captured_at": "2026-08-26T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "f7f8bf6176c98fae391beab1f623e0e17c4963d2b13483f974522e55176d8b0c",
+    "diff_sha256": "56669d15825ada0e8028fcfe970d3c0e43fa47a9b193d536113ce18602438258",
+    "tracked_change_count": 331,
+    "untracked_change_count": 0
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/unit/test_free_download_quota.py",
+          "tests/lan/test_free_download_quota.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Quota cadence, retry and 503 regressions",
+        "sample_count": 22,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/quota-maintenance/focused.stdout.log",
+            "sha256": "18f7bcafe3ff0590551e89045c09b5a1ef09ce6931faaa826470c25f5d38bd96"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Final serial Python suite",
+        "sample_count": 4105,
+        "pass_criterion": "exit_code == 0; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/quota-maintenance/full.stdout.log",
+            "sha256": "43c34cffe42f7e68eea88c0dabe01003b44a97ebb5545089de44294d95c36111"
+          }
+        ]
+      }
+    ],
+    "note": "Full Ruff, compileall, diff-check and six governance gates passed. No production LAN soak, DST, cross-process scheduler, power-loss, exactly-once or reservation proof."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/quota-maintenance-cadence-retry-evidence-2026-08-26.md",
+      "sha256": "1c8a2b5250192f7140e18ae5e4d6009e14408bdbd68fbfd372fa274dc26327d2"
+    },
+    {
+      "path": "AssetsManager/application/free_download_quota_service.py",
+      "sha256": "284965272146b2a5cf51e7bdb9586fa4932c5a6af70bbf087a5b29ec49fc7075"
+    },
+    {
+      "path": "AssetsManager/repositories/free_download_quota_repository.py",
+      "sha256": "ebaf78ddecdec02b739c7ee8bd2453a16040aec1f2ecf742c8ed6756ae6988f9"
+    },
+    {
+      "path": "AssetsManager/lan/routes/quota.py",
+      "sha256": "24070835d52f2260dfcb00ea5c3f165f6c89a8464698ff0b51e3f409f8bf645b"
+    },
+    {
+      "path": "AssetsManager/lan/routes/downloads.py",
+      "sha256": "22279636668b17b94028244ca01659e4a17deb31c033984bd08c13fb9aeb80a7"
+    },
+    {
+      "path": "tests/unit/test_free_download_quota.py",
+      "sha256": "6ab80ddd85ccf75a4e7d4fbcecae978121ac656f14db93434686e33c61344f99"
+    },
+    {
+      "path": "tests/lan/test_free_download_quota.py",
+      "sha256": "937feb354d2986717df003ecca2b0627ee7f34d8f70218a69d4fa1d383a34a8d"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/quota-maintenance-cadence-retry-evidence-2026-08-26.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "FREE-QUOTA-MAINTENANCE-CADENCE-38-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "FREE-QUOTA-MAINTENANCE-CADENCE-38-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/free_download_quota_service.py:46",
+        "AssetsManager/repositories/free_download_quota_repository.py:198",
+        "AssetsManager/lan/routes/quota.py:267",
+        "AssetsManager/lan/routes/downloads.py:162",
+        "tests/unit/test_free_download_quota.py:180"
+      ],
+      "surface": "Cached quota services previously pruned only once and lacked bounded lock retry or fail-closed download error translation",
+      "next_action": "Retain cadence and retry; separately evaluate production soak, cross-process scheduling and clock/DST behavior",
+      "dynamic_verification": "Focused quota matrix passed 22 tests and final serial suite passed 4089 tests with recorded skips and warnings"
+    }
+  ]
+}

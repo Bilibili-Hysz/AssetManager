@@ -12,7 +12,7 @@ from typing import Any, cast
 from aiohttp import web
 
 from AssetsManager.lan.api import setup_routes, stop_runtime_realtime
-from AssetsManager.lan.auth import hash_key, hash_password, is_password_hash, verify_key, verify_token, verify_auth_token
+from AssetsManager.lan.auth import hash_key, hash_password, is_password_hash, verify_key, verify_token_async, verify_auth_token
 from AssetsManager.lan.guarded_tunnel import _GuardedTunnel
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY, LAN_APP_KEY, ZIP_EXECUTOR_APP_KEY, ActivityLog, OnlineUsers, LanScopedServices
@@ -28,6 +28,7 @@ from AssetsManager.lan.token_revocations import TokenRevocationRegistry
 from AssetsManager.lan.ws import WebSocketManager
 from AssetsManager.lan.scanner import DirectoryScanner
 from AssetsManager.lan.tunnel import TunnelManager
+from AssetsManager.lan import tunnel_identity
 from AssetsManager.lan.security import RateLimiter, AuthRateLimiter, IPBlacklist, create_security_middleware
 from AssetsManager.lan.route_policy import request_policy
 from AssetsManager.lan.utils import get_local_ip
@@ -303,12 +304,28 @@ class _LanServerImpl:
             browse_rate_limiter=self._browse_rate_limiter,
             ip_whitelist=self._ip_whitelist,
             tunnel_active=self._tunnel_active,
+            tunnel_identity_resolver=self._tunnel_identity_resolver,
+            tunnel_identity_minter=self._tunnel_identity_minter,
         )
         app = web.Application(middlewares=[security_mw, self._metrics_middleware, self._auth_middleware])
         self._app = app
         app[LAN_APP_KEY] = self
         app[ZIP_EXECUTOR_APP_KEY] = self._zip_executor
         setup_routes(app)
+
+    def _tunnel_identity_resolver(self, request) -> str | None:
+        """Validated visitor-cookie client id for tunnel-mode limiter keys."""
+        secret = tunnel_identity.signing_secret(self)
+        token = tunnel_identity.valid_token(
+            request.cookies.get(tunnel_identity.COOKIE_NAME), secret
+        )
+        return tunnel_identity.token_client_id(token) if token else None
+
+    def _tunnel_identity_minter(self) -> tuple[str, str]:
+        """Mint ``(client_id, cookie_token)`` for a first-contact visitor."""
+        secret = tunnel_identity.signing_secret(self)
+        token = tunnel_identity.new_token(secret)
+        return tunnel_identity.token_client_id(token), token
 
     def _tunnel_active(self) -> bool:
         """True while the cloudflared tunnel is up (loopback whitelist bypass)."""
@@ -855,6 +872,14 @@ class _LanServerImpl:
     def is_auth_token_revoked(self, token: str) -> bool:
         """Return True when a presented auth token has been revoked."""
         return self._token_revocation_registry().is_auth_token_revoked(token)
+
+    async def is_auth_token_revoked_async(self, token: str) -> bool:
+        """Check revocation without blocking the LAN event loop."""
+        return await asyncio.to_thread(self.is_auth_token_revoked, token)
+
+    async def revoke_auth_token_async(self, token: str) -> None:
+        """Persist revocation without blocking the LAN event loop."""
+        await asyncio.to_thread(self.revoke_auth_token, token)
 
     @property
     def library_root(self) -> Path:
@@ -1532,7 +1557,17 @@ class _LanServerImpl:
             from AssetsManager.lan.routes._helpers import get_auth_token
 
             token = get_auth_token(request)
-            if token and self.is_auth_token_revoked(token):
+            auth_service = getattr(self, "_auth_service", None)
+            revocation_supported = (
+                callable(getattr(auth_service, "load_active_revocations", None))
+                or bool(getattr(self, "_revoked_tokens", None))
+                or bool(getattr(self, "_revoked_loaded", False))
+            )
+            check_revoked = getattr(self, "is_auth_token_revoked_async", None)
+            if token and revocation_supported and await (
+                check_revoked(token) if callable(check_revoked)
+                else asyncio.to_thread(self.is_auth_token_revoked, token)
+            ):
                 token = ""
             if not token:
                 return False
@@ -1559,7 +1594,7 @@ class _LanServerImpl:
                     set_request_principal(request, principal_for_request("user", user=user))
                     return True
             password_hash = getattr(self, "_password_hash", None)
-            if password_hash is not None and verify_token(token, password_hash):
+            if password_hash is not None and await verify_token_async(token, password_hash):
                 set_request_principal(request, principal_for_request("password"))
                 return True
             return False
@@ -1601,7 +1636,17 @@ class _LanServerImpl:
         # Get token from cookie or Authorization header
         from AssetsManager.lan.routes._helpers import get_auth_token
         token = get_auth_token(request)
-        if token and self.is_auth_token_revoked(token):
+        auth_service = getattr(self, "_auth_service", None)
+        revocation_supported = (
+            callable(getattr(auth_service, "load_active_revocations", None))
+            or bool(getattr(self, "_revoked_tokens", None))
+            or bool(getattr(self, "_revoked_loaded", False))
+        )
+        check_revoked = getattr(self, "is_auth_token_revoked_async", None)
+        if token and revocation_supported and await (
+            check_revoked(token) if callable(check_revoked)
+            else asyncio.to_thread(self.is_auth_token_revoked, token)
+        ):
             token = ""
 
         # Try access key auth (PBKDF2 off the event loop: L2/M-A2)
@@ -1626,7 +1671,7 @@ class _LanServerImpl:
 
         # Try simple password token
         if has_password and token and self._password_hash is not None:
-            if verify_token(token, self._password_hash):
+            if await verify_token_async(token, self._password_hash):
                 set_request_principal(request, principal_for_request("password"))
                 return await proceed()
 

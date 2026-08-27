@@ -99,7 +99,55 @@ def main():
         window = MainWindow(bootstrap)
         # A direct Startup selection is the user's current intent and takes
         # precedence over restored workspace history.
-        window._workspace.add_library(path)
+        try:
+            window._workspace.add_library(path)
+        except Exception as exc:
+            _log.exception("Failed to open library %s", path)
+            try:
+                window._force_quit = True
+                window.close()
+                window.deleteLater()
+            except Exception:
+                _log.exception("Failed to discard failed library window")
+            window = None
+            state = bootstrap.library_service.restore_intent_status(path)
+            if state is None:
+                from PySide6.QtWidgets import QMessageBox
+
+                QMessageBox.critical(startup, "Library open failed", str(exc))
+                return
+            from PySide6.QtWidgets import QMessageBox
+
+            dialog = QMessageBox(startup)
+            dialog.setIcon(QMessageBox.Icon.Warning)
+            dialog.setWindowTitle("Restore recovery required")
+            dialog.setText(
+                "The library restore marker could not be cleared safely. "
+                "Choose a recovery action before opening the library."
+            )
+            retry_button = dialog.addButton(
+                "Retry protected rollback", QMessageBox.ButtonRole.AcceptRole
+            )
+            acknowledge_button = dialog.addButton(
+                "Acknowledge manual remediation", QMessageBox.ButtonRole.DestructiveRole
+            )
+            dialog.addButton(QMessageBox.StandardButton.Cancel)
+            dialog.exec()
+            clicked = dialog.clickedButton()
+            try:
+                if clicked is retry_button:
+                    bootstrap.library_service.retry_interrupted_restore(path)
+                    startup._accept(path)
+                elif clicked is acknowledge_button:
+                    token = state.get("token")
+                    if not token:
+                        raise RuntimeError("Restore marker has no acknowledgement token")
+                    bootstrap.library_service.acknowledge_restore_intent(path, token)
+                    startup._accept(path)
+            except Exception as recovery_error:
+                _log.exception("Restore recovery action failed for %s", path)
+                QMessageBox.critical(startup, "Restore recovery failed", str(recovery_error))
+            return
         window.show()
         # Expose tray to window for state updates
         window._tray_manager = tray

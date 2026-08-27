@@ -46,6 +46,28 @@ class TestCategoryMap:
     def test_archive_extensions(self):
         assert CATEGORY_MAP[".zip"] == "archives"
         assert CATEGORY_MAP[".rar"] == "archives"
+        assert CATEGORY_MAP[".bz2"] == "archives"
+
+    def test_live_mapping_uses_snapshot_for_complete_dict_api(self):
+        from AssetsManager.core.format_utils import LiveCategoryMap
+
+        mapping = LiveCategoryMap({"a": "first", "b": "second"})
+        assert repr(mapping) == "{'a': 'first', 'b': 'second'}"
+        assert mapping == {"a": "first", "b": "second"}
+        assert mapping != {"a": "other"}
+        assert not (mapping != {"a": "first", "b": "second"})
+        assert mapping | {"c": "third"} == {"a": "first", "b": "second", "c": "third"}
+        assert {"zero": "zeroth"} | mapping == {
+            "zero": "zeroth", "a": "first", "b": "second",
+        }
+        mapping |= {"c": "third"}
+        assert mapping.snapshot() == {"a": "first", "b": "second", "c": "third"}
+        assert mapping.popitem() == ("c", "third")
+        assert mapping.snapshot() == {"a": "first", "b": "second"}
+        assert LiveCategoryMap.fromkeys(("x", "y"), "value") == {
+            "x": "value", "y": "value",
+        }
+        assert type(LiveCategoryMap.fromkeys(("x",))) is dict
 
     def test_unknown_extension(self):
         assert CATEGORY_MAP.get(".xyz") is None

@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "report_id": "thumbnail-desktop-profile-admission-evidence-2026-08-23",
+  "captured_at": "2026-08-23T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "fed668d20759d29e0f84a2be3421df972a3139b9533f95d65ca5ff773bffed2b",
+    "diff_sha256": "862ead7ffd1f468243ae6d80c21018c927e705b5cefbcb84e3ed5a98d876d245",
+    "tracked_change_count": 137,
+    "untracked_change_count": 84
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python", "-W", "error::RuntimeWarning", "-m", "pytest", "-n", "0",
+          "--basetemp=.zcode/pytest-batch25d-a-focused-final", "-q",
+          "tests/desktop/test_thumbnail_loader.py",
+          "tests/desktop/test_file_list_view.py",
+          "tests/integration/test_thumbnail_service.py",
+          "tests/unit/test_low_batch_loader.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Desktop WebP profile-aware cache admission and existing thumbnail regressions",
+        "sample_count": 235,
+        "pass_criterion": "exit_code == 0; RuntimeWarning treated as error",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/thumbnail-desktop-profile-admission/focused.stdout.log", "sha256": "7bbfdfb2b42b154c5712108682ae142f993fe29b72c9785531782033b08c9733"},
+          {"path": "artifacts/evidence/2026-08-23/thumbnail-desktop-profile-admission/focused.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": [
+          "python", "-W", "error::RuntimeWarning", "-m", "pytest",
+          "--basetemp=.zcode/pytest-batch25d-a-full", "-n", "0", "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "full Python suite after Desktop profile-aware cache admission",
+        "sample_count": 4005,
+        "pass_criterion": "exit_code == 0; no failed tests; platform skips and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/thumbnail-desktop-profile-admission/full.stdout.log", "sha256": "55e6eac834fa9cb619233e43f2be933dcb4cc88778b1bf5a04338d8deba37309"},
+          {"path": "artifacts/evidence/2026-08-23/thumbnail-desktop-profile-admission/full.stderr.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+        ]
+      },
+      {
+        "argv": [
+          "python", "scripts/check_audit_reports.py", "&&",
+          "python", "scripts/check_doc_stats.py", "&&",
+          "python", "scripts/check_boundaries.py", "&&",
+          "python", "scripts/check_style_sources.py", "&&",
+          "python", "scripts/check_route_capabilities.py", "&&",
+          "python", "scripts/check_frontend_data_fetch.py", "&&",
+          "python", "scripts/check_layers.py", "&&",
+          "python", "-m", "ruff", "check", "AssetsManager", "tests", "scripts", "run.py", "&&",
+          "python", "-m", "compileall", "AssetsManager", "-q", "&&",
+          "git", "diff", "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "25-D-A static governance gates before profile-admission report indexing; all 29 prior manifests",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/thumbnail-desktop-profile-admission/static.stdout.log", "sha256": "e2fc12e5299af1180a7c4581632a56fd49abd20fc97b30ce144e8d6dfb7d01ae"},
+          {"path": "artifacts/evidence/2026-08-23/thumbnail-desktop-profile-admission/static.stderr.log", "sha256": "1d3ca222e60538e69c0e47309d51cd312bb9191cf7c5404ab96d7d84ba4fa9b8"}
+        ]
+      },
+      {
+        "argv": [
+          "python", "scripts/check_audit_reports.py", "&&",
+          "python", "scripts/check_doc_stats.py", "&&",
+          "python", "scripts/check_boundaries.py", "&&",
+          "python", "scripts/check_style_sources.py", "&&",
+          "python", "scripts/check_route_capabilities.py", "&&",
+          "python", "scripts/check_frontend_data_fetch.py", "&&",
+          "python", "scripts/check_layers.py", "&&",
+          "python", "-m", "ruff", "check", "AssetsManager", "tests", "scripts", "run.py", "&&",
+          "python", "-m", "compileall", "AssetsManager", "-q", "&&",
+          "git", "diff", "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "post-index governance validation after 25-D-A report and manifest; all 30 manifests",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {"path": "artifacts/evidence/2026-08-23/thumbnail-desktop-profile-admission/static-post-index.stdout.log", "sha256": "134dee6bd0d4836f5f4e444d0751bdda315af1f575642143e4a09517d5cdf3ce"},
+          {"path": "artifacts/evidence/2026-08-23/thumbnail-desktop-profile-admission/static-post-index.stderr.log", "sha256": "1d3ca222e60538e69c0e47309d51cd312bb9191cf7c5404ab96d7d84ba4fa9b8"}
+        ]
+      }
+    ],
+    "note": "Focused: 235 passed. Full suite: 3977 passed, 14 skipped, 17 deselected, 2 warnings, 0 failed. Post-index governance validation: all 30 manifests and static gates passed. LAN/WebUI/profile-key/mutation atomicity and filesystem crash proof were not run."
+  },
+  "inputs": [
+    {"path": "docs/full-review/audit-manifest-thumbnail-cross-process-ownership-evidence-2026-08-22.json", "sha256": "dd8aa060f71f6d20dece3f7ae19fc21eae7e2e02129a8b7c75d934f776c0b1ee"},
+    {"path": "docs/full-review/thumbnail-cross-process-ownership-evidence-2026-08-22.md", "sha256": "196f1333bd867e8910384076dbaa2c582f6b3071474b3e910e79c433719046c2"}
+  ],
+  "indexed_reports": [
+    "docs/full-review/thumbnail-cross-process-ownership-evidence-2026-08-22.md",
+    "docs/full-review/thumbnail-desktop-profile-admission-evidence-2026-08-23.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "THUMBNAIL-DESKTOP-PROFILE-ADMISSION-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": ["THUMBNAIL-CROSS-PROCESS-OWNER-01"],
+      "anchors": [
+        "AssetsManager/panels/file_list/_loader.py:936",
+        "AssetsManager/panels/file_list/_loader.py:1149",
+        "tests/desktop/test_thumbnail_loader.py:848"
+      ],
+      "surface": "Desktop WebP persistent cache admission across bake profile and loader size",
+      "next_action": "LAN profile admission, profile-aware key migration, blur isolation and ProjectService artifact-kind convergence",
+      "dynamic_verification": "235 focused and 3977 full Python tests passed on Windows; independent POSIX/Windows filesystem proof and LAN/WebUI profile validation not run"
+    }
+  ]
+}

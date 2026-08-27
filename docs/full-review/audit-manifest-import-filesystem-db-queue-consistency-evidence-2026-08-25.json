@@ -1,0 +1,263 @@
+{
+  "schema_version": 1,
+  "report_id": "import-filesystem-db-queue-consistency-evidence-2026-08-25",
+  "captured_at": "2026-08-25T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "9f6a8e730d60de9d30da80cde07185ec40086db32de41c4a8726f05d6cba636f",
+    "diff_sha256": "bf9d3d133bf1f2c78930f8a592a3851ca8d0037e2fb15482316f1bea01ab39fa",
+    "tracked_change_count": 143,
+    "untracked_change_count": 125
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/integration/test_import_service.py",
+          "tests/integration/test_import_subprocess_termination.py",
+          "tests/unit/test_import_manifest_store.py",
+          "tests/integration/test_import_manifest_recovery_claim_process.py",
+          "tests/integration/test_reconciliation_queue_sqlite_runtime.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Import cancellation/replay compensation double-fault injection, restart convergence, subprocess recovery and queue runtime matrix",
+        "sample_count": 57,
+        "pass_criterion": "exit_code == 0; platform-gated symlink skips recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/import-filesystem-db-queue-consistency/focused.stdout.log",
+            "sha256": "c9565f0c4e45b36833fd090379c04bb596919dfbaf7116841b433245fbe24cc6"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/import-filesystem-db-queue-consistency/focused.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python suite after filesystem/SQLite/queue consistency compensation hardening",
+        "sample_count": 4049,
+        "pass_criterion": "exit_code == 0; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/import-filesystem-db-queue-consistency/full.stdout.log",
+            "sha256": "f1420b043979fc9eb83c1123dac37a5afc7c2b2a1c16fcef75faa52346633271"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager/application/import_service.py",
+          "AssetsManager/application/import_manifest_store.py",
+          "tests/integration/test_import_service.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted Ruff check for 28-D implementation and tests",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/import-filesystem-db-queue-consistency/ruff.stdout.log",
+            "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/import-filesystem-db-queue-consistency/ruff.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager/application/import_service.py",
+          "AssetsManager/application/import_manifest_store.py",
+          "tests/integration/test_import_service.py",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted Python compile check",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/import-filesystem-db-queue-consistency/compile.stdout.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/import-filesystem-db-queue-consistency/compile.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Whitespace check for current dirty worktree",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/import-filesystem-db-queue-consistency/diffcheck.stdout.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/import-filesystem-db-queue-consistency/diffcheck.stderr.log",
+            "sha256": "aa40b795a7b8af061b6804bb2fab436fcc0b0b9e6e474385701ca0afa432f7ec"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index non-self-referential static governance after 28-D report and manifest",
+        "sample_count": 9,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-25/import-filesystem-db-queue-consistency/static-post-index.stdout.log",
+            "sha256": "cd0bfa8fd867bd821dbb2285bb364681e91a49b915884928a4116f4e570ccba2"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-25/import-filesystem-db-queue-consistency/static-post-index.stderr.log",
+            "sha256": "aa40b795a7b8af061b6804bb2fab436fcc0b0b9e6e474385701ca0afa432f7ec"
+          }
+        ]
+      }
+    ],
+    "note": "Focused matrix: 55 passed, 2 skipped. Full serial Python suite: 4033 passed, 16 skipped, 20 deselected, 2 warnings. Post-index non-self-referential static governance passed. Cancel-with-broken-queue, update+enqueue double fault, clean-import finish failure, replay update exception, replay claim race and replay finish failure all converge through restart-time recovery without duplicate copies or hidden files. Restart recovery still marks pending-item manifests completed after root rescan (documented bookkeeping semantics); no cross-system atomicity, power-loss or exactly-once claim is made."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/import-filesystem-db-queue-consistency-evidence-2026-08-25.md",
+      "sha256": "066d5c8f32a6d6ac1060e9c3789cc65893b09ea690b826b9079faa98b9defeb7"
+    },
+    {
+      "path": "AssetsManager/application/import_service.py",
+      "sha256": "7ceab7ea44c250f5fc38e3710f0533fac0f7f7093aa28dfaec86b77b806f5c44"
+    },
+    {
+      "path": "AssetsManager/application/import_manifest_store.py",
+      "sha256": "e9073f165e3405a2d530bda7f57a4bf773f046c545e826830ce025c82423d030"
+    },
+    {
+      "path": "tests/integration/test_import_service.py",
+      "sha256": "d257ab4949022f50a8b1ac248340d010c2ce30ed0b298e53e1940b9456b70ced"
+    },
+    {
+      "path": "tests/unit/test_import_manifest_store.py",
+      "sha256": "e35239366142fcd0969b2fed7d3e3ba384acc814d9134ee48e916d4dca219782"
+    },
+    {
+      "path": "tests/integration/test_import_subprocess_termination.py",
+      "sha256": "2dc168ee36c92e83d625c16b27bf49cb2fddcffa82e4c654ab3a7accb6c2a775"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/import-filesystem-db-queue-consistency-evidence-2026-08-25.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "IMPORT-FSQ-COMPENSATION-28D-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "IMPORT-FSQ-COMPENSATION-28D-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/import_service.py:528",
+        "AssetsManager/application/import_service.py:571",
+        "AssetsManager/application/import_service.py:652",
+        "AssetsManager/application/import_service.py:700",
+        "tests/integration/test_import_service.py:205",
+        "tests/integration/test_import_service.py:280",
+        "tests/integration/test_import_service.py:341"
+      ],
+      "surface": "Import cancellation and replay compensation across filesystem copy, manifest CAS and reconciliation queue enqueue failures",
+      "next_action": "Keep cross-system atomicity, power-loss safety, exactly-once execution, recover() mid-phase process-kill windows and the fingerprint-to-copy TOCTOU as separate bounded work",
+      "dynamic_verification": "Focused import/subprocess/recovery/queue matrix passed 55 tests with two symlink capability skips; full serial Python suite passed 4033 tests with 16 skips, 20 deselections and two warnings. Cancelled intents with broken queues stay recoverable and converge on restart with one root-rescan task and intact targets; double-fault combinations preserve physical copies without duplicates; replay survives update exceptions, reports claim races deterministically and compensates finish failures."
+    }
+  ]
+}

@@ -58,3 +58,21 @@ class TestRevokedTokenRepository:
         conn.rollback()
         assert conn.execute("SELECT 1 FROM marker").fetchone() is None
         assert repo.is_revoked("a" * 64) is False
+
+    def test_schema_check_does_not_commit_caller_transaction(self):
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        repo = RevokedTokenRepository(conn)
+        try:
+            conn.execute("CREATE TABLE marker (id INTEGER PRIMARY KEY)")
+            conn.commit()
+            conn.execute("BEGIN")
+            conn.execute("INSERT INTO marker (id) VALUES (1)")
+            assert repo.is_revoked("a" * 64) is False
+            assert conn.in_transaction
+            conn.rollback()
+            assert conn.execute("SELECT 1 FROM marker").fetchone() is None
+            assert conn.execute(
+                "SELECT name FROM sqlite_master WHERE name = 'revoked_tokens'"
+            ).fetchone() is None
+        finally:
+            conn.close()
