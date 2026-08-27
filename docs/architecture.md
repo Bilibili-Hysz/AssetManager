@@ -1,5 +1,7 @@
 # AssetManager Next Architecture
 
+> 状态:**LIVING** · updated: 2026-08-27 · 结构性文档;行数/模块数等实测数字见 `docs/overview-2026-08-27.md` §1;本文不再维护迁移明细表(见 `docs/migrations.md`)。
+
 This refactor treats AssetManager as a platform with two first-class presentations: the PySide6 desktop app and the LAN web app. Both presentations should share application services instead of duplicating business logic.
 
 ## Layers
@@ -52,9 +54,13 @@ Static gates are enforced by `scripts/check_boundaries.py` (gates 1/2/3/5), `scr
 | `LibraryExportService` | `library_export_service.py` | Metadata export, bounded backup (100k members), validation, closed-session isolated restore (reservation token + ACK) | Settings adapter/runtime | — | export/restore regression tests |
 | `LibrarySettingsAdapter` | `library_settings_adapter.py` | Qt-free boundary for integrity, maintenance, export, backup, and restore state | Settings presentation | — | adapter tests |
 | `GalleryService` / `FavoriteService` | `gallery_service.py` / `favorite_service.py` | Budget-limited gallery projection / owner-scoped favorites | — | `/api/gallery/*`, `/api/favorites` | LAN route tests |
-| Commerce stack (`ShopService`, `ShopBuyerService`, `OrderService`, `QuotaService`, `FreeDownloadQuotaService`, `SellerAuthService`, `SellerProfileService`, `StorefrontAnalyticsService`) | `shop_service.py` etc. | Catalog/cart/checkout (idempotency keys), order state machine (pending→confirmed→fulfilled/revoked), delivery tokens (fulfill/rotate-revoke), quotas, seller sessions, privacy-aggregated analytics | — | `/api/shop/*` (55 routes) | commerce tests |
+| Commerce stack (`ShopService`, `ShopBuyerService`, `OrderService`, `QuotaService`, `FreeDownloadQuotaService`, `SellerAuthService`, `SellerProfileService`, `StorefrontAnalyticsService`) | `shop_service.py` etc. | Catalog/cart/checkout (idempotency keys), order state machine (pending→confirmed→fulfilled/revoked), delivery tokens (fulfill/rotate-revoke), quotas, seller sessions, privacy-aggregated analytics | — | `/api/shop/*` (54 routes) | commerce tests |
+| `ImportService` + `ImportManifestStore` | `import_service.py` / `import_manifest_store.py` | External import batches (discover→plan→fingerprint→copy), manifest state machine (prepared/running/completed/degraded/cancelled/recovery_pending), claim/lease recovery, v2 replay idempotency | `window.py` import UI | — | import tests |
+| `FilesystemProjectionRepairService` | `filesystem_projection_repair_service.py` | Durable projection repair executor (move/delete/restore intent-vs-reality reconciliation) | FileOperationService | — | repair tests |
+| `LibraryWatcherService` | `library_watcher_service.py` | Polling library tree mtime snapshot → `FileSystemChanged(kind=external_watch)` + rescan enqueue (50k dir budget) | Runtime lifecycle adapter | — | watcher tests |
+| `ThumbnailCacheLifecycle` | `thumbnail_cache_lifecycle.py` | Thumbnail artifact in-process locks + cross-process owner lease (QLockFile) + safe delete | FileOperationService | — | lifecycle tests |
 
-> 完整服务清单（39 模块）与签名索引见 `docs/full-review/02-module-map.md`。
+> 应用服务层为 51 个顶层服务模块(另有 `gallery/` 子包 5 文件);完整清单见 `docs/overview-2026-08-27.md` §7-12 与 `docs/full-review/02-module-map.md`(快照,行数已过时)。
 
 `LibraryContext` (`context.py`) is a frozen dataclass bundling root, data_dir, thumb_dir, db_conn, tag_store, and project_data for an opened library. `LibrarySession` is the public opened-library boundary and exposes `connection_for()` so services receive a scoped `ConnectionProvider` without falling back to mutable current-library state. `ApplicationBootstrap.runtime_for(session)` remains the only production assembly path for the cached `LibraryRuntime`; Desktop and LAN consume the same runtime and canonical frozen snapshot. The snapshot object is eager and unique, but A3 splits field materialization: Metadata/Tag/Thumbnail/FileOperation/Undo/Plugin/AssetIndex/DatabaseIntegrity/DatabaseMaintenance/LibraryExport/ReconciliationQueue/ReconciliationService are eager Desktop/shared fields, while one private single-flight holder materializes `LanRuntimeServices` (Asset/Project/Search/Gallery/Favorite) only when LAN is composed. `LibrarySettingsAdapter` remains the Qt-free presentation boundary for the maintenance and recovery services, including execution errors and scheduling rejection reasons. Runtime caching, LAN injection, the pre-close adapter barrier, restart-generation ownership, Task D fallback removal, the Windows Task E cross-surface matrix and the Ubuntu WSL directory-symlink gate are delivered. See [`docs/compose/reports/desktop-lan-webui-architecture-migration.md`](compose/reports/desktop-lan-webui-architecture-migration.md), [`docs/compose/reports/desktop-lan-webui-architecture-recalibration.md`](compose/reports/desktop-lan-webui-architecture-recalibration.md), [`docs/compose/reports/a3-service-assembly-2026-08-02.md`](compose/reports/a3-service-assembly-2026-08-02.md), and [`docs/compose/reports/b1-runtime-sharing-2026-08-03.md`](compose/reports/b1-runtime-sharing-2026-08-03.md).
 
@@ -64,7 +70,7 @@ Static gates are enforced by `scripts/check_boundaries.py` (gates 1/2/3/5), `scr
 
 ## LAN Route Structure
 
-LAN API routes are split into focused modules under `AssetsManager/lan/routes/` (23 modules, 140 registered routes — page 30 / core API 51 / commerce-seller 55 / auth+WS 4):
+LAN API routes are split into focused modules under `AssetsManager/lan/routes/` (23 个顶层模块,140 条注册路由 = GET 85/POST 38/PUT 6/PATCH 2/DELETE 9;分类:页面 30 / Commerce 54 / 认证 14 / 核心库 42):
 
 | Module | Routes | Application Service |
 |---|---|---|
@@ -87,7 +93,7 @@ LAN API routes are split into focused modules under `AssetsManager/lan/routes/` 
 | `websocket.py` | `/ws` | `WebSocketManager` |
 | `_helpers.py` / `_resource_urls.py` | Shared: `validate_path`, `get_auth_token`, `LanScopedServices`, `build_zip_async`, URL projection | — |
 
-`AssetsManager/lan/api.py` (360 lines) imports all handlers from `routes/` and registers them in `setup_routes()` (140 routes) plus the runtime realtime bridge (`on_invalidation` → `ws_manager.broadcast`). A2 business rules belong to application services: `TagService` owns tag-name validation, `ShareService` owns password/expiry/download-limit validation, and `AssetService` owns bounded directory-summary validation. LAN routes retain permission, JSON, `PathGuard`, and transport-normalization responsibilities, translate `ValidationError`/`DuplicateError` to HTTP 400/409 contracts, and preserve unrelated failures as 500. Desktop creates shares through `ShareCreationTask` → Runtime `ShareService` directly; LAN retains `/api/shares/*` management and `/s/{id}` remote links.
+`AssetsManager/lan/api.py` (463 行) imports all handlers from `routes/` and registers them in `setup_routes()` (140 routes) plus the runtime realtime bridge (`on_invalidation` → `ws_manager.broadcast`). A2 business rules belong to application services: `TagService` owns tag-name validation, `ShareService` owns password/expiry/download-limit validation, and `AssetService` owns bounded directory-summary validation. LAN routes retain permission, JSON, `PathGuard`, and transport-normalization responsibilities, translate `ValidationError`/`DuplicateError` to HTTP 400/409 contracts, and preserve unrelated failures as 500. Desktop creates shares through `ShareCreationTask` → Runtime `ShareService` directly; LAN retains `/api/shares/*` management and `/s/{id}` remote links.
 
 > 完整路由表（方法+路径+权限+handler+服务）见 `docs/full-review/02-module-map.md` §7 与 LAN 审查素材。
 
@@ -114,35 +120,7 @@ Undo/redo stack management delegates to `UndoService` (`application/undo_service
 
 ## Database Migrations
 
-Per-library SQLite databases are migration-aware through `AssetsManager.core.db_migrations` (`CURRENT_SCHEMA_VERSION = 31`). The executable migration list is authoritative; dated implementation and residual evidence is indexed by [`docs/full-review/00-INDEX.md`](full-review/00-INDEX.md).
-
-| Version | Name | Description |
-|---|---|---|
-| 1 | `baseline_current_schema` | Records existing schema (file_tags, file_meta, thumbnail_cache, library_stats) |
-| 2 | `add_assets_index` | Adds `assets` table with indexes on parent_path, library_root, name, extension |
-| 3 | `add_tag_metadata` | Adds `tag_metadata` for tag color, icon, and category metadata |
-| 4 | `add_plugin_metadata` | Adds `plugin_metadata` for persisted plugin-parsed file metadata |
-| 5 | `directory_cache` | Adds `directory_cache` (item_count, preview_path, mtime) |
-| 6 | `auth_share_schema` | Adds `users`, `invite_codes`, `share_links` (existing-table contract validation) |
-| 7 | `library_favorites` | Adds `library_favorites` (owner_key, file_path) |
-| 8 | `commerce_schema` | Adds shop_items/orders/order_events/delivery_tokens (frozen v8 historical DDL) |
-| 9 | `asset_index_state` | Adds `asset_index_state` (revision CAS publish) |
-| 10 | `free_download_quota` | Adds `free_download_quota_windows` |
-| 11 | `shop_order_receipts` | Adds `shop_order_receipts` (HttpOnly receipt tokens) |
-| 12 | `seller_profile` | Adds single-row `seller_profile` |
-| 13 | `storefront_analytics` | Adds view days/visitors (privacy-aggregated) |
-| 14 | `reconciliation_tasks` | Cross-process rescan task queue |
-| 15 | `reconciliation_queue_state` | Queue generation counter |
-| 16 | `shop_cart_wishlist` | Adds carts/items/checkouts/wishlist (v16 historical DDL) |
-| 17 | `reconciliation_lease_token` | Adds `lease_token` column |
-| 18 | `shop_order_buyer_owner` | Adds buyer_owner_type/key columns + index |
-| 19 | `shop_checkout_generation` | Adds cart checkout_generation; rebuilds checkouts table |
-| 20 | `shop_order_receipt_recovery` | Adds receipt recoveries |
-| 21 | `shop_checkout_fingerprint` | Adds `request_fingerprint` column |
-| 22 | `shop_delivery_attempts` | Adds idempotent delivery attempt tracking |
-| 23 | `shop_catalog_ordering_index` | Catalog ordering index + shop_items full contract validation |
-
-The assets table is populated lazily by application services, not by the migration itself. Migrations run inside a SAVEPOINT (caller transaction preserved); history is validated (`MigrationHistoryError`/`UnsupportedSchemaVersion` for future versions); each version's resulting shape is contract-checked against a versioned schema contract that traces historical boundaries (e.g. v<17 `reconciliation_tasks` has no lease_token). Future schema changes must be added as explicit migrations and covered by tests.
+Per-library SQLite databases are migration-aware through `AssetsManager.core.db_migrations` (`CURRENT_SCHEMA_VERSION = 34`)。**逐版本明细不再在此维护**:权威为 `docs/migrations.md`(v1-v34 各版本 DDL 与要点),机制说明与全表速览见 `docs/overview-2026-08-27.md` §15。要点:迁移在 SAVEPOINT 内执行(保留调用方事务);历史冻结校验(`MigrationHistoryError`/未来版本 `UnsupportedSchemaVersion`,名称不可变);每版本结果形状经 `_versioned_schema_contract` 契约回溯校验(按 version 剪列,如 v<17 `reconciliation_tasks` 无 lease_token);`assets` 表由服务层惰性填充,非迁移本身。未来 schema 变更必须显式迁移 + 测试。
 
 ## Plugin System
 
@@ -173,6 +151,9 @@ Controllers provide testable business logic that panels delegate to. They have n
 | `InfoController` | `InfoPanel` | Metadata, tags, notes, URLs, plugin fields, URL discovery |
 | `FileListController` | `FileListPanel` | Search history, status text, first-image cache, total size |
 | `TagTreeController` | `TagTreePanel` | Tag CRUD, file lookup by tag |
+| `SidebarController` | `SidebarPanel` | Search generation counter(近空壳,保留为控制器占位) |
+
+(2026-08-27:controllers 实为 4 个文件,均零 Qt import;README 早期文档漏列 SidebarController。)
 
 Panels receive controllers via library-scoped initialization paths. `InfoPanel` and `TagTreePanel` initialize from `library_opened` with scoped services and no global store fallback. `FileListPanel` configures its model metadata service and binds an immutable thumbnail runtime through `_configure_library_runtime(root)` / scoped service injection; the panel and `ThumbnailLoader` do not receive SQLite connections or `ThumbnailRepository`. All data operations go through controllers or scoped application services; panels remain UI renderers.
 

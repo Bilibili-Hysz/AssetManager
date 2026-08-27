@@ -1,4 +1,5 @@
 # Sharing Module UI/UX Redesign
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 Date: 2026-06-20
 Scope: Desktop (PySide6) + Web (browser) sharing UI/UX overhaul
@@ -114,3 +115,4 @@ Scope: Desktop (PySide6) + Web (browser) sharing UI/UX overhaul
 ```powershell
 python -m ruff check . --exclude ".Cython&Noikta" && python -m pyright && python -m pytest -q
 ```
+

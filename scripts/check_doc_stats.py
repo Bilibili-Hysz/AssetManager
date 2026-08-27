@@ -55,6 +55,7 @@ WIDGETS = ROOT / "AssetsManager" / "widgets"
 CORE = ROOT / "AssetsManager" / "core"
 DIALOGS = ROOT / "AssetsManager" / "dialogs"
 I18N = ROOT / "AssetsManager" / "i18n"
+CONTROLLERS = ROOT / "AssetsManager" / "controllers"
 
 MARKER_RE = re.compile(r"<!-- stats:(?P<body>[^>]*) -->")
 PAIR_RE = re.compile(r"(\w+)=([\w/.]+)")
@@ -136,6 +137,7 @@ def measured() -> dict[str, str]:
         "dialogs": str(count_module_files(DIALOGS)),
         "domain_events": str(count_domain_events()),
         "icons": str(count_icons()),
+        "controllers": str(count_module_files(CONTROLLERS)),
         **{k: str(v) for k, v in i18n.items()},
     }
 
@@ -166,6 +168,7 @@ _ANCHORS: dict[str, tuple[re.Pattern[str], str, str]] = {
     "hooks_tree": (re.compile(r"hooks\(\d+\)"), "hooks({v})", "hooks"),
     "pages_tree": (re.compile(r"pages\(\d+\)"), "pages({v})", "pages"),
     "stores_tree": (re.compile(r"stores\((\d+) Context\)"), "stores({v} Context)", "stores"),
+    "controllers": (re.compile(r"\d+ 个无 Qt 控制器"), "{v} 个无 Qt 控制器", "controllers"),
 }
 _I18N_ANCHOR = re.compile(r"en \d+ / zh \d+ / ja \d+ keys")
 

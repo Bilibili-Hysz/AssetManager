@@ -1,4 +1,5 @@
 # LAN First-Image Linear Scan Implementation Plan
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use compose:subagent (recommended) or compose:execute to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -134,3 +135,4 @@ Expected: all LAN tests pass; no route behavior changes.
 git add AssetsManager/lan/routes/_helpers.py tests/lan/test_helpers.py docs/compose/plans/2026-07-17-lan-first-image-linear-scan.md
 git commit -m "perf: scan LAN preview images once"
 ```
+

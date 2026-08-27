@@ -1,4 +1,5 @@
 # Architecture Refactoring Plan
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 Date: 2026-06-17
 
@@ -149,3 +150,4 @@ These are migration intermediates — when bootstrap exists, scoped services sho
   - `lan/` does not import `PySide6`, `panels/`, `controllers/`
   - `panels/` does not directly import `sqlite3` or call `get_lib_db()`
 - Tests serve as regression guards preventing future violations
+

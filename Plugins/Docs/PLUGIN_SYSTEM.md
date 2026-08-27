@@ -1,5 +1,7 @@
 # Plugin System — Architecture & Implementation
 
+> 状态:**FROZEN(v1 手册,2026-06-09)** · 冻结登记:2026-08-27 · **v2 已落地**:当前插件 API 以 `AssetsManager/plugin_api/`(types.py/__init__.py)与 `AssetsManager/core/plugins/host_context.py` 为准;本文仅作 v1 历史参考。
+
 > Version: 1.0.0 | Date: 2026-06-09
 > Status: Stable — first-party booth_link parser working
 

@@ -1,4 +1,5 @@
 # Background Enhancement Implementation Plan
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 > **Goal:** Add video backgrounds (MP4 via QMediaPlayer) and image effects (blur, mosaic) to the background system.
 
@@ -104,3 +105,4 @@
 
 Run: `python -m ruff check . && python -m pyright && python -m pytest -q`
 Expected: All pass.
+

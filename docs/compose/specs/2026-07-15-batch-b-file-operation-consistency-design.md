@@ -1,4 +1,5 @@
 # Batch B File Operation Consistency Design
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 > [!NOTE]
 > This document may not reflect the current implementation.
@@ -36,3 +37,4 @@ Integration tests cover projection/event ordering, subtree indexing, external-co
 ## [S8] Non-Goals
 
 This batch does not redesign `LibrarySession`, add filesystem watching, support cross-library move, restore recycle-bin items, or make create-folder and duplicate operations projection-aware.
+

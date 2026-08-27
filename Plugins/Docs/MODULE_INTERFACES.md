@@ -1,5 +1,7 @@
 # Module Interfaces — Extension Points
 
+> 状态:**FROZEN(v1 扩展点手册)** · 冻结登记:2026-08-27 · 现状以代码为准;v2 贡献类型见 `plugin_api/types.py`(CommandOperator/FileParser/EventHook/PanelContributor 等)。
+
 Each module in AssetManager exposes a stable interface for plugins to hook into.
 
 ---

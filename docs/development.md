@@ -1,5 +1,7 @@
 # Development Rules
 
+> 状态:**LIVING** · updated: 2026-08-27 · 规则性文档(与代码数字无关,不随批次漂移);结构数字见 `docs/overview-2026-08-27.md`。
+
 These rules are mandatory for new refactor work.
 
 - UI code must not write SQLite directly unless it is legacy code waiting for migration.
@@ -71,12 +73,13 @@ Prohibited:
 | Document | Purpose |
 |----------|---------|
 | `docs/full-review/` | 带日期、commit 和 manifest 的审计快照；不是当前工作区权威。当前事实以代码、测试和 CI 配置为准。 |
+| `docs/overview-2026-08-27.md` | **当前工作区实况索引**(结构/机制/数据流/弱点/文档导航);新文档维护以此为数据源 |
+| `docs/archive/INDEX.md` | 归档总账(已移出文档的溯源登记) |
 | `docs/architecture.md` | Current architecture facts |
 | `docs/architecture-diagram.md` | Architecture diagrams |
-| `docs/workspace.md` | Current flattened workspace layout and backup policy |
-| `docs/development.md` | Development rules (this file) |
-| `docs/testing.md` | Testing strategy |
-| `docs/lan-security.md` | LAN security model |
+| `docs/lan-security.md` | LAN security model(含 2026-08-27 已知缺口清单) |
 | `docs/migrations.md` | DB migration notes |
 | `docs/adr/*.md` | Architecture Decision Records |
-| `docs/history/` | Historical snapshots (refactor plans, summaries) |
+| `docs/compose/README.md` | compose 证据账本导航(specs/plans/reports/handoffs) |
+
+> 2026-08-27:原 `docs/workspace.md` 与 `docs/history/` 已移入 `docs/archive/2026-08/`(见 INDEX)。

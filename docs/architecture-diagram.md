@@ -1,6 +1,8 @@
 # AssetsManager Architecture Diagram
 
-**Version:** 2026-08-05 A3/B1 plus session-bound maintenance, export, and recovery boundaries
+> 状态:**LIVING** · updated: 2026-08-27 · 图为结构性示意;数字以 `docs/overview-2026-08-27.md` §1 实测为准。
+
+**Version:** 2026-08-27(A3/B1 + 会话绑定维护/导出/恢复边界 + gallery 子包化 + import/reconciliation 系列)
 **Tests:** Counts from prior checkpoints are historical snapshots, not a final current total; rerun the final suite before publishing new totals.
 
 ---
@@ -21,7 +23,7 @@
 │  │  sidebar    │  │  workspace  │  │  window.py  │                 │
 │  │  file_list  │  │  tray       │  │             │                 │
 │  │  info       │  │  lan_sharing│  │             │                 │
-│  │  tag_tree   │  │  title_bar  │  │             │                 │
+│  │  tag_tree   │  │  stylekit   │  │             │                 │
 │  │  image_view │  │  tab_cont.  │  │             │                 │
 │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘                 │
 │         └────────────────┼────────────────┘                        │
@@ -158,13 +160,16 @@ SettingsDialog → themes.set_theme(name)
 
 ## Module Statistics
 
-| Layer | Files | Lines | Tests |
+| Layer | Files | Lines | Notes |
 |-------|-------|-------|-------|
-| `application/` | 39 | 20,142 | current working-tree Python files |
-| `core/` | 33 | 6,863 | current working-tree Python files |
-| `lan/` | 37（13 核心 + routes/24） | 10,197 | current working-tree Python files |
-| `panels/` | 22 | 11,400 | current working-tree Python files |
-| `widgets/` | 20 | 4,600 | current working-tree Python files |
-| `webui/` | 196 ts/tsx | 20,000+ | 90 Vitest + 5 Playwright spec |
-| `tests/` | 205+ | — | **2952 passed, 7 skipped**（2026-08-11 historical snapshot; current results require dated command/artifact） |
-| **Total** | — | — | **2026-08-11 dirty-worktree snapshot; not a release manifest** |
+| `application/` | 57(.py) | 27,661 | 51 顶层服务模块 + `gallery/` 子包 5 文件 + `__init__` |
+| `core/` | 41(35 根 + plugins/ 6) | 12,735 | — |
+| `lan/` | 81(顶层 51 + routes/ 30) | 12,949 + 6,677 | routes 23 个顶层模块 |
+| `panels/` | 38(含 file_list/ 27) | 15,114 | — |
+| `dialogs/` | 27(20 顶层模块 + sharing_settings 6 + __init__) | 8,030 | sharing_settings 外壳 1347 + 分页 1119 |
+| `widgets/` | 15(14 模块) | 3,853 | — |
+| `repositories/` | 18 | 6,872 | 17 个 SQL 仓库 + __init__ |
+| `webui/` | 220 ts/tsx | — | 103 Vitest + 6 Playwright spec |
+| `tests/` | 283 test_*.py | 97,402 | 2026-08-11 快照 2952 passed 为历史;当前须附 dated 证据 |
+
+> 以上为 2026-08-27 工作树实测(`Get-Content` 含空行口径);旧版统计(39/33/37/22/20 模块等)全部过时。

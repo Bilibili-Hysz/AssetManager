@@ -1,4 +1,5 @@
 # LAN Security Fixes Implementation Plan
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 > [!NOTE]
 > This document may not reflect the current implementation.
@@ -136,3 +137,4 @@ Expected: pass.
 
 Run: `python -m compileall AssetsManager/lan AssetsManager/widgets -q`
 Expected: pass.
+

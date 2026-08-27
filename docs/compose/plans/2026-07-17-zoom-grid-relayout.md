@@ -1,4 +1,5 @@
 # Zoom Grid Relayout Implementation Plan
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use compose:subagent (recommended) or compose:execute to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -29,3 +30,4 @@
 - [ ] Add `relayout_only=True` and use it from `_on_zoom_frame()`.
 - [ ] Verify grid/file-list regressions and Ruff.
 - [ ] Commit `perf: preserve textures during zoom`.
+

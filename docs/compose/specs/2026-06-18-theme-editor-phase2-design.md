@@ -1,4 +1,5 @@
 # Theme Editor Phase 2 — Preview Interface
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 Date: 2026-06-18
 
@@ -169,3 +170,4 @@ ThemePreviewDialog(QDialog)
 - Click color swatch in preview → open color picker
 - Real-time preview update on color change
 - Apply to theme JSON on confirm
+

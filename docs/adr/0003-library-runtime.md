@@ -1,5 +1,7 @@
 # ADR 0003: Library Runtime Ownership and LAN Composition
 
+> 维护状态:**LIVING** · updated: 2026-08-27 · 决策仍有效;实现演化(懒投影代数/关闭编排)见 overview §12。
+
 ## Status
 
 Accepted target decision; the Windows implementation, cross-surface acceptance

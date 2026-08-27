@@ -1,4 +1,5 @@
 # Metadata Combined Read Implementation Plan
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use compose:subagent (recommended) or compose:execute to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -178,3 +179,4 @@ Expected: InfoController and LAN metadata behavior remain unchanged.
 git add AssetsManager/repositories/metadata_repository.py AssetsManager/application/metadata_service.py tests/integration/test_repositories.py tests/integration/test_metadata_service.py docs/compose/plans/2026-07-17-metadata-combined-read.md
 git commit -m "perf: combine metadata notes and URL reads"
 ```
+

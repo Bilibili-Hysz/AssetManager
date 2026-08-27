@@ -1,4 +1,5 @@
 # Web UI Visual Upgrade Design
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 Date: 2026-06-21
 Scope: LAN web UI visual upgrade — dark theme, SVG icons, Inter font, micro-interactions
@@ -99,3 +100,4 @@ Base: 16px (mobile compliant)
 5. Add skeleton loading states
 6. Add focus rings + hover/press states
 7. Test responsive + accessibility
+

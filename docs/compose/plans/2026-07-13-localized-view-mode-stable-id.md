@@ -1,4 +1,5 @@
 # Localized View Mode Stable ID Implementation Plan
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use compose:subagent (recommended) or compose:execute to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -84,3 +85,4 @@ Expected: no compile errors; focused tests pass.
 git add AssetsManager/panels/file_list/_base.py AssetsManager/panels/file_list/__init__.py AssetsManager/panels/file_list/_loader.py AssetsManager/panels/file_list/_grid_widget.py AssetsManager/app.py tests/desktop/test_file_list_grid_widget.py
 git commit -m "fix: decouple file-list view mode from translations"
 ```
+

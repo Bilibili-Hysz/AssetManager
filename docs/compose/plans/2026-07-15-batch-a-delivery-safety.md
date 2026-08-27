@@ -1,4 +1,5 @@
 # Batch A Delivery Safety Implementation Plan
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 > [!NOTE]
 > This document may not reflect the current implementation.
@@ -53,3 +54,4 @@
 - [x] Run Ruff, Pyright, compileall, and full Python tests.
 - [x] Run locked WebUI typecheck and build.
 - [x] Run a PyInstaller one-directory build and package-content checker.
+

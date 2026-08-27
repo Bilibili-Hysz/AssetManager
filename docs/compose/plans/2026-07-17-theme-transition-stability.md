@@ -1,4 +1,5 @@
 # Theme Transition Stability Implementation Plan
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use compose:subagent (recommended) or compose:execute to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -91,3 +92,4 @@ Expected: all tests and Ruff pass.
 git add AssetsManager/window.py AssetsManager/window_coordinator.py tests/unit/test_window_coordinator.py docs/compose/plans/2026-07-17-theme-transition-stability.md
 git commit -m "fix: stabilize theme transition lifecycle"
 ```
+

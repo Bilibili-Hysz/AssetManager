@@ -1,4 +1,5 @@
 # Theme System UI/UX Redesign Spec
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 ## [S1] Problem
 
@@ -70,3 +71,4 @@ Replace the three-section layout with two popup menu buttons:
 - "Delete Custom Theme" removes and selects next available theme
 - Theme changes apply immediately (hot reload)
 - All existing theme functionality preserved
+

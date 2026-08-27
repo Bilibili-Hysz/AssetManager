@@ -1,4 +1,5 @@
 # LAN WebUI Reliability Repair Design
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 **Status:** Approved for planning
 
@@ -186,3 +187,4 @@ Required fallback changes:
 5. **P2 - Legacy fallback stopgap:** image viewer, backup artifact isolation, offline dependency removal, essential CSS selector corrections.
 
 Each phase must retain passing prior-phase tests. P0 and P1 are required before a LAN build is considered release-ready; P2 can follow only after the primary SPA path is operational.
+

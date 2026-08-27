@@ -1,5 +1,7 @@
 # Database Migrations
 
+> 状态:**LIVING** · updated: 2026-08-27(v34 对账完成;逐版本已与 `db_migrations.py` MIGRATIONS 一致)。
+
 AssetManager Next uses versioned SQLite migrations for per-library databases. **当前版本：`CURRENT_SCHEMA_VERSION = 34`**，以 [`AssetsManager/core/db_migrations.py`](../AssetsManager/core/db_migrations.py) 为执行事实源。历史运行结果和批次证据见 [`docs/full-review/`](full-review/)。
 
 ## Current State
@@ -232,4 +234,4 @@ Adds nullable `recovery_claim_token` and `recovery_lease_expires_at` columns plu
 
 ## Future Direction
 
-Future schema changes should be added as explicit migrations in `core/db_migrations.py` and covered by tests in `tests/core/test_db_migrations.py`. The next migration hardening step is per-migration transaction/rollback tests. 已列入后续轮次的候选：assets 表"目录 mtime 快照"列（M6a-18 非 force 快路径可靠实现的前提）。
+Future schema changes should be added as explicit migrations in `core/db_migrations.py` and covered by tests in `tests/core/test_db_migrations.py`. The next migration hardening step is per-migration transaction/rollback tests, plus a runtime assertion linking `len(MIGRATIONS) == CURRENT_SCHEMA_VERSION`(当前仅由测试侧 frozen signature 兜底;详细开放项见 `docs/overview-2026-08-27.md` §19)。

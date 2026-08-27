@@ -1,5 +1,7 @@
 # LAN Security Rules
 
+> 状态:**LIVING** · updated: 2026-08-27 · 以代码为事实源;与代码的全面偏差清单见 `docs/overview-2026-08-27.md` §18。本文件不再重复 dated 证据(见 `docs/full-review/`)。
+
 LAN sharing exposes local files through the configured HTTP or HTTPS endpoint, so path validation is a hard security boundary. Without both a certificate and key the endpoint is HTTP; with both it is HTTPS.
 
 ## Path Validation
@@ -62,22 +64,30 @@ The service gate, historical posture wiring, and first-share confirmation/write-
 
 ## Rate Limiting
 
-| Limiter | Config | Scope |
-|---------|--------|-------|
-| `RateLimiter` | 100 req/60s（`_LanServerImpl` 默认；`ShareManager` 默认 1000） | Non-browsing paths；skip：`/ws`、`/api/thumbnails/`(前缀)、`/api/projects`、`/api/tags`、`/api/info`、`/api/tunnel/status`、`/assets`(前缀) + `GET /api/thumbnails/` + `GET /api/files` |
-| `AuthRateLimiter` | 10 attempts/300s | `/api/auth/login`、`/api/auth/register`、`/api/auth/verify_key`、`/api/auth/seller-login`、`/api/shop/auth/login` + 任意 `/api/shares/{id}/verify` 结尾路径 |
-| 分享密码锁定（服务层） | 5 failures / 60s 冷却 | 每 share_id 进程内失败计数（`ShareService.password_attempt_blocked`），锁定返回 429 + Retry-After |
-| IP 黑名单/白名单 | settings / 配置 | `request.remote` 为空 → 400 拒绝（不共用 "unknown" 桶） |
+滑窗实现(security.py,每 IP 时间戳列表截头,非桶计数):显式无锁,契约=仅事件循环线程访问。
 
-429 响应的 `Retry-After` 按限流器窗口动态计算（`RateLimiter.retry_after(ip)`），不再硬编码。
+| Limiter | 预算 | 范围 |
+|---------|------|------|
+| `AuthRateLimiter`(auth_strict) | 10 attempts/300s | `/api/auth/login`、`/api/auth/register`、`/api/auth/verify_key`、`/api/auth/seller-login`、`/api/shop/auth/login` + 任意 `/api/shares/{id}/verify` 结尾路径 |
+| browse 档 | 600 req/60s | 浏览类端点(`_BROWSE_RATE` 策略) |
+| `RateLimiter`(general) | `_LanServerImpl` 默认 100/60s;`ShareManager` 默认 1000/60s | 其余非浏览路径;**未知/未声明路由 = required+general(fail-closed)** |
+| 分享密码锁定(服务层) | 5 failures / 60s 冷却 | 每 share_id **进程内**失败计数(`ShareService.password_attempt_blocked`),429 + Retry-After;**重启即清零,多进程各自计数** |
+| IP 黑名单/白名单 | settings / 配置 | `request.remote` 为空 → 400 拒绝(不共用 "unknown" 桶) |
+
+**隧道模式(Cloudflare)**:限流身份键在访客签名 cookie 有效时变为 `tunnel:<client_id>`(按访客隔离桶);无 cookie 访客共享 loopback 桶;拒绝响应**不发**新 cookie(防身份农场)。成功响应附 `X-RateLimit-Remaining`。
+
+429 响应的 `Retry-After` 按限流器窗口动态计算(`RateLimiter.retry_after(ip)`),不再硬编码。
 
 ## Password Storage
 
-All passwords use PBKDF2-SHA256 with format `salt_hex:key_hex`.
-- Passwords: 32-byte salt, 100,000 iterations
-- Access keys: 16-byte salt, 50,000 iterations
-- `is_password_hash()` detects if a stored value is already hashed (64-hex:64-hex format)
-- Share passwords: minimum **8 characters** (`ShareService.validate_password`)；`domain.auth.validate_password_strength` 提供完整强度规则（8-128 位 + 4 类字符 + 弱密码黑名单）
+All passwords use PBKDF2-SHA256. **当前格式为自描述 `pbkdf2_sha256$iterations$salt$key`**(verify 从哈希字符串重放 iterations,不读模块常量,因此跨成本兼容):
+- Passwords: **600,000 iterations**(OWASP 2023 现行;`PASSWORD_ITERATIONS`)
+- Legacy 口令格式 `salt_hex:key_hex` 按 `LEGACY_PASSWORD_ITERATIONS=100,000` 重放(`needs_password_rehash` 迁移)
+- Access keys: 50,000 iterations(`KEY_ITERATIONS`,仍为 `salt_hex:key_hex`)
+- `is_password_hash()` 两种格式都识别
+- Share passwords: minimum **8 characters**(`ShareService.validate_password`);`domain.auth.validate_password_strength` 提供完整强度规则(8-128 位 + 4 类字符 + 弱密码黑名单≈40 条)
+
+> 2026-08-27 修正:此前版本误写为"salt_hex:key_hex / 100,000 iterations";`domain/auth.py` 自 600k 迁移后格式与迭代数均已变化。
 
 ## Crypto Layer
 
@@ -96,6 +106,14 @@ All pure crypto functions (hashing, token generation/verification) live in `Asse
 | `shop_store_visit` | 商店访问（24h） | `/api/shop` | — |
 
 全部 `httponly=True`、`samesite=Lax`；敏感 cookie 视 TLS 状态条件加 `secure`。
+
+## Known Gaps(2026-08-27 实测,追踪于 docs/overview-2026-08-27.md §19)
+
+- `/api/stats` 仅要求认证、无权限检查(任一认证 principal 含 guest 可读连接/请求/字节/uptime;system.py:135-144,未被测试锁住)。
+- 读路由(browse/preview/download/admin 读)只有 handler 级守卫,无声明能力,中间件对空能力元组直接放行(authorization.py:66-67);写路由 55 条已全部声明(capabilities 门)。
+- cloudflared 供应链:`tunnel.py` 下载用 `releases/latest`(**无版本 pin**)、仅 `--version` 冒烟(**无 SHA-256 校验**);PATH/内置 binary 完全跳过校验;未用 `--no-autoupdate`。
+- verify_user_token 事件循环内同步 DB 查询(仅 PBKDF2 offload);user token 校验有 5s 进程内缓存(admin 降权 ≤5s 窗口旧令牌仍有效)。
+- 分享密码锁定与卖家会话均为进程内状态(重启/多进程绕过)。
 
 ## Tests
 

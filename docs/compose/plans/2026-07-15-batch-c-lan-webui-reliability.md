@@ -1,4 +1,5 @@
 # Batch C LAN WebUI Reliability Implementation Plan
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use compose:subagent (recommended) or compose:execute to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -170,3 +171,4 @@
 - No `TBD`, `TODO`, or unassigned spec sections are used in this plan.
 - Interfaces are stable across tasks: Task 1 supplies cookie/WebSocket behavior, Task 2 consumes it and supplies response types, Task 3 consumes those types and supplies stable UI state, Task 4 consumes that state, and Task 5 verifies the complete deployment/fallback surface.
 - `create_folder` and `duplicate` remain outside Batch C, consistent with the previous Batch B scope decision.
+

@@ -1,4 +1,5 @@
 # LAN Error Response Audit — Internal Path / Exception Leakage
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 **Date:** 2026-06-17
 **Scope:** All `AssetsManager/lan/` route handlers, server, middleware, and supporting modules.
@@ -92,3 +93,4 @@ When called inside `except Exception` blocks (e.g., `shares.py:66`, `downloads.p
 ## Conclusion
 
 The LAN error handling is well-designed. All client-facing error responses use hardcoded, generic messages. No filesystem paths, stack traces, database error details, or internal exception strings are leaked. No changes needed.
+

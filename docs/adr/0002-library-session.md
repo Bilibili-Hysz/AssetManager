@@ -6,6 +6,8 @@ Date: 2026-06-15
 
 Accepted.
 
+> 维护状态:**LIVING** · updated: 2026-08-27 · 决策仍有效;LibraryContext/LibrarySession 实现现状见 `docs/architecture.md` 与 overview §12。
+
 ## Context
 
 AssetManager now has explicit per-library `LibraryContext` objects and library-scoped application services, but the runtime model is still transitional:

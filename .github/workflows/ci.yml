@@ -41,6 +41,8 @@ jobs:
         run: python scripts/check_layers.py
       - name: Verify README structural counts match the source tree
         run: python scripts/check_doc_stats.py
+      - name: Verify document maintenance state (LIVING/FROZEN/ARCHIVED)
+        run: python scripts/check_documents.py
       - name: Verify audit evidence manifests and source anchors
         run: python scripts/check_audit_reports.py
 

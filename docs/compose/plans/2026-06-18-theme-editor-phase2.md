@@ -1,4 +1,5 @@
 # Theme Editor Phase 2 — Preview Interface Implementation Plan
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use compose:subagent (recommended) or compose:execute to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -743,3 +744,4 @@ python -m pytest -q
 git add -A
 git commit -m "feat: complete theme editor phase 2 — preview interface"
 ```
+

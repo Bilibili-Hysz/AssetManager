@@ -1,4 +1,5 @@
 # P1 Audit: LAN Route DB Access Paths
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 **Date:** 2026-06-17
 **Scope:** All LAN route handlers, server middleware, and shared helpers
@@ -160,3 +161,4 @@ After `stop()` sets `self._running = False` and `self._loop = None`, no new requ
 5. `AssetService.list_directory()` does not touch the database
 
 **Recommendation:** P1 Task 1.3 (fixes) can be **skipped**. The current implementation is safe for the documented thread model.
+

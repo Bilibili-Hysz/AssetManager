@@ -1,4 +1,5 @@
 # Custom Theme System — Phase 1: Infrastructure
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 Date: 2026-06-18
 
@@ -99,3 +100,4 @@ ThemeLoader
 - Old theme names auto-map to new prefixes (`default` → `D_Default`)
 - `AppSettings` `theme` value migrated to new format
 - JSON internal format unchanged (`colors`, `properties`, `background`)
+

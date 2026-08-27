@@ -1,5 +1,7 @@
 # Plugin API — AssetManager
 
+> 状态:**FROZEN(v1 API 手册)** · 冻结登记:2026-08-27 · v2 插件 API 见 `AssetsManager/plugin_api/`;v1/v2 关系与权限语义见 `core/plugins/descriptor.py` 与 `core/plugins/host_context.py`。
+
 Plugins are Python packages in `Plugins/Addons/`, each a folder with `plugin.json` + entry module.
 
 ---

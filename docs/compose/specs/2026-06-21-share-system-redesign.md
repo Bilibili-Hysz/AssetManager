@@ -1,4 +1,5 @@
 # Share System Dialog Redesign
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 Date: 2026-06-21
 Scope: PySide6 SharingSettingsDialog — interaction, layout, real-time refresh, feedback
@@ -106,3 +107,4 @@ Overview Tab ──data_changed──> Share Links Tab (auto-refresh)
 5. Refactor Settings Tab to collapsible panels
 6. Add interaction feedback (loading, animations)
 7. Test all flows
+

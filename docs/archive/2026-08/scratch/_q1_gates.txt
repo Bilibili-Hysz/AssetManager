@@ -1,0 +1,14 @@
+=== ruff ===
+All checks passed!
+
+=== check_layers ===
+layer DAG checks passed
+
+=== check_boundaries ===
+boundary checks passed (gates 1/2/3/5 + layer DAG)
+
+=== check_style_sources ===
+check_style_sources: 0 violation(s) across 83 scoped file(s)
+
+=== pyright ===
+errors: 0, warnings: 0

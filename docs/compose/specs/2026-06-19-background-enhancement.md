@@ -1,4 +1,5 @@
 # Background Enhancement: Video + Effects Spec
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 ## [S1] Problem
 Current background system only supports static images with opacity control. No video backgrounds, no blur, no mosaic effects.
@@ -53,3 +54,4 @@ Add MP4 video backgrounds via QMediaPlayer, and blur/mosaic effects for images.
 - Effects only available for images (grayed out for video)
 - Settings persist and reload correctly
 - No performance regression for static image backgrounds
+

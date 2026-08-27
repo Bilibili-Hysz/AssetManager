@@ -1,4 +1,5 @@
 # Batch B File Operation Consistency Implementation Plan
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 > [!NOTE]
 > This document may not reflect the current implementation.
@@ -15,3 +16,4 @@
 - [x] Delegate grid, paste, drop, rename, delete, undo, and redo through scoped services.
 - [x] Add integration and desktop regression coverage.
 - [x] Run Python and WebUI quality gates.
+

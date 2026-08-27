@@ -1,4 +1,5 @@
 # Batch D Scoped Library Services Design
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 **Status:** Approved for specification review
 
@@ -86,3 +87,4 @@ npm run build
 ## [S8] Delivery Boundary
 
 The delivery report must enumerate the exact base-to-implementation commit range, list changed lifecycle/injection files, record focused and full gate output, and disclose any remaining legacy compatibility paths. Batch D is not complete until the final implementation is reviewed against S1-S7 and the merged result passes the same gates.
+

@@ -1,4 +1,5 @@
 # WebUI React 重构设计规格
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 ## [S1] 项目背景
 

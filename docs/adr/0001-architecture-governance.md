@@ -6,6 +6,8 @@ Date: 2026-06-13
 
 Accepted.
 
+> 维护状态:**LIVING** · updated: 2026-08-27 · 决策仍有效;实现演化以 `docs/architecture.md` 与 `docs/overview-2026-08-27.md` 为准。
+
 ## Context
 
 AssetManager has moved from a PySide6 desktop monolith into a layered platform with desktop and LAN presentations sharing application services. The codebase is production-usable and has a strong quality gate, but several transitional mechanisms remain from the migration:

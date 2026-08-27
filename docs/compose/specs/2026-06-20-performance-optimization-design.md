@@ -1,4 +1,5 @@
 # Performance Optimization Design
+> **ARCHIVED (2026-08-27)**: 已执行完毕或被后续批次取代,仅追溯用;导航与现行参考见 docs/compose/README.md。
 
 Date: 2026-06-20
 Scope: AssetsManager architecture optimization + Cython hotspot acceleration
@@ -117,3 +118,4 @@ python -m ruff check . && python -m pyright && python -m compileall AssetsManage
 ```
 
 Performance regression tests in `tests/performance/test_baselines.py` must pass.
+

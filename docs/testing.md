@@ -1,6 +1,8 @@
 # Testing Strategy
 
-Historical baseline evolution：`90 passed`（重构早期）→ `603 passed`（架构重构阶段）→ `1590`（2026-08-01）→ `2790`（2026-08-09）→ **`2952 passed, 7 skipped, 0 failed`**（2026-08-11 Windows / Python 3.13 snapshot）。这些数字只描述当时的快照；当前运行结果必须附日期化 command/artifact 证据。完整历史基线见 `docs/full-review/07-verification.md`，C6-C10 当前收敛见 `docs/full-review/c6-c10-convergence-2026-08-21.md`。
+> 状态:**LIVING** · updated: 2026-08-27 · 文件数与基线为 2026-08-27 工作树实测(与 `scripts/check_doc_stats.py` 的 `python_test_files=283` 自洽)。
+
+Historical baseline evolution：`90 passed`（重构早期）→ `603 passed`（架构重构阶段）→ `1590`（2026-08-01）→ `2790`（2026-08-09）→ `2952 passed, 7 skipped, 0 failed`（2026-08-11 Windows / Python 3.13 snapshot）→ `3722`（2026-08-17）→ `3755`（同轮第二口径）。这些数字只描述当时的快照；当前运行结果必须附日期化 command/artifact 证据。完整历史基线见 `docs/full-review/07-verification.md`，C6-C10 当前收敛见 `docs/full-review/c6-c10-convergence-2026-08-21.md`。
 
 ## Required Checks
 
@@ -18,9 +20,8 @@ Historical baseline evolution：`90 passed`（重构早期）→ `603 passed`（
 | Check | Status | Notes |
 |---|---|---|
 | `pytest` | **2952 passed, 7 skipped** | 2026-08-11 historical snapshot only; current results require a dated command/artifact |
-| `ruff check .` | All checks passed | Full-repository clean |
-| `ruff check .` | All checks passed | Full-repository clean |
-| `pyright` | 0 errors, 0 warnings, 0 informations | Scoped by `pyrightconfig.json` |
+| `ruff check AssetsManager tests scripts run.py` | All checks passed | 2026-08-27 现场复核通过 |
+| `pyright` | 0 errors, 0 warnings, 0 informations | Scoped by `pyrightconfig.json`(basic 模式) |
 | `compileall` | All files compiled | No syntax errors |
 
 ## Architecture Boundary Tests
@@ -37,18 +38,20 @@ If a new exception is truly required, update `docs/adr/0001-architecture-governa
 
 ## Test Layout Direction
 
-Current layout:
+Current layout(2026-08-27 实测,共 283 个 `test_*.py`):
 
-- `tests/unit/` — pure Python domain/application logic tests（57 文件，含架构边界 ast 扫描）
-- `tests/integration/` — SQLite, filesystem, migration, service integration tests（46 文件，含对账队列系列）
-- `tests/desktop/` — PySide6 offscreen widget behavior tests（34 文件）
-- `tests/lan/` — aiohttp route and security tests（30 文件，含契约测试对照 lan_public_contracts.json）
-- `tests/core/` — core infrastructure tests（17 文件）
-- `tests/e2e/` — 真实 LAN + Playwright Chromium 验收（1 文件）
-- `tests/performance/` — pytest 基准（2 文件）；`tests/perf/` — 基准脚本（7 个，含 nightly grid telemetry）
+- `tests/unit/` — pure Python domain/application logic tests(106 文件,含 LowBatch 家族 + 门禁脚本自测)
+- `tests/integration/` — SQLite, filesystem, migration, service integration tests(55 文件,含 session-binding 11 + 对账队列 12)
+- `tests/lan/` — aiohttp route and security tests(54 文件,`test_lan_api.py` 6.5k 行,含契约测试对照 lan_public_contracts.json)
+- `tests/desktop/` — PySide6 offscreen widget behavior tests(35 文件,13 个对话框测试)
+- `tests/core/` — core infrastructure tests(17 文件)
+- `tests/plugins/` — 插件权限/身份/生命周期/API v2(12 文件)
+- `tests/e2e/` — 真实 LAN + Playwright Chromium 验收(2 文件:realtime + thumbnail privacy)
+- `tests/performance/` — pytest 基准(2 文件,阈值门禁默认被 pytest.ini 排除);`tests/perf/` — 基准脚本(6 个,含 nightly grid telemetry)
 - `tests/contracts/`、`tests/fixtures/` — 契约快照 / 旧版 schema fixture
+- `tests/panels/` — 空壳(0 测试,待清理或填充)
 
-前端：`webui/src/**/*.test.ts(x)`（90 Vitest 文件）+ `webui/e2e/`（Playwright 5 spec，30 用例）。
+前端：`webui/src/**/*.test.ts(x)`(103 Vitest 文件 = 15 contract + 88 unit)+ `webui/e2e/`(Playwright **6 spec**;默认本机 51 passed、2 skipped;commerce-real-backend 需环境变量否则自带 skip)。
 
 ## Performance Baselines
 
