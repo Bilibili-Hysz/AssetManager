@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "report_id": "evidence-register-v3-reconciliation-2026-08-27",
+  "captured_at": "2026-08-27T22:30:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "a6206566808e9a43c98ffe9a7d7d99d7270d2d09",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "static_only",
+    "tests_executed": false,
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Evidence registry reconciliation validation pass",
+        "sample_count": 82,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "scripts/check_audit_reports.py",
+            "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+          }
+        ]
+      }
+    ],
+    "note": "Documentation-only register maintenance: 13 EVID rows flipped to superseded with per-item successor citations; no production bytes touched."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/evidence-register-v3-reconciliation-2026-08-27.md",
+      "sha256": "f7397827507495a32027881795a9731bb612dbe3449f6cac853766c956e294d8"
+    },
+    {
+      "path": "docs/full-review/audit-manifest-2026-08-20.json",
+      "sha256": "f2efa62bce429a556f1c133be2e2ae12ebf0d93c1a30ea944d1b2e8a4447395c"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/evidence-register-v3-reconciliation-2026-08-27.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "EVID-REGISTER-V3-RECON-2026-08-27",
+      "severity": "P3",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "EVID-REGISTER-V3-RECON-2026-08-27"
+      ],
+      "anchors": [
+        "docs/full-review/evidence-register-v3-reconciliation-2026-08-27.md:40",
+        "docs/full-review/evidence-convergence-2026-08-20.md:45"
+      ],
+      "surface": "Canonical register rows for EVID-01..13 stayed confirmed/conditional although their action codes landed months earlier",
+      "next_action": "Future register updates should flip row status inside the implementing batch itself instead of deferring reconciliation",
+      "dynamic_verification": "Static reconciliation: independent validator reports all manifests valid (89 at write time); three follow-up CI lanes recorded above stay open"
+    }
+  ]
+}

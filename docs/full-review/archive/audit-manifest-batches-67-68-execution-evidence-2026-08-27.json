@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "report_id": "batches-67-68-execution-evidence-2026-08-27",
+  "captured_at": "2026-08-27T23:55:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "a6206566808e9a43c98ffe9a7d7d99d7270d2d09",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "commands": [
+      {
+        "argv": [
+          "npm",
+          "test",
+          "--",
+          "--run",
+          "src/api/client.test.ts",
+          "src/api/degradationBus.test.ts"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "WebUI client suite incl. degradation-bus throttle regressions + typecheck",
+        "sample_count": 18,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/global-toast/focused.stdout.log",
+            "sha256": "405e6e5f8b1737b1c2b640bedd7938f50e3f18049fd3403b1b632b138bb0cd23"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/unit/test_commerce_services.py",
+          "tests/lan/test_commerce_routes.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Commerce services/routes incl. stale-token conflict and legacy semantics",
+        "sample_count": 44,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/shop-optimistic/focused.stdout.log",
+            "sha256": "7f808a313c2480c2eb2cf19fc1f58d1d04bcecc70ddb4ada5fd7843fc662490f"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full serial Python suite archived for the 57-63 scope at a byte-state predating the unrelated background/gl import breakage; later desktop runs were destabilized by that external live edit",
+        "sample_count": 4144,
+        "pass_criterion": "archived exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/full-57-63.stdout.log",
+            "sha256": "87647e1e2b479aa4d50cd567234ca7723b390dc0a182d6a9087ee7833b7f595c"
+          }
+        ]
+      }
+    ],
+    "note": "Both findings live in one consolidated execution record. The later 231-error desktop run was rooted in the user's concurrently edited untracked background/gl imports (QOpenGLTexture from QtGui), outside this chain."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/batches-67-68-execution-evidence-2026-08-27.md",
+      "sha256": "1990a09616b957aeeb1ee0f10c92ca836f99924ffda90c89dc82830070d5aafe"
+    },
+    {
+      "path": "webui/src/api/degradationBus.ts",
+      "sha256": "f1097ff6e08eba4b8082d9c32c3618497ac232656cfca8cc6498bd0962dba8d5"
+    },
+    {
+      "path": "AssetsManager/repositories/shop_repository.py",
+      "sha256": "13a0ac4b4babdb823f2210051c64da0b13ea0920f8ad9335fa55ed5b172c3b13"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/batches-67-68-execution-evidence-2026-08-27.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "WEBUI-GLOBAL-TOAST-MOUNT-67-01",
+      "severity": "P3",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "WEBUI-GLOBAL-TOAST-MOUNT-67-01"
+      ],
+      "anchors": [
+        "webui/src/api/degradationBus.ts:34",
+        "webui/src/hooks/useApiDegradationToast.ts:1"
+      ],
+      "surface": "Client hooks existed but nothing surfaced throttled 429/503 events to the user",
+      "next_action": "10s/kind throttle is the chosen burst-storm default; revisit only with real telemetry. Mounted once inside ToastProvider via AuthContext callbacks -> bus -> useApiDegradationToast.",
+      "dynamic_verification": "Focused artifacts green; WebUI full 701 passed / typecheck clean; final serial suite archived 4128 passed pre-breakage"
+    },
+    {
+      "canonical_id": "SHOP-OPTIMISTIC-UPDATEDAT-68-01",
+      "severity": "P2",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "SHOP-OPTIMISTIC-UPDATEDAT-68-01"
+      ],
+      "anchors": [
+        "AssetsManager/repositories/shop_repository.py:584",
+        "AssetsManager/repositories/shop_repository.py:619"
+      ],
+      "surface": "Concurrent shop PUTs could silently drop each other's fields without any guard",
+      "next_action": "updated_at optimistic guard closes the single-connection window using the existing column (no schema migration); full If-Match version column stays a product decision",
+      "dynamic_verification": "commerce focused 44 passed; repo-level guard verified by stale/fresh token regressions; error maps to HTTP 409 via OperationNotPermitted"
+    }
+  ]
+}

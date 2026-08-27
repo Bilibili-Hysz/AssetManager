@@ -81,6 +81,7 @@ def main():
 
     def _on_open(path):
         nonlocal window
+        from AssetsManager.i18n import tr
         from AssetsManager.window import MainWindow
 
         # Close previous window if re-opening a library.  A failed close
@@ -114,22 +115,21 @@ def main():
             if state is None:
                 from PySide6.QtWidgets import QMessageBox
 
-                QMessageBox.critical(startup, "Library open failed", str(exc))
+                QMessageBox.critical(
+                    startup, tr("restore_marker.open_failed_title"), str(exc)
+                )
                 return
             from PySide6.QtWidgets import QMessageBox
 
             dialog = QMessageBox(startup)
             dialog.setIcon(QMessageBox.Icon.Warning)
-            dialog.setWindowTitle("Restore recovery required")
-            dialog.setText(
-                "The library restore marker could not be cleared safely. "
-                "Choose a recovery action before opening the library."
-            )
+            dialog.setWindowTitle(tr("restore_marker.title"))
+            dialog.setText(tr("restore_marker.body"))
             retry_button = dialog.addButton(
-                "Retry protected rollback", QMessageBox.ButtonRole.AcceptRole
+                tr("restore_marker.retry_button"), QMessageBox.ButtonRole.AcceptRole
             )
             acknowledge_button = dialog.addButton(
-                "Acknowledge manual remediation", QMessageBox.ButtonRole.DestructiveRole
+                tr("restore_marker.ack_button"), QMessageBox.ButtonRole.DestructiveRole
             )
             dialog.addButton(QMessageBox.StandardButton.Cancel)
             dialog.exec()
@@ -146,7 +146,9 @@ def main():
                     startup._accept(path)
             except Exception as recovery_error:
                 _log.exception("Restore recovery action failed for %s", path)
-                QMessageBox.critical(startup, "Restore recovery failed", str(recovery_error))
+                QMessageBox.critical(
+                    startup, tr("restore_marker.failed_title"), str(recovery_error)
+                )
             return
         window.show()
         # Expose tray to window for state updates

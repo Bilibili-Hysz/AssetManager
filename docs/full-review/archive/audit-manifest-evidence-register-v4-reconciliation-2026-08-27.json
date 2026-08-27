@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "report_id": "evidence-register-v4-reconciliation-2026-08-27",
+  "captured_at": "2026-08-27T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "a6206566808e9a43c98ffe9a7d7d99d7270d2d09",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "static_only",
+    "tests_executed": false,
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Register v4 reconciliation validation pass",
+        "sample_count": 92,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "scripts/check_audit_reports.py",
+            "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+          }
+        ]
+      }
+    ],
+    "note": "Documentation-only reconciliation over three read-only agent slices (104 IDs); no production bytes touched."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/evidence-register-v4-reconciliation-2026-08-27.md",
+      "sha256": "ce6a0e7e71b10fd98ce8178725454668b3b687d30be0c1bd43326433494f4ad4"
+    },
+    {
+      "path": "artifacts/evidence/2026-08-27/register-v4/performance.slice.md",
+      "sha256": "e257a94f468ca8f7da8c07d0bb73991ed3f1c57caa2ceff31e997d54ca06ecd3"
+    },
+    {
+      "path": "artifacts/evidence/2026-08-27/register-v4/quality-gov.slice.md",
+      "sha256": "61e4e9641312a46a7a6135c19efe42460c1c18f369994d13c09995b09a41c5c6"
+    },
+    {
+      "path": "artifacts/evidence/2026-08-27/register-v4/crossmodule-scan.slice.md",
+      "sha256": "36b57d371ec16ea6cad30e0aa895e5cac5b009f5f3623de4129892761839c77e"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/evidence-register-v4-reconciliation-2026-08-27.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "EVID-REGISTER-V4-FAMILY-PERFORMANCE",
+      "severity": "P3",
+      "status": "confirmed",
+      "source_ids": [
+        "EVID-REGISTER-V4-FAMILY-PERFORMANCE"
+      ],
+      "anchors": [
+        "artifacts/evidence/2026-08-27/register-v4/performance.slice.md:1"
+      ],
+      "surface": "Family reconciliation table for remaining register debts",
+      "next_action": "Convert O rows into dated evidence via small batch; triage S rows into bounded workstreams",
+      "dynamic_verification": "Slice verified against current sources by read-only agent; independent reviewer pass follows this manifest"
+    },
+    {
+      "canonical_id": "EVID-REGISTER-V4-FAMILY-QUALITY-GOV",
+      "severity": "P3",
+      "status": "confirmed",
+      "source_ids": [
+        "EVID-REGISTER-V4-FAMILY-QUALITY-GOV"
+      ],
+      "anchors": [
+        "artifacts/evidence/2026-08-27/register-v4/quality-gov.slice.md:1"
+      ],
+      "surface": "Family reconciliation table for remaining register debts",
+      "next_action": "Convert O rows into dated evidence via small batch; triage S rows into bounded workstreams",
+      "dynamic_verification": "Slice verified against current sources by read-only agent; independent reviewer pass follows this manifest"
+    },
+    {
+      "canonical_id": "EVID-REGISTER-V4-FAMILY-CROSSMODULE-SCAN",
+      "severity": "P3",
+      "status": "confirmed",
+      "source_ids": [
+        "EVID-REGISTER-V4-FAMILY-CROSSMODULE-SCAN"
+      ],
+      "anchors": [
+        "artifacts/evidence/2026-08-27/register-v4/crossmodule-scan.slice.md:1"
+      ],
+      "surface": "Family reconciliation table for remaining register debts",
+      "next_action": "Convert O rows into dated evidence via small batch; triage S rows into bounded workstreams",
+      "dynamic_verification": "Slice verified against current sources by read-only agent; independent reviewer pass follows this manifest"
+    }
+  ]
+}

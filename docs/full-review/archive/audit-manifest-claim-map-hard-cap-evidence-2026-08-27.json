@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "report_id": "claim-map-hard-cap-evidence-2026-08-27",
+  "captured_at": "2026-08-27T00:30:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "test_share_claim_routes.py::test_claim_hard_cap_bounds_active_identities (within claim matrix)"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Monkeypatched cap of 50 keys; verifies size bound, insertion-order eviction of earliest identities, and survival of the newest reservation",
+        "sample_count": 36,
+        "pass_criterion": "exit_code == 0 within the full claim focused matrix",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/claim-cap/focused.stdout.log",
+            "sha256": "664b12f549e2af9fa47ead22a3154e9f6f0ff501e3bfc5a5feb9f0fc1980cc47"
+          }
+        ]
+      }
+    ],
+    "note": "Insertion-order eviction approximates oldest-first; not exact LRU. Cross-process memory out of scope by design. Final serial suite green at 4097 passed."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/claim-map-hard-cap-evidence-2026-08-27.md",
+      "sha256": "af85a1fdb7f101bdb4310ba39b0a9234e4701b2f57691f543872ebd8599a1b75"
+    },
+    {
+      "path": "AssetsManager/lan/routes/shop/delivery.py",
+      "sha256": "086af3f15cd3007824c6d2a4d0486d17aca29c3d044469d8f2af1033f3c9c205"
+    },
+    {
+      "path": "tests/lan/test_share_claim_routes.py",
+      "sha256": "f27ab42f8bb45700251f41386d38adc834d242b626b079701554ff375128765d"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/claim-map-hard-cap-evidence-2026-08-27.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "CLAIM-MAP-CAP-45-01",
+      "severity": "P2",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "CLAIM-MAP-CAP-45-01"
+      ],
+      "anchors": [
+        "AssetsManager/lan/routes/shop/delivery.py:77",
+        "AssetsManager/lan/routes/shop/delivery.py:115",
+        "tests/lan/test_share_claim_routes.py:216"
+      ],
+      "surface": "Unbounded active-key growth in _claim_failures allowed unbounded in-window memory with O(N) sweeps per failure record",
+      "next_action": "Retain the fixed cap; revisit if per-operator visibility into evicted identities becomes necessary",
+      "dynamic_verification": "Cap regression passes inside the claim focused matrix (18-test final-bytes subset); full serial suite passed 4097 tests"
+    }
+  ]
+}

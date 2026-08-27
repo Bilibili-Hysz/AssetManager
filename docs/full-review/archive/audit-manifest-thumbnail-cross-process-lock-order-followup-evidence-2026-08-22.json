@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "report_id": "thumbnail-cross-process-lock-order-followup-evidence-2026-08-22",
+  "captured_at": "2026-08-22T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "--basetemp=.zcode/pytest-batch25c-lockorder-focused",
+          "-q",
+          "tests/integration/test_file_operation_service.py",
+          "tests/unit/test_database_integrity_service.py",
+          "tests/integration/test_thumbnail_service.py",
+          "tests/desktop/test_thumbnail_loader.py",
+          "tests/unit/test_thumbnail_repository.py",
+          "tests/core/test_database_metadata.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "final thumbnail owner-to-database lock order and cleanup regression",
+        "sample_count": 200,
+        "pass_criterion": "exit_code == 0; RuntimeWarning treated as error",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-lock-order-followup/focused.stdout.log",
+            "sha256": "539f773c23ee25c6c129fe328b1a9f091c598c2e2ef8acb8f62957cac3a912fd"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-lock-order-followup/focused.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "--basetemp=.zcode/pytest-batch25c-lockorder-full",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "full Python suite after final thumbnail lock-order correction",
+        "sample_count": 4003,
+        "pass_criterion": "exit_code == 0; no failed tests; platform skips and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-lock-order-followup/full.stdout.log",
+            "sha256": "c347ba2caf3482ec642f354df079c7bda3b66f690dfe60c295ab37ea5871f326"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-lock-order-followup/full.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py",
+          "&&",
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "final post-index governance validation; all 29 manifests",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-lock-order-followup/static.stdout.log",
+            "sha256": "cd0bfa8fd867bd821dbb2285bb364681e91a49b915884928a4116f4e570ccba2"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-lock-order-followup/static.stderr.log",
+            "sha256": "8f870c4f2d392073d288aaaf608b3329420ac73fa5515f9407be149058c33aa1"
+          }
+        ]
+      }
+    ],
+    "note": "Lock-order focused: 200 passed. Full suite: 3972 passed, 14 skipped, 17 deselected, 2 warnings, 0 failed. This follow-up was captured before its own report/manifest indexing; final post-index validation is recorded separately."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/audit-manifest-thumbnail-cross-process-ownership-evidence-2026-08-22.json",
+      "sha256": "29475549076d20bae8684dc196be41c26ac19e4d079395bceab2a4f9a59b70ec"
+    },
+    {
+      "path": "docs/full-review/thumbnail-cross-process-ownership-evidence-2026-08-22.md",
+      "sha256": "196f1333bd867e8910384076dbaa2c582f6b3071474b3e910e79c433719046c2"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/thumbnail-cross-process-ownership-evidence-2026-08-22.md",
+    "docs/full-review/thumbnail-cross-process-lock-order-followup-evidence-2026-08-22.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "THUMBNAIL-LOCK-ORDER-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "THUMBNAIL-LOCK-ORDER-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/file_operation_service.py:1148",
+        "AssetsManager/application/thumbnail_cache_lifecycle.py:28",
+        "tests/integration/test_file_operation_service.py:808"
+      ],
+      "surface": "Projection cleanup follows cache-owner-before-database lock ordering",
+      "next_action": "Complete cross-process DB/filesystem atomicity and independent race proof",
+      "dynamic_verification": "200 focused and 3972 full Python tests passed on Windows; static gates passed before report indexing"
+    }
+  ]
+}

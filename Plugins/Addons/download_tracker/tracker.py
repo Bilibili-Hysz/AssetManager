@@ -9,6 +9,18 @@ from datetime import datetime, timedelta, timezone
 import threading
 from typing import Any
 
+try:  # Qt bindings are optional: the plugin core must load headless.
+    from PySide6.QtCore import QObject as _QObject
+    from PySide6.QtCore import Qt as _Qt
+    from PySide6.QtCore import Signal as _Signal
+
+    _QT_READY = True
+except ImportError:  # pragma: no cover - environments without PySide6
+    _QObject = None  # type: ignore[assignment]
+    _Qt = None  # type: ignore[assignment]
+    _Signal = None  # type: ignore[assignment]
+    _QT_READY = False
+
 from AssetsManager.domain.events import FileSystemChanged
 from AssetsManager.plugin_api import (
     CommandOperator,
@@ -22,6 +34,68 @@ from AssetsManager.plugin_api import (
 _TRACKED_KINDS = frozenset({"import", "copied"})
 _history: dict[str, dict[str, Any]] = {}
 _history_lock = threading.RLock()
+
+
+if _QT_READY:
+
+    class _RefreshSignal(_QObject):  # type: ignore[misc,valid-type]
+        """Cross-thread refresh notifications for mounted HistoryPanel widgets."""
+
+        # Must be a class attribute: instance-assigned signals break in PySide6.
+        sig = _Signal()
+
+else:  # pragma: no cover - headless fallback keeps attribute lookups safe
+
+    class _RefreshSignal:
+        """Inert stand-in used only when PySide6 is unavailable."""
+
+        sig = None
+
+
+_refresh_notifier: Any = None
+_refresh_lock = threading.Lock()
+
+
+def _realign_to_main_thread(obj: Any) -> None:
+    """Best-effort move of the notifier onto the GUI thread.
+
+    Queued signal deliveries land on the emitter object's owning thread, so
+    the notifier must live on the main thread even when history updates first
+    fire from a worker thread.
+    """
+    try:
+        from PySide6.QtCore import QCoreApplication
+
+        app = QCoreApplication.instance()
+        if app is None or obj.thread() is app.thread():
+            return
+        obj.moveToThread(app.thread())
+    except Exception:  # pragma: no cover - alignment is best effort only
+        pass
+
+
+def _ensure_refresh_notifier() -> Any:
+    """Lazily create the module-wide notifier exactly once (thread-safe)."""
+    global _refresh_notifier
+    if not _QT_READY or _refresh_notifier is not None:
+        return _refresh_notifier
+    with _refresh_lock:
+        if _refresh_notifier is None:
+            notifier = _RefreshSignal()
+            _realign_to_main_thread(notifier)
+            _refresh_notifier = notifier
+    return _refresh_notifier
+
+
+def _emit_refresh() -> None:
+    """Emit a refresh ping; safe to call from any thread, no-op without Qt."""
+    notifier = _ensure_refresh_notifier()
+    if notifier is None:
+        return
+    try:
+        notifier.sig.emit()
+    except RuntimeError:  # pragma: no cover - C++ object already deleted
+        pass
 
 
 def _load_history(ctx: PluginContext) -> None:
@@ -116,6 +190,8 @@ class ImportHook(EventHook):
                 return
             _prune(keep_days)
             _save_history(ctx)
+        # History changed: ping mounted panels (queued across threads).
+        _emit_refresh()
 
 
 class ClearHistory(CommandOperator):
@@ -151,10 +227,18 @@ class HistoryPanel(PanelContributor):
     area = "right"
 
     def build(self, ctx: PluginContext) -> Any:
-        from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+        from PySide6.QtWidgets import QVBoxLayout, QWidget
 
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        self._populate(layout)
+        self._connect_refresh(layout, widget)
+        return widget
+
+    def _populate(self, layout: Any) -> None:
+        """(Re)fill the layout from a consistent snapshot of _history."""
+        from PySide6.QtWidgets import QLabel
+
         with _history_lock:
             items = sorted(
                 ((path, dict(record or {})) for path, record in _history.items()),
@@ -167,7 +251,41 @@ class HistoryPanel(PanelContributor):
             count = (rec or {}).get("count", 0)
             layout.addWidget(QLabel(f"{count}×  {path}"))
         layout.addStretch()
-        return widget
+
+    def _connect_refresh(self, layout: Any, widget: Any) -> None:
+        """Subscribe this mount to the module-wide refresh signal.
+
+        ``layout``/``widget`` stay referenced by the slot closure so neither
+        the Python wrappers nor Qt's C++ objects die behind our back between
+        signal emission and delivery.
+        """
+        notifier = _ensure_refresh_notifier()
+        if notifier is None:  # headless/stub Qt: wiring compiled out
+            return
+
+        def rebuild() -> None:
+            while layout.count():
+                item = layout.takeAt(0)
+                child = item.widget()
+                if child is not None:
+                    child.deleteLater()
+            self._populate(layout)
+
+        def on_refresh() -> None:
+            # Stale queued events may arrive after the dock was destroyed;
+            # a deleted C++ object makes PySide6 raise RuntimeError.
+            try:
+                rebuild()
+            except RuntimeError:
+                try:
+                    notifier.sig.disconnect(on_refresh)
+                except (RuntimeError, TypeError):
+                    pass
+
+        try:
+            notifier.sig.connect(on_refresh, _Qt.ConnectionType.QueuedConnection)
+        except (RuntimeError, TypeError):  # pragma: no cover - broken wiring
+            pass
 
 
 class Plugin:

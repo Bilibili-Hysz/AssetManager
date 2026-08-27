@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "report_id": "restore-residue-sweep-evidence-2026-08-27",
+  "captured_at": "2026-08-27T12:30:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/unit/test_library_service.py",
+          "tests/unit/test_library_export_service.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Sweep regressions (stale staging archived with _expired fold, stale intent-tmp removed, marker preserved, recent kept, foreign slot untouched, link-flagged preserved, open-trigger integration) plus the full export/quarantine contract suites that caught the eager-mkdir regression",
+        "sample_count": 108,
+        "pass_criterion": "exit_code == 0; capability-gated skip recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/restore-sweep/focused.stdout.log",
+            "sha256": "6a7843368d5d8386711ec8e8ce91bad4058ed6315164778d9d7bd51d28826518"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Final serial suite on final bytes after lazy quarantine creation; the four previously failing list_restore_quarantine cases pass again",
+        "sample_count": 4148,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/full-final.stdout.log",
+            "sha256": "e1d14f0fa4d4640c22c18b612454e4497459d0ae4cc1a5d7704dad8e09e4179f"
+          }
+        ]
+      }
+    ],
+    "note": "Sweep is best-effort inside the slot's library lock and never deletes in place: staging copies move to quarantine (folded under _expired when themselves stale). First full-suite run failed 4 existing tests because quarantine creation was eager; fixed to lazily create only when archiving is actually needed."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/restore-residue-sweep-evidence-2026-08-27.md",
+      "sha256": "db3a6359df5bad05119de60c6eb5142699a7904038225746eb972c6f4ad23e6c"
+    },
+    {
+      "path": "AssetsManager/application/library_service.py",
+      "sha256": "765cd5259d96f26e207b7409789dffc430c4a664f0795a715aeae92b47a3af69"
+    },
+    {
+      "path": "tests/unit/test_library_service.py",
+      "sha256": "e50321fcf49c763fd3c202c829e53cb1c57fa154e72b52e2964b71e828558b52"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/restore-residue-sweep-evidence-2026-08-27.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "RESTORE-RESIDUE-SWEEP-50-01",
+      "severity": "P2",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "RESTORE-RESIDUE-SWEEP-50-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/library_service.py:430",
+        "AssetsManager/application/library_service.py:470",
+        "tests/unit/test_library_service.py:591"
+      ],
+      "surface": "Hard crashes left restore staging dirs and intent temp files in RuntimeData forever while failed-staging quarantine entries accumulated unbounded",
+      "next_action": "Retain lock-scoped lazy sweep; real crash timing and multi-process behavior beyond the slot lock remain unexercised",
+      "dynamic_verification": "library_service focused suite passed 26 and combined restore matrices passed 108; an eager-quarantine full-suite regression was found and fixed before convergence at 4112 passed"
+    }
+  ]
+}

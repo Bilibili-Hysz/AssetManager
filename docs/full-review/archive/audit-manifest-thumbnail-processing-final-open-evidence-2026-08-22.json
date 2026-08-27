@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "report_id": "thumbnail-processing-final-open-evidence-2026-08-22",
+  "captured_at": "2026-08-22T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "--basetemp=.zcode/pytest-thumbnail-evidence-final",
+          "-q",
+          "tests/integration/test_thumbnail_service.py",
+          "tests/integration/test_share_service.py",
+          "tests/lan/test_image_routes.py",
+          "tests/lan/test_thumbnail_admission.py",
+          "tests/lan/test_share_preview_policy.py",
+          "tests/lan/test_lan_api.py::TestThumbnailSecurity::test_thumbnail_route_serves_nested_image_for_browser_preview",
+          "tests/lan/test_safe_open.py",
+          "tests/lan/test_helpers.py",
+          "tests/desktop/test_thumbnail_loader.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "application snapshot/Pillow/ffmpeg, LAN media routes, ZIP helper, desktop loader compatibility",
+        "sample_count": 414,
+        "pass_criterion": "exit_code == 0; RuntimeWarning treated as error; platform skips recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-processing-final/focused.stdout.log",
+            "sha256": "724761987d4346a495e051ba2ffafaba3d6844fd6f37241b82f124a8ee8be0e5"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-processing-final/focused.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "--basetemp=.zcode/pytest-thumbnail-full-final",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "full Python test tree after thumbnail snapshot and video temp-input implementation",
+        "sample_count": 3981,
+        "pass_criterion": "exit_code == 0; no failed tests; platform skips and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-processing-final/full.stdout.log",
+            "sha256": "d3561b663d6152e1a024ad510d5f300efc2f1fb3103fbdf601e18a1b12b0ac83"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py",
+          "&&",
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "current dirty worktree; validator saw 22 manifests before this report was indexed",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-processing-final/static.stdout.log",
+            "sha256": "8c11fef4386537b8f86b25afdc79c58f09c2e2e45156d8df4f85e56cba91437d"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-processing-final/static.stderr.log",
+            "sha256": "fcc92ce003b62de9fa868ddf3f458eb7dea333c0c599e8282c7cf5922ea14a02"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-processing-final/baseline.status.log",
+            "sha256": "5a6d40770c998185caa469896b34e97c434683b5ad4e778c8cd87ef7b8a3f9e0"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-processing-final/baseline.diff.patch",
+            "sha256": "f9cd92893cec5add6a98a097c71d486c4fac5ffe4065b921687816e55bd01172"
+          }
+        ]
+      }
+    ],
+    "note": "Focused: 412 passed, 2 skipped. Full suite: 3950 passed, 14 skipped, 17 deselected, 2 warnings, 0 failed. Browser, real LAN, independent platform, ffmpeg matrix, CVE, performance, package/release, clean checkout, and power-loss validation were not run."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/audit-manifest-final-open-toctou-hardening-evidence-2026-08-22.json",
+      "sha256": "f142c8c9885bd4ff79d4d17bcd4bcd8a86d55cd1ae5d444bd1acbf806256aaa0"
+    },
+    {
+      "path": "docs/full-review/plugin-lifecycle-category-refresh-evidence-2026-08-22.md",
+      "sha256": "e9a3c547f2dc272c6ff321680fe43152741cba4809ad53a3d2f28e729eae996b"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/final-open-toctou-hardening-evidence-2026-08-22.md",
+    "docs/full-review/thumbnail-processing-final-open-evidence-2026-08-22.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "THUMBNAIL-SNAPSHOT-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "THUMBNAIL-SNAPSHOT-01"
+      ],
+      "anchors": [
+        "AssetsManager/core/file_snapshot.py:1",
+        "AssetsManager/application/thumbnail_service.py:375",
+        "tests/integration/test_thumbnail_service.py:188"
+      ],
+      "surface": "Pillow thumbnail decoding and route processing from identity-bound source snapshots",
+      "next_action": "Independent POSIX/Windows replacement-race proof and large-source memory/performance validation",
+      "dynamic_verification": "Focused thumbnail/media and full Python suites passed on Windows; independent platform and adversarial backend proof not run"
+    },
+    {
+      "canonical_id": "THUMBNAIL-VIDEO-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "THUMBNAIL-VIDEO-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/thumbnail_service.py:322",
+        "AssetsManager/application/thumbnail_service.py:354",
+        "tests/integration/test_thumbnail_service.py:621"
+      ],
+      "surface": "Video frame extraction from controlled temporary snapshots",
+      "next_action": "ffmpeg container compatibility matrix, independent platform cleanup/race proof, and desktop loader migration",
+      "dynamic_verification": "Snapshot extractor and real thumbnail/full regression passed; complete codec/platform matrix and desktop path-based migration not run"
+    }
+  ]
+}

@@ -3099,16 +3099,24 @@ async def test_file_only_batch_download_does_not_offload_size_estimation(tmp_pat
     app, library, _conn = _make_lan_app(tmp_path)
     (library / "asset.txt").write_text("download me", encoding="utf-8")
 
-    async def fail_offload(*_args, **_kwargs):
-        raise AssertionError("file-only batch must not use a worker")
+    offloaded_functions: list[str] = []
 
-    monkeypatch.setattr(downloads.asyncio, "to_thread", fail_offload)
+    async def record_offload(function, *_args, **_kwargs):
+        # Size estimation is cheap for file-only batches and must stay on the
+        # loop; the quota consume intentionally runs in a worker (its SQLite
+        # commit would otherwise block the event loop) since batch 60.
+        name = getattr(function, "__name__", str(function))
+        offloaded_functions.append(name)
+        return function(*_args, **_kwargs)
+
+    monkeypatch.setattr(downloads.asyncio, "to_thread", record_offload)
     client = await _make_client(app)
     try:
         response = await client.post(
             "/api/download/batch", json={"paths": ["asset.txt"]}, headers=_local_ui_headers(app)
         )
         assert response.status == 200
+        assert "_estimate_batch_download_size" not in offloaded_functions
     finally:
         await client.close()
 

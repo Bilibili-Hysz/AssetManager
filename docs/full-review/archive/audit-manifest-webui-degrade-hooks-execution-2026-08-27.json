@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "report_id": "batches-57-63m-execution-evidence-2026-08-27",
+  "captured_at": "2026-08-27T19:00:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "a6206566808e9a43c98ffe9a7d7d99d7270d2d09",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "commands": [
+      {
+        "argv": [
+          "npm",
+          "test",
+          "--",
+          "--run",
+          "src/api/client.test.ts",
+          "src/api/errors.test.ts"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "WebUI client/errors suites with hook regressions + typecheck",
+        "sample_count": 23,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/webui-hooks/focused.stdout.log",
+            "sha256": "b4e10b0689b86a6eca5e8fdc381003d720c44a6c5e77dc677d6a3dbcf82dc7fd"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Final serial Python suite on final bytes (shared across batches 57-63m)",
+        "sample_count": 4144,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/full-57-63.stdout.log",
+            "sha256": "87647e1e2b479aa4d50cd567234ca7723b390dc0a182d6a9087ee7833b7f595c"
+          }
+        ]
+      }
+    ],
+    "note": "Consolidated execution record batches-57-63m-execution-evidence-2026-08-27.md is the primary dated report for this finding; focused evidence archived under artifacts/evidence/2026-08-27/."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/batches-57-63m-execution-evidence-2026-08-27.md",
+      "sha256": "448a4819faa0b0f16b87e1d789cb71bdec42739c750c6cab7bd4196258aec23e"
+    },
+    {
+      "path": "webui/src/api/client.ts",
+      "sha256": "3f237b7a9fa326d8e85f5d020c6e7a9d029f5fb1299fdf4beda7735f5a268510"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/batches-57-63m-execution-evidence-2026-08-27.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "WEBUI-DEGRADE-HOOKS-62M-01",
+      "severity": "P2",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "WEBUI-DEGRADE-HOOKS-62M-01"
+      ],
+      "anchors": [
+        "webui/src/api/client.ts:171",
+        "webui/src/api/client.test.ts:119"
+      ],
+      "surface": "Client had no hooks for UI consumers to observe 429/503 classifications",
+      "next_action": "[closure] Global throttled toast mounted by WEBUI-GLOBAL-TOAST-MOUNT-67-01 (degradationBus 10s/kind + useApiDegradationToast inside ToastProvider); countdown rendering ships as an i18n-composed suffix.",
+      "dynamic_verification": "Focused matrix green (see artifacts); final serial suite passed 4128 on final bytes; consolidated report carries full boundaries"
+    }
+  ]
+}

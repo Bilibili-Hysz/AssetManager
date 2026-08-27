@@ -732,3 +732,86 @@ def test_archive_expired_quarantine_entries_folds_old_backups(tmp_path):
     assert (expired / "assetmanager.db").exists()
     assert fresh_entry.exists(), "fresh quarantine entries stay in place"
 
+
+def test_sweep_caps_active_quarantine_entries_by_count(tmp_path):
+    import os
+
+    from AssetsManager.application.library_export_io import (
+        safe_restore_quarantine_root,
+    )
+    from AssetsManager.core.path_resolver import root_identity
+
+    root = tmp_path / "library"
+    service = LibraryService()
+    session = service.open_session(root)
+    data_dir = session.data_dir
+    identity = root_identity(root)
+    service.close_session(session)
+
+    q_root = safe_restore_quarantine_root(data_dir)
+    assert q_root is not None
+    # All entries stay fresh relative to the sweep cutoff so the week-old age
+    # gate cannot touch them: any folding must come from the count cap alone.
+    now = 1_000_000.0 + 9 * 86400
+    names = [f"{data_dir.name}_20990101T000000Z_cap{i:02d}" for i in range(10)]
+    for index, name in enumerate(names):
+        entry = q_root / name
+        entry.mkdir()
+        (entry / "assetmanager.db").write_bytes(b"db")
+        mtime = now - (len(names) - 1 - index) * 60.0  # names[0] ends up oldest
+        os.utime(entry, (mtime, mtime))
+
+    service._sweep_orphan_restore_residue(identity, now=now)
+
+    live = sorted(p.name for p in q_root.iterdir() if p.name != "_expired")
+    expired_root = q_root / "_expired"
+    folded = {p.name for p in expired_root.iterdir()} if expired_root.is_dir() else set()
+    assert len(live) <= library_service_module._QUARANTINE_ACTIVE_MAX
+    assert names[0] in folded, "oldest active overflow must be folded into _expired"
+    assert (expired_root / names[0] / "assetmanager.db").exists(), "fold preserves contents"
+    assert names[-1] in live, "newest active entries must survive the cap"
+
+
+def test_sweep_trims_expired_quarantine_backups_past_cap(tmp_path):
+    import os
+
+    from AssetsManager.application.library_export_io import (
+        safe_restore_quarantine_root,
+    )
+    from AssetsManager.core.path_resolver import root_identity
+
+    root = tmp_path / "library"
+    service = LibraryService()
+    session = service.open_session(root)
+    data_dir = session.data_dir
+    identity = root_identity(root)
+    service.close_session(session)
+
+    q_root = safe_restore_quarantine_root(data_dir)
+    assert q_root is not None
+    expired_root = q_root / "_expired"
+    # The quarantine tree lives directly under RuntimeData (shared by every
+    # slot/run), so a previous test or run may legitimately have created
+    # `_expired` already — tolerate reuse instead of colliding with it.
+    expired_root.mkdir(exist_ok=True)
+    pre_existing = {p.name for p in expired_root.iterdir()}
+    names = [f"{data_dir.name}_20200101T000000Z_old{i:02d}" for i in range(40)]
+    base = 1_000_000.0
+    for index, name in enumerate(names):
+        entry = expired_root / name
+        entry.mkdir()
+        (entry / "assetmanager.db").write_bytes(b"db")
+        mtime = base + index * 60.0  # names[0] ends up oldest
+        os.utime(entry, (mtime, mtime))
+
+    service._sweep_orphan_restore_residue(identity, now=base + 9 * 86400)
+
+    remaining = {p.name for p in expired_root.iterdir()}
+    assert len(remaining) <= library_service_module._EXPIRED_MAX
+    assert names[0] not in remaining, "oldest excess backup must be deleted"
+    assert not (expired_root / names[0]).exists()
+    assert names[-1] in remaining, "newest backups must be kept past the trim"
+    assert (
+        remaining <= set(names) | pre_existing
+    ), "trim must only remove pre-existing _expired children"
+

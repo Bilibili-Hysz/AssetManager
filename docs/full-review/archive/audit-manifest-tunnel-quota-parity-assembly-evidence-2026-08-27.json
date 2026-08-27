@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "report_id": "tunnel-quota-parity-assembly-evidence-2026-08-27",
+  "captured_at": "2026-08-27T12:30:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/lan/test_tunnel_quota_identity_parity.py",
+          "tests/lan/test_server_assembly_contract.py",
+          "tests/lan/test_tunnel_rate_limit_isolation.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Cookie-name/secret/bidirectional-token parity on configured and fallback-bare lan objects plus real _build_app wiring (LAN_APP_KEY identity, ZIP executor key, security middleware first, production resolver/minter cross-validation)",
+        "sample_count": 14,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/parity-assembly/focused.stdout.log",
+            "sha256": "f6370039b65c8d8e9153c9d72c9d7a45b46afd21bd64c3bb9afe889f5cd3a600"
+          }
+        ]
+      }
+    ],
+    "note": "Coverage-only batch: no production bytes changed; README python_test_files converged 281->283 via doc-stats --fix. Loopback-mock depth only — no cloudflared tunnel process or Cloudflare edge TLS was exercised. Final serial suite green at 4112 passed."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/tunnel-quota-parity-assembly-evidence-2026-08-27.md",
+      "sha256": "ae1344e940469abc232c37252491b85d6e635f9cb6f17b359261ce36ea23d901"
+    },
+    {
+      "path": "tests/lan/test_tunnel_quota_identity_parity.py",
+      "sha256": "00bd6dc07e3b64753d03e837ca1014b980e2141c8e5bbc6a4c076093324d990c"
+    },
+    {
+      "path": "tests/lan/test_server_assembly_contract.py",
+      "sha256": "88f8d738484b82bcaee2a5fe1ee70c0a16e882fda35ec3d1d86db32e5204394b"
+    },
+    {
+      "path": "AssetsManager/lan/server.py",
+      "sha256": "689696224cc8a2b2d7036615873accf0d7e4102c2dcf6304e142bdff12c39e48"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/tunnel-quota-parity-assembly-evidence-2026-08-27.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "TUNNEL-QUOTA-PARITY-ASSEMBLY-51-01",
+      "severity": "P3",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "TUNNEL-QUOTA-PARITY-ASSEMBLY-51-01"
+      ],
+      "anchors": [
+        "tests/lan/test_tunnel_quota_identity_parity.py:40",
+        "tests/lan/test_server_assembly_contract.py:47"
+      ],
+      "surface": "Cross-module cookie trust and production security wiring had zero executable coverage despite both middleware and quota route depending on them",
+      "next_action": "Extend coverage toward a live tunnel process only if a dated decision requests network-level evidence",
+      "dynamic_verification": "Parity/assembly/tunnel-isolation focused run passed 14 tests; final serial suite passed 4112 tests"
+    }
+  ]
+}

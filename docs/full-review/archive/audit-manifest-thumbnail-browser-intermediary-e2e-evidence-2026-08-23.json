@@ -1,0 +1,344 @@
+{
+  "schema_version": 1,
+  "report_id": "thumbnail-browser-intermediary-e2e-evidence-2026-08-23",
+  "captured_at": "2026-08-23T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "chromium": "Playwright installed Chromium",
+      "vitest": "3.2.6"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "-m",
+          "e2e",
+          "-n",
+          "0",
+          "--basetemp=.zcode/pytest-batch25l-focused-evidence-final",
+          "-q",
+          "tests/e2e/test_webui_thumbnail_privacy_acceptance.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Real Chromium through loopback controlled intermediary to real LAN server; namespace and public/private cache counters",
+        "sample_count": 3,
+        "pass_criterion": "exit_code == 0; real browser, real LAN server and intermediary all run",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-browser-intermediary-e2e/browser-focused.stdout.log",
+            "sha256": "a67c646618263b0d9cda4210ec43a7e90502cabbb9434073a65e0f24456c259f"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-browser-intermediary-e2e/browser-focused.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "-m",
+          "e2e",
+          "-n",
+          "0",
+          "--basetemp=.zcode/pytest-batch25l-realtime-evidence-final",
+          "-q",
+          "tests/e2e/test_webui_realtime_acceptance.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Existing real Chromium and LAN realtime/logout regression",
+        "sample_count": 6,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-browser-intermediary-e2e/realtime.stdout.log",
+            "sha256": "60a3032864efdbc3aa20bd8172ce349f16313230cff85efa6cc8a1fdd0924cc1"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-browser-intermediary-e2e/realtime.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "cd",
+          "webui",
+          "&&",
+          "npm",
+          "run",
+          "build"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Production WebUI build required by real LAN SPA route",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-browser-intermediary-e2e/webui-build.stdout.log",
+            "sha256": "a36bff8d3fe4b3c38e45d3ba01c49ed985a658bcbeba18de0bcb6d408e156fef"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-browser-intermediary-e2e/webui-build.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "cd",
+          "webui",
+          "&&",
+          "npm",
+          "test",
+          "--",
+          "--run"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full WebUI Vitest namespace/auth/cache regression suite",
+        "sample_count": 695,
+        "pass_criterion": "exit_code == 0; all test files pass",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-browser-intermediary-e2e/webui-vitest.stdout.log",
+            "sha256": "d163454405c69818fa9d69b17b7f00896e08349cbb20ca64eaa67ff3595908a5"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-browser-intermediary-e2e/webui-vitest.stderr.log",
+            "sha256": "cd46bf2db475559398b1c82b9a50204e254ff78e96766782150c9fbf5ca136fa"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "--basetemp=.zcode/pytest-batch25l-full",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python suite after real browser/intermediary test addition",
+        "sample_count": 4030,
+        "pass_criterion": "exit_code == 0; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-browser-intermediary-e2e/full.stdout.log",
+            "sha256": "3a1e78013175e8f0a67fea6dbd3dabeba54bc9063925c12d7827c7dba930d183"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-browser-intermediary-e2e/full.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py",
+          "&&",
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Pre-index static governance before 25-L report and manifest indexing; all 39 prior manifests",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-browser-intermediary-e2e/static.stdout.log",
+            "sha256": "c7ff4e625efeb417e399c4d9a456b3b719b605b230d344395b08538313c48456"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-browser-intermediary-e2e/static.stderr.log",
+            "sha256": "af1cbe7332cca945e3b4ca037c7553a1be82d1c06146b8ec622cc3cc05e2dde2"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "cd",
+          "webui",
+          "&&",
+          "npm",
+          "run",
+          "test:e2e"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Existing TypeScript Mock/Static Playwright lane (not real backend/intermediary)",
+        "sample_count": 53,
+        "pass_criterion": "recorded independently; not used as real browser/intermediary acceptance",
+        "exit_code": 1,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-browser-intermediary-e2e/webui-playwright.stdout.log",
+            "sha256": "8b4c889223877045d46e5afaeba6ad156c12c6c2b1aafc4a8adea71a347660c8"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-browser-intermediary-e2e/webui-playwright.stderr.log",
+            "sha256": "46fe1a1be86b243f59dbb334370535b5fadc8e7fc89009cc0c63e854bf8ce09f"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py",
+          "&&",
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index static governance after 25-L report and manifest; all 40 manifests",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-browser-intermediary-e2e/static-post-index.stdout.log",
+            "sha256": "02b0248684cf213da960513baba9093db0afbe060f95fd868f46872ab9d79340"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-browser-intermediary-e2e/static-post-index.stderr.log",
+            "sha256": "af1cbe7332cca945e3b4ca037c7553a1be82d1c06146b8ec622cc3cc05e2dde2"
+          }
+        ]
+      }
+    ],
+    "note": "Real loopback browser/intermediary tests passed; existing realtime browser tests, WebUI build and Vitest passed. Pre-index and post-index static governance passed, with post-index validation covering all 40 manifests. The separate TypeScript Mock/Static Playwright lane failed accessibility assertions and emitted expected no-backend proxy warnings; it is recorded transparently and is not used for the real thumbnail/intermediary finding."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/audit-manifest-thumbnail-path-migration-concurrency-evidence-2026-08-23.json",
+      "sha256": "c4387791f2d977080bea52555722eb3349a2d82664f1f04a27518a9c63e44ff8"
+    },
+    {
+      "path": "docs/full-review/thumbnail-path-migration-concurrency-evidence-2026-08-23.md",
+      "sha256": "9dc3bfd206ee7170bf8e544a5b701825cad65c97548a883acfeeee5e89f497a9"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/thumbnail-path-migration-concurrency-evidence-2026-08-23.md",
+    "docs/full-review/thumbnail-browser-intermediary-e2e-evidence-2026-08-23.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "THUMBNAIL-BROWSER-INTERMEDIARY-E2E-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "THUMBNAIL-BROWSER-INTERMEDIARY-E2E-01"
+      ],
+      "anchors": [
+        "tests/e2e/test_webui_thumbnail_privacy_acceptance.py:1",
+        "tests/e2e/test_webui_thumbnail_privacy_acceptance.py:184",
+        "AssetsManager/lan/routes/thumbnails.py:84",
+        "webui/src/hooks/useThumbnailCache.ts:5"
+      ],
+      "surface": "Real Chromium to loopback LAN server through controlled intermediary for thumbnail namespace and privacy cache behavior",
+      "next_action": "Extend only if needed with explicit stale-response/principal-switch browser matrix; production CDN/shared-proxy, TLS termination, cross-platform browser and v3/v2/legacy full UI-flow claims remain separate verification work",
+      "dynamic_verification": "3 real Chromium/intermediary tests, 6 existing real LAN browser tests, WebUI build and 695 Vitest tests passed on Windows. Local public/private cache counters and namespace/sessionStorage assertions passed. Existing Mock/Static TypeScript Playwright lane failed unrelated accessibility assertions and is not evidence for real backend behavior."
+    }
+  ]
+}

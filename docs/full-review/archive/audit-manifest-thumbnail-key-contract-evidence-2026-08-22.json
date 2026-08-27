@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "report_id": "thumbnail-key-contract-evidence-2026-08-22",
+  "captured_at": "2026-08-22T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "--basetemp=.zcode/pytest-batch25-focused-final",
+          "-q",
+          "tests/unit/test_thumbnail_key.py",
+          "tests/unit/test_thumbnail_repository.py",
+          "tests/unit/test_core_db_low_batch.py",
+          "tests/core/test_database_metadata.py",
+          "tests/integration/test_thumbnail_service.py",
+          "tests/integration/test_project_service.py",
+          "tests/lan/test_thumbnail_admission.py",
+          "tests/lan/test_image_routes.py",
+          "tests/desktop/test_thumbnail_loader.py",
+          "tests/desktop/test_file_list_view.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "versioned thumbnail key, source fingerprint, legacy cache reads, database migration, ProjectService, LAN admission/image routes, Desktop loader",
+        "sample_count": 317,
+        "pass_criterion": "exit_code == 0; RuntimeWarning treated as error; platform skips recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-key-contract/focused.stdout.log",
+            "sha256": "2a78f417983e9c034cdc35f8224806c9d3565839e32ca7f3de3be40054c5cd42"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-key-contract/focused.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "--basetemp=.zcode/pytest-batch25-full",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "full Python test tree after the identity-aware key contract implementation",
+        "sample_count": 3990,
+        "pass_criterion": "exit_code == 0; no failed tests; platform skips and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-key-contract/full.stdout.log",
+            "sha256": "3b33f0a02c0d9201f091d8644d14c084d8391a71d7a0e16ffaddb792ec117f66"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-key-contract/full.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py",
+          "&&",
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "current dirty worktree before indexing this report; governance, boundary, layer, style and documentation gates",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-key-contract/static.stdout.log",
+            "sha256": "f4156ec25e9e29abc541728d12fa91ac9471a04d42e809a11630f68308adaf82"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-key-contract/static.stderr.log",
+            "sha256": "1d3ca222e60538e69c0e47309d51cd312bb9191cf7c5404ab96d7d84ba4fa9b8"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-key-contract/baseline.status.log",
+            "sha256": "2f0ef2f5571556d171ccc96c3d555bb405d46edcf2f9450d2ebbb42b3cd05843"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-key-contract/baseline.diff.patch",
+            "sha256": "35da1c5998c52c8d15c3a0d60d1cd430fe6464390ca972cb8e04c2a12ffa8b63"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-key-contract/baseline.commit.log",
+            "sha256": "ae813e220f73f92065f66af76882392aad19109d329e48e44d55145e9bdcd2fb"
+          }
+        ]
+      }
+    ],
+    "note": "Focused: 316 passed, 1 skipped. Full suite: 3959 passed, 14 skipped, 17 deselected, 2 warnings, 0 failed. Browser, real LAN, independent POSIX/Windows proof, complete profile/codec matrix, disk eviction/performance, cross-process single-flight, CVE, package/release, clean checkout, and power-loss validation were not run."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/audit-manifest-desktop-final-open-migration-evidence-2026-08-22.json",
+      "sha256": "5b654f416142f4a467a1a2bb108eb658169e230d8cda983043f7eaa5d1dab5d5"
+    },
+    {
+      "path": "docs/full-review/audit-manifest-thumbnail-processing-final-open-evidence-2026-08-22.json",
+      "sha256": "30e4ea7a06f1780485869991899db4bd76e710e4e3ef5782dd8569169bdee1f1"
+    },
+    {
+      "path": "docs/full-review/desktop-final-open-migration-evidence-2026-08-22.md",
+      "sha256": "d77f705b0ee1525baa62392d7dc45dacfb77d73fa4a757936c1049d2911c8a51"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/desktop-final-open-migration-evidence-2026-08-22.md",
+    "docs/full-review/thumbnail-key-contract-evidence-2026-08-22.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "THUMBNAIL-KEY-CONTRACT-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "THUMBNAIL-KEY-CONTRACT-01"
+      ],
+      "anchors": [
+        "AssetsManager/core/thumbnail_key.py:14",
+        "AssetsManager/core/thumbnail_key.py:45",
+        "AssetsManager/core/thumbnail_key.py:63",
+        "AssetsManager/application/thumbnail_service.py:108",
+        "tests/unit/test_thumbnail_key.py:12"
+      ],
+      "surface": "Versioned identity-aware thumbnail key construction and bounded module key cache",
+      "next_action": "Persistent metadata/profile contract, disk eviction, cross-process generation coordination, and independent POSIX/Windows race proof",
+      "dynamic_verification": "Key/storage/consumer focused matrix and full Python suite passed on Windows; independent platform, persistent eviction, and cross-process proof not run"
+    },
+    {
+      "canonical_id": "THUMBNAIL-KEY-COMPAT-01",
+      "severity": "P2",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "THUMBNAIL-KEY-COMPAT-01"
+      ],
+      "anchors": [
+        "AssetsManager/core/thumbnail_key.py:84",
+        "AssetsManager/application/thumbnail_service.py:287",
+        "AssetsManager/panels/file_list/_loader.py:914",
+        "tests/integration/test_thumbnail_service.py:60",
+        "tests/desktop/test_thumbnail_loader.py:825"
+      ],
+      "surface": "Legacy .webp/.jpg artifact reads while new writes use v2 identity-aware keys",
+      "next_action": "Explicit persistent cache migration/orphan policy and profile-aware artifact validation",
+      "dynamic_verification": "Legacy service and Desktop cache compatibility tests passed; destructive migration and profile isolation were not run"
+    }
+  ]
+}

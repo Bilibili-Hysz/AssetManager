@@ -3,6 +3,9 @@ import warnings
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import json
+from pathlib import Path
+
 from PySide6.QtWidgets import QApplication
 
 from AssetsManager.dialogs.startup import StartupWindow, _LibraryCard
@@ -38,3 +41,30 @@ def test_startup_keeps_truncation_indicator_out_of_library_cards(monkeypatch, tm
             window.close()
             window.deleteLater()
             app.processEvents()
+
+
+_RESTORE_MARKER_KEYS = frozenset(
+    {
+        "restore_marker.open_failed_title",
+        "restore_marker.title",
+        "restore_marker.body",
+        "restore_marker.retry_button",
+        "restore_marker.ack_button",
+        "restore_marker.failed_title",
+    }
+)
+
+
+def test_i18n_json_key_sets_match_and_include_restore_marker():
+    """Pure-JSON assertion (no Qt): all locale files share one key set."""
+    i18n_dir = Path(__file__).resolve().parents[2] / "AssetsManager" / "i18n"
+    data = {}
+    for code in ("en", "zh", "ja"):
+        data[code] = json.loads(
+            (i18n_dir / f"{code}.json").read_text(encoding="utf-8")
+        )
+    key_sets = {
+        code: set(payload) - {"_meta"} for code, payload in data.items()
+    }
+    assert key_sets["en"] == key_sets["zh"] == key_sets["ja"]
+    assert _RESTORE_MARKER_KEYS <= key_sets["en"]

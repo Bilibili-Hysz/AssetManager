@@ -140,10 +140,8 @@ def _claim_retry_after(remote: str, now: float | None = None) -> int:
 
 @commerce_required
 async def handle_shop_claim_delivery(request: web.Request) -> web.Response:
-    """Redeem a one-time share claim and bind the buyer receipt cookie.
-    Every failure (unknown/used/revoked/expired) answers a uniform 404; the
-    claim code reaches only the HttpOnly receipt cookie.
-    """
+    """Redeem a one-time share claim; failures answer a uniform 404 and the
+    claim code reaches only the HttpOnly receipt cookie."""
     order_id = request.match_info["order_id"]
     remote = _package_function("_claim_request_remote")(request)
     # Reserve up front: even an empty claim spends one window slot.
@@ -252,8 +250,9 @@ async def _delivery_file_response(
         except (SafeOpenError, OSError, ValueError):
             mark_failed()
             return _error_response(DeliveryPreparationError())
+        # Quota accounting commits to SQLite; keep it off the loop.
         if consume is not None:
-            consume()
+            await asyncio.to_thread(consume)
         return response
     fd, zip_path = tempfile.mkstemp(suffix=".zip")
     os.close(fd)
@@ -275,7 +274,7 @@ async def _delivery_file_response(
         return _error_response(DeliveryPreparationError())
     try:
         if consume is not None:
-            consume()
+            await asyncio.to_thread(consume)
     except BaseException:
         try:
             os.unlink(zip_path)

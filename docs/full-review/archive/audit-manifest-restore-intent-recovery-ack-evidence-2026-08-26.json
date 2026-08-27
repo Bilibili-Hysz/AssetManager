@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "report_id": "restore-intent-recovery-ack-evidence-2026-08-26",
+  "captured_at": "2026-08-26T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/unit/test_library_service.py",
+          "tests/unit/test_library_export_service.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Restore intent status, protected rollback and acknowledgement regressions",
+        "sample_count": 7,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-ack/focused.stdout.log",
+            "sha256": "55fc7a83b0cfe9c7f9e0f3510a3003c07e8635880d06d3dcb486509dd5d37a49"
+          }
+        ]
+      }
+    ],
+    "note": "Final serial suite passed 4089 tests. No subprocess kill, power-loss, browser E2E, or cross-system atomicity proof."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/restore-intent-recovery-ack-evidence-2026-08-26.md",
+      "sha256": "6b4bd6587c9a23ba1b7c9e0377c3815dc3d30c1d1e1a8a32f389cacf1afec9b7"
+    },
+    {
+      "path": "AssetsManager/application/library_service.py",
+      "sha256": "765cd5259d96f26e207b7409789dffc430c4a664f0795a715aeae92b47a3af69"
+    },
+    {
+      "path": "AssetsManager/app.py",
+      "sha256": "29cc6b46374cf63df17a1e9cd99bc4e78b406803ffd16b0829007a7297f51407"
+    },
+    {
+      "path": "AssetsManager/application/library_export_io.py",
+      "sha256": "0daeb60171343b30709b65f0310b65b9120d93f7a796048ccd4cadc4a50870ba"
+    },
+    {
+      "path": "tests/unit/test_library_service.py",
+      "sha256": "e50321fcf49c763fd3c202c829e53cb1c57fa154e72b52e2964b71e828558b52"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/restore-intent-recovery-ack-evidence-2026-08-26.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "RESTORE-INTENT-UNRECOVERABLE-41-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "RESTORE-INTENT-UNRECOVERABLE-41-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/library_service.py:426",
+        "AssetsManager/application/library_service.py:451",
+        "AssetsManager/application/library_service.py:467",
+        "AssetsManager/app.py:106",
+        "tests/unit/test_library_service.py:519"
+      ],
+      "surface": "An unrecoverable restore marker could fail before a session existed and had no reachable remediation action",
+      "next_action": "Retain token-confirmed path-level remediation; separately evaluate subprocess and power-loss behavior",
+      "dynamic_verification": "Focused restore status/retry/ack tests passed 7 tests; final serial suite passed 4089 tests"
+    }
+  ]
+}

@@ -1,0 +1,248 @@
+{
+  "schema_version": 1,
+  "report_id": "thumbnail-webp-v3-profile-key-evidence-2026-08-23",
+  "captured_at": "2026-08-23T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "--basetemp=.zcode/pytest-batch25g-focused-evidence",
+          "-q",
+          "tests/unit/test_thumbnail_key.py",
+          "tests/unit/test_thumbnail_repository.py",
+          "tests/core/test_db_migrations.py",
+          "tests/unit/test_db_lock_low_batch.py",
+          "tests/desktop/test_thumbnail_loader.py",
+          "tests/integration/test_thumbnail_service.py",
+          "tests/lan/test_thumbnail_admission.py",
+          "tests/integration/test_project_service.py",
+          "tests/core/test_database_metadata.py",
+          "tests/unit/test_core_db_low_batch.py",
+          "tests/unit/test_database_integrity_service.py",
+          "tests/integration/test_file_operation_service.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Persistent WebP v3 profile key, v33 metadata, Desktop/LAN dual-read and path migration regressions",
+        "sample_count": 345,
+        "pass_criterion": "exit_code == 0; RuntimeWarning treated as error; platform skip recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-webp-v3-profile-key/focused.stdout.log",
+            "sha256": "1b37d77cd534a3195677dca185d0248921faa88e9a047758470fe2242629d2e0"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-webp-v3-profile-key/focused.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "--basetemp=.zcode/pytest-batch25g-full",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python suite after persistent WebP v3 profile-aware key rollout",
+        "sample_count": 4018,
+        "pass_criterion": "exit_code == 0; no failed tests; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-webp-v3-profile-key/full.stdout.log",
+            "sha256": "eef4a3b55de4dbfe94c801485fe1930c70843c66e7fe965b9a9b8f60f7916343"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-webp-v3-profile-key/full.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py",
+          "&&",
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "25-G static governance gates before v3 report and manifest indexing; all 34 prior manifests",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-webp-v3-profile-key/static.stdout.log",
+            "sha256": "920b99973e96b43b690f1ff37b860c5221d7962d52a3b11744c7d251ab5462f4"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-webp-v3-profile-key/static.stderr.log",
+            "sha256": "af1cbe7332cca945e3b4ca037c7553a1be82d1c06146b8ec622cc3cc05e2dde2"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py",
+          "&&",
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index static governance validation after 25-G report and manifest; all 35 manifests",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-webp-v3-profile-key/static-post-index.stdout.log",
+            "sha256": "e4ed262ae20457577cd3d6a840a8496afac92cd559dd7a2fe380efa44ba4b941"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-webp-v3-profile-key/static-post-index.stderr.log",
+            "sha256": "af1cbe7332cca945e3b4ca037c7553a1be82d1c06146b8ec622cc3cc05e2dde2"
+          }
+        ]
+      }
+    ],
+    "note": "Focused result: 344 passed, 1 skipped in 46.35s. Full Python result: 3987 passed, 14 skipped, 17 deselected, 2 warnings in 535.65s. Pre-index and post-index static governance gates passed; the post-index run validated all 35 manifests. Cross-platform race, power-loss, browser E2E, mutation atomicity, package/release, CVE/dependency and clean-checkout claims remain unverified."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/audit-manifest-thumbnail-desktop-profile-admission-evidence-2026-08-23.json",
+      "sha256": "13aabf7c16621320cadfbf7956a83439647fa1e929b81192e47ef1e3c1bbb3e5"
+    },
+    {
+      "path": "docs/full-review/thumbnail-desktop-profile-admission-evidence-2026-08-23.md",
+      "sha256": "91adcd37003609aebd3325ef88847ab59e8879afe485c294beabfcb634b977ab"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/thumbnail-desktop-profile-admission-evidence-2026-08-23.md",
+    "docs/full-review/thumbnail-webp-v3-profile-key-evidence-2026-08-23.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "THUMBNAIL-WEBP-V3-PROFILE-KEY-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "THUMBNAIL-WEBP-V3-PROFILE-KEY-01"
+      ],
+      "anchors": [
+        "AssetsManager/core/thumbnail_key.py:1",
+        "AssetsManager/core/db_migrations.py:1",
+        "AssetsManager/repositories/thumbnail_repository.py:1",
+        "AssetsManager/panels/file_list/_loader.py:1",
+        "AssetsManager/application/thumbnail_service.py:1",
+        "AssetsManager/core/database.py:1",
+        "tests/unit/test_thumbnail_key.py:1"
+      ],
+      "surface": "Persistent unblurred WebP artifact identity across source fingerprint, canonical render profile, Desktop producer, shared resolver, metadata migration and path remapping",
+      "next_action": "Add video JPG profile/legacy convergence and independent browser, cross-platform race, power-loss, mutation atomicity, package/release, CVE/dependency, performance and clean-checkout verification",
+      "dynamic_verification": "344 focused tests passed with 1 platform skip; full Python suite passed with 3987 passed, 14 skipped, 17 deselected and 2 warnings on Windows; static governance passed. Existing v2/legacy artifacts are dual-read only, video JPG v3 and destructive migration are deferred."
+    }
+  ]
+}

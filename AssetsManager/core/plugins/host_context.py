@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
@@ -61,6 +62,46 @@ def _event_bus() -> Any:
             "ApplicationBootstrap installs the domain event bus."
         )
     return _event_bus_provider()
+
+
+# Maximum seconds ``unregister_plugin`` waits for an already-dispatching
+# event hook of the plugin to finish.  On timeout the unload proceeds with
+# a warning rather than hanging on a wedged third-party handler.
+_HOOK_DRAIN_TIMEOUT = 1.0
+
+
+class _HookDispatchDrain:
+    """Per-subscription in-flight dispatch counter.
+
+    Every event-hook dispatch that passed its deactivation check brackets
+    the handler call with :meth:`enter` / :meth:`leave`; the unloader waits
+    on :meth:`wait_idle` *outside* every host lock, so draining an in-flight
+    handler can never deadlock against the host registry locks while the
+    wait stays bounded (see ``_HOOK_DRAIN_TIMEOUT``).
+    """
+
+    __slots__ = ("_condition", "_in_flight")
+
+    def __init__(self) -> None:
+        self._condition = threading.Condition(threading.Lock())
+        self._in_flight = 0
+
+    def enter(self) -> None:
+        """Count one dispatch that is about to invoke its handler."""
+        with self._condition:
+            self._in_flight += 1
+
+    def leave(self) -> None:
+        """Release one finished dispatch and wake any drain waiter."""
+        with self._condition:
+            self._in_flight -= 1
+            if self._in_flight <= 0:
+                self._condition.notify_all()
+
+    def wait_idle(self, timeout: float) -> bool:
+        """Wait up to *timeout* seconds until no dispatch is in flight."""
+        with self._condition:
+            return self._condition.wait_for(lambda: self._in_flight <= 0, timeout)
 
 
 @dataclass(frozen=True)
@@ -249,7 +290,7 @@ class PluginHostContext:
         self._search_providers: list[SearchProviderContribution] = []
         self._theme_tokens: list[ThemeTokenContribution] = []
         self._event_hooks: dict[type, list[tuple[Callable, str]]] = {}
-        self._event_subscriptions: list[tuple[str, EventSubscriptionPort, dict[str, bool]]] = []
+        self._event_subscriptions: list[tuple[str, EventSubscriptionPort, dict[str, bool], _HookDispatchDrain]] = []
         self._event_hooks_lock = threading.Lock()
         self._notifications: list[dict[str, str]] = []
 
@@ -1333,7 +1374,9 @@ class PluginHostContext:
         """Register a handler for a lifecycle event.
 
         The handler runs synchronously in the EventBus publishing thread. It
-        must not mutate Qt UI directly; unload closes the host-owned subscription.
+        must not mutate Qt UI directly; unload closes the host-owned
+        subscription and briefly drains an in-flight dispatch before
+        returning.
         """
         if not isinstance(event_type, type) or not issubclass(event_type, DomainEventBase):
             raise TypeError("hook event_type must be a DomainEvent subclass")
@@ -1344,16 +1387,25 @@ class PluginHostContext:
         if owner is None:
             return
         active = {"value": True}
+        drain = _HookDispatchDrain()
 
         def dispatch(event: DomainEventBase) -> None:
             if active["value"]:
-                with self._host_identity_scope(self._executing_plugin_var, owner):
-                    handler(event)
+                # Counted after the deactivation check, before the handler:
+                # an unloader that flips ``active`` then waits on the counter
+                # therefore covers every dispatch that is running (or already
+                # committed to run) this handler.
+                drain.enter()
+                try:
+                    with self._host_identity_scope(self._executing_plugin_var, owner):
+                        handler(event)
+                finally:
+                    drain.leave()
 
         with self._event_hooks_lock:
             self._event_hooks.setdefault(event_type, []).append((handler, owner))
             subscription = _event_bus().subscribe(event_type, dispatch)
-            self._event_subscriptions.append((owner, subscription, active))
+            self._event_subscriptions.append((owner, subscription, active, drain))
 
     def file_handlers(self) -> list[FileHandlerContribution]:
         return list(self._file_handlers)
@@ -1535,23 +1587,40 @@ class PluginHostContext:
         self._class_owners = {cid: owner for cid, owner in self._class_owners.items() if owner != target}
         with self._event_hooks_lock:
             subscriptions = [
-                (subscription, active)
-                for pid, subscription, active in self._event_subscriptions
+                (subscription, active, drain)
+                for pid, subscription, active, drain in self._event_subscriptions
                 if pid == target
             ]
             self._event_subscriptions = [
-                (pid, subscription, active)
-                for pid, subscription, active in self._event_subscriptions
+                (pid, subscription, active, drain)
+                for pid, subscription, active, drain in self._event_subscriptions
                 if pid != target
             ]
             self._event_hooks = {
                 etype: [(h, pid) for h, pid in handlers if pid != target]
                 for etype, handlers in self._event_hooks.items()
             }
-            for _subscription, active in subscriptions:
+            for _subscription, active, _drain in subscriptions:
                 active["value"] = False
-        for subscription, _active in subscriptions:
+        for subscription, _active, _drain in subscriptions:
             subscription.close()
+        # Drain an in-flight hook dispatch WITHOUT holding any host lock:
+        # waiting under ``_event_hooks_lock`` (or any host registry lock)
+        # could deadlock against a handler that itself calls back into the
+        # host, so every lock above was released first.  The wait is bounded
+        # by a single shared deadline across all of the plugin's hooks; on
+        # timeout we only warn — the unload must not hang on a wedged
+        # third-party handler.
+        deadline = time.monotonic() + _HOOK_DRAIN_TIMEOUT
+        for _subscription, _active, drain in subscriptions:
+            remaining = max(deadline - time.monotonic(), 0.0)
+            if not drain.wait_idle(remaining):
+                _log.warning(
+                    "Unregistered plugin '%s' without draining its event hook "
+                    "(still dispatching after %.1fs)",
+                    target,
+                    _HOOK_DRAIN_TIMEOUT,
+                )
         _log.info("Unregistered contributions for plugin '%s'", target)
 
 

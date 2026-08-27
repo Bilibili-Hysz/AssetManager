@@ -9,9 +9,13 @@ plugin manager dialog cannot leave residues behind.
 from __future__ import annotations
 
 import logging
+import threading
+import time
+from dataclasses import dataclass
 
+from AssetsManager.core.event_contracts import DomainEventBase
 from AssetsManager.core.plugins.host_context import PluginHostContext
-from AssetsManager.plugin_api import CommandOperator, FileParser, Preferences
+from AssetsManager.plugin_api import CommandOperator, EventHook, FileParser, Preferences
 
 
 class _AlphaOp(CommandOperator):
@@ -197,3 +201,110 @@ def test_unregister_with_padded_id_refused_gate_matches_normalized_subject(caplo
     assert "attempted to unregister contributions owned by 'pad.pid'" in caplog.text
     # Attacker's own contribution is untouched by the refused call.
     assert {cmd.id for cmd in host.commands()} == {"atk.cmd"}
+
+
+# ── Batch 61: unregister_plugin drains an in-flight event hook ───────────
+#
+# The dispatch wrapper counts itself as "in flight" once it passed the
+# deactivation check; ``unregister_plugin`` must wait (without holding any
+# host lock) for that count to reach zero before returning — with a bounded,
+# warn-only timeout so a wedged handler cannot hang the unload forever.
+
+
+@dataclass(frozen=True)
+class _StuckEvent(DomainEventBase):
+    payload: str = ""
+
+
+def _register_stuck_hook(host: PluginHostContext, handle) -> None:
+    """Register a minimal v2 EventHook class whose ``handle`` is *handle*."""
+
+    class StuckHook(EventHook):
+        event = _StuckEvent
+
+        def handle(self, ctx, event):
+            handle(ctx, event)
+
+    with host.plugin_registration("stuck.hook"):
+        assert host.register_class(StuckHook) is True
+
+
+def _publish_stuck_event_and_wait_started(started: threading.Event, payload: str) -> threading.Thread:
+    from AssetsManager.domain.event_bus import get_event_bus
+
+    publisher = threading.Thread(
+        target=lambda: get_event_bus().publish(_StuckEvent(payload=payload)),
+        daemon=True,
+        name="publish-stuck-event",
+    )
+    publisher.start()
+    assert started.wait(timeout=10.0), "handler never dispatched"
+    return publisher
+
+
+def test_unload_blocks_until_inflight_event_handler_returns():
+    started = threading.Event()
+    gate = threading.Event()
+    completed = threading.Event()
+
+    def handle(ctx, event):
+        started.set()
+        gate.wait(timeout=10.0)
+        completed.set()
+
+    host = PluginHostContext()
+    _register_stuck_hook(host, handle)
+    publisher = _publish_stuck_event_and_wait_started(started, "go")
+    # The handler is inside gate.wait(): its dispatch is counted in flight
+    # and cannot leave until we open the gate.
+
+    failures: list[BaseException] = []
+
+    def unload() -> None:
+        try:
+            # Host-side unload: enter explicit host identity.
+            with host._host_identity():
+                host.unregister_plugin("stuck.hook")
+        except BaseException as exc:  # pragma: no cover - regression guard
+            failures.append(exc)
+
+    unloader = threading.Thread(target=unload, daemon=True)
+    unloader.start()
+    unloader.join(timeout=0.5)
+    assert unloader.is_alive(), (
+        "unregister_plugin returned while the plugin's event handler was still in flight"
+    )
+    gate.set()
+    unloader.join(timeout=10.0)
+    assert not unloader.is_alive(), "unregister_plugin hung after the handler was released"
+    assert completed.is_set(), "handler must run to completion inside the drained dispatch"
+    publisher.join(timeout=10.0)
+    assert failures == []
+
+
+def test_unload_drain_timeout_warns_and_does_not_hang(caplog):
+    started = threading.Event()
+    gate = threading.Event()  # deliberately left unset past the drain timeout
+
+    def handle(ctx, event):
+        started.set()
+        gate.wait(timeout=10.0)
+
+    host = PluginHostContext()
+    _register_stuck_hook(host, handle)
+    publisher = _publish_stuck_event_and_wait_started(started, "wedged")
+
+    with caplog.at_level(logging.WARNING):
+        begin = time.monotonic()
+        # Host-side unload: enter explicit host identity.
+        with host._host_identity():
+            host.unregister_plugin("stuck.hook")
+        elapsed = time.monotonic() - begin
+
+    # Bounded (~1s drain budget), warn-only, never an exception.
+    assert elapsed >= 0.9
+    assert elapsed < 2.5, elapsed
+    assert "still dispatching" in caplog.text
+
+    gate.set()
+    publisher.join(timeout=10.0)

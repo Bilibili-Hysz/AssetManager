@@ -1,0 +1,349 @@
+{
+  "schema_version": 1,
+  "report_id": "restore-crash-intent-recovery-evidence-2026-08-26",
+  "captured_at": "2026-08-26T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/unit/test_library_export_service.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Restore intent marker lifecycle, crash-aftermath rollback, fail-closed refusal, stale/corrupt cleanup regressions",
+        "sample_count": 82,
+        "pass_criterion": "exit_code == 0; capability-gated symlink skip recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/focused-export.stdout.log",
+            "sha256": "a4cadb48c78011cdb37f8b89cafd17fb8fc4f670d15a7b57b115260ef66d79ee"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/focused-export.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/unit/test_library_service.py",
+          "tests/integration/test_library_service.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Library service open/lifecycle matrix after recovery-seam insertion",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/focused-libservice.stdout.log",
+            "sha256": "7755d98a5e6706f6a3ec324a9822faa9eb7681256b13061813f81feec2687338"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/focused-libservice.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full serial Python suite after interrupted-restore intent/recovery batch",
+        "sample_count": 4085,
+        "pass_criterion": "exit_code == 0; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/full.stdout.log",
+            "sha256": "40685ab7dd32e52c47f52cf7ecc11f932086c1d682346772028bd4b4f4921acb"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager/application/library_export_io.py",
+          "AssetsManager/application/library_export_service_restore.py",
+          "AssetsManager/application/library_service.py",
+          "tests/unit/test_library_export_service.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted Ruff check (unused import found and fixed, rerun clean)",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/ruff.stdout.log",
+            "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/ruff.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Ruff governance check",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/ruff-full.stdout.log",
+            "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/ruff-full.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python compilation check",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/compile-full.stdout.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/compile-full.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Repository governance script chain",
+        "sample_count": 6,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/governance.stdout.log",
+            "sha256": "33943d53c23540f71d431364272bb577eb551df627850ecc146549653ccfbc91"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/governance.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Whitespace check for current dirty worktree",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/diffcheck.stdout.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/diffcheck.stderr.log",
+            "sha256": "3307c227682ef1da0ac3049abd9cf827f5e10894803a2973355f9f5e4bb01a66"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index non-self-referential static checks after restore-intent report and manifest",
+        "sample_count": 9,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/static-post-index.stdout.log",
+            "sha256": "cd0bfa8fd867bd821dbb2285bb364681e91a49b915884928a4116f4e570ccba2"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/restore-intent-recovery/static-post-index.stderr.log",
+            "sha256": "3307c227682ef1da0ac3049abd9cf827f5e10894803a2973355f9f5e4bb01a66"
+          }
+        ]
+      }
+    ],
+    "note": "Focused export/restore: 82 passed, 1 capability-gated skip. Library-service matrix and full serial suite green: 4069 passed, 16 skipped, 20 deselected, 2 warnings. Crash state was constructed at the filesystem level by hand, not via real subprocess kills or power loss; no power-loss/exactly-once/cross-system atomicity claim is made. Fail-closed branch intentionally does not write canonical restore poison (bootstrap ACK token pinning would make it unacknowledgeable); the durable marker keeps failing opens until operator remediation."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/restore-crash-intent-recovery-evidence-2026-08-26.md",
+      "sha256": "f1a53c4d20d53a62d790e80677dfa96408dc6d88facadf79075807680aecf1f9"
+    },
+    {
+      "path": "AssetsManager/application/library_export_io.py",
+      "sha256": "0daeb60171343b30709b65f0310b65b9120d93f7a796048ccd4cadc4a50870ba"
+    },
+    {
+      "path": "AssetsManager/application/library_export_service_restore.py",
+      "sha256": "d0270832142aea2cfd5d7209ead612cc0d865fb65cdf1b59c9652ebbf133ce53"
+    },
+    {
+      "path": "AssetsManager/application/library_service.py",
+      "sha256": "765cd5259d96f26e207b7409789dffc430c4a664f0795a715aeae92b47a3af69"
+    },
+    {
+      "path": "tests/unit/test_library_export_service.py",
+      "sha256": "3cbd5fc85ec20a09549538db9e939cf3a091ec1e3cacff5d53a55593f06ae0ec"
+    },
+    {
+      "path": "docs/deep-weakness-audit-2026-08-22/02-app-data-pipeline.md",
+      "sha256": "44e67caff5041482830a0828c0c862c2156ad39250fa21a45663f1727363a351"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/restore-crash-intent-recovery-evidence-2026-08-26.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "RESTORE-CRASH-INTENT-RECOVERY-36-01",
+      "severity": "P2",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "RESTORE-CRASH-INTENT-RECOVERY-36-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/library_export_io.py:498",
+        "AssetsManager/application/library_export_io.py:502",
+        "AssetsManager/application/library_export_service_restore.py:307",
+        "AssetsManager/application/library_service.py:363",
+        "AssetsManager/application/library_service.py:589",
+        "tests/unit/test_library_export_service.py:1219",
+        "tests/unit/test_library_export_service.py:1306",
+        "tests/unit/test_library_export_service.py:1357"
+      ],
+      "surface": "A process death between the restore quarantine replace and install replace left no on-disk evidence and the next open silently created an empty database over the lost data",
+      "next_action": "[closure] Both named deliverables shipped: reachable recovery/ack surface via RESTORE-INTENT-RECOVERY-ACK (restore-intent-recovery-ack-evidence-2026-08-26.md), orphan staging sweep + quarantine caps via QUARANTINE-CAP-LIMITS-65-01 (restore-residue-sweep / quarantine-cap evidence).",
+      "dynamic_verification": "Focused export/restore matrix passed 82 tests including hand-constructed crash aftermath rollback and fail-closed refusal; full serial suite passed 4069 tests. No real subprocess kill or power-loss verification was executed"
+    }
+  ]
+}

@@ -189,7 +189,7 @@ async def handle_download(request):
                 },
             )
             try:
-                quota_result = consume_free_download_quota(request)
+                quota_result = await asyncio.to_thread(consume_free_download_quota, request)
             except QuotaUnavailableError:
                 status = 503
                 return _quota_unavailable_response()
@@ -240,7 +240,7 @@ async def handle_download(request):
                 return error_response("Failed to create ZIP", status=status, code="internal_error")
 
             try:
-                quota_result = consume_free_download_quota(request)
+                quota_result = await asyncio.to_thread(consume_free_download_quota, request)
             except QuotaUnavailableError:
                 try:
                     os.unlink(tmp_path)
@@ -355,7 +355,7 @@ async def handle_batch_download(request):
             return error_response("Failed to create ZIP", status=status, code="internal_error")
 
         try:
-            quota_result = consume_free_download_quota(request)
+            quota_result = await asyncio.to_thread(consume_free_download_quota, request)
         except QuotaUnavailableError:
             try:
                 os.unlink(tmp_path)

@@ -487,7 +487,14 @@ class ShopService:
         if not fields:
             raise ValidationError("item", "no fields to update")
         try:
-            updated = _record(repo.update_item(int(item_id), **fields))
+            expected_updated_at = payload.get("expected_updated_at")
+            updated = _record(repo.update_item(
+                int(item_id),
+                expected_updated_at=(
+                    None if expected_updated_at is None else float(expected_updated_at)
+                ),
+                **fields,
+            ))
         except DuplicateError as exc:
             raise ValidationError(
                 "path", "an item with this path already exists"

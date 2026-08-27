@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "report_id": "plugin-lifecycle-category-refresh-evidence-2026-08-22",
+  "captured_at": "2026-08-22T22:00:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "--basetemp=.zcode/pytest-plugin-settings-evidence",
+          "-q",
+          "tests/plugins",
+          "tests/integration/test_plugin_service.py",
+          "tests/unit/test_file_list_category_refresh.py",
+          "tests/desktop/test_domain_event_bridge.py",
+          "tests/unit/test_architecture_boundaries.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "plugin lifecycle discovery/disable persistence, queued category bridge, FileListPanel refresh, and architecture boundary tests",
+        "sample_count": 249,
+        "pass_criterion": "exit_code == 0 and all selected tests pass with RuntimeWarning treated as an error",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-22/plugin-lifecycle-category-final/focused.stdout.log",
+            "sha256": "7dfb30fbe515eda0b84fab834adee163d832c0d6873a51d4fd35ec42d9e09cae"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/plugin-lifecycle-category-final/focused.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "--basetemp=.zcode/pytest-plugin-concurrency-full-isolated",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "full Python test tree with plugin AppSettings test isolation",
+        "sample_count": 3971,
+        "pass_criterion": "exit_code == 0; no failed tests; platform skips and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-22/plugin-lifecycle-category-final/full.stdout.log",
+            "sha256": "35138aad3b6ca7356d35af68cca8e8ccfd700315d445c44894eb2b4ae17ac4ba"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py",
+          "&&",
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "current dirty worktree; audit validator saw 20 historical manifests before this report was indexed",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-22/plugin-lifecycle-category-final/static.stdout.log",
+            "sha256": "7e9418aa7802280afa775ec7f900ee9ebb49a777517cfbce798638f551cc7cc6"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/plugin-lifecycle-category-final/static.stderr.log",
+            "sha256": "fcc92ce003b62de9fa868ddf3f458eb7dea333c0c599e8282c7cf5922ea14a02"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/plugin-lifecycle-category-final/baseline.status.log",
+            "sha256": "2bf23ef7ced42c764425112705bf5e8bf7ef74a0f6722b572872752fc524421b"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/plugin-lifecycle-category-final/baseline.diff.patch",
+            "sha256": "35900040b21e530884e02e7669a5f68ca91fa6a8517b4a47000541cbd8505f5e"
+          }
+        ]
+      }
+    ],
+    "note": "Focused: 249 passed. Full suite: 3942 passed, 12 skipped, 17 deselected, 2 warnings, 0 failed. Browser, real LAN backend, CVE, performance, package/release, clean checkout, power-loss, and independent platform validation were not run."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/auth-plugin-websocket-implementation-evidence-2026-08-22.md",
+      "sha256": "e220fdb7d087700c7963aaec4f488ffd64e5ac6339541e420c6ca3e458610765"
+    },
+    {
+      "path": "docs/full-review/auth-revocation-concurrency-hardening-evidence-2026-08-22.md",
+      "sha256": "2468f756664966e3f308f59e9ef73d6c6a09bcf9ecb5365feeafd763e65b3a0d"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/auth-plugin-websocket-implementation-evidence-2026-08-22.md",
+    "docs/full-review/plugin-lifecycle-category-refresh-evidence-2026-08-22.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "PLUGIN-LIFECYCLE-CONC-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "PLUGIN-LIFECYCLE-CONC-01"
+      ],
+      "anchors": [
+        "AssetsManager/core/plugins/manager.py:87",
+        "AssetsManager/core/plugins/manager.py:185",
+        "tests/plugins/test_manager_lifecycle_concurrency.py:392",
+        "tests/conftest.py:442"
+      ],
+      "surface": "Plugin lifecycle callback concurrency, discovery ordering, durable disable intent, and test isolation from user settings",
+      "next_action": "Independent plugin ecosystem, multi-process persistence, and Windows/POSIX lifecycle validation",
+      "dynamic_verification": "Focused plugin tests and full Python suite passed on Windows; external plugin ecosystem and independent platform proof not run"
+    },
+    {
+      "canonical_id": "PLUGIN-CATEGORY-REFRESH-01",
+      "severity": "P2",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "PLUGIN-CATEGORY-REFRESH-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/asset_filters.py:15",
+        "AssetsManager/panels/_event_bridge.py:39",
+        "AssetsManager/panels/file_list/_base.py:49",
+        "tests/unit/test_file_list_category_refresh.py:36"
+      ],
+      "surface": "Open FileListPanel category refresh with application-to-Qt thread boundary",
+      "next_action": "Design a shared category generation snapshot for all legacy map/label consumers",
+      "dynamic_verification": "Focused queued-refresh and architecture-boundary tests plus full Python suite passed; browser E2E and multi-platform GUI proof not run"
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "report_id": "full-review-closure-2026-08-27",
+  "captured_at": "2026-08-27T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "a6206566808e9a43c98ffe9a7d7d99d7270d2d09",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "static_only",
+    "tests_executed": false,
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Closure reconciliation validation pass",
+        "sample_count": 91,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "scripts/check_audit_reports.py",
+            "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+          }
+        ]
+      }
+    ],
+    "note": "Documentation-only closure: four machine-readable errata plus this consolidated register; no production bytes touched."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/full-review-closure-2026-08-27.md",
+      "sha256": "1ad627d5b5722c9fabdf19cf6d267f22e4a36045acbc46ae71c21c8ccfacfefc"
+    },
+    {
+      "path": "docs/full-review/00-INDEX.md",
+      "sha256": "28bbe78192abe39030b7eea373a9e627b313a3fd284ac32ea70cb9150753e1ae"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/full-review-closure-2026-08-27.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "FULL-REVIEW-CLOSURE-2026-08-27",
+      "severity": "P2",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "FULL-REVIEW-CLOSURE-2026-08-27"
+      ],
+      "anchors": [
+        "docs/full-review/full-review-closure-2026-08-27.md:1",
+        "docs/full-review/00-INDEX.md:1"
+      ],
+      "surface": "Post-batch-68 wrap-up: stale decision-gated next_action rows reconciled and remaining open-item inventory fixed at four categories",
+      "next_action": "Open items are external-owned lint/WIP (other session), one product-gated If-Match contract, Windows-hosted CI lanes and standing verification debt",
+      "dynamic_verification": "Validator reports all manifests valid at closure time; no runtime behavior change was involved in this documentation pass"
+    }
+  ]
+}

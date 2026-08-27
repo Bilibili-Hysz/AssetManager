@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "report_id": "tunnel-cookie-farm-guard-evidence-2026-08-27",
+  "captured_at": "2026-08-27T00:30:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/lan/test_tunnel_rate_limit_isolation.py",
+          "tests/lan/test_lan_api.py",
+          "-k",
+          "tunnel or rate_limit or anonymous_quota"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Anti-farming regressions plus anonymous-quota behavioral subset; rejection answers must carry no minted identity cookie while the first successful cookieless response still mints",
+        "sample_count": 12,
+        "pass_criterion": "exit_code == 0; deselections recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/cookie-farm/focused.stdout.log",
+            "sha256": "21bccfbaa310147512ab099934485016d7c4d405b8605de60c9cc7ddb0f0c3d1"
+          }
+        ]
+      }
+    ],
+    "note": "Final serial suite green on final bytes: 4097 passed, 16 skipped, 20 deselected, 2 warnings. Only closes the zero-cost farming path; legitimate multi-device clients still obtain independent buckets. No Cloudflare edge E2E, soak, or distributed test."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/tunnel-cookie-farm-guard-evidence-2026-08-27.md",
+      "sha256": "111c467453b8e7cb486c6407347d0af2c8c6f3c3e3a90cc2fed6c83a2194c6de"
+    },
+    {
+      "path": "AssetsManager/lan/security.py",
+      "sha256": "14bc11d4ca0e2e7155befea51619dab150ca7b1549bb2088ddae15d125ad1cf4"
+    },
+    {
+      "path": "tests/lan/test_tunnel_rate_limit_isolation.py",
+      "sha256": "b01ce9c410ef1a8fbcb26af714a637dc15a4ca924e914e0ec8a473dfc43b1908"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/tunnel-cookie-farm-guard-evidence-2026-08-27.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "TUNNEL-COOKIE-FARM-43-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "TUNNEL-COOKIE-FARM-43-01"
+      ],
+      "anchors": [
+        "AssetsManager/lan/security.py:143",
+        "AssetsManager/lan/security.py:241",
+        "tests/lan/test_tunnel_rate_limit_isolation.py:149",
+        "tests/lan/test_tunnel_rate_limit_isolation.py:167"
+      ],
+      "surface": "Middleware-produced rejections carried freshly minted am_quota_id cookies, letting denied clients farm identities for later isolated buckets",
+      "next_action": "Retain the success-only issuance policy; separately evaluate genuine multi-device rotation and Cloudflare edge behavior",
+      "dynamic_verification": "Focused tunnel/quota subset passed 12 tests and the final-state isolation file passed 13 tests; full serial suite passed 4097 tests with recorded skips and warnings"
+    }
+  ]
+}

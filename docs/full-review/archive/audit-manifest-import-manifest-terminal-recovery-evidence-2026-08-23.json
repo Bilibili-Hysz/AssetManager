@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "report_id": "import-manifest-terminal-recovery-evidence-2026-08-23",
+  "captured_at": "2026-08-23T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "--basetemp=.zcode/pytest-batch26a-focused-evidence",
+          "-q",
+          "tests/unit/test_import_manifest_store.py",
+          "tests/integration/test_import_service.py",
+          "tests/integration/test_reconciliation_queue_fault_injection.py",
+          "tests/integration/test_reconciliation_queue_process_matrix.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Import manifest terminal/recovery idempotence, cancellation compensation, update failure isolation and reconciliation CAS",
+        "sample_count": 25,
+        "pass_criterion": "exit_code == 0; RuntimeWarning treated as error",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/import-manifest-terminal-recovery/focused.stdout.log",
+            "sha256": "629e9b7b407eeb80f4c28bb3391a449bfce7be8509554c5a83202a3a36809d0f"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/import-manifest-terminal-recovery/focused.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "--basetemp=.zcode/pytest-batch26a-full",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python suite after import manifest terminal/recovery correctness changes",
+        "sample_count": 4032,
+        "pass_criterion": "exit_code == 0; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/import-manifest-terminal-recovery/full.stdout.log",
+            "sha256": "e899d0ad19da6a0356904ca5d1f082072b159011d10e4e047fcc351815646e4e"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/import-manifest-terminal-recovery/full.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py",
+          "&&",
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Pre-index governance before 26-A report and manifest indexing; all 40 prior manifests",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/import-manifest-terminal-recovery/static.stdout.log",
+            "sha256": "02b0248684cf213da960513baba9093db0afbe060f95fd868f46872ab9d79340"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/import-manifest-terminal-recovery/static.stderr.log",
+            "sha256": "af1cbe7332cca945e3b4ca037c7553a1be82d1c06146b8ec622cc3cc05e2dde2"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py",
+          "&&",
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index governance after 26-A report and manifest; all 41 manifests",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/import-manifest-terminal-recovery/static-post-index.stdout.log",
+            "sha256": "644e34f165d2804a53bde5163c7dbb1dd436f18bd4369faf9b38e57cd6a67a32"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/import-manifest-terminal-recovery/static-post-index.stderr.log",
+            "sha256": "af1cbe7332cca945e3b4ca037c7553a1be82d1c06146b8ec622cc3cc05e2dde2"
+          }
+        ]
+      }
+    ],
+    "note": "Focused: 25 passed. Full Python: 3998 passed, 14 skipped, 20 deselected, 2 warnings. Pre-index and post-index governance passed; the post-index run validated all 41 manifests. Filesystem+SQLite+queue atomicity, power-loss, copy replay/idempotency and subprocess import crash windows remain unverified."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/audit-manifest-thumbnail-browser-intermediary-e2e-evidence-2026-08-23.json",
+      "sha256": "58ffb783e3e1b19b6a954ffeb609e84951c2229f27387d34b590ce340df093de"
+    },
+    {
+      "path": "docs/full-review/thumbnail-browser-intermediary-e2e-evidence-2026-08-23.md",
+      "sha256": "02f36b2871e101bd56f259fed4c0623b977576d2c6022dd64e371eda3dadf876"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/thumbnail-browser-intermediary-e2e-evidence-2026-08-23.md",
+    "docs/full-review/import-manifest-terminal-recovery-evidence-2026-08-23.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "IMPORT-MANIFEST-TERMINAL-RECOVERY-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "IMPORT-MANIFEST-TERMINAL-RECOVERY-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/import_manifest_store.py:16",
+        "AssetsManager/application/import_manifest_store.py:202",
+        "AssetsManager/application/import_manifest_store.py:277",
+        "AssetsManager/application/import_service.py:341",
+        "tests/unit/test_import_manifest_store.py:72",
+        "tests/integration/test_import_service.py:301"
+      ],
+      "surface": "Import manifest recovery terminal state, CAS transition guards and partial/cancelled filesystem projection compensation",
+      "next_action": "Add Windows-safe subprocess import termination checkpoints and explicit copy replay/idempotency only as a separate batch; retain cross-system atomicity and power-loss as unverified",
+      "dynamic_verification": "25 focused tests and 3998 full Python tests passed on Windows; recovery is terminal/idempotent, terminal rows reject stale updates, manifest update failure continues copying, and copied cancellation enqueues rescan. Power-loss, subprocess import crash windows and filesystem/SQLite/queue atomicity remain unverified."
+    }
+  ]
+}

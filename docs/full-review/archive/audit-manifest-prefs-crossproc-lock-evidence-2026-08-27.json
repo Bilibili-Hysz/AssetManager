@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "report_id": "prefs-crossproc-lock-evidence-2026-08-27",
+  "captured_at": "2026-08-27T16:30:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/plugins/test_plugin_context_hardening.py",
+          "tests/plugins/test_permission_enforcement.py",
+          "tests/plugins/test_plugin_api_v2.py",
+          "tests/plugins/test_download_tracker_concurrency.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Same-process barrier regression, permission enforcement, dual-host round-trip, and the new real two-child cross-process regression",
+        "sample_count": 55,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/prefs-crossproc/focused.stdout.log",
+            "sha256": "edf6eab3168275f6b99c9102823219a0e5c615a9b00489a6fc6a5dc49eb27e56"
+          }
+        ]
+      }
+    ],
+    "note": "Best-effort OS lock on a retained sidecar; no exactly-once or crash-recovery claim. Lock files intentionally kept (same as library locks) and excluded from the bag-JSON listing assertion. Final serial suite green at 4117 passed."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/prefs-crossproc-lock-evidence-2026-08-27.md",
+      "sha256": "df7bece2effebdbe45642119cf6ef6ca836e0b201c6f48eacd994a74f1fac022"
+    },
+    {
+      "path": "AssetsManager/core/plugins/preferences.py",
+      "sha256": "17dd03df61c1bd27e941138cbbef08c8610f97f9cdb4eba33bb767c34483c595"
+    },
+    {
+      "path": "tests/plugins/test_plugin_context_hardening.py",
+      "sha256": "9b0f31f9062ff155a5bd139c67c2647df3546e150b15ae66c5a12e1d6c6eab13"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/prefs-crossproc-lock-evidence-2026-08-27.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "PREFS-CROSSPROC-LOCK-55-01",
+      "severity": "P2",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "PREFS-CROSSPROC-LOCK-55-01"
+      ],
+      "anchors": [
+        "AssetsManager/core/plugins/preferences.py:34",
+        "AssetsManager/core/plugins/preferences.py:159",
+        "tests/plugins/test_plugin_context_hardening.py:387"
+      ],
+      "surface": "Batch 49 left an explicit boundary: cross-process prefs writers needed an OS-level lock; back-to-back full-file rewrites could drop a key",
+      "next_action": "Retain the advisory sidecar; revisit only if pair-wise key merges become a hard requirement",
+      "dynamic_verification": "Plugin matrix passed 55 including a real two-child subprocess regression where both writers' keys survive; final serial suite passed 4117 tests"
+    }
+  ]
+}

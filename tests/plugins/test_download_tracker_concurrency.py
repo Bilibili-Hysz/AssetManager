@@ -4,6 +4,8 @@ import threading
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
+import pytest
+
 from AssetsManager.domain.events import FileSystemChanged
 
 
@@ -136,3 +138,101 @@ def test_history_panel_build_uses_snapshot_while_history_changes(monkeypatch):
         thread.join()
 
     assert errors == []
+
+
+def test_import_hook_emits_refresh_after_history_update(monkeypatch):
+    """handle() pings the refresh channel exactly once per applied change."""
+    tracker = _load_tracker()
+    bag = _PreferenceBag()
+    ctx = _Context(bag)
+    hook = tracker.ImportHook()
+
+    calls: list[int] = []
+    monkeypatch.setattr(tracker, "_emit_refresh", lambda: calls.append(1))
+
+    hook.handle(ctx, FileSystemChanged(kind="import", paths=("asset.png",)))
+    assert calls == [1]
+
+    # Untracked kinds and empty change sets must not ping.
+    hook.handle(ctx, FileSystemChanged(kind="deleted", paths=("asset.png",)))
+    assert calls == [1]
+    hook.handle(ctx, FileSystemChanged(kind="import", paths=()))
+    assert calls == [1]
+
+
+def test_refresh_signal_is_class_attribute_with_direct_emit():
+    """_RefreshSignal.sig is a class attribute and emits into plain slots."""
+    tracker = _load_tracker()
+    try:
+        from PySide6.QtCore import Signal
+    except ImportError:  # pragma: no cover - env without Qt bindings
+        assert tracker._QT_READY is False
+        assert tracker._RefreshSignal.sig is None
+        return
+
+    sig = tracker._RefreshSignal.sig
+    assert isinstance(sig, Signal)
+    assert "sig" in vars(tracker._RefreshSignal)  # class attribute, not instance
+
+    notifier = tracker._ensure_refresh_notifier()
+    assert notifier is not None
+    assert tracker._ensure_refresh_notifier() is notifier  # lazy singleton
+
+    received: list[int] = []
+    # The signal carries no payload, so the slot must be zero-arg.
+    notifier.sig.connect(lambda: received.append(1))
+    notifier.sig.emit()
+    assert received == [1]
+
+
+def test_refresh_notifies_under_core_application_instance():
+    """End-to-end: worker emit -> QueuedConnection -> GUI loop delivers."""
+    pytest.importorskip("PySide6.QtCore")
+    from PySide6.QtCore import QCoreApplication, Qt
+
+    tracker = _load_tracker()
+    bag = _PreferenceBag()
+    ctx = _Context(bag)
+
+    app = QCoreApplication.instance()
+    if app is None:
+        app = QCoreApplication([])
+    try:
+        notifier = tracker._ensure_refresh_notifier()
+        assert notifier is not None
+
+        received: list = []
+        # Same wiring as HistoryPanel: explicit QueuedConnection.
+        notifier.sig.connect(
+            lambda: received.append(dict(tracker._history)),
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+        hook = tracker.ImportHook()
+        hook.handle(ctx, FileSystemChanged(kind="copied", paths=("asset.png",)))
+        assert received == []  # queued, nothing delivered yet
+
+        app.processEvents()  # stand-in for the GUI event loop
+        assert len(received) == 1
+        assert list(received[0]) == ["asset.png"]
+        received.clear()
+
+        # Emits from a worker thread queue safely and deliver on the pump
+        # (Qt may coalesce back-to-back no-payload emissions into one
+        # delivery, so drain the queue instead of asserting exact counts).
+        worker = threading.Thread(
+            target=hook.handle,
+            args=(ctx, FileSystemChanged(kind="import", paths=("asset2.png",))),
+        )
+        worker.start()
+        worker.join()
+        assert received == []
+        for _ in range(5):
+            app.processEvents()  # Qt6 has no hasPendingEvents; pump to converge
+            if received:
+                break
+        assert len(received) >= 1
+        snapshots = [path for snapshot in received for path in snapshot]
+        assert set(snapshots) == {"asset.png", "asset2.png"}
+    finally:
+        del app

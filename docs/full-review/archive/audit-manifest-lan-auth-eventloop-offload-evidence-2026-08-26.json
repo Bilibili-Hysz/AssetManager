@@ -1,0 +1,348 @@
+{
+  "schema_version": 1,
+  "report_id": "lan-auth-eventloop-offload-evidence-2026-08-26",
+  "captured_at": "2026-08-26T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/lan/test_login_share_verify_offload.py",
+          "tests/lan/test_websocket_auth_offload.py",
+          "tests/lan/test_l2_rate_input_cpu.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "New parked-recording offload regressions plus existing websocket/access-key/token offload precedents",
+        "sample_count": 18,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/focused-offload.stdout.log",
+            "sha256": "5a89f48701f222443d83f07150a6b0a6623e2e378426eee8588741721d624f13"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/focused-offload.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/lan/test_lan_api.py",
+          "-k",
+          "login or register or verify or share_verify or lockout"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Behavioral net: login/register status codes and cookies, share verify contract, expired 410, brute-force lockout counting and reset",
+        "sample_count": 25,
+        "pass_criterion": "exit_code == 0; deselections recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/focused-behavior.stdout.log",
+            "sha256": "c9c931a82205085ba71214f1d6d72ba6831ba619bb67ebb5e0836fc93308a88f"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/focused-behavior.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full serial Python suite after auth event-loop offload batch",
+        "sample_count": 4089,
+        "pass_criterion": "exit_code == 0; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/full.stdout.log",
+            "sha256": "38bbb909f3f139f8ad3a6f093b0073a52b1d75b71a5faf268b3fa85c48073a98"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager/lan/routes/auth.py",
+          "AssetsManager/lan/routes/shares.py",
+          "tests/lan/test_login_share_verify_offload.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Targeted Ruff check for offload changes",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/ruff.stdout.log",
+            "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/ruff.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Ruff governance check",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/ruff-full.stdout.log",
+            "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/ruff-full.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python compilation check",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/compile-full.stdout.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/compile-full.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Repository governance script chain (after README python_test_files 278->279 update)",
+        "sample_count": 6,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/governance.stdout.log",
+            "sha256": "33943d53c23540f71d431364272bb577eb551df627850ecc146549653ccfbc91"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/governance.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Whitespace check for current dirty worktree",
+        "sample_count": 1,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/diffcheck.stdout.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/diffcheck.stderr.log",
+            "sha256": "3307c227682ef1da0ac3049abd9cf827f5e10894803a2973355f9f5e4bb01a66"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Post-index non-self-referential static checks after auth offload report and manifest",
+        "sample_count": 9,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/static-post-index.stdout.log",
+            "sha256": "cd0bfa8fd867bd821dbb2285bb364681e91a49b915884928a4116f4e570ccba2"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-26/auth-loop-offload/static-post-index.stderr.log",
+            "sha256": "3307c227682ef1da0ac3049abd9cf827f5e10894803a2973355f9f5e4bb01a66"
+          }
+        ]
+      }
+    ],
+    "note": "Focused matrices: 18 passed (offload routing) and 25 passed (login/register/share/lockout behavioral net). Full serial suite: 4073 passed, 16 skipped, 20 deselected, 2 warnings. Offloaded: authenticate_user, password verify, register_user + follow-up authenticate, share verify_password. Kept synchronous by design: lockout accounting order, per-request cached token verification, activity logging. No wall-clock benchmark, production E2E, or load-test claim is made."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/lan-auth-eventloop-offload-evidence-2026-08-26.md",
+      "sha256": "c7387a611cbeaf0efc24f2e974e0865e1fc083a34a20faf96b9305e7125d5372"
+    },
+    {
+      "path": "AssetsManager/lan/routes/auth.py",
+      "sha256": "6a4b346ea4dff7402b7bc567e962f50bc64148da5b3f244307f56aaac50d6a99"
+    },
+    {
+      "path": "AssetsManager/lan/routes/shares.py",
+      "sha256": "53f5593a68ba174694e69e9826b92e237b21eee91e338b1c5b8d6f211e41eeff"
+    },
+    {
+      "path": "tests/lan/test_login_share_verify_offload.py",
+      "sha256": "36876f81941cc973ba4af19c4830dbacf229b196fc3b3860757b43241dc24830"
+    },
+    {
+      "path": "docs/deep-weakness-audit-2026-08-22/06-lan-server-security.md",
+      "sha256": "5f4ed866c517b2b739cd4811b286781f1af2f0f7a8fe52b13e337ed2396c00b2"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/lan-auth-eventloop-offload-evidence-2026-08-26.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "LAN-AUTH-EVENTLOOP-OFFLOAD-37-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "LAN-AUTH-EVENTLOOP-OFFLOAD-37-01"
+      ],
+      "anchors": [
+        "AssetsManager/lan/routes/auth.py:35",
+        "AssetsManager/lan/routes/auth.py:47",
+        "AssetsManager/lan/routes/auth.py:73",
+        "AssetsManager/lan/routes/auth.py:82",
+        "AssetsManager/lan/routes/shares.py:249",
+        "tests/lan/test_login_share_verify_offload.py:94",
+        "tests/lan/test_login_share_verify_offload.py:117",
+        "tests/lan/test_login_share_verify_offload.py:144",
+        "tests/lan/test_login_share_verify_offload.py:182"
+      ],
+      "surface": "Password/user login, registration, and share-password verification ran PBKDF2-600k synchronously on the event loop, stalling every other LAN request for the hash duration",
+      "next_action": "Retain to_thread offloading; separately evaluate wall-clock latency benchmarks and whether per-request middleware token verification should follow if cache hit rates degrade",
+      "dynamic_verification": "Parked-recording regressions prove all five call sites route through to_thread with loop liveness during parking, and the login/share/lockout behavioral net passes through real PBKDF2; full serial suite passed 4073 tests. No wall-clock latency or load measurement was executed"
+    }
+  ]
+}

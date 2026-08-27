@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "report_id": "thumbnail-blur-cache-privacy-evidence-2026-08-23",
+  "captured_at": "2026-08-23T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "--basetemp=.zcode/pytest-batch25e-privacy-focused-evidence",
+          "-q",
+          "tests/lan/test_thumbnail_admission.py",
+          "tests/lan/test_image_routes.py",
+          "tests/lan/test_lan_api.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "LAN blurred-thumbnail HTTP cache privacy and existing route security regressions",
+        "sample_count": 255,
+        "pass_criterion": "exit_code == 0; RuntimeWarning treated as error",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-blur-cache-privacy/focused.stdout.log",
+            "sha256": "45638fe9270f72dec9ace5af684be48bd1c70ca4159c1d7ffc898c4c26829966"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-blur-cache-privacy/focused.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "--basetemp=.zcode/pytest-batch25e-privacy-full",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Full Python suite after blurred-thumbnail privacy header fix",
+        "sample_count": 4013,
+        "pass_criterion": "exit_code == 0; no failed tests; platform skips and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-blur-cache-privacy/full.stdout.log",
+            "sha256": "5ef31ce307fa560b86e7d5586ecb2083c254b0a8328b054114459a8b65f20584"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-blur-cache-privacy/full.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py",
+          "&&",
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Static governance gates before post-index privacy report validation",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-blur-cache-privacy/static.stdout.log",
+            "sha256": "53a1d11117963d5e2765991c48820de3033935d95a4fd8223d6a8c06c49e1989"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-23/thumbnail-blur-cache-privacy/static.stderr.log",
+            "sha256": "1d3ca222e60538e69c0e47309d51cd312bb9191cf7c5404ab96d7d84ba4fa9b8"
+          }
+        ]
+      }
+    ],
+    "note": "Focused: 255 passed. Full suite: 3985 passed, 14 skipped, 17 deselected, 2 warnings, 0 failed. Blurred single-thumbnail output was verified private/no-store and unblurred processed output retained public caching. Batch cache headers and persistent blur provenance remain outside this batch."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/audit-manifest-thumbnail-cross-process-ownership-evidence-2026-08-22.json",
+      "sha256": "29475549076d20bae8684dc196be41c26ac19e4d079395bceab2a4f9a59b70ec"
+    },
+    {
+      "path": "docs/full-review/thumbnail-cross-process-ownership-evidence-2026-08-22.md",
+      "sha256": "196f1333bd867e8910384076dbaa2c582f6b3071474b3e910e79c433719046c2"
+    },
+    {
+      "path": "docs/full-review/thumbnail-shared-lan-profile-admission-evidence-2026-08-23.md",
+      "sha256": "c60426ca2d3758b59e444448f7087d698cd3cbc2f403d61215fb6fe2a39110bd"
+    },
+    {
+      "path": "docs/full-review/audit-manifest-thumbnail-shared-lan-profile-admission-evidence-2026-08-23.json",
+      "sha256": "a8a6aef7c6c3c3fecb0bc4037a65bbe92eab7baa8a476bc25d5a4f8488dac873"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/thumbnail-blur-cache-privacy-evidence-2026-08-23.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "THUMBNAIL-BLUR-CACHE-PRIVACY-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "THUMBNAIL-BLUR-CACHE-PRIVACY-01"
+      ],
+      "anchors": [
+        "AssetsManager/lan/routes/thumbnails.py:21",
+        "AssetsManager/lan/routes/thumbnails.py:148",
+        "tests/lan/test_thumbnail_admission.py:97"
+      ],
+      "surface": "LAN blurred processed thumbnail HTTP cache policy",
+      "next_action": "Evaluate batch response cache policy, WebUI/sessionStorage namespace isolation, persistent blur provenance and v3/profile-aware key design as separate batches",
+      "dynamic_verification": "255 focused and 3985 full Python tests passed on Windows; static governance gates passed; independent browser cache and cross-platform filesystem proof not run"
+    }
+  ]
+}

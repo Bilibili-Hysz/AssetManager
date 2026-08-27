@@ -18,9 +18,23 @@ from AssetsManager.core.schema_defs import (
     validate_schema_object,
     validate_schema_objects,
 )
-from AssetsManager.domain.errors import DuplicateError
+from AssetsManager.domain.errors import (
+    DuplicateError,
+    OperationNotPermitted,
+)
 
 _R = TypeVar("_R")
+
+
+class ShopItemVersionConflictError(OperationNotPermitted):
+    """Optimistic-concurrency rejection for shop item updates (HTTP 409)."""
+
+    code = "shop_item_version_conflict"
+
+    def __init__(self) -> None:
+        super().__init__("Shop item was updated concurrently")
+
+
 
 
 def _repository_operation(method: Callable[..., _R]) -> Callable[..., _R]:
@@ -581,7 +595,13 @@ class ShopRepository(_CommerceRepository):
         }
 
     @_repository_operation
-    def update_item(self, item_id: int, **fields: Any) -> dict[str, Any] | None:
+    def update_item(
+        self,
+        item_id: int,
+        *,
+        expected_updated_at: float | None = None,
+        **fields: Any,
+    ) -> dict[str, Any] | None:
         allowed = {
             "path", "title", "description", "price_cents", "currency", "cover_path",
             "enabled", "metadata",
@@ -589,20 +609,33 @@ class ShopRepository(_CommerceRepository):
         unknown = set(fields) - allowed
         if unknown:
             raise TypeError(f"unsupported shop item fields: {', '.join(sorted(unknown))}")
-        current_row = self._select_item(int(item_id))
-        if current_row is None:
-            return None
-        current = self._row_to_dict(current_row)
-        path = str(fields.get("path", current["path"])).strip()
-        if not path:
-            raise ValueError("path must not be empty")
-        title, price_cents, currency = self._validate_fields(
-            title=fields.get("title", current["title"]),
-            price_cents=fields.get("price_cents", current["price_cents"]),
-            currency=fields.get("currency", current["currency"]),
-        )
-        timestamp = time.time()
+        # The baseline row must be read under the same db_write_lock window as
+        # the UPDATE below. Reading it before entering the transaction left a
+        # TOCTOU gap in which another thread sharing this connection could run
+        # a full update_item; replaying this stale baseline afterwards silently
+        # dropped that writer's columns (lost update).
         with _transaction(self._conn, "shop_item_update"):
+            current_row = self._select_item(int(item_id))
+            if current_row is None:
+                return None
+            current = self._row_to_dict(current_row)
+            if (
+                expected_updated_at is not None
+                and float(current["updated_at"]) != float(expected_updated_at)
+            ):
+                # Optimistic guard: the caller pinned its baseline timestamp and
+                # another writer committed first. Cheap version column (schema
+                # v35) stays unnecessary for this check.
+                raise ShopItemVersionConflictError()
+            path = str(fields.get("path", current["path"])).strip()
+            if not path:
+                raise ValueError("path must not be empty")
+            title, price_cents, currency = self._validate_fields(
+                title=fields.get("title", current["title"]),
+                price_cents=fields.get("price_cents", current["price_cents"]),
+                currency=fields.get("currency", current["currency"]),
+            )
+            timestamp = time.time()
             try:
                 self._conn.execute(
                     "UPDATE shop_items SET path=?, title=?, description=?, price_cents=?, "

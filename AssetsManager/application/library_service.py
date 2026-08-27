@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import logging
 import os
 import re
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -38,6 +39,14 @@ _log = logging.getLogger(__name__)
 # clearly abandoned: staging dirs/intent tmp files older than a week move to
 # quarantine (never deleted), matching clean_orphan_dirs' age convention.
 _RESTORE_RESIDUE_STALE_SECONDS = 7 * 86400
+# Defensive count caps for the restore quarantine tree, enforced after the
+# age-gated fold in _sweep_orphan_restore_residue. They bound worst-case
+# growth; they are NOT a precise LRU and never run ahead of the week-old
+# age gate, so live entries are only folded by count once they already
+# exceed _QUARANTINE_ACTIVE_MAX. Trimming _expired beyond _EXPIRED_MAX is
+# the single sanctioned deletion exception in this sweep.
+_QUARANTINE_ACTIVE_MAX = 8
+_EXPIRED_MAX = 32
 _RESTORE_STAGING_RE_CACHE: dict[str, re.Pattern[str]] = {}
 
 
@@ -445,6 +454,12 @@ class LibraryService:
         quarantine (never deleted in place); every candidate is refused if it
         looks like a link/junction/reparse and any OSError is logged and
         skipped — sweeping must never turn a healthy open into a failure.
+
+        The sweep's single deletion exception runs last: once stale entries
+        are folded, count caps trim the quarantine tree (live overflow folds
+        into ``_expired``, and only excess ``_expired`` entries get removed).
+        This gate is count-based, not an extra time gate — the time boundary
+        stays this fold's existing week-old age gate.
         """
         timestamp = time.time() if now is None else float(now)
         cutoff = timestamp - _RESTORE_RESIDUE_STALE_SECONDS
@@ -495,6 +510,7 @@ class LibraryService:
         except OSError:
             return
         self._archive_expired_quarantine_entries(quarantine_ready, cutoff)
+        self._cap_quarantine_entries(quarantine_ready)
 
     @staticmethod
     def _archive_orphan_staging_dirs(
@@ -521,7 +537,14 @@ class LibraryService:
 
     @staticmethod
     def _archive_expired_quarantine_entries(quarantine_root: Path | None, cutoff: float) -> None:
-        """Fold week-old quarantine entries under an ``_expired`` subfolder."""
+        """Fold week-old quarantine entries under an ``_expired`` subfolder.
+
+        Nothing is deleted here: archived entries only ever move deeper into
+        the quarantine tree. The sole, count-based deletion exception for this
+        hierarchy lives in :meth:`_cap_quarantine_entries`, which trims
+        ``_expired`` at sweep end; there is deliberately no extra time gate
+        beyond this fold's existing week-old age gate.
+        """
         if quarantine_root is None or not quarantine_root.is_dir():
             return
         expired_root = quarantine_root / "_expired"
@@ -542,6 +565,109 @@ class LibraryService:
                 entry.replace(target)
             except OSError as exc:
                 _log.warning("Quarantine archive skipped %s: %s", entry, exc)
+
+    @staticmethod
+    def _cap_quarantine_entries(quarantine_root: Path | None) -> None:
+        """Apply defensive count caps to the quarantine tree after a sweep.
+
+        Two bounded passes, both oldest-mtime-first and both OSError-tolerant:
+
+        - Live entries (direct children other than ``_expired``/symlinks)
+          beyond ``_QUARANTINE_ACTIVE_MAX`` are folded into ``_expired`` with
+          the same move+unique-suffix collision handling as the age-gated
+          fold above — still nothing is deleted.
+        - ``_expired`` children beyond ``_EXPIRED_MAX`` are removed oldest
+          first via ``shutil.rmtree``. This is the single sanctioned deletion
+          exception of the sweep; each removal re-counts, so any failure
+          stops the trimming short rather than recursing on stale counts.
+        """
+        if quarantine_root is None or not quarantine_root.is_dir():
+            return
+        expired_root = quarantine_root / "_expired"
+
+        def _fold_expired(entry: Path) -> bool:
+            try:
+                if entry.is_symlink() or not entry.is_dir():
+                    return False
+                expired_root.mkdir(exist_ok=True)
+                target = expired_root / entry.name
+                counter = 1
+                while target.exists() or target.is_symlink():
+                    target = expired_root / f"{entry.name}_{counter}"
+                    counter += 1
+                entry.replace(target)
+            except OSError as exc:
+                _log.warning("Quarantine archive skipped %s: %s", entry, exc)
+                return False
+            return True
+
+        try:
+            live_entries = [
+                entry
+                for entry in quarantine_root.iterdir()
+                if entry.name != "_expired"
+            ]
+        except OSError as exc:
+            _log.warning("Quarantine cap skipped for %s: %s", quarantine_root, exc)
+            return
+        # (mtime, entry) pairs; link/reparse candidates and unstatable ones
+        # are refused outright, mirroring the rest of the sweep.
+        survivors: list[tuple[float, Path]] = []
+        for entry in live_entries:
+            try:
+                if _path_is_link_or_reparse(entry):
+                    continue
+                survivors.append((entry.stat().st_mtime, entry))
+            except OSError as exc:
+                _log.warning("Quarantine cap scan skipped %s: %s", entry, exc)
+        overflow = len(survivors) - _QUARANTINE_ACTIVE_MAX
+        if overflow > 0:
+            survivors.sort(key=lambda item: item[0])
+            for _, entry in survivors[:overflow]:
+                _fold_expired(entry)
+
+        # Healthy trees without any archived entry have no _expired yet; do
+        # not even log for them so a normal open stays warning-free.
+        if not expired_root.is_dir():
+            return
+        try:
+            expired_count = sum(1 for entry in expired_root.iterdir() if entry.is_dir())
+        except OSError as exc:
+            _log.warning("Quarantine cap skipped for %s: %s", expired_root, exc)
+            return
+        while expired_count > _EXPIRED_MAX:
+            oldest: Path | None = None
+            oldest_mtime: float | None = None
+            try:
+                for entry in expired_root.iterdir():
+                    if entry.name.startswith("_") or entry.is_symlink() or not entry.is_dir():
+                        continue
+                    mtime = entry.stat().st_mtime
+                    if oldest_mtime is None or mtime < oldest_mtime:
+                        oldest = entry
+                        oldest_mtime = mtime
+            except OSError as exc:
+                _log.warning("Quarantine trim skipped for %s: %s", expired_root, exc)
+                break
+            if oldest is None:
+                break
+            try:
+                shutil.rmtree(oldest, ignore_errors=False)
+                _log.warning("Trimmed excess quarantine entry past cap: %s", oldest)
+            except OSError:
+                # Deleted files no longer failing unlink do exist: retry once
+                # per-entry so partial removals do not wedge the queue head.
+                try:
+                    shutil.rmtree(oldest, ignore_errors=True)
+                    _log.warning("Trimmed excess quarantine entry after retry: %s", oldest)
+                except OSError as exc:
+                    _log.warning("Quarantine trim skipped %s: %s", oldest, exc)
+                    break
+            try:
+                expired_count = sum(1 for entry in expired_root.iterdir() if entry.is_dir())
+            except OSError as exc:
+                _log.warning("Quarantine recount failed for %s: %s", expired_root, exc)
+                break
 
     def acknowledge_restore_failure(self, library_root: str | Path, token: str | None = None):
         return self.restore_acknowledger(library_root, token)

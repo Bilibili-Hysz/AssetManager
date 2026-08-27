@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "report_id": "batches-57-63m-execution-evidence-2026-08-27",
+  "captured_at": "2026-08-27T19:00:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "a6206566808e9a43c98ffe9a7d7d99d7270d2d09",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/plugins/test_download_tracker_concurrency.py",
+          "tests/plugins/test_plugin_api_v2.py::test_download_tracker_v2_example"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Tracker concurrency suite with queued-delivery chain under QCoreApplication",
+        "sample_count": 6,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/panel-refresh/focused.stdout.log",
+            "sha256": "7b2a484641c7e9049117d1ba0898f51b7cb0a4afba1e2bc0a1502ff72b9ae3ba"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Final serial Python suite on final bytes (shared across batches 57-63m)",
+        "sample_count": 4144,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/full-57-63.stdout.log",
+            "sha256": "87647e1e2b479aa4d50cd567234ca7723b390dc0a182d6a9087ee7833b7f595c"
+          }
+        ]
+      }
+    ],
+    "note": "Consolidated execution record batches-57-63m-execution-evidence-2026-08-27.md is the primary dated report for this finding; focused evidence archived under artifacts/evidence/2026-08-27/."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/batches-57-63m-execution-evidence-2026-08-27.md",
+      "sha256": "448a4819faa0b0f16b87e1d789cb71bdec42739c750c6cab7bd4196258aec23e"
+    },
+    {
+      "path": "Plugins/Addons/download_tracker/tracker.py",
+      "sha256": "056aecb25ec46e44fc0003b9733242c1b8d06785da328b439eae000e535c8a9f"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/batches-57-63m-execution-evidence-2026-08-27.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "TRACKER-PANEL-REFRESH-64-01",
+      "severity": "P3",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "TRACKER-PANEL-REFRESH-64-01"
+      ],
+      "anchors": [
+        "Plugins/Addons/download_tracker/tracker.py:148",
+        "Plugins/Addons/download_tracker/tracker.py:186"
+      ],
+      "surface": "HistoryPanel never refreshed after dock mount despite worker-thread history updates",
+      "next_action": "Retain queued-signal refresh; notifier-before-app race documented as benign skip",
+      "dynamic_verification": "Focused matrix green (see artifacts); final serial suite passed 4128 on final bytes; consolidated report carries full boundaries"
+    }
+  ]
+}

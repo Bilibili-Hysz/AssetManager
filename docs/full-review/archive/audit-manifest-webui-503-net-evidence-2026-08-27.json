@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "report_id": "webui-503-net-evidence-2026-08-27",
+  "captured_at": "2026-08-27T16:30:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "commands": [
+      {
+        "argv": [
+          "npm",
+          "test",
+          "--",
+          "--run",
+          "src/api/client.test.ts",
+          "src/api/errors.test.ts"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "WebUI 503 classification/retry regressions (GET retried then throws with body; non-GET throws once)",
+        "sample_count": 22,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/webui-503/focused.stdout.log",
+            "sha256": "1dec7ec37b3e1d5e50e3724ecdbc80c74f1dcfa6e1fb13b4c7ce896a303e7dcb"
+          }
+        ]
+      }
+    ],
+    "note": "Production code untouched (test-only batch). Full WebUI vitest run and tsc --noEmit green alongside. Global 503/429 toast and Retry-After countdown UI remain an unclaimed interaction-design backlog item."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/webui-503-net-evidence-2026-08-27.md",
+      "sha256": "e07c86c953de0328ba8b0bcd09084998749306968e513270235bced0adb362b5"
+    },
+    {
+      "path": "webui/src/api/client.test.ts",
+      "sha256": "499925fe9962980b19fed3cc4733395e0412fe14ccc544fbe1bdb71c0f699b34"
+    },
+    {
+      "path": "webui/src/api/client.ts",
+      "sha256": "3f237b7a9fa326d8e85f5d020c6e7a9d029f5fb1299fdf4beda7735f5a268510"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/webui-503-net-evidence-2026-08-27.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "WEBUI-503-NET-54-01",
+      "severity": "P3",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "WEBUI-503-NET-54-01"
+      ],
+      "anchors": [
+        "webui/src/api/client.test.ts:119",
+        "webui/src/api/client.ts:203"
+      ],
+      "surface": "The existing 503->ServiceUnavailableError classification and GET retry path had zero test coverage",
+      "next_action": "[closure] Same surface as WEBUI-GLOBAL-TOAST-MOUNT-67-01 — the dated interaction decision resolved to a mounted throttled toast consuming Retry-After seconds.",
+      "dynamic_verification": "WebUI focused tests passed 22; full vitest run and typecheck green; final serial Python suite passed 4117 tests"
+    }
+  ]
+}

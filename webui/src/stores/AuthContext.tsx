@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { createApiClient, type ApiClient } from '../api/client';
+import { emitApiDegradation } from '../api/degradationBus';
 import { createAuthApi, type AuthApi } from '../api/auth';
 import { createSystemApi, type SystemApi } from '../api/system';
 import { isServiceUnavailableError, isNetworkError } from '../api/errors';
@@ -132,7 +133,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearGuest, clearIdentityStorage]);
 
   const api = useMemo(
-    () => createApiClient({ onUnauthorized: handleUnauthorized }),
+    () => createApiClient({
+      onUnauthorized: handleUnauthorized,
+      onRateLimited: (path, retryAfterSeconds) =>
+        emitApiDegradation('rate-limited', path, retryAfterSeconds),
+      onServiceUnavailable: path => emitApiDegradation('service-unavailable', path),
+    }),
     [handleUnauthorized],
   );
   const authApi = useMemo(() => createAuthApi(api), [api]);

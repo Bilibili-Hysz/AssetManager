@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApiClient } from './client';
+import {
+  DEGRADATION_THROTTLE_MS,
+  emitApiDegradation,
+  resetApiDegradationThrottleForTests,
+  subscribeApiDegradation,
+} from './degradationBus';
 import { NetworkError } from './errors';
 
 function responseWithChunks(chunks: Uint8Array[], contentLength?: string) {
@@ -155,6 +161,47 @@ describe('ApiClient request contracts', () => {
     }
   });
 
+  it('fires onRateLimited and onServiceUnavailable once per classified response', async () => {
+    const rateLimited = vi.fn();
+    const serviceDown = vi.fn();
+    const client = createApiClient({ onRateLimited: rateLimited, onServiceUnavailable: serviceDown });
+
+    const seq = [
+      () => new Response(JSON.stringify({ error: 'Rate limited', code: 'rate_limited' }), { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': '1' } }),
+      () => new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    ];
+    let call = 0;
+    const sequential = vi.fn().mockImplementation(() => {
+      const factory = seq[Math.min(call++, seq.length - 1)];
+      return (factory ?? (() => new Response(null, { status: 500 })))();
+    });
+    vi.stubGlobal('fetch', sequential);
+    vi.useFakeTimers();
+    try {
+      const pending = client.get('info');
+      await vi.advanceTimersByTimeAsync(5000);
+      await expect(pending).resolves.toEqual({ ok: true });
+      expect(rateLimited).toHaveBeenCalledTimes(1);
+      expect(rateLimited).toHaveBeenCalledWith('info', 1);
+      expect(serviceDown).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // POST 503: no retry, callback fires exactly once.
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Response(
+      JSON.stringify({ error: 'Quota unavailable', code: 'service_unavailable' }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } },
+    )));
+    await expect(createApiClient({
+      onRateLimited: rateLimited,
+      onServiceUnavailable: serviceDown,
+    }).post('shop/order')).rejects.toMatchObject({ status: 503 });
+    expect(serviceDown).toHaveBeenCalledTimes(1);
+    expect(serviceDown).toHaveBeenCalledWith('shop/order');
+    expect(rateLimited).toHaveBeenCalledTimes(1); // unchanged by the 503
+  });
+
   it('does not retry non-GET requests on 503 and throws ServiceUnavailableError once', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ error: 'Service unavailable' }),
@@ -249,5 +296,38 @@ describe('ApiClient blob download progress', () => {
       { paths: ['asset.png'] },
       vi.fn(),
     )).rejects.toThrow('Batch download failed');
+  });
+});
+
+describe('api degradation bus throttle', () => {
+  afterEach(() => resetApiDegradationThrottleForTests());
+
+  it('emits at most one event per kind within the throttle window', () => {
+    const seen: Array<{ kind: string; path: string; retryAfterSeconds: number | null }> = [];
+    subscribeApiDegradation(event => seen.push({ ...event }));
+    expect(emitApiDegradation('rate-limited', '/a', 3)).toBe(true);
+    expect(emitApiDegradation('rate-limited', '/b', null)).toBe(false); // throttled
+    expect(emitApiDegradation('service-unavailable', '/c')).toBe(true); // other kind passes
+    expect(seen).toEqual([
+      { kind: 'rate-limited', path: '/a', retryAfterSeconds: 3 },
+      { kind: 'service-unavailable', path: '/c', retryAfterSeconds: null },
+    ]);
+  });
+
+  it('allows a new notification once the throttle window elapses', () => {
+    vi.useFakeTimers();
+    try {
+      const base = Date.now();
+      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(base);
+      const events: string[] = [];
+      subscribeApiDegradation(e => events.push(`${e.kind}:${e.path}`));
+      emitApiDegradation('rate-limited', '/first');
+      nowSpy.mockReturnValue(base + DEGRADATION_THROTTLE_MS + 1);
+      emitApiDegradation('rate-limited', '/second');
+      expect(events).toEqual(['rate-limited:/first', 'rate-limited:/second']);
+      nowSpy.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

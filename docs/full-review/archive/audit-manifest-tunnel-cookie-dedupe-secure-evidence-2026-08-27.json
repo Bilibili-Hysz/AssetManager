@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "report_id": "tunnel-cookie-dedupe-secure-evidence-2026-08-27",
+  "captured_at": "2026-08-27T00:30:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/lan/test_tunnel_rate_limit_isolation.py",
+          "tests/lan/test_delivery_tunnel_claim_isolation.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Preset-cookie non-overwrite, secure-flag morsel, and anti-farming suite sharing the deferred-mint attach path",
+        "sample_count": 13,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/cookie-dedupe/focused.stdout.log",
+            "sha256": "a38cc6a4257fd3d235182a41be6d08dd7f6bd84c51155a92aae58e6a3c2d2b50"
+          }
+        ]
+      }
+    ],
+    "note": "Loopback mocks only; browser Set-Cookie merge behavior and real HTTPS edge validation are not covered. Full serial suite green at 4097 passed."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/tunnel-cookie-dedupe-secure-evidence-2026-08-27.md",
+      "sha256": "40a627a5a62c72e42e0e59fba19dc5d58cfcf3786b53e54ca1f9677176479c32"
+    },
+    {
+      "path": "AssetsManager/lan/tunnel_identity.py",
+      "sha256": "f4bfdb21ec1f46fccaa8db5fdffeab0ae2686b454d34f9e2cb2a725b3df77bbc"
+    },
+    {
+      "path": "AssetsManager/lan/security.py",
+      "sha256": "14bc11d4ca0e2e7155befea51619dab150ca7b1549bb2088ddae15d125ad1cf4"
+    },
+    {
+      "path": "tests/lan/test_tunnel_rate_limit_isolation.py",
+      "sha256": "b01ce9c410ef1a8fbcb26af714a637dc15a4ca924e914e0ec8a473dfc43b1908"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/tunnel-cookie-dedupe-secure-evidence-2026-08-27.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "COOKIE-DUP-SECURE-46-01",
+      "severity": "P2",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "COOKIE-DUP-SECURE-46-01"
+      ],
+      "anchors": [
+        "AssetsManager/lan/tunnel_identity.py:92",
+        "AssetsManager/lan/security.py:216",
+        "tests/lan/test_tunnel_rate_limit_isolation.py:167"
+      ],
+      "surface": "Route-issued visitor cookies could be silently replaced by a duplicate middleware mint, and minted cookies lacked the Secure flag for HTTPS tunnel visitors",
+      "next_action": "Retain skip-if-present plus request-derived Secure; validate under a real HTTPS edge in a future dated batch",
+      "dynamic_verification": "Isolation matrix passed 13 tests covering non-overwrite and secure-morsel regressions; full serial suite passed 4097 tests"
+    }
+  ]
+}

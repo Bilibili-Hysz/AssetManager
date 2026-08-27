@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+
 import pytest
 from PIL import Image
 
@@ -559,3 +561,108 @@ def test_buyer_orders_keyset_pagination(schema_db, tmp_path):
         order_service.list_buyer_orders(
             root, owner_type="anonymous", owner_key="guest", cursor="not-a-cursor",
         )
+
+
+def test_shop_repository_update_item_baseline_read_shares_write_lock_window(
+    schema_db, monkeypatch
+):
+    """update_item's baseline read sits inside its db_write_lock window.
+
+    Regression for the lost-update TOCTOU: the baseline row feeding merge
+    defaults must be captured under the same connection-owned write lock as
+    the UPDATE. Before the fix the read ran lock-free, so a competing
+    update_item on the SAME shared connection could slip into the gap and its
+    freshly committed columns were then replayed over by the victim's stale
+    snapshot (lost update).
+
+    Protocol (deterministic interleaving of exactly that gap; two independent
+    connections are NOT usable here: the schema_db fixture is one private
+    :memory: connection no second handle can attach to, and on a rebuilt
+    file-based WAL copy a plain reader's SELECT never blocks against an open
+    foreign write transaction anyway):
+
+    1. A spy on _row_to_dict freezes the victim thread at its baseline decode.
+       Under the fix this decoder already holds db_write_lock; under the bug
+       it does not.
+    2. The competing writer is given 2s. Under the bug the gap is lock-free,
+       so it completes while the victim is frozen -> victim resumes LAST and
+       replays its stale "T1-A" title over the committed "T2-B" -> assertion
+       fails. Under the fix the frozen victim owns the window, the writer
+       cannot finish inside the deadline and only lands after release -> its
+       "T2-B" survives as the final write.
+    """
+    shops = ShopRepository(schema_db)
+    item = shops.create_item(path="asset.txt", title="T1-A", price_cents=100)
+
+    probe = {
+        "armed": False,
+        "fired": False,
+        "seen": threading.Event(),
+        "release": threading.Event(),
+    }
+    original = ShopRepository._row_to_dict
+    # Only ever reached on regression paths; the main thread releases earlier.
+    freeze_max = 30.0
+
+    def _gated_decode(row):  # mirrors the @staticmethod signature
+        decoded = original(row)
+        if (
+            probe["armed"]
+            and not probe["fired"]
+            and decoded["id"] == item["id"]
+            and decoded["title"] == "T1-A"
+        ):
+            probe["fired"] = True
+            probe["seen"].set()
+            # Freeze whoever decodes the fresh baseline right now. Under the
+            # fix this happens inside the db_write_lock window, under the bug
+            # before it -- which is exactly the observable difference.
+            probe["release"].wait(timeout=freeze_max)
+        return decoded
+
+    monkeypatch.setattr(ShopRepository, "_row_to_dict", staticmethod(_gated_decode))
+
+    writer_done = threading.Event()
+    writer_error: list[Exception] = []
+
+    def _competing_writer():
+        try:
+            ShopRepository(schema_db).update_item(item["id"], title="T2-B")
+        except Exception as exc:  # surfaced below; never expected
+            writer_error.append(exc)
+        finally:
+            writer_done.set()
+
+    def _victim():
+        shops.update_item(item["id"], price_cents=7777)
+
+    probe["armed"] = True
+    victim = threading.Thread(target=_victim)
+    victim.start()
+    assert probe["seen"].wait(5), "victim never decoded its baseline row"
+
+    writer = threading.Thread(target=_competing_writer)
+    writer.start()
+    # Under the fix the frozen victim still owns the window, so the competing
+    # writer cannot finish inside this observation gap; under the bug it does.
+    # Either way the drain below is deterministic once released.
+    writer_done.wait(timeout=2.0)
+
+    # Unfreeze in both cases and let everything drain deterministically.
+    probe["release"].set()
+    victim.join(timeout=15)
+    writer.join(timeout=15)
+
+    assert not victim.is_alive() and not writer.is_alive(), "threads deadlocked"
+    assert writer_error == [], f"competing update_item failed: {writer_error}"
+
+    final = shops.get_item(item["id"])
+    assert final is not None
+    assert final["id"] == item["id"]
+    assert final["title"] == "T2-B", (
+        "competing write's committed title was lost: the baseline read ran "
+        "outside the db_write_lock window and a stale snapshot got replayed"
+    )
+    assert final["price_cents"] == 7777
+    assert final["path"] == "asset.txt"
+    assert final["metadata"] == {}

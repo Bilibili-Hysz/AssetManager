@@ -15,10 +15,17 @@ import {
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
+type RateLimitedListener = (path: string, retryAfterSeconds: number | null) => void;
+type ServiceUnavailableListener = (path: string) => void;
+
 export interface ApiClientOptions {
   baseUrl?: string;
   /** Fired for every 401 with the failing request path (e.g. 'auth/login'). */
   onUnauthorized?: (path: string) => void;
+  /** Fires once per classified 429 response (before any retry). */
+  onRateLimited?: RateLimitedListener;
+  /** Fires once per classified 503 response (before any retry). */
+  onServiceUnavailable?: ServiceUnavailableListener;
 }
 
 export interface DownloadProgress {
@@ -44,6 +51,15 @@ function isAbortError(error: unknown): boolean {
 
 function isTimeoutError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'TimeoutError';
+}
+
+/** Read the raw Retry-After seconds from an error body captured at classify time. */
+function retryAfterFromHeader(body: ApiErrorBody | undefined): number | null {
+  const withHeaders = body as { headers?: Record<string, string> } | undefined;
+  const raw = withHeaders?.headers?.['Retry-After'] ?? withHeaders?.headers?.['retry-after'];
+  if (!raw) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
 }
 
 /** Read a Retry-After value stored on an ApiError body (rate limit helper). */
@@ -169,7 +185,12 @@ async function parseJsonBody<T>(response: Response): Promise<T> {
 }
 
 export function createApiClient(options: ApiClientOptions = {}) {
-  const { baseUrl = '', onUnauthorized } = options;
+  const {
+    baseUrl = '',
+    onUnauthorized,
+    onRateLimited,
+    onServiceUnavailable,
+  } = options;
   const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
 
   /**
@@ -183,6 +204,9 @@ export function createApiClient(options: ApiClientOptions = {}) {
     onUnauthorized?: (path: string) => void,
   ): Promise<never> {
     const errBody = await parseErrorBody(response);
+    if (response.status === 503 && onServiceUnavailable) {
+      onServiceUnavailable(path);
+    }
     if (response.status === 401) {
       onUnauthorized?.(path);
       throw new UnauthorizedError(
@@ -197,7 +221,11 @@ export function createApiClient(options: ApiClientOptions = {}) {
       );
     }
     if (response.status === 429) {
-      throw rateLimitErrorFrom(response, errBody);
+      const error = rateLimitErrorFrom(response, errBody);
+      // Notify after the body merge so the header-derived retry seconds are
+      // available to the listener.
+      onRateLimited?.(path, retryAfterFromHeader(error.body));
+      throw error;
     }
     if (response.status === 503) {
       throw new ServiceUnavailableError(

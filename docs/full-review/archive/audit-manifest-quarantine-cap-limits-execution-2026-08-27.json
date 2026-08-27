@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "report_id": "batches-57-63m-execution-evidence-2026-08-27",
+  "captured_at": "2026-08-27T19:00:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "a6206566808e9a43c98ffe9a7d7d99d7270d2d09",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q",
+          "tests/unit/test_library_service.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "library_service suite with two new cap regressions",
+        "sample_count": 28,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/quarantine-cap/focused.stdout.log",
+            "sha256": "b0c5c1c5a47edcb6e1eee80408894b66e21b5abbc9a1d8c8886eee973aa4b77a"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "Final serial Python suite on final bytes (shared across batches 57-63m)",
+        "sample_count": 4144,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/full-57-63.stdout.log",
+            "sha256": "87647e1e2b479aa4d50cd567234ca7723b390dc0a182d6a9087ee7833b7f595c"
+          }
+        ]
+      }
+    ],
+    "note": "Consolidated execution record batches-57-63m-execution-evidence-2026-08-27.md is the primary dated report for this finding; focused evidence archived under artifacts/evidence/2026-08-27/."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/batches-57-63m-execution-evidence-2026-08-27.md",
+      "sha256": "448a4819faa0b0f16b87e1d789cb71bdec42739c750c6cab7bd4196258aec23e"
+    },
+    {
+      "path": "AssetsManager/application/library_service.py",
+      "sha256": "765cd5259d96f26e207b7409789dffc430c4a664f0795a715aeae92b47a3af69"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/batches-57-63m-execution-evidence-2026-08-27.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "QUARANTINE-CAP-LIMITS-65-01",
+      "severity": "P2",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "QUARANTINE-CAP-LIMITS-65-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/library_service.py:523",
+        "AssetsManager/application/library_service.py:549"
+      ],
+      "surface": "Restore quarantine grew without bound (fold-only, no deletion path)",
+      "next_action": "Retain count caps as sole deletion exception inside library lock",
+      "dynamic_verification": "Focused matrix green (see artifacts); final serial suite passed 4128 on final bytes; consolidated report carries full boundaries"
+    }
+  ]
+}

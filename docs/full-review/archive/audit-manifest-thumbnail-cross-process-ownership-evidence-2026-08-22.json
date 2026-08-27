@@ -1,0 +1,290 @@
+{
+  "schema_version": 1,
+  "report_id": "thumbnail-cross-process-ownership-evidence-2026-08-22",
+  "captured_at": "2026-08-22T23:59:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "5fbf93059e2a2926ffb6b4fb940981736fd7050f",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "runtime": {
+      "platform": "Windows 10.0.26220 x64",
+      "python": "3.14.3",
+      "pytest": "9.0.2",
+      "ruff": "0.15.16"
+    },
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "--basetemp=.zcode/pytest-batch25c-focused",
+          "-q",
+          "tests/integration/test_thumbnail_service.py",
+          "tests/desktop/test_thumbnail_loader.py",
+          "tests/unit/test_thumbnail_repository.py",
+          "tests/core/test_database_metadata.py",
+          "tests/unit/test_database_integrity_service.py",
+          "tests/integration/test_file_operation_service.py",
+          "tests/core/test_db_migrations.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "cross-process owner lease, owner recovery, conditional metadata delete, SQLite busy policy, thumbnail cleanup and Desktop lifecycle",
+        "sample_count": 260,
+        "pass_criterion": "exit_code == 0; RuntimeWarning treated as error",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-ownership/focused.stdout.log",
+            "sha256": "b1e1697e20d5de9bc2cb550603608c8cbfcda6b240d5dbcd1cd37753fb4a73a5"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-ownership/focused.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "-W",
+          "error::RuntimeWarning",
+          "-m",
+          "pytest",
+          "--basetemp=.zcode/pytest-batch25c-full",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "full Python test tree after cross-process thumbnail ownership hardening",
+        "sample_count": 4003,
+        "pass_criterion": "exit_code == 0; no failed tests; platform skips and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-ownership/full.stdout.log",
+            "sha256": "7ee40ef6ef5c740b5f625f83f4acd44a958d4bab6cdf2b7600744df567bc8556"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-ownership/full.stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py",
+          "&&",
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "25-C static governance gates before follow-up report indexing; all 27 prior manifests",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-ownership/static.stdout.log",
+            "sha256": "a536cd28f5e40898b1d23a849f918c44f4ca0733bfbf36cb0fa8c67bd2b4b9b9"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-ownership/static.stderr.log",
+            "sha256": "1d3ca222e60538e69c0e47309d51cd312bb9191cf7c5404ab96d7d84ba4fa9b8"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-ownership/baseline.status.log",
+            "sha256": "347bdd8a110ef00334311d9e4a2959530db1d02246f0906ce03e1cfae25e8590"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-ownership/baseline.diff.patch",
+            "sha256": "79281b6ce10a005ba13b5ca484e055ccd7cb6664f7473a8e4af06002cfdf092f"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-ownership/baseline.commit.log",
+            "sha256": "0c7ae7376f659dc4995280c0964208c05165aa5dc6c49118679040c56274ce75"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py",
+          "&&",
+          "python",
+          "scripts/check_doc_stats.py",
+          "&&",
+          "python",
+          "scripts/check_boundaries.py",
+          "&&",
+          "python",
+          "scripts/check_style_sources.py",
+          "&&",
+          "python",
+          "scripts/check_route_capabilities.py",
+          "&&",
+          "python",
+          "scripts/check_frontend_data_fetch.py",
+          "&&",
+          "python",
+          "scripts/check_layers.py",
+          "&&",
+          "python",
+          "-m",
+          "ruff",
+          "check",
+          "AssetsManager",
+          "tests",
+          "scripts",
+          "run.py",
+          "&&",
+          "python",
+          "-m",
+          "compileall",
+          "AssetsManager",
+          "-q",
+          "&&",
+          "git",
+          "diff",
+          "--check"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "post-index governance validation after 25-C report and manifest; all 28 manifests",
+        "sample_count": 10,
+        "pass_criterion": "each command exits 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-ownership/static-post-index.stdout.log",
+            "sha256": "a6a066649c5cdb06a2442475f98c9c4e94c92c10ba732444d03734639ec5c60c"
+          },
+          {
+            "path": "artifacts/evidence/2026-08-22/thumbnail-cross-process-ownership/static-post-index.stderr.log",
+            "sha256": "1d3ca222e60538e69c0e47309d51cd312bb9191cf7c5404ab96d7d84ba4fa9b8"
+          }
+        ]
+      }
+    ],
+    "note": "Focused: 260 passed. Full suite: 3972 passed, 14 skipped, 17 deselected, 2 warnings, 0 failed. Post-index governance validation: all 28 manifests and static gates passed. Cross-process filesystem race proof, power-loss, kernel reparse atomicity, browser E2E, complete ffmpeg/profile matrix, CVE, package/release, and clean-checkout validation were not run."
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/audit-manifest-thumbnail-cache-metadata-eviction-evidence-2026-08-22.json",
+      "sha256": "0f11ebf8d1f7ed2d87c30fb6fd3710e23cf7d2f64b54dc40c2559b0557b77cd8"
+    },
+    {
+      "path": "docs/full-review/audit-manifest-thumbnail-video-lifecycle-hardening-evidence-2026-08-22.json",
+      "sha256": "69120d2d3f64c0fda97984c2a44545934609cb2b4b6cba89d9f77b4c29ac8e7e"
+    },
+    {
+      "path": "docs/full-review/thumbnail-video-lifecycle-hardening-evidence-2026-08-22.md",
+      "sha256": "54295d5a3a0e7825162fb02ac69088ebf263f97bfa0713eaeac5d9a3e33e8193"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/thumbnail-cache-metadata-eviction-evidence-2026-08-22.md",
+    "docs/full-review/thumbnail-video-lifecycle-hardening-evidence-2026-08-22.md",
+    "docs/full-review/thumbnail-cross-process-ownership-evidence-2026-08-22.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "THUMBNAIL-CROSS-PROCESS-OWNER-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "THUMBNAIL-CROSS-PROCESS-OWNER-01"
+      ],
+      "anchors": [
+        "AssetsManager/application/thumbnail_cache_lifecycle.py:28",
+        "AssetsManager/application/thumbnail_service.py:345",
+        "AssetsManager/panels/file_list/_loader.py:1230",
+        "tests/integration/test_thumbnail_service.py:730"
+      ],
+      "surface": "Cross-process cache-directory owner lease and publication/cleanup coordination",
+      "next_action": "Per-key lease, complete DB/filesystem atomicity and independent POSIX/Windows race proof",
+      "dynamic_verification": "260 focused and 3972 full Python tests passed on Windows, including subprocess exclusion and owner recovery; filesystem crash proof not run"
+    },
+    {
+      "canonical_id": "THUMBNAIL-CONDITIONAL-DELETE-01",
+      "severity": "P1",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "THUMBNAIL-CONDITIONAL-DELETE-01"
+      ],
+      "anchors": [
+        "AssetsManager/repositories/thumbnail_repository.py:177",
+        "AssetsManager/application/thumbnail_service.py:360",
+        "tests/unit/test_thumbnail_repository.py:151"
+      ],
+      "surface": "Observed-row conditional metadata deletion during eviction",
+      "next_action": "Conditional artifact deletion and complete cleanup/publish atomicity",
+      "dynamic_verification": "Conditional-delete regression and full Python suite passed on Windows"
+    },
+    {
+      "canonical_id": "SQLITE-THUMBNAIL-BUSY-01",
+      "severity": "P2",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "SQLITE-THUMBNAIL-BUSY-01"
+      ],
+      "anchors": [
+        "AssetsManager/core/database.py:68",
+        "AssetsManager/core/database.py:908",
+        "AssetsManager/repositories/thumbnail_repository.py:41",
+        "tests/core/test_database_metadata.py:28"
+      ],
+      "surface": "Managed SQLite busy timeout and bounded thumbnail metadata write retry",
+      "next_action": "Independent-process contention matrix and migration busy/recovery proof",
+      "dynamic_verification": "SQLite pragma, transaction, repository and full Python tests passed on Windows; sustained cross-process busy matrix not run"
+    }
+  ]
+}

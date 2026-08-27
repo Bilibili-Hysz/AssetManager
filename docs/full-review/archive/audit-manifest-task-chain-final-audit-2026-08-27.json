@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "report_id": "task-chain-final-audit-2026-08-27",
+  "captured_at": "2026-08-27T23:55:00+08:00",
+  "repository_root": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak",
+  "baseline": {
+    "commit": "def384fd2b5a6ae219bb5c141aeff2ca7bf5a353",
+    "branch": "feat/quality-audit-2026-08-17",
+    "source_kind": "dirty_worktree",
+    "status_sha256": "2ff4450bee7487a1b123c5cf42bc2fe27d356592342ea0bf16693d39aec51cd7",
+    "diff_sha256": "a4bfa1a77ad9b575e02c84ed42d204e9ef83163b11556ca4ebedb73967c14ef5",
+    "tracked_change_count": 109,
+    "untracked_change_count": 22
+  },
+  "validation": {
+    "mode": "dynamic",
+    "tests_executed": true,
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-n",
+          "0",
+          "-q"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "最终全量串行 Python 套件（第52-56批后最终字节）",
+        "sample_count": 4153,
+        "pass_criterion": "exit_code == 0; skips, deselections and warnings recorded",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/full-52-56.stdout.log",
+            "sha256": "44f460bcdc02f6519fa1143bd4443665fc506f7d3b42c643eecf588cc7544554"
+          }
+        ]
+      },
+      {
+        "argv": [
+          "python",
+          "scripts/check_audit_reports.py"
+        ],
+        "platform": "Windows 10.0.26220 x64",
+        "fixture": "证据链 manifest 校验（最终审核）",
+        "sample_count": 81,
+        "pass_criterion": "exit_code == 0",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "artifacts/evidence/2026-08-27/full-52-56.stdout.log",
+            "sha256": "44f460bcdc02f6519fa1143bd4443665fc506f7d3b42c643eecf588cc7544554"
+          }
+        ]
+      }
+    ],
+    "note": "本会话自身未执行 commit；会话期间外部 checkpoint 提交多次推进 HEAD（观察到 a058514、def384fd2b5a6ae219bb5c141aeff2ca7bf5a353），将既有批次代码与证据纳入版本控制。写本报告前工作树曾 88 改动/4 未跟踪；至本 manifest 捕获点仅剩本报告 1 个未跟踪条目。"
+  },
+  "inputs": [
+    {
+      "path": "docs/full-review/task-chain-final-audit-2026-08-27.md",
+      "sha256": "0aa0bde28f356000dfe69410c0ebb9f1d8591407d4e6ef8e9b57ec23c227a0b1"
+    },
+    {
+      "path": "docs/full-review/00-INDEX.md",
+      "sha256": "28bbe78192abe39030b7eea373a9e627b313a3fd284ac32ea70cb9150753e1ae"
+    },
+    {
+      "path": "scripts/check_audit_reports.py",
+      "sha256": "fe0f246042bc10a220ff9f1d7fd47427159ec16263dfb856d0569c907e5ea89e"
+    }
+  ],
+  "indexed_reports": [
+    "docs/full-review/task-chain-final-audit-2026-08-27.md"
+  ],
+  "findings": [
+    {
+      "canonical_id": "FINAL-AUDIT-ALL-CHAIN-2026-08-27",
+      "severity": "P2",
+      "status": "fixed-unverified",
+      "source_ids": [
+        "FINAL-AUDIT-ALL-CHAIN-2026-08-27"
+      ],
+      "anchors": [
+        "docs/full-review/task-chain-final-audit-2026-08-27.md:1",
+        "docs/full-review/00-INDEX.md:1"
+      ],
+      "surface": "全任务链（第1-56批）进度汇总与第57-66批候选确认；审计证据链一致性抽查",
+      "next_action": "按优先级实施已确认批次：60（下载/交付 quota consume offload）→58（i18n）→65（quarantine 容量上限）→61（unload barrier）→64（HistoryPanel 刷新）→63（Shop 合并读入事务）→62（WebUI Toast，需交互决策）",
+      "dynamic_verification": "validator 81 份有效；全量 4117 passed/16 skipped/20 deselected/2 warnings；六项治理+Ruff+compileall+diff-check+WebUI vitest/typecheck 全绿；52-56 五批证据抽查一致（55 批 focused artifact 为注释摘要的观察项）"
+    }
+  ]
+}
