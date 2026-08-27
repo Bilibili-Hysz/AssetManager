@@ -92,11 +92,19 @@ uniform 归一:预制 `uniforms.py` 映射(`{iTime: float, iResolution: vec3, ..
 **约束**:QOpenGLWidget 是原生(HWND)子窗口,恒在所有非原生兄弟之上 → 不能简单"垫底",
 否则会盖住 dock/面板。
 
-**本期方案(hybrid)**:
-- `BackgroundSurface(QOpenGLWidget)` 作为 **central widget 区域的背景层**(文件列表/信息面板所在
-  的中央工作区),dock 侧/顶面板仍然走现有 CPU 壁纸(paintEvent + 透明样式)。
-- 两层渲染同源(base 图像 + 同一效果链),面板区域在视觉上与中央 GPU 区域连续。
-- 意义:不动 QMainWindow/dock 结构,把 GPU 用在"用户注视的中央内容面",风险最低。
+**本期方案(hybrid)——精确挂载点(2026-08-27 前端层实测)**:
+- 窗口装配事实:`MainWindow._setup_ui` 中 `self.file_list = self._create_file_list_panel()`、
+  `self.setCentralWidget(self.file_list)`(`window.py` L461-462);sidebar/info 为左右 dock
+  (`window.py` L465-477);面板经 `WA_StyledBackground` + 主题半透明色透出壁纸
+  (`panels/base.py` L29、`themes.panel_color()` 带 bg_panel_opacity)。
+- 因此 **GPU 画布的挂载点 = 把 `setCentralWidget(self.file_list)` 换成
+  `setCentralWidget(gl_host)`**:`BackgroundSurface(QOpenGLWidget)` 作中央区域宿主,
+  `file_list` re-parent 进其布局并保持透明样式;sidebar/info dock 区继续走 CPU
+  paintEvent 壁纸。QOpenGLWidget 支持子控件在其 GL 内容之上合成(Qt 文档化能力),
+  该项列为 M2 首步尖峰验证(风险 R-1)。
+- 双区同源同链:CPU 与 GL 使用同一 base 图与效果链,且 framing 数学必须一致
+  (`KeepAspectRatioByExpanding` + 居中裁剪,对齐 `window.py` L264 语义),保证区域间
+  视觉连续(风险 R-2)。
 
 **长期方案(全窗 GPU,若产品需要)**:
 - 把 dock/面板收进一个全窗透明容器(如 `QWidget` 覆盖层 + `WA_TranslucentBackground` 的画布 child),
@@ -155,3 +163,67 @@ uniform 归一:预制 `uniforms.py` 映射(`{iTime: float, iResolution: vec3, ..
 | D-3 | 着色器失败即回退 CPU,绝不黑屏 | 稳健第一 |
 | D-4 | 零第三方渲染依赖(numpy 保持可选) | 打包/维护成本 |
 | D-5 | 设置只表达意图,渲染层决定后端 | 未来后端可替换而不改设置协议 |
+
+## 10. 前端层集成验证(2026-08-27 实测,与设置-桌面层逐项核对)
+
+本节把 §3-§8 的设计断言对照真实前端层代码验证;违反/未覆盖处即为本设计的修正点。
+
+### 10.1 窗口装配与 GPU 挂载点(已验证,§5 已修订)
+
+| 断言 | 实测 | 结论 |
+|---|---|---|
+| central 区=工作区 | `setCentralWidget(self.file_list)`(`window.py` L462);sidebar/info 为左右 dock(L465-477) | **挂载点确定为 `setCentralWidget` 替换为 GL host**,file_list re-parent;dock 区保留 CPU 壁纸 |
+| 面板透明机制 | `WA_StyledBackground` + 主题半透明色(`panels/base.py` L29;`themes.panel_color()` 用 bg_panel_opacity) | file_list re-parent 后沿用样式即可透出 GL 内容,无需改面板 |
+| 多窗口刷新 | `WindowCoordinator` 统一转发 `refresh_bg`(`window_coordinator.py` L132) | 每个窗口独立的 BackgroundManager/Surface 挂同一通知即可 |
+
+### 10.2 设置面验证(settings_dialog Appearance 标签)
+
+现状控件(实测 L126-216):bg_enabled 复选框、bg_image 路径 + 浏览(文件过滤器**已含 mp4/webm/avi**)、
+panel/header 透明度 ×2、效果菜单 + 强度滑块(已防抖)、clear。保存点 `_on_bg_setting_changed`
+(L482-487)共六键。通知链:`_BackgroundStyleHost._on_bg_style_changed`(L36-37)协议 →
+`MainWindow._on_bg_style_changed` → `refresh_bg()`(window.py L325)。
+
+**验证发现的两处设计缺口(已纳入修订)**:
+- **G-1:`bg_type` 无任何 set 点、无选择 UI**(全仓仅 `themes.bg_type()` 读取)。浏览过滤器可选视频,
+  但选了 mp4 后 `QPixmap(mp4)` 解码为 null → 背景静默消失。→ M3 必须增设"背景类型"菜单行
+  (image/video/shader),写入 `bg_type`。
+- **G-2:通知链只覆盖 CPU 刷新**。GL host 需在 `_on_bg_style_changed` 同一处理函数里触发
+  `BackgroundManager.refresh()`(重建管线/重传纹理/重渲染一次,异步排队,不进 paintEvent)。
+
+### 10.3 设置协议扩展(键/校验器/i18n,全部走现有机制)
+
+- 新键:`bg_type`(image|video|shader)、`bg_shader_preset`(非空 str,存在性由 presets 表校验,
+  未知预设回退首个)。
+- 校验器 `_VALIDATORS`(settings.py L31-46)追加:
+  `"bg_type": lambda v: v in ("image", "video", "shader")`、
+  `"bg_shader_preset": lambda v: isinstance(v, str) and bool(v)`。
+- i18n 增量(继 840 键之后 ×3 文件):`settings.bg_type`、`settings.bg_type_image`、
+  `settings.bg_type_video`、`settings.bg_type_shader`、`settings.bg_shader_preset`、
+  `settings.bg_shader_import`。UI 位置:bg_enabled 与 bg_image 行之间放类型菜单行;
+  类型=shader 时显示预设下拉 + 导入按钮。
+- 强度滑块语义沿用 §6;类型=video/shader 时效果链默认 none(视频/程序化内容自带动态),
+  可叠加 GLSL 版效果(M2 交付后可点亮)。
+
+### 10.4 打包与运行时注记
+
+- `AssetManager.spec` 存在;M3 视频需在 spec 收集 QtMultimedia 插件
+  (`collect_qt_plugins("multimedia")` 或同义 collect 条目),否则 frozen 版无
+  QMediaPlayer 后端。
+- 无 GL 环境:GL 后端探测失败 → BackgroundManager 全量回退 CPU;video 取首帧 QImage 走
+  静态 CPU 渲染(与现有无声失效相反——改进)。
+
+### 10.5 风险登记(修订后)
+
+| # | 风险 | 缓解 |
+|---|---|---|
+| R-1 | QOpenGLWidget 承载 file_list 子控件合成,实际窗体系表现需尖峰验证 | M2 第一步做 10 分钟尖峰:GL host + reparent 冒烟(含高 DPI) |
+| R-2 | CPU/GL 双区各自渲染,尺寸/裁剪不一致会产生区域接缝 | 同一 framing 数学常量共享;双区同源同链 |
+| R-3 | 动画着色器/视频能耗 | 窗口不可见/最小化即暂停(MainWindow `isVisible` 事件,WindowCoordinator 已有窗口清单) |
+| R-4 | 着色器编译失败黑屏 | D-3:失败即回退 CPU,日志告警 |
+| R-5 | frozen 版缺 QtMultimedia 插件 | §10.4 spec 注记 |
+
+### 10.6 里程碑修正
+
+- M2 首位新增:**GL host 尖峰验证(R-1)** → 通过后才进入 GLSL 三效果与 hybrid 集成;
+- M3 拆分:a) 背景类型 UI + `bg_type` 设置链路(G-1);b) VideoSource 渲染 + spec 打包;
+- M4 不变(Shadertoy 预设库 + .glsl 导入 + iTime 动画 + 节能)。
