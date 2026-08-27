@@ -7,13 +7,30 @@ back to CPU instead of crashing (design D-3).
 """
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QOpenGLContext
-from PySide6.QtOpenGL import QOpenGLFramebufferObject, QOpenGLShader, QOpenGLShaderProgram, QOpenGLTexture
+from PySide6.QtOpenGL import (
+    QOpenGLBuffer,
+    QOpenGLFramebufferObject,
+    QOpenGLShader,
+    QOpenGLShaderProgram,
+    QOpenGLTexture,
+)
 
 from AssetsManager.background.gl import shaders
 from AssetsManager.background.model import EffectChain, EffectSpec
 
 _FULLSCREEN_QUAD = (-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0)
+
+# PySide6 does not expose GL_* constants on QOpenGLFunctions — the raw
+# functions take plain ints, so keep the canonical OpenGL values here.
+_GL_ARRAY_BUFFER = 0x8892
+_GL_STATIC_DRAW = 0x88E4
+_GL_FLOAT = 0x1406
+_GL_TRIANGLE_STRIP = 0x0005
+_GL_TEXTURE0 = 0x84C0
+_GL_TEXTURE_2D = 0x0DE1
+_GL_COLOR_BUFFER_BIT = 0x00004000
 
 
 class GlPipeline:
@@ -33,11 +50,10 @@ class GlPipeline:
         """Compile programs once. Requires a current GL context."""
         if self._ready or self._failure:
             return self._ready
-        ctx = QOpenGLContext.current()
+        ctx = QOpenGLContext.currentContext()
         if ctx is None:
             self._failure = "no current OpenGL context"
             return False
-        gl = ctx.functions()
         self._programs["passthrough"] = self._compile(
             VERT=shaders.VERT_SRC, FRAG=shaders.PASSTHROUGH_FRAG
         )
@@ -51,14 +67,18 @@ class GlPipeline:
             VERT=shaders.VERT_SRC, FRAG=shaders.KUW_FRAG
         )
         if all(p is not None for p in self._programs.values()):
-            self._quad_vbo = gl.glGenBuffers(1)  # type: ignore[attr-defined]
-            gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self._quad_vbo)
-            from ctypes import c_float, c_int32
+            import struct
 
-            buf = (c_float * len(_FULLSCREEN_QUAD))(*_FULLSCREEN_QUAD)
-            size = c_int32(len(_FULLSCREEN_QUAD) * 4)
-            gl.glBufferData(gl.GL_ARRAY_BUFFER, size, buf, gl.GL_STATIC_DRAW)
-            gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
+            # Fullscreen quad as a VertexBuffer; QOpenGLBuffer wraps the raw
+            # glGenBuffers/glBufferData pair that the base QOpenGLFunctions
+            # exposes incompletely in PySide6.
+            self._quad_vbo = QOpenGLBuffer(QOpenGLBuffer.Type.VertexBuffer)
+            self._quad_vbo.setUsagePattern(QOpenGLBuffer.UsagePattern.StaticDraw)
+            self._quad_vbo.create()
+            self._quad_vbo.bind()
+            quad_bytes = struct.pack(f"{len(_FULLSCREEN_QUAD)}f", *_FULLSCREEN_QUAD)
+            self._quad_vbo.allocate(quad_bytes, len(quad_bytes))
+            self._quad_vbo.release()
             self._ready = True
         return self._ready
 
@@ -97,33 +117,36 @@ class GlPipeline:
         """Upload a QImage as a mirrored-repeat RGBA texture."""
         if image.isNull():
             return None
-        img = image.convertToFormat(QImage.Format.Format_RGBA8888).mirrored()
+        img = image.convertToFormat(QImage.Format.Format_RGBA8888).flipped(
+            Qt.Orientation.Vertical
+        )
         tex = QOpenGLTexture(img)
         tex.setMinificationFilter(QOpenGLTexture.Filter.Linear)
         tex.setMagnificationFilter(QOpenGLTexture.Filter.Linear)
         wrap = QOpenGLTexture.WrapMode.MirroredRepeat
-        tex.setWrapMode(QOpenGLTexture.Direction.S, wrap)
-        tex.setWrapMode(QOpenGLTexture.Direction.T, wrap)
+        cd = QOpenGLTexture.CoordinateDirection
+        tex.setWrapMode(cd.DirectionS, wrap)
+        tex.setWrapMode(cd.DirectionT, wrap)
         return tex
 
     def _draw_quad(self, program: QOpenGLShaderProgram) -> None:
-        ctx = QOpenGLContext.current()
+        ctx = QOpenGLContext.currentContext()
         gl = ctx.functions()
         program.bind()
-        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self._quad_vbo)
+        self._quad_vbo.bind()
         program.enableAttributeArray("a_pos")
-        program.setAttributeBuffer("a_pos", gl.GL_FLOAT, 0, 2)
-        gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
-        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
+        program.setAttributeBuffer("a_pos", _GL_FLOAT, 0, 2)
+        gl.glDrawArrays(_GL_TRIANGLE_STRIP, 0, 4)
+        self._quad_vbo.release()
         program.release()
 
     @staticmethod
     def _bind_texture(program: QOpenGLShaderProgram, tex_id: int, unit: int = 0) -> None:
-        ctx = QOpenGLContext.current()
+        ctx = QOpenGLContext.currentContext()
         gl = ctx.functions()
-        gl.glActiveTexture(gl.GL_TEXTURE0 + unit)
-        gl.glBindTexture(gl.GL_TEXTURE_2D, tex_id)
-        program.setUniformValue("u_tex", unit)
+        gl.glActiveTexture(_GL_TEXTURE0 + unit)
+        gl.glBindTexture(_GL_TEXTURE_2D, tex_id)
+        program.setUniformValue(program.uniformLocation(b"u_tex"), unit)
 
     def _resize_fbos(self, size: tuple[int, int]) -> None:
         if (
@@ -156,7 +179,7 @@ class GlPipeline:
             final = self._apply_chain_to_fbo(tex.textureId(), size, chain)
             if final is None:
                 return None
-            image_out = final.toImage().mirrored()
+            image_out = final.toImage().flipped(Qt.Orientation.Vertical)
             return image_out if not image_out.isNull() else None
         finally:
             tex.destroy()
@@ -172,7 +195,7 @@ class GlPipeline:
         if not self.ensure_ready():
             return None
         self._resize_fbos(size)
-        ctx = QOpenGLContext.current()
+        ctx = QOpenGLContext.currentContext()
         gl = ctx.functions()
         passes: list[tuple[EffectSpec, tuple[float, float] | None]] = []
         for effect in chain.effects:
@@ -194,7 +217,7 @@ class GlPipeline:
             target.bind()
             gl.glViewport(0, 0, dst_size[0], dst_size[1])
             gl.glClearColor(0.0, 0.0, 0.0, 1.0)
-            gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+            gl.glClear(_GL_COLOR_BUFFER_BIT)
             program = self._program_for(effect)
             if program is None:
                 target.release()
@@ -219,26 +242,29 @@ class GlPipeline:
         self, program: QOpenGLShaderProgram, src_tex: int, src_size: tuple[int, int],
         effect: EffectSpec, direction: tuple[float, float] | None = None,
     ) -> None:
-        ctx = QOpenGLContext.current()
+        ctx = QOpenGLContext.currentContext()
         gl = ctx.functions()
         program.bind()
         self._bind_texture(program, src_tex)
         if effect.kind == "blur":
             texel = (1.0 / src_size[0], 1.0 / src_size[1])
-            program.setUniformValue("u_texel", *texel)
-            program.setUniformValue("u_dir", *direction)
-            program.setUniformValue("u_radius", float(effect.intensity))
+            program.setUniformValue(program.uniformLocation(b"u_texel"), *texel)
+            program.setUniformValue(program.uniformLocation(b"u_dir"), *direction)
+            program.setUniformValue(program.uniformLocation(b"u_radius"), float(effect.intensity))
             self._draw_quad(program)
         elif effect.kind == "mosaic":
             block = max(2, effect.intensity)
             program.setUniformValue(
-                "u_block", src_size[0] / block, src_size[1] / block
+                program.uniformLocation(b"u_block"), src_size[0] / block, src_size[1] / block
             )
             self._draw_quad(program)
         elif effect.kind == "kuwahara":
             texel = (1.0 / src_size[0], 1.0 / src_size[1])
-            program.setUniformValue("u_texel", *texel)
-            program.setUniformValue("u_radius", float(effect.intensity))
+            program.setUniformValue(program.uniformLocation(b"u_texel"), *texel)
+            program.setUniformValue(program.uniformLocation(b"u_radius"), float(effect.intensity))
+            self._draw_quad(program)
+        else:
+            # passthrough / no-op effect: sample u_tex as-is (draw_texture path)
             self._draw_quad(program)
         gl.glFlush()
 
@@ -258,17 +284,19 @@ class GlPipeline:
         program = self.shadertoy_program(preset_fragment)
         if program is None:
             return False
-        ctx = QOpenGLContext.current()
+        ctx = QOpenGLContext.currentContext()
         gl = ctx.functions()
         gl.glViewport(0, 0, size[0], size[1])
         program.bind()
-        program.setUniformValue("iResolution", float(size[0]), float(size[1]), 1.0)
-        program.setUniformValue("iTime", float(time_sec))
-        program.setUniformValue("u_strength", float(strength))
+        program.setUniformValue(program.uniformLocation(b"iResolution"), float(size[0]), float(size[1]), 1.0)
+        program.setUniformValue(program.uniformLocation(b"iTime"), float(time_sec))
+        program.setUniformValue(program.uniformLocation(b"u_strength"), float(strength))
         for unit, tex_id in (channels or {}).items():
-            gl.glActiveTexture(gl.GL_TEXTURE0 + unit)
-            gl.glBindTexture(gl.GL_TEXTURE_2D, tex_id)
-            program.setUniformValue(f"iChannel{unit}", unit)
+            gl.glActiveTexture(_GL_TEXTURE0 + unit)
+            gl.glBindTexture(_GL_TEXTURE_2D, tex_id)
+            program.setUniformValue(
+                program.uniformLocation(f"iChannel{unit}".encode()), unit
+            )
         self._draw_quad(program)
         program.release()
         return True
@@ -277,7 +305,7 @@ class GlPipeline:
         """Blit a texture (e.g. latest video frame) to the current FBO/screen."""
         if not self.ensure_ready():
             return
-        ctx = QOpenGLContext.current()
+        ctx = QOpenGLContext.currentContext()
         gl = ctx.functions()
         gl.glViewport(0, 0, size[0], size[1])
         self._draw_pass(self._programs["passthrough"], tex_id, size, EffectSpec("none"))
