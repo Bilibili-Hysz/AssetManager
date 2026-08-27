@@ -206,10 +206,6 @@ def test_theme_mode_for_base():
     assert theme_mode_for_base("#888888") == "light"  # above boundary
 
 
-def test_bg_type_default():
-    assert themes.bg_type() == "image"
-
-
 def test_bg_effect_defaults():
     from AssetsManager.core.settings import AppSettings
     s = AppSettings.instance()

@@ -313,6 +313,46 @@ class GlPipeline:
         program.release()
         return True
 
+    def render_shader_preset(
+        self,
+        image: QImage,
+        preset_fragment: str,
+        size: tuple[int, int],
+        time_sec: float,
+        strength: float,
+    ) -> QImage | None:
+        """Run a Shadertoy-style filter over an image into an FBO, read back.
+
+        The image is uploaded and bound to ``iChannel0``; presets may sample it
+        (image-transforming filters) or ignore it (procedural effects).  The
+        result is the filtered image (top-left origin, matching render_still).
+        """
+        if not self.ensure_ready():
+            return None
+        self._resize_fbos(size)
+        fbo = self._fbo_a
+        fbo.bind()
+        ctx = QOpenGLContext.currentContext()
+        gl = ctx.functions()
+        gl.glViewport(0, 0, size[0], size[1])
+        gl.glClearColor(0.0, 0.0, 0.0, 1.0)
+        gl.glClear(_GL_COLOR_BUFFER_BIT)
+        tex = self.upload_image(image)
+        if tex is None:
+            fbo.release()
+            return None
+        try:
+            ok = self.draw_shadertoy(
+                preset_fragment, size, time_sec, strength, {0: tex.textureId()}
+            )
+            fbo.release()
+            if not ok:
+                return None
+            out = fbo.toImage()
+            return out if not out.isNull() else None
+        finally:
+            tex.destroy()
+
     def draw_texture(self, tex_id: int, size: tuple[int, int]) -> None:
         """Blit a texture (e.g. latest video frame) to the current FBO/screen."""
         if not self.ensure_ready():

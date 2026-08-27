@@ -1,11 +1,10 @@
 """Main window — QDockWidget-based docking layout with workspace tab bar."""
 import logging
-import time
 from pathlib import Path
 from typing import Any, cast
 
-from PySide6.QtCore import Qt, QEvent, QRect, QPropertyAnimation, QEasingCurve, QTimer, QSize, Signal
-from PySide6.QtGui import QPixmap, QPainter
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QTimer, QSize, Signal
+from PySide6.QtGui import QImage, QPixmap, QPainter
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -119,15 +118,8 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._bg_cache: tuple = ("", None, None)  # (path, processed_raw, scaled)
         self._bg_effects_cache_key: str = ""  # effect:intensity string
         self._bg_dirty = False
-        # CPU video fallback: first decoded frame as a static wallpaper
-        # (D-1: video never renders nothing when GL is unavailable).
-        self._bg_video_frame: Any | None = None
-        self._bg_video_feed: Any | None = None
-        self._last_video_paint = 0.0
-        # Last wheel event timestamp: while the user scrolls we slow the
-        # wallpaper cadence so the translucent file-list doesn't repaint
-        # (cascade) at full video rate.
-        self._bg_last_scroll = 0.0
+        # Shader-ized image effect renderer (GL pipeline with CPU fallback).
+        self._bg_effect_renderer: Any | None = None
         self._bg_resize_timer = QTimer(self)
         self._bg_resize_timer.setSingleShot(True)
         self._bg_resize_timer.setInterval(150)
@@ -243,66 +235,44 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
     def paintEvent(self, event):
         if themes.bg_enabled():
+            path = themes.bg_image()
             opacity = themes.bg_overall_opacity()
-            # Video wallpaper: paint the live CPU frame full-window, exactly
-            # like the image background (never inside a GL central host).
-            # The live feed is the source of truth: it is active exactly when
-            # the plan is a video background (settings and plan agree in the
-            # real app, but the feed state never lies during transitions).
-            if getattr(self, "_bg_video_feed", None) is not None:
-                self._paint_video_wallpaper(opacity)
-            else:
-                path = themes.bg_image()
-                if path and Path(path).is_file():
-                    self._paint_image_wallpaper(path, opacity)
+            if path and Path(path).is_file():
+                self._paint_image_wallpaper(path, opacity)
         super().paintEvent(event)
 
-    def _paint_video_wallpaper(self, opacity: float) -> None:
-        """Draw the latest decoded video frame over the whole window.
+    def _bg_renderer(self):
+        """Lazy shader-ized effect renderer (GL pipeline + CPU fallback)."""
+        if self._bg_effect_renderer is None:
+            from AssetsManager.background import ImageEffectRenderer
+            self._bg_effect_renderer = ImageEffectRenderer()
+        return self._bg_effect_renderer
 
-        Uses painter.drawImage with an explicit target rect (FastTransformation
-        scaling inside the paint) instead of allocating a scaled QPixmap per
-        frame: at 30fps full-HD the pixmap copy+scale was ~6.5ms/frame of UI
-        thread the grid's translucent repaint had to wait for.  The cached
-        scaled-pixmap path made the per-frame allocation worse, not better.
-        """
-        frame = getattr(self, "_bg_video_frame", None)
-        if frame is None or frame.isNull():
-            return
-        w, h = self.width(), self.height()
-        fw, fh = frame.width(), frame.height()
-        if fw <= 0 or fh <= 0:
-            return
-        scale = max(w / fw, h / fh)  # KeepAspectRatioByExpanding
-        dw, dh = max(1, round(fw * scale)), max(1, round(fh * scale))
-        dx, dy = (w - dw) // 2, (h - dh) // 2
-        p = QPainter(self)
-        # No SmoothPixmapTransform here: keep the per-frame upscale cheap.
-        p.setOpacity(opacity)
-        p.drawImage(
-            QRect(dx, dy, dw, dh),
-            frame,
-            QRect(0, 0, fw, fh),
-        )
-        p.end()
+    def _render_bg_image(self, path: str, effect: str, intensity: int, preset: str):
+        """Load the wallpaper image and apply the effect chain to it."""
+        image = QImage(path)
+        if image.isNull():
+            return None
+        processed = self._bg_renderer().render(image, effect, intensity, preset)
+        return QPixmap.fromImage(processed)
 
     def _paint_image_wallpaper(self, path: str, opacity: float) -> None:
         effect = themes.bg_effect()
         intensity = themes.bg_effect_intensity()
-        effects_key = f"{effect}:{intensity}"
-        # Load raw pixmap once per path change
+        preset = themes.bg_shader_preset()
+        effects_key = f"{effect}:{intensity}:{preset}"
+        # Load + process once per (path, effect) change; the result is then
+        # scaled once per resize.
         if self._bg_cache[0] != path or not self._bg_cache[1]:
-            pm = QPixmap(path)
-            if pm.isNull():
+            processed = self._render_bg_image(path, effect, intensity, preset)
+            if processed is None:
                 self._bg_cache = ("", None, None)
             else:
-                processed = self._apply_bg_effects(pm, effect, intensity)
                 self._bg_cache = (path, processed, None)
                 self._bg_effects_cache_key = effects_key
         elif self._bg_effects_cache_key != effects_key:
-            pm = QPixmap(path)
-            if not pm.isNull():
-                processed = self._apply_bg_effects(pm, effect, intensity)
+            processed = self._render_bg_image(path, effect, intensity, preset)
+            if processed is not None:
                 self._bg_cache = (path, processed, None)
                 self._bg_effects_cache_key = effects_key
         processed = self._bg_cache[1]
@@ -322,21 +292,6 @@ class MainWindow(LanSharingMixin, QMainWindow):
             p.drawPixmap((w - src.width()) // 2, (h - src.height()) // 2, src)
             p.end()
 
-    @staticmethod
-    def _apply_bg_effects(pixmap, effect, intensity):
-        """Apply a single effect to a pixmap."""
-        result = pixmap
-        if effect == "blur" and intensity > 0:
-            from AssetsManager.core.bg_effects import apply_blur
-            result = apply_blur(result, intensity)
-        elif effect == "mosaic" and intensity > 1:
-            from AssetsManager.core.bg_effects import apply_mosaic
-            result = apply_mosaic(result, intensity)
-        elif effect == "kuwahara" and intensity >= 1:
-            from AssetsManager.core.bg_effects import apply_kuwahara
-            result = apply_kuwahara(result, intensity)
-        return result
-
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._bg_dirty = True
@@ -352,165 +307,6 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._bg_cache = ("", None, None)
         self._bg_dirty = False
         self.update()
-
-    def _bg_ensure_video_feed(self, path: str) -> None:
-        """Start/keep a window-owned VideoSource for full-window painting.
-
-        The video wallpaper is rendered CPU-side in paintEvent (exactly like
-        the image background's full-window behaviour); the GL surface is only
-        used for shader backgrounds.  The feed is restarted only when the
-        source file changes, so settings refreshes never restart playback.
-        """
-        if not path:
-            self._bg_stop_video_feed()
-            return
-        if self._bg_video_feed is not None and self._bg_video_feed.path == path:
-            return
-        self._bg_stop_video_feed()
-        try:
-            from AssetsManager.background.sources import VideoSource
-
-            # ~30 fps is plenty for a wallpaper; the cap keeps a 120fps source
-            # from burning CPU converting frames nobody will see.
-            feed = VideoSource(path, self, max_fps=30.0)
-            feed.frame_ready.connect(self._on_bg_video_frame)
-            feed.state_changed.connect(self._on_bg_video_state)
-            feed.start()
-            self._bg_video_feed = feed
-        except Exception:
-            _log.exception("Failed to start video wallpaper feed")
-            self._bg_video_feed = None
-
-    def _bg_stop_video_feed(self) -> None:
-        feed = self._bg_video_feed
-        if feed is not None:
-            try:
-                feed.stop()
-            except Exception:
-                pass
-            feed.deleteLater()
-        self._bg_video_feed = None
-        self._bg_video_frame = None
-
-    def _on_bg_video_frame(self, image) -> None:
-        """Store the latest video frame and repaint, input-aware throttle.
-
-        While the user is scrolling the file list, the translucent panels make
-        every wallpaper repaint cascade a full child repaint (measured: the
-        grid repaints on every wallpaper frame).  Dropping the wallpaper
-        cadence during scroll keeps the foreground fluid and skips frames the
-        user is too busy looking at the list to notice.
-        """
-        self._bg_video_frame = image
-        now = time.monotonic()
-        scroll_active = (now - self._bg_last_scroll) < 0.5
-        # While scrolling, cut both the paint cadence and the decode rate:
-        # the translucent panels make each wallpaper repaint cascade a full
-        # child (file-list) repaint, so halving the wallpaper halves that
-        # cascade cost without anyone noticing the background.
-        cadence = 0.10 if scroll_active else 0.033
-        feed = self._bg_video_feed
-        if feed is not None:
-            try:
-                feed.set_max_fps(12.0 if scroll_active else 30.0)
-            except Exception:
-                pass
-        if now - self._last_video_paint >= cadence:
-            self._last_video_paint = now
-            self.update()
-
-    def _on_bg_video_state(self, state: str) -> None:
-        if state == "error":
-            _log.warning("Video wallpaper failed to play: %s",
-                         self._bg_video_feed.errors() if self._bg_video_feed else "")
-            self._bg_video_frame = None
-            self.update()
-
-    def eventFilter(self, obj, event) -> bool:
-        """Track wheel (scroll) activity for video-wallpaper throttle."""
-        if event.type() == QEvent.Type.Wheel:
-            self._bg_last_scroll = time.monotonic()
-        return False
-
-    # ── Background backend: GL host mount/unmount (design §5, G-2) ──
-
-    def _on_bg_plan_changed(self, plan):
-        """React to a BackgroundManager plan: mount the GL host or the CPU path."""
-        if plan.source_kind == "video":
-            # Video wallpapers are painted full-window on the CPU, exactly
-            # like the image background (the GL central-host would restrict
-            # them to the file-list area).  This also works without GL.
-            self._unmount_bg_gl()
-            self._bg_ensure_video_feed(plan.source_path)
-            self.refresh_bg()
-            return
-        self._bg_stop_video_feed()
-        if self._bg_gl_broken:
-            # D-3: a previous GL attempt failed — stay on the CPU wallpaper
-            # until the next settings change resets the latch.
-            self._unmount_bg_gl()
-            return
-        if plan.backend == "gl":
-            self._mount_bg_gl(plan)
-        else:
-            self._unmount_bg_gl()
-            self.refresh_bg()
-
-    def _mount_bg_gl(self, plan) -> None:
-        from AssetsManager.background.gl.surface import BackgroundSurface
-
-        if self._bg_surface is None:
-            surface = BackgroundSurface(self)
-            surface.rendering_failed.connect(self._on_bg_gl_failed)
-            surface.visibility_changed.connect(self._on_bg_surface_visibility)
-            self._bg_surface = surface
-        surface = self._bg_surface
-        if self.file_list.parent() is not surface:
-            surface._host_layout.addWidget(self.file_list)
-        if self.centralWidget() is not surface:
-            self.setCentralWidget(surface)
-        if plan.source_kind == "image" and plan.source_path:
-            from AssetsManager.background.sources import ImageSource
-            surface.set_source_image(ImageSource(plan.source_path).frame())
-        surface.set_plan(plan)
-        surface.show()
-
-    def _unmount_bg_gl(self) -> None:
-        surface = self._bg_surface
-        if surface is None:
-            return
-        if self.file_list.parent() is surface:
-            surface._host_layout.removeWidget(self.file_list)
-            self.file_list.setParent(self)
-        if self.centralWidget() is surface:
-            self.setCentralWidget(self.file_list)
-        surface.cleanup()
-        surface.hide()
-        surface.deleteLater()
-        self._bg_surface = None
-
-    def _on_bg_gl_failed(self, message: str) -> None:
-        """D-3: GL rendering failed — fall back to the CPU wallpaper, no black screen."""
-        _log.warning("Background GL failed (%s); falling back to CPU wallpaper", message)
-        self._bg_gl_broken = True
-        self._unmount_bg_gl()
-        self.refresh_bg()
-
-    def _on_bg_surface_visibility(self, visible: bool) -> None:
-        """Pause/resume video with the GL host's visibility (design §5)."""
-        surface = self._bg_surface
-        if surface is None:
-            return
-        video = getattr(surface, "_video", None)
-        if video is None:
-            return
-        try:
-            if visible:
-                video.start()
-            else:
-                video.pause()
-        except Exception:
-            pass
 
     def _on_bg_style_changed(self):
         """Re-apply stylesheet and refresh title-bars when bg opacity changes."""
@@ -534,14 +330,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         refresh_header = getattr(self.file_list, "refresh_header", None)
         if callable(refresh_header):
             refresh_header()
-        # G-2: one notification chain — re-plan the backend so the GL host
-        # rebuilds the pipeline and re-uploads textures on settings changes.
-        manager = getattr(self, "_bg_manager", None)
-        if manager is not None:
-            self._bg_gl_broken = False  # give GL another chance after a settings change
-            manager.refresh()
-        else:
-            self.refresh_bg()
+        self.refresh_bg()
 
     def _setup_menu(self):
         bar = self._menu_bar
@@ -676,23 +465,6 @@ class MainWindow(LanSharingMixin, QMainWindow):
         # ── Central panel ────────────────────────────────────────
         self.file_list = self._create_file_list_panel()
         self.setCentralWidget(self.file_list)
-
-        # ── Background backend (design §5/G-2) ───────────────────
-        # Settings express intent; BackgroundManager picks the backend and
-        # announces the plan. GL plans mount a hybrid host (surface as
-        # central widget, file_list re-parented into it); CPU/none plans
-        # keep file_list central and the paintEvent wallpaper (unchanged).
-        from AssetsManager.background.manager import BackgroundManager
-        self._bg_manager = BackgroundManager(self)
-        self._bg_manager.plan_changed.connect(self._on_bg_plan_changed)
-        self._bg_surface = None          # AssetsManager.background.gl.surface.BackgroundSurface
-        self._bg_gl_broken = False       # D-3 latch: never black-screen, fall back to CPU
-        # Watch wheel events so the video wallpaper can slow down while the
-        # user scrolls (translucent panels cascade repaints per frame).
-        app = QApplication.instance()
-        if app is not None:
-            app.installEventFilter(self)
-        self._bg_manager.refresh()
 
         # ── Docks ───────────────────────────────────────────────
         self.sidebar_dock = dock.create(tr("dock.sidebar"), self, Qt.DockWidgetArea.LeftDockWidgetArea,

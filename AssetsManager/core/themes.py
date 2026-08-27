@@ -498,11 +498,6 @@ def bg_overall_opacity() -> float:
     return _bg_number("opacity", 1.0)
 
 
-def bg_type() -> str:
-    """Background type: 'image' or 'video'."""
-    return str(_bg_setting("type", "image"))
-
-
 def bg_effect() -> str:
     """Active image effect: 'none', 'blur', 'mosaic', 'kuwahara', or 'shader'."""
     return str(_bg_setting("effect", "none"))

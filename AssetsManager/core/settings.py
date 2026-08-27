@@ -32,7 +32,6 @@ _VALIDATORS: dict[str, Callable] = {
     "thumb_quality": lambda v: v in ("fast", "default", "high", "original"),
     "bg_panel_opacity": lambda v: isinstance(v, (int, float)) and 0.0 <= v <= 1.0,
     "bg_effect": lambda v: v in ("none", "blur", "mosaic", "kuwahara", "shader"),
-    "bg_type": lambda v: v in ("image", "video", "shader"),
     "bg_shader_preset": lambda v: isinstance(v, str) and bool(v),
     "search_history": lambda v: isinstance(v, list),
     SHARE_SAFETY_ACK_VERSION_KEY: lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 0,

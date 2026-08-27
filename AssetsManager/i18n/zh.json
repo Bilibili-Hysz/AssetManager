@@ -340,6 +340,8 @@
   "settings.bg_mosaic": "马赛克",
   "settings.bg_mosaic_intensity": "马赛克强度",
   "settings.bg_kuwahara": "桑原滤镜",
+  "settings.bg_effect_shader": "着色器",
+  "settings.bg_shader_preset": "着色器预设",
   "settings.bg_browse_title": "选择背景图片",
   "settings.general": "常规",
   "settings.thumbnails": "缩略图",

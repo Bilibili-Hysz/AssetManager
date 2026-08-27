@@ -24,21 +24,14 @@ def test_singleton():
     assert a is b
 
 
-def test_bg_effect_validator_accepts_kuwahara():
+def test_bg_effect_validator_accepts_kuwahara_and_shader():
     """Regression: the settings validator blocked saving the Kuwahara effect,
     so picking it in the dialog raised ValueError and the choice was lost."""
     settings_module._validate_setting("bg_effect", "kuwahara")
     settings_module._validate_setting("bg_effect", "mosaic")
+    settings_module._validate_setting("bg_effect", "shader")
     with pytest.raises(ValueError):
         settings_module._validate_setting("bg_effect", "not-an-effect")
-
-
-def test_bg_type_validator_accepts_image_video_shader():
-    """bg_type (design G-1): the background-type menu row persists this key."""
-    for value in ("image", "video", "shader"):
-        settings_module._validate_setting("bg_type", value)
-    with pytest.raises(ValueError):
-        settings_module._validate_setting("bg_type", "slideshow")
 
 
 def test_bg_shader_preset_validator_requires_nonempty_string():

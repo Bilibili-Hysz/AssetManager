@@ -340,6 +340,8 @@
   "settings.bg_mosaic": "モザイク",
   "settings.bg_mosaic_intensity": "モザイク強度",
   "settings.bg_kuwahara": "桑原フィルタ",
+  "settings.bg_effect_shader": "シェーダー",
+  "settings.bg_shader_preset": "シェーダープリセット",
   "settings.bg_browse_title": "背景画像を選択",
   "settings.general": "一般",
   "settings.thumbnails": "サムネイル",

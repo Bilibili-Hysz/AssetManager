@@ -351,6 +351,8 @@
   "settings.bg_mosaic": "Mosaic",
   "settings.bg_mosaic_intensity": "Mosaic intensity",
   "settings.bg_kuwahara": "Kuwahara",
+  "settings.bg_effect_shader": "Shader",
+  "settings.bg_shader_preset": "Shader preset",
   "settings.bg_browse_title": "Select Background Image",
   "settings.general": "General",
   "settings.thumbnails": "Thumbnails",

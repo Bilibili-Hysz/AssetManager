@@ -1,8 +1,12 @@
-"""Background rendering layer — data model shared by the CPU and GL backends.
+"""Background rendering layer — the effect-chain data model.
 
-Design: ``docs/plans/bg-gpu-shader-architecture-2026-08-27.md``.
-Settings only express intent (``bg_type`` / ``bg_effect`` / intensity / shader
-preset); the BackgroundManager turns that intent into a rendered backend.
+Design: ``docs/plans/bg-simplify-image-only-2026-08-27.md``.
+
+Settings express *intent* for the image background: ``bg_effect`` (plus an
+intensity knob and an optional shader preset).  The effect chain is rendered
+by either the GLSL pipeline (GPU) or the CPU fallback in
+``AssetsManager.background.pipeline``; the whole-window composition stays the
+plain CPU ``paintEvent`` so the wallpaper always covers the full window.
 """
 from __future__ import annotations
 
@@ -10,8 +14,6 @@ from dataclasses import dataclass
 from typing import Literal
 
 EffectKind = Literal["none", "blur", "mosaic", "kuwahara", "shader"]
-SourceKind = Literal["image", "video", "shader"]
-BackendName = Literal["none", "cpu", "gl"]
 
 # Effects the CPU backend (existing bg_effects pipeline) can carry.
 CPU_EFFECT_KINDS: frozenset[str] = frozenset({"none", "blur", "mosaic", "kuwahara"})
@@ -53,15 +55,3 @@ class EffectChain:
 
     def cpu_supported(self) -> bool:
         return all(e.kind in CPU_EFFECT_KINDS for e in self.effects)
-
-
-@dataclass(frozen=True)
-class BackendPlan:
-    """What the window should do, decided by BackgroundManager."""
-
-    backend: BackendName = "none"
-    source_kind: SourceKind = "image"
-    chain: EffectChain = EffectChain()
-    shader_preset: str = ""
-    source_path: str = ""  # wallpaper file (video/shader source or image path)
-    reason: str = ""

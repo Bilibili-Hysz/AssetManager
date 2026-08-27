@@ -1,4 +1,2 @@
-"""GL backend for the background pipeline (QOpenGLWidget surface + shaders)."""
-from AssetsManager.background.gl.surface import BackgroundSurface
-
-__all__ = ["BackgroundSurface"]
+"""GL effect backend — offscreen shader pipeline + presets (no widget surface)."""
+from AssetsManager.background.gl import presets, probe, shaders  # noqa: F401
