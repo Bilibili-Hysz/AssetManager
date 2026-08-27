@@ -118,6 +118,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._bg_cache: tuple = ("", None, None)  # (path, processed_raw, scaled)
         self._bg_effects_cache_key: str = ""  # effect:intensity string
         self._bg_dirty = False
+        # CPU video fallback: first decoded frame as a static wallpaper
+        # (D-1: video never renders nothing when GL is unavailable).
+        self._bg_video_static: Any | None = None
+        self._bg_video_static_path: str = ""
+        self._bg_video_src: Any | None = None
         self._bg_resize_timer = QTimer(self)
         self._bg_resize_timer.setSingleShot(True)
         self._bg_resize_timer.setInterval(150)
@@ -239,20 +244,26 @@ class MainWindow(LanSharingMixin, QMainWindow):
                 effect = themes.bg_effect()
                 intensity = themes.bg_effect_intensity()
                 effects_key = f"{effect}:{intensity}"
+                # CPU video fallback: paint the first decoded frame (a QPixmap
+                # of an mp4 is always null, so the raw path can never paint).
+                fallback_frame = None
+                if themes.bg_type() == "video":
+                    fallback_frame = getattr(self, "_bg_video_static", None)
+                cache_path = f"video:{path}" if fallback_frame is not None else path
                 # Load raw pixmap once per path change
-                if self._bg_cache[0] != path or not self._bg_cache[1]:
-                    pm = QPixmap(path)
+                if self._bg_cache[0] != cache_path or not self._bg_cache[1]:
+                    pm = QPixmap.fromImage(fallback_frame) if fallback_frame is not None else QPixmap(path)
                     if pm.isNull():
                         self._bg_cache = ("", None, None)
                     else:
                         processed = self._apply_bg_effects(pm, effect, intensity)
-                        self._bg_cache = (path, processed, None)
+                        self._bg_cache = (cache_path, processed, None)
                         self._bg_effects_cache_key = effects_key
                 elif self._bg_effects_cache_key != effects_key:
-                    pm = QPixmap(path)
+                    pm = QPixmap.fromImage(fallback_frame) if fallback_frame is not None else QPixmap(path)
                     if not pm.isNull():
                         processed = self._apply_bg_effects(pm, effect, intensity)
-                        self._bg_cache = (path, processed, None)
+                        self._bg_cache = (cache_path, processed, None)
                         self._bg_effects_cache_key = effects_key
                 processed = self._bg_cache[1]
                 scaled = self._bg_cache[2]
@@ -303,6 +314,43 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._bg_dirty = False
         self.update()
 
+    def _bg_ensure_video_static(self) -> None:
+        """Decode the first frame for the CPU video fallback (design D-1).
+
+        The manager picks ``cpu`` for video only when GL is unavailable; the
+        window paints that single frame as a static wallpaper instead of
+        silently showing nothing (QPixmap of an mp4 is always null).
+        """
+        manager = getattr(self, "_bg_manager", None)
+        plan = manager.plan if manager is not None else None
+        if plan is None or plan.source_kind != "video" or not plan.source_path:
+            self._bg_video_static = None
+            self._bg_video_static_path = ""
+            return
+        if getattr(self, "_bg_surface", None) is not None and plan.backend == "gl":
+            return  # GL owns video rendering; nothing to decode on the CPU side
+        path = plan.source_path
+        if self._bg_video_static is not None and self._bg_video_static_path == path:
+            return  # already decoded
+        self._bg_video_static = None
+        self._bg_video_static_path = path
+        try:
+            from AssetsManager.background.sources import VideoSource
+
+            src = VideoSource(path, self)
+
+            def on_first_frame(image) -> None:
+                self._bg_video_static = image
+                src.stop()
+                self.update()
+
+            src.frame_ready.connect(on_first_frame)
+            src.start()
+            self._bg_video_src = src
+        except Exception:
+            _log.exception("Failed to start CPU video fallback decode")
+            self._bg_video_src = None
+
     # ── Background backend: GL host mount/unmount (design §5, G-2) ──
 
     def _on_bg_plan_changed(self, plan):
@@ -316,6 +364,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
             self._mount_bg_gl(plan)
         else:
             self._unmount_bg_gl()
+            self._bg_ensure_video_static()
             self.refresh_bg()
 
     def _mount_bg_gl(self, plan) -> None:
@@ -359,15 +408,20 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self.refresh_bg()
 
     def _on_bg_surface_visibility(self, visible: bool) -> None:
-        """Pause video while the GL host is hidden (energy saving, design §5)."""
-        if self._bg_surface is not None and not visible:
-            surface = self._bg_surface
-            video = getattr(surface, "_video", None)
-            if video is not None:
-                try:
-                    video.pause()
-                except Exception:
-                    pass
+        """Pause/resume video with the GL host's visibility (design §5)."""
+        surface = self._bg_surface
+        if surface is None:
+            return
+        video = getattr(surface, "_video", None)
+        if video is None:
+            return
+        try:
+            if visible:
+                video.start()
+            else:
+                video.pause()
+        except Exception:
+            pass
 
     def _on_bg_style_changed(self):
         """Re-apply stylesheet and refresh title-bars when bg opacity changes."""

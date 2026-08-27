@@ -212,7 +212,7 @@ class SettingsDialog(TabbedDialog):
         self._effects_layout = btn_row
         btn_row.setSpacing(scaled_px(int(themes.prop("spacing", "sm"))))
         current_effect = themes.bg_effect()
-        effect_label = {"none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"), "mosaic": tr("settings.bg_mosaic"), "kuwahara": tr("settings.bg_kuwahara")}.get(current_effect, tr("settings.bg_effect_none"))
+        effect_label = {"none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"), "mosaic": tr("settings.bg_mosaic"), "kuwahara": tr("settings.bg_kuwahara"), "shader": tr("settings.bg_type_shader")}.get(current_effect, tr("settings.bg_effect_none"))
         self._effect_btn = QPushButton()
         self._set_menu_button_presentation(self._effect_btn, effect_label)
         self._effect_btn.setMinimumWidth(scaled_px(120))
@@ -535,6 +535,12 @@ class SettingsDialog(TabbedDialog):
             self._set_menu_button_presentation(self._effect_btn, effect_label)
         else:
             return
+        if self._current_bg_type != "shader" and self._current_effect == "shader":
+            # Design §10.3: leaving the shader type drops the shader-only
+            # effect (a video/image+shader chain is not a supported combo).
+            self._current_effect = "none"
+            self._set_menu_button_presentation(
+                self._effect_btn, tr("settings.bg_effect_none"))
         self._set_menu_button_presentation(self._bg_type_btn, self._bg_type_label())
         self._set_row_visible(self._shader_preset_row, self._current_bg_type == "shader")
         self._on_bg_setting_changed()
@@ -577,6 +583,7 @@ class SettingsDialog(TabbedDialog):
         blur_action = menu.addAction(tr("settings.bg_blur"))
         mosaic_action = menu.addAction(tr("settings.bg_mosaic"))
         kuwahara_action = menu.addAction(tr("settings.bg_kuwahara"))
+        shader_action = menu.addAction(tr("settings.bg_type_shader"))
         chosen = menu.exec(self._effect_btn.mapToGlobal(self._effect_btn.rect().bottomLeft()))
         if chosen == none_action:
             self._current_effect = "none"
@@ -586,9 +593,11 @@ class SettingsDialog(TabbedDialog):
             self._current_effect = "mosaic"
         elif chosen == kuwahara_action:
             self._current_effect = "kuwahara"
+        elif chosen == shader_action:
+            self._current_effect = "shader"
         else:
             return
-        label = {"none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"), "mosaic": tr("settings.bg_mosaic"), "kuwahara": tr("settings.bg_kuwahara")}.get(self._current_effect, tr("settings.bg_effect_none"))
+        label = {"none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"), "mosaic": tr("settings.bg_mosaic"), "kuwahara": tr("settings.bg_kuwahara"), "shader": tr("settings.bg_type_shader")}.get(self._current_effect, tr("settings.bg_effect_none"))
         self._set_menu_button_presentation(self._effect_btn, label)
         self._on_bg_setting_changed()
 
@@ -1075,6 +1084,7 @@ class SettingsDialog(TabbedDialog):
         effect_label = {
             "none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"),
             "mosaic": tr("settings.bg_mosaic"), "kuwahara": tr("settings.bg_kuwahara"),
+            "shader": tr("settings.bg_type_shader"),
         }.get(self._current_effect, tr("settings.bg_effect_none"))
         self._set_menu_button_presentation(self._effect_btn, effect_label)
         self._set_menu_button_presentation(self._bg_type_btn, self._bg_type_label())

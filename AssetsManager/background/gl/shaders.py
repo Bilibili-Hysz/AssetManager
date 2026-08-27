@@ -112,6 +112,10 @@ uniform sampler2D iChannel0;
 uniform sampler2D iChannel1;
 varying vec2 v_uv;
 
+// Forward declaration: presets define mainImage AFTER this header, and many
+// GLSL compilers (ANGLE included) reject calling an undeclared function.
+void mainImage(out vec4 fragColor, in vec2 fragCoord);
+
 void main() {
     vec2 fragCoord = v_uv * iResolution.xy;
     mainImage(gl_FragColor, fragCoord);

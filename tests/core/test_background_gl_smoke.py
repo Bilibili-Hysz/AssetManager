@@ -2,7 +2,8 @@
 
 Runs only when a real OpenGL context can be created; otherwise pytest.skip.
 Guards the regressions fixed in the M2 implementation: QOpenGLContext API,
-VBO creation, uniform handling and the passthrough draw path.
+VBO creation, uniform handling, the passthrough draw path, HiDPI viewport
+sizing and image orientation through the FBO readback.
 """
 import os
 import time
@@ -77,11 +78,14 @@ def test_fbo_smoke_draw_texture_to_default_fb(gl_surface):
     assert tex is not None
     try:
         # Draw to the default framebuffer (what paintGL does for video),
-        # then read the center pixel back.
+        # then read the center pixel back.  The viewport must match the
+        # device-pixel framebuffer size (paintGL now does exactly this).
         from PySide6.QtGui import QOpenGLContext
 
         gl = QOpenGLContext.currentContext().functions()
-        size = (gl_surface.width(), gl_surface.height())
+        dpr = gl_surface.devicePixelRatioF()
+        size = (max(1, round(gl_surface.width() * dpr)),
+                max(1, round(gl_surface.height() * dpr)))
         gl.glViewport(0, 0, size[0], size[1])
         pipeline.draw_texture(tex.textureId(), size)
         gl.glFinish()
@@ -95,3 +99,54 @@ def test_fbo_smoke_draw_texture_to_default_fb(gl_surface):
         assert g > 100 and g > r * 2, (r, g, b)
     finally:
         tex.destroy()
+
+
+def test_fbo_smoke_orientation_preserved(gl_surface):
+    """A bright-top image must come out of the FBO readback bright-top."""
+    pipeline = gl_surface._pipeline
+    assert pipeline.ensure_ready(), pipeline.failure
+    img = QImage(128, 96, QImage.Format.Format_RGB32)
+    img.fill(QColor(0, 0, 0))
+    for y in range(48):
+        for x in range(128):
+            img.setPixelColor(x, y, QColor(255, 255, 255))
+
+    out = pipeline.render_still(img, EffectChain.single("blur", intensity=4), (128, 96))
+    assert out is not None
+
+    def lum(qimg, frac):
+        y = int((qimg.height() - 1) * frac)
+        total = n = 0
+        for x in range(0, qimg.width(), 3):
+            c = qimg.pixelColor(x, y)
+            total += (c.red() + c.green() + c.blue()) / 3.0
+            n += 1
+        return total / n
+
+    top, bottom = lum(out, 0.1), lum(out, 0.9)
+    # one flip on upload, none on readback -> upright (bright stays on top)
+    assert top > 150, (top, bottom)
+    assert bottom < 100, (top, bottom)
+
+
+def test_shadertoy_presets_render_non_black(gl_surface):
+    """Every built-in preset compiles and draws non-black content (M4)."""
+    from AssetsManager.background.gl import presets
+
+    pipeline = gl_surface._pipeline
+    assert pipeline.ensure_ready(), pipeline.failure
+    for key in presets.preset_keys():
+        snippet = presets.get_preset(key)
+        assert snippet is not None
+        ok = pipeline.draw_shadertoy(
+            snippet.fragment, (160, 120), time_sec=1.0, strength=0.5, channels=None
+        )
+        assert ok, f"preset {key} failed to draw"
+        # read a small region back and require some color variance/energy
+        from PySide6.QtGui import QOpenGLContext
+
+        gl = QOpenGLContext.currentContext().functions()
+        buf = memoryview(bytearray(4 * 32))
+        gl.glReadPixels(64, 44, 32, 1, 0x1908, 0x1401, buf)
+        n = sum(1 for i in range(0, 4 * 32, 4) if (buf[i] + buf[i + 1] + buf[i + 2]) > 30)
+        assert n > 8, f"preset {key} rendered blank"

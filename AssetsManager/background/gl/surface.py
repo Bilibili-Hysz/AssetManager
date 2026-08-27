@@ -35,6 +35,8 @@ class BackgroundSurface(QOpenGLWidget):
         self._still_image: QImage | None = None  # GL still path (convenience)
         self._frame_texture: QOpenGLTexture | None = None
         self._still_texture: QOpenGLTexture | None = None
+        self._video_texture: QOpenGLTexture | None = None
+        self._video_texture_key: int = 0
         self._elapsed = QElapsedTimer()
         self._elapsed.start()
         self._time_sec = 0.0
@@ -50,29 +52,50 @@ class BackgroundSurface(QOpenGLWidget):
     # ── public API ───────────────────────────────────────────────────────
 
     def set_plan(self, plan: BackendPlan) -> None:
+        same_video = (
+            self._video is not None
+            and plan.source_kind == "video"
+            and plan.backend == "gl"
+            and plan.source_path
+            and self._video.path == plan.source_path
+        )
+        if not same_video:
+            self._stop_video()
+            if plan.source_kind == "video" and plan.backend == "gl" and plan.source_path:
+                self._video = VideoSource(plan.source_path)
+                self._video.frame_ready.connect(self._on_frame)
+                self._video.state_changed.connect(self._on_video_state)
+                self._video.start()
         self._plan = plan
-        self._stop_video()
-        if plan.source_kind == "video" and plan.backend == "gl" and plan.source_path:
-            self._video = VideoSource(plan.source_path)
-            self._video.frame_ready.connect(self._on_frame)
-            self._video.start()
         self.update()
 
     def set_source_image(self, image: QImage | None) -> None:
+        # Keep the still path and the iChannel0 texture in sync.
         self._source_image = image
+        if self._still_image is not image:
+            if self._still_texture is not None:
+                self._still_texture.destroy()
+                self._still_texture = None
+            self._still_image = image
         self.update()
 
     def cleanup(self) -> None:
         self._stop_video()
-        if self._frame_texture is not None:
-            self._frame_texture.destroy()
-            self._frame_texture = None
-        if self._still_texture is not None:
-            self._still_texture.destroy()
-            self._still_texture = None
+        for attr in ("_frame_texture", "_still_texture", "_video_texture"):
+            tex = getattr(self, attr)
+            if tex is not None:
+                tex.destroy()
+                setattr(self, attr, None)
 
     def _on_frame(self, _image: QImage) -> None:
         self.update()
+
+    def _on_video_state(self, state: str) -> None:
+        """D-3: a decode failure must fall back to CPU, never a black screen."""
+        if state == "error" and self._plan is not None and self._plan.backend == "gl":
+            video = self._video
+            errors = video.errors() if video is not None else []
+            self.rendering_failed.emit("; ".join(errors[-2:]) or "video decode failed")
 
     def _stop_video(self) -> None:
         if self._video is not None:
@@ -90,7 +113,11 @@ class BackgroundSurface(QOpenGLWidget):
     def paintGL(self) -> None:
         if not self._gl_ok or self._plan is None:
             return
-        size = (max(1, self.width()), max(1, self.height()))
+        # Device-pixel size: the QOpenGLWidget default framebuffer is sized at
+        # widget_size * devicePixelRatio, so the GL viewport must match it or
+        # content is drawn into a sub-region (HiDPI distortion).
+        dpr = self.devicePixelRatioF()
+        size = (max(1, round(self.width() * dpr)), max(1, round(self.height() * dpr)))
         if self.isVisible():
             self._time_sec = self._elapsed.elapsed() / 1000.0
         if self._plan.source_kind == "shader":
@@ -128,15 +155,22 @@ class BackgroundSurface(QOpenGLWidget):
         frame = self._video.current_frame() if self._video is not None else None
         if frame is None:
             return
-        tex = self._pipeline.upload_image(frame)
-        if tex is None:
+        # Reuse the uploaded texture while the frame is unchanged (paused /
+        # static frames) instead of allocating a texture on every paint.
+        key = frame.cacheKey()
+        if self._video_texture is None or key != self._video_texture_key:
+            if self._video_texture is not None:
+                self._video_texture.destroy()
+            self._video_texture = self._pipeline.upload_image(frame)
+            self._video_texture_key = key
+        if self._video_texture is None:
             return
-        final = self._pipeline._apply_chain_to_fbo(tex.textureId(), size, self._plan.chain)
+        tex_id = self._video_texture.textureId()
+        final = self._pipeline._apply_chain_to_fbo(tex_id, size, self._plan.chain)
         if final is not None:
             self._pipeline.draw_texture(final.texture(), size)
         else:
-            self._pipeline.draw_texture(tex.textureId(), size)
-        tex.destroy()
+            self._pipeline.draw_texture(tex_id, size)
 
     def _draw_still(self, size: tuple[int, int]) -> None:
         if self._still_image is None:

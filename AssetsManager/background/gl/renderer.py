@@ -38,6 +38,7 @@ class GlPipeline:
 
     def __init__(self) -> None:
         self._programs: dict[str, QOpenGLShaderProgram] = {}
+        self._shadertoy_cache: dict[str, QOpenGLShaderProgram] = {}
         self._quad_vbo: int = 0
         self._fbo_a: QOpenGLFramebufferObject | None = None
         self._fbo_b: QOpenGLFramebufferObject | None = None
@@ -179,7 +180,10 @@ class GlPipeline:
             final = self._apply_chain_to_fbo(tex.textureId(), size, chain)
             if final is None:
                 return None
-            image_out = final.toImage().flipped(Qt.Orientation.Vertical)
+            # upload_image already flips the source to GL orientation, so the
+            # FBO readback needs no extra flip (verified empirically: a
+            # double flip renders the still upside-down).
+            image_out = final.toImage()
             return image_out if not image_out.isNull() else None
         finally:
             tex.destroy()
@@ -278,12 +282,19 @@ class GlPipeline:
         strength: float,
         channels: dict[int, int] | None = None,
     ) -> bool:
-        """Draw a procedural preset to the current (screen) framebuffer."""
+        """Draw a procedural preset to the current (screen) framebuffer.
+
+        Programs are cached per preset fragment: compiling on every frame was
+        the hot path (QOpenGLShader link is expensive at 60fps).
+        """
         if not self.ensure_ready():
             return False
-        program = self.shadertoy_program(preset_fragment)
+        program = self._shadertoy_cache.get(preset_fragment)
         if program is None:
-            return False
+            program = self.shadertoy_program(preset_fragment)
+            if program is None:
+                return False
+            self._shadertoy_cache[preset_fragment] = program
         ctx = QOpenGLContext.currentContext()
         gl = ctx.functions()
         gl.glViewport(0, 0, size[0], size[1])
