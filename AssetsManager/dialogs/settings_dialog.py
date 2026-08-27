@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, Signal, QObject, QSignalBlocker, QSize, QTimer
 from PySide6.QtWidgets import (
     QMessageBox, QProgressBar, QVBoxLayout, QHBoxLayout, QWidget,
     QRadioButton, QFrame, QPushButton, QFileDialog, QSlider,
-    QInputDialog, QLabel,
+    QInputDialog, QLabel, QComboBox,
 )
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager.core.settings import AppSettings
@@ -146,6 +146,31 @@ class SettingsDialog(TabbedDialog):
             themes.bg_enabled())
         self._bg_enabled_cb.toggled.connect(self._on_bg_setting_changed)
         layout.addWidget(self._bg_enabled_cb)
+
+        # ── Background type: image / video / shader ──────────────
+        self._current_bg_type = themes.bg_type()
+        self._bg_type_btn = QPushButton()
+        self._set_menu_button_presentation(self._bg_type_btn, self._bg_type_label())
+        self._bg_type_btn.setMinimumWidth(scaled_px(120))
+        self._bg_type_btn.clicked.connect(self._on_bg_type_menu)
+        self._bg_type_row = self.make_labeled_row(
+            tr("settings.bg_type"), self._bg_type_btn)
+        layout.addLayout(self._bg_type_row)
+
+        # ── Shader preset (visible when type == shader) ─────────
+        self._shader_preset_combo = QComboBox()
+        from AssetsManager.background.gl import presets
+        for key in presets.preset_keys():
+            self._shader_preset_combo.addItem(presets.display_name(key), userData=key)
+        active_preset = presets.resolve(themes.bg_shader_preset())
+        idx = self._shader_preset_combo.findData(active_preset)
+        if idx >= 0:
+            self._shader_preset_combo.setCurrentIndex(idx)
+        self._shader_preset_combo.currentIndexChanged.connect(self._on_bg_setting_changed)
+        self._shader_preset_row = self.make_labeled_row(
+            tr("settings.bg_shader_preset"), self._shader_preset_combo)
+        layout.addLayout(self._shader_preset_row)
+        self._set_row_visible(self._shader_preset_row, self._current_bg_type == "shader")
 
         path_row, self._bg_path_edit = self.make_browse_row(
             tr("settings.bg_image"), tr("settings.bg_placeholder"), callback=self._browse_bg_image)
@@ -472,6 +497,48 @@ class SettingsDialog(TabbedDialog):
         self._bg_enabled_cb.setChecked(False)
         self._on_bg_setting_changed()
 
+    @staticmethod
+    def _set_row_visible(row, visible: bool):
+        """Toggle visibility of every widget inside a labeled row layout."""
+        for i in range(row.count()):
+            item = row.itemAt(i)
+            if item is not None and item.widget() is not None:
+                item.widget().setVisible(visible)
+
+    def _bg_type_label(self) -> str:
+        return {
+            "image": tr("settings.bg_type_image"),
+            "video": tr("settings.bg_type_video"),
+            "shader": tr("settings.bg_type_shader"),
+        }.get(self._current_bg_type, tr("settings.bg_type_image"))
+
+    def _on_bg_type_menu(self):
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        image_action = menu.addAction(tr("settings.bg_type_image"))
+        video_action = menu.addAction(tr("settings.bg_type_video"))
+        shader_action = menu.addAction(tr("settings.bg_type_shader"))
+        chosen = menu.exec(self._bg_type_btn.mapToGlobal(self._bg_type_btn.rect().bottomLeft()))
+        if chosen == image_action:
+            self._current_bg_type = "image"
+        elif chosen == video_action:
+            self._current_bg_type = "video"
+        elif chosen == shader_action:
+            self._current_bg_type = "shader"
+            # Design §6: shader background fixes the effect to 'shader'.
+            self._current_effect = "shader"
+            effect_label = {
+                "none": tr("settings.bg_effect_none"), "blur": tr("settings.bg_blur"),
+                "mosaic": tr("settings.bg_mosaic"), "kuwahara": tr("settings.bg_kuwahara"),
+                "shader": tr("settings.bg_type_shader"),
+            }.get(self._current_effect, tr("settings.bg_effect_none"))
+            self._set_menu_button_presentation(self._effect_btn, effect_label)
+        else:
+            return
+        self._set_menu_button_presentation(self._bg_type_btn, self._bg_type_label())
+        self._set_row_visible(self._shader_preset_row, self._current_bg_type == "shader")
+        self._on_bg_setting_changed()
+
     def _on_bg_setting_changed(self, *_):
         s = AppSettings.instance()
         bg_enabled = self._bg_enabled_cb.isChecked()
@@ -487,11 +554,13 @@ class SettingsDialog(TabbedDialog):
                 self._bg_enabled_cb.setChecked(False)
         
         s.set("bg_enabled", bg_enabled)
+        s.set("bg_type", self._current_bg_type)
         s.set("bg_image", bg_path)
         s.set("bg_panel_opacity", self._bg_panel_slider.value() / 100.0)
         s.set("bg_header_opacity", self._bg_header_slider.value() / 100.0)
         s.set("bg_effect", self._current_effect)
         s.set("bg_effect_intensity", self._effect_intensity.value())
+        s.set("bg_shader_preset", self._shader_preset_combo.currentData() or "plasma")
         s.save()
         themes.invalidate_cache()
         parent = self.parent()
@@ -1008,6 +1077,13 @@ class SettingsDialog(TabbedDialog):
             "mosaic": tr("settings.bg_mosaic"), "kuwahara": tr("settings.bg_kuwahara"),
         }.get(self._current_effect, tr("settings.bg_effect_none"))
         self._set_menu_button_presentation(self._effect_btn, effect_label)
+        self._set_menu_button_presentation(self._bg_type_btn, self._bg_type_label())
+        type_label = self._bg_type_row.itemAt(0).widget()
+        if type_label is not None:
+            type_label.setText(tr("settings.bg_type"))
+        preset_label = self._shader_preset_row.itemAt(0).widget()
+        if preset_label is not None:
+            preset_label.setText(tr("settings.bg_shader_preset"))
         quality_keys = ("fast", "default", "high", "original")
         for button in self._thumb_group.buttons():
             key = cast(str, button.property("option_key"))

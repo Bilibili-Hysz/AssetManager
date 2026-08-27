@@ -504,8 +504,13 @@ def bg_type() -> str:
 
 
 def bg_effect() -> str:
-    """Active image effect: 'none', 'blur', 'mosaic', or 'kuwahara'."""
+    """Active image effect: 'none', 'blur', 'mosaic', 'kuwahara', or 'shader'."""
     return str(_bg_setting("effect", "none"))
+
+
+def bg_shader_preset() -> str:
+    """Active Shadertoy-style preset key ('' falls back to the first preset)."""
+    return str(_bg_setting("shader_preset", "plasma"))
 
 
 def bg_effect_intensity() -> int:

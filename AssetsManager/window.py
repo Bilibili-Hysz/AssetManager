@@ -303,6 +303,72 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._bg_dirty = False
         self.update()
 
+    # ── Background backend: GL host mount/unmount (design §5, G-2) ──
+
+    def _on_bg_plan_changed(self, plan):
+        """React to a BackgroundManager plan: mount the GL host or the CPU path."""
+        if self._bg_gl_broken:
+            # D-3: a previous GL attempt failed — stay on the CPU wallpaper
+            # until the next settings change resets the latch.
+            self._unmount_bg_gl()
+            return
+        if plan.backend == "gl":
+            self._mount_bg_gl(plan)
+        else:
+            self._unmount_bg_gl()
+            self.refresh_bg()
+
+    def _mount_bg_gl(self, plan) -> None:
+        from AssetsManager.background.gl.surface import BackgroundSurface
+
+        if self._bg_surface is None:
+            surface = BackgroundSurface(self)
+            surface.rendering_failed.connect(self._on_bg_gl_failed)
+            surface.visibility_changed.connect(self._on_bg_surface_visibility)
+            self._bg_surface = surface
+        surface = self._bg_surface
+        if self.file_list.parent() is not surface:
+            surface._host_layout.addWidget(self.file_list)
+        if self.centralWidget() is not surface:
+            self.setCentralWidget(surface)
+        if plan.source_kind == "image" and plan.source_path:
+            from AssetsManager.background.sources import ImageSource
+            surface.set_source_image(ImageSource(plan.source_path).frame())
+        surface.set_plan(plan)
+        surface.show()
+
+    def _unmount_bg_gl(self) -> None:
+        surface = self._bg_surface
+        if surface is None:
+            return
+        if self.file_list.parent() is surface:
+            surface._host_layout.removeWidget(self.file_list)
+            self.file_list.setParent(self)
+        if self.centralWidget() is surface:
+            self.setCentralWidget(self.file_list)
+        surface.cleanup()
+        surface.hide()
+        surface.deleteLater()
+        self._bg_surface = None
+
+    def _on_bg_gl_failed(self, message: str) -> None:
+        """D-3: GL rendering failed — fall back to the CPU wallpaper, no black screen."""
+        _log.warning("Background GL failed (%s); falling back to CPU wallpaper", message)
+        self._bg_gl_broken = True
+        self._unmount_bg_gl()
+        self.refresh_bg()
+
+    def _on_bg_surface_visibility(self, visible: bool) -> None:
+        """Pause video while the GL host is hidden (energy saving, design §5)."""
+        if self._bg_surface is not None and not visible:
+            surface = self._bg_surface
+            video = getattr(surface, "_video", None)
+            if video is not None:
+                try:
+                    video.pause()
+                except Exception:
+                    pass
+
     def _on_bg_style_changed(self):
         """Re-apply stylesheet and refresh title-bars when bg opacity changes."""
         app = QApplication.instance()
@@ -325,7 +391,14 @@ class MainWindow(LanSharingMixin, QMainWindow):
         refresh_header = getattr(self.file_list, "refresh_header", None)
         if callable(refresh_header):
             refresh_header()
-        self.refresh_bg()
+        # G-2: one notification chain — re-plan the backend so the GL host
+        # rebuilds the pipeline and re-uploads textures on settings changes.
+        manager = getattr(self, "_bg_manager", None)
+        if manager is not None:
+            self._bg_gl_broken = False  # give GL another chance after a settings change
+            manager.refresh()
+        else:
+            self.refresh_bg()
 
     def _setup_menu(self):
         bar = self._menu_bar
@@ -460,6 +533,18 @@ class MainWindow(LanSharingMixin, QMainWindow):
         # ── Central panel ────────────────────────────────────────
         self.file_list = self._create_file_list_panel()
         self.setCentralWidget(self.file_list)
+
+        # ── Background backend (design §5/G-2) ───────────────────
+        # Settings express intent; BackgroundManager picks the backend and
+        # announces the plan. GL plans mount a hybrid host (surface as
+        # central widget, file_list re-parented into it); CPU/none plans
+        # keep file_list central and the paintEvent wallpaper (unchanged).
+        from AssetsManager.background.manager import BackgroundManager
+        self._bg_manager = BackgroundManager(self)
+        self._bg_manager.plan_changed.connect(self._on_bg_plan_changed)
+        self._bg_surface = None          # AssetsManager.background.gl.surface.BackgroundSurface
+        self._bg_gl_broken = False       # D-3 latch: never black-screen, fall back to CPU
+        self._bg_manager.refresh()
 
         # ── Docks ───────────────────────────────────────────────
         self.sidebar_dock = dock.create(tr("dock.sidebar"), self, Qt.DockWidgetArea.LeftDockWidgetArea,

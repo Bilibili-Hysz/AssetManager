@@ -33,6 +33,23 @@ def test_bg_effect_validator_accepts_kuwahara():
         settings_module._validate_setting("bg_effect", "not-an-effect")
 
 
+def test_bg_type_validator_accepts_image_video_shader():
+    """bg_type (design G-1): the background-type menu row persists this key."""
+    for value in ("image", "video", "shader"):
+        settings_module._validate_setting("bg_type", value)
+    with pytest.raises(ValueError):
+        settings_module._validate_setting("bg_type", "slideshow")
+
+
+def test_bg_shader_preset_validator_requires_nonempty_string():
+    settings_module._validate_setting("bg_shader_preset", "plasma")
+    settings_module._validate_setting("bg_shader_preset", "grid-flow")
+    with pytest.raises(ValueError):
+        settings_module._validate_setting("bg_shader_preset", "")
+    with pytest.raises(ValueError):
+        settings_module._validate_setting("bg_shader_preset", None)
+
+
 def test_future_config_version_rejected_without_mutating_payload():
     payload = {
         "_cfg_version": CURRENT_VERSION + 1,
