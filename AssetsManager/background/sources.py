@@ -8,6 +8,8 @@
 """
 from __future__ import annotations
 
+import time
+
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QImage, QImageReader
 
@@ -48,14 +50,20 @@ class VideoSource(QObject):
 
     Emits :attr:`frame_ready` for each decoded frame (as QImage) and retains
     the latest one for CPU-side fallback rendering.
+
+    ``max_fps`` caps how often frames are converted and emitted (decoding
+    continues; skipped frames are dropped).  The CPU wallpaper feed uses
+    ~30fps, while the GL path keeps the default 0 = uncapped.
     """
 
     frame_ready = Signal(object)  # QImage
     state_changed = Signal(str)  # "playing" | "paused" | "stopped" | "error"
 
-    def __init__(self, path: str, parent: QObject | None = None):
+    def __init__(self, path: str, parent: QObject | None = None, max_fps: float = 0.0):
         super().__init__(parent)
         self.path = path
+        self._max_fps = max_fps
+        self._last_emit = 0.0
         self._latest: QImage | None = None
         self._player = None
         self._sink = None
@@ -80,9 +88,15 @@ class VideoSource(QObject):
         return True
 
     def _on_frame(self, frame) -> None:
+        if self._max_fps > 0:
+            now = time.monotonic()
+            if now - self._last_emit < 1.0 / self._max_fps:
+                return  # keep conversion budget: skip this decoded frame
         image = VideoSource.frame_to_image(frame)
         if image is not None:
             self._latest = image
+            if self._max_fps > 0:
+                self._last_emit = time.monotonic()
             self.frame_ready.emit(image)
 
     def _on_error(self, error, message: str) -> None:

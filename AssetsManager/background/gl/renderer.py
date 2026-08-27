@@ -156,10 +156,11 @@ class GlPipeline:
             and self._fbo_a.height() == size[1]
         ):
             return
-        for attr in ("_fbo_a", "_fbo_b"):
-            fbo = getattr(self, attr)
-            if fbo is not None:
-                fbo.deleteLater()
+        # QOpenGLFramebufferObject is NOT a QObject in Qt 6 / PySide6 — there
+        # is no deleteLater/destroy.  Dropping the reference while the GL
+        # context is current releases the underlying framebuffer objects.
+        self._fbo_a = None
+        self._fbo_b = None
         self._fbo_a = QOpenGLFramebufferObject(size[0], size[1])
         self._fbo_b = QOpenGLFramebufferObject(size[0], size[1])
 

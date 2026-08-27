@@ -129,6 +129,26 @@ def test_fbo_smoke_orientation_preserved(gl_surface):
     assert bottom < 100, (top, bottom)
 
 
+def test_fbo_smoke_resize_recreates_without_crash(gl_surface):
+    """Resizing (e.g. window resize) must recreate the ping-pong FBOs.
+
+    Regression: QOpenGLFramebufferObject is not a QObject in Qt6/PySide6 and
+    has no deleteLater() — a call there crashed every paintGL during window
+    resizes (the reason video backgrounds seemed to stop persisting).
+    """
+    pipeline = gl_surface._pipeline
+    assert pipeline.ensure_ready(), pipeline.failure
+    img = QImage(64, 48, QImage.Format.Format_RGB32)
+    img.fill(QColor(120, 90, 200))
+    for size in ((128, 96), (160, 120), (96, 72), (128, 96)):
+        out = pipeline.render_still(img, EffectChain.single("blur", intensity=4), size)
+        assert out is not None
+        assert (out.width(), out.height()) == size
+    # and the passthrough path with a different size
+    out = pipeline.render_still(img, EffectChain.single("none", intensity=0), (40, 30))
+    assert out is not None
+
+
 def test_shadertoy_presets_render_non_black(gl_surface):
     """Every built-in preset compiles and draws non-black content (M4)."""
     from AssetsManager.background.gl import presets

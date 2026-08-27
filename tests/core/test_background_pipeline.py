@@ -140,6 +140,39 @@ def test_render_chain_cpu_effects():
         assert out.size() == img.size()
 
 
+# ── VideoSource frame-rate cap ───────────────────────────────────────────
+
+def test_videosource_max_fps_caps_emissions(monkeypatch):
+    """max_fps drops converted frames beyond the budget (no QtMultimedia
+    needed: the decode/emit path is exercised through a fake frame feed)."""
+    import time
+
+    from AssetsManager.background.sources import VideoSource
+
+    src = VideoSource("C:/fake.mp4", max_fps=20.0)
+    emitted = []
+    src.frame_ready.connect(lambda img: emitted.append(img))
+
+    class FakeFrame:
+        def toImage(self):
+            img = QImage(8, 8, QImage.Format.Format_RGB32)
+            img.fill(QColor(255, 255, 255))
+            return img
+
+    # simulate 60 frames arriving back-to-back: a small number should be
+    # emitted (60 * 0.5ms of sleep can straddle the 50ms cap window, so
+    # allow 1-3), far fewer than the 60 decoded frames.
+    for _ in range(60):
+        src._on_frame(FakeFrame())
+        time.sleep(0.0005)
+    assert 1 <= len(emitted) <= 3, f"expected ~1 emission, got {len(emitted)}"
+
+    # after the cap window elapses another frame passes
+    time.sleep(0.06)
+    src._on_frame(FakeFrame())
+    assert len(emitted) >= 2
+
+
 # ── Shader presets ───────────────────────────────────────────────────────
 
 def test_presets_resolve_and_fallback():

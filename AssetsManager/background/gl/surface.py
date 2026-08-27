@@ -120,7 +120,9 @@ class BackgroundSurface(QOpenGLWidget):
         size = (max(1, round(self.width() * dpr)), max(1, round(self.height() * dpr)))
         if self.isVisible():
             self._time_sec = self._elapsed.elapsed() / 1000.0
-        if self._plan.source_kind == "shader":
+        if self._plan.source_kind == "shader" or self._plan.chain.requires_gl():
+            # Both a shader-type background and an image+shader plan render
+            # the preset (the image, when present, feeds iChannel0).
             self._draw_shader(size)
         elif self._plan.source_kind == "video":
             self._draw_video(size)
