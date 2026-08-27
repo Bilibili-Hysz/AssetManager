@@ -24,6 +24,15 @@ def test_singleton():
     assert a is b
 
 
+def test_bg_effect_validator_accepts_kuwahara():
+    """Regression: the settings validator blocked saving the Kuwahara effect,
+    so picking it in the dialog raised ValueError and the choice was lost."""
+    settings_module._validate_setting("bg_effect", "kuwahara")
+    settings_module._validate_setting("bg_effect", "mosaic")
+    with pytest.raises(ValueError):
+        settings_module._validate_setting("bg_effect", "not-an-effect")
+
+
 def test_future_config_version_rejected_without_mutating_payload():
     payload = {
         "_cfg_version": CURRENT_VERSION + 1,
