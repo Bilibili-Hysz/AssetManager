@@ -54,13 +54,14 @@
 
 (docs/plans/ 保留:documentation-maintenance-plan-2026-08-27.md —— 现行计划)
 
-## 2026-08/scratch(根目录原始输出/重复报告,3 份)
+## 2026-08/scratch(根目录原始输出/重复报告/重复质检,4 份)
 
 | 原路径 | 新路径 | 归档原因 | 取代者 |
 |---|---|---|---|
 | _q1_complete.txt | 2026-08/scratch/_q1_complete.txt | pytest 进度原始输出(Q1 批次) | artifacts/ + dated evidence |
 | _q1_gates.txt | 2026-08/scratch/_q1_gates.txt | 门禁原始输出 | 同上 |
-| _quality_report.md | 2026-08/scratch/_quality_report.md | 与 _quality_audit_2026_08_17.md 双份互抄(保留后者于根目录) | _quality_audit_2026_08_17.md |
+| _quality_report.md | 2026-08/scratch/_quality_report.md | 与 _quality_audit_2026_08_17.md 双份互抄 | _quality_audit_2026_08_17.md |
+| _quality_audit_2026_08_17.md | 2026-08/scratch/_quality_audit_2026_08_17.md | 与 `docs/full-review/12-quality-audit-2026-08-17.md` 同源重复(2026-08-27 复核) | `docs/full-review/12-quality-audit-2026-08-17.md` |
 
 ---
-*登记日期:2026-08-27 · 共 32 项 · 全部为移动操作,内容零修改。*
+*登记日期:2026-08-27 · 共 33 项 · 全部为移动操作,内容零修改。*

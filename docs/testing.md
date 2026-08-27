@@ -49,7 +49,6 @@ Current layout(2026-08-27 实测,共 283 个 `test_*.py`):
 - `tests/e2e/` — 真实 LAN + Playwright Chromium 验收(2 文件:realtime + thumbnail privacy)
 - `tests/performance/` — pytest 基准(2 文件,阈值门禁默认被 pytest.ini 排除);`tests/perf/` — 基准脚本(6 个,含 nightly grid telemetry)
 - `tests/contracts/`、`tests/fixtures/` — 契约快照 / 旧版 schema fixture
-- `tests/panels/` — 空壳(0 测试,待清理或填充)
 
 前端：`webui/src/**/*.test.ts(x)`(103 Vitest 文件 = 15 contract + 88 unit)+ `webui/e2e/`(Playwright **6 spec**;默认本机 51 passed、2 skipped;commerce-real-backend 需环境变量否则自带 skip)。
 
