@@ -1,9 +1,10 @@
 """Main window — QDockWidget-based docking layout with workspace tab bar."""
 import logging
+import time
 from pathlib import Path
 from typing import Any, cast
 
-from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QTimer, QSize, Signal
+from PySide6.QtCore import Qt, QEvent, QRect, QPropertyAnimation, QEasingCurve, QTimer, QSize, Signal
 from PySide6.QtGui import QPixmap, QPainter
 from PySide6.QtWidgets import (
     QMainWindow,
@@ -122,9 +123,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
         # (D-1: video never renders nothing when GL is unavailable).
         self._bg_video_frame: Any | None = None
         self._bg_video_feed: Any | None = None
-        self._bg_video_scaled: Any | None = None
-        self._bg_video_scaled_key: str = ""
         self._last_video_paint = 0.0
+        # Last wheel event timestamp: while the user scrolls we slow the
+        # wallpaper cadence so the translucent file-list doesn't repaint
+        # (cascade) at full video rate.
+        self._bg_last_scroll = 0.0
         self._bg_resize_timer = QTimer(self)
         self._bg_resize_timer.setSingleShot(True)
         self._bg_resize_timer.setInterval(150)
@@ -255,30 +258,32 @@ class MainWindow(LanSharingMixin, QMainWindow):
         super().paintEvent(event)
 
     def _paint_video_wallpaper(self, opacity: float) -> None:
-        """Draw the latest decoded video frame over the whole window."""
+        """Draw the latest decoded video frame over the whole window.
+
+        Uses painter.drawImage with an explicit target rect (FastTransformation
+        scaling inside the paint) instead of allocating a scaled QPixmap per
+        frame: at 30fps full-HD the pixmap copy+scale was ~6.5ms/frame of UI
+        thread the grid's translucent repaint had to wait for.  The cached
+        scaled-pixmap path made the per-frame allocation worse, not better.
+        """
         frame = getattr(self, "_bg_video_frame", None)
         if frame is None or frame.isNull():
             return
         w, h = self.width(), self.height()
-        key = f"{frame.cacheKey()}:{w}:{h}"
-        scaled = self._bg_video_scaled if self._bg_video_scaled_key == key else None
-        if scaled is None:
-            pm = QPixmap.fromImage(frame)
-            if pm.isNull():
-                return
-            # Fast transformation: video frames change every paint cycle and
-            # a smooth upscale per frame would eat the frame budget.
-            scaled = pm.scaled(
-                w, h, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                Qt.TransformationMode.FastTransformation)
-            self._bg_video_scaled = scaled
-            self._bg_video_scaled_key = key
-        if scaled is None:
+        fw, fh = frame.width(), frame.height()
+        if fw <= 0 or fh <= 0:
             return
+        scale = max(w / fw, h / fh)  # KeepAspectRatioByExpanding
+        dw, dh = max(1, round(fw * scale)), max(1, round(fh * scale))
+        dx, dy = (w - dw) // 2, (h - dh) // 2
         p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        # No SmoothPixmapTransform here: keep the per-frame upscale cheap.
         p.setOpacity(opacity)
-        p.drawPixmap((w - scaled.width()) // 2, (h - scaled.height()) // 2, scaled)
+        p.drawImage(
+            QRect(dx, dy, dw, dh),
+            frame,
+            QRect(0, 0, fw, fh),
+        )
         p.end()
 
     def _paint_image_wallpaper(self, path: str, opacity: float) -> None:
@@ -345,8 +350,6 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
     def refresh_bg(self):
         self._bg_cache = ("", None, None)
-        self._bg_video_scaled = None
-        self._bg_video_scaled_key = ""
         self._bg_dirty = False
         self.update()
 
@@ -390,12 +393,29 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._bg_video_frame = None
 
     def _on_bg_video_frame(self, image) -> None:
-        """Store the latest video frame and repaint (throttled to ~30fps)."""
-        self._bg_video_frame = image
-        import time
+        """Store the latest video frame and repaint, input-aware throttle.
 
+        While the user is scrolling the file list, the translucent panels make
+        every wallpaper repaint cascade a full child repaint (measured: the
+        grid repaints on every wallpaper frame).  Dropping the wallpaper
+        cadence during scroll keeps the foreground fluid and skips frames the
+        user is too busy looking at the list to notice.
+        """
+        self._bg_video_frame = image
         now = time.monotonic()
-        if now - self._last_video_paint >= 0.033:
+        scroll_active = (now - self._bg_last_scroll) < 0.5
+        # While scrolling, cut both the paint cadence and the decode rate:
+        # the translucent panels make each wallpaper repaint cascade a full
+        # child (file-list) repaint, so halving the wallpaper halves that
+        # cascade cost without anyone noticing the background.
+        cadence = 0.10 if scroll_active else 0.033
+        feed = self._bg_video_feed
+        if feed is not None:
+            try:
+                feed.set_max_fps(12.0 if scroll_active else 30.0)
+            except Exception:
+                pass
+        if now - self._last_video_paint >= cadence:
             self._last_video_paint = now
             self.update()
 
@@ -405,6 +425,12 @@ class MainWindow(LanSharingMixin, QMainWindow):
                          self._bg_video_feed.errors() if self._bg_video_feed else "")
             self._bg_video_frame = None
             self.update()
+
+    def eventFilter(self, obj, event) -> bool:
+        """Track wheel (scroll) activity for video-wallpaper throttle."""
+        if event.type() == QEvent.Type.Wheel:
+            self._bg_last_scroll = time.monotonic()
+        return False
 
     # ── Background backend: GL host mount/unmount (design §5, G-2) ──
 
@@ -661,6 +687,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._bg_manager.plan_changed.connect(self._on_bg_plan_changed)
         self._bg_surface = None          # AssetsManager.background.gl.surface.BackgroundSurface
         self._bg_gl_broken = False       # D-3 latch: never black-screen, fall back to CPU
+        # Watch wheel events so the video wallpaper can slow down while the
+        # user scrolls (translucent panels cascade repaints per frame).
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
         self._bg_manager.refresh()
 
         # ── Docks ───────────────────────────────────────────────

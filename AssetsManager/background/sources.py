@@ -113,6 +113,10 @@ class VideoSource(QObject):
         except Exception:
             return None
 
+    def set_max_fps(self, fps: float) -> None:
+        """Adjust the conversion/emission cap at runtime (scroll throttle)."""
+        self._max_fps = fps
+
     def start(self) -> bool:
         if not self._ensure_player():
             return False
