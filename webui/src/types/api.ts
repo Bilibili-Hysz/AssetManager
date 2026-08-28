@@ -224,7 +224,7 @@ export interface TreeItem {
   path: string;
   type: 'dir';
   is_leaf: boolean;
-  children?: TreeItem[];
+  children: TreeItem[];
 }
 
 export interface TreeResponse {

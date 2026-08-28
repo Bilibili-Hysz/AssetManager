@@ -3,7 +3,7 @@ import { createApiClient, type ApiClient } from '../api/client';
 import { emitApiDegradation } from '../api/degradationBus';
 import { createAuthApi, type AuthApi } from '../api/auth';
 import { createSystemApi, type SystemApi } from '../api/system';
-import { isServiceUnavailableError, isNetworkError } from '../api/errors';
+import { isApiError, isNetworkError, isServiceUnavailableError } from '../api/errors';
 import type { Capabilities, ServerInfo, SessionPrincipal } from '../types/api';
 
 const THUMBNAIL_CACHE_STORAGE_PREFIX = 'lan_thumb_cache:';
@@ -51,7 +51,11 @@ const guestPrincipal: SessionPrincipal = {
 const emptyPermissions: string[] = [];
 
 function principalIdentity(principal: SessionPrincipal): string {
-  return `${principal.kind}:${principal.authenticated}:${principal.user_profile?.id ?? ''}:${principal.user_profile?.username ?? principal.display_name}`;
+  // The role is part of the identity: an in-place role change between two
+  // /auth/me responses (e.g. an admin grant) must grow the identity generation
+  // so role-scoped caches are dropped instead of reused across privilege
+  // changes.
+  return `${principal.kind}:${principal.authenticated}:${principal.user_profile?.id ?? ''}:${principal.user_profile?.username ?? principal.display_name}:${principal.role}`;
 }
 
 function thumbnailNamespace(
@@ -150,6 +154,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const promise = authApi.me().then(res => {
       if (generation !== generationRef.current) return false;
+      // The probe succeeded, so the service is reachable again.
+      setServiceUnavailable(false);
       const nextPrincipal = res.principal ?? (res.user ? {
         kind: 'user' as const, authenticated: true, role: res.user.role,
         display_name: res.user.username, capabilities: emptyCapabilities,
@@ -157,9 +163,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } : guestPrincipal);
       applyPrincipal(nextPrincipal);
       return true;
-    }).catch(() => {
+    }).catch(error => {
       if (generation !== generationRef.current) return false;
-      clearGuest();
+      if (isApiError(error) && (error.status === 401 || error.status === 403)) {
+        // A 401/403 is an authoritative answer that the session is gone.
+        clearGuest();
+        return false;
+      }
+      // Network/timeout/5xx failures carry no information about the session:
+      // keep the current principal and surface the degraded state instead of
+      // treating a flaky connection as a logout.
+      setServiceUnavailable(true);
       return false;
     }).finally(() => {
       if (inFlightMeRef.current?.promise === promise) inFlightMeRef.current = null;

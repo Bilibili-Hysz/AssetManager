@@ -6,9 +6,9 @@ import { EmptyState, ProductCard } from '../components/storefront/ProductCard';
 import SellerGalleryEditor from '../components/storefront/SellerGalleryEditor';
 import type { SellerPageProps, StorefrontProduct } from '../components/storefront/types';
 import { useI18n } from '../hooks/useI18n';
-import { useCommerceCatalog } from '../hooks/useCommerce';
+import { useSellerCommerceCatalog } from '../hooks/useCommerce';
 import { useAuth } from '../hooks/useAuth';
-import { useShopApi } from '../hooks/usePageApis';
+import { useSellerShopApi } from '../hooks/usePageApis';
 import { useToast } from '../components/ui/Toast';
 import type { ShopItem } from '../types/api';
 
@@ -21,8 +21,8 @@ export default function SellerProductsPage({ seller, products = [] }: SellerPage
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams<{ id?: string }>();
-  const shopApi = useShopApi();
-  const catalog = useCommerceCatalog(true);
+  const shopApi = useSellerShopApi();
+  const catalog = useSellerCommerceCatalog(true);
   const visibleProducts = products.length > 0 ? products : catalog.products;
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');

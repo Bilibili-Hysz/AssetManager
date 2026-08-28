@@ -2,15 +2,17 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SellerSettingsPage from './SellerSettingsPage';
+import { ForbiddenError } from '../api/errors';
 
-const { getSellerProfile, updateSellerProfile, showToast, sellerApi } = vi.hoisted(() => ({
+const { getSellerProfile, updateSellerProfile, showToast, sellerApi, refresh } = vi.hoisted(() => ({
   getSellerProfile: vi.fn(),
   updateSellerProfile: vi.fn(),
   showToast: vi.fn(),
   sellerApi: {},
+  refresh: vi.fn(),
 }));
 
-vi.mock('../stores/SellerAuthContext', () => ({ useSellerAuth: () => ({ sellerApi }) }));
+vi.mock('../stores/SellerAuthContext', () => ({ useSellerAuth: () => ({ sellerApi, refresh }) }));
 vi.mock('../api/shop', () => ({ createShopApi: () => ({ getSellerProfile, updateSellerProfile }) }));
 vi.mock('../components/ui/Toast', () => ({ useToast: () => ({ showToast }) }));
 vi.mock('../components/storefront/StorefrontShell', () => ({ StorefrontShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
@@ -81,5 +83,16 @@ describe('SellerSettingsPage', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Profile unavailable');
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(getSellerProfile).toHaveBeenCalledTimes(2));
+  });
+
+  it('re-probes seller status when a seller request answers 403', async () => {
+    getSellerProfile.mockRejectedValue(new ForbiddenError('Seller session expired'));
+    render(<SellerSettingsPage />);
+
+    // The seller cookie may have expired independently of the main session:
+    // the wrapper must trigger the SellerAuthContext status re-probe while the
+    // original error still surfaces in the retryable error state.
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    expect((await screen.findByRole('alert')).textContent).toContain('Seller session expired');
   });
 });

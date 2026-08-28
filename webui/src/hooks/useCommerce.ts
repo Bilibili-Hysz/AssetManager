@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
 import { useAuth } from './useAuth';
+import { useSellerShopApi } from './usePageApis';
+import { useSellerAuth } from '../stores/SellerAuthContext';
 import { useCachedQuery } from './useCachedQuery';
-import { createShopApi } from '../api/shop';
+import { createShopApi, type ShopApi } from '../api/shop';
+import type { QueryKey } from '../cache/queryCache';
 import type {
   ShopCatalogQuery, ShopCatalogResponse, ShopItem, ShopItemsResponse, ShopOrder, ShopStats,
 } from '../types/api';
@@ -207,19 +210,16 @@ export function useCommerceCatalogPage(params: ShopCatalogQuery = {}): CommerceC
   );
 }
 
-export function useCommerceCatalog(includeDisabled = false) {
-  const { api } = useAuth();
-  const shopApi = useMemo(() => createShopApi(api), [api]);
-
+function useCommerceCatalogState(shopApi: ShopApi, buildUrl: (path: string) => string, key: QueryKey, includeDisabled: boolean) {
   const { data, error, isLoading, refresh } = useCachedQuery<ShopItemsResponse>({
-    key: ['shop-catalog', includeDisabled],
+    key,
     queryFn: signal => shopApi.list(includeDisabled ? undefined : 'active', includeDisabled, signal),
     domains: ['shop'],
   });
 
   const products = useMemo(
-    () => (data?.items ?? []).map(item => toStorefrontProduct(item, api.buildUrl)),
-    [api.buildUrl, data],
+    () => (data?.items ?? []).map(item => toStorefrontProduct(item, buildUrl)),
+    [buildUrl, data],
   );
 
   return useMemo(
@@ -228,18 +228,35 @@ export function useCommerceCatalog(includeDisabled = false) {
   );
 }
 
-export function useCommerceOrders() {
+export function useCommerceCatalog(includeDisabled = false) {
   const { api } = useAuth();
   const shopApi = useMemo(() => createShopApi(api), [api]);
 
+  return useCommerceCatalogState(shopApi, api.buildUrl, ['shop-catalog', includeDisabled], includeDisabled);
+}
+
+/**
+ * Seller-surface catalog: identical query shape, but routed through the
+ * dedicated seller session client (useSellerShopApi) and a seller-scoped cache
+ * key, so a seller cookie expiry never surfaces as a main-session failure.
+ * Buyer-mode callers keep using useCommerceCatalog with the main client.
+ */
+export function useSellerCommerceCatalog(includeDisabled = false) {
+  const shopApi = useSellerShopApi();
+  const { sellerApi } = useSellerAuth();
+
+  return useCommerceCatalogState(shopApi, sellerApi.buildUrl, ['shop-catalog', 'seller', includeDisabled], includeDisabled);
+}
+
+function useCommerceOrdersState(shopApi: ShopApi, buildUrl: (path: string) => string, key: QueryKey) {
   const { data, isLoading, refresh } = useCachedQuery<{ orders: StorefrontOrder[]; stats: StorefrontStats }>({
-    key: ['shop-orders'],
+    key,
     queryFn: async signal => {
       const [orderResponse, statsResponse] = await Promise.all([
         shopApi.listOrders(undefined, signal),
         shopApi.getStats(signal),
       ]);
-      const orders = orderResponse.orders.map(order => toStorefrontOrder(order, api.buildUrl));
+      const orders = orderResponse.orders.map(order => toStorefrontOrder(order, buildUrl));
       const rawStats: Partial<ShopStats> = statsResponse.stats ?? {};
       return {
         orders,
@@ -261,4 +278,22 @@ export function useCommerceOrders() {
     () => ({ orders, stats, loading: isLoading, refresh }),
     [isLoading, orders, refresh, stats],
   );
+}
+
+export function useCommerceOrders() {
+  const { api } = useAuth();
+  const shopApi = useMemo(() => createShopApi(api), [api]);
+
+  return useCommerceOrdersState(shopApi, api.buildUrl, ['shop-orders']);
+}
+
+/**
+ * Seller-surface orders: same shape as useCommerceOrders, but fetched through
+ * the dedicated seller session client and a seller-scoped cache key.
+ */
+export function useSellerCommerceOrders() {
+  const shopApi = useSellerShopApi();
+  const { sellerApi } = useSellerAuth();
+
+  return useCommerceOrdersState(shopApi, sellerApi.buildUrl, ['shop-orders', 'seller']);
 }

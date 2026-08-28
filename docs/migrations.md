@@ -1,8 +1,8 @@
 # Database Migrations
 
-> 状态:**LIVING** · updated: 2026-08-27(v34 对账完成;逐版本已与 `db_migrations.py` MIGRATIONS 一致)。
+> 状态:**LIVING** · updated: 2026-08-27(v35 新增;逐版本已与 `db_migrations.py` MIGRATIONS 一致)。
 
-AssetManager Next uses versioned SQLite migrations for per-library databases. **当前版本：`CURRENT_SCHEMA_VERSION = 34`**，以 [`AssetsManager/core/db_migrations.py`](../AssetsManager/core/db_migrations.py) 为执行事实源。历史运行结果和批次证据见 [`docs/full-review/`](full-review/)。
+AssetManager Next uses versioned SQLite migrations for per-library databases. **当前版本：`CURRENT_SCHEMA_VERSION = 35`**，以 [`AssetsManager/core/db_migrations.py`](../AssetsManager/core/db_migrations.py) 为执行事实源。历史运行结果和批次证据见 [`docs/full-review/`](full-review/)。
 
 ## Current State
 
@@ -212,12 +212,16 @@ Adds nullable render-profile metadata for non-destructive profile-aware thumbnai
 
 Adds nullable `recovery_claim_token` and `recovery_lease_expires_at` columns plus a recovery lease index. Recovery workers atomically claim unresolved manifests before enqueueing root rescans; completion and failure updates require the claim token and generation/state CAS. Existing v31-v33 rows remain valid and are upgraded additively without replaying filesystem copies.
 
+### Version 35 — File Count Mtime Snapshot
+
+`ALTER TABLE file_meta ADD COLUMN cached_file_count_mtime REAL`（可空）。文件计数缓存此前无新鲜度信号（缓存永不失效），v35 起写入计数时同时记录来源目录的 `st_mtime`；读取端仅在存储 mtime 与实时目录 mtime 一致时信任缓存，不一致或为 `NULL` 一律视为 miss 重算——与 `cached_size`/`cached_mtime` 的双保险模式对齐。v35 前的旧行保留 `NULL`，首次读取即重算并补写时间戳。
+
 ## Migration Runner Boundaries
 
 - Before applying pending versions, the runner validates the required v1 core baseline (`file_tags`, `file_meta`, `thumbnail_cache`, and `library_stats`), including required columns, primary keys, and indexes. A missing or incompatible baseline raises `IncompleteSchemaError`; the runner does not reconstruct an incomplete legacy database.
 - `migrate()` runs under a named SQLite savepoint (`SAVEPOINT migration_runner`). If the caller already has an outer transaction, the savepoint is released without committing that outer transaction; the caller retains commit/rollback ownership. On a standalone connection, successful migration preserves the historical behavior and commits. Any failure rolls back to and releases the savepoint.
 - **历史校验**：`_validate_history` 校验非整数/重复/不连续/名称不匹配 → `MigrationHistoryError`；未来版本 → `UnsupportedSchemaVersion`（先于名称校验）。
-- **版本化契约回溯**：每版应用后按版本累积 `required_objects`，用 `_versioned_schema_contract` 回溯该版本边界的合法形状（如 v<17 的 reconciliation_tasks 无 lease_token、v<18 的 shop_orders 无 buyer_owner、v16 的 shop_carts 无 checkout_generation、v16 的 checkouts 无 checkout_generation/fingerprint），逐对象 `_validate_schema_object_at_version` 校验。
+- **版本化契约回溯**：每版应用后按版本累积 `required_objects`，用 `_versioned_schema_contract` 回溯该版本边界的合法形状（如 v<17 的 reconciliation_tasks 无 lease_token、v<18 的 shop_orders 无 buyer_owner、v16 的 shop_carts 无 checkout_generation、v16 的 checkouts 无 checkout_generation/fingerprint、v<35 的 file_meta 无 cached_file_count_mtime），逐对象 `_validate_schema_object_at_version` 校验。
 - **延迟索引**：`_should_defer_index_statement` 跳过引用未来列的索引语句（如 v8 的 idx_shop_orders_buyer_owner_created 延迟到 v18）。
 - `AuthRepository.init_tables()` and `ShareRepository.init_table()` remain compatibility ensures for raw/legacy repository connections and tests. They are idempotent guards at that boundary, not an alternate migration history; the canonical bootstrap path is governed by migration v6, and incompatible pre-existing tables are rejected by its shape validation.
 

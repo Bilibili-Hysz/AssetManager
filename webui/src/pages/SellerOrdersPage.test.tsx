@@ -3,13 +3,15 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SellerOrdersPage from './SellerOrdersPage';
 
-const { fulfillOrder, revokeOrder, exportOrdersUrl, refresh, showToast, writeText, orderState } = vi.hoisted(() => ({
+const { fulfillOrder, revokeOrder, exportOrdersUrl, refresh, showToast, writeText, orderState, sellerApi, sellerRefresh } = vi.hoisted(() => ({
   fulfillOrder: vi.fn(),
   revokeOrder: vi.fn(),
   exportOrdersUrl: vi.fn(() => '/api/shop/orders/export'),
   refresh: vi.fn(),
   showToast: vi.fn(),
   writeText: vi.fn(),
+  sellerApi: {},
+  sellerRefresh: vi.fn(),
   orderState: {
     orders: [{
       id: 'order-7',
@@ -24,12 +26,13 @@ const { fulfillOrder, revokeOrder, exportOrdersUrl, refresh, showToast, writeTex
 }));
 
 vi.mock('../hooks/useCommerce', () => ({
-  useCommerceOrders: () => ({
+  useSellerCommerceOrders: () => ({
     orders: orderState.orders,
     refresh,
   }),
 }));
 vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ api: {} }) }));
+vi.mock('../stores/SellerAuthContext', () => ({ useSellerAuth: () => ({ sellerApi, refresh: sellerRefresh }) }));
 vi.mock('../api/shop', () => ({
   createShopApi: () => ({ fulfillOrder, revokeOrder, exportOrdersUrl }),
 }));

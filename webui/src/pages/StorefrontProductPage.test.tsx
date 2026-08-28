@@ -17,6 +17,7 @@ const { catalogState, buyerState, shopApi, toStorefrontProduct } = vi.hoisted(()
     addToWishlist: vi.fn(),
     removeFromWishlist: vi.fn(),
     isWishlisted: vi.fn(() => false),
+    refreshCart: vi.fn(),
   },
   shopApi: {
     createOrder: vi.fn(),
@@ -180,6 +181,7 @@ describe('StorefrontProductPage catalog lifecycle', () => {
     buyerState.addToCart.mockReset();
     buyerState.addToWishlist.mockReset();
     buyerState.removeFromWishlist.mockReset();
+    buyerState.refreshCart.mockReset();
     buyerState.isWishlisted.mockReset().mockReturnValue(false);
     shopApi.createOrder.mockReset();
     shopApi.getItem.mockReset().mockRejectedValue(new ApiError('Not found', 404));
@@ -215,6 +217,19 @@ describe('StorefrontProductPage catalog lifecycle', () => {
 
     expect(screen.getByRole('heading', { name: 'Example asset' })).toBeDefined();
     expect(screen.queryByText('Product not found')).toBeNull();
+  });
+
+  it('re-syncs the cart when add-to-cart fails with a conflict', async () => {
+    catalogState.loading = false;
+    catalogState.products = [product];
+    buyerState.addToCart.mockRejectedValueOnce(new ApiError('Price changed', 409));
+    buyerState.refreshCart.mockResolvedValueOnce(null);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to cart' }));
+
+    await waitFor(() => expect(buyerState.refreshCart).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('button', { name: 'Add to cart' })).toBeDefined();
   });
 
   it('loads an active product detail when it is outside the catalog response', async () => {

@@ -2,9 +2,9 @@ import { Clipboard, Download, ExternalLink, Search, XCircle } from 'lucide-react
 import { StorefrontShell } from '../components/storefront/StorefrontShell';
 import { formatMoney, type SellerPageProps } from '../components/storefront/types';
 import { useI18n } from '../hooks/useI18n';
-import { useCommerceOrders } from '../hooks/useCommerce';
+import { useSellerCommerceOrders } from '../hooks/useCommerce';
 import { useMemo, useState } from 'react';
-import { useShopApi } from '../hooks/usePageApis';
+import { useSellerShopApi } from '../hooks/usePageApis';
 import { useToast } from '../components/ui/Toast';
 import type { FulfillOrderResponse } from '../types/api';
 
@@ -28,9 +28,9 @@ function buildShareDeliveryUrl(result: FulfillOrderResponse, fallbackOrderId: st
 export default function SellerOrdersPage({ seller, orders = [] }: SellerPageProps) {
   const { t } = useI18n();
   const { showToast } = useToast();
-  const commerceOrders = useCommerceOrders();
+  const commerceOrders = useSellerCommerceOrders();
   const visibleOrders = orders.length > 0 ? orders : commerceOrders.orders;
-  const shopApi = useShopApi();
+  const shopApi = useSellerShopApi();
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('all');
   const [pendingId, setPendingId] = useState<string | null>(null);

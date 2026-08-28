@@ -1,6 +1,6 @@
 import { Archive, ArrowUpRight, Download, Eye, Heart, ImageIcon, Pencil, RotateCcw, ShoppingCart, Star, Trash2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useI18n } from '../../hooks/useI18n';
 import { formatMoney, type StorefrontProduct } from './types';
 
@@ -39,6 +39,12 @@ export function ProductCard({
   // for the full duration of the request.
   const [localPending, setLocalPending] = useState(false);
   const busyRef = useRef(false);
+  // Keep the grace-period timer in a ref and clear it on unmount: a card
+  // removed while the lock is pending must not fire a state update afterwards.
+  const releaseTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (releaseTimerRef.current !== null) window.clearTimeout(releaseTimerRef.current);
+  }, []);
   const runLifecycle = (action: (product: StorefrontProduct) => void) => {
     if (busyRef.current || actionPending) return;
     busyRef.current = true;
@@ -48,7 +54,9 @@ export function ProductCard({
     } catch {
       // Parent handlers surface their own errors; the lock must still be released.
     } finally {
-      window.setTimeout(() => {
+      if (releaseTimerRef.current !== null) window.clearTimeout(releaseTimerRef.current);
+      releaseTimerRef.current = window.setTimeout(() => {
+        releaseTimerRef.current = null;
         busyRef.current = false;
         setLocalPending(false);
       }, 400);

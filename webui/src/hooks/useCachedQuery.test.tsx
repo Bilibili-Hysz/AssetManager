@@ -249,4 +249,64 @@ describe('useCachedQuery', () => {
     await act(async () => { resolveSecond('fresh'); });
     await waitFor(() => expect(result.current.data).toBe('fresh'));
   });
+
+  it('an unrelated dependency re-run does not abort the in-flight request', async () => {
+    let resolveFn!: (value: string) => void;
+    const queryFn = vi.fn(() => new Promise<string>(resolve => { resolveFn = resolve; }));
+    const { wrapper } = makeWrapper();
+    const { result, rerender } = renderHook(
+      ({ staleTime }: { staleTime: number }) => useCachedQuery({ key: ['k'], queryFn, staleTime }),
+      { initialProps: { staleTime: 0 }, wrapper },
+    );
+    await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(1));
+
+    // Changing an option (not the key) re-runs the effect; the healthy
+    // in-flight request must survive it.
+    rerender({ staleTime: 60_000 });
+    await act(async () => { resolveFn('payload'); });
+
+    await waitFor(() => expect(result.current.data).toBe('payload'));
+    expect(queryFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('still aborts the in-flight request on unmount', async () => {
+    let captured!: AbortSignal;
+    const queryFn = vi.fn((signal: AbortSignal) => {
+      captured = signal;
+      return new Promise<string>(() => { /* never settles */ });
+    });
+    const { wrapper } = makeWrapper();
+    const { unmount } = renderHook(
+      () => useCachedQuery({ key: ['k'], queryFn }),
+      { wrapper },
+    );
+    await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(1));
+
+    unmount();
+    // The teardown is deferred by a macrotask so a same-key re-run can cancel
+    // it; an unmount lets it fire.
+    await act(async () => { await new Promise(resolve => window.setTimeout(resolve, 0)); });
+
+    expect(captured.aborted).toBe(true);
+  });
+
+  it('still aborts the previous key request when the key changes', async () => {
+    const signals: AbortSignal[] = [];
+    const queryFn = vi.fn((signal: AbortSignal) => {
+      signals.push(signal);
+      return new Promise<string>(() => { /* never settles */ });
+    });
+    const { wrapper } = makeWrapper();
+    const { rerender } = renderHook(
+      ({ key }: { key: string }) => useCachedQuery({ key: ['k', key], queryFn }),
+      { initialProps: { key: 'old' }, wrapper },
+    );
+    await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(1));
+
+    rerender({ key: 'new' });
+    await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(2));
+
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
+  });
 });

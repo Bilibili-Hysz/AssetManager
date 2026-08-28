@@ -39,8 +39,18 @@ export interface BlobDownload {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-/** Downloads stream for a while; give them a much longer stall budget. */
-const DOWNLOAD_TIMEOUT_MS = 5 * 60_000;
+/**
+ * Blob downloads use an inactivity ("stall") budget instead of an absolute
+ * cap on the transfer: every streamed chunk re-arms the timer, so a healthy
+ * download of any duration survives (a fixed 5-minute budget used to kill
+ * long transfers mid-read) while a hung stream is still bounded.
+ *
+ * A wide absolute backstop (DOWNLOAD_MAX_TOTAL_MS) remains as a safety net so
+ * a pathologically slow — but never fully stalled — trickle cannot hold the
+ * connection forever. A healthy transfer never reaches it.
+ */
+export const DOWNLOAD_STALL_TIMEOUT_MS = 30_000;
+export const DOWNLOAD_MAX_TOTAL_MS = 30 * 60_000;
 
 function isAbortError(error: unknown): boolean {
   return typeof error === 'object'
@@ -94,6 +104,13 @@ interface TimeoutHandle {
   dispose: () => void;
 }
 
+interface StallBudgetHandle {
+  signal: AbortSignal;
+  /** Re-arm the inactivity deadline (called after every streamed chunk). */
+  reset: () => void;
+  dispose: () => void;
+}
+
 /**
  * Combine an optional caller-provided signal with a hard timeout.
  *
@@ -120,6 +137,49 @@ function withTimeout(signal: AbortSignal | undefined, timeoutMs: number): Timeou
     signal: controller.signal,
     dispose() {
       window.clearTimeout(timer);
+      signal?.removeEventListener('abort', onUserAbort);
+    },
+  };
+}
+
+/**
+ * Deadline handling for streaming blob downloads.
+ *
+ * Two budgets share one AbortController:
+ * - `stallMs` (inactivity): re-armed via `reset()` after every streamed chunk,
+ *   so the deadline tracks transfer progress rather than total elapsed time;
+ * - `absoluteMs` (total): never re-armed, bounds the whole download as a
+ *   backstop against a slow-but-alive trickle.
+ *
+ * Both budgets abort with a TimeoutError reason so they classify as timeouts;
+ * a caller-provided abort keeps its own reason, so user cancellation stays a
+ * plain AbortError. Like withTimeout, this is implemented with
+ * AbortController + setTimeout for the project's ES2020 browser target.
+ */
+function withStallBudget(signal: AbortSignal | undefined, stallMs: number, absoluteMs: number): StallBudgetHandle {
+  const controller = new AbortController();
+  const onUserAbort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) {
+    controller.abort(signal?.reason);
+  } else {
+    signal?.addEventListener('abort', onUserAbort, { once: true });
+  }
+  const abortWithTimeout = (message: string) =>
+    controller.abort(new DOMException(message, 'TimeoutError'));
+  let stallTimer = window.setTimeout(() => abortWithTimeout('Download stalled'), stallMs);
+  const absoluteTimer = window.setTimeout(
+    () => abortWithTimeout('Download exceeded the total time budget'),
+    absoluteMs,
+  );
+  return {
+    signal: controller.signal,
+    reset() {
+      window.clearTimeout(stallTimer);
+      stallTimer = window.setTimeout(() => abortWithTimeout('Download stalled'), stallMs);
+    },
+    dispose() {
+      window.clearTimeout(stallTimer);
+      window.clearTimeout(absoluteTimer);
       signal?.removeEventListener('abort', onUserAbort);
     },
   };
@@ -321,26 +381,34 @@ export function createApiClient(options: ApiClientOptions = {}) {
     return (plain?.[1] ?? plain?.[2])?.trim();
   }
 
-  async function requestBlobResponse(
+  /**
+   * Shared blob download path: the fetch and the full body read happen inside
+   * the stall-budget scope, and `dispose` only runs after the body is
+   * consumed. Disposing right after the response headers used to strip both
+   * the timeout and the caller-signal forwarding for the streaming read,
+   * leaving the body phase without any timeout or cancellation.
+   */
+  async function requestBlobBody<T>(
     method: HttpMethod,
     path: string,
-    body?: unknown,
-    signal?: AbortSignal,
-    extraHeaders?: Record<string, string>,
-  ): Promise<Response> {
+    body: unknown,
+    signal: AbortSignal | undefined,
+    extraHeaders: Record<string, string> | undefined,
+    readBody: (response: Response, resetStall: () => void) => Promise<T>,
+  ): Promise<T> {
     const url = new URL(`${normalizedBaseUrl}/api/${path}`, window.location.origin);
     const headers: Record<string, string> = { ...extraHeaders };
     if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
     }
 
-    const timeout = withTimeout(signal, DOWNLOAD_TIMEOUT_MS);
+    const budget = withStallBudget(signal, DOWNLOAD_STALL_TIMEOUT_MS, DOWNLOAD_MAX_TOTAL_MS);
     try {
       const response = await fetch(url.toString(), {
         method,
         headers,
         body: body !== undefined ? JSON.stringify(body) : undefined,
-        signal: timeout.signal,
+        signal: budget.signal,
         credentials: 'same-origin',
       });
 
@@ -348,12 +416,33 @@ export function createApiClient(options: ApiClientOptions = {}) {
         await throwForErrorStatus(response, path, onUnauthorized);
       }
 
-      return response;
+      return await readBody(response, () => budget.reset());
     } catch (error) {
       toNetworkError(error);
     } finally {
-      timeout.dispose();
+      budget.dispose();
     }
+  }
+
+  /** Stream the response body into a Blob, re-arming the stall budget per chunk. */
+  async function readResponseBlob(response: Response, resetStall: () => void): Promise<Blob> {
+    if (!response.body) {
+      // No streaming support (old runtimes): fall back to a single buffered
+      // read; the absolute backstop still bounds it.
+      const blob = await response.blob();
+      resetStall();
+      return blob;
+    }
+    const reader = response.body.getReader();
+    const chunks: BlobPart[] = [];
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      chunks.push(value);
+      resetStall();
+    }
+    return new Blob(chunks, { type: response.headers.get('Content-Type') ?? 'application/zip' });
   }
 
   async function requestBlob(
@@ -363,8 +452,7 @@ export function createApiClient(options: ApiClientOptions = {}) {
     signal?: AbortSignal,
     extraHeaders?: Record<string, string>,
   ): Promise<Blob> {
-    const response = await requestBlobResponse(method, path, body, signal, extraHeaders);
-    return response.blob();
+    return requestBlobBody(method, path, body, signal, extraHeaders, readResponseBlob);
   }
 
   async function requestBlobWithMetadata(
@@ -374,11 +462,10 @@ export function createApiClient(options: ApiClientOptions = {}) {
     signal?: AbortSignal,
     extraHeaders?: Record<string, string>,
   ): Promise<BlobDownload> {
-    const response = await requestBlobResponse(method, path, body, signal, extraHeaders);
-    return {
-      blob: await response.blob(),
+    return requestBlobBody(method, path, body, signal, extraHeaders, async (response, resetStall) => ({
+      blob: await readResponseBlob(response, resetStall),
       filename: parseContentDispositionFilename(response.headers.get('Content-Disposition')),
-    };
+    }));
   }
 
   async function requestBlobWithProgress(
@@ -388,28 +475,12 @@ export function createApiClient(options: ApiClientOptions = {}) {
     onProgress: (progress: DownloadProgress) => void,
     signal?: AbortSignal,
   ): Promise<Blob> {
-    const url = new URL(`${normalizedBaseUrl}/api/${path}`, window.location.origin);
-
-    // The timeout covers both the request and the streaming read, so a
-    // stalled download cannot hang forever.
-    const timeout = withTimeout(signal, DOWNLOAD_TIMEOUT_MS);
-    try {
-      const response = await fetch(url.toString(), {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: timeout.signal,
-        credentials: 'same-origin',
-      });
-
-      if (!response.ok) {
-        await throwForErrorStatus(response, path, onUnauthorized);
-      }
-
+    return requestBlobBody(method, path, body, signal, undefined, async (response, resetStall) => {
       const contentLength = Number(response.headers.get('Content-Length'));
       const total = Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null;
       if (!response.body) {
         const blob = await response.blob();
+        resetStall();
         onProgress({ loaded: blob.size, total });
         return blob;
       }
@@ -423,14 +494,13 @@ export function createApiClient(options: ApiClientOptions = {}) {
         if (!value) continue;
         loaded += value.byteLength;
         chunks.push(value);
+        // Each chunk proves the transfer is healthy: re-arm the stall budget
+        // so only inactivity — not total duration — can abort the download.
+        resetStall();
         onProgress({ loaded, total });
       }
       return new Blob(chunks, { type: response.headers.get('Content-Type') ?? 'application/zip' });
-    } catch (error) {
-      toNetworkError(error);
-    } finally {
-      timeout.dispose();
-    }
+    });
   }
 
   return {

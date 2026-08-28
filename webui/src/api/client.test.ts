@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createApiClient } from './client';
+import {
+  DOWNLOAD_MAX_TOTAL_MS,
+  DOWNLOAD_STALL_TIMEOUT_MS,
+  createApiClient,
+} from './client';
 import {
   DEGRADATION_THROTTLE_MS,
   emitApiDegradation,
@@ -296,6 +300,120 @@ describe('ApiClient blob download progress', () => {
       { paths: ['asset.png'] },
       vi.fn(),
     )).rejects.toThrow('Batch download failed');
+  });
+});
+
+describe('ApiClient blob download budgets', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  /**
+   * Emulate a fetch response whose body stream is wired to the request signal
+   * (aborting the request errors the stream with the abort reason), which is
+   * what real fetch implementations do for the streaming read phase.
+   */
+  function stubDownloadFetch(options: { intervalMs: number; chunkCount: number; chunk?: Uint8Array }) {
+    const chunk = options.chunk ?? new Uint8Array([1, 2]);
+    return vi.fn().mockImplementation((_url: string, init: { signal?: AbortSignal }) => {
+      const signal = init.signal;
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const onAbort = () => {
+            try {
+              controller.error(signal?.reason);
+            } catch { /* stream already closed or errored */ }
+          };
+          signal?.addEventListener('abort', onAbort, { once: true });
+          let sent = 0;
+          const pump = () => {
+            if (signal?.aborted) {
+              onAbort();
+              return;
+            }
+            if (sent >= options.chunkCount) {
+              controller.close();
+              return;
+            }
+            controller.enqueue(chunk);
+            sent += 1;
+            window.setTimeout(pump, options.intervalMs);
+          };
+          if (options.intervalMs > 0) window.setTimeout(pump, options.intervalMs);
+          else pump();
+        },
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: { 'Content-Length': String(chunk.byteLength * Math.max(options.chunkCount, 0)) },
+      });
+    });
+  }
+
+  it('aborts with a timeout classification when the stream stalls', async () => {
+    vi.useFakeTimers();
+    let requestSignal: AbortSignal | undefined;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((_url: string, init: { signal?: AbortSignal }) => {
+      requestSignal = init.signal;
+      return new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          const signal = init.signal;
+          signal?.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+        },
+      }), { status: 200 });
+    }));
+
+    const pending = createApiClient().getBlob('download/asset.zip');
+    // Attach the rejection handler before the abort fires so the rejection is
+    // never observed as unhandled between timer ticks.
+    const rejection = expect(pending).rejects.toBeInstanceOf(NetworkError);
+    // No chunk ever arrives: the inactivity budget aborts the body read.
+    await vi.advanceTimersByTimeAsync(DOWNLOAD_STALL_TIMEOUT_MS);
+    await rejection;
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
+  it('re-arms the stall budget on every chunk so a slow trickle survives', async () => {
+    vi.useFakeTimers();
+    const intervalMs = 20_000; // under the 30s stall budget
+    const chunks = 5; // ~100s total: a fixed 5min cap is not hit, an unreset 30s budget would be
+    vi.stubGlobal('fetch', stubDownloadFetch({ intervalMs, chunkCount: chunks }));
+    const progress = vi.fn();
+
+    const pending = createApiClient().postBlobWithProgress('download/batch', { paths: ['a'] }, progress);
+    // Advance past the last chunk and the closing tick.
+    await vi.advanceTimersByTimeAsync(intervalMs * (chunks + 1) + 1_000);
+    const blob = await pending;
+
+    expect(blob.size).toBe(chunks * 2);
+    expect(progress).toHaveBeenCalledTimes(chunks);
+    expect(progress).toHaveBeenLastCalledWith({ loaded: chunks * 2, total: chunks * 2 });
+  });
+
+  it('still bounds the whole download with the absolute backstop', async () => {
+    vi.useFakeTimers();
+    // Chunks arrive far under the stall budget, so only the never-reset total
+    // cap can abort this download.
+    vi.stubGlobal('fetch', stubDownloadFetch({ intervalMs: 1_000, chunkCount: Number.POSITIVE_INFINITY }));
+
+    const pending = createApiClient().getBlob('download/asset.zip');
+    const rejection = expect(pending).rejects.toBeInstanceOf(NetworkError);
+    await vi.advanceTimersByTimeAsync(DOWNLOAD_MAX_TOTAL_MS + 2_000);
+    await rejection;
+  });
+
+  it('cancels the body read when the caller signal aborts mid-download', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    vi.stubGlobal('fetch', stubDownloadFetch({ intervalMs: 1_000, chunkCount: 0 }));
+
+    const pending = createApiClient().getBlob('download/asset.zip', undefined, controller.signal);
+    await vi.advanceTimersByTimeAsync(0); // response headers received, body read started
+    const rejection = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    controller.abort();
+
+    await rejection;
   });
 });
 

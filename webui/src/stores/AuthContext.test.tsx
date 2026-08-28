@@ -2,6 +2,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { AuthProvider, useAuthContext } from './AuthContext';
+import { NetworkError, UnauthorizedError } from '../api/errors';
 import type { Capabilities, ServerInfo } from '../types/api';
 
 const info: ServerInfo = {
@@ -105,9 +106,9 @@ describe('AuthProvider', () => {
     expect(result.current.permissions).toEqual([]);
   });
 
-  it('returns false and clears principal when session refresh fails', async () => {
-    me.mockRejectedValueOnce(new Error('session unavailable'));
-    me.mockRejectedValueOnce(new Error('session unavailable'));
+  it('returns false and clears principal when the session is authoritatively rejected', async () => {
+    me.mockRejectedValueOnce(new UnauthorizedError());
+    me.mockRejectedValueOnce(new UnauthorizedError());
     const { result } = renderHook(() => useAuthContext(), { wrapper: AuthProvider });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
@@ -119,6 +120,51 @@ describe('AuthProvider', () => {
       expect(result.current.user).toBeNull();
       expect(result.current.principal.kind).toBe('guest');
     });
+  });
+
+  it('keeps the principal and flags service unavailable when refresh hits a network error', async () => {
+    const capabilities = { browse: true, preview: true, download: true, upload: false, manage_links: false, manage_users: false, settings: false, realtime: true };
+    me.mockResolvedValueOnce({ principal: { kind: 'user', authenticated: true, role: 'user', display_name: 'alice', capabilities } });
+    const { result } = renderHook(() => useAuthContext(), { wrapper: AuthProvider });
+    await waitFor(() => expect(result.current.principal.display_name).toBe('alice'));
+    const initialGeneration = result.current.identityGeneration;
+
+    me.mockRejectedValueOnce(new NetworkError('offline'));
+    await act(async () => {
+      await expect(result.current.refreshMe()).resolves.toBe(false);
+    });
+
+    // A network failure says nothing about the session: the principal stays
+    // and the degraded flag is surfaced instead of a silent logout.
+    expect(result.current.principal.display_name).toBe('alice');
+    expect(result.current.isAuthenticated).toBe(true);
+    expect(result.current.identityGeneration).toBe(initialGeneration);
+    expect(result.current.serviceUnavailable).toBe(true);
+
+    me.mockResolvedValueOnce({ principal: { kind: 'user', authenticated: true, role: 'user', display_name: 'alice', capabilities } });
+    await act(async () => {
+      await expect(result.current.refreshMe()).resolves.toBe(true);
+    });
+    expect(result.current.serviceUnavailable).toBe(false);
+  });
+
+  it('grows the identity generation when only the role changes', async () => {
+    const basePrincipal = {
+      kind: 'user' as const, authenticated: true, display_name: 'alice',
+      capabilities: { browse: true, preview: true, download: true, upload: false, manage_links: false, manage_users: false, settings: false, realtime: true },
+    };
+    me.mockResolvedValueOnce({ principal: { ...basePrincipal, role: 'user' as const } });
+    const { result } = renderHook(() => useAuthContext(), { wrapper: AuthProvider });
+    await waitFor(() => expect(result.current.principal.display_name).toBe('alice'));
+    const initialGeneration = result.current.identityGeneration;
+
+    // Same user, same profile, elevated role only: the identity string changes,
+    // so role-scoped caches must be dropped.
+    me.mockResolvedValueOnce({ principal: { ...basePrincipal, role: 'admin' as const } });
+    await expect(result.current.refreshMe()).resolves.toBe(true);
+
+    await waitFor(() => expect(result.current.role).toBe('admin'));
+    expect(result.current.identityGeneration).toBeGreaterThan(initialGeneration);
   });
 
   it('increments identity generation and does not restore stale identity after logout', async () => {

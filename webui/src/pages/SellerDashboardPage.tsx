@@ -4,12 +4,12 @@ import { StorefrontShell } from '../components/storefront/StorefrontShell';
 import { EmptyState, ProductCard } from '../components/storefront/ProductCard';
 import { formatMoney, type SellerPageProps } from '../components/storefront/types';
 import { useI18n } from '../hooks/useI18n';
-import { useCommerceCatalog, useCommerceOrders } from '../hooks/useCommerce';
+import { useSellerCommerceCatalog, useSellerCommerceOrders } from '../hooks/useCommerce';
 
 export default function SellerDashboardPage({ seller, products = [], orders = [], stats, onNavigate }: SellerPageProps) {
   const { t } = useI18n();
-  const catalog = useCommerceCatalog(true);
-  const commerceOrders = useCommerceOrders();
+  const catalog = useSellerCommerceCatalog(true);
+  const commerceOrders = useSellerCommerceOrders();
   const resolvedProducts = products.length > 0 ? products : catalog.products;
   const resolvedOrders = orders.length > 0 ? orders : commerceOrders.orders;
   const resolvedStats = stats ?? { ...commerceOrders.stats, products: resolvedProducts.filter(product => product.status === 'active').length };

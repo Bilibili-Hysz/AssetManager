@@ -250,29 +250,44 @@ describe('RealtimeProvider', () => {
 
   it('replaces the epoch on ready and recovers on mismatched events', async () => {
     const callback = vi.fn();
+    authState.api.get = vi.fn()
+      .mockResolvedValueOnce({ epoch: 'b', revision: 2 })
+      .mockResolvedValue({ epoch: 'b', revision: 3 });
     const { result } = renderHook(() => useRealtimeContext(), { wrapper });
     act(() => result.current.registerInvalidation(['files'], callback));
     emit({ type: 'runtime_ready', epoch: 'a', revision: 9 });
     emit({ type: 'runtime_ready', epoch: 'b', revision: 2 });
+    // The epoch change clears consumers synchronously; the confirming probe
+    // (equal cursor) does not fan out again.
+    expect(callback).toHaveBeenCalledOnce();
     expect(result.current.epoch).toBe('b');
     expect(result.current.revision).toBe(2);
+    await waitFor(() => expect(authState.api.get).toHaveBeenCalledTimes(1));
     emit({ type: 'projection_invalidated', epoch: 'a', revision: 10, domains: ['files'], paths: [] });
-    await waitFor(() => expect(callback).toHaveBeenCalledOnce());
+    await waitFor(() => expect(callback).toHaveBeenCalledTimes(2));
     expect(callback.mock.calls[0]?.[0]).toBeNull();
+    expect(callback.mock.calls[1]?.[0]).toBeNull();
+    expect(result.current).toMatchObject({ epoch: 'b', revision: 3 });
   });
 
   it('recovers and notifies immediately for a new runtime epoch, once per ready', async () => {
     const callback = vi.fn();
+    authState.api.get = vi.fn(async () => ({ epoch: 'b', revision: 2 }));
     const { result } = renderHook(() => useRealtimeContext(), { wrapper });
     act(() => result.current.registerInvalidation(['files'], callback));
     emit({ type: 'runtime_ready', epoch: 'a', revision: 1 });
 
     emit({ type: 'runtime_ready', epoch: 'b', revision: 2 });
+    // The stale-data clear happens synchronously, before the /api/revision
+    // probe resolves.
+    expect(callback).toHaveBeenCalledOnce();
+    expect(callback.mock.calls[0]?.[0]).toBeNull();
+
     emit({ type: 'runtime_ready', epoch: 'b', revision: 2 });
 
-    await waitFor(() => expect(callback).toHaveBeenCalledOnce());
-    expect(callback.mock.calls[0]?.[0]).toBeNull();
-    expect(authState.api.get).toHaveBeenCalledOnce();
+    await waitFor(() => expect(authState.api.get).toHaveBeenCalledOnce());
+    expect(callback).toHaveBeenCalledOnce();
+    expect(result.current).toMatchObject({ epoch: 'b', revision: 2 });
   });
 
   it('fans out once when a new epoch keeps the same revision after equal recovery', async () => {
@@ -306,19 +321,22 @@ describe('RealtimeProvider', () => {
     emit({ type: 'runtime_ready', epoch: 'a', revision: 1 });
     emit({ type: 'projection_invalidated', epoch: 'a', revision: 4, domains: ['files'], paths: [] });
     emit({ type: 'runtime_ready', epoch: 'b', revision: 2 });
+    // The epoch change clears consumers synchronously.
+    expect(callback).toHaveBeenCalledOnce();
 
     resolveFirst({ epoch: 'a', revision: 99 });
     await Promise.resolve();
     expect(result.current.epoch).toBe('b');
     expect(result.current.revision).toBe(2);
-    expect(callback).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledOnce(); // only the synchronous epoch-change clear so far
 
     await waitFor(() => expect(authState.api.get).toHaveBeenCalledTimes(2));
     resolveSecond({ epoch: 'b', revision: 3 });
-    await waitFor(() => expect(callback).toHaveBeenCalledOnce());
+    await waitFor(() => expect(callback).toHaveBeenCalledTimes(2));
     expect(result.current.epoch).toBe('b');
     expect(result.current.revision).toBe(3);
     expect(callback.mock.calls[0]?.[0]).toBeNull();
+    expect(callback.mock.calls[1]?.[0]).toBeNull();
   });
 
   it('retries recovery when a valid event advances the cursor during recovery', async () => {
@@ -413,6 +431,19 @@ describe('RealtimeProvider', () => {
     emit({ type: 'projection_invalidated', epoch: 'a', revision: 4, domains: ['files'], paths: [] });
 
     await waitFor(() => expect(result.current.recoveryFailed).toBe(true));
+  });
+
+  it('fans out a null event when recovery fails so consumers re-probe', async () => {
+    const callback = vi.fn();
+    authState.api.get = vi.fn().mockRejectedValue(new Error('probe unreachable'));
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => result.current.registerInvalidation(['files'], callback));
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 1 });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 4, domains: ['files'], paths: [] });
+
+    await waitFor(() => expect(result.current.recoveryFailed).toBe(true));
+    expect(callback).toHaveBeenCalledOnce();
+    expect(callback.mock.calls[0]?.[0]).toBeNull();
   });
 
   it('ignores malformed and unrelated messages safely', () => {

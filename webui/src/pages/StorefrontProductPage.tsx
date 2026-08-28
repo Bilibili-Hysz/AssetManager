@@ -23,7 +23,7 @@ export default function StorefrontProductPage({ product }: StorefrontProductPage
   const { id, '*': wildcardPath } = useParams<{ id?: string; '*': string }>();
   const navigate = useNavigate();
   const catalog = useCommerceCatalog();
-  const { addToCart, addToWishlist, removeFromWishlist, isWishlisted } = useShopBuyer();
+  const { addToCart, addToWishlist, removeFromWishlist, isWishlisted, refreshCart } = useShopBuyer();
   const [cartAdding, setCartAdding] = useState(false);
   const [wishlistPending, setWishlistPending] = useState(false);
   const [orderCreating, setOrderCreating] = useState(false);
@@ -128,6 +128,9 @@ export default function StorefrontProductPage({ product }: StorefrontProductPage
       showToast(t('commerce.added_to_cart'), 'success');
     } catch (error) {
       showToast(error instanceof Error ? error.message : t('commerce.cart_update_failed'), 'error');
+      // A rejected add (e.g. a 409 price conflict) can leave the local cart
+      // state stale; re-sync from the server like the cart page does.
+      await refreshCart().catch(() => undefined);
     } finally {
       setCartAdding(false);
     }

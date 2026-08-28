@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SellerProductsPage from './SellerProductsPage';
 
-const { update, create, remove, list, refresh, showToast, catalogState, api } = vi.hoisted(() => ({
+const { update, create, remove, list, refresh, showToast, catalogState, api, sellerApi, sellerRefresh } = vi.hoisted(() => ({
   update: vi.fn(),
   create: vi.fn(),
   remove: vi.fn(),
@@ -12,6 +12,10 @@ const { update, create, remove, list, refresh, showToast, catalogState, api } = 
   refresh: vi.fn(),
   showToast: vi.fn(),
   api: { buildUrl: (path: string) => `/api/${path}` },
+  // Stable identities: the page re-runs its load effect whenever the seller
+  // shop api object changes, mirroring the memoized production hook.
+  sellerApi: {},
+  sellerRefresh: vi.fn(),
   catalogState: {
     loading: false,
     error: null as unknown,
@@ -20,10 +24,11 @@ const { update, create, remove, list, refresh, showToast, catalogState, api } = 
 }));
 
 vi.mock('../hooks/useCommerce', () => ({
-  useCommerceCatalog: () => ({ ...catalogState, refresh }),
+  useSellerCommerceCatalog: () => ({ ...catalogState, refresh }),
   assetThumbnailUrl: (path: string, size: number, buildUrl: (value: string) => string) => buildUrl(`thumbnails/${encodeURIComponent(path)}?size=${size}`),
 }));
 vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ api }) }));
+vi.mock('../stores/SellerAuthContext', () => ({ useSellerAuth: () => ({ sellerApi, refresh: sellerRefresh }) }));
 vi.mock('../api/shop', () => ({ createShopApi: () => ({ update, create, remove, list }) }));
 vi.mock('../components/ui/Toast', () => ({ useToast: () => ({ showToast }) }));
 vi.mock('../hooks/useI18n', () => ({ useI18n: () => ({

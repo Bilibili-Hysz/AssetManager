@@ -15,8 +15,8 @@ const { catalogState, orderState } = vi.hoisted(() => ({
 }));
 
 vi.mock('../hooks/useCommerce', () => ({
-  useCommerceCatalog: () => ({ ...catalogState, loading: false, error: null, refresh: vi.fn() }),
-  useCommerceOrders: () => ({ ...orderState, loading: false, refresh: vi.fn() }),
+  useSellerCommerceCatalog: () => ({ ...catalogState, loading: false, error: null, refresh: vi.fn() }),
+  useSellerCommerceOrders: () => ({ ...orderState, loading: false, refresh: vi.fn() }),
 }));
 vi.mock('../components/storefront/StorefrontShell', () => ({
   StorefrontShell: ({ children }: { children: React.ReactNode }) => <>{children}</>,

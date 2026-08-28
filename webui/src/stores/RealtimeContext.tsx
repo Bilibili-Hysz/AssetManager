@@ -150,6 +150,10 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         // gap recovery can re-issue.
         console.error('Realtime recovery failed:', error);
         if (mountedRef.current) setRecoveryFailed(true);
+        // Recovery could not confirm (or deny) the gap: still fan out a null
+        // event so consumers re-probe with their own fetches instead of
+        // trusting data that may be stale until the next recovery succeeds.
+        notify(null);
       })
       .finally(() => {
         clearTimeout(timer);
@@ -171,8 +175,18 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       recoveryIntentRef.current = null;
       cursorRef.current = data;
       setCursor(data);
-      if (shouldRecoverAfterIdentityReset || epochChanged
-        || (current.epoch === data.epoch && data.revision > current.revision)) void recover(true);
+      if (epochChanged) {
+        // The epoch swapped, so data fetched under the old epoch is no longer
+        // trustworthy. Notify synchronously — before the /api/revision probe —
+        // so consumers re-fetch immediately instead of rendering stale data
+        // until recovery completes. recover() without notifyOnEqual avoids a
+        // redundant second fan-out when the probe confirms this same cursor.
+        notify(null);
+        void recover();
+      } else if (shouldRecoverAfterIdentityReset
+        || (current.epoch === data.epoch && data.revision > current.revision)) {
+        void recover(true);
+      }
       return;
     }
     if (type !== 'projection_invalidated') return;

@@ -164,6 +164,18 @@ export function useCachedQuery<T>({
     cache.publish(keyRef.current, current.snapshot);
   }, [cache]);
 
+  // Latest option values, kept in refs so the subscribe effect's cleanup can
+  // tell a true teardown apart from an unrelated dependency re-run (the run's
+  // captured values differ from the latest ones only when a re-run follows).
+  const staleTimeRef = useRef(staleTime);
+  staleTimeRef.current = staleTime;
+  const gcTimeRef = useRef(gcTime);
+  gcTimeRef.current = gcTime;
+  // Serialized key mirrors keyRef for equality checks: array keys get a fresh
+  // identity every render, so key identity must never be compared directly.
+  const keyStringRef = useRef(keyString);
+  keyStringRef.current = keyString;
+
   // Subscribe + fetch policy + teardown. The key is captured when the effect
   // runs so the cleanup releases the entry this run subscribed to — reading
   // keyRef in the cleanup would touch the NEXT key and leak the old entry.
@@ -171,6 +183,10 @@ export function useCachedQuery<T>({
   // cache clear — which discards entries — cannot orphan live subscriptions.
   useEffect(() => {
     const myKey = keyRef.current;
+    const myKeyString = keyString;
+    const runStaleTime = staleTime;
+    const runGcTime = gcTime;
+    const runEnabled = enabled;
     cache.addSubscriber(myKey);
     const current = cache.getEntry<T>(myKey);
     if (current.gcTimer) {
@@ -186,6 +202,17 @@ export function useCachedQuery<T>({
     return () => {
       cache.removeSubscriber(myKey);
       if (cache.subscriberCount(myKey) > 0) return;
+      // A cleanup fires both for a true teardown (unmount or key switch) and
+      // for an unrelated dependency re-run (an option changed, same key).
+      // Only a true teardown may abort the in-flight request: an option
+      // change must not cancel a healthy fetch that is about to be shared by
+      // the immediately following re-run. The captured run values diverge
+      // from the latest refs exactly when such a re-run follows.
+      const isSameKeyRerun = myKeyString === keyStringRef.current
+        && (runStaleTime !== staleTimeRef.current
+          || runGcTime !== gcTimeRef.current
+          || runEnabled !== enabledRef.current);
+      if (isSameKeyRerun) return;
       const leaving = cache.peekEntry<T>(myKey);
       if (!leaving) return;
       leaving.inFlight?.abort();
