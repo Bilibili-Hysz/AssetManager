@@ -1,0 +1,9 @@
+# CI determinism overlay — pins the dependency versions the test suite is
+# verified against (audit finding: 依赖全浮动). Bump deliberately together
+# with a full local run of `python -m pytest -q`.
+# Install AFTER requirements*.txt so these win resolution.
+PySide6==6.11.0
+aiohttp==3.14.0
+Pillow==12.2.0
+numpy==2.4.4
+pytest==9.0.2

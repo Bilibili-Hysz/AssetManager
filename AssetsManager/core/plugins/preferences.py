@@ -75,8 +75,13 @@ class _AdvisoryLock:
             if self._kind == "nt":
                 import msvcrt
 
+                # getattr with constant names: typeshed omits msvcrt members
+                # on posix (same pattern as the fcntl branch below and
+                # core/library_lock.py). This branch only runs after
+                # acquire() imported msvcrt, so the constants are present.
                 self._handle.seek(0)
-                msvcrt.locking(self._handle.fileno(), msvcrt.LK_UNLCK, 1)
+                locking = getattr(msvcrt, "locking")
+                locking(self._handle.fileno(), getattr(msvcrt, "LK_UNLCK"), 1)
             elif self._kind == "posix":
                 import fcntl
 

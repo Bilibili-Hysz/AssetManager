@@ -141,7 +141,10 @@ class UndoService:
         try:
             import ctypes
 
-            kernel32 = ctypes.windll.kernel32
+            # getattr: typeshed omits ctypes.windll on non-win32 platforms
+            # (same pattern as core/library_lock.py); this branch only runs
+            # for Windows-registry PIDs.
+            kernel32 = getattr(ctypes, "windll").kernel32
             handle = kernel32.OpenProcess(
                 cls._PROCESS_QUERY_LIMITED_INFORMATION, False, pid
             )

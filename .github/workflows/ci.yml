@@ -245,11 +245,23 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           allow-prereleases: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - name: Build WebUI (SPA route tests serve webui/dist)
+        working-directory: webui
+        run: |
+          npm ci
+          npm run build
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
           pip install -r requirements-lan.txt
           pip install -r requirements-dev.txt
+          # Determinism overlay: pin the versions the suite is verified against.
+          pip install -r requirements-ci.txt
       # PySide6/Qt imports need the X/GL system libraries even under
       # QT_QPA_PLATFORM=offscreen; ubuntu runners ship without them.
       - name: Install Qt system libraries

@@ -281,7 +281,7 @@ class ImportService:
                         )
                 flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
                 if hasattr(os, "O_BINARY"):
-                    flags |= os.O_BINARY
+                    flags |= getattr(os, "O_BINARY", 0)
                 if hasattr(os, "O_NOFOLLOW"):
                     flags |= getattr(os, "O_NOFOLLOW", 0)
                 created_fd = os.open(str(target), flags, 0o600)
