@@ -11,6 +11,22 @@ from AssetsManager.core.directory_cache import DirectoryCache
 WINDOWS = sys.platform == "win32"
 
 
+@pytest.fixture(autouse=True)
+def _no_probabilistic_prune(monkeypatch):
+    """Freeze directory_cache's ~1%-of-reads prune sweep off.
+
+    The legacy-row fixtures below insert ``scanned_at=0.0`` (epoch 1970), so
+    a prune sweep firing inside ``cache.get()`` deletes the row under test
+    and turns the assertion into a flake. Linux xdist workers are forked and
+    inherit identical random state, so the ~1% draw is deterministic per
+    interpreter version — this bit the 3.12 CI lane while 3.13/3.14 passed.
+    Prune behavior itself is covered by tests that opt into fresh timestamps.
+    """
+    from AssetsManager.core import directory_cache as directory_cache_module
+
+    monkeypatch.setattr(directory_cache_module.random, "random", lambda: 1.0)
+
+
 def _migrate_with_baseline(conn):
     conn.executescript(database._SCHEMA)
     return migrate(conn)
