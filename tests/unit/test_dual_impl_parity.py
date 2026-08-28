@@ -90,12 +90,25 @@ def test_desktop_sort_matches_lan_semantics(tmp_path, sort_by, order):
 
 
 def test_type_key_uses_splitext_semantics():
-    """Boundary names produce identical ext keys on both surfaces."""
+    """Boundary names produce identical ext keys on both surfaces.
+
+    Both surfaces derive ext via os.path.splitext (asset_filters
+    matches_entry_filters + the asset_service summary scan). pathlib.suffix
+    is asserted equal where the stdlibs agree; for the trailing-dot name
+    they genuinely disagree before 3.14 (splitext '.', suffix ''), so the
+    splitext value is pinned explicitly — a surface switching to
+    pathlib.suffix would fork ext keys on ≤3.13.
+    """
+    import sys
     from pathlib import Path
 
     for name in ("archive.tar.gz", ".gitignore", "a.b.", "plain", "image.JPG"):
         desktop_ext = os.path.splitext(name)[1].lower()
-        assert desktop_ext == (Path(name).suffix.lower() if "." in name else "")
+        pathlib_ext = Path(name).suffix.lower() if "." in name else ""
+        if name == "a.b." and sys.version_info < (3, 14):
+            assert desktop_ext == "." and pathlib_ext == ""
+        else:
+            assert desktop_ext == pathlib_ext
 
 
 def test_matches_exclude_semantics_shared():

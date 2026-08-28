@@ -381,7 +381,11 @@ def _scan_dir_summary(
                         scan_complete = False
                         continue
                     if is_file:
-                        ext = Path(entry.name).suffix.lower()
+                        # splitext, matching the shared filter derivation in
+                        # asset_filters.matches_entry_filters: pathlib.suffix
+                        # disagrees with splitext for trailing-dot names on
+                        # ≤3.13, which would fork ext keys across surfaces.
+                        ext = os.path.splitext(entry.name)[1].lower()
                         if ext in IMAGE_EXTS:
                             preview = Path(entry.path)
         except OSError:
