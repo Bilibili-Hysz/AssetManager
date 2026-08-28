@@ -25,6 +25,25 @@ def _asset(root, name: str = "asset.txt"):
     return asset
 
 
+@pytest.fixture(autouse=True)
+def _no_reconciliation_worker(monkeypatch):
+    """Keep the shared-connection reconciliation worker out of these tests.
+
+    The worker opens short claim/read transactions on the session's single
+    SQLite connection; on slower Linux CI those windows race the explicit
+    caller ``BEGIN`` blocks and clean-boundary checks here, producing flaky
+    "cannot start a transaction within a transaction" / "clean transaction
+    boundary" failures that Windows-native timing hides.
+    """
+    from AssetsManager.application.asset_index_reconciliation_service import (
+        AssetIndexReconciliationService,
+    )
+
+    monkeypatch.setattr(
+        AssetIndexReconciliationService, "start", lambda self: False
+    )
+
+
 def _fake_session(root, conn):
     return SimpleNamespace(
         root=root,
@@ -493,6 +512,12 @@ def test_bound_metadata_event_mutations_reject_caller_owned_transactions(
     session = bootstrap.library_service.open_session(tmp_path / "library")
     try:
         service = bootstrap.runtime_for(session).services.metadata_service
+        # The reconciliation worker shares the session connection and can hold
+        # a write transaction while the test opens its own caller-owned one;
+        # stop it so the explicit BEGIN below is the only transaction in
+        # flight (Linux CI otherwise flakes with "cannot start a transaction
+        # within a transaction"; same rationale as test_asset_index_service).
+        bootstrap.runtime_for(session).services.reconciliation_service.stop()
         asset = _asset(session.root)
         conn = session.connection_for(session.root)
 

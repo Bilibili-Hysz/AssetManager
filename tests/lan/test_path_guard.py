@@ -31,14 +31,27 @@ def test_path_guard_blocks_parent_escape(tmp_path):
 
 
 def test_path_guard_blocks_absolute_escape(tmp_path):
+    import os
+
     from AssetsManager.lan.path_guard import PathEscapeError, PathGuard
 
     root = tmp_path / "library"
     outside = tmp_path / "outside.txt"
     guard = PathGuard(root)
 
-    with pytest.raises(PathEscapeError):
-        guard.resolve(Path(outside))
+    if os.path.normcase("A") == "a":
+        # Windows: a drive-absolute request keeps its root, so containment
+        # fails with PathEscapeError.
+        with pytest.raises(PathEscapeError):
+            guard.resolve(Path(outside))
+    else:
+        # POSIX shape-unification contract: PathGuard.resolve strips leading
+        # separators, so an absolute request is coerced to a library-relative
+        # path. The security invariant still holds — the result stays inside
+        # the root and never denotes the outside file.
+        resolved = guard.resolve(Path(outside))
+        assert resolved.is_relative_to(root.resolve())
+        assert resolved != outside.resolve()
 
 
 def test_path_guard_existing_key_requires_existing_file(tmp_path):

@@ -60,10 +60,26 @@ def test_same_root_is_exclusive_across_services_but_different_roots_are_independ
             second.close_session(second.current_session)
 
 
+def _mixed_case_alias(tmp_path):
+    """Return a different-case alias of tmp_path/'MiXeDLibrary' where the
+    filesystem is case-insensitive.
+
+    os.path.normcase folds case on Windows, so 'MIXEDLIBRARY' and
+    'MiXeDLibrary' are the same library there; on case-sensitive POSIX they
+    are distinct roots and the alias contract is exercised with the identical
+    spelling instead.
+    """
+    import os
+
+    if os.path.normcase("A") == "a":
+        return tmp_path / "MIXEDLIBRARY"
+    return tmp_path / "MiXeDLibrary"
+
+
 def test_windows_mixed_case_alias_is_rejected_before_lock_acquisition(tmp_path, monkeypatch):
     root = tmp_path / "MiXeDLibrary"
     root.mkdir()
-    alias = tmp_path / "MIXEDLIBRARY"
+    alias = _mixed_case_alias(tmp_path)
     owner = LibraryService()
     contender = LibraryService()
     session = owner.open_session(root)
@@ -104,12 +120,12 @@ def test_restore_failure_poison_is_shared_across_openers_and_can_be_acknowledged
     assert owner.restore_failure_state(root) is not None
     contender = LibraryService()
     with pytest.raises(RuntimeError, match="Restore admission is blocked"):
-        contender.open_session(tmp_path / "MIXEDLIBRARY")
+        contender.open_session(_mixed_case_alias(tmp_path))
 
     recovery_state = owner.restore_failure_state(root)
     assert recovery_state is not None
     assert owner.acknowledge_restore_failure(
-        tmp_path / "MIXEDLIBRARY", recovery_state.token
+        _mixed_case_alias(tmp_path), recovery_state.token
     ) is None
     replacement = owner.open_session(root)
     owner.close_session(replacement)
@@ -128,7 +144,7 @@ def test_queued_open_fails_closed_after_restore_failure_is_published(tmp_path):
     def queued_open():
         started.set()
         try:
-            owner.open_session(tmp_path / "MIXEDLIBRARY")
+            owner.open_session(_mixed_case_alias(tmp_path))
         except BaseException as error:
             result.append(error)
         finally:
@@ -422,6 +438,8 @@ def test_service_close_propagates_finish_failure_and_allows_explicit_retry(
 
 
 def test_missing_final_component_identity_reuses_db_and_lock_after_creation(tmp_path):
+    import os
+
     root = tmp_path / "MiXeDLibrary"
     service = LibraryService()
     first = service.open_session(root)
@@ -429,7 +447,15 @@ def test_missing_final_component_identity_reuses_db_and_lock_after_creation(tmp_
     root.mkdir()
     service.close_session(first)
 
-    second = service.open_session(tmp_path / "MIXEDLIBRARY")
+    # A different-case spelling of the same directory maps onto the same
+    # library only where the filesystem itself is case-insensitive
+    # (os.path.normcase folds case on Windows). On case-sensitive POSIX the
+    # two spellings are genuinely distinct roots, so the reuse contract is
+    # exercised with the identical spelling there.
+    if os.path.normcase("A") == "a":
+        second = service.open_session(tmp_path / "MIXEDLIBRARY")
+    else:
+        second = service.open_session(root)
     try:
         assert second.context.root_key == first.context.root_key
         assert second.data_dir == first_data_dir
@@ -582,12 +608,20 @@ def test_retry_interrupted_restore_recovers_quarantined_previous(tmp_path):
 
 def test_compatibility_root_map_never_recanonicalizes_captured_keys(monkeypatch, tmp_path):
     import AssetsManager.application.library_service as library_service_module
-    from AssetsManager.application.library_service import _CanonicalRootMap
+    from AssetsManager.application.library_service import (
+        _CanonicalRootMap,
+        _lexical_map_key,
+    )
 
     root_a = tmp_path / "A"
     root_b = tmp_path / "B"
-    key_a = str(root_a).casefold()
-    key_b = str(root_b).casefold()
+    # Capture keys in the product's canonical alias form (normcase-based, the
+    # same normalization _CanonicalRootMap applies to compatibility lookups).
+    # The previous casefold()-based seeding only matched on Windows, where
+    # normcase folds case; on case-sensitive POSIX the identity normcase could
+    # never alias a casefolded key (KeyError on the first lookup).
+    key_a = _lexical_map_key(str(root_a))
+    key_b = _lexical_map_key(str(root_b))
     mapping = _CanonicalRootMap()
     mapping[key_a] = "session-a"
     mapping[key_b] = "session-b"

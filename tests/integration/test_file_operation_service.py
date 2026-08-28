@@ -2,6 +2,26 @@ import pytest
 from pathlib import Path
 
 
+@pytest.fixture(autouse=True)
+def _no_reconciliation_worker(monkeypatch):
+    """Keep the shared-connection reconciliation worker out of these tests.
+
+    The worker opens short claim/read transactions on the session's single
+    SQLite connection; on slower Linux CI those windows race the service
+    clean-boundary checks and explicit caller ``BEGIN`` blocks here, producing
+    flaky "clean transaction boundary" / "cannot start a transaction within a
+    transaction" failures that Windows-native timing hides. Tests that need
+    queue processing call ``process_available()`` explicitly.
+    """
+    from AssetsManager.application.asset_index_reconciliation_service import (
+        AssetIndexReconciliationService,
+    )
+
+    monkeypatch.setattr(
+        AssetIndexReconciliationService, "start", lambda self: False
+    )
+
+
 @pytest.fixture
 def file_ops(tmp_path):
     """Session-bound FileOperationService over tmp_path/library."""
@@ -13,6 +33,11 @@ def file_ops(tmp_path):
     session = bootstrap.library_service.open_session(library)
     try:
         service = bootstrap.runtime_for(session).services.file_operation_service
+        # The reconciliation worker shares the session connection; stop it so
+        # its periodic claim transactions cannot race the service clean-boundary
+        # checks on slower Linux CI. Tests that need queue processing call
+        # reconciliation_service.process_available() explicitly.
+        bootstrap.runtime_for(session).services.reconciliation_service.stop()
         yield service, library
     finally:
         bootstrap.library_service.close()
@@ -650,6 +675,9 @@ def test_rename_reindexes_parent_after_metadata_migration(tmp_path):
     old.write_text("asset", encoding="utf-8")
     bootstrap = ApplicationBootstrap()
     scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
+    # Stop the shared-connection reconciliation worker: its claim transactions
+    # race the clean-boundary checks inside rename() on slower Linux CI.
+    scoped.reconciliation_service.stop()
     conn = scoped.session.connection_for(library)
     scoped.asset_index_service.index_directory(conn, library, library)
 
@@ -1313,6 +1341,10 @@ def test_delete_projection_publishes_tag_catalog_invalidation(tmp_path, monkeypa
     session = bootstrap.library_service.open_session(library)
     try:
         scoped = bootstrap.runtime_for(session).services
+        # The reconciliation worker shares the session connection; stop it so
+        # its periodic claim transactions cannot race the service clean-boundary
+        # checks below on slower Linux CI (see test_asset_index_service.py).
+        scoped.reconciliation_service.stop()
         scoped.tag_service.add_tag(library, target, "hero")
         catalogs.clear()
 
@@ -1507,6 +1539,9 @@ def test_restore_backup_reindexes_directory_tree_before_publishing_created(tmp_p
     shutil.rmtree(target)
     bootstrap = ApplicationBootstrap()
     scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
+    # Stop the shared-connection reconciliation worker: its claim transactions
+    # race the clean-boundary checks inside restore_backup() on slower Linux CI.
+    scoped.reconciliation_service.stop()
     conn = scoped.session.connection_for(library)
     index = scoped.asset_index_service
     observed = []

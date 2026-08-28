@@ -591,6 +591,15 @@ def test_startup_cleanup_retains_windows_process_when_query_is_denied(
     assert active_dir.exists()
 
 
+@pytest.mark.skipif(
+    os.name != "nt",
+    reason=(
+        "Windows-only cleanup semantics: the test patches os.name to drive "
+        "the ctypes.windll/OpenProcess branch, but on POSIX with Python "
+        "3.12+ that makes pathlib instantiate WindowsPath, which raises "
+        "UnsupportedOperation inside the scan and retains the directory."
+    ),
+)
 def test_startup_cleanup_removes_windows_directory_for_missing_process(
     tmp_path, monkeypatch
 ):

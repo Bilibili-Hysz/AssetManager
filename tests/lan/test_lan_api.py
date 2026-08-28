@@ -3025,7 +3025,19 @@ async def test_tags_route_writes_only_library_paths(tmp_path):
             json={"tag": "bad", "file_path": str(outside)},
             headers=_local_ui_headers(app),
         )
-        assert absolute_resp.status == 400
+        # PathGuard shape unification strips leading separators, so a
+        # POSIX-absolute outside path is coerced to a library-relative
+        # (missing) path and surfaces as 404; a Windows drive-absolute path
+        # fails containment with 400. Either way the outside file must never
+        # be tagged.
+        assert absolute_resp.status in (400, 404)
+        assert (
+            conn.execute(
+                "SELECT tag FROM file_tags WHERE file_path=?",
+                (str(outside.resolve()),),
+            ).fetchone()
+            is None
+        )
 
         missing_path = await client.post(
             "/api/tags",
@@ -3564,8 +3576,13 @@ class TestPathTraversal:
         # Shape unification: escapes now propagate as the domain error (the
         # central mapping / error_contract_middleware serializes it as the
         # 400 JSON contract) instead of a bare HTTPBadRequest.
+        # Use a real traversal shape: PathGuard.resolve strips leading
+        # separators by contract, so a POSIX-absolute string like
+        # str(outside) is coerced to a library-relative path (and rejected as
+        # MissingPathError), while "../outside.txt" genuinely resolves outside
+        # the library root on every platform and must raise PathEscapeError.
         with pytest.raises(PathEscapeError):
-            _validated_existing_key(lan, str(outside))
+            _validated_existing_key(lan, "../outside.txt")
 
     def test_validated_existing_key_requires_existing_file(self, tmp_path):
         from types import SimpleNamespace
@@ -4651,13 +4668,23 @@ class TestP0ShareCookieAuthentication:
             conn.close()
 
     @pytest.mark.anyio
-    async def test_public_asset_prefixes_are_segment_bounded_when_server_auth_is_enabled(self, tmp_path):
+    async def test_public_asset_prefixes_are_segment_bounded_when_server_auth_is_enabled(self, tmp_path, monkeypatch):
         from aiohttp import web
         from aiohttp.test_utils import TestClient, TestServer
         from AssetsManager.core import database
         from AssetsManager.lan.auth import hash_password
         from AssetsManager.lan.route_policy import RoutePolicy, declare
+        from AssetsManager.lan.routes import pages
         from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY
+
+        # Serve the SPA from a controlled dist instead of the repository's
+        # webui/dist: the route-policy assertions here must not depend on
+        # whether the WebUI was built in the CI checkout (a missing build
+        # surfaces as the SPA 503 fallback, not this test's subject).
+        dist = tmp_path / "dist"
+        dist.mkdir()
+        (dist / "index.html").write_text("<html>React SPA</html>", encoding="utf-8")
+        monkeypatch.setattr(pages, "SPA_DIR", dist)
 
         library = tmp_path / "library"
         library.mkdir()

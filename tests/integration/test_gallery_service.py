@@ -163,7 +163,14 @@ def test_gallery_skips_external_symlink_and_rejects_symlink_path(tmp_path, schem
         with pytest.raises(MissingPathError):
             service.get_collection(tmp_path, "external-link")
 
-        with pytest.raises(PathEscapeError, match="escapes root"):
+        # Rejecting an outside path is the contract; the error type differs by
+        # platform because gallery entry paths are library-relative by
+        # construction: on Windows a drive-absolute string keeps its root and
+        # fails containment (PathEscapeError), while on POSIX the leading "/"
+        # is dropped by _normalize_relative_path and the coerced in-root
+        # candidate is rejected as missing/reparse (MissingPathError). Both
+        # are fail-closed and never serve the outside file.
+        with pytest.raises((PathEscapeError, MissingPathError)):
             service.resolve(tmp_path, str(outside / "secret.png"))
     finally:
         link.unlink(missing_ok=True)

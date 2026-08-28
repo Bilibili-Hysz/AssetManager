@@ -1,4 +1,5 @@
 """Tests for ApplicationBootstrap."""
+import os
 import sqlite3
 import threading
 from types import SimpleNamespace
@@ -1143,7 +1144,10 @@ def test_bootstrap_export_restore_failure_blocks_cross_bootstrap_admission_until
 
     other = ApplicationBootstrap()
     with pytest.raises(RuntimeError, match="Restore admission is blocked"):
-        other.library_service.open_session(tmp_path / "MIXEDLIBRARY")
+        # Mixed-case alias only folds onto the same library where the
+        # filesystem is case-insensitive; on POSIX use the same spelling.
+        alias = tmp_path / ("MIXEDLIBRARY" if os.path.normcase("A") == "a" else "MiXeDLibrary")
+        other.library_service.open_session(alias)
 
     new_export_service = LibraryExportService(
         connection_provider=session.connection_for,

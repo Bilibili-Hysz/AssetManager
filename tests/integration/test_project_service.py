@@ -449,7 +449,14 @@ def test_get_home_ignores_baked_thumbnail_source_outside_library_via_symlink(
     ).to_response()
 
     assert os.path.samefile(project, external)
-    assert "thumbnail_path" not in home["recent_projects"][0]
+    # Product contract: entries behind links/reparse points are never admitted
+    # as projects (fail-closed discovery), so the symlinked project is not
+    # discovered at all and its outside-library baked thumbnail can never
+    # surface. (The old assertion indexed recent_projects[0], which only
+    # "passed" on Windows because unprivileged symlink creation skipped the
+    # test there before discovery ever ran.)
+    assert home["recent_projects"] == []
+    assert home["preview_pool"] == []
 
 
 def _insert_webp_thumbnail_row(

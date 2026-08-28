@@ -241,7 +241,14 @@ def test_cancelled_import_with_broken_queue_stays_recoverable(tmp_path, monkeypa
         # The cancelled intent must stay recoverable: a terminal state without
         # durable index compensation would hide the copied file forever.
         assert record["state"] in {"running", "recovery_pending"}
-        assert (destination / "a.txt").read_text() == "a"
+        # Directory enumeration order is platform-specific (NTFS yields the
+        # name order, POSIX readdir does not), so assert that the partial copy
+        # contains a valid source file instead of a.txt specifically.
+        landed = {entry.name for entry in destination.iterdir()}
+        assert landed
+        assert landed <= {"a.txt", "b.txt"}
+        for name in landed:
+            assert (destination / name).read_text() == name[0]
     finally:
         bootstrap.library_service.close()
 
@@ -259,8 +266,15 @@ def test_cancelled_import_with_broken_queue_stays_recoverable(tmp_path, monkeypa
         )
         assert record["state"] == "completed"
         names = [entry.name for entry in destination.iterdir()]
-        assert names.count("a.txt") == 1
-        assert (destination / "a.txt").read_text() == "a"
+        # Recovery marks the recorded partial copy completed without
+        # duplicating files; which files landed depends on the
+        # platform-specific enumeration order (NTFS is name-ordered, POSIX
+        # readdir is not), so assert the invariant instead of a.txt alone.
+        assert names
+        assert len(names) == len(set(names))
+        assert set(names) <= {"a.txt", "b.txt"}
+        for name in names:
+            assert (destination / name).read_text() == name[0]
     finally:
         reopened.library_service.close()
 
@@ -1150,7 +1164,10 @@ def test_import_cancellation_publishes_single_compensation_event(
         assert len(events) == 1
         assert events[0].kind == "cancelled_import"
         assert events[0].paths == (str(dest.resolve()),)
-        assert (dest / "a.txt").exists()
+        # Enumeration order is platform-specific (NTFS is name-ordered; POSIX
+        # readdir is not), so assert that the first copied source file landed
+        # instead of requiring a.txt specifically.
+        assert any((dest / name).exists() for name in ("a.txt", "b.txt", "c.txt"))
         assert any(call["reason"] == "import_partial" for call in queue_calls)
         assert callable(original_refresh)
     finally:

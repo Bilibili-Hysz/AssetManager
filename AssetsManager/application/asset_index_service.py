@@ -132,18 +132,26 @@ def _is_link_or_reparse(entry: object) -> bool:
         is_junction = getattr(entry, "is_junction", None)
         if callable(is_junction) and is_junction():
             return True
-        if os.name == "nt":
-            # os.DirEntry has no is_junction, so junctions/mount points must
-            # be caught through their reparse attribute; they never set the
-            # symlink tag that is_symlink() reports.
-            stat_method = getattr(entry, "stat", None)
-            if callable(stat_method):
+        stat_method = getattr(entry, "stat", None)
+        if callable(stat_method):
+            if os.name == "nt":
+                # os.DirEntry has no is_junction, so junctions/mount points
+                # must be caught through their reparse attribute; they never
+                # set the symlink tag that is_symlink() reports.
                 info = stat_method(follow_symlinks=False)
                 if (
                     int(getattr(info, "st_file_attributes", 0))
                     & _FILE_ATTRIBUTE_REPARSE_POINT
                 ):
                     return True
+            else:
+                # Platform difference: POSIX has no reparse attribute, but the
+                # fail-closed contract still requires a stat probe — a stat
+                # metadata error (OSError) must skip the entry on every
+                # platform instead of letting it be indexed with zeroed
+                # size/mtime by the caller. os.DirEntry caches the stat, so
+                # the caller's own stat reuses it without an extra syscall.
+                stat_method(follow_symlinks=False)
         return False
     except OSError:
         return True

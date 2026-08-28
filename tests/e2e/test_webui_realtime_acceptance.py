@@ -229,7 +229,15 @@ def test_browser_401_resets_identity_and_closes_realtime(browser_page, lan_runti
     _open_browse(page, server)
     _wait_for_connection_count(server, 1)
 
+    # Cookie tokens no longer verify against the raw runtime secret: the auth
+    # chain checks the derived local-UI auth secret, which the server caches
+    # keyed on the auth config (password/access_key/auth_mode) and refreshes
+    # only through its own rotation boundaries (publish_runtime_binding /
+    # apply_auth_settings). Rotating the raw secret must therefore also reset
+    # that cache, otherwise the derivation replays the stale secret and the
+    # pre-rotation cookie keeps authorizing every request (no 401, no redirect).
     server._impl._token_secret = "rotated-token-secret"
+    server._impl._local_ui_auth_secret_cache = None
     page.reload(wait_until="networkidle")
 
     page.wait_for_url("**/login")

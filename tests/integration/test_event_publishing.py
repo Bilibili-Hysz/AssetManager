@@ -6,6 +6,31 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
+@pytest.fixture(autouse=True)
+def _no_reconciliation_worker(monkeypatch):
+    """Keep the reconciliation background worker out of these tests.
+
+    The worker shares the session's single SQLite connection and periodically
+    opens short claim/read transactions (``BEGIN IMMEDIATE`` / ``BEGIN`` ...
+    ``COMMIT``).  On slower Linux CI those few-millisecond windows land inside
+    the service calls under test, tripping the (correct, fail-closed)
+    clean-boundary checks with flaky ``RuntimeError: ... clean transaction
+    boundary`` or ``sqlite3.OperationalError: cannot start a transaction
+    within a transaction``.  Windows-native tmpfs timing hides the race, which
+    is why these tests only fail on Linux.  Same rationale as the explicit
+    ``reconciliation_service.stop()`` calls in test_asset_index_service.py and
+    test_file_operation_service.py; none of these tests assert on
+    reconciliation behaviour.
+    """
+    from AssetsManager.application.asset_index_reconciliation_service import (
+        AssetIndexReconciliationService,
+    )
+
+    monkeypatch.setattr(
+        AssetIndexReconciliationService, "start", lambda self: False
+    )
+
+
 def _fake_session(root, token):
     """Minimal session stand-in satisfying the session_operation contract."""
     from contextlib import nullcontext

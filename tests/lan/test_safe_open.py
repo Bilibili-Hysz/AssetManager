@@ -46,7 +46,14 @@ def test_safe_open_expected_identity_rejects_replacement(tmp_path):
 
 
 def test_safe_open_rejects_ancestor_symlink_when_supported(tmp_path):
-    outside = tmp_path / "outside"
+    import shutil
+
+    # The escape contract needs the symlink target to live OUTSIDE the root;
+    # a per-test name under tmp_path.parent avoids cross-worker leakage (same
+    # pattern as the gallery external-symlink tests). An ancestor symlink
+    # whose target is inside the root resolves to an in-root path and is
+    # served by design on every platform.
+    outside = tmp_path.parent / f"safe-open-outside-{tmp_path.name}"
     outside.mkdir()
     (outside / "asset.bin").write_bytes(b"outside")
     link = tmp_path / "linked"
@@ -54,8 +61,12 @@ def test_safe_open_rejects_ancestor_symlink_when_supported(tmp_path):
         link.symlink_to(outside, target_is_directory=True)
     except (OSError, NotImplementedError) as exc:
         pytest.skip(f"symlink creation unavailable: {exc}")
-    with pytest.raises(PathEscapeError):
-        safe_open_under_root(tmp_path, link / "asset.bin")
+    try:
+        with pytest.raises(PathEscapeError):
+            safe_open_under_root(tmp_path, link / "asset.bin")
+    finally:
+        link.unlink(missing_ok=True)
+        shutil.rmtree(outside, ignore_errors=True)
 
 
 def test_read_safe_file_binds_bytes_before_return(tmp_path):

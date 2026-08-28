@@ -75,23 +75,34 @@ def _hex_rgb(value):
     return (int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16))
 
 
+def _assert_tint_matches(actual, expected):
+    # Platform tolerance: the SVG rasterizer's anti-aliased pixel averaging
+    # rounds differently across Qt builds/platforms (Ubuntu CI rendered
+    # (240,232,217) where Windows produced (240,232,216) — a ±1 LSB shift
+    # per channel), so the semantic tint is asserted with a small
+    # platform-independent tolerance instead of exact equality.
+    assert all(abs(a - b) <= 2 for a, b in zip(actual, expected, strict=True)), (
+        f"tint {actual} != expected {expected} (tolerance ±2)"
+    )
+
+
 def test_icon_semantic_color_roles_resolve_from_theme():
     for role in ("icon_primary", "icon_secondary", "icon_muted",
                  "icon_on_accent", "icon_accent", "icon_disabled"):
         expected = themes.color(role)
         assert expected, f"theme token {role} must resolve"
-        assert _line_tint("folder", role) == _hex_rgb(expected)
+        _assert_tint_matches(_line_tint("folder", role), _hex_rgb(expected))
 
 
 def test_icon_legacy_token_names_resolve():
-    assert _line_tint("folder", "heading") == _hex_rgb(themes.color("heading"))
-    assert _line_tint("folder", "favorite") == _hex_rgb(themes.color("favorite"))
+    _assert_tint_matches(_line_tint("folder", "heading"), _hex_rgb(themes.color("heading")))
+    _assert_tint_matches(_line_tint("folder", "favorite"), _hex_rgb(themes.color("favorite")))
 
 
 def test_icon_explicit_hex_passthrough():
-    assert _line_tint("folder", "#c480d4") == (196, 128, 212)
+    _assert_tint_matches(_line_tint("folder", "#c480d4"), (196, 128, 212))
 
 
 def test_icon_default_color_is_primary():
     default = _line_tint("folder", None)
-    assert default == _hex_rgb(themes.color("icon_primary"))
+    _assert_tint_matches(default, _hex_rgb(themes.color("icon_primary")))

@@ -49,9 +49,20 @@ def _reject_link_or_reparse_ancestors(
     for part in relative.parts:
         current /= part
         try:
-            if not os.path.lexists(current):
+            try:
+                info = os.lstat(current)
+            except FileNotFoundError:
+                # Missing trailing directories are allowed so the caller can
+                # create a new destination tree.
                 break
-            info = os.lstat(current)
+            # Platform difference: the previous existence probe used
+            # os.path.lexists(), which maps *any* lstat error to False on
+            # POSIX (ntpath propagates it), so an ancestor whose metadata
+            # could not be inspected (EACCES, EIO, ...) silently became a
+            # "missing" component and failed open on Linux. Probing with
+            # os.lstat directly keeps the inspection fail-closed: only a
+            # genuinely missing component breaks, every other OSError
+            # propagates like on Windows.
             if stat.S_ISLNK(info.st_mode):
                 raise OSError(f"Import path passes through a symlink: {current}")
             if os.name == "nt":

@@ -188,6 +188,8 @@ class TestShareService:
         assert exc_info.value.message == "No valid paths"
 
     def test_bound_create_share_normalizes_relative_and_absolute_paths(self, tmp_path, memory_db):
+        import os
+
         root = tmp_path / "library"
         nested = root / "folder"
         nested.mkdir(parents=True)
@@ -195,7 +197,11 @@ class TestShareService:
         asset.write_text("asset", encoding="utf-8")
         svc = _bound_service(memory_db, root)
 
-        relative_share = svc.create_share(paths=["folder\\asset.txt"])
+        # Build the relative form with the platform separator: on Windows
+        # this exercises backslash normalization (the key stored is always
+        # POSIX-style); on POSIX a backslash is a legal filename character,
+        # so the native separator is the only meaningful relative input.
+        relative_share = svc.create_share(paths=[os.path.join("folder", "asset.txt")])
         absolute_share = svc.create_share(paths=[str(asset)])
 
         assert relative_share is not None
