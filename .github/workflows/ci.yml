@@ -83,6 +83,14 @@ jobs:
           python-version: "3.13"
       - name: Install pyright (pinned; bump deliberately)
         run: pip install pyright==1.1.410
+      # PySide6 must be import-resolvable or the stub analysis reports every
+      # Qt symbol as unknown (reportMissingImports is disabled by config,
+      # which hides the root cause and leaves attribute errors behind).
+      - name: Install project dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-lan.txt
+          pip install -r requirements-ci.txt
       - name: Report tool versions
         run: |
           python --version
