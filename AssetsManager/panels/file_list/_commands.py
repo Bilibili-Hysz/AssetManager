@@ -34,6 +34,33 @@ class FileListCommand:
     invoke: Callable[[], None]
 
 
+#: FileList keyboard shortcuts as ``(portable key sequence, i18n key)``
+#: pairs — the single source of truth shared by the help dialogs so the
+#: documented table cannot drift from what ``shortcut_command_id`` (and the
+#: extra keys dispatched in ``_shortcuts.handle_key``) actually accept.
+FILE_LIST_SHORTCUTS: tuple[tuple[str, str], ...] = (
+    ("Ctrl+F", "shortcuts.filelist_filter"),
+    ("Enter", "filelist.menu.open"),
+    ("Backspace", "filelist.help.up"),
+    ("Ctrl+C", "filelist.menu.copy"),
+    ("Ctrl+X", "filelist.menu.cut"),
+    ("Ctrl+V", "filelist.menu.paste"),
+    ("Ctrl+D", "filelist.menu.duplicate"),
+    ("Ctrl+Shift+N", "filelist.menu.new_folder"),
+    ("Ctrl+A", "filelist.menu.select_all"),
+    ("F2", "filelist.menu.rename"),
+    ("Delete", "filelist.menu.delete"),
+    ("Shift+Delete", "filelist.menu.delete_permanent"),
+    ("Ctrl+Z", "filelist.menu.undo"),
+    ("Ctrl+Y", "filelist.menu.redo"),
+    ("F5", "filelist.menu.refresh"),
+    ("Ctrl+H", "filelist.menu.toggle_hidden"),
+    ("Alt+Enter", "filelist.properties"),
+    ("F4", "filelist.menu.keyboard_help"),
+    ("Escape", "filelist.help.clear"),
+)
+
+
 def shortcut_command_id(key: int, modifiers: Any) -> str | None:
     """Return the stable FileList command ID for an existing shortcut."""
     ctrl = bool(modifiers & Qt.KeyboardModifier.ControlModifier)

@@ -96,6 +96,11 @@ class _RouterSubscription:
                 self._router._drain_condition.wait(timeout=remaining)
 
 
+# Events without a mapping here (e.g. domain.events.MaintenanceChanged, a
+# pure UI-notification for maintenance/integrity completion) are invisible
+# to the Router by design: the Router only subscribes to the types below,
+# and such notifications carry no projection state to invalidate.  Their
+# consumers subscribe on the event bus directly.
 EVENT_DOMAINS: dict[type, tuple[ProjectionDomain, ...]] = {
     FileSystemChanged: (
         ProjectionDomain.FILES, ProjectionDomain.TREE,

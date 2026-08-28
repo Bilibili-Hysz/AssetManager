@@ -698,9 +698,14 @@ def test_service_provider_errors_are_single_explicit_messages() -> None:
 def test_public_types_are_backed_by_contract_fixture() -> None:
     api_types = (ROOT / "webui" / "src" / "types" / "api.ts").read_text(encoding="utf-8")
     contracts = (ROOT / "tests" / "contracts" / "lan_public_contracts.json").read_text(encoding="utf-8")
+    generated = (ROOT / "webui" / "src" / "types" / "contracts.ts").read_text(encoding="utf-8")
     for field in ("connections", "requests", "bytes_transferred", "uptime"):
         assert f'"{field}"' in contracts
-        assert field in api_types
+        assert field in generated
+    # Since the 2026-08-29 api.ts/contracts.ts merge, StatsResponse is
+    # re-exported from the generated contract types instead of being defined
+    # inline — the structural backing replaces per-field text checks in api.ts.
+    assert re.search(r"export type \{[^}]*StatsResponse[^}]*\} from ['\"]\./contracts['\"]", api_types, re.S)
 
 
 def test_production_lan_entrypoints_have_no_legacy_factory_path() -> None:

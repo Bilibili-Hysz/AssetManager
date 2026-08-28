@@ -1015,14 +1015,15 @@ class SettingsDialog(TabbedDialog):
     def _ensure_maintenance_subscription(self):
         if self._maintenance_subscription is not None:
             return
-        from AssetsManager.domain.events import ActivityChanged
-        # Queued Qt bridge: ActivityChanged is published from worker threads
-        # (integrity-check workers / LAN), so the raw weak subscription would
-        # run _on_maintenance_event on the publishing thread. The bridge
-        # re-emits through a queued signal so the slot always runs on the
-        # dialog's (GUI) thread. Closed via _on_dialog_closed.
+        from AssetsManager.domain.events import MaintenanceChanged
+        # Queued Qt bridge: MaintenanceChanged is published from worker
+        # threads (integrity-check workers / LAN), so the raw weak
+        # subscription would run _on_maintenance_event on the publishing
+        # thread. The bridge re-emits through a queued signal so the slot
+        # always runs on the dialog's (GUI) thread. Closed via
+        # _on_dialog_closed.
         self._maintenance_subscription = DomainEventSubscription(
-            ActivityChanged, self._on_maintenance_event, self)
+            MaintenanceChanged, self._on_maintenance_event, self)
 
     def _on_dialog_closed(self):
         """Unsubscribe from the global event bus on every close path."""

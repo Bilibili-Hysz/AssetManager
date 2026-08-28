@@ -18,7 +18,7 @@ from typing import Literal, cast
 from AssetsManager.application.context import ConnectionProvider, LibrarySession
 from AssetsManager.core.database import DatabaseManager, db_write_lock
 from AssetsManager.domain.event_bus import get_event_bus
-from AssetsManager.domain.events import ActivityChanged
+from AssetsManager.domain.events import MaintenanceChanged
 
 _log = logging.getLogger(__name__)
 CheckpointMode = Literal["PASSIVE", "FULL", "RESTART", "TRUNCATE"]
@@ -314,15 +314,16 @@ class DatabaseMaintenanceService:
         if not token:
             return
         try:
-            # Deliberately borrows ActivityChanged instead of a dedicated
-            # MaintenanceChanged: maintenance completion is not projection
-            # data (no ProjectionDomain fits, and the RuntimeEventRouter only
-            # subscribes to EVENT_DOMAINS types, so an unmapped event would
-            # be silently dropped).  The one consumer — the settings dialog's
-            # queued Qt bridge — already subscribes to ActivityChanged.
-            get_event_bus().publish(ActivityChanged(
+            # MaintenanceChanged is a UI-notification event, deliberately not
+            # projection data: it has no ProjectionDomain mapping in
+            # runtime_events.EVENT_DOMAINS, so the RuntimeEventRouter (which
+            # only subscribes to mapped types) ignores it.  The one consumer
+            # — the settings dialog's queued Qt bridge — subscribes to this
+            # type on the bus directly.
+            get_event_bus().publish(MaintenanceChanged(
                 library_root=self._session.root_str,
                 session_token=token,
+                kind="maintenance",
             ))
         except Exception:
             _log.exception("Database maintenance completion notification failed")

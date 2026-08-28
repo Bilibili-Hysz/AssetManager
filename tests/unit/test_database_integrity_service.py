@@ -155,6 +155,34 @@ def test_schedule_after_stop_reports_service_closed(opened_session):
     assert service.last_schedule_error == "service_closed"
 
 
+def test_completed_run_publishes_maintenance_changed_with_integrity_kind(opened_session):
+    """Scheduled passes notify the settings-dialog bridge via the dedicated
+    MaintenanceChanged UI event (kind="integrity"), not ActivityChanged."""
+    from AssetsManager.domain.event_bus import get_event_bus
+    from AssetsManager.domain.events import MaintenanceChanged
+
+    bootstrap, session = opened_session
+    observed = []
+    subscription = get_event_bus().subscribe(MaintenanceChanged, observed.append)
+    try:
+        service = DatabaseIntegrityService(
+            connection_provider=session.connection_for,
+            session=session,
+        )
+        assert service.schedule()
+        deadline = time.monotonic() + 5
+        while service.running and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+        assert not service.running
+        assert len(observed) == 1
+        assert observed[0].session_token == session.event_token
+        assert observed[0].library_root == session.root_str
+        assert observed[0].kind == "integrity"
+    finally:
+        subscription.close()
+
+
 def test_runtime_integrity_shutdown_does_not_commit_with_slow_check(opened_session, monkeypatch):
     bootstrap, session = opened_session
     runtime = bootstrap.runtime_for(session)

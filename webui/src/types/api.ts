@@ -1,3 +1,35 @@
+// ============ Source-of-truth note ============
+// The types below are generated into contracts.ts from the backend frozen
+// dataclasses in AssetsManager/lan/dto.py (scripts/gen_ts_types.py). For every
+// type that exists in both files, contracts.ts is the single source of truth:
+// api.ts only re-exports it and must not redeclare it.
+//
+// Types that exist only here (ShareLink, Shop*, gallery/files DTOs, ...) have
+// no frozen dataclass in lan/dto.py yet — their wire shapes live in
+// domain/share.py (ShareLink.to_public_dict, plus the route-added
+// url/requires_key) and application/order_service.py (_BUYER/_SELLER_ORDER_
+// FIELDS) — so they remain hand-written; update them together with the
+// backend serializers.
+import type {
+  Capabilities,
+  InviteResponse,
+  SessionPrincipal,
+  Tag,
+  TreeItem,
+  UserResponse,
+} from './contracts';
+
+export type {
+  Capabilities,
+  InviteResponse,
+  RuntimeCursor,
+  SessionPrincipal,
+  StatsResponse,
+  Tag,
+  TreeItem,
+  UserResponse,
+} from './contracts';
+
 // ============ Server Info ============
 export interface FeatureFlags {
   commerce: boolean;
@@ -25,41 +57,11 @@ export interface ServerInfo {
   feature_flags?: FeatureFlags;
 }
 
-// ============ Auth ============
-export interface Capabilities {
-  browse: boolean;
-  preview: boolean;
-  download: boolean;
-  upload: boolean;
-  manage_links: boolean;
-  manage_users: boolean;
-  settings: boolean;
-  realtime: boolean;
-}
-
-export interface RuntimeCursor {
-  epoch: string;
-  revision: number;
-}
-
-export interface UserResponse {
-  id: number;
-  username: string;
-  role: 'admin' | 'user';
-  active: boolean;
-  created_at: number;
-}
+// Capabilities, RuntimeCursor, UserResponse, SessionPrincipal, InviteResponse,
+// StatsResponse, Tag and TreeItem are re-exported from './contracts' (see the
+// source-of-truth note at the top of this file).
 
 export type User = UserResponse;
-
-export interface SessionPrincipal {
-  kind: 'user' | 'password' | 'access_key' | 'local_ui' | 'guest' | 'share';
-  authenticated: boolean;
-  role: 'admin' | 'user' | 'guest';
-  display_name: string;
-  capabilities: Capabilities;
-  user_profile?: UserResponse;
-}
 
 export interface LoginResponse {
   user?: UserResponse;
@@ -219,14 +221,6 @@ export interface ProjectDetail {
 }
 
 // ============ Tree ============
-export interface TreeItem {
-  name: string;
-  path: string;
-  type: 'dir';
-  is_leaf: boolean;
-  children: TreeItem[];
-}
-
 export interface TreeResponse {
   tree: TreeItem[];
   depth_config: {
@@ -272,12 +266,6 @@ export type BrowsableItem = SearchResult & Partial<Pick<ProjectItem, 'size' | 's
 };
 
 // ============ Tags ============
-export interface Tag {
-  id: number | null;
-  name: string;
-  count: number;
-}
-
 export interface TagsResponse {
   tags: Tag[];
 }
@@ -349,24 +337,11 @@ export interface ShareInfoResponse {
 }
 
 // ============ System Stats ============
-export interface StatsResponse {
-  connections: number;
-  requests: number;
-  bytes_transferred: number | null;
-  bytes_transferred_fmt: string | null;
-  uptime: number;
-}
+// StatsResponse is re-exported from './contracts'.
 
 // ============ Users ============
 export interface UsersResponse {
   users: UserResponse[];
-}
-
-export interface InviteResponse {
-  code: string;
-  created_at: number;
-  used_by: string | null;
-  revoked: boolean;
 }
 
 export type InviteCode = InviteResponse;

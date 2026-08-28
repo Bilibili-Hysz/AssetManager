@@ -6,7 +6,7 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库(元数据、标签、缩略图),也可以通过局域网内的浏览器远程浏览和下载资产。仓库名 `AssetsManager_old-bak` 仅为目录命名,项目包名为 `AssetsManager`。
 
-<!-- stats: app_services=51 controllers=4 core=34 dialogs=21 domain_events=15 e2e_specs=6 hooks=16 i18n_en=861 i18n_ja=861 i18n_zh=861 icons=56 pages=26 python_test_files=290 repos=17 routes=140 routes_modules=24 schema_version=35 stores=4 themes=24 ts=119 webui_test_files=103 widgets=14 -->
+<!-- stats: app_services=51 controllers=4 core=34 dialogs=21 domain_events=16 e2e_specs=6 hooks=16 i18n_en=849 i18n_ja=849 i18n_zh=849 icons=56 pages=26 python_test_files=290 repos=17 routes=140 routes_modules=24 schema_version=35 stores=4 themes=24 ts=119 webui_test_files=103 widgets=14 -->
 > **验证边界（2026-08-21）**：README 的结构统计由 `scripts/check_doc_stats.py` 从当前工作树测量；测试、构建、浏览器、真实 LAN、依赖和发布结果只在带 commit、精确命令、平台、工具版本与 artifact digest 的日期化证据中成立。历史全量数字（包括 2026-08-17 的 3778/7 和此前 WebUI/E2E 数字）保留在 dated 文档中，不作为当前 release 或 `verified-fixed` 声明。当前 C6-C10 收敛与剩余限制见 [`docs/full-review/c6-c10-convergence-2026-08-21.md`](docs/full-review/c6-c10-convergence-2026-08-21.md)。
 > **工作区实况索引**：结构/机制/数据流/弱点/文档导航的全量地图见 [`docs/overview-2026-08-27.md`](docs/overview-2026-08-27.md)（LIVING）；已移入归档的文档溯源见 [`docs/archive/INDEX.md`](docs/archive/INDEX.md)。
 
@@ -45,7 +45,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aio
 | 层 | 技术 |
 |---|---|
 | 核心 | Python 3.12/3.13/3.14（CI 矩阵；本机 3.14）；PySide6 >=6.6,<7；aiohttp >=3.9（可选）；SQLite3（WAL，迁移 v1-v35）；Pillow；segno；send2trash/requests |
-| 桌面 | QDockWidget（dock_factory 统一构建）、QAbstractListModel、QThreadPool、signal_bus（7 信号）/event_bus（15 个领域事件）、icons.py（56 图标，DPR 感知） |
+| 桌面 | QDockWidget（dock_factory 统一构建）、QAbstractListModel、QThreadPool、signal_bus（7 信号）/event_bus（16 个领域事件）、icons.py（56 图标，DPR 感知） |
 | LAN | aiohttp（24 个路由模块，140 条路由 + WebSocket）；middleware 顺序 security→metrics→auth；PathGuard 路径守卫；HMAC 令牌（ts.nonce.sig）；WebSocketManager（50 连接/心跳 30s/1MB 帧截断）；Cloudflare Tunnel；React SPA（webui/dist 托管） |
 | 数据层 | DatabaseManager（连接级读写门 + 身份标记）；**17 个 SQL 仓库**（统一 for_session 绑定 + SAVEPOINT + CAS）；db_migrations（迁移 v1-v35，契约回溯校验）；schema_defs 契约；LibraryLock；json_store 原子持久化 |
 | 开发工具 | ruff / pyright / pytest / Cython（4 个热点模块）/ PyInstaller |
@@ -62,7 +62,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aio
 ├─ Application Layer（51 模块）— bootstrap 装配 → 每库 LibraryRuntime/LibrarySession
 │  （应用服务层（51 模块）顶层，另有 gallery/ 子包 5 文件）
 ├─ Repositories — 17 个 SQL 仓库（for_session + savepoint 事务 + CAS）
-├─ Domain — 值对象 + 15 个领域事件 + 错误层级（零基础设施依赖）
+├─ Domain — 值对象 + 16 个领域事件 + 错误层级（零基础设施依赖）
 └─ Infrastructure core/ — database/迁移/契约/锁/路径/主题/图标/缓存/插件
         LAN 层（aiohttp：认证/限流/隧道/WS）与 core 共享，经 application 访问数据
 ```
@@ -80,7 +80,7 @@ AssetsManager_old-bak/
 │   ├── application/            # 应用服务层（51 模块，27.7k 行）
 │   ├── controllers/            # 4 个无 Qt 控制器（file_list/info/tag_tree/sidebar）
 │   ├── core/                   # 基础设施层（34 模块 + plugins/6）
-│   ├── domain/                 # 领域层：15 个领域事件 + event_bus + errors + 值对象
+│   ├── domain/                 # 领域层：16 个领域事件 + event_bus + errors + 值对象
 │   ├── repositories/           # **17 个 SQL 仓库**（tag/metadata/thumbnail/favorite/
 │   │                           #  share/auth/asset_index/plugin_metadata/shop/order/
 │   │                           #  quota/free_download_quota/seller_profile/
@@ -167,7 +167,7 @@ python -m pytest tests/performance/test_cython_benchmarks.py -v -s
 python -m pytest tests/performance/test_baselines.py -v   # perf 标记，CI 默认排除
 ```
 
-观测脚本：`tests/perf/`（grid/directory/thumbnail telemetry）+ nightly grid（CI 每日 03:17 UTC，30 天趋势）。
+观测脚本：`tests/perf/`（grid/directory/thumbnail telemetry）+ nightly grid（CI 每日 03:17 UTC，30 天趋势）。D3 正式基线与单连接架构决策（2026-08-29 实测）：`docs/perf-baseline-2026-08-29.md`。
 
 ---
 
@@ -226,7 +226,7 @@ python build.py --clean --build --optimize --report   # → dist/AssetManager/As
 
 | 语言 | 状态 |
 |---|---|
-| English / 中文 / 日本語 | ✅ 完整（en 861 / zh 861 / ja 861 keys，桌面 + Web） |
+| English / 中文 / 日本語 | ✅ 完整（en 849 / zh 849 / ja 849 keys，桌面 + Web） |
 
 添加语言：复制 `AssetsManager/i18n/en.json` → 翻译 → 在 `i18n/__init__.py` 注册。
 

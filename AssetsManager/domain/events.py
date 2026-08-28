@@ -56,6 +56,21 @@ class ActivityChanged(DomainEvent):
 
 
 @dataclass(frozen=True)
+class MaintenanceChanged(DomainEvent):
+    """A database maintenance or integrity run settled in a library session.
+
+    Pure UI-notification, not projection data: deliberately absent from
+    ``runtime_events.EVENT_DOMAINS``, so the RuntimeEventRouter (which only
+    subscribes to mapped types) never routes it — publishing it is a no-op
+    for projections by design.  Consumers subscribe on the event bus
+    directly, e.g. the settings dialog's queued Qt bridge.
+    """
+    library_root: str = ""
+    session_token: str = ""
+    kind: str = "maintenance"  # "maintenance" | "integrity"
+
+
+@dataclass(frozen=True)
 class PresenceChanged(DomainEvent):
     """Online presence changed within a specific library session."""
     library_root: str = ""

@@ -14,7 +14,7 @@ from AssetsManager.application.database_maintenance_service import (
 from AssetsManager.application.library_settings_adapter import LibrarySettingsAdapter
 from AssetsManager.dialogs.settings_dialog import SettingsDialog
 from AssetsManager.domain.event_bus import get_event_bus
-from AssetsManager.domain.events import ActivityChanged
+from AssetsManager.domain.events import MaintenanceChanged
 
 
 class _Session:
@@ -68,7 +68,7 @@ def _dialog(tmp_path):
 
 
 def _publish_for(adapter):
-    get_event_bus().publish(ActivityChanged(
+    get_event_bus().publish(MaintenanceChanged(
         library_root=str(adapter.library_root),
         session_token=adapter.session_token,
     ))
@@ -101,7 +101,7 @@ def test_maintenance_tab_renders_and_buttons_call_adapter(tmp_path):
         app.processEvents()
 
 
-def test_activity_changed_refreshes_status_and_filters_other_sessions(tmp_path):
+def test_maintenance_changed_refreshes_status_and_filters_other_sessions(tmp_path):
     app, dialog, maintenance, original_language = _dialog(tmp_path)
     adapter = dialog.library_settings_adapter
     try:
@@ -109,7 +109,7 @@ def test_activity_changed_refreshes_status_and_filters_other_sessions(tmp_path):
         app.processEvents()
 
         # Events from another session must be ignored.
-        get_event_bus().publish(ActivityChanged(
+        get_event_bus().publish(MaintenanceChanged(
             library_root="other", session_token="other-token"))
         app.processEvents()
         assert dialog._maintenance_status.text() == "Ready"

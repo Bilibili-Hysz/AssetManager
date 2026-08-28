@@ -102,6 +102,32 @@ def _restore_window_geometry(window: QWidget) -> None:
         _log.warning("Ignoring malformed saved window geometry", exc_info=True)
 
 
+def build_shortcuts_help_text() -> str:
+    """Render the shortcuts help dialog body from the live registries.
+
+    Two groups: window-level shortcuts come straight from the
+    ShortcutManager registry (defaults + menu actions registered by
+    ``_register_window_shortcuts``); FileList keys come from the
+    ``_commands.FILE_LIST_SHORTCUTS`` table so the help page cannot drift
+    from the event-filter dispatch.
+    """
+    from AssetsManager.panels.file_list._commands import FILE_LIST_SHORTCUTS
+    from AssetsManager.widgets.shortcut_manager import ShortcutManager
+
+    lines = [f"<b>{tr('shortcuts.group_global')}</b>"]
+    lines.extend(
+        f"{entry['key']} — {tr(entry['description'])}"
+        for entry in ShortcutManager.instance().get_shortcuts()
+    )
+    lines.append("")
+    lines.append(f"<b>{tr('shortcuts.group_filelist')}</b>")
+    lines.extend(
+        f"{key} — {tr(description_key)}"
+        for key, description_key in FILE_LIST_SHORTCUTS
+    )
+    return "<br>".join(lines)
+
+
 class MainWindow(LanSharingMixin, QMainWindow):
     def __init__(
         self, bootstrap, library_session=None, *,
@@ -424,6 +450,29 @@ class MainWindow(LanSharingMixin, QMainWindow):
         # Keyboard Shortcuts
         tools_menu.addSeparator()
         self._menu_act_shortcuts = tools_menu.addAction(tr("menu.keyboard_shortcuts"), self._show_shortcuts)
+
+        # Wire the window-level shortcuts through the shared registry so the
+        # help dialog (generated from that registry) matches reality.
+        self._register_window_shortcuts()
+
+    def _register_window_shortcuts(self) -> None:
+        """Record the window-level menu shortcuts in ShortcutManager.
+
+        Menu actions keep dispatching through their own ``setShortcut`` —
+        registering an additional QShortcut for the same sequence would make
+        Qt treat both as ambiguous and fire neither — so the actions are
+        adopted into the registry via ``register_action``.
+        """
+        from AssetsManager.widgets.shortcut_manager import ShortcutManager
+
+        manager = ShortcutManager.instance()
+        manager.register_action(
+            self._menu_act_exit, "Ctrl+Q", "menu.exit", "application")
+        manager.register_action(
+            self._menu_act_settings, "Ctrl+,", "menu.settings", "navigation")
+        manager.register_action(
+            self._menu_act_shortcuts, "F1", "menu.keyboard_shortcuts",
+            "application")
 
     def _setup_ui(self):
         from PySide6.QtWidgets import QMenuBar, QHBoxLayout, QSpacerItem, QSizePolicy
@@ -833,27 +882,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
     def _show_shortcuts(self):
         from PySide6.QtWidgets import QMessageBox
-        lines = [
-            f"<b>{tr('shortcuts.group_global')}</b>",
-            f"Ctrl+Tab — {tr('shortcuts.next_tab')}",
-            f"Ctrl+Shift+Tab — {tr('shortcuts.prev_tab')}",
-            "",
-            f"<b>{tr('shortcuts.group_sidebar')}</b>",
-            f"Ctrl+F — {tr('shortcuts.sidebar_search')}",
-            f"Ctrl+Shift+F — {tr('shortcuts.sidebar_add_fav')}",
-            f"Escape — {tr('shortcuts.sidebar_clear')}",
-            f"Delete — {tr('shortcuts.sidebar_delete')}",
-            "",
-            f"<b>{tr('shortcuts.group_filelist')}</b>",
-            f"Ctrl+F — {tr('shortcuts.filelist_filter')}",
-            f"Ctrl+C — {tr('shortcuts.filelist_copy')}",
-            f"Ctrl+X — {tr('shortcuts.filelist_cut')}",
-            f"Ctrl+V — {tr('shortcuts.filelist_paste')}",
-            f"Ctrl+Z — {tr('shortcuts.filelist_undo')}",
-            f"Delete — {tr('shortcuts.filelist_delete')}",
-            f"F2 — {tr('shortcuts.filelist_rename')}",
-        ]
-        QMessageBox.information(self, tr("shortcuts.title"), "<br>".join(lines))
+        QMessageBox.information(self, tr("shortcuts.title"), build_shortcuts_help_text())
 
     def _open_settings(self):
         from AssetsManager.application.library_settings_adapter import LibrarySettingsAdapter

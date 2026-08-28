@@ -330,11 +330,11 @@ def test_schedule_vacuum_rejected_without_starting_worker(opened_session):
 
 def test_completed_event_published_after_successful_background_run(opened_session):
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import ActivityChanged
+    from AssetsManager.domain.events import MaintenanceChanged
 
     bootstrap, session = opened_session
     observed = []
-    subscription = get_event_bus().subscribe(ActivityChanged, observed.append)
+    subscription = get_event_bus().subscribe(MaintenanceChanged, observed.append)
     try:
         service = _service(session)
         assert service.schedule("checkpoint")
@@ -345,17 +345,18 @@ def test_completed_event_published_after_successful_background_run(opened_sessio
         assert not service.running
         assert [event.session_token for event in observed] == [session.event_token]
         assert observed[0].library_root == session.root_str
+        assert observed[0].kind == "maintenance"
     finally:
         subscription.close()
 
 
 def test_completed_event_published_after_failed_background_run(opened_session, monkeypatch):
     from AssetsManager.domain.event_bus import get_event_bus
-    from AssetsManager.domain.events import ActivityChanged
+    from AssetsManager.domain.events import MaintenanceChanged
 
     bootstrap, session = opened_session
     observed = []
-    subscription = get_event_bus().subscribe(ActivityChanged, observed.append)
+    subscription = get_event_bus().subscribe(MaintenanceChanged, observed.append)
     try:
         service = _service(session)
 
@@ -372,5 +373,6 @@ def test_completed_event_published_after_failed_background_run(opened_session, m
         assert isinstance(service.last_result, MaintenanceFailureResult)
         assert len(observed) == 1
         assert observed[0].session_token == session.event_token
+        assert observed[0].kind == "maintenance"
     finally:
         subscription.close()

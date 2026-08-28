@@ -3,16 +3,14 @@
 /* ═══════════════════════════════════════════════════════
    WCAG 2.1 AA contrast adjustments (webui-local overrides).
 
-   themes.generated.css is kept byte-exact against
-   Assets/Themes/*.json by `scripts/gen_web_tokens.py --check`
-   in CI, so its values are corrected here until the shipped
-   theme JSON palettes are updated upstream:
+   --color-text-muted is NOT overridden here anymore: the
+   4.5:1 fix lives upstream in Assets/Themes/D_Navy.json
+   (dark #8492a5) and L_Dawn.json (light #6f6146) and flows
+   into themes.generated.css via scripts/gen_web_tokens.py
+   (both reach ≥4.62:1 on every theme surface). Keep that
+   JSON as the single source; do not re-add local overrides.
 
-   - --color-text-muted: the generated #6b7394 (dark) /
-     #8a7c68 (light) only reach ~4.0:1 on the theme surfaces;
-     both are raised past the 4.5:1 minimum required by the
-     9-13px text that consumes the token.
-   - --color-accent-text: text-safe accent. The server may
+   --color-accent-text: text-safe accent. The server may
      declare any accent via /api/info theme_color (shipped
      default #5b7ff5), which never reaches 4.5:1 as 11px text
      on the elevated surfaces — text usages therefore bind to
@@ -21,12 +19,10 @@
    generated token block in the cascade.
    ═══════════════════════════════════════════════════════ */
 :root {
-  --color-text-muted: #8492a5;  /* 5.9:1 on --color-bg (dark) */
   --color-accent-text: #8296f2; /* 5.3:1 on --color-elevated (dark) */
 }
 
 html.light {
-  --color-text-muted: #6f6146;  /* 5.3:1 on --color-bg (light) */
   --color-accent-text: #3f639f; /* 4.6:1 on --color-elevated (light) */
 }
 

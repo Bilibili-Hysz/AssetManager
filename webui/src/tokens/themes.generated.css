@@ -11,7 +11,7 @@
   --color-border-focus: #5b7cf0;
   --color-text: #e8ecf8;
   --color-text-secondary: #b4bcd0;
-  --color-text-muted: #6b7394;
+  --color-text-muted: #8492a5;
   --color-text-inverse: #000000;
   --color-accent: #5b7cf0;
   --color-accent-hover: #5b7cf0;
@@ -48,7 +48,7 @@ html.light {
   --color-border-focus: #4a70b0;
   --color-text: #241c10;
   --color-text-secondary: #4a4030;
-  --color-text-muted: #8a7c68;
+  --color-text-muted: #6f6146;
   --color-text-inverse: #ffffff;
   --color-accent: #4a70b0;
   --color-accent-hover: #4a70b0;
