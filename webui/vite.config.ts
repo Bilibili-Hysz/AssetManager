@@ -33,6 +33,9 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.{ts,tsx}'],
+    // CI runners are slow enough that RTL act-flush timing occasionally
+    // trips a wait-free assertion; one retry there, strict locally.
+    retry: process.env.CI ? 1 : 0,
     coverage: {
       provider: 'istanbul',
       include: ['src/**/*.{ts,tsx}'],

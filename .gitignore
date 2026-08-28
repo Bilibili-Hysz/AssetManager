@@ -125,3 +125,6 @@ AssetsManager/core/format_utils.c
 
 # One-off maintenance/repair loops (e.g. audit-manifest fixups); never tracked.
 scripts/_tmp_*.py
+
+# Session-memory sidecar (external assistant tooling)
+.workbuddy/

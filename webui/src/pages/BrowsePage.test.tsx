@@ -315,8 +315,10 @@ describe('BrowsePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Filter tag' }));
 
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('info.tag_filter_failed', 'error'));
-    expect(screen.queryByTestId('active-tag')).toBeNull();
-    expect(screen.getByTestId('file-list').textContent).toBe('asset.png');
+    // Toast + tag-clear + listing-restore are separate state updates; under
+    // CI load they land in distinct act flushes, so assert each by waiting.
+    await waitFor(() => expect(screen.queryByTestId('active-tag')).toBeNull());
+    await waitFor(() => expect(screen.getByTestId('file-list').textContent).toBe('asset.png'));
   });
 
   it('only selects an asset after mobile selection mode is enabled', async () => {
