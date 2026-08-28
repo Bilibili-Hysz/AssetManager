@@ -1,8 +1,6 @@
-import os
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
@@ -272,3 +270,48 @@ def test_dialog_qss_slider_uses_theme_accent():
     finally:
         dialog.close()
         dialog.deleteLater()
+
+
+# ── Dialog geometry memory ─────────────────────────────────────
+
+
+class _GeometryMemoryDialog(TabbedDialog):
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Geometry memory"))
+
+
+def test_dialog_geometry_restored_after_reopen():
+    """resize → close → re-open restores the saved size."""
+    app = QApplication.instance() or QApplication([])
+    settings = AppSettings.instance()
+    key = "dialog_geometry__GeometryMemoryDialog"
+    original = settings.get(key)
+    settings.set(key, None)  # start without an archive
+    first = _GeometryMemoryDialog(min_size=(240, 120))
+    second = None
+    try:
+        # No archive: the dialog falls back to its min_size default.
+        first.show()
+        app.processEvents()
+        assert (first.width(), first.height()) == (240, 120)
+
+        first.resize(500, 400)
+        app.processEvents()
+        first.close()
+        app.processEvents()
+        saved = settings.get(key)
+        assert isinstance(saved, str) and saved
+
+        # Re-open: the saved size replaces the min_size default.
+        second = _GeometryMemoryDialog(min_size=(240, 120))
+        second.show()
+        app.processEvents()
+        assert second.size() == QSize(500, 400)
+    finally:
+        if second is not None:
+            second.close()
+            second.deleteLater()
+        first.deleteLater()
+        app.processEvents()
+        settings.set(key, original)

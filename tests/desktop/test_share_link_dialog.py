@@ -1,10 +1,8 @@
-import os
 from pathlib import Path
 from sqlite3 import connect
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import QApplication, QLineEdit

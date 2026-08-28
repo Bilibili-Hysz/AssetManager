@@ -144,6 +144,8 @@ class LogicMixin:
         def _new_folder(self) -> None: ...
         def _run_in_background(self, func: Any, *args: Any, on_done: Any = None) -> None: ...
         def _session_operation(self, session: Any) -> Any: ...
+        def _capture_mutation_context(self) -> Any: ...
+        def _consume_refresh_warnings(self, service: Any) -> tuple: ...
 
     def _init_state(self) -> None:
         """Initialize per-instance view state, model and thumbnail loader."""
@@ -189,8 +191,13 @@ class LogicMixin:
 
 
 
-    def set_scoped_services(self, services):
-        """Bind library-scoped services resolved by MainWindow."""
+    def set_scoped_services(self, services, *, runtime=None) -> None:
+        """Bind library-scoped services resolved by MainWindow.
+
+        ``runtime`` is part of the uniform ``ScopedServicesConsumer``
+        signature; the file list binds no runtime projection router, so the
+        kwarg is accepted and ignored.
+        """
         self._operation_feedback_generation = getattr(self, "_operation_feedback_generation", 0) + 1
         clear_feedback = getattr(self, "_clear_operation_feedback", None)
         if callable(clear_feedback):
@@ -851,17 +858,48 @@ class LogicMixin:
             self.file_double_clicked.emit(path)
 
     def _rename_path(self, old_path: str, new_name: str):
-        session = getattr(self._get_scoped_services(), "session", None)
+        # Inline rename commit path.  The view has already closed its editor
+        # by the time this runs (grid `_finish` disposes the editor before
+        # emitting rename_requested; the details view closes it after
+        # setData returns True), so the actual move is backgrounded here —
+        # the editor never waits on a slow (e.g. network-drive) service call.
+        mutation = self._capture_mutation_context()
+        if mutation is None:
+            return
+        session, service, _undo_service, _lib_root = mutation
         self._show_operation_feedback(session, "rename", running=True)
-        try:
-            new_path = self._rename_file_path(old_path, new_name)
-            self._request_operation_selection(session, [new_path])
-            self._show_operation_feedback(session, "rename", changed_count=1)
-            self._post_refresh()
-        except OSError as e:
-            self._show_operation_feedback(session, "rename", errors=(str(e),))
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(cast(QWidget, self), tr("dialog.error"), str(e))
+        result_holder: list[str] = []
+        error_holder: list[str] = []
+        warnings: list = []
+
+        def _do_rename():
+            with self._session_operation(session):
+                try:
+                    result_holder.append(self._rename_file_path(old_path, new_name))
+                    warnings.extend(self._consume_refresh_warnings(service))
+                except Exception as error:
+                    error_holder.append(str(error) or type(error).__name__)
+                    warnings.extend(self._consume_refresh_warnings(service))
+
+        def _on_rename_done():
+            if not self._is_current_operation_session(session):
+                return
+            if result_holder:
+                self._request_operation_selection(session, result_holder)
+            self._show_operation_feedback(
+                session,
+                "rename",
+                changed_count=1 if result_holder else 0,
+                errors=tuple(error_holder),
+                warnings=tuple(warnings),
+            )
+            if error_holder:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.warning(cast(QWidget, self), tr("dialog.error"), error_holder[0])
+            if result_holder:
+                self._post_refresh()
+
+        self._run_in_background(_do_rename, on_done=_on_rename_done)
 
     def _restore_detail_selection(self):
         paths = self._pending_detail_paths

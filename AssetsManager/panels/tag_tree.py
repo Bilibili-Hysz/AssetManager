@@ -332,7 +332,7 @@ class TagTreePanel(PanelContent):
         """Bind the immutable service snapshot and runtime projection router."""
         self.set_scoped_services(runtime.services_snapshot, runtime=runtime)
 
-    def set_scoped_services(self, services, *, runtime=None):
+    def set_scoped_services(self, services, *, runtime=None) -> None:
         """Bind library-scoped services and an optional runtime projection router."""
         self._close_runtime_subscription()
         self._binding_generation += 1

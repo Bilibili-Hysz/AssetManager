@@ -279,8 +279,10 @@ class ActionsMixin:
                     self._clipboard_source = list(sources)
                     self._clipboard_cut = True
             self._post_refresh()
-            if result_holder and not result_holder[0].ok:
-                QMessageBox.warning(cast(QWidget, self), tr("filelist.dialog.paste_error"), "\n".join(result_holder[0].errors))
+            # Failure detail rides the operation-feedback label alone: the
+            # label is session-bound and non-blocking, and every other
+            # background op in this panel reports errors through it.  A
+            # modal dialog on top would duplicate the same error text.
 
         self._run_in_background(_do_paste, on_done=_on_paste_done)
 
@@ -323,24 +325,47 @@ class ActionsMixin:
     def _rename(self, path):
         old = Path(path).name
         name, ok = QInputDialog.getText(cast(QWidget, self), tr("filelist.dialog.rename"), tr("filelist.dialog.rename_label"), text=old)
-        if ok and name.strip() and name.strip() != old:
-            session = getattr(self._get_scoped_services(), "session", None)
-            self._show_operation_feedback(session, "rename", running=True)
-            try:
-                new_path = self._rename_file_path(path, name.strip())
-                service = self._get_file_operation_service()
-                warnings = self._consume_refresh_warnings(service)
-                self._request_operation_selection(session, [new_path])
-                self._show_operation_feedback(
-                    session,
-                    "rename",
-                    changed_count=1,
-                    warnings=warnings,
-                )
+        if not (ok and name.strip() and name.strip() != old):
+            return
+        mutation = self._capture_mutation_context()
+        if mutation is None:
+            return
+        session, service, _undo_service, _lib_root = mutation
+        self._show_operation_feedback(session, "rename", running=True)
+        result_holder: list[str] = []
+        error_holder: list[str] = []
+        warnings: list = []
+
+        def _do_rename():
+            # Runs on the worker thread: name validation happened on the UI
+            # thread above; only the (possibly slow, e.g. network drive)
+            # service.move call is backgrounded.
+            with self._session_operation(session):
+                try:
+                    result_holder.append(self._rename_file_path(path, name.strip()))
+                    warnings.extend(self._consume_refresh_warnings(service))
+                except Exception as error:
+                    error_holder.append(str(error) or type(error).__name__)
+                    warnings.extend(self._consume_refresh_warnings(service))
+
+        def _on_rename_done():
+            if not self._is_current_operation_session(session):
+                return
+            if result_holder:
+                self._request_operation_selection(session, result_holder)
+            self._show_operation_feedback(
+                session,
+                "rename",
+                changed_count=1 if result_holder else 0,
+                errors=tuple(error_holder),
+                warnings=tuple(warnings),
+            )
+            if error_holder:
+                QMessageBox.warning(cast(QWidget, self), tr("dialog.error"), error_holder[0])
+            if result_holder:
                 self._post_refresh()
-            except OSError as e:
-                self._show_operation_feedback(session, "rename", errors=(str(e),))
-                QMessageBox.warning(cast(QWidget, self), tr("dialog.error"), str(e))
+
+        self._run_in_background(_do_rename, on_done=_on_rename_done)
 
     def _rename_file_path(self, old_path: str, new_name: str, *, add_undo: bool = True) -> str:
         return self._rename_absolute(
@@ -369,10 +394,11 @@ class ActionsMixin:
         mutation = self._capture_mutation_context()
         if mutation is None:
             return
-        names = "\n".join(f"  {Path(p).name}" for p in paths[:10])
+        escape = self._escape_format_braces
+        names = "\n".join(f"  {escape(Path(p).name)}" for p in paths[:10])
         if len(paths) > 10:
             names += f"\n  ... and {len(paths) - 10} more"
-        if QMessageBox.question(cast(QWidget, self), tr("filelist.dialog.move_trash"), f"Move to Recycle Bin?\n\n{names}",
+        if QMessageBox.question(cast(QWidget, self), tr("filelist.dialog.move_trash"), tr("filelist.dialog.move_trash_msg", names=names),
                                  QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
         session, service, _undo_service, lib_root = mutation
@@ -412,11 +438,12 @@ class ActionsMixin:
         mutation = self._capture_mutation_context()
         if mutation is None:
             return
-        names = "\n".join(f"  {Path(p).name}" for p in paths[:10])
+        escape = self._escape_format_braces
+        names = "\n".join(f"  {escape(Path(p).name)}" for p in paths[:10])
         if len(paths) > 10:
             names += f"\n  ... and {len(paths) - 10} more"
         r = QMessageBox.warning(cast(QWidget, self), tr("filelist.dialog.delete_permanent"),
-            f"Permanently delete?\n\n{names}\n\nYou can undo this deletion.",
+            tr("filelist.dialog.delete_permanent_msg", names=names),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel)
         if r != QMessageBox.StandardButton.Yes:
@@ -433,11 +460,29 @@ class ActionsMixin:
             return
         path_list = [str(Path(path).resolve()) for path in paths]
         result_holder: list = []
+        backup_failure_holder: list = []
         self._show_operation_feedback(session, "permanent_delete", running=True)
 
         def _do_perm_delete():
             with self._session_operation(session):
-                entries = [undo_service.prepare_delete(path) for path in path_list]
+                backup_failures: list[tuple[str, str]] = []
+                entries = []
+                for path in path_list:
+                    entry = undo_service.prepare_delete(path)
+                    if entry is None:
+                        # prepare_delete already logged the concrete reason;
+                        # collect it so the completion handler can tell the
+                        # user this deletion will not be undoable instead of
+                        # silently dropping the promised undo history.
+                        reason = getattr(undo_service, "last_backup_error", None)
+                        reason = reason if isinstance(reason, str) else ""
+                        backup_failures.append((Path(path).name, reason))
+                        _log.warning(
+                            "Delete backup failed for %s; deletion will not "
+                            "be undoable: %s", path, reason,
+                        )
+                    entries.append(entry)
+                backup_failure_holder.append(tuple(backup_failures))
                 try:
                     result = service.delete_permanent(path_list, library_root=lib_root)
                 except Exception:
@@ -472,32 +517,86 @@ class ActionsMixin:
                     errors=errors,
                     warnings=tuple(getattr(result, "warnings", ())),
                 )
+            if backup_failure_holder and backup_failure_holder[0]:
+                self._warn_delete_not_undoable(backup_failure_holder[0])
             self._post_refresh()
 
         self._run_in_background(_do_perm_delete, on_done=_on_perm_delete_done)
+
+    @staticmethod
+    def _escape_format_braces(text: str) -> str:
+        """Keep exception-derived text literal through tr()'s str.format."""
+        return text.replace("{", "{{").replace("}", "}}")
+
+    def _warn_delete_not_undoable(self, failures):
+        """Report that a completed permanent delete cannot be undone.
+
+        The confirmation dialog promised an undoable deletion; when the undo
+        backup failed (disk full, copy failure, ...), that promise cannot be
+        kept, so the completed deletion is surfaced explicitly — including
+        the ``last_backup_error`` reason from the undo service — instead of
+        silently dropping the undo history.
+        """
+        escape = self._escape_format_braces
+        names = "\n".join(f"  {escape(name)}" for name, _reason in failures[:10])
+        if len(failures) > 10:
+            names += f"\n  ... and {len(failures) - 10} more"
+        reason = escape(next((reason for _name, reason in failures if reason), ""))
+        QMessageBox.warning(
+            cast(QWidget, self),
+            tr("filelist.dialog.delete_backup_failed"),
+            tr(
+                "filelist.dialog.delete_backup_failed_msg",
+                names=names,
+                reason=reason,
+            ),
+        )
 
     def _new_folder(self):
         if self._get_scoped_services() is None:
             return
         name, ok = QInputDialog.getText(cast(QWidget, self), tr("filelist.dialog.new_folder"), tr("filelist.dialog.new_folder_label"), text="New Folder")
-        if ok and name.strip():
-            session = getattr(self._get_scoped_services(), "session", None)
-            self._show_operation_feedback(session, "new_folder", running=True)
-            try:
-                service = self._get_file_operation_service()
-                created = service.create_folder(self._current, name.strip())
-                warnings = self._consume_refresh_warnings(service)
-                self._request_operation_selection(session, [created])
-                self._show_operation_feedback(
-                    session,
-                    "new_folder",
-                    changed_count=1,
-                    warnings=warnings,
-                )
+        if not (ok and name.strip()):
+            return
+        mutation = self._capture_mutation_context()
+        if mutation is None:
+            return
+        session, service, _undo_service, _lib_root = mutation
+        parent = str(self._current)
+        self._show_operation_feedback(session, "new_folder", running=True)
+        result_holder: list[Path] = []
+        error_holder: list[str] = []
+        warnings: list = []
+
+        def _do_new_folder():
+            # Runs on the worker thread: the name was validated on the UI
+            # thread (dialog); the mkdir itself may block on network drives.
+            with self._session_operation(session):
+                try:
+                    result_holder.append(service.create_folder(parent, name.strip()))
+                    warnings.extend(self._consume_refresh_warnings(service))
+                except Exception as error:
+                    error_holder.append(str(error) or type(error).__name__)
+                    warnings.extend(self._consume_refresh_warnings(service))
+
+        def _on_new_folder_done():
+            if not self._is_current_operation_session(session):
+                return
+            if result_holder:
+                self._request_operation_selection(session, result_holder)
+            self._show_operation_feedback(
+                session,
+                "new_folder",
+                changed_count=1 if result_holder else 0,
+                errors=tuple(error_holder),
+                warnings=tuple(warnings),
+            )
+            if error_holder:
+                QMessageBox.warning(cast(QWidget, self), tr("dialog.error"), error_holder[0])
+            if result_holder:
                 self._post_refresh()
-            except OSError as e:
-                self._show_operation_feedback(session, "new_folder", errors=(str(e),))
-                QMessageBox.warning(cast(QWidget, self), tr("dialog.error"), str(e))
+
+        self._run_in_background(_do_new_folder, on_done=_on_new_folder_done)
 
     def _duplicate_selected(self):
         mutation = self._capture_mutation_context()
@@ -636,9 +735,8 @@ class ActionsMixin:
             return
         if QMessageBox.question(
             cast(QWidget, self),
-            "Undo Failed",
-            "The previous operation could not be completed.\n\n"
-            "Skip this history entry? Skipping discards it permanently.",
+            tr("filelist.dialog.undo_failed"),
+            tr("filelist.dialog.skip_history_msg"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         ) == QMessageBox.StandardButton.Yes:

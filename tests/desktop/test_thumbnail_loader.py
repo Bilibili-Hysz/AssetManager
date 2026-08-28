@@ -1066,3 +1066,97 @@ def test_video_extraction_runs_on_dedicated_ffmpeg_pool_and_does_not_block_image
     assert wait_for(video_ready)
     loader._pool.waitForDone(5000)
     ffmpeg_pool.waitForDone(5000)
+
+
+# ── Background thumbnail cache clear ────────────────────────────
+
+
+def test_clear_thumb_cache_detailed_counts_failures(monkeypatch, tmp_path):
+    loader = ThumbnailLoader()
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    (cache_dir / "a.webp").write_bytes(b"a")
+    (cache_dir / "b.webp.tmp").write_bytes(b"b")
+    (cache_dir / "keep.txt").write_bytes(b"k")
+    loader.set_cache_dir(str(cache_dir))
+
+    real_remove = os.remove
+
+    def _flaky_remove(path, *args, **kwargs):
+        if str(path).endswith("b.webp.tmp"):
+            raise OSError("locked")
+        return real_remove(path, *args, **kwargs)
+
+    monkeypatch.setattr("AssetsManager.panels.file_list._loader.os.remove", _flaky_remove)
+
+    progress = []
+    removed, failed = loader.clear_thumb_cache_detailed(
+        on_progress=lambda done, total: progress.append((done, total))
+    )
+
+    assert (removed, failed) == (1, 1)
+    assert not (cache_dir / "a.webp").exists()
+    assert (cache_dir / "keep.txt").exists()
+    assert progress[-1] == (2, 2)
+
+
+def test_clear_thumb_cache_async_reports_counts_from_worker_thread(
+    monkeypatch, tmp_path
+):
+    loader = ThumbnailLoader()
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    (cache_dir / "one.webp").write_bytes(b"one")
+    (cache_dir / "two.jpg").write_bytes(b"two")
+    (cache_dir / "bad.webp").write_bytes(b"bad")
+    loader.set_cache_dir(str(cache_dir))
+
+    real_remove = os.remove
+
+    def _flaky_remove(path, *args, **kwargs):
+        if str(path).endswith("bad.webp"):
+            raise OSError("locked")
+        return real_remove(path, *args, **kwargs)
+
+    monkeypatch.setattr("AssetsManager.panels.file_list._loader.os.remove", _flaky_remove)
+
+    main_thread = threading.current_thread()
+    seen = {}
+    done = threading.Event()
+
+    def on_progress(done_count, total):
+        seen.setdefault("progress", []).append(
+            (done_count, total, threading.current_thread())
+        )
+
+    def on_complete(removed, failed):
+        seen["removed"] = removed
+        seen["failed"] = failed
+        seen["thread"] = threading.current_thread()
+        done.set()
+
+    assert loader.clear_thumb_cache_async(
+        on_progress=on_progress, on_complete=on_complete
+    ) is True
+
+    assert done.wait(5.0)
+    assert seen["removed"] == 2
+    assert seen["failed"] == 1
+    # The removal loop and the completion callback run off the GUI thread.
+    assert seen["thread"] is not main_thread
+    assert seen["progress"] and seen["progress"][-1][:2] == (3, 3)
+
+
+def test_clear_thumb_cache_async_reports_completion_when_not_admitted():
+    loader = ThumbnailLoader(max_admitted_tasks=1)
+    loader._active_tasks[0] = 1  # occupy the single admission slot
+
+    completions = []
+    admitted = loader.clear_thumb_cache_async(
+        on_complete=lambda removed, failed: completions.append((removed, failed))
+    )
+
+    assert admitted is False
+    # A non-admitted clear still reports completion so the caller's
+    # progress UI resets instead of waiting forever.
+    assert completions == [(0, 0)]

@@ -1,7 +1,5 @@
 """Tests for the compact, accessible TagChip widget."""
-import os
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor

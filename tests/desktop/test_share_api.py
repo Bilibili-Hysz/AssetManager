@@ -1,7 +1,5 @@
-import os
 from unittest.mock import Mock
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from AssetsManager.dialogs._share_api import ShareApiTask, ShareCreationTask
 from AssetsManager.domain.errors import ValidationError

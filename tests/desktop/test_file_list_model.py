@@ -6,8 +6,6 @@ import time
 from unittest.mock import Mock
 import pytest
 
-# Set QT_QPA_PLATFORM before any Qt imports
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt, QThreadPool
 from PySide6.QtWidgets import QApplication
@@ -769,6 +767,66 @@ class TestRawPixmapByteCache:
             assert model.raw_pixmap("/t2") is not None
             assert model.raw_pixmap("/t3") is not None
             assert len(model._raw_pixmaps) == 2
+        finally:
+            model.shutdown()
+
+    def _delivered_icon(self, model, path, size):
+        """Store path's thumbnail the way ThumbnailDeliveryCoordinator does:
+        raw pixmap first, then the buffer-sharing DecorationRole icon."""
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QIcon, QPixmap
+
+        row = model.row_for_path(path)
+        model.set_raw_pixmap(path, QPixmap(size, size))
+        model.setData(model.index(row, 0), QIcon(QPixmap(size, size)),
+                      Qt.ItemDataRole.DecorationRole)
+
+    def test_byte_eviction_drops_the_matching_icon(self, monkeypatch, tmp_path):
+        """A raw byte eviction must release the evicted path's QIcon too —
+        QIcon(pixmap) shares the pixel buffer, so a surviving icon would keep
+        the (multi-MB, high-quality) buffer resident past the byte budget."""
+        from PySide6.QtGui import QPixmap
+        # Budget fits only a single 512×512 ARGB32 pixmap.
+        monkeypatch.setattr(
+            "AssetsManager.panels.file_list._model._MAX_CACHE_BYTES", self._BIG
+        )
+        (tmp_path / "a.txt").write_text("x")
+        model = self._fresh_model()
+        try:
+            model.set_directory(str(tmp_path))
+            model._wait_for_scan()
+            path = model.path_at(0)
+            self._delivered_icon(model, path, 512)
+            assert model.icon_for(path) is not None
+
+            # A second delivery exhausts the byte budget and evicts the
+            # first path's raw pixmap; the icon must not pin its buffer.
+            model.set_raw_pixmap("/other", QPixmap(512, 512))
+            assert model.raw_pixmap(path) is None
+            assert model.icon_for(path) is None
+            assert model.raw_pixmap("/other") is not None
+        finally:
+            model.shutdown()
+
+    def test_item_cap_eviction_drops_the_matching_icon(self, monkeypatch, tmp_path):
+        from PySide6.QtGui import QPixmap
+        # 16 B per pixmap, so bytes never bind; the item cap does.
+        monkeypatch.setattr(
+            "AssetsManager.panels.file_list._model._MAX_CACHE_ITEMS", 2
+        )
+        (tmp_path / "a.txt").write_text("x")
+        model = self._fresh_model()
+        try:
+            model.set_directory(str(tmp_path))
+            model._wait_for_scan()
+            path = model.path_at(0)
+            self._delivered_icon(model, path, 2)
+            assert model.icon_for(path) is not None
+
+            model.set_raw_pixmap("/t2", QPixmap(2, 2))
+            model.set_raw_pixmap("/t3", QPixmap(2, 2))
+            assert model.raw_pixmap(path) is None
+            assert model.icon_for(path) is None
         finally:
             model.shutdown()
 

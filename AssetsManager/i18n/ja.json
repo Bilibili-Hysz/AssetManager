@@ -5,6 +5,7 @@
     "version": 2
   },
   "app.name": "AssetManager",
+  "app.plugin_load_failures": "警告: プラグインの読み込みに {count} 件失敗しました — 詳細はログを参照",
   "window.minimize": "最小化",
   "window.maximize": "最大化",
   "window.close": "閉じる",
@@ -159,7 +160,11 @@
   "filelist.dialog.move_trash": "ゴミ箱に移動",
   "filelist.dialog.move_trash_msg": "ゴミ箱に移動しますか？\n\n{names}",
   "filelist.dialog.delete_permanent": "完全に削除",
-  "filelist.dialog.delete_permanent_msg": "完全に削除しますか？\n\n{names}\n\nこの操作は取り消せません。",
+  "filelist.dialog.delete_permanent_msg": "完全に削除しますか？\n\n{names}\n\nこの操作は元に戻せます。",
+  "filelist.dialog.undo_failed": "取り消しに失敗しました",
+  "filelist.dialog.skip_history_msg": "前の操作を完了できませんでした。\n\nこの履歴エントリをスキップしますか？スキップすると完全に破棄されます。",
+  "filelist.dialog.delete_backup_failed": "削除バックアップに失敗しました",
+  "filelist.dialog.delete_backup_failed_msg": "削除は完了しましたが、次の項目の元に戻す用バックアップを作成できませんでした：\n{names}\n\nこれらの項目は復元できません。\n理由：{reason}",
   "sidebar.expand_all": "すべて展開",
   "sidebar.collapse_all": "すべて折りたたむ",
   "sidebar.searching": "検索中...",
@@ -850,5 +855,13 @@
   "import.success": "インポートが完了しました：\nコピー {copied} 件、スキップ {skipped} 件、失敗 {failed} 件",
   "import.partial": "警告付きでインポートが完了しました：\nコピー {copied} 件、スキップ {skipped} 件、失敗 {failed} 件",
   "import.cancelled": "インポートをキャンセルしました：\nコピー {copied} 件、スキップ {skipped} 件、失敗 {failed} 件",
-  "import.failed": "インポートに失敗しました：\n{error}"
+  "import.failed": "インポートに失敗しました：\n{error}",
+  "backup.in_progress": "バックアップを作成中…",
+  "restore.in_progress": "ライブラリデータを復元中…",
+  "maintenance.task_running": "バックアップまたは復元タスクが実行中です。完了までお待ちください。",
+  "sharing.stopping": "共有を停止中…",
+  "settings.thumb_clearing": "サムネイルキャッシュを削除中…",
+  "settings.thumb_clear_done_failed": "{count} 個のキャッシュサムネイルを削除しました。\n{failed} 個のファイルは削除できませんでした（詳細はログ参照）。",
+  "library.switch_failed": "ライブラリの切り替えに失敗しました：{reason}",
+  "library.switch_failed_retry_hint": "以前のライブラリを復元できませんでした。切り替えを再試行するか、ランチャーからライブラリを開き直してください。"
 }

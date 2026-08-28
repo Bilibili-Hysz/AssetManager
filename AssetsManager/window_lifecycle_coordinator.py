@@ -101,10 +101,12 @@ def _rollback_open_failure(window: Any, old_session: Any, path: str, error: Exce
         _select_workspace_tab(window, restored.root)
     else:
         _remove_workspace_tab(window, path)
+        from AssetsManager import i18n
         _notify_switch_failed(
             window,
-            "The library switch failed and the previous library could not be "
-            f"restored: {error}",
+            i18n.tr("library.switch_failed", reason=error)
+            + "\n"
+            + i18n.tr("library.switch_failed_retry_hint"),
         )
 
 

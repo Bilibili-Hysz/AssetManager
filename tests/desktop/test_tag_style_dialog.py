@@ -1,7 +1,5 @@
 """Tests for the tag style editor dialog (gap G2-1)."""
-import os
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QComboBox, QLineEdit
 

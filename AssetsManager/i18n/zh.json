@@ -5,6 +5,7 @@
     "version": 2
   },
   "app.name": "AssetManager",
+  "app.plugin_load_failures": "警告：{count} 个插件加载失败——详情见日志",
   "window.minimize": "最小化",
   "window.maximize": "最大化",
   "window.close": "关闭",
@@ -159,7 +160,11 @@
   "filelist.dialog.move_trash": "移至回收站",
   "filelist.dialog.move_trash_msg": "移至回收站？\n\n{names}",
   "filelist.dialog.delete_permanent": "永久删除",
-  "filelist.dialog.delete_permanent_msg": "永久删除？\n\n{names}\n\n此操作无法撤销。",
+  "filelist.dialog.delete_permanent_msg": "永久删除？\n\n{names}\n\n此操作可以撤销。",
+  "filelist.dialog.undo_failed": "撤销失败",
+  "filelist.dialog.skip_history_msg": "上一步操作未能完成。\n\n是否跳过此历史条目？跳过将永久丢弃该条目。",
+  "filelist.dialog.delete_backup_failed": "删除备份失败",
+  "filelist.dialog.delete_backup_failed_msg": "删除已完成，但以下项目未能创建撤销备份：\n{names}\n\n这些项目将无法恢复。\n原因：{reason}",
   "sidebar.expand_all": "全部展开",
   "sidebar.collapse_all": "全部折叠",
   "sidebar.searching": "搜索中...",
@@ -850,5 +855,13 @@
   "import.success": "导入完成：\n已复制 {copied} 个，跳过 {skipped} 个，失败 {failed} 个",
   "import.partial": "导入完成但存在警告：\n已复制 {copied} 个，跳过 {skipped} 个，失败 {failed} 个",
   "import.cancelled": "导入已取消：\n已复制 {copied} 个，跳过 {skipped} 个，失败 {failed} 个",
-  "import.failed": "导入失败：\n{error}"
+  "import.failed": "导入失败：\n{error}",
+  "backup.in_progress": "正在创建备份…",
+  "restore.in_progress": "正在恢复库数据…",
+  "maintenance.task_running": "已有备份或恢复任务正在进行，请等待其完成。",
+  "sharing.stopping": "正在关闭共享…",
+  "settings.thumb_clearing": "正在清理缩略图缓存…",
+  "settings.thumb_clear_done_failed": "已删除 {count} 个缓存缩略图。\n{failed} 个文件无法删除，详见日志。",
+  "library.switch_failed": "库切换失败：{reason}",
+  "library.switch_failed_retry_hint": "无法恢复上一个库。请重试切换，或从启动窗口重新打开该库。"
 }

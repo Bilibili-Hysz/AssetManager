@@ -4,6 +4,8 @@ import threading
 import time
 
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QFileInfo
+from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QPushButton, QTreeWidgetItem
 
 from AssetsManager.controllers.info_controller import FileInfo, PluginField
@@ -221,17 +223,21 @@ def test_file_info_and_preview_reject_old_navigate_away_back_completion(tmp_path
 
     current_info = _file_info(path_a, name="current", plugin_value="current-plugin")
     stale_info = _file_info(path_a, name="stale", plugin_value="stale-plugin")
-    current_pixmap = Mock()
-    current_pixmap.__bool__ = Mock(return_value=True)
+    # The worker now emits a plain QImage; the GUI-thread slot converts it
+    # to the QPixmap stored on the panel.
+    current_image = QImage(8, 6, QImage.Format.Format_ARGB32)
+    current_image.fill(0)
 
     panel._on_file_info_ready(current_request, current_info)
-    panel._on_preview_ready(current_request, current_pixmap)
+    panel._on_preview_ready(current_request, current_image)
     panel._on_file_info_ready(old_request, stale_info)
     panel._on_preview_ready(old_request, None)
 
     assert panel._name.text() == "current"
     assert _plugin_value(panel) == "current-plugin"
-    assert panel._preview_pixmap is current_pixmap
+    assert panel._preview_pixmap is not None
+    assert not panel._preview_pixmap.isNull()
+    assert panel._preview_pixmap.size() == current_image.size()
 
 
 def test_async_callbacks_reject_old_same_root_session_completion(tmp_path):
@@ -252,7 +258,7 @@ def test_async_callbacks_reject_old_same_root_session_completion(tmp_path):
     stale_info = _file_info(path, name="stale", plugin_value="old-session")
     panel._on_file_info_ready(current_request, current_info)
     panel._on_file_info_ready(old_request, stale_info)
-    panel._on_preview_ready(current_request, Mock())
+    panel._on_preview_ready(current_request, QImage(8, 6, QImage.Format.Format_ARGB32))
     current_preview = panel._preview_pixmap
     panel._on_preview_ready(old_request, None)
 
@@ -295,7 +301,7 @@ def test_closed_session_rejects_file_info_preview_plugin_and_directory_callbacks
     session.is_closed = True
 
     panel._on_file_info_ready(request, _file_info(path, name="stale", plugin_value="stale-plugin"))
-    panel._on_preview_ready(request, Mock())
+    panel._on_preview_ready(request, QImage(8, 6, QImage.Format.Format_ARGB32))
     panel._on_async_dir_size_done(request, 0)
 
     assert panel._name.text() == "unchanged"
@@ -309,6 +315,100 @@ def test_field_update_ignores_missing_dynamic_layout():
 
     row = QWidget()
     InfoPanel._set_field_text(row, "updated")
+
+
+def test_update_info_same_path_focus_starts_single_file_info_task(monkeypatch, tmp_path):
+    """A click reaches update_info twice (click handler and selectionChanged
+    both emit file_focused); the duplicate focus of the already displayed
+    path must short-circuit instead of spawning a second FileInfoTask.
+    """
+    panel = InfoPanel()
+    try:
+        panel._scoped_services = Mock(session=Mock(is_closed=False))
+        panel._controller = Mock()
+        panel._library_root = str(tmp_path)
+        path_a = tmp_path / "a.txt"
+        path_b = tmp_path / "b.txt"
+        path_a.write_text("a", encoding="utf-8")
+        path_b.write_text("b", encoding="utf-8")
+
+        started = []
+        monkeypatch.setattr(panel._info_pool, "start", started.append)
+
+        panel.update_info(str(path_a))  # click
+        panel.update_info(str(path_a))  # selectionChanged duplicate focus
+        assert len(started) == 1
+        # update_info stores the QFileInfo-normalized (forward-slash) path.
+        assert panel._current_path == QFileInfo(str(path_a)).absoluteFilePath()
+
+        panel.update_info(str(path_b))  # real focus change spawns a task
+        assert len(started) == 2
+        assert panel._current_path == QFileInfo(str(path_b)).absoluteFilePath()
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+
+
+def test_update_info_reloads_path_after_controller_rebinding(monkeypatch, tmp_path):
+    """A same-path call after set_scoped_services must not be short-circuited:
+    the rebinding resets _current_path, so the panel re-requests the file."""
+    from AssetsManager.application.library_service import LibraryService
+
+    library = tmp_path / "library"
+    library.mkdir()
+    service = LibraryService()
+    session = service.open_session(library)
+    panel = InfoPanel()
+    try:
+        metadata = Mock()
+        metadata._session = session
+        panel.set_scoped_services(SimpleNamespace(
+            session=session, metadata_service=metadata, tag_service=Mock(),
+        ))
+        path = library / "asset.txt"
+        path.write_text("asset", encoding="utf-8")
+
+        started = []
+        monkeypatch.setattr(panel._info_pool, "start", started.append)
+        panel.update_info(str(path))
+        assert len(started) == 1
+
+        # Rebind the same-root session: set_scoped_services resets
+        # _current_path, so the identical path must load again.
+        metadata2 = Mock()
+        metadata2._session = session
+        panel.set_scoped_services(SimpleNamespace(
+            session=session, metadata_service=metadata2, tag_service=Mock(),
+        ))
+        panel.update_info(str(path))
+
+        assert len(started) == 2
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        if not session.is_closed:
+            service.close_session(session)
+
+
+def test_new_async_request_cancels_previous_inflight_info_token(tmp_path):
+    """Starting a new async request retires the previous cancellation token so
+    a superseded FileInfoTask exits at its next checkpoint instead of holding
+    one of the two pool workers with doomed work."""
+    panel = InfoPanel()
+    try:
+        panel._scoped_services = Mock(session=Mock(is_closed=False))
+        panel._new_async_request(str(tmp_path))
+        previous_token = panel._info_token
+        assert not previous_token.is_cancelled()
+
+        panel._new_async_request(str(tmp_path / "asset.txt"))
+
+        assert previous_token.is_cancelled()
+        assert panel._info_token is not previous_token
+        assert not panel._info_token.is_cancelled()
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
 
 
 def test_info_panel_injects_session_and_drops_old_controller_on_switch(tmp_path):

@@ -1388,7 +1388,18 @@ class ThumbnailLoader(QObject):
             _log.exception("Thumbnail orphan cleanup failed")
 
     def clear_thumb_cache(self) -> int:
-        count = 0
+        removed, _failed = self.clear_thumb_cache_detailed()
+        return removed
+
+    def clear_thumb_cache_detailed(self, on_progress=None) -> tuple[int, int]:
+        """Remove every cached thumbnail artifact; return ``(removed, failed)``.
+
+        Synchronous — callers that must not block the GUI thread should use
+        :meth:`clear_thumb_cache_async`.  ``on_progress(done, total)`` is
+        invoked after each removal attempt (from the calling thread).
+        """
+        removed = 0
+        failed = 0
         files: list[str] = []
         runtime: _Runtime | None = None
         with self._cache_io_lock:
@@ -1421,15 +1432,56 @@ class ThumbnailLoader(QObject):
                             runtime.thumbnail_service.clear_cache_metadata(runtime.lib_root)
                         except Exception:
                             _log.exception("Thumbnail metadata clear failed")
+                    total = len(files)
                     for f in files:
                         try:
                             os.remove(os.path.join(runtime.cache_dir, f))
-                            count += 1
+                            removed += 1
                         except OSError:
+                            failed += 1
                             _log.warning("Failed to remove stale thumbnail cache file: %s", f)
+                        if on_progress is not None:
+                            on_progress(removed + failed, total)
             except TimeoutError:
                 _log.warning("Thumbnail cache owner busy during clear")
-        return count
+        return removed, failed
+
+    def clear_thumb_cache_async(self, on_progress=None, on_complete=None) -> bool:
+        """Run :meth:`clear_thumb_cache_detailed` on the loader's worker pool.
+
+        Mirrors :meth:`regenerate_all`: ``on_progress`` / ``on_complete``
+        run on the worker thread, so callers must marshal UI updates back
+        to the GUI thread.  ``on_complete(removed, failed)`` always fires —
+        including when the task is not admitted (reported as ``(0, 0)``) —
+        so the caller's progress UI can always reset itself.
+        """
+        self._mutex.lock()
+        runtime = self._runtime_locked()
+        self._mutex.unlock()
+        loader = self
+
+        class _ClearTask(QRunnable):
+            def __init__(self):
+                super().__init__()
+                self.setAutoDelete(False)
+
+            def run(self):
+                removed, failed = 0, 0
+                try:
+                    removed, failed = loader.clear_thumb_cache_detailed(
+                        on_progress=on_progress)
+                except Exception:
+                    _log.exception("Thumbnail cache clear failed")
+                finally:
+                    # Fires exactly once, even when the clear failed or was
+                    # not admitted, so the caller's progress UI resets.
+                    if on_complete:
+                        on_complete(removed, failed)
+
+        admitted = self._start_task(_ClearTask(), runtime.generation, runtime=runtime)
+        if not admitted and on_complete:
+            on_complete(0, 0)
+        return admitted
 
     def regenerate_all(self, lib_root: str, on_progress=None, on_complete=None) -> bool:
         self._mutex.lock()

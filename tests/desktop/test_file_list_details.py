@@ -1,7 +1,6 @@
 """Tests for Details view: selection, keyboard, status, and path-based restore."""
 import os
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt, QItemSelectionModel
 from PySide6.QtWidgets import QApplication
@@ -507,6 +506,11 @@ def test_details_rename_uses_unified_helper(tmp_path):
         target = str(tmp_path / "a.txt")
         row = next(i for i, e in enumerate(panel._detail_model._entries) if e.path == target)
 
+        # The inline rename is backgrounded (editor must never wait on a
+        # slow service.move); run the deferred worker synchronously here.
+        panel._run_in_background = lambda func, *args, on_done=None: (
+            func(), on_done and on_done()
+        )
         panel._rename_detail_row(row, "renamed.txt")
 
         assert os.path.exists(str(tmp_path / "renamed.txt"))

@@ -110,7 +110,9 @@ class SharingSettingsDialog(
             self._initial_page = 0
 
         # Start at the desktop target while allowing the specified narrow-window fallback.
-        super().__init__(parent, title=tr("sharing.dialog_title"), min_size=(700, 620))
+        super().__init__(
+            parent, title=tr("sharing.dialog_title"),
+            min_size=(scaled_px(700), scaled_px(620)))
         self.resize(scaled_px(980), scaled_px(720))
 
         self._data_changed.connect(self._refresh_all_tabs)

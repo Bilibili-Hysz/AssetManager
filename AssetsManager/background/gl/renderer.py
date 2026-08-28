@@ -235,11 +235,13 @@ class GlPipeline:
         return self._fbo_b if flip else self._fbo_a
 
     def _program_for(self, effect: EffectSpec) -> QOpenGLShaderProgram | None:
+        # "shader" effects never reach the still pipeline (pipeline.py routes
+        # them through render_shader_preset); an unknown kind fails the pass
+        # so the caller falls back to the CPU chain.
         name = {
             "blur": "blur",
             "mosaic": "mosaic",
             "kuwahara": "kuwahara",
-            "shader": "shadertoy",
         }.get(effect.kind)
         return self._programs.get(name) if name else None
 
@@ -352,13 +354,3 @@ class GlPipeline:
             return out if not out.isNull() else None
         finally:
             tex.destroy()
-
-    def draw_texture(self, tex_id: int, size: tuple[int, int]) -> None:
-        """Blit a texture (e.g. latest video frame) to the current FBO/screen."""
-        if not self.ensure_ready():
-            return
-        ctx = QOpenGLContext.currentContext()
-        gl = ctx.functions()
-        gl.glViewport(0, 0, size[0], size[1])
-        self._draw_pass(self._programs["passthrough"], tex_id, size, EffectSpec("none"))
-        gl.glFlush()

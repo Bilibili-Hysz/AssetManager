@@ -1,8 +1,6 @@
 """Tests for MainWindow scoped-service injection."""
 import logging
-import os
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 def test_main_window_injects_one_scoped_bundle_into_all_applicable_panels(monkeypatch):
     """MainWindow owns scoped resolution and gives each panel the same bundle."""
@@ -27,13 +25,14 @@ def test_main_window_injects_one_scoped_bundle_into_all_applicable_panels(monkey
     MainWindow._apply_scoped_services(window, session)
 
     bootstrap.runtime_for.assert_called_once_with(session)
+    runtime = bootstrap.runtime_for.return_value
     for panel in panels:
-        panel.set_scoped_services.assert_called_once_with(services)
+        panel.set_scoped_services.assert_called_once_with(services, runtime=runtime)
         assert panel.set_scoped_services.call_args.args[0] is services
 
 
 def test_main_window_switch_injects_new_active_bundle_without_clearing_it(monkeypatch):
-    from unittest.mock import Mock
+    from unittest.mock import ANY, Mock
 
     from AssetsManager.window import MainWindow
     from AssetsManager.window_lifecycle_coordinator import WindowLifecycleCoordinator
@@ -75,7 +74,8 @@ def test_main_window_switch_injects_new_active_bundle_without_clearing_it(monkey
     old_bundle.undo_service.clear.assert_not_called()
     bootstrap.runtime_for.assert_called_once_with(new_session)
     for panel in panels:
-        panel.set_scoped_services.assert_called_once_with(new_bundle)
+        panel.set_scoped_services.assert_called_once_with(new_bundle, runtime=ANY)
+        assert panel.set_scoped_services.call_args.kwargs["runtime"].services is new_bundle
     new_bundle.undo_service.clear.assert_not_called()
 
 
@@ -139,16 +139,19 @@ def test_normal_window_switch_injects_each_panel_and_cleans_file_list_once(monke
     assert file_list._scoped_services is new_bundle
     file_list._loader.orphan_cleanup.assert_called_once_with()
     for panel in panels:
-        panel.set_scoped_services.assert_called_once_with(new_bundle)
+        panel.set_scoped_services.assert_called_once_with(
+            new_bundle, runtime=bootstrap.runtime_for.return_value)
 
 
 def test_main_window_binds_runtime_to_projection_capable_tag_tree(monkeypatch):
+    """The unified call carries the runtime kwarg to the projection router."""
     from unittest.mock import Mock
 
     from AssetsManager.window import MainWindow
 
     class TagTree:
-        def set_runtime(self, runtime):
+        def set_scoped_services(self, services, *, runtime=None):
+            self.services = services
             self.runtime = runtime
 
     session = object()
@@ -170,9 +173,10 @@ def test_main_window_binds_runtime_to_projection_capable_tag_tree(monkeypatch):
     window.tag_tree = tag_tree
     MainWindow._apply_scoped_services(window, session)
 
+    assert tag_tree.services is services
     assert tag_tree.runtime is runtime
     for panel in panels:
-        panel.set_scoped_services.assert_called_once_with(services)
+        panel.set_scoped_services.assert_called_once_with(services, runtime=runtime)
 
 
 def test_main_window_logs_integrity_schedule_rejection(monkeypatch, caplog):

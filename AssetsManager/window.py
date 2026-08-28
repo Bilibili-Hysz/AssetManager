@@ -1,7 +1,7 @@
 """Main window — QDockWidget-based docking layout with workspace tab bar."""
 import logging
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QTimer, QSize, Signal
 from PySide6.QtGui import QImage, QPixmap, QPainter
@@ -132,6 +132,9 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._import_pool = None
         self._import_task = None
         self._import_dialog = None
+        # Backup/restore run on a worker thread via the shared maintenance
+        # runner (created lazily in _maintenance_runner_instance).
+        self._maintenance_runner = None
         # Must be set before UI setup because workspace restore can switch libraries.
         self._library_session = library_session
         self._setup_ui()
@@ -200,22 +203,19 @@ class MainWindow(LanSharingMixin, QMainWindow):
                     getattr(session, "root", session),
                     getattr(integrity_service, "last_schedule_error", "unknown"),
                 )
-        for panel in (
-            getattr(self, "file_list", None),
-            getattr(self, "info", None),
-            getattr(self, "sidebar", None),
-        ):
-            set_services = getattr(panel, "set_scoped_services", None)
-            if _alive(panel) and callable(set_services):
-                set_services(scoped)
-        tag_tree = getattr(self, "tag_tree", None)
-        set_runtime = getattr(type(tag_tree), "set_runtime", None) if tag_tree is not None else None
-        set_tag_services = getattr(tag_tree, "set_scoped_services", None)
-        if _alive(tag_tree):
-            if callable(set_runtime):
-                set_runtime(tag_tree, runtime)
-            elif callable(set_tag_services):
-                set_tag_services(scoped)
+        # Every scoped panel satisfies ScopedServicesConsumer (locked by the
+        # TYPE_CHECKING contract at the bottom of this module), so one
+        # uniform call binds the bundle everywhere; projection-capable
+        # panels read the runtime kwarg, the rest ignore it.
+        # Note: "tag_tree" is intentionally absent as a mounted dock — tag
+        # filtering lives in TagBrowserDialog, which owns its own instance
+        # (and its own runtime subscription). This loop tolerates the missing
+        # attribute so a future in-window TagTreePanel slots in unchanged.
+        for name in ("file_list", "info", "sidebar", "tag_tree"):
+            panel = getattr(self, name, None)
+            if panel is None or not _alive(panel):
+                continue
+            panel.set_scoped_services(scoped, runtime=runtime)
 
     def showEvent(self, event):
         """Override to add startup fade-in animation."""
@@ -303,9 +303,19 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._bg_cache = (self._bg_cache[0], self._bg_cache[1], None)
         self.update()
 
-    def refresh_bg(self):
-        self._bg_cache = ("", None, None)
-        self._bg_dirty = False
+    def refresh_bg(self, keep_rendered: bool = False):
+        """Repaint the wallpaper.
+
+        Default also drops the rendered-wallpaper cache for callers that
+        changed the wallpaper source or its effect chain (settings dialog
+        path). Theme refreshes pass ``keep_rendered=True``: theme colors
+        never affect the wallpaper output, so keeping the
+        ``(path, processed_raw, scaled)`` cache skips the full image decode
+        plus effect-chain re-render (CPU kuwahara can take seconds).
+        """
+        if not keep_rendered:
+            self._bg_cache = ("", None, None)
+            self._bg_dirty = False
         self.update()
 
     def _on_bg_style_changed(self):
@@ -525,12 +535,6 @@ class MainWindow(LanSharingMixin, QMainWindow):
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         status_bar.setStyleSheet(sk.status_bar_css())
 
-    def _apply_status_bar_theme(self):
-        t = themes.get()
-        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
-        self._share_status_label.setStyleSheet(f"color: {t['muted']}; padding: 0 {scaled_px(8)}px;")
-        self.statusBar().setStyleSheet(sk.status_bar_css())
-
     def _on_share_status_clicked(self, event):
         """Handle click on share status indicator."""
         if self._lan_server and self._lan_server.is_running():
@@ -557,7 +561,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
         b = bus()
         b.directory_changed.connect(self._on_dir_selected)
         b.file_focused.connect(self._on_file_focused_safe)
-        b.theme_changed.connect(lambda _: self._on_theme_refresh())
+        # Bound method, not a lambda: theme_changed lives on the process-level
+        # signal bus, so a lambda would keep firing after this window is
+        # closed and deleteLater'd by a programmatic library reopen and crash
+        # on the destroyed receiver. A bound method disconnects automatically.
+        b.theme_changed.connect(self._on_theme_refresh)
         b.language_changed.connect(self._refresh_language)
         b.ui_scale_changed.connect(self._on_ui_scale_changed)
 
@@ -567,6 +575,10 @@ class MainWindow(LanSharingMixin, QMainWindow):
         """Switch all panels to a different library root."""
         workspace = getattr(self, "_workspace", None)
         previous = workspace.current_library() if workspace is not None else None
+        # The switch must wait for the LAN stop, session close and session
+        # open in order, so it stays synchronous — keep the user informed
+        # with a wait cursor for the duration instead.
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             self._lifecycle_coordinator.switch_library(path)
         except Exception as exc:
@@ -577,6 +589,8 @@ class MainWindow(LanSharingMixin, QMainWindow):
             self._reselect_workspace_tab(previous)
             from AssetsManager.window_lifecycle_coordinator import _notify_switch_failed
             _notify_switch_failed(self, f"The library switch failed: {exc}")
+        finally:
+            QApplication.restoreOverrideCursor()
 
     def _reselect_workspace_tab(self, path):
         """Re-select the workspace tab for ``path`` if it is still present."""
@@ -596,12 +610,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
             # synchronously, so opening a session here would double-open it.
             self._workspace.add_library(path)
             clean_orphan_dirs([path])
-            # Save recent
-            settings = AppSettings.instance()
-            settings.prepend_list("recent_libraries", str(Path(path).resolve()), max_items=10)
-            settings.save()
-            from AssetsManager.core.library_manager import record_visit
-            record_visit(str(Path(path).resolve()))
+            # Recent list is written by StartupWindow._save_recent before it
+            # emits library_opened (single write point, capped at
+            # StartupWindow's RECENT_LIBRARIES_MAX=30); recording here again
+            # truncated the list to 10 and stored a second resolved-path
+            # variant of the same entry.
             startup.close()
         startup.library_opened.connect(_on_open)
         startup.show()
@@ -769,6 +782,8 @@ class MainWindow(LanSharingMixin, QMainWindow):
             restore()
 
     def _on_dir_selected(self, path):
+        if not _alive(self):
+            return
         self.setWindowTitle(f"{tr('app.name')} — {path}")
 
     def _on_file_focused_safe(self, info):
@@ -852,8 +867,23 @@ class MainWindow(LanSharingMixin, QMainWindow):
         if dlg.exec() == SettingsDialog.DialogCode.Accepted:
             themes.apply_to(self)
 
+    def _maintenance_runner_instance(self):
+        """Lazily create the shared backup/restore background-task runner."""
+        from AssetsManager.dialogs._maintenance_tasks import MaintenanceTaskRunner
+
+        runner = getattr(self, "_maintenance_runner", None)
+        if runner is None:
+            runner = MaintenanceTaskRunner(self)
+            self._maintenance_runner = runner
+        return runner
+
     def _backup_library(self):
-        """Back up the current library's RuntimeData to a portable archive."""
+        """Back up the current library's RuntimeData to a portable archive.
+
+        The archive is written on a worker thread (GB-scale IO must not
+        freeze the GUI); a busy progress dialog runs until completion and a
+        re-entrant trigger is rejected while a task is in flight.
+        """
         from PySide6.QtWidgets import QFileDialog, QMessageBox
 
         session = getattr(self, "_library_session", None)
@@ -871,25 +901,36 @@ class MainWindow(LanSharingMixin, QMainWindow):
         )
         if not destination:
             return
-        try:
-            result = service.create_backup(session.root, destination)
-        except Exception as exc:
-            QMessageBox.critical(
+        self._maintenance_runner_instance().run(
+            lambda: service.create_backup(session.root, destination),
+            title=tr("backup.title"),
+            busy_text=tr("backup.in_progress"),
+            reentry_text=tr("maintenance.task_running"),
+            on_success=lambda result: QMessageBox.information(
+                self,
+                tr("backup.title"),
+                tr("backup.success").format(
+                    path=result.destination,
+                    files=result.file_count,
+                    size=result.bytes_written,
+                ),
+            ),
+            on_error=lambda exc: QMessageBox.critical(
                 self, tr("backup.title"), tr("backup.failed").format(error=exc)
-            )
-            return
-        QMessageBox.information(
-            self,
-            tr("backup.title"),
-            tr("backup.success").format(
-                path=result.destination,
-                files=result.file_count,
-                size=result.bytes_written,
             ),
         )
 
     def _restore_library(self):
-        """Restore the current library's RuntimeData from a backup archive."""
+        """Restore the current library's RuntimeData from a backup archive.
+
+        The archive is extracted on a worker thread behind a busy progress
+        dialog.  Restore replaces the RuntimeData directory under the live
+        session, so the in-memory session state is stale afterwards; the
+        success copy already tells the user to reopen the library, which is
+        the minimal correct post-restore behaviour (an automatic switch
+        would require a synchronous LAN stop and session close inside the
+        completion callback).
+        """
         from PySide6.QtWidgets import QFileDialog, QMessageBox
 
         session = getattr(self, "_library_session", None)
@@ -914,19 +955,21 @@ class MainWindow(LanSharingMixin, QMainWindow):
         if answer != QMessageBox.StandardButton.Yes:
             return
         scoped = self._scoped_services_for_session(session)
-        try:
-            result = scoped.export_service.restore_backup(
+        self._maintenance_runner_instance().run(
+            lambda: scoped.export_service.restore_backup(
                 archive, session.root, overwrite_existing=True
-            )
-        except Exception as exc:
-            QMessageBox.critical(
+            ),
+            title=tr("restore.title"),
+            busy_text=tr("restore.in_progress"),
+            reentry_text=tr("maintenance.task_running"),
+            on_success=lambda result: QMessageBox.information(
+                self,
+                tr("restore.title"),
+                tr("restore.success").format(path=result.data_dir),
+            ),
+            on_error=lambda exc: QMessageBox.critical(
                 self, tr("restore.title"), tr("restore.failed").format(error=exc)
-            )
-            return
-        QMessageBox.information(
-            self,
-            tr("restore.title"),
-            tr("restore.success").format(path=result.data_dir),
+            ),
         )
 
     def _import_assets(self):
@@ -1252,3 +1295,20 @@ class MainWindow(LanSharingMixin, QMainWindow):
             app = QApplication.instance()
             if app is not None:
                 app.quit()
+
+
+if TYPE_CHECKING:
+    from AssetsManager.application.desktop_ports import ScopedServicesConsumer
+    from AssetsManager.panels.file_list import FileListPanel
+    from AssetsManager.panels.info import InfoPanel
+    from AssetsManager.panels.sidebar import SidebarPanel
+    from AssetsManager.panels.tag_tree import TagTreePanel
+
+    # Lock the scoped-service injection contract (same idiom as
+    # panels/file_list/_base.py): every panel _apply_scoped_services feeds
+    # must satisfy ScopedServicesConsumer, i.e. accept the unified
+    # set_scoped_services(services, *, runtime=None) call.
+    _file_list_services: ScopedServicesConsumer = cast(FileListPanel, None)
+    _info_services: ScopedServicesConsumer = cast(InfoPanel, None)
+    _sidebar_services: ScopedServicesConsumer = cast(SidebarPanel, None)
+    _tag_tree_services: ScopedServicesConsumer = cast(TagTreePanel, None)

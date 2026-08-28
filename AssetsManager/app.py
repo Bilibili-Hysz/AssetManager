@@ -52,20 +52,33 @@ def main():
     app.setProperty("bootstrap", bootstrap)
     install_dock_refresh_handlers()
 
-    # ── Plugin Discovery ──────────────────────────────────────
-    bootstrap.discover_plugins()
-    app.setProperty("plugin_host_context", bootstrap.plugin_host_context)
+    # ── Plugin Discovery / GL warm-up (deferred) ──────────────
+    # Both are heavy but only needed before the first library window opens.
+    # They run in a zero-delay timer AFTER the startup window is shown, so
+    # the picker appears without waiting for plugin disk scans or GL
+    # context creation.  Ordering guarantee: the timer is queued before
+    # app.exec() starts and its callback runs synchronously to completion;
+    # Qt cannot deliver user input while a slot is executing, so discovery
+    # always finishes before _on_open (the only consumer of the plugin host
+    # context, via MainWindow._bind_plugin_host) can fire.
+    from PySide6.QtCore import QTimer
 
-    # ── Eagerly warm up OpenGL context ──────────────────────
-    # Prevents main window flicker on first ImageViewer open.
-    try:
-        from PySide6.QtOpenGLWidgets import QOpenGLWidget
-        _gl = QOpenGLWidget()
-        _gl.setVisible(False)
-        _gl.resize(1, 1)
-        _gl.grabFramebuffer()
-    except Exception:
-        pass
+    def _deferred_startup():
+        bootstrap.discover_plugins()
+        app.setProperty("plugin_host_context", bootstrap.plugin_host_context)
+        _warm_up_gl()
+
+    def _warm_up_gl():
+        # Eagerly warm up the OpenGL context: prevents main window flicker
+        # on first ImageViewer open.
+        try:
+            from PySide6.QtOpenGLWidgets import QOpenGLWidget
+            _gl = QOpenGLWidget()
+            _gl.setVisible(False)
+            _gl.resize(1, 1)
+            _gl.grabFramebuffer()
+        except Exception:
+            pass
 
     # ── System Tray ──────────────────────────────────────────
     from AssetsManager.widgets.tray import SystemTrayManager
@@ -151,6 +164,16 @@ def main():
                 )
             return
         window.show()
+        # Surface plugin load failures collected during discovery (there is no
+        # GUI consumer otherwise): status-bar message for 20s + log entry.
+        # Deliberately no modal dialog — a broken plugin must not block open.
+        plugin_failures = bootstrap.plugin_load_failures
+        if plugin_failures:
+            _log.warning(
+                "Plugin load failures (%d): %s",
+                len(plugin_failures), ", ".join(plugin_failures))
+            window.statusBar().showMessage(
+                tr("app.plugin_load_failures", count=len(plugin_failures)), 20000)
         # Expose tray to window for state updates
         window._tray_manager = tray
         # The startup picker is no longer needed once a library is open.
@@ -209,4 +232,7 @@ def main():
 
     startup.library_opened.connect(_on_open)
     startup.show()
+    # Deferred heavy work runs once the event loop is running (see the
+    # ordering guarantee above the _deferred_startup definition).
+    QTimer.singleShot(0, _deferred_startup)
     return app.exec()

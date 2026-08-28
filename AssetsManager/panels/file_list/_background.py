@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from typing import Any, Callable
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Qt
 
@@ -65,4 +65,60 @@ def run_in_background(
         def _cleanup():
             _orphan_ops.discard(op)
         sig.done.connect(_cleanup, Qt.ConnectionType.SingleShotConnection)
+    QThreadPool.globalInstance().start(op)
+
+
+def run_task(
+    func: Callable[[], Any],
+    *,
+    on_done: Callable[[Any, BaseException | None], None] | None = None,
+    background_ops: list[QRunnable] | None = None,
+) -> None:
+    """Run ``func()`` on a worker thread and deliver its outcome to the GUI thread.
+
+    Unlike :func:`run_in_background` (fire-and-forget with no result), this
+    variant captures the callable's return value (or the raised exception)
+    and, when *on_done* is provided, invokes ``on_done(result, exc)`` on the
+    main thread via a queued signal.  Exactly one of *result*/*exc* is
+    ``None``.  *background_ops* has the same ownership semantics as in
+    :func:`run_in_background`.
+    """
+
+    class _ResultSig(QObject):
+        finished = Signal(object, object)
+
+    class _ResultOp(QRunnable):
+        def __init__(self, fn, sig):
+            super().__init__()
+            self._fn = fn
+            self._sig = sig
+
+        def run(self):
+            result: Any = None
+            exc: BaseException | None = None
+            try:
+                result = self._fn()
+            except Exception as error:  # noqa: BLE001 — delivered to the caller
+                _log.exception("Background task failed")
+                result = None
+                exc = error
+            sig = self._sig
+            sig.finished.emit(result, exc)
+
+    sig = _ResultSig()
+    op = _ResultOp(func, sig)
+    if on_done is not None:
+        sig.finished.connect(on_done)
+    if background_ops is not None:
+        background_ops.append(op)
+
+        def _cleanup():
+            background_ops.remove(op)
+        sig.finished.connect(_cleanup, Qt.ConnectionType.SingleShotConnection)
+    else:
+        _orphan_ops.add(op)
+
+        def _cleanup():
+            _orphan_ops.discard(op)
+        sig.finished.connect(_cleanup, Qt.ConnectionType.SingleShotConnection)
     QThreadPool.globalInstance().start(op)

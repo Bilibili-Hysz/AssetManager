@@ -12,7 +12,7 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
-from PySide6.QtCore import QSize
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QWidget
 from AssetsManager import i18n
 from AssetsManager.core import icons
@@ -50,6 +50,8 @@ class LanSharingMixin:
     _lan_server_factory: Callable[..., Any] | None
     _share_status_label: QLabel
     _share_toggle_btn: QPushButton
+    # True while an async server stop is in flight (toggle path only).
+    _share_stop_in_progress: bool
 
     def _dialog_parent(self) -> QWidget:
         return cast(QWidget, self)
@@ -91,15 +93,12 @@ class LanSharingMixin:
 
     def _toggle_sharing(self):
         """Start or stop LAN sharing."""
+        if getattr(self, "_share_stop_in_progress", False):
+            # A stop is already running in the background; the toggle button
+            # is disabled, so this guard only covers non-button triggers.
+            return
         if self._lan_server and self._lan_server.is_running():
-            self._lan_server.stop()
-            # Drop the stopped server handle and the now-stale security
-            # snapshot so a later start builds fresh state.
-            self._lan_server = None
-            self._share_security_snapshot = None
-            self._update_share_status(False)
-            if hasattr(self, '_tray_manager') and self._tray_manager:
-                self._tray_manager.update_sharing_state(False)
+            self._begin_share_stop()
             return
 
         # Start sharing
@@ -181,7 +180,7 @@ class LanSharingMixin:
                 password=password,
                 access_key=access_key,
                 auth_mode=auth_mode,
-                rate_limit=settings.get("lan_rate_limit", 1000),
+                rate_limit=settings.get("lan_rate_limit", 100),
                 blocked_ips=settings.get("lan_blocked_ips", []),
                 ip_whitelist=settings.get("lan_ip_whitelist", []),
                 blur_tags=settings.get("lan_blur_tags", []),
@@ -252,6 +251,57 @@ class LanSharingMixin:
         except (OSError, ValueError, TypeError):
             _log.exception("LAN server failed to start on port %s", port)
             QMessageBox.warning(self._dialog_parent(), tr("dialog.error"), tr("sharing.port_in_use", port=port))
+
+    def _begin_share_stop(self):
+        """Stop the LAN server on a worker thread; write back state on done.
+
+        ``server.stop()`` waits for the serving threads (up to seconds), so
+        it must not run on the GUI thread.  The server handle stays on
+        ``_lan_server`` until the stop completes: the library-switch
+        coordinator inspects that handle and must still see a running
+        server it can stop/wait for.  Only the toggle's UI affordances
+        (button, status label) reflect the pending stop; correctness-order
+        callers keep their synchronous semantics.
+        """
+        from AssetsManager.panels.file_list._background import run_task
+
+        server = self._lan_server
+        self._share_stop_in_progress = True
+        toggle_btn = getattr(self, "_share_toggle_btn", None)
+        if toggle_btn is not None:
+            toggle_btn.setEnabled(False)
+        status_label = getattr(self, "_share_status_label", None)
+        if status_label is not None:
+            status_label.setText(tr("sharing.stopping"))
+
+        def _work():
+            server.stop()
+
+        def _on_done(_result, exc):
+            self._share_stop_in_progress = False
+            toggle_btn = getattr(self, "_share_toggle_btn", None)
+            if toggle_btn is not None:
+                toggle_btn.setEnabled(True)
+            try:
+                if exc is not None:
+                    # Keep the handle so a later toggle can retry the stop;
+                    # report the still-running state instead of "off".
+                    _log.error("LAN server stop failed: %s", exc)
+                    self._update_share_status(True, getattr(server, "_port", 8080))
+                    return
+                if self._lan_server is server:
+                    # Drop the stopped server handle and the now-stale
+                    # security snapshot so a later start builds fresh state.
+                    self._lan_server = None
+                    self._share_security_snapshot = None
+                    self._update_share_status(False)
+                    if hasattr(self, '_tray_manager') and self._tray_manager:
+                        self._tray_manager.update_sharing_state(False)
+            except RuntimeError:
+                # The host window was destroyed while the stop ran.
+                _log.debug("LAN stop completion skipped: host gone")
+
+        run_task(_work, on_done=_on_done)
 
     # ── Status display ──────────────────────────────────────────
 
@@ -344,7 +394,7 @@ class LanSharingMixin:
                 ),
                 "lan_password": getattr(server_config, "_password_value", None),
                 "lan_access_key": getattr(server_config, "_access_key_value", None),
-                "lan_rate_limit": getattr(server_config, "_rate_limit_value", 1000),
+                "lan_rate_limit": getattr(server_config, "_rate_limit_value", 100),
                 "lan_blocked_ips": getattr(server_config, "_blocked_ips", []),
                 "lan_ip_whitelist": getattr(server_config, "_ip_whitelist", []),
                 "lan_ssl_cert": getattr(server_config, "_ssl_cert", None),
@@ -363,7 +413,17 @@ class LanSharingMixin:
                 # mode, password, ...) change the security posture, so the
                 # previous confirmation snapshot must NOT be reused —
                 # re-verification against the new settings is required.
-                self._lan_server.stop()
+                # The stop must finish before the fresh start, so it stays
+                # synchronous — surface the wait via cursor + status hint.
+                from PySide6.QtWidgets import QApplication
+                status_label = getattr(self, "_share_status_label", None)
+                if status_label is not None:
+                    status_label.setText(tr("sharing.stopping"))
+                QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+                try:
+                    self._lan_server.stop()
+                finally:
+                    QApplication.restoreOverrideCursor()
                 self._update_share_status(False)
                 self._toggle_sharing()
         else:

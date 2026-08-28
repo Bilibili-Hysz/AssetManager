@@ -1,11 +1,11 @@
-import os
 import warnings
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import json
 from pathlib import Path
 
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from AssetsManager.dialogs.startup import StartupWindow, _LibraryCard
@@ -20,6 +20,28 @@ class _Settings:
 
     def get_list(self, key, default):
         return self._paths if key == "recent_libraries" else default
+
+    def prepend_list(self, key, value, max_items=None):
+        if key == "recent_libraries":
+            self._paths = [value] + [p for p in self._paths if p != value]
+            if max_items:
+                self._paths = self._paths[:max_items]
+
+    def save(self):
+        pass
+
+
+def _make_startup_window(monkeypatch, paths):
+    monkeypatch.setattr(
+        "AssetsManager.dialogs.startup.AppSettings.instance",
+        classmethod(lambda _cls: _Settings(paths)),
+    )
+    # Keep the open path hermetic: record_visit touches the real settings.
+    monkeypatch.setattr(
+        "AssetsManager.core.library_manager.record_visit",
+        lambda _path: "",
+    )
+    return StartupWindow()
 
 
 def test_startup_keeps_truncation_indicator_out_of_library_cards(monkeypatch, tmp_path):
@@ -68,3 +90,70 @@ def test_i18n_json_key_sets_match_and_include_restore_marker():
     }
     assert key_sets["en"] == key_sets["zh"] == key_sets["ja"]
     assert _RESTORE_MARKER_KEYS <= key_sets["en"]
+
+
+_LIBRARY_CARD_KEYS = frozenset(
+    {
+        "library.switch_failed",
+        "library.switch_failed_retry_hint",
+    }
+)
+
+
+def test_i18n_includes_library_switch_failure_keys():
+    """The lifecycle switch-failure message is present in all locales."""
+    i18n_dir = Path(__file__).resolve().parents[2] / "AssetsManager" / "i18n"
+    for code in ("en", "zh", "ja"):
+        payload = json.loads((i18n_dir / f"{code}.json").read_text(encoding="utf-8"))
+        for key in _LIBRARY_CARD_KEYS:
+            assert key in payload
+        assert "{reason}" in payload["library.switch_failed"]
+
+
+def test_startup_focuses_first_card_and_tab_reaches_cards(monkeypatch, tmp_path):
+    app = QApplication.instance() or QApplication([])
+    paths = [str(tmp_path / f"library-{index}") for index in range(2)]
+    for p in paths:
+        Path(p).mkdir()
+    window = _make_startup_window(monkeypatch, paths)
+    window.show()
+    app.processEvents()
+    try:
+        assert all(c.focusPolicy() == Qt.FocusPolicy.StrongFocus for c in window._cards)
+        # Default focus lands on the first (selected) card after show.
+        assert window.focusWidget() is window._cards[0]
+        # Tab walks the card list.
+        QTest.keyClick(window._cards[0], Qt.Key.Key_Tab)
+        app.processEvents()
+        assert window.focusWidget() is window._cards[1]
+        # Focusing a card via keyboard selects it (detail panel follows).
+        assert window._selected_path == paths[1]
+    finally:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            window.close()
+            window.deleteLater()
+            app.processEvents()
+
+
+def test_startup_card_enter_and_space_open_library(monkeypatch, tmp_path):
+    app = QApplication.instance() or QApplication([])
+    lib = tmp_path / "keyboard-lib"
+    lib.mkdir()
+    for key in (Qt.Key.Key_Return, Qt.Key.Key_Space):
+        opened = []
+        window = _make_startup_window(monkeypatch, [str(lib)])
+        window.library_opened.connect(opened.append)
+        window.show()
+        app.processEvents()
+        try:
+            assert window.focusWidget() is window._cards[0]
+            QTest.keyClick(window.focusWidget(), key)
+            app.processEvents()
+            assert opened == [str(lib)]
+        finally:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", RuntimeWarning)
+                window.close()
+                window.deleteLater()
+                app.processEvents()

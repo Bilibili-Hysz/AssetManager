@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QInputDialog, QLabel, QComboBox,
 )
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
+from AssetsManager.panels._event_bridge import DomainEventSubscription
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core import themes
@@ -23,6 +24,8 @@ tr = i18n.tr
 
 class _ThumbnailLoader(Protocol):
     def clear_thumb_cache(self) -> int: ...
+
+    def clear_thumb_cache_async(self, on_progress=None, on_complete=None) -> bool: ...
 
     def regenerate_all(self, lib_root: str, on_progress=None, on_complete=None) -> bool: ...
 
@@ -44,6 +47,9 @@ class _ThumbnailHost(Protocol):
 class _ProgressSignals(QObject):
     updated = Signal(int, int)
     finished = Signal(int)
+    # Thumbnail cache clear: per-file progress and the (removed, failed) outcome.
+    clear_progress = Signal(int, int)
+    cleared = Signal(int, int)
 
 
 class SettingsDialog(TabbedDialog):
@@ -51,10 +57,21 @@ class SettingsDialog(TabbedDialog):
 
     def __init__(self, parent=None):
         self._logical_min_size = (460, 520)
+        # Created lazily via _maintenance_runner (must exist before the tab
+        # builders run inside super().__init__, hence the pre-init default).
+        self._maintenance_runner = None
         super().__init__(parent, title=tr("settings.title"),
                          min_size=(scaled_px(460), scaled_px(520)))
         self._maintenance_subscription = None
         self._ensure_maintenance_subscription()
+
+    def _ensure_maintenance_runner(self):
+        """Lazily create the shared backup/restore background-task runner."""
+        from AssetsManager.dialogs._maintenance_tasks import MaintenanceTaskRunner
+
+        if self._maintenance_runner is None:
+            self._maintenance_runner = MaintenanceTaskRunner(self)
+        return self._maintenance_runner
 
     def set_library_settings_adapter(self, adapter) -> None:
         """Attach a UI-neutral library settings adapter for future settings sections."""
@@ -637,6 +654,8 @@ class SettingsDialog(TabbedDialog):
         self._progress_signals = _ProgressSignals(self)
         self._progress_signals.updated.connect(self._on_progress)
         self._progress_signals.finished.connect(self._on_regenerate_done)
+        self._progress_signals.clear_progress.connect(self._on_clear_progress)
+        self._progress_signals.cleared.connect(self._on_clear_done)
 
         layout.addWidget(self._cache_group)
         layout.addStretch()
@@ -780,12 +799,22 @@ class SettingsDialog(TabbedDialog):
             self, tr("backup.choose_destination"), default, tr("backup.file_filter"))
         if not destination:
             return
-        try:
-            result = adapter.create_backup(destination)
-            self._backup_status.setText(tr(
-                "settings.backup_create_done", path=result.destination))
-        except Exception as exc:
-            QMessageBox.critical(self, tr("backup.title"), tr("backup.failed").format(error=exc))
+        # GB-scale IO: run on a worker thread behind the shared busy dialog
+        # (same contract as the main-window backup entry point).
+        self._ensure_maintenance_runner().run(
+            lambda: adapter.create_backup(destination),
+            title=tr("backup.title"),
+            busy_text=tr("backup.in_progress"),
+            reentry_text=tr("maintenance.task_running"),
+            disable=(self._export_btn, self._backup_btn, self._restore_btn),
+            on_success=self._on_create_backup_success,
+            on_error=lambda exc: QMessageBox.critical(
+                self, tr("backup.title"), tr("backup.failed").format(error=exc)),
+        )
+
+    def _on_create_backup_success(self, result):
+        self._backup_status.setText(tr(
+            "settings.backup_create_done", path=result.destination))
 
     def _on_restore_backup(self):
         adapter = self.library_settings_adapter
@@ -808,15 +837,32 @@ class SettingsDialog(TabbedDialog):
             QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes:
             return
-        try:
-            result = adapter.restore_backup(archive, overwrite_existing=True)
-            self._backup_status.setText(tr(
-                "settings.backup_restore_done", path=result.data_dir))
-        except Exception as exc:
-            QMessageBox.critical(self, tr("restore.title"), tr("restore.failed").format(error=exc))
+        # Restore replaces the RuntimeData directory on disk; run it on a
+        # worker thread.  The session the adapter was built from is already
+        # closed (restore_allowed), and settings.backup_restore_done plus
+        # the library list are refreshed by the caller reopening it.
+        self._ensure_maintenance_runner().run(
+            lambda: adapter.restore_backup(archive, overwrite_existing=True),
+            title=tr("restore.title"),
+            busy_text=tr("restore.in_progress"),
+            reentry_text=tr("maintenance.task_running"),
+            disable=(self._export_btn, self._backup_btn, self._restore_btn),
+            on_success=self._on_restore_backup_success,
+            on_error=lambda exc: QMessageBox.critical(
+                self, tr("restore.title"), tr("restore.failed").format(error=exc)),
+        )
+
+    def _on_restore_backup_success(self, result):
+        self._backup_status.setText(tr(
+            "settings.backup_restore_done", path=result.data_dir))
 
     def _refresh_backup_status(self):
         status = self._backup_status
+        runner = getattr(self, "_maintenance_runner", None)
+        if runner is not None and runner.is_busy:
+            # A backup/restore task is in flight: the buttons were disabled
+            # by the runner and must not be re-enabled by an event refresh.
+            return
         adapter = self.library_settings_adapter
         if adapter is None:
             status.setText(tr("settings.error_no_library"))
@@ -969,10 +1015,14 @@ class SettingsDialog(TabbedDialog):
     def _ensure_maintenance_subscription(self):
         if self._maintenance_subscription is not None:
             return
-        from AssetsManager.domain.event_bus import get_event_bus
         from AssetsManager.domain.events import ActivityChanged
-        self._maintenance_subscription = get_event_bus().subscribe_weak(
-            ActivityChanged, self._on_maintenance_event)
+        # Queued Qt bridge: ActivityChanged is published from worker threads
+        # (integrity-check workers / LAN), so the raw weak subscription would
+        # run _on_maintenance_event on the publishing thread. The bridge
+        # re-emits through a queued signal so the slot always runs on the
+        # dialog's (GUI) thread. Closed via _on_dialog_closed.
+        self._maintenance_subscription = DomainEventSubscription(
+            ActivityChanged, self._on_maintenance_event, self)
 
     def _on_dialog_closed(self):
         """Unsubscribe from the global event bus on every close path."""
@@ -1037,8 +1087,9 @@ class SettingsDialog(TabbedDialog):
             "shader": tr("settings.bg_effect_shader"),
         }.get(self._current_effect, tr("settings.bg_effect_none"))
         self._set_menu_button_presentation(self._effect_btn, effect_label)
-        preset_label = self._shader_preset_row.itemAt(0).widget()
-        if preset_label is not None:
+        preset_item = self._shader_preset_row.itemAt(0)
+        preset_label = preset_item.widget() if preset_item is not None else None
+        if isinstance(preset_label, QLabel):
             preset_label.setText(tr("settings.bg_shader_preset"))
         quality_keys = ("fast", "default", "high", "original")
         for button in self._thumb_group.buttons():
@@ -1103,12 +1154,52 @@ class SettingsDialog(TabbedDialog):
         if reply != QMessageBox.StandardButton.Yes:
             return
         parent = self.parent()
-        if parent is not None and hasattr(parent, "file_list"):
-            host = cast(_ThumbnailHost, parent)
-            count = host.file_list._loader.clear_thumb_cache()
-            QMessageBox.information(self, tr("dialog.done"), tr("settings.thumbnails_deleted", count=count))
-        else:
+        if parent is None or not hasattr(parent, "file_list"):
             QMessageBox.warning(self, tr("dialog.error"), tr("settings.error_no_library"))
+            return
+        loader = cast(_ThumbnailHost, parent).file_list._loader
+        # Deleting every cached artifact can touch tens of thousands of
+        # files: mirror the regenerate flow — worker thread + progress bar
+        # + disabled trigger buttons, completion reported via signals.
+        signals = self._progress_signals
+        self._progress.setVisible(True)
+        self._progress.setRange(0, 0)
+        self._progress.setFormat(tr("settings.thumb_clearing"))
+        self._clear_btn.setEnabled(False)
+        self._regen_btn.setEnabled(False)
+        # Non-admitted tasks still report completion (0, 0) so the UI
+        # resets itself instead of waiting forever.
+        loader.clear_thumb_cache_async(
+            on_progress=lambda done, total: self._emit_clear_progress(signals, done, total),
+            on_complete=lambda removed, failed: self._emit_clear_finished(signals, removed, failed),
+        )
+
+    @staticmethod
+    def _emit_clear_progress(signals, done: int, total: int):
+        if Shiboken.isValid(signals):
+            signals.clear_progress.emit(done, total)
+
+    @staticmethod
+    def _emit_clear_finished(signals, removed: int, failed: int):
+        if Shiboken.isValid(signals):
+            signals.cleared.emit(removed, failed)
+
+    def _on_clear_progress(self, done: int, total: int):
+        if total > 0:
+            self._progress.setRange(0, total)
+            self._progress.setValue(done)
+
+    def _on_clear_done(self, removed: int, failed: int):
+        self._progress.setVisible(False)
+        self._clear_btn.setEnabled(True)
+        self._regen_btn.setEnabled(True)
+        if failed:
+            QMessageBox.information(
+                self, tr("dialog.done"),
+                tr("settings.thumb_clear_done_failed", count=removed, failed=failed))
+        else:
+            QMessageBox.information(
+                self, tr("dialog.done"), tr("settings.thumbnails_deleted", count=removed))
 
     def _regenerate_thumbnails(self):
         reply = QMessageBox.question(

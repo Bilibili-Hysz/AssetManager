@@ -1,11 +1,9 @@
-import os
 import warnings
 from unittest.mock import Mock
 
 import pytest
 from shiboken6 import Shiboken
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPoint, QPointF, QRect, QSize, Qt
 from PySide6.QtGui import QEnterEvent, QKeyEvent, QMouseEvent, QPainter, QPixmap, QPointingDevice
@@ -808,8 +806,6 @@ def test_grid_empty_role_data_change_invalidates_static_texture():
 
     assert 1 not in widget._cache._textures
     assert widget._dirty == {1}
-
-
 
 
 def test_grid_selection_change_preserves_cached_textures():

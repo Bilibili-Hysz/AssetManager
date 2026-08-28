@@ -202,22 +202,33 @@ class TabContainer(PanelContent):
             w = self._tabs.widget(0)
             if isinstance(w, FileListPanel):
                 self._tabs_to_filelists[0] = w
+        # Recreate one tab per saved non-empty path, remembering which saved
+        # slot each new tab came from. The historical second add-loop here
+        # re-added every path again, turning N saved tabs into 2N-1 tabs
+        # after a dock split (deep-weakness 01-desktop finding).
+        slot_to_tab: dict[int, int] = {}
         fl = self.current_file_list()
         if fl and paths:
             fl.navigate_to(paths[0], set_root=True)
-            for path in paths[1:]:
+            slot_to_tab[0] = 0
+            for slot, path in enumerate(paths[1:], start=1):
                 if path:
                     self._add_tab(path)
-        for index, panel_state in enumerate(panels):
-            panel = self._tabs_to_filelists.get(index)
+                    slot_to_tab[slot] = self._tabs.count() - 1
+        # Saved per-panel states are indexed by their original slot; empty
+        # paths created no tab, so map through slot_to_tab to stay aligned.
+        for slot, panel_state in enumerate(panels):
+            tab = slot_to_tab.get(slot)
+            if tab is None:
+                continue
+            panel = self._tabs_to_filelists.get(tab)
             if panel is not None and isinstance(panel_state, dict):
                 panel.restore_state(panel_state)
         active = int(active) if isinstance(active, (int, float)) else 0
-        if 0 <= active < self._tabs.count():
-            self._tabs.setCurrentIndex(active)
-        for p in paths[1:]:
-            self._add_tab(p)
-        if active < self._tabs.count():
+        target = slot_to_tab.get(active)
+        if target is not None:
+            self._tabs.setCurrentIndex(target)
+        elif 0 <= active < self._tabs.count():
             self._tabs.setCurrentIndex(active)
 
     def shutdown(self) -> None:

@@ -1,12 +1,73 @@
-import os
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from pathlib import Path
 
 from PySide6.QtCore import QAbstractAnimation
 from PySide6.QtWidgets import QApplication
 from unittest.mock import Mock
 
 from AssetsManager.widgets.tab_container import TabContainer
+
+
+def test_restore_state_recreates_saved_tabs_without_duplicates(tmp_path):
+    QApplication.instance() or QApplication([])
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    third = tmp_path / "third"
+    for directory in (first, second, third):
+        directory.mkdir()
+    source = TabContainer()
+    try:
+        source.current_file_list().navigate_to(str(first), set_root=True)
+        source._add_tab(str(second))
+        source._add_tab(str(third))
+        state = source.save_state()
+        assert len(state["tabs"]) == 3
+
+        target = TabContainer()
+        try:
+            target.restore_state(state)
+
+            # The historical second add-loop re-added every saved path,
+            # producing 2N-1 tabs after a dock split.
+            assert target._tabs.count() == 3
+            assert [Path(target._tabs_to_filelists[i].current_path) for i in range(3)] == [
+                first, second, third,
+            ]
+        finally:
+            target.close()
+    finally:
+        source.close()
+
+
+def test_restore_state_skips_empty_paths_and_keeps_panel_state_aligned(tmp_path):
+    QApplication.instance() or QApplication([])
+    first = tmp_path / "first"
+    third = tmp_path / "third"
+    first.mkdir()
+    third.mkdir()
+    source = TabContainer()
+    try:
+        source.current_file_list().navigate_to(str(first), set_root=True)
+        source._add_tab(str(third))
+        state = source.save_state()
+        # Simulate a saved blank tab slot between the two real paths.
+        state["tabs"] = [state["tabs"][0], "", state["tabs"][1]]
+        state["panels"] = [state["panels"][0], {}, state["panels"][1]]
+        state["active"] = 2
+
+        target = TabContainer()
+        try:
+            target.restore_state(state)
+
+            assert target._tabs.count() == 2
+            assert Path(target._tabs_to_filelists[1].current_path) == third
+            # active slot 2 has no tab (blank path skipped) → maps to tab 1.
+            assert target._tabs.currentIndex() == 1
+        finally:
+            target.close()
+    finally:
+        source.close()
 
 
 def test_tab_title_updates_current_index_after_close(tmp_path):

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QGroupBox, QWidget, QInputDialog, QSplitter, QScrollArea, QFrame,
     QSizePolicy,
 )
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QImage, QPixmap
 
 from AssetsManager.panels.base import PanelContent
 from AssetsManager.application.desktop_ports import TagsViewPort
@@ -493,7 +493,11 @@ class InfoPanel(PanelContent):
             cast(QLabel, link_label).setText(tr("info.field_link"))
         if not self._current_path:
             self._show_empty_state()
-        self._refresh_theme()
+        # Language switching only retranslates text; it never changes colors,
+        # so the per-control _refresh_theme() stylesheet sweep is skipped
+        # (matching the setText-only _refresh_language precedent in
+        # window.py / file_list). Theme refresh is wired separately via
+        # theme_changed / ui_scale_changed above.
 
     def _refresh_field_styles(self):
         """Update all field label/value stylesheets for current theme."""
@@ -963,6 +967,11 @@ class InfoPanel(PanelContent):
         if scoped is None:
             raise RuntimeError("InfoPanel scoped services not injected")
         self._async_generation += 1
+        # Retire the previous in-flight token: a superseded FileInfoTask
+        # exits cooperatively at its next checkpoint (no join, no blocking)
+        # instead of occupying one of the two pool workers with doomed work.
+        self._info_token.cancel()
+        self._info_token = CancellationToken()
         request = _AsyncRequest(
             self._async_generation,
             scoped.session,
@@ -1056,7 +1065,13 @@ class InfoPanel(PanelContent):
 
 
     @staticmethod
-    def _load_preview_pixmap(path: str, library_root: str | None = None) -> QPixmap | None:
+    def _load_preview_image(path: str, library_root: str | None = None) -> QImage | None:
+        """Decode the preview image on the calling (worker) thread.
+
+        Returns a plain ``QImage`` — QPixmap must only be constructed on the
+        GUI thread, so the worker never touches QPixmap; the main-thread
+        slot converts via ``QPixmap.fromImage`` (see ``_on_preview_ready``).
+        """
         try:
             source = Path(path)
             root = Path(library_root) if library_root else source.parent
@@ -1081,7 +1096,7 @@ class InfoPanel(PanelContent):
                 img = reader.read()
                 if img.isNull():
                     return None
-                return QPixmap.fromImage(img)
+                return img
             finally:
                 buffer.close()
         except Exception:
@@ -1291,8 +1306,13 @@ class InfoPanel(PanelContent):
             urls = self._controller.get_urls(self._current_path)
             self._set_link_field(urls[0] if urls else "")
 
-    def set_scoped_services(self, services):
-        """Bind library-scoped services resolved by MainWindow."""
+    def set_scoped_services(self, services, *, runtime=None) -> None:
+        """Bind library-scoped services resolved by MainWindow.
+
+        ``runtime`` is part of the uniform ``ScopedServicesConsumer``
+        signature; the info panel binds no runtime projection router, so the
+        kwarg is accepted and ignored.
+        """
         from AssetsManager.application.desktop_ports import RootBoundTagService
         from AssetsManager.controllers.info_controller import InfoController
 
@@ -1429,6 +1449,18 @@ class InfoPanel(PanelContent):
         if self._notes_timer:
             self._notes_timer.stop()
 
+        # Same-focus short-circuit: one click reaches update_info twice
+        # (click handler + selectionChanged both emit file_focused), so
+        # re-focusing the already displayed path must not respawn an
+        # identical FileInfoTask.  Domain events (AssetTags/Notes/UrlsChanged)
+        # refresh without update_info — their handlers render straight from
+        # the controller — and every controller/session rebinding resets
+        # _current_path (set_scoped_services) or nulls it (controller=None on
+        # prepare_library_switch), so a matching path here always means the
+        # same binding; no force flag is needed.
+        if fi.absoluteFilePath() == self._current_path:
+            return
+
         self._current_path = fi.absoluteFilePath()
         request = self._new_async_request(self._current_path)
         is_dir = fi.isDir()
@@ -1469,7 +1501,9 @@ class InfoPanel(PanelContent):
         self._notes.blockSignals(False)
         self._show_loading_state()
 
-        # Cancel previous pending task (stale detection handles in-flight results)
+        # Drop the reference to the previous task; the token that lets it exit
+        # early was already cancelled by _new_async_request above, and stale
+        # delivery is rejected by request identity in the callbacks.
         self._pending_task = None
 
         if not self._controller:
@@ -1563,15 +1597,19 @@ class InfoPanel(PanelContent):
             return
         self._render_file_info(request, file_info)
 
-    def _on_preview_ready(self, request, pixmap):
-        """Called on main thread when async preview load completes."""
+    def _on_preview_ready(self, request, image):
+        """Called on main thread when async preview load completes.
+
+        The worker emits a plain ``QImage``; QPixmap construction happens
+        here on the GUI thread.
+        """
         if not self._is_current_async_request(request):
             return
-        if pixmap:
+        if image:
             self._empty_preview_state.hide()
             self._preview.show()
             self._preview_icon_name = ""
-            self._preview_pixmap = pixmap
+            self._preview_pixmap = QPixmap.fromImage(image)
             self._preview_state = "image"
             self._apply_scaled_preview()
         else:

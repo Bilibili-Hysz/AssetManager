@@ -26,6 +26,11 @@ from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager import i18n
 tr = i18n.tr
 
+# Single cap for the "recent_libraries" list — the startup hero list is
+# designed to render 30 entries and this is the ONLY write point (both the
+# startup picker and library reopen flows record visits through it).
+RECENT_LIBRARIES_MAX = 30
+
 
 def _interpolate_color(hex_color: str, factor: float) -> str:
     """Lighten or darken a hex color by blending toward white/black."""
@@ -101,7 +106,6 @@ class _DetailPanel(QFrame):
         self._open_btn.setStyleSheet(self._primary_btn_qss())
         self._open_btn.clicked.connect(self._emit_open)
         self._open_btn.hide()
-        self._open_btn.setDefault(True)
         layout.addWidget(self._open_btn)
 
         self._remove_btn = QPushButton(tr("startup.remove_btn"))
@@ -235,6 +239,10 @@ class _LibraryCard(QFrame):
     def _setup(self, name: str):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(scaled_px(54))
+        # Keyboard a11y: cards are tab stops, the focus ring is drawn by the
+        # card QSS below (theme tokens), so the native dotted rect is off.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(scaled_px(12), scaled_px(6), scaled_px(12), scaled_px(6))
@@ -289,6 +297,7 @@ class _LibraryCard(QFrame):
         else:
             bg = "transparent"
             border = "transparent"
+        focus_border = t.get("border_focus", t["accent"])
         self.setStyleSheet(
             f"#libraryCard {{"
             f"  background: {bg}; "
@@ -296,6 +305,10 @@ class _LibraryCard(QFrame):
             f"}}"
             f"#libraryCard:hover {{"
             f"  background: {hover_bg}; "
+            f"}}"
+            f"#libraryCard:focus {{"
+            f"  background: {alpha(t['accent'], 0.12)}; "
+            f"  border: 1px solid {focus_border}; "
             f"}}")
 
     def mousePressEvent(self, event):
@@ -304,6 +317,21 @@ class _LibraryCard(QFrame):
 
     def mouseDoubleClickEvent(self, event):
         self.double_clicked.emit(self._path)
+
+    def keyPressEvent(self, event):
+        # Keyboard activation mirrors the double-click open action.
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            self.double_clicked.emit(self._path)
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        # Tabbing onto a card selects it (same feedback as a mouse click) so
+        # the detail panel follows keyboard navigation.
+        if event.reason() in (Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason):
+            self.clicked.emit(self._path)
 
 
 # ── Main window ────────────────────────────────────────────────
@@ -339,6 +367,21 @@ class StartupWindow(QMainWindow):
         except (RuntimeError, TypeError):
             pass
         super().closeEvent(event)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Keyboard a11y: put focus on the card list as soon as the window is
+        # shown, unless something else already holds focus in this window.
+        if not self._cards:
+            return
+        fw = self.focusWidget()
+        if fw is not None and fw is not self:
+            return
+        target = next(
+            (c for c in self._cards if c._path == self._selected_path),
+            self._cards[0],
+        )
+        target.setFocus()
 
     def _center_on_parent(self, parent):
         if parent:
@@ -449,6 +492,9 @@ class StartupWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        # Keep the scroll area out of the tab chain so keyboard users land
+        # directly on the library cards (focused cards auto-scroll).
+        scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         scroll.setWidget(self._card_container)
         right_layout.addWidget(scroll)
 
@@ -559,9 +605,10 @@ class StartupWindow(QMainWindow):
             self._cards.append(card)
             self._card_layout.insertWidget(len(self._cards) - 1, card)
 
-        if len(recent) > 30:
+        if len(recent) > RECENT_LIBRARIES_MAX:
             t = themes.get()
-            indicator = QLabel(tr("startup.hero_truncated", shown=30, total=len(recent)))
+            indicator = QLabel(tr("startup.hero_truncated",
+                                  shown=RECENT_LIBRARIES_MAX, total=len(recent)))
             indicator.setStyleSheet(
                 f"font-size: {_font('xs')}px; color: {t['muted']}; "
                 f"padding: {scaled_px(4)}px {scaled_px(12)}px; background: transparent; border: none;")
@@ -607,7 +654,7 @@ class StartupWindow(QMainWindow):
         self._populate()
 
     def _save_recent(self, path):
-        self._settings.prepend_list("recent_libraries", path, max_items=30)
+        self._settings.prepend_list("recent_libraries", path, max_items=RECENT_LIBRARIES_MAX)
         self._settings.save()
         from AssetsManager.core.library_manager import record_visit
         record_visit(path)

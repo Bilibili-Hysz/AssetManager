@@ -53,6 +53,10 @@ Architecture:
     No per-widget setStyleSheet — everything inherits from the dialog QSS.
     ObjectName prefix __td_ distinguishes primary/secondary buttons.
 """
+from __future__ import annotations
+
+import logging
+
 from PySide6.QtCore import Qt, Signal, QSize, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -63,11 +67,13 @@ from PySide6.QtWidgets import (
 from AssetsManager import i18n
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core import themes
+from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core import icons
 from AssetsManager.widgets.stylekit import StyleKit
 
 tr = i18n.tr
+_log = logging.getLogger(__name__)
 
 
 class _CollapsibleSection(QWidget):
@@ -170,6 +176,7 @@ class TabbedDialog(QDialog):
         self._muted_labels: list[QLabel] = []
         self._tab_label_keys: dict[int, str] = {}
         self._dialog_fade_anim: QPropertyAnimation | None = None
+        self._geometry_restored = False
 
         if hasattr(self, '_setup_tabs') and type(self)._setup_tabs is not TabbedDialog._setup_tabs:
             # Subclass uses tabbed layout
@@ -181,6 +188,14 @@ class TabbedDialog(QDialog):
 
     def showEvent(self, event):
         super().showEvent(event)
+        # Restore the geometry saved by the last closed dialog of the same
+        # identity once per instance.  Subclass default sizes applied after
+        # super().__init__ (e.g. SharingSettingsDialog.resize) stay in force
+        # when there is no archive; restoring here (not in __init__) keeps
+        # that default until the dialog is actually presented.
+        if not self._geometry_restored:
+            self._geometry_restored = True
+            self._restore_saved_geometry()
         self._start_dialog_fade()
         if not self._bus_connected:
             self._bus_connected = True
@@ -193,6 +208,7 @@ class TabbedDialog(QDialog):
 
     def closeEvent(self, event):
         self._stop_dialog_fade()
+        self._save_dialog_geometry()
         self._disconnect_bus()
         self._on_dialog_closed()
         super().closeEvent(event)
@@ -200,6 +216,7 @@ class TabbedDialog(QDialog):
     def done(self, result):
         # accept()/reject() hide modal dialogs without necessarily closing them.
         self._stop_dialog_fade()
+        self._save_dialog_geometry()
         self._disconnect_bus()
         self._on_dialog_closed()
         super().done(result)
@@ -225,6 +242,45 @@ class TabbedDialog(QDialog):
             pass
         self._bus_connected = False
         self._refresh_bus_connected = False
+
+    # ── Geometry persistence ─────────────────────────────────
+
+    def _geometry_settings_key(self) -> str:
+        """Settings key for this dialog identity (objectName, else class name)."""
+        identity = self.objectName() or type(self).__name__
+        return f"dialog_geometry_{identity}"
+
+    def _restore_saved_geometry(self) -> None:
+        """Restore the geometry saved by the last close of a same-identity
+        dialog.  Without an archive the constructor's ``min_size`` resize
+        (and any subclass default resize) stands.  Malformed persisted data
+        is ignored so a hand-edited settings file cannot break the dialog.
+        """
+        try:
+            geom = AppSettings.instance().get(self._geometry_settings_key())
+            if isinstance(geom, str) and geom:
+                self.restoreGeometry(bytes.fromhex(geom))
+        except (TypeError, ValueError):
+            _log.warning(
+                "Ignoring malformed saved geometry for %s", self._geometry_settings_key(),
+                exc_info=True)
+        except Exception:
+            _log.exception("Failed to restore dialog geometry")
+
+    def _save_dialog_geometry(self) -> None:
+        """Persist the current geometry for the next dialog of this identity.
+
+        Called on every dismissal path (window close and accept/reject/done);
+        redundant calls persist the same geometry, so they are harmless.
+        """
+        try:
+            settings = AppSettings.instance()
+            settings.set(
+                self._geometry_settings_key(),
+                bytes(self.saveGeometry().data()).hex())
+            settings.save()
+        except Exception:
+            _log.exception("Failed to save dialog geometry")
 
     # ── Theme ─────────────────────────────────────────────────
 

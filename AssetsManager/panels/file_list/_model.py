@@ -109,7 +109,10 @@ class FileSystemModel(QAbstractListModel):
         # indirect): a 10k-entry directory scrolled in details view used to
         # accumulate one QIcon per row, peaking around 400 MB (96px × 10k).
         # 800 entries keep the peak near 32 MB; evicted rows re-request
-        # thumbnails on scroll-back.
+        # thumbnails on scroll-back.  Icons share their pixel buffer with the
+        # matching raw pixmap and every writer stores the raw pixmap first,
+        # so set_raw_pixmap drops icons whose raw entry got evicted — the
+        # byte budget below stays the single memory authority.
         self._icons = LRUCache(800)  # path → icon
         # Path → pixmap, bounded by total resident bytes first (LRU) with an
         # item-count cap as a secondary limit; see module constants above.
@@ -787,7 +790,21 @@ class FileSystemModel(QAbstractListModel):
         return self._raw_pixmaps.get(path)
 
     def set_raw_pixmap(self, path: str, pixmap) -> None:
-        self._raw_pixmaps[path] = pixmap
+        # _raw_pixmaps is the sole byte-budget authority.  QIcon(pixmap)
+        # implicitly shares the pixel buffer, so when the byte/item budget
+        # evicts a path here, the surviving QIcon in _icons would keep that
+        # (potentially multi-MB, high-quality) buffer resident past the
+        # budget.  Diff the key sets around the insert and drop any icon
+        # whose raw entry was evicted; delivery re-requests evicted rows on
+        # scroll-back, exactly like the raw cache already did.
+        raw = self._raw_pixmaps
+        before = set(raw)
+        raw[path] = pixmap
+        evicted = before.difference(raw)
+        if evicted:
+            icons = self._icons
+            for evicted_path in evicted:
+                icons.invalidate(evicted_path)
 
     @property
     def raw_pixmap_cache_bytes(self) -> int:

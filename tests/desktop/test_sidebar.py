@@ -6,12 +6,9 @@ Covers the two worker-level guarantees the fix depends on:
 2. rapid successive searches keep only the latest result (single-flight);
    every stale in-flight preload is cancelled synchronously at submission.
 """
-import os
 import threading
 import time
 
-# Set QT_QPA_PLATFORM before any Qt imports
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication

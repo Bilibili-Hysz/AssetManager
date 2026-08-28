@@ -1,8 +1,6 @@
 """Theme preview dialog tests — custom theme write-back and built-in read-only flow."""
 import json
-import os
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 from PySide6.QtCore import Qt

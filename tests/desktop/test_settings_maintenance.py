@@ -1,6 +1,4 @@
-import os
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -173,6 +171,46 @@ def test_maintenance_event_unsubscribes_on_close_and_resubscribes_on_show(tmp_pa
         _publish_for(adapter)
         app.processEvents()
         assert "after-close" in dialog._maintenance_status.text()
+    finally:
+        i18n.set_language(original_language)
+        dialog.close()
+        dialog.deleteLater()
+        app.processEvents()
+
+
+def test_maintenance_event_from_worker_thread_runs_on_gui_thread(tmp_path):
+    """Regression: the raw weak bus subscription ran _on_maintenance_event on
+    the publishing (worker) thread, performing UI writes off the GUI thread.
+    The queued DomainEventSubscription bridge must deliver it on the main
+    thread instead."""
+    import threading
+    import time
+
+    app, dialog, maintenance, original_language = _dialog(tmp_path)
+    adapter = dialog.library_settings_adapter
+    received_threads: list[int] = []
+    main_thread = threading.get_ident()
+
+    # Observe the queued bridge signal directly: it must fire on the
+    # subscription's (GUI) thread, never on the publisher's.
+    dialog._maintenance_subscription.event_received.connect(
+        lambda _event: received_threads.append(threading.get_ident()))
+    try:
+        dialog.show()
+        app.processEvents()
+
+        maintenance.running = True
+        worker = threading.Thread(target=lambda: _publish_for(adapter))
+        worker.start()
+        worker.join(timeout=2.0)
+
+        deadline = time.monotonic() + 2.0
+        while not received_threads and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.01)
+
+        assert received_threads == [main_thread]
+        assert dialog._maintenance_status.text() == "Maintenance running..."
     finally:
         i18n.set_language(original_language)
         dialog.close()

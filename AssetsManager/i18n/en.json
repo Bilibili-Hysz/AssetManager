@@ -5,6 +5,7 @@
     "version": 1
   },
   "app.name": "AssetManager",
+  "app.plugin_load_failures": "Warning: {count} plugin(s) failed to load — see log for details",
   "window.minimize": "Minimize",
   "window.maximize": "Maximize",
   "window.close": "Close",
@@ -160,7 +161,11 @@
   "filelist.dialog.move_trash": "Move to Recycle Bin",
   "filelist.dialog.move_trash_msg": "Move to Recycle Bin?\n\n{names}",
   "filelist.dialog.delete_permanent": "Delete Permanently",
-  "filelist.dialog.delete_permanent_msg": "Permanently delete?\n\n{names}\n\nThis cannot be undone.",
+  "filelist.dialog.delete_permanent_msg": "Permanently delete?\n\n{names}\n\nYou can undo this deletion.",
+  "filelist.dialog.undo_failed": "Undo Failed",
+  "filelist.dialog.skip_history_msg": "The previous operation could not be completed.\n\nSkip this history entry? Skipping discards it permanently.",
+  "filelist.dialog.delete_backup_failed": "Delete Backup Failed",
+  "filelist.dialog.delete_backup_failed_msg": "The deletion was completed, but these items could not be backed up for undo:\n{names}\n\nThey cannot be restored.\nReason: {reason}",
   "sidebar.expand_all": "Expand All",
   "sidebar.collapse_all": "Collapse All",
   "sidebar.searching": "Searching...",
@@ -850,5 +855,13 @@
   "import.success": "Import complete:\n{copied} copied, {skipped} skipped, {failed} failed",
   "import.partial": "Import completed with warnings:\n{copied} copied, {skipped} skipped, {failed} failed",
   "import.cancelled": "Import cancelled:\n{copied} copied, {skipped} skipped, {failed} failed",
-  "import.failed": "Import failed:\n{error}"
+  "import.failed": "Import failed:\n{error}",
+  "backup.in_progress": "Creating backup…",
+  "restore.in_progress": "Restoring library data…",
+  "maintenance.task_running": "A backup or restore task is already running. Please wait for it to finish.",
+  "sharing.stopping": "Sharing is stopping…",
+  "settings.thumb_clearing": "Clearing thumbnail cache…",
+  "settings.thumb_clear_done_failed": "Deleted {count} cached thumbnails.\n{failed} file(s) could not be removed — see log for details.",
+  "library.switch_failed": "Library switch failed: {reason}",
+  "library.switch_failed_retry_hint": "The previous library could not be restored. Retry the switch, or reopen the library from the launcher."
 }

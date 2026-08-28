@@ -250,8 +250,13 @@ class SidebarPanel(PanelContent):
         except Exception as exc:
             _log.warning("Failed to restore sidebar depth config: %s", exc)
 
-    def set_scoped_services(self, services):
-        """Bind the library bundle resolved by MainWindow."""
+    def set_scoped_services(self, services, *, runtime=None) -> None:
+        """Bind the library bundle resolved by MainWindow.
+
+        ``runtime`` is part of the uniform ``ScopedServicesConsumer``
+        signature; the sidebar binds no runtime projection router, so the
+        kwarg is accepted and ignored.
+        """
         self.prepare_library_switch()
         library_root = services.session.root_str
         if not isinstance(library_root, str):

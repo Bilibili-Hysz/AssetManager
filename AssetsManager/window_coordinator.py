@@ -1,8 +1,10 @@
 """Window coordinator — extracted from MainWindow for separation of concerns.
 
-Handles theme transitions, language refresh, recent menu rebuild,
-and status bar theming.  Kept as a standalone module callable from
-any window instance so MainWindow stays thin.
+Owns the theme transition/refresh path (menu + status bar theming, fade
+animation).  Language refresh and the recent-libraries menu live on
+``MainWindow`` itself (its ``_refresh_language`` / ``_rebuild_recent_menu``
+are the single wired implementations; earlier coordinator copies drifted and
+were removed 2026-08-28).
 """
 from __future__ import annotations
 
@@ -11,8 +13,7 @@ import logging
 from typing import Any, Protocol, cast
 
 from PySide6.QtCore import QObject, QPropertyAnimation, QEasingCurve
-from PySide6.QtWidgets import QApplication, QMenu, QStatusBar
-from pathlib import Path
+from PySide6.QtWidgets import QApplication, QStatusBar
 
 from AssetsManager.core import themes
 from AssetsManager.core.color_utils import alpha
@@ -37,19 +38,11 @@ class CoordinatedWindow(Protocol):
 
     _menu_widget: Any
     _menu_bar: Any
-    _menu_lib: QMenu
-    _menu_act_open: Any
-    _menu_act_refresh: Any
-    _menu_act_settings: Any
-    _menu_tools: QMenu
-    _recent_menu: QMenu
     _share_status_label: Any
-    _share_toggle_btn: Any
     _workspace: Any
     file_list: Any
 
-    def refresh_bg(self) -> None: ...
-    def _open_path(self, path: str) -> None: ...
+    def refresh_bg(self, keep_rendered: bool = False) -> None: ...
 
     # Inherited from QMainWindow/QWidget.
     def setWindowTitle(self, title: str, /) -> None: ...
@@ -129,7 +122,11 @@ class WindowCoordinator:
         self.apply_menu_theme()
         self.apply_status_bar_theme()
         w._workspace._apply_style()
-        w.refresh_bg()
+        # Theme colors never affect the wallpaper output, so keep the
+        # rendered-wallpaper cache and only schedule a repaint; dropping it
+        # here would force a full image decode + effect-chain re-render
+        # (CPU kuwahara can take seconds) on every theme switch.
+        w.refresh_bg(keep_rendered=True)
         if hasattr(w.file_list, "_apply_list_theme"):
             w.file_list._apply_list_theme()
 
@@ -160,35 +157,3 @@ class WindowCoordinator:
         anim_out.finished.connect(on_fade_out_done)
         anim_out.start()
         self._theme_anim_out = anim_out
-
-    # ── Language ───────────────────────────────────────────────────
-
-    def refresh_language(self) -> None:
-        w = self._window
-        w.setWindowTitle(tr("app.name"))
-        w._menu_lib.setTitle(tr("menu.library"))
-        w._menu_act_open.setText(tr("menu.open_library"))
-        w._recent_menu.setTitle(tr("menu.recent_libraries"))
-        w._menu_act_refresh.setText(tr("menu.refresh"))
-        w._menu_act_settings.setText(tr("menu.settings"))
-        if hasattr(w, '_menu_tools'):
-            w._menu_tools.setTitle(tr("menu.tools"))
-        w._share_toggle_btn.setToolTip(tr("sharing.toggle_tooltip"))
-        self.apply_menu_theme()
-        self.apply_status_bar_theme()
-
-    def rebuild_recent_menu(self) -> None:
-        w = self._window
-        w._recent_menu.clear()
-        settings = AppSettings.instance()
-        recents = settings.get_list("recent_libraries", [])
-        if not recents:
-            w._recent_menu.addAction(tr("menu.recent_empty")).setEnabled(False)
-            return
-        for p in recents:
-            path = Path(p)
-            label = f"{path.name} — {p}"
-            if len(label) > 60:
-                label = label[:57] + "..."
-            w._recent_menu.addAction(
-                label, lambda checked, p=p: w._open_path(p))
