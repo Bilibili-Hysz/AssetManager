@@ -109,6 +109,23 @@ async def test_enforce_admin_tags_denies_can_write_user():
 
 
 @pytest.mark.anyio
+async def test_enforce_admin_users_and_settings_deny_non_admin():
+    """The hardened read capabilities reject non-admin principals."""
+    user = _request_with_principal(
+        "user", user={"id": 2, "username": "bob", "role": "user", "can_write": 0},
+    )
+    for capability in ("admin_users", "settings"):
+        response = await enforce_capabilities(
+            user, RoutePolicy(capabilities=(capability,)))
+        assert response is not None and response.status == 403
+
+    admin = _request_with_principal("local_ui")
+    for capability in ("admin_users", "settings"):
+        assert await enforce_capabilities(
+            admin, RoutePolicy(capabilities=(capability,))) is None
+
+
+@pytest.mark.anyio
 async def test_guest_allowed_commerce_capabilities_pass():
     request = _request_with_principal("guest")
     for capability in ("buyer_cart", "buyer_wishlist", "buyer_orders",
@@ -208,6 +225,109 @@ async def test_guest_seller_write_is_blocked_by_middleware_before_handler(
         # Exactly one resolution: the middleware rejected the request before
         # handle_shop_items could run its own seller guard.
         assert calls == [1]
+    finally:
+        await client.close()
+        session.close()
+
+
+# ── Sensitive read declarations (read-surface hardening) ───────────
+
+
+def test_sensitive_read_routes_declare_their_data_plane_capability():
+    """Audited GET surfaces keep a middleware-enforced capability contract.
+
+    These reads historically relied on handler-level ``require_admin`` only;
+    the middleware no-ops on an empty capability tuple. The declarations pin
+    the contract at registration time so dropping a handler guard can no
+    longer silently reopen the account/operator data planes. Rate-limit
+    tiers are unchanged — the golden test in test_route_policy_contract.py
+    pins auth/rate_limit and would catch any drift.
+    """
+    from AssetsManager.lan.api import setup_routes
+    from AssetsManager.lan.route_policy import POLICY_KEY
+
+    app = web.Application()
+    setup_routes(app)
+    table = app[POLICY_KEY]
+
+    expected = {
+        ("GET", "/api/users"): ("admin_users",),
+        ("GET", "/api/invites"): ("admin_users",),
+        ("GET", "/api/activity"): ("admin_users",),
+        ("GET", "/api/online-users"): ("admin_users",),
+        ("GET", "/api/tunnel/status"): ("settings",),
+    }
+    for (method, path), capabilities in expected.items():
+        policy = table.get((method, path))
+        assert policy is not None, f"{method} {path} lost its policy entry"
+        assert policy.capabilities == capabilities, (
+            f"{method} {path}: capabilities {policy.capabilities!r} "
+            f"!= {capabilities!r}"
+        )
+    # Capability hardening must not drag these reads off their rate tiers.
+    assert table[("GET", "/api/tunnel/status")].rate_limit == "browse"
+    assert table[("GET", "/api/activity")].rate_limit == "browse"
+
+
+@pytest.mark.anyio
+async def test_hardened_admin_read_is_blocked_by_middleware_before_handler(
+    tmp_path, monkeypatch,
+):
+    """A declared GET capability rejects a non-admin before the handler.
+
+    Proves the new read declarations are enforced by the middleware itself:
+    the invite listing 403s even though the handler's own ``require_admin``
+    guard is instrumented and never runs.
+    """
+    from aiohttp.test_utils import TestClient, TestServer
+
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.core.settings import AppSettings
+    from AssetsManager.lan.routes import users as users_module
+    from AssetsManager.lan.server import _LanServerImpl
+
+    class Settings:
+        def get(self, key, default=None):
+            return {
+                "lan_commerce_enabled": False,
+                "lan_seller_enabled": False,
+                "lan_quota_enabled": False,
+                "lan_guest_list": True,
+                "lan_guest_download": False,
+            }.get(key, default)
+
+    monkeypatch.setattr(AppSettings, "instance", classmethod(lambda _cls: Settings()))
+
+    real_require_admin = users_module.require_admin
+    handler_guard_calls: list[int] = []
+
+    def counting_require_admin(request):
+        handler_guard_calls.append(1)
+        return real_require_admin(request)
+
+    monkeypatch.setattr(users_module, "require_admin", counting_require_admin)
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    server = _LanServerImpl(runtime=bootstrap.runtime_for(session),
+                            password="real-test-password")
+    client = TestClient(TestServer(server._app))
+    await client.start_server()
+    try:
+        registered = await client.post(
+            "/api/auth/register",
+            json={"username": "plainuser", "password": "Test@1234"},
+        )
+        assert registered.status == 200
+        token = registered.cookies["lan_token"].value
+
+        denied = await client.get(
+            "/api/invites", headers={"Authorization": f"Bearer {token}"},
+        )
+        assert denied.status == 403
+        # The middleware rejected the request before handle_invites could
+        # run its own admin guard.
+        assert handler_guard_calls == []
     finally:
         await client.close()
         session.close()

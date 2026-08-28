@@ -9,7 +9,7 @@ import sqlite3
 
 import pytest
 
-from tests.lan.test_lan_api import _init_lan_schemas, _make_client, _make_lan_app
+from tests.lan.support.api_helpers import _init_lan_schemas, _make_client, _make_lan_app
 
 
 def _set_plain_http_lan(app):

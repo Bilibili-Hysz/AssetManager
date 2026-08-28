@@ -1,6 +1,8 @@
 """Buyer-facing cart, wishlist, and order-history HTTP routes."""
 from __future__ import annotations
 
+import asyncio
+
 from aiohttp import web
 
 from AssetsManager.application.shop_buyer_service import token_hash
@@ -118,20 +120,21 @@ async def handle_shop_cart(request: web.Request) -> web.Response:
         if request.method == "GET":
             # A cart read is side-effect free: it must not materialize a
             # cart row, nor mint/issue a new guest token cookie.
+            cart = await asyncio.to_thread(
+                service.cart,
+                lan.library_root,
+                owner_kind=owner,
+                user_id=uid,
+                guest_token_hash=guest,
+            )
             return _buyer_response(
-                {
-                    "cart": service.cart(
-                        lan.library_root,
-                        owner_kind=owner,
-                        user_id=uid,
-                        guest_token_hash=guest,
-                    )
-                },
+                {"cart": cart},
                 request=request,
             )
         body = await _package_function("_json_body")(request)
         if request.method == "POST":
-            result = service.add_cart_item(
+            result = await asyncio.to_thread(
+                service.add_cart_item,
                 lan.library_root,
                 body.get("item_id", body.get("id")),
                 body.get("quantity", 1),
@@ -147,7 +150,8 @@ async def handle_shop_cart(request: web.Request) -> web.Response:
                 request=request,
             )
         if request.method == "PATCH":
-            result = service.update_cart_item(
+            result = await asyncio.to_thread(
+                service.update_cart_item,
                 lan.library_root,
                 request.match_info["line_id"],
                 body.get("quantity"),
@@ -160,7 +164,8 @@ async def handle_shop_cart(request: web.Request) -> web.Response:
                 {"cart": result}, cookie=cookie_response, request=request
             )
         if request.method == "DELETE":
-            result = service.remove_cart_item(
+            result = await asyncio.to_thread(
+                service.remove_cart_item,
                 lan.library_root,
                 owner_kind=owner,
                 user_id=uid,
@@ -186,7 +191,8 @@ async def handle_shop_cart_checkout(request: web.Request) -> web.Response:
         if header_key is not None and body_key is not None and str(header_key) != str(body_key):
             raise ValidationError("idempotency_key", "header and body values must match")
         key = header_key or body_key
-        result = _buyer_service(request).checkout(
+        result = await asyncio.to_thread(
+            _buyer_service(request).checkout,
             _package_function("get_lan")(request).library_root,
             owner_kind=owner,
             user_id=uid,
@@ -217,7 +223,8 @@ async def handle_shop_cart_checkout(request: web.Request) -> web.Response:
 async def handle_shop_cart_checkout_group(request: web.Request) -> web.Response:
     try:
         owner, uid, guest, cookie_response = _package_function("_buyer_owner")(request)
-        result = _buyer_service(request).checkout_group(
+        result = await asyncio.to_thread(
+            _buyer_service(request).checkout_group,
             _package_function("get_lan")(request).library_root,
             request.match_info["checkout_group_id"],
             owner_kind=owner,

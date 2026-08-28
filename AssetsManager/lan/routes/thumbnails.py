@@ -26,6 +26,7 @@ from AssetsManager.lan.routes._helpers import (
     require_permission,
     validate_path,
 )
+from AssetsManager.lan.routes._telemetry import record_route_event
 from AssetsManager.lan.safe_open import SafeOpenError, read_safe_file
 
 _SAFE_IMAGE_EXTS = IMAGE_EXTS - {".svg"}
@@ -82,8 +83,6 @@ async def handle_thumbnail(request):
         validate_thumbnail_source(source_path, result.source_identity)
 
         if not result.should_blur and max_size >= 256 and not result.cache_hit:
-            outcome = "success"
-            status = 200
             delivery = "original"
             try:
                 body, _identity = await asyncio.to_thread(
@@ -92,6 +91,12 @@ async def handle_thumbnail(request):
                 )
             except (SafeOpenError, OSError, ValueError):
                 raise ThumbnailSourceChangedError(source_path) from None
+            # Success is only declared once the bytes are actually in hand:
+            # a mid-request source change must never be recorded as a
+            # successful telemetry outcome (status=409 with outcome=success
+            # would be self-contradictory).
+            status = 200
+            outcome = "success"
             return web.Response(
                 body=body,
                 content_type=mimetypes.guess_type(source_path.name)[0] or "application/octet-stream",
@@ -124,11 +129,8 @@ async def handle_thumbnail(request):
             )
 
         processed = await asyncio.to_thread(_process)
-        outcome = "success"
-        status = 200
         if processed is None:
             if result.should_blur:
-                outcome = "error"
                 status = 500
                 return error_response(
                     "Failed to process image",
@@ -137,6 +139,8 @@ async def handle_thumbnail(request):
                     headers=_NOSNIFF_HEADERS,
                 )
             delivery = "original"
+            status = 200
+            outcome = "success"
             return web.Response(
                 body=source_body,
                 content_type=mimetypes.guess_type(source_path.name)[0] or "application/octet-stream",
@@ -145,6 +149,8 @@ async def handle_thumbnail(request):
 
         body, content_type = processed
         delivery = "processed"
+        status = 200
+        outcome = "success"
         return web.Response(
             body=body,
             content_type=content_type,
@@ -173,29 +179,16 @@ async def handle_thumbnail(request):
         status = exc.status
         raise
     finally:
-        _record_thumbnail_route(lan, started, target, outcome, status, delivery, cache_hit)
-
-
-def _record_thumbnail_route(lan, started, target, outcome, status, delivery, cache_hit) -> None:
-    recorder = getattr(lan, "performance_recorder", None)
-    if recorder is None or not recorder.enabled:
-        return
-    try:
-        recorder.record(
+        record_route_event(
+            lan,
             "lan.thumbnail",
-            (perf_counter() - started) * 1000,
-            session_token=getattr(lan, "session_token", None),
-            path=str(target) if target is not None else None,
-            attributes={
-                "outcome": outcome,
-                "status": status,
-                "delivery": delivery,
-                "cache_hit": cache_hit,
-            },
+            started=started,
+            status=status,
+            outcome=outcome,
+            path=target,
+            delivery=delivery,
+            cache_hit=cache_hit,
         )
-    except Exception:
-        # Diagnostics must not affect preview delivery or security outcomes.
-        pass
 
 
 async def handle_thumbnail_batch(request):
@@ -332,30 +325,13 @@ async def handle_thumbnail_batch(request):
         status = exc.status
         raise
     finally:
-        _record_thumbnail_batch_route(
-            lan, started, outcome, status, requested_count, result_count, failed_count
-        )
-
-
-def _record_thumbnail_batch_route(
-    lan, started: float, outcome: str, status: int, requested_count: int, result_count: int, failed_count: int
-) -> None:
-    recorder = getattr(lan, "performance_recorder", None)
-    if recorder is None or not recorder.enabled:
-        return
-    try:
-        recorder.record(
+        record_route_event(
+            lan,
             "lan.thumbnail_batch",
-            (perf_counter() - started) * 1000,
-            session_token=getattr(lan, "session_token", None),
-            attributes={
-                "outcome": outcome,
-                "status": status,
-                "requested_count": requested_count,
-                "result_count": result_count,
-                "failed_count": failed_count,
-            },
+            started=started,
+            status=status,
+            outcome=outcome,
+            requested_count=requested_count,
+            result_count=result_count,
+            failed_count=failed_count,
         )
-    except Exception:
-        # Diagnostics must not affect preview delivery or security outcomes.
-        pass

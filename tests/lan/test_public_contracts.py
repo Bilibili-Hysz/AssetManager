@@ -198,7 +198,7 @@ def test_share_link_public_dict_matches_golden(monkeypatch):
 
 @pytest.mark.anyio
 async def test_route_responses_are_normalized_and_keep_envelopes(tmp_path, monkeypatch):
-    from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app
+    from tests.lan.support.api_helpers import _local_ui_headers, _make_client, _make_lan_app
 
     app, library, conn = _make_lan_app(tmp_path)
     (library / "project" / "assets").mkdir(parents=True)
@@ -247,7 +247,7 @@ async def test_files_listing_items_match_golden_key_contract(tmp_path):
     """The file-list item shape is anchored in the golden contract so a
     drift like a missing is_project (historically caught only by the
     frontend's runtime probe) fails here instead."""
-    from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app
+    from tests.lan.support.api_helpers import _local_ui_headers, _make_client, _make_lan_app
 
     expected = json.loads(CONTRACTS.read_text(encoding="utf-8"))
     golden_item = expected["responses"]["files_item"]
@@ -284,7 +284,7 @@ async def test_files_listing_items_match_golden_key_contract(tmp_path):
 @pytest.mark.anyio
 async def test_info_route_exposes_serverinfo_shape(tmp_path):
     """Lock the /api/info envelope keys the frontend ServerInfo mirrors."""
-    from tests.lan.test_lan_api import _make_client, _make_lan_app
+    from tests.lan.support.api_helpers import _make_client, _make_lan_app
 
     app, _library, _conn = _make_lan_app(tmp_path)
     client = await _make_client(app)
@@ -314,7 +314,7 @@ async def test_info_route_exposes_serverinfo_shape(tmp_path):
 
 @pytest.mark.anyio
 async def test_stats_route_preserves_unavailable_bytes_as_null(tmp_path, monkeypatch):
-    from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app
+    from tests.lan.support.api_helpers import _local_ui_headers, _make_client, _make_lan_app
 
     app, _library, _conn = _make_lan_app(tmp_path)
     from AssetsManager.lan.routes._helpers import LAN_APP_KEY
@@ -340,7 +340,7 @@ async def test_stats_route_preserves_unavailable_bytes_as_null(tmp_path, monkeyp
 
 @pytest.mark.anyio
 async def test_users_route_enforces_admin_and_exposes_only_public_user_keys(tmp_path):
-    from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app
+    from tests.lan.support.api_helpers import _local_ui_headers, _make_client, _make_lan_app
 
     app, _library, conn = _make_lan_app(tmp_path)
     conn.execute(
@@ -379,7 +379,7 @@ async def test_invites_route_enforces_admin_and_exposes_public_defaults(tmp_path
     # AuthRepository.list_invite_codes() currently has no used_by field, so
     # route responses always default used_by to null; used-invite semantics
     # from a future data source are deferred.
-    from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app
+    from tests.lan.support.api_helpers import _local_ui_headers, _make_client, _make_lan_app
 
     app, _library, conn = _make_lan_app(tmp_path)
     conn.execute(

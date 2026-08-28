@@ -1,12 +1,14 @@
 """Ordinary download quota and Commerce delivery-quota HTTP routes."""
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
 import logging
 import math
 import secrets
+import threading
 import time
 from typing import Any
 
@@ -210,27 +212,34 @@ def apply_free_quota_identity_cookie(response: web.StreamResponse, request: web.
     )
 
 
+# The service is lazily bound to the LAN instance on first use.  Callers may
+# resolve it from worker threads (asyncio.to_thread offloads), so the
+# check-then-assign needs a lock; maintenance/pruning runs outside it.
+_free_download_quota_service_lock = threading.Lock()
+
+
 def get_free_download_quota_service(request: web.Request) -> FreeDownloadQuotaService:
     """Resolve one library-bound service and reuse it for the LAN lifetime."""
     lan = get_lan(request)
-    existing = getattr(lan, "free_download_quota_service", None)
-    if existing is not None:
-        maintain_free_download_quota_service(existing, get_free_download_quota_config())
-        return existing
-    scoped = getattr(lan, "services", None)
-    provider = getattr(lan, "connection_for", None)
-    session = getattr(getattr(scoped, "runtime_services", None), "session", None)
-    if not callable(provider):
-        raise RuntimeError("Free download quota requires a library connection provider")
-    connection = provider(lan.library_root)
-    service = FreeDownloadQuotaService.for_connection(
-        connection,
-        library_root=lan.library_root,
-        session=session,
-    )
-    lan.free_download_quota_service = service
-    maintain_free_download_quota_service(service, get_free_download_quota_config())
-    return service
+    with _free_download_quota_service_lock:
+        existing = getattr(lan, "free_download_quota_service", None)
+        if existing is None:
+            scoped = getattr(lan, "services", None)
+            provider = getattr(lan, "connection_for", None)
+            session = getattr(getattr(scoped, "runtime_services", None), "session", None)
+            if not callable(provider):
+                raise RuntimeError("Free download quota requires a library connection provider")
+            connection = provider(lan.library_root)
+            existing = FreeDownloadQuotaService.for_connection(
+                connection,
+                library_root=lan.library_root,
+                session=session,
+            )
+            # Published only after successful construction so a failure leaves
+            # the lazy-binding path retryable on the next request.
+            lan.free_download_quota_service = existing
+    maintain_free_download_quota_service(existing, get_free_download_quota_config())
+    return existing
 
 
 def maintain_free_download_quota_service(
@@ -283,7 +292,9 @@ def apply_free_quota_headers(headers: dict[str, str], info: dict[str, Any]) -> N
 
 async def handle_free_quota(request: web.Request) -> web.Response:
     try:
-        info = get_free_download_quota_info(request)
+        # get_free_download_quota_info resolves the service and may prune
+        # stale quota windows (SQLite); run it off the event loop.
+        info = await asyncio.to_thread(get_free_download_quota_info, request)
         response = web.json_response(info, headers={"Cache-Control": "no-store"})
         apply_free_quota_identity_cookie(response, request)
         return response

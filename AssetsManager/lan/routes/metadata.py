@@ -9,6 +9,7 @@ from aiohttp import web
 
 from AssetsManager.application import ProjectDepthConfig
 from AssetsManager.application.search_service import SearchError, SearchResultSet, SearchStatus
+from AssetsManager.domain.errors import DomainError
 from AssetsManager.lan.dto import TreeItemResponse
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
@@ -16,6 +17,7 @@ from AssetsManager.lan.routes._helpers import (
     get_search_service, oversized_query, require_permission, require_user_write,
     validated_existing_key,
 )
+from AssetsManager.lan.routes._telemetry import record_route_event
 from AssetsManager.lan.routes._resource_urls import (
     project_detail_response, project_home_response, project_listing_response,
     search_result_response,
@@ -92,6 +94,11 @@ async def handle_save_notes(request):
         )
     except web.HTTPException:
         raise
+    except DomainError as exc:
+        # validated_existing_key now propagates domain path errors
+        # (escape / missing) instead of bare HTTPExceptions; they keep
+        # their centrally mapped JSON contract here (shape unification).
+        return error_response(exc)
     except Exception:
         _log.exception("Failed to save LAN notes")
         return error_response("Failed to save notes", status=500, code="internal_error")
@@ -182,34 +189,15 @@ async def handle_search(request):
             response["fallback_used"] = result_set.fallback_used
         return web.json_response(response)
     finally:
-        _record_search_route(lan, started, outcome, status, result_count, search_status=search_status)
-
-
-def _record_search_route(
-    lan,
-    started: float,
-    outcome: str,
-    status: int,
-    result_count: int,
-    *,
-    search_status: str | None = None,
-) -> None:
-    recorder = getattr(lan, "performance_recorder", None)
-    if recorder is None or not recorder.enabled:
-        return
-    try:
-        attributes = {"outcome": outcome, "status": status, "result_count": result_count}
-        if search_status is not None:
-            attributes["search_status"] = search_status
-        recorder.record(
+        record_route_event(
+            lan,
             "lan.search",
-            (perf_counter() - started) * 1000,
-            session_token=getattr(lan, "session_token", None),
-            attributes=attributes,
+            started=started,
+            status=status,
+            outcome=outcome,
+            result_count=result_count,
+            search_status=search_status,
         )
-    except Exception:
-        # Observability must not change a route response or search fallback.
-        pass
 
 
 async def handle_home(request):

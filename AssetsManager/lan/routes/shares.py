@@ -14,6 +14,7 @@ from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.lan.path_guard import PathGuardError, assert_under_root, reject_path_text
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import LAN_APP_KEY, get_lan, get_share_service, get_request_principal, get_share_token, require_permission, sanitize_filename, set_share_cookie, set_request_principal, validate_path
+from AssetsManager.lan.routes._telemetry import record_route_event
 from AssetsManager.lan.routes.image import BLURRED_PREVIEW_SIZE, serve_verified_image
 from AssetsManager.lan.principal import principal_for_request
 from AssetsManager.lan.safe_open import SafeOpenError, read_safe_file
@@ -348,29 +349,16 @@ async def handle_share_download(request):
         response_path = target
         return response
     finally:
-        _record_share_download_route(lan, started, response_path, outcome, status)
-
-
-def _record_share_download_route(lan, started: float, response_path, outcome: str, status: int) -> None:
-    recorder = getattr(lan, "performance_recorder", None)
-    if recorder is None or not recorder.enabled:
-        return
-    try:
-        recorder.record(
+        record_route_event(
+            lan,
             "lan.share_download",
-            (perf_counter() - started) * 1000,
-            session_token=getattr(lan, "session_token", None),
-            path=str(response_path) if response_path is not None else None,
-            attributes={
-                "outcome": outcome,
-                "status": status,
-                "phase": "response_ready" if outcome == "response_ready" else "failed",
-                "kind": "share_file",
-            },
+            started=started,
+            status=status,
+            outcome=outcome,
+            path=response_path,
+            kind="share_file",
+            phase="response_ready" if outcome == "response_ready" else "failed",
         )
-    except Exception:
-        # Diagnostics must not alter share admission or response transfer semantics.
-        pass
 
 
 async def handle_share_preview(request):

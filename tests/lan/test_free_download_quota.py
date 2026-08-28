@@ -652,3 +652,41 @@ def test_authenticated_quota_identity_ignores_anonymous_cookie(schema_db, tmp_pa
     identity, issued = quota.resolve_free_download_quota_identity(request)
     assert identity == "principal:local_ui:local_ui"
     assert issued is None
+
+
+def test_consume_publishes_quota_changed_only_for_allowed_deduction(
+    schema_db, tmp_path, monkeypatch
+):
+    from AssetsManager.application.free_download_quota_service import (
+        FreeDownloadQuotaConfig,
+        FreeDownloadQuotaService,
+    )
+    from AssetsManager.domain.event_bus import EventBus
+    from AssetsManager.domain.events import QuotaChanged
+    from AssetsManager.repositories.free_download_quota_repository import (
+        FreeDownloadQuotaRepository,
+    )
+
+    bus = EventBus()
+    events = []
+    bus.subscribe(QuotaChanged, events.append)
+    import AssetsManager.domain.event_bus as eb
+    monkeypatch.setattr(eb, "_instance", bus)
+
+    service = FreeDownloadQuotaService(
+        FreeDownloadQuotaRepository(schema_db),
+        session=SimpleNamespace(root_str=str(tmp_path), event_token="quota-session-token"),
+    )
+    config = FreeDownloadQuotaConfig(enabled=True, limit=2, min_interval_seconds=0)
+
+    assert service.consume("user:42", config)["allowed"] is True
+    assert len(events) == 1
+    assert events[0].library_root == str(tmp_path)
+    assert events[0].session_token == "quota-session-token"
+    assert events[0].name == "user:42"
+
+    # The second allowed deduction publishes again; the exhausted rejection
+    # changes no state and must stay silent.
+    assert service.consume("user:42", config)["allowed"] is True
+    assert service.consume("user:42", config)["allowed"] is False
+    assert len(events) == 2

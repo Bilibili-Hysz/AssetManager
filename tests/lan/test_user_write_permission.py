@@ -12,7 +12,7 @@ from AssetsManager.domain.event_bus import EventBus
 from AssetsManager.domain.events import UserChanged
 from AssetsManager.lan.principal import principal_for_request
 from AssetsManager.lan.routes._helpers import require_user_write
-from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app, _register_user_token
+from tests.lan.support.api_helpers import _local_ui_headers, _make_client, _make_lan_app, _register_user_token
 
 
 @pytest.fixture

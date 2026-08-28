@@ -1,4 +1,6 @@
 """User and invite routes: /api/users/*, /api/invites/*."""
+import asyncio
+
 from aiohttp import web
 
 from AssetsManager.lan.dto import InviteResponse, UserResponse
@@ -108,14 +110,17 @@ async def handle_revoke_invite(request):
     auth_service = get_auth_service(request)
 
     code = request.match_info.get("code", "")
-    ok = auth_service.revoke_invite_code(code)
+    ok = await asyncio.to_thread(auth_service.revoke_invite_code, code)
     return web.json_response({"ok": ok})
 
 
 async def handle_activity(request):
     if not require_admin(request):
         return error_response("Admin access required", status=403, code="forbidden")
-    return web.json_response({"activities": get_services(request).activity_log.recent(20)})
+    # recent() takes the library DB connection lock (and touches SQLite);
+    # keep that work off the event loop.
+    activities = await asyncio.to_thread(get_services(request).activity_log.recent, 20)
+    return web.json_response({"activities": activities})
 
 
 async def handle_online_users(request):

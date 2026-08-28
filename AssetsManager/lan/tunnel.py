@@ -8,7 +8,15 @@ Usage:
 
 Requires: cloudflared CLI — auto-downloaded on first use if not found.
 Manual install: winget install cloudflare.cloudflared
+
+Supply-chain policy: the auto-download path pins an exact release tag and
+verifies the binary against that release's own SHA-256 checksum asset before
+the binary is ever executed; a missing or mismatching checksum fails closed
+(the download is discarded and the tunnel stays unavailable).  Pre-existing
+binaries (bundle, dev checkout, PATH) are trusted out-of-band by whoever
+installed them — they are still smoke-tested via ``--version`` before use.
 """
+import hashlib
 import logging
 import os
 import re
@@ -22,7 +30,17 @@ import urllib.request
 
 _log = logging.getLogger(__name__)
 
-_CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+# 08-P0 supply-chain gate: never resolve "latest" — a floating tag lets any
+# future release silently replace the executed binary.  Bump the pin (and
+# re-verify the tunnel once) deliberately, per release.
+_CLOUDFLARED_VERSION = "2024.8.3"
+_CLOUDFLARED_ASSET = "cloudflared-windows-amd64.exe"
+_CLOUDFLARED_RELEASE_BASE = (
+    "https://github.com/cloudflare/cloudflared/releases/download/"
+    f"{_CLOUDFLARED_VERSION}"
+)
+_CLOUDFLARED_URL = f"{_CLOUDFLARED_RELEASE_BASE}/{_CLOUDFLARED_ASSET}"
+_CLOUDFLARED_SHA256_URL = f"{_CLOUDFLARED_URL}.sha256"
 _DOWNLOAD_TIMEOUT = 60.0
 _download_lock = threading.Lock()
 
@@ -34,15 +52,26 @@ def _download_cloudflared(dest_dir: str) -> str | None:
     fd, temporary = tempfile.mkstemp(dir=dest_dir, prefix=f".{exe_name}_", suffix=".tmp")
     os.close(fd)
     try:
-        _log.info("Downloading cloudflared to %s ...", dest)
+        _log.info("Downloading cloudflared %s to %s ...", _CLOUDFLARED_VERSION, dest)
         with urllib.request.urlopen(_CLOUDFLARED_URL, timeout=_DOWNLOAD_TIMEOUT) as response:
             with open(temporary, "wb") as stream:
                 shutil.copyfileobj(response, stream)
+        expected = _fetch_expected_sha256()
+        if expected is None:
+            # Fail closed: without the release's checksum there is no
+            # integrity basis for executing the download.
+            _log.warning(
+                "cloudflared checksum asset unavailable; discarding download (fail-closed)"
+            )
+            return None
+        if _sha256_of(temporary) != expected:
+            _log.warning("Downloaded cloudflared failed SHA-256 verification; discarding")
+            return None
         if not _validate_cloudflared_binary(temporary):
             _log.warning("Downloaded cloudflared failed validation; discarding %s", temporary)
             return None
         os.replace(temporary, dest)
-        _log.info("cloudflared downloaded successfully")
+        _log.info("cloudflared downloaded successfully (SHA-256 verified)")
         return dest
     except Exception as e:
         _log.warning("Failed to download cloudflared: %s", e)
@@ -55,8 +84,37 @@ def _download_cloudflared(dest_dir: str) -> str | None:
                 pass
 
 
+def _fetch_expected_sha256() -> str | None:
+    """Fetch the pinned release's SHA-256 digest for the binary asset.
+
+    The release ships a ``.sha256`` sidecar containing the hex digest (a few
+    tools emit ``<digest>  <filename>``; both shapes are accepted).  Returns
+    ``None`` when the asset is unreachable or malformed.
+    """
+    try:
+        with urllib.request.urlopen(_CLOUDFLARED_SHA256_URL, timeout=_DOWNLOAD_TIMEOUT) as response:
+            payload = response.read(1024).decode("ascii", errors="replace").strip()
+    except Exception as e:
+        _log.warning("Could not fetch cloudflared checksum asset: %s", e)
+        return None
+    parts = payload.split()
+    digest = parts[0].lower() if parts else ""
+    if len(digest) == 64 and all(c in "0123456789abcdef" for c in digest):
+        return digest
+    _log.warning("cloudflared checksum asset has an unexpected shape; refusing it")
+    return None
+
+
+def _sha256_of(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _validate_cloudflared_binary(path: str) -> bool:
-    """Smoke-test a downloaded binary: non-empty and executable via --version."""
+    """Smoke-test a binary: non-empty and executable via --version."""
     try:
         if not os.path.isfile(path) or os.path.getsize(path) == 0:
             return False
@@ -195,11 +253,17 @@ class TunnelManager:
         if not cf:
             _log.error("cloudflared not found. Install: winget install cloudflare.cloudflared")
             return None
+        if not _validate_cloudflared_binary(cf):
+            _log.error(
+                "cloudflared binary at %s failed validation; reinstall it "
+                "(winget install cloudflare.cloudflared)", cf
+            )
+            return None
 
         try:
             with self._state_lock:
                 self._process = subprocess.Popen(
-                    [cf, "tunnel", "--url", f"http://127.0.0.1:{self._port}"],
+                    [cf, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{self._port}"],
                     stderr=subprocess.PIPE,
                     stdout=subprocess.DEVNULL,
                     text=True,

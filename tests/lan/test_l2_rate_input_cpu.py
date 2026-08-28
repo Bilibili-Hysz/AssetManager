@@ -1,8 +1,6 @@
 """L2 tests — browse rate tier, query input budget, PBKDF2 off the loop."""
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
@@ -15,9 +13,6 @@ from AssetsManager.lan.security import (
     create_security_middleware,
 )
 from AssetsManager.lan.server import _LanServerImpl
-
-ROOT = Path(__file__).resolve().parents[2]
-
 
 @pytest.fixture
 def anyio_backend():
@@ -89,7 +84,7 @@ async def test_browse_tier_uses_its_own_budget_and_does_not_touch_general():
 @pytest.mark.anyio
 @pytest.mark.parametrize("path", ["/api/search", "/api/quicksearch"])
 async def test_search_query_over_256_characters_is_rejected(path, tmp_path):
-    from tests.lan.test_lan_api import _make_client, _make_lan_app
+    from tests.lan.support.api_helpers import _make_client, _make_lan_app
 
     app, _library, _conn = _make_lan_app(tmp_path)
     client = await _make_client(app)
@@ -106,7 +101,7 @@ async def test_search_query_over_256_characters_is_rejected(path, tmp_path):
 @pytest.mark.anyio
 @pytest.mark.parametrize("path", ["/api/search", "/api/quicksearch"])
 async def test_search_query_at_budget_is_not_rejected_by_input_gate(path, tmp_path):
-    from tests.lan.test_lan_api import _make_client, _make_lan_app
+    from tests.lan.support.api_helpers import _make_client, _make_lan_app
 
     app, _library, _conn = _make_lan_app(tmp_path)
     client = await _make_client(app)
@@ -281,21 +276,14 @@ async def test_password_token_verification_runs_through_to_thread(monkeypatch):
     response = await server._auth_middleware(request, handler)
 
     assert response is marker
-    assert len(calls) == 1
-    function, args = calls[0]
+    # The unified credential chain offloads the user-token DB lookup as well
+    # as the CPU-heavy PBKDF2 password verification (both async on workers).
+    assert len(calls) == 2
+    assert calls[0][0].__func__ is FakeAuthService.verify_user_token
+    assert calls[0][1] == ("p",)
+    function, args = calls[1]
     assert function is auth_module.verify_token
     assert args == ("p", "hash")
     principal = get_request_principal(request)
     assert principal is not None and principal.kind == "password"
 
-
-def test_access_key_pbkdf2_is_offloaded_in_middleware_and_verify_route():
-    server_source = (
-        ROOT / "AssetsManager" / "lan" / "server.py"
-    ).read_text(encoding="utf-8")
-    assert "await asyncio.to_thread(\n                verify_key" in server_source
-    assert "await asyncio.to_thread(verify_key, token, self._access_key_hash)" in server_source
-    auth_source = (
-        ROOT / "AssetsManager" / "lan" / "routes" / "auth.py"
-    ).read_text(encoding="utf-8")
-    assert "await asyncio.to_thread(auth_service.verify_key" in auth_source

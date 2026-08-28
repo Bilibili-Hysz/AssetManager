@@ -18,33 +18,11 @@ from AssetsManager.lan.routes._helpers import (
 )
 from AssetsManager.lan.server import _LanServerImpl
 
-ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
-
-
-# ── Source-level ownership locks ────────────────────────────────────
-
-
-def test_zip_executor_is_no_longer_module_global():
-    source = (
-        ROOT / "AssetsManager" / "lan" / "routes" / "_helpers.py"
-    ).read_text(encoding="utf-8")
-    assert "_zip_executor =" not in source
-    assert "ZIP_EXECUTOR_APP_KEY = web.AppKey" in source
-
-
-def test_server_owns_zip_executor_and_tracks_prewarm_thread():
-    source = (ROOT / "AssetsManager" / "lan" / "server.py").read_text(
-        encoding="utf-8")
-    assert "self._zip_executor = concurrent.futures.ThreadPoolExecutor(" in source
-    assert "app[ZIP_EXECUTOR_APP_KEY] = self._zip_executor" in source
-    assert "self._gallery_prewarm_thread = thread" in source
-    assert "self._join_gallery_prewarm()" in source
-    assert "zip_executor.shutdown(wait=False, cancel_futures=True)" in source
 
 
 # ── Zip executor resolution ─────────────────────────────────────────
@@ -128,6 +106,69 @@ async def test_build_zip_async_cleans_path_when_executor_rejects(tmp_path):
         await build_zip_async(request, [], str(zip_path))
 
     assert not zip_path.exists()
+
+
+# ── H1: stop→start must republish a live zip executor ───────────────
+
+
+def test_ensure_zip_executor_reuses_live_and_rebuilds_after_shutdown():
+    server = object.__new__(_LanServerImpl)
+    executor = concurrent.futures.ThreadPoolExecutor(
+        max_workers=1, thread_name_prefix="lan-zip"
+    )
+    server._zip_executor = executor
+    server._zip_executor_shutdown = False
+    try:
+        # A live executor is returned as-is; no rebuild happens.
+        assert server._ensure_zip_executor() is executor
+
+        executor.shutdown(wait=True)
+        server._zip_executor_shutdown = True
+        rebuilt = server._ensure_zip_executor()
+        assert rebuilt is not executor
+        assert server._zip_executor_shutdown is False
+        assert rebuilt.submit(lambda: 41 + 1).result(timeout=5) == 42
+    finally:
+        server._ensure_zip_executor().shutdown(wait=True)
+
+
+def test_shutdown_marks_zip_executor_dead_and_build_app_rebuilds_it(tmp_path):
+    """stop→start on one server instance must publish a usable executor.
+
+    Regression: ``_shutdown`` closed the server-owned zip executor but
+    ``_build_app`` republished the same dead handle, so after a settings
+    stop/start cycle every ZIP download raised RuntimeError → 500.
+    """
+    from AssetsManager.application import ApplicationBootstrap
+
+    bootstrap = ApplicationBootstrap()
+    server = None
+    try:
+        session = bootstrap.library_service.open_session(tmp_path / "library")
+        runtime = bootstrap.runtime_for(session)
+        server = _LanServerImpl(runtime=runtime)
+        original = server._zip_executor
+        assert server._app[ZIP_EXECUTOR_APP_KEY] is original
+
+        asyncio.run(server._shutdown())
+
+        assert server._zip_executor_shutdown is True
+        with pytest.raises(RuntimeError):
+            original.submit(int, "not-a-number")
+
+        # start() calls _build_app() before serving; the republished executor
+        # must be a fresh, working one.
+        server._build_app()
+        rebuilt = server._app[ZIP_EXECUTOR_APP_KEY]
+        assert rebuilt is not original
+        assert server._zip_executor_shutdown is False
+        assert rebuilt.submit(lambda: 41 + 1).result(timeout=5) == 42
+    finally:
+        if server is not None:
+            executor = getattr(server, "_zip_executor", None)
+            if executor is not None:
+                executor.shutdown(wait=False, cancel_futures=True)
+        bootstrap.library_service.close()
 
 
 # ── Gallery build loop honors _closed after pre_wait ────────────────

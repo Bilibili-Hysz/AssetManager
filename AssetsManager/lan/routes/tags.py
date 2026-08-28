@@ -1,9 +1,10 @@
 """Tag routes: /api/tags, /api/tags/remove, /api/tags/{name}."""
+import asyncio
 import logging
 
 from aiohttp import web
 
-from AssetsManager.domain.errors import DuplicateError, ValidationError
+from AssetsManager.domain.errors import DomainError, DuplicateError, ValidationError
 from AssetsManager.lan.dto import TagResponse
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
@@ -19,7 +20,7 @@ async def handle_tags(request):
     lan = get_lan(request)
     svc = get_tag_service(request)
     try:
-        tags = svc.list_tags(lan.library_root)
+        tags = await asyncio.to_thread(svc.list_tags, lan.library_root)
     except Exception:
         _log.exception("Failed to list LAN tags")
         return error_response("Failed to list tags", status=500, code="internal_error")
@@ -44,12 +45,17 @@ async def handle_create_tag(request):
         return error_response("file_path required", status=400, code="bad_request")
     try:
         key = validated_existing_key(lan, file_path)
-        svc.add_tag(lan.library_root, key, tag)
+        await asyncio.to_thread(svc.add_tag, lan.library_root, key, tag)
         return web.json_response({"ok": True})
     except web.HTTPException:
         raise
     except ValidationError:
         return error_response("Invalid tag name", status=400, code="bad_request")
+    except DomainError as exc:
+        # validated_existing_key now propagates domain path errors (escape /
+        # missing) instead of bare HTTPExceptions; they keep their centrally
+        # mapped JSON contract here (shape unification).
+        return error_response(exc)
     except Exception:
         _log.exception("Failed to create LAN tag")
         return error_response("Failed to create tag", status=500, code="internal_error")
@@ -80,12 +86,17 @@ async def handle_remove_tag(request):
 
     try:
         key = validated_existing_key(lan, file_path)
-        svc.remove_tag(lan.library_root, key, tag)
+        await asyncio.to_thread(svc.remove_tag, lan.library_root, key, tag)
         return web.json_response({"ok": True})
     except web.HTTPException:
         raise
     except ValidationError:
         return error_response("Invalid tag name", status=400, code="bad_request")
+    except DomainError as exc:
+        # validated_existing_key now propagates domain path errors (escape /
+        # missing) instead of bare HTTPExceptions; they keep their centrally
+        # mapped JSON contract here (shape unification).
+        return error_response(exc)
     except Exception:
         _log.exception("Failed to remove LAN tag")
         return error_response("Failed to remove tag", status=500, code="internal_error")
@@ -106,14 +117,14 @@ async def handle_rename_tag(request):
     except ValidationError:
         return error_response("Invalid tag name", status=400, code="bad_request")
     try:
-        svc.rename_tag(lan.library_root, old_name, new_name)
+        await asyncio.to_thread(svc.rename_tag, lan.library_root, old_name, new_name)
         return web.json_response({"ok": True})
     except ValidationError:
         return error_response("Invalid tag name", status=400, code="bad_request")
-    except DuplicateError:
-        return error_response(
-            "A tag with this name already exists", status=409, code="conflict"
-        )
+    except DuplicateError as exc:
+        # Central 409 conflict mapping — same status as the previous local
+        # mapping, body now carried by the shared contract (shape unification).
+        return error_response(exc)
     except Exception:
         _log.exception("Failed to rename LAN tag")
         return error_response("Failed to rename tag", status=500, code="internal_error")
@@ -126,7 +137,7 @@ async def handle_delete_tag(request):
     svc = get_tag_service(request)
     tag_name = request.match_info["name"]  # aiohttp decodes match_info once
     try:
-        svc.delete_tag(lan.library_root, tag_name)
+        await asyncio.to_thread(svc.delete_tag, lan.library_root, tag_name)
         return web.json_response({"ok": True})
     except Exception:
         _log.exception("Failed to delete LAN tag")

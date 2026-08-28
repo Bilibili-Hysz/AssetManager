@@ -85,6 +85,9 @@ def get_storefront_analytics_service(request: web.Request) -> StorefrontAnalytic
     session = getattr(getattr(scoped, "runtime_services", None), "session", None)
     connection_provider = cast(ConnectionProvider, provider)
     service = StorefrontAnalyticsService(connection_provider, session)
+    # Loop-thread confinement invariant: callers evaluate this getter on the
+    # LAN event loop (even when the subsequent service call is offloaded via
+    # asyncio.to_thread), so check-then-assign cannot interleave.
     lan.storefront_analytics_service = service
     return service
 

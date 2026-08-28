@@ -1,6 +1,8 @@
 """Seller order lifecycle: create, confirm, fulfill, revoke, stats, export."""
 from __future__ import annotations
 
+import asyncio
+
 from aiohttp import web
 
 from AssetsManager.lan.routes.commerce_policy import (
@@ -41,15 +43,16 @@ async def handle_shop_order(request: web.Request) -> web.Response:
             # Fail fast for already-paused stores, before accepting a potentially
             # slow request body.  Recheck after parsing so a pause that occurs
             # while the body is arriving cannot create an order from stale state.
-            if store_is_paused():
+            if await asyncio.to_thread(store_is_paused):
                 return _store_not_accepting_orders_response()
             body = await _package_function("_json_body")(request)
             owner, uid, guest, cookie_response = _package_function("_buyer_owner")(request)
-            if store_is_paused():
+            if await asyncio.to_thread(store_is_paused):
                 return _store_not_accepting_orders_response()
             # The receipt plaintext only reaches the HttpOnly cookie below.
             # Delivery quota is still enforced atomically by OrderService.
-            order, receipt = _package_function("get_commerce_services")(request).orders.create_order_with_receipt(
+            order, receipt = await asyncio.to_thread(
+                _package_function("get_commerce_services")(request).orders.create_order_with_receipt,
                 lan.library_root,
                 body,
                 require_accepting_orders=True,
@@ -70,19 +73,26 @@ async def handle_shop_order(request: web.Request) -> web.Response:
             status = request.query.get("status")
             limit = _order_limit(request)
             orders = _package_function("get_commerce_services")(request).orders
-            return web.json_response({"orders": orders.list_seller_orders(
-                lan.library_root, status=status, limit=limit
-            )})
+            seller_orders = await asyncio.to_thread(
+                orders.list_seller_orders,
+                lan.library_root,
+                status=status,
+                limit=limit,
+            )
+            return web.json_response({"orders": seller_orders})
 
         # A seller may inspect the seller DTO. Everyone else must possess the
         # receipt scoped to this exact order; missing/wrong receipts resolve as
         # 404 so numeric order identifiers cannot be enumerated.
         orders = _package_function("get_commerce_services")(request).orders
         if await _package_function("require_seller")(request) is not None:
-            order = orders.get_seller_order(lan.library_root, order_id)
+            order = await asyncio.to_thread(orders.get_seller_order, lan.library_root, order_id)
         else:
-            order = orders.get_order_by_receipt(
-                lan.library_root, order_id, _get_order_receipt(request, order_id)
+            order = await asyncio.to_thread(
+                orders.get_order_by_receipt,
+                lan.library_root,
+                order_id,
+                _get_order_receipt(request, order_id),
             )
         return web.json_response({"order": order}, headers={"Cache-Control": "no-store"})
     except Exception as exc:
@@ -102,15 +112,19 @@ async def _order_action(request: web.Request, action: str) -> web.Response:
     order_id = request.match_info["order_id"]
     try:
         if action == "confirm":
-            order = service.confirm_by_receipt(
-                lan.library_root, order_id, _get_order_receipt(request, order_id)
+            order = await asyncio.to_thread(
+                service.confirm_by_receipt,
+                lan.library_root,
+                order_id,
+                _get_order_receipt(request, order_id),
             )
             return web.json_response({"order": order}, headers={"Cache-Control": "no-store"})
         if action == "revoke":
-            order = service.revoke(lan.library_root, order_id)
+            order = await asyncio.to_thread(service.revoke, lan.library_root, order_id)
             return web.json_response({"order": order})
         body = await _package_function("_json_body")(request) if (request.can_read_body and (request.content_length or 0) > 0) else {}
-        order, token, share_claim = service.fulfill(
+        order, token, share_claim = await asyncio.to_thread(
+            service.fulfill,
             lan.library_root,
             order_id,
             max_downloads=body.get("max_downloads", 3),
@@ -144,13 +158,20 @@ async def handle_order_stats(request: web.Request) -> web.Response:
         return _error_response("Seller authentication required", status=403, code="forbidden")
     try:
         lan = _package_function("get_lan")(request)
-        stats = _package_function("get_commerce_services")(request).orders.stats(lan.library_root)
+        stats = await asyncio.to_thread(
+            _package_function("get_commerce_services")(request).orders.stats,
+            lan.library_root,
+        )
         # Analytics is additive to the established order stats contract.  A
         # temporary analytics failure must not hide valid seller revenue data.
         try:
             from AssetsManager.lan.routes.storefront_analytics import get_storefront_analytics_service
 
-            stats.update(get_storefront_analytics_service(request).stats(lan.library_root))
+            analytics = await asyncio.to_thread(
+                get_storefront_analytics_service(request).stats,
+                lan.library_root,
+            )
+            stats.update(analytics)
         except Exception:
             pass
         return web.json_response({"stats": stats})
@@ -163,7 +184,10 @@ async def handle_order_export(request: web.Request) -> web.Response:
     if await _package_function("require_seller")(request) is None:
         return _error_response("Seller authentication required", status=403, code="forbidden")
     try:
-        content = _package_function("get_commerce_services")(request).orders.export_csv(_package_function("get_lan")(request).library_root)
+        content = await asyncio.to_thread(
+            _package_function("get_commerce_services")(request).orders.export_csv,
+            _package_function("get_lan")(request).library_root,
+        )
         return web.Response(
             text=content,
             content_type="text/csv",

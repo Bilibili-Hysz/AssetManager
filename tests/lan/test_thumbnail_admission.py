@@ -9,7 +9,7 @@ from AssetsManager.application.thumbnail_service import (
 )
 from AssetsManager.lan.routes import thumbnails
 from AssetsManager.lan.routes._helpers import LAN_APP_KEY
-from tests.lan.test_lan_api import _make_client, _make_lan_app, _write_valid_png
+from tests.lan.support.api_helpers import _make_client, _make_lan_app, _write_valid_png
 
 
 def _write_webp(path, size=(256, 128)):

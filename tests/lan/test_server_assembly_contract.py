@@ -53,8 +53,11 @@ def test_build_app_registers_server_and_zip_executor_with_security_first():
     assert app[LAN_APP_KEY] is server
     assert app[ZIP_EXECUTOR_APP_KEY] is server._zip_executor
     middlewares = list(app.middlewares)
-    assert len(middlewares) == 3
+    # Shape unification: the error-contract middleware is wired as the
+    # innermost (handler-adjacent) layer on top of the previous three.
+    assert len(middlewares) == 4
     assert middlewares[0].__qualname__.endswith("security_middleware")
+    assert middlewares[-1].__qualname__.endswith("error_contract_middleware")
 
 
 def test_production_resolver_accepts_quota_minted_cookie():

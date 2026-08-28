@@ -13,18 +13,23 @@ from unittest.mock import Mock
 
 from AssetsManager.lan.principal import principal_for_request
 from AssetsManager.lan.routes._helpers import PRINCIPAL_REQUEST_KEY
+from tests.lan.support.api_helpers import (
+    _FakeLan,
+    _init_lan_schemas,
+    _legacy_server,
+    _local_ui_headers,
+    _make_client,
+    _make_lan_app,
+    _read_body,
+    _register_user_token,
+    _write_valid_png,
+)
 
 
 def set_request_auth_context(request, kind, user=None):
     request[PRINCIPAL_REQUEST_KEY] = principal_for_request(
         kind, user=user if kind == "user" else None
     )
-
-
-def _write_valid_png(path):
-    from PIL import Image
-
-    Image.new("RGB", (2, 2), color="white").save(path, format="PNG")
 
 
 def test_task4_principal_serialization_matrix_and_permissions(monkeypatch):
@@ -860,261 +865,6 @@ async def test_websocket_heartbeat_failure_cleanup_is_idempotent_and_accounted()
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
-class _FakeLan:
-    def __init__(self, library_root, db_conn, thumbnail_dir):
-        self.library_root = library_root
-        self.db_conn = db_conn
-        self.thumbnail_dir = thumbnail_dir
-        self.current_settings = {
-            "show_hidden": False,
-            "include_types": None,
-            "exclude_patterns": [],
-            "max_depth": 0,
-        }
-        self.blur_tags = set()
-        self.access_key_hash = None
-        self.password_hash = None
-        self.share_name = "Test Share"
-        self.token_secret = "test-secret"
-        self.local_ui_auth_secret = "test-secret"
-        self.endpoint_protocol = "http"
-        self.ssl_active = False
-        self._ssl_cert = None
-        self._ssl_key = None
-        self._port = 8080
-        self.broadcasts = []
-        self.performance_recorder = None
-        self.session_token = None
-        from AssetsManager.lan.ws import WebSocketManager
-        self.ws_manager = WebSocketManager()
-        from AssetsManager.lan.scanner import DirectoryScanner
-        self.scanner = DirectoryScanner(str(library_root), db_conn)
-        from AssetsManager.application import (
-            AssetService, MetadataService, ProjectService, SearchService,
-            TagService, ThumbnailService,
-        )
-        from AssetsManager.application.auth_service import AuthService
-        from AssetsManager.application.share_service import ShareService
-        from AssetsManager.lan.routes._helpers import LanScopedServices
-        provider = self.connection_for
-        self._auth_service = AuthService(db_conn, self.token_secret)
-        self._share_service = ShareService(db_conn, self.token_secret)
-        # Session-bound metadata/tag services so Asset*Changed events publish,
-        # matching the production LAN composition (bootstrap builds these via
-        # for_session; the legacy session-less construction stopped publishing
-        # when the unscoped NotesChanged/TagsChanged events were removed).
-        from types import SimpleNamespace
-
-        from AssetsManager.application.context import LibraryContext, LibrarySession
-        from AssetsManager.core.path_resolver import root_identity
-        identity = root_identity(Path(library_root), strict=False)
-        context = LibraryContext(
-            root=identity.display_path,
-            data_dir=identity.display_path / ".data",
-            thumb_dir=identity.display_path / ".thumbs",
-            db_conn=db_conn,
-            tag_store=SimpleNamespace(),
-            project_data=SimpleNamespace(),
-            root_key=identity.map_key,
-        )
-        fake_session = LibrarySession.from_context(context)
-        # Register the fixture connection as "managed" so session-bound
-        # services pass DatabaseManager.require_managed_connection_owner
-        # (production binds these services to the DI-managed connection).
-        # _make_lan_app's cleanup handler pops this registry entry.
-        import threading
-
-        from AssetsManager.core import database as database_module
-        state = database_module._ConnectionWriteState(
-            threading.RLock(),
-            library_root=str(identity.display_path),
-            library_root_key=identity.map_key,
-        )
-        with database_module._connection_locks_guard:
-            database_module._connection_locks[id(db_conn)] = state
-        self.services = LanScopedServices(
-            auth_service=self._auth_service,
-            metadata_service=MetadataService(session=fake_session),
-            project_service=ProjectService(connection_provider=provider),
-            tag_service=TagService(session=fake_session),
-            search_service=SearchService(connection_provider=provider),
-            thumbnail_service=ThumbnailService(connection_provider=provider),
-            asset_service=AssetService(),
-            share_service=self._share_service,
-        )
-
-    def broadcast(self, event_type, data=None):
-        self.broadcasts.append((event_type, data or {}))
-
-    def connection_for(self, library_root=None):
-        if library_root is not None and Path(library_root).resolve() != self.library_root.resolve():
-            raise ValueError("wrong library root")
-        return self.db_conn
-
-    def invalidate_user_cache(self):
-        pass
-
-
-def _init_lan_schemas(conn):
-    from AssetsManager.repositories.auth_repository import AuthRepository
-    from AssetsManager.repositories.share_repository import ShareRepository
-
-    AuthRepository(conn).init_tables()
-    ShareRepository(conn).init_table()
-    # tag_metadata arrives via DB migration v3; fixture databases start from
-    # the baseline _SCHEMA, so mirror the migrated shape for tag routes.
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS tag_metadata ("
-        "tag TEXT PRIMARY KEY, "
-        "color TEXT DEFAULT '', "
-        "icon TEXT DEFAULT '', "
-        "category TEXT DEFAULT '', "
-        "created_at REAL DEFAULT (strftime('%s','now'))"
-        ")"
-    )
-    conn.commit()
-
-
-def _legacy_server(**kwargs):
-    """Build a runtime-shaped LAN fixture for low-level route tests."""
-    from types import SimpleNamespace
-
-    from AssetsManager.application import (
-        AssetService,
-        AuthService,
-        MetadataService,
-        ProjectService,
-        RuntimeSharingServices,
-        SearchService,
-        ShareService,
-        TagService,
-        ThumbnailService,
-    )
-    from AssetsManager.core.directory_cache import DirectoryCache
-    from AssetsManager.lan.server import _LanServerImpl
-    from tests.lan.support.legacy_runtime_adapter import adapt_legacy_runtime
-
-    db_conn = kwargs["db_conn"]
-
-    class Session:
-        root = Path(kwargs["library_root"])
-        thumb_dir = Path(kwargs["thumbnail_dir"])
-        is_closed = False
-        event_token = "runtime-test-session"
-
-        def connection_for(self, library_root=None):
-            if (
-                library_root is not None
-                and Path(library_root).resolve() != self.root.resolve()
-            ):
-                raise ValueError("wrong library")
-            return db_conn
-
-    session = Session()
-    secret = "runtime-test-secret"
-    auth_service = AuthService(db_conn, secret)
-    share_service = ShareService(db_conn, secret)
-    bundle = SimpleNamespace(
-        session=session,
-        sharing_services=RuntimeSharingServices(
-            token_secret=secret,
-            auth_service=auth_service,
-            share_service=share_service,
-        ),
-        auth_service=auth_service,
-        metadata_service=MetadataService(connection_provider=session.connection_for),
-        project_service=ProjectService(connection_provider=session.connection_for),
-        tag_service=TagService(connection_provider=session.connection_for),
-        search_service=SearchService(connection_provider=session.connection_for),
-        thumbnail_service=ThumbnailService(connection_provider=session.connection_for),
-        asset_service=AssetService(directory_cache=DirectoryCache(db_conn)),
-        share_service=share_service,
-    )
-
-    class EventRouter:
-        def subscribe(self, _callback):
-            return SimpleNamespace(close=lambda: None)
-
-    runtime = SimpleNamespace(
-        session=session,
-        services=bundle,
-        epoch="runtime-test-epoch",
-        revision=0,
-        event_router=EventRouter(),
-    )
-    options = dict(kwargs)
-    options.pop("library_root")
-    options.pop("thumbnail_dir")
-    options.pop("db_conn")
-    runtime = adapt_legacy_runtime(runtime)
-    return _LanServerImpl(runtime=runtime, **options)
-
-
-def _make_lan_app(tmp_path, *, authenticated_context_only=False, canonical_context_only=False):
-    from aiohttp import web
-    from AssetsManager.application.auth_service import AuthService
-    from AssetsManager.core import database
-    from AssetsManager.lan.api import setup_routes
-    from AssetsManager.lan.auth import verify_auth_token
-    from AssetsManager.lan.routes._helpers import (
-        AUTH_SERVICE_APP_KEY,
-        LAN_APP_KEY,
-        get_auth_token,
-        set_request_principal,
-    )
-    from AssetsManager.lan.principal import principal_for_request
-
-    library = tmp_path / "library"
-    library.mkdir()
-
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    try:
-        conn.executescript(database._SCHEMA)
-        conn.commit()
-        _init_lan_schemas(conn)
-
-        @web.middleware
-        async def _test_auth_middleware(request, handler):
-            if authenticated_context_only:
-                user = {"username": "middleware-user", "role": "user"}
-                set_request_principal(request, principal_for_request("user", user=user))
-                return await handler(request)
-            token = get_auth_token(request)
-            if token:
-                lan = request.app[LAN_APP_KEY]
-                local_ui_secret = getattr(
-                    lan, "local_ui_auth_secret", getattr(lan, "token_secret", None)
-                )
-                if local_ui_secret and verify_auth_token(token, local_ui_secret):
-                    set_request_principal(request, principal_for_request("local_ui"))
-                else:
-                    user = request.app[AUTH_SERVICE_APP_KEY].verify_user_token(token)
-                    if user:
-                        set_request_principal(request, principal_for_request("user", user=user))
-            if request.get(PRINCIPAL_REQUEST_KEY) is None:
-                set_request_principal(request, principal_for_request("guest"))
-            return await handler(request)
-
-        app = web.Application(middlewares=[_test_auth_middleware])
-        app[LAN_APP_KEY] = _FakeLan(library, conn, tmp_path / "thumbs")
-        app[AUTH_SERVICE_APP_KEY] = AuthService(conn, "test-secret")
-        async def _close_db(_app):
-            from AssetsManager.core import database as database_module
-            with database_module._connection_locks_guard:
-                database_module._connection_locks.pop(id(conn), None)
-            conn.close()
-        app.on_cleanup.append(_close_db)
-        setup_routes(app)
-        return app, library, conn
-    except Exception:
-        conn.close()
-        raise
-
-
-async def _read_body(resp):
-    return await resp.read()
-
-
 def pytest_configure(config):
     config.addinivalue_line("markers", "anyio: run test using anyio")
 
@@ -1122,15 +872,6 @@ def pytest_configure(config):
 def pytest_generate_tests(metafunc):
     if "anyio_backend" in metafunc.fixturenames:
         metafunc.parametrize("anyio_backend", ["asyncio"])
-
-
-async def _make_client(app):
-    from aiohttp.test_utils import TestClient, TestServer
-
-    server = TestServer(app)
-    client = TestClient(server)
-    await client.start_server()
-    return client
 
 
 @pytest.mark.anyio
@@ -1292,28 +1033,6 @@ async def test_security_middleware_rate_limit_asset_prefix_is_segment_bounded():
         assert (await client.get("/assets-admin")).status == 429
     finally:
         await client.close()
-
-
-def _local_ui_headers(app):
-    from AssetsManager.lan.utils import get_auth_headers
-    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
-
-    return get_auth_headers(
-        getattr(
-            app[LAN_APP_KEY],
-            "local_ui_auth_secret",
-            app[LAN_APP_KEY].token_secret,
-        )
-    )
-
-
-async def _register_user_token(client, username="alice"):
-    resp = await client.post(
-        "/api/auth/register",
-        json={"username": username, "password": "Test@1234"},
-    )
-    assert resp.status == 200
-    return resp.cookies["lan_token"].value
 
 
 @pytest.mark.anyio
@@ -1691,72 +1410,43 @@ async def test_auth_register_route_returns_user_token(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_auth_user_login_route_returns_cookie_only_response(tmp_path):
+@pytest.mark.parametrize(
+    ("route", "payload", "mode"),
+    [
+        ("/api/auth/login", {"username": "login-user", "password": "Test@1234"}, "user"),
+        ("/api/auth/login", {"password": "Test@1234"}, "password"),
+        ("/api/auth/verify_key", {"key": "access-key"}, "access_key"),
+    ],
+    ids=["user-login", "password-login", "verify-key"],
+)
+async def test_auth_route_returns_cookie_only_response(tmp_path, route, payload, mode):
+    from AssetsManager.lan.auth import hash_key, hash_password
+    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
+
     app, library, conn = _make_lan_app(tmp_path)
+    if mode == "password":
+        app[LAN_APP_KEY].password_hash = hash_password("Test@1234")
+    elif mode == "access_key":
+        app[LAN_APP_KEY].access_key_hash = hash_key("access-key")
 
     client = await _make_client(app)
     try:
-        registered = await client.post(
-            "/api/auth/register",
-            json={"username": "login-user", "password": "Test@1234"},
-        )
-        assert registered.status == 200
-        client.session.cookie_jar.clear()
+        if mode == "user":
+            registered = await client.post(
+                "/api/auth/register",
+                json={"username": "login-user", "password": "Test@1234"},
+            )
+            assert registered.status == 200
+            client.session.cookie_jar.clear()
 
-        response = await client.post(
-            "/api/auth/login",
-            json={"username": "login-user", "password": "Test@1234"},
-        )
+        response = await client.post(route, json=payload)
 
         assert response.status == 200
         data = await response.json()
         assert "token" not in data
-        assert "password_hash" not in data["user"]
         assert response.cookies["lan_token"]["httponly"] is True
-    finally:
-        await client.close()
-
-
-@pytest.mark.anyio
-async def test_auth_password_login_route_returns_cookie_only_response(tmp_path):
-    from AssetsManager.lan.auth import hash_password
-    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
-
-    app, library, conn = _make_lan_app(tmp_path)
-    app[LAN_APP_KEY].password_hash = hash_password("Test@1234")
-
-    client = await _make_client(app)
-    try:
-        response = await client.post(
-            "/api/auth/login",
-            json={"password": "Test@1234"},
-        )
-
-        assert response.status == 200
-        assert "token" not in await response.json()
-        assert response.cookies["lan_token"]["httponly"] is True
-    finally:
-        await client.close()
-
-
-@pytest.mark.anyio
-async def test_auth_verify_key_route_returns_cookie_only_response(tmp_path):
-    from AssetsManager.lan.auth import hash_key
-    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
-
-    app, library, conn = _make_lan_app(tmp_path)
-    app[LAN_APP_KEY].access_key_hash = hash_key("access-key")
-
-    client = await _make_client(app)
-    try:
-        response = await client.post(
-            "/api/auth/verify_key",
-            json={"key": "access-key"},
-        )
-
-        assert response.status == 200
-        assert "token" not in await response.json()
-        assert response.cookies["lan_token"]["httponly"] is True
+        if mode == "user":
+            assert "password_hash" not in data["user"]
     finally:
         await client.close()
 
@@ -2877,7 +2567,15 @@ async def test_download_route_serves_file(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_download_route_serves_filename_with_literal_percent_sequence(tmp_path):
+@pytest.mark.parametrize(
+    ("filename", "url", "expected"),
+    [
+        ("a%2Fb.txt", "/api/download/a%252Fb.txt", b"literal percent"),
+        ("100%25.txt", "/api/download/100%2525.txt", b"percent file"),
+    ],
+    ids=["literal-percent-sequence", "literal-percent-sign"],
+)
+async def test_download_route_serves_filename_with_literal_percent(tmp_path, filename, url, expected):
     """A literal %xx sequence in a real filename must survive a single decode.
 
     aiohttp decodes match_info once (%%2F -> %2F); the old double unquote
@@ -2885,30 +2583,16 @@ async def test_download_route_serves_filename_with_literal_percent_sequence(tmp_
     """
     app, library, conn = _make_lan_app(tmp_path)
     (library / "a%2Fb.txt").write_text("literal percent", encoding="utf-8")
+    (library / "100%25.txt").write_text("percent file", encoding="utf-8")
     (library / "a").mkdir(exist_ok=True)
     (library / "a" / "b.txt").write_text("wrong file", encoding="utf-8")
 
     client = await _make_client(app)
     try:
         # Single-encoded %252F -> match_info gets "%2F" (the literal name).
-        resp = await client.get("/api/download/a%252Fb.txt", headers=_local_ui_headers(app))
+        resp = await client.get(url, headers=_local_ui_headers(app))
         assert resp.status == 200
-        assert await _read_body(resp) == b"literal percent"
-    finally:
-        await client.close()
-
-
-@pytest.mark.anyio
-async def test_download_route_serves_filename_with_literal_percent_sign(tmp_path):
-    """A literal ``%`` followed by non-hex characters is also preserved."""
-    app, library, conn = _make_lan_app(tmp_path)
-    (library / "100%25.txt").write_text("percent file", encoding="utf-8")
-
-    client = await _make_client(app)
-    try:
-        resp = await client.get("/api/download/100%2525.txt", headers=_local_ui_headers(app))
-        assert resp.status == 200
-        assert await _read_body(resp) == b"percent file"
+        assert await _read_body(resp) == expected
     finally:
         await client.close()
 
@@ -3142,6 +2826,35 @@ async def test_batch_download_recorder_failure_does_not_change_archive_response(
         await client.close()
 
 
+def _quota_settings(monkeypatch, **overrides):
+    """Stub ``AppSettings.instance()`` with quota defaults for route tests."""
+    from AssetsManager.lan.routes import quota
+
+    settings = {
+        "lan_quota_enabled": True,
+        "lan_quota_period": "daily",
+        "lan_quota_limit": 2,
+        "lan_quota_min_interval_seconds": 0,
+        **overrides,
+    }
+    monkeypatch.setattr(
+        quota.AppSettings,
+        "instance",
+        lambda: SimpleNamespace(get=lambda key, default=None: settings.get(key, default)),
+    )
+
+
+async def _create_share(client, app, **payload):
+    """Create a share as local_ui; assert 200 and return the share id."""
+    create = await client.post(
+        "/api/shares",
+        json=payload,
+        headers=_local_ui_headers(app),
+    )
+    assert create.status == 200
+    return (await create.json())["id"]
+
+
 @pytest.mark.anyio
 async def test_anonymous_quota_cookie_session_keeps_one_bucket_per_browser(tmp_path, monkeypatch):
     from AssetsManager.lan.routes import quota
@@ -3150,18 +2863,11 @@ async def test_anonymous_quota_cookie_session_keeps_one_bucket_per_browser(tmp_p
     app, library, conn = _make_lan_app(tmp_path)
     (library / "asset.txt").write_text("download me", encoding="utf-8")
     FreeDownloadQuotaRepository(conn).init_tables()
-    monkeypatch.setattr(
-        quota.AppSettings,
-        "instance",
-        lambda: SimpleNamespace(get=lambda key, default=None: {
-            "lan_quota_enabled": True,
-            "lan_quota_period": "daily",
-            "lan_quota_limit": 2,
-            "lan_quota_min_interval_seconds": 0,
-            "lan_guest_list": True,
-            "lan_guest_download": True,
-            "lan_guest_preview": True,
-        }.get(key, default)),
+    _quota_settings(
+        monkeypatch,
+        lan_guest_list=True,
+        lan_guest_download=True,
+        lan_guest_preview=True,
     )
 
     client = await _make_client(app)
@@ -3204,24 +2910,17 @@ async def test_anonymous_quota_cookie_session_keeps_one_bucket_per_browser(tmp_p
 
 @pytest.mark.anyio
 async def test_anonymous_quota_buckets_are_isolated_per_browser(tmp_path, monkeypatch):
-    from AssetsManager.lan.routes import quota
     from AssetsManager.repositories.free_download_quota_repository import FreeDownloadQuotaRepository
 
     app, library, conn = _make_lan_app(tmp_path)
     (library / "asset.txt").write_text("download me", encoding="utf-8")
     FreeDownloadQuotaRepository(conn).init_tables()
-    monkeypatch.setattr(
-        quota.AppSettings,
-        "instance",
-        lambda: SimpleNamespace(get=lambda key, default=None: {
-            "lan_quota_enabled": True,
-            "lan_quota_period": "daily",
-            "lan_quota_limit": 1,
-            "lan_quota_min_interval_seconds": 0,
-            "lan_guest_list": True,
-            "lan_guest_download": True,
-            "lan_guest_preview": True,
-        }.get(key, default)),
+    _quota_settings(
+        monkeypatch,
+        lan_quota_limit=1,
+        lan_guest_list=True,
+        lan_guest_download=True,
+        lan_guest_preview=True,
     )
 
     client_a = await _make_client(app)
@@ -3254,16 +2953,7 @@ async def test_authenticated_quota_request_gets_no_anonymous_cookie(tmp_path, mo
 
     app, library, conn = _make_lan_app(tmp_path)
     FreeDownloadQuotaRepository(conn).init_tables()
-    monkeypatch.setattr(
-        quota.AppSettings,
-        "instance",
-        lambda: SimpleNamespace(get=lambda key, default=None: {
-            "lan_quota_enabled": True,
-            "lan_quota_period": "daily",
-            "lan_quota_limit": 2,
-            "lan_quota_min_interval_seconds": 0,
-        }.get(key, default)),
-    )
+    _quota_settings(monkeypatch)
 
     client = await _make_client(app)
     try:
@@ -3493,14 +3183,7 @@ async def test_share_routes_create_and_download_scoped_file(tmp_path):
 
     client = await _make_client(app)
     try:
-        create = await client.post(
-            "/api/shares",
-            json={"paths": ["project"], "allow_preview": True},
-            headers=_local_ui_headers(app),
-        )
-        assert create.status == 200
-        share = await create.json()
-        share_id = share["id"]
+        share_id = await _create_share(client, app, paths=["project"], allow_preview=True)
 
         download = await client.get(f"/api/shares/{share_id}/download/project/asset.txt")
         assert download.status == 200
@@ -3679,13 +3362,7 @@ async def test_share_download_records_response_ready_and_pathless_rejection(tmp_
     app[LAN_APP_KEY].performance_recorder = recorder
     client = await _make_client(app)
     try:
-        create = await client.post(
-            "/api/shares",
-            json={"paths": ["project"], "allow_preview": True},
-            headers=_local_ui_headers(app),
-        )
-        assert create.status == 200
-        share_id = (await create.json())["id"]
+        share_id = await _create_share(client, app, paths=["project"], allow_preview=True)
 
         success = await client.get(f"/api/shares/{share_id}/download/project/asset.txt")
         assert success.status == 200
@@ -3712,45 +3389,6 @@ async def test_share_download_records_response_ready_and_pathless_rejection(tmp_
 
 
 @pytest.mark.anyio
-async def test_share_download_records_response_ready_and_scope_failure_is_pathless(tmp_path):
-    from AssetsManager.core.performance import PerformanceRecorder
-    from AssetsManager.lan.routes._helpers import LAN_APP_KEY
-
-    app, library, _conn = _make_lan_app(tmp_path)
-    folder = library / "project"
-    folder.mkdir()
-    (folder / "asset.txt").write_text("shared asset", encoding="utf-8")
-    (library / "private.txt").write_text("private", encoding="utf-8")
-    recorder = PerformanceRecorder(enabled=True)
-    app[LAN_APP_KEY].performance_recorder = recorder
-    client = await _make_client(app)
-    try:
-        create = await client.post(
-            "/api/shares", json={"paths": ["project"], "allow_preview": True}, headers=_local_ui_headers(app)
-        )
-        share_id = (await create.json())["id"]
-
-        response = await client.get(f"/api/shares/{share_id}/download/project/asset.txt")
-        assert response.status == 200
-        event = next(event for event in recorder.recent() if event.name == "lan.share_download")
-        assert event.path == str((folder / "asset.txt").resolve())
-        assert event.attributes == {
-            "outcome": "response_ready", "status": 200, "phase": "response_ready", "kind": "share_file"
-        }
-
-        recorder.clear()
-        denied = await client.get(f"/api/shares/{share_id}/download/private.txt")
-        assert denied.status == 404
-        denied_event = next(event for event in recorder.recent() if event.name == "lan.share_download")
-        assert denied_event.path is None
-        assert denied_event.attributes == {
-            "outcome": "error", "status": 404, "phase": "failed", "kind": "share_file"
-        }
-    finally:
-        await client.close()
-
-
-@pytest.mark.anyio
 async def test_share_download_recorder_failure_preserves_admission_and_counter(tmp_path, monkeypatch):
     from AssetsManager.core.performance import PerformanceRecorder
     from AssetsManager.lan.routes._helpers import LAN_APP_KEY
@@ -3761,10 +3399,7 @@ async def test_share_download_recorder_failure_preserves_admission_and_counter(t
     app[LAN_APP_KEY].performance_recorder = recorder
     client = await _make_client(app)
     try:
-        create = await client.post(
-            "/api/shares", json={"paths": ["asset.txt"], "allow_preview": True}, headers=_local_ui_headers(app)
-        )
-        share_id = (await create.json())["id"]
+        share_id = await _create_share(client, app, paths=["asset.txt"], allow_preview=True)
         monkeypatch.setattr(recorder, "record", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError()))
 
         response = await client.get(f"/api/shares/{share_id}/download/asset.txt")
@@ -3782,13 +3417,7 @@ async def test_share_download_uses_safe_rfc5987_filename_for_unicode_file(tmp_pa
 
     client = await _make_client(app)
     try:
-        create = await client.post(
-            "/api/shares",
-            json={"paths": ["报告.txt"], "allow_preview": True},
-            headers=_local_ui_headers(app),
-        )
-        assert create.status == 200
-        share_id = (await create.json())["id"]
+        share_id = await _create_share(client, app, paths=["报告.txt"], allow_preview=True)
 
         response = await client.get(f"/api/shares/{share_id}/download/%E6%8A%A5%E5%91%8A.txt")
 
@@ -3809,13 +3438,7 @@ async def test_share_download_limit_reached_is_folded_to_not_found(tmp_path):
 
     client = await _make_client(app)
     try:
-        create = await client.post(
-            "/api/shares",
-            json={"paths": ["asset.txt"], "max_downloads": 1, "allow_preview": True},
-            headers=_local_ui_headers(app),
-        )
-        assert create.status == 200
-        share_id = (await create.json())["id"]
+        share_id = await _create_share(client, app, paths=["asset.txt"], max_downloads=1, allow_preview=True)
 
         first = await client.get(f"/api/shares/{share_id}/download/asset.txt")
         assert first.status == 200
@@ -3842,13 +3465,7 @@ async def test_share_download_rejected_when_increment_fails(tmp_path, monkeypatc
 
     client = await _make_client(app)
     try:
-        create = await client.post(
-            "/api/shares",
-            json={"paths": ["asset.txt"], "allow_preview": True},
-            headers=_local_ui_headers(app),
-        )
-        assert create.status == 200
-        share_id = (await create.json())["id"]
+        share_id = await _create_share(client, app, paths=["asset.txt"], allow_preview=True)
 
         monkeypatch.setattr(ShareService, "increment_download", lambda _self, _share_id: False)
 
@@ -3873,13 +3490,7 @@ async def test_share_download_increments_counter_after_successful_response(tmp_p
 
     client = await _make_client(app)
     try:
-        create = await client.post(
-            "/api/shares",
-            json={"paths": ["asset.txt"], "max_downloads": 5, "allow_preview": True},
-            headers=_local_ui_headers(app),
-        )
-        assert create.status == 200
-        share_id = (await create.json())["id"]
+        share_id = await _create_share(client, app, paths=["asset.txt"], max_downloads=5, allow_preview=True)
 
         row_before = conn.execute("SELECT download_count FROM share_links WHERE id=?", (share_id,)).fetchone()
         assert row_before == (0,)
@@ -3902,13 +3513,7 @@ async def test_share_download_limit_prevents_download_when_reached(tmp_path):
 
     client = await _make_client(app)
     try:
-        create = await client.post(
-            "/api/shares",
-            json={"paths": ["asset.txt"], "max_downloads": 1, "allow_preview": True},
-            headers=_local_ui_headers(app),
-        )
-        assert create.status == 200
-        share_id = (await create.json())["id"]
+        share_id = await _create_share(client, app, paths=["asset.txt"], max_downloads=1, allow_preview=True)
 
         first = await client.get(f"/api/shares/{share_id}/download/asset.txt")
         assert first.status == 200
@@ -3925,29 +3530,6 @@ async def test_share_download_limit_prevents_download_when_reached(tmp_path):
 
 class TestPathTraversal:
     """Test that path traversal attacks are blocked."""
-
-    def test_path_validation_basic(self):
-        """Paths outside the library root should be rejected."""
-        from pathlib import Path
-        library_root = Path("/data/library")
-        target = Path("/data/library/../../../etc/passwd")
-        # The resolved path should be checked
-        resolved = target.resolve()
-        root_resolved = library_root.resolve()
-        assert not str(resolved).startswith(str(root_resolved) + os.sep)
-
-    def test_path_prefix_not_partial_match(self):
-        """String prefix check can be fooled by similar names."""
-        from pathlib import Path
-        root = Path("/data/proj")
-        # /data/project should NOT be under /data/proj
-        candidate = Path("/data/project/secret.txt")
-        # Correct check: is_relative_to
-        try:
-            assert not candidate.is_relative_to(root)
-        except AttributeError:
-            # Python < 3.9 fallback
-            assert not str(candidate.resolve()).startswith(str(root.resolve()) + os.sep)
 
     def test_validate_path_blocks_escape(self, tmp_path):
         from types import SimpleNamespace
@@ -3967,8 +3549,8 @@ class TestPathTraversal:
 
     def test_validated_existing_key_requires_library_path(self, tmp_path):
         from types import SimpleNamespace
-        from aiohttp import web
         from AssetsManager.lan.api import _validated_existing_key
+        from AssetsManager.lan.path_guard import PathEscapeError
 
         root = tmp_path / "library"
         root.mkdir()
@@ -3979,28 +3561,25 @@ class TestPathTraversal:
         lan = SimpleNamespace(library_root=root)
 
         assert _validated_existing_key(lan, "file.txt") == str(inside.resolve())
-        try:
+        # Shape unification: escapes now propagate as the domain error (the
+        # central mapping / error_contract_middleware serializes it as the
+        # 400 JSON contract) instead of a bare HTTPBadRequest.
+        with pytest.raises(PathEscapeError):
             _validated_existing_key(lan, str(outside))
-        except web.HTTPBadRequest:
-            pass
-        else:
-            raise AssertionError("absolute path outside the library was accepted")
 
     def test_validated_existing_key_requires_existing_file(self, tmp_path):
         from types import SimpleNamespace
-        from aiohttp import web
         from AssetsManager.lan.api import _validated_existing_key
+        from AssetsManager.lan.path_guard import MissingPathError
 
         root = tmp_path / "library"
         root.mkdir()
         lan = SimpleNamespace(library_root=root)
 
-        try:
+        # Shape unification: missing paths now propagate as the domain error
+        # (mapped to the 404 JSON contract) instead of a bare HTTPNotFound.
+        with pytest.raises(MissingPathError):
             _validated_existing_key(lan, "missing.txt")
-        except web.HTTPNotFound:
-            pass
-        else:
-            raise AssertionError("missing path was accepted")
 
 
 class TestRateLimiter:
@@ -4072,60 +3651,8 @@ class TestRateLimiter:
         assert limiter.is_allowed("10.0.0.1") is True  # expired entry pruned
 
 
-class TestAuth:
-    """Test authentication utilities."""
-
-    def test_password_hashing(self):
-        """Password should be hashed, not stored in plaintext."""
-        import hashlib
-        import secrets
-        password = "test_password"
-        salt = secrets.token_hex(8)
-        hashed = hashlib.sha256(f"{salt}:{password}".encode()).hexdigest()
-        assert hashed != password
-        assert len(hashed) == 64  # SHA-256 hex
-
-    def test_different_passwords_different_hashes(self):
-        """Different passwords should produce different hashes."""
-        import hashlib
-        salt = "fixed_salt"
-        h1 = hashlib.sha256(f"{salt}:pass1".encode()).hexdigest()
-        h2 = hashlib.sha256(f"{salt}:pass2".encode()).hexdigest()
-        assert h1 != h2
-
-    def test_token_generation(self):
-        """Generated tokens should be unique and non-empty."""
-        import secrets
-        t1 = secrets.token_urlsafe(6)
-        t2 = secrets.token_urlsafe(6)
-        assert t1 != t2
-        assert len(t1) > 0
-
-
 class TestCache:
     """Test unified cache framework."""
-
-    def test_lru_eviction(self):
-        from AssetsManager.core.cache import LRUCache
-        c = LRUCache(3)
-        c.set("a", 1)
-        c.set("b", 2)
-        c.set("c", 3)
-        assert len(c) == 3
-        c.set("d", 4)  # evicts "a"
-        assert c.get("a") is None
-        assert c.get("d") == 4
-
-    def test_lru_access_refreshes(self):
-        from AssetsManager.core.cache import LRUCache
-        c = LRUCache(3)
-        c.set("a", 1)
-        c.set("b", 2)
-        c.set("c", 3)
-        c.get("a")  # refresh "a"
-        c.set("d", 4)  # evicts "b" (least recently used)
-        assert c.get("a") == 1
-        assert c.get("b") is None
 
     def test_ttl_expiry(self):
         import time
@@ -4146,27 +3673,6 @@ class TestCache:
         assert "key" in c
         c.invalidate("key")
         assert "key" not in c
-
-
-class TestSingleton:
-    """Test thread-safe singleton pattern."""
-
-    def test_singleton_returns_same_instance(self):
-        from AssetsManager.core.singleton import ThreadSafeSingleton
-        class Dummy:
-            _singleton_instance = None
-        inst1 = ThreadSafeSingleton.get(Dummy)
-        inst2 = ThreadSafeSingleton.get(Dummy)
-        assert inst1 is inst2
-
-    def test_singleton_reset(self):
-        from AssetsManager.core.singleton import ThreadSafeSingleton
-        class Dummy2:
-            _singleton_instance = None
-        inst1 = ThreadSafeSingleton.get(Dummy2)
-        ThreadSafeSingleton.reset(Dummy2)
-        inst2 = ThreadSafeSingleton.get(Dummy2)
-        assert inst1 is not inst2
 
 
 class TestJsonStore:
@@ -4253,13 +3759,7 @@ class TestShareSecurity:
 
         client = await _make_client(app)
         try:
-            create = await client.post(
-                "/api/shares",
-                json={"paths": ["public.txt"], "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert create.status == 200
-            share_id = (await create.json())["id"]
+            share_id = await _create_share(client, app, paths=["public.txt"], allow_preview=True)
 
             traversal = await client.get(f"/api/shares/{share_id}/download/../../../secret/data.txt")
             assert traversal.status in (403, 404)
@@ -4277,13 +3777,7 @@ class TestShareSecurity:
 
         client = await _make_client(app)
         try:
-            create = await client.post(
-                "/api/shares",
-                json={"paths": ["project"], "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert create.status == 200
-            share_id = (await create.json())["id"]
+            share_id = await _create_share(client, app, paths=["project"], allow_preview=True)
 
             # Legitimate access works
             ok = await client.get(f"/api/shares/{share_id}/download/project/data.txt")
@@ -4302,13 +3796,7 @@ class TestShareSecurity:
 
         client = await _make_client(app)
         try:
-            create = await client.post(
-                "/api/shares",
-                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert create.status == 200
-            share_id = (await create.json())["id"]
+            share_id = await _create_share(client, app, paths=["file.txt"], password="secret123", allow_preview=True)
 
             verify = await client.post(f"/api/shares/{share_id}/verify", json={"password": "secret123"})
             assert verify.status == 200
@@ -4319,51 +3807,13 @@ class TestShareSecurity:
             await client.close()
 
     @pytest.mark.anyio
-    async def test_share_verify_sets_scoped_http_only_cookie_without_token(self, tmp_path):
-        app, library, conn = _make_lan_app(tmp_path)
-        (library / "file.txt").write_text("content", encoding="utf-8")
-
-        client = await _make_client(app)
-        try:
-            create = await client.post(
-                "/api/shares",
-                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert create.status == 200
-            share_id = (await create.json())["id"]
-
-            verify = await client.post(f"/api/shares/{share_id}/verify", json={"password": "secret123"})
-            assert verify.status == 200
-            data = await verify.json()
-            assert "token" not in data
-            cookie = verify.headers["Set-Cookie"]
-            assert "HttpOnly" in cookie
-            assert f"Path=/api/shares/{share_id}" in cookie
-
-            info = await client.get(f"/api/shares/{share_id}/info")
-            assert info.status == 200
-            assert (await info.json())["paths"] == ["file.txt"]
-
-            download = await client.get(f"/api/shares/{share_id}/download/file.txt")
-            assert download.status == 200
-        finally:
-            await client.close()
-
-    @pytest.mark.anyio
     async def test_share_verify_api_client_header_returns_usable_bearer_token(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
         _write_valid_png(library / "image.png")
 
         client = await _make_client(app)
         try:
-            create = await client.post(
-                "/api/shares",
-                json={"paths": ["image.png"], "password": "secret123", "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert create.status == 200
-            share_id = (await create.json())["id"]
+            share_id = await _create_share(client, app, paths=["image.png"], password="secret123", allow_preview=True)
 
             verify = await client.post(
                 f"/api/shares/{share_id}/verify",
@@ -4398,13 +3848,7 @@ class TestShareSecurity:
 
         client = await _make_client(app)
         try:
-            create = await client.post(
-                "/api/shares",
-                json={"paths": ["image.png"], "password": "secret123", "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert create.status == 200
-            share_id = (await create.json())["id"]
+            share_id = await _create_share(client, app, paths=["image.png"], password="secret123", allow_preview=True)
 
             preview_no_token = await client.get(f"/api/shares/{share_id}/preview/image.png")
             assert preview_no_token.status == 401
@@ -4430,13 +3874,7 @@ class TestShareSecurity:
 
         client = await _make_client(app)
         try:
-            create = await client.post(
-                "/api/shares",
-                json={"paths": ["file.txt"], "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert create.status == 200
-            share_id = (await create.json())["id"]
+            share_id = await _create_share(client, app, paths=["file.txt"], allow_preview=True)
 
             info = await client.get(f"/api/shares/{share_id}/info")
             assert info.status == 200
@@ -4579,13 +4017,7 @@ class TestMiddlewarePrecedenceRegression:
 
         client = await _make_client(app)
         try:
-            create = await client.post(
-                "/api/shares",
-                json={"paths": ["file.txt"], "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert create.status == 200
-            share_id = (await create.json())["id"]
+            share_id = await _create_share(client, app, paths=["file.txt"], allow_preview=True)
 
             info = await client.get(f"/api/shares/{share_id}/info")
             assert info.status == 200
@@ -4763,13 +4195,7 @@ class TestPasswordHashLeakRegression:
 
         client = await _make_client(app)
         try:
-            create = await client.post(
-                "/api/shares",
-                json={"paths": ["secret.txt"], "password": "secret123", "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert create.status == 200
-            share_id = (await create.json())["id"]
+            share_id = await _create_share(client, app, paths=["secret.txt"], password="secret123", allow_preview=True)
 
             info = await client.get(f"/api/shares/{share_id}/info")
             assert info.status == 200
@@ -4857,70 +4283,43 @@ def test_file_response_cleanup_runs_when_write_fails(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_batch_download_rejects_over_size_limit(tmp_path):
-    app, library, conn = _make_lan_app(tmp_path)
-    from AssetsManager.lan.routes.downloads import MAX_BATCH_DOWNLOAD_BYTES
-    # Create a file larger than the limit
-    big = library / "big.bin"
-    big.write_bytes(b"x" * (MAX_BATCH_DOWNLOAD_BYTES + 1))
-    small = library / "small.txt"
-    small.write_text("ok", encoding="utf-8")
+@pytest.mark.parametrize(
+    ("method", "url", "body", "patch_limit"),
+    [
+        ("post", "/api/download/batch", {"paths": ["big.bin", "small.txt"]}, None),
+        ("get", "/api/download/folder", None, 10),
+        ("post", "/api/download/batch", {"paths": ["folder"]}, 10),
+    ],
+    ids=["batch-real-limit", "folder-patched-limit", "batch-folder-patched-limit"],
+)
+async def test_download_rejects_over_size_limit(tmp_path, monkeypatch, method, url, body, patch_limit):
+    from AssetsManager.lan.routes import downloads
 
+    app, library, conn = _make_lan_app(tmp_path)
+    if patch_limit is None:
+        # Exercise the real default limit with an oversized file.
+        big = library / "big.bin"
+        big.write_bytes(b"x" * (downloads.MAX_BATCH_DOWNLOAD_BYTES + 1))
+        small = library / "small.txt"
+        small.write_text("ok", encoding="utf-8")
+    else:
+        monkeypatch.setattr(downloads, "MAX_BATCH_DOWNLOAD_BYTES", patch_limit)
+        folder = library / "folder"
+        folder.mkdir()
+        (folder / "one.txt").write_bytes(b"123456")
+        (folder / "two.txt").write_bytes(b"abcdef")
+
+    limit = patch_limit if patch_limit is not None else downloads.MAX_BATCH_DOWNLOAD_BYTES
     client = await _make_client(app)
     try:
-        resp = await client.post(
-            "/api/download/batch",
-            json={"paths": ["big.bin", "small.txt"]},
-            headers=_local_ui_headers(app),
-        )
+        if method == "get":
+            resp = await client.get(url, headers=_local_ui_headers(app))
+        else:
+            resp = await client.post(url, json=body, headers=_local_ui_headers(app))
         assert resp.status == 413
         data = await resp.json()
         assert "Total size exceeds" in data["error"]
-        assert data["total_bytes"] > MAX_BATCH_DOWNLOAD_BYTES
-    finally:
-        await client.close()
-
-
-@pytest.mark.anyio
-async def test_directory_download_rejects_over_size_limit(tmp_path, monkeypatch):
-    from AssetsManager.lan.routes import downloads
-
-    app, library, conn = _make_lan_app(tmp_path)
-    folder = library / "folder"
-    folder.mkdir()
-    (folder / "one.txt").write_bytes(b"123456")
-    (folder / "two.txt").write_bytes(b"abcdef")
-    monkeypatch.setattr(downloads, "MAX_BATCH_DOWNLOAD_BYTES", 10)
-
-    client = await _make_client(app)
-    try:
-        resp = await client.get("/api/download/folder", headers=_local_ui_headers(app))
-        assert resp.status == 413
-    finally:
-        await client.close()
-
-
-@pytest.mark.anyio
-async def test_batch_directory_download_rejects_over_size_limit(tmp_path, monkeypatch):
-    from AssetsManager.lan.routes import downloads
-
-    app, library, conn = _make_lan_app(tmp_path)
-    folder = library / "folder"
-    folder.mkdir()
-    (folder / "one.txt").write_bytes(b"123456")
-    (folder / "two.txt").write_bytes(b"abcdef")
-    monkeypatch.setattr(downloads, "MAX_BATCH_DOWNLOAD_BYTES", 10)
-
-    client = await _make_client(app)
-    try:
-        resp = await client.post(
-            "/api/download/batch",
-            json={"paths": ["folder"]},
-            headers=_local_ui_headers(app),
-        )
-        assert resp.status == 413
-        data = await resp.json()
-        assert data["total_bytes"] > downloads.MAX_BATCH_DOWNLOAD_BYTES
+        assert data["total_bytes"] > limit
     finally:
         await client.close()
 
@@ -5076,25 +4475,18 @@ class TestThumbnailSecurity:
             await client.close()
 
     @pytest.mark.anyio
-    async def test_thumbnail_max_size_capped_at_2048(self, tmp_path):
+    @pytest.mark.parametrize(
+        "size_query",
+        ["999999999", "notanumber"],
+        ids=["huge-capped-at-2048", "invalid-falls-back-to-default"],
+    )
+    async def test_thumbnail_size_is_sanitised(self, tmp_path, size_query):
         app, library, conn = _make_lan_app(tmp_path)
         (library / "image.png").write_bytes(b"\x89PNG" + b"\x00" * 100)
 
         client = await _make_client(app)
         try:
-            resp = await client.get("/api/thumbnails/image.png?size=999999999")
-            assert resp.status in (200, 404)
-        finally:
-            await client.close()
-
-    @pytest.mark.anyio
-    async def test_thumbnail_invalid_size_falls_back_to_default(self, tmp_path):
-        app, library, conn = _make_lan_app(tmp_path)
-        (library / "image.png").write_bytes(b"\x89PNG" + b"\x00" * 100)
-
-        client = await _make_client(app)
-        try:
-            resp = await client.get("/api/thumbnails/image.png?size=notanumber")
+            resp = await client.get(f"/api/thumbnails/image.png?size={size_query}")
             assert resp.status in (200, 404)
         finally:
             await client.close()
@@ -5317,19 +4709,15 @@ class TestP0ShareCookieAuthentication:
 
         client = await _make_client(app)
         try:
-            create = await client.post(
-                "/api/shares",
-                json={"paths": ["image.png"], "password": "secret123", "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert create.status == 200
-            share_id = (await create.json())["id"]
+            share_id = await _create_share(client, app, paths=["image.png"], password="secret123", allow_preview=True)
 
             absent = await client.get(f"/api/shares/{share_id}/preview/image.png")
             assert absent.status == 401
 
             verify = await client.post(f"/api/shares/{share_id}/verify", json={"password": "secret123"})
             assert verify.status == 200
+            data = await verify.json()
+            assert "token" not in data
             cookie = verify.cookies["share_token"]
             assert cookie["httponly"]
             assert cookie["samesite"] == "Lax"
@@ -5345,18 +4733,20 @@ class TestP0ShareCookieAuthentication:
             download = await client.get(f"/api/shares/{share_id}/download/image.png", headers={"Cookie": f"share_token={token}"})
             assert download.status == 200
 
-            other_create = await client.post(
-                "/api/shares",
-                json={"paths": ["image.png"], "password": "secret123", "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert other_create.status == 200
-            other_id = (await other_create.json())["id"]
+            other_id = await _create_share(client, app, paths=["image.png"], password="secret123", allow_preview=True)
             mismatched = await client.get(
                 f"/api/shares/{other_id}/preview/image.png",
                 headers={"Cookie": f"share_token={token}"},
             )
             assert mismatched.status == 401
+
+            # A Bearer header can never substitute for the scoped share cookie.
+            client.session.cookie_jar.clear()
+            bearer = await client.get(
+                f"/api/shares/{share_id}/download/image.png",
+                headers={"Authorization": "Bearer not-a-share-cookie"},
+            )
+            assert bearer.status == 401
         finally:
             await client.close()
 
@@ -5371,9 +4761,7 @@ class TestP0ShareCookieAuthentication:
             payload = {"paths": ["file.txt"], "allow_preview": True}
             if password is not None:
                 payload["password"] = password
-            create = await client.post("/api/shares", json=payload, headers=_local_ui_headers(app))
-            assert create.status == 200
-            share_id = (await create.json())["id"]
+            share_id = await _create_share(client, app, **payload)
 
             verify = await client.post(
                 f"/api/shares/{share_id}/verify", json={"password": password or ""}
@@ -5387,63 +4775,18 @@ class TestP0ShareCookieAuthentication:
             await client.close()
 
     @pytest.mark.anyio
-    async def test_browser_share_verify_returns_cookie_only(self, tmp_path):
-        app, library, conn = _make_lan_app(tmp_path)
-        (library / "file.txt").write_text("content", encoding="utf-8")
-
-        client = await _make_client(app)
-        try:
-            create = await client.post(
-                "/api/shares",
-                json={"paths": ["file.txt"], "password": "secret123"},
-                headers=_local_ui_headers(app),
-            )
-            assert create.status == 200
-            share_id = (await create.json())["id"]
-
-            verify = await client.post(
-                f"/api/shares/{share_id}/verify",
-                json={"password": "secret123"},
-            )
-            assert verify.status == 200
-            data = await verify.json()
-            assert "token" not in data
-            assert verify.cookies["share_token"]["httponly"]
-
-            client.session.cookie_jar.clear()
-            download = await client.get(
-                f"/api/shares/{share_id}/download/file.txt",
-                headers={"Authorization": "Bearer not-a-share-cookie"},
-            )
-            assert download.status == 401
-        finally:
-            await client.close()
-
-    @pytest.mark.anyio
     async def test_password_share_download_requires_matching_share_cookie(self, tmp_path):
         app, library, conn = _make_lan_app(tmp_path)
         (library / "file.txt").write_text("protected", encoding="utf-8")
 
         client = await _make_client(app)
         try:
-            create = await client.post(
-                "/api/shares",
-                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert create.status == 200
-            share_id = (await create.json())["id"]
+            share_id = await _create_share(client, app, paths=["file.txt"], password="secret123", allow_preview=True)
 
             absent = await client.get(f"/api/shares/{share_id}/download/file.txt")
             assert absent.status == 401
 
-            other_create = await client.post(
-                "/api/shares",
-                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert other_create.status == 200
-            other_id = (await other_create.json())["id"]
+            other_id = await _create_share(client, app, paths=["file.txt"], password="secret123", allow_preview=True)
             verify_other = await client.post(
                 f"/api/shares/{other_id}/verify", json={"password": "secret123"}
             )
@@ -5467,13 +4810,7 @@ class TestP0ShareCookieAuthentication:
 
         client = await _make_client(app)
         try:
-            create = await client.post(
-                "/api/shares",
-                json={"paths": ["image.png"], "password": "secret123", "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert create.status == 200
-            share_id = (await create.json())["id"]
+            share_id = await _create_share(client, app, paths=["image.png"], password="secret123", allow_preview=True)
 
             verified = await client.post(
                 f"/api/shares/{share_id}/verify", json={"password": "secret123"}
@@ -5508,13 +4845,7 @@ class TestP0ShareCookieAuthentication:
 
         client = await _make_client(app)
         try:
-            create = await client.post(
-                "/api/shares",
-                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert create.status == 200
-            share_id = (await create.json())["id"]
+            share_id = await _create_share(client, app, paths=["file.txt"], password="secret123", allow_preview=True)
 
             # Four failures are still allowed.
             for _ in range(4):
@@ -5556,13 +4887,7 @@ class TestP0ShareCookieAuthentication:
 
         client = await _make_client(app)
         try:
-            create = await client.post(
-                "/api/shares",
-                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert create.status == 200
-            share_id = (await create.json())["id"]
+            share_id = await _create_share(client, app, paths=["file.txt"], password="secret123", allow_preview=True)
             share_svc = app[LAN_APP_KEY].services.share_service
 
             for _ in range(4):
@@ -5595,13 +4920,7 @@ class TestP0ShareCookieAuthentication:
 
         client = await _make_client(app)
         try:
-            create = await client.post(
-                "/api/shares",
-                json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},
-                headers=_local_ui_headers(app),
-            )
-            assert create.status == 200
-            share_id = (await create.json())["id"]
+            share_id = await _create_share(client, app, paths=["file.txt"], password="secret123", allow_preview=True)
             other = await client.post(
                 "/api/shares",
                 json={"paths": ["file.txt"], "password": "secret123", "allow_preview": True},

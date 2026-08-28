@@ -9,6 +9,7 @@ from aiohttp import web
 
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import build_zip_async, get_lan, require_permission, sanitize_filename, validate_path
+from AssetsManager.lan.routes._telemetry import record_route_event
 from AssetsManager.lan.safe_open import SafeOpenError, read_safe_file
 from AssetsManager.lan.routes.quota import (
     apply_free_quota_headers,
@@ -169,6 +170,14 @@ async def handle_download(request):
         target = validate_path(lan, rel_path)
 
         if target.is_file():
+            # Read-only preflight runs before the full in-memory read: an
+            # exhausted identity must not pay for a complete file read it can
+            # never receive (batch/directory downloads already gate first).
+            preflight = _preflight_exhausted_response(request)
+            if preflight is not None:
+                status = 429
+                return preflight
+
             try:
                 body, _identity = await asyncio.to_thread(
                     read_safe_file, getattr(lan, "library_root", target.parent), target,
@@ -176,11 +185,6 @@ async def handle_download(request):
             except (SafeOpenError, OSError, ValueError):
                 status = 404
                 return error_response("File not found", status=status, code="not_found")
-
-            preflight = _preflight_exhausted_response(request)
-            if preflight is not None:
-                status = 429
-                return preflight
 
             response = web.Response(
                 body=body,
@@ -274,7 +278,28 @@ async def handle_download(request):
         status = exc.status
         raise
     finally:
-        await _record_download_route(lan, started, response_path, outcome, status, kind)
+        # Successful downloads land in the activity log off the event loop;
+        # ordering and swallow-on-error semantics live inside ActivityLog.add.
+        services = getattr(lan, "services", None)
+        activity_log = getattr(services, "activity_log", None)
+        if activity_log is not None and outcome == "response_ready":
+            await asyncio.to_thread(
+                activity_log.add,
+                None,
+                "download",
+                str(response_path or kind),
+                ip="unknown",
+            )
+        record_route_event(
+            lan,
+            "lan.download",
+            started=started,
+            status=status,
+            outcome=outcome,
+            path=response_path,
+            kind=kind,
+            phase="response_ready" if outcome == "response_ready" else "failed",
+        )
 
 
 async def handle_batch_download(request):
@@ -388,57 +413,12 @@ async def handle_batch_download(request):
         status = exc.status
         raise
     finally:
-        _record_batch_download_route(lan, started, outcome, status, target_count)
-
-
-async def _record_download_route(lan, started: float, response_path, outcome: str, status: int, kind: str) -> None:
-    services = getattr(lan, "services", None)
-    activity_log = getattr(services, "activity_log", None)
-    if activity_log is not None and outcome == "response_ready":
-        await asyncio.to_thread(
-            activity_log.add,
-            None,
-            "download",
-            str(response_path or kind),
-            ip="unknown",
-        )
-    recorder = getattr(lan, "performance_recorder", None)
-    if recorder is None or not recorder.enabled:
-        return
-    try:
-        recorder.record(
-            "lan.download",
-            (perf_counter() - started) * 1000,
-            session_token=getattr(lan, "session_token", None),
-            path=str(response_path) if response_path is not None else None,
-            attributes={
-                "outcome": outcome,
-                "status": status,
-                "phase": "response_ready" if outcome == "response_ready" else "failed",
-                "kind": kind,
-            },
-        )
-    except Exception:
-        # Diagnostics must not alter response construction or transfer semantics.
-        pass
-
-
-def _record_batch_download_route(lan, started: float, outcome: str, status: int, target_count: int) -> None:
-    recorder = getattr(lan, "performance_recorder", None)
-    if recorder is None or not recorder.enabled:
-        return
-    try:
-        recorder.record(
+        record_route_event(
+            lan,
             "lan.download_batch",
-            (perf_counter() - started) * 1000,
-            session_token=getattr(lan, "session_token", None),
-            attributes={
-                "outcome": outcome,
-                "status": status,
-                "phase": "response_ready" if outcome == "response_ready" else "failed",
-                "target_count": target_count,
-            },
+            started=started,
+            status=status,
+            outcome=outcome,
+            target_count=target_count,
+            phase="response_ready" if outcome == "response_ready" else "failed",
         )
-    except Exception:
-        # Diagnostics must not alter response construction or transfer semantics.
-        pass

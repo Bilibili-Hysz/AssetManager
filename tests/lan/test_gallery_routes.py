@@ -9,7 +9,7 @@ from PIL import Image
 
 from AssetsManager.application.gallery_service import GalleryService
 from AssetsManager.lan.routes._helpers import LAN_APP_KEY
-from tests.lan.test_lan_api import _make_client, _make_lan_app
+from tests.lan.support.api_helpers import _make_client, _make_lan_app
 
 
 def _image(path, size=(32, 16)):

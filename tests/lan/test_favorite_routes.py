@@ -10,7 +10,7 @@ from AssetsManager.application.gallery_service import GalleryService
 from AssetsManager.lan.routes._helpers import AUTH_SERVICE_APP_KEY, LAN_APP_KEY
 from AssetsManager.repositories.auth_repository import AuthRepository
 from AssetsManager.repositories.favorite_repository import FavoriteRepository
-from tests.lan.test_lan_api import _make_client, _make_lan_app
+from tests.lan.support.api_helpers import _make_client, _make_lan_app
 
 
 @pytest.fixture

@@ -88,6 +88,9 @@ def get_commerce_services(request: web.Request) -> CommerceServices:
     )
     # LAN instances are mutable lifecycle adapters; caching avoids constructing
     # four service wrappers for every request without changing frozen snapshots.
+    # Check-then-assign is safe because every caller invokes this helper
+    # synchronously on the LAN event-loop thread with no await in between;
+    # a worker-thread caller would need a lock.
     lan.commerce_services = services
     return services
 

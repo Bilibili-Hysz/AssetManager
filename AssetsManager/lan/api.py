@@ -180,6 +180,16 @@ def setup_routes(app: web.Application):
     _PUBLIC_AUTH = ("public_auth",)
     _PUBLIC_SIGNAL = ("public_signal",)
     _SHARE_VERIFY = ("share_verify",)
+    # Server operational metrics are admin-level: they leak connection /
+    # request volumes and uptime to any principal that can read them.
+    _SETTINGS = ("settings",)
+    # Sensitive read surfaces name the capability their data plane requires
+    # so the middleware enforces what the handler-level admin guards already
+    # do (defense in depth): the user / invite / activity / online-users
+    # listings expose account and operator data, and tunnel status leaks the
+    # operator's public URL. Rate-limit tiers are unchanged (golden contract).
+    _SETTINGS_BROWSE = RoutePolicy(rate_limit="browse", capabilities=_SETTINGS)
+    _ADMIN_USER_BROWSE = RoutePolicy(rate_limit="browse", capabilities=_ADMIN_USERS)
 
     _PREVIEW_WRITE_SKIP = RoutePolicy(rate_limit="skip", capabilities=_PREVIEW)
     _DOWNLOAD_WRITE = RoutePolicy(capabilities=_DOWNLOAD)
@@ -242,9 +252,12 @@ def setup_routes(app: web.Application):
     _add(app, "GET", "/browse", handle_browse_page, policy=_PUBLIC)
     _add(app, "GET", "/detail", handle_detail_page, policy=_PUBLIC)
     _add(app, "GET", "/login", handle_login_page, policy=_PUBLIC)
-    _add(app, "GET", "/gallery", handle_gallery_page)
-    _add(app, "GET", "/gallery/collection", handle_gallery_collection_page)
-    _add(app, "GET", "/gallery/favorites", handle_gallery_favorites_page)
+    # Gallery pages are public SPA shells like /browse: the page loads for
+    # anonymous visitors and its /api/gallery calls still enforce auth and
+    # guest capabilities (fixes the /browse vs /gallery asymmetry).
+    _add(app, "GET", "/gallery", handle_gallery_page, policy=_PUBLIC)
+    _add(app, "GET", "/gallery/collection", handle_gallery_collection_page, policy=_PUBLIC)
+    _add(app, "GET", "/gallery/favorites", handle_gallery_favorites_page, policy=_PUBLIC)
     _add(app, "GET", "/storefront", handle_storefront_page, policy=_PUBLIC)
     _add(app, "GET", "/storefront/products", handle_storefront_page, policy=_PUBLIC)
     _add(app, "GET", "/storefront/cart", handle_storefront_page, policy=_PUBLIC)
@@ -308,16 +321,16 @@ def setup_routes(app: web.Application):
     _add(app, "POST", "/api/auth/verify_key", handle_verify_key, policy=_PUBLIC_AUTH_STRICT_CAP)
     _add(app, "POST", "/api/auth/logout", handle_logout, policy=_AUTH_BOOTSTRAP)
     _add(app, "GET", "/api/auth/me", handle_me)
-    _add(app, "GET", "/api/users", handle_users)
+    _add(app, "GET", "/api/users", handle_users, policy=_ADMIN_USER)
     _add(app, "POST", "/api/users/{id}/toggle", handle_toggle_user, policy=_ADMIN_USER)
     _add(app, "PATCH", "/api/users/{username}", handle_update_user, policy=_ADMIN_USER)
-    _add(app, "GET", "/api/invites", handle_invites)
+    _add(app, "GET", "/api/invites", handle_invites, policy=_ADMIN_USER)
     _add(app, "POST", "/api/invites", handle_create_invite, policy=_ADMIN_USER)
     _add(app, "POST", "/api/invites/{code}/revoke", handle_revoke_invite, policy=_ADMIN_USER)
-    _add(app, "GET", "/api/activity", handle_activity, policy=_BROWSE_RATE)
-    _add(app, "GET", "/api/online-users", handle_online_users)
-    _add(app, "GET", "/api/tunnel/status", handle_tunnel_status, policy=_BROWSE_RATE)
-    _add(app, "GET", "/api/stats", handle_stats, policy=_SKIP)
+    _add(app, "GET", "/api/activity", handle_activity, policy=_ADMIN_USER_BROWSE)
+    _add(app, "GET", "/api/online-users", handle_online_users, policy=_ADMIN_USER)
+    _add(app, "GET", "/api/tunnel/status", handle_tunnel_status, policy=_SETTINGS_BROWSE)
+    _add(app, "GET", "/api/stats", handle_stats, policy=RoutePolicy(rate_limit="skip", capabilities=_SETTINGS))
     _add(app, "POST", "/api/shares", handle_create_share, policy=_LINK_WRITE)
     _add(app, "GET", "/api/shares", handle_list_shares)
     _add(app, "DELETE", "/api/shares/{id}", handle_delete_share, policy=_LINK_WRITE)

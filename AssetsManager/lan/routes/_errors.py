@@ -30,6 +30,7 @@ from AssetsManager.application.shop_authorization import (
 )
 from AssetsManager.domain.errors import (
     DeliveryPreparationError,
+    DuplicateError,
     IdempotencyKeyReusedError,
     MissingPathError,
     NotFoundError,
@@ -195,6 +196,9 @@ def _mapped(
         payload["field"] = "items"
         payload["limit"] = exc.limit
         status = 409
+    elif isinstance(exc, DuplicateError):
+        payload["code"] = "conflict"
+        status = 409
     elif isinstance(exc, IdempotencyKeyReusedError):
         payload["code"] = exc.code
         status = 409
@@ -223,3 +227,80 @@ def _mapped(
         payload["code"] = "internal_error"
         headers = {"Cache-Control": "no-store", **(headers or {})}
     return web.json_response(payload, status=status, headers=headers)
+
+
+# Codes for bare aiohttp HTTPExceptions re-wrapped by the middleware below.
+# Status and message stay authoritative; the code only gives the WebUI a
+# stable machine-readable key for the common statuses this codebase raises.
+_HTTP_ERROR_CODES = {
+    400: "bad_request",
+    401: "unauthorized",
+    403: "forbidden",
+    404: "not_found",
+    405: "method_not_allowed",
+    410: "gone",
+    413: "payload_too_large",
+    415: "unsupported_media_type",
+    416: "range_not_satisfiable",
+    429: "rate_limited",
+    503: "service_unavailable",
+}
+
+
+@web.middleware
+async def error_contract_middleware(request, handler):
+    """Catch-all that keeps every LAN error inside the JSON error contract.
+
+    Placement is the innermost server middleware (after security, metrics and
+    auth, immediately around the handler). Rationale:
+
+    - The security middleware owns its own failure handling and must stay
+      outside this layer; auth denials are already JSON ``error_response``
+      payloads produced before the handler runs.
+    - This layer therefore only needs to normalize what escapes a route
+      handler, which is exactly what an innermost position sees.
+
+    Three escape shapes exist:
+
+    - Domain exceptions are re-serialized through :func:`error_response`, so
+      propagated ``PathEscapeError`` / ``MissingPathError`` / ... keep their
+      mapped 4xx contract while unknown failures collapse into the no-leak
+      500 ``internal_error`` contract (logged server-side by the mapping).
+    - Bare aiohttp HTTPExceptions (router 404/405, ``validate_path`` 400s)
+      keep their status and headers but are re-wrapped from aiohttp's default
+      ``text/plain`` body into the JSON contract. Redirects (3xx) and bodies
+      that already carry JSON pass through untouched.
+    """
+    try:
+        return await handler(request)
+    except web.HTTPException as exc:
+        if exc.status < 400:
+            # Redirects and other non-error HTTP signals keep aiohttp's own
+            # handling (re-raised, not returned, per aiohttp guidance).
+            raise
+        content_type = getattr(exc, "content_type", "") or ""
+        if "json" in content_type:
+            return exc
+        headers = {
+            key: value
+            for key, value in (exc.headers or {}).items()
+            if key.lower() != "content-type"
+        }
+        # validate_path raises a bare 400 for the same escape condition the
+        # domain mapping covers; keep the canonical code so the WebUI sees
+        # one contract for one condition regardless of the raise site.
+        if exc.status == 400 and exc.reason == "Path escape detected":
+            code = "path_escape_detected"
+        else:
+            code = _HTTP_ERROR_CODES.get(exc.status, f"http_error_{exc.status}")
+        return error_response(
+            exc.reason or f"HTTP {exc.status}",
+            status=exc.status,
+            code=code,
+            headers=headers or None,
+        )
+    except Exception as exc:
+        # Domain errors keep their own mapped shape; anything unexpected is
+        # logged inside error_response and answered with the generic no-leak
+        # 500 contract.
+        return error_response(exc)

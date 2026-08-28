@@ -4,7 +4,7 @@ import pytest
 from PIL import Image
 
 from AssetsManager.lan.routes._helpers import LAN_APP_KEY
-from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app
+from tests.lan.support.api_helpers import _local_ui_headers, _make_client, _make_lan_app
 
 
 def _image(path, color=(50, 90, 150), size=(32, 16)):

@@ -69,7 +69,7 @@ class ShareManager:
               password: str | None = None, access_key: str | None = None,
               auth_mode: str | None = None,
               share_name: str = "AssetManager",
-              rate_limit: int = 1000, blocked_ips: list[str] | None = None,
+              rate_limit: int = 100, blocked_ips: list[str] | None = None,
               blur_tags: list[str] | None = None,
               ssl_cert: str | None = None, ssl_key: str | None = None,
               runtime=None, preflight=None) -> dict:

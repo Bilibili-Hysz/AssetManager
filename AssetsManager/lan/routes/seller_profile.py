@@ -1,6 +1,8 @@
 """Seller-gated HTTP handlers for the per-library seller profile."""
 from __future__ import annotations
 
+import asyncio
+
 from typing import Any, cast
 
 from aiohttp import web
@@ -34,6 +36,9 @@ def get_seller_profile_service(request: web.Request) -> SellerProfileService:
     connection_provider = cast(ConnectionProvider, provider) if callable(provider) else None
     service = SellerProfileService(connection_provider, session)
     try:
+        # Loop-thread confinement invariant: callers run this getter
+        # synchronously on the LAN event loop, so check-then-assign cannot
+        # interleave; a worker-thread caller would need a lock.
         lan.seller_profile_service = service
     except Exception:
         # A read-only LAN adapter can still use the per-request service safely.
@@ -65,7 +70,10 @@ async def _json_body(request: web.Request) -> dict[str, Any]:
 async def handle_public_seller_profile(request: web.Request) -> web.Response:
     """Return only the public-facing storefront profile fields."""
     try:
-        profile = get_seller_profile_service(request).get_profile(get_lan(request).library_root)
+        profile = await asyncio.to_thread(
+            get_seller_profile_service(request).get_profile,
+            get_lan(request).library_root,
+        )
         return web.json_response({
             "profile": {
                 "store_name": profile["store_name"],
@@ -86,9 +94,13 @@ async def handle_seller_profile(request: web.Request) -> web.Response:
         lan = get_lan(request)
         service = get_seller_profile_service(request)
         if request.method == "GET":
-            profile = service.get_profile(lan.library_root)
+            profile = await asyncio.to_thread(service.get_profile, lan.library_root)
         elif request.method == "PUT":
-            profile = service.update_profile(lan.library_root, await _json_body(request))
+            profile = await asyncio.to_thread(
+                service.update_profile,
+                lan.library_root,
+                await _json_body(request),
+            )
         else:
             return error_response("Method not allowed", status=405, code="method_not_allowed")
         return web.json_response({"profile": profile}, headers={"Cache-Control": "no-store"})

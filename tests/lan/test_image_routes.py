@@ -6,7 +6,7 @@ from PIL import Image
 
 from AssetsManager.lan.routes._helpers import LAN_APP_KEY
 from AssetsManager.lan.routes.image import handle_image, serve_verified_image
-from tests.lan.test_lan_api import _make_client, _make_lan_app
+from tests.lan.support.api_helpers import _make_client, _make_lan_app
 
 
 def _image(path, *, color=(50, 90, 150), size=(32, 16)):

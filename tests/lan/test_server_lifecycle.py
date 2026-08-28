@@ -739,7 +739,7 @@ def test_shutdown_exercises_each_cleanup_stage_after_running_is_cleared(
     server._ws_manager = SimpleNamespace(close_all=lambda: stage("close_all"))
     server._site = SimpleNamespace(stop=lambda: stage("site_stop"))
     server._runner = SimpleNamespace(cleanup=lambda: stage("runner_cleanup"))
-    monkeypatch.setattr("AssetsManager.lan.server.stop_runtime_realtime", lambda _server: None)
+    monkeypatch.setattr("AssetsManager.lan.server_lifecycle.stop_runtime_realtime", lambda _server: None)
 
     with pytest.raises(RuntimeError, match=failing_stage):
         asyncio.run(server._shutdown())
@@ -762,7 +762,7 @@ def test_shutdown_revokes_cached_seller_sessions_before_cleanup(monkeypatch):
     server._ws_manager = SimpleNamespace(close_all=close_all)
     server._site = None
     server._runner = None
-    monkeypatch.setattr("AssetsManager.lan.server.stop_runtime_realtime", lambda _server: None)
+    monkeypatch.setattr("AssetsManager.lan.server_lifecycle.stop_runtime_realtime", lambda _server: None)
 
     import asyncio
     asyncio.run(server._shutdown())
@@ -786,7 +786,7 @@ def test_shutdown_revokes_scoped_injected_seller_service(monkeypatch):
     server._ws_manager = SimpleNamespace(close_all=close_all)
     server._site = None
     server._runner = None
-    monkeypatch.setattr("AssetsManager.lan.server.stop_runtime_realtime", lambda _server: None)
+    monkeypatch.setattr("AssetsManager.lan.server_lifecycle.stop_runtime_realtime", lambda _server: None)
 
     import asyncio
     asyncio.run(server._shutdown())
@@ -837,7 +837,7 @@ def test_shutdown_revokes_seller_sessions_before_a_cleanup_stage_failure(monkeyp
     server._ws_manager = SimpleNamespace(close_all=close_all)
     server._site = None
     server._runner = None
-    monkeypatch.setattr("AssetsManager.lan.server.stop_runtime_realtime", lambda _server: None)
+    monkeypatch.setattr("AssetsManager.lan.server_lifecycle.stop_runtime_realtime", lambda _server: None)
 
     with pytest.raises(RuntimeError, match="cleanup failed"):
         asyncio.run(server._shutdown())

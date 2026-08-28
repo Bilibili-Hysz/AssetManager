@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.lan.test_lan_api import _make_client, _make_lan_app
+from tests.lan.support.api_helpers import _make_client, _make_lan_app
 
 
 @pytest.mark.anyio

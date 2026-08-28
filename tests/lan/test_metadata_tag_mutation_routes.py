@@ -4,7 +4,7 @@ import pytest
 
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import AssetNotesChanged, AssetTagsChanged
-from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app
+from tests.lan.support.api_helpers import _local_ui_headers, _make_client, _make_lan_app
 
 
 @pytest.fixture

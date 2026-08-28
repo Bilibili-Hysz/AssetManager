@@ -46,7 +46,10 @@ async def handle_gallery_home(request):
     lan = get_lan(request)
     service = _service_or_unavailable(request)
     try:
-        home = service.get_home_cached(lan.library_root)
+        # get_home_cached holds the gallery home-cache lock and may touch
+        # SQLite/disk; offload the whole call rather than reasoning about the
+        # internal lock from the event loop.
+        home = await asyncio.to_thread(service.get_home_cached, lan.library_root)
         if home is None:
             # A background build is already running; the client shows a
             # building state and retries shortly (large libraries take tens

@@ -11,6 +11,7 @@ from AssetsManager.core.format_utils import format_size
 from AssetsManager.domain.errors import ValidationError
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import get_lan, get_asset_service, get_metadata_service, require_permission, validate_path
+from AssetsManager.lan.routes._telemetry import record_route_event
 
 
 async def handle_files(request):
@@ -125,8 +126,20 @@ async def handle_files(request):
     except web.HTTPException as exc:
         status = exc.status
         raise
+    except Exception:
+        # Non-HTTP failures converge on the shared JSON error contract through
+        # the error_contract_middleware; the finally block still records the 500.
+        raise
     finally:
-        _record_files_route(lan, started, target, outcome, status, item_count)
+        record_route_event(
+            lan,
+            "lan.files",
+            started=started,
+            status=status,
+            outcome=outcome,
+            path=target,
+            item_count=item_count,
+        )
 
 
 async def handle_directory_summaries(request):
@@ -193,39 +206,17 @@ async def handle_directory_summaries(request):
         outcome = "success"
         result_count = len(items)
         return web.json_response({"items": items})
+    except Exception:
+        # Non-HTTP failures converge on the shared JSON error contract through
+        # the error_contract_middleware; the finally block still records the 500.
+        raise
     finally:
-        _record_directory_summaries_route(lan, started, outcome, status, requested_count, result_count)
-
-def _record_files_route(lan, started: float, target, outcome: str, status: int, item_count: int) -> None:
-    recorder = getattr(lan, "performance_recorder", None)
-    if recorder is None or not recorder.enabled:
-        return
-    try:
-        recorder.record(
-            "lan.files",
-            (perf_counter() - started) * 1000,
-            session_token=getattr(lan, "session_token", None),
-            path=str(target) if target is not None else None,
-            attributes={"outcome": outcome, "status": status, "item_count": item_count},
-        )
-    except Exception:
-        # Observability must not alter an HTTP response after work completed.
-        pass
-
-
-def _record_directory_summaries_route(lan, started: float, outcome: str, status: int, requested_count: int, result_count: int) -> None:
-    recorder = getattr(lan, "performance_recorder", None)
-    if recorder is None or not recorder.enabled:
-        return
-    try:
-        recorder.record(
+        record_route_event(
+            lan,
             "lan.directory_summaries",
-            (perf_counter() - started) * 1000,
-            session_token=getattr(lan, "session_token", None),
-            attributes={
-                "outcome": outcome, "status": status,
-                "requested_count": requested_count, "result_count": result_count,
-            },
+            started=started,
+            status=status,
+            outcome=outcome,
+            requested_count=requested_count,
+            result_count=result_count,
         )
-    except Exception:
-        pass

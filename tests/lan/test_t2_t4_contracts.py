@@ -1,7 +1,7 @@
 """Acceptance contracts for the LAN SPA runtime paths."""
 import pytest
 
-from tests.lan.test_lan_api import _local_ui_headers, _make_client, _make_lan_app
+from tests.lan.support.api_helpers import _local_ui_headers, _make_client, _make_lan_app
 
 
 @pytest.mark.anyio
@@ -169,7 +169,7 @@ def test_lan_server_rejects_connection_for_a_different_library_root(tmp_path):
             ValueError,
             match="^Requested library does not match the active LAN server library$",
         ):
-            from tests.lan.test_lan_api import _legacy_server
+            from tests.lan.support.api_helpers import _legacy_server
 
             _legacy_server(
                 library_root=str(active_library),

@@ -133,6 +133,11 @@ async def handle_tunnel_status(request):
 
 
 async def handle_stats(request):
+    # Defense in depth: the route also declares the admin-backed "settings"
+    # capability at registration time (api.py), so the middleware already
+    # rejected non-admin principals before this handler runs.
+    if not require_admin(request):
+        return error_response("Admin access required", status=403, code="forbidden")
     lan = get_lan(request)
     status = lan.status()
     return web.json_response(StatsResponse.from_record({

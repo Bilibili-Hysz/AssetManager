@@ -1,11 +1,13 @@
 """Auth routes: /api/auth/*."""
 import asyncio
+from time import perf_counter
 
 from aiohttp import web
 
 from AssetsManager.lan.dto import UserResponse
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import get_auth_service, get_auth_token, get_lan, get_request_principal, set_auth_cookie
+from AssetsManager.lan.routes._telemetry import record_route_event
 from AssetsManager.lan.token_revocations import TokenRevocationPersistenceError
 from AssetsManager.lan.utils import generate_auth_token
 
@@ -31,139 +33,190 @@ async def _record_activity(request, action, details, username=None):
 
 async def handle_login(request):
     lan = get_lan(request)
+    started = perf_counter()
+    status = 500
+    outcome = "error"
     try:
-        body = await request.json()
-    except Exception:
-        return error_response("Invalid request", status=400, code="bad_request")
+        try:
+            body = await request.json()
+        except Exception:
+            status = 400
+            return error_response("Invalid request", status=status, code="bad_request")
 
-    username = body.get("username", "").strip()
-    password = body.get("password", "")
-    auth_service = get_auth_service(request)
+        username = body.get("username", "").strip()
+        password = body.get("password", "")
+        auth_service = get_auth_service(request)
 
-    if username:
-        # L2: user lookup plus the PBKDF2-600k verification (and any legacy
-        # cost re-hash) run in a worker thread instead of stalling every
-        # other LAN request for ~100-300ms.
-        user, err = await asyncio.to_thread(auth_service.authenticate_user, username, password)
-        if user:
-            token = auth_service.generate_user_token(user["id"], user["username"], user["role"])
-            response = web.json_response({"user": UserResponse.from_record(user).to_dict()})
-            set_auth_cookie(response, token, secure=lan.ssl_active)
-            await _record_activity(request, "login", "signed in", user["username"])
-            return response
-        return error_response(err, status=401, code="unauthorized")
+        if username:
+            # L2: user lookup plus the PBKDF2-600k verification (and any legacy
+            # cost re-hash) run in a worker thread instead of stalling every
+            # other LAN request for ~100-300ms.
+            user, err = await asyncio.to_thread(auth_service.authenticate_user, username, password)
+            if user:
+                token = auth_service.generate_user_token(user["id"], user["username"], user["role"])
+                response = web.json_response({"user": UserResponse.from_record(user).to_dict()})
+                set_auth_cookie(response, token, secure=lan.ssl_active)
+                await _record_activity(request, "login", "signed in", user["username"])
+                status = 200
+                outcome = "success"
+                return response
+            status = 401
+            # Failed sign-ins reach the activity log for brute-force visibility.
+            # Only the attempted account name is recorded — never the password
+            # or any other credential material.
+            await _record_activity(request, "login_failed", err or "sign-in failed", username)
+            return error_response(err, status=status, code="unauthorized")
 
-    if lan.password_hash:
-        # L2: same offload as verify_key below — the password-mode PBKDF2
-        # comparison must not block the event loop.
-        if await asyncio.to_thread(auth_service.verify_password, password, lan.password_hash):
-            token = auth_service.generate_token(lan.password_hash)
-            response = web.json_response({"ok": True})
-            set_auth_cookie(response, token, secure=lan.ssl_active)
-            await _record_activity(request, "login", "signed in")
-            return response
-        return error_response("Invalid password", status=401, code="unauthorized")
+        if lan.password_hash:
+            # L2: same offload as verify_key below — the password-mode PBKDF2
+            # comparison must not block the event loop.
+            if await asyncio.to_thread(auth_service.verify_password, password, lan.password_hash):
+                token = auth_service.generate_token(lan.password_hash)
+                response = web.json_response({"ok": True})
+                set_auth_cookie(response, token, secure=lan.ssl_active)
+                await _record_activity(request, "login", "signed in")
+                status = 200
+                outcome = "success"
+                return response
+            status = 401
+            await _record_activity(request, "login_failed", "invalid password")
+            return error_response("Invalid password", status=status, code="unauthorized")
 
-    return error_response("Credentials required", status=400, code="bad_request")
+        status = 400
+        return error_response("Credentials required", status=status, code="bad_request")
+    finally:
+        record_route_event(lan, "lan.auth.login", started=started, status=status, outcome=outcome)
 
 
 async def handle_register(request):
     lan = get_lan(request)
+    started = perf_counter()
+    status = 500
+    outcome = "error"
     try:
-        body = await request.json()
-    except Exception:
-        return error_response("Invalid request", status=400, code="bad_request")
+        try:
+            body = await request.json()
+        except Exception:
+            status = 400
+            return error_response("Invalid request", status=status, code="bad_request")
 
-    username = body.get("username", "").strip()
-    password = body.get("password", "")
-    email = body.get("email")
-    invite_code = body.get("invite_code")
-    auth_service = get_auth_service(request)
+        username = body.get("username", "").strip()
+        password = body.get("password", "")
+        email = body.get("email")
+        invite_code = body.get("invite_code")
+        auth_service = get_auth_service(request)
 
-    # L2: registration burns up to two full PBKDF2 hashes (initial hash
-    # plus the immediate verification) — both belong in a worker thread.
-    user_id, err = await asyncio.to_thread(
-        auth_service.register_user,
-        username,
-        password,
-        email=email,
-        invite_code=invite_code,
-    )
-    if user_id:
-        user, auth_err = await asyncio.to_thread(
-            auth_service.authenticate_user, username, password
+        # L2: registration burns up to two full PBKDF2 hashes (initial hash
+        # plus the immediate verification) — both belong in a worker thread.
+        user_id, err = await asyncio.to_thread(
+            auth_service.register_user,
+            username,
+            password,
+            email=email,
+            invite_code=invite_code,
         )
-        if not user:
-            return error_response(auth_err or "Registration failed", status=500, code="internal_error")
-        token = auth_service.generate_user_token(user["id"], user["username"], user["role"])
-        lan.invalidate_user_cache()
-        response = web.json_response({"user": UserResponse.from_record(user).to_dict()})
-        set_auth_cookie(response, token, secure=lan.ssl_active)
-        return response
-    return error_response(err, status=400, code="bad_request")
+        if user_id:
+            user, auth_err = await asyncio.to_thread(
+                auth_service.authenticate_user, username, password
+            )
+            if not user:
+                status = 500
+                return error_response(auth_err or "Registration failed", status=status, code="internal_error")
+            token = auth_service.generate_user_token(user["id"], user["username"], user["role"])
+            lan.invalidate_user_cache()
+            response = web.json_response({"user": UserResponse.from_record(user).to_dict()})
+            set_auth_cookie(response, token, secure=lan.ssl_active)
+            await _record_activity(request, "register", "registered account", user["username"])
+            status = 200
+            outcome = "success"
+            return response
+        status = 400
+        return error_response(err, status=status, code="bad_request")
+    finally:
+        record_route_event(lan, "lan.auth.register", started=started, status=status, outcome=outcome)
 
 
 async def handle_verify_key(request):
     lan = get_lan(request)
+    started = perf_counter()
+    status = 500
+    outcome = "error"
     try:
-        body = await request.json()
-    except Exception:
-        return error_response("Invalid request", status=400, code="bad_request")
+        try:
+            body = await request.json()
+        except Exception:
+            status = 400
+            return error_response("Invalid request", status=status, code="bad_request")
 
-    key = body.get("key", "").strip()
-    if not key:
-        return error_response("Key required", status=400, code="bad_request")
-    if not lan.access_key_hash:
-        return error_response("No key configured", status=400, code="bad_request")
+        key = body.get("key", "").strip()
+        if not key:
+            status = 400
+            return error_response("Key required", status=status, code="bad_request")
+        if not lan.access_key_hash:
+            status = 400
+            return error_response("No key configured", status=status, code="bad_request")
 
-    auth_service = get_auth_service(request)
-    # L2: the access-key PBKDF2 comparison runs in a worker thread instead of
-    # blocking the event loop for ~50ms per attempt.
-    if await asyncio.to_thread(auth_service.verify_key, key, lan.access_key_hash):
-        token = generate_auth_token(lan.local_ui_auth_secret)
-        response = web.json_response({"ok": True})
-        set_auth_cookie(response, token, secure=lan.ssl_active)
-        await _record_activity(request, "login", "verified access key")
-        return response
-    return error_response("Invalid key", status=401, code="unauthorized")
+        auth_service = get_auth_service(request)
+        # L2: the access-key PBKDF2 comparison runs in a worker thread instead
+        # of blocking the event loop for ~50ms per attempt.
+        if await asyncio.to_thread(auth_service.verify_key, key, lan.access_key_hash):
+            token = generate_auth_token(lan.local_ui_auth_secret)
+            response = web.json_response({"ok": True})
+            set_auth_cookie(response, token, secure=lan.ssl_active)
+            await _record_activity(request, "login", "verified access key")
+            status = 200
+            outcome = "success"
+            return response
+        status = 401
+        return error_response("Invalid key", status=status, code="unauthorized")
+    finally:
+        record_route_event(lan, "lan.auth.verify_key", started=started, status=status, outcome=outcome)
 
 
 async def handle_logout(request):
-    response = web.json_response({"ok": True})
-    token = get_auth_token(request)
-    if token:
-        lan = get_lan(request)
-        persistence_error = None
-        try:
-            revoke_async = getattr(lan, "revoke_auth_token_async", None)
-            if callable(revoke_async):
-                await revoke_async(token)
-            else:
-                await asyncio.to_thread(lan.revoke_auth_token, token)
-        except TokenRevocationPersistenceError as exc:
-            persistence_error = exc
-        ws_manager = getattr(lan, "ws_manager", None)
-        evict_token = getattr(ws_manager, "revoke_auth_token", None)
-        if callable(evict_token):
+    lan = get_lan(request)
+    started = perf_counter()
+    status = 200
+    outcome = "success"
+    try:
+        response = web.json_response({"ok": True})
+        token = get_auth_token(request)
+        if token:
+            persistence_error = None
             try:
-                await evict_token(token)
-            except Exception:
-                # Logout must not fail to clear the browser cookie because a
-                # best-effort socket eviction encountered a closed transport.
-                pass
-        if persistence_error is not None:
-            # The registry has already rejected this token in-process. Keep
-            # the response contract stable and force the client to retry the
-            # durable write rather than leaving an authenticated cookie.
-            response = error_response(
-                "Logout could not be persisted; please retry",
-                status=503,
-                code="auth_revocation_unavailable",
-            )
-            response.del_cookie("lan_token", path="/")
-            return response
-    response.del_cookie("lan_token", path="/")
-    return response
+                revoke_async = getattr(lan, "revoke_auth_token_async", None)
+                if callable(revoke_async):
+                    await revoke_async(token)
+                else:
+                    await asyncio.to_thread(lan.revoke_auth_token, token)
+            except TokenRevocationPersistenceError as exc:
+                persistence_error = exc
+            ws_manager = getattr(lan, "ws_manager", None)
+            evict_token = getattr(ws_manager, "revoke_auth_token", None)
+            if callable(evict_token):
+                try:
+                    await evict_token(token)
+                except Exception:
+                    # Logout must not fail to clear the browser cookie because a
+                    # best-effort socket eviction encountered a closed transport.
+                    pass
+            if persistence_error is not None:
+                # The registry has already rejected this token in-process. Keep
+                # the response contract stable and force the client to retry the
+                # durable write rather than leaving an authenticated cookie.
+                status = 503
+                outcome = "error"
+                response = error_response(
+                    "Logout could not be persisted; please retry",
+                    status=status,
+                    code="auth_revocation_unavailable",
+                )
+                response.del_cookie("lan_token", path="/")
+                return response
+        response.del_cookie("lan_token", path="/")
+        return response
+    finally:
+        record_route_event(lan, "lan.auth.logout", started=started, status=status, outcome=outcome)
 
 
 async def handle_me(request):

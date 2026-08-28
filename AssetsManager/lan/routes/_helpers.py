@@ -122,11 +122,15 @@ class ActivityLog:
         conn = self._connection()
         if conn is not None:
             try:
-                rows = conn.execute(
-                    "SELECT id, username, action, details, ip, timestamp "
-                    "FROM activity_log ORDER BY id DESC LIMIT ?",
-                    (count,),
-                ).fetchall()
+                # Same connection-lock discipline as add(): readers must not
+                # race the single library connection against concurrent
+                # writers.
+                with db_write_lock(conn):
+                    rows = conn.execute(
+                        "SELECT id, username, action, details, ip, timestamp "
+                        "FROM activity_log ORDER BY id DESC LIMIT ?",
+                        (count,),
+                    ).fetchall()
                 return [
                     {
                         "id": row[0],
@@ -404,13 +408,26 @@ def validate_path(lan, rel_path: str) -> Path:
 
 
 def validated_existing_key(lan, rel_path: str) -> str:
+    """Return the storage key for an existing library path.
+
+    Path escape and missing-path failures propagate as their domain errors
+    (``PathEscapeError`` / ``MissingPathError``) so they are serialized by the
+    central mapping in ``_errors.py`` (route handlers map them explicitly; the
+    error_contract_middleware is the fallback) instead of being flattened into
+    bare aiohttp HTTPExceptions with non-contract text bodies. Status stays
+    400/404; only the body shape is unified.
+    """
     try:
         return PathGuard(lan.library_root).existing_key(rel_path)
-    except PathEscapeError:
-        raise web.HTTPBadRequest(reason="Path escape detected") from None
-    except MissingPathError:
-        raise web.HTTPNotFound(reason="File not found") from None
+    except (PathEscapeError, MissingPathError):
+        # Domain errors propagate to the central error contract (route
+        # handlers map them explicitly; error_contract_middleware is the
+        # fallback). Both subclass PathGuardError, so they must be re-raised
+        # before the generic guard clause below.
+        raise
     except PathGuardError:
+        # Invalid characters (NUL / control chars, Windows ADS separators)
+        # have no dedicated domain type; they stay a 400 client error.
         raise web.HTTPBadRequest(reason="Invalid path") from None
 
 
