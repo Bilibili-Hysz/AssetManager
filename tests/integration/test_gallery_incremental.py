@@ -55,6 +55,19 @@ def _publish(root: Path, kind: str, paths, old_paths=()):
     ))
 
 
+def _emit(service: GalleryService, root: Path, kind: str, paths, old_paths=()) -> None:
+    """Feed one event straight into the service handler.
+
+    Unlike ``_publish`` this bypasses the event bus: it is fully
+    synchronous, so the issued seq can be asserted deterministically.
+    """
+    service._on_file_system_changed(FileSystemChanged(
+        library_root=str(root), session_token="test", kind=kind,
+        paths=tuple(str(path) for path in paths),
+        old_paths=tuple(str(path) for path in old_paths),
+    ))
+
+
 def _wait_artworks(service: GalleryService, root: Path, expected: int, deadline: float = 10.0):
     """Poll the cached home until its artwork count reaches *expected*."""
     end = time.monotonic() + deadline
@@ -496,5 +509,174 @@ def test_incremental_project_created_at_floor_matches_full_rebuild(tmp_path, sch
         # incrementally (a full-rebuild fallback would match the oracle too).
         applied, fallbacks = service.incremental_stats
         assert applied == 1 and fallbacks == 0
+    finally:
+        service.close()
+
+
+# ── Seq/generation watermark semantics ──────────────────────────────
+#
+# The seq counter only issues seqs to queued events; a snapshot's
+# generation is the watermark of events it covers (the counter value
+# captured before a full walk, or the max seq applied by a window).
+# Historically the build/apply bumped the counter again at publish time,
+# which tracked over (and silently dropped) every event queued while the
+# walk/apply was running.
+
+
+def test_event_queued_during_apply_window_is_applied_next_window(
+    tmp_path, schema_db, monkeypatch
+):
+    """An event that arrives while an incremental apply window is open must
+    survive to the next window instead of being filtered out by the publish
+    bumping the seq counter past its seq."""
+    _image(tmp_path / "a" / "one.png", (40, 40))
+    service = _make_service(schema_db, monkeypatch)
+    # Drive the apply windows manually for determinism.
+    monkeypatch.setattr(service, "_schedule_incremental_apply", lambda _root: None)
+    try:
+        service.get_home(tmp_path)
+        root_key = _root_key(tmp_path)
+        state = service._home_states[root_key]
+        assert state.generation == 0
+
+        # Window 1 applies two.png; while the window is still open (inside
+        # the recompose pass) three.png arrives and is queued.
+        _image(tmp_path / "a" / "two.png", (20, 20))
+        _emit(service, tmp_path, "created", [tmp_path / "a" / "two.png"])
+        published: dict[str, int] = {}
+        real_recompose = service._recompose_home
+
+        def recompose_and_queue(root, state_, conn):
+            if "seq" not in published:
+                _image(tmp_path / "a" / "three.png", (14, 14))
+                _emit(service, tmp_path, "created", [tmp_path / "a" / "three.png"])
+                published["seq"] = service._home_generation
+            return real_recompose(root, state_, conn)
+
+        monkeypatch.setattr(service, "_recompose_home", recompose_and_queue)
+
+        service._apply_pending_home_impl(root_key)
+        # The window's watermark is the max applied seq (1), NOT a freshly
+        # issued counter value; the counter only issued the two seqs.
+        assert state.generation == 1
+        assert published["seq"] == 2
+        assert service._home_generation == 2
+
+        # Next window: the mid-window event passes the seq > generation
+        # filter and is applied (the pre-fix behavior dropped it forever).
+        service._apply_pending_home_impl(root_key)
+        assert "a/three.png" in state.files
+        assert state.generation == 2
+        cached = service.get_home_cached(tmp_path)
+        assert cached is not None and cached.stats["artworks"] == 3
+        applied, fallbacks = service.incremental_stats
+        assert applied == 2 and fallbacks == 0
+    finally:
+        service.close()
+
+
+def test_event_queued_during_full_walk_is_not_dropped(tmp_path, schema_db, monkeypatch):
+    """An event queued while a full home rebuild walks the library gets a
+    seq above the captured start watermark, so the next apply window picks
+    it up instead of the publish advancing past it."""
+    _image(tmp_path / "a" / "one.png", (40, 40))
+    service = _make_service(schema_db, monkeypatch)
+    monkeypatch.setattr(service, "_schedule_incremental_apply", lambda _root: None)
+    try:
+        service.get_home(tmp_path)  # initial snapshot so events queue
+
+        # During the second full walk, once the "a" subtree has been
+        # scanned, create a file and queue its event.
+        published: dict[str, int] = {}
+        real_build_node = service._build_node
+
+        def build_node_and_queue(root, rel, target, **kwargs):
+            node = real_build_node(root, rel, target, **kwargs)
+            if rel == "a" and "seq" not in published:
+                _image(tmp_path / "a" / "mid.png", (12, 12))
+                _emit(service, tmp_path, "created", [tmp_path / "a" / "mid.png"])
+                published["seq"] = service._home_generation
+            return node
+
+        monkeypatch.setattr(service, "_build_node", build_node_and_queue)
+        service._compute_home(str(tmp_path))
+
+        root_key = _root_key(tmp_path)
+        state = service._home_states[root_key]
+        # The published watermark is the counter value captured before the
+        # walk started; the mid-walk event's seq is strictly above it.
+        assert state.generation == 0
+        assert published["seq"] == 1
+        assert state.generation < published["seq"]
+
+        service._apply_pending_home_impl(root_key)
+        assert "a/mid.png" in state.files
+        cached = service.get_home_cached(tmp_path)
+        assert cached is not None and cached.stats["artworks"] == 2
+        applied, fallbacks = service.incremental_stats
+        assert applied == 1 and fallbacks == 0
+    finally:
+        service.close()
+
+
+# ── Full-rebuild timer: fixed deadline under sustained events ───────
+
+
+def test_full_rebuild_timer_survives_repeated_invalidates(
+    tmp_path, schema_db, monkeypatch
+):
+    """In the no-snapshot window every event invalidates, but only the
+    first one arms the rebuild timer: later invalidates for the same root
+    must keep the pending fixed deadline instead of restarting the TTL."""
+    _image(tmp_path / "a" / "one.png", (32, 16))
+    service = _make_service(schema_db, monkeypatch)
+    monkeypatch.setattr(service, "_home_cache_ttl", 0.25)
+    root_key = _root_key(tmp_path)
+    try:
+        _emit(service, tmp_path, "created", [tmp_path / "a" / "one.png"])
+        timer1 = service._refresh_timer
+        assert timer1 is not None
+        assert service._refresh_timer_root == root_key
+
+        for _ in range(5):
+            _emit(service, tmp_path, "created", [tmp_path / "a" / "one.png"])
+            # Fixed deadline: the pending timer is never replaced.
+            assert service._refresh_timer is timer1
+
+        # The rebuild fires on the original deadline even though events
+        # kept invalidating. Poll the private cache: get_home_cached would
+        # itself kick a build on a miss and mask the timer's work.
+        end = time.monotonic() + 10.0
+        while time.monotonic() < end:
+            with service._home_cache_lock:
+                if root_key in service._home_cache:
+                    break
+            time.sleep(0.05)
+        with service._home_cache_lock:
+            assert root_key in service._home_cache
+        assert service._refresh_timer_root is None
+    finally:
+        service.close()
+
+
+def test_rebuild_fires_while_event_stream_continues(tmp_path, schema_db, monkeypatch):
+    """Behavioral: while events keep arriving in the no-snapshot window,
+    the full rebuild still happens (at the first fixed deadline) instead of
+    being pushed out indefinitely by the stream."""
+    _image(tmp_path / "a" / "one.png", (32, 16))
+    service = _make_service(schema_db, monkeypatch)
+    monkeypatch.setattr(service, "_home_cache_ttl", 0.3)
+    root_key = _root_key(tmp_path)
+    try:
+        end = time.monotonic() + 3.0
+        filled = False
+        while time.monotonic() < end:
+            _emit(service, tmp_path, "created", [tmp_path / "a" / "one.png"])
+            time.sleep(0.05)
+            with service._home_cache_lock:
+                if root_key in service._home_cache:
+                    filled = True
+                    break
+        assert filled, "full rebuild never fired while the event stream continued"
     finally:
         service.close()

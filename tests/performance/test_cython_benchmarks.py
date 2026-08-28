@@ -1,6 +1,10 @@
 """Cython benchmarks — verifies compilation works and modules load."""
 import time
 
+import pytest
+
+pytestmark = pytest.mark.perf  # opt in with `pytest -m perf`
+
 N = 100_000
 
 

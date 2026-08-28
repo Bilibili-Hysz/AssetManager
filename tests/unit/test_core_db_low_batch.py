@@ -112,6 +112,83 @@ def test_db_write_lock_rejects_global_writer_acquiring_connection_read(tmp_path)
         manager.close()
 
 
+def _make_locked_read_probe(conn, fail_with=None):
+    """Build a minimal repository-like probe decorated with ``locked_read``."""
+
+    class _Probe:
+        def __init__(self):
+            self._conn = conn
+            self.calls = 0
+            self.held_read_admission = False
+
+        @database_module.locked_read
+        def read(self):
+            self.calls += 1
+            self.held_read_admission = (
+                database_module._write_gate.current_thread_is_reader()
+            )
+            if fail_with is not None:
+                raise fail_with
+            return conn.execute("SELECT 1").fetchone()[0]
+
+    return _Probe()
+
+
+def test_locked_read_does_not_rerun_method_on_business_runtime_error(tmp_path):
+    """A RuntimeError raised inside the method body is a business error: it
+    must propagate once from the locked run, never re-run the read unlocked."""
+    conn = sqlite3.connect(str(tmp_path / "probe.db"))
+    probe = _make_locked_read_probe(conn, fail_with=RuntimeError("business failure"))
+
+    with pytest.raises(RuntimeError, match="business failure"):
+        probe.read()
+
+    assert probe.calls == 1
+    # The single execution ran under the connection's read admission.
+    assert probe.held_read_admission is True
+
+
+def test_locked_read_holds_lock_and_stays_reentrant(tmp_path):
+    """Happy path: the read runs once under the connection lock, and nesting
+    a connection-owned write lock inside it still works (reentrancy)."""
+    conn = sqlite3.connect(str(tmp_path / "probe.db"))
+    conn.execute("CREATE TABLE t (v INTEGER)")
+
+    class _NestedProbe:
+        def __init__(self):
+            self._conn = conn
+            self.calls = 0
+            self.held_read_admission = False
+
+        @database_module.locked_read
+        def read(self):
+            self.calls += 1
+            self.held_read_admission = (
+                database_module._write_gate.current_thread_is_reader()
+            )
+            with database_module.db_write_lock(conn):
+                conn.execute("INSERT INTO t (v) VALUES (1)")
+            return conn.execute("SELECT COUNT(*) FROM t").fetchone()[0]
+
+    probe = _NestedProbe()
+    assert probe.read() == 1
+    assert probe.calls == 1
+    assert probe.held_read_admission is True
+
+
+def test_locked_read_still_runs_without_lock_on_closed_connection(tmp_path):
+    """Closed-connection rejection keeps the fallback unlocked read so the
+    original sqlite3 error semantics (ProgrammingError) propagate unchanged."""
+    conn = sqlite3.connect(str(tmp_path / "probe.db"))
+    conn.close()
+    probe = _make_locked_read_probe(conn)
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        probe.read()
+
+    assert probe.calls == 1
+
+
 def test_open_library_idempotent_when_legacy_move_failed_after_destination_ready(
     tmp_path, monkeypatch
 ):
@@ -285,5 +362,73 @@ def test_migrate_path_metadata_keeps_old_thumbnail_when_new_key_exists(
         assert new_file.read_bytes() == b"new-thumb"
         # ...and the old file is preserved instead of being deleted.
         assert old_file.exists()
+    finally:
+        manager.close()
+
+
+def test_migrate_path_metadata_skips_rename_for_stale_destination_row(
+    tmp_path, monkeypatch
+):
+    """A new_key row whose artifact is already missing must not lure the old
+    thumbnail out from under its own cache_key row.
+
+    The stale row (DB row present, file lost) used to trigger the rename
+    first and only afterwards matched the destination-row branch, leaving
+    the retained old_key row pointing at a file that had been renamed away.
+    """
+    runtime = tmp_path / "RuntimeData"
+    lib = tmp_path / "Library"
+    old = lib / "old.png"
+    new = lib / "new.png"
+    lib.mkdir()
+    old.write_text("old", encoding="utf-8")
+    new.write_text("new", encoding="utf-8")
+
+    monkeypatch.setattr(path_resolver, "runtime_root", lambda: runtime)
+    monkeypatch.setattr(database_module, "RUNTIME_ROOT", runtime)
+    manager = database_module.DatabaseManager()
+    try:
+        conn = manager.connection_for(lib)
+        old_key = database_module._thumbnail_cache_key(str(old.resolve()))
+        new_key = database_module._thumbnail_cache_key(str(new.resolve()))
+        assert old_key != new_key
+        thumb_dir = manager.thumb_dir_for(lib)
+        thumb_dir.mkdir(parents=True, exist_ok=True)
+        old_file = thumb_dir / f"{old_key}.webp"
+        old_file.write_bytes(b"old-thumb")
+        # Stale destination: a new_key DB row exists but its artifact file
+        # was already lost, and its source_path is out of date as well.
+        conn.execute(
+            "INSERT INTO thumbnail_cache (cache_key, source_path, source_mtime) "
+            "VALUES (?,?,?)",
+            (new_key, str(old.resolve()), 1.0),
+        )
+        conn.execute(
+            "INSERT INTO thumbnail_cache (cache_key, source_path, source_mtime) "
+            "VALUES (?,?,?)",
+            (old_key, str(old.resolve()), 1.0),
+        )
+        conn.commit()
+
+        database_module.migrate_path_metadata(conn, thumb_dir, old, new)
+
+        # The old artifact keeps its own file: no rename onto the stale
+        # destination key may happen.
+        assert old_file.exists()
+        assert not (thumb_dir / f"{new_key}.webp").exists()
+        # The old_key row is retained with the remapped source_path (the
+        # pre-existing destination-row semantics)...
+        assert conn.execute(
+            "SELECT source_path FROM thumbnail_cache WHERE cache_key=?",
+            (old_key,),
+        ).fetchone() == (str(new.resolve()),)
+        # ...and the stale destination row keeps its row (its own stale
+        # source_path is remapped by the pre-existing destination-row branch,
+        # making the row self-consistent) while regenerating its artifact on
+        # the next lookup miss instead of stealing the old artifact.
+        assert conn.execute(
+            "SELECT source_path FROM thumbnail_cache WHERE cache_key=?",
+            (new_key,),
+        ).fetchone() == (str(new.resolve()),)
     finally:
         manager.close()

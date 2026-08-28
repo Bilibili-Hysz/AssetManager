@@ -1,5 +1,6 @@
 """Tests for UndoService."""
 import os
+from pathlib import Path
 
 import pytest
 
@@ -27,6 +28,25 @@ class _FailingFileOperations:
 
     def delete_permanent(self, paths, *, library_root):
         return type("Result", (), {"ok": False})()
+
+
+class _DegradedRestoreFileOperations:
+    """restore_backup reports filesystem success with a degraded projection."""
+
+    def __init__(self):
+        self.calls = []
+
+    def move(self, source, destination, *, library_root):
+        self.calls.append(("move", source, destination, library_root))
+
+    def restore_backup(self, backup, destination, *, library_root):
+        self.calls.append(("restore_backup", backup, destination, library_root))
+        from AssetsManager.application.file_operation_service import RestoreResult
+
+        return RestoreResult(path=Path(destination), degraded=True)
+
+    def delete_permanent(self, paths, *, library_root):
+        self.calls.append(("delete_permanent", paths, library_root))
 
 
 def test_failed_perform_undo_keeps_source_stack_and_does_not_advance_redo(tmp_path):
@@ -120,6 +140,45 @@ def test_peeked_delete_entry_distinguishes_undo_restore_from_redo_removal(tmp_pa
     redo_entry = svc.peek_redo()
     assert redo_entry is not None
     assert redo_entry.path == str(path)  # Redo removes this path; it has no selection target.
+
+
+def test_operation_succeeded_treats_degraded_restore_as_success():
+    """A degraded restore is not a failure: the file is back, so undo/redo
+    stack movement proceeds — the degraded signal is handled separately."""
+    from AssetsManager.application.file_operation_service import RestoreResult
+
+    assert UndoService._operation_succeeded(
+        RestoreResult(path=Path("restored.txt"), degraded=True)
+    ) is True
+    assert UndoService._operation_succeeded(type("R", (), {"ok": False})()) is False
+
+
+def test_degraded_restore_annotates_entry_instead_of_poisoning_stack(tmp_path):
+    """A degraded projection restore must not be recorded as a fully clean
+    success: the entry moves to the redo stack annotated ``degraded`` (it
+    must not stay on the undo stack as a poisoned/failed entry)."""
+    path = tmp_path / "asset.txt"
+    backup = tmp_path / "backup.txt"
+    backup.write_text("backup", encoding="utf-8")
+    operations = _DegradedRestoreFileOperations()
+    svc = UndoService(library_root=str(tmp_path))
+    try:
+        svc._push_undo(UndoEntry(type="delete", path=str(path), backup=str(backup)))
+
+        assert svc.perform_undo(operations, str(tmp_path))
+        assert svc.peek_undo() is None
+        redo_entry = svc.peek_redo()
+        assert redo_entry is not None
+        assert redo_entry.degraded is True
+
+        # Redo re-executes the delete itself; the stale degraded annotation
+        # from the previous restore is cleared.
+        assert svc.perform_redo(operations, str(tmp_path))
+        undone_entry = svc.peek_undo()
+        assert undone_entry is not None
+        assert undone_entry.degraded is False
+    finally:
+        svc.cleanup()
 
 
 def test_undo_records_session_scoped_execution_outcomes(tmp_path):
@@ -314,6 +373,51 @@ def test_delete_undo_and_redo_reconcile_file_projections(tmp_path):
         assert deleted[-1].paths == (str(source),)
     finally:
         undo.cleanup()
+
+
+def test_snapshot_projection_failure_leaves_marker_for_restore(tmp_path, monkeypatch):
+    """A failed projection snapshot must not be silent: a durable
+    ``.projection.failed`` marker is written next to the backup so the
+    restore path can tell the failure apart from a legacy backup without
+    snapshot support."""
+    from pathlib import Path
+
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.core import path_resolver
+
+    library = tmp_path / "library"
+    library.mkdir()
+    source = library / "asset.txt"
+    source.write_text("data", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    undo = None
+    try:
+        scoped = bootstrap.runtime_for(session).services
+        undo = scoped.undo_service
+
+        def broken_pattern(*_args, **_kwargs):
+            raise RuntimeError("injected snapshot query failure")
+
+        monkeypatch.setattr(
+            path_resolver, "sql_like_descendant_pattern", broken_pattern
+        )
+
+        entry = undo.prepare_delete(str(source))
+
+        # The file backup itself succeeded, so the entry exists, but the
+        # failed snapshot left its marker next to the backup.
+        assert entry is not None
+        assert Path(f"{entry.backup}.projection.failed").is_file()
+        assert not Path(f"{entry.backup}.projection.json").exists()
+
+        # Discarding the delete also cleans up the failure marker.
+        undo.discard_delete(entry)
+        assert not Path(f"{entry.backup}.projection.failed").exists()
+    finally:
+        if undo is not None:
+            undo.cleanup()
+        bootstrap.library_service.close()
 
 
 def test_rename_undo_and_redo_reconcile_metadata_thumbnails_and_index(tmp_path):

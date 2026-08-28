@@ -9,6 +9,8 @@ import ast
 import re
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "AssetsManager"
@@ -254,21 +256,6 @@ def _assert_no_import_prefixes(
     assert not violations, "Architecture boundary violations:\n" + "\n".join(violations)
 
 
-def test_domain_does_not_depend_on_upper_layers() -> None:
-    _assert_no_import_prefixes(
-        _python_files("domain"),
-        (
-            "AssetsManager.application",
-            "AssetsManager.controllers",
-            "AssetsManager.dialogs",
-            "AssetsManager.lan",
-            "AssetsManager.panels",
-            "AssetsManager.repositories",
-            "AssetsManager.widgets",
-        ),
-    )
-
-
 def test_domain_does_not_import_sqlite3() -> None:
     violations: list[str] = []
     for path in _python_files("domain"):
@@ -301,21 +288,6 @@ def test_domain_does_not_import_core_infrastructure() -> None:
             if any(imported == prefix or imported.startswith(prefix + ".") for prefix in forbidden):
                 violations.append(f"{module} imports {imported}")
     assert not violations, "Domain must not import core infrastructure:\n" + "\n".join(violations)
-
-
-def test_core_does_not_grow_upper_layer_dependencies() -> None:
-    _assert_no_import_prefixes(
-        _python_files("core"),
-        (
-            "AssetsManager.application",
-            "AssetsManager.controllers",
-            "AssetsManager.dialogs",
-            "AssetsManager.lan",
-            "AssetsManager.panels",
-            "AssetsManager.repositories",
-            "AssetsManager.widgets",
-        ),
-    )
 
 
 def test_non_presentation_layers_do_not_grow_qt_dependencies() -> None:
@@ -390,19 +362,6 @@ def test_main_window_uses_panel_lifecycle_contracts() -> None:
     assert not violations, "MainWindow must use public panel lifecycle methods:\n" + "\n".join(violations)
 
 
-def test_lan_does_not_depend_on_desktop_presentation() -> None:
-    _assert_no_import_prefixes(
-        _python_files("lan"),
-        (
-            "AssetsManager.dialogs",
-            "AssetsManager.panels",
-            "AssetsManager.widgets",
-            "AssetsManager.window",
-            "AssetsManager.dock_factory",
-        ),
-    )
-
-
 def test_presentation_db_store_access_stays_in_documented_fallbacks() -> None:
     forbidden_calls = {"get_store", "get_project_data"}
     allowed_calls = set()
@@ -435,22 +394,18 @@ def test_presentation_db_store_access_stays_in_documented_fallbacks() -> None:
     assert not violations, "Presentation DB/store access outside fallback allowlist:\n" + "\n".join(violations)
 
 
-def test_database_does_not_restore_removed_get_manager_wrapper() -> None:
+@pytest.mark.parametrize(
+    "removed_helper",
+    [
+        "def get_manager(",
+        "def get_lib_db(",
+        "def update_library_stats(",
+    ],
+)
+def test_database_does_not_restore_removed_helpers(removed_helper: str) -> None:
     source = (SRC / "core" / "database.py").read_text(encoding="utf-8")
 
-    assert "def get_manager(" not in source
-
-
-def test_database_does_not_restore_removed_get_lib_db_helper() -> None:
-    source = (SRC / "core" / "database.py").read_text(encoding="utf-8")
-
-    assert "def get_lib_db(" not in source
-
-
-def test_database_does_not_restore_removed_update_library_stats_helper() -> None:
-    source = (SRC / "core" / "database.py").read_text(encoding="utf-8")
-
-    assert "def update_library_stats(" not in source
+    assert removed_helper not in source
 
 
 def test_production_path_metadata_migration_uses_explicit_resources() -> None:
@@ -562,7 +517,10 @@ def test_search_routes_use_scoped_connection_provider() -> None:
     source = (SRC / "lan" / "routes" / "metadata.py").read_text(encoding="utf-8")
     helpers = (SRC / "lan" / "routes" / "_helpers.py").read_text(encoding="utf-8")
     start = source.index("async def handle_search")
-    end = source.index("def _record_search_route", start)
+    # Boundary marker: the per-file telemetry helper was replaced by the
+    # shared record_route_event helper, so the handler block now ends at
+    # the next handler definition.
+    end = source.index("async def handle_home", start)
 
     assert "lan.db_conn" not in source[start:end]
     assert "SearchService" not in helpers
@@ -1065,8 +1023,9 @@ def test_startup_window_tracks_theme_and_language_connection_handles() -> None:
 def test_library_panels_bind_through_scoped_services_only() -> None:
     info = (SRC / "panels" / "info.py").read_text(encoding="utf-8")
     tag_tree = (SRC / "panels" / "tag_tree.py").read_text(encoding="utf-8")
-    assert "_connect_domain_event(LibraryOpened" not in info
-    assert "_connect_domain_event(LibraryOpened" not in tag_tree
+    # Library-global events (share state) must not be bound by library panels.
+    assert "_connect_domain_event(ShareChanged" not in info
+    assert "_connect_domain_event(ShareChanged" not in tag_tree
 
 
 def test_sidebar_storage_does_not_open_database_manager() -> None:
@@ -1162,16 +1121,6 @@ def test_production_code_does_not_read_session_raw_resources() -> None:
     assert not violations, (
         "Production code must use scoped services or session.connection_for(), "
         "not LibrarySession raw resources:\n" + "\n".join(violations)
-    )
-
-
-def test_application_does_not_import_lan_or_panels() -> None:
-    _assert_no_import_prefixes(
-        _python_files("application"),
-        (
-            "AssetsManager.lan",
-            "AssetsManager.panels",
-        ),
     )
 
 

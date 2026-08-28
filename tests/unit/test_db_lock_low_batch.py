@@ -56,6 +56,7 @@ _EXPECTED_HISTORY = (
     (32, "thumbnail_cache_lifecycle"),
     (33, "thumbnail_render_profile"),
     (34, "import_manifest_recovery_lease"),
+    (35, "file_count_mtime_snapshot"),
 )
 
 

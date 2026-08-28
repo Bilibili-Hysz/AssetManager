@@ -15,8 +15,8 @@ from typing import Any, cast
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.application.shop_service import _record
 from AssetsManager.application.shop_authorization import ensure_authorized_shop_path
+from AssetsManager.repositories._common import _transaction
 from AssetsManager.repositories.order_repository import ALLOWED_TRANSITIONS, ORDER_STATUSES
-from AssetsManager.repositories.shop_repository import _transaction
 from AssetsManager.core.database import DatabaseManager
 from AssetsManager.domain.asset import assert_under_root
 from AssetsManager.domain.errors import NotFoundError, OperationNotPermitted, ValidationError
@@ -784,6 +784,7 @@ class OrderService:
                 allow_replay=attempt is not None and attempt.get("state") == "consumed",
             )
             target = self._delivery_target(root, order)
+            consumed_order_id: str | int | None = None
             if request_hash is not None:
                 attempt_state = order_repo.reserve_delivery_attempt(
                     order.get("id", order.get("order_id")),
@@ -814,6 +815,7 @@ class OrderService:
                     if outcome == "consumed":
                         order["download_count"] = int(order.get("download_count", 0)) + 1
                         order["last_download_at"] = float(self._clock())
+                        consumed_order_id = order.get("id", order.get("order_id"))
                     else:
                         refreshed = _record(order_repo.get_delivery(token_hash))
                         if refreshed is not None:
@@ -829,7 +831,11 @@ class OrderService:
                         raise OperationNotPermitted("Download limit reached")
                     order["download_count"] = int(order.get("download_count", 0)) + 1
                     order["last_download_at"] = float(self._clock())
-            return self._delivery_order(order), target
+                    consumed_order_id = order.get("id", order.get("order_id"))
+            result = self._delivery_order(order), target
+        if consumed_order_id is not None:
+            self._publish(consumed_order_id)
+        return result
 
     @session_operation
     def fail_delivery_attempt(
@@ -895,6 +901,7 @@ class OrderService:
                 allow_replay=attempt is not None and attempt.get("state") == "consumed",
             )
             target = self._delivery_target(root, order)
+            consumed_order_id: str | int | None = None
             if request_hash is not None:
                 attempt_state = order_repo.reserve_delivery_attempt(
                     order_id,
@@ -928,6 +935,7 @@ class OrderService:
                     if outcome == "consumed":
                         order["download_count"] = int(order.get("download_count", 0)) + 1
                         order["last_download_at"] = consumed_at
+                        consumed_order_id = order.get("id", order.get("order_id"))
                     else:
                         refreshed = _record(order_repo.get_delivery_by_order_id(order_id))
                         if refreshed is not None:
@@ -945,7 +953,11 @@ class OrderService:
                         raise OperationNotPermitted("Download limit reached")
                     order["download_count"] = int(order.get("download_count", 0)) + 1
                     order["last_download_at"] = consumed_at
-            return self._delivery_order(order), target
+                    consumed_order_id = order.get("id", order.get("order_id"))
+            result = self._delivery_order(order), target
+        if consumed_order_id is not None:
+            self._publish(consumed_order_id)
+        return result
 
     @session_operation
     def fail_delivery_attempt_by_receipt(

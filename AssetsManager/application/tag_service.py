@@ -14,7 +14,7 @@ from AssetsManager.core import icons
 from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.path_resolver import root_identity
 from AssetsManager.domain.event_bus import get_event_bus
-from AssetsManager.domain.errors import ValidationError
+from AssetsManager.domain.errors import OperationNotPermitted, PathEscapeError, ValidationError
 from AssetsManager.domain.events import AssetTagsChanged, TagCatalogChanged
 from AssetsManager.repositories.tag_repository import TagRepository
 
@@ -151,9 +151,9 @@ class TagService:
         root = self._resolve_root(library_root)
         target = self._resolve_path(path)
         if not Path(target).is_relative_to(Path(root)):
-            raise ValueError(
-                f"path must be under library_root: {target} (root {root})"
-            )
+            # Domain escape error so the LAN error contract maps it to a 400
+            # instead of an unmapped 500 (minimal ValueError migration).
+            raise PathEscapeError(str(target), root)
         return target
 
     def _resolve_many_under_root(
@@ -165,9 +165,7 @@ class TagService:
         for path in paths:
             target = self._resolve_path(path)
             if not Path(target).is_relative_to(Path(root)):
-                raise ValueError(
-                    f"path must be under library_root: {target} (root {root})"
-                )
+                raise PathEscapeError(str(target), root)
             keys.append(target)
         return keys
 
@@ -191,12 +189,15 @@ class TagService:
             requested = root_identity(library_root, strict=False)
             captured = self._root_identity
             if captured is None or requested.map_key != captured.map_key:
-                raise ValueError(
+                # Domain error so the LAN error contract maps binding
+                # mismatches to a mapped status instead of an unmapped 500
+                # (minimal ValueError migration; message text preserved).
+                raise OperationNotPermitted(
                     "TagService library_root does not match the bound LibrarySession"
                 )
             expected = self._session.connection_for(captured)
             if db_conn is not None and db_conn is not expected:
-                raise ValueError(
+                raise OperationNotPermitted(
                     "TagService connection does not belong to the bound LibrarySession"
                 )
             if self._repository is None or self._repository._conn is not expected:
@@ -236,6 +237,24 @@ class TagService:
         get_event_bus().publish(TagCatalogChanged(
             library_root=self._session.root_str,
             session_token=self._session.event_token,
+        ))
+
+    def _publish_asset_tags_batch_changed(self, paths: tuple[str, ...]) -> None:
+        """Publish exactly one batch AssetTagsChanged for every affected path.
+
+        Catalog-wide operations (rename/delete of a tag) previously emitted
+        one event per file, which floods the bus for popular tags.  The batch
+        event carries all paths and no per-asset tag snapshot; consumers
+        re-read state (the runtime router only needs the path set).
+        """
+        if self._session is None or not paths:
+            return
+        get_event_bus().publish(AssetTagsChanged(
+            library_root=self._session.root_str,
+            session_token=self._session.event_token,
+            file_path="",
+            new_tags=(),
+            paths=paths,
         ))
 
     @session_operation
@@ -310,10 +329,7 @@ class TagService:
         self._require_event_safe_transaction(repo)
         paths = repo.get_files_by_tag(old_name)
         repo.rename_tag(old_name, new_name, require_clean_transaction=True)
-        for path in paths:
-            self._publish_asset_tags_changed(
-                path, tuple(repo.get_tags(path)), publish_catalog=False
-            )
+        self._publish_asset_tags_batch_changed(tuple(paths))
         self._publish_tag_catalog_changed()
 
     @session_operation
@@ -324,10 +340,7 @@ class TagService:
         self._require_event_safe_transaction(repo)
         paths = repo.get_files_by_tag(tag_name)
         repo.delete_tag(tag_name, require_clean_transaction=True)
-        for path in paths:
-            self._publish_asset_tags_changed(
-                path, tuple(repo.get_tags(path)), publish_catalog=False
-            )
+        self._publish_asset_tags_batch_changed(tuple(paths))
         self._publish_tag_catalog_changed()
 
     @session_operation

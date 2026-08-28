@@ -54,6 +54,7 @@ class _GalleryIncrementalMixin:
     _build_lock: threading.Lock
     _worker_threads: set[threading.Thread]
     _refresh_timer: threading.Timer | None
+    _refresh_timer_root: str | None
     _home_cache_ttl: float
     _inc_timer: threading.Timer | None
     _incremental_debounce: float
@@ -167,7 +168,17 @@ class _GalleryIncrementalMixin:
 
     def _invalidate_and_schedule_full(self, root_key: str) -> None:
         """Drop the cached/state/persisted projection and schedule a full
-        rebuild (debounced so a burst of events rebuilds once)."""
+        rebuild (debounced so a burst of events rebuilds once).
+
+        The rebuild runs on a fixed deadline: the timer armed by the first
+        invalidate is kept across later invalidates for the same root, so a
+        sustained event stream in the no-snapshot window cannot push the
+        rebuild out forever (TTL semantics — when the rebuild eventually
+        runs it just re-walks the library; debounce semantics live solely
+        in ``_schedule_incremental_apply``). A later invalidate for a
+        *different* root still replaces the single shared timer, matching
+        the historical last-writer-wins behavior.
+        """
         if self._closed:
             return
         with self._home_cache_lock:
@@ -178,13 +189,35 @@ class _GalleryIncrementalMixin:
         except Exception:
             _log.debug("Gallery home persisted projection delete failed", exc_info=True)
         with self._build_lock:
+            if (
+                self._refresh_timer is not None
+                and self._refresh_timer_root == root_key
+            ):
+                # A rebuild for this root is already pending on its fixed
+                # deadline: keep it instead of restarting the TTL timer.
+                return
             if self._refresh_timer is not None:
                 self._refresh_timer.cancel()
+                # The replaced timer may have belonged to another root; drop
+                # its pending marker so that root can re-arm later.
+                self._refresh_timer_root = None
+            self._refresh_timer_root = root_key
             self._refresh_timer = threading.Timer(
-                self._home_cache_ttl, self._ensure_home_building, args=(root_key,)
+                self._home_cache_ttl, self._fire_scheduled_full_rebuild,
+                args=(root_key,),
             )
             self._refresh_timer.daemon = True
             self._refresh_timer.start()
+
+    def _fire_scheduled_full_rebuild(self, root_key: str) -> None:
+        """Timer callback for a scheduled full rebuild: release the fixed
+        deadline marker, then kick the (idempotent) background build."""
+        with self._build_lock:
+            if self._refresh_timer_root == root_key:
+                self._refresh_timer_root = None
+        if self._closed:
+            return
+        self._ensure_home_building(root_key)
 
     def _schedule_incremental_apply(self, root_key: str) -> None:
         """Debounce pending changes into one short apply window."""
@@ -252,11 +285,22 @@ class _GalleryIncrementalMixin:
             home = cached[1]
             for change in changes:
                 home = self._apply_change(root_key, state, change, home)
+            # One recompose per window: the per-event recomposes (a full
+            # refs sort plus the 24-image recent decode) ran inside
+            # _apply_change before, so a window of k events cost k full
+            # passes. No branch consumes the intermediate recompose result
+            # (home is only threaded through for the no-op returns), so a
+            # single pass after the last state mutation is equivalent.
+            root = Path(root_key).resolve()
+            conn = self._connection(root, None, self._connection_provider)
+            home = self._recompose_home(root, state, conn)
             self._incremental_applied += len(changes)
             with self._home_cache_lock:
-                with self._generation_lock:
-                    self._home_generation += 1
-                    state.generation = self._home_generation
+                # Watermark: the snapshot now covers exactly this window's
+                # events. Never bump the seq counter here — it only issues
+                # seqs; advancing it past events queued during this window
+                # would make the ``seq > generation`` filter drop them.
+                state.generation = max(change.seq for change in changes)
                 self._home_cache[root_key] = (time.monotonic(), home)
             self._save_persisted_projection(root_key, home)
         except Exception:
@@ -388,7 +432,6 @@ class _GalleryIncrementalMixin:
         old_abs: str | None,
         kind: str,
     ) -> GalleryHome:
-        conn = self._connection(root, None, self._connection_provider)
         if kind == "created":
             rel = self._rel(root, new_abs)
             if rel is None or not rel:
@@ -462,7 +505,7 @@ class _GalleryIncrementalMixin:
                 modified_candidate=int(summary["modified"]),
                 child_delta=1,
             )
-            return self._recompose_home(root, state, conn)
+            return home
 
         if kind == "deleted":
             rel = self._rel(root, new_abs)
@@ -516,7 +559,7 @@ class _GalleryIncrementalMixin:
                 # the intermediate chain was pruned: recompute the mtime
                 # from the survivor's own directory instead of rebuilding.
                 self._recompute_modified(root, state, survivor)
-            return self._recompose_home(root, state, conn)
+            return home
 
         if kind == "moved" and old_abs is not None:
             rel_old = self._rel(root, old_abs)
@@ -588,7 +631,7 @@ class _GalleryIncrementalMixin:
                     if key in state.nodes:
                         self._recompute_cover(root, state, key)
                 self._resort_children(state, parent_key)
-                return self._recompose_home(root, state, conn)
+                return home
 
             # Cross-parent move: delete from the old parent, then sub-walk
             # the destination (both guarded; any inconsistency falls back).
@@ -668,7 +711,6 @@ class _GalleryIncrementalMixin:
         old_abs: str | None,
         kind: str,
     ) -> GalleryHome:
-        conn = self._connection(root, None, self._connection_provider)
         if kind == "created":
             rel = self._rel(root, new_abs)
             if rel is None:
@@ -701,7 +743,7 @@ class _GalleryIncrementalMixin:
                 artwork_delta=1 if is_image else 0,
                 modified_candidate=int(st.st_mtime),
             )
-            return self._recompose_home(root, state, conn)
+            return home
 
         if kind == "deleted":
             rel = self._rel(root, new_abs)
@@ -744,7 +786,7 @@ class _GalleryIncrementalMixin:
                 # max mtime was this file's: recompute it from the
                 # survivor's own directory (cheap, exact).
                 self._recompute_modified(root, state, survivor)
-            return self._recompose_home(root, state, conn)
+            return home
 
         if kind == "moved" and old_abs is not None:
             rel_old = self._rel(root, old_abs)
@@ -813,7 +855,7 @@ class _GalleryIncrementalMixin:
                 artwork_delta=1 if is_image else 0,
                 modified_candidate=int(st.st_mtime),
             )
-            return self._recompose_home(root, state, conn)
+            return home
 
         raise _IncrementalFallback(f"unsupported event {kind}")
 

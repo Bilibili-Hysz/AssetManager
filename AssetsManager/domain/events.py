@@ -19,13 +19,6 @@ class DomainEvent(DomainEventBase):
 # ── Library events ───────────────────────────────────────────────
 
 @dataclass(frozen=True)
-class LibraryOpened(DomainEvent):
-    """A library was opened."""
-    library_root: str = ""
-    session_token: str = ""
-
-
-@dataclass(frozen=True)
 class ShareChanged(DomainEvent):
     """Share links changed within a specific library session."""
     library_root: str = ""
@@ -85,11 +78,18 @@ class FileSystemChanged(DomainEvent):
 
 @dataclass(frozen=True)
 class AssetTagsChanged(DomainEvent):
-    """Tags for one asset changed within a specific library session."""
+    """Tags for one asset changed within a specific library session.
+
+    Single-asset mutations carry ``file_path`` (plus ``new_tags``).  Catalog
+    wide operations such as ``rename_tag``/``delete_tag`` publish exactly one
+    batch event with ``paths`` covering every affected asset and empty
+    ``file_path``/``new_tags`` — consumers must re-read the per-asset state.
+    """
     library_root: str = ""
     session_token: str = ""
     file_path: str = ""
     new_tags: tuple[str, ...] = ()
+    paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -140,3 +140,10 @@ class QuotaChanged(DomainEvent):
     library_root: str = ""
     session_token: str = ""
     name: str = ""
+
+
+@dataclass(frozen=True)
+class SellerProfileChanged(DomainEvent):
+    """The per-library seller profile settings changed."""
+    library_root: str = ""
+    session_token: str = ""

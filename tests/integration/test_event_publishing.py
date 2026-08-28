@@ -6,26 +6,49 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
-def test_library_service_publishes_library_opened(tmp_path, monkeypatch):
-    """LibraryService.open_session() publishes LibraryOpened."""
-    from AssetsManager.application.library_service import LibraryService
+def _fake_session(root, token):
+    """Minimal session stand-in satisfying the session_operation contract."""
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        root=root,
+        root_str=str(root),
+        event_token=token,
+        operation=nullcontext,
+    )
+
+
+def _install_event_bus(monkeypatch):
+    """Swap the global EventBus singleton and return the fresh bus."""
     from AssetsManager.domain.event_bus import EventBus
-    from AssetsManager.domain.events import LibraryOpened
 
     bus = EventBus()
-    events = []
-    bus.subscribe(LibraryOpened, events.append)
     import AssetsManager.domain.event_bus as eb
     monkeypatch.setattr(eb, "_instance", bus)
+    return bus
 
-    svc = LibraryService()
-    lib = tmp_path / "testlib"
-    lib.mkdir()
-    svc.open_session(str(lib))
 
-    assert len(events) == 1
-    assert events[0].library_root == str(lib.resolve())
-    assert events[0].session_token == svc.current_session.event_token
+def _fulfilled_order(schema_db, tmp_path, *, max_downloads=3):
+    """Create a confirmed+fulfilled order and its bearer/receipt credentials."""
+    from AssetsManager.application.order_service import OrderService
+    from AssetsManager.repositories.order_repository import OrderRepository
+    from AssetsManager.repositories.shop_repository import ShopRepository
+
+    root = tmp_path / "library"
+    root.mkdir()
+    (root / "asset.txt").write_text("asset", encoding="utf-8")
+    shops = ShopRepository(schema_db)
+    orders = OrderRepository(schema_db)
+    item = shops.create_item(path="asset.txt", title="Asset", price_cents=125)
+    # Setup runs on a session-less service so its publishes are no-ops.
+    setup = OrderService(repository=orders, shop_repository=shops)
+    order, receipt = setup.create_order_with_receipt(root, {"item_id": item["id"]})
+    setup.confirm_by_receipt(root, order["id"], receipt)
+    _fulfilled, bearer, _claim = setup.fulfill(
+        root, order["id"], max_downloads=max_downloads, expires_in=60
+    )
+    return root, order, receipt, bearer, orders, shops
 
 
 def test_tag_service_publishes_tags_changed_on_add(tmp_path, monkeypatch):
@@ -83,7 +106,8 @@ def test_scoped_tag_add_publishes_asset_and_catalog_events(tmp_path, monkeypatch
         bootstrap.library_service.close()
 
 
-def test_scoped_tag_rename_updates_each_affected_asset_once(tmp_path, monkeypatch):
+def test_scoped_tag_rename_publishes_one_batch_event(tmp_path, monkeypatch):
+    """rename_tag() collapses per-file events into one batch event."""
     from AssetsManager.application.bootstrap import ApplicationBootstrap
     from AssetsManager.domain.event_bus import EventBus
     from AssetsManager.domain.events import AssetTagsChanged, TagCatalogChanged
@@ -108,11 +132,44 @@ def test_scoped_tag_rename_updates_each_affected_asset_once(tmp_path, monkeypatc
 
         service.rename_tag(tmp_path, "hero", "champion")
 
-        assert {event.file_path for event in asset_events} == {
-            str(first.resolve()), str(second.resolve())
-        }
-        assert all(event.new_tags == ("champion",) for event in asset_events)
+        # Exactly one batch AssetTagsChanged covering both affected assets.
+        assert len(asset_events) == 1
+        event = asset_events[0]
+        assert sorted(event.paths) == sorted(
+            [str(first.resolve()), str(second.resolve())]
+        )
+        assert event.file_path == ""
+        assert event.new_tags == ()
+        assert event.session_token == session.event_token
         assert len(catalog_events) == 1
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_scoped_tag_rename_100_files_publishes_single_event(tmp_path, monkeypatch):
+    """Batch boundary holds at scale: 100 affected files -> one event."""
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+    from AssetsManager.domain.event_bus import EventBus
+    from AssetsManager.domain.events import AssetTagsChanged
+
+    bus = EventBus()
+    asset_events = []
+    bus.subscribe(AssetTagsChanged, asset_events.append)
+    import AssetsManager.domain.event_bus as eb
+    monkeypatch.setattr(eb, "_instance", bus)
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path)
+    service = bootstrap.runtime_for(session).services.tag_service
+    try:
+        for index in range(100):
+            (tmp_path / f"asset_{index:03}.txt").write_text("x", encoding="utf-8")
+            service.add_tag(tmp_path, tmp_path / f"asset_{index:03}.txt", "hero")
+        asset_events.clear()
+
+        service.rename_tag(tmp_path, "hero", "champion")
+
+        assert len(asset_events) == 1
+        assert len(asset_events[0].paths) == 100
     finally:
         bootstrap.library_service.close()
 
@@ -412,7 +469,8 @@ def test_file_operation_publishes_file_copied(tmp_path, monkeypatch):
 
         assert len(events) == 1
         assert events[0].kind == "copied"
-        assert events[0].old_paths == (str((tmp_path / "library" / "source.txt").resolve()),)
+        # Copies have no old location: old_paths must stay empty.
+        assert events[0].old_paths == ()
         assert events[0].paths == (str((dest / "source.txt").resolve()),)
     finally:
         bootstrap.library_service.close()
@@ -442,7 +500,8 @@ def test_scoped_copy_publishes_session_scoped_file_change(tmp_path, monkeypatch)
         assert events[0].library_root == session.root_str
         assert events[0].session_token == session.event_token
         assert events[0].kind == "copied"
-        assert events[0].old_paths == (str(source.resolve()),)
+        # Copies have no old location: old_paths must stay empty.
+        assert events[0].old_paths == ()
         assert events[0].paths == (str((destination / source.name).resolve()),)
     finally:
         bootstrap.library_service.close()
@@ -475,3 +534,98 @@ def test_runtime_router_receives_scoped_service_events_once(tmp_path, monkeypatc
         assert received[0].paths == ("asset.png",)
     finally:
         bootstrap.library_service.close()
+
+
+def _delivery_service(schema_db, tmp_path):
+    from AssetsManager.application.order_service import OrderService
+
+    root, order, receipt, bearer, _orders, _shops = _fulfilled_order(schema_db, tmp_path)
+    service = OrderService(
+        repository=_orders,
+        shop_repository=_shops,
+        session=_fake_session(root, "delivery-session-token"),
+    )
+    return root, order, receipt, bearer, service
+
+
+def test_resolve_delivery_consume_publishes_order_events(schema_db, tmp_path, monkeypatch):
+    """A consumed bearer download publishes the Activity/Order/Quota trio."""
+    from AssetsManager.domain.events import ActivityChanged, QuotaChanged, ShopOrderChanged
+
+    bus = _install_event_bus(monkeypatch)
+    activity, order_events, quota = [], [], []
+    bus.subscribe(ActivityChanged, activity.append)
+    bus.subscribe(ShopOrderChanged, order_events.append)
+    bus.subscribe(QuotaChanged, quota.append)
+    root, order, _receipt, bearer, service = _delivery_service(schema_db, tmp_path)
+
+    # Non-consuming resolution (preview) must not publish anything.
+    service.resolve_delivery(root, bearer)
+    assert activity == [] and order_events == [] and quota == []
+
+    service.resolve_delivery(root, bearer, consume=True)
+
+    assert len(activity) == 1
+    assert len(order_events) == 1
+    assert len(quota) == 1
+    assert order_events[0].order_id == str(order["id"])
+    assert order_events[0].library_root == str(root)
+    assert order_events[0].session_token == "delivery-session-token"
+    assert quota[0].name == "orders"
+    assert quota[0].session_token == "delivery-session-token"
+
+
+def test_resolve_delivery_by_receipt_consume_publishes_order_events(
+    schema_db, tmp_path, monkeypatch
+):
+    """A consumed receipt download publishes the Activity/Order/Quota trio."""
+    from AssetsManager.domain.events import ActivityChanged, QuotaChanged, ShopOrderChanged
+
+    bus = _install_event_bus(monkeypatch)
+    activity, order_events, quota = [], [], []
+    bus.subscribe(ActivityChanged, activity.append)
+    bus.subscribe(ShopOrderChanged, order_events.append)
+    bus.subscribe(QuotaChanged, quota.append)
+    root, order, receipt, _bearer, service = _delivery_service(schema_db, tmp_path)
+
+    # Non-consuming receipt resolution (preview) must not publish anything.
+    service.resolve_delivery_by_receipt(root, order["id"], receipt)
+    assert activity == [] and order_events == [] and quota == []
+
+    service.resolve_delivery_by_receipt(root, order["id"], receipt, consume=True)
+
+    assert len(activity) == 1
+    assert len(order_events) == 1
+    assert len(quota) == 1
+    assert order_events[0].order_id == str(order["id"])
+    assert order_events[0].library_root == str(root)
+    assert order_events[0].session_token == "delivery-session-token"
+    assert quota[0].name == "orders"
+    assert quota[0].session_token == "delivery-session-token"
+
+
+def test_seller_profile_update_publishes_seller_profile_changed(
+    schema_db, tmp_path, monkeypatch
+):
+    """SellerProfileService.update_profile() publishes SellerProfileChanged."""
+    from AssetsManager.application.seller_profile_service import SellerProfileService
+    from AssetsManager.domain.events import SellerProfileChanged
+    from AssetsManager.repositories.seller_profile_repository import (
+        SellerProfileRepository,
+    )
+
+    bus = _install_event_bus(monkeypatch)
+    events = []
+    bus.subscribe(SellerProfileChanged, events.append)
+    root = tmp_path / "library"
+    root.mkdir()
+    service = SellerProfileService(
+        repository=SellerProfileRepository(schema_db),
+        session=_fake_session(root, "seller-session-token"),
+    )
+
+    service.update_profile(root, {"store_name": "My Store"})
+
+    assert len(events) == 1
+    assert events[0].library_root == str(root)
+    assert events[0].session_token == "seller-session-token"

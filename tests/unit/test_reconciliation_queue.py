@@ -271,16 +271,69 @@ def test_running_json_task_without_lease_token_recovers_immediately(tmp_path):
 
 
 
-def test_renew_lease_extends_current_token_only(tmp_path):
-    from AssetsManager.application import (
-        ReconciliationQueue,
-        ReconciliationQueuePersistenceConflict,
-    )
+@pytest.fixture(params=["memory", "sqlite"], ids=["memory", "sqlite"])
+def make_queue(request, tmp_path):
+    """Build a ReconciliationQueue over either persistence backend.
 
-    queue = ReconciliationQueue(
-        library_root=tmp_path / "library",
-        clock=lambda: 0.0,
-    )
+    Both backends use a monotonic clock frozen at 0.0 (the SQLite store adds
+    a wall clock at 1000.0 because its leases are wall-clock based).  Yields
+    ``(make, expire)`` where ``make(**kwargs)`` constructs the queue and
+    ``expire()`` invalidates a claimed lease (a no-op for the in-memory
+    backend, which expires via the caller-supplied ``now``).
+    """
+    from AssetsManager.application import ReconciliationQueue
+
+    if request.param == "memory":
+        def make(**kwargs):
+            return ReconciliationQueue(
+                library_root=tmp_path / "library",
+                clock=lambda: 0.0,
+                **kwargs,
+            )
+
+        def expire():
+            pass
+
+        yield make, expire
+    else:
+        from tests.unit.test_reconciliation_queue_sqlite_store import _SCHEMA
+        import sqlite3
+
+        from AssetsManager.application import SQLiteReconciliationQueueStore
+
+        wall = [1000.0]
+        connection = sqlite3.connect(":memory:", check_same_thread=False)
+        connection.executescript(_SCHEMA)
+        connection.commit()
+        store = SQLiteReconciliationQueueStore(
+            connection=connection,
+            library_root=tmp_path / "library",
+            allow_unmanaged=True,
+            clock=lambda: 0.0,
+            wall_clock=lambda: wall[0],
+        )
+
+        def make(**kwargs):
+            return ReconciliationQueue(
+                library_root=tmp_path / "library",
+                persistence_store=store,
+                **kwargs,
+            )
+
+        def expire():
+            wall[0] = 1001.0
+
+        try:
+            yield make, expire
+        finally:
+            connection.close()
+
+
+def test_renew_lease_extends_current_token_only(make_queue, tmp_path):
+    from AssetsManager.application import ReconciliationQueuePersistenceConflict
+
+    make, _expire = make_queue
+    queue = make()
     task = queue.enqueue_or_merge(path=tmp_path / "library", reason="busy", now=0.0)
     claimed = queue.claim_next(now=0.0, lease_seconds=1.0)
     assert claimed is not None
@@ -297,17 +350,18 @@ def test_renew_lease_extends_current_token_only(tmp_path):
         )
 
 
-def test_in_memory_expired_lease_rejects_renewal_and_completion(tmp_path):
+def test_expired_lease_rejects_renewal_and_completion(make_queue, tmp_path):
     from AssetsManager.application import (
-        ReconciliationQueue,
         ReconciliationQueuePersistenceConflict,
         ReconciliationState,
     )
 
-    queue = ReconciliationQueue(library_root=tmp_path / "library", clock=lambda: 0.0)
+    make, expire = make_queue
+    queue = make()
     task = queue.enqueue_or_merge(path=tmp_path / "library", reason="busy", now=0.0)
     claimed = queue.claim_next(now=0.0, lease_seconds=1.0)
     assert claimed is not None
+    expire()
 
     with pytest.raises(ReconciliationQueuePersistenceConflict) as renewed:
         queue.renew_lease(

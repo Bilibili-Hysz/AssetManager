@@ -695,6 +695,27 @@ AUTH_SHARE_SCHEMA_CONTRACT: dict[str, SchemaObjectContract] = {
 # Small, shared object manifest used by migration and repository compatibility
 # paths. Contracts describe required shape only; additive columns remain valid.
 SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
+    "file_meta": {
+        "columns": (
+            "file_path", "notes", "cached_size", "cached_mtime",
+            "cached_file_count", "urls", "cached_file_count_mtime",
+        ),
+        "primary_key": ("file_path",),
+        "unique_constraints": (),
+        "column_contracts": {
+            # file_path is the PRIMARY KEY without an explicit NOT NULL, so
+            # PRAGMA table_info reports notnull=0 for it (rowid-table rule).
+            "file_path": {"type": "TEXT", "not_null": False},
+            "notes": {"type": "TEXT", "not_null": True},
+            "cached_size": {"type": "INTEGER", "not_null": False},
+            "cached_mtime": {"type": "REAL", "not_null": False},
+            "cached_file_count": {"type": "INTEGER", "not_null": False},
+            "urls": {"type": "TEXT", "not_null": True},
+            # v35: source-directory mtime stamped alongside cached_file_count;
+            # NULL marks a stale/legacy entry that must be recomputed.
+            "cached_file_count_mtime": {"type": "REAL", "not_null": False},
+        },
+    },
     "thumbnail_cache": {
         "columns": (
             "cache_key", "source_path", "source_mtime", "source_size",

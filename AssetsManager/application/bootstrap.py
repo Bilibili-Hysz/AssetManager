@@ -320,21 +320,17 @@ class ApplicationBootstrap:
     # ── Service registration ─────────────────────────────────────
 
     def _register_services(self) -> None:
+        # The container only registers application-lifetime services. Every
+        # per-session service (AssetService, MetadataService, TagService,
+        # FileOperationService, ThumbnailService, SearchService, ProjectService,
+        # AssetIndexService, UndoService, ...) requires a live LibrarySession
+        # and is therefore constructed in ``_build_services`` / the lazy LAN
+        # projection, never resolved from the container.
         c = self.container
         # Core infrastructure — no dependencies
         c.register(DatabaseManager, instance=DatabaseManager(self._performance_recorder))
         # Core services — class-based registration (auto-singleton)
         c.register(LibraryService, deps=[DatabaseManager])
-        c.register(AssetService)
-        c.register(MetadataService)
-        c.register(TagService)
-        c.register(FileOperationService)
-        c.register(ThumbnailService)
-        c.register(SearchService)
-        # ProjectService is created in the lazy LAN projection with its
-        # session provider.
-        c.register(AssetIndexService)
-        c.register(UndoService)
         c.register(PluginService)
         # AuthService / ShareService are per-Runtime services because their
         # connection and token secret belong to one opened library session.
@@ -597,7 +593,18 @@ class ApplicationBootstrap:
                 performance_recorder=self._performance_recorder,
                 reconciliation_queue=reconciliation_queue,
                 import_manifest_store=import_manifest_store,
+                pending_projection_repairs_dir=(
+                    library_data_dir(identity) / "pending_projection_repairs"
+                ),
             )
+            # Re-enqueue projection-repair requests whose enqueue failed in a
+            # previous run (markers under pending_projection_repairs/).  A
+            # marker that fails again is kept for the next attempt; drain
+            # failures must never break startup.
+            try:
+                file_operation_service.drain_pending_projection_repairs()
+            except Exception:
+                _log.exception("Pending projection repair drain failed at startup")
             from AssetsManager.application.filesystem_projection_repair_service import (
                 FilesystemProjectionRepairService,
             )
@@ -684,13 +691,11 @@ class ApplicationBootstrap:
         asset_index_service: AssetIndexService | None = None,
     ) -> LanRuntimeServices:
         provider = connection_provider if connection_provider is not None else session.connection_for
-        index_service = asset_index_service
-        if index_service is None:
-            index_service = (
-                AssetIndexService.for_session(session)
-                if isinstance(session, LibrarySession)
-                else self.container.resolve(AssetIndexService)
-            )
+        index_service = (
+            asset_index_service
+            if asset_index_service is not None
+            else AssetIndexService.for_session(session)
+        )
         is_canonical_provider = (
             getattr(provider, "__self__", None) is session
             and getattr(provider, "__func__", None) is LibrarySession.connection_for

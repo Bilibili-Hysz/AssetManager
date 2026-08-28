@@ -1,5 +1,8 @@
 """Tests for ProjectService."""
 
+import os
+import time
+
 import pytest
 
 from AssetsManager.application.project_service import ProjectDepthConfig, ProjectService
@@ -51,6 +54,53 @@ def test_list_projects_uses_connection_provider_without_db_conn(tmp_path, schema
     )
 
     assert listing.items[0].file_count == 1
+
+
+def test_list_projects_recomputes_file_count_after_directory_mtime_change(tmp_path, schema_db):
+    library = tmp_path / "library"
+    library.mkdir()
+    project = library / "alpha"
+    project.mkdir()
+    (project / "cover.png").write_bytes(b"png")
+
+    conn = schema_db
+    service = ProjectService(connection_provider=lambda _root: conn)
+    listing = service.list_projects(
+        library,
+        library,
+        depth_config=ProjectDepthConfig(global_depth=1),
+        db_conn=conn,
+    )
+    assert listing.items[0].file_count == 1
+    stamped = conn.execute(
+        "SELECT cached_file_count, cached_file_count_mtime FROM file_meta WHERE file_path=?",
+        (str(project.resolve()),),
+    ).fetchone()
+    assert stamped is not None
+    assert stamped[0] == 1
+    assert stamped[1] is not None
+
+    # A file arrives through a path that does not refresh any index, and the
+    # directory mtime moves past the stamp recorded above.
+    (project / "extra.txt").write_text("extra", encoding="utf-8")
+    future = time.time() + 120
+    os.utime(project, (future, future))
+
+    # The cached count must not be served again: the stale stamp forces a
+    # recompute in both the batch warm pass and the per-entry read.
+    listing = service.list_projects(
+        library,
+        library,
+        depth_config=ProjectDepthConfig(global_depth=1),
+        db_conn=conn,
+    )
+    assert listing.items[0].file_count == 2
+    refreshed = conn.execute(
+        "SELECT cached_file_count, cached_file_count_mtime FROM file_meta WHERE file_path=?",
+        (str(project.resolve()),),
+    ).fetchone()
+    assert refreshed[0] == 2
+    assert refreshed[1] == pytest.approx(future, abs=1e-6)
 
 
 def test_list_projects_applies_branch_depth_and_search(tmp_path, schema_db):

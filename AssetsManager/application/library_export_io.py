@@ -556,6 +556,63 @@ def clear_restore_intent(data_dir: Path) -> None:
     restore_intent_path(data_dir).unlink(missing_ok=True)
 
 
+# Corrupt markers are isolated, never deleted: the sentinel file is renamed
+# in place with this tag so the original bytes stay on disk as evidence.
+# The renamed name keeps the ``.{name}.restore-intent`` prefix, so the
+# LibraryService residue sweep (which only archives stale staging
+# directories and removes ``.tmp`` files) deliberately skips it, and
+# :func:`quarantined_restore_intent_marker` lets a later open keep failing
+# closed for a still-missing slot instead of silently materializing an
+# empty database.
+_RESTORE_INTENT_CORRUPT_TAG = ".corrupt-"
+
+
+def quarantine_restore_intent_marker(data_dir: Path) -> Path:
+    """Isolate a corrupt intent marker by renaming it in place.
+
+    Returns the new (evidence) path.  Raises OSError when the rename fails
+    so callers can keep the open fail-closed instead of losing the marker
+    guard without having restored anything.
+    """
+    path = restore_intent_path(data_dir)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    for _attempt in range(8):
+        candidate = path.with_name(
+            f"{path.name}{_RESTORE_INTENT_CORRUPT_TAG}{stamp}_{uuid.uuid4().hex[:8]}"
+        )
+        if os.path.lexists(candidate):
+            continue
+        os.replace(path, candidate)
+        return candidate
+    raise OSError(f"Cannot quarantine corrupt restore-intent marker: {path}")
+
+
+def quarantined_restore_intent_marker(data_dir: Path) -> Path | None:
+    """Return the newest quarantined corrupt intent marker, or None.
+
+    Only regular siblings matching the :func:`quarantine_restore_intent_marker`
+    naming convention count; links and anything unstatable are ignored.
+    """
+    prefix = restore_intent_path(data_dir).name + _RESTORE_INTENT_CORRUPT_TAG
+    try:
+        entries = list(data_dir.parent.iterdir())
+    except OSError:
+        return None
+    newest: tuple[float, Path] | None = None
+    for entry in entries:
+        if not entry.name.startswith(prefix):
+            continue
+        try:
+            if entry.is_symlink() or not entry.is_file():
+                continue
+            modified = entry.stat().st_mtime
+        except OSError:
+            continue
+        if newest is None or modified > newest[0]:
+            newest = (modified, entry)
+    return newest[1] if newest is not None else None
+
+
 def compression_type_for_bytes(data: bytes, *, max_compression_ratio: int) -> int:
     """Select DEFLATE unless it would trip our compression-ratio guard."""
     if not data:

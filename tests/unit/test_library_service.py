@@ -601,7 +601,27 @@ def test_compatibility_root_map_never_recanonicalizes_captured_keys(monkeypatch,
     assert mapping.get(str(root_b)) == "session-b"
 
 
-def test_sweep_archives_orphan_staging_and_tmp_but_keeps_marker(tmp_path):
+@pytest.fixture()
+def _isolated_runtime_root(tmp_path, monkeypatch):
+    """Point the process-global RuntimeData root at this test's tmp_path.
+
+    Real isolation for the sweep tests below: ``_sweep_orphan_restore_residue``
+    derives the restore-quarantine tree (``RuntimeData/_orphaned/restore-backups``)
+    from ``runtime_root()``, which is shared by every library slot and every
+    xdist worker on the same checkout. Sweep passes triggered by
+    ``open_session()`` in any other test fold/trim that shared tree in real
+    time, so entries archived here (mtime 1970 => always the oldest) can be
+    folded or deleted concurrently and break the level/count assertions.
+    Patching ``runtime_root`` (same pattern as test_library_export_service)
+    gives each test a private slot, marker, lock, and quarantine tree.
+    """
+    from AssetsManager.core import path_resolver
+
+    monkeypatch.setattr(path_resolver, "runtime_root", lambda: tmp_path / "RuntimeData")
+
+
+def test_sweep_archives_orphan_staging_and_tmp_but_keeps_marker(
+    tmp_path, _isolated_runtime_root):
     import os
 
     from AssetsManager.core.path_resolver import root_identity
@@ -733,7 +753,8 @@ def test_archive_expired_quarantine_entries_folds_old_backups(tmp_path):
     assert fresh_entry.exists(), "fresh quarantine entries stay in place"
 
 
-def test_sweep_caps_active_quarantine_entries_by_count(tmp_path):
+def test_sweep_caps_active_quarantine_entries_by_count(
+    tmp_path, _isolated_runtime_root):
     import os
 
     from AssetsManager.application.library_export_io import (

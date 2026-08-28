@@ -12,13 +12,12 @@ does not sample N pages.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from pathlib import Path
 import sqlite3
 
 import pytest
 
 import AssetsManager.application.library_export_service as export_module
-from AssetsManager.application import ApplicationBootstrap, LibraryExportService
+from AssetsManager.application import LibraryExportService
 from AssetsManager.core import path_resolver
 
 
@@ -27,63 +26,52 @@ def _use_temporary_runtime_root(tmp_path, monkeypatch):
     monkeypatch.setattr(path_resolver, "runtime_root", lambda: tmp_path / "RuntimeData")
 
 
-def _open_session(tmp_path: Path):
-    bootstrap = ApplicationBootstrap()
-    library = tmp_path / "library"
-    library.mkdir()
-    session = bootstrap.library_service.open_session(library)
-    return bootstrap, session
+def test_snapshot_page_copy_runs_outside_db_write_lock(opened_session, tmp_path, monkeypatch):
+    bootstrap, session = opened_session
+    service = bootstrap.runtime_for(session).services.export_service
+    destination = tmp_path / "snapshot.db"
+    real_connect = export_module.sqlite3.connect
+    lock_depth = [0]
+    observed = {}
 
-
-def test_snapshot_page_copy_runs_outside_db_write_lock(tmp_path, monkeypatch):
-    bootstrap, session = _open_session(tmp_path)
-    try:
-        service = bootstrap.runtime_for(session).services.export_service
-        destination = tmp_path / "snapshot.db"
-        real_connect = export_module.sqlite3.connect
-        lock_depth = [0]
-        observed = {}
-
-        @contextmanager
-        def tracking_write_lock(conn=None):
-            lock_depth[0] += 1
-            try:
-                yield
-            finally:
-                lock_depth[0] -= 1
-
-        class TrackingSnapshotConnection:
-            """Wrap the read-only snapshot connection to observe the copy."""
-
-            def __init__(self, real):
-                self._real = real
-
-            def backup(self, target):
-                observed["copy_under_lock"] = lock_depth[0] > 0
-                return self._real.backup(target)
-
-            def close(self):
-                self._real.close()
-
-        def tracked_connect(*args, **kwargs):
-            conn = real_connect(*args, **kwargs)
-            if kwargs.get("uri"):
-                return TrackingSnapshotConnection(conn)
-            return conn
-
-        monkeypatch.setattr(export_module.sqlite3, "connect", tracked_connect)
-        monkeypatch.setattr(export_module, "db_write_lock", tracking_write_lock)
-
-        service._snapshot_database(session.root, destination)
-
-        assert observed.get("copy_under_lock") is False
-        check = sqlite3.connect(str(destination))
+    @contextmanager
+    def tracking_write_lock(conn=None):
+        lock_depth[0] += 1
         try:
-            assert check.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+            yield
         finally:
-            check.close()
+            lock_depth[0] -= 1
+
+    class TrackingSnapshotConnection:
+        """Wrap the read-only snapshot connection to observe the copy."""
+
+        def __init__(self, real):
+            self._real = real
+
+        def backup(self, target):
+            observed["copy_under_lock"] = lock_depth[0] > 0
+            return self._real.backup(target)
+
+        def close(self):
+            self._real.close()
+
+    def tracked_connect(*args, **kwargs):
+        conn = real_connect(*args, **kwargs)
+        if kwargs.get("uri"):
+            return TrackingSnapshotConnection(conn)
+        return conn
+
+    monkeypatch.setattr(export_module.sqlite3, "connect", tracked_connect)
+    monkeypatch.setattr(export_module, "db_write_lock", tracking_write_lock)
+
+    service._snapshot_database(session.root, destination)
+
+    assert observed.get("copy_under_lock") is False
+    check = sqlite3.connect(str(destination))
+    try:
+        assert check.execute("PRAGMA quick_check").fetchone()[0] == "ok"
     finally:
-        bootstrap.library_service.close()
+        check.close()
 
 
 def test_quick_check_connection_uses_enlarged_page_cache(tmp_path):

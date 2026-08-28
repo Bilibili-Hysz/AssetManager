@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
+from AssetsManager.domain.event_bus import get_event_bus
+from AssetsManager.domain.events import QuotaChanged
 from AssetsManager.repositories.free_download_quota_repository import (
     FreeDownloadQuotaRepository,
 )
@@ -54,10 +56,12 @@ class FreeDownloadQuotaService:
         *,
         clock=time.time,
         monotonic_clock=time.monotonic,
+        session: Any | None = None,
     ) -> None:
         self.repository = repository
         self.clock = clock
         self.monotonic_clock = monotonic_clock
+        self._session = session
         self._maintenance_lock = threading.RLock()
         self._maintenance_last_success: float | None = None
         self._maintenance_next_attempt = 0.0
@@ -79,6 +83,7 @@ class FreeDownloadQuotaService:
                 session=session,
             ),
             clock=clock,
+            session=session,
         )
 
     @staticmethod
@@ -145,6 +150,14 @@ class FreeDownloadQuotaService:
             limit=cfg.limit,
             min_interval_seconds=cfg.min_interval_seconds,
         )
+        if bool(result.get("allowed")) and self._session is not None:
+            # Only an actual deduction invalidates the quota projection; a
+            # rejected consume (exhausted / rate-limited) changed no state.
+            get_event_bus().publish(QuotaChanged(
+                library_root=self._session.root_str,
+                session_token=self._session.event_token,
+                name=self._identity(identity_key),
+            ))
         info = {
             "enabled": True,
             "period": cfg.period,

@@ -1100,7 +1100,7 @@ def test_exactly_one_import_event_published(tmp_path, monkeypatch):
         bootstrap.library_service.close()
 
 
-def test_import_cancellation_returns_partial_result_without_event_or_refresh(
+def test_import_cancellation_publishes_single_compensation_event(
     tmp_path, monkeypatch
 ):
     bootstrap, session, file_operations, bus = _bootstrap_and_import(tmp_path, monkeypatch)
@@ -1145,7 +1145,11 @@ def test_import_cancellation_returns_partial_result_without_event_or_refresh(
         assert partial.cancelled is True
         assert partial.copied >= 1
         assert not refresh_calls
-        assert events == []
+        # Compensation: exactly one event covering the destination because
+        # at least one file was already copied.
+        assert len(events) == 1
+        assert events[0].kind == "cancelled_import"
+        assert events[0].paths == (str(dest.resolve()),)
         assert (dest / "a.txt").exists()
         assert any(call["reason"] == "import_partial" for call in queue_calls)
         assert callable(original_refresh)
@@ -1195,8 +1199,44 @@ def test_import_late_cancellation_enqueues_rescan_without_refresh_or_event(
         assert partial.copied == 1
         assert (destination / "source.txt").read_text() == "source"
         assert refresh_calls == []
-        assert events == []
+        # Late cancellation after one copied file still publishes exactly one
+        # compensating event (no "import" event, no refresh).
+        assert len(events) == 1
+        assert events[0].kind == "cancelled_import"
+        assert events[0].paths == (str(destination.resolve()),)
         assert any(call["reason"] == "import_partial" for call in queue_calls)
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_import_cancellation_before_first_copy_publishes_no_event(
+    tmp_path, monkeypatch,
+):
+    """copied == 0 cancellation must stay event-free."""
+    bootstrap, session, file_operations, bus = _bootstrap_and_import(tmp_path, monkeypatch)
+    events = []
+    bus.subscribe(FileSystemChanged, events.append)
+    try:
+        source = tmp_path / "source.txt"
+        source.write_text("source")
+        destination = session.root / "dest"
+        progress_calls = []
+
+        def progress(done, total):
+            progress_calls.append((done, total))
+
+        def cancel():
+            return bool(progress_calls and progress_calls[-1] == (0, 1))
+
+        with pytest.raises(Exception) as raised:
+            _make_service(session, file_operations).import_sources(
+                [source], destination, progress=progress, should_cancel=cancel,
+            )
+        from AssetsManager.application.import_service import ImportCancelled
+        assert isinstance(raised.value, ImportCancelled)
+        assert raised.value.partial_result is not None
+        assert raised.value.partial_result.copied == 0
+        assert events == []
     finally:
         bootstrap.library_service.close()
 

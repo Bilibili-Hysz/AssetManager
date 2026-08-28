@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
 from sqlite3 import Connection, OperationalError
-from time import monotonic_ns, perf_counter
-from typing import TYPE_CHECKING
+from time import monotonic_ns, perf_counter, time
+from typing import TYPE_CHECKING, Mapping
 from uuid import uuid4
 
 from AssetsManager.application.context import session_operation
@@ -65,6 +65,23 @@ class FileOperationResult:
     @property
     def degraded(self) -> bool:
         return bool(self.warnings)
+
+
+@dataclass(frozen=True)
+class RestoreResult:
+    """Outcome of :meth:`FileOperationService.restore_backup`.
+
+    The filesystem restore itself either succeeded (the result is returned)
+    or raised; ``degraded`` carries the projection-restore signal: ``True``
+    means the file was restored but its projection snapshot (tags, notes,
+    favorites) could not be re-applied, so the restore must not be recorded
+    as a fully clean success by undo bookkeeping.  ``warnings`` carries the
+    structured diagnostics collected on the executing thread.
+    """
+
+    path: Path
+    degraded: bool = False
+    warnings: tuple[FileOperationWarning, ...] = ()
 
 
 def _assert_under_root(path: Path, root: str | Path | None) -> None:
@@ -208,11 +225,13 @@ class FileOperationService:
                   asset_index_service: AssetIndexService | None = None,
                   performance_recorder: PerformanceRecorder | None = None,
                   reconciliation_queue: ReconciliationQueue | None = None,
-                  import_manifest_store=None):
+                  import_manifest_store=None,
+                  pending_projection_repairs_dir: Path | None = None):
         self.session = session
         self._asset_index_service = asset_index_service
         self._reconciliation_queue = reconciliation_queue
         self._import_manifest_store = import_manifest_store
+        self._pending_projection_repairs_dir = pending_projection_repairs_dir
         self._performance_recorder = (
             performance_recorder if performance_recorder is not None and performance_recorder.enabled else None
         )
@@ -364,8 +383,16 @@ class FileOperationService:
         reconciliation_state = "not_configured"
         reconciliation_error_type = ""
         if self._reconciliation_queue is not None and self.session is not None:
+            projection_enqueue_failed = False
+            queue_path = reconciliation_path or path
+            enqueue_request = {
+                "path": str(queue_path),
+                "reason": status,
+                "operation_id": operation_id or None,
+                "expected_revision": expected_revision,
+                "observed_revision": observed_revision,
+            }
             try:
-                queue_path = reconciliation_path or path
                 if repair_payload is not None:
                     from AssetsManager.application.reconciliation_queue import (
                         ReconciliationKind,
@@ -381,22 +408,52 @@ class FileOperationService:
                             payload=repair_payload,
                         )
                     except Exception as exc:
+                        # The projection repair is the durable part of the
+                        # pair: persist its request so a later restart can
+                        # re-enqueue it instead of losing it forever.
                         reconciliation_error_type = type(exc).__name__
-                self._reconciliation_queue.enqueue_or_merge(
-                    path=queue_path,
-                    reason=status,
-                    operation_id=operation_id or None,
-                    expected_revision=expected_revision,
-                    observed_revision=observed_revision,
-                )
-                reconciliation_state = "queued"
+                        projection_enqueue_failed = True
+                        self._persist_pending_projection_repair({
+                            **enqueue_request,
+                            "kind": ReconciliationKind.FILESYSTEM_PROJECTION_REPAIR.value,
+                            "payload": repair_payload,
+                        })
+                try:
+                    self._reconciliation_queue.enqueue_or_merge(
+                        path=queue_path,
+                        reason=status,
+                        operation_id=operation_id or None,
+                        expected_revision=expected_revision,
+                        observed_revision=observed_revision,
+                    )
+                    reconciliation_state = (
+                        "generic_queued_projection_failed"
+                        if projection_enqueue_failed
+                        else "queued"
+                    )
+                except Exception as exc:
+                    # A repair-marker failure must never turn a successful
+                    # filesystem command into a filesystem failure.  The warning
+                    # remains available through the normal diagnostics channel,
+                    # while telemetry preserves the lost enqueue signal.
+                    reconciliation_state = "enqueue_failed"
+                    reconciliation_error_type = type(exc).__name__
+                    from AssetsManager.application.reconciliation_queue import (
+                        ReconciliationKind,
+                    )
+                    self._persist_pending_projection_repair({
+                        **enqueue_request,
+                        "kind": ReconciliationKind.ASSET_INDEX_ROOT_RESCAN.value,
+                        "payload": None,
+                    })
             except Exception as exc:
-                # A repair-marker failure must never turn a successful
-                # filesystem command into a filesystem failure.  The warning
-                # remains available through the normal diagnostics channel,
-                # while telemetry preserves the lost enqueue signal.
+                # Fallback bookkeeping itself must never break the command.
                 reconciliation_state = "enqueue_failed"
-                reconciliation_error_type = type(exc).__name__
+                reconciliation_error_type = reconciliation_error_type or type(exc).__name__
+                _log.warning(
+                    "Pending projection repair persistence failed for %s: %s",
+                    queue_path, exc,
+                )
         if self._performance_recorder is None:
             return
         try:
@@ -418,6 +475,116 @@ class FileOperationService:
         except Exception:
             # Diagnostics must never replace the original file operation result.
             pass
+
+    def _resolve_pending_projection_repairs_dir(self) -> Path | None:
+        """Resolve the directory holding durable enqueue-failure markers."""
+        if self._pending_projection_repairs_dir is not None:
+            return self._pending_projection_repairs_dir
+        if self.session is None:
+            return None
+        try:
+            from AssetsManager.core.path_resolver import library_data_dir
+
+            return library_data_dir(self.session.root_str) / "pending_projection_repairs"
+        except Exception:
+            return None
+
+    def _persist_pending_projection_repair(
+        self, request: Mapping[str, object]
+    ) -> None:
+        """Write a durable ``<timestamp>-<uuid>.json`` marker for one enqueue.
+
+        Best effort by design: when the enqueue failed (e.g. disk full),
+        demanding more disk for the marker would be wrong, so any write
+        failure falls back to log-only (the pre-fix behaviour).
+        """
+        directory = self._resolve_pending_projection_repairs_dir()
+        if directory is None:
+            return
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            marker = directory / f"{int(time())}-{uuid4().hex}.json"
+            document = {
+                "format": "assetsmanager.pending-projection-repair",
+                "version": 1,
+                "saved_at": time(),
+                "request": dict(request),
+            }
+            marker.write_text(
+                json.dumps(document, ensure_ascii=False), encoding="utf-8"
+            )
+        except Exception as exc:
+            _log.error(
+                "Could not persist pending projection repair marker: %s", exc
+            )
+
+    def drain_pending_projection_repairs(self) -> int:
+        """Re-enqueue persisted projection-repair requests from a previous run.
+
+        Every successfully re-enqueued marker is removed; a marker whose
+        enqueue fails again is kept for the next attempt.  Drain failures
+        never raise: startup must not depend on this recovery path.
+        """
+        queue = self._reconciliation_queue
+        directory = self._resolve_pending_projection_repairs_dir()
+        if queue is None or directory is None:
+            return 0
+        try:
+            markers = sorted(directory.glob("*.json"))
+        except OSError:
+            return 0
+        from AssetsManager.application.reconciliation_queue import (
+            ReconciliationKind,
+        )
+
+        kinds = {kind.value: kind for kind in ReconciliationKind}
+        drained = 0
+        for marker in markers:
+            try:
+                document = json.loads(marker.read_text(encoding="utf-8"))
+                request = (
+                    document.get("request") if isinstance(document, dict) else None
+                )
+                if not isinstance(request, dict):
+                    raise ValueError("marker has no enqueue request")
+                path_value = request.get("path")
+                if not isinstance(path_value, str) or not path_value:
+                    raise ValueError("marker has no enqueue path")
+                kind = kinds.get(
+                    str(request.get("kind") or ""),
+                    ReconciliationKind.ASSET_INDEX_ROOT_RESCAN,
+                )
+                payload = (
+                    request.get("payload")
+                    if kind is ReconciliationKind.FILESYSTEM_PROJECTION_REPAIR
+                    else None
+                )
+                queue.enqueue_or_merge(
+                    path=path_value,
+                    reason=str(request.get("reason") or "pending_projection_repair_drain"),
+                    operation_id=request.get("operation_id"),
+                    expected_revision=request.get("expected_revision"),
+                    observed_revision=request.get("observed_revision"),
+                    kind=kind,
+                    payload=payload,
+                )
+            except Exception as exc:
+                _log.warning(
+                    "Keeping pending projection repair marker %s: %s",
+                    marker.name, exc,
+                )
+                continue
+            try:
+                marker.unlink()
+            except OSError as exc:
+                # Re-enqueueing is idempotent (enqueue_or_merge), so a marker
+                # that survives until the next drain is safe to replay.
+                _log.warning(
+                    "Could not remove drained marker %s: %s", marker.name, exc
+                )
+                continue
+            drained += 1
+        return drained
 
     def _record_degraded_index_result(
         self, phase: str, path: Path, result: object
@@ -592,23 +759,7 @@ class FileOperationService:
                     failure=exc,
                     warning_code="metadata_migration_failed",
                     reconciliation_path=self._reconciliation_scope(dst),
-                    repair_payload={
-                        "payload_version": 1,
-                        "operation_kind": "move",
-                        "operation_id": self._current_operation_id() or uuid4().hex,
-                        "projection_set": [
-                            "asset_index", "tags", "metadata", "favorites",
-                            "thumbnail_rows", "thumbnail_bytes",
-                        ],
-                        "scope_path": str(self._reconciliation_scope(dst)),
-                        "source_path": str(src),
-                        "destination_path": str(dst),
-                        "is_directory": is_dir,
-                        "expected_state": {
-                            "source_absent": True,
-                            "destination_present": True,
-                        },
-                    },
+                    repair_payload=self._move_repair_payload(src, dst, is_directory=is_dir),
                 )
             self._refresh_after_move(src, dst, is_dir)
             self._publish_file_change("moved", (dst,), (src,))
@@ -633,20 +784,31 @@ class FileOperationService:
             if not is_bound:
                 _assert_under_root(src, root)
             target = None
-            try:
-                target = unique_destination(destination / src.name).resolve()
-                if src.is_dir():
-                    shutil.copytree(src, target)
-                    self._refresh_directory_tree(target)
-                else:
-                    shutil.copy2(src, target)
-                self._refresh_parents(target.parent)
-                changed.append(target)
-                self._publish_file_change("copied", (target,), (src,))
-            except OSError as exc:
-                if target is not None:
-                    self._remove_partial_target(target)
-                errors.append(f"[{error_category(exc)}] {exc}")
+            # Lock the source and the stable first-candidate destination
+            # name: two concurrent copies of same-named files into one
+            # directory must not both resolve (and truncate-write) the same
+            # target.  unique_destination only probes availability without
+            # holding a reservation, so serialization here — mirroring the
+            # move series — makes the loser re-resolve after the winner's
+            # copy completed.
+            with acquire_path_locks(src, Path(destination_dir) / src.name):
+                try:
+                    target = unique_destination(destination / src.name).resolve()
+                    if src.is_dir():
+                        shutil.copytree(src, target)
+                        self._refresh_directory_tree(target)
+                    else:
+                        shutil.copy2(src, target)
+                    self._refresh_parents(target.parent)
+                    changed.append(target)
+                except OSError as exc:
+                    if target is not None:
+                        self._remove_partial_target(target)
+                    errors.append(f"[{error_category(exc)}] {exc}")
+        # One aggregate event per batch (mirrors ImportService): copies have
+        # no "old" location, so old_paths stays empty.
+        if changed:
+            self._publish_file_change("copied", tuple(changed))
         return FileOperationResult(
             tuple(changed), tuple(errors), self._refresh_warnings()
         )
@@ -708,32 +870,23 @@ class FileOperationService:
                             failure=exc,
                             warning_code="metadata_migration_failed",
                             reconciliation_path=self._reconciliation_scope(target),
-                            repair_payload={
-                                "payload_version": 1,
-                                "operation_kind": "move",
-                                "operation_id": self._current_operation_id() or uuid4().hex,
-                                "projection_set": [
-                                    "asset_index", "tags", "metadata", "favorites",
-                                    "thumbnail_rows", "thumbnail_bytes",
-                                ],
-                                "scope_path": str(self._reconciliation_scope(target)),
-                                "source_path": str(src),
-                                "destination_path": str(target),
-                                "is_directory": is_dir,
-                                "expected_state": {
-                                    "source_absent": True,
-                                    "destination_present": True,
-                                },
-                            },
+                            repair_payload=self._move_repair_payload(src, target, is_directory=is_dir),
                         )
                     self._refresh_after_move(src, target, is_dir)
                     changed.append(target)
                     moved_pairs.append((src, target))
-                    self._publish_file_change("moved", (target,), (src,))
                 except OSError as exc:
                     if target is not None:
                         self._remove_partial_target(target)
                     errors.append(f"[{error_category(exc)}] {exc}")
+        # One aggregate event per batch (mirrors ImportService): every
+        # successful (old, new) pair rides a single "moved" event.
+        if moved_pairs:
+            self._publish_file_change(
+                "moved",
+                tuple(target for _src, target in moved_pairs),
+                tuple(src for src, _target in moved_pairs),
+            )
         return FileOperationResult(
             tuple(changed), tuple(errors), self._refresh_warnings(),
             tuple(moved_pairs),
@@ -745,20 +898,26 @@ class FileOperationService:
         src = Path(path).resolve()
         root = self._root_for(None)
         _assert_under_root(src, root)
-        target = unique_destination(src.with_name(f"{src.stem}{copy_label}{src.suffix}")).resolve()
-        _assert_under_root(target, root)
-        try:
-            if src.is_dir():
-                shutil.copytree(src, target)
-            else:
-                shutil.copy2(src, target)
-        except OSError:
-            self._remove_partial_target(target)
-            raise
-        self._refresh_parents(target.parent)
-        if target.is_dir():
-            self._refresh_directory_tree(target)
-        self._publish_file_change("created", (target,), (src,))
+        candidate = src.with_name(f"{src.stem}{copy_label}{src.suffix}")
+        # Lock the source and the stable first-candidate name so two
+        # concurrent duplicates of the same file cannot both write the same
+        # target (unique_destination does not hold a reservation).
+        with acquire_path_locks(src, candidate):
+            target = unique_destination(candidate).resolve()
+            _assert_under_root(target, root)
+            try:
+                if src.is_dir():
+                    shutil.copytree(src, target)
+                else:
+                    shutil.copy2(src, target)
+            except OSError:
+                self._remove_partial_target(target)
+                raise
+            self._refresh_parents(target.parent)
+            if target.is_dir():
+                self._refresh_directory_tree(target)
+            # A duplicate has no "old" location: old_paths stays empty.
+            self._publish_file_change("created", (target,))
         return target
 
     @session_operation
@@ -797,26 +956,18 @@ class FileOperationService:
                             failure=exc,
                             reconciliation_path=self._reconciliation_scope(p),
                             warning_code="projection_cleanup_failed",
-                            repair_payload={
-                                "payload_version": 1,
-                                "operation_kind": "delete",
-                                "operation_id": self._current_operation_id() or uuid4().hex,
-                                "projection_set": [
-                                    "asset_index", "tags", "metadata", "favorites",
-                                    "thumbnail_rows", "thumbnail_bytes",
-                                ],
-                                "scope_path": str(self._reconciliation_scope(p)),
-                                "target_path": str(p),
-                                "delete_mode": "permanent",
-                                "expected_state": {"target_absent": True},
-                            },
+                            repair_payload=self._delete_repair_payload(
+                                p, delete_mode="permanent"
+                            ),
                         )
                     try:
                         self._refresh_parents(p.parent)
                     except Exception as exc:
                         errors.append(f"[{error_category(exc)}] {exc}")
                     changed.append(p)
-                    self._publish_file_change("deleted", (p,))
+        # One aggregate event per batch (mirrors ImportService).
+        if changed:
+            self._publish_file_change("deleted", tuple(changed))
         return FileOperationResult(
             tuple(changed), tuple(errors), self._refresh_warnings()
         )
@@ -824,13 +975,14 @@ class FileOperationService:
     @session_operation
     @_measure_command("restore_backup")
     def restore_backup(self, backup: str | Path, destination: str | Path,
-                       library_root: str | Path | None = None) -> Path:
+                       library_root: str | Path | None = None) -> RestoreResult:
         """Restore an undo backup and publish the corresponding create event."""
         source = Path(backup).resolve()
         target = Path(destination).resolve()
         root = self._root_for(library_root)
         _assert_under_root(target, root)
         is_dir = source.is_dir()
+        degraded = False
         with acquire_path_locks(target):
             if os.path.lexists(target):
                 raise FileExistsError(
@@ -848,6 +1000,7 @@ class FileOperationService:
             if is_dir:
                 self._refresh_directory_tree(target)
             projection_restored = self._restore_projection_snapshot(source, target)
+            degraded = not projection_restored
             if not projection_restored:
                 repair_payload = self._restore_repair_payload(source, target, is_dir)
                 self._record_index_refresh_issue(
@@ -860,7 +1013,11 @@ class FileOperationService:
                     repair_payload=repair_payload,
                 )
         self._publish_file_change("restored", (target,))
-        return target
+        return RestoreResult(
+            path=target,
+            degraded=degraded,
+            warnings=self._refresh_warnings(),
+        )
 
     @session_operation
     @_measure_command("delete_to_trash")
@@ -896,26 +1053,18 @@ class FileOperationService:
                             failure=exc,
                             reconciliation_path=self._reconciliation_scope(p),
                             warning_code="projection_cleanup_failed",
-                            repair_payload={
-                                "payload_version": 1,
-                                "operation_kind": "delete",
-                                "operation_id": self._current_operation_id() or uuid4().hex,
-                                "projection_set": [
-                                    "asset_index", "tags", "metadata", "favorites",
-                                    "thumbnail_rows", "thumbnail_bytes",
-                                ],
-                                "scope_path": str(self._reconciliation_scope(p)),
-                                "target_path": str(p),
-                                "delete_mode": "trash",
-                                "expected_state": {"target_absent": True},
-                            },
+                            repair_payload=self._delete_repair_payload(
+                                p, delete_mode="trash"
+                            ),
                         )
                     try:
                         self._refresh_parents(p.parent)
                     except Exception as exc:
                         errors.append(f"[{error_category(exc)}] {exc}")
                     changed.append(p)
-                    self._publish_file_change("deleted", (p,))
+        # One aggregate event per batch (mirrors ImportService).
+        if changed:
+            self._publish_file_change("deleted", tuple(changed))
         return FileOperationResult(
             tuple(changed), tuple(errors), self._refresh_warnings()
         )
@@ -963,6 +1112,16 @@ class FileOperationService:
             except OperationalError as exc:
                 self._record_index_refresh_issue(
                     "parent", parent, status="busy", failure=exc
+                )
+                continue
+            except Exception as exc:
+                # A non-whitelisted refresh failure must never escape after
+                # the filesystem change already happened (move, create_folder,
+                # duplicate, ... would otherwise report overall failure).
+                # Degrade to a warning + generic rescan instead.
+                self._record_index_refresh_issue(
+                    "parent", parent, status="failed", failure=exc,
+                    reconciliation_path=self._reconciliation_scope(parent),
                 )
                 continue
 
@@ -1027,6 +1186,62 @@ class FileOperationService:
                 "tree", directory, status="busy", failure=exc
             )
             return
+        except Exception as exc:
+            # Same contract as _refresh_parents: the filesystem change has
+            # already happened, so degrade to warning + generic rescan
+            # instead of letting the command fail wholesale.
+            self._record_index_refresh_issue(
+                "tree", directory, status="failed", failure=exc,
+                reconciliation_path=self._reconciliation_scope(directory),
+            )
+
+    def _move_repair_payload(
+        self, source: Path, destination: Path, *, is_directory: bool
+    ) -> dict[str, object]:
+        """Single source for the ``move`` projection-repair payload shape.
+
+        The literal key order below is load-bearing: enqueued payloads are
+        persisted/compared as JSON with substring assertions.
+        """
+        return {
+            "payload_version": 1,
+            "operation_kind": "move",
+            "operation_id": self._current_operation_id() or uuid4().hex,
+            "projection_set": [
+                "asset_index", "tags", "metadata", "favorites",
+                "thumbnail_rows", "thumbnail_bytes",
+            ],
+            "scope_path": str(self._reconciliation_scope(destination)),
+            "source_path": str(source),
+            "destination_path": str(destination),
+            "is_directory": is_directory,
+            "expected_state": {
+                "source_absent": True,
+                "destination_present": True,
+            },
+        }
+
+    def _delete_repair_payload(
+        self, path: Path, *, delete_mode: str
+    ) -> dict[str, object]:
+        """Single source for the ``delete`` projection-repair payload shape.
+
+        The literal key order below is load-bearing: enqueued payloads are
+        persisted/compared as JSON with substring assertions.
+        """
+        return {
+            "payload_version": 1,
+            "operation_kind": "delete",
+            "operation_id": self._current_operation_id() or uuid4().hex,
+            "projection_set": [
+                "asset_index", "tags", "metadata", "favorites",
+                "thumbnail_rows", "thumbnail_bytes",
+            ],
+            "scope_path": str(self._reconciliation_scope(path)),
+            "target_path": str(path),
+            "delete_mode": delete_mode,
+            "expected_state": {"target_absent": True},
+        }
 
     def _restore_repair_payload(
         self, backup: Path, target: Path, is_directory: bool
@@ -1061,7 +1276,24 @@ class FileOperationService:
         if self.session is None:
             return True
         snapshot_path = Path(str(backup) + ".projection.json")
+        failed_marker = Path(str(backup) + ".projection.failed")
         if not snapshot_path.is_file():
+            if failed_marker.is_file():
+                # The snapshot was expected for this backup but its write
+                # failed when the delete was prepared (UndoService leaves a
+                # durable failure marker).  Restore must not pretend
+                # success: report failure so the caller's projection_restore
+                # repair channel records the degraded outcome and enqueues a
+                # reconciliation task instead of silently dropping the
+                # tags/notes/favorites of the restored file.
+                _log.warning(
+                    "Projection snapshot for %s was never written (failure "
+                    "marker present); tags, notes and favorites for %s are "
+                    "not restorable",
+                    backup, target,
+                )
+                return False
+            # Legacy backups predate projection snapshots: nothing to do.
             return True
         try:
             payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
@@ -1153,6 +1385,19 @@ class FileOperationService:
     def _clear_deleted_projection(
         self, path: Path, *, publish_event: bool = True
     ) -> None:
+        """Drop projection rows and thumbnail artifacts for a deleted path.
+
+        The DB projection cleanup (file_tags/file_meta/library_favorites/
+        thumbnail rows/asset index) deliberately does not depend on the
+        thumbnail cache owner lease, so a busy cache owner can never skip
+        it and leave ghost rows behind.  Only ``remove_artifacts`` runs
+        under ``cache_owner_lock``.  If that lease times out, the
+        TimeoutError propagates to the caller: the existing delete repair
+        channel (``delete_permanent`` / ``delete_to_trash`` →
+        ``_record_index_refresh_issue``, and the repair worker's own
+        retryable-failure handling) then enqueues a ``delete`` projection
+        repair task instead of silently skipping artifact cleanup.
+        """
         if self.session is None:
             return
         from AssetsManager.core.database import db_write_lock
@@ -1165,73 +1410,82 @@ class FileOperationService:
         conn = self._connection()
         cache_keys: list[str] = []
         removed_tag_rows = 0
+        with db_write_lock(conn):
+            outer_transaction = conn.in_transaction
+            savepoint = (
+                f"file_operation_projection_cleanup_{id(self):x}_{monotonic_ns():x}"
+            )
+            savepoint_active = False
+            try:
+                conn.execute(f"SAVEPOINT {savepoint}")
+                savepoint_active = True
+                removed_tag_rows = TagRepository(
+                    conn,
+                    library_root=self.session.context.root_identity,
+                    session=self.session,
+                ).delete_path(target, commit=False)
+                MetadataRepository(conn).delete_path(target, commit=False)
+                FavoriteRepository(conn).delete_path(target, commit=False)
+                cache_keys = ThumbnailRepository(conn).delete_path(
+                    target, commit=False
+                )
+                if self._asset_index_service is not None:
+                    self._asset_index_service.remove_entry(
+                        conn, path, commit=False
+                    )
+                    self._asset_index_service.remove_directory(
+                        conn, path, commit=False
+                    )
+                conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+                savepoint_active = False
+                if not outer_transaction:
+                    conn.commit()
+            except BaseException as exc:
+                cleanup_errors: list[BaseException] = []
+                if savepoint_active:
+                    for statement in (
+                        f"ROLLBACK TO SAVEPOINT {savepoint}",
+                        f"RELEASE SAVEPOINT {savepoint}",
+                    ):
+                        try:
+                            conn.execute(statement)
+                        except BaseException as cleanup_exc:
+                            cleanup_errors.append(cleanup_exc)
+                if not outer_transaction and conn.in_transaction:
+                    try:
+                        conn.rollback()
+                    except BaseException as cleanup_exc:
+                        cleanup_errors.append(cleanup_exc)
+                if cleanup_errors:
+                    exc.add_note(
+                        "File projection cleanup transaction cleanup also failed: "
+                        + "; ".join(str(error) for error in cleanup_errors)
+                    )
+                raise
+        # Tag rows are already gone from the projection DB; publish before
+        # the artifact phase so a cache-lease timeout cannot suppress it.
+        if publish_event and removed_tag_rows:
+            get_event_bus().publish(TagCatalogChanged(
+                library_root=self.session.root_str,
+                session_token=self.session.event_token,
+            ))
+        if not cache_keys:
+            return
         from AssetsManager.application.thumbnail_cache_lifecycle import (
             cache_owner_lock,
             remove_artifacts,
         )
         try:
             with cache_owner_lock(self.session.thumb_dir):
-                with db_write_lock(conn):
-                    outer_transaction = conn.in_transaction
-                    savepoint = (
-                        f"file_operation_projection_cleanup_{id(self):x}_{monotonic_ns():x}"
-                    )
-                    savepoint_active = False
-                    try:
-                        conn.execute(f"SAVEPOINT {savepoint}")
-                        savepoint_active = True
-                        removed_tag_rows = TagRepository(
-                            conn,
-                            library_root=self.session.context.root_identity,
-                            session=self.session,
-                        ).delete_path(target, commit=False)
-                        MetadataRepository(conn).delete_path(target, commit=False)
-                        FavoriteRepository(conn).delete_path(target, commit=False)
-                        cache_keys = ThumbnailRepository(conn).delete_path(
-                            target, commit=False
-                        )
-                        if self._asset_index_service is not None:
-                            self._asset_index_service.remove_entry(
-                                conn, path, commit=False
-                            )
-                            self._asset_index_service.remove_directory(
-                                conn, path, commit=False
-                            )
-                        conn.execute(f"RELEASE SAVEPOINT {savepoint}")
-                        savepoint_active = False
-                        if not outer_transaction:
-                            conn.commit()
-                    except BaseException as exc:
-                        cleanup_errors: list[BaseException] = []
-                        if savepoint_active:
-                            for statement in (
-                                f"ROLLBACK TO SAVEPOINT {savepoint}",
-                                f"RELEASE SAVEPOINT {savepoint}",
-                            ):
-                                try:
-                                    conn.execute(statement)
-                                except BaseException as cleanup_exc:
-                                    cleanup_errors.append(cleanup_exc)
-                        if not outer_transaction and conn.in_transaction:
-                            try:
-                                conn.rollback()
-                            except BaseException as cleanup_exc:
-                                cleanup_errors.append(cleanup_exc)
-                        if cleanup_errors:
-                            exc.add_note(
-                                "File projection cleanup transaction cleanup also failed: "
-                                + "; ".join(str(error) for error in cleanup_errors)
-                            )
-                        raise
                 for cache_key in cache_keys:
                     remove_artifacts(self.session.thumb_dir, cache_key)
         except TimeoutError:
-            _log.warning("Thumbnail cache owner busy during projection cleanup")
-        if publish_event and removed_tag_rows:
-            get_event_bus().publish(TagCatalogChanged(
-                library_root=self.session.root_str,
-                session_token=self.session.event_token,
-            ))
+            _log.warning(
+                "Thumbnail cache owner busy during projection cleanup; "
+                "artifact removal for %s is deferred to the repair channel",
+                path,
+            )
+            raise
 
 
 _MAX_UNIQUE_RESERVE_ATTEMPTS = 1000
@@ -1240,8 +1494,15 @@ _MAX_UNIQUE_RESERVE_ATTEMPTS = 1000
 def unique_destination(path: str | Path) -> Path:
     """Return a non-existing path by appending `_1`, `_2`, ... if needed.
 
-    For numbered suffixes, the name is atomically reserved via
-    ``os.open(O_CREAT | O_EXCL)`` to avoid TOCTOU races.
+    For numbered suffixes, availability is atomically probed via
+    ``os.open(O_CREAT | O_EXCL)`` to avoid TOCTOU races on the check.
+    The reservation is not held: the probe file is removed before
+    returning, so a caller that creates or writes the destination in a
+    separate step must serialize concurrent operations on the same
+    candidate with :func:`acquire_path_locks` (as the move/copy/duplicate
+    commands do) — two callers probing the same non-existing first
+    candidate would otherwise both receive it and corrupt each other's
+    writes.
     """
     candidate = Path(path)
     if not candidate.exists():

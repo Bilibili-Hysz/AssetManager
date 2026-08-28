@@ -22,8 +22,9 @@ from AssetsManager.repositories.shop_buyer_repository import (
     CartRepository,
     WishlistRepository,
 )
+from AssetsManager.repositories._common import _transaction
 from AssetsManager.repositories.order_repository import OrderRepository
-from AssetsManager.repositories.shop_repository import ShopRepository, _transaction
+from AssetsManager.repositories.shop_repository import ShopRepository
 
 
 def token_hash(token: str) -> str:

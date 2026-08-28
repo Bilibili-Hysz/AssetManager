@@ -1,5 +1,10 @@
 from unittest.mock import Mock
 import asyncio
+import os
+import threading
+import time
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from aiohttp import web
 
@@ -1009,3 +1014,120 @@ def test_default_route_ip_rejects_fake_ip(monkeypatch):
 
     monkeypatch.setattr(lan_utils.socket, "socket", _RealSocket)
     assert lan_utils._default_route_ip() == "192.168.1.20"
+
+
+# ── Async stop on the toggle path ───────────────────────────────
+
+
+def _pump(app, predicate, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        app.processEvents()
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return False
+
+
+class _FakeToggleServer:
+    _port = 8080
+
+    def __init__(self, stop_error=None):
+        self._stop_error = stop_error
+        self.stop_threads = []
+        self.stop_started = threading.Event()
+        self.release = threading.Event()
+
+    def is_running(self):
+        return True
+
+    def stop(self):
+        self.stop_threads.append(threading.current_thread())
+        self.stop_started.set()
+        self.release.wait(5.0)
+        if self._stop_error is not None:
+            raise self._stop_error
+
+
+class _ToggleBtn:
+    def __init__(self):
+        self.enabled = True
+
+    def setEnabled(self, value):
+        self.enabled = value
+
+
+class _StatusLabel:
+    def __init__(self):
+        self.text = ""
+
+    def setText(self, text):
+        self.text = text
+
+
+def _stop_host(server):
+    class _Host(LanSharingMixin):
+        def __init__(self):
+            self._lan_server = server
+            self._share_toggle_btn = _ToggleBtn()
+            self._share_status_label = _StatusLabel()
+            self.status_updates = []
+
+        def _update_share_status(self, running, port=8080):
+            self.status_updates.append((running, port))
+
+    return _Host()
+
+
+def test_toggle_sharing_stop_runs_on_worker_thread_and_restores_state():
+    from AssetsManager import i18n
+
+    app = QApplication.instance() or QApplication([])
+    gui_thread = threading.current_thread()
+    server = _FakeToggleServer()
+    host = _stop_host(server)
+
+    host._toggle_sharing()
+
+    # Immediate UI feedback: button disabled, status text switches to the
+    # stopping hint, and the server handle is kept for correctness-order
+    # callers (library switch) until the stop actually completes.
+    assert host._share_stop_in_progress is True
+    assert host._share_toggle_btn.enabled is False
+    assert host._share_status_label.text == i18n.tr("sharing.stopping")
+    assert host._lan_server is server
+
+    assert server.stop_started.wait(2.0)
+    assert server.stop_threads[0] is not gui_thread
+
+    # While the stop is in flight, a re-entry must not double-stop.
+    host._toggle_sharing()
+    assert len(server.stop_threads) == 1
+    assert host._lan_server is server
+
+    server.release.set()
+    assert _pump(app, lambda: host._lan_server is None)
+
+    assert host._share_stop_in_progress is False
+    assert host._share_toggle_btn.enabled is True
+    assert host.status_updates[-1] == (False, 8080)
+
+
+def test_toggle_sharing_stop_failure_keeps_handle_for_retry():
+    app = QApplication.instance() or QApplication([])
+
+    class _FailingServer(_FakeToggleServer):
+        _port = 9090
+
+    server = _FailingServer(stop_error=RuntimeError("stop failed"))
+    host = _stop_host(server)
+
+    host._toggle_sharing()
+    server.release.set()
+    assert _pump(app, lambda: host._share_stop_in_progress is False)
+
+    # The handle is retained so a later toggle can retry the stop, and the
+    # status reflects the still-running server instead of "off".
+    assert host._lan_server is server
+    assert host.status_updates[-1] == (True, 9090)
+    assert host._share_toggle_btn.enabled is True

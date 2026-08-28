@@ -8,6 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from AssetsManager.domain.errors import OperationNotPermitted
+
 from AssetsManager.application import ApplicationBootstrap
 from AssetsManager.application.tag_service import TagService
 from AssetsManager.domain.event_bus import EventBus
@@ -207,7 +209,9 @@ def test_bound_tag_service_rejects_explicit_unmanaged_connection(tmp_path):
     try:
         service = TagService(connection_provider=session.connection_for, session=session)
         asset = _asset(session.root)
-        with pytest.raises(ValueError, match="does not belong to the bound LibrarySession"):
+        # Binding-mismatch now raises the domain type so the LAN error
+        # contract maps it (minimal ValueError migration); message preserved.
+        with pytest.raises(OperationNotPermitted, match="does not belong to the bound LibrarySession"):
             service.get_tags(session.root, asset, db_conn=raw)
     finally:
         raw.close()

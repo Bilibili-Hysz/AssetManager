@@ -44,7 +44,7 @@ from AssetsManager.core.schema_defs import (
 )
 
 
-CURRENT_SCHEMA_VERSION = 34
+CURRENT_SCHEMA_VERSION = 35
 _BASELINE_SCHEMA_CONTRACT = {
     "file_tags": {
         "columns": ("file_path", "tag"),
@@ -258,6 +258,16 @@ def _versioned_schema_contract(table: str, version: int) -> SchemaObjectContract
             for name, columns in contract.get("indexes", {}).items()
             if name != "idx_import_manifests_recovery_lease"
         }
+
+    if table == "file_meta" and version < 35:
+        contract["columns"] = tuple(
+            column
+            for column in contract["columns"]
+            if column != "cached_file_count_mtime"
+        )
+        column_contracts = dict(cast(dict[str, Any], contract.get("column_contracts", {})))
+        column_contracts.pop("cached_file_count_mtime", None)
+        contract["column_contracts"] = column_contracts
 
     if table == "shop_cart_checkouts":
         if version < 19:
@@ -1053,6 +1063,22 @@ def _add_import_manifest_recovery_lease_schema_v34(conn: sqlite3.Connection) -> 
     validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
 
 
+def _add_file_count_mtime_schema_v35(conn: sqlite3.Connection) -> None:
+    """Add the mtime companion that lets cached file counts expire.
+
+    ``file_meta.cached_file_count`` previously had no freshness signal, so a
+    count cached before files were added or removed was served forever.  The
+    new nullable column records the source directory's ``st_mtime`` at write
+    time; pre-v35 rows keep ``NULL`` and read as a cache miss, mirroring the
+    ``cached_size``/``cached_mtime`` double-check contract.
+    """
+    table = "file_meta"
+    columns = {str(row[1]) for row in conn.execute(f"PRAGMA table_info('{table}')")}
+    if "cached_file_count_mtime" not in columns:
+        conn.execute("ALTER TABLE file_meta ADD COLUMN cached_file_count_mtime REAL")
+    validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
+
+
 def _add_thumbnail_cache_lifecycle_schema_v32(conn: sqlite3.Connection) -> None:
     """Persist precise source timing and artifact kind for cache lifecycle work."""
     table = "thumbnail_cache"
@@ -1130,6 +1156,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(32, "thumbnail_cache_lifecycle", _add_thumbnail_cache_lifecycle_schema_v32),
     Migration(33, "thumbnail_render_profile", _add_thumbnail_render_profile_schema_v33),
     Migration(34, "import_manifest_recovery_lease", _add_import_manifest_recovery_lease_schema_v34),
+    Migration(35, "file_count_mtime_snapshot", _add_file_count_mtime_schema_v35),
 )
 
 
@@ -1177,7 +1204,7 @@ def _migrate_once(conn: sqlite3.Connection) -> int:
             migration.apply(conn)
             _record(conn, migration)
             version = migration.version
-        required_objects = ("schema_migrations",)
+        required_objects = ("schema_migrations", "file_meta")
         if version >= 6:
             required_objects += ("users", "invite_codes", "share_links")
         if version >= 7:

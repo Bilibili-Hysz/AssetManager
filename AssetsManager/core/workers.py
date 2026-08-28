@@ -19,14 +19,39 @@ _log = logging.getLogger(__name__)
 _retained_pools: dict[int, QThreadPool] = {}
 _retained_pools_lock = threading.Lock()
 
+# A wedged task must not pin the reaper forever: poll ``waitForDone`` in
+# bounded windows and give up after roughly one minute, leaving the pool in
+# the retained registry (observable via ``retained_pool_count``) instead of
+# accumulating one daemon reaper per wedged library switch.
+_REAP_POLL_INTERVAL_MS = 5000
+_REAP_MAX_POLLS = 12
+
 
 def _reap_pool(pool: QThreadPool, owner_label: str) -> None:
-    """Release a timed-out private pool away from the GUI teardown thread."""
+    """Release a timed-out private pool away from the GUI teardown thread.
+
+    Polls with a bounded ``waitForDone`` timeout instead of a single
+    unbounded wait so a wedged task cannot hold this daemon thread (and a
+    fresh registry entry per failed library switch) permanently.
+    """
     try:
-        pool.waitForDone()
+        waited_ms = 0
+        for _ in range(_REAP_MAX_POLLS):
+            if pool.waitForDone(_REAP_POLL_INTERVAL_MS):
+                with _retained_pools_lock:
+                    _retained_pools.pop(id(pool), None)
+                return
+            waited_ms += _REAP_POLL_INTERVAL_MS
+        _log.error(
+            "Worker pool for %s (id %#x) still busy after %sms of background "
+            "reaping (%s active thread(s)); leaving it retained for observation",
+            owner_label,
+            id(pool),
+            waited_ms,
+            pool.activeThreadCount(),
+        )
     except Exception:
         _log.exception("Timed-out worker pool reaper failed for %s", owner_label)
-    finally:
         with _retained_pools_lock:
             _retained_pools.pop(id(pool), None)
 

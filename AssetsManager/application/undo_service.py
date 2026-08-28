@@ -9,7 +9,7 @@ import tempfile
 import threading
 from contextlib import nullcontext
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from time import perf_counter, time
 from typing import TYPE_CHECKING
@@ -33,6 +33,11 @@ class UndoEntry:
     path: str = ""
     backup: str = ""
     is_dir: bool = False
+    # True when the last undo of this entry restored the file but its
+    # projection snapshot could not be re-applied (degraded restore).
+    # The entry still moves to the redo stack; the flag keeps the outcome
+    # from being recorded as a fully clean success.
+    degraded: bool = False
 
 
 class UndoService:
@@ -209,6 +214,7 @@ class UndoService:
             deque[UndoEntry](maxlen=max_depth), [],
         )
         self._failed_entries: set[int] = set()
+        self._degraded_entries: set[int] = set()
         self._last_backup_error: str | None = None
         self._performance_recorder = (
             performance_recorder if performance_recorder is not None and performance_recorder.enabled else None
@@ -303,36 +309,51 @@ class UndoService:
         )
 
     def _snapshot_projection(self, path: str, backup: str) -> None:
-        """Persist file_tags/file_meta/library_favorites rows next to the backup."""
+        """Persist file_tags/file_meta/library_favorites rows next to the backup.
+
+        The projection SELECTs run under the shared connection's
+        ``db_write_lock`` so they cannot interleave with an in-flight write
+        transaction.  Failures are deliberately not silent: a
+        ``<backup>.projection.failed`` marker is written next to the backup
+        so the restore path can tell "legacy backup without snapshot
+        support" (no snapshot, no marker: restore proceeds unchanged) apart
+        from "new backup whose snapshot was expected but failed" (marker
+        present: restore reports a degraded projection restore instead of
+        pretending the tags/notes survived).
+        """
         if self._session is None:
             return
+        snapshot_path = f"{backup}.projection.json"
+        failed_marker_path = f"{backup}.projection.failed"
         try:
+            from AssetsManager.core.database import db_write_lock
             from AssetsManager.core.path_resolver import sql_like_descendant_pattern
 
             conn = self._session.connection_for(self._session.root)
             old = str(Path(path).resolve())
             descendant_pattern = sql_like_descendant_pattern(old)
-            tag_rows = conn.execute(
-                "SELECT file_path, tag FROM file_tags "
-                "WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
-                (old, descendant_pattern),
-            ).fetchall()
-            meta_rows = conn.execute(
-                "SELECT file_path, notes, cached_size, cached_mtime, cached_file_count, urls "
-                "FROM file_meta WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
-                (old, descendant_pattern),
-            ).fetchall()
-            favorites_table = conn.execute(
-                "SELECT 1 FROM sqlite_master "
-                "WHERE type='table' AND name='library_favorites'"
-            ).fetchone()
-            favorite_rows = []
-            if favorites_table is not None:
-                favorite_rows = conn.execute(
-                    "SELECT owner_key, file_path, created_at FROM library_favorites "
+            with db_write_lock(conn):
+                tag_rows = conn.execute(
+                    "SELECT file_path, tag FROM file_tags "
                     "WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
                     (old, descendant_pattern),
                 ).fetchall()
+                meta_rows = conn.execute(
+                    "SELECT file_path, notes, cached_size, cached_mtime, cached_file_count, urls "
+                    "FROM file_meta WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
+                    (old, descendant_pattern),
+                ).fetchall()
+                favorites_table = conn.execute(
+                    "SELECT 1 FROM sqlite_master "
+                    "WHERE type='table' AND name='library_favorites'"
+                ).fetchone()
+                favorite_rows = []
+                if favorites_table is not None:
+                    favorite_rows = conn.execute(
+                        "SELECT owner_key, file_path, created_at FROM library_favorites "
+                        "WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
+                        (old, descendant_pattern),
+                    ).fetchall()
             payload = {
                 "format": "assetsmanager.undo-projection",
                 "version": 1,
@@ -341,11 +362,25 @@ class UndoService:
                 "file_meta": meta_rows,
                 "library_favorites": favorite_rows,
             }
-            snapshot_path = f"{backup}.projection.json"
             with open(snapshot_path, "w", encoding="utf-8") as stream:
                 json.dump(payload, stream, ensure_ascii=False)
         except Exception as exc:
             _log.warning("Failed to snapshot projection for %s: %s", path, exc)
+            self._mark_projection_snapshot_failed(failed_marker_path, path, exc)
+
+    @staticmethod
+    def _mark_projection_snapshot_failed(
+        failed_marker_path: str, path: str, exc: BaseException
+    ) -> None:
+        """Leave a durable marker so restore cannot pretend the snapshot exists."""
+        try:
+            with open(failed_marker_path, "w", encoding="ascii") as stream:
+                stream.write(type(exc).__name__)
+        except OSError as marker_exc:
+            _log.error(
+                "Could not write projection failure marker for %s: %s",
+                path, marker_exc,
+            )
 
     @session_operation
     def commit_delete(self, entry: UndoEntry) -> None:
@@ -447,8 +482,11 @@ class UndoService:
             except ValueError:
                 pass
             if entry not in self._redo_stack:
+                if id(entry) in self._degraded_entries:
+                    entry = replace(entry, degraded=True)
                 self._redo_stack.append(entry)
             self._failed_entries.discard(id(entry))
+            self._degraded_entries.discard(id(entry))
         self._record_execution("undo", started, "success")
         return True
 
@@ -478,6 +516,11 @@ class UndoService:
             except ValueError:
                 pass
             if entry not in self._undo_stack:
+                # Redo re-executes the delete itself; a degraded annotation
+                # described the previous restore and is no longer current.
+                if id(entry) in self._degraded_entries or entry.degraded:
+                    self._degraded_entries.discard(id(entry))
+                    entry = replace(entry, degraded=False)
                 self._undo_stack.append(entry)
             self._failed_entries.discard(id(entry))
         self._record_execution("redo", started, "success")
@@ -485,7 +528,21 @@ class UndoService:
 
     @staticmethod
     def _operation_succeeded(result) -> bool:
-        return getattr(result, "ok", True)
+        """Return whether *result* represents successful execution.
+
+        A degraded restore (filesystem copy succeeded, projection snapshot
+        did not) still counts as success for stack movement — the file is
+        back — but it must not be recorded as a fully clean success: the
+        degraded outcome is logged here and the caller annotates the
+        history entry via :meth:`_mark_degraded`.
+        """
+        ok = bool(getattr(result, "ok", True))
+        if ok and getattr(result, "degraded", False):
+            _log.warning(
+                "Operation succeeded with a degraded projection restore; "
+                "the undo history entry is annotated as degraded"
+            )
+        return ok
 
     def _execute_reverse(self, file_operations, entry: UndoEntry,
                          library_root: str | Path | None) -> bool:
@@ -513,13 +570,14 @@ class UndoService:
                         "Undo delete restore blocked: path recreated by user: %s", entry.path
                     )
                     return False
-                succeeded = self._operation_succeeded(
-                    file_operations.restore_backup(
-                        entry.backup, entry.path, library_root=library_root
-                    )
+                result = file_operations.restore_backup(
+                    entry.backup, entry.path, library_root=library_root
                 )
+                succeeded = self._operation_succeeded(result)
                 if not succeeded:
                     self._mark_failed(entry)
+                elif getattr(result, "degraded", False):
+                    self._mark_degraded(entry)
                 return succeeded
         except (OSError, ValueError):
             self._mark_failed(entry)
@@ -557,6 +615,11 @@ class UndoService:
     def _mark_failed(self, entry: UndoEntry) -> None:
         with self._lock:
             self._failed_entries.add(id(entry))
+
+    def _mark_degraded(self, entry: UndoEntry) -> None:
+        """Flag an entry whose undo restored the file only partially."""
+        with self._lock:
+            self._degraded_entries.add(id(entry))
 
     def skip_poisoned_undo(self) -> UndoEntry | None:
         """Drop the top undo entry when a previous execution attempt failed.
@@ -677,6 +740,9 @@ class UndoService:
             snapshot_path = f"{backup}.projection.json"
             if os.path.isfile(snapshot_path):
                 os.remove(snapshot_path)
+            failed_marker = f"{backup}.projection.failed"
+            if os.path.isfile(failed_marker):
+                os.remove(failed_marker)
             if os.path.isdir(backup):
                 shutil.rmtree(backup)
             elif os.path.isfile(backup):

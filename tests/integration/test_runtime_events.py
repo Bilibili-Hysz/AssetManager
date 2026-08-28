@@ -22,6 +22,7 @@ from AssetsManager.domain.events import (
     FileSystemChanged,
     InviteChanged,
     PresenceChanged,
+    SellerProfileChanged,
     ShareChanged,
     TagCatalogChanged,
     UserChanged,
@@ -81,6 +82,7 @@ def test_model_is_frozen_and_mapping_is_exact(tmp_path):
     assert RuntimeEventRouter.domains_for(InviteChanged) == (_projection_domain("users"),)
     assert RuntimeEventRouter.domains_for(ActivityChanged) == (_projection_domain("activity"),)
     assert RuntimeEventRouter.domains_for(PresenceChanged) == (_projection_domain("online_users"),)
+    assert RuntimeEventRouter.domains_for(SellerProfileChanged) == (_projection_domain("shop"),)
 
 
 @pytest.mark.parametrize(
@@ -92,6 +94,7 @@ def test_model_is_frozen_and_mapping_is_exact(tmp_path):
         (InviteChanged, _projection_domain("users")),
         (ActivityChanged, _projection_domain("activity")),
         (PresenceChanged, _projection_domain("online_users")),
+        (SellerProfileChanged, _projection_domain("shop")),
     ],
 )
 def test_router_maps_share_and_identity_events_only_for_current_session(
@@ -137,9 +140,14 @@ def test_router_maps_paths_deterministically_and_filters_invalid_events(tmp_path
         bus.publish(AssetTagsChanged(**_identity(session, file_path="nested\\asset.png")))
         assert received[-1].paths == ("nested/asset.png",)
         assert received[-1].revision == 2
+        bus.publish(AssetTagsChanged(**_identity(
+            session, file_path="", paths=("a.txt", "b.txt"),
+        )))
+        assert received[-1].paths == ("a.txt", "b.txt")
+        assert received[-1].revision == 3
         bus.publish(TagCatalogChanged(**_identity(session)))
         assert received[-1].paths == ()
-        assert received[-1].revision == 3
+        assert received[-1].revision == 4
 
         for event in (
             FileSystemChanged(**_identity(session, session_token="wrong", paths=("x",))),
@@ -149,8 +157,8 @@ def test_router_maps_paths_deterministically_and_filters_invalid_events(tmp_path
             FileSystemChanged(**_identity(session, paths=("../escape",), old_paths=())),
         ):
             bus.publish(event)
-        assert runtime.revision == 3
-        assert len(received) == 3
+        assert runtime.revision == 4
+        assert len(received) == 4
     finally:
         runtime.close()
         bootstrap.library_service.close()

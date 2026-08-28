@@ -260,7 +260,7 @@ def test_repository_consume_retries_sqlite_busy_then_succeeds(schema_db, monkeyp
     connection = _ConsumeLockProxy(schema_db)
     repository = FreeDownloadQuotaRepository(connection)
     monkeypatch.setattr(
-        "AssetsManager.repositories.free_download_quota_repository.time.sleep",
+        "AssetsManager.repositories._common.time.sleep",
         lambda _delay: None,
     )
 
@@ -300,7 +300,7 @@ def test_repository_prune_retries_sqlite_busy_then_succeeds(schema_db, monkeypat
     connection = _ConnectionProxy(schema_db, fail_deletes=1)
     repository = FreeDownloadQuotaRepository(connection)
     monkeypatch.setattr(
-        "AssetsManager.repositories.free_download_quota_repository.time.sleep",
+        "AssetsManager.repositories._common.time.sleep",
         lambda _delay: None,
     )
     assert repository.prune_windows(1_000) == 0

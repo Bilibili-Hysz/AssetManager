@@ -107,9 +107,16 @@ class GalleryService(_GalleryPersistenceMixin, _GalleryProjectionMixin, _Gallery
         self._build_failures: dict[str, float] = {}
         self._build_backoff = 60.0
         self._refresh_timer: threading.Timer | None = None
+        # Root the pending full-rebuild timer belongs to (fixed-deadline
+        # marker: later invalidates for the same root must not restart the
+        # TTL timer — see _invalidate_and_schedule_full).
+        self._refresh_timer_root: str | None = None
         # Incremental-update machinery: per-root pending event queue, a
-        # short debounce, and per-root snapshots of the last build. All
-        # counters share one lock so seq/generation ordering stays exact.
+        # short debounce, and per-root snapshots of the last build. The
+        # counter under ``_generation_lock`` only *issues* event seqs; a
+        # snapshot's ``generation`` is a watermark (the highest event seq
+        # the snapshot covers), so events queued during a build/apply are
+        # never overtaken and dropped.
         self._pending_events: dict[str, list[_QueuedChange]] = {}
         self._pending_lock = threading.Lock()
         self._generation_lock = threading.Lock()
@@ -169,6 +176,7 @@ class GalleryService(_GalleryPersistenceMixin, _GalleryProjectionMixin, _Gallery
             if self._refresh_timer is not None:
                 self._refresh_timer.cancel()
                 self._refresh_timer = None
+            self._refresh_timer_root = None
             if self._inc_timer is not None:
                 self._inc_timer.cancel()
                 self._inc_timer = None
@@ -323,10 +331,13 @@ class GalleryService(_GalleryPersistenceMixin, _GalleryProjectionMixin, _Gallery
         """Re-arm the single retry timer (callers hold ``_build_lock``).
 
         Shared with ``_invalidate_and_schedule_full``: whichever reason
-        triggers next wins, and the timer is always single.
+        triggers next wins, and the timer is always single. Replacing the
+        timer also releases any pending full-rebuild fixed deadline (the
+        retry now owns the next build attempt for this root).
         """
         if self._refresh_timer is not None:
             self._refresh_timer.cancel()
+        self._refresh_timer_root = None
         self._refresh_timer = threading.Timer(
             delay, self._ensure_home_building, args=(root_key,)
         )
@@ -393,6 +404,14 @@ class GalleryService(_GalleryPersistenceMixin, _GalleryProjectionMixin, _Gallery
         """
         root = Path(root_key).resolve()
         conn = self._connection(root, db_conn, self._connection_provider)
+        # Watermark: capture the seq counter BEFORE the walk starts. Events
+        # queued while this walk runs receive strictly larger seqs, so the
+        # next incremental apply passes the ``change.seq > state.generation``
+        # filter and picks them up (bumping the counter at publish time, as
+        # an earlier revision did, tracked over those events and dropped
+        # them silently).
+        with self._generation_lock:
+            start_seq = self._home_generation
         refs: list[_ImageRef] = []
         node_counts: dict[str, int] = {"collection": 0, "project": 0}
         state_nodes: dict[str, _StateNode] = {}
@@ -441,16 +460,16 @@ class GalleryService(_GalleryPersistenceMixin, _GalleryProjectionMixin, _Gallery
         featured = collections[0] if collections else projects[0] if projects else self._summary(node)
         home = GalleryHome(featured, collections, projects, recent, stats)
         with self._home_cache_lock:
-            with self._generation_lock:
-                self._home_generation += 1
-                generation = self._home_generation
+            # The snapshot's generation is the watermark of events it covers
+            # (the counter value when the walk started) — never a fresh
+            # counter value (see the comment at the top of this method).
             self._home_states[str(root)] = _HomeState(
                 node=node,
                 nodes=state_nodes,
                 refs=refs,
                 image_paths={ref.path for ref in refs},
                 files=known_files,
-                generation=generation,
+                generation=start_seq,
             )
             self._home_cache[str(root)] = (time.monotonic(), home)
         self._save_persisted_projection(str(root), home)

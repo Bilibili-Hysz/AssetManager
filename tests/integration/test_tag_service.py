@@ -2,6 +2,8 @@ import pytest
 
 import sqlite3
 
+from AssetsManager.domain.errors import PathEscapeError
+
 
 def _memory_conn() -> sqlite3.Connection:
     from AssetsManager.core import database
@@ -172,7 +174,9 @@ def test_tag_service_rejects_path_outside_library_root(tmp_path, operation):
     conn = _memory_conn()
     try:
         service = TagService(connection_provider=lambda _root: conn)
-        with pytest.raises(ValueError, match="under library_root"):
+        # Path-escape rejection now raises the domain PathEscapeError so the
+        # LAN error contract maps it (minimal ValueError migration).
+        with pytest.raises(PathEscapeError):
             if operation == "get_tags":
                 service.get_tags(library, asset)
             elif operation == "get_tags_for_files":

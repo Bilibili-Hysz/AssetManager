@@ -519,6 +519,19 @@ class ProjectService:
             limit=limit,
         )
 
+    @staticmethod
+    def _directory_mtime(path: Path) -> float | None:
+        """Return the directory's current mtime, or None when unavailable.
+
+        Mirrors the ``os.path.getmtime`` probe used by the size cache: a
+        missing or unprobeable directory yields ``None`` so callers treat the
+        cache as a miss instead of trusting a count that cannot be validated.
+        """
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            return None
+
     def _batch_warm_file_counts(
         self,
         root: Path,
@@ -532,23 +545,36 @@ class ProjectService:
 
         # Batch query existing counts
         try:
-            cached = MetadataRepository(db_conn).batch_get_cached_file_counts(paths)
+            cached = MetadataRepository(db_conn).batch_get_cached_file_counts_with_mtime(paths)
         except sqlite3.ProgrammingError:
             raise
         except sqlite3.Error:
             _log.warning("batch file count cache query failed", exc_info=True)
             cached = {}
 
-        # Compute counts for uncached directories
-        to_write: dict[str, int] = {}
+        # Compute counts for uncached or stale directories.  A cached count is
+        # only trusted while the source directory's mtime still matches the
+        # stamp recorded at write time (v35); entries without a stamp (pre-v35
+        # rows) or with an unprobeable directory are recomputed.
+        to_write: dict[str, tuple[int, float]] = {}
         for entry, path in zip(entries, paths, strict=True):
-            if path in cached:
+            dir_path = Path(entry.path)
+            dir_mtime = self._directory_mtime(dir_path)
+            cached_entry = cached.get(path)
+            if (
+                cached_entry is not None
+                and dir_mtime is not None
+                and cached_entry[1] == dir_mtime
+            ):
                 continue
             try:
-                count = len(self._safe_file_entries(Path(entry.path)))
+                count = len(self._safe_file_entries(dir_path))
             except OSError:
                 count = 0
-            to_write[path] = count
+            if dir_mtime is not None:
+                # Stamp the pre-scan mtime: any later mutation bumps the
+                # directory mtime past it and invalidates the cached count.
+                to_write[path] = (count, dir_mtime)
 
         # Batch write
         if to_write:
@@ -1021,6 +1047,11 @@ class ProjectService:
             return 0
 
     def _file_count(self, root: Path, path: Path, db_conn: sqlite3.Connection | None) -> int:
+        # Probe the directory mtime once, before scanning: the cached count is
+        # stamped with this value, so any later mutation bumps the directory
+        # mtime past it and invalidates the cache (a missing/unprobeable
+        # directory is treated as a cache miss on both read and write).
+        dir_mtime = self._directory_mtime(path) if db_conn is not None else None
         if db_conn is not None:
             try:
                 indexed = AssetIndexRepository(db_conn).query_by_parent(
@@ -1032,11 +1063,17 @@ class ProjectService:
                         for indexed_entry in indexed
                         if self._safe_file_path(root, Path(indexed_entry.file_path))
                     )
-                cached_count = MetadataRepository(db_conn).get_cached_file_count(
+                cached = MetadataRepository(db_conn).get_cached_file_count_with_mtime(
                     str(path.resolve())
                 )
-                if cached_count is not None:
-                    return cached_count
+                if (
+                    cached is not None
+                    and dir_mtime is not None
+                    and cached[1] == dir_mtime
+                ):
+                    return cached[0]
+                # Missing stamp (pre-v35 rows), stale stamp, or an
+                # unprobeable directory: recompute below.
             except sqlite3.ProgrammingError:
                 raise
             except sqlite3.Error:
@@ -1048,10 +1085,10 @@ class ProjectService:
             _log.warning("file count scan failed: %s", path, exc_info=True)
             return 0
 
-        if db_conn is not None:
+        if db_conn is not None and dir_mtime is not None:
             try:
                 MetadataRepository(db_conn).set_cached_file_count(
-                    str(path.resolve()), file_count
+                    str(path.resolve()), file_count, dir_mtime
                 )
             except sqlite3.ProgrammingError:
                 raise

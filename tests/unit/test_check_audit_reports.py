@@ -168,3 +168,17 @@ def test_validate_execution_artifacts_checks_digest(tmp_path: Path, monkeypatch:
     )
 
     assert any("artifact digest drift" in problem for problem in problems)
+
+
+def test_main_treats_no_manifests_as_empty_state_not_violation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    review = tmp_path / "docs" / "full-review"
+    review.mkdir(parents=True)
+    monkeypatch.setattr(_AUDIT, "ROOT", tmp_path)
+    monkeypatch.setattr(_AUDIT, "REVIEW_DIR", review)
+    monkeypatch.setattr(_AUDIT, "MANIFESTS", [])
+    monkeypatch.setattr(_AUDIT, "INDEX", review / "00-INDEX.md")
+
+    assert _AUDIT.main() == 0
+    assert "no audit manifest registered" in capsys.readouterr().err

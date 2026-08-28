@@ -10,6 +10,8 @@ from typing import Any
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.core.database import DatabaseManager
 from AssetsManager.domain.errors import ValidationError
+from AssetsManager.domain.event_bus import get_event_bus
+from AssetsManager.domain.events import SellerProfileChanged
 
 MAX_STORE_NAME_LENGTH = 200
 MAX_CONTACT_EMAIL_LENGTH = 254
@@ -120,7 +122,13 @@ class SellerProfileService:
             raise ValidationError("body", "must be an object")
         fields = self._fields(payload)
         root = self._root(library_root)
-        return dict(self._repo(root, db_conn).update_profile(fields))
+        profile = dict(self._repo(root, db_conn).update_profile(fields))
+        if self._session is not None:
+            get_event_bus().publish(SellerProfileChanged(
+                library_root=self._session.root_str,
+                session_token=self._session.event_token,
+            ))
+        return profile
 
 
 __all__ = [

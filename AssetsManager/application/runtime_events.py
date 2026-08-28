@@ -20,6 +20,7 @@ from AssetsManager.domain.events import (
     InviteChanged,
     PresenceChanged,
     QuotaChanged,
+    SellerProfileChanged,
     ShareChanged,
     ShopItemChanged,
     ShopOrderChanged,
@@ -35,6 +36,10 @@ _log = logging.getLogger(__name__)
 #: Maximum time ``_RouterSubscription.close`` waits for in-flight callbacks
 #: running on other threads before giving up and completing the close.
 _SUBSCRIPTION_DRAIN_TIMEOUT = 2.0
+# Router-level close drain bound: close() must never hang forever on a
+# stalled in-flight callback (audit 2026-08-28: the two waits in close()
+# previously had no deadline, unlike the subscription-level drain).
+_CLOSE_DRAIN_TIMEOUT = 2.0
 
 
 class ProjectionDomain(StrEnum):
@@ -113,6 +118,7 @@ EVENT_DOMAINS: dict[type, tuple[ProjectionDomain, ...]] = {
     ShopItemChanged: (ProjectionDomain.SHOP,),
     ShopOrderChanged: (ProjectionDomain.ORDERS,),
     QuotaChanged: (ProjectionDomain.QUOTA,),
+    SellerProfileChanged: (ProjectionDomain.SHOP,),
 }
 
 
@@ -167,7 +173,14 @@ class RuntimeEventRouter:
     def _paths_for(self, event) -> tuple[str, ...] | None:
         if isinstance(event, FileSystemChanged):
             raw_paths = (*event.paths, *event.old_paths)
-        elif isinstance(event, (AssetTagsChanged, AssetNotesChanged, AssetUrlsChanged)):
+        elif isinstance(event, AssetTagsChanged):
+            # Batch form (rename_tag/delete_tag) carries every affected path
+            # in ``paths`` with an empty ``file_path``; single-asset form
+            # keeps ``file_path`` only.
+            raw_paths = (
+                (event.file_path, *event.paths) if event.file_path else event.paths
+            )
+        elif isinstance(event, (AssetNotesChanged, AssetUrlsChanged)):
             raw_paths = (event.file_path,)
         elif isinstance(event, FavoritesChanged):
             raw_paths = event.paths
@@ -303,8 +316,20 @@ class RuntimeEventRouter:
             if self._close_state == "closing":
                 if own_callbacks:
                     return
+                # Bounded wait for the owning close to finish draining; an
+                # unbounded wait here deadlocks the second closer when the
+                # owner's drain stalls (mirrors _SUBSCRIPTION_DRAIN_TIMEOUT).
+                deadline = time.monotonic() + _CLOSE_DRAIN_TIMEOUT
                 while self._close_state != "drained":
-                    self._drain_condition.wait()
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        _log.warning(
+                            "RuntimeEventRouter close drain timed out after %.1fs "
+                            "while another close is in progress; abandoning wait",
+                            _CLOSE_DRAIN_TIMEOUT,
+                        )
+                        return
+                    self._drain_condition.wait(timeout=remaining)
                 return
 
             self._close_state = "closing"
@@ -321,8 +346,18 @@ class RuntimeEventRouter:
             subscription.close()
 
         with self._lock:
+            deadline = time.monotonic() + _CLOSE_DRAIN_TIMEOUT
             while self._inflight > own_callbacks:
-                self._drain_condition.wait()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    _log.warning(
+                        "RuntimeEventRouter close drain timed out after %.1fs with "
+                        "%d in-flight callback(s); abandoning drain",
+                        _CLOSE_DRAIN_TIMEOUT,
+                        self._inflight - own_callbacks,
+                    )
+                    break
+                self._drain_condition.wait(timeout=remaining)
             if own_callbacks == 0:
                 self._close_state = "drained"
                 self._drain_condition.notify_all()

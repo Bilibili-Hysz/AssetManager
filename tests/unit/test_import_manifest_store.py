@@ -1,7 +1,9 @@
 import sqlite3
+from uuid import uuid4
 
 import pytest
 
+import AssetsManager.application.import_manifest_store as manifest_store_module
 from AssetsManager.application.import_manifest_store import (
     ImportManifestRecoveryService,
     ImportManifestStore,
@@ -361,3 +363,98 @@ def test_file_backed_stale_manifest_cas_cannot_overwrite_newer_connection(tmp_pa
     finally:
         first.close()
         second.close()
+
+
+def _v2_payload(root, destination, *, item_count: int) -> dict[str, object]:
+    items = []
+    for index in range(item_count):
+        items.append(
+            {
+                "source": str((root.parent / f"source-{index:04d}.txt").resolve()),
+                "target": str((destination / f"file-{index:04d}.txt").resolve()),
+                "state": "pending",
+                "copy_id": f"import-{uuid4().hex}:{index}",
+                "source_fingerprint": {
+                    "size": index,
+                    "mtime_ns": index,
+                    "sha256": "ab" * 32,
+                },
+            }
+        )
+    return {
+        "payload_version": 2,
+        "destination": str(destination.resolve()),
+        "items": items,
+    }
+
+
+def test_update_item_on_large_manifest_validates_only_modified_item(
+    tmp_path, monkeypatch
+):
+    """Importing n files calls update_item n times; each call must not
+    re-validate every stored item (the O(n^2) import hot path)."""
+    root, conn, store = _store(tmp_path)
+    destination = root / "dest"
+    store.create(
+        operation_id="bulk-update",
+        destination=destination,
+        payload=_v2_payload(root, destination, item_count=500),
+        state="running",
+    )
+
+    full_validations: list[int] = []
+    item_validations: list[int] = []
+    original_validate_payload = manifest_store_module._validate_payload
+    original_validate_item = manifest_store_module._validate_item
+
+    def counting_validate_payload(*args, **kwargs):
+        full_validations.append(1)
+        return original_validate_payload(*args, **kwargs)
+
+    def counting_validate_item(*args, **kwargs):
+        item_validations.append(1)
+        return original_validate_item(*args, **kwargs)
+
+    monkeypatch.setattr(
+        manifest_store_module, "_validate_payload", counting_validate_payload
+    )
+    monkeypatch.setattr(manifest_store_module, "_validate_item", counting_validate_item)
+
+    for index in range(25):
+        assert store.update_item("bulk-update", item_index=index, state="copied")
+    assert store.update_item(
+        "bulk-update", item_index=25, state="failed", error="boom"
+    )
+    assert full_validations == []
+    assert len(item_validations) == 26
+
+    monkeypatch.undo()
+    record = store.get("bulk-update")
+    assert record is not None
+    assert not record.get("malformed")
+    states = [item["state"] for item in record["payload"]["items"]]
+    assert states[:25] == ["copied"] * 25
+    assert states[25] == "failed"
+    assert record["payload"]["items"][25]["error"] == "boom"
+    assert states[26] == "pending"
+    assert record["generation"] == 26
+    conn.close()
+
+
+def test_update_item_still_enforces_payload_size_ceiling(tmp_path):
+    root, conn, store = _store(tmp_path)
+    destination = root / "dest"
+    store.create(
+        operation_id="oversize",
+        destination=destination,
+        payload=_payload(root, destination),
+        state="running",
+    )
+    with pytest.raises(ValueError, match="too large"):
+        store.update_item(
+            "oversize", item_index=0, state="failed", error="x" * (512 * 1024)
+        )
+    record = store.get("oversize")
+    assert record["payload"]["items"][0]["state"] == "pending"
+    assert record["payload"]["items"][0].get("error") is None
+    conn.close()

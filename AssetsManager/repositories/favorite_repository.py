@@ -6,6 +6,7 @@ from sqlite3 import Connection
 from AssetsManager.core.database import db_write_lock
 from AssetsManager.core.path_resolver import remap_path_subtree, sql_like_descendant_pattern
 from AssetsManager.core.schema_defs import LIBRARY_FAVORITES_SCHEMA
+from AssetsManager.repositories._common import _guarded_commit
 
 
 class FavoriteRepository:
@@ -17,8 +18,9 @@ class FavoriteRepository:
     def init_table(self) -> None:
         """Create the favorites table for explicit legacy/test compatibility."""
         with db_write_lock(self._conn):
+            outer_transaction = self._conn.in_transaction
             self._conn.executescript(LIBRARY_FAVORITES_SCHEMA)
-            self._conn.commit()
+            _guarded_commit(self._conn, outer_transaction=outer_transaction)
 
     def list_paths(self, owner_key: str, *, limit: int = 500) -> list[str]:
         rows = self._conn.execute(
@@ -40,6 +42,7 @@ class FavoriteRepository:
             # Single statement: the duplicate check, the per-owner count check
             # and the insert commit together, so concurrent adds cannot slip
             # past the limit (no separate count-then-insert window).
+            outer_transaction = self._conn.in_transaction
             cursor = self._conn.execute(
                 "INSERT INTO library_favorites (owner_key, file_path) "
                 "SELECT ?, ? "
@@ -48,7 +51,7 @@ class FavoriteRepository:
                 ") AND (SELECT COUNT(*) FROM library_favorites WHERE owner_key=?) < ?",
                 (owner_key, file_path, owner_key, file_path, owner_key, max_items),
             )
-            self._conn.commit()
+            _guarded_commit(self._conn, outer_transaction=outer_transaction)
             if cursor.rowcount == 1:
                 return True
             if self.contains(owner_key, file_path):
@@ -57,30 +60,33 @@ class FavoriteRepository:
 
     def remove(self, owner_key: str, file_path: str) -> bool:
         with db_write_lock(self._conn):
+            outer_transaction = self._conn.in_transaction
             cursor = self._conn.execute(
                 "DELETE FROM library_favorites WHERE owner_key=? AND file_path=?",
                 (owner_key, file_path),
             )
-            self._conn.commit()
+            _guarded_commit(self._conn, outer_transaction=outer_transaction)
             return cursor.rowcount > 0
 
     def delete_path(self, file_path: str, *, commit: bool = True) -> int:
         """Delete favorites for one path and all descendants, across owners."""
         descendant_pattern = sql_like_descendant_pattern(file_path)
         with db_write_lock(self._conn):
+            outer_transaction = self._conn.in_transaction
             cursor = self._conn.execute(
                 "DELETE FROM library_favorites "
                 "WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
                 (file_path, descendant_pattern),
             )
             if commit:
-                self._conn.commit()
+                _guarded_commit(self._conn, outer_transaction=outer_transaction)
             return cursor.rowcount
 
     def migrate_path(self, old_path: str, new_path: str, *, commit: bool = True) -> int:
         """Remap favorites for a moved path and its descendants."""
         descendant_pattern = sql_like_descendant_pattern(old_path)
         with db_write_lock(self._conn):
+            outer_transaction = self._conn.in_transaction
             rows = self._conn.execute(
                 "SELECT owner_key, file_path, created_at FROM library_favorites "
                 "WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
@@ -100,7 +106,7 @@ class FavoriteRepository:
                     (old_path, descendant_pattern),
                 )
             if commit:
-                self._conn.commit()
+                _guarded_commit(self._conn, outer_transaction=outer_transaction)
             return len(rows)
 
 

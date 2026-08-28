@@ -51,10 +51,14 @@ def _canonical(path: str | Path) -> str:
     return str(Path(path).resolve())
 
 
-def _validate_payload(
-    payload: Mapping[str, object], *, root: Path, destination: Path
-) -> str:
-    data = dict(payload)
+def _validate_payload_header(
+    data: Mapping[str, object], *, destination: Path
+) -> tuple[object, list[object]]:
+    """Validate the payload-level header shared by every write path.
+
+    Returns the payload version and the item list so per-item validation can
+    reuse both without re-deriving them.
+    """
     payload_version = data.get("payload_version")
     if payload_version not in {
         _IMPORT_MANIFEST_LEGACY_PAYLOAD_VERSION,
@@ -66,44 +70,76 @@ def _validate_payload(
     items = data.get("items")
     if not isinstance(items, list) or not items or len(items) > IMPORT_MANIFEST_MAX_ITEMS:
         raise ValueError("import manifest items are invalid")
-    copy_ids: set[str] = set()
-    for item in items:
-        if not isinstance(item, Mapping):
-            raise ValueError("import manifest item must be an object")
-        source = item.get("source")
-        target = item.get("target")
-        state = item.get("state")
-        if not isinstance(source, str) or not source:
-            raise ValueError("import manifest source is required")
-        if not isinstance(target, str) or not target:
-            raise ValueError("import manifest target is required")
-        if not Path(target).resolve().is_relative_to(root):
-            raise ValueError("import manifest target escapes library root")
-        if state not in {"pending", "copied", "failed", "skipped"}:
-            raise ValueError("import manifest item state is invalid")
-        if payload_version == IMPORT_MANIFEST_PAYLOAD_VERSION:
-            copy_id = item.get("copy_id")
-            fingerprint = item.get("source_fingerprint")
-            if not isinstance(copy_id, str) or not _COPY_ID_RE.fullmatch(copy_id):
-                raise ValueError("import manifest copy_id is invalid")
+    return payload_version, items
+
+
+def _validate_item(
+    item: Mapping[str, object],
+    *,
+    root: Path,
+    payload_version: object,
+    copy_ids: set[str] | None = None,
+) -> None:
+    """Validate one manifest item in isolation.
+
+    Raises ValueError on the first invalid field. ``copy_ids`` is only passed
+    by whole-payload validation, which must enforce cross-item copy_id
+    uniqueness; single-item callers omit it because stored payloads already
+    guarantee uniqueness (every writer validates before persisting) and
+    update_item never rewrites copy_id.
+    """
+    source = item.get("source")
+    target = item.get("target")
+    state = item.get("state")
+    if not isinstance(source, str) or not source:
+        raise ValueError("import manifest source is required")
+    if not isinstance(target, str) or not target:
+        raise ValueError("import manifest target is required")
+    if not Path(target).resolve().is_relative_to(root):
+        raise ValueError("import manifest target escapes library root")
+    if state not in {"pending", "copied", "failed", "skipped"}:
+        raise ValueError("import manifest item state is invalid")
+    if payload_version == IMPORT_MANIFEST_PAYLOAD_VERSION:
+        copy_id = item.get("copy_id")
+        fingerprint = item.get("source_fingerprint")
+        if not isinstance(copy_id, str) or not _COPY_ID_RE.fullmatch(copy_id):
+            raise ValueError("import manifest copy_id is invalid")
+        if copy_ids is not None:
             if copy_id in copy_ids:
                 raise ValueError("import manifest copy_id is duplicated")
             copy_ids.add(copy_id)
-            if not isinstance(fingerprint, Mapping):
-                raise ValueError("import manifest source fingerprint is required")
-            if (
-                not isinstance(fingerprint.get("size"), int)
-                or fingerprint["size"] < 0
-                or not isinstance(fingerprint.get("mtime_ns"), int)
-                or fingerprint["mtime_ns"] < 0
-                or not isinstance(fingerprint.get("sha256"), str)
-                or not re.fullmatch(r"[0-9a-f]{64}", fingerprint["sha256"])
-            ):
-                raise ValueError("import manifest source fingerprint is invalid")
+        if not isinstance(fingerprint, Mapping):
+            raise ValueError("import manifest source fingerprint is required")
+        if (
+            not isinstance(fingerprint.get("size"), int)
+            or fingerprint["size"] < 0
+            or not isinstance(fingerprint.get("mtime_ns"), int)
+            or fingerprint["mtime_ns"] < 0
+            or not isinstance(fingerprint.get("sha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", fingerprint["sha256"])
+        ):
+            raise ValueError("import manifest source fingerprint is invalid")
+
+
+def _encode_payload(data: Mapping[str, object]) -> str:
+    """Canonical JSON encoding with the payload size ceiling enforced."""
     encoded = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     if len(encoded.encode("utf-8")) > IMPORT_MANIFEST_MAX_BYTES:
         raise ValueError("import manifest payload is too large")
     return encoded
+
+
+def _validate_payload(
+    payload: Mapping[str, object], *, root: Path, destination: Path
+) -> str:
+    data = dict(payload)
+    payload_version, items = _validate_payload_header(data, destination=destination)
+    copy_ids: set[str] = set()
+    for item in items:
+        if not isinstance(item, Mapping):
+            raise ValueError("import manifest item must be an object")
+        _validate_item(item, root=root, payload_version=payload_version, copy_ids=copy_ids)
+    return _encode_payload(data)
 
 
 class ImportManifestStore:
@@ -178,6 +214,19 @@ class ImportManifestStore:
             )
 
     def get(self, operation_id: str) -> dict[str, object] | None:
+        return self._read_record(operation_id, validate=True)
+
+    def _read_record(
+        self, operation_id: str, *, validate: bool
+    ) -> dict[str, object] | None:
+        """Read one row; ``validate=False`` skips whole-payload revalidation.
+
+        Update hot paths use ``validate=False`` because stored payloads only
+        ever contain data that passed ``_validate_payload`` when written;
+        re-validating every item on every single-item update is what made one
+        import O(n^2). Rows that cannot even be decoded still surface as
+        ``malformed`` records exactly as before.
+        """
         with db_write_lock(self.connection):
             row = self.connection.execute(
                 "SELECT operation_id, library_root, destination, state, payload, generation, "
@@ -189,7 +238,7 @@ class ImportManifestStore:
         if row is None:
             return None
         try:
-            return self._decode_row(row)
+            return self._decode_row(row, validate=validate)
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             return self._malformed_row(row, exc)
 
@@ -294,7 +343,13 @@ class ImportManifestStore:
     ) -> bool:
         if state not in {"copied", "failed", "skipped"}:
             raise ValueError("invalid import manifest item state")
-        record = self.get(operation_id)
+        # Unchecked read: the record still supplies state/generation/destination
+        # for the CAS below, but whole-payload revalidation is skipped. It is
+        # sound to validate only the modified item because every write path
+        # (create and update_item) validates its payload before persisting, so
+        # stored items were validated when written and this update rewrites
+        # just one item's state/error without touching its identity fields.
+        record = self._read_record(operation_id, validate=False)
         if record is None:
             return False
         current_state = str(record["state"])
@@ -305,22 +360,37 @@ class ImportManifestStore:
         if record.get("malformed"):
             return False
         payload = dict(record["payload"])
-        items = list(payload["items"])
-        if item_index < 0 or item_index >= len(items):
+        try:
+            payload_version, stored_items = _validate_payload_header(
+                payload, destination=Path(str(record["destination"]))
+            )
+        except ValueError:
+            # Header corruption cannot originate from a validated write; keep
+            # the historical malformed-record behavior of refusing the update.
+            return False
+        if item_index < 0 or item_index >= len(stored_items):
             raise IndexError("import manifest item index out of range")
-        item = dict(items[item_index])
+        raw_item = stored_items[item_index]
+        if not isinstance(raw_item, Mapping):
+            return False
+        item = dict(raw_item)
         current_item_state = item.get("state")
         if state not in _ITEM_ALLOWED_TRANSITIONS.get(str(current_item_state), set()):
             return False
         item["state"] = state
         item["error"] = error
+        items = list(stored_items)
         items[item_index] = item
         payload["items"] = items
-        encoded = _validate_payload(
-            payload,
-            root=self.library_root,
-            destination=Path(str(record["destination"])),
-        )
+        try:
+            _validate_item(item, root=self.library_root, payload_version=payload_version)
+        except ValueError:
+            # Same rationale as the header check above: refuse rather than
+            # persist a payload that cannot be validated.
+            return False
+        # The whole-payload size ceiling is still enforced by this encode; the
+        # per-item scan is what was removed.
+        encoded = _encode_payload(payload)
         return self._cas_update(
             operation_id,
             expected_generation=int(record["generation"]),
@@ -498,14 +568,17 @@ class ImportManifestStore:
             )
             return cursor.rowcount == 1
 
-    def _decode_row(self, row: sqlite3.Row | tuple[object, ...]) -> dict[str, object]:
+    def _decode_row(
+        self, row: sqlite3.Row | tuple[object, ...], *, validate: bool = True
+    ) -> dict[str, object]:
         values = tuple(row)
         library_root = Path(str(values[1])).resolve()
         destination = Path(str(values[2])).resolve()
         payload = json.loads(str(values[4]))
         if not isinstance(payload, dict):
             raise ValueError("import manifest payload must be an object")
-        _validate_payload(payload, root=library_root, destination=destination)
+        if validate:
+            _validate_payload(payload, root=library_root, destination=destination)
         return {
             "operation_id": str(values[0]),
             "library_root": str(values[1]),

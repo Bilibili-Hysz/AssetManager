@@ -15,6 +15,9 @@ from typing import Any, Callable, Iterator
 from AssetsManager.application.context import LibraryContext, LibrarySession
 from AssetsManager.application.library_export_io import (
     clear_restore_intent,
+    quick_check_database_file,
+    quarantined_restore_intent_marker,
+    quarantine_restore_intent_marker,
     read_restore_intent,
     restore_intent_path,
     safe_restore_quarantine_root,
@@ -29,8 +32,6 @@ from AssetsManager.core.path_resolver import (
 )
 from AssetsManager.core.project_data import ProjectData
 from AssetsManager.core.tag_store import TagStore, install_repository_factory
-from AssetsManager.domain.event_bus import get_event_bus
-from AssetsManager.domain.events import LibraryOpened
 from AssetsManager.repositories.tag_repository import TagRepository
 
 _log = logging.getLogger(__name__)
@@ -389,9 +390,26 @@ class LibraryService:
         poison: admission blocking would leave the failure unacknowledgeable
         (no session can open to reach the ACK surface).  The durable marker
         itself keeps failing every open until the operator remediates.
+
+        A marker that is present but corrupt/unparseable is self-healed:
+        the corrupt bytes are quarantined (renamed in place, kept as
+        evidence) and the newest quarantine candidate that passes the
+        existing validation gates is auto-restored.  Without a validated
+        candidate the open stays fail-closed with an actionable error; the
+        quarantined corrupt marker then keeps guarding later opens against
+        silent empty-slot materialization (``connection_for`` would
+        otherwise create one, see ``DatabaseManager.open_library``).
         """
         data_dir = library_data_dir(identity)
         if not restore_intent_path(data_dir).exists():
+            if not (data_dir.exists() or data_dir.is_symlink()):
+                if quarantined_restore_intent_marker(data_dir) is not None:
+                    # A previous open already quarantined a corrupt marker
+                    # and found no validated candidate.  Re-run the
+                    # self-heal so a candidate that appears later (manual
+                    # remediation) is used, and keep failing closed until
+                    # then instead of opening an empty slot.
+                    self._self_heal_corrupt_restore_intent(data_dir, key)
             return
         payload = read_restore_intent(data_dir)
         if data_dir.exists() or data_dir.is_symlink():
@@ -403,22 +421,20 @@ class LibraryService:
                 data_dir,
             )
             return
-        previous_raw = (
-            payload.get("quarantine_entry") if isinstance(payload, dict) else None
-        )
+        if not isinstance(payload, dict):
+            # Marker present but corrupt/unparseable: self-heal (isolate +
+            # newest validated candidate) or fail closed with guidance.
+            # The healthy-marker paths below are untouched.
+            self._self_heal_corrupt_restore_intent(data_dir, key)
+            return
+        previous_raw = payload.get("quarantine_entry")
         previous = Path(previous_raw) if isinstance(previous_raw, str) and previous_raw else None
-        recorded_key = payload.get("map_key") if isinstance(payload, dict) else None
+        recorded_key = payload.get("map_key")
         usable = (
             previous is not None
-            and previous.is_dir()
-            and not _path_is_link_or_reparse(previous)
             and (recorded_key in (None, key))
+            and self._previous_entry_shape_is_usable(previous, data_dir)
         )
-        if usable:
-            try:
-                previous.resolve().relative_to(data_dir.parent.resolve())
-            except (ValueError, OSError):
-                usable = False
         if not usable:
             raise RuntimeError(
                 "Interrupted library restore detected, but the quarantined "
@@ -428,18 +444,223 @@ class LibraryService:
                 "restore quarantine manually, then remove the marker file "
                 f"({restore_intent_path(data_dir).name}) after remediation."
             )
+        self._install_quarantined_previous(previous, data_dir, key)
+        clear_restore_intent(data_dir)
+        _log.warning(
+            "Rolled back an interrupted library restore (%s): previous "
+            "RuntimeData restored from quarantine to %s",
+            payload.get("token"),
+            data_dir,
+        )
+
+    @staticmethod
+    def _previous_entry_shape_is_usable(previous: Path, data_dir: Path) -> bool:
+        """Shared admission shape for a quarantined previous RuntimeData entry.
+
+        Extracted verbatim from the healthy-marker recovery path so the
+        corrupt-marker self-heal applies exactly the same checks (regular
+        directory, no link/junction/reparse, canonically contained by the
+        RuntimeData root).
+        """
+        if not previous.is_dir() or _path_is_link_or_reparse(previous):
+            return False
+        try:
+            previous.resolve().relative_to(data_dir.parent.resolve())
+        except (ValueError, OSError):
+            return False
+        return True
+
+    @staticmethod
+    def _install_quarantined_previous(previous: Path, data_dir: Path, key: str) -> None:
+        """Roll a quarantined previous RuntimeData entry back into the slot.
+
+        The single existing restore operation shared by the healthy-marker
+        path and the corrupt-marker self-heal.
+        """
         try:
             os.replace(previous, data_dir)
         except OSError as exc:
             raise RuntimeError(
                 f"Failed to roll back the interrupted library restore ({key}): {exc}"
             ) from exc
-        clear_restore_intent(data_dir)
+
+    @staticmethod
+    def _restore_validation_limits() -> tuple[int, int] | None:
+        """Borrow LibraryExportService's restore validation limits.
+
+        Kept lazy (like ``_restore_blocked_error``) to avoid an import-time
+        cycle.  Returning None makes every candidate ineligible: the
+        self-heal must never weaken the existing validation gates.
+        """
+        try:
+            from AssetsManager.application.library_export_service import (
+                LibraryExportService,
+            )
+        except (ImportError, AttributeError):
+            return None
+        return (
+            LibraryExportService._MAX_DATABASE_QUICK_CHECK_SIZE,
+            LibraryExportService._QUICK_CHECK_CACHE_KIB,
+        )
+
+    @staticmethod
+    def _quarantine_candidate_is_restorable(
+        entry: Path, data_dir: Path
+    ) -> tuple[bool, str]:
+        """Gate one quarantine candidate through the existing validation set.
+
+        Reuses the healthy-path admission shape plus the existing
+        ``quick_check_database_file`` integrity gate (the same function that
+        accepts a staged restore before installation); nothing is relaxed.
+        """
+        if not LibraryService._previous_entry_shape_is_usable(entry, data_dir):
+            return False, "not a real directory contained by the RuntimeData root"
+        limits = LibraryService._restore_validation_limits()
+        if limits is None:
+            return False, "backup validation limits are unavailable"
+        max_size, cache_kib = limits
+        try:
+            quick_check_database_file(
+                entry / "assetmanager.db",
+                max_database_quick_check_size=max_size,
+                quick_check_cache_kib=cache_kib,
+            )
+        except (OSError, ValueError) as exc:
+            return False, f"database integrity gate failed ({exc})"
+        return True, ""
+
+    def _scan_restorable_quarantine_candidates(
+        self, data_dir: Path
+    ) -> tuple[list[Path], list[str]]:
+        """Return newest-first restorable candidates plus rejection reasons.
+
+        Only quarantine entries following the ``{data_dir.name}_...`` naming
+        convention of :func:`restore_quarantine_path` are considered, so the
+        RuntimeData-shared quarantine can never offer another slot's data.
+        """
+        rejected: list[str] = []
+        try:
+            quarantine_root = safe_restore_quarantine_root(
+                data_dir, create_missing=False
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            return [], [f"restore quarantine unavailable: {exc}"]
+        if quarantine_root is None:
+            return [], []
+        try:
+            entries = list(quarantine_root.iterdir())
+        except OSError as exc:
+            return [], [f"restore quarantine unreadable: {exc}"]
+        prefix = f"{data_dir.name}_"
+        candidates: list[tuple[float, Path]] = []
+        for entry in entries:
+            if not entry.name.startswith(prefix):
+                continue
+            try:
+                if entry.is_symlink() or not entry.is_dir():
+                    rejected.append(f"{entry.name}: not a directory entry")
+                    continue
+                if _path_is_link_or_reparse(entry):
+                    rejected.append(f"{entry.name}: link or junction refused")
+                    continue
+                modified = entry.stat().st_mtime
+            except OSError as exc:
+                rejected.append(f"{entry.name}: cannot inspect ({exc})")
+                continue
+            candidates.append((modified, entry))
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        restorable: list[Path] = []
+        for _modified, entry in candidates:
+            usable, reason = self._quarantine_candidate_is_restorable(entry, data_dir)
+            if usable:
+                restorable.append(entry)
+            else:
+                rejected.append(f"{entry.name}: {reason}")
+        return restorable, rejected
+
+    @staticmethod
+    def _quarantine_corrupt_marker(data_dir: Path) -> Path | None:
+        """Isolate the corrupt marker (evidence kept); None when it fails."""
+        try:
+            quarantined = quarantine_restore_intent_marker(data_dir)
+        except OSError as exc:
+            _log.warning(
+                "Could not quarantine the corrupt restore-intent marker for "
+                "%s: %s", data_dir.name, exc,
+            )
+            return None
         _log.warning(
-            "Rolled back an interrupted library restore (%s): previous "
-            "RuntimeData restored from quarantine to %s",
-            payload.get("token") if isinstance(payload, dict) else "?",
-            data_dir,
+            "Quarantined a corrupt restore-intent marker (kept as evidence): %s",
+            quarantined,
+        )
+        return quarantined
+
+    @staticmethod
+    def _corrupt_marker_fail_closed_message(
+        data_dir: Path,
+        key: str,
+        quarantined_marker: Path | None,
+        rejected: list[str],
+    ) -> str:
+        sentinel = restore_intent_path(data_dir)
+        marker_line = (
+            f"The corrupt marker was quarantined to: {quarantined_marker}"
+            if quarantined_marker is not None
+            else f"The corrupt marker is still at: {sentinel}"
+        )
+        quarantine_hint = data_dir.parent / "_orphaned" / "restore-backups"
+        attempted = "; ".join(rejected) if rejected else (
+            f"no candidate entries named {data_dir.name}_<...> exist under "
+            f"the restore quarantine ({quarantine_hint})"
+        )
+        return (
+            "Interrupted library restore detected, but the restore-intent "
+            "marker is corrupt and no validated backup candidate is "
+            f"available ({key}). {marker_line}. Candidates attempted: "
+            f"{attempted}. Manual recovery: restore a backup archive into "
+            "this library through the backup/restore flow, or place a "
+            "verified previous RuntimeData copy named "
+            f"{data_dir.name}_<...> into the restore quarantine "
+            f"({quarantine_hint}) and reopen - the newest candidate that "
+            "passes validation is then restored automatically. To give up "
+            "the interrupted restore, delete the quarantined marker file "
+            "above after remediation and reopen; the library then starts "
+            "empty."
+        )
+
+    def _self_heal_corrupt_restore_intent(self, data_dir: Path, key: str) -> None:
+        """Self-heal a corrupt restore-intent marker (library lock is held).
+
+        The corrupt marker is quarantined (renamed in place, never deleted)
+        and the newest quarantine candidate that passes the existing
+        validation gates is auto-restored through the existing rollback
+        operation.  Without any validated candidate the corrupt marker is
+        still quarantined and the open fails closed with an actionable
+        error; the quarantined marker then keeps later opens failing shut
+        (it is the only durable guard preventing ``connection_for`` from
+        materializing an empty database over the lost slot).
+        """
+        quarantined_marker = quarantined_restore_intent_marker(data_dir)
+        candidates, rejected = self._scan_restorable_quarantine_candidates(data_dir)
+        if candidates:
+            candidate = candidates[0]
+            if quarantined_marker is None:
+                quarantined_marker = self._quarantine_corrupt_marker(data_dir)
+            self._install_quarantined_previous(candidate, data_dir, key)
+            _log.warning(
+                "Self-healed a corrupt restore-intent marker (%s): previous "
+                "RuntimeData auto-restored from quarantine candidate %s",
+                quarantined_marker if quarantined_marker is not None
+                else restore_intent_path(data_dir),
+                candidate,
+            )
+            return
+        if quarantined_marker is None:
+            quarantined_marker = self._quarantine_corrupt_marker(data_dir)
+        raise RuntimeError(
+            self._corrupt_marker_fail_closed_message(
+                data_dir, key, quarantined_marker, rejected
+            )
         )
 
     def restore_failure_state(self, library_root: str | Path) -> _RestoreRecoveryState | None:
@@ -678,6 +899,18 @@ class LibraryService:
         data_dir = library_data_dir(identity)
         marker = restore_intent_path(data_dir)
         if not marker.exists():
+            quarantined = quarantined_restore_intent_marker(data_dir)
+            if quarantined is not None and not (
+                data_dir.exists() or data_dir.is_symlink()
+            ):
+                # A corrupt marker was quarantined by a failed self-heal and
+                # the slot is still missing: keep the recovery dialog usable.
+                return {
+                    "marker": str(quarantined),
+                    "status": "corrupt-quarantined",
+                    "quarantine_entry": None,
+                    "token": None,
+                }
             return None
         payload = read_restore_intent(data_dir)
         if not isinstance(payload, dict):
@@ -864,7 +1097,6 @@ class LibraryService:
         identity = root_identity(root_path)
         root = identity.display_path
         key = identity.map_key
-        opened_session = False
         with self._lifecycle:
             self._lifecycle.wait_for(
                 lambda: (
@@ -922,7 +1154,6 @@ class LibraryService:
                     self._current = context
                     self._publish_root_session(key, session, generation)
                     self._opening_progress.pop(key, None)
-                    opened_session = True
                     result = (context, session)
                 except BaseException as error:
                     if session is not None and self._sessions.get(key) is session:
@@ -945,10 +1176,6 @@ class LibraryService:
                         except (AttributeError, TypeError):
                             pass
                     raise
-        if opened_session:
-            get_event_bus().publish(
-                LibraryOpened(library_root=str(root), session_token=result[1].event_token)
-            )
         return result
 
     def open_session(self, root_path: str | Path) -> LibrarySession:

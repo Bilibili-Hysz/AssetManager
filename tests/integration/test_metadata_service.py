@@ -3,6 +3,8 @@ import pytest
 import sqlite3
 import time
 
+from AssetsManager.domain.errors import PathEscapeError
+
 
 def _memory_conn() -> sqlite3.Connection:
     from AssetsManager.core import database
@@ -372,7 +374,9 @@ def test_metadata_service_rejects_path_outside_library_root(tmp_path, operation)
     conn = _memory_conn()
     try:
         service = MetadataService(connection_provider=lambda _root: conn)
-        with pytest.raises(ValueError, match="under library_root"):
+        # Path-escape rejection now raises the domain PathEscapeError so the
+        # LAN error contract maps it (minimal ValueError migration).
+        with pytest.raises(PathEscapeError):
             if operation == "get_metadata":
                 service.get_metadata(library, outside / "asset.txt")
             elif operation == "get_notes":

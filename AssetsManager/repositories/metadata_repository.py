@@ -433,11 +433,17 @@ class MetadataRepository:
     @_repository_operation
     @locked_read
     def get_cached_file_count(self, file_path: str) -> int | None:
-        """Return cached file count, or None if not cached."""
+        """Return cached file count, or None if not cached or stale.
+
+        Rows without a ``cached_file_count_mtime`` stamp (all pre-v35 rows)
+        are treated as a cache miss, matching the :meth:`get_cached_size`
+        contract that requires both value and mtime.
+        """
         file_path = self._path_key(file_path)
         row = self._conn.execute(
             "SELECT cached_file_count FROM file_meta "
-            "WHERE file_path=? AND cached_file_count IS NOT NULL",
+            "WHERE file_path=? AND cached_file_count IS NOT NULL "
+            "AND cached_file_count_mtime IS NOT NULL",
             (file_path,),
         ).fetchone()
         if row and row[0] is not None:
@@ -445,20 +451,51 @@ class MetadataRepository:
         return None
 
     @_repository_operation
-    def set_cached_file_count(self, file_path: str, count: int) -> None:
-        """Cache a file count."""
+    @locked_read
+    def get_cached_file_count_with_mtime(
+        self, file_path: str
+    ) -> tuple[int, float] | None:
+        """Return (cached_file_count, cached_file_count_mtime) or None.
+
+        Mirrors :meth:`get_cached_size`: callers compare the stored mtime
+        against the live source-directory mtime before trusting the count.
+        Rows missing either value are a cache miss.
+        """
+        file_path = self._path_key(file_path)
+        row = self._conn.execute(
+            "SELECT cached_file_count, cached_file_count_mtime FROM file_meta "
+            "WHERE file_path=? AND cached_file_count IS NOT NULL",
+            (file_path,),
+        ).fetchone()
+        if row and row[0] is not None and row[1] is not None:
+            return (int(row[0]), float(row[1]))
+        return None
+
+    @_repository_operation
+    def set_cached_file_count(
+        self, file_path: str, count: int, mtime: float | None = None
+    ) -> None:
+        """Cache a file count with the source directory's mtime.
+
+        ``mtime`` is the directory ``st_mtime`` observed when the count was
+        computed; ``None`` records an always-stale entry (reads treat it as
+        a miss and recompute).
+        """
         file_path = self._path_key(file_path)
         with self._write_scope("set_cached_file_count"):
             self._conn.execute(
-                "INSERT INTO file_meta (file_path, cached_file_count) VALUES (?, ?) "
-                "ON CONFLICT(file_path) DO UPDATE SET cached_file_count=excluded.cached_file_count",
-                (file_path, count),
+                "INSERT INTO file_meta (file_path, cached_file_count, cached_file_count_mtime) "
+                "VALUES (?, ?, ?) "
+                "ON CONFLICT(file_path) DO UPDATE SET "
+                "cached_file_count=excluded.cached_file_count, "
+                "cached_file_count_mtime=excluded.cached_file_count_mtime",
+                (file_path, count, mtime),
             )
 
     @_repository_operation
     @locked_read
     def batch_get_cached_file_counts(self, file_paths: list[str]) -> dict[str, int]:
-        """Return {path: count} for directories that have cached file counts."""
+        """Return {path: count} for directories with mtime-stamped counts."""
         if not file_paths:
             return {}
         file_paths = self._path_keys(file_paths)
@@ -470,7 +507,8 @@ class MetadataRepository:
             placeholders = ",".join("?" * len(chunk))
             rows = self._conn.execute(
                 f"SELECT file_path, cached_file_count FROM file_meta "
-                f"WHERE file_path IN ({placeholders}) AND cached_file_count IS NOT NULL",
+                f"WHERE file_path IN ({placeholders}) AND cached_file_count IS NOT NULL "
+                f"AND cached_file_count_mtime IS NOT NULL",
                 chunk,
             ).fetchall()
             for r in rows:
@@ -479,16 +517,61 @@ class MetadataRepository:
         return results
 
     @_repository_operation
-    def batch_set_cached_file_counts(self, entries: dict[str, int]) -> None:
-        """Cache file counts for multiple directories in a single transaction."""
+    @locked_read
+    def batch_get_cached_file_counts_with_mtime(
+        self, file_paths: list[str]
+    ) -> dict[str, tuple[int, float]]:
+        """Return {path: (count, mtime)} for mtime-stamped cached counts.
+
+        Batch form of :meth:`get_cached_file_count_with_mtime`; entries
+        without a stored mtime are omitted so callers recompute them.
+        """
+        if not file_paths:
+            return {}
+        file_paths = self._path_keys(file_paths)
+        results: dict[str, tuple[int, float]] = {}
+        chunk_size = 900
+        for i in range(0, len(file_paths), chunk_size):
+            chunk = file_paths[i:i + chunk_size]
+            placeholders = ",".join("?" * len(chunk))
+            rows = self._conn.execute(
+                f"SELECT file_path, cached_file_count, cached_file_count_mtime "
+                f"FROM file_meta "
+                f"WHERE file_path IN ({placeholders}) AND cached_file_count IS NOT NULL",
+                chunk,
+            ).fetchall()
+            for r in rows:
+                if r[1] is not None and r[2] is not None:
+                    results[r[0]] = (int(r[1]), float(r[2]))
+        return results
+
+    @_repository_operation
+    def batch_set_cached_file_counts(
+        self, entries: dict[str, int | tuple[int, float]]
+    ) -> None:
+        """Cache file counts for multiple directories in a single transaction.
+
+        Values are either a bare count (recorded without an mtime and
+        therefore always treated as stale on read) or a ``(count,
+        dir_mtime)`` pair stamped with the source directory's mtime.
+        """
         if not entries:
             return
-        entries = {self._path_key(path): count for path, count in entries.items()}
+        entries = {self._path_key(path): value for path, value in entries.items()}
+        rows = [
+            (path, value[0], value[1])
+            if isinstance(value, tuple)
+            else (path, value, None)
+            for path, value in entries.items()
+        ]
         with self._write_scope("batch_set_cached_file_counts"):
             self._conn.executemany(
-                "INSERT INTO file_meta (file_path, cached_file_count) VALUES (?, ?) "
-                "ON CONFLICT(file_path) DO UPDATE SET cached_file_count=excluded.cached_file_count",
-                list(entries.items()),
+                "INSERT INTO file_meta (file_path, cached_file_count, cached_file_count_mtime) "
+                "VALUES (?, ?, ?) "
+                "ON CONFLICT(file_path) DO UPDATE SET "
+                "cached_file_count=excluded.cached_file_count, "
+                "cached_file_count_mtime=excluded.cached_file_count_mtime",
+                rows,
             )
 
     # ── Stats ────────────────────────────────────────────────────
@@ -559,7 +642,8 @@ class MetadataRepository:
         descendant_pattern = sql_like_descendant_pattern(file_path)
         with self._write_scope("invalidate_size_cache"):
             self._conn.execute(
-                "UPDATE file_meta SET cached_size=NULL, cached_mtime=NULL, cached_file_count=NULL "
+                "UPDATE file_meta SET cached_size=NULL, cached_mtime=NULL, "
+                "cached_file_count=NULL, cached_file_count_mtime=NULL "
                 "WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
                 (file_path, descendant_pattern),
             )

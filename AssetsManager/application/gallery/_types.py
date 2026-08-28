@@ -229,10 +229,12 @@ class _HomeState:
     ("/" for the root), ``refs`` every library image with its mtime,
     ``image_paths`` a parallel set for O(1) membership checks (avoids
     O(refs) scans on delete/move), ``files`` every file (idempotency
-    registry), and ``generation`` the per-service monotonic counter
-    stamped at build/apply time. The incremental applier only trusts
-    events newer than this generation; any inconsistency falls back to
-    a full rebuild.
+    registry), and ``generation`` the event-sequence watermark this
+    snapshot covers: the seq-counter value captured when the full walk
+    started, or the max seq applied by the last incremental window —
+    never a freshly issued seq. The incremental applier only trusts
+    events newer than this watermark; any inconsistency falls back to a
+    full rebuild.
     """
 
     node: dict[str, Any] | None

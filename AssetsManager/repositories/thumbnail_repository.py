@@ -3,16 +3,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from sqlite3 import Connection
-import time
 from typing import Callable, Iterable, TypeVar
 
 from AssetsManager.core.database import (
     SQLITE_BUSY_RETRY_ATTEMPTS,
     db_write_lock,
-    is_sqlite_busy_error,
-    sqlite_busy_retry_delay,
 )
 from AssetsManager.core.path_resolver import sql_like_descendant_pattern
+from AssetsManager.repositories._common import _retry_sqlite_busy
 
 _T = TypeVar("_T")
 
@@ -39,27 +37,24 @@ class ThumbnailRepository:
         """Run one complete metadata write with bounded busy retry."""
         outer_transaction = self._conn.in_transaction
         attempts = 1 if not commit or outer_transaction else SQLITE_BUSY_RETRY_ATTEMPTS
-        owns_commit = commit
-        for attempt in range(attempts):
-            try:
-                with db_write_lock(self._conn):
-                    result = operation()
-                    if owns_commit:
-                        self._conn.commit()
-                    return result
-            except Exception as error:
-                if not is_sqlite_busy_error(error) or attempt + 1 >= attempts:
-                    raise
-                if not outer_transaction:
-                    try:
-                        with db_write_lock(self._conn):
-                            self._conn.rollback()
-                    except Exception:
-                        pass
-                    time.sleep(sqlite_busy_retry_delay(attempt))
-                else:
-                    raise
-        raise AssertionError("unreachable thumbnail write retry state")
+
+        def run() -> _T:
+            with db_write_lock(self._conn):
+                result = operation()
+                if commit:
+                    self._conn.commit()
+                return result
+
+        def rollback_under_lock() -> None:
+            with db_write_lock(self._conn):
+                self._conn.rollback()
+
+        return _retry_sqlite_busy(
+            run,
+            outer_transaction=outer_transaction,
+            attempts=attempts,
+            rollback=rollback_under_lock,
+        )
 
     _SELECT_METADATA = (
         "SELECT cache_key, source_path, source_mtime, source_mtime_ns, "
@@ -261,5 +256,14 @@ class ThumbnailRepository:
         )
 
     def commit(self) -> None:
+        """Commit the current transaction, unconditionally (public API).
+
+        Kept deliberately unguarded: this method's contract is to end the
+        current transaction no matter who opened it. Callers that staged
+        writes with ``commit=False`` rely on it to persist them, and because
+        this repository's own DML opens an implicit transaction, a
+        caller-transaction guard here could not distinguish pending local
+        work from a caller-owned transaction (it would silently drop data).
+        """
         with db_write_lock(self._conn):
             self._conn.commit()

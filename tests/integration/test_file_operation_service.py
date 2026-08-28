@@ -813,6 +813,89 @@ def test_delete_permanent_removes_files(file_ops):
     assert not src.exists()
 
 
+@pytest.mark.parametrize("mode", ["permanent", "trash"])
+def test_batch_delete_publishes_exactly_one_aggregated_event(
+    file_ops, monkeypatch, mode
+):
+    """Deleting 3 files publishes one FileSystemChanged carrying all 3 paths."""
+    from AssetsManager.domain.event_bus import EventBus
+    from AssetsManager.domain.events import FileSystemChanged
+    import AssetsManager.domain.event_bus as event_bus_module
+
+    if mode == "trash":
+        monkeypatch.setattr(
+            "send2trash.send2trash", lambda path: Path(path).unlink()
+        )
+
+    service, library = file_ops
+    targets = []
+    for index in range(3):
+        target = library / f"doomed_{index}.txt"
+        target.write_text("asset", encoding="utf-8")
+        targets.append(target)
+
+    bus = EventBus()
+    events: list[FileSystemChanged] = []
+    bus.subscribe(FileSystemChanged, events.append)
+    monkeypatch.setattr(event_bus_module, "_instance", bus)
+
+    delete = (
+        service.delete_permanent if mode == "permanent" else service.delete_to_trash
+    )
+    result = delete(targets)
+
+    assert result.ok
+    assert all(not target.exists() for target in targets)
+    assert len(events) == 1
+    assert events[0].kind == "deleted"
+    assert tuple(events[0].paths) == tuple(str(target.resolve()) for target in targets)
+
+
+def test_batch_move_and_copy_publish_single_aggregated_event(file_ops, monkeypatch):
+    """move_to_directory/copy_to_directory collapse per-item events into one."""
+    from AssetsManager.domain.event_bus import EventBus
+    from AssetsManager.domain.events import FileSystemChanged
+    import AssetsManager.domain.event_bus as event_bus_module
+
+    service, library = file_ops
+    sources = []
+    for index in range(3):
+        source = library / f"asset_{index}.txt"
+        source.write_text("asset", encoding="utf-8")
+        sources.append(source)
+    move_dir = library / "moved_to"
+    copy_dir = library / "copied_to"
+    move_dir.mkdir()
+    copy_dir.mkdir()
+
+    bus = EventBus()
+    events: list[FileSystemChanged] = []
+    bus.subscribe(FileSystemChanged, events.append)
+    monkeypatch.setattr(event_bus_module, "_instance", bus)
+
+    # Copy first: moving consumes the originals, so the copy must run
+    # while the sources still exist.
+    copied = service.copy_to_directory(sources, copy_dir)
+    moved = service.move_to_directory(sources, move_dir)
+
+    assert moved.ok and copied.ok
+    assert len(events) == 2
+    copy_event, move_event = events
+    assert copy_event.kind == "copied"
+    assert copy_event.paths == tuple(
+        str(target.resolve()) for target in copied.changed_paths
+    )
+    # Copies have no old location: old_paths must stay empty.
+    assert copy_event.old_paths == ()
+    assert move_event.kind == "moved"
+    assert move_event.paths == tuple(
+        str(target.resolve()) for target in moved.changed_paths
+    )
+    assert move_event.old_paths == tuple(
+        str(source.resolve()) for source in sources
+    )
+
+
 def test_permanent_delete_clears_projection_subtree_and_reindexes_parent(tmp_path):
     from AssetsManager.application import ApplicationBootstrap
     from AssetsManager.core.tag_store import TagStore
@@ -1191,7 +1274,14 @@ def test_restore_projection_snapshot_failure_returns_degraded_warning(tmp_path):
         scoped.reconciliation_service.stop()
         result = scoped.file_operation_service.restore_backup(backup, target)
 
-        assert result == target.resolve()
+        # restore_backup now returns a RestoreResult carrying the degraded
+        # signal instead of a bare Path; the path stays reachable via .path.
+        assert result.path == target.resolve()
+        assert result.degraded is True
+        assert any(
+            warning.code == "projection_restore_failed"
+            for warning in result.warnings
+        )
         assert target.read_text(encoding="utf-8") == "restored"
         warning = scoped.file_operation_service.last_refresh_warnings[-1]
         assert warning.code == "projection_restore_failed"
@@ -1432,7 +1522,8 @@ def test_restore_backup_reindexes_directory_tree_before_publishing_created(tmp_p
 
     restored = scoped.file_operation_service.restore_backup(backup, target)
 
-    assert restored == target
+    assert restored.path == target
+    assert restored.degraded is False
     assert observed == [(str(target), True, True)]
 
 
@@ -1617,5 +1708,283 @@ def test_bound_delete_rejects_outer_transaction_before_filesystem_change(
         assert source.exists()
         assert conn.execute("SELECT * FROM caller_data").fetchall() == [("keep-me",)]
         conn.rollback()
+    finally:
+        bootstrap.library_service.close()
+
+
+# ── Fix: projection cleanup must not depend on the thumbnail cache lease ──
+
+def test_delete_projection_cleanup_survives_busy_cache_owner_lock(
+    tmp_path, monkeypatch
+):
+    """A timed-out cache-owner lease must not silently skip projection cleanup.
+
+    The DB projection rows are removed even when the thumbnail cache lease
+    is busy, and the TimeoutError reaches the delete repair channel so a
+    delete projection repair task is enqueued instead of leaving ghost rows.
+    """
+    import AssetsManager.application.thumbnail_cache_lifecycle as lifecycle
+    from AssetsManager.application import ApplicationBootstrap, ReconciliationKind
+    from AssetsManager.core.tag_store import TagStore
+    from AssetsManager.repositories.thumbnail_repository import ThumbnailRepository
+
+    library = tmp_path / "library"
+    target = library / "asset.txt"
+    library.mkdir()
+    target.write_text("asset", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    try:
+        scoped = bootstrap.runtime_for(session).services
+        conn = session.connection_for(library)
+        key = str(target.resolve())
+        TagStore(str(library), db_conn=conn).add_tag(key, "hero")
+        # A thumbnail row makes the artifact phase (and its cache lease) run.
+        ThumbnailRepository(conn).upsert_entry("thumb", key, 1.0, 1, 1, 1)
+        if conn.in_transaction:
+            conn.commit()
+
+        def busy_cache_owner_lock(*_args, **_kwargs):
+            raise TimeoutError("simulated cache owner busy")
+
+        monkeypatch.setattr(
+            lifecycle, "cache_owner_lock", busy_cache_owner_lock
+        )
+        scoped.reconciliation_service.stop()
+        result = scoped.file_operation_service.delete_permanent([target])
+
+        assert result.ok
+        assert result.degraded
+        assert result.changed_paths == (target.resolve(),)
+        warning = next(
+            warning for warning in result.warnings
+            if warning.code == "projection_cleanup_failed"
+        )
+        assert warning.phase == "projection_cleanup"
+        assert warning.status == "failed"
+        assert warning.failure_type == "TimeoutError"
+        # DB projection cleanup no longer depends on the cache lease.
+        assert conn.execute(
+            "SELECT 1 FROM file_tags WHERE file_path=?", (key,)
+        ).fetchone() is None
+        assert conn.execute(
+            "SELECT 1 FROM thumbnail_cache WHERE source_path=?", (key,)
+        ).fetchone() is None
+        repair_tasks = [
+            task
+            for task in scoped.reconciliation_queue.snapshot()
+            if task.kind is ReconciliationKind.FILESYSTEM_PROJECTION_REPAIR
+        ]
+        assert len(repair_tasks) == 1
+        assert Path(repair_tasks[0].path).resolve() == library.resolve()
+        assert '"operation_kind":"delete"' in repair_tasks[0].payload
+    finally:
+        bootstrap.library_service.close()
+
+
+# ── Fix: restore must not pretend success when the snapshot never existed ──
+
+def test_restore_backup_with_failed_snapshot_marker_reports_degraded_restore(
+    tmp_path,
+):
+    """A .projection.failed marker means the snapshot was expected but its
+    write failed at delete time: restore records a degraded projection
+    restore instead of silently dropping tags/notes."""
+    from AssetsManager.application import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    library.mkdir()
+    backup = tmp_path / "backup.txt"
+    backup.write_text("restored", encoding="utf-8")
+    Path(f"{backup}.projection.failed").write_text(
+        "RuntimeError", encoding="ascii"
+    )
+    target = library / "restored.txt"
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    try:
+        scoped = bootstrap.runtime_for(session).services
+        scoped.reconciliation_service.stop()
+        result = scoped.file_operation_service.restore_backup(backup, target)
+
+        # restore_backup now returns a RestoreResult carrying the degraded
+        # signal instead of a bare Path; the path stays reachable via .path.
+        assert result.path == target.resolve()
+        assert result.degraded is True
+        assert any(
+            warning.code == "projection_restore_failed"
+            for warning in result.warnings
+        )
+        assert target.read_text(encoding="utf-8") == "restored"
+        warning = scoped.file_operation_service.last_refresh_warnings[-1]
+        assert warning.code == "projection_restore_failed"
+        assert warning.phase == "projection_restore"
+        assert warning.status == "failed"
+        tasks = scoped.reconciliation_queue.snapshot()
+        assert len(tasks) == 1
+        assert Path(tasks[0].path).resolve() == library.resolve()
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_restore_backup_without_snapshot_support_keeps_legacy_success(tmp_path):
+    """Legacy backups (no snapshot, no marker) restore without a degraded
+    projection warning — unchanged semantics."""
+    from AssetsManager.application import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    library.mkdir()
+    backup = tmp_path / "backup.txt"
+    backup.write_text("restored", encoding="utf-8")
+    target = library / "restored.txt"
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    try:
+        scoped = bootstrap.runtime_for(session).services
+        scoped.reconciliation_service.stop()
+        result = scoped.file_operation_service.restore_backup(backup, target)
+
+        assert result.path == target.resolve()
+        assert result.degraded is False
+        assert target.read_text(encoding="utf-8") == "restored"
+        assert not any(
+            warning.code == "projection_restore_failed"
+            for warning in scoped.file_operation_service.last_refresh_warnings
+        )
+        assert not scoped.reconciliation_queue.snapshot()
+    finally:
+        bootstrap.library_service.close()
+
+
+# ── Fix: copy/duplicate serialize on path locks like the move series ──
+
+def test_concurrent_copy_same_name_produces_distinct_intact_targets(file_ops):
+    """Two threads copying same-named files into one directory must not both
+    write the same target: unique_destination holds no reservation across
+    the copy, so copy_to_directory serializes on path locks."""
+    import threading
+
+    service, library = file_ops
+    src_a_dir = library / "a"
+    src_b_dir = library / "b"
+    dst_dir = library / "dst"
+    src_a_dir.mkdir()
+    src_b_dir.mkdir()
+    dst_dir.mkdir()
+    content_a = "A" * 65536
+    content_b = "B" * 65536
+    (src_a_dir / "asset.txt").write_text(content_a, encoding="utf-8")
+    (src_b_dir / "asset.txt").write_text(content_b, encoding="utf-8")
+
+    barrier = threading.Barrier(2)
+    results = {}
+
+    def copy(source, content):
+        barrier.wait()
+        results[content[0]] = service.copy_to_directory([source], dst_dir)
+
+    threads = [
+        threading.Thread(target=copy, args=(src_a_dir / "asset.txt", content_a)),
+        threading.Thread(target=copy, args=(src_b_dir / "asset.txt", content_b)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=60)
+        assert not thread.is_alive()
+
+    assert all(result.ok for result in results.values())
+    targets = [
+        path for result in results.values() for path in result.changed_paths
+    ]
+    assert len(targets) == 2
+    assert len({path.name for path in targets}) == 2
+    assert {path.read_text(encoding="utf-8") for path in targets} == {
+        content_a,
+        content_b,
+    }
+
+
+def test_concurrent_duplicate_same_source_produces_distinct_intact_targets(
+    file_ops,
+):
+    import threading
+
+    service, library = file_ops
+    src = library / "asset.txt"
+    src.write_text("C" * 65536, encoding="utf-8")
+
+    barrier = threading.Barrier(2)
+    results = []
+    results_lock = threading.Lock()
+
+    def duplicate():
+        barrier.wait()
+        target = service.duplicate(src)
+        with results_lock:
+            results.append(target)
+
+    threads = [threading.Thread(target=duplicate) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=60)
+        assert not thread.is_alive()
+
+    assert len(results) == 2
+    assert len({target.name for target in results}) == 2
+    assert {target.read_text(encoding="utf-8") for target in results} == {
+        "C" * 65536,
+    }
+
+
+def test_bootstrap_drains_pending_projection_repairs_at_startup(tmp_path):
+    """Markers persisted after an enqueue failure are re-enqueued at startup."""
+    import json
+
+    from AssetsManager.application import ApplicationBootstrap
+    from AssetsManager.application.reconciliation_queue import ReconciliationKind
+    from AssetsManager.core.path_resolver import library_data_dir
+
+    library = tmp_path / "library"
+    library.mkdir()
+    pending = library_data_dir(library) / "pending_projection_repairs"
+    pending.mkdir(parents=True)
+    request = {
+        "path": str(library.resolve()),
+        "reason": "enqueue_failed",
+        "operation_id": None,
+        "expected_revision": None,
+        "observed_revision": None,
+        "kind": "asset_index_root_rescan",
+        "payload": None,
+    }
+    marker = pending / "1700000000-deadbeef.json"
+    marker.write_text(
+        json.dumps({
+            "format": "assetsmanager.pending-projection-repair",
+            "version": 1,
+            "saved_at": 1700000000,
+            "request": request,
+        }),
+        encoding="utf-8",
+    )
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(library)
+    try:
+        scoped = bootstrap.runtime_for(session).services
+        # The drain ran while assembling the services: the marker was
+        # consumed and re-enqueued into the reconciliation queue.
+        assert not marker.exists()
+        assert not any(pending.iterdir())
+        rescan_tasks = [
+            task
+            for task in scoped.reconciliation_queue.snapshot()
+            if task.kind is ReconciliationKind.ASSET_INDEX_ROOT_RESCAN
+            and Path(task.path).resolve() == library.resolve()
+            and task.reason == "enqueue_failed"
+        ]
+        assert len(rescan_tasks) == 1
     finally:
         bootstrap.library_service.close()

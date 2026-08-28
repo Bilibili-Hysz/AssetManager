@@ -235,7 +235,7 @@ class TestMetadataRepository:
         repo = MetadataRepository(_make_db(memory_db))
         for path, size in ((root, 1), (child, 2), (sibling, 3)):
             repo.set_cached_size(path, size, float(size))
-            repo.set_cached_file_count(path, size)
+            repo.set_cached_file_count(path, size, float(size))
 
         repo.invalidate_size_cache(root)
 
@@ -460,8 +460,32 @@ class TestMetadataRepository:
     def test_cached_file_count(self, memory_db):
         conn = _make_db(memory_db)
         repo = MetadataRepository(conn)
-        repo.set_cached_file_count("/dir", 42)
+        repo.set_cached_file_count("/dir", 42, 1000.0)
         assert repo.get_cached_file_count("/dir") == 42
+        assert repo.get_cached_file_count_with_mtime("/dir") == (42, 1000.0)
+
+    def test_cached_file_count_without_mtime_is_a_miss(self, memory_db):
+        conn = _make_db(memory_db)
+        repo = MetadataRepository(conn)
+        # Legacy (pre-v35) row shape: a count with no mtime stamp is treated
+        # as stale on every read path until it is rewritten with a stamp.
+        conn.execute(
+            "INSERT INTO file_meta (file_path, cached_file_count, cached_file_count_mtime) "
+            "VALUES ('/legacy', 5, NULL)"
+        )
+        conn.commit()
+        assert repo.get_cached_file_count("/legacy") is None
+        assert repo.get_cached_file_count_with_mtime("/legacy") is None
+        assert repo.batch_get_cached_file_counts(["/legacy"]) == {}
+        assert repo.batch_get_cached_file_counts_with_mtime(["/legacy"]) == {}
+
+        repo.set_cached_file_count("/legacy", 6, 123.0)
+        assert repo.get_cached_file_count("/legacy") == 6
+        assert repo.get_cached_file_count_with_mtime("/legacy") == (6, 123.0)
+        assert repo.batch_get_cached_file_counts(["/legacy"]) == {"/legacy": 6}
+        assert repo.batch_get_cached_file_counts_with_mtime(["/legacy"]) == {
+            "/legacy": (6, 123.0)
+        }
 
     def test_invalidate_size_cache(self, memory_db):
         conn = _make_db(memory_db)
@@ -762,6 +786,15 @@ class TestMetadataService:
         dir2 = tmp_path / "dir2"
         dir3 = tmp_path / "dir3"
         svc.batch_set_cached_file_counts(lib_root, {str(dir1): 10, str(dir2): 20})
+        # Service-level writes carry no directory mtime, so v35 records them
+        # as stale entries: the row exists but reads treat it as a miss.
+        assert svc.batch_get_cached_file_counts(
+            lib_root, [str(dir1), str(dir2), str(dir3)]
+        ) == {}
+        MetadataRepository(conn).batch_set_cached_file_counts({
+            str(dir1): (10, 111.0),
+            str(dir2): (20, 222.0),
+        })
         result = svc.batch_get_cached_file_counts(lib_root, [str(dir1), str(dir2), str(dir3)])
         assert result[str(dir1)] == 10
         assert result[str(dir2)] == 20
@@ -780,12 +813,26 @@ class TestMetadataService:
 
         svc.batch_set_cached_file_counts(lib_root, {str(alias): 10, str(target): 20})
 
+        # Mtime-less (service-level) writes stay stale on read...
+        assert svc.batch_get_cached_file_counts(lib_root, [str(alias), str(target)]) == {}
+        rows = conn.execute(
+            "SELECT file_path, cached_file_count, cached_file_count_mtime FROM file_meta"
+        ).fetchall()
+        assert rows == [(str(target.resolve()), 20, None)]
+
+        # ...while stamped writes keep alias/target parity on a single
+        # canonical DB key and read back through the service.
+        MetadataRepository(conn, library_root=lib_root).batch_set_cached_file_counts({
+            str(alias): (10, 111.0),
+            str(target): (20, 222.0),
+        })
         result = svc.batch_get_cached_file_counts(lib_root, [str(alias), str(target)])
         assert result == {str(alias): 20, str(target): 20}
         rows = conn.execute(
-            "SELECT file_path, cached_file_count FROM file_meta WHERE cached_file_count IS NOT NULL"
+            "SELECT file_path, cached_file_count, cached_file_count_mtime FROM file_meta "
+            "WHERE cached_file_count_mtime IS NOT NULL"
         ).fetchall()
-        assert rows == [(str(target.resolve()), 20)]
+        assert rows == [(str(target.resolve()), 20, 222.0)]
 
     def test_get_cached_stats_alias_parity(self, memory_db, tmp_path):
         from AssetsManager.application.metadata_service import MetadataService

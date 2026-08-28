@@ -369,6 +369,20 @@ class ImportService:
         except Exception:
             return False
 
+    def _publish_cancelled_import(self, destination: Path) -> None:
+        """Publish the single compensating invalidation for a cancelled import.
+
+        Mirrors the completed-import batch boundary: one event, destination
+        scoped.  ``kind`` is pass-through data (no consumer branches on it);
+        the runtime router maps it like any other FileSystemChanged.
+        """
+        get_event_bus().publish(FileSystemChanged(
+            library_root=self.session.root_str,
+            session_token=self.session.event_token,
+            kind="cancelled_import",
+            paths=(str(destination),),
+        ))
+
     # ── public API ─────────────────────────────────────────────
 
     @session_operation
@@ -586,6 +600,11 @@ class ImportService:
                         state="recovery_pending",
                         error="import cancelled while index rescan was unavailable",
                     )
+                if copied:
+                    # Compensating invalidation: already-copied files exist
+                    # under the destination, so live projections must refresh
+                    # even though the batch never completed.
+                    self._publish_cancelled_import(destination)
                 raise ImportCancelled(partial)
             copied_this_item = False
             try:
@@ -645,6 +664,9 @@ class ImportService:
                     state="recovery_pending",
                     error="import cancelled while index rescan was unavailable",
                 )
+            if copied:
+                # Same compensating invalidation as the mid-loop cancellation.
+                self._publish_cancelled_import(destination)
             raise ImportCancelled(partial)
 
         refresh_warnings: tuple[object, ...] = ()

@@ -9,6 +9,7 @@ from __future__ import annotations
 from sqlite3 import Connection
 
 from AssetsManager.core.database import db_write_lock
+from AssetsManager.repositories._common import _guarded_commit
 
 
 class GalleryHomeRepository:
@@ -35,17 +36,19 @@ class GalleryHomeRepository:
     def save(self, saved_at: float, projection_json: str, *, commit: bool = True) -> None:
         """Insert or replace the persisted projection atomically."""
         with db_write_lock(self._conn):
+            outer_transaction = self._conn.in_transaction
             self._conn.execute(
                 "INSERT OR REPLACE INTO gallery_home (id, saved_at, projection) "
                 "VALUES (1, ?, ?)",
                 (saved_at, projection_json),
             )
             if commit:
-                self._conn.commit()
+                _guarded_commit(self._conn, outer_transaction=outer_transaction)
 
     def delete(self, *, commit: bool = True) -> None:
         """Remove the persisted projection (library changed)."""
         with db_write_lock(self._conn):
+            outer_transaction = self._conn.in_transaction
             self._conn.execute("DELETE FROM gallery_home WHERE id = 1")
             if commit:
-                self._conn.commit()
+                _guarded_commit(self._conn, outer_transaction=outer_transaction)

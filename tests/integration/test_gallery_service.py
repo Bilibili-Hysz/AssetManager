@@ -557,8 +557,9 @@ def test_legacy_persisted_projection_urls_are_stripped_on_load(tmp_path, schema_
 
 
 def test_home_build_captures_incremental_state(tmp_path, schema_db):
-    """Every full home build records the node/refs snapshot with a fresh
-    generation; the incremental applier (a later phase) consumes it."""
+    """Every full home build records the node/refs snapshot with a
+    generation watermark equal to the seq counter value captured before the
+    walk; the incremental applier consumes it."""
     _image(tmp_path / "set" / "one.png", (40, 40))
 
     service = GalleryService(connection_provider=lambda _root: schema_db)
@@ -566,7 +567,12 @@ def test_home_build_captures_incremental_state(tmp_path, schema_db):
         home = service.get_home(tmp_path)
         assert home is not None
         state = service._home_states[str(tmp_path.resolve())]
-        assert state.generation > 0
+        # Watermark semantics: no event has been issued yet, so the
+        # snapshot covers seqs up to the (untouched) counter value 0. The
+        # counter itself must not have been bumped by the build — it only
+        # issues seqs to queued events.
+        assert state.generation == 0
+        assert service._home_generation == 0
         assert state.node is not None
         assert state.node["artwork_count"] == 1
         assert any(ref.path.endswith("one.png") for ref in state.refs)

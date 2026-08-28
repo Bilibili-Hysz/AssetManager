@@ -12,7 +12,7 @@ from AssetsManager.core.schema_defs import (
     validate_schema_object,
     validate_schema_objects,
 )
-from AssetsManager.repositories.shop_repository import (
+from AssetsManager.repositories._common import (
     _CommerceRepository,
     _repository_operation,
     _transaction,

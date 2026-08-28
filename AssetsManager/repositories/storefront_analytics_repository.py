@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import time
 
-from AssetsManager.repositories.shop_repository import _CommerceRepository, _repository_operation, _transaction, locked_read
+from AssetsManager.repositories._common import (
+    _CommerceRepository,
+    _repository_operation,
+    _transaction,
+    locked_read,
+)
 
 
 class StorefrontAnalyticsRepository(_CommerceRepository):

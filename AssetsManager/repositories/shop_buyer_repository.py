@@ -13,7 +13,7 @@ from AssetsManager.domain.errors import (
     VersionConflictError,
     WishlistLimitError,
 )
-from AssetsManager.repositories.shop_repository import (
+from AssetsManager.repositories._common import (
     _CommerceRepository,
     _repository_operation,
     _transaction,

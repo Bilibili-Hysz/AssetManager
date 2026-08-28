@@ -314,6 +314,12 @@ class DatabaseMaintenanceService:
         if not token:
             return
         try:
+            # Deliberately borrows ActivityChanged instead of a dedicated
+            # MaintenanceChanged: maintenance completion is not projection
+            # data (no ProjectionDomain fits, and the RuntimeEventRouter only
+            # subscribes to EVENT_DOMAINS types, so an unmapped event would
+            # be silently dropped).  The one consumer — the settings dialog's
+            # queued Qt bridge — already subscribes to ActivityChanged.
             get_event_bus().publish(ActivityChanged(
                 library_root=self._session.root_str,
                 session_token=token,

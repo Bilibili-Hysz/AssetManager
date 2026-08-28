@@ -1,6 +1,7 @@
 """D1 unified worker framework tests."""
 from __future__ import annotations
 
+import logging
 import threading
 import time
 
@@ -105,6 +106,76 @@ def test_bounded_pool_close_reaps_a_timed_out_pool_without_blocking():
     assert retained_pool_count() == initial_retained
     with pytest.raises(RuntimeError, match="closed"):
         pool.drain(1)
+
+
+def test_reap_pool_gives_up_after_bounded_polls_and_keeps_entry(monkeypatch, caplog):
+    """A wedged pool must not pin the reaper forever: after the poll budget
+    the reaper logs an error and leaves the registry entry for observation."""
+    from AssetsManager.core import workers as workers_module
+
+    class _WedgedPool:
+        def __init__(self):
+            self.polls = 0
+
+        def waitForDone(self, timeout_ms=None):
+            self.polls += 1
+            return False
+
+        def activeThreadCount(self):
+            return 1
+
+    wedged = _WedgedPool()
+    monkeypatch.setattr(workers_module, "_REAP_POLL_INTERVAL_MS", 1)
+    initial = retained_pool_count()
+    workers_module._retained_pools[id(wedged)] = wedged
+    try:
+        with caplog.at_level(logging.ERROR, logger="AssetsManager.core.workers"):
+            workers_module._reap_pool(wedged, "reaper-wedged-test")
+
+        # The reaper exited after exactly the poll budget instead of waiting
+        # unboundedly on the wedged pool.
+        assert wedged.polls == workers_module._REAP_MAX_POLLS
+        assert retained_pool_count() == initial + 1
+        errors = [
+            record
+            for record in caplog.records
+            if record.levelno == logging.ERROR
+            and "reaper-wedged-test" in record.getMessage()
+        ]
+        assert errors, "expected an ERROR log for the wedged pool"
+        assert "still busy" in errors[0].getMessage()
+    finally:
+        with workers_module._retained_pools_lock:
+            workers_module._retained_pools.pop(id(wedged), None)
+
+
+def test_reap_pool_releases_entry_once_pool_finishes(monkeypatch):
+    """A pool that finishes within the poll budget is released normally."""
+    from AssetsManager.core import workers as workers_module
+
+    class _FinishingPool:
+        def __init__(self):
+            self.polls = 0
+
+        def waitForDone(self, timeout_ms=None):
+            self.polls += 1
+            return self.polls >= 2
+
+        def activeThreadCount(self):
+            return 0
+
+    pool = _FinishingPool()
+    monkeypatch.setattr(workers_module, "_REAP_POLL_INTERVAL_MS", 1)
+    initial = retained_pool_count()
+    workers_module._retained_pools[id(pool)] = pool
+    try:
+        workers_module._reap_pool(pool, "reaper-finish-test")
+
+        assert pool.polls == 2
+        assert retained_pool_count() == initial
+    finally:
+        with workers_module._retained_pools_lock:
+            workers_module._retained_pools.pop(id(pool), None)
 
 
 def test_preload_task_stops_when_token_cancelled(tmp_path):

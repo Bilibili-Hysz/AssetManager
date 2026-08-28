@@ -5,7 +5,7 @@ Provides:
 - Schema initialization (file_tags, file_meta, thumbnail_cache)
 - Thread-safe connection management
 """
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 import functools
 import logging
@@ -1281,14 +1281,23 @@ def locked_read(method):
             # Fake/stub connections (unit tests) have no lock state; run the
             # read unchanged.
             return method(self, *args, **kwargs)
-        try:
-            with db_write_lock(conn):
+        # The guard below must cover only *acquiring* the lock, never the
+        # method body: ``db_write_lock`` runs its fail-fast checks
+        # (lock-order hazards, closed connection) inside ``__enter__``, so
+        # entering through an ExitStack is the acquisition step. A
+        # RuntimeError raised by ``method`` itself is a business error and
+        # must propagate once from the locked run instead of being mistaken
+        # for a rejected acquisition and silently re-running the read
+        # without the lock.
+        with ExitStack() as lock_stack:
+            try:
+                lock_stack.enter_context(db_write_lock(conn))
+            except RuntimeError:
+                # db_write_lock rejects closed connections (and fails fast on
+                # lock-order hazards); the read must still run so the original
+                # sqlite3 error semantics (e.g. ProgrammingError on a closed
+                # connection) propagate unchanged.
                 return method(self, *args, **kwargs)
-        except RuntimeError:
-            # db_write_lock rejects closed connections (and fails fast on
-            # lock-order hazards); the read must still run so the original
-            # sqlite3 error semantics (e.g. ProgrammingError on a closed
-            # connection) propagate unchanged.
             return method(self, *args, **kwargs)
     return wrapper
 
@@ -1436,18 +1445,23 @@ def _migrate_path_metadata_impl(conn: sqlite3.Connection, thumb_dir: Path,
                 new_key = _thumbnail_cache_key(mapped)
             old_file = thumb_dir / f"{old_key}.{extension}"
             new_file = thumb_dir / f"{new_key}.{extension}"
-            if old_file.exists() and old_key != new_key:
-                try:
-                    if new_file.exists():
-                        _log.warning(
-                            "Thumbnail migration collision: %s already exists for %s; keeping %s",
-                            new_file, mapped, old_file,
-                        )
-                    else:
-                        old_file.replace(new_file)
-                except OSError:
-                    _log.exception("Thumbnail migration failed: %s -> %s", old_file, new_file)
-                    raise
+            collision = old_key != new_key and old_file.exists() and new_file.exists()
+            if collision:
+                _log.warning(
+                    "Thumbnail migration collision: %s already exists for %s; keeping %s",
+                    new_file, mapped, old_file,
+                )
+            # Decide the rename from the destination row BEFORE moving any
+            # file. ``cache_key`` is derived from the source path, so an
+            # existing ``new_key`` row whose artifact is already missing is a
+            # stale entry; renaming ``old_file`` onto ``new_file`` anyway
+            # would leave the retained ``old_key`` row (kept below) pointing
+            # at a file that no longer exists — a guaranteed miss. Skipping
+            # the rename matches this function's existing idempotent
+            # destination-row semantics (keep the old_key row, touch no
+            # file, never delete rows): the stale ``new_key`` row stays a
+            # dead entry that regenerates its artifact on its next lookup
+            # miss, while the old artifact remains valid under ``old_key``.
             destination_row = conn.execute(
                 "SELECT 1 FROM thumbnail_cache WHERE cache_key=?",
                 (new_key,),
@@ -1458,6 +1472,13 @@ def _migrate_path_metadata_impl(conn: sqlite3.Connection, thumb_dir: Path,
                     (mapped, old_key),
                 )
                 continue
+            if old_file.exists() and old_key != new_key:
+                try:
+                    if not new_file.exists():
+                        old_file.replace(new_file)
+                except OSError:
+                    _log.exception("Thumbnail migration failed: %s -> %s", old_file, new_file)
+                    raise
             conn.execute(
                 "UPDATE thumbnail_cache SET cache_key=?, source_path=? WHERE cache_key=?",
                 (new_key, mapped, old_key),

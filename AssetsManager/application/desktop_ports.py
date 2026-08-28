@@ -235,6 +235,23 @@ class FileOpsViewPort(Protocol):
         ...
 
 
+@runtime_checkable
+class ScopedServicesConsumer(Protocol):
+    """Panel surface for library-scoped service injection.
+
+    MainWindow resolves one immutable service bundle per library session and
+    hands it to every scoped panel through this single entry point (see
+    ``MainWindow._apply_scoped_services``).  Panels that also consume the
+    runtime projection router (currently ``TagTreePanel``) read the optional
+    ``runtime`` kwarg; the rest accept and ignore it so the window can call
+    every panel uniformly.
+    """
+
+    def set_scoped_services(self, services: Any, *, runtime: Any = None) -> None:
+        """Bind the library-scoped services and optional ``LibraryRuntime``."""
+        ...
+
+
 class RootBoundTagService:
     """Bind a root-per-call ``TagService`` to one library root.
 

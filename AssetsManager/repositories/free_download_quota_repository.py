@@ -2,24 +2,19 @@
 from __future__ import annotations
 
 import math
-import time
 from typing import Any
 
-from AssetsManager.core.database import (
-    SQLITE_BUSY_RETRY_ATTEMPTS,
-    is_sqlite_busy_error,
-    sqlite_busy_retry_delay,
-)
 from AssetsManager.core.schema_defs import (
     FREE_DOWNLOAD_QUOTA_SCHEMA,
     SCHEMA_OBJECT_CONTRACT,
     validate_schema_object,
     validate_schema_objects,
 )
-from AssetsManager.repositories.shop_repository import (
+from AssetsManager.repositories._common import (
     _CommerceRepository,
     _repository_operation,
     _transaction,
+    _with_sqlite_busy_retry,
     locked_read,
 )
 
@@ -81,6 +76,7 @@ class FreeDownloadQuotaRepository(_CommerceRepository):
         return None if row is None else self._row_to_dict(row)
 
     @_repository_operation
+    @_with_sqlite_busy_retry
     def consume(
         self,
         identity_key: str,
@@ -208,25 +204,9 @@ class FreeDownloadQuotaRepository(_CommerceRepository):
                     "last_download_at": next_last,
                 }
 
-        outer_transaction = self._conn.in_transaction
-        attempts = 1 if outer_transaction else SQLITE_BUSY_RETRY_ATTEMPTS
-        for attempt in range(attempts):
-            try:
-                return _consume_once()
-            except Exception as error:
-                if (
-                    not is_sqlite_busy_error(error)
-                    or outer_transaction
-                    or attempt + 1 >= attempts
-                ):
-                    raise
-                try:
-                    self._conn.rollback()
-                except Exception:
-                    pass
-                time.sleep(sqlite_busy_retry_delay(attempt))
-        raise AssertionError("unreachable free-download quota consume retry state")
+        return _consume_once()
 
+    @_with_sqlite_busy_retry
     def prune_windows(self, before_window_start: int) -> int:
         """Delete every quota row whose window started before the cutoff.
 
@@ -239,25 +219,8 @@ class FreeDownloadQuotaRepository(_CommerceRepository):
         start = int(before_window_start)
         if start < 0:
             raise ValueError("before_window_start must be non-negative")
-        outer_transaction = self._conn.in_transaction
-        attempts = 1 if outer_transaction else SQLITE_BUSY_RETRY_ATTEMPTS
-        for attempt in range(attempts):
-            try:
-                with _transaction(self._conn, "free_download_quota_prune"):
-                    cursor = self._conn.execute(
-                        f"DELETE FROM {_TABLE} WHERE window_start < ?", (start,)
-                    )
-                    return cursor.rowcount
-            except Exception as error:
-                if (
-                    not is_sqlite_busy_error(error)
-                    or outer_transaction
-                    or attempt + 1 >= attempts
-                ):
-                    raise
-                try:
-                    self._conn.rollback()
-                except Exception:
-                    pass
-                time.sleep(sqlite_busy_retry_delay(attempt))
-        raise AssertionError("unreachable free-download quota prune retry state")
+        with _transaction(self._conn, "free_download_quota_prune"):
+            cursor = self._conn.execute(
+                f"DELETE FROM {_TABLE} WHERE window_start < ?", (start,)
+            )
+            return cursor.rowcount

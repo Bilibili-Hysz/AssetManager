@@ -14,6 +14,7 @@ from AssetsManager.application.context import ConnectionProvider, LibrarySession
 from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.path_resolver import RootIdentity, root_identity
 from AssetsManager.core.project_data import ProjectData, _SIZE_CACHE_TTL_SECONDS
+from AssetsManager.domain.errors import OperationNotPermitted, PathEscapeError
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import (
     AssetNotesChanged, AssetUrlsChanged,
@@ -88,19 +89,22 @@ class MetadataService:
                 conn = DatabaseManager.require_managed_connection_owner(
                     identity, conn
                 )
+                # Binding mismatches raise domain errors so the LAN error
+                # contract maps them instead of leaking unmapped 500s
+                # (minimal ValueError migration; message text preserved).
                 if provider(identity.display_path) is not conn:
-                    raise ValueError(
+                    raise OperationNotPermitted(
                         "MetadataService connection provider does not belong "
                         "to the LibrarySession"
                     )
                 repository = MetadataRepository.for_session(session)
                 if repository._conn is not conn:
-                    raise ValueError(
+                    raise OperationNotPermitted(
                         "MetadataRepository connection does not match MetadataService"
                     )
                 tag_repository = TagRepository.for_session(session)
                 if tag_repository._conn is not conn:
-                    raise ValueError(
+                    raise OperationNotPermitted(
                         "TagRepository connection does not match MetadataService"
                     )
 
@@ -120,7 +124,7 @@ class MetadataService:
                 self._root_identity is None
                 or identity.map_key != self._root_identity.map_key
             ):
-                raise ValueError(
+                raise OperationNotPermitted(
                     "MetadataService library_root does not match "
                     "the bound LibrarySession"
                 )
@@ -153,9 +157,9 @@ class MetadataService:
         root = Path(library_root).resolve()
         target = Path(path).resolve()
         if not target.is_relative_to(root):
-            raise ValueError(
-                f"path must be under library_root: {target} (root {root})"
-            )
+            # Domain escape error so the LAN error contract maps it to a 400
+            # instead of an unmapped 500 (minimal ValueError migration).
+            raise PathEscapeError(str(target), str(root))
         return root, target
 
     @classmethod

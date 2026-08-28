@@ -295,36 +295,6 @@ def test_open_session_reuses_cached_context(tmp_path):
     assert second.root == root.resolve()
 
 
-@pytest.mark.parametrize("close_all", [False, True], ids=["close_session", "close"])
-def test_open_session_survives_close_during_library_open_event(
-    tmp_path, monkeypatch, close_all
-):
-    from concurrent.futures import ThreadPoolExecutor
-
-    import AssetsManager.application.library_service as library_service_module
-
-    root = tmp_path / "library"
-    root.mkdir()
-    service = library_service_module.LibraryService()
-
-    class ClosingEventBus:
-        def publish(self, event):
-            session = service.current_session
-            assert session is not None
-            close = service.close if close_all else lambda: service.close_session(session)
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                executor.submit(close).result()
-
-    monkeypatch.setattr(
-        library_service_module, "get_event_bus", lambda: ClosingEventBus()
-    )
-
-    session = service.open_session(root)
-
-    assert session.root == root.resolve()
-    assert session.is_closed is True
-
-
 def test_open_session_contexts_do_not_follow_current_library(tmp_path):
     from AssetsManager.application.library_service import LibraryService
 
@@ -778,16 +748,10 @@ def test_open_library_replaces_directly_closed_canonical_session_and_context(tmp
     assert service.open_session(root) is replacement
 
 
-def test_same_root_reopen_publishes_new_library_opened_token(tmp_path, monkeypatch):
+def test_same_root_reopen_issues_fresh_session_token(tmp_path):
+    """Reopening the same root must mint a brand-new session token."""
     from AssetsManager.application.library_service import LibraryService
-    from AssetsManager.domain.event_bus import EventBus
-    from AssetsManager.domain.events import LibraryOpened
 
-    bus = EventBus()
-    events = []
-    bus.subscribe(LibraryOpened, events.append)
-    import AssetsManager.domain.event_bus as eb
-    monkeypatch.setattr(eb, "_instance", bus)
     root = tmp_path / "library"
     root.mkdir()
     service = LibraryService()
@@ -796,7 +760,8 @@ def test_same_root_reopen_publishes_new_library_opened_token(tmp_path, monkeypat
     service.close_session(first)
     second = service.open_session(root)
 
-    assert [event.session_token for event in events] == [first.event_token, second.event_token]
+    assert first is not second
+    assert first.event_token != second.event_token
 
 
 # ── Phase 2.5: Per-library database teardown ──────────────────────

@@ -5,6 +5,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 _CHECK_LAYERS_PATH = ROOT / "scripts" / "check_layers.py"
 _spec = importlib.util.spec_from_file_location("check_layers", _CHECK_LAYERS_PATH)
@@ -79,3 +81,64 @@ def test_layer_checker_has_no_core_to_repository_edge() -> None:
         )
         for violation in violations
     )
+
+
+def test_domain_shared_kernel_whitelist_is_pinned() -> None:
+    # domain -> core is a whole-layer edge, but only the Qt-free shared
+    # kernel modules may actually be imported; keep the set explicit so
+    # additions are a conscious decision.
+    assert check_layers.DOMAIN_CORE_SHARED_KERNEL == frozenset(
+        {
+            "AssetsManager.core.constants",
+            "AssetsManager.core.event_contracts",
+            "AssetsManager.core.format_utils",
+        }
+    )
+
+
+def _stage_domain_module(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    text: str,
+) -> None:
+    """Synthesize a one-module AssetsManager tree for a targeted gate run."""
+    package = tmp_path / "AssetsManager" / "domain"
+    package.mkdir(parents=True)
+    (package / f"{name}.py").write_text(text, encoding="utf-8")
+    monkeypatch.setattr(check_layers, "ROOT", tmp_path)
+    monkeypatch.setattr(check_layers, "SRC", tmp_path / "AssetsManager")
+
+
+def test_domain_core_import_outside_shared_kernel_violates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # core.themes is Qt-coupled and not part of the shared kernel: the
+    # domain -> core edge is allowed by the DAG, but the refinement must
+    # still flag the import.
+    _stage_domain_module(
+        tmp_path,
+        monkeypatch,
+        "offender",
+        "from AssetsManager.core.themes import ThemeLoader\n",
+    )
+
+    violations = check_layers.collect_violations()
+
+    assert [
+        (violation.source, violation.imported) for violation in violations
+    ] == [("AssetsManager.domain.offender", "AssetsManager.core.themes")]
+    assert "shared kernel" in violations[0].describe()
+
+
+def test_domain_core_import_within_shared_kernel_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stage_domain_module(
+        tmp_path,
+        monkeypatch,
+        "clean",
+        "from AssetsManager.core.constants import ASSET_ROOT\n",
+    )
+
+    assert not check_layers.collect_violations()

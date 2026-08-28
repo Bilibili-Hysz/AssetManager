@@ -19,6 +19,7 @@ from AssetsManager.core.database import DatabaseManager, db_write_lock, locked_r
 from AssetsManager.core.path_resolver import RootIdentity, root_identity
 from AssetsManager.core.schema_defs import validate_schema_objects
 from AssetsManager.core.schema_defs import SHARE_LINKS_SCHEMA
+from AssetsManager.repositories._common import _guarded_commit
 
 _log = logging.getLogger(__name__)
 
@@ -366,17 +367,19 @@ class ShareRepository:
     def delete(self, share_id: str) -> bool:
         """Soft-delete a share link. Returns True if deleted."""
         with db_write_lock(self._conn):
+            outer_transaction = self._conn.in_transaction
             cur = self._conn.execute(
                 "UPDATE share_links SET is_active=0 WHERE id=?",
                 (share_id,),
             )
-            self._conn.commit()
+            _guarded_commit(self._conn, outer_transaction=outer_transaction)
             return cur.rowcount > 0
 
     @_repository_operation
     def increment_download(self, share_id: str) -> bool:
         """Increment download counter if the share is still downloadable."""
         with db_write_lock(self._conn):
+            outer_transaction = self._conn.in_transaction
             cur = self._conn.execute(
                 "UPDATE share_links SET download_count = download_count + 1 "
                 "WHERE id=? AND is_active=1 "
@@ -384,7 +387,7 @@ class ShareRepository:
                 "AND (max_downloads IS NULL OR download_count < max_downloads)",
                 (share_id, time.time()),
             )
-            self._conn.commit()
+            _guarded_commit(self._conn, outer_transaction=outer_transaction)
             return cur.rowcount > 0
 
     @_repository_operation
@@ -406,11 +409,12 @@ class ShareRepository:
         having to reset its password.
         """
         with db_write_lock(self._conn):
+            outer_transaction = self._conn.in_transaction
             cur = self._conn.execute(
                 "UPDATE share_links SET password_hash=? WHERE id=?",
                 (password_hash, share_id),
             )
-            self._conn.commit()
+            _guarded_commit(self._conn, outer_transaction=outer_transaction)
             return cur.rowcount > 0
 
     def _row_to_dict(self, row) -> dict | None:

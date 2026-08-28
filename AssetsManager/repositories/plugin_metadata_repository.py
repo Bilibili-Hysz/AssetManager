@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 from AssetsManager.core.database import DatabaseManager, db_write_lock
 from AssetsManager.core.path_resolver import sql_like_descendant_pattern
+from AssetsManager.repositories._common import _guarded_commit
 
 
 def _session_operation(method: Callable[..., Any]) -> Callable[..., Any]:
@@ -82,6 +83,7 @@ class PluginMetadataRepository:
         """Insert or update a plugin metadata entry."""
         file_path = self._resolve_under_root(file_path)
         with db_write_lock(self._conn):
+            outer_transaction = self._conn.in_transaction
             self._conn.execute(
                 "INSERT INTO plugin_metadata (file_path, plugin_id, field_key, field_value, updated_at) "
                 "VALUES (?, ?, ?, ?, ?) "
@@ -89,7 +91,7 @@ class PluginMetadataRepository:
                 "field_value=excluded.field_value, updated_at=excluded.updated_at",
                 (file_path, plugin_id, field_key, field_value, time.time()),
             )
-            self._conn.commit()
+            _guarded_commit(self._conn, outer_transaction=outer_transaction)
 
     @_session_operation
     def upsert_batch(self, file_path: str, plugin_id: str, fields: dict[str, str]) -> None:
@@ -98,6 +100,7 @@ class PluginMetadataRepository:
             return
         file_path = self._resolve_under_root(file_path)
         with db_write_lock(self._conn):
+            outer_transaction = self._conn.in_transaction
             self._conn.executemany(
                 "INSERT INTO plugin_metadata (file_path, plugin_id, field_key, field_value, updated_at) "
                 "VALUES (?, ?, ?, ?, ?) "
@@ -105,7 +108,7 @@ class PluginMetadataRepository:
                 "field_value=excluded.field_value, updated_at=excluded.updated_at",
                 [(file_path, plugin_id, k, v, time.time()) for k, v in fields.items()],
             )
-            self._conn.commit()
+            _guarded_commit(self._conn, outer_transaction=outer_transaction)
 
     @_session_operation
     def get_fields(self, file_path: str) -> dict[str, dict[str, str]]:
@@ -155,18 +158,20 @@ class PluginMetadataRepository:
         """Delete all plugin metadata for a file."""
         file_path = self._resolve_under_root(file_path)
         with db_write_lock(self._conn):
+            outer_transaction = self._conn.in_transaction
             self._conn.execute(
                 "DELETE FROM plugin_metadata WHERE file_path=?",
                 (file_path,),
             )
-            self._conn.commit()
+            _guarded_commit(self._conn, outer_transaction=outer_transaction)
 
     @_session_operation
     def delete_for_plugin(self, plugin_id: str) -> None:
         """Delete all metadata for a plugin (e.g. on uninstall)."""
         with db_write_lock(self._conn):
+            outer_transaction = self._conn.in_transaction
             self._conn.execute(
                 "DELETE FROM plugin_metadata WHERE plugin_id=?",
                 (plugin_id,),
             )
-            self._conn.commit()
+            _guarded_commit(self._conn, outer_transaction=outer_transaction)

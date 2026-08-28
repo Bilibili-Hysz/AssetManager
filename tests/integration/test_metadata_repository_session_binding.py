@@ -9,6 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from AssetsManager.domain.errors import OperationNotPermitted
+
 from AssetsManager.application import ApplicationBootstrap
 from AssetsManager.application.metadata_service import MetadataService
 from AssetsManager.domain.event_bus import EventBus
@@ -433,6 +435,11 @@ def test_cached_file_count_zero_is_a_valid_cached_value(tmp_path):
         empty.mkdir(parents=True)
         repo.set_cached_file_count(empty, 0)
 
+        # A count written without a directory mtime is a permanent miss.
+        assert repo.get_cached_file_count(empty) is None
+        assert repo.batch_get_cached_file_counts([str(empty)]) == {}
+
+        repo.set_cached_file_count(empty, 0, empty.stat().st_mtime)
         assert repo.get_cached_file_count(empty) == 0
         assert repo.batch_get_cached_file_counts([str(empty)]) == {
             str(empty.resolve()): 0
@@ -457,13 +464,15 @@ def test_metadata_service_uses_bound_repository_and_rejects_foreign_provider(tmp
         assert service.get_notes(first.root, first_asset) == "bound"
 
         foreign_conn = second.connection_for(second.root)
-        with pytest.raises(ValueError, match=r"(?i)(provider|LibrarySession)"):
+        # Binding mismatches now raise the domain type so the LAN error
+        # contract maps them (minimal ValueError migration); message preserved.
+        with pytest.raises(OperationNotPermitted, match=r"(?i)(provider|LibrarySession)"):
             MetadataService(
                 connection_provider=lambda _root: foreign_conn,
                 session=first,
             )
 
-        with pytest.raises(ValueError, match=r"(?i)(library_root|LibrarySession)"):
+        with pytest.raises(OperationNotPermitted, match=r"(?i)(library_root|LibrarySession)"):
             service.get_notes(second.root, _asset(second.root))
     finally:
         bootstrap.library_service.close()

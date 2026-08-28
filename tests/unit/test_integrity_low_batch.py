@@ -11,24 +11,15 @@ Covers:
 from __future__ import annotations
 
 from contextlib import contextmanager
-from pathlib import Path
 import sqlite3
 import threading
 import time
 
 import pytest
 
-from AssetsManager.application import ApplicationBootstrap, DatabaseIntegrityService
+from AssetsManager.application import DatabaseIntegrityService
 from AssetsManager.application import database_integrity_service as integrity_module
 from AssetsManager.application.database_integrity_service import _QuickCheckBusy
-
-
-def _open_session(tmp_path: Path):
-    bootstrap = ApplicationBootstrap()
-    library = tmp_path / "library"
-    library.mkdir()
-    session = bootstrap.library_service.open_session(library)
-    return bootstrap, session
 
 
 def _make_service(session) -> DatabaseIntegrityService:
@@ -60,14 +51,14 @@ class _FlakyConnection:
 
 
 @pytest.fixture()
-def busy_db(tmp_path, monkeypatch):
+def busy_db(monkeypatch, opened_session):
     """Open a session and force _quick_check's connections through a wrapper.
 
     Yields (bootstrap, session, factory) where factory(fail_times) installs a
     FlakyConnection for the given number of initial busy failures and returns
     it so the test can inspect attempt counts.
     """
-    bootstrap, session = _open_session(tmp_path)
+    bootstrap, session = opened_session
     database_file = session.data_dir / "assetmanager.db"
     real_conn = sqlite3.connect(str(database_file), check_same_thread=False)
     created = {}
@@ -90,7 +81,7 @@ def busy_db(tmp_path, monkeypatch):
     try:
         yield bootstrap, session, factory
     finally:
-        bootstrap.library_service.close()
+        real_conn.close()
 
 
 def test_quick_check_retries_busy_then_succeeds(busy_db):
@@ -128,144 +119,129 @@ def test_quick_check_busy_exhaustion_raises_retryable_with_backoff(
 
 
 def test_quick_check_busy_report_is_retryable_warning_not_unhealthy(
-    tmp_path, monkeypatch
+    opened_session, monkeypatch
 ):
-    bootstrap, session = _open_session(tmp_path)
-    try:
-        service = _make_service(session)
-        monkeypatch.setattr(
-            service,
-            "_quick_check",
-            lambda: (_ for _ in ()).throw(_QuickCheckBusy("database is locked")),
-        )
-        report = service.run()
-        assert report.healthy
-        assert report.quick_check == "ok"
-        assert report.issues == ()
-        assert any("busy" in warning and "retry" in warning for warning in report.warnings)
-    finally:
-        bootstrap.library_service.close()
+    bootstrap, session = opened_session
+    service = _make_service(session)
+    monkeypatch.setattr(
+        service,
+        "_quick_check",
+        lambda: (_ for _ in ()).throw(_QuickCheckBusy("database is locked")),
+    )
+    report = service.run()
+    assert report.healthy
+    assert report.quick_check == "ok"
+    assert report.issues == ()
+    assert any("busy" in warning and "retry" in warning for warning in report.warnings)
 
 
-def test_run_after_stop_returns_without_running_pass(tmp_path, monkeypatch):
-    bootstrap, session = _open_session(tmp_path)
-    try:
-        service = _make_service(session)
-        monkeypatch.setattr(
-            service,
-            "_run_pass",
-            lambda: pytest.fail("run() must not start a pass after stop"),
-        )
-        service.stop()
-        report = service.run()
-        assert not report.healthy
-        assert report.quick_check == "error"
-        assert report.issues == ("service_closed",)
-        assert service.last_schedule_error == "service_closed"
-    finally:
-        bootstrap.library_service.close()
+def test_run_after_stop_returns_without_running_pass(opened_session, monkeypatch):
+    bootstrap, session = opened_session
+    service = _make_service(session)
+    monkeypatch.setattr(
+        service,
+        "_run_pass",
+        lambda: pytest.fail("run() must not start a pass after stop"),
+    )
+    service.stop()
+    report = service.run()
+    assert not report.healthy
+    assert report.quick_check == "error"
+    assert report.issues == ("service_closed",)
+    assert service.last_schedule_error == "service_closed"
 
 
-def test_scheduled_completion_clears_stale_schedule_error(tmp_path, monkeypatch):
-    bootstrap, session = _open_session(tmp_path)
-    try:
-        service = _make_service(session)
-        started = threading.Event()
-        release = threading.Event()
-        original_run = service.run
+def test_scheduled_completion_clears_stale_schedule_error(opened_session, monkeypatch):
+    bootstrap, session = opened_session
+    service = _make_service(session)
+    started = threading.Event()
+    release = threading.Event()
+    original_run = service.run
 
-        def blocked_run():
-            started.set()
-            release.wait(timeout=5)
-            return original_run()
+    def blocked_run():
+        started.set()
+        release.wait(timeout=5)
+        return original_run()
 
-        monkeypatch.setattr(service, "run", blocked_run)
-        assert service.schedule()
-        assert started.wait(timeout=5)
-        # A concurrent schedule attempt records a stale error while the
-        # worker is busy; completion must clear it.
-        assert not service.schedule()
-        assert service.last_schedule_error == "already_running"
-        release.set()
-        deadline = time.monotonic() + 10
-        while service.running and time.monotonic() < deadline:
-            time.sleep(0.01)
-        assert not service.running
-        assert service.last_schedule_error is None
-    finally:
-        bootstrap.library_service.close()
+    monkeypatch.setattr(service, "run", blocked_run)
+    assert service.schedule()
+    assert started.wait(timeout=5)
+    # A concurrent schedule attempt records a stale error while the
+    # worker is busy; completion must clear it.
+    assert not service.schedule()
+    assert service.last_schedule_error == "already_running"
+    release.set()
+    deadline = time.monotonic() + 10
+    while service.running and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert not service.running
+    assert service.last_schedule_error is None
 
 
-def test_prune_revalidates_outside_write_lock_and_deletes_in_batch(tmp_path, monkeypatch):
-    bootstrap, session = _open_session(tmp_path)
-    try:
-        existing = session.root / "existing.txt"
-        existing.write_text("present", encoding="utf-8")
-        missing = session.root / "missing.txt"
-        orphan_source = session.root / "missing.png"
-        conn = session.connection_for()
-        conn.executemany(
-            "INSERT INTO file_meta (file_path, notes) VALUES (?, ?)",
-            ((str(existing), "keep"), (str(missing), "remove")),
-        )
-        conn.executemany(
-            "INSERT INTO thumbnail_cache (cache_key, source_path, source_mtime) "
-            "VALUES (?, ?, ?)",
-            (("deadbeef", str(orphan_source), 1.0),),
-        )
-        conn.commit()
+def test_prune_revalidates_outside_write_lock_and_deletes_in_batch(opened_session, monkeypatch):
+    bootstrap, session = opened_session
+    existing = session.root / "existing.txt"
+    existing.write_text("present", encoding="utf-8")
+    missing = session.root / "missing.txt"
+    orphan_source = session.root / "missing.png"
+    conn = session.connection_for()
+    conn.executemany(
+        "INSERT INTO file_meta (file_path, notes) VALUES (?, ?)",
+        ((str(existing), "keep"), (str(missing), "remove")),
+    )
+    conn.executemany(
+        "INSERT INTO thumbnail_cache (cache_key, source_path, source_mtime) "
+        "VALUES (?, ?, ?)",
+        (("deadbeef", str(orphan_source), 1.0),),
+    )
+    conn.commit()
 
-        service = _make_service(session)
-        state = {"in_lock": False, "stats_while_locked": 0}
-        original_lock = integrity_module.db_write_lock
+    service = _make_service(session)
+    state = {"in_lock": False, "stats_while_locked": 0}
+    original_lock = integrity_module.db_write_lock
 
-        @contextmanager
-        def tracked_write_lock(conn=None):
-            state["in_lock"] = True
-            try:
-                with original_lock(conn):
-                    yield
-            finally:
-                state["in_lock"] = False
+    @contextmanager
+    def tracked_write_lock(conn=None):
+        state["in_lock"] = True
+        try:
+            with original_lock(conn):
+                yield
+        finally:
+            state["in_lock"] = False
 
-        monkeypatch.setattr(integrity_module, "db_write_lock", tracked_write_lock)
-        original_exists = service._exists
+    monkeypatch.setattr(integrity_module, "db_write_lock", tracked_write_lock)
+    original_exists = service._exists
 
-        def tracked_exists(path):
-            if state["in_lock"]:
-                state["stats_while_locked"] += 1
-            return original_exists(path)
+    def tracked_exists(path):
+        if state["in_lock"]:
+            state["stats_while_locked"] += 1
+        return original_exists(path)
 
-        monkeypatch.setattr(service, "_exists", tracked_exists)
-        report = service.run()
-        assert report.healthy
-        assert report.metadata_removed == 1
-        assert report.thumbnail_metadata_removed == 1
-        assert state["stats_while_locked"] == 0
-        assert conn.execute(
-            "SELECT notes FROM file_meta WHERE file_path=?", (str(existing),)
-        ).fetchone() == ("keep",)
-    finally:
-        bootstrap.library_service.close()
+    monkeypatch.setattr(service, "_exists", tracked_exists)
+    report = service.run()
+    assert report.healthy
+    assert report.metadata_removed == 1
+    assert report.thumbnail_metadata_removed == 1
+    assert state["stats_while_locked"] == 0
+    assert conn.execute(
+        "SELECT notes FROM file_meta WHERE file_path=?", (str(existing),)
+    ).fetchone() == ("keep",)
 
 
-def test_prune_metadata_batches_delete_over_batch_size(tmp_path):
-    bootstrap, session = _open_session(tmp_path)
-    try:
-        conn = session.connection_for()
-        total = integrity_module._DELETE_BATCH_SIZE * 2 + 5
-        paths = [
-            str(session.root / f"missing-{index:04d}.txt") for index in range(total)
-        ]
-        conn.executemany(
-            "INSERT INTO file_meta (file_path, notes) VALUES (?, ?)",
-            ((path, "remove") for path in paths),
-        )
-        conn.commit()
-        service = _make_service(session)
-        report = service.run()
-        assert report.healthy
-        assert report.metadata_removed == total
-        assert conn.execute("SELECT COUNT(*) FROM file_meta").fetchone() == (0,)
-    finally:
-        bootstrap.library_service.close()
+def test_prune_metadata_batches_delete_over_batch_size(opened_session):
+    bootstrap, session = opened_session
+    conn = session.connection_for()
+    total = integrity_module._DELETE_BATCH_SIZE * 2 + 5
+    paths = [
+        str(session.root / f"missing-{index:04d}.txt") for index in range(total)
+    ]
+    conn.executemany(
+        "INSERT INTO file_meta (file_path, notes) VALUES (?, ?)",
+        ((path, "remove") for path in paths),
+    )
+    conn.commit()
+    service = _make_service(session)
+    report = service.run()
+    assert report.healthy
+    assert report.metadata_removed == total
+    assert conn.execute("SELECT COUNT(*) FROM file_meta").fetchone() == (0,)
