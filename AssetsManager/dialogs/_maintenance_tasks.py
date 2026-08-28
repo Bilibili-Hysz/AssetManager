@@ -147,7 +147,7 @@ class MaintenanceTaskRunner(QObject):
         self._busy = False
         dialog = self._dialog
         self._dialog = None
-        if _alive(dialog):
+        if dialog is not None and _alive(dialog):
             dialog.finish()
         for widget in self._disabled:
             if _alive(widget):

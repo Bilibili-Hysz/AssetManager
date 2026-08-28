@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 import sqlite3
 import time
-from typing import Iterator, Mapping
+from typing import Iterator, Mapping, cast
 from uuid import uuid4
 
 from AssetsManager.core.database import db_write_lock
@@ -127,6 +127,11 @@ def _encode_payload(data: Mapping[str, object]) -> str:
     if len(encoded.encode("utf-8")) > IMPORT_MANIFEST_MAX_BYTES:
         raise ValueError("import manifest payload is too large")
     return encoded
+
+
+def _record_generation(record: Mapping[str, object]) -> int:
+    """Read the persisted CAS generation counter (always stored as an int)."""
+    return int(cast(int, record["generation"]))
 
 
 def _validate_payload(
@@ -272,7 +277,7 @@ class ImportManifestStore:
             raise ValueError("lease_seconds must be positive")
         timestamp = time.time() if now is None else float(now)
         token = uuid4().hex
-        expected_generation = int(record["generation"])
+        expected_generation = _record_generation(record)
         expected_state = str(record["state"])
         operation_id = str(record["operation_id"])
         with self._transaction():
@@ -325,7 +330,7 @@ class ImportManifestStore:
                     timestamp,
                     str(record["operation_id"]),
                     str(self.library_root),
-                    int(record["generation"]),
+                    _record_generation(record),
                     str(record["state"]),
                     str(record["recovery_claim_token"]),
                     timestamp,
@@ -359,7 +364,7 @@ class ImportManifestStore:
             return False
         if record.get("malformed"):
             return False
-        payload = dict(record["payload"])
+        payload = dict(cast(Mapping[str, object], record["payload"]))
         try:
             payload_version, stored_items = _validate_payload_header(
                 payload, destination=Path(str(record["destination"]))
@@ -393,7 +398,7 @@ class ImportManifestStore:
         encoded = _encode_payload(payload)
         return self._cas_update(
             operation_id,
-            expected_generation=int(record["generation"]),
+            expected_generation=_record_generation(record),
             expected_state=current_state,
             state="running",
             payload=encoded,
@@ -417,7 +422,7 @@ class ImportManifestStore:
             return False
         return self._cas_update(
             operation_id,
-            expected_generation=int(record["generation"]),
+            expected_generation=_record_generation(record),
             expected_state=current_state,
             state=state,
             payload=None,
@@ -442,7 +447,7 @@ class ImportManifestStore:
             return None
         if not self._cas_update(
             operation_id,
-            expected_generation=int(record["generation"]),
+            expected_generation=_record_generation(record),
             expected_state=str(record["state"]),
             state="running",
             payload=None,
@@ -464,7 +469,7 @@ class ImportManifestStore:
         timestamp = time.time() if now is None else float(now)
         return self._cas_update(
             str(record["operation_id"]),
-            expected_generation=int(record["generation"]),
+            expected_generation=_record_generation(record),
             expected_state=str(record["state"]),
             state=state,
             payload=None,
@@ -489,7 +494,7 @@ class ImportManifestStore:
         try:
             updated = self._cas_update(
                 operation_id,
-                expected_generation=int(record["generation"]),
+                expected_generation=_record_generation(record),
                 expected_state=expected_state,
                 state="recovery_pending",
                 payload=None,

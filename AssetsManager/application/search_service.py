@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from time import monotonic, perf_counter
-from typing import Iterable, Protocol
+from typing import Iterable, Protocol, cast
 
 from AssetsManager.application.asset_index_service import AssetIndexService
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
@@ -22,6 +22,13 @@ from AssetsManager.repositories.tag_repository import TagRepository
 
 class _Scanner(Protocol):
     def search(self, query: str, limit: int = 200) -> list[dict]: ...
+
+
+def _category_for_extension(extension: str) -> str:
+    """Resolve one extension against the live CATEGORY_MAP snapshot."""
+    # LiveCategoryMap.get loses its default's declared type (core.format_utils);
+    # a string default can never resolve to None.
+    return cast(str, CATEGORY_MAP.get(extension, "other"))
 
 
 @dataclass(frozen=True)
@@ -386,7 +393,7 @@ class SearchService:
                     if query and query not in name.lower():
                         continue
                     ext = Path(name).suffix.lower()
-                    cat = CATEGORY_MAP.get(ext, "other")
+                    cat = _category_for_extension(ext)
                     if category != "all" and cat != category:
                         continue
                     results.append(SearchResult(name=name, path=rel, extension=ext, category=cat))
@@ -502,7 +509,7 @@ class SearchService:
                 path = row["path"]
                 if not all(isinstance(value, str) for value in (extension, name, path)):
                     raise TypeError("scanner row fields must be strings")
-                cat = CATEGORY_MAP.get(extension, "other")
+                cat = _category_for_extension(extension)
                 if category != "all" and cat != category:
                     continue
                 results.append(SearchResult(name=name, path=path, extension=extension, category=cat))
@@ -631,7 +638,7 @@ class SearchService:
                 name = entry.name
                 if not all(isinstance(value, str) for value in (extension, name)):
                     raise TypeError("indexed row fields must be strings")
-                cat = CATEGORY_MAP.get(extension, "other")
+                cat = _category_for_extension(extension)
                 if category != "all" and cat != category:
                     continue
                 results.append(SearchResult(name=name, path=rel, extension=extension, category=cat))
@@ -793,7 +800,7 @@ class SearchService:
                             item_type = "dir"
                         else:
                             extension = Path(name).suffix.lower()
-                            category = CATEGORY_MAP.get(extension, "other")
+                            category = _category_for_extension(extension)
                             item_type = "file"
 
                         name_lower = name.lower()

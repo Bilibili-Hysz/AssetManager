@@ -30,7 +30,7 @@ _DEPTH_DEFAULT = 2
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x0400
 
 
-def _is_link_or_reparse(entry: os.DirEntry) -> bool:
+def _is_link_or_reparse(entry: os.DirEntry | _SafeDirEntry) -> bool:
     """Return True for symlinks, junctions, or other reparse entries."""
     try:
         if entry.is_symlink():
@@ -356,7 +356,7 @@ class ProjectService:
     @staticmethod
     def _open_directory_no_follow(path: Path) -> int:
         """Open every POSIX path component with no-follow semantics."""
-        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | os.O_NOFOLLOW
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
         current_fd = os.open(path.anchor or os.sep, flags)
         try:
             for part in path.parts:
@@ -480,7 +480,7 @@ class ProjectService:
         current_depth = self._current_depth(root, target_path)
 
         # Collect candidate directories
-        candidates: list[os.DirEntry] = []
+        candidates: list[_SafeDirEntry] = []
         for entry in self._safe_directory_entries(target_path):
             if search and search not in entry.name.lower():
                 continue
@@ -535,7 +535,7 @@ class ProjectService:
     def _batch_warm_file_counts(
         self,
         root: Path,
-        entries: list[os.DirEntry],
+        entries: list[_SafeDirEntry],
         db_conn: sqlite3.Connection,
     ) -> None:
         """Batch-query and batch-write file counts to avoid N+1 DB calls."""
@@ -949,7 +949,7 @@ class ProjectService:
     def _entry_to_item(
         self,
         root: Path,
-        entry: os.DirEntry,
+        entry: _SafeDirEntry,
         current_depth: int,
         depth_config: ProjectDepthConfig,
         db_conn: sqlite3.Connection | None,

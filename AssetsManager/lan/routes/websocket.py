@@ -1,5 +1,6 @@
 """WebSocket route."""
 import asyncio
+from typing import Any, Awaitable, cast
 
 from aiohttp import WSMsgType, web
 
@@ -30,7 +31,7 @@ def _authorization_validator(request, lan, principal):
         checker = getattr(lan, "is_auth_token_revoked_async", None)
         if callable(checker):
             try:
-                return bool(await checker(token))
+                return bool(await cast(Awaitable[Any], checker(token)))
             except Exception:
                 return True
         checker = getattr(lan, "is_auth_token_revoked", None)

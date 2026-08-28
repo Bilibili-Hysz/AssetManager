@@ -16,6 +16,7 @@ Effect design notes
 from __future__ import annotations
 
 from array import array
+from typing import TYPE_CHECKING, cast
 
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
@@ -36,13 +37,20 @@ _MAX_SOURCE_EDGE = 1280
 _KUWAHARA_MAX_SOURCE_EDGE = 1024
 _KUWAHARA_FALLBACK_EDGE = 640
 
-try:
+if TYPE_CHECKING:
+    # Type-check against numpy's own stubs; the try/except below would
+    # otherwise type `np` as ModuleType | None and poison every np.* access.
     import numpy as np
 
     _HAS_NUMPY = True
-except Exception:  # pragma: no cover - environment without numpy
-    np = None
-    _HAS_NUMPY = False
+else:
+    try:
+        import numpy as np
+
+        _HAS_NUMPY = True
+    except Exception:  # pragma: no cover - environment without numpy
+        np = None
+        _HAS_NUMPY = False
 
 
 def _cap_source_edge(pixmap: QPixmap, cap: int) -> QPixmap:
@@ -193,7 +201,9 @@ def _kuwahara_numpy(pixmap: QPixmap, radius: int) -> QPixmap:
     img = pixmap.toImage().convertToFormat(QImage.Format.Format_ARGB32)
     w, h = img.width(), img.height()
     # PySide6 6.11: bits()/constBits() hand out a memoryview over the buffer.
-    mv = img.bits()
+    # (Their declared return type is the wider bytes | bytearray | memoryview
+    # union, but only memoryview exposes nbytes — see the cast below.)
+    mv = cast("memoryview", img.bits())
     if mv.nbytes != img.sizeInBytes():
         raise ValueError("unexpected QImage buffer size")
     # ARGB32 memory order on little-endian is B,G,R,A — consistent both ways.
@@ -270,7 +280,12 @@ def _kuwahara_pure(pixmap: QPixmap, radius: int) -> QPixmap:
     img = pixmap.toImage().convertToFormat(QImage.Format.Format_ARGB32)
     w, h = img.width(), img.height()
 
-    pixels = [list(img.pixelColor(x, y).getRgb()) for y in range(h) for x in range(w)]
+    # QColor.getRgb() is typed `object` in the PySide6 stubs but always
+    # returns a 4-tuple of ints at runtime.
+    pixels = [
+        list(cast("tuple[int, int, int, int]", img.pixelColor(x, y).getRgb()))
+        for y in range(h) for x in range(w)
+    ]
 
     def prefix(field: int) -> array:
         # acc[r*(w+1)+c] = sum of pixels with row < r and col < c.

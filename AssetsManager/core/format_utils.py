@@ -1,6 +1,9 @@
 """Shared formatting and classification utilities."""
 
 from threading import RLock
+from typing import TypeVar, overload
+
+_T = TypeVar("_T")
 
 
 def format_size(size: int) -> str:
@@ -67,7 +70,14 @@ class LiveCategoryMap(dict[str, str]):
     def __len__(self):
         return len(self._read_snapshot())
 
-    def get(self, key, default=None):
+    # Mirror dict.get()'s overloads exactly: a plain `default=None` signature
+    # would make every `.get(key, "other")` call resolve to `str | None`
+    # instead of `str` for callers (e.g. domain/asset.category_for_extension).
+    @overload
+    def get(self, key: str) -> str | None: ...
+    @overload
+    def get(self, key: str, default: str | _T) -> str | _T: ...
+    def get(self, key, default: str | _T | None = None) -> str | _T | None:
         return self._read_snapshot().get(key, default)
 
     def items(self):
@@ -143,7 +153,10 @@ class LiveCategoryMap(dict[str, str]):
             self._snapshot = next_snapshot
             return result
 
-    def setdefault(self, key, default=None):
+    # dict.setdefault() has no implicit-default form; the backing snapshot is
+    # dict[str, str], so the default is a plain str (no existing caller relies
+    # on the old `=None` sentinel — nothing calls setdefault without one).
+    def setdefault(self, key: str, default: str) -> str:
         with self._lock:
             next_snapshot = self.snapshot()
             result = next_snapshot.setdefault(key, default)

@@ -102,9 +102,11 @@ def _reject_reparse_ancestors(root: Path, target: Path) -> None:
 
 
 def _open_posix_no_follow(root: Path, target: Path) -> BinaryIO:
-    flags = os.O_RDONLY | os.O_DIRECTORY
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
+    # O_DIRECTORY / O_NOFOLLOW are absent from the Windows runtime and the
+    # win32 typeshed stubs; the only caller is guarded by os.name == "posix"
+    # (same getattr pattern as core/database.py and application/import_service.py).
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
     current_fd = os.open(str(root), flags)
     try:
         parts = target.relative_to(root).parts
@@ -114,7 +116,7 @@ def _open_posix_no_follow(root: Path, target: Path) -> BinaryIO:
             next_fd = os.open(part, flags, dir_fd=current_fd)
             os.close(current_fd)
             current_fd = next_fd
-        leaf_flags = os.O_RDONLY | (os.O_NOFOLLOW if hasattr(os, "O_NOFOLLOW") else 0)
+        leaf_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
         leaf_fd = os.open(parts[-1], leaf_flags, dir_fd=current_fd)
         try:
             return os.fdopen(leaf_fd, "rb")

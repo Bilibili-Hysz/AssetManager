@@ -25,7 +25,10 @@ async function mockApis(page: Page, options: { authEnabled?: boolean } = {}) {
     // login page). The /login scan opts back in to render the real login UI.
     auth_enabled: authEnabled,
     auth_mode: authEnabled ? 'password' : 'none',
-    theme_color: '#6366f1',
+    // Shipped server default: AssetsManager/core/constants.py
+    // DEFAULT_LAN_THEME_COLOR. Text usages bind to the contrast-safe
+    // --color-accent-text token, so any server accent stays decorative.
+    theme_color: '#5b7ff5',
     welcome_msg: '',
     footer_text: '',
     feature_flags: { commerce: true, seller: true, quota: true },

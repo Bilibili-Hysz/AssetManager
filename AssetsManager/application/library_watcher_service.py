@@ -26,8 +26,8 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from contextlib import nullcontext
-from typing import TYPE_CHECKING
+from contextlib import AbstractContextManager, nullcontext
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 from AssetsManager.domain.event_bus import get_event_bus
@@ -165,7 +165,12 @@ class LibraryWatcherService:
             return
         try:
             operation = getattr(self._session, "operation", None)
-            scope = operation() if callable(operation) else nullcontext()
+            # Both branches yield a context manager at runtime; getattr on the
+            # defensive duck-typed seam erases that statically.
+            scope = cast(
+                "AbstractContextManager[None]",
+                operation() if callable(operation) else nullcontext(),
+            )
             with scope:
                 self._reconciliation_queue.enqueue_or_merge(
                     path=self._session.root,

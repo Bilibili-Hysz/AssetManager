@@ -131,7 +131,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._import_token = None
         self._import_pool = None
         self._import_task = None
-        self._import_dialog = None
+        self._import_dialog: QProgressDialog | None = None
         # Backup/restore run on a worker thread via the shared maintenance
         # runner (created lazily in _maintenance_runner_instance).
         self._maintenance_runner = None
@@ -183,7 +183,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
                 pool.close(timeout_ms, owner_label="MainWindow import")
             except Exception:
                 _log.exception("Failed to close import worker pool")
-        if close_dialog and _alive(dialog):
+        if close_dialog and dialog is not None and _alive(dialog):
             try:
                 dialog.close()
             except RuntimeError:

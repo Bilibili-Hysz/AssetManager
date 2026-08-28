@@ -10,6 +10,7 @@ import tempfile
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from AssetsManager.application.context import (
     ConnectionProvider,
@@ -347,8 +348,10 @@ class ThumbnailService:
             return False
         try:
             if hasattr(identity, "mtime_ns"):
-                source_size = int(identity.size)
-                source_mtime_ns = int(identity.mtime_ns)
+                # Runtime duck typing: callers may pass richer identity objects
+                # than the 4-tuple alias; getattr mirrors attribute access.
+                source_size = int(getattr(identity, "size"))
+                source_mtime_ns = int(getattr(identity, "mtime_ns"))
             else:
                 source_size = int(identity[2])
                 source_mtime_ns = int(identity[3])
@@ -771,5 +774,10 @@ def process_image_snapshot(
     if not callable(process_bytes) or bound_function is not ThumbnailService.process_image:
         if not callable(process_path):
             return None
-        return process_path(source_path, max_size, should_blur, expected_identity)
-    return process_bytes(body, max_size, should_blur)
+        # Legacy test seams are duck-typed via getattr; their contracts match
+        # this function's declared return type.
+        return cast(
+            "tuple[bytes, str] | None",
+            process_path(source_path, max_size, should_blur, expected_identity),
+        )
+    return cast("tuple[bytes, str] | None", process_bytes(body, max_size, should_blur))

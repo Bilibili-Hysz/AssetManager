@@ -5,7 +5,7 @@ import hashlib
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 THUMBNAIL_KEY_VERSION = "v2"
 THUMBNAIL_V3_KEY_VERSION = "v3"
@@ -29,7 +29,12 @@ class ThumbnailSourceFingerprint:
 
     @property
     def identity(self) -> tuple[int, int, int, int] | None:
-        if None in (self.device, self.inode, self.size, self.mtime_ns):
+        if (
+            self.device is None
+            or self.inode is None
+            or self.size is None
+            or self.mtime_ns is None
+        ):
             return None
         return (self.device, self.inode, self.size, self.mtime_ns)
 
@@ -45,7 +50,8 @@ def _identity_tuple(identity: Any) -> tuple[int, int, int, int] | None:
         value = tuple(identity)
     if len(value) != 4:
         raise ValueError("thumbnail source identity must have four fields")
-    return tuple(int(item) for item in value)
+    # The len check above pins the tuple to exactly four items.
+    return cast("tuple[int, int, int, int]", tuple(int(item) for item in value))
 
 
 def thumbnail_source_fingerprint(

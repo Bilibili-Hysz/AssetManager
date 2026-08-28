@@ -1,6 +1,7 @@
 """Auth routes: /api/auth/*."""
 import asyncio
 from time import perf_counter
+from typing import Any, Awaitable, cast
 
 from aiohttp import web
 
@@ -186,7 +187,7 @@ async def handle_logout(request):
             try:
                 revoke_async = getattr(lan, "revoke_auth_token_async", None)
                 if callable(revoke_async):
-                    await revoke_async(token)
+                    await cast(Awaitable[Any], revoke_async(token))
                 else:
                     await asyncio.to_thread(lan.revoke_auth_token, token)
             except TokenRevocationPersistenceError as exc:
@@ -195,7 +196,7 @@ async def handle_logout(request):
             evict_token = getattr(ws_manager, "revoke_auth_token", None)
             if callable(evict_token):
                 try:
-                    await evict_token(token)
+                    await cast(Awaitable[Any], evict_token(token))
                 except Exception:
                     # Logout must not fail to clear the browser cookie because a
                     # best-effort socket eviction encountered a closed transport.

@@ -1,4 +1,6 @@
 """Shared constants and helpers for the file_list package."""
+from typing import cast
+
 from PySide6.QtGui import QColor
 from AssetsManager.core import themes
 from AssetsManager.core.constants import (  # noqa: F401
@@ -78,13 +80,15 @@ _CATEGORY_TOKEN_BY_BADGE: dict[str, str] = {
 
 # Extension → badge category mapping
 _EXT_BADGE_MAP: dict[str, str] = {}
-for _ext in FILTER_CATEGORY_EXTS.get("images", set()):
+# Registry.get is typed Optional (its declared default is None); the explicit
+# set() default guarantees an iterable at runtime, so cast for the checker.
+for _ext in cast("frozenset[str]", FILTER_CATEGORY_EXTS.get("images", set())):
     _EXT_BADGE_MAP[_ext] = "texture_pack"
-for _ext in FILTER_CATEGORY_EXTS.get("models", set()):
+for _ext in cast("frozenset[str]", FILTER_CATEGORY_EXTS.get("models", set())):
     _EXT_BADGE_MAP[_ext] = "model_pack"
-for _ext in FILTER_CATEGORY_EXTS.get("videos", set()):
+for _ext in cast("frozenset[str]", FILTER_CATEGORY_EXTS.get("videos", set())):
     _EXT_BADGE_MAP[_ext] = "video"
-for _ext in FILTER_CATEGORY_EXTS.get("archives", set()):
+for _ext in cast("frozenset[str]", FILTER_CATEGORY_EXTS.get("archives", set())):
     _EXT_BADGE_MAP[_ext] = "archive_pack"
 
 

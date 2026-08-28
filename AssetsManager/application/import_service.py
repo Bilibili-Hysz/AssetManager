@@ -283,7 +283,7 @@ class ImportService:
                 if hasattr(os, "O_BINARY"):
                     flags |= os.O_BINARY
                 if hasattr(os, "O_NOFOLLOW"):
-                    flags |= os.O_NOFOLLOW
+                    flags |= getattr(os, "O_NOFOLLOW", 0)
                 created_fd = os.open(str(target), flags, 0o600)
                 owned = True
                 created_stat = os.fstat(created_fd)
@@ -301,7 +301,7 @@ class ImportService:
                 if not path_is_ours():
                     escaped = True
                     raise OSError(f"{target}: target identity changed during copy")
-                if expected_fingerprint is not None:
+                if expected_fingerprint is not None and opened_source_stat is not None:
                     # Same-handle stability recheck after streaming: a source
                     # replaced mid-copy must not land under the manifest's
                     # recorded fingerprint.
@@ -514,7 +514,7 @@ class ImportService:
                 for index, ((source, relative), target) in enumerate(
                     zip(files, targets, strict=True)
                 ):
-                    item = {
+                    item: dict[str, object] = {
                         "source": str(source),
                         "relative": str(relative),
                         "target": str(target),

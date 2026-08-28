@@ -12,7 +12,7 @@ from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import Any, cast
 
 from PySide6.QtCore import (
     Qt, Signal, QObject, QRunnable, QThreadPool, QMutex,
@@ -23,6 +23,7 @@ from PySide6.QtGui import QImage, QImageReader
 from AssetsManager.application.thumbnail_service import (
     MAX_THUMBNAIL_SOURCE_BYTES,
     ThumbnailService,
+    ThumbnailSourceIdentity,
     thumbnail_cache_key,
 )
 from AssetsManager.core.file_snapshot import FileIdentity, read_snapshot
@@ -1082,7 +1083,10 @@ class ThumbnailLoader(QObject):
             frame_size = os.path.getsize(frame_path)
             service.upsert_cache_metadata(
                 runtime.lib_root,
-                cache_key or ThumbnailService._cache_key(source_path, source_identity),
+                cache_key or ThumbnailService._cache_key(
+                    cast(Path, source_path),
+                    cast("ThumbnailSourceIdentity | None", source_identity),
+                ),
                 source_path,
                 source_identity.mtime_ns / 1_000_000_000,
                 source_identity.size,
@@ -1364,7 +1368,10 @@ class ThumbnailLoader(QObject):
         path: str,
         identity: FileIdentity | tuple[int, int, int, int] | None = None,
     ) -> str:
-        return thumbnail_cache_key(path, identity)
+        # The service-level key builder types *identity* as the raw tuple form;
+        # FileIdentity is accepted at runtime (fingerprinting reads either).
+        return thumbnail_cache_key(
+            path, cast("ThumbnailSourceIdentity | None", identity))
 
     def orphan_cleanup(self):
         runtime = self._runtime()
@@ -1427,7 +1434,7 @@ class ThumbnailLoader(QObject):
                         )
                     finally:
                         self._mutex.unlock()
-                    if clear_metadata:
+                    if clear_metadata and runtime.thumbnail_service is not None:
                         try:
                             runtime.thumbnail_service.clear_cache_metadata(runtime.lib_root)
                         except Exception:

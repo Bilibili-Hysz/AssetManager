@@ -265,7 +265,10 @@ class LanSharingMixin:
         """
         from AssetsManager.panels.file_list._background import run_task
 
-        server = self._lan_server
+        # The toggle path only reaches here while a server is running, so the
+        # handle is present; keep the (captured) reference — _work must stop
+        # exactly this server even if _lan_server is replaced afterwards.
+        server = cast("LanControlPort", self._lan_server)
         self._share_stop_in_progress = True
         toggle_btn = getattr(self, "_share_toggle_btn", None)
         if toggle_btn is not None:

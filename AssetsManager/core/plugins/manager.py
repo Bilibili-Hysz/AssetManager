@@ -5,9 +5,10 @@ import logging
 import sys
 import threading
 import weakref
+from collections.abc import Collection, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Protocol, cast
 
 from AssetsManager.core.plugins.descriptor import (
     PLUGIN_STATE_ACTIVE, PLUGIN_STATE_DISABLED, PLUGIN_STATE_ERROR,
@@ -40,6 +41,25 @@ def _host_callback_lock(host_context: PluginHostContext) -> threading.Lock:
 # Category registries live in the application layer (asset_filters +
 # format_utils); the plugin core receives them through this seam so core
 # never imports application modules.  Installed by application.plugin_service.
+class _CategoryExtensionRegistry(Protocol):
+    """Structural stand-in for the application layer's CategoryExtensionRegistry.
+
+    Test providers may hand over a plain dict instead (handled by the
+    ``hasattr`` fallback at the call site), so the seam is typed structurally:
+    an object exposing ``rebuild()``.
+    """
+
+    def rebuild(
+        self,
+        contributions: Sequence[tuple[str, str, Collection[str], str]],
+        category_map: dict[str, str],
+        base_map: Mapping[str, str] | None = None,
+    ) -> None: ...
+
+
+# The declared seam element stays dict[str, set[str] | frozenset[str]] (what
+# test providers hand over); registry objects are recovered with the Protocol
+# cast at the call site — pyright does not narrow via hasattr on this union.
 _CategoryRegistryProvider = Callable[
     [], tuple[dict[str, set[str] | frozenset[str]], dict[str, str]] | None
 ]
@@ -359,7 +379,10 @@ class PluginManagerService:
                 if not record.enabled or record.state == PLUGIN_STATE_DISABLED:
                     return PluginLoadResult(False, record.plugin_id, PLUGIN_STATE_DISABLED, tuple(record.diagnostics))
                 if record.plugin_instance is not None:
-                    effective_host = record.host_context
+                    # PluginRecord.host_context is declared `object | None` in
+                    # core/plugins/descriptor.py; it only ever holds contexts
+                    # this manager installed (see below), so the cast is sound.
+                    effective_host = cast("PluginHostContext | None", record.host_context)
                     requested_host = host_context if host_context is not None else self._host_context
                     if requested_host is not None and effective_host is not requested_host:
                         return PluginLoadResult(
@@ -653,7 +676,10 @@ class PluginManagerService:
         ]
         from AssetsManager.core.format_utils import _BUILTIN_CATEGORY_MAP
         if hasattr(filter_category_exts, "rebuild"):
-            filter_category_exts.rebuild(contributions, category_map, _BUILTIN_CATEGORY_MAP)
+            # Application-layer CategoryExtensionRegistry (declared to the seam
+            # as a plain dict, so recover its rebuild() via the Protocol).
+            registry = cast("_CategoryExtensionRegistry", filter_category_exts)
+            registry.rebuild(contributions, category_map, _BUILTIN_CATEGORY_MAP)
         else:
             # Compatibility for test/application providers that expose plain
             # dicts. Keep the same built-in and first-owner-wins semantics as

@@ -6,7 +6,7 @@ import re
 from collections.abc import Sequence
 from pathlib import Path
 from threading import RLock
-from typing import Callable
+from typing import Callable, TypeVar, overload
 
 from AssetsManager.domain.asset import IMAGE_EXTS, category_for_extension
 
@@ -65,6 +65,8 @@ class CategoryLabelRegistry(list[tuple[str, str]]):
 
 # ── Category extension sets ───────────────────────────────────────
 
+_T = TypeVar("_T")
+
 class CategoryExtensionRegistry(dict[str, frozenset[str]]):
     """Mutable category registry whose built-in entries can be restored."""
 
@@ -87,7 +89,13 @@ class CategoryExtensionRegistry(dict[str, frozenset[str]]):
         with _category_registry_lock:
             return iter(tuple(super().__iter__()))
 
-    def get(self, key, default=None):
+    @overload
+    def get(self, key: str) -> frozenset[str] | None: ...
+    @overload
+    def get(self, key: str, default: frozenset[str] | _T) -> frozenset[str] | _T: ...
+    def get(
+        self, key: str, default: frozenset[str] | _T | None = None
+    ) -> frozenset[str] | _T | None:
         with _category_registry_lock:
             return super().get(key, default)
 

@@ -80,7 +80,12 @@ class _AdvisoryLock:
             elif self._kind == "posix":
                 import fcntl
 
-                fcntl.flock(self._handle.fileno(), fcntl.LOCK_UN)
+                # getattr with constant names: typeshed omits the fcntl
+                # members on win32 (same pattern as core/library_lock.py).
+                # This branch only runs after acquire() imported fcntl, so
+                # both attributes exist here.
+                flock = getattr(fcntl, "flock")
+                flock(self._handle.fileno(), getattr(fcntl, "LOCK_UN"))
         except OSError:
             pass
         try:

@@ -15,6 +15,7 @@ import hashlib
 import logging
 import threading
 import time
+from typing import Any, cast
 
 _log = logging.getLogger(__name__)
 
@@ -133,12 +134,13 @@ class TokenRevocationRegistry:
                 _log.warning("Persistent token revocation load failed", exc_info=True)
                 return False
             with self._state_lock:
-                for digest, expires_at in persisted.items():
+                for digest, expires_at in cast(
+                        "dict[str, float]", persisted).items():
                     host._revoked_tokens.setdefault(digest, expires_at)
                 self._prune_revoked_tokens_locked()
                 host._revoked_loaded = True
             try:
-                auth_service.prune_revocations()
+                cast(Any, auth_service).prune_revocations()
             except Exception:
                 _log.debug("Persistent token revocation prune failed", exc_info=True)
             return True

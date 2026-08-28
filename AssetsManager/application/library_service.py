@@ -10,7 +10,7 @@ import shutil
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterator, cast
 
 from AssetsManager.application.context import LibraryContext, LibrarySession
 from AssetsManager.application.library_export_io import (
@@ -444,7 +444,9 @@ class LibraryService:
                 "restore quarantine manually, then remove the marker file "
                 f"({restore_intent_path(data_dir).name}) after remediation."
             )
-        self._install_quarantined_previous(previous, data_dir, key)
+        # ``usable`` above already proves ``previous`` is not None; pyright
+        # cannot correlate the flattened boolean with the Optional.
+        self._install_quarantined_previous(cast(Path, previous), data_dir, key)
         clear_restore_intent(data_dir)
         _log.warning(
             "Rolled back an interrupted library restore (%s): previous "
@@ -743,6 +745,9 @@ class LibraryService:
         except OSError as exc:
             _log.warning("Restore residue quarantine unavailable for %s: %s", data_dir, exc)
             return
+        # create_missing defaults to True, so a successful call always returns
+        # a path (None is only possible with create_missing=False).
+        quarantine_ready = cast(Path, quarantine_ready)
         stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(timestamp))
         for entry in stale_dirs:
             try:
