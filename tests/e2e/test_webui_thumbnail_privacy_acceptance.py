@@ -162,7 +162,10 @@ def _cookie(server: LanServer, *, base_url: str | None = None) -> dict[str, str]
 
 @pytest.fixture
 def browser_thumbnail_runtime(tmp_path):
-    library = tmp_path / "library"
+    # Resolve through the 8.3 alias (see lan_runtime in the realtime
+    # acceptance file): PathGuard expands short paths mid-request on Windows
+    # runners, which would mismatch the managed connection identity.
+    library = tmp_path.resolve() / "library"
     library.mkdir()
     from PIL import Image
     cover = library / "cover.png"

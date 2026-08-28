@@ -171,7 +171,12 @@ def browser_page():
 
 @pytest.fixture
 def lan_runtime(tmp_path: Path):
-    library = tmp_path / "library"
+    # Windows CI runners expose pytest's tmp_path through the 8.3 alias
+    # (C:\Users\RUNNER~1\...) while PathGuard/Path.resolve() expand it to the
+    # long form (C:\Users\runneradmin\...) mid-request. Anchor the library on
+    # the resolved long path so the managed connection identity matches every
+    # downstream request.
+    library = tmp_path.resolve() / "library"
     library.mkdir()
     bootstrap = ApplicationBootstrap()
     session = bootstrap.library_service.open_session(library)
