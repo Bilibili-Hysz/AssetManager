@@ -486,6 +486,31 @@ def schema_db(memory_db):
     return conn
 
 
+# ── Shared scratch-library session ────────────────────────────────
+# Several service test modules need the same throwaway library: a fresh
+# ApplicationBootstrap, a "library/" directory under tmp_path, and an open
+# LibrarySession.  The fixture owns the session lifecycle, so tests (and
+# fixtures built on top of it) must not call ``library_service.close()``
+# themselves.
+@pytest.fixture
+def opened_session(tmp_path):
+    """Yield ``(bootstrap, session)`` for a scratch library under tmp_path.
+
+    ``bootstrap.library_service.close()`` runs during teardown and also
+    closes any session the test closed or replaced mid-test.
+    """
+    from AssetsManager.application import ApplicationBootstrap
+
+    bootstrap = ApplicationBootstrap()
+    library = tmp_path / "library"
+    library.mkdir()
+    session = bootstrap.library_service.open_session(library)
+    try:
+        yield bootstrap, session
+    finally:
+        bootstrap.library_service.close()
+
+
 @pytest.fixture(autouse=True)
 def _cleanup_stores():
     """Close per-library stores and clean up test data directories."""
