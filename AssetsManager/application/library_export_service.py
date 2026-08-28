@@ -145,4 +145,3 @@ class LibraryExportService(ExportMixin, ValidateMixin, RestoreMixin):
         self._restore_acknowledger = restore_acknowledger
         self._restore_state_lock = threading.Lock()
         self._restore_failure_state: RestoreFailureState | None = None
-

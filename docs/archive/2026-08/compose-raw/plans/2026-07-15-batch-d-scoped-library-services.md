@@ -156,4 +156,3 @@
 - No `TBD`, `TODO`, or unassigned spec sections are present.
 - Interfaces are consistent: Task 1 defines session-bound bundle identity; Task 2 injects it; Task 3 scopes Undo to it; Task 4 closes it selectively; Task 5 ratchets and reports the complete range.
 - Explicitly excluded: event convergence, full widget decomposition, plugin lifecycle, and performance baselines.
-

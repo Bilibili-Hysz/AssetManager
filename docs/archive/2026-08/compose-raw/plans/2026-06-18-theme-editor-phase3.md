@@ -37,4 +37,3 @@
 - Run quality gate
 - Manual testing
 - Commit
-

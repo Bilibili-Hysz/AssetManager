@@ -118,4 +118,3 @@ python -m ruff check . && python -m pyright && python -m compileall AssetsManage
 ```
 
 Performance regression tests in `tests/performance/test_baselines.py` must pass.
-

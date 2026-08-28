@@ -309,4 +309,3 @@ After creating a custom theme and selecting it, update `self._theme_btn.setText(
 
 Run: `python -m pytest -q --ignore=tests/desktop --deselect=tests/core/test_settings.py::test_save_load`
 Expected: All pass.
-

@@ -16,4 +16,3 @@
 - [x] Delegate grid, paste, drop, rename, delete, undo, and redo through scoped services.
 - [x] Add integration and desktop regression coverage.
 - [x] Run Python and WebUI quality gates.
-

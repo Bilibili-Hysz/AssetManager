@@ -71,4 +71,3 @@ Replace the three-section layout with two popup menu buttons:
 - "Delete Custom Theme" removes and selects next available theme
 - Theme changes apply immediately (hot reload)
 - All existing theme functionality preserved
-

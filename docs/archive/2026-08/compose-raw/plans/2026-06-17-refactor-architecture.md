@@ -1043,4 +1043,3 @@ git commit -m "docs: update handoff after architecture refactoring completion"
 | P7 | 7.1 → 7.2 | 1 session |
 
 Each phase ends with a committable checkpoint. Pause/resume at any phase boundary.
-

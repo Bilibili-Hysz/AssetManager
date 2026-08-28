@@ -39,4 +39,3 @@ Implement and verify the LAN/SPA contract, add release CI, then introduce lifecy
 ## [S8] Acceptance Criteria
 
 Authentication cannot block SPA assets; cookies cover browser session flows; package contents are validated; stale thumbnail work cannot affect the next library; and Python/Web quality gates pass.
-

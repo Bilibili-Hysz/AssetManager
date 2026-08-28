@@ -135,4 +135,3 @@ Expected: all LAN tests pass; no route behavior changes.
 git add AssetsManager/lan/routes/_helpers.py tests/lan/test_helpers.py docs/compose/plans/2026-07-17-lan-first-image-linear-scan.md
 git commit -m "perf: scan LAN preview images once"
 ```
-

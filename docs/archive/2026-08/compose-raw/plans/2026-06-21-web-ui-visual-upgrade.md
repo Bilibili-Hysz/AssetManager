@@ -195,7 +195,7 @@ Replace landing page icon:
 
 In app.js, after every `innerHTML` assignment that includes icons, call `initIcons()`. Key locations:
 - After `renderProjects()` — grid cards
-- After `renderBreadcrumb()` 
+- After `renderBreadcrumb()`
 - After context menu show
 - After login/register overlay show
 
@@ -346,4 +346,3 @@ python -m ruff check . --exclude ".Cython&Noikta" && python -m pyright && python
 - [ ] Reduced-motion disables animations
 - [ ] Mobile responsive still works
 - [ ] i18n still works
-

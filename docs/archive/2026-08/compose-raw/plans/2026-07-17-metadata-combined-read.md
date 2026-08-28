@@ -179,4 +179,3 @@ Expected: InfoController and LAN metadata behavior remain unchanged.
 git add AssetsManager/repositories/metadata_repository.py AssetsManager/application/metadata_service.py tests/integration/test_repositories.py tests/integration/test_metadata_service.py docs/compose/plans/2026-07-17-metadata-combined-read.md
 git commit -m "perf: combine metadata notes and URL reads"
 ```
-

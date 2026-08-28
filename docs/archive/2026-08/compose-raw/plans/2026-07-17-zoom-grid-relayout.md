@@ -30,4 +30,3 @@
 - [ ] Add `relayout_only=True` and use it from `_on_zoom_frame()`.
 - [ ] Verify grid/file-list regressions and Ruff.
 - [ ] Commit `perf: preserve textures during zoom`.
-

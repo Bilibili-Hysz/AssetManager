@@ -561,4 +561,3 @@ class InteractMixin:
             return
         self._scrollbar.wheelEvent(event)
         self._scroll_y = self._scrollbar.value()
-

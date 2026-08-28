@@ -37,4 +37,3 @@ Integration tests cover projection/event ordering, subtree indexing, external-co
 ## [S8] Non-Goals
 
 This batch does not redesign `LibrarySession`, add filesystem watching, support cross-library move, restore recycle-bin items, or make create-folder and duplicate operations projection-aware.
-

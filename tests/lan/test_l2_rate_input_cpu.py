@@ -286,4 +286,3 @@ async def test_password_token_verification_runs_through_to_thread(monkeypatch):
     assert args == ("p", "hash")
     principal = get_request_principal(request)
     assert principal is not None and principal.kind == "password"
-

@@ -150,4 +150,3 @@ These are migration intermediates — when bootstrap exists, scoped services sho
   - `lan/` does not import `PySide6`, `panels/`, `controllers/`
   - `panels/` does not directly import `sqlite3` or call `get_lib_db()`
 - Tests serve as regression guards preventing future violations
-

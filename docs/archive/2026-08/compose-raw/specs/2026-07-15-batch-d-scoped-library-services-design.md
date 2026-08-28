@@ -87,4 +87,3 @@ npm run build
 ## [S8] Delivery Boundary
 
 The delivery report must enumerate the exact base-to-implementation commit range, list changed lifecycle/injection files, record focused and full gate output, and disclose any remaining legacy compatibility paths. Batch D is not complete until the final implementation is reviewed against S1-S7 and the merged result passes the same gates.
-

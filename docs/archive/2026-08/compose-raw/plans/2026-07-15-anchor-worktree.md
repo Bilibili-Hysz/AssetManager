@@ -139,4 +139,3 @@ git show --stat --oneline HEAD
 ```
 
 Expected: the branch has no worktree changes and the tag resolves to the new anchor commit.
-

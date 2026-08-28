@@ -680,4 +680,3 @@ class RenderMixin:
         text_color = QColor("white") if QColor(color).lightness() < 128 else QColor("black")
         p.setPen(text_color)
         p.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, label)
-

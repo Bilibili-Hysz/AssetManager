@@ -85,4 +85,3 @@ Expected: no compile errors; focused tests pass.
 git add AssetsManager/panels/file_list/_base.py AssetsManager/panels/file_list/__init__.py AssetsManager/panels/file_list/_loader.py AssetsManager/panels/file_list/_grid_widget.py AssetsManager/app.py tests/desktop/test_file_list_grid_widget.py
 git commit -m "fix: decouple file-list view mode from translations"
 ```
-

@@ -187,4 +187,3 @@ Required fallback changes:
 5. **P2 - Legacy fallback stopgap:** image viewer, backup artifact isolation, offline dependency removal, essential CSS selector corrections.
 
 Each phase must retain passing prior-phase tests. P0 and P1 are required before a LAN build is considered release-ready; P2 can follow only after the primary SPA path is operational.
-

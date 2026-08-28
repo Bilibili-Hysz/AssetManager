@@ -958,7 +958,7 @@ def test_incremental_delete_updates_artwork_count(tmp_path, schema_db, monkeypat
             time.sleep(0.05)
         before = service.get_home_cached(tmp_path)
         assert before is not None and before.stats["artworks"] == 2
-        
+
         # Wait for background build to complete (required for incremental to work)
         root_key = str(tmp_path.resolve())
         deadline = time.monotonic() + 10.0
@@ -1024,7 +1024,7 @@ def test_incremental_move_preserves_artwork_count(tmp_path, schema_db, monkeypat
             time.sleep(0.05)
         before = service.get_home_cached(tmp_path)
         assert before is not None and before.stats["artworks"] == 2
-        
+
         # Wait for background build to complete (required for incremental to work)
         root_key = str(tmp_path.resolve())
         deadline = time.monotonic() + 10.0

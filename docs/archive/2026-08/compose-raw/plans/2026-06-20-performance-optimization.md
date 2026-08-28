@@ -597,4 +597,3 @@ Expected: All pass including new test
 - [ ] **Step 3: Run full quality gate**
 
 Run: `python -m ruff check . && python -m pyright && python -m pytest -q`
-

@@ -85,4 +85,3 @@
 - [ ] Validate metadata URL schemes, language reactivity, mobile info access, and accessible names.
 - [ ] Fix fallback viewer selector, remove/move `.bak` static artifacts, and eliminate mandatory external CDN dependency.
 - [ ] Run `python -m pytest tests/lan -q && npm run typecheck && npm run build`.
-

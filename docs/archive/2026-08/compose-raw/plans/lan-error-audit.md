@@ -93,4 +93,3 @@ When called inside `except Exception` blocks (e.g., `shares.py:66`, `downloads.p
 ## Conclusion
 
 The LAN error handling is well-designed. All client-facing error responses use hardcoded, generic messages. No filesystem paths, stack traces, database error details, or internal exception strings are leaked. No changes needed.
-

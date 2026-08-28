@@ -115,4 +115,3 @@ Scope: Desktop (PySide6) + Web (browser) sharing UI/UX overhaul
 ```powershell
 python -m ruff check . --exclude ".Cython&Noikta" && python -m pyright && python -m pytest -q
 ```
-

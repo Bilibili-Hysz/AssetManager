@@ -1,7 +1,7 @@
 # AssetsManager 质量审查报告
 
-**审查日期**：2026-08-17  
-**审查人**：ZCode（tm-token/claude-opus-5）  
+**审查日期**：2026-08-17
+**审查人**：ZCode（tm-token/claude-opus-5）
 **审查范围**：全量 Python 测试套件 + 5 项静态门禁 + 4 轮子智能体派遣
 
 ---
@@ -33,7 +33,7 @@ Python 全量：3722 passed, 7 skipped, 0 failed in 93.59s
 
 ### 2.1 P0：/api/model 侧车图片绕过 blur 策略
 
-**执行者**：DeepSeek-v4-flash  
+**执行者**：DeepSeek-v4-flash
 **验证**：24 passed, pyright 0/0
 
 **变更**：
@@ -44,7 +44,7 @@ Python 全量：3722 passed, 7 skipped, 0 failed in 93.59s
 
 ### 2.2 P0：LanServer 门面补全（死链 A/B）
 
-**执行者**：DeepSeek-V4-Pro  
+**执行者**：DeepSeek-V4-Pro
 **验证**：16 passed (model_preview_panel.py), 1295 passed (tests/lan/ + tests/desktop/)
 
 **变更**：
@@ -55,7 +55,7 @@ Python 全量：3722 passed, 7 skipped, 0 failed in 93.59s
 
 ### 2.3 P1：插件权限按 plugin_id 隔离 + services() 白名单
 
-**执行者**：DeepSeek-V4-Pro  
+**执行者**：DeepSeek-V4-Pro
 **验证**：83 passed, pyright 0/0
 
 **变更**：
@@ -66,7 +66,7 @@ Python 全量：3722 passed, 7 skipped, 0 failed in 93.59s
 
 ### 2.4 P1：current_session() / current_window() 绕过白名单
 
-**执行者**：DeepSeek-V4-Pro  
+**执行者**：DeepSeek-V4-Pro
 **验证**：85 passed, pyright 0/0
 
 **变更**：
@@ -77,7 +77,7 @@ Python 全量：3722 passed, 7 skipped, 0 failed in 93.59s
 
 ### 2.5 P1：PBKDF2 测试降档（60 万迭代 → 快速模式）
 
-**执行者**：DeepSeek-v4-flash  
+**执行者**：DeepSeek-v4-flash
 **验证**：134 passed subset, 全量 120.26s (AM_REAL_PBKDF2=1) vs 估算套件节省 ~70s
 
 **变更**：
@@ -232,7 +232,7 @@ if callable(execute):
 1. **性能**：
    - 调查 `shutdown_stress` 52.46s，考虑拆分或超时优化
    - 扩展 `PerformanceRecorder` 覆盖更多服务
-   
+
 2. **债务**：
    - 拆分 `window.py`（UI 层 vs 业务逻辑）
    - 重构 `file_list/` mixin 为组合优先
@@ -263,5 +263,5 @@ python -m pytest tests/integration/test_gallery_incremental.py -v
 
 ---
 
-**审查完成时间**：2026-08-17  
+**审查完成时间**：2026-08-17
 **最终状态**：✅ 3722 passed, 7 skipped, 0 failed + 所有静态门禁通过

@@ -137,4 +137,3 @@ Expected: pass.
 
 Run: `python -m compileall AssetsManager/lan AssetsManager/widgets -q`
 Expected: pass.
-

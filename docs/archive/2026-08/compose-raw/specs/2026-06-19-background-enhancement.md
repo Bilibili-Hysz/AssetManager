@@ -54,4 +54,3 @@ Add MP4 video backgrounds via QMediaPlayer, and blur/mosaic effects for images.
 - Effects only available for images (grayed out for video)
 - Settings persist and reload correctly
 - No performance regression for static image backgrounds
-

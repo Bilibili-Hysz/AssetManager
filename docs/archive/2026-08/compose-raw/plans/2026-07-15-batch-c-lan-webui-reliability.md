@@ -171,4 +171,3 @@
 - No `TBD`, `TODO`, or unassigned spec sections are used in this plan.
 - Interfaces are stable across tasks: Task 1 supplies cookie/WebSocket behavior, Task 2 consumes it and supplies response types, Task 3 consumes those types and supplies stable UI state, Task 4 consumes that state, and Task 5 verifies the complete deployment/fallback surface.
 - `create_folder` and `duplicate` remain outside Batch C, consistent with the previous Batch B scope decision.
-

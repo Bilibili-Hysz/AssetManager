@@ -447,10 +447,10 @@ def _setup_theme_section(self):
     """Setup the three-part theme selector."""
     from AssetsManager.core.themes import _get_loader
     from AssetsManager.core import themes
-    
+
     loader = _get_loader()
     groups = loader.list_themes()
-    
+
     # Section 1: Appearance Mode
     mode_group = QGroupBox(tr("settings.appearance_mode"))
     mode_layout = QVBoxLayout(mode_group)
@@ -460,7 +460,7 @@ def _setup_theme_section(self):
     mode_layout.addWidget(self._mode_dark)
     mode_layout.addWidget(self._mode_light)
     mode_layout.addWidget(self._mode_system)
-    
+
     # Section 2: Theme Selection
     theme_group = QGroupBox(tr("settings.theme"))
     theme_layout = QVBoxLayout(theme_group)
@@ -474,7 +474,7 @@ def _setup_theme_section(self):
         item.setData(Qt.ItemDataRole.UserRole, name)
         self._theme_list.addItem(item)
     theme_layout.addWidget(self._theme_list)
-    
+
     # Section 3: Custom Themes
     custom_group = QGroupBox(tr("settings.custom_themes"))
     custom_layout = QVBoxLayout(custom_group)
@@ -494,18 +494,18 @@ def _on_new_theme(self):
     """Show dialog to create a new custom theme."""
     from AssetsManager.core.themes import _get_loader
     loader = _get_loader()
-    
+
     name, ok = QInputDialog.getText(self, tr("settings.new_theme"), tr("settings.theme_name"))
     if not ok or not name.strip():
         return
-    
+
     # Select base theme
     groups = loader.list_themes()
     all_themes = groups["dark"] + groups["light"]
     base, ok = QInputDialog.getItem(self, tr("settings.base_theme"), tr("settings.select_base"), all_themes, 0, False)
     if not ok:
         return
-    
+
     if loader.create_custom_theme(name.strip(), base):
         self._add_custom_theme_item(name.strip())
     else:
@@ -706,4 +706,3 @@ python -m pytest -q
 git add -A
 git commit -m "feat: complete custom theme system phase 1 — infrastructure"
 ```
-

@@ -705,4 +705,3 @@ class DataMixin:
         self._record_invalidation("scale", self._model_rows, previous_count)
         self._relayout_scrollbar()
         self._request_frame(full=True)
-

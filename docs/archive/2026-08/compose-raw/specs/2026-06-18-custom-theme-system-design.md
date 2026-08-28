@@ -100,4 +100,3 @@ ThemeLoader
 - Old theme names auto-map to new prefixes (`default` → `D_Default`)
 - `AppSettings` `theme` value migrated to new format
 - JSON internal format unchanged (`colors`, `properties`, `background`)
-

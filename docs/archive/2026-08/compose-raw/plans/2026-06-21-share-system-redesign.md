@@ -321,4 +321,3 @@ Run: `python -m ruff check . --exclude ".Cython&Noikta" && python -m pyright && 
 - [ ] Settings: collapsible panels work
 - [ ] Scroll: all tabs scrollable
 - [ ] Theme change: all elements update
-

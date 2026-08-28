@@ -1,7 +1,7 @@
 # AssetsManager 桌面端 UI 性能优化方案
 
-**分析日期**：2026-08-17  
-**分析范围**：桌面端 UI 全链路（panels/widgets/window/dialogs/services/repositories）  
+**分析日期**：2026-08-17
+**分析范围**：桌面端 UI 全链路（panels/widgets/window/dialogs/services/repositories）
 **当前状态**：性能工程化程度高，热点多为边界情况而非架构缺陷
 
 ---
@@ -132,7 +132,7 @@ def _rebuild_tags_cache(self, entries):
     # 改用 TagStore 已有的 _resolve_cache，避免重复 syscall
     resolved = [
         self._tag_store._resolve_cache.get(
-            entry.path, 
+            entry.path,
             str(Path(entry.path).resolve())
         )
         for entry in entries
@@ -193,7 +193,7 @@ class ThumbnailLoader:
     def __init__(self):
         self._image_pool = BoundedThreadPoolExecutor(3, ...)
         self._video_pool = BoundedThreadPoolExecutor(1, ...)  # 独立
-    
+
     def _load_video_frame(self, ...):
         return self._video_pool.submit(...)  # 改路由
 ```

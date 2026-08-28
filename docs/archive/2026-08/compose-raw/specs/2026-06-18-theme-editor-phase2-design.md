@@ -170,4 +170,3 @@ ThemePreviewDialog(QDialog)
 - Click color swatch in preview → open color picker
 - Real-time preview update on color change
 - Apply to theme JSON on confirm
-

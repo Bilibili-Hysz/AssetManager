@@ -1,19 +1,19 @@
 # AssetsManager 插件 API v2 交接文档
 
-**最后更新**：2026-08-17（本轮审计结束）  
+**最后更新**：2026-08-17（本轮审计结束）
 **维护人**：ZCode
 
 ---
 
 ## 1. 工作完成度
 
-✅ Operator 参数收集 + 对话框 + 撤销栈  
-✅ PanelContributor 挂到 MainWindow dock  
-✅ download_tracker 迁到 v2 示例（Preferences + EventHook + FileParser + 面板）  
-✅ 插件定向测试 205 passed（权限隔离 + 线程洗白修复后）  
-✅ Phase 2A/2B: undo owner 过滤、legacy API owner 统一、whitespace key 规范化、身份模型三态闸门（+11 tests）  
-✅ 全量测试 3773 passed, 7 skipped（环境限制）  
-✅ ruff + 分层门禁 + pyright 263 files 0/0 通过  
+✅ Operator 参数收集 + 对话框 + 撤销栈
+✅ PanelContributor 挂到 MainWindow dock
+✅ download_tracker 迁到 v2 示例（Preferences + EventHook + FileParser + 面板）
+✅ 插件定向测试 205 passed（权限隔离 + 线程洗白修复后）
+✅ Phase 2A/2B: undo owner 过滤、legacy API owner 统一、whitespace key 规范化、身份模型三态闸门（+11 tests）
+✅ 全量测试 3773 passed, 7 skipped（环境限制）
+✅ ruff + 分层门禁 + pyright 263 files 0/0 通过
 
 ---
 

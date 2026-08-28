@@ -30,4 +30,3 @@
 - [ ] Add shared generation helpers in `FileListPanel` and route QWidget scrollbar changes through them.
 - [ ] Verify focused file-list tests and lint.
 - [ ] Commit `fix: defer thumbnails during smooth scroll`.
-

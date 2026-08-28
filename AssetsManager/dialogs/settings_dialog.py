@@ -516,7 +516,7 @@ class SettingsDialog(TabbedDialog):
         s = AppSettings.instance()
         bg_enabled = self._bg_enabled_cb.isChecked()
         bg_path = self._bg_path_edit.text().strip()
-        
+
         # If background is enabled but no valid path is set, disable it
         # to prevent black background on next startup
         if bg_enabled and not bg_path:
@@ -525,7 +525,7 @@ class SettingsDialog(TabbedDialog):
             from PySide6.QtCore import QSignalBlocker
             with QSignalBlocker(self._bg_enabled_cb):
                 self._bg_enabled_cb.setChecked(False)
-        
+
         s.set("bg_enabled", bg_enabled)
         s.set("bg_image", bg_path)
         s.set("bg_panel_opacity", self._bg_panel_slider.value() / 100.0)
@@ -893,7 +893,7 @@ class SettingsDialog(TabbedDialog):
 
     def _build_plugins_tab(self):
         from AssetsManager.dialogs._plugin_manager_widget import PluginManagerWidget
-        
+
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(
@@ -906,7 +906,7 @@ class SettingsDialog(TabbedDialog):
         self._plugin_widget = PluginManagerWidget()
         layout.addWidget(self._plugin_widget, 1)
 
-        self._add_tab(tab, tr("settings.plugins_title", default="Plugins"), 
+        self._add_tab(tab, tr("settings.plugins_title", default="Plugins"),
                       scrollable=False, label_key="settings.plugins_title")
 
     def _on_run_checkpoint(self):

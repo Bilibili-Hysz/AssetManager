@@ -92,4 +92,3 @@ Expected: all tests and Ruff pass.
 git add AssetsManager/window.py AssetsManager/window_coordinator.py tests/unit/test_window_coordinator.py docs/compose/plans/2026-07-17-theme-transition-stability.md
 git commit -m "fix: stabilize theme transition lifecycle"
 ```
-

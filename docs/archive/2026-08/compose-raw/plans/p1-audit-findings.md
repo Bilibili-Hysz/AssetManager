@@ -161,4 +161,3 @@ After `stop()` sets `self._running = False` and `self._loop = None`, no new requ
 5. `AssetService.list_directory()` does not touch the database
 
 **Recommendation:** P1 Task 1.3 (fixes) can be **skipped**. The current implementation is safe for the documented thread model.
-
