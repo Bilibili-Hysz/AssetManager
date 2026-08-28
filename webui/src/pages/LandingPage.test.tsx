@@ -116,7 +116,9 @@ describe('LandingPage', () => {
     render(<MemoryRouter><LandingApp /></MemoryRouter>);
 
     expect(await screen.findByRole('heading', { name: 'Northstar Archive' })).toBeDefined();
-    expect(screen.getByText('No images found in this library.')).toBeDefined();
+    // The heading renders synchronously from serverInfo; the empty-library
+    // message only appears once the async Home data resolves, so await it.
+    expect(await screen.findByText('No images found in this library.')).toBeDefined();
     expect(screen.getByRole('link', { name: 'Enter Gallery to discover visual assets' }).getAttribute('href')).toBe('/gallery');
   });
 
@@ -144,7 +146,10 @@ describe('LandingPage', () => {
     render(<MemoryRouter><LandingApp /></MemoryRouter>);
 
     expect(await screen.findByRole('heading', { name: 'Northstar Archive' })).toBeDefined();
-    expect(screen.getByText(/7 assets/)).toBeDefined();
+    // The heading renders synchronously from serverInfo, but the asset count
+    // only switches from the library_stats fallback ("12 assets") to the Home
+    // stats ("7 assets") after the async Home response resolves — so await it.
+    expect(await screen.findByText(/7 assets/)).toBeDefined();
     expect(screen.getByRole('link', { name: 'Enter Gallery to discover visual assets' }).getAttribute('href')).toBe('/gallery');
     await waitFor(() => expect(screen.getAllByTestId('gate-showcase-image')).toHaveLength(6));
     expect(getHome).toHaveBeenCalledWith(expect.any(AbortSignal));

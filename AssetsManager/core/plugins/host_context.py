@@ -1443,12 +1443,7 @@ class PluginHostContext:
             return False
         if not self._check_permission_warn(PERMISSION_FILESYSTEM_READ, "open_path"):
             return False
-        if sys.platform == 'win32':
-            os.startfile(str(p_obj))
-        elif sys.platform == 'darwin':
-            subprocess.Popen(['open', str(p_obj)])
-        else:
-            subprocess.Popen(['xdg-open', str(p_obj)])
+        _open_with_default_handler(str(p_obj))
         return True
 
     def get_current_root_path(self) -> str | None:
@@ -1622,6 +1617,30 @@ class PluginHostContext:
                     _HOOK_DRAIN_TIMEOUT,
                 )
         _log.info("Unregistered contributions for plugin '%s'", target)
+
+
+def _open_with_default_handler(path: str) -> None:
+    """Dispatch *path* to the platform's default-application opener.
+
+    Windows keeps ``os.startfile``; macOS uses ``open`` and other POSIX
+    systems ``xdg-open`` (with its output discarded — the opener may be a
+    shell script that chatters on the console).  A missing launcher (e.g.
+    ``xdg-open`` on a headless Linux box) raises ``FileNotFoundError``
+    from ``subprocess.Popen``: that propagates, like any ``os.startfile``
+    launch error does on Windows, because it is an environment failure —
+    distinct from :meth:`PluginHostContext.open_path`'s ``False``
+    refusals, which mean "not opened by policy".
+    """
+    if sys.platform == "win32":
+        os.startfile(path)
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", path])
+    else:
+        subprocess.Popen(
+            ["xdg-open", path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
 
 def _opt_str(value: object) -> str | None:

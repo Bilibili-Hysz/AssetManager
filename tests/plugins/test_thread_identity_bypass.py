@@ -48,10 +48,18 @@ def _anything_registered(host: PluginHostContext) -> bool:
     )
 
 
-def _patch_startfile(monkeypatch) -> list[str]:
+def _patch_default_opener(monkeypatch) -> list[str]:
+    """Record paths handed to the platform default-application opener.
+
+    The seam is the module-level ``_open_with_default_handler`` helper —
+    not ``os.startfile``, which only exists on Windows, so patching it
+    made these tests crash on POSIX with an AttributeError before the
+    assertion body ran.
+    """
     opened: list[str] = []
     monkeypatch.setattr(
-        "AssetsManager.core.plugins.host_context.os.startfile", opened.append
+        "AssetsManager.core.plugins.host_context._open_with_default_handler",
+        opened.append,
     )
     return opened
 
@@ -61,7 +69,7 @@ def test_plugin_thread_cannot_ride_host_exemption(tmp_path, caplog, monkeypatch)
     refused by every permission-gated API — the old empty-subject pass is gone."""
     target = tmp_path / "note.txt"
     target.write_text("x", encoding="utf-8")
-    opened = _patch_startfile(monkeypatch)
+    opened = _patch_default_opener(monkeypatch)
 
     host = PluginHostContext()
     with host._host_identity():
@@ -89,7 +97,7 @@ def test_thread_pool_worker_cannot_ride_host_exemption(tmp_path, caplog, monkeyp
     carry the plugin identity ContextVar either."""
     target = tmp_path / "note.txt"
     target.write_text("x", encoding="utf-8")
-    opened = _patch_startfile(monkeypatch)
+    opened = _patch_default_opener(monkeypatch)
 
     host = PluginHostContext()
     with host._host_identity():
@@ -115,7 +123,7 @@ def test_in_scope_calls_with_grants_succeed(tmp_path, monkeypatch):
     work when the manifest grants are present."""
     target = tmp_path / "note.txt"
     target.write_text("x", encoding="utf-8")
-    opened = _patch_startfile(monkeypatch)
+    opened = _patch_default_opener(monkeypatch)
 
     host = PluginHostContext()
     with host._host_identity():
@@ -139,7 +147,7 @@ def test_worker_thread_with_explicit_plugin_execution_keeps_grants(tmp_path, mon
     its grants across the thread boundary explicitly."""
     target = tmp_path / "note.txt"
     target.write_text("x", encoding="utf-8")
-    opened = _patch_startfile(monkeypatch)
+    opened = _patch_default_opener(monkeypatch)
 
     host = PluginHostContext()
     with host._host_identity():

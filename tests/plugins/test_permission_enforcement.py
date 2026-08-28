@@ -125,10 +125,18 @@ def test_manifest_plugin_without_settings_permission_gets_no_bag(tmp_path):
 # ── open_path(): filesystem.read ────────────────────────────────────
 
 
-def _patch_startfile(monkeypatch):
+def _patch_default_opener(monkeypatch) -> list[str]:
+    """Record paths handed to the platform default-application opener.
+
+    The seam is the module-level ``_open_with_default_handler`` helper —
+    not ``os.startfile``, which only exists on Windows, so patching it
+    made these tests crash on POSIX with an AttributeError before the
+    assertion body ran.
+    """
     opened: list[str] = []
     monkeypatch.setattr(
-        "AssetsManager.core.plugins.host_context.os.startfile", opened.append
+        "AssetsManager.core.plugins.host_context._open_with_default_handler",
+        opened.append,
     )
     return opened
 
@@ -136,7 +144,7 @@ def _patch_startfile(monkeypatch):
 def test_open_path_refused_without_filesystem_read(tmp_path, caplog, monkeypatch):
     target = tmp_path / "note.txt"
     target.write_text("x", encoding="utf-8")
-    opened = _patch_startfile(monkeypatch)
+    opened = _patch_default_opener(monkeypatch)
     host = PluginHostContext()
     with caplog.at_level(logging.WARNING):
         with host.plugin_execution("bare"):
@@ -148,7 +156,7 @@ def test_open_path_refused_without_filesystem_read(tmp_path, caplog, monkeypatch
 def test_open_path_allowed_with_filesystem_read(tmp_path, monkeypatch):
     target = tmp_path / "note.txt"
     target.write_text("x", encoding="utf-8")
-    opened = _patch_startfile(monkeypatch)
+    opened = _patch_default_opener(monkeypatch)
     host = PluginHostContext()
     with host._host_identity():
         host.grant_permissions("reader", {"filesystem.read"})
@@ -168,7 +176,7 @@ def test_open_path_host_dispatch_with_explicit_identity(tmp_path, monkeypatch):
     """
     target = tmp_path / "note.txt"
     target.write_text("x", encoding="utf-8")
-    opened = _patch_startfile(monkeypatch)
+    opened = _patch_default_opener(monkeypatch)
     host = PluginHostContext()
     with host._host_identity():
         host.grant_permissions("host.dispatch", {"filesystem.read"})
@@ -182,7 +190,7 @@ def test_open_path_without_plugin_identity_is_refused(tmp_path, caplog, monkeypa
     lost its identity ContextVar — is refused with a warning."""
     target = tmp_path / "note.txt"
     target.write_text("x", encoding="utf-8")
-    opened = _patch_startfile(monkeypatch)
+    opened = _patch_default_opener(monkeypatch)
     host = PluginHostContext()
     with caplog.at_level(logging.WARNING):
         assert host.open_path(str(target)) is False

@@ -800,8 +800,18 @@ def test_replaced_target_is_not_deleted_during_cleanup(tmp_path, monkeypatch):
         target = destination / source.name
 
         def replace_then_fail(_source_path, _target_path, **_kwargs):
-            target.unlink()
-            target.write_text("rival")
+            # A rival writer replaces the just-copied target the way real
+            # writers do: an atomic rename of its own file over the planned
+            # path.  The replacement keeps the rival file's inode, so the
+            # service's (st_dev, st_ino) ownership check sees a different
+            # identity on every platform and the cleanup must leave the
+            # rival in place.  (An unlink + recreate here can recycle the
+            # just-freed inode on POSIX filesystems, which makes the
+            # replacement indistinguishable from the copy's own file and
+            # lets the cleanup legitimately unlink it.)
+            rival = tmp_path / "rival.txt"
+            rival.write_text("rival")
+            os.replace(rival, target)
             raise OSError("stat failed after replacement")
 
         monkeypatch.setattr(module.shutil, "copystat", replace_then_fail)
