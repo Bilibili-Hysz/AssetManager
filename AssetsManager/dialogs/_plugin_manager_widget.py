@@ -117,7 +117,7 @@ class PluginCard(QFrame):
         # Card styling
         bg = t["header"] if self._selected else t["panel"]
         self.setStyleSheet(
-            f"PluginCard {{ background: {bg}; border: 1px solid {t['border']}; border-radius: {br_sm}px; }}"
+            f"PluginCard {{ background: {bg}; border: {scaled_px(1)}px solid {t['border']}; border-radius: {br_sm}px; }}"
             f"PluginCard:hover {{ background: {t['header']}; }}"
         )
 
@@ -232,7 +232,7 @@ class PluginDetailPanel(QFrame):
         danger = t["danger"]
         self._diag_label.setStyleSheet(
             f"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; color: {danger}; background: {alpha(danger, 0.08)}; "
-            f"border: 1px solid {alpha(danger, 0.19)}; border-radius: {br_sm}px; padding: {sp_sm}px;")
+            f"border: {scaled_px(1)}px solid {alpha(danger, 0.19)}; border-radius: {br_sm}px; padding: {sp_sm}px;")
         self._toggle_btn.setStyleSheet(
             sk.button_css("primary", font_size_key="sm",
                           padding_y=sp_sm, padding_x=sp_lg))

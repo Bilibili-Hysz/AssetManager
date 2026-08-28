@@ -10,13 +10,14 @@ live in ``_grid_widget_interact.py``; ``_grid_widget.py`` composes the three.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from PySide6.QtCore import Qt, QRect, QSize, QPoint
 from PySide6.QtGui import QColor, QFont, QFontMetrics
 
 from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+from AssetsManager.i18n import tr
 
 from AssetsManager.panels.file_list._model import FileSystemModel
 from AssetsManager.panels.file_list._grid_layout import GridLayout
@@ -33,6 +34,11 @@ _CARD_PAD = scaled_px(6)
 _PREVIEW_MARGIN = scaled_px(4)
 _TEXT_TOP_GAP = scaled_px(5)
 _TEXT_LINE_GAP = scaled_px(1)
+
+# Trailing-edge debounce for the selection-changed accessibility announcement:
+# rubber-band / shift-range batch selections report one summary instead of one
+# Alert per mouse-move step.
+_A11Y_ANNOUNCE_DEBOUNCE_MS = 250
 
 
 class DataMixin:
@@ -56,6 +62,9 @@ class DataMixin:
         def width(self) -> int: ...
         def height(self) -> int: ...
         def rect(self) -> QRect: ...
+        def setAccessibleName(self, name: str) -> None: ...
+        def setAccessibleDescription(self, text: str) -> None: ...
+        def _schedule_once(self, interval_ms: int, callback) -> Any: ...
         def _request_frame(self, rows=None, *, full: bool = False, overlay: bool = False) -> None: ...
         def _relayout_scrollbar(self) -> None: ...
         def _cancel_frame(self) -> None: ...
@@ -82,6 +91,62 @@ class DataMixin:
         self._fm_badge = QFontMetrics(self._font_badge)
         self._t_h = _TEXT_TOP_GAP + self._fm_name.height() + _TEXT_LINE_GAP + self._fm_sub.height()
         self._update_item_hint()
+
+    # ── Accessibility baseline ───────────────────────────────
+    #
+    # The grid is a self-painted canvas: screen readers see a single unnamed
+    # widget, unlike the Details QTableView which is natively accessible. This
+    # baseline gives the container an i18n accessible name plus a live
+    # item/selection summary, and announces selection changes through
+    # QAccessible.Alert so the reader re-reads the updated description.
+    # Per-item virtual-table interfaces are tracked as follow-up work.
+
+    def _init_a11y_baseline(self) -> None:
+        """Install the container's accessible identity before first show."""
+        self._a11y_announce_handle = None
+        self._a11y_debounce_ms = _A11Y_ANNOUNCE_DEBOUNCE_MS
+        self.setAccessibleName(tr("filelist.grid.a11y.name"))
+        self._update_a11y_description()
+
+    def _update_a11y_description(self) -> None:
+        """Refresh the container description from item/selection counts."""
+        try:
+            if self._selection:
+                text = tr(
+                    "filelist.grid.a11y.description_selected",
+                    total=self._model_rows,
+                    selected=len(self._selection),
+                )
+            else:
+                text = tr("filelist.grid.a11y.description", total=self._model_rows)
+            self.setAccessibleDescription(text)
+        except Exception:
+            # The a11y baseline must never disturb rendering or interaction.
+            pass
+
+    def _a11y_announce_selection_soon(self) -> None:
+        """Schedule one debounced selection announcement."""
+        if self._a11y_announce_handle is not None:
+            self._a11y_announce_handle.cancel()
+        self._a11y_announce_handle = self._schedule_once(
+            self._a11y_debounce_ms, self._a11y_announce_selection_now)
+
+    def _a11y_announce_selection_now(self) -> None:
+        """Emit one Alert so assistive tech re-reads the updated description."""
+        self._a11y_announce_handle = None
+        if self._model is None or not self._selection:
+            return
+        try:
+            from PySide6.QtGui import QAccessible, QAccessibleEvent
+            from PySide6.QtWidgets import QWidget
+
+            # DataMixin itself is not a QObject; the concrete grid widget is.
+            widget = cast(QWidget, self)
+            QAccessible.updateAccessibility(
+                QAccessibleEvent(widget, QAccessible.Event.Alert))
+        except Exception:
+            # No accessible backend (offscreen / no screen reader) — stay silent.
+            pass
 
     # ── Public API ──────────────────────────────────────────
 
@@ -335,6 +400,7 @@ class DataMixin:
         self._animator.reset_for_model_reset()
         self._cancel_frame()
         self._record_invalidation("model_reset", self._model_rows, previous_count)
+        self._update_a11y_description()
 
     def _on_data_changed(self, top_left, bottom_right, roles):
         roles = set(roles or [])
@@ -400,6 +466,8 @@ class DataMixin:
             self._zoom_visible_rows.clear()
             self._zoom_anchor_y_offset = 0
         self._model_rows = item_count
+        if item_count != previous_item_count:
+            self._update_a11y_description()
         if item_count > 0:
             self._has_been_populated = True
         if self._layout:

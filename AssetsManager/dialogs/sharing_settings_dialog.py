@@ -269,7 +269,7 @@ class SharingSettingsDialog(
             self._tunnel_url_label.setStyleSheet(
                 f"font-size: {sk.pt(int(sk.prop('font_size', 'md')))}px; color: {sk.token('accent')}; "
                 f"padding: {sk.px(int(sk.prop('spacing', 'sm')))}px; background: {sk.token('panel')}; "
-                f"border: 1px solid {sk.token('border_subtle')}; "
+                f"border: {scaled_px(1)}px solid {sk.token('border_subtle')}; "
                 f"border-radius: {sk.px(int(sk.prop('border_radius', 'sm')))}px;")
         self._apply_table_theme()
         if hasattr(self, "_configuration_nav"):

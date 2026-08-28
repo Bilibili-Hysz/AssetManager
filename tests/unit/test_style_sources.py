@@ -81,6 +81,36 @@ def test_token_backed_font_size_is_allowed() -> None:
     assert violations == []
 
 
+def test_interpolated_px_in_fstring_is_allowed() -> None:
+    import ast
+
+    source = 'x = f"padding: {scaled_px(10)}px {scaled_px(4)}px 0;"'
+    node = ast.parse(source).body[0].value
+    assert isinstance(node, ast.JoinedStr)
+    violations: list = []
+    check_style_sources._check_joined_str(
+        node, source, "dialogs/fake.py", violations)
+    assert violations == []
+
+
+def test_literal_px_in_qss_is_detected() -> None:
+    violations: list = []
+    check_style_sources._check_string(
+        "QLabel { padding: 10px 0 4px 12px; }", "dialogs/fake.py", 3, violations)
+    assert [v.rule for v in violations] == ["literal-px-in-qss"] * 3
+    assert {v.line for v in violations} == {3}
+    # Literal px inside an f-string static part is flagged too.
+    import ast
+
+    source = 'x = f"padding: 10px 0 4px 12px;"'
+    node = ast.parse(source).body[0].value
+    assert isinstance(node, ast.JoinedStr)
+    fstring_violations: list = []
+    check_style_sources._check_joined_str(
+        node, source, "dialogs/fake.py", fstring_violations)
+    assert [v.rule for v in fstring_violations] == ["literal-px-in-qss"] * 3
+
+
 def test_hex_fallback_next_to_theme_token_lookup_is_detected() -> None:
     violations: list = []
     check_style_sources._check_token_lookup_lines(

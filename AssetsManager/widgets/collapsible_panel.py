@@ -68,7 +68,7 @@ class CollapsiblePanel(QWidget):
         font_sm = scaled_pt(int(themes.prop("font_size", "sm")))
         self._header_btn.setStyleSheet(
             f"QPushButton {{ text-align: left; font-weight: bold; font-size: {font_sm}px; "
-            f"color: {t['heading']}; background: {bg}; border: 1px solid {hairline}; "
+            f"color: {t['heading']}; background: {bg}; border: {scaled_px(1)}px solid {hairline}; "
             f"border-radius: {radius_sm}px; padding: {spacing_sm}px {spacing_md}px; }}"
             f"QPushButton:hover {{ background: {hover_bg}; }}"
             f"QPushButton:pressed {{ background: {pressed_bg}; }}")

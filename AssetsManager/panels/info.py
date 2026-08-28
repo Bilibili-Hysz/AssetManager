@@ -213,7 +213,7 @@ class InfoPanel(PanelContent):
         self._add_tag_btn.clicked.connect(self._add_tag)
         self._add_tag_btn.setStyleSheet(
             f"QPushButton {{ background: transparent; color: {sk.token('muted')}; "
-            f"border: 1px dashed {sk.token('border')}; "
+            f"border: {scaled_px(1)}px dashed {sk.token('border')}; "
             f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
             f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
             f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"
@@ -228,7 +228,7 @@ class InfoPanel(PanelContent):
         self._manage_btn.clicked.connect(self._open_tag_editor)
         self._manage_btn.setStyleSheet(
             f"QPushButton {{ background: transparent; color: {sk.token('muted')}; "
-            f"border: 1px solid {sk.token('border')}; "
+            f"border: {scaled_px(1)}px solid {sk.token('border')}; "
             f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
             f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
             f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"
@@ -244,7 +244,7 @@ class InfoPanel(PanelContent):
         self._browse_btn.clicked.connect(self._open_tag_browser)
         self._browse_btn.setStyleSheet(
             f"QPushButton {{ background: transparent; color: {sk.token('muted')}; "
-            f"border: 1px solid {sk.token('border')}; "
+            f"border: {scaled_px(1)}px solid {sk.token('border')}; "
             f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
             f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
             f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"
@@ -275,7 +275,7 @@ class InfoPanel(PanelContent):
         act_bar = QWidget()
         self._act_bar = act_bar
         act_bar.setStyleSheet(f"background: transparent; "
-                              f"border-top: 1px solid {sk.token('border')};")
+                              f"border-top: {scaled_px(1)}px solid {sk.token('border')};")
         act_bar.setFixedHeight(scaled_px(28))
         act_layout = QHBoxLayout(act_bar)
         act_layout.setContentsMargins(scaled_px(10), scaled_px(4), scaled_px(10), scaled_px(4))
@@ -289,7 +289,7 @@ class InfoPanel(PanelContent):
         self._open_btn.setToolTip(tr("info.open_tooltip"))
         self._open_btn.setStyleSheet(
             f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('heading')}; "
-            f"border: 1px solid {sk.token('accent')}; "
+            f"border: {scaled_px(1)}px solid {sk.token('accent')}; "
             f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
             f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
             f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"
@@ -304,7 +304,7 @@ class InfoPanel(PanelContent):
         self._copy_btn.setToolTip(tr("info.copy_tooltip"))
         self._copy_btn.setStyleSheet(
             f"QPushButton {{ background: transparent; color: {sk.token('body')}; "
-            f"border: 1px solid {sk.token('border')}; "
+            f"border: {scaled_px(1)}px solid {sk.token('border')}; "
             f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
             f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
             f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"
@@ -366,7 +366,7 @@ class InfoPanel(PanelContent):
         the metadata/tags/notes sections read as layers, not boxed-in cards.
         """
         return (
-            f"QGroupBox {{ color: {sk.token('heading')}; border: 1px solid {sk.token('border_subtle')}; "
+            f"QGroupBox {{ color: {sk.token('heading')}; border: {scaled_px(1)}px solid {sk.token('border_subtle')}; "
             f"border-radius: {sk.px(int(themes.prop('border_radius', 'md')))}px; "
             f"margin-top: {sk.px(int(themes.prop('spacing', 'md')))}px; "
             f"padding-top: {sk.px(int(themes.prop('spacing', 'md')))}px; }}"
@@ -411,27 +411,27 @@ class InfoPanel(PanelContent):
             btn.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {t['muted']}; "
                 f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; "
-                f"border: 1px {border_style} {sk.token('border')}; "
+                f"border: {scaled_px(1)}px {border_style} {sk.token('border')}; "
                 f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
                 f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; }}"
                 f"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}"
                 f"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}")
         self._act_bar.setStyleSheet(
-            f"background: transparent; border-top: 1px solid {sk.token('border')}; "
+            f"background: transparent; border-top: {scaled_px(1)}px solid {sk.token('border')}; "
             f"padding: {sk.px(4)}px {sk.px(8)}px;")
         self._open_btn.setIcon(icons.icon("folder", color="icon_primary", size=scaled_px(15)))
         self._open_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         self._open_btn.setStyleSheet(
             f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('heading')}; "
             f"font-size: {sk.pt(int(themes.prop('font_size', 'md')))}px; "
-            f"border: 1px solid {sk.token('accent')}; "
+            f"border: {scaled_px(1)}px solid {sk.token('accent')}; "
             f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
             f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; }}"
             f"QPushButton:hover {{ background: {lighten(sk.token('accent'), 1.1)}; }}"
             f"QPushButton:pressed {{ background: {darken(sk.token('accent'), 0.87)}; }}")
         self._copy_btn.setStyleSheet(
             f"QPushButton {{ background: transparent; color: {sk.token('body')}; "
-            f"border: 1px solid {sk.token('border')}; "
+            f"border: {scaled_px(1)}px solid {sk.token('border')}; "
             f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
             f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
             f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"

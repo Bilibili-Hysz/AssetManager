@@ -339,7 +339,7 @@ class _ColorSwatchSection(QGroupBox):
         if swatch:
             radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
             swatch.setStyleSheet(
-                f"background: {color_hex}; border: 1px solid {themes.color('border')}; border-radius: {radius_sm}px;"
+                f"background: {color_hex}; border: {scaled_px(1)}px solid {themes.color('border')}; border-radius: {radius_sm}px;"
             )
 
     def set_all_colors(self, colors: dict[str, str]) -> None:
@@ -498,7 +498,7 @@ class ThemePreviewRenderer:
         /* ── GroupBox ─────────────────────────── */
         QGroupBox {{
             color: {heading};
-            border: 1px solid {border};
+            border: {scaled_px(1)}px solid {border};
             border-radius: {r_lg}px;
             margin-top: {scaled_px(12)}px;
             padding-top: {scaled_px(16)}px;
@@ -580,7 +580,7 @@ class ThemePreviewRenderer:
         QLineEdit, QTextEdit {{
             background: {input_bg};
             color: {input_text};
-            border: 1px solid {border};
+            border: {scaled_px(1)}px solid {border};
             border-radius: {r_sm}px;
             padding: {scaled_px(4)}px {scaled_px(6)}px;
             font-size: {pt_body}px;
@@ -598,7 +598,7 @@ class ThemePreviewRenderer:
         QListWidget {{
             background: {panel};
             color: {body};
-            border: 1px solid {border};
+            border: {scaled_px(1)}px solid {border};
             border-radius: {r_sm}px;
             outline: none;
             font-size: {pt_body}px;
@@ -619,7 +619,7 @@ class ThemePreviewRenderer:
         QTableWidget {{
             background: {panel};
             color: {body};
-            border: 1px solid {border};
+            border: {scaled_px(1)}px solid {border};
             border-radius: {r_sm}px;
             gridline-color: {border};
             font-size: {pt_body}px;
@@ -634,7 +634,7 @@ class ThemePreviewRenderer:
         QHeaderView::section {{
             background: {header};
             color: {heading};
-            border: 1px solid {border};
+            border: {scaled_px(1)}px solid {border};
             padding: {scaled_px(4)}px {scaled_px(6)}px;
             font-weight: bold;
             font-size: {pt_body}px;
@@ -643,7 +643,7 @@ class ThemePreviewRenderer:
         /* ── Dialog Preview ───────────────────── */
         QFrame[dialog_frame="true"] {{
             background: {panel};
-            border: 1px solid {border};
+            border: {scaled_px(1)}px solid {border};
             border-radius: {r_md}px;
         }}
         QLabel[dialog_title="true"] {{
@@ -654,7 +654,7 @@ class ThemePreviewRenderer:
             padding: {scaled_px(6)}px;
             border-top-left-radius: {r_md}px;
             border-top-right-radius: {r_md}px;
-            border-bottom: 1px solid {border};
+            border-bottom: {scaled_px(1)}px solid {border};
         }}
         QLabel[dialog_content="true"] {{
             color: {body};
@@ -662,7 +662,7 @@ class ThemePreviewRenderer:
         }}
         QWidget[dialog_button_bar="true"] {{
             background: {header};
-            border-top: 1px solid {border};
+            border-top: {scaled_px(1)}px solid {border};
             border-bottom-left-radius: {r_md}px;
             border-bottom-right-radius: {r_md}px;
         }}

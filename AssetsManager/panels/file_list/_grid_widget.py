@@ -137,6 +137,7 @@ class FileListGridWidget(RenderMixin, InteractMixin, DataMixin, QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumSize(100, 100)
+        self._init_a11y_baseline()
 
     def stop_animations(self) -> None:
         """Cancel panel-owned presentation and queued repaint work before teardown."""

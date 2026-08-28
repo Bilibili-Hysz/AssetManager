@@ -1,0 +1,130 @@
+# Optional local quality gate — does nothing until you opt in.
+#
+# Enable:
+#   pip install pre-commit
+#   pre-commit install                        # fast gates, run on every commit
+#   pre-commit install --hook-type pre-push   # heavy gates, run before push
+#   pre-commit run --all-files                # one-off full sweep
+# Bypass once:  git commit --no-verify
+#
+# Why the stages are split the way they are:
+#   pre-commit  -> must stay under a couple of seconds, or people start
+#                  reaching for --no-verify and the gate rots.
+#   pre-push    -> the 10 architecture/contract scripts that CI's lint job
+#                  already runs (see .github/workflows/ci.yml:29-47).  These
+#                  are slower; running them at push time keeps local commits
+#                  fast while still catching breakage before it reaches CI.
+#
+# Before this file existed, CI ran 10 gates and the local "quality gate"
+# section of README listed only 1 of them (check_doc_stats.py), so 9 gates
+# silently never ran on a developer machine.  This closes that gap.
+#
+# Note: hooks use `language: system` and invoke the interpreter already on
+# PATH, matching how CI and the README invoke them.  Requires Python 3.12+
+# with the project's dev dependencies installed (pip install -r
+# requirements-dev.txt).
+
+minimum_pre_commit_version: "3.5.0"
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  # ── Fast gates: every commit ──────────────────────────────────────────────
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (correctness families)
+        description: >-
+          Static analysis. ruff.toml deliberately selects only correctness
+          families (B, LOG, G, DTZ, PIE, PYI, A, T20, ...); style families are
+          left off on purpose and pyright covers typing.
+        entry: python -m ruff check AssetsManager tests scripts run.py
+        language: system
+        pass_filenames: false
+        types: [python]
+        stages: [pre-commit]
+
+      - id: no-merge-conflict-markers
+        name: no leftover merge conflict markers
+        description: Catches <<<<<<< / ======= / >>>>>>> accidentally committed.
+        entry: python -c "import sys,pathlib,sys as _s; bad=[p for p in sys.argv[1:] if any(m in pathlib.Path(p).read_text(encoding='utf-8',errors='ignore') for m in ('<<<<<<< ','=======','>>>>>>> '))]; print('\n'.join(bad)); _s.exit(1 if bad else 0)"
+        language: system
+        stages: [pre-commit]
+
+  # ── Heavy gates: before push (mirrors CI's lint job) ──────────────────────
+  - repo: local
+    hooks:
+      - id: check-boundaries
+        name: architecture boundaries (gates 1/2/3/5 + layer DAG)
+        entry: python scripts/check_boundaries.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: check-layers
+        name: layer DAG (AST, 12 layers)
+        entry: python scripts/check_layers.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: check-style-sources
+        name: QSS forbids hard-coded hex colours
+        entry: python scripts/check_style_sources.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: check-route-capabilities
+        name: LAN routes declare their capabilities
+        entry: python scripts/check_route_capabilities.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: check-frontend-data-fetch
+        name: WebUI pages fetch data through the sanctioned path
+        entry: python scripts/check_frontend_data_fetch.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: check-doc-stats
+        name: README structural stats are current
+        entry: python scripts/check_doc_stats.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: check-documents
+        name: document maintenance state is current
+        entry: python scripts/check_documents.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: gen-ts-types
+        name: contracts.ts has not drifted from the backend
+        entry: python scripts/gen_ts_types.py --check
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: gen-web-tokens
+        name: themes.generated.css has not drifted from the themes
+        entry: python scripts/gen_web_tokens.py --check
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+  # ── WebUI: before push ────────────────────────────────────────────────────
+  # Skipped automatically when webui/node_modules is absent, so this file
+  # stays usable on a Python-only checkout.
+  - repo: local
+    hooks:
+      - id: webui-typecheck
+        name: webui typecheck
+        entry: sh -c 'cd webui && test -d node_modules || { echo "webui/node_modules missing - skipping"; exit 0; }; npm run typecheck'
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

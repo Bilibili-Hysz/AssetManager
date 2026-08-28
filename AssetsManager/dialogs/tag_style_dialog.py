@@ -122,7 +122,7 @@ class TagStyleDialog(QDialog):
         radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
         self._color_btn.setStyleSheet(
             f"QPushButton {{ background: {color or 'transparent'}; "
-            f"border: 1px solid {themes.color('border')}; border-radius: {radius_sm}px; "
+            f"border: {scaled_px(1)}px solid {themes.color('border')}; border-radius: {radius_sm}px; "
             f"color: {text}; }}"
         )
 

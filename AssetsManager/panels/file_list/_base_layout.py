@@ -270,7 +270,7 @@ class LayoutMixin:
         t = themes.get()
         self._status_bar.setStyleSheet(
             f"background: transparent; "
-            f"border-top: 1px solid {t['border_subtle']};")
+            f"border-top: {scaled_px(1)}px solid {t['border_subtle']};")
         self._status.setStyleSheet(
             f"color: {t['muted']}; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
             f"background: transparent; "
@@ -283,7 +283,7 @@ class LayoutMixin:
     @staticmethod
     def _header_css(t: dict) -> str:
         return (
-            f"background: {themes.header_for_dock()}; border: 1px solid {t['border_subtle']}; "
+            f"background: {themes.header_for_dock()}; border: {scaled_px(1)}px solid {t['border_subtle']}; "
             f"border-top-left-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; "
             f"border-top-right-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; "
         )
@@ -509,7 +509,7 @@ class LayoutMixin:
         self._detail_view.header().setStyleSheet(
             f"QHeaderView::section {{"
             f"  background: {t['header']}; color: {t['heading']}; "
-            f"  border: none; border-right: 1px solid {alpha(t['border'], 0.25)}; "
+            f"  border: none; border-right: {scaled_px(1)}px solid {alpha(t['border'], 0.25)}; "
             f"  padding: {scaled_px(int(themes.prop('spacing', 'xs')))}px {scaled_px(int(themes.prop('spacing', 'sm')))}px; "
             f"  font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; font-weight: bold; "
             f"}}"
@@ -529,7 +529,7 @@ class LayoutMixin:
             f"}}"
             f"QTreeView::item {{"
             f"  padding: {scaled_px(int(themes.prop('spacing', 'xs')))}px {scaled_px(int(themes.prop('spacing', 'sm')))}px; "
-            f"  border: none; border-bottom: 1px solid {t['border_subtle']}; "
+            f"  border: none; border-bottom: {scaled_px(1)}px solid {t['border_subtle']}; "
             f"}}"
             f"QTreeView::item:alternate {{"
             f"  background: {alpha(t['header'], 0.24)}; "

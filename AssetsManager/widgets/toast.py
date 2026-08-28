@@ -78,7 +78,7 @@ class Toast(QWidget):
                 QSize(px(16), px(16)))
             icon_label.setPixmap(icon_pixmap)
             icon_label.setStyleSheet(
-                "background: transparent; padding-right: 4px;")
+                f"background: transparent; padding-right: {scaled_px(4)}px;")
             icon_label.setFixedWidth(px(20))
             icon_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
 
@@ -113,7 +113,7 @@ class Toast(QWidget):
         # ── Body widget ────────────────────────────────────────
         body = QWidget()
         body.setStyleSheet(
-            f"background: {sk.token('panel')}; border: 1px solid {sk.token('border')}; "
+            f"background: {sk.token('panel')}; border: {scaled_px(1)}px solid {sk.token('border')}; "
             f"border-left: none; border-radius: 0 {radius_sm}px {radius_sm}px 0;")
         body_layout = QHBoxLayout(body)
         body_layout.setContentsMargins(px(12), px(10), px(12), px(10))

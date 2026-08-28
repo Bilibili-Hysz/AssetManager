@@ -1,5 +1,4 @@
-"""D4 static gate — local QSS must source colors and font sizes from tokens.
-
+r"""D4 static gate — local QSS must source colors and font sizes from tokens.
 Scanned surface:
     AssetsManager/panels, AssetsManager/widgets, AssetsManager/dialogs,
     AssetsManager/window.py, AssetsManager/window_coordinator.py,
@@ -12,6 +11,10 @@ Enforced rules for QSS-looking string literals / f-strings:
        `font-size: {scaled_pt(12)}px`.
     4. No hex fallback defaults next to theme-token lookups
        (`t.get("danger", "#...")`, `themes.get().get(...)`).
+    5. No unscaled pixel lengths — `\d+px` in the static text of a QSS
+       string / f-string must come from an interpolation such as
+       `{scaled_px(10)}px`. Literal `10px` (plain string or f-string
+       literal part) fails; numbers inside `{...}` interpolations pass.
 
 The only exemptions are the StyleKit generator itself (the single entry)
 and core/ (the token source). Theme preview / tag chip / color picker
@@ -74,6 +77,22 @@ QSS_HINT_RE = re.compile(
     r"margin(?:-[a-z]+)*|min-width|max-width)\s*:\s*",
     re.IGNORECASE,
 )
+# Any `\d+px` in QSS static text must be interpolation-scaled. The
+# lookbehind keeps `12px` from matching as `2px`.
+RAW_PX_RE = re.compile(r"(?<![\w.])(\d+)px")
+# `font-size: ...px` is owned by the dedicated font-size rules; strip
+# those declarations before the pixel-length scan so one literal is not
+# reported under both rules.
+FONT_SIZE_DECL_RE = re.compile(r"font-size\s*:\s*[^;{}]*", re.IGNORECASE)
+
+# Per-file allowances for pixel literals that must follow the pixel grid
+# instead of ui_scale. Keys are repo-relative posix paths, values are the
+# exact literal tokens (e.g. "1px") that stay legal in that file. Empty
+# by default — add an entry only with a design justification.
+_PX_WHITELIST: dict[str, set[str]] = {
+    # Zero-length never scales (scaled_px(0) == 1 would change visuals).
+    "AssetsManager/widgets/workspace_bar.py": {"0px"},
+}
 
 
 @dataclass(frozen=True)
@@ -135,6 +154,19 @@ def _annotate_parents(tree: ast.AST) -> None:
             setattr(child, "_style_parent", node)
 
 
+def _check_px_literals(text: str, path: str, line: int,
+                       violations: list[Violation]) -> None:
+    """Flag literal ``Npx`` in QSS text unless whitelisted for ``path``."""
+    text = FONT_SIZE_DECL_RE.sub(" ", text)
+    allowed = _PX_WHITELIST.get(path, frozenset())
+    for match in RAW_PX_RE.finditer(text):
+        if match.group(0) in allowed:
+            continue
+        violations.append(Violation(
+            path, line, "literal-px-in-qss",
+            text[match.start():match.start() + 40]))
+
+
 def _check_string(text: str, path: str, line: int,
                   violations: list[Violation]) -> None:
     if not text or not QSS_HINT_RE.search(text):
@@ -154,6 +186,7 @@ def _check_string(text: str, path: str, line: int,
         violations.append(Violation(
             path, line, "literal-font-size-in-qss",
             text[match.start():match.start() + 40]))
+    _check_px_literals(text, path, line, violations)
 
 
 def _check_joined_str(node: ast.JoinedStr, source: str, relative: str,
@@ -181,6 +214,11 @@ def _check_joined_str(node: ast.JoinedStr, source: str, relative: str,
         violations.append(Violation(
             relative, line, "literal-font-size-in-qss",
             segment[match.start():match.start() + 40]))
+    # Pixel lengths are checked against the static text only: numbers
+    # inside `{...}` interpolations (e.g. `{scaled_px(10)}px`) are
+    # scaled by construction, and interpolation *expressions* must not
+    # leak into this scan.
+    _check_px_literals(static_text, relative, line, violations)
 
 
 def _check_token_lookup_lines(source_lines: list[str], relative: str,
@@ -215,6 +253,11 @@ def collect_violations(root: Path = ROOT) -> list[Violation]:
         _annotate_parents(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                # Skip f-string static parts — `_check_joined_str` covers
+                # them via the JoinedStr node; visiting them here would
+                # report every f-string finding twice.
+                if isinstance(getattr(node, "_style_parent", None), ast.JoinedStr):
+                    continue
                 if _is_docstring(node):
                     continue
                 _check_string(node.value, relative, node.lineno, violations)

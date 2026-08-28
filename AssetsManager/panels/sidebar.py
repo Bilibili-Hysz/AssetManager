@@ -1101,7 +1101,7 @@ class SidebarPanel(PanelContent):
         font_size = scaled_pt(int(themes.prop("font_size", "sm")))
         self._status_bar.setStyleSheet(
             f"background: transparent; "
-            f"border-top: 1px solid {t['border_subtle']};")
+            f"border-top: {scaled_px(1)}px solid {t['border_subtle']};")
         self._status.setStyleSheet(
             f"color: {t['muted']}; font-size: {font_size}px; background: transparent;")
 
@@ -1136,7 +1136,7 @@ class SidebarPanel(PanelContent):
                 f"QPushButton {{ color: {t['body']}; padding: 0; "
                 f"font-size: {font_size}px; font-weight: bold; "
                 f"background: transparent; border-radius: {radius}px; "
-                f"border: 1px solid {t['border_subtle']}; }}"
+                f"border: {scaled_px(1)}px solid {t['border_subtle']}; }}"
                 f"QPushButton:hover {{ background: {hover}; }}"
                 f"QPushButton:pressed {{ background: {selected}; }}")
 

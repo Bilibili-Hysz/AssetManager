@@ -44,6 +44,7 @@ class InteractMixin:
         _performance_recorder: Any
         _performance_session_token: str | None
         _performance_generation: int | None
+        _a11y_announce_handle: Any | None
         clicked: Any
         double_clicked: Any
         context_menu: Any
@@ -58,6 +59,8 @@ class InteractMixin:
         def cursor(self) -> Any: ...
         def set_scrolling(self, active: bool = True) -> None: ...
         def update_layout(self, item_count: int, widget_width: int, *, relayout_only: bool = False) -> None: ...
+        def _update_a11y_description(self) -> None: ...
+        def _a11y_announce_selection_soon(self) -> None: ...
 
     def _on_anim_changed(self, changed_rows: set[int]) -> None:
         self._request_frame(changed_rows, overlay=True)
@@ -65,19 +68,25 @@ class InteractMixin:
     def selection_model_rows(self) -> set[int]:
         return self._selection.copy()
 
+    def _emit_selection_changed(self) -> None:
+        """Emit selection_changed and keep the a11y baseline in sync."""
+        self.selection_changed.emit()
+        self._update_a11y_description()
+        self._a11y_announce_selection_soon()
+
     def select_all(self):
         old = self._selection.copy()
         self._selection = set(range(self._model_rows))
         self._animator.apply_selection_progress(old)
         if old != self._selection:
-            self.selection_changed.emit()
+            self._emit_selection_changed()
         self._request_frame(self._selection | old, overlay=True)
 
     def clear_selection(self):
         old = self._selection.copy()
         self._selection.clear()
         self._animator.apply_selection_progress(old)
-        self.selection_changed.emit()
+        self._emit_selection_changed()
         self._request_frame(old, overlay=True)
 
     def reduce_motion_enabled(self) -> bool:
@@ -90,7 +99,7 @@ class InteractMixin:
         self._selection = set(rows)
         if old != self._selection:
             self._animator.apply_selection_progress(old)
-            self.selection_changed.emit()
+            self._emit_selection_changed()
             self.update()
 
     def _schedule_once(self, interval_ms: int, callback):
@@ -290,7 +299,7 @@ class InteractMixin:
                             self.clicked.emit(row)
                     self._last_click_row = row
                     self._hover_row = row
-                    self.selection_changed.emit()
+                    self._emit_selection_changed()
                     # Seed selection progress for animation
                     self._animator.apply_selection_progress(old_selection)
                     self._request_frame(self._selection | old_selection, overlay=True)
@@ -302,7 +311,7 @@ class InteractMixin:
                     old_sel = self._selection.copy()
                     self._selection.clear()
                     self._animator.apply_selection_progress(old_sel)
-                self.selection_changed.emit()
+                self._emit_selection_changed()
                 self._request_frame(full=True)
         QWidget.mousePressEvent(cast(QWidget, self), event)
 
@@ -337,7 +346,7 @@ class InteractMixin:
                                 self._animator.setdefault_selection_progress(r, 1.0)
                         self._animator.ensure_running()
                     self._selection = preview_sel
-                    self.selection_changed.emit()
+                    self._emit_selection_changed()
             self._request_frame(full=True)
         elif self._layout:
             # Freeze hover during potential drag (left button held on an item)
@@ -381,7 +390,7 @@ class InteractMixin:
                     for r in final_sel:
                         self._animator.setdefault_selection_progress(r, 0.0)
                     self._animator.ensure_running()
-                self.selection_changed.emit()
+                self._emit_selection_changed()
             self._rubber_band_origin = None
             self._rubber_band_rect = QRect()
             self._request_frame(full=True)
@@ -398,7 +407,7 @@ class InteractMixin:
                 self._selection = {row}
                 self._animator.apply_selection_progress(old_sel)
                 self.clicked.emit(row)
-                self.selection_changed.emit()
+                self._emit_selection_changed()
                 self._request_frame(self._selection | old_sel, overlay=True)
         QWidget.mouseReleaseEvent(cast(QWidget, self), event)
 
@@ -453,7 +462,7 @@ class InteractMixin:
                 else:
                     self._selection.add(self._hover_row)
                 self._last_click_row = self._hover_row
-                self.selection_changed.emit()
+                self._emit_selection_changed()
                 self._request_frame([self._hover_row], overlay=True)
         elif key == Qt.Key.Key_Up:
             self._step_mod_arrow(-cols, mods)
@@ -494,7 +503,7 @@ class InteractMixin:
             self._selection = {new_row}
         self._last_click_row = new_row
         self.scroll_to(new_row)
-        self.selection_changed.emit()
+        self._emit_selection_changed()
         self._request_frame(full=True)
 
     # ── Inline rename ────────────────────────────────────────

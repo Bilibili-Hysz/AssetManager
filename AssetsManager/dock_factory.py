@@ -122,7 +122,7 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
     bar.setProperty("is_custom_title", True)
     bar.setStyleSheet(
         f"background: {themes.header_for_dock()}; "
-        f"border: 1px solid {themes.color('border_subtle')}; "
+        f"border: {scaled_px(1)}px solid {themes.color('border_subtle')}; "
         f"border-top-left-radius: {bar_radius}px; border-top-right-radius: {bar_radius}px; ")
 
     layout = QHBoxLayout(bar)

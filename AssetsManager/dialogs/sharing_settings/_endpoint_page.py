@@ -62,7 +62,7 @@ class EndpointPageMixin:
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         frame = QFrame()
         frame.setStyleSheet(
-            f"QFrame {{ background: {sk.token('panel')}; border: 1px solid {sk.token('border_subtle')}; "
+            f"QFrame {{ background: {sk.token('panel')}; border: {scaled_px(1)}px solid {sk.token('border_subtle')}; "
             f"border-radius: {sk.px(int(sk.prop('border_radius', 'md')))}px; }}")
 
         outer = QVBoxLayout(frame)

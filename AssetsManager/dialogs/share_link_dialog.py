@@ -126,7 +126,7 @@ class ShareLinkDialog(TabbedDialog):
         radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
         self._url_label.setStyleSheet(
             f"padding: {padding_sm}px; background: {self._t['panel']}; "
-            f"border: 1px solid {self._t['border_subtle']}; border-radius: {radius_sm}px;"
+            f"border: {scaled_px(1)}px solid {self._t['border_subtle']}; border-radius: {radius_sm}px;"
         )
         result_layout.addWidget(self._url_label)
 

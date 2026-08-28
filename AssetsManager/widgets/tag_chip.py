@@ -82,10 +82,10 @@ def create_tag_chip(tag: str, on_remove=None, parent=None, color: str | None = N
     )
     chip.setStyleSheet(
         f"QWidget#TagChip {{ background: {background}; "
-        f"border: 1px solid transparent; "
+        f"border: {scaled_px(1)}px solid transparent; "
         f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; }}"
         f"QWidget#TagChip:hover {{ border-color: {label_color}; background: {hover_background}; }}"
-        f"QWidget#TagChip:focus {{ border: 1px solid {label_color}; }}")
+        f"QWidget#TagChip:focus {{ border: {scaled_px(1)}px solid {label_color}; }}")
     layout = QHBoxLayout(chip)
     layout.setContentsMargins(scaled_px(6), scaled_px(2), scaled_px(4), scaled_px(2))
     layout.setSpacing(scaled_px(2))
@@ -112,10 +112,10 @@ def create_tag_chip(tag: str, on_remove=None, parent=None, color: str | None = N
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.setStyleSheet(
             f"QPushButton#TagChipClose {{ color: {label_color}; padding: 0; "
-            f"background: transparent; border: 1px solid transparent; "
+            f"background: transparent; border: {scaled_px(1)}px solid transparent; "
             f"border-radius: {scaled_px(max(2, int(themes.prop('border_radius', 'sm')) // 2))}px; }}"
             f"QPushButton#TagChipClose:hover {{ border-color: {label_color}; }}"
-            f"QPushButton#TagChipClose:focus {{ border: 1px solid {label_color}; "
+            f"QPushButton#TagChipClose:focus {{ border: {scaled_px(1)}px solid {label_color}; "
             f"background: {background}; }}")
         close_btn.setToolTip(f"Remove tag: {tag}")
         close_btn.clicked.connect(lambda checked, tg=tag: on_remove(tg))

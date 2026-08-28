@@ -17,14 +17,14 @@ class SharedUiMixin:
             f"alternate-background-color: {alpha(t['header'], 0.18)}; "
             f"selection-background-color: {alpha(t['accent'], 0.24)}; "
             f"selection-color: {t['heading']}; "
-            f"border: 1px solid {t['border_subtle']}; border-radius: {radius}px; outline: none; }}"
+            f"border: {scaled_px(1)}px solid {t['border_subtle']}; border-radius: {radius}px; outline: none; }}"
             f"QTableWidget::item {{ padding: {scaled_px(5)}px {pad_x}px; border: none; "
-            f"border-bottom: 1px solid {alpha(t['border'], 0.16)}; }}"
+            f"border-bottom: {scaled_px(1)}px solid {alpha(t['border'], 0.16)}; }}"
             f"QTableWidget::item:hover {{ background: {alpha(t['accent'], 0.10)}; }}"
             f"QTableWidget::item:selected {{ background: {alpha(t['accent'], 0.24)}; color: {t['heading']}; }}"
             f"QHeaderView::section {{ background: {t['header']}; color: {t['heading']}; "
             f"padding: {scaled_px(6)}px {pad_x}px; border: none; "
-            f"border-right: 1px solid {alpha(t['border'], 0.24)}; "
+            f"border-right: {scaled_px(1)}px solid {alpha(t['border'], 0.24)}; "
             f"font-weight: bold; }}"
         )
         for table in (

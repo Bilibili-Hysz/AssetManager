@@ -1,0 +1,84 @@
+# Line-ending and binary policy.
+#
+# Context: this checkout runs on Windows with core.autocrlf=true, so the
+# repository stores LF while the working tree is CRLF.  That is a working
+# arrangement -- do NOT force `eol=lf` tree-wide here.  Doing so would make
+# every CRLF file in the working tree show up as modified in one shot and
+# bury real changes under tens of thousands of whitespace-only diffs.
+#
+# What this file actually pins is the part that genuinely matters:
+#   * text/binary classification, so Git never tries to "normalise" a blob
+#     that would be corrupted by it (SQLite in particular);
+#   * the few extensions whose line endings are load-bearing at runtime.
+
+# ── Text sources ────────────────────────────────────────────────────────────
+# `text` (no eol) = store LF in the repository, use the platform-native form
+# in the working tree.  Matches the existing arrangement.
+*.py    text
+*.pyi   text
+*.ts    text
+*.tsx   text
+*.js    text
+*.jsx   text
+*.mjs   text
+*.cjs   text
+*.json  text
+*.md    text
+*.css   text
+*.scss  text
+*.html  text
+*.qss   text
+*.yml   text
+*.yaml  text
+*.toml  text
+*.ini   text
+*.cfg   text
+*.txt   text
+*.spec  text
+
+# SVG is XML, not a binary blob -- keep it normalised and diffable.
+*.svg   text
+
+# ── Extensions where the line ending is load-bearing ────────────────────────
+# Windows PowerShell 5.1 and cmd.exe both require CRLF; an LF-only .ps1 fails
+# to parse on the platform this project targets.
+*.ps1   text eol=crlf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+# Shell scripts must stay LF.  CI runs on ubuntu-latest, where a CRLF shebang
+# line makes the kernel look for `/bin/bash\r` and the script dies instantly.
+# (The project ships no .sh of its own today; this guards future additions and
+# any vendored scripts.)
+*.sh    text eol=lf
+
+# ── Binary -- never convert, never diff ─────────────────────────────────────
+# A line-ending rewrite inside any of these produces a corrupt file, and for
+# SQLite that means an unopenable database rather than a cosmetic diff.
+*.db       binary
+*.db-wal   binary
+*.db-shm   binary
+*.sqlite   binary
+*.sqlite3  binary
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.gif      binary
+*.webp     binary
+*.avif     binary
+*.ico      binary
+*.bmp      binary
+*.ttf      binary
+*.otf      binary
+*.woff     binary
+*.woff2    binary
+*.pyd      binary
+*.so       binary
+*.dylib    binary
+*.dll      binary
+*.exe      binary
+*.bundle   binary
+*.zip      binary
+*.mp4      binary
+*.webm     binary
+*.pdf      binary

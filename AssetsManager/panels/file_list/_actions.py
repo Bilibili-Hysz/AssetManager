@@ -132,8 +132,13 @@ class ActionsMixin:
             self.navigate_to(path)
         else:
             # Files go through the host's double-click handler, so right-click
-            # "Open" behaves exactly like double-click / Enter (model files
-            # route to the embedded previewer there).
+            # "Open" behaves exactly like double-click / Enter.
+            #
+            # (This used to add that model files route to an embedded 3-D
+            # previewer.  That previewer was never landed: webui/previewer-dist/
+            # does not exist, nothing references it, and it was never committed.
+            # See the previewer-dist note in .gitignore and the plan in
+            # docs/archive/2026-08/scratch/_quality_audit_2026_08_17.md.)
             self.file_double_clicked.emit(path)
 
     def _add_plugin_context_items(self, menu, file_path: str):

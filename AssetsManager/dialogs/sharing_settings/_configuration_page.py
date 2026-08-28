@@ -428,18 +428,18 @@ class ConfigurationPageMixin:
         focus_color = t.get("border_focus", t["accent"])
         pressed_bg = alpha(t["accent"], 0.18)
         nav_style = (
-            f"QFrame {{ background: {t['base']}; border: 1px solid {t['border_subtle']}; "
+            f"QFrame {{ background: {t['base']}; border: {scaled_px(1)}px solid {t['border_subtle']}; "
             f"border-radius: {radius}px; }}"
             f"QPushButton {{ text-align: left; background: transparent; color: {t['body']}; border: none; "
             f"border-radius: {radius}px; padding: {pad_y}px {pad_x}px; }}"
             f"QPushButton:hover {{ background: {hover_bg}; }}"
             f"QPushButton:pressed {{ background: {pressed_bg}; }}"
-            f"QPushButton:focus {{ background: {hover_bg}; border: 1px solid {focus_color}; }}"
+            f"QPushButton:focus {{ background: {hover_bg}; border: {scaled_px(1)}px solid {focus_color}; }}"
             f"QPushButton:checked {{ background: {t['accent']}; color: {t['on_accent']}; font-weight: bold; }}"
         )
         self._configuration_nav.setStyleSheet(nav_style)
         self._configuration_summary.setStyleSheet(
-            f"QFrame {{ background: {sk.token('panel')}; border: 1px solid {sk.token('border_subtle')}; "
+            f"QFrame {{ background: {sk.token('panel')}; border: {scaled_px(1)}px solid {sk.token('border_subtle')}; "
             f"border-radius: {radius}px; }}"
         )
 

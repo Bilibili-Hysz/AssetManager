@@ -86,12 +86,24 @@ AssetsManager/core/format_utils.c
 /webui/test-results/
 /webui/playwright-report/
 
-# The previewer build (webui/previewer-dist/) is vendored on purpose: it is
-# produced in a separate workspace, so a fresh clone has no way to rebuild it
-# and GET /previewer/* would 503 without these files.  Only the runtime payload
-# is tracked -- source maps of third-party minified bundles are 6 MB of no
-# diagnostic value here, and the demo models are another 3.5 MB the app never
-# requests.  Both stay on disk locally; this only keeps them out of history.
+# The 3-D model previewer build (webui/previewer-dist/) -- PLANNED, NOT PRESENT.
+#
+# Status verified 2026-08-29:
+#   * the directory does not exist on disk;
+#   * no code references it -- the only hit anywhere in AssetsManager/ or
+#     webui/src/ is a stale comment in panels/file_list/_actions.py;
+#   * it was never committed: `git log --all --name-only | grep -i previewer`
+#     returns nothing, so there is no lost history to recover.
+#
+# The old comment here claimed the build was vendored "on purpose" and that
+# GET /previewer/* would 503 without it.  That described an intent recorded in
+# docs/archive/2026-08/scratch/_quality_audit_2026_08_17.md (which planned a
+# 12.95 MB -> 3.19 MB trim), not the state of the tree.  Do not read it as
+# current -- the previewer never landed.
+#
+# The two rules are kept only so that re-vendoring the build, if the previewer
+# is ever revived, does not require rediscovering which parts to exclude.
+# Delete them together with this comment if the feature is formally dropped.
 /webui/previewer-dist/**/*.map
 /webui/previewer-dist/samples/
 

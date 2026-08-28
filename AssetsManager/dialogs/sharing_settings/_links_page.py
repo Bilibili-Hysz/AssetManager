@@ -160,7 +160,7 @@ class LinksPageMixin:
                 f"padding: {sk.px(int(sk.prop('spacing', 'xs')))}px {sk.px(int(sk.prop('spacing', 'sm')))}px; }}"
                 f"QPushButton:hover {{ background: {alpha(sk.token('accent'), 0.87)}; }}"
                 f"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.18)}; }}"
-                f"QPushButton:focus {{ border: 1px solid {sk.token('border_focus', sk.token('accent'))}; }}")
+                f"QPushButton:focus {{ border: {scaled_px(1)}px solid {sk.token('border_focus', sk.token('accent'))}; }}")
             copy_btn.clicked.connect(lambda checked, idx=i: self._copy_table_share_link(idx))
             actions_layout.addWidget(copy_btn)
 
@@ -174,7 +174,7 @@ class LinksPageMixin:
                 f"padding: {sk.px(int(sk.prop('spacing', 'xs')))}px {sk.px(int(sk.prop('spacing', 'sm')))}px; }}"
                 f"QPushButton:hover {{ background: {alpha(sk.token('danger'), 0.87)}; }}"
                 f"QPushButton:pressed {{ background: {alpha(sk.token('danger'), 0.18)}; }}"
-                f"QPushButton:focus {{ border: 1px solid {sk.token('border_focus', sk.token('danger'))}; }}")
+                f"QPushButton:focus {{ border: {scaled_px(1)}px solid {sk.token('border_focus', sk.token('danger'))}; }}")
             delete_btn.clicked.connect(lambda checked, idx=i: self._delete_share_link(idx))
             actions_layout.addWidget(delete_btn)
 

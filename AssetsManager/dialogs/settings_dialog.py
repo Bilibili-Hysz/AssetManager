@@ -121,7 +121,7 @@ class SettingsDialog(TabbedDialog):
         swatch.setFixedSize(scaled_px(12), scaled_px(12))
         radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
         swatch.setStyleSheet(
-            f"background: {accent}; border: 1px solid {accent}; border-radius: {radius_sm}px;")
+            f"background: {accent}; border: {scaled_px(1)}px solid {accent}; border-radius: {radius_sm}px;")
         row_l.addWidget(swatch)
         rb = QRadioButton(name)
         rb.setMinimumHeight(scaled_px(24))

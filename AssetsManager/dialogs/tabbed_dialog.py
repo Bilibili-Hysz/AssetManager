@@ -143,7 +143,7 @@ class _CollapsibleSection(QWidget):
         fs_sm = scaled_pt(int(themes.prop("font_size", "sm")))
         self._header.setStyleSheet(
             f"QPushButton {{ text-align: left; font-weight: bold; font-size: {fs_sm}px; "
-            f"color: {t['heading']}; background: {bg}; border: 1px solid {t['border']}40; "
+            f"color: {t['heading']}; background: {bg}; border: {scaled_px(1)}px solid {t['border']}40; "
             f"border-radius: {radius}px; padding: {pad_x}px {pad_y}px; }}"
             f"QPushButton:hover {{ background: {hover_bg}; }}"
             f"QPushButton:focus {{ background: {hover_bg}; "
@@ -639,18 +639,18 @@ class TabbedDialog(QDialog):
         hover_bg = sk._alpha('accent', 0.85)
         pressed_bg = sk._darker('accent', 115)
         return (f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('on_accent')}; "
-                f"border: 1px solid transparent; "
+                f"border: {scaled_px(1)}px solid transparent; "
                 f"border-radius: {shape['radius']}px; padding: {shape['pad_y']}px {shape['pad_x']}px; "
                 f"font-size: {shape['font']}px; font-weight: bold; }}"
                 f"QPushButton:hover {{ background: {hover_bg}; }}"
                 f"QPushButton:pressed {{ background: {pressed_bg}; }}"
-                f"QPushButton:focus {{ border: 1px solid {focus_color}; }}")
+                f"QPushButton:focus {{ border: {scaled_px(1)}px solid {focus_color}; }}")
 
     def status_style(self, active):
         sk = self._sk
         px = sk.px
         c = sk.token('accent') if active else sk.token('muted')
-        return (f"QFrame {{ background: {sk._alpha(c, 0.13)}; border: 1px solid {sk._alpha(c, 0.38)}; "
+        return (f"QFrame {{ background: {sk._alpha(c, 0.13)}; border: {scaled_px(1)}px solid {sk._alpha(c, 0.38)}; "
                 f"border-radius: {px(int(sk.prop('border_radius', 'sm', 8)))}px; "
                 f"padding: {px(int(sk.prop('spacing', 'sm', 8)))}px; }}")
 
@@ -665,9 +665,9 @@ class TabbedDialog(QDialog):
             base, hover_bg, pressed_bg = (
                 sk.token('accent'), sk._alpha('accent', 0.85), sk._darker('accent', 115))
         return (f"QPushButton {{ background: {base}; color: {sk.token('on_accent')}; "
-                f"border: 1px solid transparent; "
+                f"border: {scaled_px(1)}px solid transparent; "
                 f"border-radius: {shape['radius']}px; padding: {shape['pad_y']}px {shape['pad_x']}px; "
                 f"font-size: {shape['font']}px; font-weight: bold; }}"
                 f"QPushButton:hover {{ background: {hover_bg}; }}"
                 f"QPushButton:pressed {{ background: {pressed_bg}; }}"
-                f"QPushButton:focus {{ border: 1px solid {focus_color}; }}")
+                f"QPushButton:focus {{ border: {scaled_px(1)}px solid {focus_color}; }}")

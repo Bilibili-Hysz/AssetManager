@@ -98,14 +98,14 @@ class WorkspaceBar(QTabBar):
         font_caption = scaled_pt(themes.font_size("caption"))
         self._renamer_style = (
             f"QLineEdit {{ background: {t['panel']}; color: {t['heading']}; "
-            f"border: 1px solid {alpha(t['accent'], 0.627)}; border-radius: {radius_sm}px; "
+            f"border: {scaled_px(1)}px solid {alpha(t['accent'], 0.627)}; border-radius: {radius_sm}px; "
             f"padding: {scaled_px(2)}px {scaled_px(6)}px; font-size: {font_caption}px; selection-background-color: {alpha(t['accent'], 0.50)}; }}"
         )
         self.setStyleSheet(
             f"QTabBar {{ background: transparent; }}"
             f"QTabBar::tab {{ "
             f"  background: transparent; color: {t['muted']}; "
-            f"  border: 1px solid transparent; "
+            f"  border: {scaled_px(1)}px solid transparent; "
             f"  border-top-left-radius: {radius_md}px; border-top-right-radius: {radius_md}px; "
             f"  padding: {scaled_px(2)}px {spacing_sm}px; margin-right: {scaled_px(1)}px; "
             f"  font-size: {font_caption}px; min-width: {scaled_px(22)}px; max-width: {scaled_px(140)}px;"
@@ -113,18 +113,18 @@ class WorkspaceBar(QTabBar):
             f"QTabBar::tab:selected {{ "
             f"  color: {t['heading']}; "
             f"  background: {alpha(t['accent'], 0.25)}; "
-            f"  border: 1px solid {alpha(t['accent'], 0.50)}; "
-            f"  border-bottom: 2px solid {t['accent']};"
+            f"  border: {scaled_px(1)}px solid {alpha(t['accent'], 0.50)}; "
+            f"  border-bottom: {scaled_px(2)}px solid {t['accent']};"
             f"}} "
             f"QTabBar::tab:hover:!selected {{ "
             f"  color: {t['body']}; "
             f"  background: {hover}; "
-            f"  border: 1px solid {t['border_subtle']}; "
+            f"  border: {scaled_px(1)}px solid {t['border_subtle']}; "
             f"}} "
             f"QTabBar::tab:pressed:!selected {{ "
             f"  color: {t['heading']}; "
             f"  background: {pressed}; "
-            f"  border: 1px solid {t['border_subtle']}; "
+            f"  border: {scaled_px(1)}px solid {t['border_subtle']}; "
             f"}} "
             f"QTabBar::close-button {{ "
             f"  background: transparent;"
@@ -378,11 +378,11 @@ class WorkspaceSection(QWidget):
         self._add_btn.setIconSize(QSize(scaled_px(12), scaled_px(12)))
         self._add_btn.setStyleSheet(
             f"QPushButton {{ background: {alpha(t['accent'], 0.753)}; color: {t['heading']}; "
-            f"border: 1px solid {t['accent']}; border-radius: {radius_md}px; }} "
+            f"border: {scaled_px(1)}px solid {t['accent']}; border-radius: {radius_md}px; }} "
             f"QPushButton:hover {{ background: {t['accent']}; color: {t['on_accent']}; "
-            f"border: 1px solid {t['accent']}; }} "
+            f"border: {scaled_px(1)}px solid {t['accent']}; }} "
             f"QPushButton:pressed {{ background: {pressed}; color: {t['on_accent']}; "
-            f"border: 1px solid {t['accent']}; }} ")
+            f"border: {scaled_px(1)}px solid {t['accent']}; }} ")
         self._tabs._apply_style()
 
     def add_library(self, path: str):

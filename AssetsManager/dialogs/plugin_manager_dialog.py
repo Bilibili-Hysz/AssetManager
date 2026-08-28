@@ -105,7 +105,7 @@ class PluginCard(QFrame):
             f"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; color: {t['muted']}; background: transparent; border: none;")
         self._version_label.setStyleSheet(
             f"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; color: {t['muted']}; background: {t['header']}; "
-            f"border: 1px solid {t.get('border_subtle', alpha(t['border'], 0.5))}; border-radius: {br_sm}px; "
+            f"border: {scaled_px(1)}px solid {t.get('border_subtle', alpha(t['border'], 0.5))}; border-radius: {br_sm}px; "
             f"padding: {sp_xs}px {scaled_px(int(themes.prop('spacing', 'sm')))}px;")
         self._toggle.setFixedSize(scaled_px(44), scaled_px(24))
         self._update_dot()
@@ -141,12 +141,12 @@ class PluginCard(QFrame):
         hover_bg = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
         if self._selected:
             self.setStyleSheet(
-                f"PluginCard {{ background: {alpha(t['accent'], 0.13)}; border: 1px solid {t['accent']}; "
+                f"PluginCard {{ background: {alpha(t['accent'], 0.13)}; border: {scaled_px(1)}px solid {t['accent']}; "
                 f"border-radius: {br_md}px; }}"
             )
         else:
             self.setStyleSheet(
-                f"PluginCard {{ background: {t['panel']}; border: 1px solid {border_subtle}; "
+                f"PluginCard {{ background: {t['panel']}; border: {scaled_px(1)}px solid {border_subtle}; "
                 f"border-radius: {br_md}px; }}"
                 f"PluginCard:hover {{ border-color: {alpha(t['accent'], 0.5)}; background: {hover_bg}; }}"
             )
@@ -255,7 +255,7 @@ class PluginDetailPanel(QWidget):
         danger = t["danger"]
         self._diag_label.setStyleSheet(
             f"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; color: {danger}; background: {alpha(danger, 0.08)}; "
-            f"border: 1px solid {alpha(danger, 0.19)}; border-radius: {br_sm}px; padding: {sp_sm}px;")
+            f"border: {scaled_px(1)}px solid {alpha(danger, 0.19)}; border-radius: {br_sm}px; padding: {sp_sm}px;")
         self._toggle_btn.setStyleSheet(
             sk.button_css("primary", font_size_key="sm",
                           padding_y=sp_sm, padding_x=sp_lg))

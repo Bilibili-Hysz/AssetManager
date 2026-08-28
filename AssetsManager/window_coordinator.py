@@ -76,12 +76,12 @@ class WindowCoordinator:
         w._menu_widget.setStyleSheet(f"background: {t['header']};")
         w._menu_bar.setStyleSheet(
             f"QMenuBar {{ background: transparent; color: {t['heading']}; "
-            f"border: none; padding: 2px {spacing_sm}px; font-size: {font_sm}px; }}"
-            f"QMenuBar::item {{ padding: {spacing_xs}px 10px; border-radius: {radius_sm}px; }}"
+            f"border: none; padding: {scaled_px(2)}px {spacing_sm}px; font-size: {font_sm}px; }}"
+            f"QMenuBar::item {{ padding: {spacing_xs}px {scaled_px(10)}px; border-radius: {radius_sm}px; }}"
             f"QMenuBar::item:selected {{ background: {hover}; }}"
             f"QMenu {{ background: {t['panel']}; color: {t['heading']}; "
-            f"border: 1px solid {t['border']}; border-radius: {radius_md}px; padding: {spacing_xs}px; }}"
-            f"QMenu::item {{ padding: 5px 28px 5px 12px; border-radius: {radius_sm}px; }}"
+            f"border: {scaled_px(1)}px solid {t['border']}; border-radius: {radius_md}px; padding: {spacing_xs}px; }}"
+            f"QMenu::item {{ padding: {scaled_px(5)}px {scaled_px(28)}px {scaled_px(5)}px {scaled_px(12)}px; border-radius: {radius_sm}px; }}"
             f"QMenu::item:selected {{ background: {t['accent']}; color: {t['on_accent']}; }}"
             f"QMenu::item:pressed {{ background: {pressed}; color: {t['on_accent']}; }}"
         )

@@ -357,7 +357,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
                 if bar and bar.property("is_custom_title"):
                     bar.setStyleSheet(
                         f"background: {themes.header_for_dock()}; "
-                        f"border: 1px solid {themes.get()['border']}; "
+                        f"border: {scaled_px(1)}px solid {themes.get()['border']}; "
                         f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
             except RuntimeError:
                 # L10: the dock was deleted while the theme change propagated.

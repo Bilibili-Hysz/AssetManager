@@ -95,7 +95,7 @@ class ColorPickerDialog(QDialog):
         self._preview.setFixedSize(scaled_px(32), scaled_px(32))
         radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
         self._preview.setStyleSheet(
-            f"background: {self._color.name()}; border: 1px solid {themes.color('border')}; border-radius: {radius_sm}px;"
+            f"background: {self._color.name()}; border: {scaled_px(1)}px solid {themes.color('border')}; border-radius: {radius_sm}px;"
         )
         hex_row.addWidget(self._preview)
         hex_row.addStretch()
@@ -203,7 +203,7 @@ class ColorPickerDialog(QDialog):
             self._hex_input.setText(self._color.name())
             # Preview
             self._preview.setStyleSheet(
-                f"background: {self._color.name()}; border: 1px solid {themes.color('border')}; border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px;"
+                f"background: {self._color.name()}; border: {scaled_px(1)}px solid {themes.color('border')}; border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px;"
             )
         finally:
             self._updating = False
