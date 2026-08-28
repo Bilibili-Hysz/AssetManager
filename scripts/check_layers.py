@@ -82,6 +82,19 @@ ALLOWED_EDGES: dict[str, set[str]] = {
 # controller -> panel edges.  The registry is now empty.
 ALLOWED_EXCEPTIONS: set[tuple[str, str, str]] = set()
 
+# Shared-kernel refinement for the ``domain -> core`` edge: the whole-layer
+# edge is a deliberate compromise, but domain purity ("zero Qt") must not
+# rely on convention alone.  core ships Qt-coupled modules (library_lock,
+# icons, signal_bus, workers, timers, theme_loader, bg_effects), so domain
+# may only import the Qt-free shared kernel listed below.
+DOMAIN_CORE_SHARED_KERNEL: frozenset[str] = frozenset(
+    {
+        "AssetsManager.core.constants",
+        "AssetsManager.core.event_contracts",
+        "AssetsManager.core.format_utils",
+    }
+)
+
 TOP_LEVEL_LAYER = "presentation_top"
 
 
@@ -91,12 +104,16 @@ class Violation:
     imported: str
     source_layer: str
     imported_layer: str
+    detail: str | None = None
 
     def describe(self) -> str:
-        return (
+        text = (
             f"{self.source} ({self.source_layer}) imports "
             f"{self.imported} ({self.imported_layer})"
         )
+        if self.detail:
+            text += f": {self.detail}"
+        return text
 
 
 def _layer_for(module: str) -> str | None:
@@ -149,6 +166,13 @@ def _is_exception(source: str, imported: str) -> bool:
     )
 
 
+def _is_shared_kernel_import(imported: str) -> bool:
+    return any(
+        imported == module or imported.startswith(module + ".")
+        for module in DOMAIN_CORE_SHARED_KERNEL
+    )
+
+
 def collect_violations() -> list[Violation]:
     violations: list[Violation] = []
     for path in sorted(SRC.rglob("*.py")):
@@ -167,6 +191,25 @@ def collect_violations() -> list[Violation]:
             if imported_layer not in ALLOWED_EDGES[source_layer]:
                 violations.append(
                     Violation(source, imported, source_layer, imported_layer)
+                )
+            elif (
+                source_layer == "domain"
+                and imported_layer == "core"
+                and not _is_shared_kernel_import(imported)
+            ):
+                violations.append(
+                    Violation(
+                        source,
+                        imported,
+                        source_layer,
+                        imported_layer,
+                        detail=(
+                            "domain -> core is restricted to the shared kernel "
+                            f"{sorted(DOMAIN_CORE_SHARED_KERNEL)}; the rest of "
+                            "core carries Qt dependencies that domain purity "
+                            "forbids"
+                        ),
+                    )
                 )
     return violations
 

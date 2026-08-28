@@ -80,6 +80,17 @@ def count_module_files(directory: pathlib.Path) -> int:
     return sum(1 for p in directory.glob("*.py") if p.name != "__init__.py")
 
 
+def count_repository_modules(directory: pathlib.Path) -> int:
+    # "N 个 SQL 仓库" counts actual repository modules; underscore-prefixed
+    # shared helpers in the package (e.g. repositories/_common.py) are not
+    # repositories and must not inflate the stat.
+    return sum(
+        1
+        for p in directory.glob("*.py")
+        if p.name != "__init__.py" and not p.name.startswith("_")
+    )
+
+
 def count_domain_events() -> int:
     src = EVENTS.read_text(encoding="utf-8")
     return len(re.findall(r"^class \w+\(DomainEvent\):", src, flags=re.MULTILINE))
@@ -128,7 +139,7 @@ def measured() -> dict[str, str]:
         "stores": str(parts["stores"]),
         # code-derived numbers
         "schema_version": str(schema_version()),
-        "repos": str(count_module_files(REPOSITORIES)),
+        "repos": str(count_repository_modules(REPOSITORIES)),
         "routes_modules": str(count_module_files(LAN_ROUTES)),
         "app_services": str(count_module_files(APPLICATION)),
         "themes": str(count_files("*.json", THEMES)),

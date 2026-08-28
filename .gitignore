@@ -122,3 +122,6 @@ AssetsManager/core/format_utils.c
 # package subdirectories stay tracked.
 /*_files.txt
 /_*
+
+# One-off maintenance/repair loops (e.g. audit-manifest fixups); never tracked.
+scripts/_tmp_*.py
