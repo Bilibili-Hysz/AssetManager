@@ -281,7 +281,8 @@ class TagTreePanel(PanelContent):
         reply = QMessageBox.question(
             self, tr("tagtree.dialog.delete"),
             tr("tagtree.dialog.delete_msg", tag=tag, count=len(files)),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
         if reply != QMessageBox.StandardButton.Yes:
             return
         if self._controller:

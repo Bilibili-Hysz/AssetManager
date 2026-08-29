@@ -1161,7 +1161,8 @@ class SettingsDialog(TabbedDialog):
         reply = QMessageBox.question(
             self, tr("settings.thumb_clear_title"),
             tr("settings.thumb_clear_msg"),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
         if reply != QMessageBox.StandardButton.Yes:
             return
         parent = self.parent()
@@ -1216,7 +1217,8 @@ class SettingsDialog(TabbedDialog):
         reply = QMessageBox.question(
             self, tr("settings.thumb_regenerate_title"),
             tr("settings.thumb_regenerate_msg"),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
         if reply != QMessageBox.StandardButton.Yes:
             return
         parent = self.parent()

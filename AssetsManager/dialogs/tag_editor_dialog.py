@@ -257,7 +257,8 @@ class TagEditorDialog(TabbedDialog):
         reply = QMessageBox.question(
             self, tr("tageditor.delete_unused"),
             tr("tageditor.delete_unused_msg", count=len(unused), names=names),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
         if reply != QMessageBox.StandardButton.Yes:
             return
         self._del_unused_btn.setEnabled(False)

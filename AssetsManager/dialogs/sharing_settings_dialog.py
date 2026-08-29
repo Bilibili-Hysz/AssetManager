@@ -783,7 +783,8 @@ class SharingSettingsDialog(
         reply = QMessageBox.question(
             self, tr("sharemgr.msg.delete_title"),
             tr("sharemgr.msg.confirm_delete").format(path=share.get('paths', [tr("sharemgr.fallback.unknown")])[0]),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
@@ -814,7 +815,8 @@ class SharingSettingsDialog(
         reply = QMessageBox.question(
             self, tr("sharemgr.msg.delete_title"),
             tr("sharing.links.delete_confirm").format(count=count),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
             return

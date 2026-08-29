@@ -404,7 +404,8 @@ class ActionsMixin:
         if len(paths) > 10:
             names += f"\n  ... and {len(paths) - 10} more"
         if QMessageBox.question(cast(QWidget, self), tr("filelist.dialog.move_trash"), tr("filelist.dialog.move_trash_msg", names=names),
-                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                 QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
         session, service, _undo_service, lib_root = mutation
         path_list = [str(Path(path).resolve()) for path in paths]
