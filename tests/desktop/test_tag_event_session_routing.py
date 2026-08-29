@@ -98,7 +98,9 @@ class _FakeRuntimeRouter:
 
 def _fake_runtime(token, epoch):
     session = SimpleNamespace(root_str="/library", event_token=token)
-    services = SimpleNamespace(session=session, tag_service=Mock())
+    # undo_service: required by TagTreePanel.set_scoped_services since the
+    # tag-delete undo-stack wiring (ed68f7e).
+    services = SimpleNamespace(session=session, tag_service=Mock(), undo_service=Mock())
     router = _FakeRuntimeRouter()
     runtime = SimpleNamespace(
         session=session,
