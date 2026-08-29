@@ -37,6 +37,8 @@ jobs:
         run: python scripts/check_frontend_data_fetch.py
       - name: Verify Web design tokens are generated from theme JSON
         run: python scripts/gen_web_tokens.py --check
+      - name: Verify WebUI CSS token references resolve to definitions
+        run: python scripts/check_web_token_usage.py
       - name: Verify layer import DAG
         run: python scripts/check_layers.py
       - name: Verify README structural counts match the source tree

@@ -31,12 +31,12 @@ export default function AdminPage() {  const { t } = useI18n();
   ];
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--color-surface)' }}>
+    <div className="min-h-screen" style={{ background: 'var(--color-bg)' }}>
       <header
         className="flex items-center justify-between px-6 py-4"
-        style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-panel)' }}
+        style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)' }}
       >
-        <h1 className="text-xl font-bold" style={{ color: 'var(--color-heading)' }}>
+        <h1 className="text-xl font-bold" style={{ color: 'var(--color-text)' }}>
           {t('admin.title')}
         </h1>
         <Link
@@ -52,9 +52,9 @@ export default function AdminPage() {  const { t } = useI18n();
           <section
             key={section.title}
             className="rounded-lg p-4"
-            style={{ background: 'var(--color-panel)', border: '1px solid var(--color-border)' }}
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
           >
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted)' }}>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-muted)' }}>
               {section.title}
             </h2>
             {section.node}

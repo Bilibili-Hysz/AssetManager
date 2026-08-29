@@ -117,6 +117,13 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: check-web-token-usage
+        name: WebUI CSS token references resolve to definitions
+        entry: python scripts/check_web_token_usage.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
   # ── WebUI: before push ────────────────────────────────────────────────────
   # Skipped automatically when webui/node_modules is absent, so this file
   # stays usable on a Python-only checkout.

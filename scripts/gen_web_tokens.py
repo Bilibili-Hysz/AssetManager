@@ -68,6 +68,24 @@ ALPHA_MAP: dict[str, tuple[str, float]] = {
     "--color-warning-subtle": ("warning", 0.10),
     "--color-danger-subtle": ("danger", 0.10),
     "--color-danger-border": ("danger", 0.30),
+    # Muted surface for image placeholders / secondary wells (seller gallery
+    # editor, storefront cart lines). Derived from disabled_bg at ~55% over
+    # --color-surface so it stays a subtle step down from the panel in both
+    # themes while --color-text-secondary keeps >=8:1 contrast on the
+    # composited result (dark ~#161823, light ~#f0ebe2).
+    "--color-surface-muted": ("disabled_bg", 0.55),
+}
+
+# Scrim tokens the generator owns outright. An overlay is a *covering*
+# semantic (dimming the page behind Modal / mobile-drawer / command-palette
+# scrims), not a panel color, so it deliberately does not come from the theme
+# JSONs — the desktop palettes have no such key. Both values sit in the
+# deepest archive-background ink family (cf. DESIGN.md --gate-bg-deepest
+# #07070d); the light theme uses a lower alpha so warm surfaces stay readable
+# behind a dialog instead of turning into a heavy gray wash.
+OVERLAY_INK: dict[bool, tuple[str, float]] = {
+    False: ("#07070d", 0.62),  # dark theme
+    True: ("#14141e", 0.42),  # light theme
 }
 
 
@@ -93,6 +111,8 @@ def _render_block(colors: dict[str, str], light: bool) -> str:
     lines = ["html.light {" if light else ":root {"]
     for css_var, color_key in COLOR_MAP.items():
         lines.append(f"  {css_var}: {colors[color_key]};")
+    ink, alpha = OVERLAY_INK[light]
+    lines.append(f"  --color-overlay: {_rgba(ink, alpha)};")
     for css_var, (color_key, alpha) in ALPHA_MAP.items():
         lines.append(f"  {css_var}: {_rgba(colors[color_key], alpha)};")
     lines.append(f"  color-scheme: {'light' if light else 'dark'};")

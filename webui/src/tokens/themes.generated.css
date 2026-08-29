@@ -29,12 +29,14 @@
   --input-bg: #1a1d28;
   --input-border: #5f6695;
   --input-focus-border: #5b7cf0;
+  --color-overlay: rgba(7, 7, 13, 0.62);
   --color-accent-subtle: rgba(91, 124, 240, 0.10);
   --color-accent-border: rgba(91, 124, 240, 0.30);
   --color-success-subtle: rgba(80, 216, 144, 0.10);
   --color-warning-subtle: rgba(245, 176, 64, 0.10);
   --color-danger-subtle: rgba(240, 96, 96, 0.10);
   --color-danger-border: rgba(240, 96, 96, 0.30);
+  --color-surface-muted: rgba(18, 20, 30, 0.55);
   color-scheme: dark;
 }
 
@@ -66,11 +68,13 @@ html.light {
   --input-bg: #faf8f4;
   --input-border: #a18e68;
   --input-focus-border: #4a70b0;
+  --color-overlay: rgba(20, 20, 30, 0.42);
   --color-accent-subtle: rgba(74, 112, 176, 0.10);
   --color-accent-border: rgba(74, 112, 176, 0.30);
   --color-success-subtle: rgba(42, 144, 88, 0.10);
   --color-warning-subtle: rgba(192, 120, 32, 0.10);
   --color-danger-subtle: rgba(184, 56, 56, 0.10);
   --color-danger-border: rgba(184, 56, 56, 0.30);
+  --color-surface-muted: rgba(232, 224, 212, 0.55);
   color-scheme: light;
 }
