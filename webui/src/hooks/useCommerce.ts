@@ -7,6 +7,7 @@ import { createShopApi, type ShopApi } from '../api/shop';
 import type { QueryKey } from '../cache/queryCache';
 import type {
   ShopCatalogQuery, ShopCatalogResponse, ShopItem, ShopItemsResponse, ShopOrder, ShopStats,
+  ShopSellerDeliveryQuota,
 } from '../types/api';
 import type { StorefrontOrder, StorefrontProduct, StorefrontStats } from '../components/storefront/types';
 
@@ -296,4 +297,23 @@ export function useSellerCommerceOrders() {
   const { sellerApi } = useSellerAuth();
 
   return useCommerceOrdersState(shopApi, sellerApi.buildUrl, ['shop-orders', 'seller']);
+}
+
+/**
+ * Seller-side delivery-token quota (GET shop/quota). Fetched through the
+ * dedicated seller session client with a seller-scoped cache key; `quota` is
+ * undefined while loading, after a failure, and on backends that omit the
+ * optional aggregate — callers hide the quota surface in those cases.
+ */
+export function useSellerDeliveryQuota(): { quota: ShopSellerDeliveryQuota | undefined; loading: boolean; refresh: () => void } {
+  const shopApi = useSellerShopApi();
+  const { data, isLoading, refresh } = useCachedQuery<ShopSellerDeliveryQuota>({
+    key: ['shop-quota', 'seller'],
+    queryFn: async signal => (await shopApi.sellerQuota(signal)).quota,
+    domains: ['quota'],
+  });
+  return useMemo(
+    () => ({ quota: data, loading: isLoading, refresh }),
+    [data, isLoading, refresh],
+  );
 }

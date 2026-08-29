@@ -21,6 +21,7 @@ import type {
   ShopWishlistResponse,
   ShopBuyerMergeResponse,
   ReceiptRecoveryResponse,
+  ShopSellerDeliveryQuotaResponse,
 } from '../types/api';
 
 export function createShopApi(api: ApiClient) {
@@ -139,6 +140,9 @@ export function createShopApi(api: ApiClient) {
     revokeOrder: (id: string | number) =>
       api.post<{ order: ShopOrder }>(`shop/order/${encodeURIComponent(id)}/revoke`),
     getStats: (signal?: AbortSignal) => api.get<{ stats: ShopStats }>('shop/stats', undefined, signal),
+    /** Seller-only aggregate delivery quota; hides the feature while disabled. */
+    sellerQuota: (signal?: AbortSignal) =>
+      api.get<ShopSellerDeliveryQuotaResponse>('shop/quota', undefined, signal),
     exportOrdersUrl: (status?: string) =>
       api.buildUrl(`shop/orders/export${status ? `?status=${encodeURIComponent(status)}` : ''}`),
 

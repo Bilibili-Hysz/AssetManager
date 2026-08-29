@@ -2,9 +2,9 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import SellerDashboardPage from './SellerDashboardPage';
+import SellerDashboardPage, { deliveryQuotaBarColor, deliveryQuotaRatio } from './SellerDashboardPage';
 
-const { catalogState, orderState } = vi.hoisted(() => ({
+const { catalogState, orderState, quotaState } = vi.hoisted(() => ({
   catalogState: {
     products: [] as Array<{ id: string; name: string; price: number; imageUrl: string; status?: 'active' | 'draft' | 'archived' }>,
   },
@@ -12,11 +12,17 @@ const { catalogState, orderState } = vi.hoisted(() => ({
     orders: [] as Array<{ id: string; productName: string; amount: number; currency?: string; status: 'paid' | 'pending' | 'refunded' | 'failed'; createdAt: string }>,
     stats: { revenue: 0, orders: 0, products: 0, views: undefined as number | undefined },
   },
+  quotaState: {
+    quota: undefined as
+      | { enabled: boolean; used: number; limit: number; delivery_tokens: number; download_limit: number; downloads_used: number; downloads_remaining: number; period: string; remaining: number; reset_at: number | null; min_interval_seconds: number }
+      | undefined,
+  },
 }));
 
 vi.mock('../hooks/useCommerce', () => ({
   useSellerCommerceCatalog: () => ({ ...catalogState, loading: false, error: null, refresh: vi.fn() }),
   useSellerCommerceOrders: () => ({ ...orderState, loading: false, refresh: vi.fn() }),
+  useSellerDeliveryQuota: () => ({ quota: quotaState.quota, loading: false, refresh: vi.fn() }),
 }));
 vi.mock('../components/storefront/StorefrontShell', () => ({
   StorefrontShell: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -45,6 +51,7 @@ vi.mock('../hooks/useI18n', () => ({
       'seller.orders': 'Orders',
       'seller.active_products': 'Active products',
       'seller.store_views': 'Store views',
+      'seller.delivery_quota': 'Delivery quota',
       'seller.analytics_unavailable': 'Not tracked by the current backend.',
       'seller.recent_products': 'Recent products',
       'seller.recent_activity': 'Recent activity',
@@ -65,6 +72,7 @@ afterEach(() => cleanup());
 describe('SellerDashboardPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    quotaState.quota = undefined;
     catalogState.products = [
       { id: 'product-1', name: 'First asset', price: 12.5, imageUrl: '', status: 'active' },
       { id: 'product-2', name: 'Second asset', price: 8, imageUrl: '', status: 'draft' },
@@ -127,6 +135,40 @@ describe('SellerDashboardPage', () => {
     expect(screen.getByText('—').getAttribute('title')).toBe('Not tracked by the current backend.');
   });
 
+  it('renders the delivery quota card with used/limit and a progress bar when quota is enabled', () => {
+    quotaState.quota = {
+      enabled: true, used: 12, limit: 20, delivery_tokens: 3, download_limit: 20,
+      downloads_used: 12, downloads_remaining: 8, period: 'daily', remaining: 8,
+      reset_at: null, min_interval_seconds: 0,
+    };
+    render(<MemoryRouter><SellerDashboardPage /></MemoryRouter>);
+
+    expect(screen.getByText('Delivery quota')).toBeDefined();
+    expect(screen.getByText('12 / 20')).toBeDefined();
+    const bar = screen.getByRole('progressbar', { name: 'Delivery quota' });
+    expect(bar.getAttribute('aria-valuemax')).toBe('20');
+    expect(bar.getAttribute('aria-valuenow')).toBe('12');
+    const fill = bar.firstElementChild as HTMLElement | null;
+    expect(fill?.style.width).toBe('60%');
+  });
+
+  it('hides the delivery quota card when the quota is disabled or unavailable', () => {
+    quotaState.quota = {
+      enabled: false, used: 0, limit: 0, delivery_tokens: 0, download_limit: 0,
+      downloads_used: 0, downloads_remaining: 0, period: 'daily', remaining: 0,
+      reset_at: null, min_interval_seconds: 0,
+    };
+    render(<MemoryRouter><SellerDashboardPage /></MemoryRouter>);
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(screen.queryByText('Delivery quota')).toBeNull();
+
+    cleanup();
+    quotaState.quota = undefined;
+    render(<MemoryRouter><SellerDashboardPage /></MemoryRouter>);
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(screen.queryByText('Delivery quota')).toBeNull();
+  });
+
   it('renders empty states for a catalog and activity feed with no data', () => {
     catalogState.products = [];
     orderState.orders = [];
@@ -138,5 +180,15 @@ describe('SellerDashboardPage', () => {
     expect(screen.getByText('Add your first product to start building your storefront.')).toBeDefined();
     expect(screen.getByText('No recent activity yet.')).toBeDefined();
     expect(screen.getAllByRole('link', { name: 'Add product' }).length).toBe(2);
+  });
+
+  it('colors the quota bar with semantic tokens as usage approaches the limit', () => {
+    expect(deliveryQuotaRatio(12, 20)).toBeCloseTo(0.6);
+    expect(deliveryQuotaRatio(0, 0)).toBe(0);
+    expect(deliveryQuotaRatio(5, 0)).toBe(0);
+    expect(deliveryQuotaRatio(30, 20)).toBe(1);
+    expect(deliveryQuotaBarColor(0.5)).toBe('var(--color-accent)');
+    expect(deliveryQuotaBarColor(0.8)).toBe('var(--color-warning)');
+    expect(deliveryQuotaBarColor(0.95)).toBe('var(--color-danger)');
   });
 });

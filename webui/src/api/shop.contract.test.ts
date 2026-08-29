@@ -152,6 +152,15 @@ describe('shop API contract', () => {
     expect(api.post).toHaveBeenCalledWith('shop/delivery/42/claim', { claim: 'claim-code-123' });
   });
 
+  it('requests the seller delivery quota from the seller-only route', () => {
+    const { shop, api } = setup();
+    const signal = new AbortController().signal;
+    shop.sellerQuota(signal);
+    shop.sellerQuota();
+    expect(api.get).toHaveBeenNthCalledWith(1, 'shop/quota', undefined, signal);
+    expect(api.get).toHaveBeenNthCalledWith(2, 'shop/quota', undefined, undefined);
+  });
+
   it('maps seller order mutations and buyer order creation to the documented routes', () => {
     const { shop, api } = setup();
     shop.createOrder('item-1');

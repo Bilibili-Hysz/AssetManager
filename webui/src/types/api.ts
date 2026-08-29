@@ -625,6 +625,30 @@ export interface ShopStats {
   revoked_orders?: number;
 }
 
+/**
+ * Seller-side delivery-token quota (GET shop/quota). `enabled` mirrors the
+ * backend's optional-quota contract and is false while the store has no
+ * active delivery tokens; `used`/`limit` are the display aggregate
+ * (downloads_used / download_limit) with `remaining` precomputed.
+ */
+export interface ShopSellerDeliveryQuota {
+  delivery_tokens: number;
+  download_limit: number;
+  downloads_used: number;
+  downloads_remaining: number;
+  enabled: boolean;
+  period: string;
+  limit: number;
+  used: number;
+  remaining: number;
+  reset_at: number | null;
+  min_interval_seconds: number;
+}
+
+export interface ShopSellerDeliveryQuotaResponse {
+  quota: ShopSellerDeliveryQuota;
+}
+
 /** Safe delivery-only state returned after resolving a bearer delivery token. */
 export interface DeliveryOrder {
   order_id: number;
