@@ -103,6 +103,9 @@ const zh: I18nDict = {
     bulk_tag_removed: '已从 {0} 项移除标签',
     bulk_tag_partial: '{0} 项成功，{1} 项失败',
     bulk_tag_close: '关闭',
+    search_partial: '结果可能不完整：仅扫描了部分来源',
+    search_partial_dropped: '结果可能不完整：已丢弃 {0} 条匹配',
+    search_degraded: '结果可能不完整：已降级为仅按名称匹配',
   },
   breadcrumb: {
     navigation: '工作区导航',

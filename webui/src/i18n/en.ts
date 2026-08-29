@@ -101,6 +101,9 @@ const en = {
     bulk_tag_removed: 'Tag removed from {0} items',
     bulk_tag_partial: '{0} succeeded, {1} failed',
     bulk_tag_close: 'Close',
+    search_partial: 'Results may be incomplete: some sources were skipped',
+    search_partial_dropped: 'Results may be incomplete: {0} matches were dropped',
+    search_degraded: 'Results may be incomplete: search fell back to name matching',
   },
   breadcrumb: {
     navigation: 'Workspace navigation',

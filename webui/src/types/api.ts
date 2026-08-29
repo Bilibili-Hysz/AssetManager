@@ -260,9 +260,27 @@ export interface SearchResult {
   thumbnail_url?: string;
 }
 
+/** Per-source outcome, present when the request opted in via include_status=1. */
+export interface SearchSourceStatus {
+  source: string;
+  status: string;
+  result_count: number;
+  dropped_count: number;
+  error_count: number;
+}
+
 export interface SearchResponse {
   results: SearchResult[];
   count: number;
+  /**
+   * Aggregate outcome ('partial' | 'degraded' | 'complete' | ...), only sent
+   * when the request carries include_status=1.
+   */
+  status?: string;
+  sources?: SearchSourceStatus[];
+  errors?: Array<{ code: string; source: string; recoverable: boolean }>;
+  dropped_count?: number;
+  fallback_used?: boolean;
 }
 
 export type BrowsableItem = SearchResult & Partial<Pick<ProjectItem, 'size' | 'size_fmt' | 'modified' | 'tags'>> & {

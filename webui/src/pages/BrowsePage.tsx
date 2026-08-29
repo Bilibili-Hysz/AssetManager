@@ -179,6 +179,13 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   // partial), matching how the pre-cache flow stored these results.
   const tagResults: BrowsableItem[] | null = activeTag !== null ? (tagData?.results ?? null) : null;
   const tagLoading = activeTag !== null && tagFetching;
+  // Truncation visibility: with include_status=1 the backend reports 'partial'
+  // (some sources hit their scan limits) or 'degraded' (fell back to name
+  // matching). Surface both so a truncated result list is never mistaken for
+  // the complete set.
+  const tagSearchStatus = tagData?.status;
+  const showTagSearchNotice = activeTag !== null
+    && (tagSearchStatus === 'partial' || tagSearchStatus === 'degraded');
 
   // Tag-search failure policy (see tagSearchFailureHandlingRef).
   useEffect(() => {
@@ -701,6 +708,16 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
            </button>
          </div>
        )}
+
+      {showTagSearchNotice && (
+        <div role="status" data-testid="tag-search-notice" className="mx-4 mt-1 px-3 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          {tagSearchStatus === 'degraded'
+            ? t('browse.search_degraded')
+            : tagData?.dropped_count
+              ? t('browse.search_partial_dropped', tagData.dropped_count)
+              : t('browse.search_partial')}
+        </div>
+      )}
 
       <FileToolbar
         sort={sort}

@@ -23,16 +23,22 @@ describe('metadata API contract', () => {
     expect(get).toHaveBeenCalledWith('meta/assets%2Fhero%20icon.png', undefined, signal);
   });
 
-  it('search sends q, tags and category as query params', () => {
+  it('search sends q, tags and category as query params and opts into the status payload', () => {
     const { api, get } = setup();
     api.search('猫', 'hero', 'image');
-    expect(get).toHaveBeenCalledWith('search', { q: '猫', tags: 'hero', category: 'image' }, undefined);
+    expect(get).toHaveBeenCalledWith('search', { q: '猫', tags: 'hero', category: 'image', include_status: 1 }, undefined);
   });
 
   it('search keeps tags/category keys when omitted (client drops empties)', () => {
     const { api, get } = setup();
     api.search('猫');
-    expect(get).toHaveBeenCalledWith('search', { q: '猫', tags: undefined, category: undefined }, undefined);
+    expect(get).toHaveBeenCalledWith('search', { q: '猫', tags: undefined, category: undefined, include_status: 1 }, undefined);
+  });
+
+  it('search can opt out of the truncation status payload', () => {
+    const { api, get } = setup();
+    api.search('猫', undefined, undefined, undefined, false);
+    expect(get).toHaveBeenCalledWith('search', { q: '猫', tags: undefined, category: undefined, include_status: undefined }, undefined);
   });
 
   it('getTree gets tree without params', () => {

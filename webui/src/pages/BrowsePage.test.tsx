@@ -239,6 +239,42 @@ describe('BrowsePage', () => {
     expect(screen.getByTestId('inspected-technical-fields').textContent).toBe('{}');
   });
 
+  it('flags a partial tag search and reports the dropped match count', async () => {
+    search.mockResolvedValueOnce({
+      results: [{ path: 'tagged/item', name: 'item', type: 'file', extension: '', category: 'other' }],
+      status: 'partial',
+      dropped_count: 12,
+    });
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filter tag' }));
+
+    await waitFor(() => expect(screen.getByTestId('file-list').textContent).toBe('item'));
+    expect(screen.getByTestId('tag-search-notice').textContent).toBe('browse.search_partial_dropped');
+  });
+
+  it('flags a degraded tag search that fell back to name matching', async () => {
+    search.mockResolvedValueOnce({
+      results: [{ path: 'tagged/item', name: 'item', type: 'file', extension: '', category: 'other' }],
+      status: 'degraded',
+    });
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filter tag' }));
+
+    await waitFor(() => expect(screen.getByTestId('file-list').textContent).toBe('item'));
+    expect(screen.getByTestId('tag-search-notice').textContent).toBe('browse.search_degraded');
+  });
+
+  it('shows no truncation notice for an unmarked tag search', async () => {
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filter tag' }));
+
+    await waitFor(() => expect(screen.getByTestId('file-list').textContent).toBe('item'));
+    expect(screen.queryByTestId('tag-search-notice')).toBeNull();
+  });
+
   it('downloads exactly the selected items', async () => {
     const { useMediaQuery } = await import('../hooks/useMediaQuery');
     vi.mocked(useMediaQuery).mockReturnValue(true);

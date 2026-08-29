@@ -103,6 +103,9 @@ const ja: I18nDict = {
     bulk_tag_removed: '{0} 件からタグを削除しました',
     bulk_tag_partial: '{0} 件成功、{1} 件失敗',
     bulk_tag_close: '閉じる',
+    search_partial: '結果が不完全な可能性があります：一部のソースのみスキャンされました',
+    search_partial_dropped: '結果が不完全な可能性があります：{0} 件の一致がスキップされました',
+    search_degraded: '結果が不完全な可能性があります：名前一致のみにフォールバックしました',
   },
   breadcrumb: {
     navigation: 'ワークスペースナビゲーション',
