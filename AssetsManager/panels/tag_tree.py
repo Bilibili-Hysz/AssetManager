@@ -343,6 +343,7 @@ class TagTreePanel(PanelContent):
         self._library_root = services.session.root_str
         self._tags_port = services.tag_service
         self._controller = TagTreeController(self._library_root, tag_svc=self._tags_port)
+        self._controller.set_undo_service(services.undo_service)
         if self._active_tag_filter and old_root != self._library_root:
             self._active_tag_filter = None
         if runtime is not None:
@@ -385,6 +386,7 @@ class TagTreePanel(PanelContent):
             and scoped.session.root_str == root
         ):
             self._controller = TagTreeController(root, tag_svc=self._tags_port)
+            self._controller.set_undo_service(scoped.undo_service)
         else:
             self._controller = None
         self._active_tag_filter = None

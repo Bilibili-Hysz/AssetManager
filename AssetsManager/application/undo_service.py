@@ -12,7 +12,7 @@ from collections import deque
 from dataclasses import dataclass, replace
 from pathlib import Path
 from time import perf_counter, time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 from AssetsManager.application.context import session_operation
 from AssetsManager.application.file_operation_service import acquire_path_locks
@@ -38,6 +38,12 @@ class UndoEntry:
     # The entry still moves to the redo stack; the flag keeps the outcome
     # from being recorded as a fully clean success.
     degraded: bool = False
+    # Optional hook for NON-file-system operations (tags, metadata, ...).
+    # When set, _execute_reverse/_execute_forward delegate to it instead of
+    # file_operations, so database-level mutations share the same undo stack
+    # as file ops and Ctrl+Z undoes the tag change rather than jumping to an
+    # unrelated earlier file operation.  ``callback(is_undo)`` returns success.
+    callback: Callable[[bool], bool] | None = None
 
 
 class UndoService:
@@ -268,6 +274,24 @@ class UndoService:
         """Record a rename operation for undo."""
         entry = UndoEntry(type="rename", old=old_path, new=new_path)
         self._push_undo(entry)
+
+    @session_operation
+    def record_custom(
+        self,
+        entry_type: str,
+        callback: Callable[[bool], bool],
+        **fields: Any,
+    ) -> None:
+        """Record a NON-file-system operation (tags, metadata, ...) for undo.
+
+        ``callback(is_undo)`` performs the reverse (is_undo=True) or forward
+        (is_undo=False) action and returns success.  Lets controllers whose
+        mutations are database-level share the same undo stack as file
+        operations — so Ctrl+Z undoes the tag change instead of jumping to
+        an unrelated earlier file operation.  ``**fields`` are copied onto
+        the entry (e.g. ``path=tag``) for display/debugging.
+        """
+        self._push_undo(UndoEntry(type=entry_type, callback=callback, **fields))
 
     @session_operation
     def record_delete(self, path: str) -> bool:
@@ -550,6 +574,8 @@ class UndoService:
     def _execute_reverse(self, file_operations, entry: UndoEntry,
                          library_root: str | Path | None) -> bool:
         try:
+            if entry.callback is not None:
+                return self._run_callback(entry, True)
             if entry.type == "rename":
                 if os.path.lexists(entry.old):
                     self._mark_failed(entry)
@@ -589,6 +615,8 @@ class UndoService:
     def _execute_forward(self, file_operations, entry: UndoEntry,
                          library_root: str | Path | None) -> bool:
         try:
+            if entry.callback is not None:
+                return self._run_callback(entry, False)
             if entry.type == "rename":
                 if os.path.lexists(entry.new):
                     self._mark_failed(entry)
@@ -614,6 +642,15 @@ class UndoService:
         except (OSError, ValueError):
             self._mark_failed(entry)
         return False
+
+    def _run_callback(self, entry: UndoEntry, is_undo: bool) -> bool:
+        """Run a non-file-system undo/redo hook, mapping failures to failed."""
+        try:
+            return bool(entry.callback(is_undo))
+        except Exception:
+            _log.exception("Undo/redo callback failed for %s", entry.type)
+            self._mark_failed(entry)
+            return False
 
     def _mark_failed(self, entry: UndoEntry) -> None:
         with self._lock:

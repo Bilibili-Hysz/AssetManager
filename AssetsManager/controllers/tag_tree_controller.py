@@ -20,6 +20,13 @@ class TagTreeController:
     def __init__(self, library_root: str, tag_svc: TagService | None = None):
         self._library_root = library_root
         self._tag_svc = tag_svc or TagService()
+        # Injected by the panel (like file_list_controller.set_file_operations).
+        # When set, tag deletions are recorded on the shared undo stack.
+        self._undo_svc: Any = None
+
+    def set_undo_service(self, undo_svc) -> None:
+        """Inject the shared UndoService so tag mutations become undoable."""
+        self._undo_svc = undo_svc
 
     @property
     def library_root(self) -> str:
@@ -129,10 +136,37 @@ class TagTreeController:
             library.remove_canonical(old_tag)
 
     def delete_tag(self, tag: str) -> int:
-        """Delete a tag from all files. Returns number of affected files."""
+        """Delete a tag from all files. Returns number of affected files.
+
+        When an UndoService is injected, the deletion is recorded on the
+        shared undo stack: Ctrl+Z restores the tag and its file links
+        instead of jumping to an unrelated earlier file operation.
+        """
         files = list(self._tag_svc.get_files_by_tag(self._library_root, tag))
         self._tag_svc.delete_tag(self._library_root, tag)
-        get_library().remove_canonical(tag)
+        library = get_library()
+        canonical = library.canonical(tag)
+        library.remove_canonical(tag)
+
+        if files and self._undo_svc is not None:
+            root = self._library_root
+            svc = self._tag_svc
+
+            def _restore(is_undo: bool) -> bool:
+                try:
+                    if is_undo:
+                        for fp in files:
+                            svc.add_tag(root, fp, tag)
+                        get_library().register_tag(canonical)
+                    else:
+                        svc.delete_tag(root, tag)
+                        get_library().remove_canonical(tag)
+                    return True
+                except Exception:
+                    return False
+
+            self._undo_svc.record_custom("tag_delete", _restore, path=tag)
+
         return len(files)
 
     def remove_tag_from_file(self, filepath: str, tag: str) -> None:
