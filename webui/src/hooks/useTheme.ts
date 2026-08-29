@@ -16,6 +16,16 @@ function isTheme(value: string | null): value is Theme {
   return value === 'dark' || value === 'light';
 }
 
+/**
+ * The visitor's explicit mode preference ('dark' | 'light'), or null when
+ * running in auto mode (no stored preference — 'auto' also reads as null).
+ * Exported for useServerTheme, which must distinguish explicit overrides
+ * from the system-preference fallback.
+ */
+export function readStoredThemePreference(): Theme | null {
+  return readStoredTheme();
+}
+
 function readStoredTheme(): Theme | null {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -40,7 +50,9 @@ function resolveTheme(): Theme {
     : 'light';
 }
 
-function applyDocumentTheme(theme: Theme): void {
+/** Exported for useServerTheme: the identity hook re-applies the mode class
+ * after this (same commit, later effect) when it follows the owner theme. */
+export function applyDocumentTheme(theme: Theme): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   root.classList.toggle('dark', theme === 'dark');

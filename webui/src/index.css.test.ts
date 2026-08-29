@@ -46,4 +46,15 @@ describe('light theme surface contract', () => {
     expect(lightOverrides).toContain('var(--color-text)');
     expect(lightOverrides).toContain('var(--color-border)');
   });
+
+  it('keeps owning --color-accent-text per mode (never the theme palettes)', () => {
+    // Follow-the-owner identity blocks (themes.generated.css) define
+    // --color-accent etc.; the contrast-safe TEXT accent must stay a
+    // per-light/dark-mode override owned here, or 11px accent text regresses
+    // below 4.5:1 on light owner palettes.
+    const generated = readFileSync(new URL('./tokens/themes.generated.css', import.meta.url), 'utf8');
+    expect(generated).not.toContain('--color-accent-text');
+    expect(css).toContain('  --color-accent-text: #8296f2;');
+    expect(css).toContain('  --color-accent-text: #3f639f;');
+  });
 });

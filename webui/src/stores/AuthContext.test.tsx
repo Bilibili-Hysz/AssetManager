@@ -7,7 +7,7 @@ import type { Capabilities, ServerInfo } from '../types/api';
 
 const info: ServerInfo = {
   version: '1', share_name: 'share', library_root: '/library', auth_enabled: true,
-  auth_mode: 'user', theme_color: '#000', welcome_msg: '', footer_text: '',
+  auth_mode: 'user', theme_color: '#000', theme_name: 'Navy', welcome_msg: '', footer_text: '',
   library_stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' },
 };
 const getInfo = vi.fn().mockResolvedValue(info);

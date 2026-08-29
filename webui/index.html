@@ -6,8 +6,9 @@
     <script>
       // Apply the persisted theme before first paint to avoid a dark/light FOUC.
       // Mirrors webui/src/hooks/useTheme.ts (storage keys, values, and the
-      // system preference fallback). The `lang` attribute is managed by JS via
-      // webui/src/i18n/index.ts (setLang), so the HTML default stays "en".
+      // system preference fallback) and useServerTheme.ts (am_server_theme,
+      // the follow-the-owner identity). The `lang` attribute is managed by JS
+      // via webui/src/i18n/index.ts (setLang), so the HTML default stays "en".
       (function () {
         var theme = null;
         try {
@@ -18,7 +19,28 @@
         } catch (e) {
           theme = null;
         }
-        if (theme !== 'dark' && theme !== 'light') {
+        var explicit = theme === 'dark' || theme === 'light';
+        // Follow-the-owner pre-paint (A1): without an explicit visitor
+        // preference, reuse the last server-reported owner theme so the
+        // first paint already carries the library's palette identity.
+        // /api/info corrects (or drops) the attribute once loaded.
+        if (!explicit) {
+          var remembered = null;
+          try {
+            remembered = JSON.parse(localStorage.getItem('am_server_theme') || 'null');
+          } catch (e) {
+            remembered = null;
+          }
+          if (
+            remembered && typeof remembered.slug === 'string'
+            && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(remembered.slug)
+          ) {
+            document.documentElement.setAttribute('data-am-theme', remembered.slug);
+            document.documentElement.classList.add(remembered.dark === false ? 'light' : 'dark');
+            return;
+          }
+        }
+        if (!explicit) {
           theme = (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
         }
         document.documentElement.classList.add(theme === 'light' ? 'light' : 'dark');

@@ -29,6 +29,11 @@ async function mockApis(page: Page, options: { authEnabled?: boolean } = {}) {
     // DEFAULT_LAN_THEME_COLOR. Text usages bind to the contrast-safe
     // --color-accent-text token, so any server accent stays decorative.
     theme_color: '#5b7ff5',
+    // Shipped dark default theme (Assets/Themes/D_Navy.json "name"): drives
+    // the follow-the-owner identity. Dark scans exercise the data-am-theme
+    // path; light scans exercise the explicit-light fallback (owner theme is
+    // dark -> L_Dawn + theme_color accent).
+    theme_name: 'Navy',
     welcome_msg: '',
     footer_text: '',
     feature_flags: { commerce: true, seller: true, quota: true },

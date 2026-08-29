@@ -7,6 +7,7 @@ import { SellerAuthProvider } from './stores/SellerAuthContext';
 import { ToastProvider } from './components/ui/Toast';
 import { DownloadProgressProvider } from './components/ui/DownloadProgress';
 import { useApiDegradationToast } from './hooks/useApiDegradationToast';
+import { useServerTheme } from './hooks/useServerTheme';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -107,19 +108,33 @@ function decodeRouteValue(value: string): string {
 }
 
 /**
- * Applies the server-declared accent color once /api/info is known.
- * Lives *inside* AuthProvider (App itself is outside it and must not call
- * useAuthContext — createContext(null) would throw).
+ * Applies the follow-the-owner theme identity and the server-declared accent
+ * color once /api/info is known. Lives *inside* AuthProvider (App itself is
+ * outside it and must not call useAuthContext — createContext(null) would
+ * throw).
+ *
+ * Coordination: with a matched owner theme (data-am-theme set) the generated
+ * palette block owns --color-accent, so the inline theme_color override is
+ * removed — inline styles outrank every stylesheet rule and would otherwise
+ * flatten the owner palette. theme_color stays the accent fallback whenever
+ * no identity block applies (unknown/absent theme_name, or the visitor's
+ * explicit light/dark toggle leaving the owner theme's mode).
  */
 function AppAccentSync() {
   const { serverInfo } = useAuthContext();
+  const identity = useServerTheme(serverInfo?.theme_name ?? null);
   useEffect(() => {
     const accent = serverInfo?.theme_color;
-    if (!accent) return;
     const root = document.documentElement;
+    if (identity.slug) {
+      root.style.removeProperty('--color-accent');
+      root.style.removeProperty('--color-accent-hover');
+      return;
+    }
+    if (!accent) return;
     root.style.setProperty('--color-accent', accent);
     root.style.setProperty('--color-accent-hover', accent);
-  }, [serverInfo?.theme_color]);
+  }, [serverInfo?.theme_color, identity.slug]);
   return null;
 }
 

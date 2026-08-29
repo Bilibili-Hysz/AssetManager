@@ -45,6 +45,10 @@ export interface ServerInfo {
   auth_enabled: boolean;
   auth_mode: 'none' | 'password' | 'key' | 'user';
   theme_color: string;
+  /** Owner's current desktop theme display name (core.themes.name()); ""
+   * when the theme subsystem is unavailable. Maps onto THEMES in
+   * tokens/themes.manifest.generated.ts -> data-am-theme identity. */
+  theme_name: string;
   welcome_msg: string;
   footer_text: string;
   library_stats: {

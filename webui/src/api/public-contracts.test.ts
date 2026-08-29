@@ -63,6 +63,9 @@ describe('LAN public DTO contracts', () => {
     expect(info).not.toHaveProperty('total_artworks');
     expect(info.library_stats).toEqual({ total_projects: 0, total_size: 0, total_size_fmt: '0 B' });
     expect(info.feature_flags).toEqual({ commerce: false, seller: false, quota: false });
+    // Follow-the-owner identity (A1): theme_name is part of the locked
+    // envelope and must stay declared on ServerInfo for the reverse direction.
+    expect(info.theme_name).toBe('Navy');
   });
 
   it('anchors the shop item shape to the backend _public_item golden', () => {
