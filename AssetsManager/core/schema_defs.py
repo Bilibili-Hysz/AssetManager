@@ -1275,6 +1275,22 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
         },
         "checks": ("CHECK (length(trim(token_digest)) = 64)",),
     },
+    # v36: physical tag partitions reserved for non-human sources. Both
+    # mirror the ``file_tags`` baseline shape (file_path, tag composite PK
+    # plus a ``tag`` index) so AI/plugin writers stay isolated from the
+    # human-curated catalog in ``file_tags``.
+    "ai_asset_tags": {
+        "columns": ("file_path", "tag"),
+        "primary_key": ("file_path", "tag"),
+        "unique_constraints": (),
+        "indexes": {"idx_ai_asset_tags_tag": ("tag",)},
+    },
+    "plugin_derived_fields": {
+        "columns": ("file_path", "tag"),
+        "primary_key": ("file_path", "tag"),
+        "unique_constraints": (),
+        "indexes": {"idx_plugin_derived_fields_tag": ("tag",)},
+    },
     **AUTH_SHARE_SCHEMA_CONTRACT,
 }
 

@@ -425,7 +425,7 @@ def test_project_service_delegates_file_meta_cache_to_repository() -> None:
 
 def test_tag_service_delegates_tag_counts_to_repository() -> None:
     source = (SRC / "application" / "tag_service.py").read_text(encoding="utf-8")
-    assert "repo.list_tags_with_counts()" in source
+    assert "repo.list_tags_with_counts(" in source
     assert "conn.execute(" not in source
 
 

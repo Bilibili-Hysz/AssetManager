@@ -57,6 +57,7 @@ _EXPECTED_HISTORY = (
     (33, "thumbnail_render_profile"),
     (34, "import_manifest_recovery_lease"),
     (35, "file_count_mtime_snapshot"),
+    (36, "tag_source_partition"),
 )
 
 

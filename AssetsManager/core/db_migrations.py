@@ -44,7 +44,7 @@ from AssetsManager.core.schema_defs import (
 )
 
 
-CURRENT_SCHEMA_VERSION = 35
+CURRENT_SCHEMA_VERSION = 36
 _BASELINE_SCHEMA_CONTRACT = {
     "file_tags": {
         "columns": ("file_path", "tag"),
@@ -1079,6 +1079,40 @@ def _add_file_count_mtime_schema_v35(conn: sqlite3.Connection) -> None:
     validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
 
 
+def _add_tag_source_partition_v36(conn: sqlite3.Connection) -> None:
+    """Reserve physical tag partitions for future non-human tag sources.
+
+    ``file_tags`` keeps its historical role as the human-curated tag table.
+    ``ai_asset_tags`` and ``plugin_derived_fields`` mirror its exact shape
+    (including a per-table ``tag`` index mirroring ``idx_file_tags_tag``) so
+    future AI/plugin writers get physical isolation from the human catalog.
+    The step only creates empty tables — no rows move, so running it on a
+    fresh or already-migrated database is a no-op.
+    """
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS ai_asset_tags ("
+        "file_path TEXT NOT NULL, "
+        "tag       TEXT NOT NULL, "
+        "PRIMARY KEY (file_path, tag)"
+        ")"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ai_asset_tags_tag ON ai_asset_tags(tag)"
+    )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS plugin_derived_fields ("
+        "file_path TEXT NOT NULL, "
+        "tag       TEXT NOT NULL, "
+        "PRIMARY KEY (file_path, tag)"
+        ")"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_plugin_derived_fields_tag "
+        "ON plugin_derived_fields(tag)"
+    )
+    validate_schema_objects(conn, ("ai_asset_tags", "plugin_derived_fields"))
+
+
 def _add_thumbnail_cache_lifecycle_schema_v32(conn: sqlite3.Connection) -> None:
     """Persist precise source timing and artifact kind for cache lifecycle work."""
     table = "thumbnail_cache"
@@ -1157,6 +1191,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(33, "thumbnail_render_profile", _add_thumbnail_render_profile_schema_v33),
     Migration(34, "import_manifest_recovery_lease", _add_import_manifest_recovery_lease_schema_v34),
     Migration(35, "file_count_mtime_snapshot", _add_file_count_mtime_schema_v35),
+    Migration(36, "tag_source_partition", _add_tag_source_partition_v36),
 )
 
 

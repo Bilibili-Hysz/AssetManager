@@ -1,4 +1,4 @@
-"""Tag repository — CRUD operations for the file_tags table."""
+"""Tag repository — CRUD operations for the physical tag tables."""
 from __future__ import annotations
 
 import threading
@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
 from sqlite3 import Connection
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Literal, TypeVar
 
 from AssetsManager.core.database import DatabaseManager, db_write_lock, locked_read
 from AssetsManager.core.path_resolver import (
@@ -21,6 +21,32 @@ from AssetsManager.core.session_contract import require_library_session
 from AssetsManager.domain.errors import DuplicateError
 
 _R = TypeVar("_R")
+
+# Tag provenance partitions. ``file_tags`` remains the human-curated catalog;
+# ``ai_asset_tags`` / ``plugin_derived_fields`` (migration v36) are physical
+# mirrors reserved for future AI/plugin writers so non-human rows can never
+# leak into human tag queries.
+TagSource = Literal["human", "ai", "plugin"]
+
+_SOURCE_TABLES: dict[str, str] = {
+    "human": "file_tags",
+    "ai": "ai_asset_tags",
+    "plugin": "plugin_derived_fields",
+}
+
+
+def _tag_table(source: str) -> str:
+    """Resolve a tag source to its physical table name.
+
+    SQLite cannot bind table names as SQL parameters, so ``source`` must be
+    routed through this controlled whitelist before its result is
+    interpolated into a statement. Unknown sources are rejected instead of
+    silently falling back to ``file_tags``.
+    """
+    try:
+        return _SOURCE_TABLES[source]
+    except (KeyError, TypeError):
+        raise ValueError(f"unknown tag source: {source!r}") from None
 
 
 def _repository_operation(method: Callable[..., _R]) -> Callable[..., _R]:
@@ -242,21 +268,24 @@ class TagRepository:
 
     @_repository_operation
     @locked_read
-    def get_tags(self, file_path: str) -> list[str]:
+    def get_tags(self, file_path: str, *, source: TagSource = "human") -> list[str]:
         """Return all tags for a file path, sorted alphabetically."""
         file_path = self._path_key(file_path)
         rows = self._conn.execute(
-            "SELECT tag FROM file_tags WHERE file_path=? ORDER BY tag",
+            f"SELECT tag FROM {_tag_table(source)} WHERE file_path=? ORDER BY tag",
             (file_path,),
         ).fetchall()
         return [r[0] for r in rows]
 
     @_repository_operation
     @locked_read
-    def list_tags_with_counts(self) -> list[dict[str, int | str]]:
+    def list_tags_with_counts(
+        self, *, source: TagSource = "human"
+    ) -> list[dict[str, int | str]]:
         """Return all tags with their usage counts, sorted by tag."""
         rows = self._conn.execute(
-            "SELECT tag, COUNT(*) as cnt FROM file_tags GROUP BY tag ORDER BY tag"
+            f"SELECT tag, COUNT(*) as cnt FROM {_tag_table(source)} "
+            "GROUP BY tag ORDER BY tag"
         ).fetchall()
         return [{"name": row[0], "count": row[1]} for row in rows]
 
@@ -292,19 +321,21 @@ class TagRepository:
 
     @_repository_operation
     @locked_read
-    def get_all_tags(self) -> list[str]:
+    def get_all_tags(self, *, source: TagSource = "human") -> list[str]:
         """Return all unique tags across all files."""
         rows = self._conn.execute(
-            "SELECT DISTINCT tag FROM file_tags ORDER BY tag"
+            f"SELECT DISTINCT tag FROM {_tag_table(source)} ORDER BY tag"
         ).fetchall()
         return [r[0] for r in rows]
 
     @_repository_operation
     @locked_read
-    def get_files_by_tag(self, tag: str) -> list[str]:
+    def get_files_by_tag(
+        self, tag: str, *, source: TagSource = "human"
+    ) -> list[str]:
         """Return all file paths that have a given tag."""
         rows = self._conn.execute(
-            "SELECT file_path FROM file_tags WHERE tag=?",
+            f"SELECT file_path FROM {_tag_table(source)} WHERE tag=?",
             (tag,),
         ).fetchall()
         return [r[0] for r in rows]
@@ -362,15 +393,18 @@ class TagRepository:
 
     @_repository_operation
     def add_tag(
-        self, file_path: str, tag: str, *, commit: bool = True,
+        self, file_path: str, tag: str, *,
+        source: TagSource = "human",
+        commit: bool = True,
         require_clean_transaction: bool = False,
     ) -> bool:
         """Add a tag; duplicate rows remain an idempotent successful no-op."""
         file_path = self._path_key(file_path)
+        table = _tag_table(source)
 
         def insert() -> None:
             self._conn.execute(
-                "INSERT OR IGNORE INTO file_tags (file_path, tag) VALUES (?, ?)",
+                f"INSERT OR IGNORE INTO {table} (file_path, tag) VALUES (?, ?)",
                 (file_path, tag),
             )
 
@@ -386,15 +420,18 @@ class TagRepository:
 
     @_repository_operation
     def remove_tag(
-        self, file_path: str, tag: str, *, commit: bool = True,
+        self, file_path: str, tag: str, *,
+        source: TagSource = "human",
+        commit: bool = True,
         require_clean_transaction: bool = False,
     ) -> bool:
         """Remove a tag; missing rows remain an idempotent successful no-op."""
         file_path = self._path_key(file_path)
+        table = _tag_table(source)
 
         def remove() -> None:
             self._conn.execute(
-                "DELETE FROM file_tags WHERE file_path=? AND tag=?",
+                f"DELETE FROM {table} WHERE file_path=? AND tag=?",
                 (file_path, tag),
             )
 

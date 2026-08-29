@@ -182,7 +182,7 @@ def test_file_count_mtime_migrates_v34_database_and_is_idempotent(memory_db, mon
     finally:
         monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", original_version)
 
-    assert db_migrations.migrate(memory_db) == 35
+    assert db_migrations.migrate(memory_db) == db_migrations.CURRENT_SCHEMA_VERSION
     columns = {row[1] for row in memory_db.execute("PRAGMA table_info('file_meta')")}
     assert "cached_file_count_mtime" in columns
     assert memory_db.execute(
@@ -191,7 +191,7 @@ def test_file_count_mtime_migrates_v34_database_and_is_idempotent(memory_db, mon
     assert memory_db.execute(
         "SELECT name FROM schema_migrations WHERE version=35"
     ).fetchone() == ("file_count_mtime_snapshot",)
-    assert db_migrations.migrate(memory_db) == 35
+    assert db_migrations.migrate(memory_db) == db_migrations.CURRENT_SCHEMA_VERSION
 
 
 def test_thumbnail_cache_lifecycle_schema_is_present_after_migration(memory_db):
@@ -1326,3 +1326,84 @@ def test_v28_upgrade_revalidates_users_contract(memory_db, monkeypatch):
 
     with pytest.raises(InvalidSchemaError, match="users"):
         db_migrations.migrate(conn)
+
+
+def test_v36_creates_tag_source_partition_tables(memory_db):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import (
+        CURRENT_SCHEMA_VERSION,
+        current_version,
+        migrate,
+    )
+    from AssetsManager.core.schema_defs import validate_schema_objects
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
+    assert current_version(conn) == 36
+    assert conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=36"
+    ).fetchone() == ("tag_source_partition",)
+
+    # Both partitions mirror the file_tags shape and satisfy the contract.
+    validate_schema_objects(conn, ("ai_asset_tags", "plugin_derived_fields"))
+    assert {row[1] for row in conn.execute("PRAGMA index_list('ai_asset_tags')")} >= {
+        "idx_ai_asset_tags_tag"
+    }
+    assert {
+        row[1] for row in conn.execute("PRAGMA index_list('plugin_derived_fields')")
+    } >= {"idx_plugin_derived_fields_tag"}
+
+
+def test_v35_database_with_human_tag_rows_upgrades_to_v36_untouched(memory_db, monkeypatch):
+    from AssetsManager.core import database, db_migrations
+    from AssetsManager.core.schema_defs import validate_schema_objects
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    original_version = db_migrations.CURRENT_SCHEMA_VERSION
+    try:
+        monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 35)
+        assert db_migrations.migrate(conn) == 35
+    finally:
+        monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", original_version)
+
+    conn.execute(
+        "INSERT INTO file_tags (file_path, tag) VALUES ('/lib/asset.txt', 'hero')"
+    )
+    conn.commit()
+
+    assert db_migrations.migrate(conn) == 36
+    # Human rows survive byte-identical; the new partitions start empty.
+    assert conn.execute(
+        "SELECT file_path, tag FROM file_tags"
+    ).fetchall() == [("/lib/asset.txt", "hero")]
+    assert conn.execute("SELECT COUNT(*) FROM ai_asset_tags").fetchone() == (0,)
+    assert conn.execute("SELECT COUNT(*) FROM plugin_derived_fields").fetchone() == (0,)
+    validate_schema_objects(conn, ("ai_asset_tags", "plugin_derived_fields"))
+
+
+def test_v36_tag_source_partition_is_idempotent(memory_db, monkeypatch):
+    from AssetsManager.core import database, db_migrations
+    from AssetsManager.core.schema_defs import validate_schema_objects
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    original_version = db_migrations.CURRENT_SCHEMA_VERSION
+    try:
+        monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 35)
+        assert db_migrations.migrate(conn) == 35
+    finally:
+        monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", original_version)
+
+    # The raw step runs twice back-to-back without changing any shape.
+    db_migrations._add_tag_source_partition_v36(conn)
+    db_migrations._add_tag_source_partition_v36(conn)
+    conn.commit()
+    validate_schema_objects(conn, ("ai_asset_tags", "plugin_derived_fields"))
+
+    # Full runner passes on the already-migrated database are also no-ops.
+    assert db_migrations.migrate(conn) == 36
+    assert db_migrations.migrate(conn) == 36
+    validate_schema_objects(conn, ("ai_asset_tags", "plugin_derived_fields"))

@@ -1,8 +1,8 @@
 # Database Migrations
 
-> 状态:**LIVING** · updated: 2026-08-27(v35 新增;逐版本已与 `db_migrations.py` MIGRATIONS 一致)。
+> 状态:**LIVING** · updated: 2026-08-30(v36 新增;逐版本已与 `db_migrations.py` MIGRATIONS 一致)。
 
-AssetManager Next uses versioned SQLite migrations for per-library databases. **当前版本：`CURRENT_SCHEMA_VERSION = 35`**，以 [`AssetsManager/core/db_migrations.py`](../AssetsManager/core/db_migrations.py) 为执行事实源。历史运行结果和批次证据见 [`docs/full-review/`](full-review/)。
+AssetManager Next uses versioned SQLite migrations for per-library databases. **当前版本：`CURRENT_SCHEMA_VERSION = 36`**，以 [`AssetsManager/core/db_migrations.py`](../AssetsManager/core/db_migrations.py) 为执行事实源。历史运行结果和批次证据见 [`docs/full-review/`](full-review/)。
 
 ## Current State
 
@@ -215,6 +215,10 @@ Adds nullable `recovery_claim_token` and `recovery_lease_expires_at` columns plu
 ### Version 35 — File Count Mtime Snapshot
 
 `ALTER TABLE file_meta ADD COLUMN cached_file_count_mtime REAL`（可空）。文件计数缓存此前无新鲜度信号（缓存永不失效），v35 起写入计数时同时记录来源目录的 `st_mtime`；读取端仅在存储 mtime 与实时目录 mtime 一致时信任缓存，不一致或为 `NULL` 一律视为 miss 重算——与 `cached_size`/`cached_mtime` 的双保险模式对齐。v35 前的旧行保留 `NULL`，首次读取即重算并补写时间戳。
+
+### Version 36 — Tag Source Partition
+
+新建 `ai_asset_tags` 与 `plugin_derived_fields` 两张空表，形状镜像 `file_tags`（`(file_path, tag)` 复合主键 + 各自的 `tag` 索引 `idx_ai_asset_tags_tag` / `idx_plugin_derived_fields_tag`），为将来 AI/插件标签提供物理隔离。现有 `file_tags` 语义收敛为"人工标签"目录；本迁移零数据搬移、零行为变化（`TagRepository`/`TagService` 新增 `source` 参数，默认 `"human"` 走 `file_tags`）。`CREATE TABLE IF NOT EXISTS` 幂等；v35 及更早库中的既有标签行原样保留。
 
 ## Migration Runner Boundaries
 

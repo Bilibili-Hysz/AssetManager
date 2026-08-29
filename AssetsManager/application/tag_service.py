@@ -16,7 +16,7 @@ from AssetsManager.core.path_resolver import root_identity
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.errors import OperationNotPermitted, PathEscapeError, ValidationError
 from AssetsManager.domain.events import AssetTagsChanged, TagCatalogChanged
-from AssetsManager.repositories.tag_repository import TagRepository
+from AssetsManager.repositories.tag_repository import TagRepository, TagSource
 
 _log = logging.getLogger(__name__)
 _MAX_TAG_NAME_LENGTH = 200
@@ -258,18 +258,20 @@ class TagService:
         ))
 
     @session_operation
-    def list_tags(self, library_root: str | Path, db_conn: Connection | None = None) -> list[dict]:
+    def list_tags(self, library_root: str | Path, db_conn: Connection | None = None,
+                  *, source: TagSource = "human") -> list[dict]:
         """Return all tags with usage counts."""
         repo = self._repo(db_conn, library_root)
-        return repo.list_tags_with_counts()
+        return repo.list_tags_with_counts(source=source)
 
     @session_operation
     def get_tags(self, library_root: str | Path, path: str | Path,
-                 db_conn: Connection | None = None) -> list[str]:
+                 db_conn: Connection | None = None,
+                 *, source: TagSource = "human") -> list[str]:
         """Return tags for a file."""
         key = self._resolve_under_root(library_root, path)
         repo = self._repo(db_conn, library_root)
-        return repo.get_tags(key)
+        return repo.get_tags(key, source=source)
 
     @session_operation
     def get_tags_for_files(self, library_root: str | Path, paths: list[str | Path],
@@ -281,33 +283,47 @@ class TagService:
 
     @session_operation
     def add_tag(self, library_root: str | Path, path: str | Path, tag: str,
-                db_conn: Connection | None = None) -> None:
-        """Add a tag to a file, resolving to canonical form."""
+                db_conn: Connection | None = None,
+                *, source: TagSource = "human") -> None:
+        """Add a tag to a file, resolving to canonical form.
+
+        The ``human`` default keeps the historical behavior byte-for-byte.
+        Non-human sources write to their own physical partition and publish
+        only ``AssetTagsChanged`` (no catalog event): the tag catalog is the
+        human curation surface, so AI/plugin rows must not appear to have
+        changed it. Non-human writes never enter the undo stack because undo
+        recording lives in the (human-only) UI controllers.
+        """
         tag = self.validate_tag_name(tag)
         canonical = self._canonicalize(tag)
         key = self._resolve_under_root(library_root, path)
         repo = self._repo(db_conn, library_root)
         self._require_event_safe_transaction(repo)
-        existing = {t.lower() for t in repo.get_tags(key)}
+        existing = {t.lower() for t in repo.get_tags(key, source=source)}
         if canonical.lower() in existing:
             return
-        repo.add_tag(key, canonical, require_clean_transaction=True)
-        tags = tuple(repo.get_tags(key))
-        self._publish_asset_tags_changed(key, tags)
+        repo.add_tag(key, canonical, source=source, require_clean_transaction=True)
+        tags = tuple(repo.get_tags(key, source=source))
+        self._publish_asset_tags_changed(
+            key, tags, publish_catalog=(source == "human")
+        )
 
     @session_operation
     def remove_tag(self, library_root: str | Path, path: str | Path, tag: str,
-                   db_conn: Connection | None = None) -> None:
+                   db_conn: Connection | None = None,
+                   *, source: TagSource = "human") -> None:
         """Remove a tag from a file (case-insensitive match)."""
         key = self._resolve_under_root(library_root, path)
         repo = self._repo(db_conn, library_root)
         self._require_event_safe_transaction(repo)
-        existing = repo.get_tags(key)
+        existing = repo.get_tags(key, source=source)
         match = next((t for t in existing if t.lower() == tag.lower()), None)
         if match:
-            repo.remove_tag(key, match, require_clean_transaction=True)
-            tags = tuple(repo.get_tags(key))
-            self._publish_asset_tags_changed(key, tags)
+            repo.remove_tag(key, match, source=source, require_clean_transaction=True)
+            tags = tuple(repo.get_tags(key, source=source))
+            self._publish_asset_tags_changed(
+                key, tags, publish_catalog=(source == "human")
+            )
 
     @session_operation
     def remove_file(self, library_root: str | Path, path: str | Path,
@@ -353,17 +369,19 @@ class TagService:
 
     @session_operation
     def get_all_tags(self, library_root: str | Path,
-                     db_conn: Connection | None = None) -> list[str]:
+                     db_conn: Connection | None = None,
+                     *, source: TagSource = "human") -> list[str]:
         """Return all distinct tags in the library."""
         repo = self._repo(db_conn, library_root)
-        return repo.get_all_tags()
+        return repo.get_all_tags(source=source)
 
     @session_operation
     def get_files_by_tag(self, library_root: str | Path, tag: str,
-                         db_conn: Connection | None = None) -> set[str]:
+                         db_conn: Connection | None = None,
+                         *, source: TagSource = "human") -> set[str]:
         """Return all file paths that have a given tag."""
         repo = self._repo(db_conn, library_root)
-        return set(repo.get_files_by_tag(tag))
+        return set(repo.get_files_by_tag(tag, source=source))
 
     # ── Tag metadata (color, icon, category) ─────────────────────
 
