@@ -6,8 +6,8 @@
   --color-surface: #1a1d28;
   --color-surface-hover: #242838;
   --color-elevated: #242838;
-  --color-border: #3d4260;
-  --color-border-strong: #3d4260;
+  --color-border: #5f6695;
+  --color-border-strong: #5f6695;
   --color-border-focus: #5b7cf0;
   --color-text: #e8ecf8;
   --color-text-secondary: #b4bcd0;
@@ -27,7 +27,7 @@
   --scrollbar-thumb-hover: #79819e;
   --skeleton-bg: #12141e;
   --input-bg: #1a1d28;
-  --input-border: #3d4260;
+  --input-border: #5f6695;
   --input-focus-border: #5b7cf0;
   --color-accent-subtle: rgba(91, 124, 240, 0.10);
   --color-accent-border: rgba(91, 124, 240, 0.30);
@@ -43,8 +43,8 @@ html.light {
   --color-surface: #faf8f4;
   --color-surface-hover: #e8e0d4;
   --color-elevated: #e8e0d4;
-  --color-border: #d8d0c0;
-  --color-border-strong: #d8d0c0;
+  --color-border: #a18e68;
+  --color-border-strong: #a18e68;
   --color-border-focus: #4a70b0;
   --color-text: #241c10;
   --color-text-secondary: #4a4030;
@@ -64,7 +64,7 @@ html.light {
   --scrollbar-thumb-hover: #98886e;
   --skeleton-bg: #e8e0d4;
   --input-bg: #faf8f4;
-  --input-border: #d8d0c0;
+  --input-border: #a18e68;
   --input-focus-border: #4a70b0;
   --color-accent-subtle: rgba(74, 112, 176, 0.10);
   --color-accent-border: rgba(74, 112, 176, 0.30);
