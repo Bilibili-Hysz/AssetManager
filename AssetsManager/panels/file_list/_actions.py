@@ -250,9 +250,12 @@ class ActionsMixin:
                             pairs = tuple(
                                 zip(sources, getattr(result, "changed_paths", ()), strict=False)
                             ) if result.ok else ()
-                        if undo_service is not None:
-                            for source, destination in pairs:
-                                undo_service.record_rename(str(source), str(destination))
+                        if undo_service is not None and pairs:
+                            # One batch entry for the whole move: a single
+                            # Ctrl+Z moves every file back.
+                            undo_service.record_rename_batch(
+                                [(str(source), str(destination)) for source, destination in pairs]
+                            )
                     else:
                         result = service.copy_to_directory(sources, dest)
                 except ValueError as error:
@@ -496,12 +499,18 @@ class ActionsMixin:
                         undo_service.discard_delete(entry)
                     raise
                 changed_paths = {Path(path).resolve() for path in result.changed_paths}
+                committed_entries = []
                 for path, entry in zip(path_list, entries, strict=True):
                     if Path(path).resolve() in changed_paths:
                         if entry is not None:
-                            undo_service.commit_delete(entry)
+                            committed_entries.append(entry)
                     else:
                         undo_service.discard_delete(entry)
+                # The committed children are wrapped into ONE batch entry so
+                # a 50-file delete occupies a single undo slot and one
+                # Ctrl+Z restores the whole batch.  Entries whose backup
+                # failed are simply absent (not undoable), as before.
+                undo_service.commit_batch(committed_entries)
             result_holder.append(result)
             for error in result.errors:
                 _log.error("Permanent delete failed: %s", error)
@@ -684,8 +693,8 @@ class ActionsMixin:
         entry = undo_service.peek_redo()
         target = self._history_selection_target(entry, undo=False)
         deletion_candidates = (
-            self._deletion_selection_candidates([entry.path])
-            if entry is not None and getattr(entry, "type", None) == "delete"
+            self._deletion_selection_candidates(self._redo_delete_paths(entry))
+            if entry is not None
             else ()
         )
         result_holder: list[bool] = []
@@ -719,11 +728,33 @@ class ActionsMixin:
     @staticmethod
     def _history_selection_target(entry, *, undo: bool) -> str | None:
         """Return the path made visible by a successful undo or redo operation."""
+        if getattr(entry, "type", None) == "batch":
+            children = getattr(entry, "children", ())
+            if not children:
+                return None
+            # A batch restores/re-executes all children at once; surface the
+            # most recently recorded child, matching what a single-step
+            # undo/redo would have selected.
+            return ActionsMixin._history_selection_target(children[-1], undo=undo)
         if getattr(entry, "type", None) == "rename":
             return entry.old if undo else entry.new
         if getattr(entry, "type", None) == "delete" and undo:
             return entry.path
         return None
+
+    @staticmethod
+    def _redo_delete_paths(entry) -> list[str]:
+        """Paths a redo would re-delete, for post-redo selection candidates."""
+        entry_type = getattr(entry, "type", None)
+        if entry_type == "delete":
+            return [entry.path]
+        if entry_type == "batch":
+            return [
+                child.path
+                for child in getattr(entry, "children", ())
+                if getattr(child, "type", None) == "delete"
+            ]
+        return []
 
     def _offer_skip_poisoned_entry(self, *, undo: bool):
         """Ask whether to drop a history entry whose execution keeps failing.
@@ -810,6 +841,7 @@ class ActionsMixin:
 
         def _do_batch_rename():
             with self._session_operation(session):
+                rename_pairs = []
                 for entry in plan.changed_entries:
                     old = str(Path(entry.source).resolve())
                     new = str(Path(entry.target).resolve())
@@ -818,13 +850,16 @@ class ActionsMixin:
                         continue
                     try:
                         service.move(old, new, library_root=lib_root or None)
-                        if undo_service is not None:
-                            undo_service.record_rename(old, new)
+                        rename_pairs.append((old, new))
                         renamed.append(new)
                         warnings.extend(self._consume_refresh_warnings(service))
                     except (OSError, ValueError) as error:
                         errors.append(str(error))
                         warnings.extend(self._consume_refresh_warnings(service))
+                if undo_service is not None and rename_pairs:
+                    # The whole batch rename is ONE undo entry: a single
+                    # Ctrl+Z renames every file back.
+                    undo_service.record_rename_batch(rename_pairs)
 
         def _on_batch_rename_done():
             if not self._is_current_operation_session(session):

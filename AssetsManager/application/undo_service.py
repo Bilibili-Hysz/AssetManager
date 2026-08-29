@@ -12,7 +12,7 @@ from collections import deque
 from dataclasses import dataclass, replace
 from pathlib import Path
 from time import perf_counter, time
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 from AssetsManager.application.context import session_operation
 from AssetsManager.application.file_operation_service import acquire_path_locks
@@ -44,6 +44,12 @@ class UndoEntry:
     # as file ops and Ctrl+Z undoes the tag change rather than jumping to an
     # unrelated earlier file operation.  ``callback(is_undo)`` returns success.
     callback: Callable[[bool], bool] | None = None
+    # Composite entry (type="batch"): child entries recorded as ONE history
+    # item so a 50-file batch delete is a single Ctrl+Z.  Undo walks the
+    # children newest-first (reverse recording order), redo replays them in
+    # the original order.  A batch itself carries no callback/backup — the
+    # children own their backups and callbacks.
+    children: tuple["UndoEntry", ...] = ()
 
 
 class UndoService:
@@ -415,6 +421,37 @@ class UndoService:
         self._push_undo(entry)
 
     @session_operation
+    def commit_batch(self, entries: Sequence[UndoEntry]) -> UndoEntry | None:
+        """Record committed child entries as ONE ``type="batch"`` entry.
+
+        Batch operations (e.g. a 50-file permanent delete) prepare one
+        child entry per path and, after the filesystem operation, pass the
+        children whose path actually changed here.  The children are
+        wrapped into a single history item so one Ctrl+Z rolls the whole
+        batch back and the stack depth counts history items, not files.
+        Children that failed to commit are simply absent — the caller
+        discards them via :meth:`discard_delete` as before.
+        """
+        children = tuple(entries)
+        if not children:
+            return None
+        batch = UndoEntry(type="batch", children=children)
+        self._push_undo(batch)
+        return batch
+
+    @session_operation
+    def record_rename_batch(self, pairs: Sequence[tuple[str, str]]) -> UndoEntry | None:
+        """Record multiple renames (e.g. a batch move) as ONE batch entry.
+
+        Undo moves every ``new`` path back in reverse order, redo replays
+        the moves in the original order; the whole batch is one history
+        item on the stack.
+        """
+        return self.commit_batch(
+            UndoEntry(type="rename", old=old, new=new) for old, new in pairs
+        )
+
+    @session_operation
     def discard_delete(self, entry: UndoEntry | None) -> None:
         """Remove a delete backup when its filesystem operation failed."""
         self._ensure_open()
@@ -466,12 +503,10 @@ class UndoService:
         """Clear both undo and redo stacks."""
         with self._lock:
             for entry in self._undo_stack:
-                if entry.backup:
-                    self._clean_backup(entry.backup)
+                self._clean_entry_storage(entry)
             self._undo_stack.clear()
             for entry in self._redo_stack:
-                if entry.backup:
-                    self._clean_backup(entry.backup)
+                self._clean_entry_storage(entry)
             self._redo_stack.clear()
 
     @session_operation
@@ -479,8 +514,7 @@ class UndoService:
         """Clear the redo stack (call after a new operation)."""
         with self._lock:
             for entry in self._redo_stack:
-                if entry.backup:
-                    self._clean_backup(entry.backup)
+                self._clean_entry_storage(entry)
             self._redo_stack.clear()
 
     @session_operation
@@ -576,6 +610,10 @@ class UndoService:
         try:
             if entry.callback is not None:
                 return self._run_callback(entry, True)
+            if entry.type == "batch":
+                return self._execute_batch(
+                    file_operations, entry, library_root, forward=False
+                )
             if entry.type == "rename":
                 if os.path.lexists(entry.old):
                     self._mark_failed(entry)
@@ -617,6 +655,10 @@ class UndoService:
         try:
             if entry.callback is not None:
                 return self._run_callback(entry, False)
+            if entry.type == "batch":
+                return self._execute_batch(
+                    file_operations, entry, library_root, forward=True
+                )
             if entry.type == "rename":
                 if os.path.lexists(entry.new):
                     self._mark_failed(entry)
@@ -652,6 +694,47 @@ class UndoService:
             self._mark_failed(entry)
             return False
 
+    def _execute_batch(self, file_operations, entry: UndoEntry,
+                       library_root: str | Path | None, *,
+                       forward: bool) -> bool:
+        """Undo/redo a composite entry by walking its children.
+
+        Undo walks the children newest-first (reverse recording order),
+        redo replays them in the original order.  Every child is attempted
+        even after an earlier failure, so children that rolled back stay
+        rolled back; each failed child keeps its own mark in the failed
+        set and the batch itself is marked failed, which makes the whole
+        entry move as one poisoned unit — exactly the semantics of a
+        failed single entry (it stays on its stack until
+        :meth:`skip_poisoned_undo` / :meth:`skip_poisoned_redo` drops it).
+        A child whose restore reported a degraded projection propagates
+        the degraded annotation to the batch, which then moves to the
+        opposite stack annotated instead of poisoned.
+        """
+        children = entry.children if forward else tuple(reversed(entry.children))
+        any_failed = False
+        any_degraded = False
+        for child in children:
+            if forward:
+                succeeded = self._execute_forward(file_operations, child, library_root)
+            else:
+                succeeded = self._execute_reverse(file_operations, child, library_root)
+            if not succeeded:
+                any_failed = True
+            elif id(child) in self._degraded_entries:
+                any_degraded = True
+        with self._lock:
+            # Child outcomes have been aggregated onto the batch entry.
+            for child in children:
+                self._failed_entries.discard(id(child))
+                self._degraded_entries.discard(id(child))
+        if any_failed:
+            self._mark_failed(entry)
+            return False
+        if any_degraded:
+            self._mark_degraded(entry)
+        return True
+
     def _mark_failed(self, entry: UndoEntry) -> None:
         with self._lock:
             self._failed_entries.add(id(entry))
@@ -675,7 +758,7 @@ class UndoService:
                 return None
             self._undo_stack.pop()
             self._failed_entries.discard(id(entry))
-        self._clean_backup(entry.backup)
+        self._clean_entry_storage(entry)
         return entry
 
     def skip_poisoned_redo(self) -> UndoEntry | None:
@@ -688,7 +771,7 @@ class UndoService:
                 return None
             self._redo_stack.pop()
             self._failed_entries.discard(id(entry))
-        self._clean_backup(entry.backup)
+        self._clean_entry_storage(entry)
         return entry
 
     def cleanup(self) -> None:
@@ -711,13 +794,23 @@ class UndoService:
             undo, redo = self._resolve_stacks()
             if len(undo) >= self._max_depth:
                 old = undo[0]
-                if old.backup:
-                    self._clean_backup(old.backup)
+                self._clean_entry_storage(old)
             undo.append(entry)
             for redo_entry in redo:
-                if redo_entry.backup:
-                    self._clean_backup(redo_entry.backup)
+                self._clean_entry_storage(redo_entry)
             redo.clear()
+
+    def _clean_entry_storage(self, entry: UndoEntry) -> None:
+        """Clean a stack entry's backup, descending into batch children.
+
+        A ``type="batch"`` entry owns no backup of its own; each child
+        carries one, so eviction/clear/skip must reach into the children
+        or their backups would leak on disk.
+        """
+        for child in entry.children:
+            self._clean_entry_storage(child)
+        if entry.backup:
+            self._clean_backup(entry.backup)
 
     def _make_backup(self, path: str) -> str | None:
         """Copy ``path`` into the undo directory and return the backup path.

@@ -824,3 +824,274 @@ def test_close_one_library_rejects_its_undo_but_other_library_remains_functional
         scoped_a.undo_service.perform_undo(scoped_a.file_operation_service)
     assert scoped_b.undo_service.perform_undo(scoped_b.file_operation_service)
     assert old_b.exists()
+
+
+# ── T5a: batch composite entries ─────────────────────────────────
+
+def _commit_batch_delete(svc, ops, paths, library_root):
+    """Mirror the _actions.py permanent-delete flow for one batch."""
+    entries = [svc.prepare_delete(path) for path in paths]
+    result = ops.delete_permanent(list(paths), library_root=library_root)
+    changed = {str(Path(path).resolve()) for path in result.changed_paths}
+    committed = []
+    for path, entry in zip(paths, entries, strict=True):
+        if str(Path(path).resolve()) in changed and entry is not None:
+            committed.append(entry)
+        else:
+            svc.discard_delete(entry)
+    svc.commit_batch(committed)
+    return result
+
+
+def test_batch_delete_undo_restores_all_files_in_one_step(tmp_path):
+    """Deleting 50 files records ONE history item; a single Ctrl+Z
+    restores every file and redo re-deletes the whole batch."""
+    library = tmp_path / "library"
+    library.mkdir()
+    files = []
+    for index in range(50):
+        file = library / f"asset_{index:02d}.txt"
+        file.write_text(f"data {index}", encoding="utf-8")
+        files.append(file)
+    svc = UndoService()
+    ops = FileOperationService()
+    try:
+        result = _commit_batch_delete(
+            svc, ops, [str(file) for file in files], str(library)
+        )
+        assert result.ok
+        assert len(svc._undo_stack) == 1  # stack depth counts history items
+        batch = svc.peek_undo()
+        assert batch is not None and batch.type == "batch"
+        assert len(batch.children) == 50
+
+        assert svc.perform_undo(ops, str(library))
+        assert all(file.exists() for file in files)
+        assert all(
+            (library / f"asset_{index:02d}.txt").read_text(encoding="utf-8")
+            == f"data {index}"
+            for index in range(50)
+        )
+
+        assert svc.perform_redo(ops, str(library))
+        assert not any(file.exists() for file in files)
+    finally:
+        svc.cleanup()
+
+
+def test_record_rename_batch_undo_restores_all_moves_in_one_step(tmp_path):
+    library = tmp_path / "library"
+    library.mkdir()
+    destination = library / "dst"
+    destination.mkdir()
+    sources = []
+    for index in range(4):
+        file = library / f"src_{index}.txt"
+        file.write_text(f"data {index}", encoding="utf-8")
+        sources.append(file)
+    svc = UndoService()
+    ops = FileOperationService()
+    try:
+        result = ops.move_to_directory(
+            [str(file) for file in sources], str(destination),
+            library_root=str(library),
+        )
+        pairs = [
+            (str(source), str(target)) for source, target in result.moved_pairs
+        ]
+        assert len(pairs) == 4
+
+        svc.record_rename_batch(pairs)
+        assert len(svc._undo_stack) == 1
+        assert svc.peek_undo().type == "batch"
+
+        assert svc.perform_undo(ops, str(library))
+        assert all(
+            (library / f"src_{index}.txt").exists() for index in range(4)
+        )
+        assert not any(
+            (destination / f"src_{index}.txt").exists() for index in range(4)
+        )
+    finally:
+        svc.cleanup()
+
+
+def test_batch_partial_failure_poisons_batch_but_keeps_restored_children(tmp_path):
+    """A failing child fails the batch as one unit (failed set, poisoned
+    entry, explicit skip) while children that already rolled back stay
+    rolled back."""
+    library = tmp_path / "library"
+    library.mkdir()
+    files = [library / f"file_{index}.txt" for index in range(3)]
+    for index, file in enumerate(files):
+        file.write_text(f"data {index}", encoding="utf-8")
+    svc = UndoService()
+    ops = FileOperationService()
+    try:
+        _commit_batch_delete(
+            svc, ops, [str(file) for file in files], str(library)
+        )
+        assert len(svc._undo_stack) == 1
+        # The user recreates one deleted path: undoing that child is blocked.
+        files[1].write_text("recreated", encoding="utf-8")
+
+        assert not svc.perform_undo(ops, str(library))
+        assert files[0].exists() and files[2].exists()
+        batch = svc.peek_undo()
+        assert batch is not None and batch.type == "batch"
+        assert id(batch) in svc._failed_entries
+        assert svc.peek_redo() is None
+
+        skipped = svc.skip_poisoned_undo()
+        assert skipped is batch
+        assert not svc.can_undo()
+        for child in batch.children:
+            assert not os.path.exists(child.backup)
+    finally:
+        svc.cleanup()
+
+
+def test_batch_entry_counts_once_toward_stack_depth(tmp_path):
+    backup_a = tmp_path / "backup_a.bin"
+    backup_a.write_text("a", encoding="utf-8")
+    backup_b = tmp_path / "backup_b.bin"
+    backup_b.write_text("b", encoding="utf-8")
+    svc = UndoService(max_depth=2)
+    try:
+        svc.commit_batch([
+            UndoEntry(type="delete", path="a1", backup=str(backup_a)),
+            UndoEntry(type="delete", path="a2", backup=""),
+        ])
+        svc.commit_batch([
+            UndoEntry(type="delete", path="b1", backup=str(backup_b)),
+        ])
+        assert len(svc._undo_stack) == 2
+
+        # The third push evicts the oldest batch as ONE entry, cleaning the
+        # evicted children's backups but not the surviving batch's.
+        svc.record_rename("/tmp/old.txt", "/tmp/new.txt")
+        assert len(svc._undo_stack) == 2
+        assert svc._undo_stack[0].type == "batch"
+        assert svc._undo_stack[0].children[0].path == "b1"
+        assert not backup_a.exists()
+        assert backup_b.exists()
+    finally:
+        svc.cleanup()
+
+
+def test_batch_undo_reverses_and_redo_replays_child_order(tmp_path):
+    library = tmp_path / "library"
+    library.mkdir()
+    children = []
+    for index in range(3):
+        backup = library / f"backup_{index}"
+        backup.write_text("payload", encoding="utf-8")
+        children.append(UndoEntry(
+            type="delete",
+            path=str(library / f"asset_{index}.txt"),  # never existed
+            backup=str(backup),
+        ))
+    operations = _RecordingFileOperations()
+    svc = UndoService(library_root=str(library))
+    try:
+        svc.commit_batch(children)
+
+        assert svc.perform_undo(operations, str(library))
+        assert svc.perform_redo(operations, str(library))
+        assert operations.calls == [
+            ("restore_backup", str(library / "backup_2"), str(library / "asset_2.txt"), str(library)),
+            ("restore_backup", str(library / "backup_1"), str(library / "asset_1.txt"), str(library)),
+            ("restore_backup", str(library / "backup_0"), str(library / "asset_0.txt"), str(library)),
+            ("delete_permanent", [str(library / "asset_0.txt")], str(library)),
+            ("delete_permanent", [str(library / "asset_1.txt")], str(library)),
+            ("delete_permanent", [str(library / "asset_2.txt")], str(library)),
+        ]
+    finally:
+        svc.cleanup()
+
+
+def test_batch_partial_degraded_restore_annotates_batch_not_poison(tmp_path):
+    """A child restored with a degraded projection annotates the whole
+    batch entry as degraded (moves to redo) instead of poisoning it."""
+    library = tmp_path / "library"
+    library.mkdir()
+    children = []
+    backups = {}
+    for index in range(2):
+        backup = library / f"backup_{index}"
+        backup.write_text("payload", encoding="utf-8")
+        backups[index] = str(backup)
+        children.append(UndoEntry(
+            type="delete",
+            path=str(library / f"asset_{index}.txt"),
+            backup=str(backup),
+        ))
+
+    class _PartiallyDegradedFileOperations:
+        def restore_backup(self, backup, destination, *, library_root):
+            from AssetsManager.application.file_operation_service import RestoreResult
+
+            return RestoreResult(
+                path=Path(destination), degraded=backup == backups[0]
+            )
+
+        def delete_permanent(self, paths, *, library_root):
+            return type("Result", (), {"ok": True})()
+
+    svc = UndoService(library_root=str(library))
+    try:
+        svc.commit_batch(children)
+        assert svc.perform_undo(_PartiallyDegradedFileOperations(), str(library))
+        redo_entry = svc.peek_redo()
+        assert redo_entry is not None
+        assert redo_entry.type == "batch"
+        assert redo_entry.degraded is True
+        assert id(redo_entry) not in svc._failed_entries
+
+        # Redo re-executes the deletes; the stale degraded annotation is
+        # cleared, matching single-entry semantics.
+        assert svc.perform_redo(_PartiallyDegradedFileOperations(), str(library))
+        undone_entry = svc.peek_undo()
+        assert undone_entry is not None
+        assert undone_entry.degraded is False
+    finally:
+        svc.cleanup()
+
+
+def test_clear_and_clear_redo_clean_batch_child_backups(tmp_path):
+    library = tmp_path / "library"
+    library.mkdir()
+    backups = []
+    for index in range(2):
+        backup = library / f"backup_{index}"
+        backup.write_text("payload", encoding="utf-8")
+        backups.append(backup)
+    svc = UndoService()
+    try:
+        svc.commit_batch([
+            UndoEntry(type="delete", path="a", backup=str(backups[0])),
+        ])
+        batch = svc.commit_batch([
+            UndoEntry(type="delete", path="b", backup=str(backups[1])),
+        ])
+        svc.undo()
+        assert backups[0].exists() and backups[1].exists()
+
+        svc.clear_redo()
+        assert not backups[1].exists()
+        assert backups[0].exists()
+
+        svc.clear()
+        assert not backups[0].exists()
+        assert batch is not None
+    finally:
+        svc.cleanup()
+
+
+def test_commit_batch_without_entries_is_a_noop():
+    svc = UndoService()
+    try:
+        assert svc.commit_batch([]) is None
+        assert not svc.can_undo()
+    finally:
+        svc.cleanup()

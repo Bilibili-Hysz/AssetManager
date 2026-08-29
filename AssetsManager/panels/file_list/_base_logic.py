@@ -683,6 +683,7 @@ class LogicMixin:
             changed_paths: list[Path] = []
             errors: list[str] = []
             warnings: list[Any] = []
+            rename_pairs: list[tuple[str, str]] = []
             try:
                 with self._session_operation(session):
                     for source in in_library:
@@ -691,8 +692,7 @@ class LogicMixin:
                         )
                         for changed_path in result.changed_paths:
                             changed_paths.append(changed_path)
-                            if undo_svc is not None:
-                                undo_svc.record_rename(str(source), str(changed_path))
+                            rename_pairs.append((str(source), str(changed_path)))
                         for error in result.errors:
                             _log.error("Drag-drop move failed: %s", error)
                             errors.append(error)
@@ -711,6 +711,14 @@ class LogicMixin:
                 changed_paths.clear()
                 warnings.clear()
                 errors = [str(exc) or exc.__class__.__name__]
+            finally:
+                # Moves that already happened stay undoable as ONE batch
+                # entry, mirroring the previous per-file immediate recording.
+                if undo_svc is not None and rename_pairs:
+                    try:
+                        undo_svc.record_rename_batch(rename_pairs)
+                    except Exception:
+                        _log.exception("Failed to record drag-drop undo history")
             result_holder.append(
                 FileOperationResult(
                     tuple(changed_paths),

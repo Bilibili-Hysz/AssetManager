@@ -1077,7 +1077,9 @@ def test_in_library_drop_moves_and_records_only_successful_undo_entries(tmp_path
             (([str(failed_source)], str(destination)), {"library_root": str(library)}),
         ]
         copy.assert_not_called()
-        panel._undo_svc.record_rename.assert_called_once_with(str(source), str(moved))
+        panel._undo_svc.record_rename_batch.assert_called_once_with(
+            [(str(source), str(moved))]
+        )
         assert panel._operation_feedback.text() == tr(
             "filelist.feedback.partial_degraded",
             operation=tr("filelist.feedback.operation.drop"),
@@ -1091,7 +1093,9 @@ def test_in_library_drop_moves_and_records_only_successful_undo_entries(tmp_path
         move.side_effect = None
         move.return_value = FileOperationResult((moved,), ())
         assert FileListPanel._on_drop(panel, DropEvent(source)) is True
-        panel._undo_svc.record_rename.assert_called_once_with(str(source), str(moved))
+        panel._undo_svc.record_rename_batch.assert_called_once_with(
+            [(str(source), str(moved))]
+        )
 
     finally:
         panel.shutdown()
@@ -1320,10 +1324,11 @@ def test_cut_paste_records_undo_only_after_successful_move(tmp_path, monkeypatch
         move.assert_called_once_with(
             [str(source), str(second_source)], str(destination), library_root=str(library),
         )
-        assert panel._undo_svc.record_rename.call_args_list == [
-            ((str(source), str(moved)),),
-            ((str(second_source), str(second_moved)),),
-        ]
+        # The whole cut-paste move is ONE batch undo entry.
+        panel._undo_svc.record_rename_batch.assert_called_once_with([
+            (str(source), str(moved)),
+            (str(second_source), str(second_moved)),
+        ])
 
         panel._undo_svc.reset_mock()
         move.reset_mock()
@@ -1333,7 +1338,7 @@ def test_cut_paste_records_undo_only_after_successful_move(tmp_path, monkeypatch
 
         panel._paste()
 
-        panel._undo_svc.record_rename.assert_not_called()
+        panel._undo_svc.record_rename_batch.assert_not_called()
     finally:
         panel.shutdown()
         app.setProperty("bootstrap", None)
@@ -1455,7 +1460,9 @@ def test_permanent_delete_records_undo_only_after_scoped_delete_succeeds(tmp_pat
 
         service.delete_permanent.assert_called_once_with([str(target)], library_root=str(library))
         assert panel._undo_svc.can_undo()
-        assert panel._undo_svc.peek_undo().path == str(target)
+        entry = panel._undo_svc.peek_undo()
+        assert entry.type == "batch"
+        assert [child.path for child in entry.children] == [str(target)]
     finally:
         panel.shutdown()
         app.setProperty("bootstrap", None)
@@ -1589,7 +1596,9 @@ def test_partial_permanent_delete_commits_only_changed_path_backups(tmp_path, mo
         panel._delete_permanent([str(first_target), str(second_target)])
 
         assert panel._undo_svc.can_undo()
-        assert panel._undo_svc.peek_undo().path == str(first_target)
+        entry = panel._undo_svc.peek_undo()
+        assert entry.type == "batch"
+        assert [child.path for child in entry.children] == [str(first_target)]
         entries = list(Path(panel._undo_svc._undo_dir).iterdir())
         # The backup file plus its projection snapshot file.
         assert len(entries) == 2
