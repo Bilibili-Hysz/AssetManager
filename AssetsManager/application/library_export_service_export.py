@@ -461,6 +461,10 @@ class ExportMixin:
                     continue
                 if relative.parts and relative.parts[0] == ".thumbnails" and not include_thumbnails:
                     continue
+                if relative.parts and relative.parts[0] == "undo_backups":
+                    # Transient undo-restore material (copies of deleted files
+                    # staged by UndoService), never library data.
+                    continue
                 # Recheck after enumeration and immediately before the caller
                 # opens the file; the caller performs one more check before open.
                 if cls._is_link_or_junction(source):
