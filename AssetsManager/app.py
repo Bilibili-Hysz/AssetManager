@@ -2,11 +2,60 @@
 import sys
 from pathlib import Path
 
+from PySide6.QtNetwork import QLocalServer
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QFont
 
 from AssetsManager.core import themes
 from AssetsManager.core.settings import AppSettings
+
+# Fixed per-user lock name: the first instance listens on this local socket;
+# a second launch probes it before doing any bootstrap work.
+_SINGLE_INSTANCE_KEY = "AssetManager.SingleInstance"
+
+# Keep-alive for the bound QLocalServer: a parentless QObject owned by Python
+# would be garbage collected (and its socket closed) without this reference.
+_single_instance_server: QLocalServer | None = None
+
+
+def _bind_single_instance(app: QApplication) -> bool:
+    """Take the process-wide single-instance lock.
+
+    Returns False only when a live instance answered the probe (the caller
+    then informs the user and exits).  Every other failure — stale socket
+    cleanup, listen errors, Qt quirks, unexpected exceptions — fails open
+    and allows startup: the lock is best-effort convenience, never a gate.
+    """
+    import logging
+
+    from PySide6.QtNetwork import QLocalSocket
+
+    global _single_instance_server
+    _log = logging.getLogger(__name__)
+    try:
+        probe = QLocalSocket()
+        probe.connectToServer(_SINGLE_INSTANCE_KEY)
+        already_running = probe.waitForConnected(150)
+        probe.abort()
+        if already_running:
+            return False
+        # Remove a socket left behind by a crashed instance (no-op for the
+        # Windows named-pipe implementation).
+        QLocalServer.removeServer(_SINGLE_INSTANCE_KEY)
+        server = QLocalServer()
+        if not server.listen(_SINGLE_INSTANCE_KEY):
+            _log.warning(
+                "Single-instance listen failed (%s); continuing without the lock",
+                server.errorString(),
+            )
+            return True
+        # Keep the server alive for the process lifetime.
+        _single_instance_server = server
+        app.setProperty("single_instance_server", server)
+        return True
+    except Exception:
+        _log.exception("Single-instance check failed; continuing startup")
+        return True
 
 
 def main():
@@ -22,6 +71,22 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("AssetManager")
+
+    # ── Single instance ──────────────────────────────────
+    # Runs before any bootstrap: a second launch must only inform the user
+    # and exit, never touch library services or the tray.
+    from AssetsManager import i18n
+    i18n.init()
+    if not _bind_single_instance(app):
+        from PySide6.QtWidgets import QMessageBox
+
+        QMessageBox.information(
+            None,
+            i18n.tr("app.single_instance_title"),
+            i18n.tr("app.single_instance_body"),
+        )
+        return 0
+
     app.setStyleSheet(themes.stylesheet())
     font = app.font()
     font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
@@ -31,9 +96,6 @@ def main():
     app.setProperty("base_font_size", base_pt)
     font.setPointSize(scaled_pt(base_pt))
     app.setFont(font)
-
-    from AssetsManager import i18n
-    i18n.init()
 
     # ── Service Bootstrap ───────────────────────────────────────
     import logging

@@ -102,6 +102,31 @@ def _restore_window_geometry(window: QWidget) -> None:
         _log.warning("Ignoring malformed saved window geometry", exc_info=True)
 
 
+def maybe_show_tray_hide_hint(tray, *, settings, sharing_running: bool) -> bool:
+    """Show the first-time minimized-to-tray balloon hint; True when shown.
+
+    ``close()`` with a system tray only hides the window — historically with
+    no feedback, so users believed the app had exited.  The "only once"
+    memory is persisted via AppSettings; persistence failures are logged and
+    the hint still shows (fail-open).
+    """
+    if tray is None or not tray.is_available:
+        return False
+    if settings.get("tray_hide_hint_shown", False):
+        return False
+    try:
+        settings.set("tray_hide_hint_shown", True)
+        settings.save()
+    except Exception:
+        _log.exception("Failed to persist tray-hide hint flag")
+    if sharing_running:
+        body = tr("tray.hide_hint_body_sharing")
+    else:
+        body = tr("tray.hide_hint_body")
+    tray.show_message(tr("tray.hide_hint_title"), body)
+    return True
+
+
 def build_shortcuts_help_text() -> str:
     """Render the shortcuts help dialog body from the live registries.
 
@@ -1282,6 +1307,19 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._force_quit = True
         self.close()
 
+    def _notify_minimized_to_tray(self) -> None:
+        """First-hide-only tray balloon: close() hid the window, not quit."""
+        sharing = getattr(self, "_lan_server", None)
+        try:
+            sharing_running = bool(sharing is not None and sharing.is_running())
+        except Exception:
+            sharing_running = False
+        maybe_show_tray_hide_hint(
+            getattr(self, "_tray_manager", None),
+            settings=AppSettings.instance(),
+            sharing_running=sharing_running,
+        )
+
     def _shutdown_resources(self):
         """Persist UI state and stop background resources before process exit."""
         timer = getattr(self, "_share_status_timer", None)
@@ -1294,6 +1332,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         # If system tray is available, hide to tray instead of quitting
         app = QApplication.instance()
         if app and app.property("has_tray") and not self._force_quit:
+            self._notify_minimized_to_tray()
             self.hide()
             event.ignore()
             return
