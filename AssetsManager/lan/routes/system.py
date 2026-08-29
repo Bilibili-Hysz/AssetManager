@@ -31,6 +31,27 @@ _INFO_COUNT_CACHE: dict[str, tuple[float, int]] = {}
 _INFO_COUNT_TTL = 30.0
 
 
+def _owner_theme_name() -> str:
+    """Display name of the owner's current desktop theme (fail-open).
+
+    Lets the WebUI mirror the library owner's visual identity: /api/info is
+    already public, and a theme display name leaks nothing.  The LAN package
+    is intentionally Qt-free, so ``core.themes`` (which reaches PySide6
+    through ThemeLoader) is imported lazily per call; the theme subsystem is
+    already initialized in the desktop process that hosts the LAN server.
+    Any failure (headless server without Qt, missing/unreadable themes,
+    unexpected return type) degrades to an empty string so the response shape
+    stays intact and clients keep their fallback palette.
+    """
+    try:
+        from AssetsManager.core import themes
+
+        name = themes.name()
+    except Exception:  # noqa: BLE001 - fail-open is the contract here
+        return ""
+    return name if isinstance(name, str) else ""
+
+
 def _cached_project_count(project_service, root, depth_config) -> int:
     key = str(Path(root).resolve())
     now = time.time()
@@ -101,6 +122,7 @@ async def handle_info(request):
         "auth_enabled": auth_enabled,
         "auth_mode": auth_mode,
         "theme_color": s.get("lan_theme_color", DEFAULT_LAN_THEME_COLOR),
+        "theme_name": _owner_theme_name(),
         "welcome_msg": s.get("lan_welcome_msg", ""),
         "footer_text": s.get("lan_footer_text", ""),
         "feature_flags": {

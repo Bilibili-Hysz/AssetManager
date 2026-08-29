@@ -296,9 +296,12 @@ async def test_info_route_exposes_serverinfo_shape(tmp_path):
         payload = await response.json()
         assert set(payload.keys()) == {
             "version", "share_name", "library_root", "auth_enabled", "auth_mode",
-            "theme_color", "welcome_msg", "footer_text", "feature_flags",
+            "theme_color", "theme_name", "welcome_msg", "footer_text", "feature_flags",
             "library_stats", "principal", "capabilities", "thumbnail_cache_namespace",
         }
+        # Owner theme display name (drives the WebUI follow-the-owner theme
+        # identity); fail-open, so only the string type is guaranteed.
+        assert isinstance(payload["theme_name"], str)
         assert payload["thumbnail_cache_namespace"] is None or isinstance(
             payload["thumbnail_cache_namespace"], str
         )
@@ -310,6 +313,33 @@ async def test_info_route_exposes_serverinfo_shape(tmp_path):
         assert payload["principal"]["authenticated"] is False
     finally:
         await client.close()
+
+
+@pytest.mark.anyio
+async def test_info_theme_name_fails_open_to_empty_string(tmp_path, monkeypatch):
+    """A broken theme subsystem must not break /api/info: theme_name
+    degrades to "" and clients keep their fallback palette."""
+    from aiohttp.test_utils import make_mocked_request
+
+    from AssetsManager.lan.routes import system as system_routes
+    from tests.lan.support.api_helpers import _make_lan_app
+
+    app, _library, _conn = _make_lan_app(tmp_path)
+    request = make_mocked_request("GET", "/api/info", app=app)
+
+    from AssetsManager.core import themes
+
+    def _broken_name() -> str:
+        raise RuntimeError("theme subsystem unavailable")
+
+    monkeypatch.setattr(themes, "name", _broken_name)
+    response = await system_routes.handle_info(request)
+    assert response.status == 200
+    payload = json.loads(response.text)
+    assert payload["theme_name"] == ""
+    # The rest of the envelope is unaffected by the failure.
+    assert isinstance(payload["theme_color"], str)
+    assert set(payload["feature_flags"].keys()) == {"commerce", "seller", "quota"}
 
 
 @pytest.mark.anyio

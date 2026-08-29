@@ -70,6 +70,7 @@
       "auth_enabled": true,
       "auth_mode": "password",
       "theme_color": "#5b7ff5",
+      "theme_name": "Navy",
       "welcome_msg": "",
       "footer_text": "",
       "feature_flags": {
@@ -249,6 +250,7 @@
       "auth_enabled": true,
       "auth_mode": "password",
       "theme_color": "#5b7ff5",
+      "theme_name": "Navy",
       "welcome_msg": "",
       "footer_text": "",
       "feature_flags": {
