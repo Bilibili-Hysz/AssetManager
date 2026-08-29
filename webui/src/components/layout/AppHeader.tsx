@@ -20,6 +20,12 @@ export interface AppHeaderProps {
   activeArea?: 'gallery' | 'workspace';
   contextNav?: HeaderContextLink[];
   onOpenPalette?: () => void;
+  /**
+   * Enter-to-submit bridge for the workspace search: BrowsePage turns the
+   * typed text into a full three-source search result list. The debounced
+   * quick-search dropdown below stays untouched for directory jumps.
+   */
+  onSearchSubmit?: (query: string) => void;
 }
 
 export function AppHeader({
@@ -28,6 +34,7 @@ export function AppHeader({
   activeArea,
   contextNav = [],
   onOpenPalette,
+  onSearchSubmit,
 }: AppHeaderProps) {
   const { user, role, logout, serverInfo } = useAuth();
   const { t, lang, setLang, supportedLangs = [] } = useI18n();
@@ -82,6 +89,12 @@ export function AppHeader({
     navigate(`/detail?path=${encodeURIComponent(result.path)}&from=${currentArea}&context=${encodeURIComponent(context)}`);
   };
 
+  const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter' || !onSearchSubmit) return;
+    event.preventDefault();
+    onSearchSubmit(query);
+  };
+
   const toggleMenu = (menu: 'language' | 'user') => setOpenMenu(current => current === menu ? null : menu);
 
   const handleDisclosureKeyDown = (event: ReactKeyboardEvent, menu: 'language' | 'user') => {
@@ -128,6 +141,7 @@ export function AppHeader({
           aria-label={t('header.search')}
           value={query}
           onChange={event => { setQuery(event.target.value); setShowResults(true); }}
+          onKeyDown={handleSearchKeyDown}
           onFocus={() => { if (results.length > 0) setShowResults(true); }}
           placeholder={t('header.search')}
         />

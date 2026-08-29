@@ -157,6 +157,17 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
     enabled: activeTag !== null,
   });
 
+  // ── Workspace name search (?q=…, submitted by the header search input) ──
+  // Reuses the same three-source /api/search endpoint (include_status=1 by
+  // default) and the same result rendering as the tag search; the quick
+  // search dropdown/command palette stays untouched.
+  const activeQuery = searchParams.get('q')?.trim() ?? '';
+  const { data: nameData, error: nameError, isFetching: nameFetching } = useCachedQuery<SearchResponse>({
+    key: ['name-search', activeQuery],
+    queryFn: signal => metaApi.search(activeQuery, undefined, undefined, signal),
+    enabled: activeQuery !== '',
+  });
+
   const { data: selectedData, isFetching: selectedFetching, refresh: refreshSelectedQuery, setData: setSelectedData } = useCachedQuery<SelectedDetail>({
     key: ['item-metadata', selectedItem?.path ?? '', selectedItem?.type ?? ''],
     queryFn: signal => {
@@ -186,6 +197,36 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   const tagSearchStatus = tagData?.status;
   const showTagSearchNotice = activeTag !== null
     && (tagSearchStatus === 'partial' || tagSearchStatus === 'degraded');
+
+  // Name-search derived views: same shapes as the tag-search counterparts.
+  const nameResults: BrowsableItem[] | null = activeQuery !== '' ? (nameData?.results ?? null) : null;
+  const nameSearchStatus = nameData?.status;
+  const showNameSearchNotice = activeQuery !== ''
+    && (nameSearchStatus === 'partial' || nameSearchStatus === 'degraded');
+
+  // Name-search failure policy: a submitted search is always user-initiated,
+  // so a failure toasts once and falls back to the plain directory listing.
+  useEffect(() => {
+    if (nameError == null) return;
+    showToast(t('browse.search_failed'), 'error');
+    setSearchParams(currentPath ? { path: currentPath } : {}, { replace: true });
+  }, [nameError, currentPath, setSearchParams, showToast, t]);
+
+  const handleSearchSubmit = useCallback((query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    setActiveTag(null);
+    setSelected(new Set());
+    setSelectedItem(null);
+    const params: Record<string, string> = {};
+    if (currentPath) params.path = currentPath;
+    params.q = trimmed;
+    setSearchParams(params, { replace: true });
+  }, [currentPath, setSearchParams]);
+
+  const handleClearNameSearch = useCallback(() => {
+    setSearchParams(currentPath ? { path: currentPath } : {}, { replace: true });
+  }, [currentPath, setSearchParams]);
 
   // Tag-search failure policy (see tagSearchFailureHandlingRef).
   useEffect(() => {
@@ -465,10 +506,10 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   }, [handleNavigate, handleNavigateDetail]);
 
   const handleNavigateItem = useCallback((path: string) => {
-    const item = (tagResults ?? data?.items ?? []).find(candidate => candidate.path === path);
+    const item = (nameResults ?? tagResults ?? data?.items ?? []).find(candidate => candidate.path === path);
     if (item?.is_project) handleNavigateDetail(path);
     else handleNavigate(path);
-  }, [data?.items, handleNavigate, handleNavigateDetail, tagResults]);
+  }, [data?.items, handleNavigate, handleNavigateDetail, nameResults, tagResults]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent, item: BrowsableItem) => {
     e.preventDefault();
@@ -507,7 +548,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
     setSharePaths([item.path]);
   }, []);
 
-  const visibleItems = tagResults ?? data?.items ?? [];
+  const visibleItems = nameResults ?? tagResults ?? data?.items ?? [];
 
   const handleCopyPath = useCallback((path: string) => {
     navigator.clipboard.writeText(path).catch(() => {});
@@ -589,7 +630,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   };
 
   // ── Thumbnails ──
-  const visibleLoading = activeTag ? tagLoading : isLoading;
+  const visibleLoading = activeTag ? tagLoading : activeQuery ? nameFetching : isLoading;
   const imagePaths = useMemo(() => visibleItems
     .filter(item => item.category === 'image' || /\.(jpg|jpeg|png|gif|webp)$/i.test(item.extension))
     .map(item => item.path), [visibleItems]);
@@ -628,9 +669,10 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
         setSelectMode(current => !current);
         setSelected(new Set());
       } else if (event.key === 'Escape') {
-        if (activeTag) {
+        if (activeTag || activeQuery) {
           event.preventDefault();
-          handleClearTagFilter();
+          if (activeTag) handleClearTagFilter();
+          else handleClearNameSearch();
         } else if (selected.size > 0) {
           event.preventDefault();
           setSelected(new Set());
@@ -647,7 +689,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
 
     document.addEventListener('keydown', handleWorkspaceShortcut);
     return () => document.removeEventListener('keydown', handleWorkspaceShortcut);
-  }, [activeTag, handleClearTagFilter, handleInfoToggle, handleSidebarToggle, handleViewModeChange, infoOpen, isMobile, selectMode, selected.size, sidebarOpen, viewMode]);
+  }, [activeQuery, activeTag, handleClearNameSearch, handleClearTagFilter, handleInfoToggle, handleSidebarToggle, handleViewModeChange, infoOpen, isMobile, selectMode, selected.size, sidebarOpen, viewMode]);
 
   return (
     <AppLayout
@@ -658,6 +700,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
             workspaceHref={currentPath ? '/browse?path=' + encodeURIComponent(currentPath) : '/browse'}
             galleryHref={currentPath ? '/gallery/collection?path=' + encodeURIComponent(currentPath) : '/gallery'}
             onOpenPalette={onOpenPalette}
+            onSearchSubmit={handleSearchSubmit}
           />
          ) : <Header />
       }
@@ -708,6 +751,25 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
            </button>
          </div>
        )}
+
+       {activeQuery && (
+         <div data-testid="name-search-banner" className="mx-4 mt-3 flex items-center justify-between border-b border-indigo-500/20 bg-indigo-500/5 px-3 py-2 text-xs text-indigo-200">
+           <span>{t('browse.search_banner', visibleItems.length, activeQuery)}</span>
+           <button type="button" onClick={handleClearNameSearch} className="rounded p-1 text-indigo-200 hover:bg-indigo-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" aria-label={t('browse.search_clear')} title={t('browse.search_clear')}>
+             <X size={14} />
+           </button>
+         </div>
+       )}
+
+      {showNameSearchNotice && (
+        <div role="status" data-testid="name-search-notice" className="mx-4 mt-1 px-3 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          {nameSearchStatus === 'degraded'
+            ? t('browse.search_degraded')
+            : nameData?.dropped_count
+              ? t('browse.search_partial_dropped', nameData.dropped_count)
+              : t('browse.search_partial')}
+        </div>
+      )}
 
       {showTagSearchNotice && (
         <div role="status" data-testid="tag-search-notice" className="mx-4 mt-1 px-3 text-xs" style={{ color: 'var(--color-text-muted)' }}>
@@ -813,7 +875,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
         </div>
       ) : visibleItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 text-slate-500">
-          <p className="text-base">{t('browse.empty')}</p>
+          <p className="text-base">{activeQuery ? t('browse.search_no_results') : t('browse.empty')}</p>
         </div>
       ) : viewMode === 'masonry' ? (
         <MasonryView

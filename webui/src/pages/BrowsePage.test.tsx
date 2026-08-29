@@ -550,6 +550,49 @@ describe('BrowsePage', () => {
     expect(screen.getByTestId('location-search').textContent).toBe('?path=newer%2Furl');
   });
 
+  it('runs a workspace name search from the q param and shows the result count', async () => {
+    search.mockResolvedValueOnce({
+      results: [
+        { path: 'found/one.png', name: 'one.png', type: 'file', extension: '.png', category: 'image' },
+        { path: 'found/two.jpg', name: 'two.jpg', type: 'file', extension: '.jpg', category: 'image' },
+      ],
+      count: 2,
+    });
+    render(
+      <MemoryRouter initialEntries={['/browse?q=hero']}>
+        <TestBrowsePage />
+        <LocationSearch />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(search).toHaveBeenCalledWith('hero', undefined, undefined, expect.any(AbortSignal)));
+    await waitFor(() => expect(screen.getByTestId('file-list').textContent).toBe('one.png,two.jpg'));
+    expect(screen.getByTestId('name-search-banner').textContent).toBe('browse.search_banner');
+  });
+
+  it('shows the dedicated empty state when a name search has no results', async () => {
+    search.mockResolvedValueOnce({ results: [], count: 0 });
+    render(<MemoryRouter initialEntries={['/browse?q=missing']}><TestBrowsePage /></MemoryRouter>);
+
+    await waitFor(() => expect(search).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText('browse.search_no_results')).toBeTruthy());
+    expect(screen.getByTestId('name-search-banner').textContent).toBe('browse.search_banner');
+  });
+
+  it('toasts and falls back to the listing when a name search fails', async () => {
+    search.mockRejectedValueOnce(new Error('boom'));
+    render(
+      <MemoryRouter initialEntries={['/browse?path=original&q=hero']}>
+        <TestBrowsePage />
+        <LocationSearch />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('browse.search_failed', 'error'));
+    await waitFor(() => expect(screen.getByTestId('location-search').textContent).toBe('?path=original'));
+    expect(screen.getByTestId('file-list').textContent).toBe('listing:original');
+  });
+
   it('inspects a desktop click without adding the item to the ZIP selection', async () => {
     const { useMediaQuery } = await import('../hooks/useMediaQuery');
     vi.mocked(useMediaQuery).mockReturnValue(false);

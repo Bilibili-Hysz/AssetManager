@@ -104,6 +104,10 @@ const en = {
     search_partial: 'Results may be incomplete: some sources were skipped',
     search_partial_dropped: 'Results may be incomplete: {0} matches were dropped',
     search_degraded: 'Results may be incomplete: search fell back to name matching',
+    search_banner: "{0} results for '{1}'",
+    search_clear: 'Clear search',
+    search_no_results: 'No files match your search',
+    search_failed: 'Search failed',
   },
   breadcrumb: {
     navigation: 'Workspace navigation',

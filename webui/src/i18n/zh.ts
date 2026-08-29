@@ -106,6 +106,10 @@ const zh: I18nDict = {
     search_partial: '结果可能不完整：仅扫描了部分来源',
     search_partial_dropped: '结果可能不完整：已丢弃 {0} 条匹配',
     search_degraded: '结果可能不完整：已降级为仅按名称匹配',
+    search_banner: '“{1}”的{0}个结果',
+    search_clear: '清除搜索',
+    search_no_results: '没有文件匹配你的搜索',
+    search_failed: '搜索失败',
   },
   breadcrumb: {
     navigation: '工作区导航',

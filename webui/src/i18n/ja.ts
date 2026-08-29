@@ -106,6 +106,10 @@ const ja: I18nDict = {
     search_partial: '結果が不完全な可能性があります：一部のソースのみスキャンされました',
     search_partial_dropped: '結果が不完全な可能性があります：{0} 件の一致がスキップされました',
     search_degraded: '結果が不完全な可能性があります：名前一致のみにフォールバックしました',
+    search_banner: '「{1}」の検索結果 {0} 件',
+    search_clear: '検索をクリア',
+    search_no_results: '一致するファイルがありません',
+    search_failed: '検索に失敗しました',
   },
   breadcrumb: {
     navigation: 'ワークスペースナビゲーション',
