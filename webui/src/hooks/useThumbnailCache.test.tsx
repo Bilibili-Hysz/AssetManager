@@ -92,4 +92,40 @@ describe('useThumbnailCache', () => {
 
     expect(result.current.getThumbnail('cover.jpg')).toBeUndefined();
   });
+
+  // The LAN backend rejects /api/thumbnails/batch with 400 for the WHOLE
+  // request above 100 paths, and its worker has no wall-clock deadline, so
+  // oversized directories must be sent in small serial chunks.
+  it('chunks oversized directory loads into 50-path batches', async () => {
+    const paths = Array.from({ length: 120 }, (_, i) => `img-${i}.jpg`);
+    const { result } = renderHook(() => useThumbnailCache());
+
+    await act(async () => {
+      await result.current.loadThumbnails(paths);
+    });
+
+    expect(batch).toHaveBeenCalledTimes(3); // 50 + 50 + 20
+    const sentSizes = batch.mock.calls.map(
+      call => (call as unknown as [string[]])[0]?.length ?? 0,
+    );
+    expect(sentSizes).toEqual([50, 50, 20]);
+  });
+
+  it('puts failed paths on a cooldown instead of re-requesting them immediately', async () => {
+    batch.mockRejectedValueOnce(new Error('timeout'));
+    const { result } = renderHook(() => useThumbnailCache());
+
+    await act(async () => {
+      await result.current.loadThumbnails(['broken.jpg']);
+    });
+    expect(batch).toHaveBeenCalledTimes(1);
+
+    // The immediate follow-up must not fire another doomed request while the
+    // path is cooling down; after the cooldown lapses it becomes eligible
+    // again automatically.
+    await act(async () => {
+      await result.current.loadThumbnails(['broken.jpg']);
+    });
+    expect(batch).toHaveBeenCalledTimes(1);
+  });
 });
