@@ -175,3 +175,28 @@ def test_sort_key_for_entry_by_size():
     key_small = sort_key_for_entry("small", False, 0, 100, ".txt", "size")
     key_big = sort_key_for_entry("big", False, 0, 200, ".txt", "size")
     assert key_small > key_big
+
+
+def test_matches_structured_extension_normalization():
+    from AssetsManager.application.asset_filters import matches_structured
+
+    assert matches_structured("a.png", False, size=1, mtime=1.0, extensions=["PNG", ".jpg"]) is True
+    assert matches_structured("a.png", False, size=1, mtime=1.0, extensions=["png"]) is True
+    assert matches_structured("a.png", False, size=1, mtime=1.0, extensions=["jpg"]) is False
+    assert matches_structured("a.png", False, size=1, mtime=1.0, extensions=[" "]) is True
+    # Directories always pass so navigation never disappears.
+    assert matches_structured("subdir", True, size=0, mtime=0.0, extensions=["png"]) is True
+
+
+def test_matches_structured_size_and_mtime_bounds_inclusive():
+    from AssetsManager.application.asset_filters import matches_structured
+
+    accept = matches_structured(
+        "a.png", False, size=1000, mtime=2000.0,
+        size_min=1000, size_max=1000, mtime_after=2000.0, mtime_before=2000.0,
+    )
+    assert accept is True
+    assert matches_structured("a.png", False, size=999, mtime=1.0, size_min=1000) is False
+    assert matches_structured("a.png", False, size=1001, mtime=1.0, size_max=1000) is False
+    assert matches_structured("a.png", False, size=1, mtime=1999.9, mtime_after=2000.0) is False
+    assert matches_structured("a.png", False, size=1, mtime=2000.1, mtime_before=2000.0) is False

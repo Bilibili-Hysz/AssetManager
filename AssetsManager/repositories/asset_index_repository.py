@@ -1,6 +1,7 @@
 """Persistence access for the lazily populated assets index."""
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 import re
 import threading
@@ -21,6 +22,14 @@ from AssetsManager.core.session_contract import require_library_session
 
 _R = TypeVar("_R")
 _SAVEPOINT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+# Structured-search ORDER BY whitelist. Column names never come from user
+# input directly; only these literals are interpolated into SQL.
+_STRUCTURED_ORDER_COLUMNS = {
+    "name": "name",
+    "size": "size",
+    "mtime": "mtime",
+}
 
 
 class AssetIndexRevisionConflict(RuntimeError):
@@ -539,6 +548,96 @@ class AssetIndexRepository:
             "FROM assets WHERE library_root=? AND LOWER(name) LIKE ? ESCAPE '\\' "
             "ORDER BY name LIMIT ?",
             (self._root_key(library_root), f"%{escaped}%", limit),
+        )
+
+    @_repository_operation
+    def search_structured(
+        self,
+        library_root: str | Path,
+        *,
+        name_substring: str | None = None,
+        extensions: Sequence[str] | None = None,
+        size_min: int | None = None,
+        size_max: int | None = None,
+        mtime_after: float | None = None,
+        mtime_before: float | None = None,
+        order_by: str = "name",
+        descending: bool = False,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> list[AssetIndexEntry]:
+        """Combined structured query over the ``assets`` index.
+
+        All predicates are AND-combined in one parameterized SQL statement.
+        ``mtime`` is epoch seconds (``stat.st_mtime``), matching the column
+        the scanner publishes; ``size`` is bytes. Range bounds are inclusive.
+
+        Only whitelisted literals reach the ORDER BY clause; every user
+        value is bound as a parameter, and the name substring keeps the
+        LIKE/ESCAPE escaping used by :meth:`search_by_name`.
+
+        Note on indexing: the ``assets`` table carries indices on
+        ``library_root``, ``extension``, ``name`` and ``parent_path`` only
+        (no size/mtime index). Every combination therefore drives at least
+        one existing index (``idx_assets_library`` or ``idx_assets_ext``)
+        with size/mtime/LIKE as residual filters, and ORDER BY uses a TEMP
+        B-TREE. Adding further indices is explicitly out of scope, so
+        callers should keep ``limit`` bounded.
+        """
+        column = _STRUCTURED_ORDER_COLUMNS.get(order_by)
+        if column is None:
+            raise ValueError(
+                f"order_by must be one of {sorted(_STRUCTURED_ORDER_COLUMNS)}, got {order_by!r}"
+            )
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+            raise ValueError("limit must be a positive integer")
+        if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+            raise ValueError("offset must be a non-negative integer")
+
+        clauses = ["library_root=?"]
+        params: list[object] = [self._root_key(library_root)]
+
+        if name_substring:
+            escaped = (
+                name_substring.lower()
+                .replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            )
+            clauses.append("LOWER(name) LIKE ? ESCAPE '\\'")
+            params.append(f"%{escaped}%")
+
+        if extensions:
+            # The scanner stores lowercase extensions with a leading dot
+            # ("" for directories), so normalize candidate input the same way.
+            normalized = sorted({
+                "." + str(ext).strip().lower().lstrip(".")
+                for ext in extensions
+                if str(ext).strip().lstrip(".")
+            })
+            if normalized:
+                placeholders = ", ".join("?" for _ in normalized)
+                clauses.append(f"extension IN ({placeholders})")
+                params.extend(normalized)
+
+        if size_min is not None:
+            clauses.append("size>=?")
+            params.append(size_min)
+        if size_max is not None:
+            clauses.append("size<=?")
+            params.append(size_max)
+        if mtime_after is not None:
+            clauses.append("mtime>=?")
+            params.append(mtime_after)
+        if mtime_before is not None:
+            clauses.append("mtime<=?")
+            params.append(mtime_before)
+
+        direction = "DESC" if descending else "ASC"
+        params.append(limit)
+        params.append(offset)
+        return self._entries(
+            "FROM assets WHERE " + " AND ".join(clauses)
+            + f" ORDER BY {column} {direction} LIMIT ? OFFSET ?",
+            tuple(params),
         )
 
     @_repository_operation

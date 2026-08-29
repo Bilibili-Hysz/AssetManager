@@ -448,3 +448,87 @@ def test_session_bound_search_service_rejects_operations_after_close(tmp_path):
             service.search_by_name("hero", scanner=object())
     finally:
         bootstrap.library_service.close()
+
+
+# ── search_structured_detailed ────────────────────────────────────
+
+
+def _index_library(library, conn):
+    from AssetsManager.application.asset_index_service import AssetIndexService
+
+    library.mkdir(parents=True, exist_ok=True)
+    (library / "old_small.png").write_bytes(b"a")
+    (library / "new_big.png").write_bytes(b"b" * 4096)
+    (library / "new_big.jpg").write_bytes(b"c" * 8192)
+    AssetIndexService().index_directory(conn, library, library)
+    # Deterministic mtimes: 1000.0 vs 2000.0 (epoch seconds, assets.mtime).
+    conn.execute("UPDATE assets SET mtime=1000.0 WHERE name='old_small.png'")
+    conn.execute("UPDATE assets SET mtime=2000.0 WHERE name IN ('new_big.png', 'new_big.jpg')")
+    conn.commit()
+
+
+def test_search_structured_filters_by_mtime_range(tmp_path, schema_db):
+    library = tmp_path / "lib"
+    _index_library(library, schema_db)
+
+    svc = SearchService()
+    result_set = svc.search_structured_detailed(
+        library, mtime_after=1500.0, db_conn=schema_db,
+    )
+
+    assert result_set.status.value == "complete"
+    assert [result.name for result in result_set.results] == ["new_big.jpg", "new_big.png"]
+    assert result_set.sources[0].source == "indexed"
+
+
+def test_search_structured_combines_ext_size_and_name(tmp_path, schema_db):
+    library = tmp_path / "lib"
+    _index_library(library, schema_db)
+
+    svc = SearchService()
+    result_set = svc.search_structured_detailed(
+        library,
+        name_substring="big",
+        extensions=["png"],
+        size_min=4000,
+        mtime_after=1500.0,
+        db_conn=schema_db,
+    )
+
+    assert [result.name for result in result_set.results] == ["new_big.png"]
+
+
+def test_search_structured_orders_by_size_and_pages(tmp_path, schema_db):
+    library = tmp_path / "lib"
+    _index_library(library, schema_db)
+
+    svc = SearchService()
+    ordered = svc.search_structured_detailed(
+        library, order_by="size", db_conn=schema_db,
+    )
+    assert [result.name for result in ordered.results] == [
+        "old_small.png", "new_big.png", "new_big.jpg",
+    ]
+
+    paged = svc.search_structured_detailed(
+        library, order_by="size", offset=1, limit=1, db_conn=schema_db,
+    )
+    assert [result.name for result in paged.results] == ["new_big.png"]
+
+
+def test_search_structured_invalid_order_by_raises_value_error(tmp_path, schema_db):
+    library = tmp_path / "lib"
+    _index_library(library, schema_db)
+
+    svc = SearchService()
+    with pytest.raises(ValueError):
+        svc.search_structured_detailed(
+            library, order_by="mtime; DROP TABLE assets", db_conn=schema_db,
+        )
+
+
+def test_search_structured_returns_unavailable_without_conn(tmp_path):
+    svc = SearchService()
+    result_set = svc.search_structured_detailed("/tmp", size_min=1, db_conn=None)
+    assert result_set.status.value == "unavailable"
+    assert result_set.results == ()

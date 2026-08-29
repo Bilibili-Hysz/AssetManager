@@ -204,6 +204,148 @@ class TestAssetIndexRepository:
         assert repo.get_entry("C:/library/folder-copy/keep.txt") is not None
 
 
+class TestAssetIndexStructuredSearch:
+    """search_structured: combined extension/size/mtime predicates."""
+
+    LIB = "C:/library"
+
+    @staticmethod
+    def _populate(repo):
+        entries = [
+            # name, ext, kind, size, mtime
+            ("C:/library/a.png", "a.png", ".png", "file", 100, 1000.0),
+            ("C:/library/b.jpg", "b.jpg", ".jpg", "file", 2000, 2000.0),
+            ("C:/library/c.png", "c.png", ".png", "file", 3000, 3000.0),
+            ("C:/library/big_pack%100.zip", "big_pack%100.zip", ".zip", "file", 9999, 4000.0),
+            ("C:/library/dir", "dir", "", "dir", 0, 1500.0),
+        ]
+        rows = [
+            (path, name, ext, kind, size, mtime,
+             path.rsplit("/", 1)[0], "C:/library", 1.0, 1.0)
+            for (path, name, ext, kind, size, mtime) in entries
+        ]
+        for parent in ("C:/library", "C:/library/dir"):
+            repo.replace_parent_entries(
+                parent, "C:/library",
+                [row for row in rows if row[7] == parent],
+                clear_existing=True,
+            )
+
+    def _repo(self, memory_db):
+        repo = AssetIndexRepository(_make_db(memory_db))
+        self._populate(repo)
+        return repo
+
+    def _names(self, entries):
+        return [entry.name for entry in entries]
+
+    def test_no_filters_returns_every_entry_ordered_by_name(self, memory_db):
+        repo = self._repo(memory_db)
+        assert self._names(repo.search_structured(self.LIB)) == [
+            "a.png", "b.jpg", "big_pack%100.zip", "c.png", "dir",
+        ]
+
+    def test_extension_filter_normalizes_case_and_leading_dot(self, memory_db):
+        repo = self._repo(memory_db)
+        assert self._names(repo.search_structured(self.LIB, extensions=["PNG", ".Jpg"])) == [
+            "a.png", "b.jpg", "c.png",
+        ]
+        assert self._names(repo.search_structured(self.LIB, extensions=[])) == [
+            "a.png", "b.jpg", "big_pack%100.zip", "c.png", "dir",
+        ]
+
+    def test_size_range_bounds_are_inclusive(self, memory_db):
+        repo = self._repo(memory_db)
+        assert self._names(repo.search_structured(self.LIB, size_min=2000, size_max=3000)) == [
+            "b.jpg", "c.png",
+        ]
+        # Exact boundary value on one side only.
+        assert self._names(repo.search_structured(self.LIB, size_min=3000)) == [
+            "big_pack%100.zip", "c.png",
+        ]
+        assert self._names(repo.search_structured(self.LIB, size_max=100)) == [
+            "a.png", "dir",
+        ]
+
+    def test_mtime_range_bounds_are_inclusive(self, memory_db):
+        repo = self._repo(memory_db)
+        assert self._names(repo.search_structured(self.LIB, mtime_after=2000.0, mtime_before=3000.0)) == [
+            "b.jpg", "c.png",
+        ]
+        assert self._names(repo.search_structured(self.LIB, mtime_before=1000.0)) == ["a.png"]
+
+    def test_combined_predicates(self, memory_db):
+        repo = self._repo(memory_db)
+        entries = repo.search_structured(
+            self.LIB,
+            extensions=[".png"],
+            size_min=100,
+            size_max=2000,
+            mtime_after=500.0,
+            mtime_before=2500.0,
+        )
+        assert self._names(entries) == ["a.png"]
+
+    def test_name_substring_matches_and_escapes_like_wildcards(self, memory_db):
+        repo = self._repo(memory_db)
+        assert self._names(repo.search_structured(self.LIB, name_substring="pack")) == [
+            "big_pack%100.zip",
+        ]
+        # A literal % / _ must not act as a wildcard: only the name that
+        # actually contains the character matches (unescaped, both would
+        # match every entry).
+        assert self._names(repo.search_structured(self.LIB, name_substring="%")) == [
+            "big_pack%100.zip",
+        ]
+        assert self._names(repo.search_structured(self.LIB, name_substring="_")) == [
+            "big_pack%100.zip",
+        ]
+        assert self._names(repo.search_structured(self.LIB, name_substring="100")) == [
+            "big_pack%100.zip",
+        ]
+
+    def test_sql_injection_vector_stays_literal(self, memory_db):
+        repo = self._repo(memory_db)
+        payload = "x%' ; DROP TABLE assets; --"
+        assert repo.search_structured(self.LIB, name_substring=payload) == []
+        # The assets table survived the injected statement.
+        assert self._names(repo.search_structured(self.LIB, extensions=[".png"])) == [
+            "a.png", "c.png",
+        ]
+
+    def test_order_by_whitelist_and_direction(self, memory_db):
+        repo = self._repo(memory_db)
+        assert self._names(repo.search_structured(self.LIB, order_by="size")) == [
+            "dir", "a.png", "b.jpg", "c.png", "big_pack%100.zip",
+        ]
+        assert self._names(repo.search_structured(self.LIB, order_by="size", descending=True)) == [
+            "big_pack%100.zip", "c.png", "b.jpg", "a.png", "dir",
+        ]
+        assert self._names(repo.search_structured(self.LIB, order_by="mtime", descending=True)) == [
+            "big_pack%100.zip", "c.png", "b.jpg", "dir", "a.png",
+        ]
+        with pytest.raises(ValueError):
+            repo.search_structured(self.LIB, order_by="name; DROP TABLE assets")
+
+    def test_limit_offset_paging(self, memory_db):
+        repo = self._repo(memory_db)
+        assert self._names(repo.search_structured(self.LIB, limit=2)) == ["a.png", "b.jpg"]
+        assert self._names(repo.search_structured(self.LIB, limit=2, offset=2)) == [
+            "big_pack%100.zip", "c.png",
+        ]
+        assert repo.search_structured(self.LIB, limit=2, offset=99) == []
+        with pytest.raises(ValueError):
+            repo.search_structured(self.LIB, limit=0)
+        with pytest.raises(ValueError):
+            repo.search_structured(self.LIB, limit=True)
+        with pytest.raises(ValueError):
+            repo.search_structured(self.LIB, offset=-1)
+
+    def test_library_root_isolation(self, memory_db):
+        repo = self._repo(memory_db)
+        assert repo.search_structured("C:/other-library") == []
+
+
 # ── MetadataRepository ───────────────────────────────────────────
 
 class TestMetadataRepository:

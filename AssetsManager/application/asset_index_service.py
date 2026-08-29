@@ -5,6 +5,7 @@ import os
 import threading
 import time
 from collections import OrderedDict
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from time import monotonic_ns
@@ -683,6 +684,49 @@ class AssetIndexService:
             if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
                 raise ValueError("limit must be a positive integer")
             return self._repository_for(conn, root).search_by_name(root, query, limit)
+
+    def search_structured(
+        self,
+        *args: Any,
+        name_substring: str | None = None,
+        extensions: Sequence[str] | None = None,
+        size_min: int | None = None,
+        size_max: int | None = None,
+        mtime_after: float | None = None,
+        mtime_before: float | None = None,
+        order_by: str = "name",
+        descending: bool = False,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> list[AssetIndexEntry]:
+        """Combined extension/size/mtime query over the indexed entries.
+
+        Positional contract mirrors :meth:`search_by_name`: either a bare
+        ``library_root`` (session-bound) or ``conn, library_root``. All
+        filter validation is delegated to the repository.
+        """
+        with self._operation():
+            if self._session is not None and len(args) == 1:
+                conn, root = self._connection(None, args[0])
+            elif len(args) == 2:
+                conn, root = self._connection(args[0], args[1])
+            else:
+                raise TypeError(
+                    "search_structured expects library_root or conn, library_root"
+                )
+            return self._repository_for(conn, root).search_structured(
+                root,
+                name_substring=name_substring,
+                extensions=extensions,
+                size_min=size_min,
+                size_max=size_max,
+                mtime_after=mtime_after,
+                mtime_before=mtime_before,
+                order_by=order_by,
+                descending=descending,
+                limit=limit,
+                offset=offset,
+            )
 
     def remove_entry(self, *args: Any, commit: bool = True, savepoint: str | None = None) -> None:
         """Remove one entry, with optional transaction control."""

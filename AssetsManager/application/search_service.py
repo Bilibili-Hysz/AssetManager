@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -622,6 +623,136 @@ class SearchService:
                 limit=limit,
             )
 
+        results, errors, dropped_count = self._project_index_entries(
+            root, entries, category,
+        )
+
+        if dropped_count:
+            status = SearchStatus.PARTIAL if results else SearchStatus.PATH_REJECTED
+        else:
+            status = SearchStatus.COMPLETE if results else SearchStatus.EMPTY
+        return self._record_results(
+            "search.indexed",
+            library_root,
+            started,
+            SearchResultSet.from_source(
+                "indexed",
+                results,
+                status=status,
+                errors=errors,
+                dropped_count=dropped_count,
+            ),
+            limit=limit,
+        )
+
+    @session_operation
+    def search_structured_detailed(
+        self,
+        library_root: str | Path,
+        *,
+        name_substring: str = "",
+        extensions: Sequence[str] | None = None,
+        size_min: int | None = None,
+        size_max: int | None = None,
+        mtime_after: float | None = None,
+        mtime_before: float | None = None,
+        category: str = "all",
+        order_by: str = "name",
+        db_conn: sqlite3.Connection | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> SearchResultSet:
+        """Structured indexed search by extension/size/mtime (and name).
+
+        Unlike the scanner-based sources, the ``assets`` index can execute
+        size/mtime/extension predicates efficiently in SQL, so structured
+        queries run indexed-only by contract. A raised ``ValueError`` (from
+        the repository's whitelist/validation) propagates to the caller —
+        transport layers map it to a client error instead of an empty
+        "error" result set.
+        """
+        started = perf_counter() if self._performance_recorder is not None else None
+        db_conn = self._connection(library_root, db_conn)
+        if db_conn is None:
+            return self._record_results(
+                "search.structured",
+                library_root,
+                started,
+                SearchResultSet.from_source(
+                    "indexed",
+                    status=SearchStatus.UNAVAILABLE,
+                    errors=(SearchError("search_source_unavailable", "indexed", recoverable=True),),
+                ),
+                limit=limit,
+            )
+        root = root_identity(library_root, strict=False).display_path
+        structured_kwargs: dict[str, object] = {
+            "name_substring": name_substring,
+            "extensions": extensions,
+            "size_min": size_min,
+            "size_max": size_max,
+            "mtime_after": mtime_after,
+            "mtime_before": mtime_before,
+            "order_by": order_by,
+            "limit": limit,
+            "offset": offset,
+        }
+        try:
+            if self._asset_index_service is not None:
+                entries = self._asset_index_service.search_structured(
+                    db_conn, root, **structured_kwargs
+                )
+            else:
+                entries = AssetIndexRepository(db_conn).search_structured(
+                    str(root), **structured_kwargs
+                )
+        except (sqlite3.ProgrammingError, sqlite3.OperationalError, ValueError):
+            raise
+        except Exception:
+            return self._record_results(
+                "search.structured",
+                library_root,
+                started,
+                SearchResultSet.from_source(
+                    "indexed",
+                    status=SearchStatus.ERROR,
+                    errors=(SearchError("search_source_failed", "indexed", recoverable=True),),
+                ),
+                limit=limit,
+            )
+
+        results, errors, dropped_count = self._project_index_entries(
+            root, entries, category,
+        )
+        if dropped_count:
+            status = SearchStatus.PARTIAL if results else SearchStatus.PATH_REJECTED
+        else:
+            status = SearchStatus.COMPLETE if results else SearchStatus.EMPTY
+        return self._record_results(
+            "search.structured",
+            library_root,
+            started,
+            SearchResultSet.from_source(
+                "indexed",
+                results,
+                status=status,
+                errors=errors,
+                dropped_count=dropped_count,
+            ),
+            limit=limit,
+        )
+
+    def _project_index_entries(
+        self,
+        root: Path,
+        entries: Iterable[object],
+        category: str,
+    ) -> tuple[list[SearchResult], list[SearchError], int]:
+        """Project ``AssetIndexEntry`` rows into results with diagnostics.
+
+        Shared by the indexed name search and the structured search so both
+        keep the identical containment/category/drop contract.
+        """
         results: list[SearchResult] = []
         errors: list[SearchError] = []
         dropped_count = 0
@@ -645,24 +776,7 @@ class SearchService:
             except (AttributeError, TypeError, ValueError):
                 dropped_count += 1
                 _append_error(errors, SearchError("search_result_invalid", "indexed", recoverable=True))
-
-        if dropped_count:
-            status = SearchStatus.PARTIAL if results else SearchStatus.PATH_REJECTED
-        else:
-            status = SearchStatus.COMPLETE if results else SearchStatus.EMPTY
-        return self._record_results(
-            "search.indexed",
-            library_root,
-            started,
-            SearchResultSet.from_source(
-                "indexed",
-                results,
-                status=status,
-                errors=errors,
-                dropped_count=dropped_count,
-            ),
-            limit=limit,
-        )
+        return results, errors, dropped_count
 
     def _connection(
         self, library_root: str | Path, db_conn: sqlite3.Connection | None
