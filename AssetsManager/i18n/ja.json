@@ -773,6 +773,8 @@
   "shortcuts.close_dialog": "ダイアログを閉じる",
   "settings.theme_no_name": "テーマファイルに名前がありません。",
   "settings.cannot_delete_builtin": "組み込みテーマは削除できません。",
+  "settings.delete_theme_title": "テーマを削除",
+  "settings.delete_theme_confirm": "テーマ「{theme}」を削除しますか？この操作は元に戻せませんが、ファイルはゴミ箱に移動され、完全には削除されません。",
   "settings.builtin_read_only": "組み込みテーマは上書きできません。編集した色をカスタムテーマとして保存しますか？",
   "sharing.placeholder_cert": "/path/to/cert.pem",
   "sharing.placeholder_key": "/path/to/key.pem",

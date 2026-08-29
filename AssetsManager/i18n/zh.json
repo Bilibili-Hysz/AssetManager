@@ -773,6 +773,8 @@
   "shortcuts.close_dialog": "关闭对话框",
   "settings.theme_no_name": "主题文件没有名称。",
   "settings.cannot_delete_builtin": "无法删除内置主题。",
+  "settings.delete_theme_title": "删除主题",
+  "settings.delete_theme_confirm": "确定删除主题「{theme}」吗？此操作不可撤销，但文件会移入回收站而非永久删除。",
   "settings.builtin_read_only": "内置主题不可覆盖。是否将修改后的颜色另存为自定义主题？",
   "sharing.placeholder_cert": "/path/to/cert.pem",
   "sharing.placeholder_key": "/path/to/key.pem",

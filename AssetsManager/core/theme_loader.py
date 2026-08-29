@@ -234,7 +234,16 @@ class ThemeLoader(QObject):
             return False
 
         try:
-            os.remove(filepath)
+            # Move to the OS trash instead of hard-deleting: a mis-click on a
+            # hand-tuned theme must be recoverable.  Fall back to a permanent
+            # remove only when no trash is available (network drives, sandboxed
+            # environments); the confirmation dialog in settings_dialog.py is
+            # the primary guard, trash is the safety net.
+            from send2trash import send2trash
+            try:
+                send2trash(filepath)
+            except OSError:
+                os.remove(filepath)
         except (IOError, OSError):
             return False
 

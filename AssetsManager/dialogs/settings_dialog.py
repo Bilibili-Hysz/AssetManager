@@ -471,6 +471,18 @@ class SettingsDialog(TabbedDialog):
         from AssetsManager.core.themes import _get_loader
         current = themes.name()
         loader = _get_loader()
+        if not loader.is_custom_theme(current):
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.cannot_delete_builtin"))
+            return
+        answer = QMessageBox.question(
+            self,
+            tr("settings.delete_theme_title"),
+            tr("settings.delete_theme_confirm").format(theme=current),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
         if loader.delete_custom_theme(current):
             themes.reload_themes()
             groups = loader.list_themes()
@@ -480,8 +492,6 @@ class SettingsDialog(TabbedDialog):
                 first = theme_list[0].get("name", "")
                 themes.set_theme(first)
                 self._set_menu_button_presentation(self._theme_btn, first)
-        else:
-            QMessageBox.warning(self, tr("dialog.error"), tr("settings.cannot_delete_builtin"))
 
     def _make_pct_slider(self, start_value):
         slider = QSlider(Qt.Orientation.Horizontal)
