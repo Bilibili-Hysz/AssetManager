@@ -19,6 +19,11 @@ from time import time
 from AssetsManager.core.path_resolver import SHARED_DIR
 
 CRASH_LOG = SHARED_DIR / "crash.log"
+# Written alongside every report so a later session can surface "the app
+# recovered from a crash since you last ran it".  Consumed by
+# ``consume_pending_crash`` during startup; deleted on acknowledge.  A tiny
+# atomic write, safe to do from either excepthook thread.
+PENDING_CRASH_MARKER = SHARED_DIR / "crash.pending"
 MAX_SIZE = 512 * 1024  # 512 KB
 
 # Repeated-crash guard: once more than _CRASH_THRESHOLD crashes land within a
@@ -111,6 +116,25 @@ def _write_report(exc_type, exc_value, exc_tb) -> None:
     lines.append(f"{'=' * 60}\n")
     with open(CRASH_LOG, "a", encoding="utf-8") as f:
         f.write("\n".join(lines))
+    # Surface the crash to the *next* session: the current one is already
+    # unwinding, so a UI popup here would be both racy and thread-unsafe.
+    # The marker is consumed at startup by consume_pending_crash().
+    try:
+        PENDING_CRASH_MARKER.write_text("1", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def consume_pending_crash() -> bool:
+    """Return True when a crash happened in a previous session, then clear
+    the marker.  Call once, after the main window is visible."""
+    if not PENDING_CRASH_MARKER.exists():
+        return False
+    try:
+        PENDING_CRASH_MARKER.unlink(missing_ok=True)
+    except OSError:
+        pass
+    return True
 
 
 def _excepthook(exc_type, exc_value, exc_tb) -> None:

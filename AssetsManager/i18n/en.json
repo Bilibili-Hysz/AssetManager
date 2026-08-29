@@ -839,6 +839,8 @@
   "restore_marker.retry_button": "Retry protected rollback",
   "restore_marker.ack_button": "Acknowledge manual remediation",
   "restore_marker.failed_title": "Restore recovery failed",
+  "crash.recovered_title": "Recovered from a crash",
+  "crash.recovered_body": "The application recovered from a crash since your last session. The crash report is in RuntimeData/Shared/crash.log.",
   "menu.import_assets": "Import Files/Folders…",
   "import.title": "Import Assets",
   "import.no_library": "Open a library first.",

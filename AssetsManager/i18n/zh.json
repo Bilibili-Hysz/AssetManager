@@ -839,6 +839,8 @@
   "restore_marker.retry_button": "重试受保护的回滚",
   "restore_marker.ack_button": "确认已手动处理",
   "restore_marker.failed_title": "恢复操作失败",
+  "crash.recovered_title": "已从崩溃中恢复",
+  "crash.recovered_body": "应用程序自上次会话后发生过崩溃并已恢复。崩溃报告位于 RuntimeData/Shared/crash.log。",
   "menu.import_assets": "导入文件/文件夹…",
   "import.title": "导入资产",
   "import.no_library": "请先打开一个库。",

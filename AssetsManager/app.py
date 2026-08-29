@@ -164,6 +164,21 @@ def main():
                 )
             return
         window.show()
+        # Surface a crash from a previous session now that a window is on
+        # screen.  Deferred past show() so the dialog does not steal the
+        # first paint; the crash log stays on disk for inspection either way.
+        def _notify_pending_crash(owner) -> None:
+            from AssetsManager.core.crash_handler import consume_pending_crash
+            if not consume_pending_crash():
+                return
+            QMessageBox.warning(
+                owner,
+                tr("crash.recovered_title"),
+                tr("crash.recovered_body"),
+            )
+
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, lambda: _notify_pending_crash(window))
         # Surface plugin load failures collected during discovery (there is no
         # GUI consumer otherwise): status-bar message for 20s + log entry.
         # Deliberately no modal dialog — a broken plugin must not block open.

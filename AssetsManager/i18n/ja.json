@@ -839,6 +839,8 @@
   "restore_marker.retry_button": "保護されたロールバックを再試行",
   "restore_marker.ack_button": "手動対応を完了として記録",
   "restore_marker.failed_title": "復元処理に失敗しました",
+  "crash.recovered_title": "クラッシュから復旧しました",
+  "crash.recovered_body": "前回のセッション以降、アプリケーションがクラッシュから復旧しました。クラッシュレポートは RuntimeData/Shared/crash.log にあります。",
   "menu.import_assets": "ファイル/フォルダをインポート…",
   "import.title": "アセットのインポート",
   "import.no_library": "先にライブラリを開いてください。",
