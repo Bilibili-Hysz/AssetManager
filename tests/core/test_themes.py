@@ -246,3 +246,34 @@ def test_stylesheet_has_modern_item_hover_states():
         themes.get()["properties"]["opacity"]["hover"],
     )
     assert hov in qss
+
+
+def test_stylesheet_themes_native_controls():
+    """Check/radio indicators, progress bars, sliders, and tooltips must be
+    themed by the global QSS: without rules they fall back to the system
+    light palette under dark themes (white indicators, white progress
+    track, native tooltip)."""
+    qss = themes.stylesheet()
+
+    for selector in (
+        "QCheckBox::indicator",
+        "QRadioButton::indicator",
+        "QCheckBox::indicator:checked",
+        "QRadioButton::indicator:checked",
+        "QCheckBox::indicator:hover",
+        "QProgressBar",
+        "QProgressBar::chunk",
+        "QSlider::groove:horizontal",
+        "QSlider::sub-page:horizontal",
+        "QSlider::add-page:horizontal",
+        "QSlider::handle:horizontal",
+        "QToolTip",
+    ):
+        assert selector in qss, f"missing {selector} in global stylesheet"
+
+    t = themes.get()
+    # Unchecked indicators use the input surface + border; checked use the
+    # accent; hover uses the focus border — all via tokens, not literals.
+    assert t["input_bg"] in qss
+    assert t["tooltip_bg"] in qss
+    assert t["tooltip_text"] in qss

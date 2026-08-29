@@ -698,6 +698,85 @@ def stylesheet() -> str:
         background: {t['accent']};
     }}
     QSplitter {{ background: transparent; }}
+    /* Native control theming: without these rules the checkbox/radio
+       indicators, progress bars, sliders, and tooltips fall back to the
+       system light palette under dark themes (white indicators, white
+       progress track, native tooltip). */
+    QCheckBox::indicator, QRadioButton::indicator {{
+        width: {scaled_px(14)}px; height: {scaled_px(14)}px;
+        background: {t['input_bg']};
+        border: 1px solid {t['border']};
+        border-radius: {r_sm}px;
+    }}
+    QRadioButton::indicator {{ border-radius: {r_md}px; }}
+    QCheckBox::indicator:hover, QRadioButton::indicator:hover {{ border: 1px solid {t['border_focus']}; }}
+    QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
+        background: {t['accent']};
+        border: 1px solid {t['accent']};
+    }}
+    QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {{
+        background: {t['disabled_bg']};
+        border: 1px solid {t['disabled_text']};
+    }}
+    QProgressBar {{
+        background: {t['input_bg']};
+        border: 1px solid {hairline};
+        border-radius: {r_sm}px;
+        color: {t['body']};
+        text-align: center;
+    }}
+    QProgressBar::chunk {{
+        background: {t['accent']};
+        border-radius: {r_sm}px;
+    }}
+    QSlider::groove:horizontal {{
+        background: {hairline};
+        border-radius: {r_sm}px;
+        height: {scaled_px(4)}px;
+    }}
+    QSlider::sub-page:horizontal {{
+        background: {t['accent']};
+        border-radius: {r_sm}px;
+    }}
+    QSlider::add-page:horizontal {{
+        background: {t['input_bg']};
+        border-radius: {r_sm}px;
+    }}
+    QSlider::handle:horizontal {{
+        background: {t['panel']};
+        border: 2px solid {t['accent']};
+        border-radius: {r_md}px;
+        width: {scaled_px(14)}px; height: {scaled_px(14)}px;
+        margin: {-(scaled_px(14) - scaled_px(4)) // 2}px 0;
+    }}
+    QSlider::handle:horizontal:hover {{ border: 2px solid {t['border_focus']}; }}
+    QSlider::groove:vertical {{
+        background: {hairline};
+        border-radius: {r_sm}px;
+        width: {scaled_px(4)}px;
+    }}
+    QSlider::sub-page:vertical {{
+        background: {t['accent']};
+        border-radius: {r_sm}px;
+    }}
+    QSlider::add-page:vertical {{
+        background: {t['input_bg']};
+        border-radius: {r_sm}px;
+    }}
+    QSlider::handle:vertical {{
+        background: {t['panel']};
+        border: 2px solid {t['accent']};
+        border-radius: {r_md}px;
+        width: {scaled_px(14)}px; height: {scaled_px(14)}px;
+        margin: 0 {-(scaled_px(14) - scaled_px(4)) // 2}px;
+    }}
+    QToolTip {{
+        background: {t['tooltip_bg']};
+        color: {t['tooltip_text']};
+        border: 1px solid {hairline};
+        border-radius: {r_sm}px;
+        padding: {s_xs}px {s_sm}px;
+    }}
     #PanelContent {{
         background: {panel_alpha};
         border: 1px solid {hairline};
