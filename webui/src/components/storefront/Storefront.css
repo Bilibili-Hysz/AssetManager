@@ -129,6 +129,8 @@
 .seller-field input, .seller-field textarea, .seller-field select { min-height: 42px; padding: 0 11px; border: 1px solid var(--color-border); border-radius: 9px; outline: 0; color: var(--color-text); background: var(--color-surface); font: inherit; font-size: 13px; }
 .seller-field textarea { min-height: 100px; padding-top: 11px; resize: vertical; }
 .seller-field input:focus, .seller-field textarea:focus, .seller-field select:focus { border-color: var(--color-border-focus); box-shadow: 0 0 0 3px rgb(124 58 237 / 15%); }
+.seller-field input[aria-invalid='true'], .seller-field textarea[aria-invalid='true'] { border-color: var(--color-danger); }
+.seller-field-error { margin: 0; color: var(--color-danger-text); font-size: 12px; font-weight: 600; }
 .seller-check-row { display: flex; align-items: center; gap: 9px; color: var(--color-text-secondary); font-size: 12px; }
 .seller-check-row input { accent-color: #7c3aed; }
 @media (max-width: 900px) { .storefront-hero { grid-template-columns: 1fr; padding: 30px; } .storefront-hero-art { min-height: 230px; } .product-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .seller-content-grid { grid-template-columns: 1fr; } }

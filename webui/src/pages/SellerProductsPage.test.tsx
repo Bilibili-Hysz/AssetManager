@@ -63,6 +63,10 @@ vi.mock('../hooks/useI18n', () => ({ useI18n: () => ({
       'seller.gallery_path_duplicate_cover': 'Gallery path must differ from the cover path.',
       'seller.gallery_path_duplicate': 'Path is duplicated. Use a different image path.',
       'seller.gallery_path_duplicate_item': 'Path is duplicated. Remove the duplicate item.',
+      'seller.field_path_required': 'Enter a product path.',
+      'seller.field_title_required': 'Enter a product title.',
+      'seller.field_price_invalid': 'Enter a price of zero or more.',
+      'seller.field_gallery_limit': 'Use at most 20 gallery images.',
       'seller.gallery_preview': 'Gallery images',
       'seller.move_gallery_image_up': 'Move gallery image {0} up',
       'seller.move_gallery_image_down': 'Move gallery image {0} down',
@@ -158,6 +162,29 @@ describe('SellerProductsPage edit mode', () => {
     fireEvent.submit(screen.getByRole('button', { name: 'Add product' }).closest('form')!);
 
     await waitFor(() => expect(create).not.toHaveBeenCalled());
+  });
+
+  it('shows inline field errors with aria wiring when validation fails', async () => {
+    renderAt('/seller/products/new');
+    // Capture the inputs before submitting: once the inline error renders
+    // inside the <label>, the label text no longer equals 'Path' exactly.
+    const pathInput = screen.getByLabelText('Path');
+    const titleInput = screen.getByLabelText('Product');
+    fireEvent.change(pathInput, { target: { value: '   ' } });
+    fireEvent.change(titleInput, { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '-3' } });
+    fireEvent.submit(screen.getByRole('button', { name: 'Add product' }).closest('form')!);
+
+    expect(await screen.findByText('Enter a product path.')).toBeDefined();
+    expect(screen.getByText('Enter a product title.')).toBeDefined();
+    expect(screen.getByText('Enter a price of zero or more.')).toBeDefined();
+    expect(pathInput.getAttribute('aria-invalid')).toBe('true');
+    expect(pathInput.getAttribute('aria-describedby')).toBe('seller-path-error');
+    await waitFor(() => expect(create).not.toHaveBeenCalled());
+
+    // Correcting a field clears its inline error immediately.
+    fireEvent.change(pathInput, { target: { value: 'projects/new' } });
+    expect(screen.queryByText('Enter a product path.')).toBeNull();
   });
 
   it('passes the backend error message through for an update failure', async () => {
