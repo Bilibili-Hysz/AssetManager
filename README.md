@@ -6,7 +6,7 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库(元数据、标签、缩略图),也可以通过局域网内的浏览器远程浏览和下载资产。仓库名 `AssetsManager_old-bak` 仅为目录命名,项目包名为 `AssetsManager`。
 
-<!-- stats: app_services=51 controllers=4 core=34 dialogs=21 domain_events=16 e2e_specs=7 hooks=17 i18n_en=874 i18n_ja=874 i18n_zh=874 icons=56 pages=26 python_test_files=294 repos=17 routes=140 routes_modules=24 schema_version=36 stores=4 themes=24 ts=124 webui_test_files=107 widgets=14 -->
+<!-- stats: app_services=52 controllers=4 core=34 dialogs=21 domain_events=16 e2e_specs=7 hooks=17 i18n_en=874 i18n_ja=874 i18n_zh=874 icons=56 pages=26 python_test_files=295 repos=17 routes=140 routes_modules=24 schema_version=36 stores=4 themes=24 ts=124 webui_test_files=107 widgets=14 -->
 > **验证边界（2026-08-21）**：README 的结构统计由 `scripts/check_doc_stats.py` 从当前工作树测量；测试、构建、浏览器、真实 LAN、依赖和发布结果只在带 commit、精确命令、平台、工具版本与 artifact digest 的日期化证据中成立。历史全量数字（包括 2026-08-17 的 3778/7 和此前 WebUI/E2E 数字）保留在 dated 文档中，不作为当前 release 或 `verified-fixed` 声明。当前 C6-C10 收敛与剩余限制见 [`docs/full-review/c6-c10-convergence-2026-08-21.md`](docs/full-review/c6-c10-convergence-2026-08-21.md)。
 > **工作区实况索引**：结构/机制/数据流/弱点/文档导航的全量地图见 [`docs/overview-2026-08-27.md`](docs/overview-2026-08-27.md)（LIVING）；已移入归档的文档溯源见 [`docs/archive/INDEX.md`](docs/archive/INDEX.md)。
 
@@ -59,8 +59,8 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aio
 ```
 ┌─ Presentation ──────────────── 桌面 UI（panels/dialogs/widgets）+ LAN routes + React SPA
 │  Controllers（4 个，零 Qt import）
-├─ Application Layer（51 模块）— bootstrap 装配 → 每库 LibraryRuntime/LibrarySession
-│  （应用服务层（51 模块）顶层，另有 gallery/ 子包 5 文件）
+├─ Application Layer（52 模块）— bootstrap 装配 → 每库 LibraryRuntime/LibrarySession
+│  （应用服务层（52 模块）顶层，另有 gallery/ 子包 5 文件）
 ├─ Repositories — 17 个 SQL 仓库（for_session + savepoint 事务 + CAS）
 ├─ Domain — 值对象 + 16 个领域事件 + 错误层级（零基础设施依赖）
 └─ Infrastructure core/ — database/迁移/契约/锁/路径/主题/图标/缓存/插件
@@ -77,7 +77,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aio
 AssetsManager_old-bak/
 ├── AssetsManager/              # 主包（270 py / 9.2 万行，2026-08-27 实测）
 │   ├── app.py  window.py  window_lifecycle_coordinator.py  dock_factory.py
-│   ├── application/            # 应用服务层（51 模块，27.7k 行）
+│   ├── application/            # 应用服务层（52 模块，27.7k 行）
 │   ├── controllers/            # 4 个无 Qt 控制器（file_list/info/tag_tree/sidebar）
 │   ├── core/                   # 基础设施层（34 模块 + plugins/6）
 │   ├── domain/                 # 领域层：16 个领域事件 + event_bus + errors + 值对象
