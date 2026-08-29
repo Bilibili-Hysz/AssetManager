@@ -79,6 +79,17 @@ CANDIDATE_CYTHON_SOURCES = {
     "AssetsManager/core/format_utils.c",
 }
 
+# RuntimeData 下的测试残留目录前缀(由 pytest conftest fixtures 创建,
+# 见 tests/conftest.py 的 opened_session 等)。真实用户资产库从不使用
+# 这些前缀 —— 但为稳妥,该扫描仅在 --test-runtime 显式开启时执行,
+# 且 Shared/、_orphaned/(恢复隔离区)永远保留。
+TEST_RUNTIME_PREFIXES = (
+    "library_", "library-", "library-a_", "library-b_",
+    "second_", "untouched_", "recursive_", "MiXeDLibrary_",
+    "root_", "root-a_", "root-b_", "old_", "other_",
+)
+TEST_RUNTIME_ALWAYS_KEEP = {"Shared", "_orphaned"}
+
 # 明确排除的根目录(即使被 git 忽略也不动)
 EXCLUDE_ROOTS = {".git", ".worktrees"}
 
@@ -116,7 +127,7 @@ def dir_size(path: Path) -> int:
     return total
 
 
-def collect() -> tuple[list[Path], int]:
+def collect(include_test_runtime: bool = False) -> tuple[list[Path], int]:
     candidates: list[Path] = []
 
     # 1) 任意深度目录名匹配
@@ -139,6 +150,17 @@ def collect() -> tuple[list[Path], int]:
         candidates.extend(p for p in REPO_ROOT.glob(pattern) if not excluded(p))
     for pattern in CANDIDATE_WEBUI_PATTERNS:
         candidates.extend(p for p in (REPO_ROOT / "webui").glob(pattern) if not excluded(p))
+
+    # 2b) RuntimeData 测试残留(仅 --test-runtime 开启)。
+    #     Shared/ 配置与真实资产库(如 "Avatars（角色）_*")永远保留。
+    if include_test_runtime:
+        runtime = REPO_ROOT / "RuntimeData"
+        if runtime.is_dir():
+            for entry in sorted(runtime.iterdir()):
+                if entry.name in TEST_RUNTIME_ALWAYS_KEEP or not entry.is_dir():
+                    continue
+                if entry.name.startswith(TEST_RUNTIME_PREFIXES):
+                    candidates.append(entry)
 
     # 3) Cython 生成的扩展源码
     candidates.extend(REPO_ROOT / p for p in CANDIDATE_CYTHON_SOURCES)
@@ -164,9 +186,15 @@ def collect() -> tuple[list[Path], int]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="清理运行时/构建垃圾(白名单 + git-ignore 守卫)")
     parser.add_argument("--apply", action="store_true", help="实际删除;默认仅干跑")
+    parser.add_argument(
+        "--test-runtime",
+        action="store_true",
+        help="额外清理 RuntimeData/ 下的测试残留目录(库/并发/导入 fixture 产物);"
+        "Shared/ 与真实资产库(如 Avatars)永远保留。默认关闭——判定是启发式的",
+    )
     args = parser.parse_args()
 
-    targets, skipped_tracked = collect()
+    targets, skipped_tracked = collect(include_test_runtime=args.test_runtime)
     if not targets:
         print("无垃圾可清理 —— 检出已干净。")
         return 0
