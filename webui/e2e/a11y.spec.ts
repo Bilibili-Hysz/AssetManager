@@ -168,3 +168,45 @@ test('axe scan is clean: command palette open (dark)', async ({ page }) => {
   await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
   await expectCleanScan(page, 'command palette open (dark)');
 });
+
+// Modal open state: ShareDialog is the cheapest Modal.tsx surface to reach
+// with the guest mocks (browse list → context menu → Share). Route-level
+// scans cannot see a dialog, which is exactly how the transparent modal
+// scrim (undefined --color-overlay token) previously slipped through.
+test('axe scan is clean: share dialog open (dark)', async ({ page }) => {
+  await mockApis(page);
+  // One file row so the context menu has a target; list view keeps the row
+  // layout deterministic across viewport sizes. (mockApis' json helper is
+  // function-scoped, so this override spells the fulfillment out inline.)
+  await page.route('**/api/files**', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      current_path: 'assets',
+      items: [{
+        name: 'asset.png', path: 'assets/asset.png', type: 'file', size: 1024,
+        size_fmt: '1 KB', modified: 0, extension: '.png', category: 'image', is_project: false,
+      }],
+    }),
+  }));
+  await page.addInitScript(value => localStorage.setItem('am_view', value), 'list');
+  await page.addInitScript(value => localStorage.setItem('am_theme', value), 'dark');
+  await page.goto('/browse');
+  await settleApp(page);
+  await page.getByText('asset.png').first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Share' }).click();
+  await expect(page.getByRole('dialog', { name: 'Create Share Link' })).toBeVisible();
+  await expectCleanScan(page, 'share dialog open (dark)');
+
+  // Regression guard for the transparent-scrim bug: the Modal overlay element
+  // (the dialog's fixed parent) must paint an actual background color.
+  const overlayBackground = await page.evaluate(() => {
+    const overlay = document.querySelector('[role="dialog"]')?.parentElement;
+    return overlay ? getComputedStyle(overlay).backgroundColor : null;
+  });
+  expect(overlayBackground, 'modal overlay element not found').toBeTruthy();
+  expect(
+    overlayBackground === 'transparent' || overlayBackground === 'rgba(0, 0, 0, 0)',
+    `modal overlay background is transparent: ${overlayBackground}`,
+  ).toBe(false);
+});
