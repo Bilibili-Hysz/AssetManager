@@ -1,4 +1,4 @@
 # AssetManager — LAN sharing version
 # Install: pip install -r requirements-lan.txt
 -r requirements.txt
-aiohttp>=3.9
+aiohttp>=3.9,<4
