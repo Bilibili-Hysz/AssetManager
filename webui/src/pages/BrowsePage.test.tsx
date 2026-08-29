@@ -13,13 +13,16 @@ const search = vi.fn();
 const getMeta = vi.fn();
 const getProjectDetail = vi.fn();
 const batchDownload = vi.fn();
+const addTag = vi.fn();
+const removeTag = vi.fn();
+const projectsRefresh = vi.fn();
 const showToast = vi.fn();
 const getThumbnail = vi.fn();
 const loadThumbnails = vi.fn();
 const { useInvalidationMock } = vi.hoisted(() => ({ useInvalidationMock: vi.fn() }));
 let listingItems: BrowsableItem[] = [{ path: 'asset.png', name: 'asset.png', type: 'file', extension: '.png', category: 'image', size_fmt: '1 KB', modified: 0 }];
 const buildUrl = vi.fn((path: string) => `/library/api/${path}`);
-const authState = { api: { buildUrl }, identityGeneration: 0 };
+const authState = { api: { buildUrl }, identityGeneration: 0, capabilities: { settings: true } };
 
 vi.mock('../hooks/useAuth', () => ({
   useAuth: () => authState,
@@ -36,7 +39,7 @@ vi.mock('../hooks/useProjects', () => ({
       sort: { sort: 'name', order: 'asc' },
       navigateTo,
       setSort: vi.fn(),
-      refresh: vi.fn(),
+      refresh: projectsRefresh,
       listingGeneration: 0,
       hydrateDirectories: vi.fn(),
     };
@@ -57,6 +60,7 @@ vi.mock('../hooks/useQuota', () => ({
 }));
 vi.mock('../components/ui/Toast', () => ({ useToast: () => ({ showToast }) }));
 vi.mock('../api/files', () => ({ createFilesApi: () => ({ download: vi.fn(), batchDownload }) }));
+vi.mock('../api/tags', () => ({ createTagsApi: () => ({ add: addTag, remove: removeTag, list: vi.fn(), rename: vi.fn(), delete: vi.fn() }) }));
 vi.mock('../api/metadata', () => ({
   createMetadataApi: () => ({ getMeta, getProjectDetail, search }),
 }));
@@ -77,8 +81,8 @@ vi.mock('../components/layout/InfoPanel', () => ({
   ),
 }));
 vi.mock('../components/files/Breadcrumb', () => ({ Breadcrumb: () => null }));
-vi.mock('../components/files/FileToolbar', () => ({ FileToolbar: ({ selectedCount, activeTag, onClearTag, onDownloadSelected, isDownloadInFlight }: { selectedCount: number; activeTag?: string | null; onClearTag?: () => void; onDownloadSelected: () => void; isDownloadInFlight?: boolean }) => <div data-testid="file-toolbar"><output data-testid="selected-count">{selectedCount}</output>{activeTag && <><output data-testid="active-tag">{activeTag}</output><button onClick={onClearTag}>Clear tag filter</button></>}{selectedCount > 0 && <button onClick={onDownloadSelected} disabled={isDownloadInFlight}>{isDownloadInFlight ? 'Downloading selected' : 'Download selected'}</button>}</div> }));
-vi.mock('../components/files/ProjectGrid', () => ({ ProjectGrid: (props: { items: Array<{ name: string; path: string; type: string; is_project?: boolean; size?: number; size_fmt?: string; modified?: number }>; onSelect: (path: string) => void; onInspect: (item: { path: string; size?: number; size_fmt?: string; modified?: number }) => void; onNavigate?: (path: string) => void; onZipSelect?: (path: string) => void; onDoubleClick: (item: { path: string; type: string; is_project?: boolean }) => void; onContextMenu?: (event: React.MouseEvent, item: { path: string; type: string }) => void; selectionMode?: boolean; thumbnailMap: Record<string, string>; isMobile?: boolean }) => <><output data-testid="file-list">{props.items.map(item => item.name).join(',')}</output><output data-testid="file-list-technical-fields">{JSON.stringify(props.items.map(({ size, size_fmt, modified }) => ({ size, size_fmt, modified })))}</output><output data-testid="thumbnail-map">{JSON.stringify(props.thumbnailMap)}</output><button onClick={() => props.selectionMode ? props.onSelect(props.items[0]!.path) : props.onInspect(props.items[0]!)}>Select asset</button><button onClick={() => props.onZipSelect?.('asset.png')}>Select asset for ZIP</button><button onClick={() => props.onInspect(props.items[0]!)}>Inspect asset</button><button onClick={() => props.onDoubleClick(props.items[0]!)}>Open asset</button><button onClick={() => props.isMobile && props.items[0]?.type === 'dir' ? props.onNavigate?.(props.items[0].path) : props.onInspect(props.items[0]!)}>Click directory</button><button onClick={() => props.isMobile && props.items[0]?.type === 'dir' ? props.onNavigate?.(props.items[0].path) : props.onDoubleClick(props.items[0]!)}>Double click directory</button><button onContextMenu={event => props.onContextMenu?.(event, props.items[0]!)}>Open item context menu</button></> }));
+vi.mock('../components/files/FileToolbar', () => ({ FileToolbar: ({ selectedCount, activeTag, onClearTag, onDownloadSelected, isDownloadInFlight, onTagSelected }: { selectedCount: number; activeTag?: string | null; onClearTag?: () => void; onDownloadSelected: () => void; isDownloadInFlight?: boolean; onTagSelected?: () => void }) => <div data-testid="file-toolbar"><output data-testid="selected-count">{selectedCount}</output>{activeTag && <><output data-testid="active-tag">{activeTag}</output><button onClick={onClearTag}>Clear tag filter</button></>}{onTagSelected && <button onClick={onTagSelected} disabled={selectedCount === 0}>Tag selected</button>}{selectedCount > 0 && <button onClick={onDownloadSelected} disabled={isDownloadInFlight}>{isDownloadInFlight ? 'Downloading selected' : 'Download selected'}</button>}</div> }));
+vi.mock('../components/files/ProjectGrid', () => ({ ProjectGrid: (props: { items: Array<{ name: string; path: string; type: string; is_project?: boolean; size?: number; size_fmt?: string; modified?: number }>; onSelect: (path: string) => void; onInspect: (item: { path: string; size?: number; size_fmt?: string; modified?: number }) => void; onNavigate?: (path: string) => void; onZipSelect?: (path: string) => void; onDoubleClick: (item: { path: string; type: string; is_project?: boolean }) => void; onContextMenu?: (event: React.MouseEvent, item: { path: string; type: string }) => void; selectionMode?: boolean; thumbnailMap: Record<string, string>; isMobile?: boolean }) => <><output data-testid="file-list">{props.items.map(item => item.name).join(',')}</output><output data-testid="file-list-technical-fields">{JSON.stringify(props.items.map(({ size, size_fmt, modified }) => ({ size, size_fmt, modified })))}</output><output data-testid="thumbnail-map">{JSON.stringify(props.thumbnailMap)}</output><button onClick={() => props.selectionMode ? props.onSelect(props.items[0]!.path) : props.onInspect(props.items[0]!)}>Select asset</button>{props.items[1] && <button onClick={() => props.selectionMode ? props.onSelect(props.items[1]!.path) : props.onInspect(props.items[1]!)}>Select second asset</button>}<button onClick={() => props.onZipSelect?.('asset.png')}>Select asset for ZIP</button><button onClick={() => props.onInspect(props.items[0]!)}>Inspect asset</button><button onClick={() => props.onDoubleClick(props.items[0]!)}>Open asset</button><button onClick={() => props.isMobile && props.items[0]?.type === 'dir' ? props.onNavigate?.(props.items[0].path) : props.onInspect(props.items[0]!)}>Click directory</button><button onClick={() => props.isMobile && props.items[0]?.type === 'dir' ? props.onNavigate?.(props.items[0].path) : props.onDoubleClick(props.items[0]!)}>Double click directory</button><button onContextMenu={event => props.onContextMenu?.(event, props.items[0]!)}>Open item context menu</button></> }));
 vi.mock('../components/files/ProjectList', () => ({ ProjectList: (props: { items: Array<{ path: string; type?: string }>; onSelect: (path: string) => void; onInspect: (item: { path: string }) => void; onNavigate?: (path: string) => void; onDoubleClick?: (item: { path: string }) => void; selectionMode?: boolean; thumbnailMap?: Record<string, string>; isMobile?: boolean }) => <><output data-testid="thumbnail-map">{JSON.stringify(props.thumbnailMap)}</output><button onClick={() => props.selectionMode ? props.onSelect(props.items[0]!.path) : props.onInspect(props.items[0]!)}>List asset</button><button onClick={() => props.isMobile && props.items[0]?.type === 'dir' ? props.onNavigate?.(props.items[0].path) : props.onInspect(props.items[0]!)}>Click directory</button><button onClick={() => props.isMobile && props.items[0]?.type === 'dir' ? props.onNavigate?.(props.items[0].path) : props.onDoubleClick?.(props.items[0]!)}>Double click directory</button></> }));
 vi.mock('../components/ui/Skeleton', () => ({ Skeleton: () => null }));
 vi.mock('../components/shares/ShareDialog', () => ({ ShareDialog: () => null }));
@@ -142,6 +146,11 @@ describe('BrowsePage', () => {
     });
     batchDownload.mockReset();
     batchDownload.mockResolvedValue(undefined);
+    addTag.mockReset();
+    addTag.mockResolvedValue({ ok: true });
+    removeTag.mockReset();
+    removeTag.mockResolvedValue({ ok: true });
+    projectsRefresh.mockReset();
     showToast.mockReset();
     getThumbnail.mockReset();
     loadThumbnails.mockReset();
@@ -596,6 +605,56 @@ describe('BrowsePage', () => {
 
     await waitFor(() => expect(screen.queryByTestId('active-tag')).toBeNull());
     expect(screen.getByTestId('file-list').textContent).toBe('listing:newer/url');
+  });
+
+  it('bulk-adds a tag to every selected path and refreshes the listing', async () => {
+    listingItems = [
+      { path: 'asset.png', name: 'asset.png', type: 'file', extension: '.png', category: 'image', size_fmt: '1 KB', modified: 0 },
+      { path: 'second.png', name: 'second.png', type: 'file', extension: '.png', category: 'image', size_fmt: '1 KB', modified: 0 },
+    ];
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+
+    expect(screen.queryByRole('button', { name: 'Tag selected' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'mobile.select' }));
+    expect((screen.getByRole('button', { name: 'Tag selected' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Select asset' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select second asset' }));
+    expect((screen.getByRole('button', { name: 'Tag selected' }) as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tag selected' }));
+    const input = screen.getByLabelText('browse.bulk_tag_placeholder') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'hero' } });
+    fireEvent.click(screen.getByRole('button', { name: 'browse.bulk_tag_add' }));
+
+    await waitFor(() => expect(addTag).toHaveBeenCalledTimes(2));
+    expect(addTag).toHaveBeenCalledWith('hero', 'asset.png');
+    expect(addTag).toHaveBeenCalledWith('hero', 'second.png');
+    expect(removeTag).not.toHaveBeenCalled();
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('browse.bulk_tag_added', 'success'));
+    expect(projectsRefresh).toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByTestId('bulk-tag-panel')).toBeNull());
+    expect(screen.getByTestId('selected-count').textContent).toBe('0');
+  });
+
+  it('reports the partial bulk-tag failure without dropping the successful paths', async () => {
+    listingItems = [
+      { path: 'asset.png', name: 'asset.png', type: 'file', extension: '.png', category: 'image', size_fmt: '1 KB', modified: 0 },
+      { path: 'second.png', name: 'second.png', type: 'file', extension: '.png', category: 'image', size_fmt: '1 KB', modified: 0 },
+    ];
+    addTag.mockResolvedValueOnce({ ok: true }).mockRejectedValueOnce(new Error('denied'));
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'mobile.select' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select asset' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select second asset' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tag selected' }));
+    fireEvent.change(screen.getByLabelText('browse.bulk_tag_placeholder'), { target: { value: 'hero' } });
+    fireEvent.click(screen.getByRole('button', { name: 'browse.bulk_tag_add' }));
+
+    await waitFor(() => expect(addTag).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('browse.bulk_tag_partial', 'error'));
+    expect(projectsRefresh).toHaveBeenCalled();
+    expect(screen.getByTestId('selected-count').textContent).toBe('2');
   });
 
   it('serializes selected ZIP downloads until the active transfer finishes', async () => {

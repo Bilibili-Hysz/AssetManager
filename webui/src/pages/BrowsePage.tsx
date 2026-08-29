@@ -26,6 +26,7 @@ import { useToast } from '../components/ui/Toast';
 import { useDownloadProgress } from '../components/ui/DownloadProgress';
 import { useQuota } from '../hooks/useQuota';
 import { triggerBlobDownload } from '../utils/download';
+import { mapWithConcurrency } from '../utils/concurrency';
 import type { BrowsableItem, Metadata, ProjectDetail, SearchResponse } from '../types/api';
 
 interface BrowsePageProps {
@@ -71,6 +72,12 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   const [isDownloadInFlight, setIsDownloadInFlight] = useState(false);
   const [tagMutationPending, setTagMutationPending] = useState(false);
   const [tagsRefreshKey, setTagsRefreshKey] = useState(0);
+
+  // ── Bulk tagging over the multi-selection (select mode) ──
+  const [bulkTagOpen, setBulkTagOpen] = useState(false);
+  const [bulkTagValue, setBulkTagValue] = useState('');
+  const [bulkTagPending, setBulkTagPending] = useState(false);
+  const [bulkTagProgress, setBulkTagProgress] = useState<{ done: number; total: number } | null>(null);
 
   // ── Sidebar / Info panel state ──
   const [sidebarOpen, setSidebarOpen] = useState(() => {
@@ -388,6 +395,39 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
     }
   }, [activeTag, refresh, refreshSelected, runTagSearch, selectedItem, showToast, t, tagMutationPending, tagsApi]);
 
+  const runBulkTag = useCallback(async (action: 'add' | 'remove') => {
+    const tag = bulkTagValue.trim();
+    const paths = Array.from(selected);
+    if (!tag || paths.length === 0 || bulkTagPending) return;
+    setBulkTagPending(true);
+    setBulkTagProgress({ done: 0, total: paths.length });
+    // The tags endpoints accept a single file_path, so the bulk loop runs
+    // client-side with a small concurrency cap; one failure never stops the
+    // rest and the summary counts both sides.
+    const results = await mapWithConcurrency(
+      paths,
+      4,
+      path => (action === 'add' ? tagsApi.add(tag, path) : tagsApi.remove(tag, path)).then(() => undefined),
+      (done, total) => setBulkTagProgress({ done, total }),
+    );
+    const succeeded = results.filter(result => result.ok).length;
+    const failed = results.length - succeeded;
+    setTagsRefreshKey(value => value + 1);
+    lastManualRefreshRef.current = Date.now();
+    refresh();
+    if (activeTag) runTagSearch(activeTag, { clearResults: false, resetFilterOnFailure: false, notifyOnFailure: false });
+    if (failed === 0) {
+      showToast(t(action === 'add' ? 'browse.bulk_tag_added' : 'browse.bulk_tag_removed', succeeded), 'success');
+      setBulkTagOpen(false);
+      setBulkTagValue('');
+      setSelected(new Set());
+    } else {
+      showToast(t('browse.bulk_tag_partial', succeeded, failed), 'error');
+    }
+    setBulkTagPending(false);
+    setBulkTagProgress(null);
+  }, [activeTag, bulkTagPending, bulkTagValue, refresh, runTagSearch, selected, showToast, t, tagsApi]);
+
   useInvalidation(['files', 'metadata', 'tags', 'project_detail'], event => {
     // The tag mutation above already refreshed everything; the backend then
     // broadcasts the change over the WebSocket, which would trigger a second
@@ -677,7 +717,56 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
           setSelectMode(prev => !prev);
           setSelected(new Set());
         }}
+        onTagSelected={selectMode && canEditMetadata ? () => setBulkTagOpen(open => !open) : undefined}
+        isTagActionInFlight={bulkTagPending}
       />
+
+      {selectMode && canEditMetadata && bulkTagOpen && (
+        <form
+          data-testid="bulk-tag-panel"
+          className="mx-4 mb-2 flex flex-wrap items-center gap-2 rounded-md px-3 py-2 text-[11px] transition-theme"
+          style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+          onSubmit={event => { event.preventDefault(); void runBulkTag('add'); }}
+        >
+          <span style={{ color: 'var(--color-text-secondary)' }}>{t('browse.bulk_tag_title', selected.size)}</span>
+          <input
+            value={bulkTagValue}
+            onChange={event => setBulkTagValue(event.target.value)}
+            placeholder={t('browse.bulk_tag_placeholder')}
+            aria-label={t('browse.bulk_tag_placeholder')}
+            disabled={bulkTagPending}
+            className="rounded-md px-2 py-1"
+            style={{ backgroundColor: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--color-text)' }}
+          />
+          <button
+            type="submit"
+            disabled={bulkTagPending || !bulkTagValue.trim()}
+            className="px-2 py-1 rounded-md transition-colors disabled:cursor-not-allowed"
+            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-accent-text)', opacity: bulkTagPending || !bulkTagValue.trim() ? 0.6 : 1 }}
+          >
+            {t('browse.bulk_tag_add')}
+          </button>
+          <button
+            type="button"
+            disabled={bulkTagPending || !bulkTagValue.trim()}
+            onClick={() => void runBulkTag('remove')}
+            className="px-2 py-1 rounded-md transition-colors disabled:cursor-not-allowed"
+            style={{ backgroundColor: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--color-text-secondary)', opacity: bulkTagPending || !bulkTagValue.trim() ? 0.6 : 1 }}
+          >
+            {t('browse.bulk_tag_remove')}
+          </button>
+          {bulkTagProgress && <span role="status" style={{ color: 'var(--color-text-muted)' }}>{t('browse.bulk_tag_progress', bulkTagProgress.done, bulkTagProgress.total)}</span>}
+          <button
+            type="button"
+            onClick={() => setBulkTagOpen(false)}
+            aria-label={t('browse.bulk_tag_close')}
+            className="rounded p-1"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            <X size={13} />
+          </button>
+        </form>
+      )}
        </div>
 
       <div data-testid="file-list-canvas" className="min-h-0 min-w-0 flex-1 overflow-y-auto">

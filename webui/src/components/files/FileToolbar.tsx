@@ -1,4 +1,4 @@
-import { Columns3, Grid3x3, List, ArrowUpDown, CheckSquare, Download, X } from 'lucide-react';
+import { Columns3, Grid3x3, List, ArrowUpDown, CheckSquare, Download, Tag, X } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 import type { SortConfig } from '../../hooks/useProjects';
 
@@ -14,11 +14,15 @@ interface FileToolbarProps {
   onClearTag?: () => void;
   selectMode?: boolean;
   onSelectModeToggle?: () => void;
+  /** Present only when bulk tagging is permitted; toggles the tag panel. */
+  onTagSelected?: () => void;
+  isTagActionInFlight?: boolean;
 }
 
 export function FileToolbar({
   sort, onSortChange, viewMode, onViewModeChange,
   selectedCount, onDownloadSelected, isDownloadInFlight = false, activeTag, onClearTag, selectMode = false, onSelectModeToggle,
+  onTagSelected, isTagActionInFlight = false,
 }: FileToolbarProps) {
   const { t } = useI18n();
 
@@ -100,7 +104,25 @@ export function FileToolbar({
         </button>
       )}
 
-      {/* Selected count + download */}
+      {/* Selected count + bulk actions */}
+      {onTagSelected && (
+        <button
+          type="button"
+          onClick={onTagSelected}
+          disabled={selectedCount === 0 || isTagActionInFlight}
+          aria-label={t('browse.bulk_tag_aria', selectedCount)}
+          className="flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-md transition-colors disabled:cursor-not-allowed"
+          style={{
+            backgroundColor: selectedCount > 0 ? 'var(--input-bg)' : 'var(--color-elevated)',
+            border: `1px solid ${selectedCount > 0 ? 'var(--color-accent-border)' : 'var(--input-border)'}`,
+            color: selectedCount > 0 ? 'var(--color-accent)' : 'var(--color-text-muted)',
+            opacity: selectedCount > 0 ? 1 : 0.6,
+          }}
+        >
+          <Tag size={13} aria-hidden="true" />
+          {t('browse.bulk_tag')}
+        </button>
+      )}
       <button
         type="button"
         onClick={onDownloadSelected}
