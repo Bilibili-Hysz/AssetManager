@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from collections import deque
 from contextlib import AbstractContextManager, nullcontext
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
@@ -79,8 +80,10 @@ class LibraryWatcherService:
         # Directory path (str) -> st_mtime_ns snapshot built by the last round.
         self._snapshot: dict[str, int] = {}
         # BFS cursor for a partially completed round: directories still to
-        # visit when the last round hit the directory budget.
-        self._pending: list[tuple[str, int]] = []
+        # visit when the last round hit the directory budget.  A deque keeps
+        # popleft() O(1); a list.pop(0) here was O(n) per dequeue, i.e. O(n²)
+        # across a 50k-directory budget.
+        self._pending: deque[tuple[str, int]] = deque()
         self._wakeup = threading.Event()
         self._stop_event = threading.Event()
         self._started = False
@@ -203,12 +206,12 @@ class LibraryWatcherService:
         budget_exhausted = False
 
         # Resume an interrupted previous round before scanning the root anew.
-        queue = self._pending if self._pending else [(root, 0)]
-        self._pending = []
+        queue = self._pending if self._pending else deque([(root, 0)])
+        self._pending = deque()
 
         scanned = 0
         while queue:
-            path, _depth = queue.pop(0)
+            path, _depth = queue.popleft()
             try:
                 entry = os.scandir(path)
             except OSError:

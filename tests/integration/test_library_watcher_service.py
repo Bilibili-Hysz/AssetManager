@@ -233,3 +233,79 @@ def test_dot_entries_and_files_are_ignored(tmp_path, monkeypatch):
     changed = watcher.scan_once()
     assert str(tmp_path) in changed
     assert all("/.hidden" not in p for p in changed)
+
+
+class _FakeDirEntry:
+    """Scandir entry stand-in with a fixed name/path/kind."""
+
+    def __init__(self, name: str, path: str, *, is_dir: bool = True):
+        self.name = name
+        self.path = path
+        self._is_dir = is_dir
+
+    def is_dir(self, *, follow_symlinks: bool = True) -> bool:
+        return self._is_dir
+
+
+class _FakeScandir:
+    """Deterministic directory listing (path -> children in insertion order).
+
+    Real ``os.scandir`` ordering is filesystem-specific, so a budget test that
+    pins the dequeue (BFS) order needs a fixed enumeration.
+    """
+
+    def __init__(self, tree: dict[str, list[_FakeDirEntry]]):
+        self._tree = tree
+
+    def __call__(self, path: str):
+        entries = iter(self._tree[path])
+
+        class _Iterator:
+            def __iter__(self):
+                return entries
+
+            def __next__(self):
+                return next(entries)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def close(self):
+                pass
+
+        return _Iterator()
+
+
+def test_directory_budget_resumes_in_fifo_order(tmp_path, monkeypatch):
+    """A budget-exhausted round resumes exactly where it stopped (BFS order).
+
+    With a per-round budget of 3 and the fixed listing root -> [a1, z1],
+    a1 -> [a2], the first round dequeues root, a1 and z1.  a2 must therefore be
+    the *only* deferred entry: under LIFO dequeue the third dequeue would have
+    been a2 and z1 would be deferred instead.
+    """
+    import AssetsManager.application.library_watcher_service as watcher_module
+
+    _subscribe(monkeypatch)
+    a1 = tmp_path / "a1"
+    z1 = tmp_path / "z1"
+    a2 = a1 / "a2"
+    for directory in (a1, z1, a2):
+        directory.mkdir()
+    tree = {
+        str(tmp_path): [_FakeDirEntry("a1", str(a1)), _FakeDirEntry("z1", str(z1))],
+        str(a1): [_FakeDirEntry("a2", str(a2))],
+        str(z1): [],
+        str(a2): [],
+    }
+    monkeypatch.setattr(watcher_module.os, "scandir", _FakeScandir(tree))
+    watcher = LibraryWatcherService(_FakeSession(tmp_path), max_directories=3)
+
+    assert watcher.scan_once() == []  # baseline
+    assert list(watcher._pending) == [(str(a2), 2)]
+
+    watcher.scan_once()  # resumes with the deferred a2 only
+    assert set(watcher._snapshot) == {str(tmp_path), str(a1), str(z1), str(a2)}
