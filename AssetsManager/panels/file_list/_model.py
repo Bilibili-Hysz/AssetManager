@@ -154,6 +154,10 @@ class FileSystemModel(QAbstractListModel):
         self._scan_error: OSError | None = None
         self._scan_loading = False
         self._path_index: dict[str, int] = {}
+        # Paths whose latest thumbnail load failed (UI-thread mirror of the
+        # loader's cooldown table, fed by thumbnail_failed) so the grid can
+        # paint a failure marker until a retry succeeds or the scan resets.
+        self._failed_thumbs: set[str] = set()
         self._is_shutdown = False
         self._performance_recorder = None
         self._performance_session_token: str | None = None
@@ -276,6 +280,7 @@ class FileSystemModel(QAbstractListModel):
                 self._raw_entries = []
                 self._entries = []
                 self._path_index = {}
+                self._failed_thumbs.clear()
         self._emit_state()
 
         task = _ScanTask(path, gen, self._scan_token)
@@ -783,6 +788,18 @@ class FileSystemModel(QAbstractListModel):
         """Return the current row index for *path*, or -1 when absent."""
         return self._path_index.get(path, -1)
 
+    def mark_thumbnail_failed(self, path: str) -> None:
+        """Record that *path*'s thumbnail load failed (drives the grid marker)."""
+        self._failed_thumbs.add(path)
+
+    def clear_thumbnail_failed(self, path: str) -> None:
+        """Drop the failure marker for *path* (retry succeeded or row gone)."""
+        self._failed_thumbs.discard(path)
+
+    def is_thumbnail_failed(self, path: str) -> bool:
+        """True when *path*'s most recent thumbnail load failed."""
+        return path in self._failed_thumbs
+
     def icon_for(self, path: str) -> QIcon | None:
         return self._icons.get(path)
 
@@ -921,5 +938,6 @@ class FileSystemModel(QAbstractListModel):
             entries.reverse()
         self._entries = entries
         self._path_index = {e.path: i for i, e in enumerate(entries)}
+        self._failed_thumbs.clear()
 
 

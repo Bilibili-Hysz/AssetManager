@@ -106,6 +106,7 @@ class FileListGridWidget(RenderMixin, InteractMixin, DataMixin, QWidget):
         self._clr_base = QColor(t["base"])
         self._clr_panel = QColor(t["panel"])
         self._clr_border = QColor(t["border"])
+        self._clr_danger = QColor(t["danger"])
         self._clr_folder_highlight = _make_folder_highlight(t)
         self._font_name = QFont()
         self._font_name.setPointSize(scaled_pt(9))

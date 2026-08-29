@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
-from PySide6.QtCore import Qt, QRect, QSize
-from PySide6.QtGui import QPainter, QPixmap, QColor, QPen, QFont, QFontMetrics
+from PySide6.QtCore import Qt, QRect, QSize, QPoint
+from PySide6.QtGui import QPainter, QPixmap, QColor, QPen, QFont, QFontMetrics, QPolygon
 from PySide6.QtWidgets import QWidget
 
 from AssetsManager.core import icons
@@ -84,6 +84,7 @@ class RenderMixin:
         _clr_border: QColor
         _clr_base: QColor
         _clr_panel: QColor
+        _clr_danger: QColor
         _clr_folder_highlight: QColor
         _font_name: QFont
         _font_sub: QFont
@@ -481,6 +482,12 @@ class RenderMixin:
             self._draw_image(tp, preview, pixmap)
         else:
             self._draw_type_icon(tp, preview, is_dir, name)
+        # Failure marker: a file cell whose latest thumbnail load failed is
+        # visually distinct from the blank "still loading" placeholder.
+        if not is_dir and (pixmap is None or pixmap.isNull()):
+            path = model.path_at(row)
+            if path and model.is_thumbnail_failed(path):
+                self._draw_failure_marker(tp, preview)
 
         # ── Category badge ──
         ext = ""
@@ -522,6 +529,21 @@ class RenderMixin:
         painter.setBrush(QColor(self._clr_heading.red(), self._clr_heading.green(), self._clr_heading.blue(), 6))
         painter.drawRoundedRect(card, _CORNER_R, _CORNER_R)
         painter.restore()
+
+    def _draw_failure_marker(self, tp: QPainter, preview: QRect) -> None:
+        """Danger wedge in the preview's bottom-right corner: the thumbnail
+        failed to load (distinct from the blank loading placeholder, no text)."""
+        size = max(scaled_px(8), min(scaled_px(16), preview.width() // 4))
+        br = preview.bottomRight()
+        tp.save()
+        tp.setPen(Qt.PenStyle.NoPen)
+        tp.setBrush(self._clr_danger)
+        tp.drawPolygon(QPolygon([
+            br,
+            QPoint(br.x() - size, br.y()),
+            QPoint(br.x(), br.y() - size),
+        ]))
+        tp.restore()
 
     def _draw_interaction_overlay(self, p: QPainter, row: int, item_rect: QRect, opacity: float):
         """Paint selection, hover, and keyboard focus without rebuilding the cache."""

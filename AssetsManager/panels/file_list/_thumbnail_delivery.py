@@ -48,6 +48,7 @@ class ThumbnailDeliveryCoordinator:
         entry = self._model.entry_at(row)
         if entry is not None:
             self._model.set_raw_pixmap(entry.path, pixmap)
+        self._model.clear_thumbnail_failed(path)
         # Deliberate bypass: FileSystemModel.setData(DecorationRole) stores the
         # icon without emitting dataChanged. Thumbnail invalidation is owned by
         # this coordinator (batched below into commit_thumbnail_rows), so a
@@ -56,6 +57,21 @@ class ThumbnailDeliveryCoordinator:
         self._model.setData(index, QIcon(pixmap), Qt.ItemDataRole.DecorationRole)
         self._batch[row] = path
         self._timer.start()
+
+    def handle_failed(self, path: str) -> None:
+        """Repaint the cell whose thumbnail load failed (danger marker).
+
+        Runs on the main thread via the loader's queued ``thumbnail_failed``
+        signal.  The path is validated against the current row layout so a
+        stale failure cannot mark the wrong entry after a refresh.
+        """
+        if self._model.is_shutdown:
+            return
+        row = self._model.row_for_path(path)
+        if row < 0 or self._model.path_at(row) != path:
+            return
+        self._model.mark_thumbnail_failed(path)
+        self._grid_widget.invalidate_failed_row(row)
 
     def flush(self) -> None:
         if self._model.is_shutdown:

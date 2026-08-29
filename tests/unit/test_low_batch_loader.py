@@ -42,7 +42,7 @@ def test_request_after_stop_does_not_restart_pool():
     loader.request(0, "x.png")
 
     assert "x.png" not in loader._queued_keys
-    assert loader._failed_paths == set()
+    assert loader._failed_paths == {}
     assert loader._stopped is True
 
 

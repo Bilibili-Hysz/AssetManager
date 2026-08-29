@@ -226,7 +226,7 @@ def test_thumbnail_loader_runtime_invalidation_clears_memory_and_failed_paths(mo
     loader = ThumbnailLoader()
     img = QImage(1, 1, QImage.Format.Format_RGB32)
     loader._cache["old-runtime.png"] = (img, 0.0)
-    loader._failed_paths.add("failed-old-runtime.png")
+    loader._failed_paths["failed-old-runtime.png"] = time.perf_counter()
     loader._queued_keys.add("queued-old-runtime.png")
     loader._pending_items["queued-old-runtime.png"].append((1, "item.png"))
     monkeypatch.setattr(loader._pool, "clear", lambda: None)
@@ -234,7 +234,7 @@ def test_thumbnail_loader_runtime_invalidation_clears_memory_and_failed_paths(mo
     loader.invalidate_runtime()
 
     assert loader._cache == {}
-    assert loader._failed_paths == set()
+    assert loader._failed_paths == {}
     assert loader._queued_keys == set()
     assert loader._pending_items == {}
 
@@ -1160,3 +1160,78 @@ def test_clear_thumb_cache_async_reports_completion_when_not_admitted():
     # A non-admitted clear still reports completion so the caller's
     # progress UI resets instead of waiting forever.
     assert completions == [(0, 0)]
+
+
+def test_thumbnail_loader_failed_cooldown_suppresses_then_allows_retry(tmp_path, monkeypatch):
+    source = tmp_path / "broken.png"
+    source.write_bytes(b"not a decodable image")
+    loader = ThumbnailLoader()
+    attempts: list[str] = []
+
+    def failing_load(path, _runtime):
+        attempts.append(path)
+        return None
+
+    monkeypatch.setattr(loader, "_load_image", failing_load)
+    failures: list[str] = []
+    loader.thumbnail_failed.connect(failures.append)
+
+    loader.request(0, str(source))
+    assert loader._pool.waitForDone(5000)
+    assert attempts == [str(source)]
+    # Failure is delivered to the UI thread (danger marker) instead of being
+    # silently swallowed.  The emit crosses threads, so pump the loop for the
+    # queued delivery before asserting.
+    app = QApplication.instance() or QApplication([])
+    app.processEvents()
+    assert failures == [str(source)]
+    assert loader.is_failed(str(source))
+
+    # Inside the cooldown the re-request is suppressed without a new load.
+    loader.request(0, str(source))
+    assert loader._pool.waitForDone(5000)
+    assert attempts == [str(source)]
+
+    # Once the cooldown elapses the request is admitted again.
+    loader._failed_paths[str(source)] = time.perf_counter() - 61.0
+    loader.request(0, str(source))
+    assert loader._pool.waitForDone(5000)
+    assert attempts == [str(source), str(source)]
+
+
+def test_thumbnail_loader_failed_capacity_evicts_oldest_entry():
+    loader = ThumbnailLoader()
+    loader._failed_paths_max = 3
+    for i in range(3):
+        loader._mark_failed(f"old{i}.png", 0)
+    loader._mark_failed("new.png", 0)
+
+    # Oldest entry evicted only; the remaining cooldown semantics survive
+    # (the old wholesale clear() re-admitted every known-bad path at once).
+    assert len(loader._failed_paths) == 3
+    assert "old0.png" not in loader._failed_paths
+    assert "old1.png" in loader._failed_paths
+    assert "old2.png" in loader._failed_paths
+    assert "new.png" in loader._failed_paths
+
+
+def test_thumbnail_loader_clear_cache_resets_cooldown():
+    loader = ThumbnailLoader()
+    loader._mark_failed("broken.png", 0)
+    assert loader.is_failed("broken.png")
+
+    # Manual refresh (clear_cache) bypasses the cooldown: immediate retry.
+    loader.clear_cache()
+    assert not loader.is_failed("broken.png")
+
+
+def test_thumbnail_loader_failure_stale_generation_is_dropped_and_not_emitted():
+    loader = ThumbnailLoader()
+    loader.invalidate_runtime()  # current generation becomes 1
+    failures: list[str] = []
+    loader.thumbnail_failed.connect(failures.append)
+
+    loader._mark_failed("stale.png", 0)  # runtime from the old generation
+
+    assert failures == []
+    assert "stale.png" not in loader._failed_paths

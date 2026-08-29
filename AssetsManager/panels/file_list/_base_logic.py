@@ -459,6 +459,11 @@ class LogicMixin:
             return
         self._thumbnail_delivery.handle_ready(row, path, img)
 
+    def _on_thumbnail_failed(self, path: str):
+        if getattr(self._model, "is_shutdown", False):
+            return
+        self._thumbnail_delivery.handle_failed(path)
+
     def _flush_thumb_batch(self):
         self._thumbnail_delivery.flush()
 

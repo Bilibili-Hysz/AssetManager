@@ -362,6 +362,18 @@ class DataMixin:
             self._animator.ensure_running()
         self._request_frame(rows)
 
+    def invalidate_failed_row(self, row: int) -> None:
+        """Repaint one row to show its thumbnail-failure marker.
+
+        Like ``commit_thumbnail_rows`` but without the fade-in: nothing was
+        delivered, only the danger corner marker on the placeholder changed.
+        """
+        path = self._model.path_at(row) if self._model is not None else None
+        if path:
+            self._cache.discard_path_texture(path)
+        self._dirty.add(row)
+        self._request_frame([row])
+
     def start_thumbnail_delivery_measurement(self) -> float | None:
         """Return a timer only when scoped Grid diagnostics are enabled."""
         from AssetsManager.panels.file_list._grid_widget import perf_counter
@@ -738,6 +750,7 @@ class DataMixin:
         self._clr_base = QColor(t["base"])
         self._clr_panel = QColor(t["panel"])
         self._clr_border = QColor(t["border"])
+        self._clr_danger = QColor(t["danger"])
         self._refresh_text_metrics()
         self._apply_scrollbar_theme()
 

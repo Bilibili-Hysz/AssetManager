@@ -95,6 +95,10 @@ QUALITY_PRESETS = {
 DEFAULT_MAX_ADMITTED_TASKS = 96
 DEFAULT_MEMORY_CACHE_BYTES = 64 * 1024 * 1024
 _TOUCH_THROTTLE_SECONDS = 60.0
+# Failed sources are suppressed for this long before a re-request is allowed,
+# so transient failures (locked file, half-written download) recover without
+# user intervention while broken files do not spam reloads every scroll frame.
+_FAILURE_COOLDOWN_SECONDS = 60.0
 
 
 def get_bake_size() -> int:
@@ -281,6 +285,9 @@ class _TrackedTask(QRunnable):
 
 class ThumbnailLoader(QObject):
     thumbnail_ready = Signal(int, str, QImage)  # (model_row, source_path, QImage)
+    # Emitted (from worker threads; queued to the loader's thread) when a
+    # source fails so the grid can paint a visible failure marker.
+    thumbnail_failed = Signal(str)  # source_path
 
     def __init__(
         self,
@@ -307,7 +314,10 @@ class ThumbnailLoader(QObject):
         self._max_admitted_tasks = max_admitted_tasks
         self._max_deferred_loads = max_deferred_loads
         self._mutex = QMutex()
-        self._failed_paths: set[str] = set()
+        # Failed-source cooldown table: path -> monotonic timestamp of the
+        # last failure.  Entries suppress re-requests for
+        # _FAILURE_COOLDOWN_SECONDS; oldest entries are evicted at capacity.
+        self._failed_paths: OrderedDict[str, float] = OrderedDict()
         self._failed_paths_max: int = 2000
         self._cache_dir: str = ""
         self._lib_root: str = ""
@@ -703,11 +713,15 @@ class ThumbnailLoader(QObject):
                 self.thumbnail_ready.emit(row, item_path, pix)
                 return
             self._remove_cached_locked(file_path)
-        if file_path in self._failed_paths:
+        failed_at = self._failed_paths.get(file_path)
+        if failed_at is not None and perf_counter() - failed_at < _FAILURE_COOLDOWN_SECONDS:
             self._mutex.unlock()
             if runtime.recorder is not None:
                 self._record("thumbnail.queue", runtime=runtime, path=file_path, attributes={"outcome": "failed_suppressed", "queue_depth": 0})
             return
+        if failed_at is not None:
+            # Cooldown elapsed — let this request run again (transparent retry).
+            self._failed_paths.pop(file_path, None)
         if file_path in self._queued_keys:
             self._pending_items[file_path].append((row, item_path))
             if priority == 0 and file_path in self._deferred_loads:
@@ -859,12 +873,27 @@ class ThumbnailLoader(QObject):
         self._queued_keys.discard(path)
         self._queued_generations.pop(path, None)
         self._pending_items.pop(path, None)
-        if len(self._failed_paths) >= self._failed_paths_max:
-            self._failed_paths.clear()
-        self._failed_paths.add(path)
+        # Capacity policy: evict the single oldest cooldown entry.  The old
+        # wholesale ``clear()`` silently re-requested up to 2000 known-bad
+        # sources in one burst whenever the table filled.
+        while len(self._failed_paths) >= self._failed_paths_max:
+            self._failed_paths.popitem(last=False)
+        self._failed_paths[path] = perf_counter()
+        self._failed_paths.move_to_end(path)
         self._mutex.unlock()
         if runtime is not None and runtime.recorder is not None:
             self._record("thumbnail.load", runtime=runtime, path=path, started=started, attributes={"outcome": "failed"})
+        # Queued connection: the grid repaints the cell with its failure marker.
+        self.thumbnail_failed.emit(path)
+
+    def is_failed(self, path: str) -> bool:
+        """True when *path* failed and its retry cooldown is still active."""
+        self._mutex.lock()
+        try:
+            failed_at = self._failed_paths.get(path)
+        finally:
+            self._mutex.unlock()
+        return failed_at is not None and perf_counter() - failed_at < _FAILURE_COOLDOWN_SECONDS
 
     def clear_queue(self):
         self._mutex.lock()

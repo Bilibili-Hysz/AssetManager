@@ -6,7 +6,7 @@ from shiboken6 import Shiboken
 
 
 from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPoint, QPointF, QRect, QSize, Qt
-from PySide6.QtGui import QEnterEvent, QKeyEvent, QMouseEvent, QPainter, QPixmap, QPointingDevice
+from PySide6.QtGui import QColor, QEnterEvent, QKeyEvent, QMouseEvent, QPainter, QPixmap, QPointingDevice
 from PySide6.QtWidgets import QApplication
 
 from AssetsManager.core.performance import PerformanceRecorder
@@ -1642,3 +1642,57 @@ def test_grid_set_selection_rows_seeds_fade_and_emits_once():
     finally:
         widget.deleteLater()
         app.processEvents()
+
+
+def test_grid_failure_marker_rendered_for_failed_thumbnail(tmp_path):
+    """A file cell whose thumbnail load failed paints a danger corner wedge,
+    distinct from the blank "still loading" placeholder (no marker)."""
+    from AssetsManager.core import themes
+    from AssetsManager.panels.file_list._grid_widget_data import _PREVIEW_MARGIN
+
+    broken = tmp_path / "broken.png"
+    broken.write_bytes(b"not a decodable image", )
+    _app, model, widget = _visible_grid(tmp_path)
+    path = str(broken)
+    row = model.row_for_path(path)
+    assert row >= 0
+    rect = widget._layout.rect_at(row)
+    assert rect is not None
+
+    def preview_bottom_right_pixel():
+        card = widget._card_rect_in_item(QRect(0, 0, rect.width(), rect.height()))
+        preview = QRect(card.x() + _PREVIEW_MARGIN, card.y() + _PREVIEW_MARGIN,
+                        widget._thumb_size, widget._thumb_size)
+        px = preview.bottomRight() - QPoint(2, 2)
+        tex = widget._render_item(row, rect)
+        assert tex is not None
+        img = tex.toImage()
+        return img.pixelColor(px).name()
+
+    danger = QColor(themes.get()["danger"]).name()
+
+    # Loading placeholder (no failure recorded): no danger pixel.
+    assert preview_bottom_right_pixel() != danger
+
+    model.mark_thumbnail_failed(path)
+    assert model.is_thumbnail_failed(path)
+    assert preview_bottom_right_pixel() == danger
+
+    # A delivered thumbnail clears the marker again.
+    model.clear_thumbnail_failed(path)
+    assert preview_bottom_right_pixel() != danger
+
+
+def test_grid_invalidate_failed_row_discards_texture_and_repaints(tmp_path):
+    _app, model, widget = _visible_grid(tmp_path)
+    row = 0
+    path = model.path_at(row)
+    assert path
+    widget._cache.cache_texture(row, QPixmap(8, 8))
+    assert widget._cache.has_texture(row)
+
+    widget.invalidate_failed_row(row)
+
+    # Row texture stays until the frame rebuild (same policy as
+    # commit_thumbnail_rows); the dirty flag drives that rebuild.
+    assert row in widget._dirty
