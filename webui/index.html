@@ -24,9 +24,10 @@
         document.documentElement.classList.add(theme === 'light' ? 'light' : 'dark');
       })();
     </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- Inter is self-hosted (webui/public/fonts/inter-var-latin.woff2) and
+         declared via @font-face in src/index.css.  The LAN app must not block
+         first paint on an external CDN: offline deployments previously waited
+         on fonts.googleapis.com DNS/TLS timeouts before rendering anything. -->
     <title>AssetManager</title>
   </head>
   <body class="bg-slate-950 text-slate-100 font-sans">
