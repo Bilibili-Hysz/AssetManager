@@ -1,5 +1,6 @@
 """Shared test fixtures."""
 import itertools
+import logging
 import os
 import shutil
 import sqlite3
@@ -115,6 +116,14 @@ _PRESERVED_SHARED_FILES: dict[str, bytes | None] = {}
 # Debug escape hatch: keep everything (e.g. when inspecting test artifacts).
 _KEEP_RUNTIME_DATA = os.environ.get("AM_KEEP_TEST_RUNTIME_DATA") == "1"
 
+# Defensive ceiling for the session-end RuntimeData sweep.  A single test run
+# should never burn minutes of wall-clock time on cleanup, no matter how many
+# orphan directories accumulated across previous sessions (a crashed run could
+# leave hundreds).  When the budget is exhausted the sweep stops and the
+# leftovers are retried by the next session — cleanup is incremental by
+# design, so nothing is lost, only deferred.
+_CLEANUP_BUDGET_SECONDS = 30.0
+
 # User-facing config files that tests may legitimately write through
 # AppSettings / TagLibrary / ToolScheduler singletons; restored afterwards.
 _PROTECTED_SHARED_FILES = ("settings.json", "tag_library.json", "tools.json")
@@ -170,6 +179,21 @@ def _unlink_best_effort(path: Path) -> None:
         path.unlink(missing_ok=True)
     except OSError:
         pass
+
+
+def _cleanup_budget_exhausted(deadline: float) -> bool:
+    """True once the session-end sweep has spent its wall-clock budget.
+
+    Logs once per hit (the sweep runs in the master, not in xdist workers).
+    """
+    if time.monotonic() <= deadline:
+        return False
+    logging.getLogger(__name__).warning(
+        "RuntimeData cleanup exceeded its %.0fs budget; skipping the "
+        "remainder (leftover artifacts are retried by the next session)",
+        _CLEANUP_BUDGET_SECONDS,
+    )
+    return True
 
 
 def _db_library_root(db_path: Path) -> str | None:
@@ -248,9 +272,12 @@ def _cleanup_test_runtime_data() -> None:
     if not runtime_root.exists():
         return
     start = _SESSION_START or 0.0
+    deadline = time.monotonic() + _CLEANUP_BUDGET_SECONDS
 
     # 1. Library data directories whose identity points at a pytest root.
     for entry in runtime_root.iterdir():
+        if _cleanup_budget_exhausted(deadline):
+            return
         if not entry.is_dir():
             continue
         if entry.name in ("Shared", "_orphaned"):
@@ -275,6 +302,8 @@ def _cleanup_test_runtime_data() -> None:
     #     24h age buffer).
     _DB_SIDECARS = {"assetmanager.db", "assetmanager.db-wal", "assetmanager.db-shm"}
     for entry in runtime_root.iterdir():
+        if _cleanup_budget_exhausted(deadline):
+            return
         if not entry.is_dir() or entry.name in ("Shared", "_orphaned"):
             continue
         if (shared / f"{entry.name}.identity").exists():
