@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { ArrowDown, ArrowUp, CornerDownLeft, File, Folder, Search, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, CornerDownLeft, File, Folder, Keyboard, Search, X } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useI18n } from '../../hooks/useI18n';
 import { useSearch } from '../../hooks/useSearch';
@@ -10,6 +10,8 @@ import './CommandPalette.css';
 interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
+  /** Opens the shortcut cheat sheet (App owns both dialogs). */
+  onOpenShortcuts?: () => void;
 }
 
 function parentPath(path: string) {
@@ -28,7 +30,7 @@ function openSearchResult(navigate: ReturnType<typeof useNavigate>, item: Search
   navigate('/detail?path=' + encodeURIComponent(item.path) + '&from=' + mode + '&context=' + encodeURIComponent(context));
 }
 
-export function CommandPalette({ open, onClose }: CommandPaletteProps) {
+export function CommandPalette({ open, onClose, onOpenShortcuts }: CommandPaletteProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useI18n();
@@ -132,6 +134,20 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           )}
           <kbd className="command-palette-shortcut">ESC</kbd>
         </div>
+
+        {/* Pinned discoverability entry for the shortcut cheat sheet (A3).
+            Lives OUTSIDE the results listbox so list semantics stay clean. */}
+        <button
+          type="button"
+          className="command-palette-result command-palette-shortcuts-entry"
+          onClick={() => { close(); onOpenShortcuts?.(); }}
+        >
+          <Keyboard size={17} className="command-palette-result-folder" aria-hidden="true" />
+          <span className="command-palette-result-copy">
+            <strong>{t('shortcuts.help')}</strong>
+          </span>
+          <kbd className="command-palette-shortcut">?</kbd>
+        </button>
 
         <div className="command-palette-mode" aria-live="polite">
           {t(mode === 'gallery' ? 'commands.mode_gallery' : 'commands.mode_workspace')}

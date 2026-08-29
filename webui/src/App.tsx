@@ -20,6 +20,7 @@ const ShareReceivePage = lazy(() => import('./pages/ShareReceivePage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { CommandPalette } from './components/ui/CommandPalette';
+import { ShortcutsDialog } from './components/ui/ShortcutsDialog';
 import { useAuthContext } from './stores/AuthContext';
 const StorefrontPage = lazy(() => import('./pages/StorefrontPage'));
 const StorefrontProductsPage = lazy(() => import('./pages/StorefrontProductsPage'));
@@ -140,7 +141,12 @@ function AppAccentSync() {
 
 function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const openPalette = useCallback(() => setPaletteOpen(true), []);
+  const openShortcuts = useCallback(() => {
+    setPaletteOpen(false);
+    setShortcutsOpen(true);
+  }, []);
   const handlePaletteShortcut = useCallback((event: KeyboardEvent) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
       event.preventDefault();
@@ -152,6 +158,26 @@ function App() {
     document.addEventListener('keydown', handlePaletteShortcut);
     return () => document.removeEventListener('keydown', handlePaletteShortcut);
   }, [handlePaletteShortcut]);
+
+  // `?` (shift + /) toggles the shortcut cheat sheet (A3). Editable targets
+  // are excluded so typing "?"/"？" into any field never opens it.
+  const handleShortcutsShortcut = useCallback((event: KeyboardEvent) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.key !== '?' && event.key !== '？') return;
+    const target = event.target;
+    const isEditable = target instanceof HTMLInputElement
+      || target instanceof HTMLTextAreaElement
+      || target instanceof HTMLSelectElement
+      || (target instanceof HTMLElement && target.isContentEditable);
+    if (isEditable) return;
+    event.preventDefault();
+    setShortcutsOpen(previous => !previous);
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleShortcutsShortcut);
+    return () => document.removeEventListener('keydown', handleShortcutsShortcut);
+  }, [handleShortcutsShortcut]);
 
   return (
     <BrowserRouter>
@@ -216,7 +242,8 @@ function App() {
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
               </Suspense>
-              {paletteOpen && <CommandPalette open={true} onClose={() => setPaletteOpen(false)} />}
+              {paletteOpen && <CommandPalette open={true} onClose={() => setPaletteOpen(false)} onOpenShortcuts={openShortcuts} />}
+              {shortcutsOpen && <ShortcutsDialog open={true} onClose={() => setShortcutsOpen(false)} />}
             </DownloadProgressProvider>
           </ToastProvider>
           </QueryCacheProvider>

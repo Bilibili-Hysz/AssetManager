@@ -29,6 +29,7 @@ vi.mock('../../hooks/useI18n', () => ({
         'action.close': 'Close',
         'commands.folder': 'Folder',
         'commands.file': 'File',
+        'shortcuts.help': 'Show keyboard shortcuts',
       };
       if (key === 'commands.no_results') return 'No results for ' + String(args[0]);
       return values[key] ?? key;
@@ -86,5 +87,24 @@ describe('CommandPalette', () => {
     fireEvent.keyDown(dialog, { key: 'ArrowDown' });
     fireEvent.keyDown(dialog, { key: 'Enter' });
     expect(screen.getByTestId('location').textContent).toBe('/detail?path=nested%2Ftwo.png&from=workspace&context=nested');
+  });
+
+  it('offers the pinned shortcut-help entry and hands off to the cheat sheet', () => {
+    searchState.query = 'asset';
+    searchState.results = [{ name: 'one.png', path: 'one.png', type: 'file', extension: '.png', category: 'image' }];
+    const onClose = vi.fn();
+    const onOpenShortcuts = vi.fn();
+    render(
+      <MemoryRouter>
+        <CommandPalette open={true} onClose={onClose} onOpenShortcuts={onOpenShortcuts} />
+      </MemoryRouter>,
+    );
+    // Pinned entry lives outside the results listbox (list semantics stay clean).
+    const entry = screen.getByRole('button', { name: /Show keyboard shortcuts/ });
+    expect(entry).toBeDefined();
+    expect(entry.getAttribute('data-testid')).not.toBe('command-result-0');
+    fireEvent.click(entry);
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onOpenShortcuts).toHaveBeenCalledOnce();
   });
 });

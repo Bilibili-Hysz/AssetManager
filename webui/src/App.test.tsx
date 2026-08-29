@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 
@@ -200,5 +200,25 @@ describe('App routing', () => {
     navigateTo('/does-not-exist');
     render(<App />);
     expect(screen.getByText('Not found')).toBeDefined();
+  });
+
+  it('opens and closes the shortcut cheat sheet with the ? key', () => {
+    render(<App />);
+    expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).toBeNull();
+    fireEvent.keyDown(document, { key: '?' });
+    expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeDefined();
+    // Pressing ? again while the overlay is open closes it.
+    fireEvent.keyDown(document, { key: '?' });
+    expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).toBeNull();
+  });
+
+  it('ignores the ? key while an editable field has focus', () => {
+    render(<App />);
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    fireEvent.keyDown(input, { key: '?' });
+    expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).toBeNull();
+    input.remove();
   });
 });

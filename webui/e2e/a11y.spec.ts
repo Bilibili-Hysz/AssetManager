@@ -174,6 +174,25 @@ test('axe scan is clean: command palette open (dark)', async ({ page }) => {
   await expectCleanScan(page, 'command palette open (dark)');
 });
 
+// Shortcut cheat sheet (?): a Modal-surface dialog rendered from the
+// shortcuts registry — the second interactive Modal state the gate covers.
+test('axe scan is clean: shortcuts overlay open (dark)', async ({ page }) => {
+  await mockApis(page);
+  await page.addInitScript(value => localStorage.setItem('am_theme', value), 'dark');
+  await page.goto('/browse');
+  await settleApp(page);
+  await page.keyboard.press('?');
+  const dialog = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  await expect(dialog).toBeVisible();
+  // The dialog is a projection of webui/src/shortcuts/registry.ts: every
+  // entry renders as a row (key labels + localized description).
+  await expect(dialog.getByTestId('shortcuts-row')).toHaveCount(10);
+  await expectCleanScan(page, 'shortcuts overlay open (dark)');
+  // ? toggles: pressing it again closes the overlay.
+  await page.keyboard.press('?');
+  await expect(dialog).toBeHidden();
+});
+
 // Modal open state: ShareDialog is the cheapest Modal.tsx surface to reach
 // with the guest mocks (browse list → context menu → Share). Route-level
 // scans cannot see a dialog, which is exactly how the transparent modal

@@ -66,3 +66,9 @@
 @media (prefers-reduced-motion: reduce) {
   .command-palette-spinner { animation: none; }
 }
+
+/* Pinned shortcut-help entry (A3): a full-width command row above the mode
+   line, reusing result styling but with a stronger affordance via the ? kbd. */
+.command-palette-shortcuts-entry {
+  border-bottom: 1px solid var(--color-border);
+}
