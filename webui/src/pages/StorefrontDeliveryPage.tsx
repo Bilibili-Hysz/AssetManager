@@ -5,8 +5,21 @@ import { BuyerDeliveryDownloadButton } from '../components/storefront/BuyerDeliv
 import { StorefrontShell } from '../components/storefront/StorefrontShell';
 import { useShopApi } from '../hooks/usePageApis';
 import { useI18n } from '../hooks/useI18n';
+import { ApiError } from '../api/errors';
 
 import type { DeliveryInfo, ShopBuyerOrder } from '../types/api';
+
+/**
+ * Why a one-time share claim could not be redeemed. The backend answers a
+ * uniform 404 for invalid/already-used codes and 429 while the per-remote
+ * claim budget is exhausted; anything else is indistinguishable from a spent
+ * code, so it keeps the invalid-claim copy with a retry escape hatch.
+ */
+type ClaimFailure = 'invalid' | 'rate-limited';
+
+function classifyClaimFailure(error: unknown): ClaimFailure {
+  return error instanceof ApiError && error.status === 429 ? 'rate-limited' : 'invalid';
+}
 
 
 export default function StorefrontDeliveryPage() {
@@ -21,7 +34,7 @@ export default function StorefrontDeliveryPage() {
   const [claimOrder, setClaimOrder] = useState<ShopBuyerOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [claimFailed, setClaimFailed] = useState(false);
+  const [claimFailed, setClaimFailed] = useState<ClaimFailure | null>(null);
   const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
@@ -30,21 +43,23 @@ export default function StorefrontDeliveryPage() {
       setDelivery(null);
       setClaimOrder(null);
       setLoadFailed(false);
-      setClaimFailed(false);
+      setClaimFailed(null);
       setLoading(false);
       return;
     }
     let cancelled = false;
     setLoading(true);
     setLoadFailed(false);
-    setClaimFailed(false);
+    setClaimFailed(null);
     if (claim) {
       // New one-time share claim flow: the claim is exchanged for the order
       // receipt cookie, then the order loads through the receipt channel.
+      // A 429 also fires the app-wide throttled degradation toast via the
+      // ApiClient hooks; the inline notice below stays page-specific.
       shopApi.claimDelivery(token, claim)
         .then(() => shopApi.getOrder(token))
-        .then(value => { if (!cancelled) { setClaimOrder(value.order); setClaimFailed(false); } })
-        .catch(() => { if (!cancelled) { setClaimOrder(null); setClaimFailed(true); } })
+        .then(value => { if (!cancelled) { setClaimOrder(value.order); setClaimFailed(null); } })
+        .catch((error: unknown) => { if (!cancelled) { setClaimOrder(null); setClaimFailed(classifyClaimFailure(error)); } })
         .finally(() => { if (!cancelled) setLoading(false); });
     } else {
       // Legacy bearer-token delivery link, kept for older share links.
@@ -74,12 +89,30 @@ export default function StorefrontDeliveryPage() {
           </h1>
           {!loading && claim ? (
             claimFailed ? (
-              <div role="alert" style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'flex-start' }}>
-                <p>{t('commerce.delivery_claim_invalid')}</p>
-                <button type="button" className="storefront-button storefront-button-ghost" onClick={() => setRetryToken(value => value + 1)}>
-                  <RefreshCw size={15} /> {t('gallery.retry')}
-                </button>
-              </div>
+              claimFailed === 'rate-limited' ? (
+                <div role="alert" style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'flex-start' }}>
+                  <p>{t('error.rate_limited')}</p>
+                  <button type="button" className="storefront-button storefront-button-ghost" onClick={() => setRetryToken(value => value + 1)}>
+                    <RefreshCw size={15} /> {t('gallery.retry')}
+                  </button>
+                </div>
+              ) : (
+                <div role="alert" style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'flex-start' }}>
+                  <p>{t('commerce.delivery_claim_invalid')}</p>
+                  <p style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>{t('commerce.delivery_claim_recover_hint')}</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                    <Link className="storefront-button storefront-button-primary" to="/storefront/orders">
+                      {t('commerce.delivery_claim_recover_link')}
+                    </Link>
+                    <Link className="storefront-button storefront-button-ghost" to="/storefront/products">
+                      {t('commerce.continue_shopping')}
+                    </Link>
+                    <button type="button" className="storefront-button storefront-button-ghost" onClick={() => setRetryToken(value => value + 1)}>
+                      <RefreshCw size={15} /> {t('gallery.retry')}
+                    </button>
+                  </div>
+                </div>
+              )
             ) : claimOrder ? (
               <>
                 <p>{claimOrder.delivery_available ? t('commerce.digital_asset') : t('commerce.download_started')}</p>

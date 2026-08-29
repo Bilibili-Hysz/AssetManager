@@ -6,6 +6,7 @@ import { RealtimeProvider } from './stores/RealtimeContext';
 import { SellerAuthProvider } from './stores/SellerAuthContext';
 import { ToastProvider } from './components/ui/Toast';
 import { DownloadProgressProvider } from './components/ui/DownloadProgress';
+import { useApiDegradationToast } from './hooks/useApiDegradationToast';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -59,6 +60,16 @@ function CommerceBuyerRoute() {
       <Outlet />
     </ShopBuyerProvider>
   );
+}
+
+/**
+ * Bridges the ApiClient's throttled 429/503 degradation events to the global
+ * toast. Mounted exactly once inside <ToastProvider>; the bus itself caps
+ * notifications at one per kind per 10s, so bursts never stack toasts.
+ */
+function ApiDegradationToasts() {
+  useApiDegradationToast();
+  return null;
 }
 
 function SellerProviderRoute() {
@@ -134,6 +145,7 @@ function App() {
         <RealtimeProvider>
           <QueryCacheProvider>
           <ToastProvider>
+            <ApiDegradationToasts />
             <DownloadProgressProvider>
               <Suspense fallback={<div className="app-route-loading" role="status" aria-busy="true" />}>
               <Routes>

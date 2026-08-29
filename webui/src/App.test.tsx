@@ -49,6 +49,8 @@ vi.mock('./stores/RealtimeContext', () => ({
 }));
 vi.mock('./components/ui/Toast', () => ({
   ToastProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  // ApiDegradationToasts mounts inside the provider and consumes the toast API.
+  useToast: () => ({ showToast: vi.fn() }),
 }));
 vi.mock('./components/ui/DownloadProgress', () => ({
   DownloadProgressProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,

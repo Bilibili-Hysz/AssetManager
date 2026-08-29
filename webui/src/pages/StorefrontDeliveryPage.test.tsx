@@ -3,6 +3,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import StorefrontDeliveryPage from './StorefrontDeliveryPage';
+import { ApiError } from '../api/errors';
 
 const { shopApi } = vi.hoisted(() => ({
   shopApi: {
@@ -33,6 +34,11 @@ vi.mock('../hooks/useI18n', () => ({
       'commerce.product_not_found': 'Product not found',
       'commerce.product_not_found_description': 'This product is unavailable.',
       'commerce.delivery_claim_invalid': 'This delivery link is invalid or has already been used.',
+      'commerce.delivery_claim_recover_hint': 'Restore access from your order history, or check out again.',
+      'commerce.delivery_claim_recover_link': 'Restore from order history',
+      'commerce.continue_shopping': 'Continue shopping',
+      'error.rate_limited': 'Too many requests. Please wait.',
+      'gallery.retry': 'Retry',
       'browse.loading': 'Loading...',
       'action.download': 'Download',
     }[key] ?? key),
@@ -115,13 +121,27 @@ describe('StorefrontDeliveryPage', () => {
     expect(screen.getByRole('button', { name: 'Download' })).toBeDefined();
   });
 
-  it('shows an invalid-claim notice when the share claim cannot be redeemed', async () => {
-    shopApi.claimDelivery.mockRejectedValue(new Error('not found'));
+  it('shows an invalid-claim notice with recovery guidance when the claim answers 404', async () => {
+    shopApi.claimDelivery.mockRejectedValue(new ApiError('not found', 404));
     renderPage('order-7?claim=used-claim');
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeDefined());
     expect(screen.getByRole('heading', { name: 'Product not found' })).toBeDefined();
     expect(screen.getByText('This delivery link is invalid or has already been used.')).toBeDefined();
+    expect(screen.getByText('Restore access from your order history, or check out again.')).toBeDefined();
+    expect(screen.getByRole('link', { name: 'Restore from order history' }).getAttribute('href')).toBe('/storefront/orders');
+    expect(screen.getByRole('link', { name: 'Continue shopping' }).getAttribute('href')).toBe('/storefront/products');
+  });
+
+  it('shows the rate-limited notice instead of the invalid-claim copy when the claim answers 429', async () => {
+    shopApi.claimDelivery.mockRejectedValue(new ApiError('rate limited', 429));
+    renderPage('order-7?claim=throttled-claim');
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeDefined());
+    expect(screen.getByText('Too many requests. Please wait.')).toBeDefined();
+    expect(screen.queryByText('This delivery link is invalid or has already been used.')).toBeNull();
+    expect(screen.queryByText('Restore access from your order history, or check out again.')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeDefined();
   });
 
   it('leaves the legacy flow untouched when a claim parameter is absent', async () => {
