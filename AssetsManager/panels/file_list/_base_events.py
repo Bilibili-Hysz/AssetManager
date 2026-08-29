@@ -375,6 +375,103 @@ class EventsMixin:
             count = self._model.rowCount()
             self._toast(tr("filelist.search.results", count=count, text=text))
 
+    def _toggle_advanced_filter(self):
+        """Show/hide the advanced-filter popup anchored to its toolbar button."""
+        popup = getattr(self, "_advanced_popup", None)
+        if popup is None:
+            return
+        if popup.isVisible():
+            popup.hide()
+            return
+        button = self._advanced_btn
+        popup.adjustSize()
+        popup.move(button.mapToGlobal(QPoint(0, button.height() + scaled_px(4))))
+        popup.show()
+        popup.raise_()
+
+    def _structured_search_params(self) -> dict[str, object]:
+        """Read the advanced-filter widgets into structured search kwargs.
+
+        ``size_*`` come back in bytes (the spinboxes edit MiB) and
+        ``mtime_*`` in epoch seconds (local-time midnight / end-of-day),
+        matching the assets-index column semantics.
+        """
+        from PySide6.QtCore import QDateTime, QTime
+
+        params: dict[str, object] = {}
+        after = self._adv_mtime_after.date()
+        before = self._adv_mtime_before.date()
+        if after != self._adv_mtime_after.minimumDate():
+            params["mtime_after"] = QDateTime(after, QTime(0, 0)).toSecsSinceEpoch()
+        if before != self._adv_mtime_before.minimumDate():
+            params["mtime_before"] = QDateTime(before, QTime(23, 59, 59)).toSecsSinceEpoch()
+        if self._adv_size_min.value() > 0:
+            params["size_min"] = self._adv_size_min.value() * 1024 * 1024
+        if self._adv_size_max.value() > 0:
+            params["size_max"] = self._adv_size_max.value() * 1024 * 1024
+        extensions = [
+            ext.lower().lstrip(".")
+            for ext in (raw.strip() for raw in self._adv_extensions.text().split(","))
+            if ext.lstrip(".")
+        ]
+        if extensions:
+            params["extensions"] = extensions
+        return params
+
+    def _apply_advanced_filter(self):
+        """Apply structured predicates to the view and query the shared service.
+
+        Presentation stays on the existing filter pipeline (the model narrows
+        the current listing and grid/details/status refresh as with a text
+        search). The library-wide match count comes from the shared
+        application SearchService so desktop and LAN execute the identical
+        structured query.
+        """
+        params = self._structured_search_params()
+        self._model.set_structured_filter(**params)
+        self._advanced_popup.hide()
+        self._update_status()
+        if self._view_mode == "Details":
+            self._populate_details()
+        self._load_visible()
+        service = getattr(self, "_search_service", None)
+        if service is None or not self._lib_root:
+            # No scoped search service (bare panel/tests): local-only report.
+            self._toast(tr("filelist.advanced.results",
+                           count=self._model.rowCount(), total=self._model.rowCount()))
+            return
+        name_substring = self._search.text().strip().lower()
+
+        def _query_library():
+            try:
+                return service.search_structured_detailed(
+                    self._lib_root, name_substring=name_substring, **params)
+            except Exception:
+                # The local filtered view is authoritative for presentation;
+                # a failed library-wide count only degrades the toast.
+                return None
+
+        self._run_in_background(_query_library, on_done=self._on_advanced_library_count)
+
+    def _on_advanced_library_count(self, result_set):
+        total = result_set.count if result_set is not None else self._model.rowCount()
+        self._toast(tr("filelist.advanced.results",
+                       count=self._model.rowCount(), total=total))
+
+    def _clear_advanced_filter(self):
+        """Reset the advanced-filter widgets and drop the model predicates."""
+        self._adv_mtime_after.setDate(self._adv_mtime_after.minimumDate())
+        self._adv_mtime_before.setDate(self._adv_mtime_before.minimumDate())
+        self._adv_size_min.setValue(0)
+        self._adv_size_max.setValue(0)
+        self._adv_extensions.clear()
+        self._model.set_structured_filter()
+        self._advanced_popup.hide()
+        self._update_status()
+        if self._view_mode == "Details":
+            self._populate_details()
+        self._load_visible()
+
     def eventFilter(self, obj, event):
         if not hasattr(self, '_grid_widget') or self._grid_widget is None:
             return QWidget.eventFilter(cast(QWidget, self), obj, event)

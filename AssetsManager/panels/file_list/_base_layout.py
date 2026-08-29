@@ -78,6 +78,9 @@ class LayoutMixin:
         def _on_view_changed(self, index: int) -> None: ...
         def _on_zoom_changed(self, val: str) -> None: ...
         def _on_search_changed(self, text: str) -> None: ...
+        def _toggle_advanced_filter(self) -> None: ...
+        def _apply_advanced_filter(self) -> None: ...
+        def _clear_advanced_filter(self) -> None: ...
         def _invoke_command(
             self,
             command_id: str,
@@ -168,6 +171,9 @@ class LayoutMixin:
 
         # Search — inline at end of toolbar
         from PySide6.QtWidgets import QLineEdit
+        self._advanced_btn = self._make_nav_button(
+            "settings", tr("filelist.advanced.tooltip"), self._toggle_advanced_filter)
+        tb.addWidget(self._advanced_btn)
         self._search = QLineEdit()
         self._search.setPlaceholderText(tr("filelist.filter_placeholder"))
         self._search.setClearButtonEnabled(True)
@@ -175,6 +181,7 @@ class LayoutMixin:
         self._setup_search_history(self._search)
         tb.addWidget(self._search, stretch=1)
         self.content_layout.addLayout(tb)
+        self._build_advanced_filter_popup()
         self._refresh_state_icons()
         self._apply_chrome_style()
 
@@ -322,6 +329,7 @@ class LayoutMixin:
                 btn.setStyleSheet(self._nav_button_css(t))
         if hasattr(self, "_status_bar"):
             self._fst_status_style()
+        self._style_advanced_popup()
 
     def refresh_header(self):
         """Re-apply header bar styling (called on bg opacity changes)."""
@@ -387,6 +395,22 @@ class LayoutMixin:
         self._hidden_btn.setToolTip(tr("filelist.hidden"))
         self._refresh_btn.setToolTip(tr("filelist.refresh"))
         self._search.setPlaceholderText(tr("filelist.filter_placeholder"))
+        self._advanced_btn.setToolTip(tr("filelist.advanced.tooltip"))
+        self._advanced_btn.setAccessibleName(tr("filelist.advanced.tooltip"))
+        if hasattr(self, "_advanced_popup"):
+            self._adv_title.setText(tr("filelist.advanced.title"))
+            self._adv_mtime_after_label.setText(tr("filelist.advanced.modified_after"))
+            self._adv_mtime_before_label.setText(tr("filelist.advanced.modified_before"))
+            self._adv_size_min_label.setText(tr("filelist.advanced.size_min"))
+            self._adv_size_max_label.setText(tr("filelist.advanced.size_max"))
+            self._adv_extensions_label.setText(tr("filelist.advanced.extensions"))
+            self._adv_extensions.setPlaceholderText(tr("filelist.advanced.extensions_hint"))
+            self._adv_mtime_after.setSpecialValueText(tr("filelist.advanced.any"))
+            self._adv_mtime_before.setSpecialValueText(tr("filelist.advanced.any"))
+            self._adv_size_min.setSpecialValueText(tr("filelist.advanced.any"))
+            self._adv_size_max.setSpecialValueText(tr("filelist.advanced.any"))
+            self._adv_apply_btn.setText(tr("filelist.advanced.apply"))
+            self._adv_clear_btn.setText(tr("filelist.advanced.clear"))
 
         sort_key = self._sort_combo.currentData()
         self._sort_combo.blockSignals(True)
@@ -424,6 +448,101 @@ class LayoutMixin:
             completer = QCompleter(history, line_edit)
             completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
             line_edit.setCompleter(completer)
+
+    def _build_advanced_filter_popup(self) -> None:
+        """Build the compact advanced-filter popup (hidden by default).
+
+        Lives next to the existing search input — this is a refinement of
+        the one FileList search entry, not a second search surface.
+        """
+        from PySide6.QtCore import QDate
+        from PySide6.QtWidgets import (
+            QDialog, QDateEdit, QGridLayout, QLabel, QLineEdit, QPushButton, QSpinBox,
+        )
+
+        self._advanced_popup = QDialog(cast(QWidget, self), Qt.Popup)
+        popup = self._advanced_popup
+        grid = QGridLayout(popup)
+        grid.setContentsMargins(scaled_px(12), scaled_px(10), scaled_px(12), scaled_px(10))
+        grid.setHorizontalSpacing(scaled_px(8))
+        grid.setVerticalSpacing(scaled_px(6))
+
+        self._adv_title = QLabel(tr("filelist.advanced.title"))
+        grid.addWidget(self._adv_title, 0, 0, 1, 2)
+
+        self._adv_mtime_after_label = QLabel(tr("filelist.advanced.modified_after"))
+        self._adv_mtime_after = QDateEdit()
+        self._adv_mtime_before = QDateEdit()
+        for date_edit in (self._adv_mtime_after, self._adv_mtime_before):
+            date_edit.setCalendarPopup(True)
+            date_edit.setDisplayFormat("yyyy-MM-dd")
+            date_edit.setMinimumDate(QDate(2000, 1, 1))
+            date_edit.setDate(date_edit.minimumDate())
+            date_edit.setSpecialValueText(tr("filelist.advanced.any"))
+        self._adv_mtime_before_label = QLabel(tr("filelist.advanced.modified_before"))
+        self._adv_size_min_label = QLabel(tr("filelist.advanced.size_min"))
+        self._adv_size_max_label = QLabel(tr("filelist.advanced.size_max"))
+        self._adv_size_min = QSpinBox()
+        self._adv_size_max = QSpinBox()
+        for spin in (self._adv_size_min, self._adv_size_max):
+            spin.setRange(0, 2097151)
+            spin.setSuffix(" MiB")
+            spin.setSpecialValueText(tr("filelist.advanced.any"))
+        self._adv_extensions_label = QLabel(tr("filelist.advanced.extensions"))
+        self._adv_extensions = QLineEdit()
+        self._adv_extensions.setPlaceholderText(tr("filelist.advanced.extensions_hint"))
+        self._adv_extensions.setClearButtonEnabled(True)
+
+        rows = (
+            (self._adv_mtime_after_label, self._adv_mtime_after, 1),
+            (self._adv_mtime_before_label, self._adv_mtime_before, 2),
+            (self._adv_size_min_label, self._adv_size_min, 3),
+            (self._adv_size_max_label, self._adv_size_max, 4),
+            (self._adv_extensions_label, self._adv_extensions, 5),
+        )
+        for label, editor, row in rows:
+            grid.addWidget(label, row, 0)
+            grid.addWidget(editor, row, 1)
+        for editor in (self._adv_mtime_after, self._adv_mtime_before,
+                       self._adv_size_min, self._adv_size_max, self._adv_extensions):
+            editor.setMinimumWidth(scaled_px(150))
+            editor.setAccessibleName(editor.toolTip() or "")
+
+        self._adv_clear_btn = QPushButton(tr("filelist.advanced.clear"))
+        self._adv_clear_btn.clicked.connect(self._clear_advanced_filter)
+        self._adv_apply_btn = QPushButton(tr("filelist.advanced.apply"))
+        self._adv_apply_btn.clicked.connect(self._apply_advanced_filter)
+        themes.set_button_variant(self._adv_clear_btn, "ghost")
+        themes.set_button_variant(self._adv_apply_btn, "primary")
+        grid.addWidget(self._adv_clear_btn, 6, 0)
+        grid.addWidget(self._adv_apply_btn, 6, 1)
+
+        self._style_advanced_popup()
+
+    def _style_advanced_popup(self) -> None:
+        """Apply theme tokens to the advanced-filter popup chrome."""
+        if not hasattr(self, "_advanced_popup"):
+            return
+        t = themes.get()
+        label_color = t["muted"]
+        label_font = f"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px;"
+        for label in (
+            self._adv_title, self._adv_mtime_after_label, self._adv_mtime_before_label,
+            self._adv_size_min_label, self._adv_size_max_label, self._adv_extensions_label,
+        ):
+            label.setStyleSheet(f"color: {label_color}; background: transparent; {label_font}")
+        self._adv_title.setStyleSheet(
+            f"color: {t['heading']}; background: transparent; {label_font} font-weight: bold;"
+        )
+        self._advanced_popup.setStyleSheet(
+            f"QDialog {{ background: {t['panel']}; "
+            f"border: {scaled_px(1)}px solid {t['border']}; "
+            f"border-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; }}"
+            f"QLineEdit, QSpinBox, QDateEdit {{ background: {t['input_bg']}; "
+            f"color: {t['input_text']}; border: {scaled_px(1)}px solid {t['border']}; "
+            f"border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; "
+            f"padding: {scaled_px(2)}px {scaled_px(6)}px; }}"
+        )
 
     def _on_detail_header_clicked(self, col: int):
         """Tweak column widths after sort for better readability."""

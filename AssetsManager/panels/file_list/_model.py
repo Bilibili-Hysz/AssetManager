@@ -15,6 +15,7 @@ from PySide6.QtGui import QIcon
 from shiboken6 import Shiboken
 from AssetsManager.application.asset_filters import (
     filters_accept,
+    matches_structured,
     normalize_filter_category,
     normalize_sort_key,
     sort_key_for_entry,
@@ -105,6 +106,9 @@ class FileSystemModel(QAbstractListModel):
         self._filter_text: str = ""
         self._filter_cat: str = "all"
         self._show_hidden: bool = False
+        # Advanced (structured) filter: extension/size/mtime predicates
+        # evaluated per entry in ``filter_accepts`` (see matches_structured).
+        self._structured_filter: dict[str, object] = {}
         # Count-bounded LRU (QIcon wraps a pixmap, so byte accounting is
         # indirect): a 10k-entry directory scrolled in details view used to
         # accumulate one QIcon per row, peaking around 400 MB (96px × 10k).
@@ -263,6 +267,7 @@ class FileSystemModel(QAbstractListModel):
             self._filter_text,
             self._filter_cat,
             self._show_hidden,
+            self._structured_filter,
         ) if preserve_existing else None
         self._last_scan_reused = False
         self._scan_loading = True
@@ -338,6 +343,7 @@ class FileSystemModel(QAbstractListModel):
                 current_view_state = (
                     self._sort_key, self._sort_asc, self._filter_text,
                     self._filter_cat, self._show_hidden,
+                    self._structured_filter,
                 )
                 if current_view_state != self._preserve_scan_view_state:
                     self._apply_sort()
@@ -420,6 +426,36 @@ class FileSystemModel(QAbstractListModel):
         # Icons and pixmaps use path keys — survive filter changes
         if self._dir_path:
             with self._reset_model("filter"):
+                self._apply_sort()
+            self._emit_state()
+
+    def set_structured_filter(
+        self,
+        *,
+        size_min: int | None = None,
+        size_max: int | None = None,
+        mtime_after: float | None = None,
+        mtime_before: float | None = None,
+        extensions: list[str] | None = None,
+    ) -> None:
+        """Apply (or clear, when called with no arguments) structured predicates.
+
+        Kept outside :meth:`set_filter` so the plain name/category filter
+        path stays byte-for-byte compatible with the shared pipeline.
+        """
+        self._structured_filter = {
+            key: value for key, value in (
+                ("size_min", size_min),
+                ("size_max", size_max),
+                ("mtime_after", mtime_after),
+                ("mtime_before", mtime_before),
+                ("extensions", list(extensions) if extensions else None),
+            )
+            if value is not None
+        }
+        self._subtitle_cache.clear()
+        if self._dir_path:
+            with self._reset_model("structured_filter"):
                 self._apply_sort()
             self._emit_state()
 
@@ -896,14 +932,28 @@ class FileSystemModel(QAbstractListModel):
         self._lib_root = ""
 
     def filter_accepts(self, entry: os.DirEntry) -> bool:
-        return filters_accept(
+        if not filters_accept(
             entry.name,
             self._safe_is_dir(entry),
             show_hidden=self._show_hidden,
             exclude_patterns=self._exclude_patterns,
             search=self._filter_text,
             filter_category=self._filter_cat,
-        )
+        ):
+            return False
+        if self._structured_filter:
+            is_dir = self._safe_is_dir(entry)
+            if not is_dir:
+                stat = self._cached_stat(entry)
+                if not matches_structured(
+                    entry.name,
+                    is_dir,
+                    size=stat.st_size,
+                    mtime=stat.st_mtime,
+                    **self._structured_filter,
+                ):
+                    return False
+        return True
 
     @staticmethod
     def _normalize_sort_key(key: str) -> str:

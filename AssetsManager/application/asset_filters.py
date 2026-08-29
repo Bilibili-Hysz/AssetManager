@@ -376,6 +376,48 @@ def filters_accept(
     return True
 
 
+def matches_structured(
+    name: str,
+    is_dir: bool,
+    *,
+    size: int,
+    mtime: float,
+    size_min: int | None = None,
+    size_max: int | None = None,
+    mtime_after: float | None = None,
+    mtime_before: float | None = None,
+    extensions: Sequence[str] | None = None,
+) -> bool:
+    """Structured extension/size/mtime predicates (desktop advanced filter).
+
+    Mirrors the assets-index semantics of
+    ``AssetIndexRepository.search_structured``: bounds are inclusive,
+    ``mtime`` is epoch seconds and ``size`` is bytes, and extension
+    candidates are normalized to lowercase with a leading dot. Directories
+    always pass so navigation never disappears while a structured filter is
+    active (same contract as the include_types/category checks above).
+    """
+    if is_dir:
+        return True
+    if extensions:
+        normalized = {
+            "." + str(candidate).strip().lower().lstrip(".")
+            for candidate in extensions
+            if str(candidate).strip().lstrip(".")
+        }
+        if normalized and os.path.splitext(name)[1].lower() not in normalized:
+            return False
+    if size_min is not None and size < size_min:
+        return False
+    if size_max is not None and size > size_max:
+        return False
+    if mtime_after is not None and mtime < mtime_after:
+        return False
+    if mtime_before is not None and mtime > mtime_before:
+        return False
+    return True
+
+
 # ── Sort helpers ──────────────────────────────────────────────────
 
 def sort_key_for_entry(

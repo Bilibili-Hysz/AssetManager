@@ -9,7 +9,7 @@ from aiohttp import web
 
 from AssetsManager.application import ProjectDepthConfig
 from AssetsManager.application.search_service import SearchError, SearchResultSet, SearchStatus
-from AssetsManager.domain.errors import DomainError
+from AssetsManager.domain.errors import DomainError, ValidationError
 from AssetsManager.lan.dto import TreeItemResponse
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
@@ -28,6 +28,59 @@ _log = logging.getLogger(__name__)
 
 
 MAX_NOTES_LENGTH = 4000
+
+# Structured-search order whitelist (must mirror the repository's whitelist).
+_SEARCH_ORDER_VALUES = ("name", "size", "mtime")
+_SEARCH_STRUCTURED_LIMIT = 200
+
+
+def _parse_structured_search_params(request) -> dict:
+    """Parse optional structured-filter query params, 400 on malformed values.
+
+    Returns a dict with ``filters`` (the structured predicate set, possibly
+    empty), ``order``, and ``offset``. ``size_*`` are bytes (int);
+    ``mtime_*`` are epoch seconds (float), matching the assets.mtime column.
+    """
+    extensions_raw = request.query.get("ext", "")
+    extensions = [
+        ext.lower().lstrip(".")
+        for ext in (raw.strip() for raw in extensions_raw.split(","))
+        if ext
+    ]
+
+    def _number(field: str, converter):
+        raw = request.query.get(field)
+        if raw is None or raw == "":
+            return None
+        try:
+            return converter(raw)
+        except (TypeError, ValueError):
+            raise ValidationError(field, f"must be a valid {'integer' if converter is int else 'number'}") from None
+
+    size_min = _number("size_min", int)
+    size_max = _number("size_max", int)
+    mtime_after = _number("mtime_after", float)
+    mtime_before = _number("mtime_before", float)
+
+    order = request.query.get("order", "name").lower()
+    if order not in _SEARCH_ORDER_VALUES:
+        raise ValidationError("order", f"must be one of {list(_SEARCH_ORDER_VALUES)}")
+
+    try:
+        offset = int(request.query.get("offset", "0"))
+    except (TypeError, ValueError):
+        raise ValidationError("offset", "must be an integer") from None
+    if offset < 0:
+        raise ValidationError("offset", "must be non-negative")
+
+    filters = {
+        "extensions": extensions or None,
+        "size_min": size_min,
+        "size_max": size_max,
+        "mtime_after": mtime_after,
+        "mtime_before": mtime_before,
+    }
+    return {"filters": filters, "order": order, "offset": offset}
 
 
 async def handle_meta(request):
@@ -121,6 +174,11 @@ async def handle_search(request):
         if query_error is not None:
             status = 400
             return error_response(query_error, status=400, code="bad_request")
+        try:
+            structured = _parse_structured_search_params(request)
+        except ValidationError as exc:
+            status = 400
+            return error_response(exc)
         query = request.query.get("q", "").lower()
         tags_param = request.query.get("tags", "")
         category = request.query.get("category", "all")
@@ -131,6 +189,23 @@ async def handle_search(request):
         svc = get_search_service(request)
 
         def _search() -> SearchResultSet:
+            if any(value is not None for value in structured["filters"].values()):
+                # Structured predicates (extension/size/mtime) are only
+                # executable efficiently by the assets index; the scanner
+                # source cannot apply them without a full in-memory scan, so
+                # a structured search deliberately runs indexed-only. The
+                # name substring (q) still narrows the indexed query. When a
+                # tag filter is combined with structured filters, the
+                # structured predicate set wins (tags are not merged here).
+                return svc.search_structured_detailed(
+                    lan.library_root,
+                    name_substring=query,
+                    category=category,
+                    order_by=structured["order"],
+                    offset=structured["offset"],
+                    limit=_SEARCH_STRUCTURED_LIMIT,
+                    **structured["filters"],
+                )
             if tag_filter:
                 return svc.search_by_tags_detailed(
                     lan.library_root, tag_filter, query=query, category=category,

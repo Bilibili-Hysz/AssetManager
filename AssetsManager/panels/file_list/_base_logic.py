@@ -173,6 +173,9 @@ class LogicMixin:
         self._file_ops_port = None
         self._tags_service = None
         self._tags_port = None
+        # Shared application SearchService (session-bound); used by the
+        # advanced filter to run the structured query across the library.
+        self._search_service = None
         self._operation_feedback_generation = 0
 
         # Controller for non-UI business logic
@@ -210,6 +213,9 @@ class LogicMixin:
         self._file_ops_port = services.file_operation_service
         self._tags_service = services.tag_service
         self._tags_port = RootBoundTagService(services.session.root_str, services.tag_service)
+        # Shared application SearchService (session-bound) for the advanced
+        # structured filter; optional so legacy/fake service bundles work.
+        self._search_service = getattr(services, "search_service", None)
         # Capture the service object together with the session bundle.  This
         # is intentionally a snapshot, not a later lookup through a mutable
         # application container; async thumbnail work must retain the service
