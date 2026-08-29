@@ -17,6 +17,7 @@ from time import monotonic_ns, perf_counter, time
 from typing import TYPE_CHECKING, Mapping
 from uuid import uuid4
 
+from AssetsManager.application.activity_recorder import ActivityRecorder, summarize_targets
 from AssetsManager.application.context import session_operation
 from AssetsManager.core.performance import PerformanceRecorder
 from AssetsManager.domain.event_bus import get_event_bus
@@ -213,6 +214,9 @@ def _measure_command(command: str):
                     affected,
                     "events_published",
                 )
+                # One activity row per successful top-level command (rename
+                # delegates to move, but records only at depth 0 here).
+                self._record_activity_entry(command, result)
             return result
         return measured
     return decorate
@@ -226,12 +230,14 @@ class FileOperationService:
                   performance_recorder: PerformanceRecorder | None = None,
                   reconciliation_queue: ReconciliationQueue | None = None,
                   import_manifest_store=None,
-                  pending_projection_repairs_dir: Path | None = None):
+                  pending_projection_repairs_dir: Path | None = None,
+                  activity_recorder: ActivityRecorder | None = None):
         self.session = session
         self._asset_index_service = asset_index_service
         self._reconciliation_queue = reconciliation_queue
         self._import_manifest_store = import_manifest_store
         self._pending_projection_repairs_dir = pending_projection_repairs_dir
+        self._activity_recorder = activity_recorder
         self._performance_recorder = (
             performance_recorder if performance_recorder is not None and performance_recorder.enabled else None
         )
@@ -304,6 +310,38 @@ class FileOperationService:
     def reconciliation_queue(self) -> ReconciliationQueue | None:
         """Return the session-scoped repair queue, when one is configured."""
         return self._reconciliation_queue
+
+    @property
+    def activity_recorder(self) -> ActivityRecorder | None:
+        """Return the shared desktop activity recorder, when one is bound."""
+        return self._activity_recorder
+
+    def _record_activity_entry(self, command: str, result: object) -> None:
+        """Persist one activity_log row for a successful file command.
+
+        Runs on the executing worker thread at command end. Failed commands
+        (exception or error entries) and no-ops (no changed paths) record
+        nothing; a batch records exactly one row. The recorder itself swallows
+        every failure — this wrapper is defense in depth for unexpected
+        shapes, never a channel for operation failures.
+        """
+        if self._activity_recorder is None:
+            return
+        changed = getattr(result, "changed_paths", None)
+        if changed is None:
+            targets: tuple = (result,) if isinstance(result, Path) else ()
+        else:
+            targets = tuple(changed)
+            if getattr(result, "errors", ()):
+                return
+        if not targets:
+            return
+        try:
+            self._activity_recorder.record(command, summarize_targets(targets))
+        except Exception:
+            _log.warning(
+                "Activity entry for %s could not be recorded", command, exc_info=True
+            )
 
     @contextmanager
     def suppress_command_telemetry(self):

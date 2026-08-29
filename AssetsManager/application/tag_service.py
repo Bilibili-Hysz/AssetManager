@@ -8,6 +8,7 @@ from sqlite3 import Connection
 from threading import Lock
 from typing import Callable
 
+from AssetsManager.application.activity_recorder import ActivityRecorder, summarize_targets
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.application.tag_canonicalizer import canonical_tag
 from AssetsManager.core import icons
@@ -80,9 +81,11 @@ class TagService:
 
     def __init__(self, connection_provider: ConnectionProvider | None = None,
                  session: LibrarySession | None = None,
-                 canonicalize: Callable[[str], str] | None = None):
+                 canonicalize: Callable[[str], str] | None = None,
+                 activity_recorder: ActivityRecorder | None = None):
         self._session = session
         self._canonicalize = canonicalize if canonicalize is not None else canonical_tag
+        self._activity_recorder = activity_recorder
         self._repository: TagRepository | None = None
         self._root_identity = None
         if isinstance(session, LibrarySession):
@@ -110,11 +113,13 @@ class TagService:
         self._resolve_lock = Lock()
 
     @classmethod
-    def for_session(cls, session: LibrarySession) -> "TagService":
+    def for_session(cls, session: LibrarySession,
+                    *, activity_recorder: ActivityRecorder | None = None) -> "TagService":
         """Build the canonical tag service for one real session."""
         if not isinstance(session, LibrarySession):
             raise TypeError("TagService.for_session requires a real LibrarySession")
-        return cls(connection_provider=session.connection_for, session=session)
+        return cls(connection_provider=session.connection_for, session=session,
+                   activity_recorder=activity_recorder)
 
     def _resolve_root(self, library_root: str | Path) -> str:
         """Cached Path.resolve() for library roots."""
@@ -284,8 +289,11 @@ class TagService:
     @session_operation
     def add_tag(self, library_root: str | Path, path: str | Path, tag: str,
                 db_conn: Connection | None = None,
-                *, source: TagSource = "human") -> None:
+                *, source: TagSource = "human") -> bool:
         """Add a tag to a file, resolving to canonical form.
+
+        Returns True when the tag was newly added, False when the file
+        already carried it (a no-op).
 
         The ``human`` default keeps the historical behavior byte-for-byte.
         Non-human sources write to their own physical partition and publish
@@ -301,29 +309,91 @@ class TagService:
         self._require_event_safe_transaction(repo)
         existing = {t.lower() for t in repo.get_tags(key, source=source)}
         if canonical.lower() in existing:
-            return
+            return False
         repo.add_tag(key, canonical, source=source, require_clean_transaction=True)
         tags = tuple(repo.get_tags(key, source=source))
         self._publish_asset_tags_changed(
             key, tags, publish_catalog=(source == "human")
         )
+        return True
+
+    @session_operation
+    def add_tag_to_files(self, library_root: str | Path,
+                         paths: list[str | Path], tag: str,
+                         db_conn: Connection | None = None) -> int:
+        """Apply one tag to many files and record exactly one activity row.
+
+        Desktop batch-tagging surface (file list multi-selection). Each file
+        goes through :meth:`add_tag` (per-file validation, canonicalization,
+        and change events stay unchanged); the batch shares a single
+        ``activity_log`` row instead of one per file. Returns the number of
+        files the tag was newly added to.
+        """
+        tag = self.validate_tag_name(tag)
+        canonical = self._canonicalize(tag)
+        keys = self._resolve_many_under_root(library_root, paths)
+        added: list[str] = []
+        for key in keys:
+            if self.add_tag(library_root, key, canonical, db_conn):
+                added.append(key)
+        if added and self._activity_recorder is not None:
+            try:
+                self._activity_recorder.record(
+                    "tag_add", f"{canonical} -> {summarize_targets(added)}"
+                )
+            except Exception:
+                # Activity recording must never fail the tagging itself.
+                pass
+        return len(added)
 
     @session_operation
     def remove_tag(self, library_root: str | Path, path: str | Path, tag: str,
                    db_conn: Connection | None = None,
-                   *, source: TagSource = "human") -> None:
-        """Remove a tag from a file (case-insensitive match)."""
+                   *, source: TagSource = "human") -> bool:
+        """Remove a tag from a file (case-insensitive match).
+
+        Returns True when a stored tag was removed, False when the file did
+        not carry it (a no-op).
+        """
         key = self._resolve_under_root(library_root, path)
         repo = self._repo(db_conn, library_root)
         self._require_event_safe_transaction(repo)
         existing = repo.get_tags(key, source=source)
         match = next((t for t in existing if t.lower() == tag.lower()), None)
-        if match:
-            repo.remove_tag(key, match, source=source, require_clean_transaction=True)
-            tags = tuple(repo.get_tags(key, source=source))
-            self._publish_asset_tags_changed(
-                key, tags, publish_catalog=(source == "human")
-            )
+        if not match:
+            return False
+        repo.remove_tag(key, match, source=source, require_clean_transaction=True)
+        tags = tuple(repo.get_tags(key, source=source))
+        self._publish_asset_tags_changed(
+            key, tags, publish_catalog=(source == "human")
+        )
+        return True
+
+    @session_operation
+    def remove_tag_from_files(self, library_root: str | Path,
+                              paths: list[str | Path], tag: str,
+                              db_conn: Connection | None = None) -> int:
+        """Remove one tag from many files and record exactly one activity row.
+
+        Desktop batch-untagging surface (file list multi-selection); the
+        batch shares a single ``activity_log`` row. Returns the number of
+        files the tag was actually removed from.
+        """
+        tag = self.validate_tag_name(tag)
+        keys = self._resolve_many_under_root(library_root, paths)
+        removed: list[str] = []
+        for key in keys:
+            if self.remove_tag(library_root, key, tag, db_conn):
+                removed.append(key)
+        if removed and self._activity_recorder is not None:
+            try:
+                self._activity_recorder.record(
+                    "tag_remove", f"{tag} <- {summarize_targets(removed)}"
+                )
+            except Exception:
+                # Activity recording must never fail the tagging itself.
+                pass
+        return len(removed)
 
     @session_operation
     def remove_file(self, library_root: str | Path, path: str | Path,

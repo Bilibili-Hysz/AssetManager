@@ -17,6 +17,7 @@ from pathlib import Path
 import sqlite3
 from typing import TYPE_CHECKING, Callable, cast
 
+from AssetsManager.application.activity_recorder import ActivityRecorder
 from AssetsManager.application.asset_index_service import AssetIndexService
 from AssetsManager.application.asset_index_reconciliation_service import AssetIndexReconciliationService
 from AssetsManager.application.app_settings_provider import install_app_settings_provider
@@ -587,6 +588,11 @@ class ApplicationBootstrap:
                 # fallback; Condition remains the same-process fast path.
                 cross_process_poll_interval=0.5,
             )
+            # Desktop file/tag/import operations append traceability rows into
+            # the library's activity_log through the session connection.
+            activity_recorder = ActivityRecorder(
+                lambda: session.connection_for(session.root)
+            )
             file_operation_service = FileOperationService(
                 session=session,
                 asset_index_service=asset_index_service,
@@ -596,6 +602,7 @@ class ApplicationBootstrap:
                 pending_projection_repairs_dir=(
                     library_data_dir(identity) / "pending_projection_repairs"
                 ),
+                activity_recorder=activity_recorder,
             )
             # Re-enqueue projection-repair requests whose enqueue failed in a
             # previous run (markers under pending_projection_repairs/).  A
@@ -660,7 +667,9 @@ class ApplicationBootstrap:
                 ),
                 export_service=export_service,
                 metadata_service=MetadataService.for_session(session),
-                tag_service=TagService.for_session(session),
+                tag_service=TagService.for_session(
+                    session, activity_recorder=activity_recorder
+                ),
                 thumbnail_service=ThumbnailService(
                     connection_provider=provider, session=session
                 ),

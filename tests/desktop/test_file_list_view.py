@@ -2452,9 +2452,9 @@ def test_apply_tag_dialog_uses_catalog_picker_for_all_selected_paths(tmp_path, m
         panel, tr("filelist.dialog.apply_tag"), tr("filelist.dialog.tag_label"),
         ["character", "hero"], 0, True,
     )
-    assert service.add_tag.call_args_list == [
-        ((str(tmp_path), path, "hero"),) for path in paths
-    ]
+    service.add_tag_to_files.assert_called_once_with(
+        str(tmp_path), paths, "hero",
+    )
     panel._post_refresh.assert_called_once_with()
 
 

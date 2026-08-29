@@ -727,6 +727,19 @@ class ImportService:
             kind="import",
             paths=(str(destination),),
         ))
+        # One activity row per completed import (cancelled/failed-only runs
+        # raise or return without a copy and record nothing).
+        if result.copied > 0:
+            recorder = getattr(self.file_operations, "activity_recorder", None)
+            if recorder is not None:
+                details = f"{result.copied} files -> {destination}"
+                if all_failed:
+                    details += f" ({len(all_failed)} failed)"
+                try:
+                    recorder.record("import", details)
+                except Exception:
+                    # Activity recording must never fail the import itself.
+                    pass
         return result
 
     @session_operation

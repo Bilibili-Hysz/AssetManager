@@ -887,8 +887,9 @@ class ActionsMixin:
             cast(QWidget, self), tr("filelist.dialog.apply_tag"), tr("filelist.dialog.tag_label"), tags, 0, True,
         )
         if ok and tag.strip():
-            for p in paths:
-                svc.add_tag(self._lib_root, p, tag.strip())
+            # One batch call: validation and per-file events stay in the
+            # service, which also records a single activity_log row.
+            svc.add_tag_to_files(self._lib_root, list(paths), tag.strip())
             self._post_refresh()
 
     def _remove_tag_dialog(self, paths):
@@ -897,8 +898,7 @@ class ActionsMixin:
         tag, ok = QInputDialog.getText(cast(QWidget, self), tr("filelist.dialog.remove_tag"), tr("filelist.dialog.tag_label"))
         if ok and tag.strip():
             svc = self._get_tag_service()
-            for p in paths:
-                svc.remove_tag(self._lib_root, p, tag.strip())
+            svc.remove_tag_from_files(self._lib_root, list(paths), tag.strip())
             self._post_refresh()
 
     def _manage_tags_dialog(self, paths):
