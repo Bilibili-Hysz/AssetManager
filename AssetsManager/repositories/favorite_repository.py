@@ -12,6 +12,12 @@ from AssetsManager.repositories._common import _guarded_commit
 class FavoriteRepository:
     """Persist favorite paths in the owning library database."""
 
+    # Mirrors application.favorite_service.MAX_FAVORITES_PER_OWNER (importing
+    # it upward would violate repository layering — keep the two in sync).
+    # list_paths clamps to this ceiling so a full favorite list is never
+    # silently truncated below the per-owner cap.
+    LIMIT_CEILING = 10_000
+
     def __init__(self, conn: Connection):
         self._conn = conn
 
@@ -22,11 +28,11 @@ class FavoriteRepository:
             self._conn.executescript(LIBRARY_FAVORITES_SCHEMA)
             _guarded_commit(self._conn, outer_transaction=outer_transaction)
 
-    def list_paths(self, owner_key: str, *, limit: int = 500) -> list[str]:
+    def list_paths(self, owner_key: str, *, limit: int = LIMIT_CEILING) -> list[str]:
         rows = self._conn.execute(
             "SELECT file_path FROM library_favorites WHERE owner_key=? "
             "ORDER BY created_at DESC, file_path LIMIT ?",
-            (owner_key, max(1, min(int(limit), 5000))),
+            (owner_key, max(1, min(int(limit), self.LIMIT_CEILING))),
         ).fetchall()
         return [str(row[0]) for row in rows]
 
@@ -36,7 +42,7 @@ class FavoriteRepository:
             (owner_key, file_path),
         ).fetchone() is not None
 
-    def add(self, owner_key: str, file_path: str, *, max_items: int = 500) -> bool:
+    def add(self, owner_key: str, file_path: str, *, max_items: int = LIMIT_CEILING) -> bool:
         """Add a favorite atomically. False if already present; OverflowError at limit."""
         with db_write_lock(self._conn):
             # Single statement: the duplicate check, the per-owner count check

@@ -38,19 +38,47 @@ def test_favorite_service_scopes_owners_and_returns_relative_paths(tmp_path, sch
     assert service.list_paths(tmp_path, "user:2") == ["collection"]
 
 
-def test_favorite_service_accepts_directories_and_images_only(tmp_path, schema_db):
+def test_favorite_service_accepts_directories_and_regular_files(tmp_path, schema_db):
+    """Any library-internal directory or regular file is favoritable."""
     directory = tmp_path / "folder"
     image = tmp_path / "preview.JPEG"
     text = tmp_path / "notes.txt"
+    archive = tmp_path / "bundle.zip"
     directory.mkdir()
     image.write_bytes(b"image")
     text.write_text("notes", encoding="utf-8")
+    archive.write_bytes(b"zip")
     service = _service(schema_db)
 
     assert service.add(tmp_path, "principal:guest", directory)[0] == "folder"
     assert service.add(tmp_path, "principal:guest", image)[0] == "preview.JPEG"
-    with pytest.raises(ValidationError, match="directory or image"):
-        service.add(tmp_path, "principal:guest", text)
+    assert service.add(tmp_path, "principal:guest", text)[0] == "notes.txt"
+    assert service.add(tmp_path, "principal:guest", archive)[0] == "bundle.zip"
+
+    assert set(service.list_paths(tmp_path, "principal:guest")) == {
+        "folder",
+        "preview.JPEG",
+        "notes.txt",
+        "bundle.zip",
+    }
+
+
+def test_favorite_service_limit_surfaces_as_validation_error(tmp_path, schema_db, monkeypatch):
+    """The per-owner cap still rejects, but as an explicit user-visible error."""
+    import AssetsManager.application.favorite_service as favorite_service_module
+
+    monkeypatch.setattr(favorite_service_module, "MAX_FAVORITES_PER_OWNER", 1)
+    first = tmp_path / "a.png"
+    second = tmp_path / "b.png"
+    first.write_bytes(b"image")
+    second.write_bytes(b"image")
+    service = _service(schema_db)
+
+    assert service.add(tmp_path, "user:1", first)[0] == "a.png"
+    with pytest.raises(ValidationError, match="at most 1 favorites are allowed"):
+        service.add(tmp_path, "user:1", second)
+    # The rejected add must not have landed silently.
+    assert service.list_paths(tmp_path, "user:1") == ["a.png"]
 
 
 def test_favorite_service_rejects_root_missing_escape_and_invalid_owner(tmp_path, schema_db):

@@ -7,13 +7,18 @@ from pathlib import Path
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.path_resolver import root_identity
-from AssetsManager.domain.asset import IMAGE_EXTS, assert_under_root
+from AssetsManager.domain.asset import assert_under_root
 from AssetsManager.domain.errors import MissingPathError, PathEscapeError, ValidationError
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import FavoritesChanged
 from AssetsManager.repositories.favorite_repository import FavoriteRepository
 
-MAX_FAVORITES_PER_OWNER = 500
+# Per-owner favorites cap, raised from 500: a library with tens of thousands of
+# images hit the old ceiling within a week of starring work.  There is still no
+# pagination (a future concern), so adds beyond the cap are rejected — but the
+# ValidationError surfaces as a LAN 400 JSON and a WebUI toast, never a silent
+# drop.
+MAX_FAVORITES_PER_OWNER = 10_000
 MAX_OWNER_KEY_LENGTH = 256
 
 
@@ -104,9 +109,13 @@ class FavoriteService:
 
     @staticmethod
     def _is_supported_target(target: Path) -> bool:
-        return target.is_dir() or (
-            target.is_file() and target.suffix.lower() in IMAGE_EXTS
-        )
+        # Any directory or regular file inside the library qualifies; the old
+        # image-extension whitelist starved every other category (video, PSD,
+        # archives, ...).  Path safety stays with _target()/assert_under_root,
+        # and the callers reject the library root itself; what is left to
+        # exclude here is the obviously broken (missing/broken symlinks and
+        # other non-directory, non-regular entries report neither kind).
+        return target.is_dir() or target.is_file()
 
     def _publish(self, owner_key: str, paths: tuple[str, ...]) -> None:
         if self._session is None:
@@ -158,7 +167,9 @@ class FavoriteService:
         if not target.exists():
             raise MissingPathError(str(path))
         if not self._is_supported_target(target):
-            raise ValidationError("path", "favorite target must be a directory or image")
+            raise ValidationError(
+                "path", "favorite target must be a directory or a regular file"
+            )
         repo = FavoriteRepository(self._connection(root, db_conn))
         try:
             changed = repo.add(

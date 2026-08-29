@@ -151,10 +151,12 @@ async def test_favorite_routes_validate_paths_and_target_types(tmp_path):
         )
         assert missing.status == 404
 
-        unsupported = await client.post(
+        # Regular files of every category are favoritable now; the earlier
+        # image-only whitelist returned 400 here.
+        regular_file = await client.post(
             "/api/favorites", json={"path": "notes.txt"}, headers=headers
         )
-        assert unsupported.status == 400
+        assert regular_file.status == 200
 
         escape = await client.post(
             "/api/favorites", json={"path": "../outside"}, headers=headers
