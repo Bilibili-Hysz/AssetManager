@@ -676,6 +676,7 @@ class LayoutMixin:
             f"F2 - {tr('filelist.menu.rename')}",
             f"Delete / Shift+Delete - {tr('filelist.help.delete')}",
             f"Ctrl+Z / Ctrl+Y - {tr('filelist.help.history')}",
+            tr("filelist.help.history_retention"),
             f"Ctrl+Shift+N - {tr('filelist.menu.new_folder')}",
             f"Ctrl+A - {tr('filelist.menu.select_all')}",
             f"F5 - {tr('filelist.menu.refresh')}",

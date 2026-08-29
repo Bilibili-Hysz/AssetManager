@@ -137,6 +137,7 @@
   "filelist.help.clipboard": "复制 / 剪切 / 粘贴",
   "filelist.help.delete": "移至回收站 / 永久删除",
   "filelist.help.history": "撤销 / 重做",
+  "filelist.help.history_retention": "撤销历史保留至关闭程序。",
   "filelist.help.clear": "清除选择和筛选",
   "filelist.dialog.rename": "重命名",
   "filelist.dialog.rename_label": "新名称:",

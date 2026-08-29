@@ -137,6 +137,7 @@
   "filelist.help.clipboard": "コピー / 切り取り / 貼り付け",
   "filelist.help.delete": "ごみ箱へ移動 / 完全に削除",
   "filelist.help.history": "元に戻す / やり直す",
+  "filelist.help.history_retention": "元に戻す履歴はアプリケーションを終了するまで保持されます。",
   "filelist.help.clear": "選択とフィルターをクリア",
   "filelist.dialog.rename": "名前の変更",
   "filelist.dialog.rename_label": "新しい名前:",

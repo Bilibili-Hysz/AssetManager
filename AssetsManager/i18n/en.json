@@ -138,6 +138,7 @@
   "filelist.help.clipboard": "copy / cut / paste",
   "filelist.help.delete": "move to Recycle Bin / delete permanently",
   "filelist.help.history": "undo / redo",
+  "filelist.help.history_retention": "Undo history is kept until the application is closed.",
   "filelist.help.clear": "clear selection and filter",
   "filelist.dialog.rename": "Rename",
   "filelist.dialog.rename_label": "New name:",

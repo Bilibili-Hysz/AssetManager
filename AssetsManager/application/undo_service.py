@@ -61,11 +61,22 @@ class UndoService:
     """
 
     _UNDO_DIR_PREFIX = "AssetsManager_undo_"
+    # Session-backed services keep undo backups under the library's
+    # RuntimeData data directory (<data_dir>/undo_backups/) so accidental
+    # deletes survive restarts; the directory name is app-owned and never
+    # created for anything else.
+    _UNDO_BACKUP_DIR_NAME = "undo_backups"
     _OWNER_MARKER = ".assetsmanager-owner"
-    _STALE_AFTER_SECONDS = 7 * 24 * 60 * 60
+    # Retention for backups in the library data directory: they must survive
+    # restarts (an accidental delete is often only noticed much later), so
+    # they are kept for 90 days.  The legacy system-temp location keeps the
+    # original 7-day policy so pre-existing temp backups are not silently
+    # re-homed; they expire exactly as they would have before the migration.
+    _STALE_AFTER_SECONDS = 90 * 24 * 60 * 60
+    _LEGACY_TEMP_STALE_AFTER_SECONDS = 7 * 24 * 60 * 60
     _MAX_STARTUP_CLEANUP = 256
     # 1 MiB of free space kept after a backup so a copy can never exhaust
-    # the temp volume (which would break unrelated processes on the same
+    # the backup volume (which would break unrelated processes on the same
     # drive).  A file is only backed up when free >= size + this margin.
     _MIN_FREE_MARGIN = 1024 * 1024
     _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -95,14 +106,65 @@ class UndoService:
     ) -> int:
         """Remove only provably stale, app-owned undo directories.
 
-        The scan is deliberately limited to direct children of the system
-        temporary directory.  Recent directories and directories marked as
-        owned by a live process are retained so startup cleanup cannot race
-        with another active application instance.
+        The full startup scan covers the system temporary directory (legacy
+        7-day policy) plus every RuntimeData library slot's
+        ``undo_backups`` directory (90-day policy).  Recent directories and
+        directories marked as owned by a live process are retained so
+        startup cleanup cannot race with another active application
+        instance.  Passing ``temp_dir`` scans only that single root (used
+        by tests to exercise one location in isolation).
         """
-        root = Path(temp_dir) if temp_dir is not None else Path(tempfile.gettempdir())
-        age_limit = cls._STALE_AFTER_SECONDS if max_age_seconds is None else max_age_seconds
         current_time = time() if now is None else now
+        if temp_dir is not None:
+            age_limit = (
+                cls._STALE_AFTER_SECONDS if max_age_seconds is None else max_age_seconds
+            )
+            return cls._cleanup_undo_root(
+                Path(temp_dir), age_limit, current_time
+            )
+        removed = cls._cleanup_undo_root(
+            Path(tempfile.gettempdir()),
+            cls._LEGACY_TEMP_STALE_AFTER_SECONDS,
+            current_time,
+        )
+        for undo_root in cls._undo_backup_roots():
+            removed += cls._cleanup_undo_root(
+                undo_root, cls._STALE_AFTER_SECONDS, current_time
+            )
+        return removed
+
+    @classmethod
+    def _undo_backup_roots(cls) -> list[Path]:
+        """Return the ``undo_backups`` roots of all RuntimeData library slots.
+
+        Enumerating RuntimeData's direct children (instead of asking each
+        open session) also covers libraries that are not currently open, so
+        leftovers from a crash are still reaped at the next startup.
+        """
+        from AssetsManager.core.path_resolver import runtime_root
+
+        roots: list[Path] = []
+        try:
+            entries = os.scandir(runtime_root())
+        except OSError:
+            return roots
+        with entries:
+            for entry in entries:
+                try:
+                    if not entry.is_dir(follow_symlinks=False):
+                        continue
+                    candidate = Path(entry.path) / cls._UNDO_BACKUP_DIR_NAME
+                    if candidate.is_dir():
+                        roots.append(candidate)
+                except OSError:
+                    # A slot can disappear while the startup scan runs;
+                    # uncertainty retains the directory.
+                    continue
+        return roots
+
+    @classmethod
+    def _cleanup_undo_root(cls, root: Path, age_limit: float, current_time: float) -> int:
+        """Scan one parent directory for stale, app-owned undo directories."""
         removed = 0
         try:
             entries = os.scandir(root)
@@ -214,7 +276,7 @@ class UndoService:
         self._lock = threading.Lock()
         self._max_depth = max_depth
         self._run_startup_cleanup()
-        self._undo_dir = tempfile.mkdtemp(prefix=self._UNDO_DIR_PREFIX)
+        self._undo_dir = self._create_undo_dir()
         resolved_undo_dir = str(Path(self._undo_dir).resolve())
         with self._active_dirs_lock:
             self._active_undo_dirs.add(resolved_undo_dir)
@@ -234,6 +296,34 @@ class UndoService:
         self._performance_recorder = (
             performance_recorder if performance_recorder is not None and performance_recorder.enabled else None
         )
+
+    def _create_undo_dir(self) -> str:
+        """Create this service's backup directory.
+
+        Session-backed services keep backups under the library's RuntimeData
+        data directory (``<data_dir>/undo_backups/``) — outside the library
+        tree, so neither the watcher nor the index ever scans them — so
+        accidental deletes survive restarts and are reaped only after 90
+        days.  Legacy session-less callers keep the system temp location
+        with the 7-day legacy policy.  A data directory that cannot host
+        the backup root falls back to temp (logged) rather than failing the
+        whole library open: deletes keep working, only the retention
+        regresses to the legacy policy.
+        """
+        if self._session is None:
+            return tempfile.mkdtemp(prefix=self._UNDO_DIR_PREFIX)
+        try:
+            undo_root = Path(self._session.data_dir) / self._UNDO_BACKUP_DIR_NAME
+            undo_root.mkdir(parents=True, exist_ok=True)
+            return tempfile.mkdtemp(prefix=self._UNDO_DIR_PREFIX, dir=str(undo_root))
+        except OSError as exc:
+            _log.warning(
+                "Undo backup root under the library data directory is "
+                "unavailable (%s); falling back to the system temp location "
+                "with the legacy 7-day retention",
+                exc,
+            )
+            return tempfile.mkdtemp(prefix=self._UNDO_DIR_PREFIX)
 
     def _record_execution(self, command: str, started: float | None, outcome: str) -> None:
         if self._performance_recorder is None or started is None:
@@ -817,10 +907,10 @@ class UndoService:
 
         Returns ``None`` when the copy cannot be made; the reason is then
         recorded in :attr:`last_backup_error` and logged so the delete
-        caller can tell the user the operation cannot be undone.  No
-        hard per-file size cap is applied: the backup directory lives in
-        the system temporary directory and undo must keep working for
-        large assets, so the free-space check below is the guard.
+        caller can tell the user the operation cannot be undone instead of
+        silently dropping history.  No hard per-file size cap is applied:
+        undo must keep working for large assets, so the free-space check
+        below is the guard.
         """
         self._last_backup_error = None
         try:

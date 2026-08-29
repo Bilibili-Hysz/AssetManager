@@ -150,6 +150,9 @@ def build_shortcuts_help_text() -> str:
         f"{key} — {tr(description_key)}"
         for key, description_key in FILE_LIST_SHORTCUTS
     )
+    # The undo stack is in-memory only (callbacks cannot be serialized);
+    # tell the user the history does not survive a restart.
+    lines.append(tr("filelist.help.history_retention"))
     return "<br>".join(lines)
 
 

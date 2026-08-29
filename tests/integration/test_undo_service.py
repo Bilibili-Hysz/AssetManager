@@ -1095,3 +1095,217 @@ def test_commit_batch_without_entries_is_a_noop():
         assert not svc.can_undo()
     finally:
         svc.cleanup()
+
+
+# ── T5b: backup location in the library data dir + retention ─────
+
+class _StubUndoSession:
+    """Minimal session double providing only what UndoService touches.
+
+    The stub connection backs a real SQLite database with the projection
+    tables so ``_snapshot_projection`` runs its normal path (no degraded
+    marker noise) without booting a full DatabaseManager.
+    """
+
+    def __init__(self, data_dir):
+        import sqlite3
+
+        self.root = data_dir
+        self.data_dir = data_dir
+        self.event_token = "stub-session-token"
+        conn = sqlite3.connect(str(data_dir / "stub.db"))
+        conn.execute("CREATE TABLE file_tags (file_path TEXT, tag TEXT)")
+        conn.execute(
+            "CREATE TABLE file_meta (file_path TEXT, notes TEXT, cached_size INTEGER, "
+            "cached_mtime REAL, cached_file_count INTEGER, urls TEXT)"
+        )
+        conn.execute(
+            "CREATE TABLE library_favorites "
+            "(owner_key TEXT, file_path TEXT, created_at TEXT)"
+        )
+        conn.commit()
+        self._conn = conn
+
+    def _ensure_access(self):
+        return None
+
+    def operation(self):
+        from contextlib import nullcontext
+
+        return nullcontext()
+
+    def connection_for(self, library_root=None):
+        return self._conn
+
+
+def _patch_cleanup_roots(monkeypatch, temp_root, runtime_root_path):
+    """Point the startup scan at test-owned temp and RuntimeData roots."""
+    import tempfile as _tempfile
+
+    from AssetsManager.core import path_resolver as _path_resolver
+
+    monkeypatch.setattr(_tempfile, "gettempdir", lambda: str(temp_root))
+    monkeypatch.setattr(_path_resolver, "runtime_root", lambda: runtime_root_path)
+
+
+def test_session_backed_undo_backups_live_in_library_data_dir(tmp_path):
+    """The backup root for session-backed services is the library's
+    RuntimeData data directory (<data_dir>/undo_backups/<instance>/), not
+    the system temp directory."""
+    import tempfile
+
+    data_dir = tmp_path / "runtime" / "lib_slot"
+    data_dir.mkdir(parents=True)
+    session = _StubUndoSession(data_dir)
+    svc = UndoService(library_root=str(tmp_path), session=session)
+    try:
+        assert Path(svc._undo_dir).parent == data_dir / "undo_backups"
+        assert Path(svc._undo_dir).is_dir()
+        assert Path(svc._undo_dir).parent != Path(tempfile.gettempdir())
+        assert os.path.basename(svc._undo_dir).startswith("AssetsManager_undo_")
+    finally:
+        svc.cleanup()
+    # Closing the service removes its instance directory but keeps the
+    # library-owned undo_backups root.
+    assert not Path(svc._undo_dir).exists()
+    assert (data_dir / "undo_backups").is_dir()
+
+
+def test_session_backed_delete_backup_lands_in_library_data_dir(tmp_path):
+    library = tmp_path / "library"
+    library.mkdir()
+    data_dir = tmp_path / "runtime" / "lib_slot"
+    data_dir.mkdir(parents=True)
+    session = _StubUndoSession(data_dir)
+    source = library / "asset.txt"
+    source.write_text("data", encoding="utf-8")
+    svc = UndoService(library_root=str(library), session=session)
+    ops = FileOperationService()
+    try:
+        assert svc.record_delete(str(source))
+        backup = svc.peek_undo().backup
+        assert Path(backup).parent == Path(svc._undo_dir)
+        assert Path(backup).parent.parent == data_dir / "undo_backups"
+
+        source.unlink()
+        assert svc.perform_undo(ops, str(library))
+        assert source.read_text(encoding="utf-8") == "data"
+    finally:
+        svc.cleanup()
+
+
+def test_sessionless_undo_service_keeps_legacy_temp_location():
+    """Without a session there is no library data dir: legacy callers keep
+    the system temp location (and its legacy 7-day retention)."""
+    import tempfile
+
+    svc = UndoService()
+    try:
+        assert Path(svc._undo_dir).parent == Path(tempfile.gettempdir())
+    finally:
+        svc.cleanup()
+
+
+def test_undo_dir_creation_falls_back_to_temp_when_data_dir_unavailable(tmp_path):
+    """An unusable data dir must not break opening the library: fall back
+    to the legacy temp location (logged) instead of failing."""
+    data_dir = tmp_path / "runtime" / "lib_slot"
+    data_dir.mkdir(parents=True)
+    # A file occupying the undo_backups path makes mkdir raise.
+    (data_dir / "undo_backups").write_text("not a directory", encoding="utf-8")
+    session = _StubUndoSession(data_dir)
+    svc = UndoService(library_root=str(tmp_path), session=session)
+    try:
+        import tempfile
+
+        assert Path(svc._undo_dir).parent == Path(tempfile.gettempdir())
+    finally:
+        svc.cleanup()
+
+
+def test_startup_cleanup_scans_temp_legacy_and_runtime_slots_with_own_retention(
+    tmp_path, monkeypatch
+):
+    """The full startup scan applies the 7-day legacy policy to system temp
+    and the 90-day policy to each library data dir's undo_backups root."""
+    now = 1_000_000_000.0
+    day = 24 * 60 * 60
+    temp_root = tmp_path / "temp"
+    temp_root.mkdir()
+    runtime = tmp_path / "runtime"
+    undo_backups = runtime / "lib_slot" / "undo_backups"
+    undo_backups.mkdir(parents=True)
+
+    stale_legacy = temp_root / "AssetsManager_undo_stale_legacy"  # 8 days old
+    fresh_legacy = temp_root / "AssetsManager_undo_fresh_legacy"  # 6 days old
+    stale_slot = undo_backups / "AssetsManager_undo_stale_slot"  # 91 days old
+    fresh_slot = undo_backups / "AssetsManager_undo_fresh_slot"  # 89 days old
+    for stale_dir, fresh_dir in ((stale_legacy, fresh_legacy), (stale_slot, fresh_slot)):
+        stale_dir.mkdir()
+        fresh_dir.mkdir()
+    os.utime(stale_legacy, (now - 8 * day, now - 8 * day))
+    os.utime(fresh_legacy, (now - 6 * day, now - 6 * day))
+    os.utime(stale_slot, (now - 91 * day, now - 91 * day))
+    os.utime(fresh_slot, (now - 89 * day, now - 89 * day))
+
+    _patch_cleanup_roots(monkeypatch, temp_root, runtime)
+
+    removed = UndoService.cleanup_stale_undo_dirs(now=now)
+
+    assert removed == 2
+    # Legacy temp backups still expire after 7 days, unchanged.
+    assert not stale_legacy.exists()
+    assert fresh_legacy.exists()
+    # Library data-dir backups survive 90 days and are reaped on day 91.
+    assert not stale_slot.exists()
+    assert fresh_slot.exists()
+
+
+def test_startup_cleanup_retains_live_process_backup_in_data_dir(
+    tmp_path, monkeypatch
+):
+    """Owner markers and the process-active set protect library data-dir
+    backups from cleanup by another live instance."""
+    now = 1_000_000_000.0
+    runtime = tmp_path / "runtime"
+    undo_backups = runtime / "lib_slot" / "undo_backups"
+    undo_backups.mkdir(parents=True)
+    marked = undo_backups / "AssetsManager_undo_marked"
+    marked.mkdir()
+    (marked / UndoService._OWNER_MARKER).write_text(
+        str(os.getpid()), encoding="ascii"
+    )
+    os.utime(marked, (0, 0))
+    registered = undo_backups / "AssetsManager_undo_registered"
+    registered.mkdir()
+    os.utime(registered, (0, 0))
+    resolved = str(registered.resolve())
+    with UndoService._active_dirs_lock:
+        UndoService._active_undo_dirs.add(resolved)
+    try:
+        _patch_cleanup_roots(monkeypatch, tmp_path / "missing_temp", runtime)
+
+        assert UndoService.cleanup_stale_undo_dirs(now=now) == 0
+        assert marked.exists()
+        assert registered.exists()
+    finally:
+        with UndoService._active_dirs_lock:
+            UndoService._active_undo_dirs.discard(resolved)
+
+
+def test_startup_cleanup_scans_closed_library_data_dirs(tmp_path, monkeypatch):
+    """Leftovers in data dirs of libraries that are not open are still
+    scanned, so a crash cannot strand backups forever."""
+    now = 1_000_000_000.0
+    day = 24 * 60 * 60
+    temp_root = tmp_path / "temp"
+    temp_root.mkdir()
+    runtime = tmp_path / "runtime"
+    stale = runtime / "closed_slot" / "undo_backups" / "AssetsManager_undo_stale"
+    stale.mkdir(parents=True)
+    os.utime(stale, (now - 100 * day, now - 100 * day))
+
+    _patch_cleanup_roots(monkeypatch, temp_root, runtime)
+
+    assert UndoService.cleanup_stale_undo_dirs(now=now) == 1
+    assert not stale.exists()
