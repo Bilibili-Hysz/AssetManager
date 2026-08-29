@@ -453,6 +453,20 @@ describe('LandingPage', () => {
     expect((await screen.findByTestId('gate-showcase-image')).getAttribute('data-src')).toBe('/api/thumbnails/portraits%2Fone.png');
   });
 
+  it('renders the workspace entry as one secondary link carrying title and description', async () => {
+    getHome.mockResolvedValue({ recent_projects: [], preview_pool: [], popular_tags: [], stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' } });
+
+    render(<MemoryRouter><LandingApp /></MemoryRouter>);
+
+    // The whole option card is a single /browse link whose accessible name
+    // includes both the title and the description; the old structure rendered
+    // an unstyled copy block plus a duplicate bare "Open Workspace" link.
+    const option = await screen.findByRole('link', { name: /Open Workspace Search folders/ });
+    expect(option.getAttribute('href')).toBe('/browse');
+    expect(option.className).toContain('gate-workspace-option');
+    expect(screen.getAllByRole('link', { name: /Open Workspace/ })).toHaveLength(1);
+  });
+
   it('aborts the home request when unmounted', () => {
     getHome.mockReturnValue(new Promise(() => {}));
 

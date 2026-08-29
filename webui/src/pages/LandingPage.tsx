@@ -496,13 +496,15 @@ export default function LandingPage() {
             <ArrowRight size={18} aria-hidden="true" />
             <span>{t('landing.enter')}</span>
           </Link>
-          <div className="gate-workspace-option">
-            <div className="gate-workspace-copy">
-              <strong>{t('landing.workspace')}</strong>
-              <span>{t('landing.workspace_description')}</span>
-            </div>
-            <Link to="/browse" className="gate-workspace-link">{t('landing.workspace')}</Link>
-          </div>
+          {/* Single secondary entry: the whole option is one link so the hit
+              area covers the copy and the accessible name carries both the
+              title and the description. The previous structure (unstyled copy
+              block + a duplicate bare "Open Workspace" link) glued the strings
+              together and rendered a redundant second target. */}
+          <Link className="gate-workspace-option" to="/browse">
+            <strong>{t('landing.workspace')}</strong>
+            <span>{t('landing.workspace_description')}</span>
+          </Link>
         </div>
         <p className="gate-stats gate-rise">{t('landing.asset_count', stats.total_projects)} · {stats.total_size_fmt || '0 B'} · {serverInfo?.footer_text || t('landing.footer_ready')}</p>
       </section>
