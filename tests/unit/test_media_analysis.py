@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import shutil
 import struct
 import wave
@@ -281,6 +282,33 @@ def test_ensure_extracted_palette_existing_row_skips_recompute(recorder, db, tmp
     )
 
 
+def test_ensure_extracted_palette_source_change_recomputes(recorder, db, tmp_path):
+    """T0-1: a changed source file must invalidate the recorded palette.
+
+    The row is reused only while its recorded ``source_mtime`` still matches
+    the source file; after the source changes (new mtime) the palette is
+    recomputed and re-recorded on the same row.
+    """
+    source = tmp_path / "library" / "hero.png"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"image")
+    ensure_extracted_palette(recorder, source, _synthetic_two_tone)
+
+    # Mutate the source so its mtime differs from the recorded one.
+    os.utime(source, (source.stat().st_atime, source.stat().st_mtime + 2.0))
+    calls: list[int] = []
+    ensure_extracted_palette(recorder, source, lambda: (calls.append(1), _synthetic_two_tone())[1])
+
+    assert len(calls) == 1, "palette factory must rerun after the source changed"
+    rows = db.execute(
+        "SELECT count(*), source_mtime FROM asset_derivatives "
+        "WHERE file_path=? AND kind='extracted_palette'",
+        (str(source.resolve()),),
+    ).fetchone()
+    assert rows[0] == 1, "the row is re-recorded, not duplicated"
+    assert rows[1] == pytest.approx(os.path.getmtime(source), abs=1e-6)
+
+
 def test_ensure_extracted_palette_without_recorder_is_noop(tmp_path):
     source = tmp_path / "hero.png"
     source.write_bytes(b"image")
@@ -347,6 +375,44 @@ def test_ensure_audio_waveform_from_captured_body(recorder, tmp_path):
 
     assert data is not None and data.startswith(b"\x89PNG")
     assert recorder.payload_path(source, "audio_waveform") is not None
+
+
+def test_ensure_audio_waveform_source_change_regenerates(recorder, tmp_path, monkeypatch):
+    """T0-1: the cached waveform must be regenerated after the source changes.
+
+    The first call renders and records the waveform with the source mtime; a
+    later call with a different source mtime must rerun the render instead of
+    reusing the stale payload, and the row's mtime is refreshed.
+    """
+    source = tmp_path / "library" / "tone.wav"
+    write_wav(source)
+
+    first = ensure_audio_waveform(recorder, source)
+    assert first is not None and first.startswith(b"\x89PNG")
+    assert recorder.lookup(source, "audio_waveform").source_mtime is not None
+
+    # Touching the source changes its mtime; the render must rerun.
+    os.utime(source, (source.stat().st_atime, source.stat().st_mtime + 2.0))
+
+    calls: list[int] = []
+    real_generate = generate_waveform
+
+    def _counting(*args, **kwargs):
+        calls.append(1)
+        return real_generate(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "AssetsManager.application.media.analysis.generate_waveform", _counting
+    )
+    regenerated = ensure_audio_waveform(recorder, source)
+    assert regenerated is not None and regenerated.startswith(b"\x89PNG")
+    assert calls == [1], "waveform render must rerun after the source changed"
+
+    # The re-recorded row carries the new mtime.
+    assert (
+        recorder.lookup(source, "audio_waveform").source_mtime
+        == pytest.approx(os.path.getmtime(source), abs=1e-6)
+    )
 
 
 def test_ensure_audio_waveform_failure_returns_none(recorder, tmp_path):

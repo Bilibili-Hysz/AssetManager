@@ -304,6 +304,37 @@ def generate_waveform_from_bytes(
 
 # ── Compute-at-most-once orchestration (recorder duck-typed) ──────
 
+def _safe_source_mtime(path: Path) -> float | None:
+    """Return the source file's mtime, or ``None`` when it cannot be read.
+
+    Mirrors the project-service admission check (``project_service.py``):
+    derivatives record the source's mtime so a changed source can be
+    detected. A missing/unreadable source must never raise here — the
+    analysis passes never raise.
+    """
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return None
+
+
+def _derivative_matches_source(derivative, path: Path) -> bool:
+    """True when a registered derivative is still fresh for *path*.
+
+    ``False`` when the row is missing, when no mtime was recorded (a legacy
+    row written before mtime capture, or a remote/byte-fed pass), or when the
+    recorded mtime differs from the source's current mtime — the source
+    changed, so the derivative must be regenerated.
+    """
+    if derivative is None:
+        return False
+    recorded = derivative.source_mtime
+    if recorded is None:
+        return False
+    current = _safe_source_mtime(path)
+    return current is not None and current == recorded
+
+
 def ensure_audio_waveform(
     recorder,
     audio_path: str | Path,
@@ -316,12 +347,13 @@ def ensure_audio_waveform(
 ) -> bytes | None:
     """Return the audio's waveform PNG bytes, generating them at most once.
 
-    A registered ``audio_waveform`` derivative (payload present on disk) is
-    returned directly; otherwise the waveform is rendered — from
-    ``source_body`` when the caller holds a captured snapshot (LAN seam), from
-    the file itself otherwise — and recorded under ``data_dir/derivatives/``.
-    Without a recorder the computation still happens but nothing is
-    registered. Returns ``None`` on any failure; never raises.
+    A registered ``audio_waveform`` derivative (payload present on disk and
+    its recorded ``source_mtime`` still matching the source file) is returned
+    directly; otherwise the waveform is rendered — from ``source_body`` when
+    the caller holds a captured snapshot (LAN seam), from the file itself
+    otherwise — and recorded under ``data_dir/derivatives/``. Without a
+    recorder the computation still happens but nothing is registered. Returns
+    ``None`` on any failure; never raises.
     """
     path = Path(audio_path)
     fd, temp_png = tempfile.mkstemp(suffix=".png")
@@ -329,8 +361,9 @@ def ensure_audio_waveform(
     temp_out = Path(temp_png)
     try:
         if recorder is not None:
+            found = recorder.lookup(path, "audio_waveform")
             payload = recorder.payload_path(path, "audio_waveform")
-            if payload is not None:
+            if payload is not None and _derivative_matches_source(found, path):
                 data = payload.read_bytes()
                 if data:
                     return data
@@ -349,7 +382,8 @@ def ensure_audio_waveform(
         if not data:
             return None
         if recorder is not None:
-            recorder.record(path, "audio_waveform", data, ext=".png")
+            recorder.record(path, "audio_waveform", data, ext=".png",
+                            source_mtime=_safe_source_mtime(path))
         return data
     except Exception:
         _log.debug("Waveform derivative pass failed for %s", path, exc_info=True)
@@ -368,19 +402,23 @@ def ensure_extracted_palette(
     *,
     colors: int = 6,
 ) -> None:
-    """Record the asset's color palette unless the row already exists.
+    """Record the asset's color palette unless a fresh row already exists.
 
     *image* may be a PIL image or a zero-argument factory producing one (the
     factory runs only when the row is still missing, so callers can pass a
-    cheap lazy decode). The palette is stored as recorder ``params`` JSON — a
-    params-only row without a payload file. Missing rows stay missing after a
-    failed extraction (no tombstones), and every failure is swallowed.
+    cheap lazy decode). A registered row whose recorded ``source_mtime`` still
+    matches the source file short-circuits recomputation; a row whose mtime
+    does not match (source changed) is recomputed and re-recorded. The palette
+    is stored as recorder ``params`` JSON — a params-only row without a
+    payload file. Missing rows stay missing after a failed extraction (no
+    tombstones), and every failure is swallowed.
     """
     path = Path(file_path)
     try:
         if recorder is None:
             return
-        if recorder.lookup(path, "extracted_palette") is not None:
+        found = recorder.lookup(path, "extracted_palette")
+        if found is not None and _derivative_matches_source(found, path):
             return
         source = image() if callable(image) else image
         if source is None:
@@ -388,6 +426,7 @@ def ensure_extracted_palette(
         palette = extract_palette(source, colors=colors)
         if palette is None:
             return
-        recorder.record(path, "extracted_palette", params=palette, payload=False)
+        recorder.record(path, "extracted_palette", params=palette, payload=False,
+                        source_mtime=_safe_source_mtime(path))
     except Exception:
         _log.debug("Palette derivative pass failed for %s", path, exc_info=True)
