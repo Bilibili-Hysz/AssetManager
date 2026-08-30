@@ -43,10 +43,13 @@ _QUERY_KEYS = frozenset({
     # v39: full-text dimension over the asset_search FTS index (name/tags/
     # notes document per path), evaluated with the shared query syntax.
     "fts",
+    # v40: rating range over file_meta.rating (NULL = unrated, excluded by
+    # any rating bound) and the viewer-scoped favorites dimension.
+    "rating_min", "rating_max", "favorite",
 })
 # Mirrors the repository's _STRUCTURED_ORDER_COLUMNS whitelist (minus the
 # path column, which would leak absolute filesystem layout into results).
-_QUERY_ORDER_COLUMNS = frozenset({"name", "size", "mtime"})
+_QUERY_ORDER_COLUMNS = frozenset({"name", "size", "mtime", "rating"})
 
 # Filter-then-page scan page size for tag-filtered smart evaluation.
 _EVALUATE_SCAN_PAGE = 500
@@ -99,7 +102,7 @@ def _validated_query(query: Any) -> dict:
             )
         clean["order_by"] = order_by
 
-    for key in ("size_min", "size_max"):
+    for key in ("size_min", "size_max", "rating_min", "rating_max"):
         value = query.get(key)
         if value is None:
             continue
@@ -113,6 +116,12 @@ def _validated_query(query: Any) -> dict:
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise ValidationError(key, "must be a number")
         clean[key] = float(value)
+
+    favorite = query.get("favorite")
+    if favorite is not None:
+        if not isinstance(favorite, bool):
+            raise ValidationError("favorite", "must be a boolean")
+        clean["favorite"] = favorite
 
     tags = query.get("tags")
     if tags is not None:
@@ -492,36 +501,24 @@ class CollectionService:
 
     # ── Smart evaluation ─────────────────────────────────────────
 
-    @session_operation
-    def evaluate(
+    def _smart_query_parts(
         self,
         library_root: str | Path,
-        collection_id: int,
-        limit: int = 200,
-        offset: int = 0,
-        db_conn: Connection | None = None,
-    ) -> list[AssetIndexEntry]:
-        """Evaluate a smart collection against the assets index.
+        collection: dict,
+        *,
+        favorite_owner_key: str | None,
+    ) -> tuple[dict[str, Any], set[str] | None, Any]:
+        """Resolve one smart collection into (structured_kwargs, allowed, index).
 
-        Reuses the structured repository query behind
-        ``SearchService.search_structured_detailed`` (via the injected
-        ``AssetIndexService``); the optional ``tags`` dimension is applied
-        in-memory from ``TagService.get_files_by_tag`` with ``tag_match``
-        ``all`` (default: intersection) or ``any`` (union). Missing index
-        entries are simply absent — evaluation is a read over the index and
-        never touches the filesystem. Only indexed files can appear, which
-        doubles as the "skip deleted members" guarantee for smart views.
+        ``allowed`` is the intersection of the independent tag/fts
+        dimensions (None when absent), the index service comes from the
+        injected ``AssetIndexService``, and the structured kwargs carry the
+        rating/favorite predicates. The favorites dimension is
+        **viewer-scoped**: it is evaluated against the owner key of whoever
+        is currently requesting the evaluation (not the collection's
+        creator), so the same smart collection shows a different asset set
+        per viewer.
         """
-        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
-            raise ValidationError("limit", "must be a positive integer")
-        if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
-            raise ValidationError("offset", "must be a non-negative integer")
-        repo = self._repo(db_conn, library_root)
-        collection = repo.get(collection_id)
-        if collection is None:
-            raise NotFoundError("collection", str(collection_id))
-        if collection["kind"] != "smart":
-            raise ValidationError("kind", "only smart collections can be evaluated")
         try:
             query = _validated_query(json.loads(collection["query_json"]))
         except json.JSONDecodeError as exc:
@@ -534,8 +531,21 @@ class CollectionService:
             "size_max": query.get("size_max"),
             "mtime_after": query.get("mtime_after"),
             "mtime_before": query.get("mtime_before"),
+            "rating_min": query.get("rating_min"),
+            "rating_max": query.get("rating_max"),
             "order_by": query.get("order_by", "name"),
         }
+        favorite = bool(query.get("favorite"))
+        if favorite:
+            if not favorite_owner_key:
+                raise ValidationError(
+                    "favorite",
+                    "evaluating a favorite dimension requires the viewer's "
+                    "favorite_owner_key",
+                )
+            structured_kwargs["favorite"] = True
+            structured_kwargs["favorite_owner_key"] = favorite_owner_key
+
         tags = query.get("tags") or []
         tag_match = query.get("tag_match", "all")
         fts_text = query.get("fts")
@@ -547,7 +557,49 @@ class CollectionService:
             # short-circuits below without scanning the index.
             allowed = fts_allowed if allowed is None else (allowed & fts_allowed)
 
-        index_service = self._require_index_service()
+        return structured_kwargs, allowed, self._require_index_service()
+
+    @session_operation
+    def evaluate(
+        self,
+        library_root: str | Path,
+        collection_id: int,
+        limit: int = 200,
+        offset: int = 0,
+        db_conn: Connection | None = None,
+        *,
+        favorite_owner_key: str | None = None,
+    ) -> list[AssetIndexEntry]:
+        """Evaluate a smart collection against the assets index.
+
+        Reuses the structured repository query behind
+        ``SearchService.search_structured_detailed`` (via the injected
+        ``AssetIndexService``); the optional ``tags`` dimension is applied
+        in-memory from ``TagService.get_files_by_tag`` with ``tag_match``
+        ``all`` (default: intersection) or ``any`` (union). Missing index
+        entries are simply absent — evaluation is a read over the index and
+        never touches the filesystem. Only indexed files can appear, which
+        doubles as the "skip deleted members" guarantee for smart views.
+
+        A ``favorite`` predicate is evaluated from the current viewer's
+        ``favorite_owner_key`` (keyword-only), keeping the favorites
+        dimension per-principal.
+        """
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+            raise ValidationError("limit", "must be a positive integer")
+        if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+            raise ValidationError("offset", "must be a non-negative integer")
+        repo = self._repo(db_conn, library_root)
+        collection = repo.get(collection_id)
+        if collection is None:
+            raise NotFoundError("collection", str(collection_id))
+        if collection["kind"] != "smart":
+            raise ValidationError("kind", "only smart collections can be evaluated")
+
+        structured_kwargs, allowed, index_service = self._smart_query_parts(
+            library_root, collection, favorite_owner_key=favorite_owner_key,
+        )
+
         if allowed is None:
             # No tag dimension: the repository query paginates natively.
             return list(index_service.search_structured(
@@ -580,6 +632,63 @@ class CollectionService:
             if len(page) < _EVALUATE_SCAN_PAGE:
                 break
         return collected[offset:offset + limit]
+
+    @session_operation
+    def evaluate_count(
+        self,
+        library_root: str | Path,
+        collection_id: int,
+        db_conn: Connection | None = None,
+        *,
+        favorite_owner_key: str | None = None,
+    ) -> int:
+        """Count the assets a smart collection currently evaluates to.
+
+        Powers the live asset counts shown beside collection lists. Runs
+        the same predicate resolution as :meth:`evaluate` (including the
+        viewer-scoped ``favorite_owner_key``) but in one repository COUNT
+        when no tag/fts dimension narrows the rows; with such a dimension
+        the matching index pages are streamed and counted. Evaluation is a
+        read and never touches the filesystem.
+        """
+        repo = self._repo(db_conn, library_root)
+        collection = repo.get(collection_id)
+        if collection is None:
+            raise NotFoundError("collection", str(collection_id))
+        if collection["kind"] != "smart":
+            raise ValidationError("kind", "only smart collections can be evaluated")
+
+        structured_kwargs, allowed, index_service = self._smart_query_parts(
+            library_root, collection, favorite_owner_key=favorite_owner_key,
+        )
+
+        if allowed is None:
+            # The count query shares every predicate but has no ordering.
+            count_kwargs = {
+                key: value for key, value in structured_kwargs.items()
+                if key != "order_by"
+            }
+            return int(index_service.count_structured(
+                library_root, **count_kwargs,
+            ))
+        if not allowed:
+            return 0
+        count = 0
+        scan_offset = 0
+        while True:
+            page = index_service.search_structured(
+                library_root,
+                limit=_EVALUATE_SCAN_PAGE,
+                offset=scan_offset,
+                **structured_kwargs,
+            )
+            if not page:
+                break
+            count += sum(1 for entry in page if entry.file_path in allowed)
+            scan_offset += len(page)
+            if len(page) < _EVALUATE_SCAN_PAGE:
+                break
+        return count
 
     def _allowed_fts_paths(self, fts_text: str | None) -> set[str] | None:
         """Return the full-text dimension path set, or None when absent.

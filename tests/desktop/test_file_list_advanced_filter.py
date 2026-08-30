@@ -53,6 +53,47 @@ def test_structured_search_params_convert_units(plain_panel):
     assert panel._structured_search_params() == {}
 
 
+def test_rating_range_rides_shared_query_not_local_model(file_list_panel_ctx, tmp_path, monkeypatch):
+    """The rating spins feed the shared structured query; the local model
+    filter stays untouched (it has no rating data)."""
+    panel, _session, _bootstrap, _services = file_list_panel_ctx
+    (tmp_path / "a.png").write_bytes(b"a")
+    (tmp_path / "b.png").write_bytes(b"b")
+    panel.navigate_to(str(tmp_path), set_root=True)
+    panel._model._wait_for_scan()
+    assert panel._model.rowCount() == 2
+
+    mock_service = Mock()
+    mock_service.search_structured_detailed.return_value = SearchResultSet.from_source(
+        "indexed", status=SearchStatus.EMPTY,
+    )
+    monkeypatch.setattr(panel, "_search_service", mock_service)
+    monkeypatch.setattr(
+        panel, "_run_in_background",
+        lambda func, *args, on_done=None: on_done(func()) if on_done else func(),
+    )
+
+    panel._adv_rating_min.setValue(3)
+    panel._adv_rating_max.setValue(5)
+    panel._apply_advanced_filter()
+
+    # The shared application query carries the rating bounds.
+    kwargs = mock_service.search_structured_detailed.call_args.kwargs
+    assert kwargs["rating_min"] == 3
+    assert kwargs["rating_max"] == 5
+    # Presentation keeps the full listing (no local rating narrowing).
+    assert panel._model.rowCount() == 2
+    assert panel._model._structured_filter == {}
+
+    # Params omit the bounds when both spins sit on the "any" sentinel.
+    panel._clear_advanced_filter()
+    panel._adv_rating_min.setValue(2)
+    params = panel._structured_search_params()
+    assert params == {"rating_min": 2}
+    panel._clear_advanced_filter()
+    assert panel._structured_search_params() == {}
+
+
 def test_apply_advanced_filter_narrows_model_and_calls_shared_service(file_list_panel_ctx, tmp_path, monkeypatch):
     panel, _session, _bootstrap, _services = file_list_panel_ctx
     (tmp_path / "small.png").write_bytes(b"a")

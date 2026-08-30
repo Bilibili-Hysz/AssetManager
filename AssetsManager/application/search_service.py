@@ -796,6 +796,10 @@ class SearchService:
         size_max: int | None = None,
         mtime_after: float | None = None,
         mtime_before: float | None = None,
+        rating_min: int | None = None,
+        rating_max: int | None = None,
+        favorite: bool = False,
+        favorite_owner_key: str | None = None,
         category: str = "all",
         order_by: str = "name",
         db_conn: sqlite3.Connection | None = None,
@@ -806,10 +810,13 @@ class SearchService:
 
         Unlike the scanner-based sources, the ``assets`` index can execute
         size/mtime/extension predicates efficiently in SQL, so structured
-        queries run indexed-only by contract. A raised ``ValueError`` (from
-        the repository's whitelist/validation) propagates to the caller —
-        transport layers map it to a client error instead of an empty
-        "error" result set.
+        queries run indexed-only by contract. ``rating_min``/``rating_max``
+        filter on ``file_meta.rating`` (NULL = unrated, excluded by any
+        positive rating filter); ``favorite`` keeps only rows favorited by
+        ``favorite_owner_key`` in ``library_favorites``. A raised
+        ``ValueError`` (from the repository's whitelist/validation)
+        propagates to the caller — transport layers map it to a client
+        error instead of an empty "error" result set.
         """
         started = perf_counter() if self._performance_recorder is not None else None
         db_conn = self._connection(library_root, db_conn)
@@ -833,6 +840,10 @@ class SearchService:
             "size_max": size_max,
             "mtime_after": mtime_after,
             "mtime_before": mtime_before,
+            "rating_min": rating_min,
+            "rating_max": rating_max,
+            "favorite": favorite,
+            "favorite_owner_key": favorite_owner_key,
             "order_by": order_by,
             "limit": limit,
             "offset": offset,

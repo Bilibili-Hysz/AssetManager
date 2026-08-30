@@ -394,7 +394,10 @@ class EventsMixin:
 
         ``size_*`` come back in bytes (the spinboxes edit MiB) and
         ``mtime_*`` in epoch seconds (local-time midnight / end-of-day),
-        matching the assets-index column semantics.
+        matching the assets-index column semantics. ``rating_*`` are 0-5
+        ints against file_meta.rating (0 stays the "any" sentinel);
+        unrated rows are excluded by any rating bound, mirroring the
+        shared structured query.
         """
         from PySide6.QtCore import QDateTime, QTime
 
@@ -409,6 +412,10 @@ class EventsMixin:
             params["size_min"] = self._adv_size_min.value() * 1024 * 1024
         if self._adv_size_max.value() > 0:
             params["size_max"] = self._adv_size_max.value() * 1024 * 1024
+        if self._adv_rating_min.value() > 0:
+            params["rating_min"] = self._adv_rating_min.value()
+        if self._adv_rating_max.value() > 0:
+            params["rating_max"] = self._adv_rating_max.value()
         extensions = [
             ext.lower().lstrip(".")
             for ext in (raw.strip() for raw in self._adv_extensions.text().split(","))
@@ -425,10 +432,16 @@ class EventsMixin:
         the current listing and grid/details/status refresh as with a text
         search). The library-wide match count comes from the shared
         application SearchService so desktop and LAN execute the identical
-        structured query.
+        structured query. Rating predicates ride the shared query only —
+        the local model has no rating data, so they never narrow the local
+        listing.
         """
         params = self._structured_search_params()
-        self._model.set_structured_filter(**params)
+        model_params = {
+            key: value for key, value in params.items()
+            if not key.startswith("rating")
+        }
+        self._model.set_structured_filter(**model_params)
         self._advanced_popup.hide()
         self._update_status()
         if self._view_mode == "Details":
@@ -464,6 +477,8 @@ class EventsMixin:
         self._adv_mtime_before.setDate(self._adv_mtime_before.minimumDate())
         self._adv_size_min.setValue(0)
         self._adv_size_max.setValue(0)
+        self._adv_rating_min.setValue(0)
+        self._adv_rating_max.setValue(0)
         self._adv_extensions.clear()
         self._model.set_structured_filter()
         self._advanced_popup.hide()

@@ -13,7 +13,7 @@ from AssetsManager.lan.routes._helpers import (
     get_favorite_service,
     get_gallery_service,
     get_lan,
-    get_request_principal,
+    request_owner_key,
     require_permission,
 )
 
@@ -25,17 +25,6 @@ def _service_or_unavailable(request, getter, label: str):
     if service is None:
         raise web.HTTPServiceUnavailable(reason=f"{label} service unavailable")
     return service
-
-
-def _owner_key(request) -> str:
-    principal = get_request_principal(request)
-    if principal is None:
-        raise web.HTTPUnauthorized(reason="Authentication required")
-    if principal.kind == "user" and principal.user_profile is not None:
-        user_id = principal.user_profile.get("id")
-        if user_id is not None:
-            return f"user:{user_id}"
-    return f"principal:{principal.kind}"
 
 
 async def _request_path(request) -> str:
@@ -80,7 +69,7 @@ async def handle_favorites(request):
     )
     try:
         paths = await asyncio.to_thread(
-            favorite_service.list_paths, lan.library_root, _owner_key(request)
+            favorite_service.list_paths, lan.library_root, request_owner_key(request)
         )
         entries = await asyncio.to_thread(
             gallery_service.describe_entries, lan.library_root, paths
@@ -100,7 +89,7 @@ async def handle_add_favorite(request):
     try:
         relative_path = await _request_path(request)
         path, changed = await asyncio.to_thread(
-            service.add, lan.library_root, _owner_key(request), relative_path
+            service.add, lan.library_root, request_owner_key(request), relative_path
         )
     except web.HTTPException:
         raise
@@ -117,7 +106,7 @@ async def handle_remove_favorite(request):
     try:
         relative_path = await _request_path(request)
         path, changed = await asyncio.to_thread(
-            service.remove, lan.library_root, _owner_key(request), relative_path
+            service.remove, lan.library_root, request_owner_key(request), relative_path
         )
     except web.HTTPException:
         raise

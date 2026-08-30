@@ -894,5 +894,8 @@
   "startup.new_library_confirm_title": "フォルダが空ではありません",
   "startup.new_library_confirm_body": "選択されたフォルダにはファイルが存在します。このフォルダをライブラリのルートとし、既存ファイルを索引化します。続行しますか？",
   "crash.report_button": "GitHub でこのクラッシュを報告",
-  "crash.report_generated_note": "このレポートは AssetManager が自動生成しました（機密情報はマスク済み）。"
+  "crash.report_generated_note": "このレポートは AssetManager が自動生成しました（機密情報はマスク済み）。",
+  "filelist.advanced.rating_min": "最小評価",
+  "filelist.advanced.rating_max": "最大評価",
+  "filelist.advanced.rating_hint": "0〜5；未評価のファイルは評価条件に一致しません"
 }

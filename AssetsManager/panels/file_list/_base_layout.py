@@ -403,12 +403,18 @@ class LayoutMixin:
             self._adv_mtime_before_label.setText(tr("filelist.advanced.modified_before"))
             self._adv_size_min_label.setText(tr("filelist.advanced.size_min"))
             self._adv_size_max_label.setText(tr("filelist.advanced.size_max"))
+            self._adv_rating_min_label.setText(tr("filelist.advanced.rating_min"))
+            self._adv_rating_max_label.setText(tr("filelist.advanced.rating_max"))
+            self._adv_rating_min.setToolTip(tr("filelist.advanced.rating_hint"))
+            self._adv_rating_max.setToolTip(tr("filelist.advanced.rating_hint"))
             self._adv_extensions_label.setText(tr("filelist.advanced.extensions"))
             self._adv_extensions.setPlaceholderText(tr("filelist.advanced.extensions_hint"))
             self._adv_mtime_after.setSpecialValueText(tr("filelist.advanced.any"))
             self._adv_mtime_before.setSpecialValueText(tr("filelist.advanced.any"))
             self._adv_size_min.setSpecialValueText(tr("filelist.advanced.any"))
             self._adv_size_max.setSpecialValueText(tr("filelist.advanced.any"))
+            self._adv_rating_min.setSpecialValueText(tr("filelist.advanced.any"))
+            self._adv_rating_max.setSpecialValueText(tr("filelist.advanced.any"))
             self._adv_apply_btn.setText(tr("filelist.advanced.apply"))
             self._adv_clear_btn.setText(tr("filelist.advanced.clear"))
 
@@ -488,6 +494,16 @@ class LayoutMixin:
             spin.setRange(0, 2097151)
             spin.setSuffix(" MiB")
             spin.setSpecialValueText(tr("filelist.advanced.any"))
+        self._adv_rating_min_label = QLabel(tr("filelist.advanced.rating_min"))
+        self._adv_rating_max_label = QLabel(tr("filelist.advanced.rating_max"))
+        self._adv_rating_min = QSpinBox()
+        self._adv_rating_max = QSpinBox()
+        # 0 is the "any" sentinel (unrated rows are excluded by any real
+        # rating bound in the shared structured query anyway).
+        for spin in (self._adv_rating_min, self._adv_rating_max):
+            spin.setRange(0, 5)
+            spin.setToolTip(tr("filelist.advanced.rating_hint"))
+            spin.setSpecialValueText(tr("filelist.advanced.any"))
         self._adv_extensions_label = QLabel(tr("filelist.advanced.extensions"))
         self._adv_extensions = QLineEdit()
         self._adv_extensions.setPlaceholderText(tr("filelist.advanced.extensions_hint"))
@@ -498,13 +514,17 @@ class LayoutMixin:
             (self._adv_mtime_before_label, self._adv_mtime_before, 2),
             (self._adv_size_min_label, self._adv_size_min, 3),
             (self._adv_size_max_label, self._adv_size_max, 4),
-            (self._adv_extensions_label, self._adv_extensions, 5),
+            (self._adv_rating_min_label, self._adv_rating_min, 5),
+            (self._adv_rating_max_label, self._adv_rating_max, 6),
+            (self._adv_extensions_label, self._adv_extensions, 7),
         )
         for label, editor, row in rows:
             grid.addWidget(label, row, 0)
             grid.addWidget(editor, row, 1)
         for editor in (self._adv_mtime_after, self._adv_mtime_before,
-                       self._adv_size_min, self._adv_size_max, self._adv_extensions):
+                       self._adv_size_min, self._adv_size_max,
+                       self._adv_rating_min, self._adv_rating_max,
+                       self._adv_extensions):
             editor.setMinimumWidth(scaled_px(150))
             editor.setAccessibleName(editor.toolTip() or "")
 
@@ -514,8 +534,8 @@ class LayoutMixin:
         self._adv_apply_btn.clicked.connect(self._apply_advanced_filter)
         themes.set_button_variant(self._adv_clear_btn, "ghost")
         themes.set_button_variant(self._adv_apply_btn, "primary")
-        grid.addWidget(self._adv_clear_btn, 6, 0)
-        grid.addWidget(self._adv_apply_btn, 6, 1)
+        grid.addWidget(self._adv_clear_btn, 8, 0)
+        grid.addWidget(self._adv_apply_btn, 8, 1)
 
         self._style_advanced_popup()
 
@@ -528,7 +548,9 @@ class LayoutMixin:
         label_font = f"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px;"
         for label in (
             self._adv_title, self._adv_mtime_after_label, self._adv_mtime_before_label,
-            self._adv_size_min_label, self._adv_size_max_label, self._adv_extensions_label,
+            self._adv_size_min_label, self._adv_size_max_label,
+            self._adv_rating_min_label, self._adv_rating_max_label,
+            self._adv_extensions_label,
         ):
             label.setStyleSheet(f"color: {label_color}; background: transparent; {label_font}")
         self._adv_title.setStyleSheet(

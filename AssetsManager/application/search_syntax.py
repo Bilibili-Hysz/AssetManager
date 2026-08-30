@@ -315,7 +315,9 @@ def parse_query(query: str) -> ParsedQuery:
     match_groups = [fragments for fragments in match_groups if fragments]
     long_exclusions = [
         fragment
-        for fragment, unit in zip(state.excluded_fragments, state.excluded_units)
+        for fragment, unit in zip(
+            state.excluded_fragments, state.excluded_units, strict=True
+        )
         if unit.is_fts
     ]
 

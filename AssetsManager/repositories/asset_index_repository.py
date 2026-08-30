@@ -24,11 +24,13 @@ _R = TypeVar("_R")
 _SAVEPOINT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 # Structured-search ORDER BY whitelist. Column names never come from user
-# input directly; only these literals are interpolated into SQL.
+# input directly; only these literals are interpolated into SQL. ``rating``
+# reads the optional file_meta join (NULL unrated sorts as 0).
 _STRUCTURED_ORDER_COLUMNS = {
     "name": "name",
     "size": "size",
     "mtime": "mtime",
+    "rating": "COALESCE(file_meta.rating, 0)",
 }
 
 
@@ -550,50 +552,27 @@ class AssetIndexRepository:
             (self._root_key(library_root), f"%{escaped}%", limit),
         )
 
-    @_repository_operation
-    def search_structured(
+    def _structured_predicates(
         self,
         library_root: str | Path,
         *,
-        name_substring: str | None = None,
-        extensions: Sequence[str] | None = None,
-        size_min: int | None = None,
-        size_max: int | None = None,
-        mtime_after: float | None = None,
-        mtime_before: float | None = None,
-        order_by: str = "name",
-        descending: bool = False,
-        limit: int = 200,
-        offset: int = 0,
-    ) -> list[AssetIndexEntry]:
-        """Combined structured query over the ``assets`` index.
+        name_substring: str | None,
+        extensions: Sequence[str] | None,
+        size_min: int | None,
+        size_max: int | None,
+        mtime_after: float | None,
+        mtime_before: float | None,
+        rating_min: int | None,
+        rating_max: int | None,
+        favorite: bool,
+        favorite_owner_key: str | None,
+    ) -> tuple[list[str], list[object], bool]:
+        """Build the WHERE clauses and params shared by the structured
+        search and count queries.
 
-        All predicates are AND-combined in one parameterized SQL statement.
-        ``mtime`` is epoch seconds (``stat.st_mtime``), matching the column
-        the scanner publishes; ``size`` is bytes. Range bounds are inclusive.
-
-        Only whitelisted literals reach the ORDER BY clause; every user
-        value is bound as a parameter, and the name substring keeps the
-        LIKE/ESCAPE escaping used by :meth:`search_by_name`.
-
-        Note on indexing: the ``assets`` table carries indices on
-        ``library_root``, ``extension``, ``name`` and ``parent_path`` only
-        (no size/mtime index). Every combination therefore drives at least
-        one existing index (``idx_assets_library`` or ``idx_assets_ext``)
-        with size/mtime/LIKE as residual filters, and ORDER BY uses a TEMP
-        B-TREE. Adding further indices is explicitly out of scope, so
-        callers should keep ``limit`` bounded.
+        Returns ``(clauses, params, needs_meta_join)``. ``library_root`` is
+        always the first clause; every user value is bound as a parameter.
         """
-        column = _STRUCTURED_ORDER_COLUMNS.get(order_by)
-        if column is None:
-            raise ValueError(
-                f"order_by must be one of {sorted(_STRUCTURED_ORDER_COLUMNS)}, got {order_by!r}"
-            )
-        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
-            raise ValueError("limit must be a positive integer")
-        if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
-            raise ValueError("offset must be a non-negative integer")
-
         clauses = ["library_root=?"]
         params: list[object] = [self._root_key(library_root)]
 
@@ -631,14 +610,172 @@ class AssetIndexRepository:
             clauses.append("mtime<=?")
             params.append(mtime_before)
 
+        needs_meta = rating_min is not None or rating_max is not None
+        if rating_min is not None:
+            # NULL rating means "unrated" (migration v37 keeps no backfill),
+            # so a positive rating filter excludes unrated rows: the NULL
+            # comparison below is never true for them.
+            clauses.append("file_meta.rating>=?")
+            params.append(rating_min)
+        if rating_max is not None:
+            clauses.append("file_meta.rating<=?")
+            params.append(rating_max)
+        if favorite:
+            # Viewer-scoped dimension: the owner key is resolved by the
+            # caller (request principal) and bound as a parameter.
+            if not favorite_owner_key:
+                raise ValueError(
+                    "favorite_owner_key is required when favorite=True"
+                )
+            clauses.append(
+                "EXISTS (SELECT 1 FROM library_favorites AS fav "
+                "WHERE fav.owner_key=? AND fav.file_path=assets.file_path)"
+            )
+            params.append(favorite_owner_key)
+        return clauses, params, needs_meta
+
+    def _validate_rating_bound(self, value: object, field: str) -> int:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"{field} must be an integer")
+        return value
+
+    @_repository_operation
+    def search_structured(
+        self,
+        library_root: str | Path,
+        *,
+        name_substring: str | None = None,
+        extensions: Sequence[str] | None = None,
+        size_min: int | None = None,
+        size_max: int | None = None,
+        mtime_after: float | None = None,
+        mtime_before: float | None = None,
+        rating_min: int | None = None,
+        rating_max: int | None = None,
+        favorite: bool = False,
+        favorite_owner_key: str | None = None,
+        order_by: str = "name",
+        descending: bool = False,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> list[AssetIndexEntry]:
+        """Combined structured query over the ``assets`` index.
+
+        All predicates are AND-combined in one parameterized SQL statement.
+        ``mtime`` is epoch seconds (``stat.st_mtime``), matching the column
+        the scanner publishes; ``size`` is bytes. Range bounds are inclusive.
+        ``rating_min``/``rating_max`` filter on ``file_meta.rating`` (0-5)
+        through a LEFT JOIN; NULL ratings mean "unrated" and are excluded by
+        any positive rating filter. ``favorite``/``favorite_owner_key`` keep
+        only rows favorited by the given principal in ``library_favorites``.
+
+        Only whitelisted literals reach the ORDER BY clause; every user
+        value is bound as a parameter, and the name substring keeps the
+        LIKE/ESCAPE escaping used by :meth:`search_by_name`.
+
+        Note on indexing: the ``assets`` table carries indices on
+        ``library_root``, ``extension``, ``name`` and ``parent_path`` only
+        (no size/mtime index). Every combination therefore drives at least
+        one existing index (``idx_assets_library`` or ``idx_assets_ext``)
+        with size/mtime/LIKE as residual filters, and ORDER BY uses a TEMP
+        B-TREE. Adding further indices is explicitly out of scope, so
+        callers should keep ``limit`` bounded.
+        """
+        column = _STRUCTURED_ORDER_COLUMNS.get(order_by)
+        if column is None:
+            raise ValueError(
+                f"order_by must be one of {sorted(_STRUCTURED_ORDER_COLUMNS)}, got {order_by!r}"
+            )
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+            raise ValueError("limit must be a positive integer")
+        if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+            raise ValueError("offset must be a non-negative integer")
+        if rating_min is not None:
+            rating_min = self._validate_rating_bound(rating_min, "rating_min")
+        if rating_max is not None:
+            rating_max = self._validate_rating_bound(rating_max, "rating_max")
+
+        clauses, params, needs_meta = self._structured_predicates(
+            library_root,
+            name_substring=name_substring,
+            extensions=extensions,
+            size_min=size_min,
+            size_max=size_max,
+            mtime_after=mtime_after,
+            mtime_before=mtime_before,
+            rating_min=rating_min,
+            rating_max=rating_max,
+            favorite=favorite,
+            favorite_owner_key=favorite_owner_key,
+        )
+
         direction = "DESC" if descending else "ASC"
         params.append(limit)
         params.append(offset)
+        # The rating column has few distinct values, so a name tiebreaker
+        # keeps pagination deterministic (unlike the raw columns, whose
+        # pre-existing order contract stays untouched).
+        tiebreak = ", assets.name ASC" if order_by == "rating" else ""
+        join = (
+            " LEFT JOIN file_meta ON file_meta.file_path = assets.file_path"
+            if (needs_meta or order_by == "rating")
+            else ""
+        )
         return self._entries(
-            "FROM assets WHERE " + " AND ".join(clauses)
-            + f" ORDER BY {column} {direction} LIMIT ? OFFSET ?",
+            "FROM assets" + join + " WHERE " + " AND ".join(clauses)
+            + f" ORDER BY {column} {direction}{tiebreak} LIMIT ? OFFSET ?",
             tuple(params),
         )
+
+    @_repository_operation
+    def count_structured(
+        self,
+        library_root: str | Path,
+        *,
+        name_substring: str | None = None,
+        extensions: Sequence[str] | None = None,
+        size_min: int | None = None,
+        size_max: int | None = None,
+        mtime_after: float | None = None,
+        mtime_before: float | None = None,
+        rating_min: int | None = None,
+        rating_max: int | None = None,
+        favorite: bool = False,
+        favorite_owner_key: str | None = None,
+    ) -> int:
+        """Count the rows a structured query would return (no paging).
+
+        Runs the same predicates as :meth:`search_structured` in one
+        COUNT(*) — used for the live smart-collection asset counts, where
+        paging the whole index would cost a sort per page.
+        """
+        if rating_min is not None:
+            rating_min = self._validate_rating_bound(rating_min, "rating_min")
+        if rating_max is not None:
+            rating_max = self._validate_rating_bound(rating_max, "rating_max")
+        clauses, params, needs_meta = self._structured_predicates(
+            library_root,
+            name_substring=name_substring,
+            extensions=extensions,
+            size_min=size_min,
+            size_max=size_max,
+            mtime_after=mtime_after,
+            mtime_before=mtime_before,
+            rating_min=rating_min,
+            rating_max=rating_max,
+            favorite=favorite,
+            favorite_owner_key=favorite_owner_key,
+        )
+        join = (
+            " LEFT JOIN file_meta ON file_meta.file_path = assets.file_path"
+            if needs_meta
+            else ""
+        )
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM assets" + join + " WHERE " + " AND ".join(clauses),
+            tuple(params),
+        ).fetchone()
+        return int(row[0]) if row else 0
 
     @_repository_operation
     def delete_entry(self, file_path: str, *, commit: bool = True) -> int:
@@ -704,8 +841,11 @@ class AssetIndexRepository:
         return entries[0] if entries else None
 
     def _entries(self, clause: str, params: tuple[object, ...]) -> list[AssetIndexEntry]:
+        # Columns are table-qualified: structured queries LEFT JOIN
+        # file_meta, which also carries a file_path column.
         rows = self._conn.execute(
-            "SELECT file_path, name, extension, kind, size, mtime, parent_path, library_root " + clause,
+            "SELECT assets.file_path, assets.name, assets.extension, assets.kind, "
+            "assets.size, assets.mtime, assets.parent_path, assets.library_root " + clause,
             params,
         ).fetchall()
         return [AssetIndexEntry(*row) for row in rows]

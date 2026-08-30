@@ -300,6 +300,24 @@ def get_request_principal(request):
     return request.get(PRINCIPAL_REQUEST_KEY) or request.get("principal")
 
 
+def request_owner_key(request) -> str:
+    """Resolve the requester's favorites owner key, or raise 401.
+
+    Canonical owner identity for principal-scoped data (library_favorites):
+    authenticated users are scoped by user id, other principals by their
+    kind. Routes that need a viewer-scoped dimension (rating/favorite
+    filters, favorites themselves) share this derivation.
+    """
+    principal = get_request_principal(request)
+    if principal is None:
+        raise web.HTTPUnauthorized(reason="Authentication required")
+    if principal.kind == "user" and principal.user_profile is not None:
+        user_id = principal.user_profile.get("id")
+        if user_id is not None:
+            return f"user:{user_id}"
+    return f"principal:{principal.kind}"
+
+
 def require_role(request, *roles):
     """Return the canonical principal when its role is allowed."""
     principal = get_request_principal(request)

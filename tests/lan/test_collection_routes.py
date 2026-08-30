@@ -185,6 +185,59 @@ async def test_collection_smart_evaluate_over_lan(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_collection_rating_and_favorite_dimensions_over_lan(tmp_path):
+    """rating/favorite predicates evaluate; favorite follows the requester."""
+    app, library, conn = _make_lan_app(tmp_path)
+    _index_asset(conn, library, "a.png")
+    _index_asset(conn, library, "b.png")
+    file_paths = {name: str(library / name) for name in ("a.png", "b.png")}
+    conn.execute(
+        "INSERT INTO file_meta(file_path, rating) VALUES (?, 5)", (file_paths["a.png"],)
+    )
+    from AssetsManager.core.schema_defs import LIBRARY_FAVORITES_SCHEMA
+
+    for statement in LIBRARY_FAVORITES_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    conn.execute(
+        "INSERT INTO library_favorites(owner_key, file_path) VALUES (?, ?)",
+        ("principal:local_ui", file_paths["b.png"]),
+    )
+    conn.commit()
+    client = await _make_client(app)
+    try:
+        top = await client.post(
+            "/api/collections",
+            json={"name": "top", "kind": "smart", "query": {"rating_min": 4}},
+            headers=_local_ui_headers(app),
+        )
+        top_id = (await top.json())["collection"]["id"]
+        evaluated = await client.get(
+            f"/api/collections/{top_id}/evaluate", headers=_local_ui_headers(app)
+        )
+        assert [r["path"] for r in (await evaluated.json())["results"]] == ["a.png"]
+
+        mine = await client.post(
+            "/api/collections",
+            json={"name": "mine", "kind": "smart", "query": {"favorite": True}},
+            headers=_local_ui_headers(app),
+        )
+        mine_id = (await mine.json())["collection"]["id"]
+        evaluated = await client.get(
+            f"/api/collections/{mine_id}/evaluate", headers=_local_ui_headers(app)
+        )
+        assert [r["path"] for r in (await evaluated.json())["results"]] == ["b.png"]
+
+        # A guest viewer owns no favorites: their evaluation is empty.
+        guest = await client.get(f"/api/collections/{mine_id}/evaluate")
+        assert guest.status == 200
+        assert (await guest.json())["results"] == []
+    finally:
+        await client.close()
+        conn.close()
+
+
+@pytest.mark.anyio
 async def test_collection_routes_reject_bad_ids_and_bodies(tmp_path):
     app, library, conn = _make_lan_app(tmp_path)
     client = await _make_client(app)

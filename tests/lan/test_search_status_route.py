@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from tests.lan.support.api_helpers import _make_client, _make_lan_app
+from tests.lan.support.api_helpers import (
+    _local_ui_headers,
+    _make_client,
+    _make_lan_app,
+)
 
 
 @pytest.mark.anyio
@@ -131,6 +135,86 @@ async def test_search_structured_invalid_params_return_400(tmp_path):
         # No structured filter given: the legacy path is untouched (no 400s).
         response = await client.get("/api/search?q=anything")
         assert response.status == 200
+    finally:
+        await client.close()
+
+
+def _rate(conn, library, name, rating):
+    file_path = str(library / name)
+    conn.execute(
+        "INSERT INTO file_meta(file_path, rating) VALUES (?, ?) "
+        "ON CONFLICT(file_path) DO UPDATE SET rating=excluded.rating",
+        (file_path, rating),
+    )
+    conn.commit()
+
+
+def _ensure_favorites_table(conn):
+    """library_favorites arrives with migration v7; mirror it like v2's DDL."""
+    from AssetsManager.core.schema_defs import LIBRARY_FAVORITES_SCHEMA
+
+    for statement in LIBRARY_FAVORITES_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    conn.commit()
+
+
+@pytest.mark.anyio
+async def test_search_structured_rating_and_favorite_passthrough(tmp_path):
+    app, library, conn = _make_lan_app(tmp_path)
+    _insert_asset(conn, library, "plain.png", ext=".png", size=100, mtime=1000.0)
+    _insert_asset(conn, library, "loved.png", ext=".png", size=100, mtime=1000.0)
+    _insert_asset(conn, library, "top.png", ext=".png", size=100, mtime=1000.0)
+    _rate(conn, library, "loved.png", 2)
+    _rate(conn, library, "top.png", 5)
+    _ensure_favorites_table(conn)
+    conn.execute(
+        "INSERT INTO library_favorites(owner_key, file_path) VALUES (?, ?)",
+        ("principal:local_ui", str(library / "loved.png")),
+    )
+    conn.commit()
+    client = await _make_client(app)
+    headers = _local_ui_headers(app)
+    try:
+        # All requests below run as the local-UI principal — the owner key
+        # whose favorite row was seeded above.
+        # Rating bounds exclude unrated rows and respect the range.
+        response = await client.get("/api/search?rating_min=4", headers=headers)
+        assert response.status == 200
+        assert [r["name"] for r in (await response.json())["results"]] == ["top.png"]
+
+        # The favorites dimension is viewer-scoped: the local-UI principal
+        # only sees its own starred file.
+        response = await client.get("/api/search?favorite=true", headers=headers)
+        assert response.status == 200
+        assert [r["name"] for r in (await response.json())["results"]] == ["loved.png"]
+
+        # Combined rating + favorite intersect.
+        response = await client.get("/api/search?favorite=true&rating_min=4", headers=headers)
+        assert response.status == 200
+        assert (await response.json())["count"] == 0
+
+        # order=rating rides the same indexed source.
+        response = await client.get("/api/search?ext=png&order=rating", headers=headers)
+        assert response.status == 200
+        data = await response.json()
+        assert [r["name"] for r in data["results"]] == ["plain.png", "loved.png", "top.png"]
+
+        # A different viewer sees none of the principal's favorites.
+        response = await client.get("/api/search?favorite=true")
+        assert response.status == 200
+        assert (await response.json())["count"] == 0
+
+        # Malformed rating bounds and favorite flags are client errors.
+        for query, field in (
+            ("rating_min=9", "rating_min"),
+            ("rating_max=-1", "rating_max"),
+            ("rating_min=abc", "rating_min"),
+            ("favorite=maybe", "favorite"),
+        ):
+            response = await client.get(f"/api/search?{query}", headers=headers)
+            assert response.status == 400, query
+            assert (await response.json())["field"] == field, query
     finally:
         await client.close()
 

@@ -40,6 +40,9 @@ class _IndexAdapter:
     def search_structured(self, library_root, **kwargs):
         return self._repo.search_structured(str(library_root), **kwargs)
 
+    def count_structured(self, library_root, **kwargs):
+        return self._repo.count_structured(str(library_root), **kwargs)
+
 
 def _index_asset(conn: sqlite3.Connection, library, name: str) -> str:
     path = library / name
@@ -248,6 +251,119 @@ def test_evaluate_tag_intersection_short_circuit(tmp_path):
         })
         # A tag dimension matching nothing must not scan or match anything.
         assert service.evaluate(library, smart["id"]) == []
+    finally:
+        conn.close()
+
+
+def test_evaluate_rating_dimension_excludes_unrated(tmp_path):
+    library = tmp_path / "library"
+    library.mkdir()
+    conn = _memory_conn()
+    try:
+        service = _service(conn, library)
+        paths = {
+            name: _index_asset(conn, library, name)
+            for name in ("low.png", "high.png", "unrated.png")
+        }
+        conn.execute(
+            "INSERT INTO file_meta(file_path, rating) VALUES (?, 2)", (paths["low.png"],)
+        )
+        conn.execute(
+            "INSERT INTO file_meta(file_path, rating) VALUES (?, 5)", (paths["high.png"],)
+        )
+        conn.commit()
+
+        smart = service.create_smart(library, "top", {"rating_min": 4})
+        assert [e.name for e in service.evaluate(library, smart["id"])] == ["high"]
+
+        wide = service.create_smart(library, "rated", {"rating_min": 1, "rating_max": 5})
+        assert sorted(e.name for e in service.evaluate(library, wide["id"])) == [
+            "high", "low",
+        ]
+        # Unrated rows never match a rating bound (NULL = unrated).
+        strict = service.create_smart(library, "ceiling", {"rating_max": 3})
+        assert [e.name for e in service.evaluate(library, strict["id"])] == ["low"]
+    finally:
+        conn.close()
+
+
+def test_evaluate_favorite_dimension_is_viewer_scoped(tmp_path):
+    library = tmp_path / "library"
+    library.mkdir()
+    conn = _memory_conn()
+    try:
+        service = _service(conn, library)
+        paths = {
+            name: _index_asset(conn, library, name)
+            for name in ("a.png", "b.png", "c.png")
+        }
+        conn.executemany(
+            "INSERT INTO library_favorites(owner_key, file_path) VALUES (?, ?)",
+            [("user:1", paths["a.png"]), ("user:1", paths["b.png"]),
+             ("user:2", paths["c.png"])],
+        )
+        conn.commit()
+
+        smart = service.create_smart(library, "mine", {"favorite": True})
+        # The favorites dimension follows the viewer: same query, different
+        # owner key, different asset set.
+        assert sorted(e.name for e in service.evaluate(
+            library, smart["id"], favorite_owner_key="user:1",
+        )) == ["a", "b"]
+        assert [e.name for e in service.evaluate(
+            library, smart["id"], favorite_owner_key="user:2",
+        )] == ["c"]
+        assert service.evaluate(
+            library, smart["id"], favorite_owner_key="user:3",
+        ) == []
+        # Evaluating a favorite dimension without a viewer is a hard error.
+        with pytest.raises(ValidationError, match="favorite"):
+            service.evaluate(library, smart["id"])
+
+        # Rating + favorite combine (AND) inside one smart query.
+        conn.execute(
+            "INSERT INTO file_meta(file_path, rating) VALUES (?, 5) "
+            "ON CONFLICT(file_path) DO UPDATE SET rating=5",
+            (paths["b.png"],),
+        )
+        conn.commit()
+        combo = service.create_smart(library, "top-fav", {
+            "favorite": True, "rating_min": 5,
+        })
+        assert [e.name for e in service.evaluate(
+            library, combo["id"], favorite_owner_key="user:1",
+        )] == ["b"]
+    finally:
+        conn.close()
+
+
+def test_evaluate_count_matches_evaluate_and_honors_dimensions(tmp_path):
+    library = tmp_path / "library"
+    library.mkdir()
+    conn = _memory_conn()
+    try:
+        service = _service(conn, library)
+        paths = {
+            name: _index_asset(conn, library, name)
+            for name in ("a.png", "b.png", "c.jpg")
+        }
+        conn.execute(
+            "INSERT INTO library_favorites(owner_key, file_path) VALUES (?, ?)",
+            ("user:1", paths["a.png"]),
+        )
+        conn.commit()
+
+        plain = service.create_smart(library, "all", {})
+        assert service.evaluate_count(library, plain["id"]) == 3
+
+        fts_free = service.create_smart(library, "pngs", {"extensions": [".png"]})
+        assert service.evaluate_count(library, fts_free["id"]) == 2
+
+        fav = service.create_smart(library, "mine", {"favorite": True})
+        assert service.evaluate_count(library, fav["id"], favorite_owner_key="user:1") == 1
+        assert service.evaluate_count(library, fav["id"], favorite_owner_key="nobody") == 0
+        with pytest.raises(ValidationError, match="favorite"):
+            service.evaluate_count(library, fav["id"])
     finally:
         conn.close()
 

@@ -13,9 +13,9 @@ from AssetsManager.domain.errors import DomainError, ValidationError
 from AssetsManager.lan.dto import TreeItemResponse
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
-    get_lan, validate_path, get_metadata_service, get_project_service,
-    get_search_service, oversized_query, require_permission, require_user_write,
-    validated_existing_key,
+    get_lan, get_search_service, get_metadata_service, get_project_service,
+    oversized_query, request_owner_key, require_permission, require_user_write,
+    validate_path, validated_existing_key,
 )
 from AssetsManager.lan.routes._telemetry import record_route_event
 from AssetsManager.lan.routes._resource_urls import (
@@ -30,7 +30,7 @@ _log = logging.getLogger(__name__)
 MAX_NOTES_LENGTH = 4000
 
 # Structured-search order whitelist (must mirror the repository's whitelist).
-_SEARCH_ORDER_VALUES = ("name", "size", "mtime")
+_SEARCH_ORDER_VALUES = ("name", "size", "mtime", "rating")
 _SEARCH_STRUCTURED_LIMIT = 200
 
 
@@ -38,8 +38,11 @@ def _parse_structured_search_params(request) -> dict:
     """Parse optional structured-filter query params, 400 on malformed values.
 
     Returns a dict with ``filters`` (the structured predicate set, possibly
-    empty), ``order``, and ``offset``. ``size_*`` are bytes (int);
-    ``mtime_*`` are epoch seconds (float), matching the assets.mtime column.
+    empty), ``favorite_owner_key``, ``order``, and ``offset``. ``size_*``
+    are bytes (int); ``mtime_*`` are epoch seconds (float), matching the
+    assets.mtime column; ``rating_*`` are 0-5 ints against file_meta.rating
+    (NULL = unrated, excluded by any rating filter); ``favorite`` requires
+    the requester's owner key, resolved from the request principal.
     """
     extensions_raw = request.query.get("ext", "")
     extensions = [
@@ -62,6 +65,17 @@ def _parse_structured_search_params(request) -> dict:
     mtime_after = _number("mtime_after", float)
     mtime_before = _number("mtime_before", float)
 
+    rating_min = _number("rating_min", int)
+    rating_max = _number("rating_max", int)
+    for field, value in (("rating_min", rating_min), ("rating_max", rating_max)):
+        if value is not None and not 0 <= value <= 5:
+            raise ValidationError(field, "must be an integer 0-5")
+
+    favorite_raw = request.query.get("favorite", "").lower()
+    if favorite_raw and favorite_raw not in {"1", "true", "yes"}:
+        raise ValidationError("favorite", "must be a boolean flag")
+    favorite_owner_key = request_owner_key(request) if favorite_raw else None
+
     order = request.query.get("order", "name").lower()
     if order not in _SEARCH_ORDER_VALUES:
         raise ValidationError("order", f"must be one of {list(_SEARCH_ORDER_VALUES)}")
@@ -79,8 +93,16 @@ def _parse_structured_search_params(request) -> dict:
         "size_max": size_max,
         "mtime_after": mtime_after,
         "mtime_before": mtime_before,
+        "rating_min": rating_min,
+        "rating_max": rating_max,
+        "favorite": bool(favorite_raw) or None,
     }
-    return {"filters": filters, "order": order, "offset": offset}
+    return {
+        "filters": filters,
+        "favorite_owner_key": favorite_owner_key,
+        "order": order,
+        "offset": offset,
+    }
 
 
 async def handle_meta(request):
@@ -240,13 +262,14 @@ async def handle_search(request):
 
         def _search() -> SearchResultSet:
             if any(value is not None for value in structured["filters"].values()):
-                # Structured predicates (extension/size/mtime) are only
-                # executable efficiently by the assets index; the scanner
-                # source cannot apply them without a full in-memory scan, so
-                # a structured search deliberately runs indexed-only. The
-                # name substring (q) still narrows the indexed query. When a
-                # tag filter is combined with structured filters, the
-                # structured predicate set wins (tags are not merged here).
+                # Structured predicates (extension/size/mtime/rating/
+                # favorite) are only executable efficiently by the assets
+                # index; the scanner source cannot apply them without a
+                # full in-memory scan, so a structured search deliberately
+                # runs indexed-only. The name substring (q) still narrows
+                # the indexed query. When a tag filter is combined with
+                # structured filters, the structured predicate set wins
+                # (tags are not merged here).
                 return svc.search_structured_detailed(
                     lan.library_root,
                     name_substring=query,
@@ -254,6 +277,7 @@ async def handle_search(request):
                     order_by=structured["order"],
                     offset=structured["offset"],
                     limit=_SEARCH_STRUCTURED_LIMIT,
+                    favorite_owner_key=structured["favorite_owner_key"],
                     **structured["filters"],
                 )
             if tag_filter:

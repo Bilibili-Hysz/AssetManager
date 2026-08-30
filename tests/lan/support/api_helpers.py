@@ -147,6 +147,9 @@ class _FakeIndexAdapter:
     def search_structured(self, library_root, **kwargs):
         return self._repo.search_structured(str(library_root), **kwargs)
 
+    def count_structured(self, library_root, **kwargs):
+        return self._repo.count_structured(str(library_root), **kwargs)
+
 
 def _init_lan_schemas(conn):
     from AssetsManager.repositories.auth_repository import AuthRepository

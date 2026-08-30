@@ -727,6 +727,10 @@ class AssetIndexService:
         size_max: int | None = None,
         mtime_after: float | None = None,
         mtime_before: float | None = None,
+        rating_min: int | None = None,
+        rating_max: int | None = None,
+        favorite: bool = False,
+        favorite_owner_key: str | None = None,
         order_by: str = "name",
         descending: bool = False,
         limit: int = 200,
@@ -755,10 +759,52 @@ class AssetIndexService:
                 size_max=size_max,
                 mtime_after=mtime_after,
                 mtime_before=mtime_before,
+                rating_min=rating_min,
+                rating_max=rating_max,
+                favorite=favorite,
+                favorite_owner_key=favorite_owner_key,
                 order_by=order_by,
                 descending=descending,
                 limit=limit,
                 offset=offset,
+            )
+
+    def count_structured(
+        self,
+        *args: Any,
+        name_substring: str | None = None,
+        extensions: Sequence[str] | None = None,
+        size_min: int | None = None,
+        size_max: int | None = None,
+        mtime_after: float | None = None,
+        mtime_before: float | None = None,
+        rating_min: int | None = None,
+        rating_max: int | None = None,
+        favorite: bool = False,
+        favorite_owner_key: str | None = None,
+    ) -> int:
+        """Count the rows the structured query would return (no paging)."""
+        with self._operation():
+            if self._session is not None and len(args) == 1:
+                conn, root = self._connection(None, args[0])
+            elif len(args) == 2:
+                conn, root = self._connection(args[0], args[1])
+            else:
+                raise TypeError(
+                    "count_structured expects library_root or conn, library_root"
+                )
+            return self._repository_for(conn, root).count_structured(
+                root,
+                name_substring=name_substring,
+                extensions=extensions,
+                size_min=size_min,
+                size_max=size_max,
+                mtime_after=mtime_after,
+                mtime_before=mtime_before,
+                rating_min=rating_min,
+                rating_max=rating_max,
+                favorite=favorite,
+                favorite_owner_key=favorite_owner_key,
             )
 
     def remove_entry(self, *args: Any, commit: bool = True, savepoint: str | None = None) -> None:

@@ -894,5 +894,8 @@
   "startup.new_library_confirm_title": "Folder Is Not Empty",
   "startup.new_library_confirm_body": "The selected folder contains files. It will become the asset library root and existing files will be indexed. Continue?",
   "crash.report_button": "Report This Crash on GitHub",
-  "crash.report_generated_note": "This report was generated automatically by AssetManager (sensitive data redacted)."
+  "crash.report_generated_note": "This report was generated automatically by AssetManager (sensitive data redacted).",
+  "filelist.advanced.rating_min": "Rating min",
+  "filelist.advanced.rating_max": "Rating max",
+  "filelist.advanced.rating_hint": "0-5 stars; unrated files never match a rating bound"
 }

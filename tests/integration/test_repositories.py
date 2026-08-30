@@ -345,6 +345,101 @@ class TestAssetIndexStructuredSearch:
         repo = self._repo(memory_db)
         assert repo.search_structured("C:/other-library") == []
 
+    # ── v40: rating and favorite predicates ──────────────────────
+
+    def _rate(self, memory_db, path, rating):
+        memory_db.execute(
+            "INSERT INTO file_meta(file_path, rating) VALUES (?, ?) "
+            "ON CONFLICT(file_path) DO UPDATE SET rating=excluded.rating",
+            (path, rating),
+        )
+        memory_db.commit()
+
+    def test_rating_range_excludes_unrated_and_bounds_are_inclusive(self, memory_db):
+        repo = self._repo(memory_db)
+        self._rate(memory_db, "C:/library/a.png", 2)
+        self._rate(memory_db, "C:/library/b.jpg", 4)
+        self._rate(memory_db, "C:/library/c.png", None)
+
+        # NULL (unrated) rows never match a positive rating bound.
+        assert self._names(repo.search_structured(self.LIB, rating_min=1)) == [
+            "a.png", "b.jpg",
+        ]
+        assert self._names(repo.search_structured(self.LIB, rating_min=2, rating_max=4)) == [
+            "a.png", "b.jpg",
+        ]
+        assert self._names(repo.search_structured(self.LIB, rating_min=3)) == ["b.jpg"]
+        assert self._names(repo.search_structured(self.LIB, rating_max=3)) == ["a.png"]
+        assert repo.search_structured(self.LIB, rating_min=5) == []
+
+    def test_order_by_rating_sorts_unrated_as_zero(self, memory_db):
+        repo = self._repo(memory_db)
+        self._rate(memory_db, "C:/library/b.jpg", 5)
+        self._rate(memory_db, "C:/library/a.png", 1)
+        # Unrated rows COALESCE to 0 and tie-break by name: first ascending,
+        # last descending.
+        assert self._names(repo.search_structured(self.LIB, order_by="rating")) == [
+            "big_pack%100.zip", "c.png", "dir", "a.png", "b.jpg",
+        ]
+        assert self._names(repo.search_structured(self.LIB, order_by="rating", descending=True)) == [
+            "b.jpg", "a.png", "big_pack%100.zip", "c.png", "dir",
+        ]
+
+    def test_favorite_keeps_only_viewer_scoped_rows(self, memory_db):
+        repo = self._repo(memory_db)
+        memory_db.executemany(
+            "INSERT INTO library_favorites(owner_key, file_path) VALUES (?, ?)",
+            [
+                ("user:1", "C:/library/a.png"),
+                ("user:1", "C:/library/c.png"),
+                ("user:2", "C:/library/b.jpg"),
+            ],
+        )
+        memory_db.commit()
+
+        assert self._names(
+            repo.search_structured(self.LIB, favorite=True, favorite_owner_key="user:1")
+        ) == ["a.png", "c.png"]
+        assert self._names(
+            repo.search_structured(self.LIB, favorite=True, favorite_owner_key="user:2")
+        ) == ["b.jpg"]
+        # A viewer with no favorites matches nothing.
+        assert repo.search_structured(
+            self.LIB, favorite=True, favorite_owner_key="user:3"
+        ) == []
+        # favorite without an owner key is a hard error, never a full scan.
+        with pytest.raises(ValueError):
+            repo.search_structured(self.LIB, favorite=True)
+        with pytest.raises(ValueError):
+            repo.count_structured(self.LIB, favorite=True, favorite_owner_key="")
+
+    def test_rating_predicate_rejects_non_integer_bounds(self, memory_db):
+        repo = self._repo(memory_db)
+        with pytest.raises(ValueError):
+            repo.search_structured(self.LIB, rating_min=True)
+        with pytest.raises(ValueError):
+            repo.search_structured(self.LIB, rating_max="3")
+
+    def test_count_structured_shares_predicates_without_paging(self, memory_db):
+        repo = self._repo(memory_db)
+        self._rate(memory_db, "C:/library/a.png", 5)
+        memory_db.execute(
+            "INSERT INTO library_favorites(owner_key, file_path) VALUES (?, ?)",
+            ("user:1", "C:/library/a.png"),
+        )
+        memory_db.commit()
+
+        assert repo.count_structured(self.LIB) == 5
+        assert repo.count_structured(self.LIB, extensions=[".png"]) == 2
+        assert repo.count_structured(self.LIB, rating_min=1) == 1
+        assert repo.count_structured(
+            self.LIB, favorite=True, favorite_owner_key="user:1"
+        ) == 1
+        assert repo.count_structured(
+            self.LIB, rating_min=1, favorite=True, favorite_owner_key="user:1"
+        ) == 1
+        assert repo.count_structured(self.LIB, favorite=True, favorite_owner_key="nobody") == 0
+
 
 # ── MetadataRepository ───────────────────────────────────────────
 

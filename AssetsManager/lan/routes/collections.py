@@ -20,6 +20,7 @@ from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
     get_collection_service,
     get_lan,
+    request_owner_key,
     require_permission,
     require_user_write,
     validated_existing_key,
@@ -299,9 +300,13 @@ async def handle_collection_evaluate(request):
         return error_response("limit/offset must be integers", status=400, code="bad_request")
     if limit < 1 or limit > _MAX_EVALUATE_LIMIT or offset < 0:
         return error_response("limit/offset out of range", status=400, code="bad_request")
+    # A favorite predicate in the saved query is viewer-scoped: it is
+    # evaluated against the requesting principal's owner key.
+    owner_key = request_owner_key(request)
     try:
         entries = await asyncio.to_thread(
             svc.evaluate, lan.library_root, collection_id, limit, offset,
+            favorite_owner_key=owner_key,
         )
     except ValidationError as exc:
         return error_response(exc)
