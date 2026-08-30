@@ -923,5 +923,20 @@
   "undo_panel.undo_latest": "直前のステップを元に戻す",
   "undo_panel.redo": "やり直す",
   "undo_panel.refresh": "更新",
-  "undo_panel.operation_failed": "直前の元に戻す/やり直しは実行できませんでした。項目は一覧に残ります。"
+  "undo_panel.operation_failed": "直前の元に戻す/やり直しは実行できませんでした。項目は一覧に残ります。",
+  "menu.activity_log": "アクティビティログ…",
+  "activity_panel.title": "アクティビティログ",
+  "activity_panel.no_library": "ライブラリを開いてから、アクティビティログを確認してください。",
+  "activity_panel.filter_label": "範囲",
+  "activity_panel.filter_today": "今日",
+  "activity_panel.filter_7d": "過去 7 日",
+  "activity_panel.filter_30d": "過去 30 日",
+  "activity_panel.filter_all": "すべて",
+  "activity_panel.refresh": "更新",
+  "activity_panel.col_time": "時刻",
+  "activity_panel.col_action": "操作",
+  "activity_panel.col_user": "ユーザー",
+  "activity_panel.col_details": "詳細",
+  "activity_panel.empty": "選択した範囲にアクティビティがありません。",
+  "activity_panel.read_error": "アクティビティログを読み込めませんでした。テーブルが利用できない可能性があります。"
 }

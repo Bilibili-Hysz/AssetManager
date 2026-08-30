@@ -488,6 +488,8 @@ class MainWindow(LanSharingMixin, QMainWindow):
         tools_menu.addSeparator()
         self._menu_act_undo_history = tools_menu.addAction(
             tr("menu.undo_history"), self._open_undo_history)
+        self._menu_act_activity_log = tools_menu.addAction(
+            tr("menu.activity_log"), self._open_activity_log)
 
         # Wire the window-level shortcuts through the shared registry so the
         # help dialog (generated from that registry) matches reality.
@@ -929,6 +931,19 @@ class MainWindow(LanSharingMixin, QMainWindow):
                 self, tr("menu.undo_history"), tr("undo_panel.no_library"))
             return
         dlg = UndoPanelDialog(self._bootstrap.runtime_for(session), parent=self)
+        dlg.exec()
+
+    def _open_activity_log(self):
+        from PySide6.QtWidgets import QMessageBox
+
+        from AssetsManager.dialogs.activity_panel import ActivityPanelDialog
+
+        session = getattr(self, "_library_session", None)
+        if session is None:
+            QMessageBox.information(
+                self, tr("menu.activity_log"), tr("activity_panel.no_library"))
+            return
+        dlg = ActivityPanelDialog(session, parent=self)
         dlg.exec()
 
     def _show_shortcuts(self):

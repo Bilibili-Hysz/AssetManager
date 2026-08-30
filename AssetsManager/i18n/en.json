@@ -923,5 +923,20 @@
   "undo_panel.undo_latest": "Undo latest step",
   "undo_panel.redo": "Redo",
   "undo_panel.refresh": "Refresh",
-  "undo_panel.operation_failed": "The last undo/redo step could not be executed. The entry stays in the list."
+  "undo_panel.operation_failed": "The last undo/redo step could not be executed. The entry stays in the list.",
+  "menu.activity_log": "Activity Log…",
+  "activity_panel.title": "Activity Log",
+  "activity_panel.no_library": "Open a library first to see its activity log.",
+  "activity_panel.filter_label": "Range",
+  "activity_panel.filter_today": "Today",
+  "activity_panel.filter_7d": "Last 7 days",
+  "activity_panel.filter_30d": "Last 30 days",
+  "activity_panel.filter_all": "All",
+  "activity_panel.refresh": "Refresh",
+  "activity_panel.col_time": "Time",
+  "activity_panel.col_action": "Action",
+  "activity_panel.col_user": "User",
+  "activity_panel.col_details": "Details",
+  "activity_panel.empty": "No activity in the selected range.",
+  "activity_panel.read_error": "The activity log could not be read; the table may be unavailable."
 }

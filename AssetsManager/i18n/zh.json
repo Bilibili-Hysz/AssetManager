@@ -923,5 +923,20 @@
   "undo_panel.undo_latest": "撤销最近一步",
   "undo_panel.redo": "重做",
   "undo_panel.refresh": "刷新",
-  "undo_panel.operation_failed": "上一步撤销/重做未能执行，该条目仍保留在列表中。"
+  "undo_panel.operation_failed": "上一步撤销/重做未能执行，该条目仍保留在列表中。",
+  "menu.activity_log": "活动日志…",
+  "activity_panel.title": "活动日志",
+  "activity_panel.no_library": "请先打开一个库，再查看其活动日志。",
+  "activity_panel.filter_label": "范围",
+  "activity_panel.filter_today": "今天",
+  "activity_panel.filter_7d": "最近 7 天",
+  "activity_panel.filter_30d": "最近 30 天",
+  "activity_panel.filter_all": "全部",
+  "activity_panel.refresh": "刷新",
+  "activity_panel.col_time": "时间",
+  "activity_panel.col_action": "操作",
+  "activity_panel.col_user": "用户",
+  "activity_panel.col_details": "详情",
+  "activity_panel.empty": "所选范围内没有活动记录。",
+  "activity_panel.read_error": "活动日志读取失败，数据表可能不可用。"
 }
