@@ -878,5 +878,11 @@
   "sidebar.menu.delete_collection": "删除合集",
   "sidebar.dialog.new_collection": "新建合集",
   "sidebar.dialog.rename_collection": "重命名合集",
-  "sidebar.dialog.collection_name_label": "合集名称"
+  "sidebar.dialog.collection_name_label": "合集名称",
+  "about.menu_title": "帮助",
+  "about.menu_entry": "关于 AssetManager",
+  "about.title": "关于 AssetManager",
+  "about.heading": "AssetManager {version}",
+  "about.environment": "Python {python} / Qt {qt}",
+  "about.tagline": "本地优先的资产库：整理、打标并共享你的创作文件。"
 }

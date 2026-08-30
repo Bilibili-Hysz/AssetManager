@@ -414,6 +414,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._menu_act_exit = self._menu_lib.addAction(tr("menu.exit"), self.request_exit)
         self._menu_act_settings = bar.addAction(tr("menu.settings"), self._open_settings)
 
+        # Help menu — version identity entry point (A1 分发起步).
+        self._menu_help = bar.addMenu(tr("about.menu_title"))
+        self._menu_act_about = self._menu_help.addAction(
+            tr("about.menu_entry"), self._show_about)
+
         # Tools menu
         self._setup_tools_menu(bar)
 
@@ -911,6 +916,26 @@ class MainWindow(LanSharingMixin, QMainWindow):
     def _show_shortcuts(self):
         from PySide6.QtWidgets import QMessageBox
         QMessageBox.information(self, tr("shortcuts.title"), build_shortcuts_help_text())
+
+    def _show_about(self):
+        """About dialog — APP_VERSION plus runtime environment identity."""
+        import platform
+
+        from PySide6.QtCore import qVersion
+        from PySide6.QtWidgets import QMessageBox
+
+        from AssetsManager.core.constants import APP_VERSION
+
+        QMessageBox.information(
+            self,
+            tr("about.title"),
+            tr("about.heading", version=APP_VERSION)
+            + "\n\n"
+            + tr("about.environment",
+                 python=platform.python_version(), qt=qVersion())
+            + "\n\n"
+            + tr("about.tagline"),
+        )
 
     def _open_settings(self):
         from AssetsManager.application.library_settings_adapter import LibrarySettingsAdapter

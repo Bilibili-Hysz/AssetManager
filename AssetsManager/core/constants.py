@@ -1,6 +1,12 @@
 """Shared constants across core and presentation layers."""
 from __future__ import annotations
 
+# Application version — the SINGLE SOURCE OF TRUTH for the app's identity.
+# Every other consumer (About dialog, PyInstaller spec version resource,
+# installer build script) must derive its version from this constant instead
+# of declaring its own copy; a release bump touches only this line.
+APP_VERSION = "0.1.0"
+
 # Image extensions eligible for gallery projection and thumbnailing.
 # Kept in core so both the domain asset model and the presentation layers
 # consume one definition without a core -> domain dependency.

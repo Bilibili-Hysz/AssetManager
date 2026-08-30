@@ -6,7 +6,7 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库(元数据、标签、缩略图),也可以通过局域网内的浏览器远程浏览和下载资产。仓库名 `AssetsManager_old-bak` 仅为目录命名,项目包名为 `AssetsManager`。
 
-<!-- stats: app_services=48 controllers=4 core=34 dialogs=21 domain_events=15 e2e_specs=6 hooks=16 i18n_en=876 i18n_ja=876 i18n_zh=876 icons=56 pages=10 python_test_files=283 repos=12 routes=71 routes_modules=22 schema_version=39 stores=2 themes=24 ts=98 webui_test_files=84 widgets=14 -->
+<!-- stats: app_services=48 controllers=4 core=34 dialogs=21 domain_events=15 e2e_specs=6 hooks=16 i18n_en=882 i18n_ja=882 i18n_zh=882 icons=56 pages=10 python_test_files=284 repos=12 routes=71 routes_modules=22 schema_version=39 stores=2 themes=24 ts=98 webui_test_files=84 widgets=14 -->
 > **验证边界（2026-08-21）**：README 的结构统计由 `scripts/check_doc_stats.py` 从当前工作树测量；测试、构建、浏览器、真实 LAN、依赖和发布结果只在带 commit、精确命令、平台、工具版本与 artifact digest 的日期化证据中成立。历史全量数字（包括 2026-08-17 的 3778/7 和此前 WebUI/E2E 数字）保留在 dated 文档中，不作为当前 release 或 `verified-fixed` 声明。当前 C6-C10 收敛与剩余限制见 [`docs/full-review/c6-c10-convergence-2026-08-21.md`](docs/full-review/c6-c10-convergence-2026-08-21.md)。
 > **工作区实况索引**：结构/机制/数据流/弱点/文档导航的全量地图见 [`docs/overview-2026-08-27.md`](docs/overview-2026-08-27.md)（LIVING）；已移入归档的文档溯源见 [`docs/archive/INDEX.md`](docs/archive/INDEX.md)。
 
@@ -229,7 +229,7 @@ python build.py --clean --build --optimize --report   # → dist/AssetManager/As
 
 | 语言 | 状态 |
 |---|---|
-| English / 中文 / 日本語 | ✅ 完整（en 876 / zh 876 / ja 876 keys，桌面 + Web） |
+| English / 中文 / 日本語 | ✅ 完整（en 882 / zh 882 / ja 882 keys，桌面 + Web） |
 
 添加语言：复制 `AssetsManager/i18n/en.json` → 翻译 → 在 `i18n/__init__.py` 注册。
 

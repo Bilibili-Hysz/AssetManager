@@ -878,5 +878,11 @@
   "sidebar.menu.delete_collection": "コレクションを削除",
   "sidebar.dialog.new_collection": "コレクションを作成",
   "sidebar.dialog.rename_collection": "コレクション名を変更",
-  "sidebar.dialog.collection_name_label": "コレクション名"
+  "sidebar.dialog.collection_name_label": "コレクション名",
+  "about.menu_title": "ヘルプ",
+  "about.menu_entry": "AssetManager について",
+  "about.title": "AssetManager について",
+  "about.heading": "AssetManager {version}",
+  "about.environment": "Python {python} / Qt {qt}",
+  "about.tagline": "ローカルファーストのアセットライブラリ。整理・タグ付け・共有を一元化します。"
 }

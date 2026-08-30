@@ -878,5 +878,11 @@
   "sidebar.menu.delete_collection": "Delete collection",
   "sidebar.dialog.new_collection": "New collection",
   "sidebar.dialog.rename_collection": "Rename collection",
-  "sidebar.dialog.collection_name_label": "Collection name"
+  "sidebar.dialog.collection_name_label": "Collection name",
+  "about.menu_title": "Help",
+  "about.menu_entry": "About AssetManager",
+  "about.title": "About AssetManager",
+  "about.heading": "AssetManager {version}",
+  "about.environment": "Python {python} / Qt {qt}",
+  "about.tagline": "A local-first asset library for organizing, tagging and sharing your creative files."
 }

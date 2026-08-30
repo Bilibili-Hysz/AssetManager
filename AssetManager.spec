@@ -11,6 +11,63 @@ from pathlib import Path
 
 _root = Path(SPECPATH).resolve()
 
+# ── Version identity (A1) ─────────────────────────────────────────────────
+# AssetsManager/core/constants.py is the single source of truth for the app
+# version; the spec mirrors it textually (no package import needed) so the
+# Windows version resource embedded in AssetManager.exe always matches the
+# About dialog and the installer build script.
+import re as _re
+
+APP_VERSION = _re.search(
+    r'^APP_VERSION\s*=\s*"([^"]+)"',
+    (_root / 'AssetsManager' / 'core' / 'constants.py').read_text(encoding='utf-8'),
+    _re.MULTILINE,
+).group(1)
+
+# Standard PyInstaller Windows version resource. Built only when the
+# platform-specific versioninfo module is importable; elsewhere EXE keeps
+# version=None (PyInstaller warns and ignores it on non-Windows hosts).
+try:
+    from PyInstaller.utils.win32.versioninfo import (
+        FixedFileInfo,
+        StringFileInfo,
+        StringStruct,
+        StringTable,
+        VarFileInfo,
+        VarStruct,
+        VSVersionInfo,
+    )
+
+    _ver_tuple = tuple(int(part) for part in APP_VERSION.split('.')) + (0,)
+    _version_info = VSVersionInfo(
+        ffi=FixedFileInfo(
+            filevers=_ver_tuple,
+            prodvers=_ver_tuple,
+            mask=0x3F,
+            flags=0x0,
+            OS=0x40004,
+            fileType=0x1,
+            subtype=0x0,
+            date=(0, 0),
+        ),
+        kids=[
+            StringFileInfo([
+                StringTable('040904B0', [
+                    StringStruct('CompanyName', 'AssetManager'),
+                    StringStruct('FileDescription', 'AssetManager'),
+                    StringStruct('FileVersion', APP_VERSION),
+                    StringStruct('InternalName', 'AssetManager'),
+                    StringStruct('OriginalFilename', 'AssetManager.exe'),
+                    StringStruct('ProductName', 'AssetManager'),
+                    StringStruct('ProductVersion', APP_VERSION),
+                ]),
+            ]),
+            VarFileInfo([VarStruct('Translation', [1033, 1200])]),
+        ],
+    )
+except ImportError:  # pragma: no cover - non-Windows build hosts
+    _version_info = None
+
 a = Analysis(
     ['run.py'],
     pathex=[str(_root)],
@@ -293,6 +350,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=str(_root / 'Assets' / 'icons' / 'icon.ico'),
+    version=_version_info,
 )
 
 coll = COLLECT(
