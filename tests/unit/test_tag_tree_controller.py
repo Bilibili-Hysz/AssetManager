@@ -39,6 +39,37 @@ def test_get_all_tags_empty(lib_env):
     lib_root, _ = lib_env
     ctrl = _make_controller(lib_root)
     assert ctrl.get_all_tags() == []
+    assert ctrl.get_all_tags(source="ai") == []
+    assert ctrl.get_all_tags(source="plugin") == []
+
+
+def test_get_all_tags_source_partitions(lib_env):
+    """AI/plugin partitions stay isolated from the human catalog."""
+    lib_root, conn = lib_env
+    ctrl = _make_controller(lib_root)
+    file_path = str(os.path.join(lib_root, "file.txt"))
+    open(file_path, "w").close()
+    svc = ctrl._tag_svc
+    svc.add_tag(lib_root, file_path, "human_tag")
+    svc.add_tag(lib_root, file_path, "ai_guess", source="ai")
+    svc.add_tag(lib_root, file_path, "plugin_hint", source="plugin")
+
+    assert "human_tag" in ctrl.get_all_tags()
+    assert "ai_guess" not in ctrl.get_all_tags()
+    assert "ai_guess" in ctrl.get_all_tags(source="ai")
+    assert "plugin_hint" in ctrl.get_all_tags(source="plugin")
+    assert "human_tag" not in ctrl.get_all_tags(source="ai")
+
+
+def test_get_files_by_tag_source(lib_env):
+    lib_root, _ = lib_env
+    ctrl = _make_controller(lib_root)
+    file_path = str(os.path.join(lib_root, "file.txt"))
+    open(file_path, "w").close()
+    svc = ctrl._tag_svc
+    svc.add_tag(lib_root, file_path, "hero", source="ai")
+    assert file_path in ctrl.get_files_by_tag("hero", source="ai")
+    assert file_path not in ctrl.get_files_by_tag("hero")
 
 
 def test_add_tag(lib_env):
@@ -110,6 +141,29 @@ def test_get_tag_with_files(lib_env):
     tags = [entry["tag"] for entry in result]
     assert "hero" in tags
     assert "villain" in tags
+
+
+def test_get_tag_with_files_aggregates_sources(lib_env):
+    """AI/plugin tags appear in the tree with their source recorded."""
+    lib_root, _ = lib_env
+    ctrl = _make_controller(lib_root)
+    file_path = str(os.path.join(lib_root, "file.txt"))
+    open(file_path, "w").close()
+    svc = ctrl._tag_svc
+    svc.add_tag(lib_root, file_path, "hero")
+    svc.add_tag(lib_root, file_path, "ai_guess", source="ai")
+    svc.add_tag(lib_root, file_path, "plugin_hint", source="plugin")
+
+    # Human-only metadata lookup must not crash the aggregation.
+    by_tag = {entry["tag"]: entry for entry in ctrl.get_tag_with_files()}
+    assert by_tag["hero"]["source"] == "human"
+    assert by_tag["ai_guess"]["source"] == "ai"
+    assert by_tag["plugin_hint"]["source"] == "plugin"
+    assert by_tag["hero"]["files"] == [file_path]
+    assert by_tag["ai_guess"]["files"] == [file_path]
+    # Human tags expose metadata fields; non-human ones stay empty.
+    assert by_tag["ai_guess"]["icon"] == ""
+    assert by_tag["ai_guess"]["color"] == ""
 
 
 def test_library_root_property(lib_env):

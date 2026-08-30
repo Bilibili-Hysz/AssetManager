@@ -24,6 +24,7 @@ from AssetsManager import i18n
 tr = i18n.tr
 _ICON_ROLE = Qt.ItemDataRole.UserRole + 1
 _COLOR_ROLE = Qt.ItemDataRole.UserRole + 2
+_SOURCE_ROLE = Qt.ItemDataRole.UserRole + 3
 
 
 class TagTreePanel(PanelContent):
@@ -184,12 +185,21 @@ class TagTreePanel(PanelContent):
 
         for entry in tags_with_files:
             tag = entry["tag"]
+            source = str(entry.get("source") or "human")
             count = entry["count"]
             files = entry["files"]
             item = QTreeWidgetItem([f"{tag}  ({count})"])
             item.setData(0, Qt.ItemDataRole.UserRole, tag)
-            icon_name = icons.normalize(str(entry.get("icon") or ""), fallback="tag")
-            self._set_item_icon(item, icon_name, entry.get("color") or None)
+            item.setData(0, _SOURCE_ROLE, source)
+            if source == "human":
+                icon_name = icons.normalize(str(entry.get("icon") or ""), fallback="tag")
+                self._set_item_icon(item, icon_name, entry.get("color") or None)
+            elif source == "plugin":
+                # Plugin-derived tags are read-mostly projections; render
+                # them with a distinct icon so they never look human-curated.
+                self._set_item_icon(item, "puzzle", "icon_muted")
+            else:  # "ai"
+                self._set_item_icon(item, "star", "icon_muted")
             self._tree.addTopLevelItem(item)
             for f in files:
                 name = Path(f).name
@@ -209,6 +219,13 @@ class TagTreePanel(PanelContent):
             bus().refresh_requested.emit()
             return
         if item.parent() is None:
+            source = str(item.data(0, _SOURCE_ROLE) or "human")
+            if source != "human":
+                # AI/plugin partitions are read-only projections: clicking
+                # expands/collapses instead of applying a global (human) tag
+                # filter, which the file list cannot honor for those sources.
+                item.setExpanded(not item.isExpanded())
+                return
             self._active_tag_filter = data
             bus().directory_changed.emit(self._library_root)
             self._populate()
@@ -228,6 +245,11 @@ class TagTreePanel(PanelContent):
             return
         menu = QMenu(self)
         if item.parent() is None:
+            source = str(item.data(0, _SOURCE_ROLE) or "human")
+            if source != "human":
+                # Non-human partitions are read-only here: their mutating
+                # APIs (rename/delete/style) operate on the human catalog.
+                return
             menu.addAction(tr("tagtree.menu.style"),
                            lambda t=data: self._edit_tag_style(t))
             menu.addAction(tr("tagtree.menu.rename"),
@@ -236,7 +258,8 @@ class TagTreePanel(PanelContent):
                            lambda t=data: self._delete_tag(t))
         else:
             tag = item.parent().data(0, Qt.ItemDataRole.UserRole)
-            if tag:
+            parent_source = str(item.parent().data(0, _SOURCE_ROLE) or "human")
+            if tag and parent_source == "human":
                 menu.addAction(tr("tagtree.menu.remove"),
                                lambda f=data: self._remove_tag(f, tag))
         menu.exec(self._tree.viewport().mapToGlobal(pos))

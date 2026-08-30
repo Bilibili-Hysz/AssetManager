@@ -10,8 +10,14 @@ from typing import Any, cast
 
 from AssetsManager.application.tag_service import TagService
 from AssetsManager.core.tag_library import get_library
+from AssetsManager.repositories.tag_repository import TagSource
 
 _log = logging.getLogger(__name__)
+
+# Sources shown in the tag tree. ``human`` is the curated catalog the user
+# manages; ``ai``/``plugin`` (migration v36 physical partitions) are
+# read-mostly surfaces rendered with distinct icons and without edit menus.
+_ALL_TAG_SOURCES: tuple[TagSource, ...] = ("human", "ai", "plugin")
 
 
 class TagTreeController:
@@ -32,39 +38,58 @@ class TagTreeController:
     def library_root(self) -> str:
         return self._library_root
 
-    def get_all_tags(self) -> list[str]:
-        """Return all tags in the library."""
-        return self._tag_svc.get_all_tags(self._library_root)
+    def get_all_tags(self, source: TagSource = "human") -> list[str]:
+        """Return all tags in the library for one provenance source.
 
-    def get_files_by_tag(self, tag: str) -> list[str]:
-        """Return all file paths that have the given tag."""
-        return sorted(self._tag_svc.get_files_by_tag(self._library_root, tag))
-
-    def get_tag_with_files(self) -> list[dict]:
-        """Return all tags with their file lists for tree rendering.
-
-        Uses a single batch query (repository ``list_file_tags``) instead of
-        one SQL statement per tag, avoiding N+1 queries on large libraries.
-        Each entry also carries the tag's visual metadata (icon/color/
-        category) so the tree can render it without a second lookup.
+        ``source`` selects the physical partition: ``human`` (default,
+        ``file_tags``), ``ai`` (``ai_asset_tags``), or ``plugin``
+        (``plugin_derived_fields``).
         """
-        tags = self.get_all_tags()
-        metadata_by_tag = {
-            meta.get("name"): meta
-            for meta in self._tag_svc.get_tags_with_metadata(self._library_root)
-        }
-        files_by_tag = self._files_by_tag_batch(tags)
-        return [
-            {
-                "tag": tag,
-                "count": len(files_by_tag.get(tag, [])),
-                "files": sorted(files_by_tag.get(tag, [])),
-                "icon": str((metadata_by_tag.get(tag) or {}).get("icon") or ""),
-                "color": str((metadata_by_tag.get(tag) or {}).get("color") or ""),
-                "category": str((metadata_by_tag.get(tag) or {}).get("category") or ""),
-            }
-            for tag in tags
-        ]
+        return self._tag_svc.get_all_tags(self._library_root, source=source)
+
+    def get_files_by_tag(self, tag: str, source: TagSource = "human") -> list[str]:
+        """Return all file paths that have the given tag in one source."""
+        return sorted(
+            self._tag_svc.get_files_by_tag(self._library_root, tag, source=source)
+        )
+
+    def get_tag_with_files(
+        self, sources: tuple[TagSource, ...] = _ALL_TAG_SOURCES
+    ) -> list[dict]:
+        """Return tags with their file lists for tree rendering.
+
+        Uses a single batch query per source (repository ``list_file_tags``)
+        instead of one SQL statement per tag, avoiding N+1 queries on large
+        libraries. Human entries also carry the tag's visual metadata
+        (icon/color/category) so the tree can render it without a second
+        lookup; AI/plugin tags share the tag vocabulary but have no
+        ``tag_metadata`` row (that table is the human curation surface), so
+        their visual fields stay empty and the entry records its ``source``.
+        """
+        entries: list[dict] = []
+        for source in sources:
+            tags = self.get_all_tags(source=source)
+            metadata_by_tag = {}
+            if source == "human":
+                metadata_by_tag = {
+                    meta.get("name"): meta
+                    for meta in self._tag_svc.get_tags_with_metadata(self._library_root)
+                }
+            files_by_tag = self._files_by_tag_batch(tags, source=source)
+            for tag in tags:
+                meta = metadata_by_tag.get(tag) or {}
+                entries.append(
+                    {
+                        "tag": tag,
+                        "source": source,
+                        "count": len(files_by_tag.get(tag, [])),
+                        "files": sorted(files_by_tag.get(tag, [])),
+                        "icon": str(meta.get("icon") or ""),
+                        "color": str(meta.get("color") or ""),
+                        "category": str(meta.get("category") or ""),
+                    }
+                )
+        return entries
 
     def get_tag_metadata(self, tag: str) -> dict[str, str] | None:
         """Return a tag's visual metadata (color/icon/category), or None."""
@@ -78,13 +103,16 @@ class TagTreeController:
             self._library_root, tag, color=color, icon=icon, category=category
         )
 
-    def _files_by_tag_batch(self, tags: list[str]) -> dict[str, list[str]]:
+    def _files_by_tag_batch(
+        self, tags: list[str], source: TagSource = "human"
+    ) -> dict[str, list[str]]:
         """Return {tag: [file paths]} from one batch query when possible.
 
         Prefers the service's repository ``list_file_tags()`` (a single SQL
-        statement covering every file/tag pair, grouped in memory). Falls
-        back to one query per tag for services that cannot resolve a
-        repository (e.g. fakes in tests or legacy adapters).
+        statement covering every file/tag pair in the ``source`` partition,
+        grouped in memory). Falls back to one query per tag for services
+        that cannot resolve a repository (e.g. fakes in tests or legacy
+        adapters).
         """
         resolver = getattr(self._tag_svc, "_repo", None)
         if callable(resolver):
@@ -95,11 +123,13 @@ class TagTreeController:
             list_file_tags = getattr(repo, "list_file_tags", None)
             if callable(list_file_tags):
                 grouped: dict[str, list[str]] = {}
-                for path, tag in cast(Any, list_file_tags)():
+                for path, tag in cast(Any, list_file_tags)(source=source):
                     grouped.setdefault(tag, []).append(path)
                 return grouped
         # Legacy fallback: one query per tag.
-        return {tag: list(self.get_files_by_tag(tag)) for tag in tags}
+        return {
+            tag: list(self.get_files_by_tag(tag, source=source)) for tag in tags
+        }
 
     def add_tag(self, tag: str) -> None:
         """Register a tag in the canonical library.

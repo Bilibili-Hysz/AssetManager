@@ -312,10 +312,15 @@ class TagRepository:
 
     @_repository_operation
     @locked_read
-    def list_file_tags(self) -> list[tuple[str, str]]:
-        """Return every file/tag pair in deterministic order."""
+    def list_file_tags(self, *, source: TagSource = "human") -> list[tuple[str, str]]:
+        """Return every file/tag pair in deterministic order for one source.
+
+        ``source`` selects the physical partition (human → ``file_tags``,
+        ai → ``ai_asset_tags``, plugin → ``plugin_derived_fields``) so batch
+        consumers can group per-source without N+1 queries.
+        """
         rows = self._conn.execute(
-            "SELECT file_path, tag FROM file_tags ORDER BY file_path, tag"
+            f"SELECT file_path, tag FROM {_tag_table(source)} ORDER BY file_path, tag"
         ).fetchall()
         return [(str(file_path), str(tag)) for file_path, tag in rows]
 
