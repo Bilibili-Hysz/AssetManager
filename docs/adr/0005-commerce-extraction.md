@@ -201,6 +201,18 @@ git show <剥离 commit> -- webui/src/App.tsx | git apply -R
 - 若将来恢复，需按上述步骤反向接线（约 12 处 import + 路由注册）
 - `legacy` 分享链接（`/store/gallery/:tag`、`/store/*`）指向的页面被移除，
   需确认是否要保留重定向（见 `webui/src/App.tsx` 的 Legacy 路由处理）
+  - **已决（2026-08-30 复核收尾）**：不保留重定向，接受 404。依据：商城从未启用
+    （§决策依据 4），存量 `/store/*` 链接只可能出自从未分发的本地测试；保留重定向
+    反而要求为死场景维持路由面。若将来重启商城，恢复步骤已含路由注册。
+
+## 复核收尾记录（2026-08-30，独立复核会话）
+
+- 剥离质量判定：`artifacts/commerce-extraction-review/verdict-2026-08-30.md`（§四 十项 10/10 复核一致）。
+- 门禁尾巴已清：golden 登记 `/api/rating`（browse 档，与 notes 同类）、`_FakeTagSvc`/`_FakeRepo` 桩适配
+  三源 `source` 参数、LAN fixture 补 `file_meta`（含 rating 列）镜像、webui `tsconfig` 移除被 TS 5.9
+  弃用的 `baseUrl`（TS5101）、golden JSON info 样本剥离 `commerce/seller` 幽灵 feature_flags 并再生
+  `contracts.ts`、`client.test.ts` 幂等键断言对齐 `download-attempt-*` 改名、i18n 三语删除 10 个
+  `sharing.commerce/seller` 死键（876×3）。
 
 ## 相关文档
 
