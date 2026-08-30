@@ -164,6 +164,10 @@ class InfoPanel(PanelContent):
         self._name.setWordWrap(True)
         meta_layout.addWidget(self._name)
 
+        # Star rating (0-5; NULL/unrated renders all stars muted).
+        self._rating_row = self._make_rating_row()
+        meta_layout.addWidget(self._rating_row)
+
         # Registered metadata fields (key -> QWidget)
         self._fields: dict[str, QWidget] = {}
         self._fields_layout = meta_layout
@@ -344,11 +348,12 @@ class InfoPanel(PanelContent):
 
         # Subscribe to domain events through a Qt bridge for UI-safe delivery.
         from AssetsManager.domain.events import (
-            AssetNotesChanged, AssetTagsChanged, AssetUrlsChanged,
+            AssetNotesChanged, AssetRatingChanged, AssetTagsChanged, AssetUrlsChanged,
         )
         self._connect_domain_event(AssetTagsChanged, self._on_domain_tags_changed)
         self._connect_domain_event(AssetNotesChanged, self._on_domain_notes_changed)
         self._connect_domain_event(AssetUrlsChanged, self._on_domain_urls_changed)
+        self._connect_domain_event(AssetRatingChanged, self._on_domain_rating_changed)
 
         # Qt-only signals (no domain equivalent)
         self._connect_bus(bus().sidebar_depth_changed, self._on_sidebar_depth_changed)
@@ -449,6 +454,18 @@ class InfoPanel(PanelContent):
         self._refresh_link_field_style()
         # Update plugin fields
         self._refresh_plugin_fields_style()
+        # Star rating re-tint: favorite/icon_muted and icon size both depend
+        # on the active theme, so force a re-render even when the value is
+        # unchanged (the lazy guard in _set_rating would skip it otherwise).
+        if hasattr(self, "_rating_row"):
+            self._set_rating(self._rating_value, force=True)
+            rating_layout = self._rating_row.layout()
+            rating_item = rating_layout.itemAt(0) if rating_layout is not None else None
+            rating_label = rating_item.widget() if rating_item is not None else None
+            if isinstance(rating_label, QLabel):
+                rating_label.setStyleSheet(
+                    sk.muted_css(11)
+                    + f" QLabel {{ min-width: {sk.px(65)}px; }}")
 
     @staticmethod
     def _detect_reduce_motion() -> bool:
@@ -470,6 +487,14 @@ class InfoPanel(PanelContent):
         self._browse_btn.setToolTip(tr("info.browse_tags_tooltip"))
         self._notes.setPlaceholderText(tr("info.notes_placeholder"))
         self._preview.setToolTip(tr("info.preview_dbl_click"))
+        if hasattr(self, "_rating_row"):
+            rating_layout = self._rating_row.layout()
+            rating_item = rating_layout.itemAt(0) if rating_layout is not None else None
+            rating_label = rating_item.widget() if rating_item is not None else None
+            if isinstance(rating_label, QLabel):
+                cast(QLabel, rating_label).setText(tr("info.rating"))
+            for i, btn in enumerate(self._rating_stars, start=1):
+                btn.setAccessibleName(tr("info.rating_star").format(n=i))
         self._open_btn.setText(tr("info.open"))
         self._open_btn.setAccessibleName(tr("info.open"))
         self._open_btn.setToolTip(tr("info.open_tooltip"))
@@ -570,6 +595,73 @@ class InfoPanel(PanelContent):
                                     + f" QLabel {{ min-width: {sk.px(65)}px; }}")
                             else:
                                 qlabel.setStyleSheet(sk.label_css("body", size=12))
+
+    def _make_rating_row(self) -> QWidget:
+        """Build the star-rating row: muted label + 5 clickable stars."""
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        row = QWidget()
+        row.setStyleSheet("background: transparent;")
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 1, 0, 1)
+        layout.setSpacing(scaled_px(2))
+        lbl = QLabel(tr("info.rating"))
+        lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        lbl.setStyleSheet(
+            sk.muted_css(11)
+            + f" QLabel {{ min-width: {sk.px(65)}px; }}")
+        layout.addWidget(lbl)
+        self._rating_stars: list[QPushButton] = []
+        for i in range(1, 6):
+            star_btn = QPushButton()
+            star_btn.setFixedSize(scaled_px(20), scaled_px(20))
+            star_btn.setFlat(True)
+            star_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            star_btn.setAccessibleName(tr("info.rating_star").format(n=i))
+            star_btn.clicked.connect(
+                lambda _checked=False, n=i: self._on_star_clicked(n))
+            layout.addWidget(star_btn)
+            self._rating_stars.append(star_btn)
+        # -1 forces the first _set_rating render even for the unrated (0) state.
+        self._rating_value = -1
+        layout.addStretch()
+        return row
+
+    def _set_rating(self, rating: int | None, *, force: bool = False) -> None:
+        """Render the current rating; None/0 shows all stars muted.
+
+        ``force`` re-renders even when the value is unchanged — needed by
+        theme/scale refreshes, where the star tint (favorite/icon_muted) and
+        icon size both depend on the active theme.
+        """
+        value = 0
+        if isinstance(rating, int) and not isinstance(rating, bool):
+            value = max(0, min(5, rating))
+        if (
+            not force
+            and value == self._rating_value
+            and hasattr(self, "_rating_row_initialized")
+        ):
+            return
+        self._rating_value = value
+        self._rating_row_initialized = True
+        star_size = scaled_px(16)
+        btn_size = scaled_px(20)
+        for i, btn in enumerate(self._rating_stars, start=1):
+            tint = "favorite" if i <= value else "icon_muted"
+            btn.setIcon(icons.icon("star", color=tint, size=star_size))
+            btn.setIconSize(QSize(star_size, star_size))
+            btn.setFixedSize(btn_size, btn_size)
+
+    def _on_star_clicked(self, n: int) -> None:
+        """Apply a rating; clicking the currently selected star clears it."""
+        if not self._current_path or not self._controller:
+            return
+        try:
+            target = None if n == self._rating_value else n
+            self._controller.set_rating(self._current_path, target)
+        except ValueError:
+            _log.warning("Rating save rejected for path outside library: %s",
+                         self._current_path)
 
     def _register_field(self, key: str, label: str, value: str = "") -> None:
         """Register a metadata field and add it to the layout."""
@@ -1306,6 +1398,15 @@ class InfoPanel(PanelContent):
             urls = self._controller.get_urls(self._current_path)
             self._set_link_field(urls[0] if urls else "")
 
+    def _on_domain_rating_changed(self, event):
+        """Handle a session-scoped rating update for the focused asset."""
+        scoped = self._scoped_services
+        if not self._current_path or not self._controller or scoped is None:
+            return
+        if (event.session_token == scoped.session.event_token
+                and self._same_path(event.file_path, self._current_path)):
+            self._set_rating(self._controller.get_rating(self._current_path))
+
     def set_scoped_services(self, services, *, runtime=None) -> None:
         """Bind library-scoped services resolved by MainWindow.
 
@@ -1495,6 +1596,7 @@ class InfoPanel(PanelContent):
         self._set_field_text(self._fields["path"], fi.absolutePath())
         self._fields["summary"].hide()
         self._set_link_field("")
+        self._set_rating(0)
         self._render_tags([])
         self._notes.blockSignals(True)
         self._notes.setPlainText("")
@@ -1585,6 +1687,9 @@ class InfoPanel(PanelContent):
         self._notes.blockSignals(True)
         self._notes.setPlainText(file_info.notes)
         self._notes.blockSignals(False)
+
+        # Rating
+        self._set_rating(file_info.rating)
 
     def _on_file_info_ready(self, request, file_info):
         """Called on main thread when async file-info load completes."""

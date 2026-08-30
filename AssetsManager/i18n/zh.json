@@ -206,6 +206,8 @@
   "info.title": "文件信息",
   "info.tags": "标签",
   "info.notes": "备注",
+  "info.rating": "评分",
+  "info.rating_star": "评分 {n}/5",
   "info.actions": "操作",
   "info.preview": "预览",
   "info.no_file_selected": "未选中文件",

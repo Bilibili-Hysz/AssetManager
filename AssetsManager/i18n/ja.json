@@ -206,6 +206,8 @@
   "info.title": "ファイル情報",
   "info.tags": "タグ",
   "info.notes": "メモ",
+  "info.rating": "評価",
+  "info.rating_star": "5段階中 {n} で評価",
   "info.actions": "操作",
   "info.preview": "プレビュー",
   "info.no_file_selected": "ファイルが選択されていません",

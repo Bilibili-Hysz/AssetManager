@@ -207,6 +207,8 @@
   "info.title": "File Info",
   "info.tags": "Tags",
   "info.notes": "Notes",
+  "info.rating": "Rating",
+  "info.rating_star": "Rate {n} out of 5",
   "info.actions": "Actions",
   "info.preview": "Preview",
   "info.no_file_selected": "No file selected",
