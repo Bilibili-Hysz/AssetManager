@@ -172,6 +172,37 @@ def test_create_backup_uses_sqlite_snapshot_and_excludes_thumbnails(opened_sessi
     assert not validation.includes_thumbnails
 
 
+def test_create_backup_excludes_derivatives_and_undo_backups_subtrees(
+    opened_session, tmp_path
+):
+    """Regenerable derivatives and transient undo staging are never library data.
+
+    Mirrors the undo_backups first-segment exclusion (53e4a65) for the media
+    derivatives tree written by MediaDerivativesRecorder.
+    """
+    bootstrap, session = opened_session
+    derivative = session.data_dir / "derivatives" / "viewer_image" / "abc.png"
+    derivative.parent.mkdir(parents=True, exist_ok=True)
+    derivative.write_bytes(b"regenerable")
+    staged = session.data_dir / "undo_backups" / "staged.txt"
+    staged.parent.mkdir(parents=True, exist_ok=True)
+    staged.write_text("transient", encoding="utf-8")
+    (session.data_dir / "favorites.json").write_text("[]", encoding="utf-8")
+    destination = tmp_path / "backups" / "library.assetbackup.zip"
+    service = bootstrap.runtime_for(session).services.export_service
+
+    result = service.create_backup(session.root, destination)
+
+    # Only the database snapshot plus favorites.json — no derivative or
+    # undo-staging members.
+    assert result.file_count == 2
+    with zipfile.ZipFile(destination) as archive:
+        names = set(archive.namelist())
+    assert names == {"manifest.json", "data/assetmanager.db", "data/favorites.json"}
+    assert not any(name.startswith("data/derivatives/") for name in names)
+    assert not any(name.startswith("data/undo_backups/") for name in names)
+
+
 def test_create_backup_can_include_thumbnails_and_rejects_live_data_destination(opened_session, tmp_path):
     bootstrap, session = opened_session
     (session.thumb_dir / "cached.webp").write_bytes(b"thumbnail")

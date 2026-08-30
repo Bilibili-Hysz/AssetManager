@@ -699,6 +699,7 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
         "columns": (
             "file_path", "notes", "cached_size", "cached_mtime",
             "cached_file_count", "urls", "cached_file_count_mtime",
+            "rating",
         ),
         "primary_key": ("file_path",),
         "unique_constraints": (),
@@ -714,6 +715,9 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
             # v35: source-directory mtime stamped alongside cached_file_count;
             # NULL marks a stale/legacy entry that must be recomputed.
             "cached_file_count_mtime": {"type": "REAL", "not_null": False},
+            # v37: user rating 0-5; NULL means "unrated" (the default state),
+            # so legacy rows keep their meaning without a backfill.
+            "rating": {"type": "INTEGER", "not_null": False},
         },
     },
     "thumbnail_cache": {
@@ -1290,6 +1294,78 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
         "primary_key": ("file_path", "tag"),
         "unique_constraints": (),
         "indexes": {"idx_plugin_derived_fields_tag": ("tag",)},
+    },
+    # v37: regenerable media derivatives ("asset résumé", distinct from the
+    # evictable thumbnail_cache). One row per (asset, kind); re-deriving the
+    # same kind overwrites the row and its file. ``file_path`` is the absolute
+    # library-asset key (file_meta style); ``rel_path`` is the stored file
+    # relative to <data_dir>/derivatives with POSIX slashes.
+    "asset_derivatives": {
+        "columns": (
+            "file_path", "kind", "rel_path", "params", "source_mtime",
+            "created_at",
+        ),
+        "primary_key": ("file_path", "kind"),
+        "unique_constraints": (),
+        "indexes": {"idx_asset_derivatives_kind": ("kind",)},
+        "column_contracts": {
+            "file_path": {"type": "TEXT", "not_null": True},
+            "kind": {"type": "TEXT", "not_null": True},
+            "rel_path": {"type": "TEXT", "not_null": True},
+            # JSON blob of generation parameters (width/height/colors, ...);
+            # NOT NULL with a DEFAULT '{}' so the column is always decodable.
+            "params": {"type": "TEXT", "not_null": True},
+            "source_mtime": {"type": "REAL", "not_null": False},
+            "created_at": {"type": "REAL", "not_null": True},
+        },
+        "checks": (
+            "kind IN ('viewer_image', 'video_poster', 'contact_sheet', "
+            "'audio_waveform', 'extracted_palette', 'sequence_manifest')",
+        ),
+    },
+    # v37: file sequences (frame stacks). The anchor is the "directory +
+    # common prefix" pair rather than a representative frame, so re-scans and
+    # first-frame renames keep hitting the same sequence row.
+    "asset_sequences": {
+        "columns": (
+            "id", "dir_path", "prefix", "extension", "frame_count", "fps",
+            "created_at",
+        ),
+        "primary_key": ("id",),
+        "unique_constraints": (("dir_path", "prefix"),),
+        "column_contracts": {
+            # INTEGER PRIMARY KEY AUTOINCREMENT reports notnull=0 in
+            # PRAGMA table_info (rowid-alias rule), like activity_log.
+            "id": {"type": "INTEGER", "not_null": False},
+            "dir_path": {"type": "TEXT", "not_null": True},
+            "prefix": {"type": "TEXT", "not_null": True},
+            "extension": {"type": "TEXT", "not_null": True},
+            "frame_count": {"type": "INTEGER", "not_null": True},
+            "fps": {"type": "INTEGER", "not_null": False},
+            "created_at": {"type": "REAL", "not_null": True},
+        },
+    },
+    # v37: ordered frames belonging to a sequence. ``file_path`` is UNIQUE so
+    # a file can only ever belong to one sequence row.
+    "asset_sequence_frames": {
+        "columns": ("sequence_id", "frame_index", "file_path", "mtime"),
+        "primary_key": ("sequence_id", "frame_index"),
+        "unique_constraints": (("file_path",),),
+        "column_contracts": {
+            "sequence_id": {"type": "INTEGER", "not_null": True},
+            "frame_index": {"type": "INTEGER", "not_null": True},
+            "file_path": {"type": "TEXT", "not_null": True},
+            "mtime": {"type": "REAL", "not_null": False},
+        },
+        "foreign_keys": (
+            {
+                "columns": ("sequence_id",),
+                "referenced_table": "asset_sequences",
+                "referenced_columns": ("id",),
+                "on_update": "NO ACTION",
+                "on_delete": "CASCADE",
+            },
+        ),
     },
     **AUTH_SHARE_SCHEMA_CONTRACT,
 }

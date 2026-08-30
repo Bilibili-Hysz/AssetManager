@@ -465,6 +465,12 @@ class ExportMixin:
                     # Transient undo-restore material (copies of deleted files
                     # staged by UndoService), never library data.
                     continue
+                if relative.parts and relative.parts[0] == "derivatives":
+                    # Regenerable media derivatives (viewer images, posters,
+                    # contact sheets, waveforms, palettes, sequence
+                    # manifests) — re-derivable from the library sources, so
+                    # they are not library data either.
+                    continue
                 # Recheck after enumeration and immediately before the caller
                 # opens the file; the caller performs one more check before open.
                 if cls._is_link_or_junction(source):

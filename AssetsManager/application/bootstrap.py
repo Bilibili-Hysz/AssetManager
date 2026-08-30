@@ -36,6 +36,7 @@ from AssetsManager.application.import_manifest_store import (
     ImportManifestStore,
 )
 from AssetsManager.application.library_service import LibraryService
+from AssetsManager.application.media.derivatives import MediaDerivativesRecorder
 from AssetsManager.application.metadata_service import MetadataService
 from AssetsManager.application.plugin_service import PluginService
 from AssetsManager.application.reconciliation_queue import ReconciliationQueue
@@ -244,6 +245,7 @@ class LibraryScopedServices:
     reconciliation_service: AssetIndexReconciliationService | None = None
     import_manifest_store: ImportManifestStore | None = None
     import_manifest_recovery: ImportManifestRecoveryService | None = None
+    media_derivatives_recorder: MediaDerivativesRecorder | None = None
 
     @property
     def lan_services(self) -> LanRuntimeServices:
@@ -593,6 +595,14 @@ class ApplicationBootstrap:
             activity_recorder = ActivityRecorder(
                 lambda: session.connection_for(session.root)
             )
+            # Regenerable media derivatives (viewer images, posters, ...)
+            # land in the library data dir and their registry rows in the
+            # library's asset_derivatives table (migration v37), also through
+            # the session connection.
+            media_derivatives_recorder = MediaDerivativesRecorder(
+                lambda: session.connection_for(session.root),
+                library_data_dir(identity),
+            )
             file_operation_service = FileOperationService(
                 session=session,
                 asset_index_service=asset_index_service,
@@ -690,6 +700,7 @@ class ApplicationBootstrap:
                 reconciliation_service=reconciliation_service,
                 import_manifest_store=import_manifest_store,
                 import_manifest_recovery=import_manifest_recovery,
+                media_derivatives_recorder=media_derivatives_recorder,
             )
 
     def _build_lan_services(

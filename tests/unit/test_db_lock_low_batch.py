@@ -58,6 +58,7 @@ _EXPECTED_HISTORY = (
     (34, "import_manifest_recovery_lease"),
     (35, "file_count_mtime_snapshot"),
     (36, "tag_source_partition"),
+    (37, "media_derivatives_and_sequences"),
 )
 
 

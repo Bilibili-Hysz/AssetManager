@@ -44,7 +44,7 @@ from AssetsManager.core.schema_defs import (
 )
 
 
-CURRENT_SCHEMA_VERSION = 36
+CURRENT_SCHEMA_VERSION = 37
 _BASELINE_SCHEMA_CONTRACT = {
     "file_tags": {
         "columns": ("file_path", "tag"),
@@ -267,6 +267,14 @@ def _versioned_schema_contract(table: str, version: int) -> SchemaObjectContract
         )
         column_contracts = dict(cast(dict[str, Any], contract.get("column_contracts", {})))
         column_contracts.pop("cached_file_count_mtime", None)
+        contract["column_contracts"] = column_contracts
+
+    if table == "file_meta" and version < 37:
+        contract["columns"] = tuple(
+            column for column in contract["columns"] if column != "rating"
+        )
+        column_contracts = dict(cast(dict[str, Any], contract.get("column_contracts", {})))
+        column_contracts.pop("rating", None)
         contract["column_contracts"] = column_contracts
 
     if table == "shop_cart_checkouts":
@@ -1076,7 +1084,10 @@ def _add_file_count_mtime_schema_v35(conn: sqlite3.Connection) -> None:
     columns = {str(row[1]) for row in conn.execute(f"PRAGMA table_info('{table}')")}
     if "cached_file_count_mtime" not in columns:
         conn.execute("ALTER TABLE file_meta ADD COLUMN cached_file_count_mtime REAL")
-    validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
+    # v37 later extended file_meta with the rating column, so validating
+    # against the current contract here would fail mid-sequence; validate the
+    # v35 boundary shape instead (same pattern as v31's step).
+    validate_schema_object(conn, table, _versioned_schema_contract(table, 35))
 
 
 def _add_tag_source_partition_v36(conn: sqlite3.Connection) -> None:
@@ -1111,6 +1122,72 @@ def _add_tag_source_partition_v36(conn: sqlite3.Connection) -> None:
         "ON plugin_derived_fields(tag)"
     )
     validate_schema_objects(conn, ("ai_asset_tags", "plugin_derived_fields"))
+
+
+def _add_media_derivatives_schema_v37(conn: sqlite3.Connection) -> None:
+    """Add the media-stack foundation: derivative registry, sequences, ratings.
+
+    ``asset_derivatives`` is the formal, re-derivable "asset résumé" (viewer
+    images, posters, contact sheets, waveforms, palettes, sequence manifests)
+    and stays deliberately separate from the evictable ``thumbnail_cache``.
+    ``asset_sequences``/``asset_sequence_frames`` register frame sequences
+    anchored by a (directory, prefix) pair so re-scans keep hitting the same
+    row. ``file_meta.rating`` is a nullable 0-5 user rating; NULL keeps the
+    unrated meaning for legacy rows without a backfill.
+
+    Every statement is idempotent (CREATE IF NOT EXISTS / PRAGMA column
+    probe), so running the step on a fresh or already-migrated database is a
+    no-op.
+    """
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS asset_derivatives ("
+        "file_path    TEXT NOT NULL, "
+        "kind         TEXT NOT NULL CHECK (kind IN ("
+        "'viewer_image', 'video_poster', 'contact_sheet', "
+        "'audio_waveform', 'extracted_palette', 'sequence_manifest'"
+        ")), "
+        "rel_path     TEXT NOT NULL, "
+        "params       TEXT NOT NULL DEFAULT '{}', "
+        "source_mtime REAL, "
+        "created_at   REAL NOT NULL, "
+        "PRIMARY KEY (file_path, kind)"
+        ")"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_asset_derivatives_kind "
+        "ON asset_derivatives(kind)"
+    )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS asset_sequences ("
+        "id          INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "dir_path    TEXT NOT NULL, "
+        "prefix      TEXT NOT NULL, "
+        "extension   TEXT NOT NULL, "
+        "frame_count INTEGER NOT NULL, "
+        "fps         INTEGER, "
+        "created_at  REAL NOT NULL, "
+        "UNIQUE (dir_path, prefix)"
+        ")"
+    )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS asset_sequence_frames ("
+        "sequence_id INTEGER NOT NULL "
+        "REFERENCES asset_sequences(id) ON DELETE CASCADE, "
+        "frame_index INTEGER NOT NULL, "
+        "file_path   TEXT NOT NULL UNIQUE, "
+        "mtime       REAL, "
+        "PRIMARY KEY (sequence_id, frame_index)"
+        ")"
+    )
+    table = "file_meta"
+    columns = {str(row[1]) for row in conn.execute(f"PRAGMA table_info('{table}')")}
+    if "rating" not in columns:
+        conn.execute("ALTER TABLE file_meta ADD COLUMN rating INTEGER")
+    validate_schema_objects(
+        conn,
+        ("asset_derivatives", "asset_sequences", "asset_sequence_frames"),
+    )
+    validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
 
 
 def _add_thumbnail_cache_lifecycle_schema_v32(conn: sqlite3.Connection) -> None:
@@ -1192,6 +1269,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(34, "import_manifest_recovery_lease", _add_import_manifest_recovery_lease_schema_v34),
     Migration(35, "file_count_mtime_snapshot", _add_file_count_mtime_schema_v35),
     Migration(36, "tag_source_partition", _add_tag_source_partition_v36),
+    Migration(37, "media_derivatives_and_sequences", _add_media_derivatives_schema_v37),
 )
 
 

@@ -159,10 +159,14 @@ def test_v34_to_v35_adds_file_count_mtime_and_invalidates_old_rows(memory_db, mo
         "SELECT cached_file_count, cached_file_count_mtime FROM file_meta "
         "WHERE file_path='/legacy'"
     ).fetchone() == (7, None)
-    # The migrated shape satisfies the current schema contract.
-    from AssetsManager.core.schema_defs import validate_schema_objects
+    # The migrated shape satisfies the v35 boundary contract (v37 later
+    # extended file_meta with the rating column, so the current contract no
+    # longer applies at this boundary).
+    from AssetsManager.core.schema_defs import validate_schema_object
 
-    validate_schema_objects(conn, ("file_meta",))
+    validate_schema_object(
+        conn, "file_meta", _db_migrations._versioned_schema_contract("file_meta", 35)
+    )
 
 
 def test_file_count_mtime_migrates_v34_database_and_is_idempotent(memory_db, monkeypatch):
@@ -1341,7 +1345,7 @@ def test_v36_creates_tag_source_partition_tables(memory_db):
     conn.executescript(database._SCHEMA)
 
     assert migrate(conn) == CURRENT_SCHEMA_VERSION
-    assert current_version(conn) == 36
+    assert current_version(conn) == CURRENT_SCHEMA_VERSION
     assert conn.execute(
         "SELECT name FROM schema_migrations WHERE version=36"
     ).fetchone() == ("tag_source_partition",)
@@ -1374,7 +1378,7 @@ def test_v35_database_with_human_tag_rows_upgrades_to_v36_untouched(memory_db, m
     )
     conn.commit()
 
-    assert db_migrations.migrate(conn) == 36
+    assert db_migrations.migrate(conn) == db_migrations.CURRENT_SCHEMA_VERSION
     # Human rows survive byte-identical; the new partitions start empty.
     assert conn.execute(
         "SELECT file_path, tag FROM file_tags"
@@ -1404,6 +1408,188 @@ def test_v36_tag_source_partition_is_idempotent(memory_db, monkeypatch):
     validate_schema_objects(conn, ("ai_asset_tags", "plugin_derived_fields"))
 
     # Full runner passes on the already-migrated database are also no-ops.
-    assert db_migrations.migrate(conn) == 36
-    assert db_migrations.migrate(conn) == 36
+    assert db_migrations.migrate(conn) == db_migrations.CURRENT_SCHEMA_VERSION
+    assert db_migrations.migrate(conn) == db_migrations.CURRENT_SCHEMA_VERSION
     validate_schema_objects(conn, ("ai_asset_tags", "plugin_derived_fields"))
+
+
+def test_v37_creates_media_derivatives_and_sequences(memory_db):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import (
+        CURRENT_SCHEMA_VERSION,
+        current_version,
+        migrate,
+    )
+    from AssetsManager.core.schema_defs import validate_schema_objects
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
+    assert current_version(conn) == 37
+    assert conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=37"
+    ).fetchone() == ("media_derivatives_and_sequences",)
+
+    # All three media tables exist and satisfy the shared contract.
+    validate_schema_objects(
+        conn,
+        ("asset_derivatives", "asset_sequences", "asset_sequence_frames"),
+    )
+    tables = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+    assert {"asset_derivatives", "asset_sequences", "asset_sequence_frames"} <= tables
+    assert {
+        row[1] for row in conn.execute("PRAGMA index_list('asset_derivatives')")
+    } >= {"idx_asset_derivatives_kind"}
+
+    # The v37 kind whitelist is enforced by the CHECK constraint.
+    conn.execute(
+        "INSERT INTO asset_derivatives (file_path, kind, rel_path, created_at) "
+        "VALUES ('/lib/a.png', 'viewer_image', 'viewer_image/abc.png', 1.0)"
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO asset_derivatives (file_path, kind, rel_path, created_at) "
+            "VALUES ('/lib/a.png', 'wallpaper', 'wallpaper/abc.png', 1.0)"
+        )
+    conn.rollback()
+
+
+def test_v37_adds_file_meta_rating_column(memory_db):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import migrate
+    from AssetsManager.core.schema_defs import SCHEMA_OBJECT_CONTRACT
+    from AssetsManager.core.schema_defs import validate_schema_object
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+
+    assert migrate(conn) == 37
+    columns = {row[1]: row for row in conn.execute("PRAGMA table_info('file_meta')")}
+    assert "rating" in columns
+    assert columns["rating"][2].upper() == "INTEGER"
+    assert not columns["rating"][3]  # nullable: NULL means "unrated"
+    validate_schema_object(
+        conn, "file_meta", SCHEMA_OBJECT_CONTRACT["file_meta"]
+    )
+
+    # 0-5 ratings write back; unrated rows keep NULL without a backfill.
+    conn.execute(
+        "INSERT INTO file_meta (file_path, rating) VALUES ('/lib/a.png', 5)"
+    )
+    conn.execute("INSERT INTO file_meta (file_path) VALUES ('/lib/b.png')")
+    conn.commit()
+    assert conn.execute(
+        "SELECT file_path, rating FROM file_meta ORDER BY file_path"
+    ).fetchall() == [("/lib/a.png", 5), ("/lib/b.png", None)]
+
+
+def test_v36_database_with_rating_candidate_rows_upgrades_to_v37_untouched(
+    memory_db, monkeypatch
+):
+    from AssetsManager.core import database, db_migrations
+    from AssetsManager.core.schema_defs import validate_schema_objects
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    original_version = db_migrations.CURRENT_SCHEMA_VERSION
+    try:
+        monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 36)
+        assert db_migrations.migrate(conn) == 36
+    finally:
+        monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", original_version)
+
+    conn.execute(
+        "INSERT INTO file_meta (file_path, notes) VALUES ('/lib/keep.png', 'n')"
+    )
+    conn.commit()
+    assert "rating" not in {
+        row[1] for row in conn.execute("PRAGMA table_info('file_meta')")
+    }
+
+    assert db_migrations.migrate(conn) == 37
+    # Pre-existing rows survive with rating NULL; the media tables start empty.
+    assert conn.execute(
+        "SELECT file_path, notes, rating FROM file_meta"
+    ).fetchall() == [("/lib/keep.png", "n", None)]
+    assert conn.execute("SELECT COUNT(*) FROM asset_derivatives").fetchone() == (0,)
+    assert conn.execute("SELECT COUNT(*) FROM asset_sequences").fetchone() == (0,)
+    assert conn.execute("SELECT COUNT(*) FROM asset_sequence_frames").fetchone() == (0,)
+    validate_schema_objects(
+        conn,
+        ("asset_derivatives", "asset_sequences", "asset_sequence_frames"),
+    )
+
+
+def test_v37_media_schema_is_idempotent(memory_db, monkeypatch):
+    from AssetsManager.core import database, db_migrations
+    from AssetsManager.core.schema_defs import validate_schema_objects
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    original_version = db_migrations.CURRENT_SCHEMA_VERSION
+    try:
+        monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 36)
+        assert db_migrations.migrate(conn) == 36
+    finally:
+        monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", original_version)
+
+    # The raw step runs twice back-to-back without changing any shape.
+    db_migrations._add_media_derivatives_schema_v37(conn)
+    db_migrations._add_media_derivatives_schema_v37(conn)
+    conn.commit()
+    validate_schema_objects(
+        conn,
+        ("asset_derivatives", "asset_sequences", "asset_sequence_frames"),
+    )
+
+    # Full runner passes on the already-migrated database are also no-ops.
+    assert db_migrations.migrate(conn) == 37
+    assert db_migrations.migrate(conn) == 37
+    validate_schema_objects(
+        conn,
+        ("asset_derivatives", "asset_sequences", "asset_sequence_frames"),
+    )
+
+
+def test_v37_sequence_frames_cascade_and_file_path_unique(memory_db):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import migrate
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    assert migrate(conn) == 37
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute(
+        "INSERT INTO asset_sequences (dir_path, prefix, extension, frame_count, fps, "
+        "created_at) VALUES ('/lib/frames', 'shot_', '.png', 2, 24, 1.0)"
+    )
+    sequence_id = conn.execute("SELECT id FROM asset_sequences").fetchone()[0]
+    conn.executemany(
+        "INSERT INTO asset_sequence_frames (sequence_id, frame_index, file_path, "
+        "mtime) VALUES (?, ?, ?, ?)",
+        [
+            (sequence_id, 0, "/lib/frames/shot_0001.png", 100.0),
+            (sequence_id, 1, "/lib/frames/shot_0002.png", 101.0),
+        ],
+    )
+    conn.commit()
+
+    # A frame file can belong to at most one sequence (file_path UNIQUE).
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO asset_sequence_frames (sequence_id, frame_index, "
+            "file_path) VALUES (?, 0, ?)",
+            (sequence_id + 1, "/lib/frames/shot_0001.png"),
+        )
+    conn.rollback()
+
+    # Deleting the sequence cascades to its frames.
+    conn.execute("DELETE FROM asset_sequences WHERE id=?", (sequence_id,))
+    conn.commit()
+    assert conn.execute("SELECT COUNT(*) FROM asset_sequence_frames").fetchone() == (0,)
