@@ -50,6 +50,32 @@ class UndoEntry:
     # the original order.  A batch itself carries no callback/backup — the
     # children own their backups and callbacks.
     children: tuple["UndoEntry", ...] = ()
+    # Wall-clock time the entry was pushed onto the undo stack (stamped by
+    # _push_undo; display-only for the history panel, never consulted by the
+    # LIFO semantics). 0.0 for entries not (yet) on a stack.
+    recorded_at: float = 0.0
+
+
+@dataclass(frozen=True)
+class UndoHistoryItem:
+    """Read-only view of one undo-history entry for the history panel.
+
+    A flattened snapshot item — deliberately not an :class:`UndoEntry`: no
+    callbacks, no backup paths, so the UI can never poke at execution
+    machinery. ``origin`` is the stack the entry currently sits on ("undo" or
+    "redo"); ``recorded_at`` is the wall-clock push time (0.0 when unknown).
+    """
+    entry_type: str
+    target: str
+    recorded_at: float
+    degraded: bool
+    failed: bool
+    is_batch: bool
+    child_count: int
+    # True when the entry (or any batch child) carries a delete backup —
+    # exactly the rows the panel shows the 90-day retention hint for.
+    has_backup: bool
+    origin: str
 
 
 class UndoService:
@@ -568,6 +594,64 @@ class UndoService:
         with self._lock:
             return self._redo_stack[-1] if self._redo_stack else None
 
+    @staticmethod
+    def _entry_target(entry: UndoEntry) -> str:
+        """Render the entry's raw target text for the history panel.
+
+        Language-neutral on purpose: the panel owns the translated type
+        labels; this only carries the paths. Batch entries carry no target of
+        their own (the panel renders the translated child count from
+        ``child_count``).
+        """
+        if entry.type == "rename":
+            return f"{entry.old} -> {entry.new}"
+        if entry.type == "delete":
+            return entry.path
+        if entry.type == "batch":
+            return ""
+        return entry.path or ""
+
+    def _history_item(self, entry: UndoEntry, origin: str) -> UndoHistoryItem:
+        """Flatten one live entry into its read-only panel view.
+
+        Runs under ``self._lock`` so the id-keyed degraded/failed annotations
+        cannot race an in-flight execution.
+        """
+        return UndoHistoryItem(
+            entry_type=entry.type,
+            target=self._entry_target(entry),
+            recorded_at=entry.recorded_at,
+            degraded=bool(entry.degraded) or id(entry) in self._degraded_entries,
+            failed=id(entry) in self._failed_entries,
+            is_batch=entry.type == "batch",
+            child_count=len(entry.children),
+            has_backup=bool(entry.backup) or any(
+                bool(child.backup) for child in entry.children
+            ),
+            origin=origin,
+        )
+
+    @session_operation
+    def history_snapshot(self) -> list[UndoHistoryItem]:
+        """Read-only snapshot of the current session's undo/redo history.
+
+        Returns the flattened history newest-first: the undo stack's top entry
+        first, then the deeper undo entries, then the redo stack (newest
+        first). Batch entries carry their child count; callbacks and backup
+        locations are deliberately not exposed. A moment-in-time copy — the
+        live stacks keep changing underneath.
+        """
+        with self._lock:
+            undo_items = [
+                self._history_item(entry, "undo")
+                for entry in reversed(self._undo_stack)
+            ]
+            redo_items = [
+                self._history_item(entry, "redo")
+                for entry in reversed(self._redo_stack)
+            ]
+        return undo_items + redo_items
+
     @session_operation
     def undo(self) -> UndoEntry | None:
         """Pop the last undo entry and push it to redo. Returns the entry to execute."""
@@ -885,7 +969,10 @@ class UndoService:
             if len(undo) >= self._max_depth:
                 old = undo[0]
                 self._clean_entry_storage(old)
-            undo.append(entry)
+            # Stamp the display-only push time; the copy keeps every field
+            # (callbacks, backups, children) so execution semantics are
+            # untouched.
+            undo.append(replace(entry, recorded_at=time()))
             for redo_entry in redo:
                 self._clean_entry_storage(redo_entry)
             redo.clear()

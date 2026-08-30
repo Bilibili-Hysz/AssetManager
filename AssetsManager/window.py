@@ -484,6 +484,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
         tools_menu.addSeparator()
         self._menu_act_shortcuts = tools_menu.addAction(tr("menu.keyboard_shortcuts"), self._show_shortcuts)
 
+        # Safety-net panels (H1-b): session undo history + activity log.
+        tools_menu.addSeparator()
+        self._menu_act_undo_history = tools_menu.addAction(
+            tr("menu.undo_history"), self._open_undo_history)
+
         # Wire the window-level shortcuts through the shared registry so the
         # help dialog (generated from that registry) matches reality.
         self._register_window_shortcuts()
@@ -911,6 +916,19 @@ class MainWindow(LanSharingMixin, QMainWindow):
     def _open_plugin_manager(self):
         from AssetsManager.dialogs.plugin_manager_dialog import PluginManagerDialog
         dlg = PluginManagerDialog(self)
+        dlg.exec()
+
+    def _open_undo_history(self):
+        from PySide6.QtWidgets import QMessageBox
+
+        from AssetsManager.dialogs.undo_panel import UndoPanelDialog
+
+        session = getattr(self, "_library_session", None)
+        if session is None:
+            QMessageBox.information(
+                self, tr("menu.undo_history"), tr("undo_panel.no_library"))
+            return
+        dlg = UndoPanelDialog(self._bootstrap.runtime_for(session), parent=self)
         dlg.exec()
 
     def _show_shortcuts(self):
