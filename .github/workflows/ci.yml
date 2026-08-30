@@ -212,6 +212,22 @@ jobs:
           tests/integration/test_undo_service.py
           -k "library_lock or path_guard or lan_server or share_manager or directory_owned_by_live_process or directory_owner_marker or windows_directory_for_missing_process"
 
+  media-decoders:
+    name: Media Decoders (optional extras lane)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # rawpy wheels can lag a Python release; decoder tests tolerate absence.
+      - name: Install dependencies and media decoder extras
+        run: |
+          pip install -r requirements-lan.txt -r requirements-dev.txt psd-tools
+          pip install rawpy || true
+      - name: Decoder registry, consumer, and LAN route tests
+        run: python -m pytest -q --tb=short tests/unit/test_media_decoders.py tests/integration/test_media_decoder_consumers.py tests/lan/test_media_decoder_routes.py
+
   python-browser-e2e:
     name: Python LAN Browser E2E
     runs-on: windows-latest

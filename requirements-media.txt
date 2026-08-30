@@ -1,0 +1,14 @@
+# AssetManager — optional media decoder extras (port batch N-B)
+#
+# These are NOT installed by the core requirements.txt: RAW and PSD decoding
+# are value-adds for professional formats, and a core install stays light.
+# Missing packages degrade gracefully — the decoder registry
+# (AssetsManager/application/media/decoders.py) simply routes nothing, and
+# thumbnails/viewers/LAN fall back to the existing Pillow/icon behavior.
+#
+#   pip install -r requirements-media.txt
+#
+# Upper bounds are semantic-version guards (same policy as requirements.txt):
+# exclude known-bad future majors while staying broad for ordinary installs.
+rawpy>=0.24,<1
+psd-tools>=1.9,<2
