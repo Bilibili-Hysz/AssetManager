@@ -74,8 +74,6 @@
       "welcome_msg": "",
       "footer_text": "",
       "feature_flags": {
-        "commerce": false,
-        "seller": false,
         "quota": false
       },
       "library_stats": {
@@ -206,8 +204,6 @@
       "welcome_msg": "",
       "footer_text": "",
       "feature_flags": {
-        "commerce": false,
-        "seller": false,
         "quota": false
       },
       "library_stats": {

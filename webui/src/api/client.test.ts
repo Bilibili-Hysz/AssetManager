@@ -260,7 +260,7 @@ describe('ApiClient blob download progress', () => {
       'http://localhost:3000/library/api/download/batch',
       expect.objectContaining({
         method: 'GET',
-        headers: { 'Idempotency-Key': 'delivery-attempt-1' },
+        headers: { 'Idempotency-Key': 'download-attempt-1' },
         credentials: 'same-origin',
       }),
     );
