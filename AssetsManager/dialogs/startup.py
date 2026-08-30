@@ -13,7 +13,7 @@ from PySide6.QtCore import QObject, Qt, Signal, QSize
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFileDialog, QFrame, QWidget, QScrollArea, QSizePolicy,
-    QMenuBar, QMainWindow,
+    QMenuBar, QMainWindow, QMessageBox,
 )
 from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
@@ -334,6 +334,83 @@ class _LibraryCard(QFrame):
             self.clicked.emit(self._path)
 
 
+# ── First-run action card (empty recent-list state) ─────────────
+
+class _FirstRunCard(QFrame):
+    """Equal-weight action card for the first-run empty state (G7).
+
+    Two of these (new library / open existing) replace the bare card list
+    when there is no history, so a new user never faces a lone Browse
+    button. Styling mirrors _LibraryCard: theme tokens only, no literals.
+    """
+
+    activated = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("firstRunCard")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Keyboard a11y: same tab-stop contract as _LibraryCard.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+        self.setMinimumHeight(scaled_px(120))
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(scaled_px(16), scaled_px(14), scaled_px(16), scaled_px(14))
+        layout.setSpacing(scaled_px(6))
+
+        self._title_label = QLabel()
+        self._subtitle_label = QLabel()
+        self._subtitle_label.setWordWrap(True)
+        layout.addWidget(self._title_label)
+        layout.addWidget(self._subtitle_label)
+        layout.addStretch()
+
+        self._apply_style()
+
+    def retranslate(self, title: str, subtitle: str) -> None:
+        self._title_label.setText(title)
+        self._subtitle_label.setText(subtitle)
+        self.setAccessibleName(title)
+        self.setToolTip(subtitle)
+
+    def _apply_style(self):
+        t = themes.get()
+        radius_md = scaled_px(int(themes.prop("border_radius", "md")))
+        hover_bg = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
+        focus_border = t.get("border_focus", t["accent"])
+        self.setStyleSheet(
+            f"#firstRunCard {{"
+            f"  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+            f"    stop:0 {t['panel']}, stop:1 {t['base']}); "
+            f"  border: {scaled_px(1)}px solid {t['border_subtle']}; "
+            f"  border-radius: {radius_md}px; "
+            f"}}"
+            f"#firstRunCard:hover {{"
+            f"  background: {hover_bg}; "
+            f"}}"
+            f"#firstRunCard:focus {{"
+            f"  border: {scaled_px(1)}px solid {focus_border}; "
+            f"}}")
+        self._title_label.setStyleSheet(
+            f"font-size: {_font('lg')}px; font-weight: bold; color: {t['heading']}; "
+            f"background: transparent; border: none;")
+        self._subtitle_label.setStyleSheet(
+            f"font-size: {_font('sm')}px; color: {t['muted']}; "
+            f"background: transparent; border: none;")
+
+    def mousePressEvent(self, event):
+        self.activated.emit()
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            self.activated.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+
 # ── Main window ────────────────────────────────────────────────
 
 class StartupWindow(QMainWindow):
@@ -373,6 +450,9 @@ class StartupWindow(QMainWindow):
         # Keyboard a11y: put focus on the card list as soon as the window is
         # shown, unless something else already holds focus in this window.
         if not self._cards:
+            # First run: land keyboard focus on the new-library action card.
+            if self._empty_state.isVisible():
+                self._new_library_card.setFocus()
             return
         fw = self.focusWidget()
         if fw is not None and fw is not self:
@@ -489,6 +569,39 @@ class StartupWindow(QMainWindow):
         self._card_layout.setSpacing(scaled_px(4))
         self._card_layout.addStretch()
 
+        # First-run empty state (G7): two equal-weight action cards shown
+        # only when there is no recent-library history. Built once, toggled
+        # visible by _populate.
+        self._empty_state = QWidget()
+        self._empty_state.setStyleSheet("background: transparent;")
+        empty_layout = QVBoxLayout(self._empty_state)
+        empty_layout.setContentsMargins(0, 0, 0, 0)
+        empty_layout.setSpacing(scaled_px(10))
+
+        self._first_run_header = QLabel(tr("startup.first_run_header"))
+        self._first_run_header.setStyleSheet(
+            f"font-size: {_font('xxs')}px; font-weight: bold; color: {t['muted']}; "
+            f"letter-spacing: {scaled_px(1)}px; padding: 0; "
+            f"background: transparent; border: none;")
+        empty_layout.addWidget(self._first_run_header)
+
+        cards_row = QHBoxLayout()
+        cards_row.setSpacing(scaled_px(12))
+        self._new_library_card = _FirstRunCard()
+        self._new_library_card.retranslate(
+            tr("startup.new_library_title"), tr("startup.new_library_sub"))
+        self._new_library_card.activated.connect(self._create_new_library)
+        self._open_existing_card = _FirstRunCard()
+        self._open_existing_card.retranslate(
+            tr("startup.open_existing_title"), tr("startup.open_existing_sub"))
+        self._open_existing_card.activated.connect(self._browse)
+        cards_row.addWidget(self._new_library_card, 1)
+        cards_row.addWidget(self._open_existing_card, 1)
+        empty_layout.addLayout(cards_row)
+
+        self._card_layout.insertWidget(0, self._empty_state)
+        self._empty_state.hide()
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -539,6 +652,11 @@ class StartupWindow(QMainWindow):
         self._detail._open_btn.setText(tr("startup.open_btn"))
         self._detail._remove_btn.setText(tr("startup.remove_btn"))
         self._browse_btn.setText(tr("startup.browse_btn"))
+        self._first_run_header.setText(tr("startup.first_run_header"))
+        self._new_library_card.retranslate(
+            tr("startup.new_library_title"), tr("startup.new_library_sub"))
+        self._open_existing_card.retranslate(
+            tr("startup.open_existing_title"), tr("startup.open_existing_sub"))
         self._detail._refresh_button_icons()
         self._browse_btn.setIcon(icons.icon("folder", color="icon_secondary", size=scaled_px(15)))
         self._browse_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
@@ -586,6 +704,10 @@ class StartupWindow(QMainWindow):
             self._card_layout.removeWidget(self._truncation_indicator)
             self._truncation_indicator.deleteLater()
             self._truncation_indicator = None
+
+        # First-run guidance is exactly the no-history state; with history
+        # the classic recent-cards layout takes over unchanged.
+        self._empty_state.setVisible(not paths)
 
         if not paths:
             self._hero_count.setText(tr("startup.hero_empty"))
@@ -647,6 +769,35 @@ class StartupWindow(QMainWindow):
             self.library_opened.emit(path)
             self.close()
 
+    def _create_new_library(self):
+        """First-run flow: pick (or create) a folder as a new library root.
+
+        getExistingDirectory already offers a "make new folder" action; when
+        the chosen folder is not empty, confirm first — existing files will
+        be indexed once it becomes the library root.
+        """
+        path = QFileDialog.getExistingDirectory(
+            self, tr("startup.new_library_dialog_title"), str(Path.home()))
+        if not path:
+            return
+        try:
+            non_empty = any(Path(path).iterdir())
+        except OSError:
+            non_empty = True  # cannot verify emptiness — ask before adopting
+        if non_empty:
+            answer = QMessageBox.question(
+                self,
+                tr("startup.new_library_confirm_title"),
+                tr("startup.new_library_confirm_body"),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        self._save_recent(path)
+        self.library_opened.emit(path)
+        self.close()
+
     def _remove_selected(self, path_str: str):
         self._settings.remove_from_list("recent_libraries", path_str)
         self._settings.save()
@@ -692,6 +843,14 @@ class StartupWindow(QMainWindow):
         self._detail.refresh_theme()
         refresh_elevation(self._detail, level=1)
         refresh_elevation(self._list_panel, level=1)
+
+        # First-run empty state
+        self._first_run_header.setStyleSheet(
+            f"font-size: {_font('xxs')}px; font-weight: bold; color: {t['muted']}; "
+            f"letter-spacing: {scaled_px(1)}px; padding: 0; "
+            f"background: transparent; border: none;")
+        self._new_library_card._apply_style()
+        self._open_existing_card._apply_style()
         self._browse_btn.setIcon(icons.icon("folder", color="icon_secondary", size=scaled_px(15)))
         self._browse_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
 

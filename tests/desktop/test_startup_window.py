@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from AssetsManager.dialogs.startup import StartupWindow, _LibraryCard
 
@@ -157,3 +157,148 @@ def test_startup_card_enter_and_space_open_library(monkeypatch, tmp_path):
                 window.close()
                 window.deleteLater()
                 app.processEvents()
+
+
+class _QuestionStub:
+    """QMessageBox replacement recording question() and returning an answer."""
+
+    StandardButton = QMessageBox.StandardButton
+
+    def __init__(self):
+        self.calls = []
+        self.answer = QMessageBox.StandardButton.Yes
+
+    def question(self, parent, title, body, buttons=None, default=None):
+        self.calls.append((title, body))
+        return self.answer
+
+
+def test_startup_first_run_shows_new_and_open_cards(monkeypatch, tmp_path):
+    """No recent libraries: two equal-weight action cards, no library cards."""
+    app = QApplication.instance() or QApplication([])
+    window = _make_startup_window(monkeypatch, [])
+    window.show()
+    app.processEvents()
+    try:
+        assert window._cards == []
+        assert window._empty_state.isVisible()
+        assert window._new_library_card.isVisible()
+        assert window._open_existing_card.isVisible()
+        # Keyboard focus lands on the new-library card after show().
+        assert window.focusWidget() is window._new_library_card
+    finally:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            window.close()
+            window.deleteLater()
+            app.processEvents()
+
+
+def test_startup_with_recent_libraries_keeps_old_layout(monkeypatch, tmp_path):
+    """With history the classic recent-card layout is unchanged and the
+    first-run empty state stays hidden."""
+    app = QApplication.instance() or QApplication([])
+    lib = tmp_path / "existing-lib"
+    lib.mkdir()
+    window = _make_startup_window(monkeypatch, [str(lib)])
+    window.show()
+    app.processEvents()
+    try:
+        assert len(window._cards) == 1
+        assert not window._empty_state.isVisible()
+    finally:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            window.close()
+            window.deleteLater()
+            app.processEvents()
+
+
+def test_startup_new_library_empty_folder_emits_opened(monkeypatch, tmp_path):
+    """First-run new-library card: empty folder is adopted without prompt."""
+    app = QApplication.instance() or QApplication([])
+    fresh = tmp_path / "fresh-library"
+    fresh.mkdir()
+    monkeypatch.setattr(
+        "AssetsManager.dialogs.startup.QFileDialog.getExistingDirectory",
+        staticmethod(lambda *args, **kwargs: str(fresh)),
+    )
+    opened = []
+    window = _make_startup_window(monkeypatch, [])
+    window.library_opened.connect(opened.append)
+    try:
+        window._new_library_card.activated.emit()
+        app.processEvents()
+        assert opened == [str(fresh)]
+        assert window._settings._paths == [str(fresh)]
+        # Window closes after adopting the folder.
+        assert not window.isVisible()
+    finally:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            window.close()
+            window.deleteLater()
+            app.processEvents()
+
+
+def test_startup_new_library_non_empty_folder_asks_confirmation(
+    monkeypatch, tmp_path
+):
+    """Non-empty folder: No aborts, Yes adopts and emits library_opened."""
+    app = QApplication.instance() or QApplication([])
+    existing = tmp_path / "stuffed-library"
+    existing.mkdir()
+    (existing / "asset.png").write_bytes(b"x")
+    monkeypatch.setattr(
+        "AssetsManager.dialogs.startup.QFileDialog.getExistingDirectory",
+        staticmethod(lambda *args, **kwargs: str(existing)),
+    )
+    stub = _QuestionStub()
+    monkeypatch.setattr(
+        "AssetsManager.dialogs.startup.QMessageBox", stub)
+
+    opened = []
+    window = _make_startup_window(monkeypatch, [])
+    window.library_opened.connect(opened.append)
+    try:
+        stub.answer = QMessageBox.StandardButton.No
+        window._new_library_card.activated.emit()
+        app.processEvents()
+        assert opened == []
+        assert window._settings._paths == []
+        assert len(stub.calls) == 1
+
+        stub.answer = QMessageBox.StandardButton.Yes
+        window._new_library_card.activated.emit()
+        app.processEvents()
+        assert opened == [str(existing)]
+        assert window._settings._paths == [str(existing)]
+    finally:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            window.close()
+            window.deleteLater()
+            app.processEvents()
+
+
+def test_startup_new_library_cancelled_dialog_is_noop(monkeypatch, tmp_path):
+    """Cancelling the folder dialog must not touch history or emit."""
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(
+        "AssetsManager.dialogs.startup.QFileDialog.getExistingDirectory",
+        staticmethod(lambda *args, **kwargs: ""),
+    )
+    opened = []
+    window = _make_startup_window(monkeypatch, [])
+    window.library_opened.connect(opened.append)
+    try:
+        window._new_library_card.activated.emit()
+        app.processEvents()
+        assert opened == []
+        assert window._settings._paths == []
+    finally:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            window.close()
+            window.deleteLater()
+            app.processEvents()

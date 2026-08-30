@@ -884,5 +884,13 @@
   "about.title": "AssetManager について",
   "about.heading": "AssetManager {version}",
   "about.environment": "Python {python} / Qt {qt}",
-  "about.tagline": "ローカルファーストのアセットライブラリ。整理・タグ付け・共有を一元化します。"
+  "about.tagline": "ローカルファーストのアセットライブラリ。整理・タグ付け・共有を一元化します。",
+  "startup.first_run_header": "はじめに",
+  "startup.new_library_title": "新規ライブラリ",
+  "startup.new_library_sub": "フォルダを選択（または作成）すると、そのフォルダがアセットライブラリのルートになります。",
+  "startup.open_existing_title": "既存のライブラリを開く",
+  "startup.open_existing_sub": "既に AssetManager のライブラリであるフォルダを選択してください。",
+  "startup.new_library_dialog_title": "新規ライブラリのルートフォルダを選択",
+  "startup.new_library_confirm_title": "フォルダが空ではありません",
+  "startup.new_library_confirm_body": "選択されたフォルダにはファイルが存在します。このフォルダをライブラリのルートとし、既存ファイルを索引化します。続行しますか？"
 }

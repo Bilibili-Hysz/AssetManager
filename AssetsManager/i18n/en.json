@@ -884,5 +884,13 @@
   "about.title": "About AssetManager",
   "about.heading": "AssetManager {version}",
   "about.environment": "Python {python} / Qt {qt}",
-  "about.tagline": "A local-first asset library for organizing, tagging and sharing your creative files."
+  "about.tagline": "A local-first asset library for organizing, tagging and sharing your creative files.",
+  "startup.first_run_header": "Get started",
+  "startup.new_library_title": "New Library",
+  "startup.new_library_sub": "Pick a folder (or create one) and it becomes your asset library root.",
+  "startup.open_existing_title": "Open Existing Library",
+  "startup.open_existing_sub": "Choose a folder that is already an AssetManager library.",
+  "startup.new_library_dialog_title": "Choose the Root Folder for Your New Library",
+  "startup.new_library_confirm_title": "Folder Is Not Empty",
+  "startup.new_library_confirm_body": "The selected folder contains files. It will become the asset library root and existing files will be indexed. Continue?"
 }
