@@ -65,4 +65,5 @@ def test_generated_contains_expected_interfaces_and_fields() -> None:
     assert "user_profile?: UserResponse;" in text
     assert "export interface InvalidationEvent extends RuntimeCursor" in text
     assert "export type ProjectionDomain =" in text
-    assert "'quota';" in text
+    assert "'quota'" in text
+    assert "'collections';" in text  # last enum member terminates the union

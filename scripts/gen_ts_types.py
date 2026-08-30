@@ -61,6 +61,12 @@ CLASS_NAME_MAP: dict[str, str] = {
     "StatsResponse": "StatsResponse",
     "RuntimeCursorResponse": "RuntimeCursor",
     "ProjectionInvalidationResponse": "InvalidationEvent",
+    "CollectionResponse": "Collection",
+    "CollectionsResponse": "CollectionsResponse",
+    "CollectionMemberResponse": "CollectionMember",
+    "CollectionMembersResponse": "CollectionMembersResponse",
+    "CollectionEvaluateResultResponse": "CollectionEvaluateResult",
+    "CollectionEvaluateResponse": "CollectionEvaluateResponse",
 }
 
 # (class, field) -> literal-union type string.  Narrows a ``str`` field that
@@ -72,6 +78,7 @@ LITERAL_OVERRIDE: dict[tuple[str, str], str] = {
     ("SessionPrincipalResponse", "role"): "'admin' | 'user' | 'guest'",
     ("UserResponse", "role"): "'admin' | 'user'",
     ("TreeItemResponse", "type"): "'dir'",
+    ("CollectionResponse", "kind"): "'manual' | 'smart'",
 }
 
 # (class, field) -> rewritten TS type string.  An optional marker is encoded
@@ -150,6 +157,14 @@ class _TypeRenderer:
         if isinstance(node, ast.Subscript):
             base = _base_name(node.value)
             if base in ("tuple", "list", "set"):
+                if (
+                    isinstance(node.slice, ast.Tuple)
+                    and len(node.slice.elts) == 2
+                    and isinstance(node.slice.elts[1], ast.Constant)
+                    and node.slice.elts[1].value is Ellipsis
+                ):
+                    # tuple[X, ...] -> X[]
+                    return f"{self._expand(node.slice.elts[0])}[]"
                 return f"{self._expand(node.slice)}[]"
             if base == "dict" and isinstance(node.slice, ast.Tuple) and len(node.slice.elts) == 2:
                 key = node.slice.elts[0]

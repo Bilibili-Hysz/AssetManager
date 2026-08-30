@@ -90,21 +90,21 @@ def test_slow_query_executemany_logs(caplog):
 
 def test_slow_query_reports_repository_caller(schema_db, caplog, monkeypatch):
     """A real repository query must be attributed to its own caller frame."""
-    from AssetsManager.repositories.order_repository import OrderRepository
+    from AssetsManager.repositories.collection_repository import CollectionRepository
 
     # Any statement on an in-memory DB is slower than 0.0001ms, so the
     # repository's SELECT deterministically exceeds the threshold without a
     # timing-fixture sleep.
     monkeypatch.setenv("SLOW_QUERY_THRESHOLD_MS", "0.0001")
     wrapped = slow_query_wrapper(schema_db)
-    orders = OrderRepository(wrapped)
+    collections = CollectionRepository(wrapped)
 
     with caplog.at_level(logging.WARNING, logger="AssetsManager.core.database"):
-        orders.list_orders()
+        collections.list_collections()
 
     messages = _slow_messages(caplog)
     assert messages, "expected at least one [SLOW QUERY] log"
-    assert "order_repository.py" in messages[0], messages[0]
+    assert "collection_repository.py" in messages[0], messages[0]
     assert "caller:" in messages[0], messages[0]
 
 

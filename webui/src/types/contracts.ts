@@ -17,6 +17,42 @@ export interface Capabilities {
   realtime: boolean;
 }
 
+export interface Collection {
+  id: number;
+  name: string;
+  kind: 'manual' | 'smart';
+  query: Record<string, unknown>;
+  member_count: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface CollectionEvaluateResponse {
+  results: CollectionEvaluateResult[];
+}
+
+export interface CollectionEvaluateResult {
+  path: string;
+  name: string;
+  extension: string;
+  size: number;
+  mtime: number;
+}
+
+export interface CollectionMember {
+  path: string;
+  added_at: number;
+  exists: boolean;
+}
+
+export interface CollectionMembersResponse {
+  members: CollectionMember[];
+}
+
+export interface CollectionsResponse {
+  collections: Collection[];
+}
+
 export interface InvalidationEvent extends RuntimeCursor {
   type: 'projection_invalidated';
   domains: ProjectionDomain[];
@@ -51,43 +87,6 @@ export interface Tag {
   id: number | null;
   name: string;
   count: number;
-}
-
-// ============ User collections (manual reference sets + smart views) ============
-export interface Collection {
-  id: number;
-  name: string;
-  kind: 'manual' | 'smart';
-  query: Record<string, unknown>;
-  member_count: number;
-  created_at: number;
-  updated_at: number;
-}
-
-export interface CollectionsResponse {
-  collections: Collection[];
-}
-
-export interface CollectionMember {
-  path: string;
-  added_at: number;
-  exists: boolean;
-}
-
-export interface CollectionMembersResponse {
-  members: CollectionMember[];
-}
-
-export interface CollectionEvaluateResult {
-  path: string;
-  name: string;
-  extension: string;
-  size: number;
-  mtime: number;
-}
-
-export interface CollectionEvaluateResponse {
-  results: CollectionEvaluateResult[];
 }
 
 export interface TreeItem {

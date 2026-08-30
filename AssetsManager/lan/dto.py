@@ -242,6 +242,47 @@ class CollectionResponse:
         }
 
 
+@dataclass(frozen=True)
+class CollectionsResponse:
+    """Page of user collections (wrapper for ``GET /api/collections``)."""
+
+    collections: tuple[CollectionResponse, ...]
+
+
+@dataclass(frozen=True)
+class CollectionMemberResponse:
+    """One member path of a user collection (manual reference set)."""
+
+    path: str
+    added_at: float
+    exists: bool
+
+
+@dataclass(frozen=True)
+class CollectionMembersResponse:
+    """Member listing for one collection (``GET /api/collections/{id}/members``)."""
+
+    members: tuple[CollectionMemberResponse, ...]
+
+
+@dataclass(frozen=True)
+class CollectionEvaluateResultResponse:
+    """One asset row produced by evaluating a smart collection query."""
+
+    path: str
+    name: str
+    extension: str
+    size: int
+    mtime: float
+
+
+@dataclass(frozen=True)
+class CollectionEvaluateResponse:
+    """Paged evaluation output (``GET /api/collections/{id}/evaluate``)."""
+
+    results: tuple[CollectionEvaluateResultResponse, ...]
+
+
 # Maximum nesting depth accepted when (de)serializing tree payloads.
 # ``ProjectDepthConfig`` clamps real trees to 32 levels and emits empty
 # ``children`` on the deepest nodes, so truncating at this cap never alters

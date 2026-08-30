@@ -809,11 +809,21 @@ def test_v5_does_not_commit_outer_transaction(memory_db):
     from AssetsManager.core import database
     from AssetsManager.core.db_migrations import (
         CURRENT_SCHEMA_VERSION,
+        _add_assets_index_v2,
+        _add_plugin_metadata_v4,
+        _add_tag_metadata_v3,
         _ensure_migrations_table,
     )
 
     conn = memory_db
     conn.executescript(database._SCHEMA)
+    # _SCHEMA only creates the 5 core tables; v1 is a no-op baseline and the
+    # real v2/v3/v4 migrations create assets/tag_metadata/plugin_metadata.
+    # Replay them so the "v1-v4 already applied" history below matches an
+    # actual old database (v39's FTS seed queries assets).
+    _add_assets_index_v2(conn)
+    _add_tag_metadata_v3(conn)
+    _add_plugin_metadata_v4(conn)
     _ensure_migrations_table(conn)
     conn.executemany(
         "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, 0)",
