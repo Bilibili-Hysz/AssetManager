@@ -54,7 +54,7 @@ Static gates are enforced by `scripts/check_boundaries.py` (gates 1/2/3/5), `scr
 | `LibraryExportService` | `library_export_service.py` | Metadata export, bounded backup (100k members), validation, closed-session isolated restore (reservation token + ACK) | Settings adapter/runtime | — | export/restore regression tests |
 | `LibrarySettingsAdapter` | `library_settings_adapter.py` | Qt-free boundary for integrity, maintenance, export, backup, and restore state | Settings presentation | — | adapter tests |
 | `GalleryService` / `FavoriteService` | `gallery_service.py` / `favorite_service.py` | Budget-limited gallery projection / owner-scoped favorites | — | `/api/gallery/*`, `/api/favorites` | LAN route tests |
-| Commerce stack (`ShopService`, `ShopBuyerService`, `OrderService`, `QuotaService`, `FreeDownloadQuotaService`, `SellerAuthService`, `SellerProfileService`, `StorefrontAnalyticsService`) | `shop_service.py` etc. | Catalog/cart/checkout (idempotency keys), order state machine (pending→confirmed→fulfilled/revoked), delivery tokens (fulfill/rotate-revoke), quotas, seller sessions, privacy-aggregated analytics | — | `/api/shop/*` (54 routes) | commerce tests |
+| ~~Commerce stack~~（`ShopService`/`ShopBuyerService`/`OrderService`/`SellerAuthService`/`SellerProfileService`/`StorefrontAnalyticsService`，**已按 ADR 0005 剥离**；`QuotaService`/`FreeDownloadQuotaService` 保留为访客免费下载配额） | 原 `shop_service.py` etc.（已删除） | 原商城目录/购物车/结算、订单状态机（pending→confirmed→fulfilled/revoked）、交付令牌、卖家会话与隐私聚合分析（已删除；迁移链 v8/v10-v25 与 schema 表定义按 ADR 0005 保留） | — | 原 `/api/shop/*`（54 routes，已删除） | 商城测试已删除；见 ADR 0005 |
 | `ImportService` + `ImportManifestStore` | `import_service.py` / `import_manifest_store.py` | External import batches (discover→plan→fingerprint→copy), manifest state machine (prepared/running/completed/degraded/cancelled/recovery_pending), claim/lease recovery, v2 replay idempotency | `window.py` import UI | — | import tests |
 | `FilesystemProjectionRepairService` | `filesystem_projection_repair_service.py` | Durable projection repair executor (move/delete/restore intent-vs-reality reconciliation) | FileOperationService | — | repair tests |
 | `LibraryWatcherService` | `library_watcher_service.py` | Polling library tree mtime snapshot → `FileSystemChanged(kind=external_watch)` + rescan enqueue (50k dir budget) | Runtime lifecycle adapter | — | watcher tests |
@@ -70,11 +70,11 @@ Static gates are enforced by `scripts/check_boundaries.py` (gates 1/2/3/5), `scr
 
 ## LAN Route Structure
 
-LAN API routes are split into focused modules under `AssetsManager/lan/routes/` (23 个顶层模块,140 条注册路由 = GET 85/POST 38/PUT 6/PATCH 2/DELETE 9;分类:页面 30 / Commerce 54 / 认证 14 / 核心库 42):
+LAN API routes are split into focused modules under `AssetsManager/lan/routes/` (22 个顶层模块,70 条注册路由 = GET 43/POST 18/PUT 2/PATCH 2/DELETE 5;页面 8;原 Commerce 54 条已按 ADR 0005 剥离):
 
 | Module | Routes | Application Service |
 |---|---|---|
-| `pages.py` | SPA pages: `/`, `/browse`, `/detail`, `/login`, `/gallery*`, `/storefront*`, `/store*`, `/seller*`, `/app*`, `/s/{id}` (30) | — (SPA fallback to `webui/dist`) |
+| `pages.py` | SPA pages: `/`, `/browse`, `/detail`, `/login`, `/gallery*`, `/app*`, `/s/{id}` (8; 原 `/storefront*`、`/store*`、`/seller*` 已按 ADR 0005 剥离) | — (SPA fallback to `webui/dist`) |
 | `files.py` | `/api/files`, `/api/files/summaries` | `AssetService` |
 | `metadata.py` | `/api/meta`, `/api/search`, `/api/home`, `/api/tree`, `/api/projects*`, `/api/notes` | `MetadataService`, `SearchService`, `TagService`, `ProjectService` |
 | `tags.py` | `/api/tags/*` | `TagService` |
@@ -88,8 +88,8 @@ LAN API routes are split into focused modules under `AssetsManager/lan/routes/` 
 | `shares.py` | `/api/shares/*`, `/s/{id}` | `ShareService`; principal helpers |
 | `system.py` | `/api/info`, `/api/tunnel/status`, `/api/stats`, `/api/revision` | runtime cursor / tunnel |
 | `quota.py` | `/api/quota` | `FreeDownloadQuotaService` |
-| `shop.py` | `/api/shop/*` (55 routes: catalog/cart/checkout/orders/delivery/seller) | Commerce stack (order/shop/shop_buyer/quota/seller services) |
-| `commerce_policy.py` / `seller_auth.py` / `seller_profile.py` / `storefront_analytics.py` | commerce policy / seller login / seller profile / analytics | Commerce services |
+| ~~`shop.py`~~（已按 ADR 0005 剥离） | 原 `/api/shop/*` (55 routes: catalog/cart/checkout/orders/delivery/seller，已删除) | 原 Commerce stack（order/shop/shop_buyer/quota/seller services，已删除；quota 链并入 `quota.py` 保留） |
+| ~~`commerce_policy.py` / `seller_auth.py` / `seller_profile.py` / `storefront_analytics.py`~~（已按 ADR 0005 剥离） | 原 commerce policy / seller login / seller profile / analytics（已删除） | 原 Commerce services（已删除） |
 | `websocket.py` | `/ws` | `WebSocketManager` |
 | `_helpers.py` / `_resource_urls.py` | Shared: `validate_path`, `get_auth_token`, `LanScopedServices`, `build_zip_async`, URL projection | — |
 

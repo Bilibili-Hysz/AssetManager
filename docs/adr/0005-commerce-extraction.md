@@ -134,6 +134,13 @@ storefront_analytics_service.py
 # 1. 找到剥离提交的前一个 commit
 git log --oneline --diff-filter=D -- "webui/src/pages/StorefrontPage.tsx"
 #    记下该 commit 的父 commit 为 <BASE>
+#
+#    ⚠️ 当前仓库（2026-08-30 因 pack-e5f99c 丢失而重建）：
+#    剥离改动落在整合提交 6a49b86（"从工作树重建仓库"），其父提交
+#    bf33b7a1 即剥离前基点，树完整可读，可直接用作 <BASE>。
+#    历史早期（a0585146 的父对象）存在断链，`git log` 全历史遍历会
+#    在末尾报 fatal: cannot simplify——不影响上面的定位输出；
+#    若需脚本化，加 `--first-parent` 或直接指定 `git log HEAD~1..HEAD`。
 
 # 2. 恢复文件
 git checkout <BASE> -- webui/src/pages/          # 商城页面与测试

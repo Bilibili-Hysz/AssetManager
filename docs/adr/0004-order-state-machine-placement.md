@@ -8,6 +8,11 @@ Accepted (2026-08-28, quality-audit session). This ADR records a deliberate
 non-move: the order state machine stays next to its CAS implementation in the
 repository layer instead of moving into `domain/`.
 
+> **更新 (2026-08-30)**：Commerce/Seller 商城运行时已按
+> [`ADR 0005`](0005-commerce-extraction.md) 整体剥离。本文记录的状态机
+> 取舍随 `order_repository.py` 一并删除，不再适用于当前代码库；保留本文
+> 作为商城运行时的设计依据与剥离回溯参考。
+
 ## Context
 
 The declared architecture is `domain ← repositories ← application`, with
