@@ -15,11 +15,9 @@ class _Settings:
         return self.values.get(key, default)
 
 
-def test_info_reports_effective_commerce_and_seller_flags(monkeypatch, tmp_path):
+def test_info_reports_effective_quota_flag(monkeypatch, tmp_path):
     settings = _Settings({
         "sidebar_depth_cfg": {},
-        "lan_commerce_enabled": False,
-        "lan_seller_enabled": True,
         "lan_quota_enabled": False,
     })
     lan = SimpleNamespace(
@@ -45,19 +43,11 @@ def test_info_reports_effective_commerce_and_seller_flags(monkeypatch, tmp_path)
     info = __import__("json").loads(response.text)
     assert info["thumbnail_cache_namespace"] == "runtime-test-epoch"
     assert info["feature_flags"] == {
-        "commerce": False,
-        "seller": False,
         "quota": False,
     }
 
-    settings.values.update({"lan_commerce_enabled": True, "lan_seller_enabled": True})
+    settings.values.update({"lan_quota_enabled": True})
     response = asyncio.run(system_routes.handle_info(request))
     assert __import__("json").loads(response.text)["feature_flags"] == {
-        "commerce": True,
-        "seller": True,
-        "quota": False,
+        "quota": True,
     }
-
-    settings.values["lan_seller_enabled"] = "true"
-    response = asyncio.run(system_routes.handle_info(request))
-    assert __import__("json").loads(response.text)["feature_flags"]["seller"] is False

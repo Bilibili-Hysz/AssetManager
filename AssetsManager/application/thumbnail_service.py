@@ -28,6 +28,7 @@ from AssetsManager.core.thumbnail_key import (
     thumbnail_cache_key as _versioned_thumbnail_cache_key,
     thumbnail_source_fingerprint,
 )
+from AssetsManager.core.constants import AUDIO_EXTS
 from AssetsManager.domain.asset import IMAGE_EXTS, VIDEO_EXTS
 from AssetsManager.repositories.tag_repository import TagRepository
 from AssetsManager.application.thumbnail_cache_lifecycle import (
@@ -454,6 +455,10 @@ class ThumbnailService:
         is_original_request = max_size >= 1024
         is_image = target.suffix.lower() in IMAGE_EXTS
         is_video = target.suffix.lower() in VIDEO_EXTS
+        # Audio (port batch N-B2): the thumbnail is the generated waveform —
+        # resolvable like an image source so the WEBP cache probe above and
+        # the blur-policy lookup apply; the route renders the waveform itself.
+        is_audio = not is_image and not is_video and target.suffix.lower() in AUDIO_EXTS
         # Professional formats (RAW/PSD, port batch N-B): not Pillow-decodable,
         # but resolvable as image sources when the media decoder registry
         # routes their extension. Without the optional extras decoder_for is
@@ -496,12 +501,12 @@ class ThumbnailService:
         # This is a pre-open size check. It bounds the source before blur policy
         # lookup or decoding, but does not make a later path-based open atomic.
         source_identity = None
-        if (is_image or is_video or is_decoder_media) and target.is_file():
+        if (is_image or is_video or is_audio or is_decoder_media) and target.is_file():
             source_identity = validate_thumbnail_source(target)
 
         should_blur = self._check_blur(target, blur_tags, db_conn, library_root)
 
-        if (is_image or is_decoder_media) and target.is_file():
+        if (is_image or is_decoder_media or is_audio) and target.is_file():
             return ThumbnailResult(
                 source_path=target,
                 should_blur=should_blur,

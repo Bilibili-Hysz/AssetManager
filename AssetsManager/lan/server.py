@@ -267,6 +267,7 @@ class _LanServerImpl(LanServerLifecycleMixin):
                 share_service=share_service,
                 gallery_service=getattr(lan_runtime_services, "gallery_service", None),
                 favorite_service=getattr(lan_runtime_services, "favorite_service", None),
+                collection_service=getattr(runtime_services, "collection_service", None),
                 activity_log=ActivityLog(
                     library_root=event_library_root,
                     session_token=runtime_session_token,
@@ -1082,11 +1083,10 @@ class _LanServerImpl(LanServerLifecycleMixin):
 
     # ── Public-endpoint policy ─────────────────────────────────────
     #
-    # Storefront and seller pages are intentionally reachable before LAN
-    # authentication: the former is a public buyer surface and the latter
-    # performs its own seller-session gate.  Commerce APIs follow the same
-    # rule; buyer credentials (guest state, receipts and delivery tokens)
-    # and seller-session credentials are validated by their handlers.
+    # Public shells (/login, /browse, share pages) are intentionally
+    # reachable before LAN authentication: they render static UI and their
+    # data calls (gallery, shares, quota) keep auth and are validated by
+    # their handlers.
     #
     # The per-route auth/rate-limit policy is declared at registration time
     # in api.py and read back through route_policy.request_policy — there is
@@ -1174,7 +1174,7 @@ class _LanServerImpl(LanServerLifecycleMixin):
 
         if policy.auth == "public_optional":
             # Publicly readable, but reflect a valid credential in its
-            # normalized identity when one is supplied (/api/info, commerce).
+            # normalized identity when one is supplied (/api/info).
             if self._auth_mode == "none":
                 ensure_guest()
                 return await proceed()

@@ -770,13 +770,6 @@ def test_g3_sharing_settings_dialog_uses_tab_mixins() -> None:
         assert (SRC / "dialogs" / "sharing_settings" / name).is_file(), name
 
 
-def test_g3_shop_route_modules_stay_within_line_budget() -> None:
-    package = SRC / "lan" / "routes" / "shop"
-    for name in ("_common.py", "catalog.py", "cart.py", "orders.py", "delivery.py"):
-        source = (package / name).read_text(encoding="utf-8")
-        assert len(source.splitlines()) <= 350, name
-
-
 def test_d2_ui_state_persistence_flows_through_panel_state() -> None:
     ui_keys = ("info_panel_layout", "sidebar_depth_cfg", "dock_widths",
                "workspace_tabs", "file_list_view_state")

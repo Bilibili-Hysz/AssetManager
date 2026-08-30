@@ -40,6 +40,29 @@ def pil_image_to_qimage(image: Any) -> QImage:
     )
     return qimage.copy()
 
+
+def qimage_to_pil(image: Any) -> Image.Image | None:
+    """Convert a QImage into a PIL image that owns its pixel data.
+
+    Palette-derivation seam (N-B2): the bake path already holds a decoded
+    QImage, so the dominant-color pass reuses it instead of re-decoding the
+    source. ``Format_RGBA8888`` is byte-order-stable RGBA, and the explicit
+    bytes-per-line stride keeps rows aligned when Qt pads them.
+    """
+    if not isinstance(image, QImage) or image.isNull():
+        return None
+    rgba = image.convertToFormat(QImage.Format.Format_RGBA8888)
+    if rgba.isNull():
+        return None
+    width, height = rgba.width(), rgba.height()
+    if width < 1 or height < 1:
+        return None
+    buffer = rgba.constBits()
+    data = bytes(buffer)
+    return Image.frombytes(
+        "RGBA", (width, height), data, "raw", "RGBA", rgba.bytesPerLine(),
+    )
+
 class ExtensionCategoryLookup(dict[str, str]):
     """Live extension lookup backed by the current filter category registry."""
 

@@ -36,7 +36,7 @@ async function mockApis(page: Page, options: { authEnabled?: boolean } = {}) {
     theme_name: 'Navy',
     welcome_msg: '',
     footer_text: '',
-    feature_flags: { commerce: true, seller: true, quota: true },
+    feature_flags: { quota: true },
     library_stats: { total_projects: 0, total_size: 0, total_size_fmt: '0 B' },
     principal: {
       kind: 'guest', authenticated: false, role: 'guest', display_name: 'Guest',
@@ -64,16 +64,6 @@ async function mockApis(page: Page, options: { authEnabled?: boolean } = {}) {
   await page.route('**/api/meta/**', route => route.fulfill(json({
     path: 'asset', tags: [], notes: '', urls: [],
   })));
-  await page.route('**/api/shop/catalog**', route => route.fulfill(json({
-    items: [], page: 1, page_size: 24, total: 0,
-  })));
-  await page.route('**/api/shop/items**', route => route.fulfill(json({ items: [] })));
-  await page.route('**/api/shop/profile**', route => route.fulfill(json({ profile: { name: 'Test Shop', description: '', accepts_orders: true } })));
-  await page.route('**/api/shop/seller-profile**', route => route.fulfill(json({ profile: { name: 'Test Shop' } })));
-  await page.route('**/api/shop/stats**', route => route.fulfill(json({ stats: {} })));
-  await page.route('**/api/shop/orders**', route => route.fulfill(json({ orders: [] })));
-  await page.route('**/api/auth/seller-status', route => route.fulfill(json({ enabled: true, authenticated: true })));
-  await page.route('**/api/shop/analytics/**', route => route.fulfill(json({ ok: true })));
   // API coverage that drifted from the workspace pages (proxy would otherwise
   // hit the real LAN server at 127.0.0.1:8080 and fail the scans).
   await page.route('**/api/auth/me', route => route.fulfill(json({
@@ -87,8 +77,6 @@ async function mockApis(page: Page, options: { authEnabled?: boolean } = {}) {
   await page.route('**/api/gallery/collection**', route => route.fulfill(json({
     items: [], total: 0, page: 1, page_size: 24,
   })));
-  await page.route('**/api/shop/cart', route => route.fulfill(json({ items: [], total_cents: 0 })));
-  await page.route('**/api/shop/wishlist', route => route.fulfill(json({ items: [] })));
   await page.route('**/api/stats', route => route.fulfill(json({})));
   await page.route('**/api/tree**', route => route.fulfill(json({
     tree: [], depth_config: { global: 3, branches: {} },
@@ -102,10 +90,7 @@ const ROUTES = [
   '/gallery',
   '/gallery/collection',
   '/gallery/favorites',
-  '/storefront',
-  '/storefront/products',
   '/detail?path=asset.png',
-  '/seller/products',
 ];
 
 /** Wait for the React shell, then one bounded task-turn for lazy effects. */

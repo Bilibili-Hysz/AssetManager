@@ -147,30 +147,6 @@ def test_golden_fixture_exact_equality():
     assert StatsResponse.from_record(expected["records"]["stats"]).to_dict() == expected["responses"]["stats"]
 
 
-def test_shop_item_public_conversion_matches_golden():
-    """ShopService._public_item normalizes paths, extracts gallery images from
-    metadata, and derives status — the exact shape the frontend ShopItem mirrors."""
-    from AssetsManager.application.shop_service import ShopService
-
-    expected = json.loads(CONTRACTS.read_text(encoding="utf-8"))
-    converted = ShopService._public_item(expected["records"]["shop_item"])
-    assert converted == expected["responses"]["shop_item"]
-
-
-def test_shop_order_conversions_match_golden():
-    """OrderService buyer/seller projections: delivery_available derivation,
-    safe quantity clamping, unit price enrichment, and field allowlisting
-    (unknown record fields must never leak into the public DTO)."""
-    from AssetsManager.application.order_service import OrderService
-
-    expected = json.loads(CONTRACTS.read_text(encoding="utf-8"))
-    buyer = OrderService._buyer_history_order(expected["records"]["shop_buyer_order"])
-    assert buyer == expected["responses"]["shop_buyer_order"]
-    seller = OrderService._seller_order(expected["records"]["shop_seller_order"])
-    assert seller == expected["responses"]["shop_seller_order"]
-    assert "dropped_secret" not in seller
-
-
 def test_share_link_public_dict_matches_golden(monkeypatch):
     """ShareLink.to_public_dict strips sensitive fields and derives the expiry
     pair (expired/expires_in_hours) from a frozen clock."""
@@ -308,7 +284,7 @@ async def test_info_route_exposes_serverinfo_shape(tmp_path):
         assert set(payload["library_stats"].keys()) == {
             "total_projects", "total_size", "total_size_fmt",
         }
-        assert set(payload["feature_flags"].keys()) == {"commerce", "seller", "quota"}
+        assert set(payload["feature_flags"].keys()) == {"quota"}
         assert payload["principal"]["kind"] == "guest"
         assert payload["principal"]["authenticated"] is False
     finally:
@@ -339,7 +315,7 @@ async def test_info_theme_name_fails_open_to_empty_string(tmp_path, monkeypatch)
     assert payload["theme_name"] == ""
     # The rest of the envelope is unaffected by the failure.
     assert isinstance(payload["theme_color"], str)
-    assert set(payload["feature_flags"].keys()) == {"commerce", "seller", "quota"}
+    assert set(payload["feature_flags"].keys()) == {"quota"}
 
 
 @pytest.mark.anyio

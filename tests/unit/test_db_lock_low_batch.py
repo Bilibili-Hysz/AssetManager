@@ -59,6 +59,8 @@ _EXPECTED_HISTORY = (
     (35, "file_count_mtime_snapshot"),
     (36, "tag_source_partition"),
     (37, "media_derivatives_and_sequences"),
+    (38, "asset_collections"),
+    (39, "asset_search_fts"),
 )
 
 

@@ -1235,3 +1235,174 @@ def test_thumbnail_loader_failure_stale_generation_is_dropped_and_not_emitted():
 
     assert failures == []
     assert "stale.png" not in loader._failed_paths
+
+
+# ── Audio waveform thumbnails (N-B2) ────────────────────────────────
+
+
+def _analysis_recorder(memory_db, tmp_path):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import CURRENT_SCHEMA_VERSION, migrate
+    from AssetsManager.application.media.derivatives import MediaDerivativesRecorder
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
+    return MediaDerivativesRecorder(lambda: conn, tmp_path / "data_dir")
+
+
+def test_audio_waveform_defers_to_pool_records_derivative_and_delivers(
+    tmp_path, monkeypatch, memory_db
+):
+    from AssetsManager.panels.file_list._loader import (
+        _WAVEFORM_DEFERRED,
+        ffmpeg_pool,
+    )
+
+    audio = tmp_path / "tone.wav"
+    audio.write_bytes(b"captured wav body")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    recorder = _analysis_recorder(memory_db, tmp_path)
+
+    renders: list[tuple[bytes, str]] = []
+
+    def fake_render(body, suffix, out_png, **kwargs):
+        renders.append((body, suffix))
+        waveform = QImage(64, 16, QImage.Format.Format_ARGB32)
+        waveform.fill(0xFF336699)
+        assert waveform.save(str(out_png), "PNG")
+        return True
+
+    monkeypatch.setattr(
+        "AssetsManager.panels.file_list._loader.generate_waveform_from_bytes",
+        fake_render,
+    )
+
+    loader = ThumbnailLoader()
+    loader.bind_runtime(
+        Mock(), str(cache_dir), str(tmp_path), None, None,
+        derivatives_recorder=recorder,
+    )
+    runtime = loader._runtime()
+    ready = threading.Event()
+    loader.thumbnail_ready.connect(
+        lambda _row, path, _img: ready.set() if path == str(audio) else None
+    )
+
+    # Missing waveform: the render is dispatched to the dedicated pool and
+    # the load task gets the deferred marker (same contract as video).
+    assert loader._load_image(str(audio), runtime) is _WAVEFORM_DEFERRED
+    deadline = time.monotonic() + 5
+    while not ready.is_set() and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.01)
+    assert ready.is_set()
+    ffmpeg_pool.waitForDone(5000)
+
+    assert renders == [(b"captured wav body", ".wav")]
+    # The waveform PNG is registered as the audio_waveform derivative (the
+    # compute-at-most-once marker).
+    assert recorder.payload_path(str(audio), "audio_waveform") is not None
+
+
+def test_audio_waveform_load_serves_recorded_derivative_without_rerender(
+    tmp_path, monkeypatch, memory_db
+):
+    audio = tmp_path / "tone.wav"
+    audio.write_bytes(b"captured wav body")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    recorder = _analysis_recorder(memory_db, tmp_path)
+
+    waveform = QImage(64, 16, QImage.Format.Format_ARGB32)
+    waveform.fill(0xFF336699)
+    payload = tmp_path / "wave.png"
+    assert waveform.save(str(payload), "PNG")
+    recorder.record(audio, "audio_waveform", payload.read_bytes(), ext=".png")
+
+    def _must_not_run(*args, **kwargs):
+        raise AssertionError("waveform re-rendered although the row exists")
+
+    monkeypatch.setattr(
+        "AssetsManager.panels.file_list._loader.generate_waveform_from_bytes",
+        _must_not_run,
+    )
+
+    loader = ThumbnailLoader()
+    loader.bind_runtime(
+        Mock(), str(cache_dir), str(tmp_path), None, None,
+        derivatives_recorder=recorder,
+    )
+
+    img = loader._load_image(str(audio), loader._runtime())
+
+    assert img is not None and not img.isNull()
+
+
+def test_audio_waveform_failure_falls_back_to_failure_marker(
+    tmp_path, monkeypatch, memory_db
+):
+    from AssetsManager.panels.file_list._loader import (
+        _WAVEFORM_DEFERRED,
+        ffmpeg_pool,
+    )
+
+    audio = tmp_path / "tone.wav"
+    audio.write_bytes(b"captured wav body")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    recorder = _analysis_recorder(memory_db, tmp_path)
+
+    monkeypatch.setattr(
+        "AssetsManager.panels.file_list._loader.generate_waveform_from_bytes",
+        lambda body, suffix, out_png, **kwargs: False,
+    )
+
+    loader = ThumbnailLoader()
+    loader.bind_runtime(
+        Mock(), str(cache_dir), str(tmp_path), None, None,
+        derivatives_recorder=recorder,
+    )
+    runtime = loader._runtime()
+    failed = threading.Event()
+    loader.thumbnail_failed.connect(
+        lambda path: failed.set() if path == str(audio) else None
+    )
+
+    assert loader._load_image(str(audio), runtime) is _WAVEFORM_DEFERRED
+
+    deadline = time.monotonic() + 5
+    while not failed.is_set() and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.01)
+    ffmpeg_pool.waitForDone(5000)
+    assert failed.is_set()
+    assert recorder.payload_path(str(audio), "audio_waveform") is None
+
+
+def test_bake_path_records_palette_params_only_row(tmp_path, memory_db):
+    source = tmp_path / "cover.png"
+    source.write_bytes(b"irrelevant")
+    recorder = _analysis_recorder(memory_db, tmp_path)
+
+    loader = ThumbnailLoader()
+    loader.bind_runtime(
+        Mock(), str(tmp_path / "cache"), str(tmp_path), None, None,
+        derivatives_recorder=recorder,
+    )
+    runtime = loader._runtime()
+
+    palette_img = QImage(64, 64, QImage.Format.Format_RGB32)
+    palette_img.fill(0xFF0000FF)  # pure blue
+    loader._record_palette_after_bake(str(source), palette_img, runtime)
+
+    row = recorder.lookup(source, "extracted_palette")
+    assert row is not None
+    assert row.rel_path == ""  # params-only row: no payload file
+    assert row.params["dominant"] == "#0000ff"
+
+    # A second bake must not recompute: the row short-circuits the pass.
+    palette_img.fill(0xFFFF0000)  # would yield red if recomputed
+    loader._record_palette_after_bake(str(source), palette_img, runtime)
+    assert recorder.lookup(source, "extracted_palette").params["dominant"] == "#0000ff"

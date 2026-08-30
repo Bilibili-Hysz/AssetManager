@@ -187,25 +187,6 @@ def _settings_at(path, *, data=None, dirty=False):
     return settings
 
 
-def test_seller_feature_generation_changes_only_when_effective_feature_toggles_change():
-    settings = _settings_at(None, data={
-        "lan_commerce_enabled": True,
-        "lan_seller_enabled": True,
-    })
-
-    assert settings.get_seller_feature_generation() == 0
-    settings.set("lan_seller_enabled", False)
-    assert settings.get_seller_feature_generation() == 1
-    settings.set("lan_seller_enabled", False)
-    assert settings.get_seller_feature_generation() == 1
-    settings.set("lan_seller_enabled", True)
-    assert settings.get_seller_feature_generation() == 2
-    settings.set("lan_commerce_enabled", False)
-    assert settings.get_seller_feature_generation() == 3
-    settings.set("lan_commerce_enabled", True)
-    assert settings.get_seller_feature_generation() == 4
-
-
 def test_save_returns_true_and_clears_dirty_after_atomic_replace(tmp_path):
     settings = _settings_at(tmp_path / "settings.json", data={"theme": "Forest"}, dirty=True)
 

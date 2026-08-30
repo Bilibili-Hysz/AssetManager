@@ -52,6 +52,7 @@ class _FakeLan:
             AssetService, MetadataService, ProjectService, SearchService,
             TagService, ThumbnailService,
         )
+        from AssetsManager.application.collection_service import CollectionService
         from AssetsManager.application.auth_service import AuthService
         from AssetsManager.application.share_service import ShareService
         from AssetsManager.lan.routes._helpers import LanScopedServices
@@ -91,15 +92,34 @@ class _FakeLan:
         )
         with database_module._connection_locks_guard:
             database_module._connection_locks[id(db_conn)] = state
+        tag_service = TagService(session=fake_session)
+        # Migration v39 maintainer: the LAN search service reads the FTS
+        # fourth source through it and the collection service evaluates the
+        # smart-query ``fts`` dimension with it (production wires one shared
+        # instance per session in bootstrap).
+        from AssetsManager.application.search_index_service import SearchIndexService
+
+        search_index_service = SearchIndexService(lambda: db_conn)
         self.services = LanScopedServices(
             auth_service=self._auth_service,
-            metadata_service=MetadataService(session=fake_session),
+            metadata_service=MetadataService(
+                session=fake_session, search_index_service=search_index_service
+            ),
             project_service=ProjectService(connection_provider=provider),
-            tag_service=TagService(session=fake_session),
-            search_service=SearchService(connection_provider=provider),
+            tag_service=tag_service,
+            search_service=SearchService(
+                connection_provider=provider,
+                search_index_service=search_index_service,
+            ),
             thumbnail_service=ThumbnailService(connection_provider=provider),
             asset_service=AssetService(),
             share_service=self._share_service,
+            collection_service=CollectionService(
+                session=fake_session,
+                asset_index_service=_FakeIndexAdapter(db_conn),
+                tag_service=tag_service,
+                search_index_service=search_index_service,
+            ),
         )
 
     def broadcast(self, event_type, data=None):
@@ -112,6 +132,20 @@ class _FakeLan:
 
     def invalidate_user_cache(self):
         pass
+
+
+class _FakeIndexAdapter:
+    """Forwards smart evaluation to the canonical structured repository query."""
+
+    def __init__(self, conn):
+        from AssetsManager.repositories.asset_index_repository import (
+            AssetIndexRepository,
+        )
+
+        self._repo = AssetIndexRepository(conn)
+
+    def search_structured(self, library_root, **kwargs):
+        return self._repo.search_structured(str(library_root), **kwargs)
 
 
 def _init_lan_schemas(conn):
@@ -131,6 +165,20 @@ def _init_lan_schemas(conn):
         "created_at REAL DEFAULT (strftime('%s','now'))"
         ")"
     )
+    # asset_collections/asset_collection_members arrive via DB migration v38;
+    # mirror the migrated shape for the collection routes.
+    from AssetsManager.core.schema_defs import ASSET_COLLECTIONS_SCHEMA
+
+    for statement in ASSET_COLLECTIONS_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    # asset_search arrives via DB migration v39 (FTS5 virtual table); mirror
+    # the migrated shape for the search routes.
+    from AssetsManager.core.schema_defs import ASSET_SEARCH_FTS_SCHEMA
+
+    for statement in ASSET_SEARCH_FTS_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
     conn.commit()
 
 

@@ -1,6 +1,6 @@
 import contracts from '../../../tests/contracts/lan_public_contracts.json';
 import { describe, expect, it } from 'vitest';
-import type { GalleryEntry, InviteResponse, ProjectItem, ServerInfo, ShareInfoResponse, ShopBuyerOrder, ShopItem, ShopOrder, StatsResponse, Tag, TreeItem, UserResponse } from '../types/api';
+import type { GalleryEntry, InviteResponse, ProjectItem, ServerInfo, ShareInfoResponse, StatsResponse, Tag, TreeItem, UserResponse } from '../types/api';
 
 describe('LAN public DTO contracts', () => {
   it('normalizes users and invites without repository fields', () => {
@@ -62,45 +62,10 @@ describe('LAN public DTO contracts', () => {
     expect(info).not.toHaveProperty('total_collections');
     expect(info).not.toHaveProperty('total_artworks');
     expect(info.library_stats).toEqual({ total_projects: 0, total_size: 0, total_size_fmt: '0 B' });
-    expect(info.feature_flags).toEqual({ commerce: false, seller: false, quota: false });
+    expect(info.feature_flags).toEqual({ quota: false });
     // Follow-the-owner identity (A1): theme_name is part of the locked
     // envelope and must stay declared on ServerInfo for the reverse direction.
     expect(info.theme_name).toBe('Navy');
-  });
-
-  it('anchors the shop item shape to the backend _public_item golden', () => {
-    // ShopService._public_item normalizes paths, extracts gallery_paths from
-    // metadata and derives status; the golden locks that exact conversion and
-    // this anchors every emitted key on the frontend ShopItem type.
-    const item = contracts.responses.shop_item as ShopItem;
-    expect(Object.keys(item).sort()).toEqual([
-      'cover_path', 'created_at', 'currency', 'description', 'enabled',
-      'gallery_paths', 'id', 'metadata', 'path', 'price_cents', 'status',
-      'title', 'updated_at',
-    ]);
-    expect(item.gallery_paths).toEqual(['packs/a.png', 'packs/b.png']);
-    expect(item.path).toBe('packs/hero.zip');
-    expect(item.status).toBe('active');
-  });
-
-  it('anchors buyer and seller order shapes to the backend order golden', () => {
-    const buyer = contracts.responses.shop_buyer_order as ShopBuyerOrder;
-    expect(Object.keys(buyer).sort()).toEqual([
-      'amount_cents', 'created_at', 'currency', 'delivery_available',
-      'id', 'item_id', 'item_title', 'quantity', 'status',
-      'unit_price_cents', 'updated_at',
-    ]);
-    expect(buyer.delivery_available).toBe(true);
-    expect(buyer.quantity).toBe(2);
-    expect(buyer.unit_price_cents).toBe(625);
-
-    const seller = contracts.responses.shop_seller_order as ShopOrder;
-    expect(Object.keys(seller).sort()).toEqual([
-      'amount_cents', 'buyer_email', 'buyer_name', 'created_at', 'currency',
-      'id', 'item_id', 'item_path', 'item_title', 'metadata', 'status',
-      'updated_at',
-    ]);
-    expect(seller).not.toHaveProperty('dropped_secret');
   });
 
   it('anchors share info expiry semantics and the gallery entry shape', () => {

@@ -7,6 +7,8 @@ Features:
   - Fit-to-window / Actual-size shortcuts
   - Prev/Next image navigation with keyboard
   - Slideshow auto-advance (Space)
+  - Frame-sequence navigation (, / .) and playback (Ctrl+P) when the
+    opened image belongs to a detected frame sequence
   - Rotate 90° (R / Shift+R)
   - Copy to clipboard (Ctrl+C)
   - Save As (Ctrl+S)
@@ -41,6 +43,7 @@ from AssetsManager.core import icons, themes
 from AssetsManager.core.constants import IMAGE_EXTS
 from AssetsManager.application.thumbnail_service import MAX_THUMBNAIL_SOURCE_BYTES
 from AssetsManager.application.media.decoders import decoder_for
+from AssetsManager.application.sequence_service import SequenceNeighbors, find_neighbors
 from AssetsManager.core.file_snapshot import read_snapshot
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.workers import BoundedPool, CancellationToken, CancellableRunnable
@@ -61,6 +64,10 @@ MAX_DIM = 2048
 # tasks are cooperative-cancellable and size-capped at MAX_DIM, so the only
 # work left after cancellation is at most one in-flight QImageReader.read().
 _VIEWER_DRAIN_TIMEOUT_MS = 3000
+
+# Default frame rate for in-sequence playback (Ctrl+P). Sequences rarely
+# carry usable fps metadata; 12fps matches the flipbook convention.
+_SEQUENCE_FPS = 12
 
 
 class _ViewerBridge(QObject):
@@ -341,6 +348,13 @@ class ImageViewerOverlay(QFrame):
         self._slideshow_timer = QTimer(self)
         self._slideshow_timer.setInterval(3000)
         self._slideshow_timer.timeout.connect(lambda: self._nav(1))
+        # Frame-sequence playback timer (toggled with Ctrl+P). Stepping goes
+        # through the same load_image path as manual navigation; detection
+        # state lives in _sequence and is refreshed on every load_image.
+        self._sequence: SequenceNeighbors | None = None
+        self._sequence_timer = QTimer(self)
+        self._sequence_timer.setInterval(int(1000 / _SEQUENCE_FPS))
+        self._sequence_timer.timeout.connect(self._sequence_auto_step)
         self._fit_timers: list = []
         # Directory scan cache: parent dir -> (dir mtime, sorted image list).
         # Keyed by directory so paging through a folder rescans at most once
@@ -395,6 +409,9 @@ class ImageViewerOverlay(QFrame):
         self._cancel_pending_decode()
         self._library_root = str(Path(library_root).resolve()) if library_root else None
         self._current_path = path
+        self._sequence = self._detect_sequence(path)
+        if self._sequence is None:
+            self._stop_sequence_playback()
         self._build_image_list()
         self._exif = {}
         self._strip_thumbs = {}
@@ -587,6 +604,7 @@ class ImageViewerOverlay(QFrame):
             self._image_idx = 0
 
     def _nav(self, direction):
+        self._stop_sequence_playback()  # manual navigation always pauses playback
         if not self._image_list:
             return
         self._image_idx = (self._image_idx + direction) % len(self._image_list)
@@ -600,6 +618,9 @@ class ImageViewerOverlay(QFrame):
         if self._slideshow_timer.isActive():
             self._slideshow_timer.stop()
         else:
+            # The two auto-advance timers are mutually exclusive: a running
+            # sequence playback would fight the directory-wide slideshow.
+            self._stop_sequence_playback()
             self._slideshow_timer.start()
         self.update()
 
@@ -621,6 +642,77 @@ class ImageViewerOverlay(QFrame):
 
     def _slideshow_active(self) -> bool:
         return self._slideshow_timer.isActive()
+
+    # ── Frame-sequence navigation / playback ────────────────────
+
+    def _detect_sequence(self, path: str) -> SequenceNeighbors | None:
+        """Detect the frame sequence *path* belongs to (None when standalone)."""
+        source = Path(path)
+        return find_neighbors(source.parent, source.name)
+
+    def _sequence_step(self, direction: int, manual: bool = True) -> None:
+        """Move to the previous/next frame of the detected sequence.
+
+        Manual steps clamp at the sequence ends; playback ticks wrap around
+        so a playing sequence loops. Both go through load_image, so decode
+        stays on the worker pool and stale deliveries are discarded.
+        """
+        if self._sequence is None:
+            return
+        if manual:
+            self._stop_sequence_playback()
+        frames = self._sequence.frames
+        if not frames:
+            return
+        if manual:
+            target_index = self._sequence.index + direction
+            if not 0 <= target_index < len(frames):
+                return
+        else:
+            target_index = (self._sequence.index + direction) % len(frames)
+        target = frames[target_index]
+        if target != self._current_path:
+            self.load_image(target)
+            self._schedule_fit()
+
+    def _sequence_auto_step(self):
+        """Timer tick: advance one frame, looping at the sequence ends."""
+        if self._sequence is None:
+            self._stop_sequence_playback()
+            return
+        self._sequence_step(1, manual=False)
+
+    def _toggle_sequence_playback(self):
+        """Start/pause in-place playback of the detected sequence (Ctrl+P)."""
+        if self._sequence_timer.isActive():
+            self._sequence_timer.stop()
+        elif self._sequence is not None and self._sequence.count > 1:
+            self._slideshow_timer.stop()  # keep the auto-advance timers exclusive
+            self._sequence_timer.start()
+        self.update()
+
+    def _stop_sequence_playback(self):
+        if self._sequence_timer.isActive():
+            self._sequence_timer.stop()
+            self.update()
+
+    def _sequence_playing(self) -> bool:
+        return self._sequence_timer.isActive()
+
+    def _sequence_status_suffix(self) -> str:
+        """Footer suffix 'Sequence i/N' plus the playback key hint."""
+        if self._sequence is None:
+            return ""
+        label = tr(
+            "viewer.sequence_label",
+            index=self._sequence.index + 1,
+            count=self._sequence.count,
+        )
+        return f"  ·  {label}  ·  {tr('viewer.sequence_hint')}"
+
+    def _sequence_status_text(self) -> str:
+        """Full footer status text including the sequence suffix (test seam)."""
+        return tr("viewer.footer") + self._sequence_status_suffix()
 
     # ── Copy / Save ─────────────────────────────────────────────
 
@@ -817,14 +909,15 @@ class ImageViewerOverlay(QFrame):
         p.setBrush(QColor(t["panel"]))
         p.drawRect(QRect(footer.x(), footer.y(), footer.width(), 8))
 
-        # Hint text
+        # Hint text (plus the "Sequence i/N · keys" suffix while a detected
+        # frame sequence is displayed)
         f3 = QFont()
         f3.setPointSize(scaled_pt(9))
         p.setFont(f3)
         p.setPen(QColor(t["muted"]))
         p.drawText(QRect(footer.x() + 14, footer.y(), footer.width() - 30, footer.height()),
-                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
-                    tr("viewer.footer"))
+                   Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                   self._sequence_status_text())
 
         # Zoom + dimensions
         if self._pixmap:
@@ -961,6 +1054,7 @@ class ImageViewerOverlay(QFrame):
                 idx = self._strip_index_at(event.pos().x())
                 if idx >= 0 and idx != self._image_idx:
                     self._image_idx = idx
+                    self._stop_sequence_playback()
                     target = self._image_list[idx]
                     self.load_image(target)
                     self._schedule_fit()
@@ -997,6 +1091,15 @@ class ImageViewerOverlay(QFrame):
         elif k == Qt.Key.Key_Minus:
             self._view.scale(0.8, 0.8)
             self._view.zoom_changed.emit(self._view.transform().m11())
+        elif k == Qt.Key.Key_P and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self._toggle_sequence_playback()
+        elif k == Qt.Key.Key_Comma or event.text() == "，":
+            # Sequence frame navigation: previous frame (full-width comma
+            # included for CJK keyboards). Left/Right stay on their existing
+            # directory-wide navigation.
+            self._sequence_step(-1)
+        elif k == Qt.Key.Key_Period or event.text() == "。":
+            self._sequence_step(1)
         else:
             super().keyPressEvent(event)
 
@@ -1032,6 +1135,7 @@ class ImageViewerOverlay(QFrame):
             owner_label="ImageViewer decode",
         )
         self._slideshow_timer.stop()
+        self._sequence_timer.stop()
         self._cancel_fit_timers()
         if self._host_window is not None:
             try:

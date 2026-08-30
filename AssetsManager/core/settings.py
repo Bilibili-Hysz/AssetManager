@@ -19,8 +19,6 @@ SHARE_SAFETY_ACK_VERSION_KEY = "lan_share_safety_ack_version"
 TRUSTED_NETWORK_CONFIRMED_KEY = "lan_trusted_network_confirmed"
 SHARE_LAST_SUCCESSFUL_BIND_KEY = "lan_share_last_successful_bind"
 SHARE_LAST_SUCCESSFUL_AUTH_KEY = "lan_share_last_successful_auth"
-SELLER_FEATURE_GENERATION_KEY = "lan_seller_feature_generation"
-_SELLER_FEATURE_KEYS = frozenset({"lan_commerce_enabled", "lan_seller_enabled"})
 LIBRARY_WATCHER_INTERVAL_KEY = "library_watcher_interval_seconds"
 DEFAULT_LIBRARY_WATCHER_INTERVAL = 120.0
 DEFAULT_SHARE_SAFETY_ACK_VERSION = 0
@@ -53,12 +51,6 @@ def _validate_setting(key: str, value) -> None:
     if validator and not validator(value):
         raise ValueError(f"Invalid value for setting '{key}': {value!r}")
 
-
-def _seller_feature_enabled(data: dict) -> bool:
-    return (
-        data.get("lan_commerce_enabled", False) is True
-        and data.get("lan_seller_enabled", False) is True
-    )
 
 
 class AppSettings:
@@ -246,12 +238,6 @@ class AppSettings:
         with self._get_lock():
             return self._data.get(key, default)
 
-    def get_seller_feature_generation(self) -> int:
-        """Return the monotonic generation invalidating old Seller sessions."""
-        with self._get_lock():
-            value = self._data.get(SELLER_FEATURE_GENERATION_KEY, 0)
-            return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
-
     def set(self, key, value):
         with self._get_lock():
             if self.is_write_blocked:
@@ -260,13 +246,7 @@ class AppSettings:
         with self._get_lock():
             if self.is_write_blocked:
                 return
-            was_enabled = _seller_feature_enabled(self._data)
             self._data[key] = value
-            if key in _SELLER_FEATURE_KEYS and was_enabled != _seller_feature_enabled(self._data):
-                generation = self._data.get(SELLER_FEATURE_GENERATION_KEY, 0)
-                if not isinstance(generation, int) or isinstance(generation, bool) or generation < 0:
-                    generation = 0
-                self._data[SELLER_FEATURE_GENERATION_KEY] = generation + 1
             self._dirty = True
 
     def get_list(self, key, default=None):

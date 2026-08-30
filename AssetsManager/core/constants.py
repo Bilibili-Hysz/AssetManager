@@ -27,6 +27,15 @@ VIDEO_EXTS: frozenset[str] = frozenset({
     ".mp4", ".mov", ".avi", ".mkv", ".webm", ".wmv",
 })
 
+# Audio container extensions eligible for waveform thumbnail generation
+# (port batch N-B2, application/media/analysis.py). Deliberately NOT part of
+# any filter category yet — audio files keep their category/badge behavior
+# and only gain the waveform thumbnail pipeline.
+AUDIO_EXTS: frozenset[str] = frozenset({
+    ".mp3", ".wav", ".flac", ".ogg", ".oga", ".opus", ".m4a", ".aac",
+    ".wma", ".aif", ".aiff",
+})
+
 # Default accent color used for the LAN sharing page / QR theming. Kept in a
 # single place so the desktop sharing settings, the tag style picker, and the
 # LAN route fallback all agree without repeating the literal hex.

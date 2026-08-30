@@ -8,6 +8,10 @@ from time import perf_counter
 
 from aiohttp import web
 
+from AssetsManager.application.media.analysis import (
+    ensure_audio_waveform,
+    ensure_extracted_palette,
+)
 from AssetsManager.application.media.decoders import decoder_for
 from AssetsManager.application.thumbnail_service import (
     MAX_THUMBNAIL_BATCH_BYTES,
@@ -18,12 +22,14 @@ from AssetsManager.application.thumbnail_service import (
     process_image_snapshot,
     validate_thumbnail_source,
 )
+from AssetsManager.core.constants import AUDIO_EXTS
 from AssetsManager.domain.asset import IMAGE_EXTS, VIDEO_EXTS
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
     PRIVATE_PREVIEW_HEADERS,
     PUBLIC_PREVIEW_HEADERS,
     get_lan,
+    get_services,
     get_thumbnail_service,
     require_permission,
     validate_path,
@@ -38,6 +44,33 @@ _NOSNIFF_HEADERS = {"X-Content-Type-Options": "nosniff"}
 def _thumbnail_target_key(target: Path) -> str:
     """Normalize aliases using the host filesystem's case semantics."""
     return os.path.normcase(str(target.resolve(strict=False)))
+
+
+def _derivatives_recorder(request):
+    """Library-scoped media-derivative recorder for the on-demand analysis
+    passes (N-B2), or ``None`` when the runtime snapshot predates the field
+    (legacy fakes) — the passes then run without registering anything."""
+    runtime_services = getattr(get_services(request), "runtime_services", None)
+    return getattr(runtime_services, "media_derivatives_recorder", None)
+
+
+def _decoded_thumbnail_factory(encoded: bytes):
+    """Lazy PIL decode of already-encoded thumbnail bytes (palette seam).
+
+    The generated WEBP is a downscaled render of the source, so decoding it
+    is a small fixed-cost pass and ``extract_palette`` downsizes further to
+    <=64px. The factory runs only when the ``extracted_palette`` row is still
+    missing, and every failure is swallowed inside the ensure-pass.
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    def _decode():
+        with Image.open(BytesIO(encoded)) as image:
+            return image.convert("RGB")
+
+    return _decode
 
 
 async def handle_thumbnail(request):
@@ -74,8 +107,9 @@ async def handle_thumbnail(request):
             status = 404
             return web.Response(status=status)
         source_path = result.source_path
+        is_audio = source_path.suffix.lower() in AUDIO_EXTS
 
-        if source_path.suffix.lower() not in _SAFE_IMAGE_EXTS:
+        if source_path.suffix.lower() not in _SAFE_IMAGE_EXTS and not is_audio:
             # Professional formats (RAW/PSD) are not Pillow-readable but are
             # safe raster sources when the media decoder registry routes the
             # extension; without the optional extras this stays a plain 404.
@@ -84,7 +118,7 @@ async def handle_thumbnail(request):
                 return web.Response(status=status)
         media_decoder = (
             None
-            if source_path.suffix.lower() in _SAFE_IMAGE_EXTS
+            if source_path.suffix.lower() in _SAFE_IMAGE_EXTS or is_audio
             else decoder_for(source_path.suffix)
         )
 
@@ -95,10 +129,11 @@ async def handle_thumbnail(request):
 
         # RAW/PSD originals are not browser-renderable rasters, so the
         # original-bytes delivery path is decoder-formats-only excluded: the
-        # processed WEBP branch below is the only delivery.
+        # processed WEBP branch below is the only delivery. Audio gets the
+        # same treatment — the original bytes are not an image at all.
         if (
             not result.should_blur and max_size >= 256 and not result.cache_hit
-            and media_decoder is None
+            and media_decoder is None and not is_audio
         ):
             delivery = "original"
             try:
@@ -135,7 +170,23 @@ async def handle_thumbnail(request):
         except (SafeOpenError, OSError, ValueError):
             raise ThumbnailSourceChangedError(source_path) from None
 
+        recorder = _derivatives_recorder(request)
+
         def _process():
+            if is_audio:
+                # On-demand waveform (N-B2): generate-at-most-once with the
+                # asset_derivatives row as the marker, register the PNG
+                # payload and deliver it as image/png (blur is a no-op — a
+                # waveform carries no source content).
+                waveform = ensure_audio_waveform(
+                    recorder,
+                    source_path,
+                    source_body=source_body,
+                    source_suffix=source_path.suffix,
+                )
+                if waveform is None:
+                    return None
+                return waveform, "image/png"
             if media_decoder is not None:
                 # Content gate for decoder formats: the successful decode IS
                 # the validation (fail closed like the Pillow verify gate);
@@ -143,8 +194,11 @@ async def handle_thumbnail(request):
                 pil = media_decoder.decode_bytes(source_body, max_dim=max_size)
                 if pil is None:
                     return None
+                # Palette pass from the decoded source pixels (params-only
+                # row; the row-exists check inside makes repeats free).
+                ensure_extracted_palette(recorder, source_path, pil)
                 return finalize_pil_image(pil, max_size, result.should_blur)
-            return process_image_snapshot(
+            processed = process_image_snapshot(
                 svc,
                 source_path,
                 source_body,
@@ -152,9 +206,21 @@ async def handle_thumbnail(request):
                 result.should_blur,
                 result.source_identity,
             )
+            if processed is not None and not result.should_blur:
+                # Palette pass from the generated (downscaled) thumbnail; a
+                # blurred render would only describe the blur, not the asset.
+                ensure_extracted_palette(
+                    recorder,
+                    source_path,
+                    _decoded_thumbnail_factory(processed[0]),
+                )
+            return processed
 
         processed = await asyncio.to_thread(_process)
         if processed is None:
+            if is_audio:
+                status = 404
+                return web.Response(status=status)
             if media_decoder is not None:
                 # Never fall back to serving the RAW/PSD original bytes (a
                 # browser cannot render them; for blurred assets serving the

@@ -1426,7 +1426,7 @@ def test_v37_creates_media_derivatives_and_sequences(memory_db):
     conn.executescript(database._SCHEMA)
 
     assert migrate(conn) == CURRENT_SCHEMA_VERSION
-    assert current_version(conn) == 37
+    assert current_version(conn) == CURRENT_SCHEMA_VERSION
     assert conn.execute(
         "SELECT name FROM schema_migrations WHERE version=37"
     ).fetchone() == ("media_derivatives_and_sequences",)
@@ -1462,14 +1462,14 @@ def test_v37_creates_media_derivatives_and_sequences(memory_db):
 
 def test_v37_adds_file_meta_rating_column(memory_db):
     from AssetsManager.core import database
-    from AssetsManager.core.db_migrations import migrate
+    from AssetsManager.core.db_migrations import CURRENT_SCHEMA_VERSION, migrate
     from AssetsManager.core.schema_defs import SCHEMA_OBJECT_CONTRACT
     from AssetsManager.core.schema_defs import validate_schema_object
 
     conn = memory_db
     conn.executescript(database._SCHEMA)
 
-    assert migrate(conn) == 37
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
     columns = {row[1]: row for row in conn.execute("PRAGMA table_info('file_meta')")}
     assert "rating" in columns
     assert columns["rating"][2].upper() == "INTEGER"
@@ -1512,7 +1512,7 @@ def test_v36_database_with_rating_candidate_rows_upgrades_to_v37_untouched(
         row[1] for row in conn.execute("PRAGMA table_info('file_meta')")
     }
 
-    assert db_migrations.migrate(conn) == 37
+    assert db_migrations.migrate(conn) == db_migrations.CURRENT_SCHEMA_VERSION
     # Pre-existing rows survive with rating NULL; the media tables start empty.
     assert conn.execute(
         "SELECT file_path, notes, rating FROM file_meta"
@@ -1549,8 +1549,8 @@ def test_v37_media_schema_is_idempotent(memory_db, monkeypatch):
     )
 
     # Full runner passes on the already-migrated database are also no-ops.
-    assert db_migrations.migrate(conn) == 37
-    assert db_migrations.migrate(conn) == 37
+    assert db_migrations.migrate(conn) == db_migrations.CURRENT_SCHEMA_VERSION
+    assert db_migrations.migrate(conn) == db_migrations.CURRENT_SCHEMA_VERSION
     validate_schema_objects(
         conn,
         ("asset_derivatives", "asset_sequences", "asset_sequence_frames"),
@@ -1559,11 +1559,11 @@ def test_v37_media_schema_is_idempotent(memory_db, monkeypatch):
 
 def test_v37_sequence_frames_cascade_and_file_path_unique(memory_db):
     from AssetsManager.core import database
-    from AssetsManager.core.db_migrations import migrate
+    from AssetsManager.core.db_migrations import CURRENT_SCHEMA_VERSION, migrate
 
     conn = memory_db
     conn.executescript(database._SCHEMA)
-    assert migrate(conn) == 37
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute(
         "INSERT INTO asset_sequences (dir_path, prefix, extension, frame_count, fps, "
@@ -1593,3 +1593,128 @@ def test_v37_sequence_frames_cascade_and_file_path_unique(memory_db):
     conn.execute("DELETE FROM asset_sequences WHERE id=?", (sequence_id,))
     conn.commit()
     assert conn.execute("SELECT COUNT(*) FROM asset_sequence_frames").fetchone() == (0,)
+
+
+def test_v38_creates_asset_collections_schema(memory_db):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import (
+        CURRENT_SCHEMA_VERSION,
+        current_version,
+        migrate,
+    )
+    from AssetsManager.core.schema_defs import validate_schema_objects
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
+    assert current_version(conn) == CURRENT_SCHEMA_VERSION
+    assert conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=38"
+    ).fetchone() == ("asset_collections",)
+
+    validate_schema_objects(conn, ("asset_collections", "asset_collection_members"))
+    tables = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+    assert {"asset_collections", "asset_collection_members"} <= tables
+    assert {
+        row[1] for row in conn.execute("PRAGMA index_list('asset_collection_members')")
+    } >= {"idx_asset_collection_members_path"}
+
+    # The v38 kind whitelist is enforced by the CHECK constraint.
+    conn.execute(
+        "INSERT INTO asset_collections (name, kind, created_at, updated_at) "
+        "VALUES ('hero', 'manual', 1.0, 1.0)"
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO asset_collections (name, kind, created_at, updated_at) "
+            "VALUES ('bad', 'wishlist', 1.0, 1.0)"
+        )
+    conn.rollback()
+
+
+def test_v38_collection_names_are_unique_and_members_cascade(memory_db):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import CURRENT_SCHEMA_VERSION, migrate
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
+    conn.execute("PRAGMA foreign_keys=ON")
+
+    conn.execute(
+        "INSERT INTO asset_collections (name, kind, created_at, updated_at) "
+        "VALUES ('hero', 'manual', 1.0, 1.0)"
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO asset_collections (name, kind, created_at, updated_at) "
+            "VALUES ('hero', 'smart', 2.0, 2.0)"
+        )
+    conn.rollback()
+
+    conn.execute(
+        "INSERT INTO asset_collections (name, kind, created_at, updated_at) "
+        "VALUES ('hero', 'manual', 1.0, 1.0)"
+    )
+    collection_id = conn.execute(
+        "SELECT id FROM asset_collections WHERE name='hero'"
+    ).fetchone()[0]
+    conn.executemany(
+        "INSERT INTO asset_collection_members (collection_id, file_path, added_at) "
+        "VALUES (?, ?, ?)",
+        [(collection_id, "/lib/a.png", 1.0), (collection_id, "/lib/b.png", 2.0)],
+    )
+    conn.commit()
+
+    # Deleting the collection cascades to its membership rows.
+    conn.execute("DELETE FROM asset_collections WHERE id=?", (collection_id,))
+    conn.commit()
+    assert conn.execute(
+        "SELECT COUNT(*) FROM asset_collection_members"
+    ).fetchone() == (0,)
+
+
+def test_v37_database_upgrades_to_v38_and_is_idempotent(memory_db, monkeypatch):
+    from AssetsManager.core import database, db_migrations
+    from AssetsManager.core.schema_defs import validate_schema_objects
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    original_version = db_migrations.CURRENT_SCHEMA_VERSION
+    try:
+        monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 37)
+        assert db_migrations.migrate(conn) == 37
+    finally:
+        monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", original_version)
+
+    # Pre-existing v37 data survives the v38 step untouched.
+    conn.execute(
+        "INSERT INTO asset_derivatives (file_path, kind, rel_path, created_at) "
+        "VALUES ('/lib/keep.png', 'viewer_image', 'viewer_image/keep.png', 1.0)"
+    )
+    conn.commit()
+    assert "asset_collections" not in {
+        row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+
+    # The raw step runs twice back-to-back without changing any shape.
+    db_migrations._add_asset_collections_schema_v38(conn)
+    db_migrations._add_asset_collections_schema_v38(conn)
+    conn.commit()
+    validate_schema_objects(conn, ("asset_collections", "asset_collection_members"))
+
+    # Full runner passes on the already-migrated database are also no-ops.
+    assert db_migrations.migrate(conn) == db_migrations.CURRENT_SCHEMA_VERSION
+    assert db_migrations.migrate(conn) == db_migrations.CURRENT_SCHEMA_VERSION
+    assert conn.execute(
+        "SELECT file_path, kind FROM asset_derivatives"
+    ).fetchall() == [("/lib/keep.png", "viewer_image")]
+    validate_schema_objects(conn, ("asset_collections", "asset_collection_members"))

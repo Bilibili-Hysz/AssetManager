@@ -25,8 +25,6 @@ from AssetsManager.lan.routes import (
     handle_gallery_page,
     handle_gallery_collection_page,
     handle_gallery_favorites_page,
-    handle_storefront_page,
-    handle_seller_page,
     handle_gallery_collection,
     handle_gallery_home,
     handle_gallery_resolve,
@@ -48,6 +46,14 @@ from AssetsManager.lan.routes import (
     handle_rename_tag,
     handle_delete_tag,
     handle_remove_tag,
+    handle_collections,
+    handle_create_collection,
+    handle_update_collection,
+    handle_delete_collection,
+    handle_collection_members,
+    handle_add_collection_members,
+    handle_remove_collection_members,
+    handle_collection_evaluate,
     handle_search,
     handle_meta,
     handle_save_notes,
@@ -76,41 +82,11 @@ from AssetsManager.lan.routes import (
     handle_share_preview,
     handle_share_info,
     handle_websocket,
-    handle_public_shop_item,
-    handle_public_shop_catalog,
-    handle_public_shop_item_by_path,
-    handle_public_shop_item_media,
-    handle_shop_items,
-    handle_shop_order,
-    handle_shop_buyer_orders,
-    handle_shop_buyer_merge,
-    handle_order_receipt_recover,
-    handle_shop_cart,
-    handle_shop_cart_checkout,
-    handle_shop_cart_checkout_group,
-    handle_shop_wishlist,
-    handle_order_confirm,
-    handle_order_fulfill,
-    handle_order_delivery_rotate,
-    handle_order_delivery_revoke,
-    handle_order_revoke,
-    handle_order_stats,
-    handle_order_export,
-    handle_delivery,
-    handle_order_delivery,
-    handle_delivery_download,
-    handle_shop_claim_delivery,
-    handle_delivery_quota,
     handle_free_quota,
-    handle_seller_status,
-    handle_seller_login,
-    handle_seller_logout,
 )
 from AssetsManager.lan.routes.image import handle_image
 from AssetsManager.lan.routes.quicksearch import handle_quicksearch
-from AssetsManager.lan.routes.seller_profile import handle_public_seller_profile, handle_seller_profile
-from AssetsManager.lan.routes.storefront_analytics import handle_storefront_view
-from AssetsManager.lan.routes.commerce_policy import seller_required
+from AssetsManager.lan.routes.sequence import handle_sequence_neighbors
 from AssetsManager.lan.routes.system import handle_revision
 
 _log = logging.getLogger(__name__)
@@ -172,13 +148,7 @@ def setup_routes(app: web.Application):
     _WRITE_TAGS = ("write_tags",)
     _ADMIN_TAGS = ("admin_tags",)
     _ADMIN_USERS = ("admin_users",)
-    _SELLER = ("seller",)
-    _BUYER_CART = ("buyer_cart",)
-    _BUYER_WISHLIST = ("buyer_wishlist",)
-    _BUYER_ORDERS = ("buyer_orders",)
-    _BUYER_CLAIM = ("buyer_claim",)
     _PUBLIC_AUTH = ("public_auth",)
-    _PUBLIC_SIGNAL = ("public_signal",)
     _SHARE_VERIFY = ("share_verify",)
     # Server operational metrics are admin-level: they leak connection /
     # request volumes and uptime to any principal that can read them.
@@ -203,20 +173,6 @@ def setup_routes(app: web.Application):
     _PUBLIC_BOOTSTRAP = RoutePolicy(auth="public", capabilities=_PUBLIC_AUTH)
     _SHARE_VERIFY_PUBLIC = RoutePolicy(
         auth="public", rate_limit="auth_strict", capabilities=_SHARE_VERIFY
-    )
-    _OPTIONAL_SELLER = RoutePolicy(auth="public_optional", capabilities=_SELLER)
-    _OPTIONAL_BUYER_CART = RoutePolicy(auth="public_optional", capabilities=_BUYER_CART)
-    _OPTIONAL_BUYER_WISHLIST = RoutePolicy(
-        auth="public_optional", capabilities=_BUYER_WISHLIST
-    )
-    _OPTIONAL_BUYER_ORDERS = RoutePolicy(
-        auth="public_optional", capabilities=_BUYER_ORDERS
-    )
-    _OPTIONAL_BUYER_CLAIM = RoutePolicy(auth="public_optional", capabilities=_BUYER_CLAIM)
-    _OPTIONAL_SIGNAL = RoutePolicy(auth="public_optional", capabilities=_PUBLIC_SIGNAL)
-    _OPTIONAL_BOOTSTRAP = RoutePolicy(auth="public_optional", capabilities=_PUBLIC_AUTH)
-    _OPTIONAL_AUTH_STRICT_BOOTSTRAP = RoutePolicy(
-        auth="public_optional", rate_limit="auth_strict", capabilities=_PUBLIC_AUTH
     )
 
     # ── L2 browse tier ──────────────────────────────────────────
@@ -258,32 +214,9 @@ def setup_routes(app: web.Application):
     _add(app, "GET", "/gallery", handle_gallery_page, policy=_PUBLIC)
     _add(app, "GET", "/gallery/collection", handle_gallery_collection_page, policy=_PUBLIC)
     _add(app, "GET", "/gallery/favorites", handle_gallery_favorites_page, policy=_PUBLIC)
-    _add(app, "GET", "/storefront", handle_storefront_page, policy=_PUBLIC)
-    _add(app, "GET", "/storefront/products", handle_storefront_page, policy=_PUBLIC)
-    _add(app, "GET", "/storefront/cart", handle_storefront_page, policy=_PUBLIC)
-    _add(app, "GET", "/storefront/orders", handle_storefront_page, policy=_PUBLIC)
-    _add(app, "GET", "/storefront/wishlist", handle_storefront_page, policy=_PUBLIC)
-    _add(app, "GET", "/storefront/product/{id}", handle_storefront_page, policy=_PUBLIC)
-    _add(app, "GET", "/storefront/product/path/{item_path:.*}", handle_storefront_page, policy=_PUBLIC)
-    _add(app, "GET", "/storefront/checkout/group", handle_storefront_page, policy=_PUBLIC)
-    _add(app, "GET", "/storefront/checkout/{order_id}", handle_storefront_page, policy=_PUBLIC)
-    _add(app, "GET", "/storefront/delivery/{token}", handle_storefront_page, policy=_PUBLIC)
-    _add(app, "GET", "/seller", handle_seller_page, policy=_PUBLIC)
-    _add(app, "GET", "/seller/products", handle_seller_page, policy=_PUBLIC)
-    _add(app, "GET", "/seller/products/{id}", handle_seller_page, policy=_PUBLIC)
-    _add(app, "GET", "/seller/orders", handle_seller_page, policy=_PUBLIC)
-    _add(app, "GET", "/seller/settings", handle_seller_page, policy=_PUBLIC)
     # Keep deep links from the reference WebUI serving the SPA as well. The
     # React router performs the canonical redirect; these server routes only
     # prevent a direct browser refresh from falling through to a 404.
-    _add(app, "GET", "/store", handle_storefront_page, policy=_PUBLIC)
-    _add(app, "GET", "/store/gallery/{tag}", handle_storefront_page, policy=_PUBLIC)
-    _add(app, "GET", "/store/checkout", handle_storefront_page, policy=_PUBLIC)
-    _add(app, "GET", "/store/delivery/{token}", handle_storefront_page, policy=_PUBLIC)
-    _add(app, "GET", "/store/{item_path:.*}", handle_storefront_page, policy=_PUBLIC)
-    _add(app, "GET", "/app", handle_seller_page, policy=_PUBLIC)
-    _add(app, "GET", "/app/items", handle_seller_page, policy=_PUBLIC)
-    _add(app, "GET", "/app/orders", handle_seller_page, policy=_PUBLIC)
     _add(app, "GET", "/api/gallery/home", handle_gallery_home, policy=_BROWSE_RATE)
     _add(app, "GET", "/api/gallery/collection", handle_gallery_collection, policy=_BROWSE_RATE)
     _add(app, "GET", "/api/gallery/resolve", handle_gallery_resolve, policy=_BROWSE_RATE)
@@ -310,9 +243,26 @@ def setup_routes(app: web.Application):
     _add(app, "PUT", "/api/tags/{name}", handle_rename_tag, policy=_ADMIN_TAG)
     _add(app, "DELETE", "/api/tags/{name}", handle_delete_tag, policy=_ADMIN_TAG)
     _add(app, "POST", "/api/tags/remove", handle_remove_tag, policy=_ADMIN_TAG)
+    # User collections (manual reference sets + smart query views): reads
+    # declare the browse capability, writes reuse the write_tags capability
+    # (user metadata writes) — no new capability bit. Rate limits stay on
+    # the general tier, matching the frozen golden policy contract.
+    _add(app, "GET", "/api/collections", handle_collections, policy=RoutePolicy(capabilities=_BROWSE))
+    _add(app, "POST", "/api/collections", handle_create_collection, policy=RoutePolicy(capabilities=_WRITE_TAGS))
+    _add(app, "PATCH", "/api/collections/{id}", handle_update_collection, policy=RoutePolicy(capabilities=_WRITE_TAGS))
+    _add(app, "DELETE", "/api/collections/{id}", handle_delete_collection, policy=RoutePolicy(capabilities=_WRITE_TAGS))
+    _add(app, "GET", "/api/collections/{id}/members", handle_collection_members, policy=RoutePolicy(capabilities=_BROWSE))
+    _add(app, "POST", "/api/collections/{id}/members", handle_add_collection_members, policy=RoutePolicy(capabilities=_WRITE_TAGS))
+    _add(app, "DELETE", "/api/collections/{id}/members", handle_remove_collection_members, policy=RoutePolicy(capabilities=_WRITE_TAGS))
+    _add(app, "GET", "/api/collections/{id}/evaluate", handle_collection_evaluate, policy=RoutePolicy(capabilities=_BROWSE))
     _add(app, "GET", "/api/search", handle_search, policy=_BROWSE_RATE)
     _add(app, "GET", "/api/quicksearch", handle_quicksearch, policy=_BROWSE_RATE)
     _add(app, "GET", "/api/meta/{path:.*}", handle_meta)
+    # Frame-sequence neighbor lookup: read-only, PathGuard-confined, browse
+    # capability like the other read surfaces (rate limit stays on the
+    # general tier, matching the frozen golden policy contract).
+    _add(app, "GET", "/api/sequence/neighbors", handle_sequence_neighbors,
+         policy=RoutePolicy(capabilities=_BROWSE))
     _add(app, "PUT", "/api/notes/{path:.*}", handle_save_notes, policy=_WRITE_NOTES_BROWSE)
     _add(app, "GET", "/api/info", handle_info, policy=_OPTIONAL_BROWSE)
     _add(app, "GET", "/api/revision", handle_revision, policy=_SKIP)
@@ -345,63 +295,6 @@ def setup_routes(app: web.Application):
     declare(app, "/api/shares/{id}/preview/{path:.*}", _PUBLIC, method="GET")
     _add(app, "GET", "/api/shares/{id}/info", handle_share_info)
     declare(app, "/api/shares/{id}/info", _PUBLIC, method="GET")
-    # Commerce contract endpoints (keep legacy singular aliases below).
-    _add(app, "GET", "/api/shop/cart", handle_shop_cart, policy=_PUBLIC_OPTIONAL)
-    _add(app, "POST", "/api/shop/cart/items", handle_shop_cart, policy=_OPTIONAL_BUYER_CART)
-    _add(app, "PATCH", "/api/shop/cart/items/{line_id}", handle_shop_cart, policy=_OPTIONAL_BUYER_CART)
-    _add(app, "DELETE", "/api/shop/cart/items/{line_id}", handle_shop_cart, policy=_OPTIONAL_BUYER_CART)
-    _add(app, "DELETE", "/api/shop/cart/items", handle_shop_cart, policy=_OPTIONAL_BUYER_CART)
-    _add(app, "POST", "/api/shop/cart/checkout", handle_shop_cart_checkout, policy=_OPTIONAL_BUYER_ORDERS)
-    _add(app, "GET", "/api/shop/cart/checkout/{checkout_group_id}", handle_shop_cart_checkout_group, policy=_PUBLIC_OPTIONAL)
-    _add(app, "GET", "/api/shop/wishlist", handle_shop_wishlist, policy=_PUBLIC_OPTIONAL)
-    _add(app, "PUT", "/api/shop/wishlist/items/{item_id}", handle_shop_wishlist, policy=_OPTIONAL_BUYER_WISHLIST)
-    _add(app, "DELETE", "/api/shop/wishlist/items/{item_id}", handle_shop_wishlist, policy=_OPTIONAL_BUYER_WISHLIST)
-    _add(app, "DELETE", "/api/shop/wishlist", handle_shop_wishlist, policy=_OPTIONAL_BUYER_WISHLIST)
-    _add(app, "GET", "/api/shop/catalog", handle_public_shop_catalog, policy=_PUBLIC_OPTIONAL)
-    _add(app, "GET", "/api/shop/items", handle_shop_items, policy=_PUBLIC_OPTIONAL)
-    _add(app, "GET", "/api/shop/items/by-path", handle_public_shop_item_by_path, policy=_PUBLIC_OPTIONAL)
-    _add(app, "GET", "/api/shop/items/{item_id}/media/{slot}", handle_public_shop_item_media, policy=_PUBLIC_OPTIONAL)
-    _add(app, "GET", "/api/shop/items/{item_id}", handle_public_shop_item, policy=_PUBLIC_OPTIONAL)
-    _add(app, "GET", "/api/shop/profile", handle_public_seller_profile, policy=_PUBLIC_OPTIONAL)
-    _add(app, "GET", "/api/shop/seller-profile", handle_seller_profile, policy=_PUBLIC_OPTIONAL)
-    _add(app, "PUT", "/api/shop/seller-profile", handle_seller_profile, policy=_OPTIONAL_SELLER)
-    _add(app, "POST", "/api/shop/analytics/store-view", handle_storefront_view, policy=_OPTIONAL_SIGNAL)
-    _add(app, "POST", "/api/shop/items", handle_shop_items, policy=_OPTIONAL_SELLER)
-    _add(app, "PUT", "/api/shop/items", handle_shop_items, policy=_OPTIONAL_SELLER)
-    _add(app, "DELETE", "/api/shop/items", handle_shop_items, policy=_OPTIONAL_SELLER)
-    _add(app, "GET", "/api/shop/orders/order", handle_shop_order, policy=_PUBLIC_OPTIONAL)
-    _add(app, "POST", "/api/shop/orders/order", handle_shop_order, policy=_OPTIONAL_BUYER_ORDERS)
-    _add(app, "POST", "/api/shop/orders/order/{order_id}/confirm", handle_order_confirm, policy=_OPTIONAL_BUYER_ORDERS)
-    _add(app, "POST", "/api/shop/orders/order/{order_id}/fulfill", handle_order_fulfill, policy=_OPTIONAL_SELLER)
-    _add(app, "POST", "/api/shop/orders/order/{order_id}/revoke", handle_order_revoke, policy=_OPTIONAL_SELLER)
-    _add(app, "POST", "/api/shop/orders/order/{order_id}/delivery/revoke", handle_order_delivery_revoke, policy=_OPTIONAL_SELLER)
-    _add(app, "GET", "/api/shop/orders/stats", handle_order_stats, policy=_PUBLIC_OPTIONAL)
-    _add(app, "GET", "/api/shop/quota", seller_required(handle_delivery_quota), policy=_PUBLIC_OPTIONAL)
-    _add(app, "GET", "/api/shop/auth/seller-status", handle_seller_status, policy=_PUBLIC_OPTIONAL)
-    _add(app, "POST", "/api/shop/auth/login", handle_seller_login, policy=_OPTIONAL_AUTH_STRICT_BOOTSTRAP)
-    _add(app, "POST", "/api/shop/auth/logout", handle_seller_logout, policy=_OPTIONAL_BOOTSTRAP)
-    _add(app, "PUT", "/api/shop/items/{item_id}", handle_shop_items, policy=_OPTIONAL_SELLER)
-    _add(app, "DELETE", "/api/shop/items/{item_id}", handle_shop_items, policy=_OPTIONAL_SELLER)
-    _add(app, "POST", "/api/shop/order", handle_shop_order, policy=_OPTIONAL_BUYER_ORDERS)
-    _add(app, "GET", "/api/shop/order/{order_id}/delivery", handle_order_delivery, allow_head=False, policy=_PUBLIC_OPTIONAL)
-    _add(app, "GET", "/api/shop/order/{order_id}", handle_shop_order, policy=_PUBLIC_OPTIONAL)
-    _add(app, "GET", "/api/shop/orders", handle_shop_order, policy=_PUBLIC_OPTIONAL)
-    _add(app, "GET", "/api/shop/buyer/orders", handle_shop_buyer_orders, policy=_PUBLIC_OPTIONAL)
-    _add(app, "POST", "/api/shop/buyer/merge", handle_shop_buyer_merge, policy=_OPTIONAL_BUYER_ORDERS)
-    _add(app, "POST", "/api/shop/order/{order_id}/receipt/recover", handle_order_receipt_recover, policy=_OPTIONAL_BUYER_ORDERS)
-    _add(app, "POST", "/api/shop/order/{order_id}/confirm", handle_order_confirm, policy=_OPTIONAL_BUYER_ORDERS)
-    _add(app, "POST", "/api/shop/order/{order_id}/fulfill", handle_order_fulfill, policy=_OPTIONAL_SELLER)
-    _add(app, "POST", "/api/shop/order/{order_id}/delivery/rotate", handle_order_delivery_rotate, policy=_OPTIONAL_SELLER)
-    _add(app, "POST", "/api/shop/order/{order_id}/delivery/revoke", handle_order_delivery_revoke, policy=_OPTIONAL_SELLER)
-    _add(app, "POST", "/api/shop/order/{order_id}/revoke", handle_order_revoke, policy=_OPTIONAL_SELLER)
-    _add(app, "GET", "/api/shop/stats", handle_order_stats, policy=_PUBLIC_OPTIONAL)
-    _add(app, "GET", "/api/shop/orders/export", handle_order_export, policy=_PUBLIC_OPTIONAL)
-    _add(app, "GET", "/api/shop/delivery/{token}", handle_delivery, policy=_PUBLIC_OPTIONAL)
-    _add(app, "GET", "/api/shop/delivery/{token}/download", handle_delivery_download, allow_head=False, policy=_PUBLIC_OPTIONAL)
-    _add(app, "POST", "/api/shop/delivery/{order_id}/claim", handle_shop_claim_delivery, policy=_OPTIONAL_BUYER_CLAIM)
-    _add(app, "GET", "/api/auth/seller-status", handle_seller_status, policy=_PUBLIC)
-    _add(app, "POST", "/api/auth/seller-login", handle_seller_login, policy=_PUBLIC_AUTH_STRICT_CAP)
-    _add(app, "POST", "/api/auth/seller-logout", handle_seller_logout, policy=_PUBLIC_BOOTSTRAP)
     _add(app, "GET", "/api/quota", handle_free_quota, policy=_PUBLIC_BROWSE)
     _add(app, "GET", "/ws", handle_websocket, policy=_SKIP)
 

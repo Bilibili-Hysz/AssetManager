@@ -14,6 +14,9 @@ from typing import Any, Callable, cast
 
 from AssetsManager.core.schema_defs import (
     ACTIVITY_LOG_SCHEMA,
+    ASSET_COLLECTIONS_SCHEMA,
+    ASSET_SEARCH_FTS_SCHEMA,
+    ASSET_SEARCH_SEED_SQL,
     ASSET_INDEX_STATE_SCHEMA,
     RECONCILIATION_QUEUE_STATE_SCHEMA,
     RECONCILIATION_TASKS_SCHEMA,
@@ -44,7 +47,7 @@ from AssetsManager.core.schema_defs import (
 )
 
 
-CURRENT_SCHEMA_VERSION = 37
+CURRENT_SCHEMA_VERSION = 39
 _BASELINE_SCHEMA_CONTRACT = {
     "file_tags": {
         "columns": ("file_path", "tag"),
@@ -1190,6 +1193,47 @@ def _add_media_derivatives_schema_v37(conn: sqlite3.Connection) -> None:
     validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
 
 
+def _add_asset_collections_schema_v38(conn: sqlite3.Connection) -> None:
+    """Add user collections: manual reference sets and smart query views.
+
+    ``asset_collections`` rows carry ``kind`` ('manual' | 'smart'); smart rows
+    keep their structured predicate JSON in ``query_json`` while manual rows
+    stay '{}', so no separate smart-collections table exists. Membership rows
+    in ``asset_collection_members`` are references (file_path strings), never
+    file moves.  Every statement is idempotent (CREATE IF NOT EXISTS), so
+    running the step on a fresh or already-migrated database is a no-op.
+    """
+    for statement in ASSET_COLLECTIONS_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    validate_schema_objects(conn, ("asset_collections", "asset_collection_members"))
+
+
+def _add_asset_search_fts_v39(conn: sqlite3.Connection) -> None:
+    """Add the FTS5 full-text index over asset documents and seed it.
+
+    ``asset_search`` is a self-maintained FTS5 content table (not external
+    content): the document spans ``assets.name``, ``file_tags`` and
+    ``file_meta.notes``, so rowid alignment with a single content table is
+    too fragile. The index owns its rowids; the application layer maintains
+    it incrementally (delete-by-key + re-aggregate per changed path) and a
+    full rebuild is DELETE-all + this same seed SQL. Maintenance is
+    deliberately application-level instead of trigger-based: an assets
+    rescan rewrites rows with DELETE+INSERT, which would make triggers
+    churn the whole index on every scan.
+
+    The step is idempotent: the virtual table uses CREATE ... IF NOT EXISTS
+    and the seed insert skips every file_path that already has a document.
+    """
+    for statement in ASSET_SEARCH_FTS_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    for statement in ASSET_SEARCH_SEED_SQL.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    validate_schema_object(conn, "asset_search", SCHEMA_OBJECT_CONTRACT["asset_search"])
+
+
 def _add_thumbnail_cache_lifecycle_schema_v32(conn: sqlite3.Connection) -> None:
     """Persist precise source timing and artifact kind for cache lifecycle work."""
     table = "thumbnail_cache"
@@ -1270,6 +1314,8 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(35, "file_count_mtime_snapshot", _add_file_count_mtime_schema_v35),
     Migration(36, "tag_source_partition", _add_tag_source_partition_v36),
     Migration(37, "media_derivatives_and_sequences", _add_media_derivatives_schema_v37),
+    Migration(38, "asset_collections", _add_asset_collections_schema_v38),
+    Migration(39, "asset_search_fts", _add_asset_search_fts_v39),
 )
 
 
@@ -1348,6 +1394,10 @@ def _migrate_once(conn: sqlite3.Connection) -> int:
             required_objects += ("shop_carts", "shop_cart_items", "shop_cart_checkouts", "shop_wishlist_owners", "shop_wishlist_items")
         if version >= 31:
             required_objects += ("import_manifests",)
+        if version >= 38:
+            required_objects += ("asset_collections", "asset_collection_members")
+        if version >= 39:
+            required_objects += ("asset_search",)
         if version < 17 and "reconciliation_tasks" in required_objects:
             required_objects = tuple(
                 table for table in required_objects if table != "reconciliation_tasks"

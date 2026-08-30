@@ -508,6 +508,80 @@ CREATE TABLE IF NOT EXISTS seller_profile (
 """
 
 
+# v38: user collections. A row is either a manual reference set (query_json
+# stays '{}') or a smart collection whose query_json holds the structured
+# predicate dict evaluated against the ``assets`` index at read time. The
+# smart variant deliberately has no physical membership rows — a collection
+# is a query view / reference set, never a file move or copy.
+ASSET_COLLECTIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS asset_collections (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    kind       TEXT NOT NULL CHECK (kind IN ('manual', 'smart')),
+    query_json TEXT NOT NULL DEFAULT '{}',
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE (name)
+);
+CREATE TABLE IF NOT EXISTS asset_collection_members (
+    collection_id INTEGER NOT NULL
+                  REFERENCES asset_collections(id) ON DELETE CASCADE,
+    file_path     TEXT NOT NULL,
+    added_at      REAL NOT NULL,
+    PRIMARY KEY (collection_id, file_path)
+);
+CREATE INDEX IF NOT EXISTS idx_asset_collection_members_path
+    ON asset_collection_members(file_path);
+"""
+
+# v39: application-maintained FTS5 full-text index over the asset document
+# sources (assets.name + file_tags + file_meta.notes). A self-maintained
+# content table was chosen over an external-content table: the document
+# spans three tables, so requiring rowid alignment with one content table
+# is too fragile. The index owns its rowids and is maintained incrementally
+# by the application layer (delete-by-key + re-insert); a full rebuild is
+# DELETE-all + re-seed. file_path is the document key, declared UNINDEXED
+# so it is never a matchable token — only name/tags/notes text matches.
+ASSET_SEARCH_FTS_SCHEMA = """
+CREATE VIRTUAL TABLE IF NOT EXISTS asset_search USING fts5(
+    file_path UNINDEXED,
+    name,
+    tags,
+    notes
+);
+"""
+
+# Seed/rebuild SQL shared by migration v39 and
+# application/search_index_service.py reindex_all(). Documents are grouped
+# by the UNION of all three source keys, so a path known only to one source
+# (e.g. a tagged file that was never scanned) still becomes a document.
+# Tags are aggregated in the (file_path, tag) index order; the space
+# separator means phrase queries cannot distinguish a multi-word tag from
+# two adjacent tags (documented limitation of the space-joined document).
+# The NOT IN guard makes re-running the step on an already-seeded table a
+# no-op, which keeps the migration idempotent.
+ASSET_SEARCH_SEED_SQL = """
+INSERT INTO asset_search(file_path, name, tags, notes)
+SELECT p.file_path,
+       COALESCE(a.name, ''),
+       COALESCE(t.tags, ''),
+       COALESCE(m.notes, '')
+FROM (
+    SELECT file_path FROM assets
+    UNION
+    SELECT file_path FROM file_tags
+    UNION
+    SELECT file_path FROM file_meta
+) AS p
+LEFT JOIN (
+    SELECT file_path, group_concat(tag, ' ') AS tags
+    FROM file_tags GROUP BY file_path
+) AS t ON t.file_path = p.file_path
+LEFT JOIN assets AS a ON a.file_path = p.file_path
+LEFT JOIN file_meta AS m ON m.file_path = p.file_path
+WHERE p.file_path NOT IN (SELECT file_path FROM asset_search)
+"""
+
 SHOP_STOREFRONT_VIEW_DAYS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS shop_storefront_view_days (
     day        TEXT PRIMARY KEY CHECK (length(day) = 10),
@@ -1366,6 +1440,57 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
                 "on_delete": "CASCADE",
             },
         ),
+    },
+    # v38: user collections. ``kind`` splits the manual reference sets from
+    # the smart query views; smart rows keep their structured predicate JSON
+    # in ``query_json`` (manual rows keep '{}') so no separate smart table
+    # exists. Membership is physical only for manual collections.
+    "asset_collections": {
+        "columns": ("id", "name", "kind", "query_json", "created_at", "updated_at"),
+        "primary_key": ("id",),
+        "unique_constraints": (("name",),),
+        "column_contracts": {
+            # INTEGER PRIMARY KEY AUTOINCREMENT reports notnull=0 in
+            # PRAGMA table_info (rowid-alias rule), like activity_log.
+            "id": {"type": "INTEGER", "not_null": False},
+            "name": {"type": "TEXT", "not_null": True},
+            "kind": {"type": "TEXT", "not_null": True},
+            "query_json": {"type": "TEXT", "not_null": True},
+            "created_at": {"type": "REAL", "not_null": True},
+            "updated_at": {"type": "REAL", "not_null": True},
+        },
+        "checks": ("kind IN ('manual', 'smart')",),
+    },
+    "asset_collection_members": {
+        "columns": ("collection_id", "file_path", "added_at"),
+        "primary_key": ("collection_id", "file_path"),
+        "unique_constraints": (),
+        "indexes": {
+            "idx_asset_collection_members_path": ("file_path",),
+        },
+        "column_contracts": {
+            "collection_id": {"type": "INTEGER", "not_null": True},
+            "file_path": {"type": "TEXT", "not_null": True},
+            "added_at": {"type": "REAL", "not_null": True},
+        },
+        "foreign_keys": (
+            {
+                "columns": ("collection_id",),
+                "referenced_table": "asset_collections",
+                "referenced_columns": ("id",),
+                "on_update": "NO ACTION",
+                "on_delete": "CASCADE",
+            },
+        ),
+    },
+    # v39: FTS5 virtual table. A virtual table reports no primary key, no
+    # unique indexes, no declared column types and empty index/FK lists via
+    # PRAGMA, so the contract pins only the column set and shapelessness —
+    # rebuilding it with a different column list must fail validation.
+    "asset_search": {
+        "columns": ("file_path", "name", "tags", "notes"),
+        "primary_key": (),
+        "unique_constraints": (),
     },
     **AUTH_SHARE_SCHEMA_CONTRACT,
 }

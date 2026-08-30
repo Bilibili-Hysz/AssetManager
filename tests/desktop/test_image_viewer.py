@@ -2,11 +2,12 @@ import threading
 import time
 
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QKeyEvent, QImage, QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
 
 from AssetsManager.core.ui_scale import scaled_px
+from AssetsManager.i18n import tr
 from AssetsManager.panels import image_viewer as viewer_module
 from AssetsManager.panels.image_viewer import ImageViewerOverlay
 
@@ -414,5 +415,131 @@ def test_zoom_and_scene_after_async_load(tmp_path):
         assert viewer._view.transform().m11() > 0
     finally:
         viewer.close()
+        host.deleteLater()
+        app.processEvents()
+
+
+# ── Frame-sequence detection, navigation and playback ──────────
+
+def _key_event(key: Qt.Key, modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier) -> QKeyEvent:
+    return QKeyEvent(QEvent.Type.KeyPress, key, modifiers)
+
+
+def _make_sequence(tmp_path, prefix="seq", count=4):
+    return [
+        _make_png(tmp_path / f"{prefix}.{i:04d}.png", 24, 24)
+        for i in range(1, count + 1)
+    ]
+
+
+def test_sequence_detected_on_open_and_status_suffix_shown(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    frames = _make_sequence(tmp_path)
+    host = QWidget()
+    viewer = ImageViewerOverlay(host)
+    try:
+        viewer.load_image(str(frames[1]))
+        assert _wait_for(app, lambda: viewer._state == "ready")
+        assert viewer._sequence is not None
+        assert (viewer._sequence.index, viewer._sequence.count) == (1, 4)
+        assert viewer._sequence.prev_path == str(frames[0])
+        assert viewer._sequence.next_path == str(frames[2])
+        assert viewer._sequence.fps is None
+        text = viewer._sequence_status_text()
+        assert tr("viewer.sequence_label", index=2, count=4) in text
+        assert tr("viewer.sequence_hint") in text
+    finally:
+        viewer.close()
+        host.deleteLater()
+        app.processEvents()
+
+
+def test_standalone_image_has_no_sequence_status(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    _make_png(tmp_path / "solo.png", 24, 24)
+    host = QWidget()
+    viewer = ImageViewerOverlay(host)
+    try:
+        viewer.load_image(str(tmp_path / "solo.png"))
+        assert _wait_for(app, lambda: viewer._state == "ready")
+        assert viewer._sequence is None
+        assert viewer._sequence_status_text() == tr("viewer.footer")
+        # Ctrl+P without a detected sequence must not start any playback.
+        viewer.keyPressEvent(_key_event(
+            Qt.Key.Key_P, Qt.KeyboardModifier.ControlModifier))
+        assert not viewer._sequence_playing()
+    finally:
+        viewer.close()
+        host.deleteLater()
+        app.processEvents()
+
+
+def test_sequence_keys_navigate_frames_and_clamp_at_ends(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    frames = _make_sequence(tmp_path)
+    host = QWidget()
+    viewer = ImageViewerOverlay(host)
+    try:
+        viewer.load_image(str(frames[1]))
+        assert _wait_for(app, lambda: viewer._state == "ready")
+        # "." advances to the next frame through the load_image path.
+        viewer.keyPressEvent(_key_event(Qt.Key.Key_Period))
+        assert _wait_for(app, lambda: viewer._current_path == str(frames[2])
+                         and viewer._state == "ready")
+        # "," goes back to the previous frame.
+        viewer.keyPressEvent(_key_event(Qt.Key.Key_Comma))
+        assert _wait_for(app, lambda: viewer._current_path == str(frames[1])
+                         and viewer._state == "ready")
+        viewer.keyPressEvent(_key_event(Qt.Key.Key_Comma))
+        assert _wait_for(app, lambda: viewer._current_path == str(frames[0])
+                         and viewer._state == "ready")
+        # Manual navigation clamps at the first frame (no wrap).
+        viewer.keyPressEvent(_key_event(Qt.Key.Key_Comma))
+        app.processEvents()
+        time.sleep(0.05)
+        app.processEvents()
+        assert viewer._current_path == str(frames[0])
+        assert viewer._sequence.index == 0
+    finally:
+        viewer.close()
+        host.deleteLater()
+        app.processEvents()
+
+
+def test_sequence_playback_timer_toggle_loop_and_manual_stop(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    frames = _make_sequence(tmp_path)
+    host = QWidget()
+    viewer = ImageViewerOverlay(host)
+    try:
+        viewer.load_image(str(frames[3]))  # open the LAST frame
+        assert _wait_for(app, lambda: viewer._state == "ready")
+        assert not viewer._sequence_playing()
+        # Playback ticks loop: one auto step from the last frame wraps to
+        # the first (timer not yet started, so no interference).
+        viewer._sequence_auto_step()
+        assert _wait_for(app, lambda: viewer._current_path == str(frames[0])
+                         and viewer._state == "ready")
+        ctrl_p = _key_event(Qt.Key.Key_P, Qt.KeyboardModifier.ControlModifier)
+        viewer.keyPressEvent(ctrl_p)
+        assert viewer._sequence_playing()
+        assert viewer._sequence_timer.interval() == int(1000 / viewer_module._SEQUENCE_FPS)
+        # Any manual navigation stops the playback.
+        viewer.keyPressEvent(_key_event(Qt.Key.Key_Comma))
+        assert not viewer._sequence_playing()
+        assert viewer._current_path == str(frames[0])  # clamped, no wrap
+        # Ctrl+P toggles playback off as well.
+        viewer.keyPressEvent(ctrl_p)
+        assert viewer._sequence_playing()
+        viewer.keyPressEvent(ctrl_p)
+        assert not viewer._sequence_playing()
+        # Directory-wide navigation stops playback too.
+        viewer.keyPressEvent(ctrl_p)
+        assert viewer._sequence_playing()
+        viewer.keyPressEvent(_key_event(Qt.Key.Key_Left))
+        assert not viewer._sequence_playing()
+    finally:
+        viewer.close()
+        assert not viewer._sequence_playing()
         host.deleteLater()
         app.processEvents()

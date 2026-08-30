@@ -200,9 +200,9 @@ describe('ApiClient request contracts', () => {
     await expect(createApiClient({
       onRateLimited: rateLimited,
       onServiceUnavailable: serviceDown,
-    }).post('shop/order')).rejects.toMatchObject({ status: 503 });
+    }).post('download/batch')).rejects.toMatchObject({ status: 503 });
     expect(serviceDown).toHaveBeenCalledTimes(1);
-    expect(serviceDown).toHaveBeenCalledWith('shop/order');
+    expect(serviceDown).toHaveBeenCalledWith('download/batch');
     expect(rateLimited).toHaveBeenCalledTimes(1); // unchanged by the 503
   });
 
@@ -212,7 +212,7 @@ describe('ApiClient request contracts', () => {
       { status: 503, headers: { 'Content-Type': 'application/json' } },
     ));
     vi.stubGlobal('fetch', fetchMock);
-    await expect(createApiClient().post('shop/order')).rejects.toMatchObject({
+    await expect(createApiClient().post('download/batch')).rejects.toMatchObject({
       name: 'ServiceUnavailableError',
       status: 503,
     });
@@ -252,12 +252,12 @@ describe('ApiClient blob download progress', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const blob = await createApiClient({ baseUrl: '/library' }).getBlob(
-      'shop/order/7/delivery',
-      { 'Idempotency-Key': 'delivery-attempt-1' },
+      'download/batch',
+      { 'Idempotency-Key': 'download-attempt-1' },
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:3000/library/api/shop/order/7/delivery',
+      'http://localhost:3000/library/api/download/batch',
       expect.objectContaining({
         method: 'GET',
         headers: { 'Idempotency-Key': 'delivery-attempt-1' },
@@ -273,7 +273,7 @@ describe('ApiClient blob download progress', () => {
       { status: 200, headers: { 'Content-Disposition': 'attachment; filename="asset-pack.zip"' } },
     )));
 
-    const result = await createApiClient().getBlobWithMetadata('shop/order/7/delivery');
+    const result = await createApiClient().getBlobWithMetadata('download/batch');
 
     expect(result.filename).toBe('asset-pack.zip');
     expect(result.blob.size).toBeGreaterThan(0);

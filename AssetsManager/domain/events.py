@@ -131,34 +131,31 @@ class AssetUrlsChanged(DomainEvent):
     new_urls: tuple[str, ...] = ()
 
 
-# ── Commerce events ─────────────────────────────────────────────
-
-@dataclass(frozen=True)
-class ShopItemChanged(DomainEvent):
-    """The library-backed shop catalog changed."""
-    library_root: str = ""
-    session_token: str = ""
-    paths: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class ShopOrderChanged(DomainEvent):
-    """A shop order or its delivery lifecycle changed."""
-    library_root: str = ""
-    session_token: str = ""
-    order_id: str = ""
-
+# ── Quota events ────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class QuotaChanged(DomainEvent):
-    """A commerce download/order quota changed."""
+    """A download quota changed."""
     library_root: str = ""
     session_token: str = ""
     name: str = ""
 
 
+# ── Collection events ────────────────────────────────────────────
+
 @dataclass(frozen=True)
-class SellerProfileChanged(DomainEvent):
-    """The per-library seller profile settings changed."""
+class CollectionChanged(DomainEvent):
+    """A user collection (manual reference set or smart query view) changed.
+
+    Catalog-wide mutations (create/rename/delete/query update) carry only
+    ``collection_id``/``kind`` with empty ``paths``; membership changes
+    (add/remove files) list every affected member path in ``paths`` so the
+    runtime router can normalize them for projection invalidation.  The
+    event never carries file data: collections are query views / reference
+    sets, never file moves.
+    """
     library_root: str = ""
     session_token: str = ""
+    collection_id: int = 0
+    kind: str = ""  # "manual" | "smart"
+    paths: tuple[str, ...] = ()

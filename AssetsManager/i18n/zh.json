@@ -278,6 +278,8 @@
   "viewer.save_filter": "图像文件 (*.png *.jpg *.jpeg *.bmp *.webp)",
   "viewer.exif_title": "EXIF 信息",
   "viewer.exif_none": "无 EXIF 数据",
+  "viewer.sequence_label": "序列 {index}/{count}",
+  "viewer.sequence_hint": ",/. 上一帧/下一帧 · Ctrl+P 播放",
   "dock.float": "弹出 / 停靠",
   "dock.close": "关闭面板",
   "dock.split_h": "水平分割",
@@ -876,5 +878,13 @@
   "settings.thumb_clearing": "正在清理缩略图缓存…",
   "settings.thumb_clear_done_failed": "已删除 {count} 个缓存缩略图。\n{failed} 个文件无法删除，详见日志。",
   "library.switch_failed": "库切换失败：{reason}",
-  "library.switch_failed_retry_hint": "无法恢复上一个库。请重试切换，或从启动窗口重新打开该库。"
+  "library.switch_failed_retry_hint": "无法恢复上一个库。请重试切换，或从启动窗口重新打开该库。",
+  "sidebar.collections": "合集 ({count})",
+  "sidebar.collection_label": "{name}  ({count})",
+  "sidebar.smart_collection_label": "{name}  · 智能",
+  "sidebar.menu.new_collection": "新建合集",
+  "sidebar.menu.delete_collection": "删除合集",
+  "sidebar.dialog.new_collection": "新建合集",
+  "sidebar.dialog.rename_collection": "重命名合集",
+  "sidebar.dialog.collection_name_label": "合集名称"
 }

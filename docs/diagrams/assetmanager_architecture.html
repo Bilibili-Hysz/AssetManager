@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Diagram Preview</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Arial, sans-serif;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 24px;
+      background:
+        radial-gradient(circle at top, rgba(59, 130, 246, 0.08), transparent 35%),
+        #f5f7fb;
+    }
+    .actions {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .action-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+    }
+    .quota-hint {
+      font-size: 13px;
+      color: #4b5563;
+      margin: 0;
+      text-align: center;
+    }
+    .action-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 18px;
+      border-radius: 999px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      color: #111827;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+      cursor: pointer;
+    }
+    .feedback-button {
+      background: #16a34a;
+      border-color: #15803d;
+      color: #ffffff;
+    }
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-bottom: 16px;
+      width: 100%;
+    }
+    .tab-button {
+      padding: 8px 16px;
+      border-radius: 999px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      color: #374151;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .tab-button:hover {
+      background: #f3f4f6;
+    }
+    .tab-button.active {
+      background: #3b82f6;
+      color: #ffffff;
+      border-color: #3b82f6;
+    }
+    .canvas {
+      width: min(96vw, 1600px);
+      max-height: calc(100vh - 140px);
+      padding: 24px;
+      border-radius: 20px;
+      background: #ffffff;
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.12);
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    .tab-content {
+      display: none;
+      width: 100%;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .canvas svg {
+      display: block;
+      margin: 0 auto;
+      max-width: 100%;
+      height: auto;
+    }
+    .deep-edit-panel {
+      display: flex;
+      gap: 12px;
+      width: min(96vw, 1600px);
+      align-items: center;
+    }
+    .deep-edit-panel input {
+      flex: 1;
+      min-height: 42px;
+      padding: 0 18px;
+      border-radius: 999px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      font-size: 14px;
+      color: #111827;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    }
+    .deep-edit-panel input:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+    .deep-edit-submit {
+      background: #3b82f6;
+      border-color: #3b82f6;
+      color: #ffffff;
+      white-space: nowrap;
+    }
+    .deep-edit-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .deep-edit-error {
+      width: min(96vw, 1600px);
+      margin: 0;
+      font-size: 13px;
+      color: #dc2626;
+      display: none;
+    }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    .modal-dialog {
+      width: min(92vw, 420px);
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.24);
+    }
+    .modal-dialog h3 {
+      margin: 0;
+      font-size: 16px;
+      color: #111827;
+    }
+    .modal-desc {
+      margin: 0;
+      font-size: 13px;
+      color: #4b5563;
+    }
+    .modal-dialog input {
+      padding: 10px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .modal-dialog input:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+    .modal-status {
+      margin: 0;
+      font-size: 13px;
+      min-height: 18px;
+    }
+    .modal-status.ok {
+      color: #16a34a;
+    }
+    .modal-status.err {
+      color: #dc2626;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .modal-actions button {
+      flex: 1;
+      min-height: 36px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      color: #111827;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .modal-actions button.primary {
+      background: #3b82f6;
+      border-color: #3b82f6;
+      color: #ffffff;
+    }
+    .modal-link {
+      font-size: 13px;
+      color: #3b82f6;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="actions">
+    <div class="action-buttons">
+      <a class="action-button feedback-button" href="https://pptx.chenxitech.site/feedback?session_id=e2545483-71c7-4d65-9912-e4e50bbc38e4&amp;run_id=aider_stage1_e2545483-71c7-4d65-9912-e4e50bbc38e4" target="_blank" rel="noopener noreferrer">💡 提交反馈领免费 API Key</a>
+      <button class="action-button" id="download-svg-button" type="button">下载 SVG</button>
+      <button class="action-button" id="api-key-config-button" type="button">🔑 API Key 配置</button>
+    </div>
+    <p class="quota-hint">🎁 提交反馈并完成邮箱验证，可免费领取更多额度</p>
+  </div>
+  <div class="canvas">
+    
+    <?xml version="1.0" encoding="utf-8"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" data-d2-version="v0.7.1-HEAD" preserveAspectRatio="xMinYMin meet" viewBox="0 0 5681 3503" width="6818" height="4204"><svg class="d2-2405935668 d2-svg" width="5681" height="3503" viewBox="-10 -10 5681 3503"><rect x="-10.000000" y="-10.000000" width="5681.000000" height="3503.000000" rx="0.000000" fill="#FFFFFF" class=" fill-N7" stroke-width="0" /><style type="text/css"><![CDATA[
+.d2-2405935668 .text {
+	font-family: "d2-2405935668-font-regular";
+}
+@font-face {
+	font-family: d2-2405935668-font-regular;
+	src: url("data:application/font-woff;base64,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");
+}
+.d2-2405935668 .text-bold {
+	font-family: "d2-2405935668-font-bold";
+}
+@font-face {
+	font-family: d2-2405935668-font-bold;
+	src: url("data:application/font-woff;base64,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");
+}
+.d2-2405935668 .text-italic {
+	font-family: "d2-2405935668-font-italic";
+}
+@font-face {
+	font-family: d2-2405935668-font-italic;
+	src: url("data:application/font-woff;base64,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");
+}]]>
+.md p,.md ul,.md ol,.md dl,.md table,.md pre,.md details{margin-bottom:0!important;}.md li>p{margin-top:0!important;}.md li+li{margin-top:0!important;}.md ul,.md ol{padding-left:1.5em!important;}</style><style type="text/css"><![CDATA[.shape {
+  shape-rendering: geometricPrecision;
+  stroke-linejoin: round;
+}
+.connection {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.blend {
+  mix-blend-mode: multiply;
+  opacity: 0.5;
+}
+
+		.d2-2405935668 .fill-N1{fill:#170206;}
+		.d2-2405935668 .fill-N2{fill:#535152;}
+		.d2-2405935668 .fill-N3{fill:#787777;}
+		.d2-2405935668 .fill-N4{fill:#CCCACA;}
+		.d2-2405935668 .fill-N5{fill:#DFDCDC;}
+		.d2-2405935668 .fill-N6{fill:#ECEBEB;}
+		.d2-2405935668 .fill-N7{fill:#FFFFFF;}
+		.d2-2405935668 .fill-B1{fill:#311602;}
+		.d2-2405935668 .fill-B2{fill:#D35F0A;}
+		.d2-2405935668 .fill-B3{fill:#F18F47;}
+		.d2-2405935668 .fill-B4{fill:#FABA8A;}
+		.d2-2405935668 .fill-B5{fill:#FFE0C7;}
+		.d2-2405935668 .fill-B6{fill:#FFF6EF;}
+		.d2-2405935668 .fill-AA2{fill:#13A477;}
+		.d2-2405935668 .fill-AA4{fill:#A6E2D0;}
+		.d2-2405935668 .fill-AA5{fill:#CAF2E6;}
+		.d2-2405935668 .fill-AB4{fill:#FEEC8C;}
+		.d2-2405935668 .fill-AB5{fill:#FFF8CF;}
+		.d2-2405935668 .stroke-N1{stroke:#170206;}
+		.d2-2405935668 .stroke-N2{stroke:#535152;}
+		.d2-2405935668 .stroke-N3{stroke:#787777;}
+		.d2-2405935668 .stroke-N4{stroke:#CCCACA;}
+		.d2-2405935668 .stroke-N5{stroke:#DFDCDC;}
+		.d2-2405935668 .stroke-N6{stroke:#ECEBEB;}
+		.d2-2405935668 .stroke-N7{stroke:#FFFFFF;}
+		.d2-2405935668 .stroke-B1{stroke:#311602;}
+		.d2-2405935668 .stroke-B2{stroke:#D35F0A;}
+		.d2-2405935668 .stroke-B3{stroke:#F18F47;}
+		.d2-2405935668 .stroke-B4{stroke:#FABA8A;}
+		.d2-2405935668 .stroke-B5{stroke:#FFE0C7;}
+		.d2-2405935668 .stroke-B6{stroke:#FFF6EF;}
+		.d2-2405935668 .stroke-AA2{stroke:#13A477;}
+		.d2-2405935668 .stroke-AA4{stroke:#A6E2D0;}
+		.d2-2405935668 .stroke-AA5{stroke:#CAF2E6;}
+		.d2-2405935668 .stroke-AB4{stroke:#FEEC8C;}
+		.d2-2405935668 .stroke-AB5{stroke:#FFF8CF;}
+		.d2-2405935668 .background-color-N1{background-color:#170206;}
+		.d2-2405935668 .background-color-N2{background-color:#535152;}
+		.d2-2405935668 .background-color-N3{background-color:#787777;}
+		.d2-2405935668 .background-color-N4{background-color:#CCCACA;}
+		.d2-2405935668 .background-color-N5{background-color:#DFDCDC;}
+		.d2-2405935668 .background-color-N6{background-color:#ECEBEB;}
+		.d2-2405935668 .background-color-N7{background-color:#FFFFFF;}
+		.d2-2405935668 .background-color-B1{background-color:#311602;}
+		.d2-2405935668 .background-color-B2{background-color:#D35F0A;}
+		.d2-2405935668 .background-color-B3{background-color:#F18F47;}
+		.d2-2405935668 .background-color-B4{background-color:#FABA8A;}
+		.d2-2405935668 .background-color-B5{background-color:#FFE0C7;}
+		.d2-2405935668 .background-color-B6{background-color:#FFF6EF;}
+		.d2-2405935668 .background-color-AA2{background-color:#13A477;}
+		.d2-2405935668 .background-color-AA4{background-color:#A6E2D0;}
+		.d2-2405935668 .background-color-AA5{background-color:#CAF2E6;}
+		.d2-2405935668 .background-color-AB4{background-color:#FEEC8C;}
+		.d2-2405935668 .background-color-AB5{background-color:#FFF8CF;}
+		.d2-2405935668 .color-N1{color:#170206;}
+		.d2-2405935668 .color-N2{color:#535152;}
+		.d2-2405935668 .color-N3{color:#787777;}
+		.d2-2405935668 .color-N4{color:#CCCACA;}
+		.d2-2405935668 .color-N5{color:#DFDCDC;}
+		.d2-2405935668 .color-N6{color:#ECEBEB;}
+		.d2-2405935668 .color-N7{color:#FFFFFF;}
+		.d2-2405935668 .color-B1{color:#311602;}
+		.d2-2405935668 .color-B2{color:#D35F0A;}
+		.d2-2405935668 .color-B3{color:#F18F47;}
+		.d2-2405935668 .color-B4{color:#FABA8A;}
+		.d2-2405935668 .color-B5{color:#FFE0C7;}
+		.d2-2405935668 .color-B6{color:#FFF6EF;}
+		.d2-2405935668 .color-AA2{color:#13A477;}
+		.d2-2405935668 .color-AA4{color:#A6E2D0;}
+		.d2-2405935668 .color-AA5{color:#CAF2E6;}
+		.d2-2405935668 .color-AB4{color:#FEEC8C;}
+		.d2-2405935668 .color-AB5{color:#FFF8CF;}.appendix text.text{fill:#170206}.md{--color-fg-default:#170206;--color-fg-muted:#535152;--color-fg-subtle:#787777;--color-canvas-default:#FFFFFF;--color-canvas-subtle:#ECEBEB;--color-border-default:#311602;--color-border-muted:#D35F0A;--color-neutral-muted:#ECEBEB;--color-accent-fg:#D35F0A;--color-accent-emphasis:#D35F0A;--color-attention-subtle:#535152;--color-danger-fg:red;}.sketch-overlay-B1{fill:url(#streaks-darker-d2-2405935668);mix-blend-mode:lighten}.sketch-overlay-B2{fill:url(#streaks-dark-d2-2405935668);mix-blend-mode:overlay}.sketch-overlay-B3{fill:url(#streaks-normal-d2-2405935668);mix-blend-mode:color-burn}.sketch-overlay-B4{fill:url(#streaks-normal-d2-2405935668);mix-blend-mode:color-burn}.sketch-overlay-B5{fill:url(#streaks-bright-d2-2405935668);mix-blend-mode:darken}.sketch-overlay-B6{fill:url(#streaks-bright-d2-2405935668);mix-blend-mode:darken}.sketch-overlay-AA2{fill:url(#streaks-dark-d2-2405935668);mix-blend-mode:overlay}.sketch-overlay-AA4{fill:url(#streaks-normal-d2-2405935668);mix-blend-mode:color-burn}.sketch-overlay-AA5{fill:url(#streaks-bright-d2-2405935668);mix-blend-mode:darken}.sketch-overlay-AB4{fill:url(#streaks-bright-d2-2405935668);mix-blend-mode:darken}.sketch-overlay-AB5{fill:url(#streaks-bright-d2-2405935668);mix-blend-mode:darken}.sketch-overlay-N1{fill:url(#streaks-darker-d2-2405935668);mix-blend-mode:lighten}.sketch-overlay-N2{fill:url(#streaks-dark-d2-2405935668);mix-blend-mode:overlay}.sketch-overlay-N3{fill:url(#streaks-dark-d2-2405935668);mix-blend-mode:overlay}.sketch-overlay-N4{fill:url(#streaks-normal-d2-2405935668);mix-blend-mode:color-burn}.sketch-overlay-N5{fill:url(#streaks-normal-d2-2405935668);mix-blend-mode:color-burn}.sketch-overlay-N6{fill:url(#streaks-bright-d2-2405935668);mix-blend-mode:darken}.sketch-overlay-N7{fill:url(#streaks-bright-d2-2405935668);mix-blend-mode:darken}.light-code{display: block}.dark-code{display: none}]]></style><defs>
+	<filter id="shadow-filter" width="200%" height="200%" x="-50%" y="-50%">
+		<feGaussianBlur stdDeviation="1.7 " in="SourceGraphic"></feGaussianBlur>
+		<feFlood flood-color="#3d4574" flood-opacity="0.4" result="ShadowFeFlood" in="SourceGraphic"></feFlood>
+		<feComposite in="ShadowFeFlood" in2="SourceAlpha" operator="in" result="ShadowFeComposite"></feComposite>
+		<feOffset dx="3" dy="5" result="ShadowFeOffset" in="ShadowFeComposite"></feOffset>
+		<feBlend in="SourceGraphic" in2="ShadowFeOffset" mode="normal" result="ShadowFeBlend"></feBlend>
+	</filter>
+</defs><g class="ZW50cnk= zone_1"><g class="shape" ><rect x="1658.000000" y="87.000000" width="849.000000" height="202.000000" rx="8.000000" stroke="#4E81FF" fill="#F1F5FF" style="stroke-width:2;" /></g><text x="2082.500000" y="120.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:28px">入口层 ENTRY</text></g><g class="cHJlc2VudGF0aW9u zone_2"><g class="shape" ><rect x="3476.000000" y="1150.000000" width="2124.000000" height="534.000000" rx="8.000000" stroke="#4E81FF" fill="#F3F7FF" style="stroke-width:2;" /></g><text x="4538.000000" y="1183.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:28px">展示层 PRESENTATION（双展示面，零业务规则）</text></g><g class="YXBwbGljYXRpb24= zone_4"><g class="shape" ><rect x="1886.000000" y="439.000000" width="1412.000000" height="1955.000000" rx="8.000000" stroke="#4E81FF" fill="#F9FBFF" style="stroke-width:2;" /></g><text x="2592.000000" y="2381.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:28px">应用与运行时层 APPLICATION + RUNTIME（51 个服务模块，DI 装配）</text></g><g class="ZG9tYWlu zone_1"><g class="shape" ><rect x="2256.000000" y="2544.000000" width="672.000000" height="308.000000" rx="8.000000" stroke="#4E81FF" fill="#F1F5FF" style="stroke-width:2;" /></g><text x="2592.000000" y="2577.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:28px">领域层 DOMAIN（零基础设施依赖）</text></g><g class="cmVwb3NpdG9yaWVz zone_2"><g class="shape" ><rect x="1052.000000" y="2546.000000" width="1052.000000" height="936.000000" rx="8.000000" stroke="#4E81FF" fill="#F3F7FF" style="stroke-width:2;" /></g><text x="1578.000000" y="2579.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:28px">仓库层 REPOSITORIES（17 个 SQL 仓库，统一 for_session + SAVEPOINT + CAS）</text></g><g class="Y29yZV9pbmZyYQ== zone_5"><g class="shape" ><rect x="749.000000" y="1872.000000" width="773.000000" height="524.000000" rx="8.000000" stroke="#4E81FF" fill="#FCFDFF" style="stroke-width:2;" /></g><text x="1135.500000" y="2383.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:28px">核心基础设施 CORE INFRASTRUCTURE（被上层共享）</text></g><g class="bGFuX2xheWVy zone_3"><g class="shape" ><rect x="143.000000" y="1036.000000" width="1502.000000" height="686.000000" rx="8.000000" stroke="#4E81FF" fill="#F6F9FF" style="stroke-width:2;" /></g><text x="894.000000" y="1069.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:28px">LAN 层（可选，与 core 共享，经 application 访问数据）</text></g><g class="ZXh0ZXJuYWw= zone_5"><g class="shape" ><rect x="143.000000" y="2546.000000" width="691.000000" height="446.000000" rx="8.000000" stroke="#4E81FF" fill="#FCFDFF" style="stroke-width:2;" /></g><text x="488.500000" y="2579.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:28px">外部依赖 EXTERNAL</text></g><g class="ZW50cnkubWFpbg== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1718.000000" y="147.000000" width="162.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1799.000000" y="185.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="1799.000000" dy="0.000000">main.py / run.py</tspan><tspan x="1799.000000" dy="18.500000">进程引导</tspan></text></g><g class="ZW50cnkuYXBw entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1980.000000" y="147.000000" width="124.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2042.000000" y="185.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="2042.000000" dy="0.000000">app.py</tspan><tspan x="2042.000000" dy="18.500000">应用装配</tspan></text></g><g class="ZW50cnkud2luZG93 entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2204.000000" y="147.000000" width="243.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2325.500000" y="185.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="2325.500000" dy="0.000000">window.py</tspan><tspan x="2325.500000" dy="18.500000">启动窗口选库 → 主窗口</tspan></text></g><g class="cHJlc2VudGF0aW9uLmRlc2t0b3BfdWk= zone_3"><g class="shape" ><rect x="4674.000000" y="1210.000000" width="866.000000" height="414.000000" rx="8.000000" stroke="#4E81FF" fill="#F6F9FF" style="stroke-width:2;" /></g><text x="5107.000000" y="1239.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:24px">桌面 UI（纯渲染）</text></g><g class="cHJlc2VudGF0aW9uLmNvbnRyb2xsZXJz zone_3"><g class="shape" ><rect x="3992.000000" y="1255.000000" width="532.000000" height="324.000000" rx="8.000000" stroke="#4E81FF" fill="#F6F9FF" style="stroke-width:2;" /></g><text x="4258.000000" y="1284.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:24px">Controllers（4 个，零 Qt import）</text></g><g class="cHJlc2VudGF0aW9uLmxhbl91aQ== zone_3"><g class="shape" ><rect x="3536.000000" y="1257.000000" width="306.000000" height="320.000000" rx="8.000000" stroke="#4E81FF" fill="#F6F9FF" style="stroke-width:2;" /></g><text x="3689.000000" y="1286.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:24px">LAN 展示（可选侧翼）</text></g><g class="YXBwbGljYXRpb24uYm9vdHN0cmFw zone_3"><g class="shape" ><rect x="1946.000000" y="499.000000" width="510.000000" height="470.000000" rx="8.000000" stroke="#4E81FF" fill="#F6F9FF" style="stroke-width:2;" /></g><text x="2201.000000" y="528.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:24px">DI 装配</text></g><g class="YXBwbGljYXRpb24uZWFnZXJfc2VydmljZXM= zone_3"><g class="shape" ><rect x="1974.000000" y="1772.000000" width="653.000000" height="562.000000" rx="8.000000" stroke="#4E81FF" fill="#F6F9FF" style="stroke-width:2;" /></g><text x="2300.500000" y="1801.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:24px">桌面/共享 eager 服务</text></g><g class="YXBwbGljYXRpb24ubGFuX3Byb2plY3Rpb24= zone_3"><g class="shape" ><rect x="2599.000000" y="588.000000" width="639.000000" height="292.000000" rx="8.000000" stroke="#4E81FF" fill="#F6F9FF" style="stroke-width:2;" /></g><text x="2918.500000" y="617.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:24px">LAN 惰性投影（single-flight 惰性构建）</text></g><g class="YXBwbGljYXRpb24ucnVudGltZV9zaGFyaW5n zone_3"><g class="shape" ><rect x="1974.000000" y="1119.000000" width="498.000000" height="406.000000" rx="8.000000" stroke="#4E81FF" fill="#F6F9FF" style="stroke-width:2;" /></g><text x="2223.000000" y="1148.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:24px">冻结 RuntimeSharingServices 包</text></g><g class="ZG9tYWluLnZhbHVlX29iamVjdHM= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2316.000000" y="2604.000000" width="281.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2456.500000" y="2642.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">值对象</text></g><g class="ZG9tYWluLmRvbWFpbl9ldmVudHM= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2316.000000" y="2710.000000" width="281.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2456.500000" y="2748.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="2456.500000" dy="0.000000">16 个领域事件</tspan><tspan x="2456.500000" dy="18.500000">domain.event_bus 不可变事实</tspan></text></g><g class="ZG9tYWluLmVycm9yX2hpZXJhcmNoeQ== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2637.000000" y="2604.000000" width="231.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2752.500000" y="2642.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">错误层级</text></g><g class="ZG9tYWluLmRvbWFpbl9hdXRo entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2637.000000" y="2710.000000" width="231.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2752.500000" y="2748.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="2752.500000" dy="0.000000">domain.auth</tspan><tspan x="2752.500000" dy="18.500000">纯密码哈希/令牌生成</tspan></text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29yZQ== zone_3"><g class="shape" ><rect x="1112.000000" y="2606.000000" width="588.000000" height="398.000000" rx="8.000000" stroke="#4E81FF" fill="#F6F9FF" style="stroke-width:2;" /></g><text x="1406.000000" y="2635.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:24px">核心仓库</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29tbWVyY2U= zone_3"><g class="shape" ><rect x="1112.000000" y="3024.000000" width="641.000000" height="398.000000" rx="8.000000" stroke="#4E81FF" fill="#F6F9FF" style="stroke-width:2;" /></g><text x="1432.500000" y="3053.000000" fill="#333333" class="text" style="text-anchor:middle;font-size:24px">商业仓库</text></g><g class="Y29yZV9pbmZyYS5kYXRhYmFzZQ== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="809.000000" y="1932.000000" width="261.000000" height="98.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="939.500000" y="1970.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="939.500000" dy="0.000000">database.py</tspan><tspan x="939.500000" dy="17.666667">DatabaseManager</tspan><tspan x="939.500000" dy="17.666667">连接级读写门 + 身份标记</tspan></text></g><g class="Y29yZV9pbmZyYS5taWdyYXRpb25z entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1166.000000" y="2050.000000" width="182.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1257.000000" y="2088.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="1257.000000" dy="0.000000">db_migrations</tspan><tspan x="1257.000000" dy="18.500000">v1–v35 契约回溯</tspan></text></g><g class="Y29yZV9pbmZyYS5zZXR0aW5ncw== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1316.000000" y="2152.000000" width="102.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1367.000000" y="2190.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">settings</text></g><g class="Y29yZV9pbmZyYS50YWdfc3RvcmU= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1106.000000" y="1932.000000" width="113.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1162.500000" y="1970.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">tag_store</text></g><g class="Y29yZV9pbmZyYS5wcm9qZWN0X2RhdGE= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1239.000000" y="1932.000000" width="135.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1306.500000" y="1970.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">project_data</text></g><g class="Y29yZV9pbmZyYS5zaWduYWxfYnVz entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="809.000000" y="2152.000000" width="243.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="930.500000" y="2190.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="930.500000" dy="0.000000">signal_bus</tspan><tspan x="930.500000" dy="18.500000">7 个 Qt 信号，仅 UI 协调</tspan></text></g><g class="Y29yZV9pbmZyYS5wYXRoX3Jlc29sdmVy entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1072.000000" y="2152.000000" width="224.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1184.000000" y="2190.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="1184.000000" dy="0.000000">path_resolver</tspan><tspan x="1184.000000" dy="18.500000">PathGuard 防路径穿越</tspan></text></g><g class="Y29yZV9pbmZyYS50aGVtZXM= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1273.000000" y="2254.000000" width="105.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1325.500000" y="2292.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="1325.500000" dy="0.000000">themes</tspan><tspan x="1325.500000" dy="18.500000">24 主题</tspan></text></g><g class="Y29yZV9pbmZyYS5pY29ucw== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1072.000000" y="2254.000000" width="181.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1162.500000" y="2292.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="1162.500000" dy="0.000000">icons</tspan><tspan x="1162.500000" dy="18.500000">56 图标 DPR 感知</tspan></text></g><g class="Y29yZV9pbmZyYS5jYWNoZQ== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1368.000000" y="2050.000000" width="86.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1411.000000" y="2088.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">cache</text></g><g class="Y29yZV9pbmZyYS5qc29uX3N0b3Jl entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="809.000000" y="2254.000000" width="145.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="881.500000" y="2292.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="881.500000" dy="0.000000">json_store</tspan><tspan x="881.500000" dy="18.500000">原子持久化</tspan></text></g><g class="Y29yZV9pbmZyYS5wbHVnaW5z entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="809.000000" y="2050.000000" width="337.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="977.500000" y="2088.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="977.500000" dy="0.000000">plugins/</tspan><tspan x="977.500000" dy="18.500000">descriptor/loader/manager/host_context</tspan></text></g><g class="bGFuX2xheWVyLmxhbl9zZXJ2ZXI= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="674.000000" y="1096.000000" width="185.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="766.500000" y="1134.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">LanServer(runtime)</text></g><g class="bGFuX2xheWVyLmxhbl9hcGk= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="601.000000" y="1252.000000" width="330.000000" height="120.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="766.000000" y="1309.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="766.000000" dy="0.000000">lan/api.py</tspan><tspan x="766.000000" dy="18.500000">setup_routes 注册 140 路由 + 实时桥</tspan></text></g><g class="bGFuX2xheWVyLmxhbl9yb3V0ZXNfZGV0YWls entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="742.000000" y="1478.000000" width="130.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="807.000000" y="1516.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">lan/routes/*</text></g><g class="bGFuX2xheWVyLmxhbl9hdXRo entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="577.000000" y="1478.000000" width="105.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="629.500000" y="1516.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">lan/auth</text></g><g class="bGFuX2xheWVyLmxhbl9zZWN1cml0eQ== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="203.000000" y="1470.000000" width="314.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="360.000000" y="1508.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="360.000000" dy="0.000000">lan/security</tspan><tspan x="360.000000" dy="18.500000">中间件顺序 security→metrics→auth</tspan></text></g><g class="bGFuX2xheWVyLmxhbl9wYXRoX2d1YXJk entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="203.000000" y="1096.000000" width="154.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="280.000000" y="1134.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">lan/path_guard</text></g><g class="bGFuX2xheWVyLmxhbl93cw== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1314.000000" y="1462.000000" width="271.000000" height="98.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1449.500000" y="1500.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="1449.500000" dy="0.000000">lan/ws</tspan><tspan x="1449.500000" dy="17.666667">WebSocketManager</tspan><tspan x="1449.500000" dy="17.666667">实时失效推送 &gt;1MB 帧截断</tspan></text></g><g class="bGFuX2xheWVyLmxhbl90dW5uZWw= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1051.000000" y="1462.000000" width="203.000000" height="98.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1152.500000" y="1500.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="1152.500000" dy="0.000000">lan/tunnel</tspan><tspan x="1152.500000" dy="17.666667">Cloudflare 一键公网</tspan><tspan x="1152.500000" dy="17.666667">强制强认证</tspan></text></g><g class="bGFuX2xheWVyLmxhbl9tYW5hZ2Vy entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="203.000000" y="1580.000000" width="136.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="271.000000" y="1618.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="271.000000" dy="0.000000">lan/manager</tspan><tspan x="271.000000" dy="18.500000">生命周期</tspan></text></g><g class="ZXh0ZXJuYWwucHlzaWRlNg== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="203.000000" y="2606.000000" width="194.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="300.000000" y="2644.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="300.000000" dy="0.000000">PySide6</tspan><tspan x="300.000000" dy="18.500000">Qt GUI</tspan></text></g><g class="ZXh0ZXJuYWwuc3FsaXRlMw== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="203.000000" y="2728.000000" width="194.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="300.000000" y="2766.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="300.000000" dy="0.000000">sqlite3</tspan><tspan x="300.000000" dy="18.500000">WAL + 文件锁 + CAS</tspan></text></g><g class="ZXh0ZXJuYWwucGlsbG93 entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="203.000000" y="2850.000000" width="194.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="300.000000" y="2888.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="300.000000" dy="0.000000">Pillow</tspan><tspan x="300.000000" dy="18.500000">缩略图/内容门</tspan></text></g><g class="ZXh0ZXJuYWwuYWlvaHR0cA== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="437.000000" y="2606.000000" width="125.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="499.500000" y="2644.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="499.500000" dy="0.000000">aiohttp</tspan><tspan x="499.500000" dy="18.500000">LAN 服务</tspan></text></g><g class="ZXh0ZXJuYWwuc2Vnbm8= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="437.000000" y="2728.000000" width="125.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="499.500000" y="2766.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="499.500000" dy="0.000000">segno</tspan><tspan x="499.500000" dy="18.500000">QR</tspan></text></g><g class="ZXh0ZXJuYWwuc2VuZDJ0cmFzaA== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="437.000000" y="2850.000000" width="125.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="499.500000" y="2896.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">send2trash</text></g><g class="ZXh0ZXJuYWwucmVxdWVzdHM= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="602.000000" y="2606.000000" width="172.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="688.000000" y="2652.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">requests</text></g><g class="ZXh0ZXJuYWwuY2xvdWRmbGFyZWQ= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="602.000000" y="2728.000000" width="172.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="688.000000" y="2766.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="688.000000" dy="0.000000">cloudflared</tspan><tspan x="688.000000" dy="18.500000">隧道</tspan></text></g><g class="ZXh0ZXJuYWwucmVhY3Rfdml0ZQ== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="602.000000" y="2850.000000" width="172.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="688.000000" y="2888.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="688.000000" dy="0.000000">React/Vite</tspan><tspan x="688.000000" dy="18.500000">webui 构建产物</tspan></text></g><g class="cHJlc2VudGF0aW9uLmRlc2t0b3BfdWkucGFuZWxz entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="4734.000000" y="1270.000000" width="217.000000" height="127.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="4842.500000" y="1323.000000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="4842.500000" dy="0.000000">panels/</tspan><tspan x="4842.500000" dy="17.666667">sidebar · file_list · info</tspan><tspan x="4842.500000" dy="17.666667">tag_tree · image_viewer</tspan></text></g><g class="cHJlc2VudGF0aW9uLmRlc2t0b3BfdWkud2lkZ2V0cw== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="4734.000000" y="1437.000000" width="217.000000" height="127.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="4842.500000" y="1498.000000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="4842.500000" dy="0.000000">widgets/</tspan><tspan x="4842.500000" dy="18.500000">14 个可复用 Qt 组件</tspan></text></g><g class="cHJlc2VudGF0aW9uLmRlc2t0b3BfdWkuZGlhbG9ncw== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="4991.000000" y="1270.000000" width="165.000000" height="127.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="5073.500000" y="1331.000000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="5073.500000" dy="0.000000">dialogs/</tspan><tspan x="5073.500000" dy="18.500000">21 个对话框</tspan></text></g><g class="cHJlc2VudGF0aW9uLmRlc2t0b3BfdWkuZG9ja19mYWN0b3J5 entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="4991.000000" y="1437.000000" width="165.000000" height="127.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="5073.500000" y="1498.000000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="5073.500000" dy="0.000000">dock_factory</tspan><tspan x="5073.500000" dy="18.500000">统一 dock 构建</tspan></text></g><g class="cHJlc2VudGF0aW9uLmRlc2t0b3BfdWkud2luZG93X2xj entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="5196.000000" y="1270.000000" width="284.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="5338.000000" y="1308.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">window_lifecycle_coordinator.py</text></g><g class="cHJlc2VudGF0aW9uLmRlc2t0b3BfdWkudHJheQ== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="5196.000000" y="1376.000000" width="284.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="5338.000000" y="1414.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">系统托盘</text></g><g class="cHJlc2VudGF0aW9uLmRlc2t0b3BfdWkuc3R5bGVraXQ= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="5196.000000" y="1482.000000" width="284.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="5338.000000" y="1520.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="5338.000000" dy="0.000000">stylekit/</tspan><tspan x="5338.000000" dy="18.500000">主题预览</tspan></text></g><g class="cHJlc2VudGF0aW9uLmNvbnRyb2xsZXJzLmluZm9fY3RybA== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="4052.000000" y="1315.000000" width="196.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="4150.000000" y="1353.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="4150.000000" dy="0.000000">InfoController</tspan><tspan x="4150.000000" dy="18.500000">元数据/标签/备注</tspan></text></g><g class="cHJlc2VudGF0aW9uLmNvbnRyb2xsZXJzLmZpbGVsaXN0X2N0cmw= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="4052.000000" y="1437.000000" width="196.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="4150.000000" y="1475.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="4150.000000" dy="0.000000">FileListController</tspan><tspan x="4150.000000" dy="18.500000">搜索历史/状态</tspan></text></g><g class="cHJlc2VudGF0aW9uLmNvbnRyb2xsZXJzLnRhZ3RyZWVfY3RybA== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="4288.000000" y="1315.000000" width="176.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="4376.000000" y="1353.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="4376.000000" dy="0.000000">TagTreeController</tspan><tspan x="4376.000000" dy="18.500000">标签 CRUD</tspan></text></g><g class="cHJlc2VudGF0aW9uLmNvbnRyb2xsZXJzLnNpZGViYXJfY3RybA== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="4288.000000" y="1437.000000" width="176.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="4376.000000" y="1475.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="4376.000000" dy="0.000000">SidebarController</tspan><tspan x="4376.000000" dy="18.500000">搜索计数</tspan></text></g><g class="cHJlc2VudGF0aW9uLmxhbl91aS5sYW5fcm91dGVz entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="3596.000000" y="1317.000000" width="185.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="3688.500000" y="1355.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="3688.500000" dy="0.000000">lan/routes/*</tspan><tspan x="3688.500000" dy="18.500000">24 模块 · 140 路由</tspan></text></g><g class="cHJlc2VudGF0aW9uLmxhbl91aS5yZWFjdF9zcGE= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="3596.000000" y="1419.000000" width="165.000000" height="98.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="3678.500000" y="1457.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="3678.500000" dy="0.000000">React SPA</tspan><tspan x="3678.500000" dy="17.666667">webui/dist 托管</tspan><tspan x="3678.500000" dy="17.666667">RealtimeContext</tspan></text></g><g class="YXBwbGljYXRpb24uYm9vdHN0cmFwLmFwcF9ib290c3RyYXA= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2028.000000" y="559.000000" width="198.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2127.000000" y="597.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">ApplicationBootstrap</text></g><g class="YXBwbGljYXRpb24uYm9vdHN0cmFwLnNlcnZpY2VfY29udGFpbmVy entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2182.000000" y="843.000000" width="168.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2266.000000" y="881.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">ServiceContainer</text></g><g class="YXBwbGljYXRpb24uYm9vdHN0cmFwLmxpYnJhcnlfcnVudGltZQ== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2006.000000" y="843.000000" width="156.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2084.000000" y="881.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">LibraryRuntime</text></g><g class="YXBwbGljYXRpb24uYm9vdHN0cmFwLmxpYnJhcnlfc2Vzc2lvbg== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2246.000000" y="559.000000" width="150.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2321.000000" y="597.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">LibrarySession</text></g><g class="YXBwbGljYXRpb24uYm9vdHN0cmFwLmxpYnJhcnlfY29udGV4dA== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2006.000000" y="709.000000" width="242.000000" height="114.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2127.000000" y="747.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="2127.000000" dy="0.000000">LibraryContext</tspan><tspan x="2127.000000" dy="17.250000">冻结快照：root/data_dir</tspan><tspan x="2127.000000" dy="17.250000">thumb_dir/db_conn</tspan><tspan x="2127.000000" dy="17.250000">tag_store/project_data</tspan></text></g><g class="YXBwbGljYXRpb24uZWFnZXJfc2VydmljZXMubGlicmFyeV9zdmM= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2034.000000" y="1832.000000" width="273.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2170.500000" y="1870.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="2170.500000" dy="0.000000">LibraryService</tspan><tspan x="2170.500000" dy="18.500000">开库 + QLockFile 跨进程准入</tspan></text></g><g class="YXBwbGljYXRpb24uZWFnZXJfc2VydmljZXMubWV0YWRhdGFfc3Zj entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2327.000000" y="1832.000000" width="164.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2409.000000" y="1870.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">MetadataService</text></g><g class="YXBwbGljYXRpb24uZWFnZXJfc2VydmljZXMudGFnX3N2Yw== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2444.000000" y="2208.000000" width="123.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2505.500000" y="2246.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">TagService</text></g><g class="YXBwbGljYXRpb24uZWFnZXJfc2VydmljZXMudGh1bWJfc3Zj entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2267.000000" y="2106.000000" width="174.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2354.000000" y="2144.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">ThumbnailService</text></g><g class="YXBwbGljYXRpb24uZWFnZXJfc2VydmljZXMuZmlsZW9wX3N2Yw== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2034.000000" y="2208.000000" width="194.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2131.000000" y="2246.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">FileOperationService</text></g><g class="YXBwbGljYXRpb24uZWFnZXJfc2VydmljZXMudW5kb19zdmM= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2389.000000" y="1934.000000" width="134.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2456.000000" y="1972.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">UndoService</text></g><g class="YXBwbGljYXRpb24uZWFnZXJfc2VydmljZXMucGx1Z2luX3N2Yw== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2331.000000" y="2020.000000" width="142.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2402.000000" y="2058.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">PluginService</text></g><g class="YXBwbGljYXRpb24uZWFnZXJfc2VydmljZXMuYXNzZXRfaW5kZXhfc3Zj entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2248.000000" y="2208.000000" width="176.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2336.000000" y="2246.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">AssetIndexService</text></g><g class="YXBwbGljYXRpb24uZWFnZXJfc2VydmljZXMuYXNzZXRfcmVjb25fc3Zj entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2034.000000" y="2020.000000" width="277.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2172.500000" y="2058.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">AssetIndexReconciliationService</text></g><g class="YXBwbGljYXRpb24uZWFnZXJfc2VydmljZXMuZGJfaW50ZWdyaXR5 entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2034.000000" y="1934.000000" width="335.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2201.500000" y="1972.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">DatabaseIntegrity / Maintenance / Export</text></g><g class="YXBwbGljYXRpb24uZWFnZXJfc2VydmljZXMuc2V0dGluZ3NfYWRhcHRlcg== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2034.000000" y="2106.000000" width="213.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2140.500000" y="2144.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="2140.500000" dy="0.000000">LibrarySettingsAdapter</tspan><tspan x="2140.500000" dy="18.500000">Qt-free 维护边界</tspan></text></g><g class="YXBwbGljYXRpb24ubGFuX3Byb2plY3Rpb24uYXNzZXRfc3Zj entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2659.000000" y="648.000000" width="136.000000" height="172.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2727.000000" y="739.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">AssetService</text></g><g class="YXBwbGljYXRpb24ubGFuX3Byb2plY3Rpb24ucHJvamVjdF9zdmM= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2835.000000" y="648.000000" width="147.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2908.500000" y="686.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">ProjectService</text></g><g class="YXBwbGljYXRpb24ubGFuX3Byb2plY3Rpb24uc2VhcmNoX3N2Yw== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2835.000000" y="754.000000" width="147.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2908.500000" y="792.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">SearchService</text></g><g class="YXBwbGljYXRpb24ubGFuX3Byb2plY3Rpb24uZ2FsbGVyeV9zdmM= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="3022.000000" y="648.000000" width="156.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="3100.000000" y="686.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">GalleryService</text></g><g class="YXBwbGljYXRpb24ubGFuX3Byb2plY3Rpb24uZmF2b3JpdGVfc3Zj entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="3022.000000" y="754.000000" width="156.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="3100.000000" y="792.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">FavoriteService</text></g><g class="YXBwbGljYXRpb24ucnVudGltZV9zaGFyaW5nLmF1dGhfc3Zj entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2280.000000" y="1281.000000" width="132.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2346.000000" y="1319.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">AuthService</text></g><g class="YXBwbGljYXRpb24ucnVudGltZV9zaGFyaW5nLnNoYXJlX3N2Yw== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2249.000000" y="1383.000000" width="138.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2318.000000" y="1421.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">ShareService</text></g><g class="YXBwbGljYXRpb24ucnVudGltZV9zaGFyaW5nLnRva2VuX3NlY3JldA== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2034.000000" y="1179.000000" width="285.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2176.500000" y="1217.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="2176.500000" dy="0.000000">每 runtime 一次性 token_secret</tspan><tspan x="2176.500000" dy="18.500000">（不落库）</tspan></text></g><g class="YXBwbGljYXRpb24ucnVudGltZV9zaGFyaW5nLmV2ZW50X3JvdXRlcg== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2034.000000" y="1383.000000" width="195.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2131.500000" y="1421.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="2131.500000" dy="0.000000">RuntimeEventRouter</tspan><tspan x="2131.500000" dy="18.500000">投影失效路由</tspan></text></g><g class="YXBwbGljYXRpb24ucnVudGltZV9zaGFyaW5nLnJlY29uX3F1ZXVl entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="2034.000000" y="1281.000000" width="226.000000" height="82.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="2147.000000" y="1319.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px"><tspan x="2147.000000" dy="0.000000">ReconciliationQueue</tspan><tspan x="2147.000000" dy="18.500000">跨进程后台重建队列</tspan></text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29yZS5yZXBvX3RhZw== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1172.000000" y="2666.000000" width="120.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1232.000000" y="2704.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">tag</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29yZS5yZXBvX21ldGFkYXRh entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1172.000000" y="2772.000000" width="120.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1232.000000" y="2810.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">metadata</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29yZS5yZXBvX3RodW1i entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1172.000000" y="2878.000000" width="120.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1232.000000" y="2916.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">thumbnail</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29yZS5yZXBvX2Zhdm9yaXRl entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1332.000000" y="2666.000000" width="102.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1383.000000" y="2704.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">favorite</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29yZS5yZXBvX3NoYXJl entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1332.000000" y="2772.000000" width="102.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1383.000000" y="2810.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">share</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29yZS5yZXBvX2F1dGg= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1332.000000" y="2878.000000" width="102.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1383.000000" y="2916.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">auth</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29yZS5yZXBvX2Fzc2V0X2luZGV4 entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1474.000000" y="2666.000000" width="166.000000" height="119.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1557.000000" y="2731.000000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">asset_index</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29yZS5yZXBvX3BsdWdpbl9tZXRh entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1474.000000" y="2825.000000" width="166.000000" height="119.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1557.000000" y="2890.000000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">plugin_metadata</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29tbWVyY2UucmVwb19zaG9w entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1172.000000" y="3084.000000" width="87.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1215.500000" y="3122.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">shop</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29tbWVyY2UucmVwb19vcmRlcg== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1172.000000" y="3190.000000" width="87.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1215.500000" y="3228.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">order</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29tbWVyY2UucmVwb19xdW90YQ== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1172.000000" y="3296.000000" width="87.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1215.500000" y="3334.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">quota</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29tbWVyY2UucmVwb19mcmVlX3F1b3Rh entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1299.000000" y="3084.000000" width="202.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1400.000000" y="3122.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">free_download_quota</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29tbWVyY2UucmVwb19zZWxsZXI= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1299.000000" y="3190.000000" width="202.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1400.000000" y="3228.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">seller_profile</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29tbWVyY2UucmVwb19hbmFseXRpY3M= entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1299.000000" y="3296.000000" width="202.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1400.000000" y="3334.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">storefront_analytics</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29tbWVyY2UucmVwb19idXllcg== entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1541.000000" y="3084.000000" width="152.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1617.000000" y="3122.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">shop_buyer</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29tbWVyY2UucmVwb19nYWxsZXJ5 entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1541.000000" y="3190.000000" width="152.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1617.000000" y="3228.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">gallery_home</text></g><g class="cmVwb3NpdG9yaWVzLnJlcG9fY29tbWVyY2UucmVwb19yZXZva2Vk entity"><g class="shape" filter="url(#shadow-filter)" ><rect x="1541.000000" y="3296.000000" width="152.000000" height="66.000000" rx="6.000000" stroke="#1F2937" fill="#FFFFFF" style="stroke-width:2;" /></g><text x="1617.000000" y="3334.500000" fill="#333333" class="text-bold" style="text-anchor:middle;font-size:16px">revoked_token</text></g><g class="ZW50cnkuKG1haW4gLSZndDsgYXBwKVswXQ=="><marker id="mk-d2-2405935668-3488378134" markerWidth="10.000000" markerHeight="12.000000" refX="7.000000" refY="6.000000" viewBox="0.000000 0.000000 10.000000 12.000000" orient="auto" markerUnits="userSpaceOnUse"> <polygon points="0.000000,0.000000 10.000000,6.000000 0.000000,12.000000" fill="#311602" class="connection fill-B1" stroke-width="2" /> </marker><path d="M 1882.000000 188.000000 L 1976.000000 188.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="1930.500000" y="177.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">启动</text></g><g class="ZW50cnkuKGFwcCAtJmd0OyB3aW5kb3cpWzBd"><path d="M 2106.000000 174.000000 L 2200.000000 174.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="2154.500000" y="163.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">创建</text></g><g class="cHJlc2VudGF0aW9uLihkZXNrdG9wX3VpIC0mZ3Q7IGNvbnRyb2xsZXJzKVswXQ=="><path d="M 4672.000000 1417.000000 L 4528.000000 1417.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="4599.500000" y="1439.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">委托</text></g><g class="cHJlc2VudGF0aW9uLihjb250cm9sbGVycyAtJmd0OyBsYW5fdWkpWzBd"><path d="M 3990.000000 1417.000000 L 3846.000000 1417.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="3917.500000" y="1439.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">共享同一套服务</text></g><g class="YXBwbGljYXRpb24uKGJvb3RzdHJhcCAtJmd0OyBlYWdlcl9zZXJ2aWNlcylbMF0="><path d="M 2458.000000 851.000000 L 2525.000000 851.000000 S 2535.000000 851.000000 2535.000000 861.000000 L 2535.000000 1638.000000 S 2535.000000 1648.000000 2525.000000 1648.000000 L 2264.000000 1648.000000 S 2254.000000 1648.000000 2254.000000 1658.000000 L 2254.000000 1768.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="2560.500000" y="1418.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">组装</text></g><g class="YXBwbGljYXRpb24uKGJvb3RzdHJhcCAtJmd0OyBsYW5fcHJvamVjdGlvbilbMF0="><path d="M 2458.000000 734.000000 L 2595.000000 734.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="2527.500000" y="723.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">惰性构建</text></g><g class="YXBwbGljYXRpb24uKGJvb3RzdHJhcCAtJmd0OyBydW50aW1lX3NoYXJpbmcpWzBd"><path d="M 2215.000000 971.000000 L 2215.000000 1115.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="2240.500000" y="1050.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">冻结</text></g><g class="bGFuX2xheWVyLihsYW5fc2VydmVyIC0mZ3Q7IGxhbl9hcGkpWzBd"><path d="M 766.000000 1164.000000 L 766.000000 1248.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /></g><g class="bGFuX2xheWVyLihsYW5fYXBpIC0mZ3Q7IGxhbl9yb3V0ZXNfZGV0YWlsKVswXQ=="><path d="M 807.000000 1374.000000 L 807.000000 1474.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /></g><g class="bGFuX2xheWVyLihsYW5fYXBpIC0mZ3Q7IGxhbl9hdXRoKVswXQ=="><path d="M 641.000000 1374.000000 L 641.000000 1474.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /></g><g class="bGFuX2xheWVyLihsYW5fYXBpIC0mZ3Q7IGxhbl9zZWN1cml0eSlbMF0="><path d="M 599.000000 1312.000000 L 370.000000 1312.000000 S 360.000000 1312.000000 360.000000 1322.000000 L 360.000000 1466.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /></g><g class="bGFuX2xheWVyLihsYW5fYXBpIC0mZ3Q7IGxhbl93cylbMF0="><path d="M 933.000000 1292.000000 L 1394.000000 1292.000000 S 1404.000000 1292.000000 1404.000000 1302.000000 L 1404.000000 1458.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /></g><g class="bGFuX2xheWVyLihsYW5fYXBpIC0mZ3Q7IGxhbl90dW5uZWwpWzBd"><path d="M 933.000000 1332.000000 L 1142.000000 1332.000000 S 1152.000000 1332.000000 1152.000000 1342.000000 L 1152.000000 1458.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /></g><g class="KGVudHJ5IC0mZ3Q7IHByZXNlbnRhdGlvbilbMF0="><path d="M 2509.000000 188.000000 L 4528.000000 188.000000 S 4538.000000 188.000000 4538.000000 198.000000 L 4538.000000 1146.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="4003.500000" y="177.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">启动装配</text></g><g class="KHByZXNlbnRhdGlvbiAtJmd0OyBhcHBsaWNhdGlvbilbMF0="><path d="M 3474.000000 1417.000000 L 3302.000000 1417.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="3387.500000" y="1439.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">调用服务</text></g><g class="KGFwcGxpY2F0aW9uIC0mZ3Q7IGRvbWFpbilbMF0="><path d="M 2592.000000 2396.000000 L 2592.000000 2540.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="2636.500000" y="2475.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">业务规则</text></g><g class="KGFwcGxpY2F0aW9uIC0mZ3Q7IHJlcG9zaXRvcmllcylbMF0="><path d="M 1995.000000 2396.000000 L 1995.000000 2542.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="2030.000000" y="2476.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">持久化</text></g><g class="KHJlcG9zaXRvcmllcyAtJmd0OyBjb3JlX2luZnJhKVswXQ=="><path d="M 1287.000000 2544.000000 L 1287.000000 2400.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="1239.000000" y="2477.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">SQLite 适配</text></g><g class="KGxhbl9sYXllciAtJmd0OyBhcHBsaWNhdGlvbilbMF0="><path d="M 1647.000000 1230.000000 L 1882.000000 1230.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="1699.000000" y="1219.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">经 application 访问数据</text></g><g class="KGxhbl9sYXllciAtJmd0OyBjb3JlX2luZnJhKVswXQ=="><path d="M 1050.000000 1724.000000 L 1050.000000 1868.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="1102.500000" y="1765.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">与 core 共享</text></g><g class="KGNvcmVfaW5mcmEgLSZndDsgZXh0ZXJuYWwpWzBd"><path d="M 791.000000 2398.000000 L 791.000000 2542.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="835.500000" y="2477.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">外部依赖</text></g><g class="YXBwbGljYXRpb24uKGJvb3RzdHJhcC5saWJyYXJ5X3J1bnRpbWUgLSZndDsgcnVudGltZV9zaGFyaW5nLmV2ZW50X3JvdXRlcilbMF0="><path d="M 2004.000000 876.000000 L 1926.000000 876.000000 S 1916.000000 876.000000 1916.000000 886.000000 L 1916.000000 1414.000000 S 1916.000000 1424.000000 1926.000000 1424.000000 L 2030.000000 1424.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="1960.500000" y="999.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">投影失效</text></g><g class="KGFwcGxpY2F0aW9uLnJ1bnRpbWVfc2hhcmluZy5ldmVudF9yb3V0ZXIgLSZndDsgbGFuX2xheWVyLmxhbl93cylbMF0="><path d="M 2131.000000 1467.000000 L 2131.000000 1485.000000 S 2131.000000 1495.000000 2121.000000 1495.000000 L 1589.000000 1495.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="2238.000000" y="1499.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">经 local_ui_auth_secret 鉴权</text></g><g class="KGxhbl9sYXllci5sYW5fd3MgLSZndDsgcHJlc2VudGF0aW9uLmxhbl91aS5yZWFjdF9zcGEpWzBd"><path d="M 1494.000000 1460.000000 L 1494.000000 37.000000 S 1494.000000 27.000000 1504.000000 27.000000 L 5650.000000 27.000000 S 5660.000000 27.000000 5660.000000 37.000000 L 5660.000000 1806.000000 S 5660.000000 1816.000000 5650.000000 1816.000000 L 3688.000000 1816.000000 S 3678.000000 1816.000000 3678.000000 1806.000000 L 3678.000000 1521.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="4895.000000" y="16.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">WebSocket 失效提示</text></g><g class="KGVudHJ5Lm1haW4gLSZndDsgYXBwbGljYXRpb24uZWFnZXJfc2VydmljZXMubGlicmFyeV9zdmMpWzBd"><path d="M 1799.000000 231.000000 L 1799.000000 1852.000000 S 1799.000000 1862.000000 1809.000000 1862.000000 L 2030.000000 1862.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="1749.000000" y="1169.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">open_session</text></g><g class="KGFwcGxpY2F0aW9uLmVhZ2VyX3NlcnZpY2VzLmxpYnJhcnlfc3ZjIC0mZ3Q7IGNvcmVfaW5mcmEuZGF0YWJhc2UpWzBd"><path d="M 2032.000000 1893.000000 L 949.000000 1893.000000 S 939.000000 1893.000000 939.000000 1903.000000 L 939.000000 1928.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="1751.000000" y="1915.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">QLockFile 准入 → 连接</text></g><g class="KGNvcmVfaW5mcmEudGFnX3N0b3JlIC0mZ3Q7IGFwcGxpY2F0aW9uLmJvb3RzdHJhcC5saWJyYXJ5X2NvbnRleHQpWzBd"><path d="M 1162.000000 1930.000000 L 1162.000000 1807.000000 S 1162.000000 1797.000000 1152.000000 1797.000000 L 93.000000 1797.000000 S 83.000000 1797.000000 83.000000 1787.000000 L 83.000000 776.000000 S 83.000000 766.000000 93.000000 766.000000 L 2002.000000 766.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="38.500000" y="933.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">冻结快照</text></g><g class="YXBwbGljYXRpb24uYm9vdHN0cmFwLihsaWJyYXJ5X2NvbnRleHQgLSZndDsgYXBwX2Jvb3RzdHJhcClbMF0="><path d="M 2127.000000 707.000000 L 2127.000000 629.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="2081.000000" y="673.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">runtime_for</text></g><g class="KGFwcGxpY2F0aW9uLmJvb3RzdHJhcC5hcHBfYm9vdHN0cmFwIC0mZ3Q7IGVudHJ5LndpbmRvdylbMF0="><path d="M 2154.000000 557.000000 L 2154.000000 211.000000 S 2154.000000 201.000000 2164.000000 201.000000 L 2200.000000 201.000000" stroke="#311602" fill="none" class="connection stroke-B1" style="stroke-width:2;" marker-end="url(#mk-d2-2405935668-3488378134)" mask="url(#d2-2405935668)" /><text x="2083.000000" y="361.000000" fill="#535152" class="text-italic fill-N2" style="text-anchor:middle;font-size:16px">主窗口 + 各面板</text></g><mask id="d2-2405935668" maskUnits="userSpaceOnUse" x="-10" y="-10" width="5681" height="3503">
+<rect x="-10" y="-10" width="5681" height="3503" fill="white"></rect>
+<rect x="1909.000000" y="161.000000" width="43" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="2133.000000" y="147.000000" width="43" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="4578.000000" y="1423.000000" width="43" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="3848.000000" y="1423.000000" width="139" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="2539.000000" y="1402.000000" width="43" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="2487.000000" y="707.000000" width="81" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="2219.000000" y="1034.000000" width="43" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="3963.000000" y="161.000000" width="81" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="3347.000000" y="1423.000000" width="81" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="2596.000000" y="2459.000000" width="81" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="1999.000000" y="2460.000000" width="62" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="1195.000000" y="2461.000000" width="88" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="1608.000000" y="1203.000000" width="182" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="1054.000000" y="1749.000000" width="97" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="795.000000" y="2461.000000" width="81" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="1920.000000" y="983.000000" width="81" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="2135.000000" y="1483.000000" width="206" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="4817.000000" y="0.000000" width="156" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="1703.000000" y="1153.000000" width="92" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="1669.000000" y="1899.000000" width="164" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="-2.000000" y="917.000000" width="81" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="2039.000000" y="657.000000" width="84" height="21" fill="rgba(0,0,0,0.75)"></rect>
+<rect x="2016.000000" y="345.000000" width="134" height="21" fill="rgba(0,0,0,0.75)"></rect>
+</mask></svg></svg>
+  </div>
+  <div class="deep-edit-panel" id="deep-edit-panel">
+    <input type="text" id="deep-edit-input" placeholder="描述你想如何修改这张图…" />
+    <button class="action-button deep-edit-submit" id="deep-edit-submit" type="button">深度编辑</button>
+  </div>
+  <p class="deep-edit-error" id="deep-edit-error"></p>
+  <div class="modal-overlay" id="api-key-modal">
+    <div class="modal-dialog">
+      <h3>API Key 配置</h3>
+      <p class="modal-desc">Key 仅保存在您的浏览器本地，我们不会存储</p>
+      <input type="password" id="api-key-input" placeholder="DeepSeek API Key" autocomplete="off" />
+      <p class="modal-status" id="api-key-status"></p>
+      <div class="modal-actions">
+        <button id="api-key-validate" type="button">校验</button>
+        <button id="api-key-save" class="primary" type="button">保存</button>
+        <button id="api-key-close" type="button">关闭</button>
+      </div>
+      <a class="modal-link" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer">没有 Key？前往 DeepSeek 官方申请 →</a>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const downloadButton = document.getElementById("download-svg-button");
+      const canvas = document.querySelector(".canvas");
+      if (!downloadButton || !canvas) {
+        return;
+      }
+      
+      const tabButtons = document.querySelectorAll(".tab-button");
+      const tabContents = document.querySelectorAll(".tab-content");
+      
+      tabButtons.forEach(button => {
+        button.addEventListener("click", () => {
+          tabButtons.forEach(btn => btn.classList.remove("active"));
+          tabContents.forEach(content => content.classList.remove("active"));
+          
+          button.classList.add("active");
+          const targetId = button.getAttribute("data-target");
+          const targetContent = document.getElementById(targetId);
+          if (targetContent) {
+            targetContent.classList.add("active");
+          }
+        });
+      });
+
+      downloadButton.addEventListener("click", function () {
+        let svg = null;
+        if (tabContents.length > 0) {
+          const activeContent = document.querySelector(".tab-content.active");
+          if (activeContent) {
+            svg = activeContent.querySelector("svg");
+          }
+        } else {
+          svg = canvas.querySelector("svg");
+        }
+        
+        if (!svg) {
+          window.alert("当前页面未找到可导出的 SVG");
+          return;
+        }
+        const serializer = new XMLSerializer();
+        let svgSource = serializer.serializeToString(svg);
+        if (!svgSource.includes("xmlns=")) {
+          svgSource = svgSource.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"');
+        }
+        if (!svgSource.includes("xmlns:xlink=")) {
+          svgSource = svgSource.replace("<svg", '<svg xmlns:xlink="http://www.w3.org/1999/xlink"');
+        }
+        const blob = new Blob([svgSource], { type: "image/svg+xml;charset=utf-8" });
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        
+        let dlName = "diagram-e2545483-71c7-4d65-9912-e4e50bbc38e4.svg";
+        if (tabContents.length > 0) {
+          const activeBtn = document.querySelector(".tab-button.active");
+          if (activeBtn) {
+            dlName = dlName.replace(".svg", "-" + activeBtn.textContent.trim() + ".svg");
+          }
+        }
+        link.download = dlName;
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      });
+    })();
+  </script>
+  <script>
+    (function () {
+      var CW_SESSION_ID = "e2545483-71c7-4d65-9912-e4e50bbc38e4";
+      var CW_RUN_ID = "aider_stage1_e2545483-71c7-4d65-9912-e4e50bbc38e4";
+      var API_KEY_STORAGE_KEY = "cw_user_api_key";
+      var EDIT_ENDPOINT = "https://pptx.chenxitech.site/session/edit";
+      var KEY_VALIDATE_URL = "https://api.deepseek.com/v1/models";
+
+      var modal = document.getElementById("api-key-modal");
+      var openButton = document.getElementById("api-key-config-button");
+      var closeButton = document.getElementById("api-key-close");
+      var saveButton = document.getElementById("api-key-save");
+      var validateButton = document.getElementById("api-key-validate");
+      var keyInput = document.getElementById("api-key-input");
+      var keyStatus = document.getElementById("api-key-status");
+      var editInput = document.getElementById("deep-edit-input");
+      var editButton = document.getElementById("deep-edit-submit");
+      var editError = document.getElementById("deep-edit-error");
+      if (!modal || !openButton || !editButton) {
+        return;
+      }
+
+      function setKeyStatus(message, ok) {
+        keyStatus.textContent = message;
+        keyStatus.className = "modal-status " + (ok ? "ok" : "err");
+      }
+
+      function openModal() {
+        var saved = localStorage.getItem(API_KEY_STORAGE_KEY);
+        if (saved) {
+          keyInput.value = saved;
+          setKeyStatus("已加载本地保存的 Key", true);
+        } else {
+          keyInput.value = "";
+          setKeyStatus("", true);
+        }
+        modal.style.display = "flex";
+      }
+
+      function closeModal() {
+        modal.style.display = "none";
+      }
+
+      function showEditError(message) {
+        editError.textContent = message;
+        editError.style.display = "block";
+      }
+
+      function hideEditError() {
+        editError.textContent = "";
+        editError.style.display = "none";
+      }
+
+      // 页面加载时若已保存 Key，则回填（password 输入框自动掩码显示）
+      var existingKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+      if (existingKey) {
+        keyInput.value = existingKey;
+      }
+
+      openButton.addEventListener("click", openModal);
+      closeButton.addEventListener("click", closeModal);
+      modal.addEventListener("click", function (event) {
+        if (event.target === modal) {
+          closeModal();
+        }
+      });
+
+      validateButton.addEventListener("click", function () {
+        var key = keyInput.value.trim();
+        if (!key) {
+          setKeyStatus("请输入 Key", false);
+          return;
+        }
+        setKeyStatus("校验中…", true);
+        fetch(KEY_VALIDATE_URL, {
+          method: "GET",
+          headers: { "Authorization": "Bearer " + key }
+        }).then(function (resp) {
+          if (resp.ok) {
+            setKeyStatus("校验通过", true);
+          } else {
+            setKeyStatus("校验失败，请检查 Key", false);
+          }
+        }).catch(function () {
+          setKeyStatus("校验失败，请检查网络", false);
+        });
+      });
+
+      saveButton.addEventListener("click", function () {
+        var key = keyInput.value.trim();
+        if (!key) {
+          setKeyStatus("请输入 Key", false);
+          return;
+        }
+        localStorage.setItem(API_KEY_STORAGE_KEY, key);
+        setKeyStatus("已保存到浏览器本地", true);
+      });
+
+      editButton.addEventListener("click", function () {
+        var instruction = editInput.value.trim();
+        if (!instruction) {
+          showEditError("请先描述你想如何修改这张图");
+          return;
+        }
+        if (!CW_SESSION_ID) {
+          showEditError("当前页面缺少 session_id，无法进行深度编辑");
+          return;
+        }
+        var key = localStorage.getItem(API_KEY_STORAGE_KEY);
+        if (!key) {
+          openModal();
+          setKeyStatus("请先配置并保存 API Key", false);
+          return;
+        }
+        hideEditError();
+        editButton.disabled = true;
+        editButton.textContent = "生成中…";
+        fetch(EDIT_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-User-API-Key": key
+          },
+          body: JSON.stringify({ session_id: CW_SESSION_ID, instruction: instruction })
+        }).then(function (resp) {
+          return resp.json().then(function (data) {
+            if (!resp.ok) {
+              var detail = (data && data.detail) ? data.detail : ("请求失败（HTTP " + resp.status + "）");
+              throw new Error(detail);
+            }
+            return data;
+          });
+        }).then(function (data) {
+          if (!data || !data.svg) {
+            throw new Error("响应中缺少 svg 内容");
+          }
+          var activeTab = document.querySelector(".tab-content.active");
+          var target = activeTab || document.querySelector(".canvas");
+          target.innerHTML = data.svg;
+          hideEditError();
+        }).catch(function (err) {
+          showEditError(err.message || "深度编辑失败，请稍后重试");
+        }).finally(function () {
+          editButton.disabled = false;
+          editButton.textContent = "深度编辑";
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

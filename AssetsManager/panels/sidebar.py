@@ -63,6 +63,15 @@ VTYPE_FAV_CHILD = "fav_child"
 VTYPE_REC_CHILD = "rec_child"
 _ICON_ROLE = Qt.ItemDataRole.UserRole + 2
 
+# User-collection virtual group (migration v38). Collection rows keep their
+# integer id / kind string outside the path slot (UserRole) so click handlers
+# can distinguish them from navigable filesystem paths.
+VTYPE_COLLECTION_HEADER = "collection_header"
+VTYPE_COLLECTION = "collection"
+VTYPE_COLLECTION_MEMBER = "collection_member"
+_COLLECTION_ID_ROLE = Qt.ItemDataRole.UserRole + 3
+_COLLECTION_KIND_ROLE = Qt.ItemDataRole.UserRole + 4
+
 # Max directories loaded per event-loop tick during "expand all", so a large
 # tree reveals progressively instead of blocking the UI thread on the first
 # click (each directory expands via a synchronous scandir).
@@ -119,6 +128,9 @@ class SidebarPanel(PanelContent):
             library_root if isinstance(library_root, str) and library_root else None
         )
         self._scoped_services = shared.get("services")
+        # Lazy-loaded user collections (manual reference sets; smart rows
+        # display-only). Invalidated on CollectionChanged domain events.
+        self._collections_loaded_ids: set[int] = set()
         self._search_pending = ""
         self._search_timer = None
         self._match_count = 0
@@ -238,6 +250,14 @@ class SidebarPanel(PanelContent):
         if _populate:
             self._populate()
         self._connect_bus(bus().refresh_requested, self._populate)
+        # Collection catalog changes publish domain events from worker
+        # threads; the queued Qt bridge keeps the repopulate on the GUI
+        # thread (same pattern as the info panel's Asset*Changed hooks).
+        from AssetsManager.domain.events import CollectionChanged
+
+        self._connect_domain_event(
+            CollectionChanged, self._on_domain_collections_changed
+        )
         self._connect_bus(bus().theme_changed, self._on_theme_changed)
         self._connect_bus(bus().language_changed, self._on_language_changed)
         self._connect_bus(bus().ui_scale_changed, self._on_theme_changed)
@@ -398,6 +418,44 @@ class SidebarPanel(PanelContent):
                 self._set_item_icon(child, "folder")
                 child.setToolTip(0, f"{path}\n{time_lbl}")
                 rec_header.addChild(child)
+
+        # ── Virtual: User collections header ────────────────────
+        collections = self._load_collections()
+        if collections is not None:
+            collection_header = QTreeWidgetItem(
+                [tr("sidebar.collections", count=len(collections))]
+            )
+            self._set_vtype(collection_header, VTYPE_COLLECTION_HEADER)
+            self._set_item_icon(collection_header, "grid", "recent")
+            self._bold_item(collection_header, themes.get()["recent"])
+            self._tree.addTopLevelItem(collection_header)
+
+            for collection in collections:
+                if collection["kind"] == "smart":
+                    # Smart collections are query views; the desktop shows
+                    # them display-only and skips evaluation entirely.
+                    label = tr(
+                        "sidebar.smart_collection_label",
+                        name=collection["name"],
+                    )
+                else:
+                    label = tr(
+                        "sidebar.collection_label",
+                        name=collection["name"],
+                        count=collection["member_count"],
+                    )
+                child = QTreeWidgetItem([label])
+                self._set_vtype(child, VTYPE_COLLECTION)
+                child.setData(0, _COLLECTION_ID_ROLE, int(collection["id"]))
+                child.setData(0, _COLLECTION_KIND_ROLE, str(collection["kind"]))
+                self._set_item_icon(child, "grid")
+                child.setToolTip(0, collection["name"])
+                collection_header.addChild(child)
+                # Manual collections start collapsed with their members
+                # loaded on first click (members reference absolute paths
+                # that are only navigable, never moved).
+                if collection["kind"] == "manual":
+                    QTreeWidgetItem(child, ["..."])
 
         # ── Filesystem: root children as top-level ──────────────
         roots = [self._library_root] if self._library_root else self.ROOTS
@@ -594,6 +652,10 @@ class SidebarPanel(PanelContent):
     # ── Click / double-click routing ────────────────────────────────
 
     def _on_tree_click(self, item, col):
+        vtype = self._get_vtype(item)
+        if vtype == VTYPE_COLLECTION:
+            self._toggle_collection_members(item)
+            return
         path = item.data(0, Qt.ItemDataRole.UserRole)
         if not path:
             return
@@ -609,6 +671,11 @@ class SidebarPanel(PanelContent):
             # bus().directory_changed afterwards (window wires
             # directory_selected -> navigate_to).
             self._recents.record_visit(path)
+            self.directory_selected.emit(path)
+        elif vtype == VTYPE_COLLECTION_MEMBER and path:
+            # Collection members navigate like filesystem paths but are
+            # never recorded as recent-folder visits: the collection is a
+            # reference set, not a visited folder.
             self.directory_selected.emit(path)
         elif vtype == VTYPE_FAV_HEADER:
             item.setExpanded(not item.isExpanded())
@@ -634,6 +701,14 @@ class SidebarPanel(PanelContent):
         if vtype == VTYPE_FAV_HEADER:
             menu.addAction(tr("sidebar.menu.add_current_fav"),
                            lambda: self._add_current_to_favorites())
+        elif vtype == VTYPE_COLLECTION_HEADER:
+            menu.addAction(tr("sidebar.menu.new_collection"),
+                           self._collection_new)
+        elif vtype == VTYPE_COLLECTION:
+            menu.addAction(tr("sidebar.menu.rename"),
+                           lambda: self._collection_rename(item))
+            menu.addAction(tr("sidebar.menu.delete_collection"),
+                           lambda: self._collection_delete(item))
         elif vtype == VTYPE_FAV_CHILD and path:
             menu.addAction(tr("sidebar.menu.rename"), lambda p=path: self._fav_rename(p))
             icons_menu = menu.addMenu(tr("sidebar.menu.change_icon"))
@@ -704,6 +779,126 @@ class SidebarPanel(PanelContent):
             vtype = self._get_vtype(item)
             if vtype == VTYPE_FS and path and self._favs.add(path):
                 self._populate()
+
+    # ── User collections (manual reference sets + smart display rows) ──
+
+    def _collection_service(self):
+        """Return the bound CollectionService, or None when unscoped."""
+        service = getattr(self._scoped_services, "collection_service", None)
+        if service is None or not self._library_root:
+            return None
+        return service
+
+    def _load_collections(self) -> list[dict] | None:
+        """Return the collection rows, or None when collections are unbound.
+
+        Failures degrade to "no collections" instead of breaking the whole
+        tree population; the sidebar is a navigation aid, not the source of
+        truth.
+        """
+        service = self._collection_service()
+        if service is None:
+            return None
+        try:
+            return list(service.list_collections(self._library_root))
+        except Exception as exc:
+            _log.warning("Sidebar collection listing failed: %s", exc)
+            return []
+
+    def _toggle_collection_members(self, item) -> None:
+        """First click lazily loads manual members; later clicks toggle."""
+        if self._get_vtype(item) != VTYPE_COLLECTION:
+            return
+        collection_id = item.data(0, _COLLECTION_ID_ROLE)
+        kind = item.data(0, _COLLECTION_KIND_ROLE)
+        if kind != "manual" or collection_id is None:
+            # Smart rows stay display-only on desktop (no evaluation).
+            item.setExpanded(not item.isExpanded())
+            return
+        if collection_id not in self._collections_loaded_ids:
+            self._collections_loaded_ids.add(collection_id)
+            item.takeChildren()
+            for member in self._collection_member_paths(int(collection_id)):
+                child = QTreeWidgetItem([Path(member).name])
+                self._set_vtype(child, VTYPE_COLLECTION_MEMBER, member)
+                self._set_item_icon(child, "file")
+                child.setToolTip(0, member)
+                item.addChild(child)
+        item.setExpanded(not item.isExpanded())
+
+    def _collection_member_paths(self, collection_id: int) -> list[str]:
+        """Return existing member paths for one manual collection.
+
+        Members whose files no longer exist are skipped here (the read
+        tolerates them with an ``exists`` flag); nothing is ever pruned
+        from the reference set as a side effect of listing.
+        """
+        service = self._collection_service()
+        if service is None:
+            return []
+        try:
+            members = service.get_members(self._library_root, collection_id)
+        except Exception as exc:
+            _log.warning("Sidebar collection members failed: %s", exc)
+            return []
+        return [
+            member["file_path"] for member in members
+            if member.get("exists", True)
+        ]
+
+    def _collection_new(self):
+        if self._collection_service() is None:
+            return
+        name, ok = QInputDialog.getText(
+            self, tr("sidebar.dialog.new_collection"),
+            tr("sidebar.dialog.collection_name_label"),
+        )
+        if not (ok and name.strip()):
+            return
+        try:
+            self._collection_service().create(self._library_root, name.strip())
+        except Exception as exc:
+            _log.warning("Sidebar collection create failed: %s", exc)
+        # CollectionChanged repopulates the tree.
+
+    def _collection_rename(self, item):
+        service = self._collection_service()
+        if service is None:
+            return
+        collection_id = item.data(0, _COLLECTION_ID_ROLE)
+        if collection_id is None:
+            return
+        current = item.toolTip(0) or item.text(0)
+        name, ok = QInputDialog.getText(
+            self, tr("sidebar.dialog.rename_collection"),
+            tr("sidebar.dialog.collection_name_label"), text=current,
+        )
+        if not (ok and name.strip()):
+            return
+        try:
+            service.rename(self._library_root, int(collection_id), name.strip())
+        except Exception as exc:
+            _log.warning("Sidebar collection rename failed: %s", exc)
+
+    def _collection_delete(self, item):
+        service = self._collection_service()
+        if service is None:
+            return
+        collection_id = item.data(0, _COLLECTION_ID_ROLE)
+        if collection_id is None:
+            return
+        try:
+            service.delete(self._library_root, int(collection_id))
+        except Exception as exc:
+            _log.warning("Sidebar collection delete failed: %s", exc)
+
+    def _on_domain_collections_changed(self, event) -> None:
+        """Repopulate when the session's collection catalog changes."""
+        scoped = self._scoped_services
+        if scoped is None or event.session_token != scoped.session.event_token:
+            return
+        self._collections_loaded_ids.clear()
+        self._populate()
 
     # ── Search (debounced, 200ms) ───────────────────────────────────
 

@@ -28,27 +28,24 @@ RateLimitClass = Literal["general", "skip", "auth_strict", "browse"]
 # Declarative authorization capabilities (L1). Each write route names the
 # ability it requires instead of relying on a handler remembering to check.
 # Principal-backed names mirror ``principal.Capabilities`` fields; the rest
-# are checked by ``lan/authorization.py`` (some against seller/buyer state).
+# are checked by ``lan/authorization.py``.
 KNOWN_CAPABILITIES = frozenset({
     # Principal capabilities (checked against principal.capabilities).
     "browse", "preview", "download", "manage_links", "manage_users",
     "settings", "realtime",
     # Helper-backed write gates.
     "write_notes", "write_tags", "admin_tags", "admin_users",
-    # Commerce gates (seller session / guest buyer tokens).
-    "seller", "buyer_cart", "buyer_wishlist", "buyer_orders", "buyer_claim",
-    # Intentional anonymous entry points: identity bootstrap, share-password
-    # verification, and public analytics signals.
-    "public_auth", "public_signal", "share_verify",
+    # Intentional anonymous entry points: identity bootstrap and
+    # share-password verification.
+    "public_auth", "share_verify",
 })
 
 # These capabilities are satisfied by any resolved principal (including
 # guests). They still must be declared so the static gate cannot miss a
-# public write; their safety comes from handler-owned state (buyer tokens,
-# receipts, invite codes, rate-limited login attempts).
+# public write; their safety comes from handler-owned state (invite codes,
+# rate-limited login attempts).
 GUEST_ALLOWED_CAPABILITIES = frozenset({
-    "buyer_cart", "buyer_wishlist", "buyer_orders", "buyer_claim",
-    "public_auth", "public_signal", "share_verify",
+    "public_auth", "share_verify",
 })
 
 # aiohttp normalizes "{name:regex}" to "{name}" in a resource's canonical

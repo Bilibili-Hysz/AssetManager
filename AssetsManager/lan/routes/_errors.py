@@ -11,10 +11,9 @@ Semantics:
   ``status`` are explicit keyword arguments.
 - A domain exception is mapped to a machine-readable ``code`` and HTTP
   status; the mapping is the single source of truth previously duplicated
-  across ``routes/shop.py``, ``routes/favorites.py`` and
-  ``routes/seller_profile.py``.
+  across route modules.
 - Unknown failures are logged server-side and never leak exception text to
-  clients (buyers, sellers, or browsers).
+  clients.
 """
 from __future__ import annotations
 
@@ -24,23 +23,13 @@ from typing import Any
 from aiohttp import web
 
 from AssetsManager.application.gallery_service import GalleryTraversalLimitError
-from AssetsManager.application.shop_authorization import (
-    ShopAuthorizationConfigError,
-    UnauthorizedShopPathError,
-)
 from AssetsManager.domain.errors import (
-    DeliveryPreparationError,
     DuplicateError,
-    IdempotencyKeyReusedError,
     MissingPathError,
     NotFoundError,
     OperationNotPermitted,
     PathEscapeError,
-    PriceChangedError,
-    StoreNotAcceptingOrdersError,
     ValidationError,
-    VersionConflictError,
-    WishlistLimitError,
 )
 
 _log = logging.getLogger(__name__)
@@ -110,23 +99,6 @@ def _mapped(
         message = str(exc)
         return _plain(message, status, code, field, details, extra, headers)
 
-    if isinstance(exc, StoreNotAcceptingOrdersError):
-        return web.json_response(
-            {
-                "error": "This store is not accepting new orders",
-                "code": "store_not_accepting_orders",
-                "details": {},
-            },
-            status=503,
-            headers={"Cache-Control": "no-store"},
-        )
-    if isinstance(exc, DeliveryPreparationError):
-        return web.json_response(
-            {"error": str(exc), "code": exc.code, "details": {}},
-            status=500,
-            headers={"Cache-Control": "no-store"},
-        )
-
     payload: dict[str, Any] = {"error": str(exc), "code": "internal_error", "details": {}}
     status = 500
     headers = {"Cache-Control": "private, no-store"}
@@ -144,79 +116,18 @@ def _mapped(
             "details": {},
         }
         status = 400
-    elif isinstance(exc, UnauthorizedShopPathError):
-        payload = {
-            "error": str(exc),
-            "code": "shop_path_not_authorized",
-            "details": {},
-        }
-        status = 403
-    if isinstance(exc, ShopAuthorizationConfigError):
-        # 503 with a specific code, exempt from the 500+ no-leak rewrite so
-        # the seller UI can surface the configuration problem. The historical
-        # shop.py mapping set these fields and then overwrote them in the
-        # final status >= 500 block, which looked unintentional.
-        return web.json_response(
-            {
-                "error": "Shop authorization configuration is invalid",
-                "code": "shop_authorization_config_invalid",
-                "details": {},
-            },
-            status=503,
-            headers={"Cache-Control": "no-store"},
-        )
     if isinstance(exc, GalleryTraversalLimitError):
         payload["code"] = "gallery_traversal_limit"
         status = exc.status
     elif isinstance(exc, (MissingPathError, NotFoundError)):
         payload["code"] = "not_found"
         status = 404
-        if isinstance(exc, NotFoundError):
-            entity = str(getattr(exc, "entity", "")).strip().lower()
-            if entity == "cart line":
-                payload["code"] = "cart_line_not_found"
-                payload["field"] = "line_id"
-            elif entity == "order receipt":
-                payload["code"] = "receipt_not_found"
-                payload["field"] = "order_id"
-            elif entity == "delivery":
-                payload["code"] = "delivery_not_found"
-                payload["field"] = "token"
-    elif isinstance(exc, PriceChangedError):
-        payload["code"] = "price_changed"
-        payload["field"] = "item_id"
-        payload["item_id"] = exc.item_id
-        status = 409
-    elif isinstance(exc, VersionConflictError):
-        payload["code"] = "cart_version_conflict"
-        payload["field"] = "version"
-        status = 409
-    elif isinstance(exc, WishlistLimitError):
-        payload["code"] = "wishlist_limit"
-        payload["field"] = "items"
-        payload["limit"] = exc.limit
-        status = 409
     elif isinstance(exc, DuplicateError):
         payload["code"] = "conflict"
         status = 409
-    elif isinstance(exc, IdempotencyKeyReusedError):
-        payload["code"] = exc.code
-        status = 409
     elif isinstance(exc, OperationNotPermitted):
-        message = str(exc)
-        lowered = message.lower()
-        if "receipt" in lowered and "expired" in lowered:
-            payload["code"] = "receipt_expired"
-            status = 410
-        elif "download limit" in lowered or "quota exceeded" in lowered:
-            payload["code"] = "delivery_quota_exhausted"
-            status = 410
-        elif "delivery token" in lowered and ("expired" in lowered or "revoked" in lowered):
-            payload["code"] = "delivery_unavailable"
-            status = 410
-        else:
-            payload["code"] = getattr(exc, "code", "operation_not_permitted")
-            status = 409
+        payload["code"] = getattr(exc, "code", "operation_not_permitted")
+        status = 409
 
     if status >= 500:
         _log.error(

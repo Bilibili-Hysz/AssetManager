@@ -31,7 +31,7 @@ type RecoveryIntent = {
 /** Upper bound for a single recovery fetch; a hung request must not pin recoveryRef forever. */
 const RECOVERY_TIMEOUT_MS = 10_000;
 const projectionDomains = new Set<ProjectionDomain>([
-  'files', 'tree', 'home', 'project_detail', 'metadata', 'favorites', 'tags', 'shares', 'users', 'activity', 'online_users', 'shop', 'orders', 'quota',
+  'files', 'tree', 'home', 'project_detail', 'metadata', 'favorites', 'tags', 'shares', 'users', 'activity', 'online_users', 'quota',
 ]);
 
 function isCursor(value: unknown): value is RuntimeCursor {

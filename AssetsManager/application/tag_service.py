@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Iterable
 from pathlib import Path
 from sqlite3 import Connection
 from threading import Lock
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from AssetsManager.application.activity_recorder import ActivityRecorder, summarize_targets
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
@@ -18,6 +19,9 @@ from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.errors import OperationNotPermitted, PathEscapeError, ValidationError
 from AssetsManager.domain.events import AssetTagsChanged, TagCatalogChanged
 from AssetsManager.repositories.tag_repository import TagRepository, TagSource
+
+if TYPE_CHECKING:
+    from AssetsManager.application.search_index_service import SearchIndexService
 
 _log = logging.getLogger(__name__)
 _MAX_TAG_NAME_LENGTH = 200
@@ -82,10 +86,12 @@ class TagService:
     def __init__(self, connection_provider: ConnectionProvider | None = None,
                  session: LibrarySession | None = None,
                  canonicalize: Callable[[str], str] | None = None,
-                 activity_recorder: ActivityRecorder | None = None):
+                 activity_recorder: ActivityRecorder | None = None,
+                 search_index_service: SearchIndexService | None = None):
         self._session = session
         self._canonicalize = canonicalize if canonicalize is not None else canonical_tag
         self._activity_recorder = activity_recorder
+        self._search_index_service = search_index_service
         self._repository: TagRepository | None = None
         self._root_identity = None
         if isinstance(session, LibrarySession):
@@ -114,12 +120,14 @@ class TagService:
 
     @classmethod
     def for_session(cls, session: LibrarySession,
-                    *, activity_recorder: ActivityRecorder | None = None) -> "TagService":
+                    *, activity_recorder: ActivityRecorder | None = None,
+                    search_index_service: SearchIndexService | None = None) -> "TagService":
         """Build the canonical tag service for one real session."""
         if not isinstance(session, LibrarySession):
             raise TypeError("TagService.for_session requires a real LibrarySession")
         return cls(connection_provider=session.connection_for, session=session,
-                   activity_recorder=activity_recorder)
+                   activity_recorder=activity_recorder,
+                   search_index_service=search_index_service)
 
     def _resolve_root(self, library_root: str | Path) -> str:
         """Cached Path.resolve() for library roots."""
@@ -262,6 +270,26 @@ class TagService:
             paths=paths,
         ))
 
+    def _reindex_search_documents(self, paths: Iterable[str]) -> None:
+        """Refresh ``asset_search`` documents for changed paths; never raises.
+
+        The FTS index (migration v39) aggregates name/tags/notes per path,
+        so every tag mutation dirties at least one document. The maintainer
+        swallows its own failures (ActivityRecorder contract); this outer
+        guard keeps the bookkeeping strictly non-essential even if that
+        wiring changes.
+        """
+        service = self._search_index_service
+        if service is None:
+            return
+        keys = [path for path in paths if path]
+        if not keys:
+            return
+        try:
+            service.reindex_files(keys)
+        except Exception:  # pragma: no cover - defensive, service never raises
+            _log.warning("Search index reindex hook failed", exc_info=True)
+
     @session_operation
     def list_tags(self, library_root: str | Path, db_conn: Connection | None = None,
                   *, source: TagSource = "human") -> list[dict]:
@@ -315,6 +343,7 @@ class TagService:
         self._publish_asset_tags_changed(
             key, tags, publish_catalog=(source == "human")
         )
+        self._reindex_search_documents((key,))
         return True
 
     @session_operation
@@ -367,6 +396,7 @@ class TagService:
         self._publish_asset_tags_changed(
             key, tags, publish_catalog=(source == "human")
         )
+        self._reindex_search_documents((key,))
         return True
 
     @session_operation
@@ -405,6 +435,7 @@ class TagService:
         removed = repo.remove_file(key, require_clean_transaction=True)
         if removed:
             self._publish_asset_tags_changed(key, (), publish_catalog=True)
+        self._reindex_search_documents((key,))
 
     @session_operation
     def rename_tag(self, library_root: str | Path, old_name: str, new_name: str,
@@ -417,6 +448,7 @@ class TagService:
         repo.rename_tag(old_name, new_name, require_clean_transaction=True)
         self._publish_asset_tags_batch_changed(tuple(paths))
         self._publish_tag_catalog_changed()
+        self._reindex_search_documents(paths)
 
     @session_operation
     def delete_tag(self, library_root: str | Path, tag_name: str,
@@ -428,6 +460,7 @@ class TagService:
         repo.delete_tag(tag_name, require_clean_transaction=True)
         self._publish_asset_tags_batch_changed(tuple(paths))
         self._publish_tag_catalog_changed()
+        self._reindex_search_documents(paths)
 
     @session_operation
     def get_tags_for_tree(self, library_root: str | Path, dir_path: str | Path,

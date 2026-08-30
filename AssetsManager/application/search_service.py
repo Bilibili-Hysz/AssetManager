@@ -8,10 +8,11 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from time import monotonic, perf_counter
-from typing import Iterable, Protocol, cast
+from typing import TYPE_CHECKING, Iterable, Protocol, cast
 
 from AssetsManager.application.asset_index_service import AssetIndexService
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
+from AssetsManager.application.search_syntax import parse_query
 from AssetsManager.core.database import DatabaseManager
 from AssetsManager.core.format_utils import CATEGORY_MAP
 from AssetsManager.core.path_resolver import root_identity
@@ -19,6 +20,9 @@ from AssetsManager.core.performance import PerformanceRecorder
 from AssetsManager.core.session_contract import require_library_session
 from AssetsManager.repositories.asset_index_repository import AssetIndexRepository
 from AssetsManager.repositories.tag_repository import TagRepository
+
+if TYPE_CHECKING:
+    from AssetsManager.application.search_index_service import SearchIndexService
 
 
 class _Scanner(Protocol):
@@ -267,6 +271,7 @@ class SearchService:
         connection_provider: ConnectionProvider | None = None,
         session: LibrarySession | None = None,
         asset_index_service: AssetIndexService | None = None,
+        search_index_service: SearchIndexService | None = None,
     ) -> None:
         self._performance_recorder = (
             performance_recorder if performance_recorder is not None and performance_recorder.enabled else None
@@ -274,6 +279,9 @@ class SearchService:
         self._session_token = session_token
         self._session = session
         self._asset_index_service = asset_index_service
+        # FTS fourth source (migration v39); optional so legacy/fake
+        # constructions keep their exact previous behavior without it.
+        self._search_index_service = search_index_service
         self._tag_repository: TagRepository | None = None
         self._root_identity = None
         if isinstance(session, LibrarySession):
@@ -637,6 +645,135 @@ class SearchService:
             started,
             SearchResultSet.from_source(
                 "indexed",
+                results,
+                status=status,
+                errors=errors,
+                dropped_count=dropped_count,
+            ),
+            limit=limit,
+        )
+
+    @session_operation
+    def search_by_fts_detailed(
+        self,
+        library_root: str | Path,
+        query: str,
+        category: str = "all",
+        db_conn: sqlite3.Connection | None = None,
+        limit: int = 200,
+    ) -> SearchResultSet:
+        """Return full-text (``asset_search``) matches with source diagnostics.
+
+        Fourth search source (migration v39): the FTS5 document aggregates
+        ``assets.name``, ``file_tags`` and ``file_meta.notes`` per path, so
+        this source recalls tag/notes text that the scanner and indexed
+        sources cannot see. The query is parsed with the shared syntax
+        parser (bare words AND, ``|`` OR, ``-`` exclusion, quoted phrases,
+        ``name:``/``tag:``/``notes:`` field filters).
+
+        The full-text index is a derived, rebuildable projection: every
+        failure (unwired maintainer, missing table, malformed MATCH)
+        degrades to a diagnostic status — this source never raises to the
+        transport and therefore can never turn a search into a 500.
+        """
+        return self._search_by_fts_detailed(library_root, query, category, db_conn, limit)
+
+    def _search_by_fts_detailed(
+        self,
+        library_root: str | Path,
+        query: str,
+        category: str,
+        db_conn: sqlite3.Connection | None,
+        limit: int,
+    ) -> SearchResultSet:
+        started = perf_counter() if self._performance_recorder is not None else None
+        if not query:
+            return self._record_results(
+                "search.fts",
+                library_root,
+                started,
+                SearchResultSet.from_source(
+                    "fts",
+                    status=SearchStatus.INVALID_INPUT,
+                    errors=(SearchError("search_invalid_input", "fts", recoverable=True),),
+                ),
+                limit=limit,
+            )
+        if self._search_index_service is None:
+            return self._record_results(
+                "search.fts",
+                library_root,
+                started,
+                SearchResultSet.from_source(
+                    "fts",
+                    status=SearchStatus.UNAVAILABLE,
+                    errors=(SearchError("search_source_unavailable", "fts", recoverable=True),),
+                ),
+                limit=limit,
+            )
+        db_conn = self._connection(library_root, db_conn)
+        if db_conn is None:
+            return self._record_results(
+                "search.fts",
+                library_root,
+                started,
+                SearchResultSet.from_source(
+                    "fts",
+                    status=SearchStatus.UNAVAILABLE,
+                    errors=(SearchError("search_source_unavailable", "fts", recoverable=True),),
+                ),
+                limit=limit,
+            )
+        root = Path(library_root).resolve(strict=False)
+        try:
+            parsed = parse_query(query)
+            if parsed.match:
+                paths = self._search_index_service.match_file_paths(
+                    parsed.match, limit=limit, db_conn=db_conn,
+                )
+            else:
+                # Empty query or pure exclusion: nothing searchable, which
+                # is a complete empty result, not an error.
+                paths = []
+        except Exception:
+            return self._record_results(
+                "search.fts",
+                library_root,
+                started,
+                SearchResultSet.from_source(
+                    "fts",
+                    status=SearchStatus.ERROR,
+                    errors=(SearchError("search_source_failed", "fts", recoverable=True),),
+                ),
+                limit=limit,
+            )
+
+        results: list[SearchResult] = []
+        errors: list[SearchError] = []
+        dropped_count = 0
+        for file_path in paths:
+            rel = _contained_relative_path(root, file_path)
+            if rel is None:
+                dropped_count += 1
+                _append_error(errors, SearchError("search_result_rejected", "fts", recoverable=True))
+                continue
+            name = Path(rel).name
+            extension = Path(name).suffix.lower()
+            cat = _category_for_extension(extension)
+            if category != "all" and cat != category:
+                continue
+            results.append(SearchResult(name=name, path=rel, extension=extension, category=cat))
+
+        if dropped_count:
+            status = SearchStatus.PARTIAL if results else SearchStatus.PATH_REJECTED
+        else:
+            status = SearchStatus.COMPLETE if results else SearchStatus.EMPTY
+        return self._record_results(
+            "search.fts",
+            library_root,
+            started,
+            SearchResultSet.from_source(
+                "fts",
                 results,
                 status=status,
                 errors=errors,

@@ -282,6 +282,8 @@
   "viewer.save_filter": "Image files (*.png *.jpg *.jpeg *.bmp *.webp)",
   "viewer.exif_title": "EXIF",
   "viewer.exif_none": "No EXIF data",
+  "viewer.sequence_label": "Sequence {index}/{count}",
+  "viewer.sequence_hint": ",/. prev/next frame · Ctrl+P play",
   "dock.float": "Pop out / dock in",
   "dock.close": "Close panel",
   "dock.split_h": "Split Horizontal",
@@ -876,5 +878,13 @@
   "settings.thumb_clearing": "Clearing thumbnail cache…",
   "settings.thumb_clear_done_failed": "Deleted {count} cached thumbnails.\n{failed} file(s) could not be removed — see log for details.",
   "library.switch_failed": "Library switch failed: {reason}",
-  "library.switch_failed_retry_hint": "The previous library could not be restored. Retry the switch, or reopen the library from the launcher."
+  "library.switch_failed_retry_hint": "The previous library could not be restored. Retry the switch, or reopen the library from the launcher.",
+  "sidebar.collections": "Collections ({count})",
+  "sidebar.collection_label": "{name}  ({count})",
+  "sidebar.smart_collection_label": "{name}  · smart",
+  "sidebar.menu.new_collection": "New collection",
+  "sidebar.menu.delete_collection": "Delete collection",
+  "sidebar.dialog.new_collection": "New collection",
+  "sidebar.dialog.rename_collection": "Rename collection",
+  "sidebar.dialog.collection_name_label": "Collection name"
 }

@@ -7,6 +7,7 @@ import logging
 import os
 import contextlib
 import secrets
+import tempfile
 import threading
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
@@ -28,8 +29,13 @@ from AssetsManager.application.thumbnail_service import (
     admit_thumbnail_source,
     thumbnail_cache_key,
 )
+from AssetsManager.application.media.analysis import (
+    ensure_extracted_palette,
+    generate_waveform_from_bytes,
+)
 from AssetsManager.application.media.decoders import decoder_for
 from AssetsManager.core.file_snapshot import FileIdentity, read_snapshot
+from AssetsManager.core.constants import AUDIO_EXTS
 from AssetsManager.core.thumbnail_key import (
     WEBP_RENDER_PROFILES,
     legacy_thumbnail_cache_key,
@@ -44,6 +50,7 @@ from AssetsManager.panels.file_list._common import (
     IMAGE_EXTS,
     VIDEO_EXTS,
     pil_image_to_qimage,
+    qimage_to_pil,
 )
 
 _log = logging.getLogger(__name__)
@@ -68,10 +75,17 @@ _FFMPEG_POOL_DRAIN_TIMEOUT_MS = 10_000
 
 
 class _VideoFramePending:
-    """Marker returned when video frame extraction is running on the ffmpeg pool."""
+    """Marker returned when heavy extraction is running on the ffmpeg pool.
+
+    Shared by the video first-frame extraction (``_VIDEO_FRAME_DEFERRED``)
+    and the audio waveform render (``_WAVEFORM_DEFERRED``): the calling load
+    task must not treat the request as failed — delivery arrives from the
+    ffmpeg worker once the artifact lands.
+    """
 
 
 _VIDEO_FRAME_DEFERRED = _VideoFramePending()
+_WAVEFORM_DEFERRED = _VideoFramePending()
 
 
 @dataclass(frozen=True)
@@ -83,6 +97,7 @@ class _Runtime:
     cache_epoch: int
     session_token: str | None
     recorder: PerformanceRecorder | None
+    derivatives_recorder: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -185,9 +200,9 @@ class _LoadTask(QRunnable):
         started = perf_counter() if self._runtime.recorder is not None else None
         try:
             pix = self._loader._load_image(self._path, self._runtime)
-            if pix is _VIDEO_FRAME_DEFERRED:
-                # Video frame extraction is running on the dedicated ffmpeg
-                # pool; the frame is delivered from that worker when ready.
+            if pix is _VIDEO_FRAME_DEFERRED or pix is _WAVEFORM_DEFERRED:
+                # Heavy extraction is running on the dedicated ffmpeg pool;
+                # delivery arrives from that worker when the artifact lands.
                 return
             if pix is not None:
                 self._loader._on_image_loaded(
@@ -241,6 +256,64 @@ class _ExtractVideoFrameTask(QRunnable):
             self._loader._mark_failed(self._source_path, self._runtime)
 
 
+class _ExtractAudioWaveformTask(QRunnable):
+    """Runs the audio waveform render on the dedicated ffmpeg pool (N-B2).
+
+    Mirrors ``_ExtractVideoFrameTask``: the render consumes the captured
+    source snapshot, registers the ``audio_waveform`` derivative (the
+    compute-at-most-once marker) and delivers the baked thumbnail from the
+    pool worker thread.
+    """
+
+    def __init__(self, loader, source_path: str, body: bytes, suffix: str, runtime: _Runtime):
+        super().__init__()
+        self._loader = loader
+        self._source_path = source_path
+        self._body = body
+        self._suffix = suffix
+        self._runtime = runtime
+
+    def run(self):
+        ok = False
+        png_bytes = b""
+        temp_png = None
+        try:
+            if not self._loader._is_current_cache_epoch(self._runtime):
+                return
+            # The render target is a scratch file, not a cache artifact: the
+            # waveform PNG lives authoritatively as the derivative payload,
+            # the display cache is the baked webp.
+            fd, temp_png = tempfile.mkstemp(suffix=".png")
+            os.close(fd)
+            ok = generate_waveform_from_bytes(
+                self._body, self._suffix, Path(temp_png),
+            )
+            if ok:
+                if not self._loader._is_current_cache_epoch(self._runtime):
+                    return
+                png_bytes = Path(temp_png).read_bytes()
+                recorder = self._runtime.derivatives_recorder
+                if recorder is not None and png_bytes:
+                    recorder.record(self._source_path, "audio_waveform", png_bytes, ext=".png")
+        except Exception:
+            _log.exception("Audio waveform render failed: %s", self._source_path)
+            ok = False
+        finally:
+            if temp_png is not None:
+                try:
+                    os.unlink(temp_png)
+                except OSError:
+                    pass
+        if ok and png_bytes and self._loader._is_current_cache_epoch(self._runtime):
+            self._loader._on_audio_waveform_ready(
+                self._source_path, png_bytes, self._runtime
+            )
+        elif ok:
+            return
+        else:
+            self._loader._mark_failed(self._source_path, self._runtime)
+
+
 class _BakeTask(QRunnable):
     def __init__(
         self, loader, key, source_path, bake_size, runtime, *,
@@ -271,6 +344,9 @@ class _BakeTask(QRunnable):
             self._loader._store_baked_image(
                 key, self._source_path, self._bake_size, img,
                 self._runtime, source_identity=identity,
+            )
+            self._loader._record_palette_after_bake(
+                self._source_path, img, self._runtime,
             )
         except Exception:
             _log.exception("Bake task failed: %s", self._source_path)
@@ -342,6 +418,7 @@ class ThumbnailLoader(QObject):
         self._thumbnail_service: Any | None = None
         self._performance_recorder: PerformanceRecorder | None = None
         self._session_token: str | None = None
+        self._derivatives_recorder: Any | None = None
 
     def set_performance_context(
         self,
@@ -392,8 +469,16 @@ class ThumbnailLoader(QObject):
         lib_root: str,
         recorder: PerformanceRecorder | None = None,
         session_token: str | None = None,
+        *,
+        derivatives_recorder: Any | None = None,
     ) -> None:
-        """Atomically bind one service/filesystem runtime snapshot."""
+        """Atomically bind one service/filesystem runtime snapshot.
+
+        ``derivatives_recorder`` is the library-scoped
+        ``MediaDerivativesRecorder`` (N-A) used by the on-demand audio
+        waveform / palette passes; optional so legacy callers and test
+        doubles keep working without one.
+        """
         self._mutex.lock()
         try:
             old_generation = self._invalidate_runtime_locked()
@@ -407,6 +492,7 @@ class ThumbnailLoader(QObject):
             except Exception:
                 self._performance_recorder = None
             self._session_token = session_token
+            self._derivatives_recorder = derivatives_recorder
         finally:
             self._mutex.unlock()
         self.wait_for_runtime(old_generation)
@@ -593,6 +679,7 @@ class ThumbnailLoader(QObject):
             cache_epoch=self._cache_epoch,
             session_token=self._session_token,
             recorder=self._performance_recorder,
+            derivatives_recorder=self._derivatives_recorder,
         )
 
     def _is_current_generation(self, generation: int) -> bool:
@@ -962,6 +1049,38 @@ class ThumbnailLoader(QObject):
             _log.debug("Desktop source snapshot failed: %s", path, exc_info=True)
             return None
 
+    def _probe_baked_cache(
+        self, path: str, runtime: _Runtime, key: str, bake_size: int,
+    ) -> QImage | None:
+        """Profile/v3/legacy disk-cache probe shared by the image and audio
+        load paths (exact former body of the ``_load_image`` cache block)."""
+        cached = None
+        for profile in self._webp_profiles_for_size(bake_size):
+            v3_key = self._disk_profile_key(path, profile)
+            cached = self._try_load_cached(
+                v3_key, path, runtime, bake_size=bake_size,
+                render_profile=profile,
+            )
+            if cached is not None:
+                break
+        if cached is None:
+            cached = self._try_load_cached(
+                key, path, runtime, bake_size=bake_size,
+            )
+        if cached is None:
+            legacy_key = legacy_thumbnail_cache_key(path)
+            if legacy_key != key:
+                cached = self._try_load_cached(
+                    legacy_key, path, runtime, bake_size=bake_size,
+                )
+        if cached is not None:
+            if runtime.recorder is not None:
+                self._record("thumbnail.cache", runtime=runtime, path=path, attributes={"tier": "disk", "outcome": "hit"})
+            return cached
+        if runtime.recorder is not None:
+            self._record("thumbnail.cache", runtime=runtime, path=path, attributes={"tier": "disk", "outcome": "miss"})
+        return None
+
     def _load_image(
         self, path: str, runtime: _Runtime | None = None
     ) -> QImage | _VideoFramePending | None:
@@ -972,6 +1091,8 @@ class ThumbnailLoader(QObject):
         ext = Path(path).suffix.lower()
         if ext in VIDEO_EXTS:
             return self._load_video_frame(path, runtime)
+        if ext in AUDIO_EXTS:
+            return self._load_audio_waveform(path, runtime)
         # Professional formats (RAW/PSD) route through the media decoder
         # registry; with the extras missing decoder_for returns None and the
         # behavior is identical to the pre-decoder code (failure marker).
@@ -981,31 +1102,9 @@ class ThumbnailLoader(QObject):
         key = self._disk_key(path)
         bake_size = get_bake_size()
         if bake_size >= 0:
-            cached = None
-            for profile in self._webp_profiles_for_size(bake_size):
-                v3_key = self._disk_profile_key(path, profile)
-                cached = self._try_load_cached(
-                    v3_key, path, runtime, bake_size=bake_size,
-                    render_profile=profile,
-                )
-                if cached is not None:
-                    break
-            if cached is None:
-                cached = self._try_load_cached(
-                    key, path, runtime, bake_size=bake_size,
-                )
-            if cached is None:
-                legacy_key = legacy_thumbnail_cache_key(path)
-                if legacy_key != key:
-                    cached = self._try_load_cached(
-                        legacy_key, path, runtime, bake_size=bake_size,
-                    )
+            cached = self._probe_baked_cache(path, runtime, key, bake_size)
             if cached is not None:
-                if runtime.recorder is not None:
-                    self._record("thumbnail.cache", runtime=runtime, path=path, attributes={"tier": "disk", "outcome": "hit"})
                 return cached
-            if runtime.recorder is not None:
-                self._record("thumbnail.cache", runtime=runtime, path=path, attributes={"tier": "disk", "outcome": "miss"})
         if media_decoder is not None:
             return self._load_with_media_decoder(path, media_decoder, runtime)
         snapshot = self._snapshot_source(path, runtime)
@@ -1075,6 +1174,126 @@ class ThumbnailLoader(QObject):
         task = _ExtractVideoFrameTask(self, source_path, body, frame_path, runtime)
         ffmpeg_pool.start(task)
 
+    # ── Audio waveform thumbnails (N-B2) ─────────────────────────
+
+    def _load_audio_waveform(
+        self, path: str, runtime: _Runtime
+    ) -> QImage | _VideoFramePending | None:
+        """Load an audio thumbnail from its generated waveform.
+
+        Mirrors ``_load_video_frame``: baked webp cache first, then an
+        already-registered ``audio_waveform`` derivative (re-baking from the
+        stored PNG without re-running analysis/ffmpeg), and only when neither
+        exists is the render dispatched to the dedicated ``ffmpeg_pool`` —
+        ``_WAVEFORM_DEFERRED`` is returned and delivery arrives from the pool
+        worker. Failure walks the pre-existing failure-marker path.
+        """
+        if not runtime.cache_dir or not self._is_current_generation(runtime.generation):
+            return None
+        key = self._disk_key(path)
+        bake_size = get_bake_size()
+        if bake_size >= 0:
+            cached = self._probe_baked_cache(path, runtime, key, bake_size)
+            if cached is not None:
+                return cached
+        recorder = runtime.derivatives_recorder
+        if recorder is not None:
+            payload = recorder.payload_path(path, "audio_waveform")
+            if payload is not None:
+                try:
+                    png_bytes = payload.read_bytes()
+                except OSError:
+                    png_bytes = b""
+                if png_bytes:
+                    img = self._decode_waveform_png(path, png_bytes, runtime, bake_size)
+                    if img is not None:
+                        return img
+        snapshot = self._snapshot_source(path, runtime)
+        if snapshot is None:
+            return None
+        body, identity = snapshot
+        self._mutex.lock()
+        try:
+            if self._is_current_generation_locked(runtime.generation):
+                self._source_identities[path] = identity
+        finally:
+            self._mutex.unlock()
+        self._start_audio_waveform_generation(path, body, Path(path).suffix, runtime)
+        return _WAVEFORM_DEFERRED
+
+    def _start_audio_waveform_generation(
+        self, source_path: str, body: bytes, suffix: str, runtime: _Runtime
+    ) -> None:
+        """Queue one waveform render on the shared dedicated ffmpeg pool."""
+        task = _ExtractAudioWaveformTask(self, source_path, body, suffix, runtime)
+        ffmpeg_pool.start(task)
+
+    def _decode_waveform_png(
+        self, source_path: str, png_bytes: bytes, runtime: _Runtime, bake_size: int,
+    ) -> QImage | None:
+        """Decode stored waveform PNG bytes, bake the webp, scale for display.
+
+        Same bake discipline as the media-decoder path: only bake at/above
+        the profile size (cache-artifact admission rejects smaller webp files
+        for the requested profile). Audio assets never feed the palette pass.
+        """
+        decode_cap = bake_size if bake_size >= 0 else self._size
+        img = _read_qimage_bytes(png_bytes, decode_cap)
+        if img is None or img.isNull():
+            return None
+        if (
+            bake_size >= 0
+            and runtime.cache_dir
+            and max(img.width(), img.height()) >= bake_size
+            and self._should_bake(source_path, runtime.lib_root)
+        ):
+            profile = self._webp_profile(bake_size)
+            identity = self._source_identities.get(source_path)
+            self._store_baked_image(
+                self._disk_profile_key(source_path, profile, identity),
+                source_path, bake_size, img, runtime,
+                source_identity=identity,
+            )
+        if self._size > 0 and max(img.width(), img.height()) > self._size:
+            img = img.scaled(
+                self._size, self._size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        return img
+
+    def _on_audio_waveform_ready(
+        self, source_path: str, png_bytes: bytes, runtime: _Runtime
+    ) -> None:
+        """Deliver an audio thumbnail once its waveform has been rendered.
+
+        Runs on a dedicated ffmpeg pool worker thread; the normal cross-thread
+        delivery path applies.
+        """
+        img = self._decode_waveform_png(
+            source_path, png_bytes, runtime, get_bake_size(),
+        )
+        if img is None:
+            self._mark_failed(source_path, runtime)
+            return
+        self._on_image_loaded(0, source_path, source_path, img, runtime)
+
+    def _record_palette_after_bake(
+        self, source_path: str, img: QImage, runtime: _Runtime
+    ) -> None:
+        """Palette derivation hook for the bake path (N-B2).
+
+        Runs the params-only ``extracted_palette`` pass with the already
+        decoded bake image; the row-exists check inside makes repeats a no-op
+        and a missing recorder (legacy caller / test double) skips it. Audio
+        sources never bake through this seam, so no extra guard is needed.
+        """
+        ensure_extracted_palette(
+            runtime.derivatives_recorder,
+            source_path,
+            lambda: qimage_to_pil(img),
+        )
+
     def _load_with_media_decoder(
         self, path: str, media_decoder, runtime: _Runtime,
     ) -> QImage | None:
@@ -1121,6 +1340,9 @@ class ThumbnailLoader(QObject):
                 self._disk_profile_key(path, profile, identity),
                 path, bake_size, img, runtime, source_identity=identity,
             )
+        # Palette pass reuses the decoded PIL image (params-only derivative;
+        # the row check inside makes this free once recorded).
+        ensure_extracted_palette(runtime.derivatives_recorder, path, pil)
         if self._size > 0 and max(img.width(), img.height()) > self._size:
             img = img.scaled(
                 self._size, self._size,

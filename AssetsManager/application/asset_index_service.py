@@ -1,11 +1,12 @@
 """Session-scoped application facade for the lazily populated asset index."""
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
 from collections import OrderedDict
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from time import monotonic_ns
@@ -23,7 +24,9 @@ from AssetsManager.repositories.asset_index_repository import (
 
 if TYPE_CHECKING:
     from AssetsManager.application.context import LibrarySession
+    from AssetsManager.application.search_index_service import SearchIndexService
 
+_LOGGER = logging.getLogger(__name__)
 
 # M6a-19: the per-library refresh lock registry is bounded by a small LRU.
 # ``RLock`` objects are not weak-referenceable, so instead of a weak map we
@@ -168,8 +171,13 @@ class AssetIndexService:
     a bound session when one is available.
     """
 
-    def __init__(self, session: LibrarySession | None = None) -> None:
+    def __init__(
+        self,
+        session: LibrarySession | None = None,
+        search_index_service: SearchIndexService | None = None,
+    ) -> None:
         self._session = session
+        self._search_index_service = search_index_service
         self._repository = (
             AssetIndexRepository.for_session(session) if session is not None else None
         )
@@ -178,9 +186,31 @@ class AssetIndexService:
         self._refresh_lock = _refresh_lock_for(session)
 
     @classmethod
-    def for_session(cls, session: LibrarySession) -> AssetIndexService:
+    def for_session(
+        cls,
+        session: LibrarySession,
+        search_index_service: SearchIndexService | None = None,
+    ) -> AssetIndexService:
         """Return the canonical facade bound to one live library session."""
-        return cls(session)
+        return cls(session, search_index_service=search_index_service)
+
+    def _reindex_scanned_paths(
+        self, paths: Iterable[str], *, committed: bool
+    ) -> None:
+        """Refresh ``asset_search`` documents for published paths.
+
+        Called after a scan published new/changed index rows; only durable
+        publishes reindex (a caller-owned transaction may still roll the
+        rows back, and the maintainer joins such transactions via its own
+        owned-commit rule anyway). Never raises: the maintainer swallows
+        its own failures and full-text recall is a derived projection.
+        """
+        if self._search_index_service is None or not committed:
+            return
+        try:
+            self._search_index_service.reindex_files(paths)
+        except Exception:  # pragma: no cover - defensive, service never raises
+            _LOGGER.warning("Search index reindex hook failed", exc_info=True)
 
     @property
     def session(self) -> LibrarySession | None:
@@ -459,6 +489,9 @@ class AssetIndexService:
                 AssetIndexPublishStatus.PUBLISHED
                 if entries
                 else AssetIndexPublishStatus.EMPTY
+            )
+            self._reindex_scanned_paths(
+                (entry[0] for entry in entries), committed=durable_commit
             )
             return AssetIndexPublishResult(
                 status,

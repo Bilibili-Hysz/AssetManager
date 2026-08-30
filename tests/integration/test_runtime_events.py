@@ -15,6 +15,7 @@ from AssetsManager.domain.event_bus import EventBus
 from AssetsManager.domain.events import (
     ActivityChanged,
     AssetNotesChanged,
+    CollectionChanged,
     AssetTagsChanged,
     AssetUrlsChanged,
     DomainEvent,
@@ -22,7 +23,6 @@ from AssetsManager.domain.events import (
     FileSystemChanged,
     InviteChanged,
     PresenceChanged,
-    SellerProfileChanged,
     ShareChanged,
     TagCatalogChanged,
     UserChanged,
@@ -82,7 +82,7 @@ def test_model_is_frozen_and_mapping_is_exact(tmp_path):
     assert RuntimeEventRouter.domains_for(InviteChanged) == (_projection_domain("users"),)
     assert RuntimeEventRouter.domains_for(ActivityChanged) == (_projection_domain("activity"),)
     assert RuntimeEventRouter.domains_for(PresenceChanged) == (_projection_domain("online_users"),)
-    assert RuntimeEventRouter.domains_for(SellerProfileChanged) == (_projection_domain("shop"),)
+    assert RuntimeEventRouter.domains_for(CollectionChanged) == (_projection_domain("collections"),)
 
 
 @pytest.mark.parametrize(
@@ -94,7 +94,6 @@ def test_model_is_frozen_and_mapping_is_exact(tmp_path):
         (InviteChanged, _projection_domain("users")),
         (ActivityChanged, _projection_domain("activity")),
         (PresenceChanged, _projection_domain("online_users")),
-        (SellerProfileChanged, _projection_domain("shop")),
     ],
 )
 def test_router_maps_share_and_identity_events_only_for_current_session(

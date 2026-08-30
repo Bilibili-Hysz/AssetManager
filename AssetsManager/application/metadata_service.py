@@ -9,6 +9,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from sqlite3 import Connection
+from typing import TYPE_CHECKING
 
 from AssetsManager.application.context import ConnectionProvider, LibrarySession, session_operation
 from AssetsManager.core.database import DatabaseManager
@@ -21,6 +22,9 @@ from AssetsManager.domain.events import (
 )
 from AssetsManager.repositories.metadata_repository import MetadataRepository
 from AssetsManager.repositories.tag_repository import TagRepository
+
+if TYPE_CHECKING:
+    from AssetsManager.application.search_index_service import SearchIndexService
 
 _log = logging.getLogger(__name__)
 
@@ -44,6 +48,7 @@ class MetadataService:
         self,
         connection_provider: ConnectionProvider | None = None,
         session: LibrarySession | None = None,
+        search_index_service: SearchIndexService | None = None,
     ):
         self._binding_lock = threading.RLock()
         self._connection_provider = connection_provider
@@ -51,6 +56,9 @@ class MetadataService:
         self._root_identity: RootIdentity | None = None
         self._repository: MetadataRepository | None = None
         self._tag_repository: TagRepository | None = None
+        # FTS index maintainer (migration v39); optional so legacy/fake
+        # constructions keep working without the fourth search source.
+        self._search_index_service = search_index_service
         # Timestamps of the last size (re)computation per canonical path key.
         # Mirrors ProjectData._size_cache_ts so the persisted size cache is
         # only trusted inside the TTL window (see _size_cache_fresh).
@@ -60,9 +68,17 @@ class MetadataService:
             self._bind_session(session, connection_provider=connection_provider)
 
     @classmethod
-    def for_session(cls, session: LibrarySession) -> "MetadataService":
+    def for_session(
+        cls,
+        session: LibrarySession,
+        search_index_service: SearchIndexService | None = None,
+    ) -> "MetadataService":
         """Build the canonical metadata service for one real session."""
-        return cls(connection_provider=session.connection_for, session=session)
+        return cls(
+            connection_provider=session.connection_for,
+            session=session,
+            search_index_service=search_index_service,
+        )
 
     def _bind_session(
         self,
@@ -189,6 +205,22 @@ class MetadataService:
             new_urls=urls,
         ))
 
+    def _reindex_search_document(self, file_path: str) -> None:
+        """Refresh the ``asset_search`` document for one path; never raises.
+
+        Notes participate in the FTS document (urls currently do not, but
+        the doc is re-aggregated at every metadata save so future indexed
+        columns stay correct). The maintainer swallows its own failures;
+        this guard keeps bookkeeping strictly non-essential.
+        """
+        service = self._search_index_service
+        if service is None:
+            return
+        try:
+            service.reindex_file(file_path)
+        except Exception:  # pragma: no cover - defensive, service never raises
+            _log.warning("Search index reindex hook failed", exc_info=True)
+
     def _require_event_safe_transaction(self, repo: MetadataRepository) -> None:
         """Reject caller-owned transactions before publishing metadata events.
 
@@ -235,6 +267,7 @@ class MetadataService:
         self._require_event_safe_transaction(repo)
         repo.set_notes(key, text)
         self._publish_notes_changed(key)
+        self._reindex_search_document(key)
 
     @session_operation
     def get_urls(self, library_root: str | Path, path: str | Path) -> list[str]:
@@ -252,6 +285,7 @@ class MetadataService:
         if urls is not None:
             result = tuple(urls)
             self._publish_urls_changed(key, result)
+            self._reindex_search_document(key)
 
     @session_operation
     def remove_url(self, library_root: str | Path, path: str | Path, url: str) -> None:
@@ -264,6 +298,7 @@ class MetadataService:
         if urls is not None:
             result = tuple(urls)
             self._publish_urls_changed(key, result)
+            self._reindex_search_document(key)
 
     @session_operation
     def get_dir_size(self, library_root: str | Path, dir_path: str | Path,

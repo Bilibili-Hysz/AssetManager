@@ -56,14 +56,11 @@ _PLANNED_ONLY_SETTINGS = frozenset({
     "lan_log_rotation_mb",
 })
 
-# Feature switches read per-request by LAN routes (quota.py, commerce_policy.py,
-# shop_authorization.py), so they take effect as soon as settings are persisted.
+# Feature switches read per-request by LAN routes (quota.py), so they take
+# effect as soon as settings are persisted.
 # They are not listed in sharing_contracts.HOT_SHARING_SETTINGS (server
 # reload_settings), so the dialog adds them to its live bucket itself.
 _DIALOG_LIVE_SETTINGS = frozenset({
-    "lan_commerce_enabled",
-    "lan_seller_enabled",
-    "lan_shop_authorized_roots",
     "lan_quota_enabled",
     "lan_quota_period",
     "lan_quota_limit",
@@ -297,11 +294,6 @@ class SharingSettingsDialog(
             "lan_port": self._port_spin.value(),
             "lan_bind": "0.0.0.0" if self._bind_combo.currentIndex() == 0 else "127.0.0.1",
             "lan_auto_start": self._auto_start.isChecked(),
-            "lan_commerce_enabled": self._commerce_enabled.isChecked(),
-            "lan_seller_enabled": (
-                self._commerce_enabled.isChecked() and self._seller_enabled.isChecked()
-            ),
-            "lan_shop_authorized_roots": self._lines(self._shop_authorized_roots),
             "lan_quota_enabled": self._quota_enabled.isChecked(),
             "lan_quota_period": self._quota_period.currentData() or "daily",
             "lan_quota_limit": self._quota_limit.value(),
@@ -1189,20 +1181,6 @@ class SharingSettingsDialog(
         bind = s.get("lan_bind", "0.0.0.0")
         self._bind_combo.setCurrentIndex(0 if bind == "0.0.0.0" else 1)
         self._auto_start.setChecked(s.get("lan_auto_start", False))
-        self._commerce_enabled.setChecked(s.get("lan_commerce_enabled", False))
-        self._seller_enabled.setChecked(s.get("lan_seller_enabled", False))
-        raw_authorized_roots = s.get("lan_shop_authorized_roots", [])
-        if isinstance(raw_authorized_roots, str):
-            authorized_roots = [
-                value.strip()
-                for value in raw_authorized_roots.replace(";", "\n").splitlines()
-                if value.strip()
-            ]
-        elif isinstance(raw_authorized_roots, (list, tuple)):
-            authorized_roots = [str(value).strip() for value in raw_authorized_roots if str(value).strip()]
-        else:
-            authorized_roots = []
-        self._shop_authorized_roots.setPlainText("\n".join(authorized_roots))
         self._quota_enabled.setChecked(bool(s.get("lan_quota_enabled", False)))
         quota_period = str(s.get("lan_quota_period", "daily")).lower()
         self._quota_period.setCurrentIndex(1 if quota_period == "weekly" else 0)
@@ -1213,7 +1191,6 @@ class SharingSettingsDialog(
             self._bounded_int(s.get("lan_quota_min_interval_seconds", 5), 5, 0, 86_400)
         )
         self._refresh_quota_controls()
-        self._refresh_commerce_controls()
 
         auth = s.get("lan_auth_mode", "none")
         self._auth_combo.setCurrentIndex(1 if auth == "password" else 0)
@@ -1275,10 +1252,6 @@ class SharingSettingsDialog(
         s.set("lan_port", self._port_spin.value())
         s.set("lan_bind", "0.0.0.0" if self._bind_combo.currentIndex() == 0 else "127.0.0.1")
         s.set("lan_auto_start", self._auto_start.isChecked())
-        commerce_enabled = self._commerce_enabled.isChecked()
-        s.set("lan_commerce_enabled", commerce_enabled)
-        s.set("lan_seller_enabled", commerce_enabled and self._seller_enabled.isChecked())
-        s.set("lan_shop_authorized_roots", self._lines(self._shop_authorized_roots))
         s.set("lan_quota_enabled", self._quota_enabled.isChecked())
         s.set("lan_quota_period", self._quota_period.currentData() or "daily")
         s.set("lan_quota_limit", self._quota_limit.value())

@@ -22,10 +22,10 @@ from AssetsManager.application.media.derivatives import (
 def db(memory_db):
     """Migrated in-memory library database (v37 tables present)."""
     from AssetsManager.core import database
-    from AssetsManager.core.db_migrations import migrate
+    from AssetsManager.core.db_migrations import CURRENT_SCHEMA_VERSION, migrate
 
     memory_db.executescript(database._SCHEMA)
-    assert migrate(memory_db) == 37
+    assert migrate(memory_db) == CURRENT_SCHEMA_VERSION
     return memory_db
 
 

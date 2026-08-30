@@ -747,104 +747,6 @@ def test_shutdown_exercises_each_cleanup_stage_after_running_is_cleared(
     assert calls[-1] == (failing_stage, False)
 
 
-def test_shutdown_revokes_cached_seller_sessions_before_cleanup(monkeypatch):
-    calls = []
-    seller_auth = SimpleNamespace(
-        revoke_all=lambda: calls.append("revoke") or 2,
-    )
-    server = object.__new__(_LanServerImpl)
-    server._running = True
-    server.commerce_services = SimpleNamespace(seller_auth=seller_auth)
-
-    async def close_all():
-        calls.append("close_all")
-
-    server._ws_manager = SimpleNamespace(close_all=close_all)
-    server._site = None
-    server._runner = None
-    monkeypatch.setattr("AssetsManager.lan.server_lifecycle.stop_runtime_realtime", lambda _server: None)
-
-    import asyncio
-    asyncio.run(server._shutdown())
-
-    assert calls == ["revoke", "close_all"]
-
-
-def test_shutdown_revokes_scoped_injected_seller_service(monkeypatch):
-    calls = []
-    server = object.__new__(_LanServerImpl)
-    server._running = True
-    server.services = SimpleNamespace(
-        seller_auth_service=SimpleNamespace(
-            revoke_all=lambda: calls.append("revoke") or 1,
-        ),
-    )
-
-    async def close_all():
-        calls.append("close_all")
-
-    server._ws_manager = SimpleNamespace(close_all=close_all)
-    server._site = None
-    server._runner = None
-    monkeypatch.setattr("AssetsManager.lan.server_lifecycle.stop_runtime_realtime", lambda _server: None)
-
-    import asyncio
-    asyncio.run(server._shutdown())
-
-    assert calls == ["revoke", "close_all"]
-
-
-def test_early_stop_revokes_all_cached_seller_service_holders(monkeypatch):
-    calls = []
-
-    def seller(name):
-        return SimpleNamespace(
-            revoke_all=lambda: calls.append(name) or 1,
-        )
-
-    server = object.__new__(_LanServerImpl)
-    server._running = False
-    server._lifecycle_state = "starting"
-    server._cleanup_complete = False
-    server._thread = None
-    server._loop = None
-    server._shutdown_future = None
-    server._lifecycle_lock = threading.Lock()
-    server.commerce_services = SimpleNamespace(seller_auth=seller("cached"))
-    server.services = SimpleNamespace(seller_auth_service=seller("scoped"))
-    server._services = SimpleNamespace(seller_auth_service=seller("injected"))
-
-    monkeypatch.setattr(_LanServerImpl, "_unregister_runtime_adapter", lambda _server: None)
-
-    server.stop()
-
-    assert calls == ["cached", "scoped", "injected"]
-
-
-def test_shutdown_revokes_seller_sessions_before_a_cleanup_stage_failure(monkeypatch):
-    calls = []
-    seller_auth = SimpleNamespace(
-        revoke_all=lambda: calls.append("revoke") or 1,
-    )
-    server = object.__new__(_LanServerImpl)
-    server._running = True
-    server.commerce_services = SimpleNamespace(seller_auth=seller_auth)
-
-    async def close_all():
-        calls.append("close_all")
-        raise RuntimeError("cleanup failed")
-
-    server._ws_manager = SimpleNamespace(close_all=close_all)
-    server._site = None
-    server._runner = None
-    monkeypatch.setattr("AssetsManager.lan.server_lifecycle.stop_runtime_realtime", lambda _server: None)
-
-    with pytest.raises(RuntimeError, match="cleanup failed"):
-        asyncio.run(server._shutdown())
-
-    assert calls == ["revoke", "close_all"]
-
-
 def test_real_thread_retries_failed_cleanup_and_closes_loop_on_owner_thread(monkeypatch):
     ready = threading.Event()
     close_thread_ids = []
@@ -933,7 +835,6 @@ def test_explicit_cleanup_retries_normal_stop_failure_once(retry_succeeds, monke
     server._cleanup_retry_used = False
     server._startup_cleanup_failed = False
     server._startup_cleanup_retry_used = False
-    server._revoke_seller_sessions = lambda: None
     server._unregister_runtime_adapter = lambda: None
     submitted = []
 

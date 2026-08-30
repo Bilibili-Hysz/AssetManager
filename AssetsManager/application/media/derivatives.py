@@ -19,6 +19,7 @@ import json
 import logging
 import shutil
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from sqlite3 import Connection
 from time import monotonic_ns, time
@@ -61,6 +62,24 @@ def _resolve_target(data_dir: Path, rel_path: str) -> Path:
     # rel_path is stored POSIX-slashed; rebuild it segment-wise so the join
     # stays native on every platform.
     return derivatives_root(data_dir).joinpath(*rel_path.split("/"))
+
+
+@dataclass(frozen=True)
+class MediaDerivative:
+    """One registered ``asset_derivatives`` row (read-side view).
+
+    ``rel_path`` is the POSIX-slashed payload location under the derivatives
+    root; ``""`` for params-only rows (recorded with ``payload=False``) that
+    have no file on disk. ``params`` is the parsed JSON mapping (``{}`` when
+    the stored JSON is absent or unparsable).
+    """
+
+    file_path: str
+    kind: str
+    rel_path: str
+    params: dict[str, object]
+    source_mtime: float | None
+    created_at: float
 
 
 class MediaDerivativesRecorder:
@@ -123,14 +142,19 @@ class MediaDerivativesRecorder:
         source_mtime: float | None = None,
         ext: str = "",
         source_file: str | Path | None = None,
+        payload: bool = True,
     ) -> None:
         """Write one derivative payload and upsert its registry row.
 
         The payload is ``source_bytes`` verbatim, or a copy of ``source_file``
-        when no bytes are given. Exactly one of the two must be provided;
-        otherwise the call is a no-op (a row without its payload would break
-        the "every registered derivative exists on disk" invariant). Passing
-        ``data_dir`` overrides the constructor-injected directory.
+        when no bytes are given. With the default ``payload=True`` exactly one
+        of the two must be provided; otherwise the call is a no-op (a row
+        without its payload would break the "every registered derivative
+        exists on disk" invariant). ``payload=False`` records a params-only
+        row (``rel_path=""``, nothing on disk) for derivatives that live
+        entirely in their ``params`` JSON — e.g. the extracted palette — and
+        ignores ``source_bytes``/``source_file``. Passing ``data_dir``
+        overrides the constructor-injected directory.
 
         Re-recording the same (asset, kind) overwrites the file and the row;
         if the extension changed between generations the stale payload file
@@ -146,6 +170,7 @@ class MediaDerivativesRecorder:
                 source_mtime=source_mtime,
                 ext=ext,
                 source_file=source_file,
+                payload=payload,
             )
         except Exception:
             # Derivative bookkeeping must never affect the producing operation.
@@ -167,6 +192,7 @@ class MediaDerivativesRecorder:
         source_mtime: float | None,
         ext: str,
         source_file: str | Path | None,
+        payload: bool,
     ) -> None:
         if kind not in DERIVATIVE_KINDS:
             _log.warning(
@@ -175,7 +201,7 @@ class MediaDerivativesRecorder:
                 file_path,
             )
             return
-        if source_bytes is None and source_file is None:
+        if payload and source_bytes is None and source_file is None:
             _log.warning(
                 "Media derivative %s for %s has no payload (source_bytes or "
                 "source_file required); not registered",
@@ -186,16 +212,17 @@ class MediaDerivativesRecorder:
 
         base = Path(data_dir) if data_dir is not None else self._data_dir
         path_key = self._path_key(file_path)
-        rel_path = self._rel_path(path_key, kind, _normalize_ext(ext))
+        rel_path = self._rel_path(path_key, kind, _normalize_ext(ext)) if payload else ""
         conn = self._connection_provider()
         if conn is None:
             return
-        target = _resolve_target(base, rel_path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if source_bytes is not None:
-            target.write_bytes(source_bytes)
-        else:
-            shutil.copyfile(source_file, target)
+        if payload:
+            target = _resolve_target(base, rel_path)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if source_bytes is not None:
+                target.write_bytes(source_bytes)
+            else:
+                shutil.copyfile(source_file, target)
 
         with self._write_scope(conn, "record") as scope:
             row = scope.execute(
@@ -220,9 +247,10 @@ class MediaDerivativesRecorder:
                     time(),
                 ),
             )
-        if stale_rel_path is not None and stale_rel_path != rel_path:
-            # Extension changed between generations: drop the stale payload
-            # so the derivatives tree never accumulates orphaned variants.
+        if stale_rel_path and stale_rel_path != rel_path:
+            # Extension changed between generations (or a payload row was
+            # downgraded to params-only): drop the stale payload so the
+            # derivatives tree never accumulates orphaned variants.
             _resolve_target(base, stale_rel_path).unlink(missing_ok=True)
 
     def clear(
@@ -282,4 +310,85 @@ class MediaDerivativesRecorder:
                     (path_key, kind),
                 )
         for (rel_path,) in rows:
+            if not rel_path:
+                # Params-only rows have no payload file on disk.
+                continue
             _resolve_target(base, str(rel_path)).unlink(missing_ok=True)
+
+    # ── Read side ────────────────────────────────────────────────────
+
+    def lookup(
+        self,
+        file_path: str | Path,
+        kind: str,
+    ) -> MediaDerivative | None:
+        """Return the asset's registered row for *kind*, or ``None``.
+
+        The row's existence is the "already computed once" signal for the
+        on-demand analysis passes (waveform, palette): consumers must skip
+        regeneration whenever this returns a row, even a params-only one.
+        Mirrors the write-side contract: failures are logged and swallowed.
+        """
+        try:
+            return self._lookup(file_path, kind)
+        except Exception:
+            _log.warning(
+                "Media derivative lookup failed for kind=%s path=%s",
+                kind,
+                file_path,
+                exc_info=True,
+            )
+            return None
+
+    def _lookup(
+        self,
+        file_path: str | Path,
+        kind: str,
+    ) -> MediaDerivative | None:
+        if kind not in DERIVATIVE_KINDS:
+            return None
+        conn = self._connection_provider()
+        if conn is None:
+            return None
+        path_key = self._path_key(file_path)
+        row = conn.execute(
+            "SELECT rel_path, params, source_mtime, created_at "
+            "FROM asset_derivatives WHERE file_path=? AND kind=?",
+            (path_key, kind),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            params = json.loads(row[1]) if row[1] else {}
+            if not isinstance(params, dict):
+                params = {}
+        except (TypeError, ValueError):
+            params = {}
+        return MediaDerivative(
+            file_path=path_key,
+            kind=kind,
+            rel_path=str(row[0]),
+            params=params,
+            source_mtime=row[2],
+            created_at=row[3],
+        )
+
+    def payload_path(
+        self,
+        file_path: str | Path,
+        kind: str,
+        *,
+        data_dir: str | Path | None = None,
+    ) -> Path | None:
+        """Return the derivative's payload file when it exists on disk.
+
+        ``None`` for params-only rows (``rel_path=""``) and for rows whose
+        payload vanished (self-healing: the caller regenerates and
+        re-registers instead of serving a dangling row).
+        """
+        found = self.lookup(file_path, kind)
+        if found is None or not found.rel_path:
+            return None
+        base = Path(data_dir) if data_dir is not None else self._data_dir
+        target = _resolve_target(base, found.rel_path)
+        return target if target.is_file() else None

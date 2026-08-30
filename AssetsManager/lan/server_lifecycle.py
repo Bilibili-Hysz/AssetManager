@@ -73,15 +73,12 @@ class LanServerLifecycleMixin:
     def stop(self):
         """Stop the server gracefully.
 
-        Seller sessions are revoked before any early-return or tunnel cleanup
-        path.  The server owns its tunnel process.  A tunnel cleanup failure is
+        The server owns its tunnel process.  A tunnel cleanup failure is
         part of the same retryable lifecycle and must not be hidden by clearing
         the LAN owner handles.
         """
         # ``stop()`` can be called before the worker loop exists (or after a
         # failed startup).  Keep the auth boundary fail-closed even on those
-        # paths; the normal async shutdown repeats this idempotently.
-        self._revoke_seller_sessions()
         tunnel = getattr(self, "_tunnel", None)
         if tunnel is not None:
             tunnel_process = getattr(tunnel, "_process", None)
@@ -505,48 +502,6 @@ class LanServerLifecycleMixin:
             return
         self._gallery_prewarm_thread = None
 
-    def _revoke_seller_sessions(self) -> None:
-        """Revoke every already-assembled Seller service before shutdown.
-
-        Commerce services may be reachable through the request cache, the
-        canonical scoped bundle, or an injected/legacy alias.  These holders
-        can point at the same service, so deduplicate by object identity.
-        Revocation is best-effort per holder: one malformed provider must not
-        prevent the remaining providers from being revoked or the transport
-        cleanup from running.
-        """
-        holders = (
-            getattr(self, "commerce_services", None),
-            getattr(self, "_commerce_services", None),
-            getattr(self, "services", None),
-            getattr(self, "_services", None),
-            getattr(self, "_injected_services", None),
-        )
-        candidates = []
-        for holder in holders:
-            if holder is None:
-                continue
-            for name in ("seller_auth", "seller_auth_service"):
-                seller_auth = getattr(holder, name, None)
-                if seller_auth is not None:
-                    candidates.append(seller_auth)
-
-        seen: set[int] = set()
-        total_revoked = 0
-        for seller_auth in candidates:
-            if id(seller_auth) in seen:
-                continue
-            seen.add(id(seller_auth))
-            revoke_all = getattr(seller_auth, "revoke_all", None)
-            if not callable(revoke_all):
-                continue
-            try:
-                total_revoked += int(cast(Any, revoke_all()) or 0)
-            except Exception:
-                _log.exception("Failed to revoke Seller sessions during LAN shutdown")
-        if total_revoked:
-            _log.info("Revoked %d Seller sessions during LAN shutdown", total_revoked)
-
     async def _shutdown(self):
         self._running = False
         scanner = getattr(self, "_scanner", None)
@@ -596,7 +551,6 @@ class LanServerLifecycleMixin:
                 # the next start() must rebuild a usable one, never republish
                 # this handle (H1 stop→start regression).
                 self._zip_executor_shutdown = True
-        self._revoke_seller_sessions()
         try:
             stop_runtime_realtime(self)
             await self._ws_manager.close_all()

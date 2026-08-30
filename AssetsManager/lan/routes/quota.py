@@ -1,4 +1,4 @@
-"""Ordinary download quota and Commerce delivery-quota HTTP routes."""
+"""Free guest download-quota HTTP routes."""
 from __future__ import annotations
 
 import asyncio
@@ -24,7 +24,6 @@ from AssetsManager.lan.routes._helpers import (
     get_lan,
     get_request_principal,
 )
-from AssetsManager.lan.routes.shop import get_commerce_services, require_seller
 
 _log = logging.getLogger(__name__)
 
@@ -78,8 +77,8 @@ _QUOTA_IDENTITY_REQUEST_KEY = web.RequestKey("_quota_identity_resolved", object)
 def _quota_cookie_signing_secret(lan: object) -> bytes:
     """Resolve the signing key through the shared tunnel_identity source.
 
-    Same precedence as the tunnel limiter and the storefront analytics
-    visitor cookie (``local_ui_auth_secret`` preferred, then ``token_secret``),
+    Same precedence as the tunnel limiter visitor cookie
+    (``local_ui_auth_secret`` preferred, then ``token_secret``),
     with the per-lan random fallback cached on ``_quota_cookie_secret`` so
     every module on one lan object derives keys from one place.
     """
@@ -304,18 +303,7 @@ async def handle_free_quota(request: web.Request) -> web.Response:
         return error_response("Quota unavailable", status=503, code="service_unavailable")
 
 
-async def handle_delivery_quota(request: web.Request) -> web.Response:
-    """Return the existing aggregate quota for seller delivery tokens."""
-    if await require_seller(request) is None:
-        return error_response("Seller authentication required", status=403, code="forbidden")
-    quota = get_commerce_services(request).quota.get_quota(get_lan(request).library_root)
-    return web.json_response({"quota": quota}, headers={"Cache-Control": "no-store"})
 
-
-# Compatibility export retained for callers that imported the old delivery
-# handler directly.  The public /api/quota route is registered to
-# handle_free_quota; /api/shop/quota retains the old seller-only meaning.
-handle_quota = handle_delivery_quota
 
 
 def quota_retry_after_seconds(info: dict[str, Any], result: dict[str, Any]) -> int:

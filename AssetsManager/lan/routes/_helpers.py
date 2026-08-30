@@ -232,6 +232,7 @@ __all__ = [
     "get_auth_service",
     "get_auth_token",
     "get_lan",
+    "get_collection_service",
     "get_gallery_service",
     "get_favorite_service",
     "get_metadata_service",
@@ -280,6 +281,7 @@ class LanScopedServices:
     share_service: Any
     gallery_service: Any = None
     favorite_service: Any = None
+    collection_service: Any = None
     activity_log: Any = field(default_factory=ActivityLog)
     online_users: Any = field(default_factory=OnlineUsers)
     runtime_services: Any = None
@@ -378,6 +380,10 @@ def get_project_service(request):
 
 def get_tag_service(request):
     return get_services(request).tag_service
+
+
+def get_collection_service(request):
+    return get_services(request).collection_service
 
 
 def get_share_service(request):

@@ -15,15 +15,13 @@ from AssetsManager.domain.events import (
     AssetTagsChanged,
     AssetUrlsChanged,
     ActivityChanged,
+    CollectionChanged,
     FavoritesChanged,
     FileSystemChanged,
     InviteChanged,
     PresenceChanged,
     QuotaChanged,
-    SellerProfileChanged,
     ShareChanged,
-    ShopItemChanged,
-    ShopOrderChanged,
     TagCatalogChanged,
     UserChanged,
 )
@@ -54,9 +52,8 @@ class ProjectionDomain(StrEnum):
     USERS = "users"
     ACTIVITY = "activity"
     ONLINE_USERS = "online_users"
-    SHOP = "shop"
-    ORDERS = "orders"
     QUOTA = "quota"
+    COLLECTIONS = "collections"
 
 
 @dataclass(frozen=True)
@@ -120,10 +117,8 @@ EVENT_DOMAINS: dict[type, tuple[ProjectionDomain, ...]] = {
     InviteChanged: (ProjectionDomain.USERS,),
     ActivityChanged: (ProjectionDomain.ACTIVITY,),
     PresenceChanged: (ProjectionDomain.ONLINE_USERS,),
-    ShopItemChanged: (ProjectionDomain.SHOP,),
-    ShopOrderChanged: (ProjectionDomain.ORDERS,),
     QuotaChanged: (ProjectionDomain.QUOTA,),
-    SellerProfileChanged: (ProjectionDomain.SHOP,),
+    CollectionChanged: (ProjectionDomain.COLLECTIONS,),
 }
 
 
@@ -189,7 +184,9 @@ class RuntimeEventRouter:
             raw_paths = (event.file_path,)
         elif isinstance(event, FavoritesChanged):
             raw_paths = event.paths
-        elif isinstance(event, ShopItemChanged):
+        elif isinstance(event, CollectionChanged):
+            # Membership changes carry every affected member path; catalog
+            # mutations (create/rename/delete/query) carry none.
             raw_paths = event.paths
         else:
             return ()

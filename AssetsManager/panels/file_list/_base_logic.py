@@ -242,6 +242,10 @@ class LogicMixin:
             services.session.root_str,
             performance_recorder,
             session_token,
+            # getattr keeps legacy service snapshots / test doubles without
+            # the N-A recorder field working unchanged (loader treats a
+            # missing recorder as "analysis passes disabled").
+            derivatives_recorder=getattr(services, "media_derivatives_recorder", None),
         )
         self._loader.orphan_cleanup()
         if hasattr(services, "undo_service"):

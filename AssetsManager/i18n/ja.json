@@ -278,6 +278,8 @@
   "viewer.save_filter": "画像ファイル (*.png *.jpg *.jpeg *.bmp *.webp)",
   "viewer.exif_title": "EXIF 情報",
   "viewer.exif_none": "EXIF データなし",
+  "viewer.sequence_label": "シーケンス {index}/{count}",
+  "viewer.sequence_hint": ",/. 前後フレーム · Ctrl+P 再生",
   "dock.float": "ポップアウト / ドック",
   "dock.close": "パネルを閉じる",
   "dock.split_h": "水平分割",
@@ -876,5 +878,13 @@
   "settings.thumb_clearing": "サムネイルキャッシュを削除中…",
   "settings.thumb_clear_done_failed": "{count} 個のキャッシュサムネイルを削除しました。\n{failed} 個のファイルは削除できませんでした（詳細はログ参照）。",
   "library.switch_failed": "ライブラリの切り替えに失敗しました：{reason}",
-  "library.switch_failed_retry_hint": "以前のライブラリを復元できませんでした。切り替えを再試行するか、ランチャーからライブラリを開き直してください。"
+  "library.switch_failed_retry_hint": "以前のライブラリを復元できませんでした。切り替えを再試行するか、ランチャーからライブラリを開き直してください。",
+  "sidebar.collections": "コレクション ({count})",
+  "sidebar.collection_label": "{name}  ({count})",
+  "sidebar.smart_collection_label": "{name}  · スマート",
+  "sidebar.menu.new_collection": "コレクションを作成",
+  "sidebar.menu.delete_collection": "コレクションを削除",
+  "sidebar.dialog.new_collection": "コレクションを作成",
+  "sidebar.dialog.rename_collection": "コレクション名を変更",
+  "sidebar.dialog.collection_name_label": "コレクション名"
 }

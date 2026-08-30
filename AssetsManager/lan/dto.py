@@ -8,6 +8,7 @@ timestamp.
 """
 from dataclasses import dataclass
 from typing import Iterable, Mapping, TypedDict, cast
+import json
 
 
 class UserRecord(TypedDict, total=False):
@@ -196,6 +197,49 @@ class TagResponse:
 
     def to_dict(self) -> dict[str, object]:
         return {"id": self.id, "name": self.name, "count": self.count}
+
+
+@dataclass(frozen=True)
+class CollectionResponse:
+    """One user collection row (manual reference set or smart query view)."""
+
+    id: int
+    name: str
+    kind: str
+    query: dict[str, object]
+    member_count: int
+    created_at: float
+    updated_at: float
+
+    @classmethod
+    def from_record(cls, record: Mapping[str, object]) -> "CollectionResponse":
+        try:
+            query = json.loads(str(record.get("query_json") or "{}"))
+        except json.JSONDecodeError:
+            query = {}
+        if not isinstance(query, dict):
+            query = {}
+        member_count = record.get("member_count", 0)
+        return cls(
+            _as_int(record["id"]),
+            str(record["name"]),
+            str(record["kind"]),
+            query,
+            member_count if isinstance(member_count, int) else int(member_count),
+            float(record.get("created_at", 0.0)),  # type: ignore[arg-type]
+            float(record.get("updated_at", 0.0)),  # type: ignore[arg-type]
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "kind": self.kind,
+            "query": self.query,
+            "member_count": self.member_count,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
 
 
 # Maximum nesting depth accepted when (de)serializing tree payloads.

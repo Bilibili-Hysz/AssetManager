@@ -14,8 +14,6 @@ from AssetsManager.lan.routes.quota import (
     _quota_cookie_signing_secret,
     _valid_quota_cookie_token,
 )
-from AssetsManager.lan.routes.storefront_analytics import _cookie_signing_secret
-
 
 class _ConfiguredLan:
     """Secret surface mirroring the lan server object."""
@@ -35,13 +33,11 @@ def test_cookie_names_and_formats_match():
 def test_signing_secret_precedence_is_shared():
     configured = tunnel_identity.signing_secret(_ConfiguredLan())
     assert configured == _quota_cookie_signing_secret(_ConfiguredLan())
-    assert configured == _cookie_signing_secret(_ConfiguredLan())
 
     bare = _BareLan()
     first = tunnel_identity.signing_secret(bare)
     second = _quota_cookie_signing_secret(bare)
-    third = _cookie_signing_secret(bare)
-    assert first == second == third
+    assert first == second
     # The cached fallback attribute is what makes later mints agree.
     assert getattr(bare, "_quota_cookie_secret") == first
 

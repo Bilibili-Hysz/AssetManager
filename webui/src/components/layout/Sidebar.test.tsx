@@ -49,6 +49,24 @@ vi.mock('../../api/tags', () => ({
   createTagsApi: () => ({ list: listTags }),
 }));
 
+const listCollections = vi.fn();
+const createCollection = vi.fn();
+const deleteCollection = vi.fn();
+const listMembers = vi.fn();
+const evaluateCollection = vi.fn();
+vi.mock('../../api/collections', () => ({
+  createCollectionsApi: () => ({
+    list: listCollections,
+    create: createCollection,
+    delete: deleteCollection,
+    members: listMembers,
+    evaluate: evaluateCollection,
+    update: vi.fn(),
+    addMembers: vi.fn(),
+    removeMembers: vi.fn(),
+  }),
+}));
+
 vi.mock('../../hooks/useAuth', () => ({
   useAuth: () => ({ api }),
 }));
@@ -67,6 +85,11 @@ describe('Sidebar', () => {
     setLang('en');
     getTree.mockReset().mockResolvedValue({ tree });
     listTags.mockReset().mockResolvedValue({ tags: [] });
+    listCollections.mockReset().mockResolvedValue({ collections: [] });
+    createCollection.mockReset().mockResolvedValue({ collection: { id: 1 } });
+    deleteCollection.mockReset().mockResolvedValue({ ok: true });
+    listMembers.mockReset().mockResolvedValue({ members: [] });
+    evaluateCollection.mockReset().mockResolvedValue({ results: [] });
     navigateMock.mockReset();
     favoriteItems = [];
     api = {};
@@ -241,6 +264,59 @@ describe('Sidebar', () => {
     const favorite = await screen.findByRole('button', { name: 'Open Logo' });
     await userEvent.click(favorite);
     expect(navigateMock).toHaveBeenCalledWith('/detail?path=workspace%2Fassets%2Flogo.svg&from=workspace&context=workspace%2Fassets');
+  });
+
+  it('renders the collections group and expands manual members on click', async () => {
+    const user = userEvent.setup();
+    listCollections.mockResolvedValue({ collections: [
+      { id: 7, name: 'hero shots', kind: 'manual', query: {}, member_count: 2, created_at: 1, updated_at: 1 },
+      { id: 8, name: 'big pngs', kind: 'smart', query: { extensions: ['.png'] }, member_count: 0, created_at: 1, updated_at: 1 },
+    ] });
+    listMembers.mockResolvedValue({ members: [
+      { path: 'workspace/assets/logo.svg', added_at: 1, exists: true },
+      { path: 'workspace/gone.svg', added_at: 2, exists: false },
+    ] });
+    render(<Sidebar onNavigate={() => {}} currentPath="" />, { wrapper: MemoryRouter });
+
+    expect(await screen.findByRole('heading', { name: 'Collections' })).toBeDefined();
+    await user.click(await screen.findByRole('button', { name: /^hero shots/ }));
+    expect(listMembers).toHaveBeenCalledWith(7);
+    expect(await screen.findByText('logo.svg')).toBeDefined();
+    // Members navigate through the workspace detail route.
+    await user.click(screen.getByRole('button', { name: 'Open logo.svg' }));
+    expect(navigateMock).toHaveBeenCalledWith(
+      '/detail?path=workspace%2Fassets%2Flogo.svg&from=workspace&context=workspace%2Fassets',
+    );
+    // Missing member paths stay visible but are marked absent.
+    expect(screen.getByText('gone.svg').closest('button')?.className).toContain('line-through');
+  });
+
+  it('expands a smart collection through the evaluate endpoint', async () => {
+    const user = userEvent.setup();
+    listCollections.mockResolvedValue({ collections: [
+      { id: 8, name: 'big pngs', kind: 'smart', query: { extensions: ['.png'] }, member_count: 0, created_at: 1, updated_at: 1 },
+    ] });
+    evaluateCollection.mockResolvedValue({ results: [
+      { path: 'workspace/assets/logo.svg', name: 'logo.svg', extension: '.svg', size: 1, mtime: 1 },
+    ] });
+    render(<Sidebar onNavigate={() => {}} currentPath="" />, { wrapper: MemoryRouter });
+
+    await user.click(await screen.findByRole('button', { name: /^big pngs/ }));
+    // The mocked factory endpoint receives the id; default paging is the
+    // factory's concern (see collections.contract.test.ts).
+    expect(evaluateCollection).toHaveBeenCalledWith(8);
+    expect(await screen.findByText('logo.svg')).toBeDefined();
+  });
+
+  it('creates a collection through the prompt entry point', async () => {
+    const user = userEvent.setup();
+    const prompt = vi.spyOn(window, 'prompt').mockReturnValue('new collection');
+    render(<Sidebar onNavigate={() => {}} currentPath="" />, { wrapper: MemoryRouter });
+    await screen.findByRole('heading', { name: 'Collections' });
+
+    await user.click(screen.getByTestId('sidebar-new-collection'));
+    expect(createCollection).toHaveBeenCalledWith('new collection');
+    prompt.mockRestore();
   });
 
   it('navigates tree leaves to detail with encoded parent context while directories use onNavigate', async () => {

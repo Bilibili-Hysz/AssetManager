@@ -61,6 +61,7 @@ vi.mock('../hooks/useQuota', () => ({
 vi.mock('../components/ui/Toast', () => ({ useToast: () => ({ showToast }) }));
 vi.mock('../api/files', () => ({ createFilesApi: () => ({ download: vi.fn(), batchDownload }) }));
 vi.mock('../api/tags', () => ({ createTagsApi: () => ({ add: addTag, remove: removeTag, list: vi.fn(), rename: vi.fn(), delete: vi.fn() }) }));
+vi.mock('../api/collections', () => ({ createCollectionsApi: () => ({ list: vi.fn().mockResolvedValue({ collections: [] }), create: vi.fn(), update: vi.fn(), delete: vi.fn(), members: vi.fn(), addMembers: vi.fn(), removeMembers: vi.fn(), evaluate: vi.fn() }) }));
 vi.mock('../api/metadata', () => ({
   createMetadataApi: () => ({ getMeta, getProjectDetail, search }),
 }));

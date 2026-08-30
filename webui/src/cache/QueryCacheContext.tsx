@@ -10,11 +10,6 @@
  *
  *   1. 主会话:   AuthContext.identityGeneration —— QueryCacheProvider（本组件）
  *               在 layout 阶段清空整个缓存（键不携带身份，隔离=整体清空）。
- *   2. 卖家 cookie: SellerAuthContext.authenticated 翻转 —— 同一缓存再清一次
- *               （卖家 cookie 可独立于主会话翻转）。
- *   3. 买家合并: ShopBuyerContext 直接复用主 identityGeneration 作为 generation
- *               契约（isCurrentIdentity/commit 守卫），并重置自己的 cart/wishlist
- *               与操作队列。
  *
  *   消费者（useCachedQuery）只订阅翻转后果（缓存被清空→自愈重取），
  *   从不比较身份本身。

@@ -23,6 +23,7 @@ from AssetsManager.application.asset_index_reconciliation_service import AssetIn
 from AssetsManager.application.app_settings_provider import install_app_settings_provider
 from AssetsManager.application.auth_service import AuthService
 from AssetsManager.application.asset_service import AssetService
+from AssetsManager.application.collection_service import CollectionService
 from AssetsManager.application.context import ConnectionProvider, LibrarySession
 from AssetsManager.application.database_integrity_service import DatabaseIntegrityService
 from AssetsManager.application.database_maintenance_service import DatabaseMaintenanceService
@@ -47,6 +48,7 @@ from AssetsManager.application.reconciliation_queue_store import (
     SQLiteReconciliationQueueStore,
 )
 from AssetsManager.application.project_service import ProjectService
+from AssetsManager.application.search_index_service import SearchIndexService
 from AssetsManager.application.search_service import SearchService
 from AssetsManager.application.share_service import ShareService
 from AssetsManager.application.tag_service import TagService
@@ -246,6 +248,7 @@ class LibraryScopedServices:
     import_manifest_store: ImportManifestStore | None = None
     import_manifest_recovery: ImportManifestRecoveryService | None = None
     media_derivatives_recorder: MediaDerivativesRecorder | None = None
+    collection_service: CollectionService | None = None
 
     @property
     def lan_services(self) -> LanRuntimeServices:
@@ -568,7 +571,17 @@ class ApplicationBootstrap:
             connection = DatabaseManager.require_managed_connection_owner(
                 identity, provider(identity)
             )
-            asset_index_service = AssetIndexService.for_session(session)
+            # FTS index maintainer (migration v39): the writers of the three
+            # source tables (assets index, tags, metadata) reindex their
+            # changed paths through this one shared service after their own
+            # commit; the LAN search projection and smart collections only
+            # read the same index.
+            search_index_service = SearchIndexService(
+                lambda: session.connection_for(session.root)
+            )
+            asset_index_service = AssetIndexService.for_session(
+                session, search_index_service=search_index_service
+            )
             reconciliation_marker = library_data_dir(identity) / "reconciliation-queue.json"
             reconciliation_store = SQLiteReconciliationQueueStore(
                 connection=connection,
@@ -663,6 +676,11 @@ class ApplicationBootstrap:
                 restore_state_provider=restore_state_provider,
                 restore_acknowledger=restore_acknowledger,
             )
+            tag_service = TagService.for_session(
+                session,
+                activity_recorder=activity_recorder,
+                search_index_service=search_index_service,
+            )
 
             return LibraryScopedServices(
                 session=session,
@@ -676,10 +694,10 @@ class ApplicationBootstrap:
                     session=session,
                 ),
                 export_service=export_service,
-                metadata_service=MetadataService.for_session(session),
-                tag_service=TagService.for_session(
-                    session, activity_recorder=activity_recorder
+                metadata_service=MetadataService.for_session(
+                    session, search_index_service=search_index_service
                 ),
+                tag_service=tag_service,
                 thumbnail_service=ThumbnailService(
                     connection_provider=provider, session=session
                 ),
@@ -701,6 +719,16 @@ class ApplicationBootstrap:
                 import_manifest_store=import_manifest_store,
                 import_manifest_recovery=import_manifest_recovery,
                 media_derivatives_recorder=media_derivatives_recorder,
+                # User collections (manual reference sets + smart query
+                # views) evaluate through the same session's asset index and
+                # tag services, so they share one bound session snapshot.
+                collection_service=CollectionService.for_session(
+                    session,
+                    asset_index_service=asset_index_service,
+                    tag_service=tag_service,
+                    search_index_service=search_index_service,
+                    activity_recorder=activity_recorder,
+                ),
             )
 
     def _build_lan_services(
@@ -711,10 +739,15 @@ class ApplicationBootstrap:
         asset_index_service: AssetIndexService | None = None,
     ) -> LanRuntimeServices:
         provider = connection_provider if connection_provider is not None else session.connection_for
+        search_index_service = SearchIndexService(
+            lambda: session.connection_for(session.root)
+        )
         index_service = (
             asset_index_service
             if asset_index_service is not None
-            else AssetIndexService.for_session(session)
+            else AssetIndexService.for_session(
+                session, search_index_service=search_index_service
+            )
         )
         is_canonical_provider = (
             getattr(provider, "__self__", None) is session
@@ -738,6 +771,7 @@ class ApplicationBootstrap:
                 connection_provider=provider,
                 session=session,
                 asset_index_service=index_service,
+                search_index_service=search_index_service,
             ),
             gallery_service=GalleryService(connection_provider=provider, session=session),
             favorite_service=FavoriteService(connection_provider=provider, session=session),

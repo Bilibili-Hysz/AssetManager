@@ -4,12 +4,11 @@
 // type that exists in both files, contracts.ts is the single source of truth:
 // api.ts only re-exports it and must not redeclare it.
 //
-// Types that exist only here (ShareLink, Shop*, gallery/files DTOs, ...) have
+// Types that exist only here (ShareLink, gallery/files DTOs, ...) have
 // no frozen dataclass in lan/dto.py yet — their wire shapes live in
 // domain/share.py (ShareLink.to_public_dict, plus the route-added
-// url/requires_key) and application/order_service.py (_BUYER/_SELLER_ORDER_
-// FIELDS) — so they remain hand-written; update them together with the
-// backend serializers.
+// url/requires_key) — so they remain hand-written; update them together
+// with the backend serializers.
 import type {
   Capabilities,
   InviteResponse,
@@ -21,6 +20,11 @@ import type {
 
 export type {
   Capabilities,
+  Collection,
+  CollectionEvaluateResponse,
+  CollectionMember,
+  CollectionMembersResponse,
+  CollectionsResponse,
   InviteResponse,
   RuntimeCursor,
   SessionPrincipal,
@@ -32,8 +36,6 @@ export type {
 
 // ============ Server Info ============
 export interface FeatureFlags {
-  commerce: boolean;
-  seller: boolean;
   quota: boolean;
 }
 
@@ -416,292 +418,4 @@ export interface QuotaInfo {
   remaining: number | null;
   reset_at: number | null;
   min_interval_seconds: number;
-}
-
-// ============ Shop ============
-// These DTOs mirror the JSON emitted by the LAN commerce routes. Keep the
-// persistence field names here; presentation adapters live in useCommerce.ts.
-export type ShopItemStatus = 'active' | 'archived' | 'draft';
-
-export interface ShopItem {
-  id: number;
-  path: string;
-  title: string;
-  description: string;
-  price_cents: number;
-  currency: string;
-  cover_path: string | null;
-  gallery_paths: string[];
-  enabled: boolean;
-  metadata: Record<string, unknown>;
-  status: ShopItemStatus;
-  created_at: number;
-  updated_at: number;
-}
-
-export interface ShopItemsResponse {
-  items: ShopItem[];
-}
-
-export type ShopCatalogSort = 'newest';
-
-export interface ShopCatalogQuery {
-  q?: string;
-  page?: number;
-  page_size?: number;
-  sort?: ShopCatalogSort;
-}
-
-export interface ShopCatalogResponse {
-  items: ShopItem[];
-  page: number;
-  page_size: number;
-  total: number;
-}
-
-export type ShopCartStatus = 'active' | 'converted' | 'expired' | 'merged';
-
-export interface ShopCartItem {
-  id: number;
-  item_id: number;
-  quantity: number;
-  unit_price_cents: number;
-  currency: string;
-  path: string;
-  title: string;
-  line_status: 'active' | 'unavailable' | 'removed';
-  created_at: number;
-  updated_at: number;
-}
-
-export interface ShopCart {
-  id: number;
-  owner_type: 'user' | 'anonymous';
-  status: ShopCartStatus;
-  version: number;
-  expires_at: number | null;
-  created_at: number;
-  updated_at: number;
-  items: ShopCartItem[];
-}
-
-export interface ShopCartResponse {
-  cart: ShopCart;
-}
-
-export interface ShopCartCheckoutResponse {
-  orders: ShopBuyerOrder[];
-  idempotent: boolean;
-  checkout_group_id?: string;
-  cart: ShopCart;
-}
-
-export interface ShopCheckoutGroupOrder extends ShopBuyerOrder {
-  quantity: number;
-  unit_price_cents?: number;
-}
-
-export type ShopCheckoutGroupStatus =
-  | 'pending'
-  | 'confirmed'
-  | 'in_progress'
-  | 'fulfilled'
-  | 'revoked'
-  | 'mixed';
-
-export interface ShopCheckoutGroupResponse {
-  checkout_group_id: string;
-  orders: ShopCheckoutGroupOrder[];
-  idempotent: boolean;
-  status: ShopCheckoutGroupStatus;
-  created_at: number;
-  cart: ShopCart;
-}
-
-export type ShopWishlistAvailability = 'available' | 'unavailable';
-
-export interface ShopWishlistItem {
-  item_id: number;
-  added_at: number;
-  path: string | null;
-  title: string | null;
-  price_cents: number | null;
-  currency: string | null;
-  availability: ShopWishlistAvailability;
-}
-
-export interface ShopWishlistResponse {
-  items: ShopWishlistItem[];
-}
-
-/**
- * Result of explicitly merging the anonymous buyer state into the signed-in
- * user's cart and wishlist. The endpoint is intentionally additive: callers
- * can update local state from this response without a second pair of reads.
- */
-export interface ShopBuyerMergeResponse {
-  merged: boolean;
-  cart: ShopCart;
-  wishlist: ShopWishlistItem[];
-  /** Legacy-compatible alias returned by the first merge implementation. */
-  items?: ShopWishlistItem[];
-  source?: {
-    cart?: boolean;
-    wishlist?: boolean;
-  };
-  limits?: {
-    cart_item_quantity?: number;
-    wishlist_items?: number;
-  };
-}
-
-export interface ShopItemPayload {
-  path?: string;
-  title?: string;
-  description?: string;
-  price_cents?: number;
-  currency?: string;
-  status?: ShopItemStatus;
-  cover_path?: string;
-  gallery_paths?: string[];
-  metadata?: Record<string, unknown>;
-}
-
-export interface ShopSellerProfile {
-  store_name: string;
-  contact_email: string;
-  description: string;
-  accept_orders: boolean;
-  updated_at: number;
-}
-
-export interface ShopSellerProfilePayload {
-  store_name?: string;
-  contact_email?: string;
-  description?: string;
-  accept_orders?: boolean;
-}
-
-export interface ShopPublicSellerProfile {
-  store_name: string;
-  description: string;
-  accept_orders: boolean;
-}
-
-
-export type ShopOrderStatus = 'pending' | 'confirmed' | 'fulfilled' | 'revoked';
-
-export interface ShopOrder {
-  id: number;
-  item_id: number;
-  item_path: string;
-  item_title: string;
-  buyer_name: string | null;
-  buyer_email: string | null;
-  amount_cents: number;
-  currency: string;
-  status: ShopOrderStatus;
-  metadata: Record<string, unknown>;
-  created_at: number;
-  updated_at: number;
-}
-
-/**
- * Buyer-safe order data returned by the public order routes.
- *
- * Keep this separate from the seller order DTO: the buyer receipt is carried
- * by an HttpOnly cookie, so it must not be represented as a token or delivery
- * path in frontend state.
- */
-export interface ShopBuyerOrder {
-  id: number;
-  item_id: number;
-  item_title: string;
-  amount_cents: number;
-  currency: string;
-  status: ShopOrderStatus;
-  delivery_available: boolean;
-  quantity?: number;
-  unit_price_cents?: number;
-  created_at: number;
-  updated_at: number;
-}
-
-export interface ShopOrdersResponse {
-  orders: ShopOrder[];
-}
-
-export interface ShopBuyerOrdersResponse {
-  orders: ShopBuyerOrder[];
-  total?: number;
-  next_cursor?: string | null;
-}
-
-export interface ShopStats {
-  total_orders: number;
-  gross_cents: number;
-  store_views?: number;
-  pending_orders?: number;
-  confirmed_orders?: number;
-  fulfilled_orders?: number;
-  revoked_orders?: number;
-}
-
-/**
- * Seller-side delivery-token quota (GET shop/quota). `enabled` mirrors the
- * backend's optional-quota contract and is false while the store has no
- * active delivery tokens; `used`/`limit` are the display aggregate
- * (downloads_used / download_limit) with `remaining` precomputed.
- */
-export interface ShopSellerDeliveryQuota {
-  delivery_tokens: number;
-  download_limit: number;
-  downloads_used: number;
-  downloads_remaining: number;
-  enabled: boolean;
-  period: string;
-  limit: number;
-  used: number;
-  remaining: number;
-  reset_at: number | null;
-  min_interval_seconds: number;
-}
-
-export interface ShopSellerDeliveryQuotaResponse {
-  quota: ShopSellerDeliveryQuota;
-}
-
-/** Safe delivery-only state returned after resolving a bearer delivery token. */
-export interface DeliveryOrder {
-  order_id: number;
-  item_id: number;
-  item_title: string;
-  status: ShopOrderStatus;
-  max_downloads: number;
-  download_count: number;
-  expires_at: number | null;
-  last_download_at: number | null;
-}
-
-export interface DeliveryInfo {
-  order: DeliveryOrder;
-  filename: string;
-  is_directory: boolean;
-  download_url: string;
-}
-
-export interface ReceiptRecoveryResponse {
-  ok: boolean;
-  order_id: number;
-}
-
-export interface FulfillOrderResponse {
-  order: ShopOrder;
-  delivery_url: string;
-  rotated?: boolean;
-  /**
-   * One-time share claim code for the new storefront delivery link flow.
-   * Present on new backends; legacy backends omit it (bearer delivery_url).
-   */
-  share_claim?: string;
 }

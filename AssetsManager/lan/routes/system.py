@@ -109,11 +109,6 @@ async def handle_info(request):
     principal = get_request_principal(request)
     runtime = getattr(lan, "runtime", None)
     thumbnail_cache_namespace = getattr(runtime, "epoch", None)
-    # Seller is an effective sub-feature of Commerce. Reporting an impossible
-    # raw persisted combination here would let clients surface a Seller entry
-    # that the server correctly denies.
-    commerce_enabled = s.get("lan_commerce_enabled", False) is True
-    seller_enabled = commerce_enabled and s.get("lan_seller_enabled", False) is True
     result = {
         "version": "1.0",
         "share_name": lan.share_name,
@@ -126,8 +121,6 @@ async def handle_info(request):
         "welcome_msg": s.get("lan_welcome_msg", ""),
         "footer_text": s.get("lan_footer_text", ""),
         "feature_flags": {
-            "commerce": commerce_enabled,
-            "seller": seller_enabled,
             "quota": bool(s.get("lan_quota_enabled", False)),
         },
         "library_stats": {

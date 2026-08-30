@@ -53,11 +53,6 @@ class ConfigurationPageMixin:
     _enable_log: QCheckBox
     _log_path: QLineEdit
     _log_rotation: QSpinBox
-    _commerce_enabled: QCheckBox
-    _seller_enabled: QCheckBox
-    _seller_helper: QLabel
-    _shop_authorized_roots: QTextEdit
-    _shop_authorized_roots_helper: QLabel
     _quota_enabled: QCheckBox
     _quota_period: QComboBox
     _quota_limit: QSpinBox
@@ -306,33 +301,8 @@ class ConfigurationPageMixin:
         dl.addLayout(rotation_row)
         dl.addStretch()
 
-        # Commerce / Seller feature switches
-        cl = section("commerce")
-        self._commerce_enabled = self.make_checkbox(tr("sharing.commerce.enabled"))
-        cl.addWidget(self._commerce_enabled)
-        commerce_desc = self.make_muted(tr("sharing.commerce.enabled_desc"))
-        commerce_desc.setWordWrap(True)
-        cl.addWidget(commerce_desc)
-
-        self._seller_enabled = self.make_checkbox(tr("sharing.seller.enabled"))
-        cl.addWidget(self._seller_enabled)
-        self._seller_helper = self.make_muted("")
-        self._seller_helper.setWordWrap(True)
-        cl.addWidget(self._seller_helper)
-
-        cl.addWidget(self.make_label(tr("sharing.seller.authorized_roots")))
-        self._shop_authorized_roots = QTextEdit()
-        self._shop_authorized_roots.setMaximumHeight(scaled_px(80))
-        self._shop_authorized_roots.setPlaceholderText(
-            tr("sharing.seller.authorized_roots_placeholder")
-        )
-        cl.addWidget(self._shop_authorized_roots)
-        self._shop_authorized_roots_helper = self.make_muted(
-            tr("sharing.seller.authorized_roots_desc")
-        )
-        self._shop_authorized_roots_helper.setWordWrap(True)
-        cl.addWidget(self._shop_authorized_roots_helper)
-
+        # Free download quota switches
+        cl = section("quota")
         self._quota_enabled = self.make_checkbox(tr("sharing.quota.enabled"))
         cl.addWidget(self._quota_enabled)
         quota_desc = self.make_muted(tr("sharing.quota.enabled_desc"))
@@ -364,8 +334,6 @@ class ConfigurationPageMixin:
         cl.addLayout(quota_interval_row)
         self._quota_enabled.toggled.connect(self._on_quota_toggled)
         self._refresh_quota_controls()
-        self._commerce_enabled.toggled.connect(self._on_commerce_toggled)
-        self._refresh_commerce_controls()
         cl.addStretch()
 
         # Internet access is omitted when the tunnel dependency is unavailable.
@@ -450,7 +418,6 @@ class ConfigurationPageMixin:
             self._ip_whitelist, self._ssl_cert, self._ssl_key, self._color_edit, self._welcome_edit,
             self._footer_edit, self._show_hidden, self._max_depth, self._exclude_patterns,
             self._blur_tags, self._enable_log, self._log_path, self._log_rotation,
-            self._commerce_enabled, self._seller_enabled, self._shop_authorized_roots,
             self._quota_enabled, self._quota_period, self._quota_limit, self._quota_min_interval,
         ) + tuple(self._type_checks.values())
         for widget in tracked_widgets:
@@ -458,28 +425,9 @@ class ConfigurationPageMixin:
             if signal is not None:
                 signal.connect(self._update_configuration_summary)
 
-    def _on_commerce_toggled(self, _enabled):
-        self._refresh_commerce_controls()
-        self._update_configuration_summary()
-
     def _on_quota_toggled(self, _enabled):
         self._refresh_quota_controls()
         self._update_configuration_summary()
-
-    def _refresh_commerce_controls(self):
-        commerce_enabled = self._commerce_enabled.isChecked()
-        if not commerce_enabled:
-            self._seller_enabled.blockSignals(True)
-            try:
-                self._seller_enabled.setChecked(False)
-            finally:
-                self._seller_enabled.blockSignals(False)
-        self._seller_enabled.setEnabled(commerce_enabled)
-        self._shop_authorized_roots.setEnabled(commerce_enabled)
-        self._seller_helper.setText(
-            tr("sharing.seller.available")
-            if commerce_enabled else tr("sharing.seller.requires_commerce")
-        )
 
     def _refresh_quota_controls(self):
         enabled = self._quota_enabled.isChecked()

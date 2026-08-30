@@ -2,12 +2,12 @@
 
 ``RoutePolicy.capabilities`` turns authorization from per-handler conventions
 into a middleware-checked contract. This module resolves each declared
-capability against the request principal (or the seller session) and returns
+capability against the request principal and returns
 a 403 response for the first missing capability, so a handler that forgets
 its own guard can no longer create a fail-open write path.
 
 Handlers keep their existing guards as defense in depth; feature-policy
-gates (Commerce/Seller disabled) deliberately run before capability checks
+gates (features disabled) deliberately run before capability checks
 to preserve their historical 404 ``feature_disabled`` contract.
 """
 from __future__ import annotations
@@ -38,22 +38,6 @@ def _has_principal_capability(request: web.Request, capability: str) -> bool:
     return bool(getattr(principal.capabilities, capability, False))
 
 
-async def _has_seller_session(request: web.Request) -> web.Response | bool:
-    """Run the seller feature gate, then resolve a seller session.
-
-    Returns the feature-disabled response when Commerce/Seller is off so the
-    historical 404 ``feature_disabled`` contract wins over a generic 403.
-    """
-    from AssetsManager.lan.routes.commerce_policy import seller_gate
-    from AssetsManager.lan.routes.shop._common import _package_function
-
-    disabled = seller_gate()
-    if disabled is not None:
-        return disabled
-    seller = await _package_function("require_seller")(request)
-    return bool(seller)
-
-
 async def enforce_capabilities(
     request: web.Request,
     policy: RoutePolicy,
@@ -80,15 +64,6 @@ async def enforce_capabilities(
             if require_admin(request) is not None:
                 continue
             return error_response("Admin access required", status=403, code="forbidden")
-        if capability == "seller":
-            seller_ok = await _has_seller_session(request)
-            if seller_ok is True:
-                continue
-            if isinstance(seller_ok, web.Response):
-                return seller_ok
-            return error_response(
-                "Seller authentication required", status=403, code="forbidden"
-            )
         # Unknown names are rejected by RoutePolicy at declaration time.
         return error_response("Forbidden", status=403, code="forbidden")
     return None

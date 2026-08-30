@@ -142,55 +142,6 @@ def test_access_page_invite_failures_are_region_local(monkeypatch):
     assert dialog._codes_status.text() == "Could not revoke invitation."
 
 
-def test_commerce_and_seller_switches_enforce_dependency_on_load_and_save(monkeypatch):
-    class Settings:
-        def __init__(self):
-            self.values = {
-                "lan_commerce_enabled": False,
-                "lan_seller_enabled": True,
-            }
-            self.saved = 0
-
-        def get(self, key, default=None):
-            return self.values.get(key, default)
-
-        def set(self, key, value):
-            self.values[key] = value
-
-        def save(self):
-            self.saved += 1
-            return True
-
-    settings = Settings()
-    monkeypatch.setattr(
-        "AssetsManager.dialogs.sharing_settings_dialog.AppSettings.instance",
-        classmethod(lambda _cls: settings),
-    )
-    dialog = SharingSettingsDialog()
-
-    assert dialog._commerce_enabled.isChecked() is False
-    assert dialog._seller_enabled.isChecked() is False
-    assert dialog._seller_enabled.isEnabled() is False
-    assert dialog._seller_helper.text() == "Enable Commerce first to make Seller features available."
-
-    # An inconsistent persisted pair is normalized before it can be saved.
-    assert dialog._apply_configuration_changes(force=True) is True
-    assert settings.values["lan_commerce_enabled"] is False
-    assert settings.values["lan_seller_enabled"] is False
-
-    dialog._commerce_enabled.setChecked(True)
-    assert dialog._seller_enabled.isEnabled() is True
-    assert dialog._seller_helper.text() == "Seller features are available because Commerce is enabled."
-    dialog._seller_enabled.setChecked(True)
-    assert dialog._configuration_values()["lan_seller_enabled"] is True
-
-    dialog._commerce_enabled.setChecked(False)
-    assert dialog._seller_enabled.isChecked() is False
-    assert dialog._seller_enabled.isEnabled() is False
-    assert dialog._configuration_values()["lan_seller_enabled"] is False
-    dialog.close()
-
-
 def test_free_download_quota_settings_load_and_save(monkeypatch):
     class Settings:
         def __init__(self):

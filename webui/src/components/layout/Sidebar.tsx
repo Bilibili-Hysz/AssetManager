@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, FileText, Folder, Search, Star, Tag as TagIcon, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, FileText, Folder, Layers, Plus, Search, Sparkles, Star, Tag as TagIcon, X } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useI18n } from '../../hooks/useI18n';
 import { useFavorites } from '../../hooks/useFavorites';
 import { createMetadataApi } from '../../api/metadata';
 import { createTagsApi } from '../../api/tags';
+import { createCollectionsApi } from '../../api/collections';
 import { useInvalidation } from '../../hooks/useInvalidation';
-import type { Tag, TreeItem } from '../../types/api';
+import type { Collection, CollectionMember, Tag, TreeItem } from '../../types/api';
 
 interface SidebarProps {
   onNavigate: (path: string) => void;
@@ -116,14 +117,21 @@ export function Sidebar({ onNavigate, currentPath, activeTag = null, onTagFilter
   const [tags, setTags] = useState<Tag[]>([]);
   const [tagsLoading, setTagsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [collectionsLoading, setCollectionsLoading] = useState(true);
+  const [expandedCollections, setExpandedCollections] = useState<Set<number>>(() => new Set());
+  const [collectionMembers, setCollectionMembers] = useState<Record<number, CollectionMember[]>>({});
+  const [collectionsPending, setCollectionsPending] = useState(false);
   const { api } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
   const metaApi = useMemo(() => createMetadataApi(api), [api]);
   const tagsApi = useMemo(() => createTagsApi(api), [api]);
+  const collectionsApi = useMemo(() => createCollectionsApi(api), [api]);
   const { items: favItems, loading: favoritesLoading } = useFavorites();
   const requestGeneration = useRef(0);
   const tagsRequestGeneration = useRef(0);
+  const collectionsRequestGeneration = useRef(0);
   const mounted = useRef(true);
 
   const refreshTree = useCallback(() => {
@@ -150,15 +158,93 @@ export function Sidebar({ onNavigate, currentPath, activeTag = null, onTagFilter
     });
   }, [tagsApi]);
 
+  const refreshCollections = useCallback(() => {
+    if (!mounted.current) return;
+    const generation = ++collectionsRequestGeneration.current;
+    setCollectionsLoading(true);
+    collectionsApi.list().then(res => {
+      if (mounted.current && generation === collectionsRequestGeneration.current) {
+        setCollections(res.collections ?? []);
+      }
+    }).catch(() => {
+      if (mounted.current && generation === collectionsRequestGeneration.current) {
+        setCollections([]);
+      }
+    }).finally(() => {
+      if (mounted.current && generation === collectionsRequestGeneration.current) {
+        setCollectionsLoading(false);
+      }
+    });
+  }, [collectionsApi]);
+
+  const loadCollectionMembers = useCallback((collection: Collection) => {
+    const cached = collectionMembers[collection.id];
+    if (cached) return;
+    const request = collection.kind === 'smart'
+      ? collectionsApi.evaluate(collection.id).then(res =>
+          (res.results ?? []).map(result => ({ path: result.path, added_at: result.mtime, exists: true })),
+        )
+      : collectionsApi.members(collection.id).then(res => res.members ?? []);
+    request.then(members => {
+      if (mounted.current) {
+        setCollectionMembers(prev => ({ ...prev, [collection.id]: members }));
+      }
+    }).catch(() => {
+      if (mounted.current) {
+        setCollectionMembers(prev => ({ ...prev, [collection.id]: [] }));
+      }
+    });
+  }, [collectionMembers, collectionsApi]);
+
+  const handleToggleCollection = useCallback((collection: Collection) => {
+    setExpandedCollections(prev => {
+      const next = new Set(prev);
+      if (next.has(collection.id)) next.delete(collection.id);
+      else next.add(collection.id);
+      return next;
+    });
+    loadCollectionMembers(collection);
+  }, [loadCollectionMembers]);
+
+  const handleCreateCollection = useCallback(() => {
+    const name = window.prompt(t('sidebar.collection_name_prompt'))?.trim();
+    if (!name) return;
+    setCollectionsPending(true);
+    collectionsApi.create(name).then(() => refreshCollections()).catch(() => {}).finally(() => {
+      if (mounted.current) setCollectionsPending(false);
+    });
+  }, [collectionsApi, refreshCollections, t]);
+
+  const handleDeleteCollection = useCallback((collection: Collection) => {
+    setCollectionsPending(true);
+    collectionsApi.delete(collection.id).then(() => {
+      setExpandedCollections(prev => {
+        const next = new Set(prev);
+        next.delete(collection.id);
+        return next;
+      });
+      setCollectionMembers(prev => {
+        const next = { ...prev };
+        delete next[collection.id];
+        return next;
+      });
+      refreshCollections();
+    }).catch(() => {}).finally(() => {
+      if (mounted.current) setCollectionsPending(false);
+    });
+  }, [collectionsApi, refreshCollections]);
+
   useEffect(() => {
     mounted.current = true;
     refreshTree();
-    return () => { mounted.current = false; requestGeneration.current += 1; tagsRequestGeneration.current += 1; };
+    return () => { mounted.current = false; requestGeneration.current += 1; tagsRequestGeneration.current += 1; collectionsRequestGeneration.current += 1; };
   }, [refreshTree]);
 
   useEffect(() => { refreshTags(); }, [refreshTags, tagsRefreshKey]);
+  useEffect(() => { refreshCollections(); }, [refreshCollections]);
   useInvalidation(['tree'], () => { void refreshTree(); });
   useInvalidation(['tags'], () => { void refreshTags(); });
+  useInvalidation(['collections'], () => { void refreshCollections(); });
   useEffect(() => {
     const ancestors = collectActiveAncestors(tree, currentPath);
     if (ancestors.size) setExpandedPaths(paths => new Set([...paths, ...ancestors]));
@@ -231,6 +317,86 @@ export function Sidebar({ onNavigate, currentPath, activeTag = null, onTagFilter
           tree.map(node => <TreeNode key={node.path} node={node} depth={0} expandedPaths={expandedPaths} onToggle={togglePath} onNavigate={onNavigate} onNavigateDetail={path => navigate(workspaceDetailUrl(path))} currentPath={currentPath} filter={filter} />)
         )}
       </div>
+
+      <section className="workspace-sidebar-section workspace-sidebar-collections flex-shrink-0 border-t border-slate-700 bg-slate-900 p-2" aria-labelledby="sidebar-collections-heading">
+        <div className="workspace-sidebar-section-heading mb-2 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Layers size={12} className="text-emerald-400" aria-hidden="true" />
+            <h2 id="sidebar-collections-heading" className="text-xs font-medium text-slate-300">{t('sidebar.collections')}</h2>
+            <span className="text-[10px] text-slate-500">{collections.length}</span>
+          </div>
+          <button
+            type="button"
+            data-testid="sidebar-new-collection"
+            aria-label={t('sidebar.new_collection')}
+            title={t('sidebar.new_collection')}
+            disabled={collectionsPending}
+            onClick={handleCreateCollection}
+            className="rounded p-1 text-slate-400 hover:bg-indigo-500/15 hover:text-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Plus size={13} aria-hidden="true" />
+          </button>
+        </div>
+        {collectionsLoading ? (
+          <div className="h-6 animate-pulse bg-slate-800" aria-label={t('gallery.loading')} />
+        ) : collections.length === 0 ? (
+          <p className="px-1 text-xs text-slate-500">{t('sidebar.collections_empty')}</p>
+        ) : (
+          <div className="workspace-collection-list max-h-36 space-y-0.5 overflow-y-auto">
+            {collections.map(collection => {
+              const expanded = expandedCollections.has(collection.id);
+              const members = collectionMembers[collection.id] ?? [];
+              return (
+                <div key={collection.id} data-testid={`sidebar-collection-${collection.id}`}>
+                  <div className={`flex min-h-7 items-center gap-1 rounded px-1 text-xs transition-colors ${expanded ? 'bg-indigo-500/10 text-indigo-300' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
+                    <button
+                      type="button"
+                      aria-expanded={expanded}
+                      onClick={() => handleToggleCollection(collection)}
+                      className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                    >
+                      {expanded ? <ChevronDown size={12} className="flex-shrink-0" aria-hidden="true" /> : <ChevronRight size={12} className="flex-shrink-0" aria-hidden="true" />}
+                      <span className="min-w-0 truncate">{collection.name}</span>
+                      {collection.kind === 'smart'
+                        ? <Sparkles size={11} className="flex-shrink-0 text-emerald-400" aria-label={t('sidebar.smart_collection')} aria-hidden="true" />
+                        : <span className={`flex-shrink-0 text-[10px] ${expanded ? 'text-indigo-300' : 'text-slate-500'}`}>{collection.member_count}</span>}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid={`sidebar-delete-collection-${collection.id}`}
+                      aria-label={t('sidebar.delete_collection', collection.name)}
+                      title={t('sidebar.delete_collection', collection.name)}
+                      disabled={collectionsPending}
+                      onClick={() => handleDeleteCollection(collection)}
+                      className="flex-shrink-0 rounded p-0.5 text-slate-500 hover:bg-red-500/15 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <X size={12} aria-hidden="true" />
+                    </button>
+                  </div>
+                  {expanded && (
+                    <div className="ml-4 space-y-0.5 border-l border-slate-700 pl-2">
+                      {members.length === 0 ? (
+                        <p className="px-1 py-0.5 text-[11px] text-slate-500">{t('sidebar.collection_members_empty')}</p>
+                      ) : members.map(member => (
+                        <button
+                          key={member.path}
+                          type="button"
+                          aria-label={t('action.open_item', member.path.split('/').pop() || member.path)}
+                          onClick={() => navigate(workspaceDetailUrl(member.path))}
+                          className={`flex min-h-6 w-full items-center gap-1.5 rounded px-1 text-left text-[11px] transition-colors ${member.exists ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-200' : 'text-slate-600 line-through'}`}
+                        >
+                          <FileText size={11} className="flex-shrink-0 text-indigo-400" aria-hidden="true" />
+                          <span className="block truncate">{member.path.split('/').pop()}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       <section className="workspace-sidebar-section workspace-sidebar-tags flex-shrink-0 border-t border-slate-700 bg-slate-900 p-2" aria-labelledby="sidebar-tags-heading">
         <div className="workspace-sidebar-section-heading mb-2 flex items-center justify-between gap-2">

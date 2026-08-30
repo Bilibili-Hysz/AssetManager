@@ -79,7 +79,7 @@ class _GalleryIncrementalMixin:
     def _on_file_system_changed(self, event: FileSystemChanged) -> None:
         """Queue library changes for incremental application, falling back
         to the full rebuild semantics when no snapshot is available."""
-        if event.kind in {"gallery", "shop"}:
+        if event.kind in {"gallery"}:
             return
         root_key = str(Path(event.library_root).resolve())
         with self._home_cache_lock:

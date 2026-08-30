@@ -214,22 +214,36 @@ async def handle_search(request):
                 primary = svc.search_by_name_detailed(
                     query, category=category, scanner=lan.scanner,
                 )
+                result_sets = [primary]
                 if primary.results:
-                    return primary
-                try:
-                    fallback = svc.search_by_name_indexed_detailed(
-                        lan.library_root, query, category=category,
-                    )
-                except sqlite3.OperationalError:
-                    # The indexed source is optional for legacy LAN fixtures and
-                    # older libraries. Preserve the default response shape while
-                    # retaining the failure in the opt-in detailed contract.
-                    fallback = SearchResultSet.from_source(
-                        "indexed",
-                        status=SearchStatus.ERROR,
-                        errors=(SearchError("search_source_failed", "indexed", recoverable=True),),
-                    )
-                return SearchResultSet.merge(primary, fallback, fallback_used=True)
+                    indexed_used = False
+                else:
+                    try:
+                        indexed_set = svc.search_by_name_indexed_detailed(
+                            lan.library_root, query, category=category,
+                        )
+                    except sqlite3.OperationalError:
+                        # The indexed source is optional for legacy LAN fixtures and
+                        # older libraries. Preserve the default response shape while
+                        # retaining the failure in the opt-in detailed contract.
+                        indexed_set = SearchResultSet.from_source(
+                            "indexed",
+                            status=SearchStatus.ERROR,
+                            errors=(SearchError("search_source_failed", "indexed", recoverable=True),),
+                        )
+                    result_sets.append(indexed_set)
+                    indexed_used = True
+                # Fourth source (migration v39): full-text over
+                # name+tags+notes. It joins the merge only when a query is
+                # present and never raises — an FTS failure degrades to an
+                # ERROR source inside the result set, keeping the response
+                # 200 with the surviving sources' hits.
+                result_sets.append(
+                    svc.search_by_fts_detailed(lan.library_root, query, category=category)
+                )
+                return SearchResultSet.merge(
+                    *result_sets, fallback_used=indexed_used,
+                )
             return SearchResultSet.from_source("request", status=SearchStatus.EMPTY)
 
         result_set = await asyncio.to_thread(_search)

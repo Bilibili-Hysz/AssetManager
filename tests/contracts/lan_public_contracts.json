@@ -84,54 +84,6 @@
         "total_size_fmt": "0 B"
       }
     },
-    "shop_item": {
-      "id": 7,
-      "path": "packs\\hero.zip",
-      "title": "Hero Pack",
-      "description": "Full pack",
-      "price_cents": 1250,
-      "currency": "CNY",
-      "cover_path": "packs\\cover.png",
-      "enabled": true,
-      "created_at": 100,
-      "updated_at": 200,
-      "metadata": {
-        "image_paths": [
-          "packs\\a.png",
-          "packs\\b.png"
-        ],
-        "status": "active"
-      }
-    },
-    "shop_buyer_order": {
-      "id": 21,
-      "item_id": 7,
-      "item_title": "Hero Pack",
-      "amount_cents": 1250,
-      "currency": "CNY",
-      "status": "fulfilled",
-      "created_at": 100.0,
-      "updated_at": 200.0,
-      "metadata": {
-        "quantity": 2,
-        "unit_price_cents": 625
-      }
-    },
-    "shop_seller_order": {
-      "id": 21,
-      "item_id": 7,
-      "item_path": "packs/hero.zip",
-      "item_title": "Hero Pack",
-      "buyer_name": null,
-      "buyer_email": null,
-      "amount_cents": 1250,
-      "currency": "CNY",
-      "status": "fulfilled",
-      "metadata": {},
-      "created_at": 100.0,
-      "updated_at": 200.0,
-      "dropped_secret": "must not leak"
-    },
     "share_info": {
       "id": "share-123",
       "paths": [
@@ -263,53 +215,6 @@
         "total_size": 0,
         "total_size_fmt": "0 B"
       }
-    },
-    "shop_item": {
-      "id": 7,
-      "path": "packs/hero.zip",
-      "title": "Hero Pack",
-      "description": "Full pack",
-      "price_cents": 1250,
-      "currency": "CNY",
-      "cover_path": "packs/cover.png",
-      "enabled": true,
-      "created_at": 100,
-      "updated_at": 200,
-      "metadata": {
-        "status": "active"
-      },
-      "gallery_paths": [
-        "packs/a.png",
-        "packs/b.png"
-      ],
-      "status": "active"
-    },
-    "shop_buyer_order": {
-      "id": 21,
-      "item_id": 7,
-      "item_title": "Hero Pack",
-      "amount_cents": 1250,
-      "currency": "CNY",
-      "status": "fulfilled",
-      "created_at": 100.0,
-      "updated_at": 200.0,
-      "delivery_available": true,
-      "quantity": 2,
-      "unit_price_cents": 625
-    },
-    "shop_seller_order": {
-      "id": 21,
-      "item_id": 7,
-      "item_path": "packs/hero.zip",
-      "item_title": "Hero Pack",
-      "buyer_name": null,
-      "buyer_email": null,
-      "amount_cents": 1250,
-      "currency": "CNY",
-      "status": "fulfilled",
-      "metadata": {},
-      "created_at": 100.0,
-      "updated_at": 200.0
     },
     "share_info": {
       "id": "share-123",
