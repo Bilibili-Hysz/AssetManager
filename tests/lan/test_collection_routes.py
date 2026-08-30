@@ -185,6 +185,45 @@ async def test_collection_smart_evaluate_over_lan(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_collection_list_reports_live_smart_counts(tmp_path):
+    """Smart rows carry the evaluated total (asset_count), manual rows do not."""
+    app, library, conn = _make_lan_app(tmp_path)
+    _index_asset(conn, library, "a.png")
+    _index_asset(conn, library, "b.png")
+    client = await _make_client(app)
+    try:
+        created = await client.post(
+            "/api/collections",
+            json={"name": "pngs", "kind": "smart", "query": {"extensions": [".png"]}},
+            headers=_local_ui_headers(app),
+        )
+        assert created.status == 201
+
+        manual = await client.post(
+            "/api/collections",
+            json={"name": "refs"},
+            headers=_local_ui_headers(app),
+        )
+        assert manual.status == 201
+
+        listed = await client.get("/api/collections", headers=_local_ui_headers(app))
+        assert listed.status == 200
+        rows = {c["name"]: c for c in (await listed.json())["collections"]}
+        assert rows["pngs"]["asset_count"] == 2
+        assert rows["refs"]["asset_count"] is None
+        assert rows["refs"]["member_count"] == 0
+
+        # Adding another indexed png bumps the live count on the next list.
+        _index_asset(conn, library, "c.png")
+        listed = await client.get("/api/collections", headers=_local_ui_headers(app))
+        rows = {c["name"]: c for c in (await listed.json())["collections"]}
+        assert rows["pngs"]["asset_count"] == 3
+    finally:
+        await client.close()
+        conn.close()
+
+
+@pytest.mark.anyio
 async def test_collection_rating_and_favorite_dimensions_over_lan(tmp_path):
     """rating/favorite predicates evaluate; favorite follows the requester."""
     app, library, conn = _make_lan_app(tmp_path)

@@ -26,6 +26,7 @@ import { useToast } from '../components/ui/Toast';
 import { useDownloadProgress } from '../components/ui/DownloadProgress';
 import { useQuota } from '../hooks/useQuota';
 import { triggerBlobDownload } from '../utils/download';
+import { buildCollectionSnapshot } from '../utils/collectionSnapshot';
 import { mapWithConcurrency } from '../utils/concurrency';
 import type { BrowsableItem, Metadata, ProjectDetail, SearchResponse } from '../types/api';
 
@@ -619,6 +620,14 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
     });
   }, [infoOpen, isMobile]);
 
+  // ── Smart-collection snapshot: serialize the current browse filter
+  // state (header search q + active tag) so the sidebar can save it as a
+  // smart collection's predicate.
+  const collectionSnapshot = useMemo(
+    () => buildCollectionSnapshot({ q: activeQuery, tag: activeTag }),
+    [activeQuery, activeTag],
+  );
+
   const isEditableTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false;
     return target instanceof HTMLInputElement
@@ -711,6 +720,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
         onTagFilter={handleTagFilter}
         onClearTagFilter={handleClearTagFilter}
         tagsRefreshKey={tagsRefreshKey}
+        collectionSnapshot={collectionSnapshot}
       />}
         infoPanel={<InfoPanel metadata={selectedMetadata} projectDetail={selectedProjectDetail} selected={selectedItem} loading={metadataLoading} onTagFilter={handleTagFilter} onTagAdd={canEditMetadata ? tag => mutateSelectedTag(tag, 'add') : undefined} onTagRemove={canEditMetadata ? tag => mutateSelectedTag(tag, 'remove') : undefined} tagMutationPending={tagMutationPending} onDownload={handleInfoDownload} onShare={handleInfoShare} onNotesSave={canEditMetadata ? handleNotesSave : undefined} canShare={capabilities?.manage_links ?? false} onClose={handleInfoToggle} />}
       sidebarOpen={sidebarOpen}

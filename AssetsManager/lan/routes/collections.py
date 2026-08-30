@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from pathlib import Path
 
 from aiohttp import web
@@ -62,9 +63,37 @@ async def handle_collections(request):
     except Exception:
         _log.exception("Failed to list LAN collections")
         return error_response("Failed to list collections", status=500, code="internal_error")
-    return web.json_response({
-        "collections": [CollectionResponse.from_record(c).to_dict() for c in collections],
-    })
+
+    # Live asset counts for smart rows: each smart collection is a query
+    # view, so its ``member_count`` is always 0 and clients need the
+    # evaluated total. This is a deliberate N+1 — collections are few
+    # (sidebar-sized lists) and each count is one indexed COUNT(*) query
+    # (plus in-memory dimension intersection), which stays cheap. The
+    # favorites dimension is viewer-scoped: counts use the requester's
+    # owner key, so the same collection can report different totals per
+    # viewer. A failing count degrades to no count (None) instead of
+    # failing the whole listing.
+    try:
+        owner_key = request_owner_key(request)
+    except web.HTTPException:
+        owner_key = None
+
+    payload = []
+    for record in collections:
+        response = CollectionResponse.from_record(record)
+        if record.get("kind") == "smart":
+            try:
+                count = await asyncio.to_thread(
+                    svc.evaluate_count, lan.library_root, record["id"],
+                    favorite_owner_key=owner_key,
+                )
+                response = replace(response, asset_count=int(count))
+            except Exception:
+                _log.exception(
+                    "Failed to count LAN smart collection %s", record.get("id")
+                )
+        payload.append(response.to_dict())
+    return web.json_response({"collections": payload})
 
 
 async def handle_create_collection(request):

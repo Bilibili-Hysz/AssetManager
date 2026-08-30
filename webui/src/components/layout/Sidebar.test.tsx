@@ -319,6 +319,35 @@ describe('Sidebar', () => {
     prompt.mockRestore();
   });
 
+  it('shows the live asset_count beside smart collections only', async () => {
+    listCollections.mockResolvedValue({ collections: [
+      { id: 7, name: 'hero shots', kind: 'manual', query: {}, member_count: 2, created_at: 1, updated_at: 1 },
+      { id: 8, name: 'big pngs', kind: 'smart', query: { extensions: ['.png'] }, member_count: 0, created_at: 1, updated_at: 1, asset_count: 12 },
+    ] });
+    render(<Sidebar onNavigate={() => {}} currentPath="" />, { wrapper: MemoryRouter });
+
+    expect(await screen.findByTestId('sidebar-collection-count-8')).toBeDefined();
+    expect(screen.getByTestId('sidebar-collection-count-8').textContent).toBe('12');
+    // Manual rows keep their plain member_count, no live count badge.
+    expect(screen.queryByTestId('sidebar-collection-count-7')).toBeNull();
+    expect(screen.getByTestId('sidebar-collection-7').textContent).toContain('2');
+  });
+
+  it('saves the browse-state snapshot as a smart collection query', async () => {
+    const user = userEvent.setup();
+    const prompt = vi.spyOn(window, 'prompt').mockReturnValue('hero shots');
+    const snapshot = { fts: 'hero', tags: ['featured'], tag_match: 'all' };
+    render(
+      <Sidebar onNavigate={() => {}} currentPath="" collectionSnapshot={snapshot} />,
+      { wrapper: MemoryRouter },
+    );
+    await screen.findByRole('heading', { name: 'Collections' });
+
+    await user.click(screen.getByTestId('sidebar-new-collection'));
+    expect(createCollection).toHaveBeenCalledWith('hero shots', 'smart', snapshot);
+    prompt.mockRestore();
+  });
+
   it('navigates tree leaves to detail with encoded parent context while directories use onNavigate', async () => {
     const user = userEvent.setup();
     const onNavigate = vi.fn();

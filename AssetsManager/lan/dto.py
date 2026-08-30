@@ -201,7 +201,12 @@ class TagResponse:
 
 @dataclass(frozen=True)
 class CollectionResponse:
-    """One user collection row (manual reference set or smart query view)."""
+    """One user collection row (manual reference set or smart query view).
+
+    ``asset_count`` carries the live evaluated total for smart collections
+    (their ``member_count`` is always 0 — they hold no membership rows).
+    It is None when the count could not be computed or for manual rows.
+    """
 
     id: int
     name: str
@@ -210,6 +215,7 @@ class CollectionResponse:
     member_count: int
     created_at: float
     updated_at: float
+    asset_count: int | None = None
 
     @classmethod
     def from_record(cls, record: Mapping[str, object]) -> "CollectionResponse":
@@ -220,6 +226,7 @@ class CollectionResponse:
         if not isinstance(query, dict):
             query = {}
         member_count = record.get("member_count", 0)
+        asset_count = record.get("asset_count")
         return cls(
             _as_int(record["id"]),
             str(record["name"]),
@@ -228,6 +235,7 @@ class CollectionResponse:
             member_count if isinstance(member_count, int) else int(member_count),
             float(record.get("created_at", 0.0)),  # type: ignore[arg-type]
             float(record.get("updated_at", 0.0)),  # type: ignore[arg-type]
+            None if asset_count is None else int(asset_count),  # type: ignore[arg-type]
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -239,6 +247,7 @@ class CollectionResponse:
             "member_count": self.member_count,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "asset_count": self.asset_count,
         }
 
 

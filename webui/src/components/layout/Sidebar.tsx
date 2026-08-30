@@ -8,6 +8,7 @@ import { createMetadataApi } from '../../api/metadata';
 import { createTagsApi } from '../../api/tags';
 import { createCollectionsApi } from '../../api/collections';
 import { useInvalidation } from '../../hooks/useInvalidation';
+import type { CollectionQueryPatch } from '../../api/collections';
 import type { Collection, CollectionMember, Tag, TreeItem } from '../../types/api';
 
 interface SidebarProps {
@@ -17,6 +18,8 @@ interface SidebarProps {
   onTagFilter?: (tag: string) => void;
   onClearTagFilter?: () => void;
   tagsRefreshKey?: number;
+  /** Current browse query state; a non-null snapshot creates smart collections. */
+  collectionSnapshot?: CollectionQueryPatch | null;
 }
 
 const matchesFilter = (node: TreeItem, filter: string): boolean =>
@@ -109,7 +112,7 @@ function TreeNode({ node, depth, expandedPaths, onToggle, onNavigate, onNavigate
   );
 }
 
-export function Sidebar({ onNavigate, currentPath, activeTag = null, onTagFilter, onClearTagFilter, tagsRefreshKey = 0 }: SidebarProps) {
+export function Sidebar({ onNavigate, currentPath, activeTag = null, onTagFilter, onClearTagFilter, tagsRefreshKey = 0, collectionSnapshot = null }: SidebarProps) {
   const [tree, setTree] = useState<TreeItem[]>([]);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set());
   const [filter, setFilter] = useState('');
@@ -210,10 +213,15 @@ export function Sidebar({ onNavigate, currentPath, activeTag = null, onTagFilter
     const name = window.prompt(t('sidebar.collection_name_prompt'))?.trim();
     if (!name) return;
     setCollectionsPending(true);
-    collectionsApi.create(name).then(() => refreshCollections()).catch(() => {}).finally(() => {
+    // A snapshot of the current browse query state (q/tag) turns the new
+    // collection into a smart query view instead of an empty manual set.
+    const request = collectionSnapshot
+      ? collectionsApi.create(name, 'smart', collectionSnapshot)
+      : collectionsApi.create(name);
+    request.then(() => refreshCollections()).catch(() => {}).finally(() => {
       if (mounted.current) setCollectionsPending(false);
     });
-  }, [collectionsApi, refreshCollections, t]);
+  }, [collectionSnapshot, collectionsApi, refreshCollections, t]);
 
   const handleDeleteCollection = useCallback((collection: Collection) => {
     setCollectionsPending(true);
@@ -358,7 +366,14 @@ export function Sidebar({ onNavigate, currentPath, activeTag = null, onTagFilter
                       {expanded ? <ChevronDown size={12} className="flex-shrink-0" aria-hidden="true" /> : <ChevronRight size={12} className="flex-shrink-0" aria-hidden="true" />}
                       <span className="min-w-0 truncate">{collection.name}</span>
                       {collection.kind === 'smart'
-                        ? <Sparkles size={11} className="flex-shrink-0 text-emerald-400" aria-label={t('sidebar.smart_collection')} aria-hidden="true" />
+                        ? (
+                          <>
+                            <Sparkles size={11} className="flex-shrink-0 text-emerald-400" aria-label={t('sidebar.smart_collection')} aria-hidden="true" />
+                            {typeof collection.asset_count === 'number' && (
+                              <span className="flex-shrink-0 text-[10px]" data-testid={`sidebar-collection-count-${collection.id}`}>{collection.asset_count}</span>
+                            )}
+                          </>
+                        )
                         : <span className={`flex-shrink-0 text-[10px] ${expanded ? 'text-indigo-300' : 'text-slate-500'}`}>{collection.member_count}</span>}
                     </button>
                     <button
