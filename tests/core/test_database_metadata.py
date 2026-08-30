@@ -219,6 +219,70 @@ def test_migrate_path_metadata_preserves_caller_outer_transaction(tmp_path):
         manager.close()
 
 
+def test_migrate_path_metadata_remaps_derivatives_and_collection_members(
+    tmp_path, monkeypatch
+):
+    """T0-2: a path move must remap asset_derivatives and
+    asset_collection_members rows, not just the classic projections."""
+    from AssetsManager.core import database, path_resolver
+
+    runtime = tmp_path / "RuntimeData"
+    lib = tmp_path / "Library"
+    old = lib / "old.png"
+    new = lib / "new.png"
+    lib.mkdir()
+    old.write_text("old", encoding="utf-8")
+    new.write_text("new", encoding="utf-8")
+
+    monkeypatch.setattr(path_resolver, "runtime_root", lambda: runtime)
+    monkeypatch.setattr(database, "RUNTIME_ROOT", runtime)
+    manager = database.DatabaseManager()
+    try:
+        conn = manager.connection_for(lib)
+        old_key = str(old.resolve())
+        new_key = str(new.resolve())
+        # The migrated schema includes the v37/v38 tables; insert sample rows.
+        conn.execute(
+            "INSERT INTO asset_derivatives "
+            "(file_path, kind, rel_path, params, source_mtime, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (old_key, "audio_waveform", "audio_waveform/abc.png", '{}', 1.0, 2.0),
+        )
+        conn.execute(
+            "INSERT INTO asset_collections (id, name, kind, query_json, created_at, updated_at) "
+            "VALUES (1, 'heroes', 'manual', '{}', 1.0, 1.0)",
+        )
+        conn.execute(
+            "INSERT INTO asset_collection_members (collection_id, file_path, added_at) "
+            "VALUES (1, ?, 3.0)",
+            (old_key,),
+        )
+        conn.commit()
+
+        database.migrate_path_metadata(conn, manager.thumb_dir_for(lib), old, new)
+
+        assert conn.execute(
+            "SELECT rel_path, params, source_mtime FROM asset_derivatives "
+            "WHERE file_path=? AND kind='audio_waveform'",
+            (new_key,),
+        ).fetchone() == ("audio_waveform/abc.png", '{}', 1.0)
+        assert conn.execute(
+            "SELECT 1 FROM asset_derivatives WHERE file_path=?",
+            (old_key,),
+        ).fetchone() is None
+        assert conn.execute(
+            "SELECT collection_id, added_at FROM asset_collection_members "
+            "WHERE file_path=?",
+            (new_key,),
+        ).fetchone() == (1, 3.0)
+        assert conn.execute(
+            "SELECT 1 FROM asset_collection_members WHERE file_path=?",
+            (old_key,),
+        ).fetchone() is None
+    finally:
+        manager.close()
+
+
 def test_migrate_path_metadata_rolls_back_partial_projection_failure(
     tmp_path, monkeypatch
 ):

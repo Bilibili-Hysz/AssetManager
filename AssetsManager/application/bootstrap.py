@@ -626,6 +626,7 @@ class ApplicationBootstrap:
                     library_data_dir(identity) / "pending_projection_repairs"
                 ),
                 activity_recorder=activity_recorder,
+                derivatives_recorder=media_derivatives_recorder,
             )
             # Re-enqueue projection-repair requests whose enqueue failed in a
             # previous run (markers under pending_projection_repairs/).  A

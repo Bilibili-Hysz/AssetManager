@@ -841,6 +841,42 @@ def test_delete_permanent_removes_files(file_ops):
     assert not src.exists()
 
 
+def test_delete_clears_media_derivatives(file_ops):
+    """T0-2: deleting an asset must clear its registered media derivatives
+    (rows and payload files) through the injected recorder."""
+    from AssetsManager.application.media.analysis import ensure_extracted_palette
+    from AssetsManager.application.media.derivatives import derivatives_root
+
+    service, library = file_ops
+    src = library / "asset.txt"
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_text("asset", encoding="utf-8")
+
+    # Register a params-only derivative row for the asset.
+    recorder = service._derivatives_recorder
+    assert recorder is not None, "bootstrap must inject the derivatives recorder"
+
+    def _fake_image():
+        from PIL import Image
+
+        return Image.new("RGB", (8, 8), (255, 0, 0))
+
+    ensure_extracted_palette(recorder, src, _fake_image)
+    from AssetsManager.application.media.derivatives import MediaDerivativesRecorder
+
+    assert isinstance(recorder, MediaDerivativesRecorder)
+    assert recorder.lookup(src, "extracted_palette") is not None
+
+    service.delete_permanent([src])
+
+    assert recorder.lookup(src, "extracted_palette") is None
+    # Params-only rows have no payload file; nothing should remain under the
+    # derivatives root for this asset.
+    root = derivatives_root(recorder.data_dir)
+    if root.exists():
+        assert not any(root.rglob("*")), "derivatives tree must be empty after delete"
+
+
 @pytest.mark.parametrize("mode", ["permanent", "trash"])
 def test_batch_delete_publishes_exactly_one_aggregated_event(
     file_ops, monkeypatch, mode

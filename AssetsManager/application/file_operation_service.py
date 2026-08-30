@@ -231,13 +231,18 @@ class FileOperationService:
                   reconciliation_queue: ReconciliationQueue | None = None,
                   import_manifest_store=None,
                   pending_projection_repairs_dir: Path | None = None,
-                  activity_recorder: ActivityRecorder | None = None):
+                  activity_recorder: ActivityRecorder | None = None,
+                  derivatives_recorder=None):
         self.session = session
         self._asset_index_service = asset_index_service
         self._reconciliation_queue = reconciliation_queue
         self._import_manifest_store = import_manifest_store
         self._pending_projection_repairs_dir = pending_projection_repairs_dir
         self._activity_recorder = activity_recorder
+        # Regenerable media derivatives recorder (duck-typed): used to drop
+        # derivative rows and payloads when a source asset is deleted, so
+        # trashed assets never leave orphaned derivatives behind.
+        self._derivatives_recorder = derivatives_recorder
         self._performance_recorder = (
             performance_recorder if performance_recorder is not None and performance_recorder.enabled else None
         )
@@ -1467,6 +1472,14 @@ class FileOperationService:
                 cache_keys = ThumbnailRepository(conn).delete_path(
                     target, commit=False
                 )
+                if self._derivatives_recorder is not None:
+                    # T0-2: v37 regenerable derivatives (waveform/palette/
+                    # poster rows and payload files) are keyed on the asset
+                    # path; drop them with the asset so a trashed file never
+                    # leaves orphaned derivative rows or payloads behind.
+                    # ``clear`` is never-raising and shares the caller's
+                    # connection, so it fits the savepoint transaction.
+                    self._derivatives_recorder.clear(path)
                 if self._asset_index_service is not None:
                     self._asset_index_service.remove_entry(
                         conn, path, commit=False

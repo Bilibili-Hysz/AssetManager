@@ -1427,6 +1427,75 @@ def _migrate_path_metadata_impl(conn: sqlite3.Connection, thumb_dir: Path,
                     [(path,) for path in stale_favorite_paths],
                 )
 
+        derivatives_table = conn.execute(
+            "SELECT 1 FROM sqlite_master "
+            "WHERE type='table' AND name='asset_derivatives'"
+        ).fetchone()
+        if derivatives_table is not None:
+            # v37 regenerable media derivatives: rows key on the absolute
+            # library-asset path, so a move must remap ``file_path``. The
+            # payload file is addressed by ``rel_path`` (sha1 of the *old*
+            # path), which stays untouched — remapping the row keeps it
+            # resolving to the same payload. A later re-derivation writes a
+            # new sha1 payload and removes the stale one via the recorder's
+            # existing stale-rel_path cleanup.
+            deriv_rows = conn.execute(
+                "SELECT file_path, kind, rel_path, params, source_mtime, created_at "
+                "FROM asset_derivatives WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
+                (old, descendant_pattern),
+            ).fetchall()
+            for path, kind, rel_path, params, source_mtime, created_at in deriv_rows:
+                conn.execute(
+                    "INSERT INTO asset_derivatives "
+                    "(file_path, kind, rel_path, params, source_mtime, created_at) "
+                    "VALUES (?,?,?,?,?,?) "
+                    "ON CONFLICT(file_path, kind) DO UPDATE SET "
+                    "rel_path=excluded.rel_path, params=excluded.params, "
+                    "source_mtime=excluded.source_mtime, created_at=excluded.created_at",
+                    (remap(path), kind, rel_path, params, source_mtime, created_at),
+                )
+            stale_deriv_paths = sorted({
+                path for path, _kind, _rel, _params, _mtime, _created in deriv_rows
+                if remap(path) != path
+            })
+            if stale_deriv_paths:
+                conn.executemany(
+                    "DELETE FROM asset_derivatives WHERE file_path=?",
+                    [(path,) for path in stale_deriv_paths],
+                )
+
+        collection_members_table = conn.execute(
+            "SELECT 1 FROM sqlite_master "
+            "WHERE type='table' AND name='asset_collection_members'"
+        ).fetchone()
+        if collection_members_table is not None:
+            # v38 manual collection membership rows: ``file_path`` is a bare
+            # TEXT (no FK to the assets index), so a move must remap it or
+            # the collection silently loses members.
+            member_rows = conn.execute(
+                "SELECT collection_id, file_path, added_at "
+                "FROM asset_collection_members "
+                "WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
+                (old, descendant_pattern),
+            ).fetchall()
+            for collection_id, path, added_at in member_rows:
+                conn.execute(
+                    "INSERT OR IGNORE INTO asset_collection_members "
+                    "(collection_id, file_path, added_at) VALUES (?,?,?)",
+                    (collection_id, remap(path), added_at),
+                )
+            stale_member_keys = sorted({
+                (collection_id, path)
+                for collection_id, path, _added in member_rows
+                if remap(path) != path
+            })
+            if stale_member_keys:
+                conn.executemany(
+                    "DELETE FROM asset_collection_members "
+                    "WHERE collection_id=? AND file_path=?",
+                    stale_member_keys,
+                )
+
         thumb_rows = conn.execute(
             "SELECT cache_key, source_path, artifact_kind, render_profile "
             "FROM thumbnail_cache WHERE source_path=? OR source_path LIKE ? ESCAPE '\\'",
