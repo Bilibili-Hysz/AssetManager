@@ -75,6 +75,8 @@ const zh: I18nDict = {
   },
   browse: {
     download_failed: '文件下载失败',
+    load_more: '加载更多',
+    loading_more: '加载中...',
     empty: '此文件夹为空',
     loading: '加载中...',
     error: '加载文件失败',

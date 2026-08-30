@@ -16,6 +16,8 @@ const batchDownload = vi.fn();
 const addTag = vi.fn();
 const removeTag = vi.fn();
 const projectsRefresh = vi.fn();
+const projectsLoadMore = vi.fn();
+let projectsCanLoadMore = false;
 const showToast = vi.fn();
 const getThumbnail = vi.fn();
 const loadThumbnails = vi.fn();
@@ -42,6 +44,9 @@ vi.mock('../hooks/useProjects', () => ({
       refresh: projectsRefresh,
       listingGeneration: 0,
       hydrateDirectories: vi.fn(),
+      canLoadMore: projectsCanLoadMore,
+      isLoadingMore: false,
+      loadMore: projectsLoadMore,
     };
   },
 }));
@@ -152,11 +157,30 @@ describe('BrowsePage', () => {
     removeTag.mockReset();
     removeTag.mockResolvedValue({ ok: true });
     projectsRefresh.mockReset();
+    projectsLoadMore.mockReset();
+    projectsCanLoadMore = false;
     showToast.mockReset();
     getThumbnail.mockReset();
     loadThumbnails.mockReset();
     useInvalidationMock.mockReset();
     authState.identityGeneration = 0;
+  });
+
+  it('shows the load-more control when the listing reports more pages', async () => {
+    projectsCanLoadMore = true;
+    projectsLoadMore.mockResolvedValue(undefined);
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+
+    const button = await screen.findByTestId('browse-load-more');
+    expect(button.textContent).toBe('browse.load_more');
+    fireEvent.click(button);
+    expect(projectsLoadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the load-more control by default and for search-result views', async () => {
+    render(<MemoryRouter initialEntries={['/browse']}><TestBrowsePage /></MemoryRouter>);
+    await screen.findByText('asset.png');
+    expect(screen.queryByTestId('browse-load-more')).toBeNull();
   });
 
   it('registers the Browse projection domains', () => {

@@ -14,6 +14,41 @@ from AssetsManager.lan.routes._helpers import get_lan, get_asset_service, get_me
 from AssetsManager.lan.routes._telemetry import record_route_event
 
 
+# Upper bound for one paginated files page (LAN large-library prework).
+FILES_MAX_LIMIT = 1000
+
+
+def _parse_paging(request) -> tuple[int | None, int] | web.Response:
+    """Parse optional ``limit``/``offset`` query params.
+
+    Returns ``(limit, offset)`` where ``limit`` is ``None`` when the client
+    did not ask for pagination (backward-compatible full listing), or an
+    ``error_response`` with status 400 for malformed values.
+    """
+    limit_raw = request.query.get("limit")
+    limit = None
+    if limit_raw is not None:
+        try:
+            limit = int(limit_raw)
+        except (TypeError, ValueError):
+            return error_response(
+                "Invalid limit", status=400, code="bad_request"
+            )
+        if not 1 <= limit <= FILES_MAX_LIMIT:
+            return error_response(
+                f"limit must be between 1 and {FILES_MAX_LIMIT}",
+                status=400, code="bad_request",
+            )
+    offset_raw = request.query.get("offset", "0")
+    try:
+        offset = int(offset_raw)
+    except (TypeError, ValueError):
+        return error_response("Invalid offset", status=400, code="bad_request")
+    if offset < 0:
+        return error_response("offset must be >= 0", status=400, code="bad_request")
+    return limit, offset
+
+
 async def handle_files(request):
     lan = get_lan(request)
     started = perf_counter()
@@ -30,6 +65,11 @@ async def handle_files(request):
         order = request.query.get("order", "asc")
         filter_cat = request.query.get("filter", "all")
         search = request.query.get("search", "").lower()
+        paging = _parse_paging(request)
+        if isinstance(paging, web.Response):
+            status = 400
+            return paging
+        limit, offset = paging
 
         target = validate_path(lan, rel_path)
         if not target.is_dir():
@@ -115,14 +155,23 @@ async def handle_files(request):
         outcome = "success"
         status = 200
         item_count = listing.total_count
-        return web.json_response({
+        # Pagination slices AFTER the service-side sort; totals always describe
+        # the full filtered listing. Without limit/offset the response is
+        # byte-identical to the pre-pagination contract (no new keys).
+        payload = {
             "current_path": listing.current_path,
             "parent_path": listing.parent_path,
             "items": items,
             "total_count": listing.total_count,
             "total_size": total,
             "total_size_fmt": format_size(total),
-        })
+        }
+        if limit is not None or offset > 0:
+            payload["total"] = len(items)
+            payload["offset"] = offset
+            payload["limit"] = limit
+            payload["items"] = items[offset:offset + limit] if limit is not None else items[offset:]
+        return web.json_response(payload)
     except web.HTTPException as exc:
         status = exc.status
         raise

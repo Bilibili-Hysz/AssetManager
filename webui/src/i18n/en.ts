@@ -73,6 +73,8 @@ const en = {
   },
   browse: {
     download_failed: 'Could not download the file',
+    load_more: 'Load more',
+    loading_more: 'Loading...',
     empty: 'This folder is empty',
     loading: 'Loading...',
     error: 'Failed to load files',

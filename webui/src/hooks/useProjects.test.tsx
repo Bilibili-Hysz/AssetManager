@@ -7,7 +7,16 @@ import { useProjects } from './useProjects';
 
 type ListItem = { path: string; type?: 'dir' | 'file'; size_fmt?: string };
 
-const list = vi.fn<(...args: unknown[]) => Promise<{ current_path?: string; items: ListItem[] }>>(
+type ListResponse = {
+  current_path?: string;
+  items: ListItem[];
+  total_count?: number;
+  total?: number;
+  limit?: number;
+  offset?: number;
+};
+
+const list = vi.fn<(...args: unknown[]) => Promise<ListResponse>>(
   () => Promise.resolve({ items: [] }),
 );
 const summaries = vi.fn();
@@ -107,6 +116,69 @@ describe('useProjects', () => {
     expect(result.current.data?.items[0]?.path).toBe('two');
     await act(async () => { resolveFirst({ items: [{ path: 'one' }] }); });
     expect(result.current.data?.items[0]?.path).toBe('two');
+  });
+
+  it('requests the first page with the bounded limit', async () => {
+    const { wrapper } = makeWrapper();
+    renderHook(() => useProjects('one'), { wrapper });
+
+    await waitFor(() => expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'one', summaries: false, limit: 500 }),
+      expect.any(AbortSignal),
+    ));
+  });
+
+  it('appends load-more pages into the cached listing', async () => {
+    list
+      .mockResolvedValueOnce({
+        current_path: 'one', items: [{ path: 'a' }, { path: 'b' }],
+        total_count: 4, total: 4, limit: 500, offset: 0,
+      })
+      .mockResolvedValueOnce({
+        current_path: 'one', items: [{ path: 'c' }, { path: 'd' }],
+        total_count: 4, total: 4, limit: 500, offset: 2,
+      });
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(() => useProjects('one'), { wrapper });
+    await waitFor(() => expect(result.current.canLoadMore).toBe(true));
+
+    await act(() => result.current.loadMore());
+
+    expect(list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ path: 'one', limit: 500, offset: 2 }),
+    );
+    expect(result.current.data?.items.map(item => item.path)).toEqual(['a', 'b', 'c', 'd']);
+    expect(result.current.canLoadMore).toBe(false);
+  });
+
+  it('does not fetch more pages when the response carries no total', async () => {
+    list.mockResolvedValueOnce({ current_path: 'one', items: [{ path: 'a' }] });
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(() => useProjects('one'), { wrapper });
+    await waitFor(() => expect(result.current.data?.items).toHaveLength(1));
+
+    await act(() => result.current.loadMore());
+
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(result.current.canLoadMore).toBe(false);
+  });
+
+  it('keeps the loaded listing when a load-more request fails', async () => {
+    list
+      .mockResolvedValueOnce({
+        current_path: 'one', items: [{ path: 'a' }],
+        total_count: 2, total: 2, limit: 500, offset: 0,
+      })
+      .mockRejectedValueOnce(new Error('HTTP 500'));
+    const { wrapper } = makeWrapper();
+    const { result } = renderHook(() => useProjects('one'), { wrapper });
+    await waitFor(() => expect(result.current.canLoadMore).toBe(true));
+
+    await act(() => result.current.loadMore());
+
+    expect(result.current.data?.items.map(item => item.path)).toEqual(['a']);
+    expect(result.current.error).toBeNull();
+    expect(result.current.canLoadMore).toBe(true);
   });
 
   it('ignores an old hydration response after a same-path refresh', async () => {

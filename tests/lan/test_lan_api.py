@@ -1126,6 +1126,119 @@ async def test_files_route_honors_explicit_summaries_false(tmp_path):
         await client.close()
 
 
+def _seed_paginated_library(library):
+    for index in range(7):
+        (library / f"asset_{index}.txt").write_text(f"content-{index}", encoding="utf-8")
+    (library / "other.txt").write_text("unrelated", encoding="utf-8")
+
+
+@pytest.mark.anyio
+async def test_files_route_pagination_limit_offset_and_total(tmp_path):
+    app, library, _conn = _make_lan_app(tmp_path)
+    _seed_paginated_library(library)
+    client = await _make_client(app)
+    try:
+        first = await client.get("/api/files?summaries=false&limit=3")
+        assert first.status == 200
+        first_data = await first.json()
+        assert first_data["limit"] == 3
+        assert first_data["offset"] == 0
+        assert first_data["total"] == 8  # 7 asset files + other.txt
+        assert len(first_data["items"]) == 3
+        assert [item["name"] for item in first_data["items"]] == [
+            "asset_0.txt", "asset_1.txt", "asset_2.txt",
+        ]
+
+        second = await client.get("/api/files?summaries=false&limit=3&offset=3")
+        second_data = await second.json()
+        assert second_data["offset"] == 3
+        assert [item["name"] for item in second_data["items"]] == [
+            "asset_3.txt", "asset_4.txt", "asset_5.txt",
+        ]
+
+        tail = await client.get("/api/files?summaries=false&limit=3&offset=6")
+        tail_data = await tail.json()
+        assert [item["name"] for item in tail_data["items"]] == ["asset_6.txt", "other.txt"]
+
+        beyond = await client.get("/api/files?summaries=false&limit=3&offset=100")
+        beyond_data = await beyond.json()
+        assert beyond_data["items"] == []
+        assert beyond_data["total"] == 8
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_files_route_pagination_total_reflects_search_filter(tmp_path):
+    app, library, _conn = _make_lan_app(tmp_path)
+    _seed_paginated_library(library)
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/files?summaries=false&search=asset&limit=2")
+        assert response.status == 200
+        data = await response.json()
+        assert data["total"] == 7  # only the asset_* files match the search
+        assert len(data["items"]) == 2
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_files_route_without_limit_keeps_legacy_response_shape(tmp_path):
+    app, library, _conn = _make_lan_app(tmp_path)
+    _seed_paginated_library(library)
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/files?summaries=false")
+        assert response.status == 200
+        data = await response.json()
+        assert len(data["items"]) == 8
+        # No pagination echo without explicit pagination params.
+        assert "total" not in data
+        assert "offset" not in data
+        assert "limit" not in data
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("query", [
+    "limit=0",
+    "limit=1001",
+    "limit=abc",
+    "limit=-5",
+    "offset=-1",
+    "offset=xyz",
+])
+async def test_files_route_rejects_invalid_pagination_params(tmp_path, query):
+    app, library, _conn = _make_lan_app(tmp_path)
+    (library / "asset.txt").write_text("content", encoding="utf-8")
+    client = await _make_client(app)
+    try:
+        response = await client.get(f"/api/files?summaries=false&{query}")
+        assert response.status == 400
+        body = await response.json()
+        assert body["code"] == "bad_request"
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_files_route_pagination_boundary_limit_is_accepted(tmp_path):
+    app, library, _conn = _make_lan_app(tmp_path)
+    _seed_paginated_library(library)
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/files?summaries=false&limit=1000")
+        assert response.status == 200
+        data = await response.json()
+        assert data["limit"] == 1000
+        assert data["total"] == 8
+        assert len(data["items"]) == 8
+    finally:
+        await client.close()
+
+
 @pytest.mark.anyio
 async def test_directory_summaries_route_hydrates_direct_child_directories(tmp_path):
     app, library, _conn = _make_lan_app(tmp_path)

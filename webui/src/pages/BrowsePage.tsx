@@ -43,7 +43,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const initialPath = searchParams.get('path') || '';
-  const { data, isLoading, error, currentPath, sort, navigateTo, setSort, refresh, listingGeneration, hydrateDirectories } = useProjects(initialPath);
+  const { data, isLoading, error, currentPath, sort, navigateTo, setSort, refresh, listingGeneration, hydrateDirectories, canLoadMore, isLoadingMore, loadMore } = useProjects(initialPath);
   const { loadThumbnails, getThumbnail, revision: thumbnailRevision } = useThumbnailCache();
   const { api, identityGeneration, capabilities } = useAuth();
   const filesApi = useFilesApi();
@@ -550,6 +550,9 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   }, []);
 
   const visibleItems = nameResults ?? tagResults ?? data?.items ?? [];
+  // Load-more applies only to the plain directory listing, never to a
+  // search-result view (those have their own truncation notices).
+  const showLoadMore = !nameResults && !tagResults && Boolean(canLoadMore);
 
   const handleCopyPath = useCallback((path: string) => {
     navigator.clipboard.writeText(path).catch(() => {});
@@ -938,6 +941,19 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
            onDownload={item => handleDownload(item.path)}
            thumbnailMap={thumbnailMap}
         />
+      )}
+      {showLoadMore && (
+        <div className="flex justify-center py-4">
+          <button
+            type="button"
+            data-testid="browse-load-more"
+            disabled={isLoadingMore}
+            onClick={() => void loadMore()}
+            className="px-4 py-2 text-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 rounded-lg transition-colors"
+          >
+            {isLoadingMore ? t('browse.loading_more') : t('browse.load_more')}
+          </button>
+        </div>
       )}
       </div>
 

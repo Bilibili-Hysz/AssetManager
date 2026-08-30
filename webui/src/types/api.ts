@@ -183,6 +183,10 @@ export interface FilesResponse {
   total_count: number;
   total_size: number;
   total_size_fmt: string;
+  /** Pagination echo — present only when the client requested a limit/offset. */
+  total?: number;
+  offset?: number;
+  limit?: number | null;
 }
 
 export interface DirectorySummaryItem {

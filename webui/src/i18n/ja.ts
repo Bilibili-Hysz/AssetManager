@@ -75,6 +75,8 @@ const ja: I18nDict = {
   },
   browse: {
     download_failed: 'ファイルをダウンロードできませんでした',
+    load_more: 'さらに読み込む',
+    loading_more: '読み込み中...',
     empty: 'このフォルダは空です',
     loading: '読み込み中...',
     error: 'ファイルの読み込みに失敗しました',

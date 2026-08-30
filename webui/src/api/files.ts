@@ -11,6 +11,10 @@ export function createFilesApi(api: ApiClient) {
       search?: string;
       /** Serialized as 'true'/'false' by the client; backend defaults to true. */
       summaries?: boolean;
+      /** Page size (1-1000); omitted = backend full listing (backward compat). */
+      limit?: number;
+      /** Slice start into the sorted, filtered listing; backend default 0. */
+      offset?: number;
     }, signal?: AbortSignal) => api.get<FilesResponse>('files', params as Record<string, string | number | boolean | undefined>, signal),
 
     summaries: (parent_path: string, paths: string[], signal?: AbortSignal) =>
