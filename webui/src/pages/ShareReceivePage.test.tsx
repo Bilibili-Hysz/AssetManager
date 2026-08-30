@@ -11,8 +11,11 @@ const { getInfo, verifyPassword, showToast, tMock } = vi.hoisted(() => ({
   verifyPassword: vi.fn(),
   showToast: vi.fn(),
   // Must be stable across renders: the page's effect depends on `t`, and an
-  // unstable mock would restart getInfo on every render.
-  tMock: (key: string) => key,
+  // unstable mock would restart getInfo on every render. Interpolated args
+  // are surfaced as `key:arg,arg` so badge/countdown tests can assert the
+  // exact values passed through.
+  tMock: (key: string, ...args: (string | number)[]) =>
+    args.length > 0 ? `${key}:${args.join(',')}` : key,
 }));
 
 vi.mock('../api/client', () => ({
@@ -32,7 +35,7 @@ vi.mock('../api/shares', async importOriginal => {
 });
 vi.mock('../hooks/useTheme', () => ({ useTheme: () => {} }));
 vi.mock('../components/ui/Toast', () => ({ useToast: () => ({ showToast }) }));
-vi.mock('../hooks/useI18n', () => ({ useI18n: () => ({ t: tMock }) }));
+vi.mock('../hooks/useI18n', () => ({ useI18n: () => ({ t: tMock, lang: 'en' }) }));
 
 const baseShare: ShareInfoResponse = {
   id: 'share-123',
@@ -233,5 +236,67 @@ describe('ShareReceivePage', () => {
     resolveFirst({ ...baseShare, id: 'share-a', paths: ['stale.txt'] });
     expect(screen.queryByText('stale.txt')).toBeNull();
     expect(await screen.findByText('second.txt')).toBeDefined();
+  });
+
+  it('renders the remaining-download quota badge for capped shares', async () => {
+    getInfo.mockResolvedValue({ ...baseShare, download_count: 2, max_downloads: 5 });
+    renderPage();
+
+    const badge = await screen.findByTestId('share-quota');
+    expect(badge.textContent).toBe('share.quota_remaining:3,5');
+  });
+
+  it('marks the last remaining download with the warning color', async () => {
+    getInfo.mockResolvedValue({ ...baseShare, download_count: 4, max_downloads: 5 });
+    renderPage();
+
+    const badge = await screen.findByTestId('share-quota');
+    expect(badge.textContent).toBe('share.quota_remaining:1,5');
+    expect(badge.className).toContain('text-amber-400');
+  });
+
+  it('shows a neutral exhausted state when the download cap is reached', async () => {
+    // The backend applies max_downloads as a hard lifetime cap with no reset
+    // cycle, so the exhausted copy stays neutral (no "resets tomorrow").
+    getInfo.mockResolvedValue({ ...baseShare, download_count: 5, max_downloads: 5 });
+    renderPage();
+
+    const badge = await screen.findByTestId('share-quota');
+    expect(badge.textContent).toBe('share.quota_exhausted');
+    expect(badge.className).not.toContain('text-amber-400');
+  });
+
+  it('omits the quota badge when downloads are unlimited', async () => {
+    getInfo.mockResolvedValue({ ...baseShare, max_downloads: null, download_count: 0 });
+    renderPage();
+
+    await screen.findByText('folder/file.txt');
+    expect(screen.queryByTestId('share-quota')).toBeNull();
+  });
+
+  it('renders the expiry countdown tiers (date / hours / minutes)', async () => {
+    getInfo.mockResolvedValue({ ...baseShare, expires_in_hours: 48 });
+    const first = renderPage();
+    expect((await first.findByTestId('share-expires')).textContent)
+      .toMatch(/^share\.expires_on:/);
+    first.unmount();
+
+    getInfo.mockResolvedValue({ ...baseShare, expires_in_hours: 5 });
+    const second = renderPage();
+    expect(await second.findByText('share.expires_in_hours:5')).toBeDefined();
+    second.unmount();
+
+    getInfo.mockResolvedValue({ ...baseShare, expires_in_hours: 0.5 });
+    const third = renderPage();
+    expect(await third.findByText('share.expires_in_minutes:30')).toBeDefined();
+    third.unmount();
+  });
+
+  it('omits the countdown badge when the share never expires', async () => {
+    getInfo.mockResolvedValue({ ...baseShare, expires_in_hours: null });
+    renderPage();
+
+    await screen.findByText('folder/file.txt');
+    expect(screen.queryByTestId('share-expires')).toBeNull();
   });
 });

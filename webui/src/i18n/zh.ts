@@ -256,6 +256,11 @@ const zh: I18nDict = {
     url_missing: '服务器未返回分享链接',
     create_failed: '创建分享失败',
     copy_failed: '复制分享链接失败',
+    quota_remaining: '剩余 {0} / {1} 次下载',
+    quota_exhausted: '下载次数已用完',
+    expires_on: '{0} 到期',
+    expires_in_hours: '{0} 小时后到期',
+    expires_in_minutes: '{0} 分钟后到期',
   },
   gallery: {
     navigation: '图库导航',

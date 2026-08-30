@@ -8,6 +8,23 @@ import { usePublicShareApi } from '../hooks/usePageApis';
 import { useToast } from '../components/ui/Toast';
 import type { ShareInfoResponse } from '../types/api';
 
+type Translate = (key: string, ...args: (string | number)[]) => string;
+
+function formatExpiryText(hours: number, t: Translate, lang: string): string {
+  if (hours > 24) {
+    // The API rounds to 0.1h, so the projected calendar date is accurate to a
+    // few minutes — enough for a day-level display.
+    const locale = lang === 'zh' ? 'zh-CN' : lang === 'ja' ? 'ja-JP' : 'en-US';
+    const expiresAt = new Date(Date.now() + hours * 3_600_000);
+    return t('share.expires_on', expiresAt.toLocaleDateString(locale));
+  }
+  if (hours >= 1) {
+    const shown = hours % 1 === 0 ? String(Math.round(hours)) : hours.toFixed(1);
+    return t('share.expires_in_hours', shown);
+  }
+  return t('share.expires_in_minutes', Math.max(1, Math.round(hours * 60)));
+}
+
 export default function ShareReceivePage() {
   const { shareId } = useParams<{ shareId: string }>();
   // Dedicated client on purpose: share verification answers 401 for a wrong
@@ -16,7 +33,7 @@ export default function ShareReceivePage() {
   // uses a client without an onUnauthorized handler (usePublicShareApi owns
   // that dedicated client).
   const sharesApi = usePublicShareApi();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   useTheme();
   const { showToast } = useToast();
 
@@ -70,7 +87,7 @@ export default function ShareReceivePage() {
 
   if (loading) {
     return (
-      <div data-testid="share-loading" className="flex items-center justify-center h-screen bg-slate-950">
+      <div data-testid="share-loading" className="flex items-center justify-center min-h-[100dvh] bg-slate-950">
         <div className="skeleton h-8 w-48" />
       </div>
     );
@@ -78,7 +95,7 @@ export default function ShareReceivePage() {
 
   if (!shareInfo) {
     return (
-      <div className="flex items-center justify-center h-screen bg-slate-950">
+      <div className="flex items-center justify-center min-h-[100dvh] bg-slate-950">
         <p className="text-slate-400">{t('share.not_found')}</p>
       </div>
     );
@@ -86,7 +103,7 @@ export default function ShareReceivePage() {
 
   if (shareInfo.expired) {
     return (
-      <div className="flex items-center justify-center h-screen bg-slate-950">
+      <div className="flex items-center justify-center min-h-[100dvh] bg-slate-950">
         <p className="text-slate-400">{t('share.expired')}</p>
       </div>
     );
@@ -94,7 +111,7 @@ export default function ShareReceivePage() {
 
   if (shareInfo.has_password && !verified) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen bg-slate-950 gap-6 p-8">
+      <div className="flex flex-col items-center justify-center min-h-[100dvh] bg-slate-950 gap-6 p-8">
         <Lock size={48} className="text-slate-600" />
         <h1 className="text-xl font-semibold text-white">{t('share.password_required')}</h1>
         <form
@@ -126,9 +143,44 @@ export default function ShareReceivePage() {
   }
 
   const paths = shareInfo.paths ?? [];
+  // The backend applies max_downloads as a hard lifetime cap
+  // (domain/share.py is_download_limit_reached) with no reset cycle, so the
+  // exhausted copy stays neutral. Remaining 1 gets the warning color.
+  const quotaRemaining = shareInfo.max_downloads != null
+    ? Math.max(0, shareInfo.max_downloads - (shareInfo.download_count ?? 0))
+    : null;
+  const quotaClass = quotaRemaining == null || quotaRemaining > 1
+    ? 'border-slate-600/60 bg-slate-800/60 text-slate-300'
+    : quotaRemaining === 1
+      ? 'border-amber-500/40 bg-amber-500/10 text-amber-400'
+      : 'border-red-500/40 bg-red-500/10 text-red-400';
   return (
-    <div className="min-h-screen bg-slate-950 p-6">
-      <h1 className="text-2xl font-bold text-white mb-6">{t('share.title')}</h1>
+    <div className="min-h-[100dvh] bg-slate-950 p-6">
+      <h1 className="text-2xl font-bold text-white mb-2">{t('share.title')}</h1>
+      {(quotaRemaining != null || shareInfo.expires_in_hours != null) && (
+        <div className="flex flex-wrap items-center gap-2 mb-6">
+          {quotaRemaining != null && (
+            <span
+              data-testid="share-quota"
+              role="status"
+              className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${quotaClass}`}
+            >
+              {quotaRemaining > 0
+                ? t('share.quota_remaining', quotaRemaining, shareInfo.max_downloads ?? 0)
+                : t('share.quota_exhausted')}
+            </span>
+          )}
+          {shareInfo.expires_in_hours != null && (
+            <span
+              data-testid="share-expires"
+              role="status"
+              className="inline-flex items-center rounded-full border border-slate-600/60 bg-slate-800/60 px-3 py-1 text-xs font-medium text-slate-300"
+            >
+              {formatExpiryText(shareInfo.expires_in_hours, t, lang)}
+            </span>
+          )}
+        </div>
+      )}
       {paths.length === 0 ? (
         <p className="text-slate-400">{t('share.no_files')}</p>
       ) : (

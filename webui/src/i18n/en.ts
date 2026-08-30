@@ -261,6 +261,11 @@ const en = {
     url_missing: 'Share URL was not returned by the server',
     create_failed: 'Failed to create share',
     copy_failed: 'Failed to copy share link',
+    quota_remaining: 'Remaining {0} of {1} downloads',
+    quota_exhausted: 'Download quota used up',
+    expires_on: 'Expires on {0}',
+    expires_in_hours: 'Expires in {0} h',
+    expires_in_minutes: 'Expires in {0} min',
   },
   gallery: {
     navigation: 'Gallery navigation',

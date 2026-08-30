@@ -256,6 +256,11 @@ const ja: I18nDict = {
     url_missing: 'サーバーが共有 URL を返しませんでした',
     create_failed: '共有の作成に失敗しました',
     copy_failed: '共有リンクのコピーに失敗しました',
+    quota_remaining: '残り {0} / {1} ダウンロード',
+    quota_exhausted: 'ダウンロード回数が上限に達しました',
+    expires_on: '{0} に期限切れ',
+    expires_in_hours: '{0} 時間後に期限切れ',
+    expires_in_minutes: '{0} 分後に期限切れ',
   },
   gallery: {
     navigation: 'ギャラリーナビゲーション',
