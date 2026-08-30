@@ -72,11 +72,13 @@ def _document(conn: sqlite3.Connection, file_path: str) -> tuple[str, str, str] 
 
 
 def test_migrate_reaches_latest_and_provisions_fts_table():
+    from AssetsManager.core.db_migrations import CURRENT_SCHEMA_VERSION
+
     connection = sqlite3.connect(":memory:", check_same_thread=False)
     connection.executescript(database._SCHEMA)
     try:
         version = migrate(connection)
-        assert version == CURRENT_SCHEMA_VERSION == 40
+        assert version == CURRENT_SCHEMA_VERSION
         tables = {
             row[0]
             for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
